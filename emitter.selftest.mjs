@@ -1,0 +1,336 @@
+import { toolTextFromEvent, runPreStepEmit, emitCheckpoint, buildLedger, readPressure, LEDGER_OPEN, LEDGER_CLOSE, LEDGER_PREAMBLE } from './emitter.js'
+
+let pass = 0, fail = 0
+const ok = (n, c) => { if (c) { pass++ } else { fail++; console.log('  ✗ ' + n) } }
+const eq = (n, g, w) => { if (g === w) { pass++ } else { fail++; console.log('  ✗ ' + n + '  got=' + JSON.stringify(g) + ' want=' + JSON.stringify(w)) } }
+
+// ── 构造器 ─────────────────────────────────────────────────
+const mkUser = (seq, text) => ({ seq, type: 'user/message', data: { role: 'user', content: [{ type: 'text', text }] } })
+const mkA = (seq, reasoning, k = 0) => ({ seq, type: 'assistant/message', data: { message: { role: 'assistant', content:
+  [{ type: 'reasoning', text: reasoning }, ...Array.from({ length: k }, (_, i) => ({ type: 'tool-call', id: 'c' + i }))] } } })
+const mkR = (seq, text) => ({ seq, type: 'tool/result', data: { content: [{ type: 'text', text }] } })
+
+const rawOf = (ev) => ev && ev.data && ev.data.message
+  ? ev.data.message.content.filter((b) => b.type === 'reasoning').map((b) => b.text).join('') : null
+const toolTextOf = (ev) => ev && ev.data && ev.data.content ? ev.data.content.map((b) => b.text || '').join('') : null
+
+function fakeSession({ events, contextWindow = 262144, meter, appendImpl, noSurface }) {
+  const map = new Map(events.map((e) => [e.seq, e]))
+  const calls = []
+  return {
+    id: 'sess-1',
+    surface: noSurface ? undefined : { nodes: events.map((e) => e.seq) },
+    eventAt: (s) => map.get(s),
+    requestContext: () => ({ contextWindow }),
+    append(type, data, meta) {
+      calls.push({ type, data, meta })
+      if (appendImpl) return appendImpl(type, data, meta, calls.length)
+      return { seq: 9000 + calls.length }
+    },
+    __calls: calls,
+  }
+}
+const mkCtx = (meter) => ({ get: (k) => (k === 'tokenMeter' ? (meter || null) : null) })
+const R = 'x'.repeat(4000)
+
+// ══ A. readPressure ═══════════════════════════════════════
+{
+  const ev = [mkUser(1, 'hi')]
+  const m = { measure: () => ({ usedTokens: 1234 }) }
+  const p = readPressure({ session: fakeSession({ events: ev }), ctx: mkCtx(m), surfaceChars: 9999 })
+  eq('meter 可用 → source=meter', p.source, 'meter')
+  eq('meter 可用 → usedTokens 取自 meter', p.usedTokens, 1234)
+  eq('contextWindow 可读', p.contextWindow, 262144)
+}
+{
+  const m = { measure: () => { throw new Error('boom') } }
+  const p = readPressure({ session: fakeSession({ events: [mkUser(1, 'hi')] }), ctx: mkCtx(m), surfaceChars: 400 })
+  eq('meter 抛错 → 降级 estimated', p.source, 'estimated')
+  eq('estimated = ceil(chars/4)', p.usedTokens, 100)
+}
+{
+  const p = readPressure({ session: fakeSession({ events: [], contextWindow: null }), ctx: mkCtx(null), surfaceChars: 400 })
+  eq('窗口不可读 → source=none', p.source, 'none')
+  eq('窗口不可读 → usedTokens undefined', p.usedTokens, undefined)
+}
+
+// ══ B. buildLedger（D2′ 混合）══════════════════════════════
+await (async () => {
+  const seen = []
+  const archive = async (text, info) => { seen.push(info.chars); return 'art://TL' + info.seq }
+  const L = await buildLedger({ distilled: '【已定决策】压缩完成', toolResults: [
+    { seq: 11, text: 'short result' },
+    { seq: 12, text: R },
+  ], maxInlineChars: 100, archive })
+  ok('短结果内联', L.text.includes('short result'))
+  ok('长结果留句柄', L.text.includes('art://TL12'))
+  ok('长结果不进正文', !L.text.includes(R))
+  eq('内联计数', L.inlined, 1)
+  eq('归档计数', L.archived, 1)
+  eq('归档拿到真实长度', seen[0], 4000)
+  ok('提纯稿保留', L.text.includes('【已定决策】压缩完成'))
+  // 归档失败 ⇒ 必须内联，绝不丢
+  const L2 = await buildLedger({ distilled: 'D', toolResults: [{ seq: 3, text: R }], maxInlineChars: 10, archive: async () => null })
+  ok('归档失败 → 原文内联（信息不丢）', L2.text.includes(R))
+  eq('归档失败计数', L2.archiveFailed, 1)
+  const L3 = await buildLedger({ distilled: 'D', toolResults: [{ seq: 4, text: R }], maxInlineChars: 10, archive: async () => { throw new Error('disk') } })
+  ok('归档抛错 → 原文内联', L3.text.includes(R))
+})()
+
+// ══ B2. 证据边界：CAS 留原文，只有视图才清洗（2026-09-22 评审第 5 点）══
+await (async () => {
+  const ESC = String.fromCharCode(27)
+  const rawDirty = ESC + '[31m' + 'ERROR boom' + ESC + '[0m   '
+  const archived = []
+  const archive = async (text) => { archived.push(text); return 'art://RAW' }
+
+  // ① 短正文 ⇒ 内联：视图清洗，归档不被调用
+  const S = await buildLedger({ distilled: 'D', toolResults: [{ seq: 1, text: rawDirty }], maxInlineChars: 1000, archive })
+  ok('★ 内联视图已清洗（ANSI 消失）', S.text.indexOf(ESC) < 0, JSON.stringify(S.text))
+  ok('★ 内联视图保留语义正文', S.text.indexOf('ERROR boom') >= 0)
+  eq('短正文不触发归档', archived.length, 0)
+
+  // ② 长正文 ⇒ 归档：归档必须拿【原文】（字节保真）
+  const longDirty = ESC + '[33m' + 'y'.repeat(3000) + ESC + '[0m'
+  const A = await buildLedger({ distilled: 'D', toolResults: [{ seq: 2, text: longDirty }], maxInlineChars: 100, archive })
+  eq('长正文触发归档', archived.length, 1)
+  ok('★★ 归档拿到的是原文（含 ANSI）', archived[0].indexOf(ESC) >= 0, 'raw kept')
+  eq('★★ 归档长度 = 原始长度（未被清洗）', archived[0].length, longDirty.length)
+  ok('长正文只留句柄，正文不进视图', A.text.indexOf('art://RAW') >= 0)
+
+  // ③ 归档失败 ⇒ 原文内联（信息不丢铁律），但仍走视图清洗
+  const F = await buildLedger({ distilled: 'D', toolResults: [{ seq: 3, text: rawDirty }], maxInlineChars: 5, archive: async () => null })
+  ok('归档失败仍内联且已清洗', F.text.indexOf(ESC) < 0 && F.text.indexOf('ERROR boom') >= 0)
+  eq('归档失败计数', F.archiveFailed, 1)
+
+  // ④ cleanView:false ⇒ 关闭视图清洗（字节保真通道）
+  const N2 = await buildLedger({ distilled: 'D', toolResults: [{ seq: 4, text: rawDirty }], maxInlineChars: 1000, archive, cleanView: false })
+  ok('★ cleanView:false ⇒ 视图也保留原文', N2.text.indexOf(ESC) >= 0)
+})()
+
+// ══ C. emitCheckpoint（合规发射）══════════════════════════
+// ★ 2026-09-17 路线 A：活跃尾部保护（keepTail 缺省 1）⇒ 夹具必须有 ≥2 步；
+//   否则"唯一的 assistant 就是活跃尾部"会一律被拒（这正是我们要的行为）。
+const baseEvents = () => [mkUser(1, 'do it'), mkA(2, 't'.repeat(900), 1), mkR(3, 'tool output'),
+  mkUser(4, 'again'), mkA(5, 'u'.repeat(300), 0)]
+const spanOf = (events) => {
+  // ★ 夹具用 data.message.content 表达 tool-call（生产真实形状），不是 toolCallCount 字段
+  const k = ((events[1].data && events[1].data.message && events[1].data.message.content) || [])
+    .filter((b) => b.type === 'tool-call').length
+  const end = 1 + k
+  return { startIdx: 1, endIdx: end, startSeq: events[1].seq, endSeq: events[end].seq,
+    targetSeq: events[1].seq, shadowedSeqs: events.slice(1, end + 1).map((e) => e.seq) }
+}
+
+{
+  const s = fakeSession({ events: baseEvents() })
+  const r = emitCheckpoint({ session: s, span: spanOf(baseEvents()), ledgerText: 'L', dryRun: true })
+  eq('dryRun → 不发', r.emitted, false)
+  eq('dryRun → 零 append', s.__calls.length, 0)
+}
+{
+  const ev = baseEvents()
+  const s = fakeSession({ events: ev })
+  const r = emitCheckpoint({ session: s, span: spanOf(ev), ledgerText: '看板内容', dryRun: false })
+  eq('正常 → emitted', r.emitted, true)
+  const userCalls = s.__calls.filter((c) => c.type === 'user/message')
+  eq('恰好一次 user/message', userCalls.length, 1)
+  ok('⛔ 绝不 append assistant/message（死路回归闸）', s.__calls.every((c) => c.type !== 'assistant/message'))
+  const m = userCalls[0].data
+  eq('data.role = user', m.role, 'user')
+  eq('source.kind = plugin（绝不能是 user）', m.source.kind, 'plugin')
+  eq('source.plugin 标明来源', m.source.plugin, 'cot-form-b')
+  ok('正文含前导声明', m.content[0].text.includes(LEDGER_PREAMBLE))
+  ok('正文含开标签', m.content[0].text.includes(LEDGER_OPEN))
+  ok('正文含闭标签', m.content[0].text.includes(LEDGER_CLOSE))
+  ok('正文含看板内容', m.content[0].text.includes('看板内容'))
+  const meta = userCalls[0].meta
+  eq('surfaceOp.op = replace', meta.surfaceOp.op, 'replace')
+  eq('startSeq 正确', meta.surfaceOp.startSeq, ev[1].seq)
+  eq('endSeq 正确（平衡整步）', meta.surfaceOp.endSeq, ev[2].seq)
+  for (const seq of spanOf(ev).shadowedSeqs) ok('sourceEventSeqs 密集含 seq=' + seq, meta.sourceEventSeqs.includes(seq))
+}
+{
+  const ev = baseEvents()
+  const s = fakeSession({ events: ev })
+  const r = emitCheckpoint({ session: s, span: spanOf(ev), ledgerText: 'L', dryRun: false })
+  eq('正常发射', r.emitted, true)
+  // ⛔ 2026-09-17 生产会话锁死修复：单独发 compaction/summary 是【非法】的，
+  //   会抛 Cannot read properties of undefined (reading 'start') 并锁死整个会话。
+  ok('★★ 绝不 append compaction/summary', s.__calls.find((c) => c.type === 'compaction/summary') === undefined)
+  eq('★★ 一次发射只有一条 append', s.__calls.length, 1)
+  const userCall = s.__calls.find((c) => c.type === 'user/message')
+  const shadowed = spanOf(ev).shadowedSeqs
+  eq('sourceEventSeqs 长度 = 遮蔽数（不再掺 summary seq）', userCall.meta.sourceEventSeqs.length, shadowed.length)
+  eq('sourceEventSeqs 首位 = startSeq', userCall.meta.sourceEventSeqs[0], ev[1].seq)
+  eq('sourceEventSeqs 末位 = endSeq', userCall.meta.sourceEventSeqs.at(-1), ev[2].seq)
+  for (const q of shadowed) ok('遮蔽项 seq=' + q + ' 一个不少', userCall.meta.sourceEventSeqs.includes(q))
+  ok('★ 消息带全局唯一 id（防 lacks an identified message）',
+    typeof userCall.data.id === 'string' && userCall.data.id.length > 0)
+  eq('surfaceOp 字段名恰为 op/startSeq/endSeq',
+    Object.keys(userCall.meta.surfaceOp).sort().join(','), 'endSeq,op,startSeq')
+}
+{
+  // 连 append 都抛的极端情况：异常绝不能逃逸
+  const ev = baseEvents()
+  const s = fakeSession({ events: ev, appendImpl: () => { throw new Error('append exploded') } })
+  const r = emitCheckpoint({ session: s, span: spanOf(ev), ledgerText: 'L', dryRun: false })
+  eq('append 抛错 → 返回 thrown 而非崩会话', r.emitted, false)
+  ok('  └ reason 前缀正确', String(r.reason).startsWith('threw:'))
+}
+{
+  const ev = baseEvents()
+  const s = fakeSession({ events: ev, noSurface: true })
+  const r = emitCheckpoint({ session: s, span: spanOf(ev), ledgerText: 'L', dryRun: false })
+  eq('实时表面读不到 → 拒发', r.reason, 'live-unavailable')
+  eq('且零 append', s.__calls.length, 0)
+}
+{
+  // 漂移 = 目标那一组的结构变了（工具结果被抽走 ⇒ 实时已不闭合）
+  const ev = baseEvents()
+  const stale = spanOf(ev)
+  const drifted = ev.slice(0, 2)
+  const s = fakeSession({ events: drifted })
+  const r = emitCheckpoint({ session: s, span: stale, ledgerText: 'L', dryRun: false })
+  ok('表面漂移 → 拒发（' + r.reason + '）', r.emitted === false)
+  eq('且零 append', s.__calls.length, 0)
+}
+{
+  const ev = baseEvents()
+  const s = fakeSession({ events: ev, appendImpl: () => { throw new Error('surface invariant crash') } })
+  const r = emitCheckpoint({ session: s, span: spanOf(ev), ledgerText: 'L', dryRun: false })
+  eq('append 抛错 → 不向外抛', r.emitted, false)
+  ok('且原因被记录', String(r.reason).startsWith('threw:'))
+}
+
+// ══ D. runPreStepEmit 全链路 ══════════════════════════════
+const ready = (text) => async () => ({ ok: true, text })
+const mkBase = (opts = {}) => {
+  const ev = baseEvents()
+  return { ev, s: fakeSession(Object.assign({ events: ev }, opts)) }
+}
+const run = (s, extra = {}) => runPreStepEmit(Object.assign({
+  session: s, ctx: mkCtx(null), cfg: { dryRun: false },
+  rawOf: (e) => rawOf(e), toolTextOf: (e) => toolTextOf(e), awaitDistilled: ready('【已定决策】L'),
+}, extra))
+
+eq('无 session → no-op', (await runPreStepEmit({})).reason, 'no-session')
+{ const { s } = mkBase({ noSurface: true }); eq('无表面 → no-op', (await run(s)).reason, 'no-surface') }
+{ const s = fakeSession({ events: [mkUser(1, 'x')] }); eq('无 assistant → no-op', (await run(s)).reason, 'no-span') }
+{ const s = fakeSession({ events: [mkUser(1, 'x'), mkA(2, 't', 1)] }); eq('工具未回填 → no-op', (await run(s)).reason, 'no-span') }
+{ const { s } = mkBase(); eq('提纯未就绪 → no-op', (await run(s, { awaitDistilled: async () => null })).reason, 'distill-not-ready') }
+{ const { s } = mkBase(); eq('提纯失败 → no-op', (await run(s, { awaitDistilled: async () => ({ ok: false }) })).reason, 'distill-not-ready') }
+{ const { s } = mkBase(); eq('rawOf 抛错 → 不向外抛', (await run(s, { rawOf: () => { throw new Error('nope') } })).emitted, false) }
+
+{
+  const { ev, s } = mkBase()
+  const r = await run(s)
+  eq('全链路成功 → emitted', r.emitted, true)
+  const u = s.__calls.find((c) => c.type === 'user/message')
+  ok('看板里含提纯稿', u.data.content[0].text.includes('【已定决策】L'))
+  ok('看板里含工具结果', u.data.content[0].text.includes('tool output'))
+  // ★★ 路线 A 回归闸：全链路的 endSeq 必须严格早于"活跃尾部"那条 assistant。
+  //    历史上这里剪的正是最后一条 assistant ⇒ 模型看不到自己答过 ⇒ 无限重答。
+  const lastA = ev.filter((e) => e.type === 'assistant/message').at(-1)
+  eq('★★ 活跃尾部（最后一条 assistant）绝不被遮蔽', u.meta.surfaceOp.endSeq < lastA.seq, true)
+  eq('★★ 遮蔽区间右端就是活跃尾部之前那一步的闭合处', u.meta.surfaceOp.endSeq, ev[2].seq)
+}
+
+// ══ E. 看板单例自吞噬（全链路）══════════════════════════════
+{
+  const mkBoard = (seq, text) => ({ seq, type: 'user/message', data: { role: 'user',
+    id: 'b' + seq, content: [{ type: 'text', text: '[自动生成的工作记忆看板 · 非用户发言] ' + text }],
+    source: { kind: 'plugin', plugin: 'cot-form-b' } } })
+  // 表面上已经躺着一条【上一轮发射的】本插件看板
+  const ev = [mkBoard(1, '旧看板1'), mkBoard(2, '旧看板2'), mkUser(3, 'u'), mkA(4, 't'.repeat(900), 1), mkR(5, 'out'), mkUser(6, 'u2'), mkA(7, 'tail', 0)]
+  const s = fakeSession({ events: ev })
+  const r = await run(s)
+  eq('★ 表面有旧看板时照常发射', r.emitted, true)
+  const u = s.__calls.find((c) => c.type === 'user/message')
+  // ★★★ 生产事故回归闸（seq 6178 被误吞）★★★
+  //   两块旧看板(1,2)在目标之前，但它们与目标之间夹着一条【非看板】user/message(3)
+  //   ⇒ 依"人类回合不可逾越律"必须【拒绝吞并】，区间不前移。
+  eq('★★★ 夹着非看板 user/message ⇒ 拒绝吞并', u.meta.surfaceOp.startSeq, 4)
+  ok('★★★ 旧看板(seq=1)绝不被吞 —— 不许横跨用户消息', !u.meta.sourceEventSeqs.includes(1))
+  ok('★★★ 旧看板(seq=2)绝不被吞', !u.meta.sourceEventSeqs.includes(2))
+  ok('★★★ 用户消息(seq=3)绝不被吞 —— 6178 事故的回归闸', !u.meta.sourceEventSeqs.includes(3))
+  eq('★★ 吞并后仍然只新增 1 条看板', s.__calls.filter((c) => c.type === 'user/message').length, 1)
+  ok('★★ 活跃尾部（seq=7）绝不在遮蔽区间内', !u.meta.sourceEventSeqs.includes(7))
+}
+{
+  // 同回合内、中间【没有】任何非看板 user/message ⇒ 应当一路吞干净（安全侧的正常路径）
+  const mkBoard = (seq, text) => ({ seq, type: 'user/message', data: { role: 'user',
+    id: 'b' + seq, content: [{ type: 'text', text: '[自动生成的工作记忆看板 · 非用户发言] ' + text }],
+    source: { kind: 'plugin', plugin: 'cot-form-b' } } })
+  const ev = [mkBoard(1, '旧看板1'), mkBoard(2, '旧看板2'), mkA(3, 't'.repeat(900), 1), mkR(4, 'out'), mkUser(5, 'u2'), mkA(6, 'tail', 0)]
+  const s = fakeSession({ events: ev })
+  const r = await run(s)
+  eq('★ 无围栏时照常发射', r.emitted, true)
+  const u = s.__calls.find((c) => c.type === 'user/message')
+  eq('★★ 无围栏 ⇒ 区间左移到最旧看板', u.meta.surfaceOp.startSeq, 1)
+  ok('★★ 两块看板一次吞干净', u.meta.sourceEventSeqs.includes(1) && u.meta.sourceEventSeqs.includes(2))
+  ok('★★ 活跃尾部（seq=6）不受影响', !u.meta.sourceEventSeqs.includes(6))
+}
+
+// ── D10 动态门槛真的在链路上生效 ──
+const longThink = 'y'.repeat(600)
+{
+  // 宽跑道：占用 10% ⇒ 门槛 350 ⇒ 600 字放行
+  const ev = [mkUser(1, 'u'), mkA(2, longThink, 1), mkR(3, 'out'), mkUser(4, 'u2'), mkA(5, '活跃尾部', 0)]
+  const m = { measure: () => ({ usedTokens: Math.floor(262144 * 0.10) }) }
+  const s = fakeSession({ events: ev })
+  const r = await runPreStepEmit({ session: s, ctx: mkCtx(m), cfg: { dryRun: false }, rawOf: (e) => rawOf(e), toolTextOf: (e) => toolTextOf(e), awaitDistilled: ready('L') })
+  eq('宽跑道（占 10%）→ 600 字放行', r.emitted, true)
+}
+{
+  // 迫近压缩：占用 85% ⇒ 门槛 800 ⇒ 600 字被拦
+  const ev = [mkUser(1, 'u'), mkA(2, longThink, 1), mkR(3, 'out'), mkUser(4, 'u2'), mkA(5, '活跃尾部', 0)]
+  const m = { measure: () => ({ usedTokens: Math.floor(262144 * 0.85) }) }
+  const s = fakeSession({ events: ev })
+  const r = await runPreStepEmit({ session: s, ctx: mkCtx(m), cfg: { dryRun: false }, rawOf: (e) => rawOf(e), toolTextOf: (e) => toolTextOf(e), awaitDistilled: ready('L') })
+  eq('迫近压缩（占 85%）→ 600 字被拦', r.reason, 'below-threshold')
+  eq('且零 append', s.__calls.length, 0)
+}
+{
+  // 读数完全不可用 ⇒ 保守 800 ⇒ 600 字被拦
+  const ev = [mkUser(1, 'u'), mkA(2, longThink, 1), mkR(3, 'out'), mkUser(4, 'u2'), mkA(5, '活跃尾部', 0)]
+  const s = fakeSession({ events: ev, contextWindow: null })
+  const r = await runPreStepEmit({ session: s, ctx: mkCtx(null), cfg: { dryRun: false }, rawOf: (e) => rawOf(e), toolTextOf: (e) => toolTextOf(e), awaitDistilled: ready('L') })
+  eq('读数缺失 → 保守档拦下', r.reason, 'below-threshold')
+}
+
+// ══ D2. 真机 tool/result 形状提取器（11,802 条实测形状）════════
+{
+  const real = { type: 'tool/result', data: { message: { role: 'user', id: 'm1', content: [
+    { type: 'tool-result', toolCallId: 'c1', isError: false, content: [{ type: 'text', text: 'hello' }, { type: 'text', text: ' world' }] },
+  ] } } }
+  eq('真机形状：多块拼接', toolTextFromEvent(real), 'hello world')
+  eq('真机形状：字符串内层', toolTextFromEvent({ data: { message: { content: [{ type: 'tool-result', content: 'raw' }] } } }), 'raw')
+  eq('读不到 data.message ⇒ null', toolTextFromEvent({ data: { content: 'x' } }), null)
+  eq('空事件 ⇒ null', toolTextFromEvent(null), null)
+  eq('非 tool-result 块 ⇒ null（拒发而非静默丢）', toolTextFromEvent({ data: { message: { content: [{ type: 'text', text: 'x' }] } } }), null)
+  eq('内层非 text 块 ⇒ null（图片等无法保真 ⇒ 拒发）', toolTextFromEvent({ data: { message: { content: [{ type: 'tool-result', content: [{ type: 'image' }] }] } } }), null)
+  eq('内层非数组 ⇒ null', toolTextFromEvent({ data: { message: { content: [{ type: 'tool-result', content: 42 }] } } }), null)
+}
+
+// ══ E. 信息不丢硬闸（D2′ 红线）══════════════════════════════
+{
+  const { s } = mkBase()
+  const r = await run(s, { toolTextOf: async () => null })
+  eq('工具结果读不出来 → 拒发（绝不静默丢内容）', r.reason, 'tool-result-unreadable')
+  eq('  └ 且零 append', s.__calls.length, 0)
+}
+{
+  const { s } = mkBase()
+  const r = await run(s, { toolTextOf: undefined })
+  eq('没有工具结果提取器 → 拒发', r.reason, 'tool-result-unreadable')
+  eq('  └ 且零 append', s.__calls.length, 0)
+}
+{
+  const { s } = mkBase()
+  const r = await run(s, { toolTextOf: async () => '' })
+  eq('空串算「读到了」（区别于 null）→ 放行', r.emitted, true)
+}
+
+console.log('emitter.js 自测：' + pass + ' 通过 / ' + fail + ' 失败')
+if (fail > 0) process.exit(1)

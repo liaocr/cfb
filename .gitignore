@@ -1,0 +1,18 @@
+# 依赖
+node_modules/
+
+# 运行痕迹（trace / 日志不进仓库）
+*.log
+
+# 历史备份（本包有意不收录，见 README「本包不包含什么」）
+*.bak
+*.bak-*
+*.before-*
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# 说明：MANIFEST.sha256 **要**进仓库 —— 它就是完整性清单本身。

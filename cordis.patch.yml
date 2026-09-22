@@ -1,0 +1,19 @@
+# @dsh-external/dsh-cot-form-b —— bundle 层
+#
+# 这个文件由【插件包自己】携带，通过 package.json 的 dsh.bundle.patch 声明：
+#   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+# 官方契约：dsh-app-boot/lib/index.js:295-299（bundles 是 npm 包，各自携带 patch 层）
+#
+# ★ 关键：name 写【包名】，不写文件路径。
+#   官方 anchorInsertedPluginNames（dsh-app-boot/lib/index.js:1169-1173）会把
+#   绝对路径 / ./ / ../ 转成 file URL，基准是【本 patch 文件所在目录】。
+#   写包名则交给 Node 解析 —— 于是跨机器、跨盘符、跨 checkout 都能装，
+#   不存在任何需要安装时改写的绝对路径。
+#
+# 配置不在这里。理由（cordis-plugin-include/lib/index.js:100-103）：
+#   patch 的 config 是【整体替换】而非深合并。若这里写 config，profile 里那份
+#   会被整个顶掉。所以本层只负责【把插件挂进组合树】，真实配置由 profile 的
+#   cordis.patch.yml 用 `- id: cot-form-b` + config 覆盖；包内默认值由代码里的 DEFAULTS 提供。
+- insert:
+    - id: cot-form-b
+      name: '@dsh-external/dsh-cot-form-b'

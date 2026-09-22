@@ -1,0 +1,21 @@
+node : (node:11040) Warning: Failed to load the ES module: D:\dsh\deploy\probe\_v1.cjs. Make sure to set "type": "modul
+e" in the nearest package.json file or use the .mjs extension.
+所在位置 行:1 字符: 129
++ ... Encoding = [System.Text.UTF8Encoding]::new($false); node _v1.cjs 2>&1
++                                                         ~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((node:11040) Wa....mjs extension.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(Use `node --trace-warnings ...` to show where the warning was created)
+D:\dsh\deploy\probe\_v1.cjs:1
+import fs from 'node:fs'
+^^^^^^
+SyntaxError: Cannot use import statement outside a module
+    at wrapSafe (node:internal/modules/cjs/loader:1713:18)
+    at Module._compile (node:internal/modules/cjs/loader:1755:20)
+    at Object..js (node:internal/modules/cjs/loader:1913:10)
+    at Module.load (node:internal/modules/cjs/loader:1505:32)
+    at Function._load (node:internal/modules/cjs/loader:1309:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    at node

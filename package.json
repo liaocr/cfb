@@ -1,0 +1,23 @@
+{
+  "name": "@dsh-external/dsh-cot-form-b",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "description": "形态 B（通道一）：尾部即时思维链提纯。assistant/message 承载 surfaceOp:replace，tool-call 原样保活。",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

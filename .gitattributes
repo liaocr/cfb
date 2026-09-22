@@ -1,0 +1,6 @@
+# 本包自带 sha256 完整性清单（MANIFEST.sha256）⇒ **换行符必须逐字节稳定**，
+# 否则在 Linux/macOS 上 clone 出来的文件校验必然失败。
+# 规则：文本文件在仓库内一律 LF（本包源码本来就全是 LF，转换不会改动任何字节）；
+#       fixtures/ 下是**真机抓取的原始错误样本**，属于证据，保持原样不做任何转换。
+* text=auto eol=lf
+fixtures/*.txt -text
