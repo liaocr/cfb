@@ -58,3 +58,20 @@ node manifest.mjs --check
 | 新 trace 可观测 | `analyze-efficiency.mjs` 新增 `v11` 段：retargetReady / retargetRefusedBoardSingleton / spanUnreadable / retrySkipped / carryChars 分布 / carryOverflow | 漏斗自测 |
 
 未量化项（诚实记录）：`span-unreadable` 的线上触发频率未知（真机 assistant 形状固定，理论上不触发），已加计数；compress-v2 的语义保真只有提示词层面的约束，没有模型侧验收。
+
+---
+
+# v11.2 追加：真机 trace（boot26）回读后的修正
+
+真机漏斗：`stored 11 → claimHit 10`（91%），`claimMiss` 全为 `no-candidate`（9），`partial-coverage` 0 ⇒ `lateClaimPartial` 保持关闭。
+
+| 信号 | 成因 | 修正 |
+|---|---|---|
+| v1/v2 无法从 trace 区分 | BOOT 硬编码 `compress-v1`；`birth-distill-settled` 缺 `promptVersion` | 新增 `compressPromptVersion(cfg)` 作唯一裁决点，BOOT / 每次编译 / transport meta 三处共用；`settled` 现在带 `promptVersion`；`analyze-efficiency.v11.promptVersions` 按版本分桶（成功率 + 输出字符分布，**不是语义保真**）。自测断言源码中不再出现硬编码 |
+| `no-raw` 5 次 | 缺省目标是一条没有 reasoning 的 assistant（纯 text/tool-call），旧逻辑直接放弃 | 与「未就绪」同等对待：进入候选反查（三道闸 + 看板单例闸原样生效），反查不到才 `no-raw{retargetTried:true}` |
+| `no-candidate` 9 次 | 暂存区里没有匹配这条原文的记录 —— 可能是「编译还在飞」也可能是「根本没这条」 | 新增 in-flight 登记（放行时登记、编译落地时清除、TTL 同暂存区）；`birth-claim-miss` 带 `inFlight / stored`；分析工具拆成 `claimMissNoCandidateInFlight / Idle`。**Idle 占比高才说明候选选择或身份匹配有问题** |
+| `invalid-range` 2 次 | 最可能是吞并的旧看板 seq 数值大于区间右端（表面顺序 ≠ seq 顺序） | 守卫**不放宽**（宿主 `assertCurrentSurfaceSpan` 用 `surface.indexOf` 定位，合约未知）；`emit-refused-range` 带 `shadowedSeqs / startIsAbsorbedBoard / monotonic`，分析工具计 `refusedRangeNonMonotonic` |
+| `retargetRefusedBoardSingleton` 4 | 闸在工作 | 无改动 |
+| carry 预算 | `carryInlineChars` max 2189 ≤ 3000，溢出 4 次走归档；看板 p50 2943 | 无改动 |
+
+下一轮 trace 要看的三个数：`v11.promptVersions['compress-v2'].ok/settled`、`claimFunnel.claimMissNoCandidateIdle`、`v11.refusedRangeNonMonotonic`。

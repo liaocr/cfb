@@ -445,6 +445,11 @@ export function buildDistillPrompt(cot) {
  *     · 不新增事实、不给建议、不使用祈使句与第二人称（作为 user 角色注入时不得与当前任务冲突）。
  *   通过 promptVersion 'compress-v2' 与 v1（=legacy 文本）区分，便于 A/B。
  */
+/** compress 提示词版本的唯一裁决点（BOOT、每次编译、trace 三处共用，杜绝硬编码漂移）。 */
+export function compressPromptVersion(cfg) {
+  return cfg && cfg.compressPrompt === 'v1' ? 'compress-v1' : 'compress-v2'
+}
+
 export function buildCompressPrompt(cot) {
   return (
     '你是上下文压缩器。把下面这段 Agent 上一轮的思维链，改写成一份更短的等价记录。\n\n' +
@@ -1646,12 +1651,13 @@ export async function generateDistillation(cot, cfg, signal, promptOverride, run
             stream: !!cfg.distillStream, promptVersion: runtime.promptVersion || null })
           try {
             const r = await fn(key, prompt, cfg, modes[i], ep, transportSignal, inputChars)
-            r.meta = { ...r.meta, requestId, flightId }
+            // ★ promptVersion 必须进 meta：birth-distill-settled / compiler-transport-settled 才能区分 v1/v2 做 A/B
+            r.meta = { ...r.meta, requestId, flightId, promptVersion: runtime.promptVersion || r.meta?.promptVersion || null }
             emit('compiler-transport-settled', { ...settledTraceData(null, r.meta.totalMs, { ok: true, ...r }), requestId, flightId })
             return r
           } catch (e) {
             e.meta = { promptChars: prompt.length, inputChars, model: cfg.model, maxOutputTokens: cfg.maxOutputTokens,
-              thinkingOff: modes[i], stream: !!cfg.distillStream, ...e.meta, requestId, flightId }
+              thinkingOff: modes[i], stream: !!cfg.distillStream, ...e.meta, requestId, flightId, promptVersion: runtime.promptVersion || e.meta?.promptVersion || null }
             emit('compiler-transport-settled', { ...settledTraceData(null, e.meta.totalMs, { ok: false, error: e.message, meta: e.meta }), requestId, flightId })
             throw e
           }
@@ -2002,7 +2008,7 @@ export function birthStart(entry, deps = {}) {
     ? normalizeBranchId(deps.branchId())
     : normalizeBranchId(deps.branchId ?? deps.branch ?? null)
   const task = {
-    taskId, index: entry.index, raw, end: entry.end || null,
+    taskId, index: entry.index, raw, end: entry.end || null, sessionId, branchId,
     canDefer: sessionId != null && Buffer.byteLength(raw) <= 192 * 1024,
     handle: null, diskP: null, distillP: null,
     diskState: null, distillState: null,
@@ -2272,6 +2278,7 @@ export function birthStart(entry, deps = {}) {
     })
     .then(async (s) => {
       task.distillState = s
+      settleLateInFlight(sessionId, taskId, { branchId })
       // 提纯终局失败 ⇒ 必定原文放行 ⇒ 没有理由再等（归档仍在后台继续）
       if (!s.ok) noteShort('distill-failed-early')
       // ★★ 方案二：这次结果没赶上自己那块（已放行原文）⇒ 暂存给下一轮。
@@ -2408,6 +2415,7 @@ export async function birthFinish(task, deps = {}) {
     const cancelled = cancelFlying(why)
     // ★ 方案二：标记「本块已放行原文」⇒ 若 distill 稍后才成功，它的结果改走暂存给下一轮。
     task.passedThrough = true
+    if (task.distillState === null && task.distillP && !cancelled && task.sessionId != null) noteLateInFlight(task.sessionId, task.taskId, raw.length, { branchId: task.branchId })
     trace('birth-passthrough', { index: task.index, why, rawChars: raw.length, outChars: text.length, handle: handle || null, waitedMs, short: task.shortReason || null, cancelled, ...(extra || {}) })
     return { chunks: birthEmitChunks(task, text, deps), text, why, rawChars: raw.length, outChars: text.length, handle: handle || null }
   }
@@ -2795,6 +2803,31 @@ function coverageMatch(q, fullRaw) {
  * 诊断：为什么这段 fullRaw 认领不了。纯只读，供 trace 用（"积压"与"丢弃"在漏斗里必须能区分）。
  * @returns 'empty' | 'no-candidate' | 'ambiguous' | 'partial-coverage' | 'ok'
  */
+// ★ 放行但尚未有结果的块（in-flight）：no-candidate 时区分「编译还在飞」与「根本没这条记录」
+const lateInFlight = new Map()   // lateKey -> Map(taskId -> { at, rawChars })
+const LATE_INFLIGHT_MAX = 32
+export function noteLateInFlight(sessionId, taskId, rawChars, opts = {}) {
+  if (sessionId == null || taskId == null) return
+  const key = lateKey(sessionId, opts)
+  let m = lateInFlight.get(key)
+  if (!m) { if (lateInFlight.size >= LATE_MEMORY_KEYS_MAX) return; m = new Map(); lateInFlight.set(key, m) }
+  m.set(String(taskId), { at: Date.now(), rawChars })
+  while (m.size > LATE_INFLIGHT_MAX) m.delete(m.keys().next().value)
+}
+export function settleLateInFlight(sessionId, taskId, opts = {}) {
+  const m = lateInFlight.get(lateKey(sessionId, opts))
+  if (!m) return
+  m.delete(String(taskId))
+  if (!m.size) lateInFlight.delete(lateKey(sessionId, opts))
+}
+export function lateInFlightCount(sessionId, opts = {}) {
+  const m = lateInFlight.get(lateKey(sessionId, opts))
+  if (!m) return 0
+  const now = Date.now()
+  for (const [k, v] of m) if (now - v.at > LATE_MEMORY_TTL_MS) m.delete(k)
+  return m.size
+}
+
 export function explainLateMiss(sessionId, fullRaw, opts = {}) {
   try {
     const q = lateMemory.get(lateKey(sessionId, opts))
@@ -3169,10 +3202,11 @@ let birthSession = null
     stateCompress: cfg.stateCompress === true,
     compileMode: cfg.compileMode,
     ...(cfg.compileModeConflict ? { compileModeConflict: cfg.compileModeConflict } : {}),
+    // ★ 从实际配置派生，不写死：compress 的版本由 compressPrompt 决定（v11.1 起缺省 v2）
     compilerMode: cfg.compileMode === 'memory' ? 'grounded-judgment-v2'
-      : cfg.compileMode === 'compress' ? 'compress-v1' : 'reasoning-distill',
+      : cfg.compileMode === 'compress' ? compressPromptVersion(cfg) : 'reasoning-distill',
     promptVersion: cfg.compileMode === 'memory' ? JUDGMENT_PROMPT_VERSION
-      : cfg.compileMode === 'compress' ? 'compress-v1' : null,
+      : cfg.compileMode === 'compress' ? compressPromptVersion(cfg) : null,
     retiredOptions: cfg.retiredOptions,
     memoryPolicyVersion: MEMORY_POLICY_VERSION,
     stateSnapshot: cfg.stateSnapshot !== false,
@@ -3628,7 +3662,7 @@ function readSessionLog(session) {
               c = peekLateMemoryPartial(bpSid, raw, claimScope)
               if (c) trace('birth-claim-partial', { n, blocks: c.count, replacedChars: c.replacedChars, keptChars: c.keptChars })
             }
-            if (!c) { trace('birth-claim-miss', { n, why: explainLateMiss(bpSid, raw, claimScope), rawChars: raw.length }); return null }
+            if (!c) { trace('birth-claim-miss', { n, why: explainLateMiss(bpSid, raw, claimScope), rawChars: raw.length, inFlight: lateInFlightCount(bpSid, claimScope), stored: lateMemorySize(bpSid, claimScope) }); return null }
             // 多块时按块序拼接（顺序由 coverageMatch 保证，绝不按 promise 完成序）
             const text = c.texts.join('\n\n') || renderCheckpoint(c.entries)
             if (!text || !String(text).trim()) return null
@@ -3853,9 +3887,9 @@ function readSessionLog(session) {
         distill: compileModeOf(streamCfg) === 'memory'
           ? async (env, signal, budget) => generateStateMemory(env, budget?.timeoutMs != null ? { ...streamCfg, timeoutMs: budget.timeoutMs } : streamCfg, signal, { ...budget, flights: compilerFlights })
           : compileModeOf(streamCfg) === 'compress'
-            ? async (raw, signal) => (streamCfg.compressPrompt === 'v1'
-                ? generateDistillation(raw, streamCfg, signal, buildDistillPrompt(raw), { promptVersion: 'compress-v1' })
-                : generateDistillation(raw, streamCfg, signal, buildCompressPrompt(raw), { promptVersion: 'compress-v2' }))
+            ? async (raw, signal) => generateDistillation(raw, streamCfg, signal,
+                compressPromptVersion(streamCfg) === 'compress-v1' ? buildDistillPrompt(raw) : buildCompressPrompt(raw),
+                { promptVersion: compressPromptVersion(streamCfg) })
             : async (raw, signal) => generateDistillation(raw, streamCfg, signal),
         prepareEvidence: (input) => {
           const started = performance.now()

@@ -261,7 +261,13 @@ function ownBoardSeqs(events, pluginName) {
 export function emitCheckpoint(deps) {
   const { session, span, ledgerText, pluginName = 'cot-form-b', dryRun, trace, summaryRecord = true } = deps
   if (!span || !Number.isSafeInteger(span.startSeq) || !Number.isSafeInteger(span.endSeq) || span.startSeq > span.endSeq || span.startSeq < 0 || !Array.isArray(span.shadowedSeqs)) {
-    if (trace) trace('emit-refused-range', { startSeq: span?.startSeq, endSeq: span?.endSeq })
+    // ★ 真机 invalid-range 2 次。最可能的成因：吞并的旧看板 seq（后发射 ⇒ 数值更大）落在区间左端，
+    //   而表面顺序上它排在更早位置 ⇒ startSeq > endSeq。宿主 replace 是否接受非单调 seq 区间
+    //   没有合约依据，这里**不放宽**；但把足够的诊断落 trace，让判断能基于数据而不是猜。
+    if (trace) trace('emit-refused-range', { startSeq: span?.startSeq, endSeq: span?.endSeq, targetSeq: span?.targetSeq,
+      shadowedSeqs: Array.isArray(span?.shadowedSeqs) ? span.shadowedSeqs.join(',') : null,
+      startIsAbsorbedBoard: !!(span && Array.isArray(span.shadowedSeqs) && span.startSeq > span.endSeq && span.startSeq === span.shadowedSeqs[0]),
+      monotonic: Array.isArray(span?.shadowedSeqs) ? span.shadowedSeqs.every((q, i, a) => i === 0 || a[i - 1] < q) : null })
     return { emitted: false, reason: 'invalid-range' }
   }
   const message = {
@@ -376,7 +382,9 @@ export async function runPreStepEmit(deps) {
     //   而推理原文在【目标那条 assistant】身上 ⇒ 必须按 targetSeq 取，不能按 startIdx。
     let last = events.find((x) => x.seq === span.targetSeq) || events[span.startIdx]
     let raw = typeof rawOf === 'function' ? await rawOf(last.raw, last.seq) : null
-    if (!raw) { t('emit-no-raw', { seq: last.seq }); return { emitted: false, reason: 'no-raw' } }
+    // ★ 真机 no-raw 5 次：缺省目标是一条没有 reasoning 的 assistant（纯 text / tool-call）。
+    //   旧逻辑直接放弃；现在它与「未就绪」同等对待 —— 交给下面的候选反查，反查不到再放弃。
+    if (!raw && typeof deps.isReady !== 'function') { t('emit-no-raw', { seq: last.seq }); return { emitted: false, reason: 'no-raw' } }
 
     // ★ 2026-09-23 迟到候选反查（机会饥饿修正）：
     //   缺省目标 = 倒数第 keepTail+1 条 assistant。若它的摘要尚未就绪，而更早的某条 assistant
@@ -384,7 +392,7 @@ export async function runPreStepEmit(deps) {
     //   现在：先问缺省目标；未就绪时按「从旧到新」逐条询问尾部之前的其它 assistant，
     //   每条都重新用 targetSeq 走 selectBalancedSpan（keepTail / 人类围栏 / 平衡切点三道闸原样生效）。
     //   由调用方以 deps.isReady(raw) 提供**零等待**探测；未提供则保持旧行为。
-    if (typeof deps.isReady === 'function' && !(await deps.isReady(raw))) {
+    if (typeof deps.isReady === 'function' && (!raw || !(await deps.isReady(raw)))) {
       let picked = null
       for (let i = 0; i < events.length && !picked; i++) {
         const ev = events[i]
@@ -399,9 +407,9 @@ export async function runPreStepEmit(deps) {
         if (alt) picked = { span: alt, ev, raw: r0 }
       }
       if (picked) {
-        t('emit-retarget-ready', { from: span.targetSeq, to: picked.ev.seq })
+        t('emit-retarget-ready', { from: span.targetSeq, to: picked.ev.seq, defaultHadRaw: !!raw })
         span = picked.span; last = picked.ev; raw = picked.raw
-      }
+      } else if (!raw) { t('emit-no-raw', { seq: last.seq, retargetTried: true }); return { emitted: false, reason: 'no-raw' } }
     }
 
     if (deps.requireUniqueRaw) {

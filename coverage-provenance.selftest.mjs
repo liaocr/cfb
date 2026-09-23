@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { runPreStepEmit, collectSpanCarry, buildLedger } from './emitter.js'
 import { normalizeEvidenceEvent, classifyUserEventSource, classifyUserEventMetadata, hostOriginKind, pickUserAsks, SOURCE } from './state-memory.js'
 import * as I from './index.js'
+import * as I_emitter from './emitter.js'
+import { readFileSync } from 'node:fs'
 
 let pass = 0, fail = 0
 const test = async (name, fn) => { try { await fn(); pass++; console.log('PASS ' + name) } catch (e) { fail++; console.log('FAIL ' + name + '\n   ' + (e && e.message)) } }
@@ -254,6 +256,51 @@ await test('analyze-efficiency：claimFunnel / claimMiss / v11 计数从 trace �
   assert.equal(b.claimFunnel.stored, 1); assert.equal(b.claimFunnel.claimHit, 1); assert.equal(b.claimFunnel.opportunity, 2)
   assert.deepEqual(b.claimFunnel.claimMiss, { 'partial-coverage': 1 })
   assert.equal(b.v11.retargetReady, 1); assert.equal(b.v11.retrySkipped, 1); assert.equal(b.v11.carryChars.max, 200)
+})
+
+// ── v11.2：真机 trace 回读后的修正 ──
+await test('no-raw 目标（纯 text/tool-call 的 assistant）不再直接放弃：反查更早已就绪候选', async () => {
+  const noReasoning = (seq) => mk(seq, 'assistant/message', { message: { role: 'assistant', content: [{ type: 'text', text: 'plain answer' }] } })
+  const log = [user(1, 'q1'), asst(2, 'OLD_'.repeat(500)), user(3, 'q2'), noReasoning(4), user(5, 'q3'), asst(6, 'NEW_'.repeat(500))]
+  let ap = null; const traces = []
+  const s = session(log, (t, m, o) => { ap = o })
+  const r = await runPreStepEmit(baseDeps(s, { isReady: async (raw) => raw.startsWith('OLD_'), awaitDistilled: async (raw) => (raw.startsWith('OLD_') ? { ok: true, text: 'old' } : null), trace: (t, d) => traces.push([t, d]) }))
+  assert.equal(r.emitted, true); assert.deepEqual(ap.surfaceOp, { op: 'replace', startSeq: 2, endSeq: 2 })
+  assert.equal(traces.find(([t]) => t === 'emit-retarget-ready')[1].defaultHadRaw, false)
+  // 没有 isReady（checkpoint 模式）⇒ 旧行为 no-raw
+  const r2 = await runPreStepEmit(baseDeps(session(log)))
+  assert.equal(r2.reason, 'no-raw')
+})
+await test('promptVersion 贯通：compressPromptVersion 唯一裁决；settled meta 透传', () => {
+  assert.equal(I.compressPromptVersion({}), 'compress-v2'); assert.equal(I.compressPromptVersion({ compressPrompt: 'v1' }), 'compress-v1')
+  assert.equal(I.settledTraceData(0, 1, { ok: true, text: 'x', meta: { promptVersion: 'compress-v2' } }).promptVersion, 'compress-v2')
+  const src = readFileSync(new URL('./index.js', import.meta.url), 'utf8')
+  assert.ok(!/compileMode === 'compress' \? 'compress-v1'/.test(src), 'BOOT 不得硬编码 compress-v1')
+})
+await test('emit-refused-range 带诊断字段（不放宽守卫）', () => {
+  const traces = []
+  const r = I_emitter.emitCheckpoint({ session: {}, span: { startSeq: 9, endSeq: 4, targetSeq: 3, shadowedSeqs: [9, 3, 4], keepTail: 1 }, ledgerText: 'x', trace: (t, d) => traces.push([t, d]) })
+  assert.equal(r.reason, 'invalid-range')
+  const d = traces[0][1]; assert.equal(d.startIsAbsorbedBoard, true); assert.equal(d.monotonic, false)
+})
+
+await test('in-flight 登记：放行后计 1，编译落地后清 0；claim-miss 可区分"还在飞"', async () => {
+  const cfg = I.normalizeConfig({ mode: 'birth', dryRun: false, stateCompress: true, birthMinChars: 100 })
+  let rel
+  const deps = { cfg, sessionId: 'inf2', trace: () => {}, archive: async () => 'art://x', deriveHandle: () => 'art://x', distill: () => new Promise((r) => { rel = () => r({ text: 's' }) }) }
+  const t = I.birthStart({ index: 0, text: 'Q'.repeat(900), end: {} }, deps); await Promise.resolve(); await Promise.resolve()
+  await I.birthFinish(t, deps); assert.equal(I.lateInFlightCount('inf2'), 1)
+  rel(); await new Promise((r) => setTimeout(r, 30))
+  assert.equal(I.lateInFlightCount('inf2'), 0); assert.equal(I.lateMemorySize('inf2'), 1)
+})
+await test('analyze-efficiency：promptVersions 分桶与 no-candidate 细分', async () => {
+  const { analyzeEfficiency } = await import('./analyze-efficiency.mjs')
+  const rows = [['BOOT', {}], ['birth-distill-settled', { ok: true, chars: 300, promptVersion: 'compress-v2' }], ['birth-distill-settled', { ok: false, promptVersion: 'compress-v1' }],
+    ['birth-claim-miss', { why: 'no-candidate', inFlight: 2 }], ['birth-claim-miss', { why: 'no-candidate', inFlight: 0 }]]
+  const text = rows.map(([tag, d]) => '[' + new Date().toISOString() + '] [' + tag + '] ' + JSON.stringify(d)).join('\n') + '\n'
+  const b = analyzeEfficiency(text).boots[0]
+  assert.equal(b.v11.promptVersions['compress-v2'].ok, 1); assert.equal(b.v11.promptVersions['compress-v1'].settled, 1)
+  assert.equal(b.claimFunnel.claimMissNoCandidateInFlight, 1); assert.equal(b.claimFunnel.claimMissNoCandidateIdle, 1)
 })
 
 console.log(`PASS=${pass} FAIL=${fail}`)

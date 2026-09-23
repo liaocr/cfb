@@ -182,6 +182,8 @@ export declare function normalizeConfig(config?: CotFormBConfig): CotFormBConfig
 export declare function resolveCompileMode(cfg: CotFormBConfig | null | undefined): 'memory' | 'compress' | 'legacy'
 /** 重试退避（纯函数）：非瞬时错误返回 null（不重试），否则返回带抖动的毫秒数 */
 export declare function retryDelayMs(e: unknown, attempt: number, rand?: () => number): number | null
+/** compress 提示词版本唯一裁决点（BOOT / 每次编译 / trace 共用） */
+export declare function compressPromptVersion(cfg: CotFormBConfig | null | undefined): 'compress-v1' | 'compress-v2'
 /** compress-v2 中性压缩提示词 */
 export declare function buildCompressPrompt(cot: string): string
 /** 诊断：为何该原文认领不了 */

@@ -79,6 +79,9 @@ export function analyzeEfficiency(text) {
         opportunity: count('birth-claim-opportunity'),
         claimHit: count('birth-claim-hit'),
         claimMiss: Object.fromEntries([...g.rows.filter(r => r.tag === 'birth-claim-miss').reduce((m, r) => m.set(r.why || 'unknown', (m.get(r.why || 'unknown') || 0) + 1), new Map())]),
+        // no-candidate 细分：miss 当时还有编译在飞（"还没轮到"）vs 没有任何在飞（真正找不到 ⇒ 候选选择/身份问题）
+        claimMissNoCandidateInFlight: g.rows.filter(r => r.tag === 'birth-claim-miss' && r.why === 'no-candidate' && (r.inFlight || 0) > 0).length,
+        claimMissNoCandidateIdle: g.rows.filter(r => r.tag === 'birth-claim-miss' && r.why === 'no-candidate' && !(r.inFlight > 0)).length,
         claimSkip: Object.fromEntries([...g.rows.filter(r => r.tag === 'birth-claim-skip').reduce((m, r) => m.set(r.reason || 'unknown', (m.get(r.reason || 'unknown') || 0) + 1), new Map())]),
         emitted: count('birth-claim-emitted'),
         acknowledged: count('birth-claim-acknowledged'),
@@ -91,6 +94,12 @@ export function analyzeEfficiency(text) {
         retargetRefusedBoardSingleton: count('emit-retarget-refused-board-singleton'),
         spanUnreadable: count('emit-span-unreadable'),
         retrySkipped: count('compiler-retry-skipped'),
+        noRawRetargetTried: g.rows.filter(r => r.tag === 'emit-no-raw' && r.retargetTried === true).length,
+        refusedRangeNonMonotonic: g.rows.filter(r => r.tag === 'emit-refused-range' && r.monotonic === false).length,
+        // v1/v2 A/B：按 promptVersion 分桶的成功率与长度（长度是字符，不是语义保真）
+        promptVersions: Object.fromEntries([...g.rows.filter(r => r.tag === 'birth-distill-settled').reduce((m, r) => {
+          const k = r.promptVersion || 'unknown'; const b = m.get(k) || { settled: 0, ok: 0, chars: [] }
+          b.settled++; if (r.ok) { b.ok++; b.chars.push(r.chars) } m.set(k, b); return m }, new Map())].map(([k, b]) => [k, { settled: b.settled, ok: b.ok, outputChars: distribution(b.chars) }])),
         carryChars: distribution(carryRows.map(r => r.carryChars)),
         carryInlineChars: distribution(carryRows.map(r => r.carryInlineChars)),
         carryOverflow: carryRows.filter(r => r.carryOverflow === true).length,
