@@ -186,8 +186,15 @@ export function analyzeEfficiency(text) {
         byPromptVersion: Object.fromEntries([...byPv].map(([pv, v]) => [pv, { measured: v.measured.length, unmeasurable: v.unmeasurable,
           identifierRecall: distribution(v.measured), below95: v.measured.filter(x => x < 95).length }])),
         meaning: 'identifier-recall-is-a-necessary-condition-not-fidelity-proof' }
+      // ★ v11.7 观测段：对冲与收尾宽限的真机效果，只做计数与分布，不做收益结论。
+      const hs = g.rows.filter(r => r.tag === 'compiler-hedge-settled')
+      const hedge = { samples: hs.length, fired: hs.filter(r => r.fired).length, hedgeWon: hs.filter(r => r.winner === 'hedge').length,
+        ttfbMsWhenFired: distribution(hs.filter(r => r.fired).map(r => r.ttfbMs)), ttfbMsWhenNotFired: distribution(hs.filter(r => !r.fired).map(r => r.ttfbMs)) }
+      const gs = g.rows.filter(r => r.tag === 'birth-finish-headers-grace')
+      const headersGrace = { samples: gs.length, rescued: gs.filter(r => r.settled).length, waitedMs: distribution(gs.map(r => r.waitedMs)),
+        headersSinceFiredMs: distribution(g.rows.filter(r => r.tag === 'birth-distill-headers').map(r => r.sinceFiredMs)) }
       return { bootIndex: g.bootIndex, anchored: g.anchored, boot: g.boot,
-        windowProbe, economics, fidelity,
+        windowProbe, economics, fidelity, hedge, headersGrace,
         counts: { transportAttemptsStarted: starts.size, transportAttemptsSettled: completed.size,
           sharedAttachments: count('compiler-flight-shared'),
           archiveTerminalConsumers: count('compiler-consumer-unusable') },

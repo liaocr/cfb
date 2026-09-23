@@ -177,3 +177,23 @@ B 的那次全价预填两边都要付（只是从主请求挪到压缩请求）
 受影响的既有夹具（`hybrid/grounding/efficiency/replay`）显式传 `birthMinChars: 100/1`，因为它们的原文不足 3100 字符且测的是别的东西。
 
 **部署提醒**：真正加载点是 `~/.dsh/profiles/web/node_modules/@dsh-external/dsh-cot-form-b`，需同步并重启。线上 profile 若显式写了 `birth.minChars: 500` 或 `maxOutputTokens: 1200`，会覆盖新默认值——请核对 `cordis.patch.yml`。
+
+---
+
+## 附录 B：v11.7 第二批落地记录（2026-09-23）
+
+围绕缺陷 A（TTFB p50 3,109ms，排队型）的三条**请求侧无法挤、只能绕**的处置。全部缺省保守、可关、trace 可核。
+
+| # | 变更 | 代码位置 | 缺省 | 期望收益 | 最坏情况 |
+|---|---|---|---|---|---|
+| 2a | 对冲请求 `hedgedDistill` | `index.js` `hedgedDistill`（`generateDistillation` 之前）；`execute` 里 `fn(...)` 改为 `hedgedDistill(fn,...)`；`requestOnce/requestStream` 新增 `onHeaders` | `distill.hedgeAfterMs = 0`（关） | 两次独立排队抽样取 min：若 TTFB 分布近似独立，p90 6~8s 段被砍到接近 p50；hedge 只在 > p50 时触发 ⇒ 约一半请求多发一份，但**头一到即 abort 另一份**，输出只付一份 | 触发那一半请求多付一次输入（≈0.3~1.5K tokens，0.02 价外的全价）；并发上限 +1（进程级计数器 `hedgeInFlight`） |
+| 2b | 收尾宽限 `finishHeadersGraceMs` | `birthStart` 注册 `task.headersP/headersAt`（trace `birth-distill-headers`）；`birthFinish` 在 budget 到点后若 `headersAt !== null` 再等一次（trace `birth-finish-headers-grace`） | `birth.finishHeadersGraceMs = 1500` | 已证实 contentSpanMs 137~1,267ms：头到了以后放弃是最亏的一刻；宽限把「差 0.5s」的那批从 `distill-timeout` 拉回 `condensed` | 单次 finish 多阻塞 ≤1.5s 且仍失败；没收到头时**零**额外等待 |
+| 2c | 缓存友好拆分 `compressSystemPrompt` | `splitCompressPrompt`；compress 包装器把 `{system,user}` 放进 `cfg._promptMessages`；`distillOnce/Stream` 用它组 messages；`compressPromptVersion` 追加 `:sys` | `false` | DeepSeek 官方 kv_cache 文档：缓存以「前缀单元」整段匹配，system+user 形状是 Example 1 的标准命中形；规则段 ≈288 tok 每次按 0.02 价 ⇒ T 从 ≈460 tok 降 ≈180 tok，`ρ_max`/`B_min` 随之下移（约 −25%） | 模型对 system/user 拆分的输出可能与单段略有差异 ⇒ 必须走 `:sys` 分桶 A/B（fidelity.byPromptVersion 已自动分桶）后再决定常开 |
+
+**为什么 4xx/5xx 的响应头不算**：自测抓出——对冲份瞬时 503 若算「回头」，会掐掉健康的主份。故 `onHeaders` 只在 `status === 200` 时宣布胜出/上报。
+
+**真机核验清单**（打开 `hedgeAfterMs: 3000` 后跑一天）：
+1. `analyze-efficiency.mjs` 新增 `hedge`（fired / hedgeWon / ttfb 分布）与 `headersGrace`（rescued / waitedMs / headersSinceFiredMs）。
+2. 目标：`hedge.hedgeWon / hedge.fired ≥ 0.3` 且 `birth-distill-settled` 的 ttfb p90 明显下移；否则关掉（说明排队不独立，对冲无效）。
+3. `headersGrace.rescued / samples` 即宽限净救回率；若 ≈0 说明 budget 到点时几乎都还没收到头 —— 那就是纯排队问题，宽限无害但无用。
+4. 打开 `compressSystemPrompt: true` 后看 `usage.prompt_cache_hit_tokens` 是否从 0 变为 ≈规则段 token 数，且 `fidelity.byPromptVersion['…:sys']` 不低于原桶。

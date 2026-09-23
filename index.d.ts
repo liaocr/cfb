@@ -44,6 +44,8 @@ export interface CotFormBConfig {
   compressTargetMin?: number
   /** 仅 v3 生效：绝对长度目标上限（字符，缺省 450） */
   compressTargetMax?: number
+  /** v11.7（opt-in，缺省 false）：把 v2/v3 压缩提示词的固定规则前缀放进 system 消息、原文放 user 消息（字节等价），让 DeepSeek Context Caching 命中规则前缀；打开后 promptVersion 追加 ':sys' */
+  compressSystemPrompt?: boolean
   /** pre-step 整段 replace 时随看板带走的旧看板正文/可见回答/工具调用参数的内联总预算（字符，缺省 3000）；超出归档为句柄 */
   maxCarryChars?: number
   /** emit 仅在预计节省至少该字符数时替换（缺省 100） */
@@ -86,6 +88,8 @@ export interface CotFormBConfig {
   birthArchive?: boolean
   birthArchiveTimeoutMs?: number
   birthMinSavedChars?: number
+  /** v11.7：birth finish 处 budget 到点但蒸馏已收到 200 响应头（正在生成）时再多等的上限（ms，缺省 1500；0 关） */
+  finishHeadersGraceMs?: number
   birth?: {
     minChars?: number; archive?: boolean; handleInText?: boolean; producer?: string
     archiveTimeoutMs?: number; finishWaitMs?: number; minSavedChars?: number
@@ -130,6 +134,8 @@ export interface CotFormBConfig {
   /** ★ pre-step 里最多额外等多久 = **用户感知延迟的上限**。默认 300 */
   graceMs?: number
   maxAttempts?: number
+  /** v11.7 对冲请求：主请求 N ms 内未收到 200 响应头就再发一份相同请求，先回头者胜、另一份 abort。0 = 关（缺省）；建议 ≥ TTFB p50（3000）；仅 maxAttempts ≤ 1 时生效 */
+  hedgeAfterMs?: number
   /** v11.6 默认 850，恒定；不随输入放大。 */
   maxOutputTokens?: number
 
@@ -328,6 +334,8 @@ export declare function generateDistillation(
 export declare function apply(ctx: unknown, config?: CotFormBConfig): void
 
 /** v11.6 成本模型（纯函数，只用于观测与自测）。见 docs/AUDIT-V11.5.md §一。 */
+/** v11.7：把 v2/v3 压缩提示词拆成 { system, user }，满足 system + '\n\n' + user === prompt；无 marker 返回 null */
+export declare function splitCompressPrompt(prompt: string): { system: string; user: string } | null
 export declare function birthEconomics(
   B: number,
   pressure: { usedTokens?: number; contextWindow?: number; source?: string } | null,

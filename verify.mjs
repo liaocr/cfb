@@ -38,6 +38,7 @@ const SUITES = [
   'evidence-sharing.selftest.mjs',
   'efficiency.selftest.mjs',
   'coverage-provenance.selftest.mjs',
+  'hedge.selftest.mjs',
 ]
 
 const rows = []

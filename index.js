@@ -205,6 +205,13 @@ export const DEFAULTS = {
   graceMs: 300,
   // 重试 4 → 1。退避 1200×attempt 会让"抖动一次 + 两次重试"多出 3.6 秒。
   maxAttempts: 1,
+  // ★ v11.7 对冲请求：主请求 N ms 内未收到响应头就再发一份相同请求，谁先回头用谁（见 hedgedDistill）。
+  //   0 = 关闭（缺省，行为与 v11.6 完全一致）。建议值 ≥ TTFB p50（实测 3000）：只对尾部对冲。
+  //   仅 maxAttempts ≤ 1 时生效（重试与对冲叠加会让并发失控）。
+  hedgeAfterMs: 0,
+  // ★ v11.7 收尾宽限：finish 处 budget 到点时若蒸馏**已收到响应头**（排队已结束、正在生成），
+  //   再多等最多这么久。实测 contentSpanMs 137~1,267ms ⇒ 此刻放弃最亏。0 = 关闭。
+  finishHeadersGraceMs: 1500,
 
   // ── 传输层（2026-09-15 杠杆 3：连接复用 / 预热）──────────────────────────
   // 实测（本机 → 当时使用的商户端点，见 deploy/probe/_probe-keepalive-win.mjs）：
@@ -302,6 +309,13 @@ export const DEFAULTS = {
   //   为什么用绝对值：百分比对小输入是灾难（900 字符按 20% 压到 180 必然丢信息），绝对值不会。
   compressTargetMin: 250,
   compressTargetMax: 450,
+  // ★ v11.7 缓存友好拆分（opt-in）：把压缩提示词的**固定规则前缀**放进 system 消息、原文放 user 消息。
+  //   DeepSeek Context Caching 按「缓存前缀单元」整段匹配（官方 kv_cache 文档 Example 1：system+user 形状），
+  //   现状 461 字符规则与原文挤在同一条 user 消息里 ⇒ 实测 prompt_cache_hit_tokens 恒为 0。
+  //   拆分后规则前缀成为稳定单元 ⇒ 每次压缩调用的前缀按 0.02 价计。**提示词文字一个字节不变。**
+  //   缺省关闭：v3 是在「全部放 user」的形状下实测的，system/user 拆分是否影响输出需 A/B；
+  //   打开后 promptVersion 追加 ':sys'，trace 自动分桶。
+  compressSystemPrompt: false,
   // pre-step 整段 replace 时，随看板带走的旧看板正文/可见回答/工具调用参数的内联总预算（字符）；超出归档为句柄
   maxCarryChars: 3000,
   // 只在估算至少节省 100 字符且 5% 时才替换；不满足就保留原始 surface，避免"压缩"后反增。
@@ -363,7 +377,7 @@ export function normalizeConfig(config = {}) {
   const c = Object.assign({}, DEFAULTS, config)
   const d = config && config.distill
   if (d && typeof d === 'object') {
-    for (const k of ['timeoutMs', 'minRawChars', 'hurdleRounds', 'templateChars', 'maxVerbatimChars', 'maxAttempts', 'maxOutputTokens', 'baseUrl', 'model', 'credentialRef', 'credentialsPath', 'graceMs', 'keepAlive', 'keepAliveMsecs', 'prewarm', 'prewarmMinGapMs', 'followHostModel', 'disableThinking']) {
+    for (const k of ['timeoutMs', 'minRawChars', 'hurdleRounds', 'templateChars', 'maxVerbatimChars', 'maxAttempts', 'maxOutputTokens', 'baseUrl', 'model', 'credentialRef', 'credentialsPath', 'graceMs', 'keepAlive', 'keepAliveMsecs', 'prewarm', 'prewarmMinGapMs', 'followHostModel', 'disableThinking', 'hedgeAfterMs']) {
       if (d[k] !== undefined) c[k] = d[k]
     }
   }
@@ -385,6 +399,7 @@ export function normalizeConfig(config = {}) {
     if (b.archiveTimeoutMs !== undefined) c.birthArchiveTimeoutMs = b.archiveTimeoutMs
     if (b.finishWaitMs !== undefined) c.birthFinishWaitMs = b.finishWaitMs
     if (b.minSavedChars !== undefined) c.birthMinSavedChars = b.minSavedChars
+    if (b.finishHeadersGraceMs !== undefined) c.finishHeadersGraceMs = b.finishHeadersGraceMs
   }
   // ⚠ 'birth' 必须在这个白名单里，否则会被静默重置回 DEFAULTS.mode
   if (['distill', 'rules', 'birth', 'checkpoint', 'off'].indexOf(c.mode) === -1) c.mode = DEFAULTS.mode
@@ -485,10 +500,11 @@ export function buildDistillPrompt(cot) {
 export function compressPromptVersion(cfg) {
   const v = cfg && cfg.compressPrompt === 'v1' ? 'v1'
     : cfg && cfg.compressPrompt === 'v3' ? 'v3' : 'v2'
-  if (v !== 'v3') return 'compress-' + v
+  const sys = cfg && cfg.compressSystemPrompt === true && v !== 'v1' ? ':sys' : ''
+  if (v !== 'v3') return 'compress-' + v + sys
   // v3 把目标长度写进版本号 ⇒ trace / BOOT / A-B 分桶自动带上参数，无需另记字段。
   const t = compressTargets(cfg)
-  return 'compress-v3:' + t.min + '-' + t.max
+  return 'compress-v3:' + t.min + '-' + t.max + sys
 }
 
 /** v3 的绝对长度目标（字符）。越界/非数一律回落缺省，绝不抛错。 */
@@ -548,6 +564,20 @@ export function buildCompressPrompt(cot) {
  * @param minChars 目标下限（字符）
  * @param maxChars 目标上限（字符）
  */
+/**
+ * ★ v11.7：把 v2/v3 提示词拆成 { system, user } 两段，**字节级等价于**原单段文本
+ *   （system + '\n\n' + user === 单段），供缓存友好形状使用。只做切分，不改任何字。
+ */
+export function splitCompressPrompt(prompt) {
+  const marker = '【上一轮思维链】\n'
+  const i = typeof prompt === 'string' ? prompt.indexOf(marker) : -1
+  if (i <= 0) return null
+  // 单段形状里 marker 前有 '\n\n'；system 取到它之前，user 从 marker 起
+  const head = prompt.slice(0, i)
+  const system = head.endsWith('\n\n') ? head.slice(0, -2) : head
+  return { system, user: prompt.slice(i) }
+}
+
 export function buildCompressPromptV3(cot, minChars, maxChars) {
   const num = (x, dflt) => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? Math.round(x) : dflt)
   const min = num(minChars, 250)
@@ -962,7 +992,7 @@ function getAgent(cfg) {
 
 // 单次请求（不做重试）。返回 { status, text, meta }
 // meta 里的 reused / connectMs / ttfbMs 是**实测的复用证据**，直接落 trace。
-export function requestOnce(urlStr, { method = 'POST', headers = {}, body = null, timeoutMs = 8000, cfg = null, signal = null } = {}) {
+export function requestOnce(urlStr, { method = 'POST', headers = {}, body = null, timeoutMs = 8000, cfg = null, signal = null, onHeaders = null } = {}) {
   return new Promise((resolve, reject) => {
     let u
     try { u = new URL(urlStr) } catch (e) { return reject(e) }
@@ -991,6 +1021,8 @@ export function requestOnce(urlStr, { method = 'POST', headers = {}, body = null
       meta.ttfbMs = Date.now() - t0
       meta.reused = req.reusedSocket === true
       meta.status = res.statusCode
+      // ★ v11.7 响应头信号：排队结束的唯一直接证据（供 hedging 取消与收尾宽限使用）。绝不抛。
+      if (typeof onHeaders === 'function') { try { onHeaders({ status: res.statusCode, ttfbMs: meta.ttfbMs }) } catch {} }
       // ★ 统一响应入口的旁证：协议判定以【响应体结构】为主，Content-Type 只作补充
       meta.contentType = res.headers['content-type'] || null
       const chunks = []
@@ -1065,7 +1097,7 @@ export function requestOnce(urlStr, { method = 'POST', headers = {}, body = null
  *
  * @returns {Promise<{status:number, meta:object, events:Array<{at:number,data:string}>}>}
  */
-export function requestStream(urlStr, { method = 'POST', headers = {}, body = null, timeoutMs = 8000, cfg = null, signal = null } = {}) {
+export function requestStream(urlStr, { method = 'POST', headers = {}, body = null, timeoutMs = 8000, cfg = null, signal = null, onHeaders = null } = {}) {
   return new Promise((resolve, reject) => {
     let u
     try { u = new URL(urlStr) } catch (e) { return reject(e) }
@@ -1100,6 +1132,7 @@ export function requestStream(urlStr, { method = 'POST', headers = {}, body = nu
       meta.ttfbMs = meta.headersAt - meta.requestSentAt
       meta.reused = req.reusedSocket === true
       meta.status = res.statusCode
+      if (typeof onHeaders === 'function') { try { onHeaders({ status: res.statusCode, ttfbMs: meta.ttfbMs }) } catch {} }
       meta.contentType = res.headers['content-type'] || null
       // ★ 统一响应入口（反向）：Content-Type 不是 event-stream 时留一份原文，
       //   以便「要求流式、上游却回整段 JSON」时仍能按 JSON 解析（而不是静默变成空摘要）。
@@ -1422,7 +1455,7 @@ async function distillOnceStream(key, prompt, cfg, thinkingOff, ep, signal, inpu
   if (!url) throw new Error('no endpoint: neither host provider nor cfg.baseUrl resolved a URL')
   const payload = style === 'responses'
     ? { model: cfg.model, input: prompt, max_output_tokens: cfg.maxOutputTokens, temperature: 0, stream: true }
-    : { model: cfg.model, messages: [{ role: 'user', content: prompt }], max_tokens: cfg.maxOutputTokens, temperature: 0, stream: true }
+    : { model: cfg.model, messages: Array.isArray(cfg._promptMessages) ? cfg._promptMessages : [{ role: 'user', content: prompt }], max_tokens: cfg.maxOutputTokens, temperature: 0, stream: true }
   if (thinkingOff) {
     if (style === 'responses') payload.reasoning = { effort: 'none' }
     else payload.thinking = { type: 'disabled' }
@@ -1439,7 +1472,7 @@ async function distillOnceStream(key, prompt, cfg, thinkingOff, ep, signal, inpu
         Accept: 'text/event-stream',
         'Accept-Encoding': 'identity',
       },
-      body, timeoutMs: cfg.timeoutMs, cfg, signal,
+      body, timeoutMs: cfg.timeoutMs, cfg, signal, onHeaders: cfg._onHeaders || null,
     })
   } catch (e) {
     // ★★ 2026-09-21 补数据缺口（本轮实测发现）★★
@@ -1572,7 +1605,7 @@ async function distillOnce(key, prompt, cfg, thinkingOff, ep, signal, inputChars
   if (!url) throw new Error('no endpoint: neither host provider nor cfg.baseUrl resolved a URL')
   const payload = style === 'responses'
     ? { model: cfg.model, input: prompt, max_output_tokens: cfg.maxOutputTokens, temperature: 0 }
-    : { model: cfg.model, messages: [{ role: 'user', content: prompt }], max_tokens: cfg.maxOutputTokens, temperature: 0 }
+    : { model: cfg.model, messages: Array.isArray(cfg._promptMessages) ? cfg._promptMessages : [{ role: 'user', content: prompt }], max_tokens: cfg.maxOutputTokens, temperature: 0 }
   if (thinkingOff) {
     // 关思考的字段名按 api 风格给：chat 用 thinking，responses 用 reasoning.effort
     if (style === 'responses') payload.reasoning = { effort: 'none' }
@@ -1592,6 +1625,7 @@ async function distillOnce(key, prompt, cfg, thinkingOff, ep, signal, inputChars
     timeoutMs: cfg.timeoutMs,
     cfg,
     signal,
+    onHeaders: cfg._onHeaders || null,
   })
   if (r.status !== 200) throw new Error('http ' + r.status + ' ' + r.text.slice(0, 120))
   // ★★ 统一响应入口（2026-09-21）：先判【响应实际协议】，再选解析器 ★★
@@ -1702,6 +1736,70 @@ export async function generateStateMemory(env, cfg, signal, runtime = {}) {
   }
 }
 
+/**
+ * ★★ v11.7 对冲请求（hedged request）★★
+ *
+ * 为什么：蒸馏 TTFB 实测 min 1,382 / p50 3,109 / max 7,857（n=340），connectMs 3~15、reasoning_tokens 0、
+ *   prompt 极小 ⇒ 那 3 秒是服务端首 token 前的排队，方差大、请求侧已无可挤。
+ *   对排队型延迟，标准解是对冲：主请求发出 hedgeAfterMs 仍未收到**响应头**，再发一份完全相同的请求，
+ *   谁先回头用谁，另一份立即 abort。两次独立抽样取 min ⇒ 尾部（p90 6~8s）被砍掉，p50 也下移。
+ *
+ * 成本纪律（硬约束「稳定优先」）：
+ *   · 只在 hedgeAfterMs（缺省 = 关闭；建议 ≥ p50 ≈ 3000）之后才对冲 ⇒ 大多数请求只发一份，只有尾部触发；
+ *   · 判据是**响应头**而不是完成：头一到就说明排队已结束，此时另一份还没出 token，abort 掉不计费；
+ *   · 同一时刻每个 cfg 至多 1 份对冲在飞（进程级计数），并发绝不翻倍；
+ *   · 对冲份用同一 prompt / 同一 key / 同一 endpoint ⇒ 结果等价，不引入任何新语义；
+ *   · 任一失败不影响另一份；两份都失败 ⇒ 抛主份的错误（与不对冲时同形）。
+ *   最坏情况：hedge 从未触发（= 今天的行为）；或触发后两份都慢（多付一次输入费，输出仍只有一份）。
+ */
+let hedgeInFlight = 0
+export async function hedgedDistill(fn, key, prompt, cfg, thinkingOff, ep, signal, inputChars, emit = () => {}, requestId = null) {
+  const after = Number(cfg.hedgeAfterMs)
+  const enabled = Number.isFinite(after) && after > 0 && cfg.maxAttempts <= 1
+  if (!enabled || (signal && signal.aborted)) return fn(key, prompt, cfg, thinkingOff, ep, signal, inputChars)
+  const mkCtl = () => {
+    const ctl = new AbortController()
+    if (signal) { if (signal.aborted) ctl.abort(); else signal.addEventListener('abort', () => ctl.abort(), { once: true }) }
+    return ctl
+  }
+  const primaryCtl = mkCtl()
+  let primaryHeaders = false, hedgeCtl = null, hedgeTimer = null, hedgeStartedAt = null, winner = null
+  const outer = typeof cfg._onHeaders === 'function' ? cfg._onHeaders : null
+  // ⚠ 只有 **200** 的响应头才算「排队结束、开始生成」；4xx/5xx 的头不得宣布胜出、不得取消另一份、
+  //   也不得对外报告 headers（否则一个瞬时 503 会把健康的那份掐掉 —— 自测抓出）。
+  const primaryCfg = { ...cfg, _onHeaders: (info) => { if (!info || info.status !== 200) return; primaryHeaders = true; if (hedgeCtl && !winner) { winner = 'primary'; hedgeCtl.abort() } if (outer) outer(info) } }
+  const primary = fn(key, prompt, primaryCfg, thinkingOff, ep, primaryCtl.signal, inputChars)
+  const hedgeP = new Promise((resolve, reject) => {
+    hedgeTimer = setTimeout(() => {
+      if (primaryHeaders || primaryCtl.signal.aborted || hedgeInFlight >= 1) { resolve(null); return }
+      hedgeInFlight++
+      hedgeCtl = mkCtl()
+      hedgeStartedAt = Date.now()
+      const hedgeCfg = { ...cfg, _onHeaders: (info) => { if (!info || info.status !== 200) return; if (!winner) { winner = 'hedge'; primaryCtl.abort() } if (outer) outer(info) } }
+      emit('compiler-hedge-fired', { requestId, afterMs: after })
+      fn(key, prompt, hedgeCfg, thinkingOff, ep, hedgeCtl.signal, inputChars)
+        .then((r) => { hedgeInFlight--; resolve(r) }, (e) => { hedgeInFlight--; reject(e) })
+    }, after)
+  })
+  const tag = (r, who) => { if (r && typeof r === 'object') r.meta = { ...r.meta, hedged: who, hedgeAfterMs: after, hedgeStartedAt }; return r }
+  try {
+    // 谁先**成功**用谁；先失败的一方不算数（另一方仍可能成功）
+    const r = await new Promise((resolve, reject) => {
+      let failed = 0, firstErr = null
+      const fail = (e) => { failed++; firstErr ||= e; if (failed === 2) reject(firstErr) }
+      primary.then((r) => resolve(tag(r, 'primary')), (e) => { if (e && e.cancelled && winner === 'hedge') { failed++; if (failed === 2) reject(firstErr || e) } else fail(e) })
+      hedgeP.then((r) => { if (r == null) { failed++; if (failed === 2) reject(firstErr) } else resolve(tag(r, 'hedge')) },
+        (e) => { if (e && e.cancelled && winner === 'primary') { failed++; if (failed === 2) reject(firstErr || e) } else fail(e) })
+    })
+    emit('compiler-hedge-settled', { requestId, winner: r.meta.hedged, fired: hedgeStartedAt != null, ttfbMs: r.meta.ttfbMs })
+    return r
+  } finally {
+    clearTimeout(hedgeTimer)
+    if (!primaryCtl.signal.aborted) primaryCtl.abort()
+    if (hedgeCtl && !hedgeCtl.signal.aborted) hedgeCtl.abort()
+  }
+}
+
 export async function generateDistillation(cot, cfg, signal, promptOverride, runtime = {}) {
   cfg = { ...cfg } // Freeze effective scalar request settings before asynchronous dispatch.
   if (!cfg.model) {
@@ -1747,7 +1845,7 @@ export async function generateDistillation(cot, cfg, signal, promptOverride, run
             endpoint: ep ? ep.provider + '|' + ep.api : 'legacy|explicit', maxOutputTokens: cfg.maxOutputTokens,
             stream: !!cfg.distillStream, promptVersion: runtime.promptVersion || null })
           try {
-            const r = await fn(key, prompt, cfg, modes[i], ep, transportSignal, inputChars)
+            const r = await hedgedDistill(fn, key, prompt, cfg, modes[i], ep, transportSignal, inputChars, emit, requestId)
             // ★ promptVersion 必须进 meta：birth-distill-settled / compiler-transport-settled 才能区分 v1/v2 做 A/B
             r.meta = { ...r.meta, requestId, flightId, promptVersion: runtime.promptVersion || r.meta?.promptVersion || null }
             emit('compiler-transport-settled', { ...settledTraceData(null, r.meta.totalMs, { ok: true, ...r }), requestId, flightId })
@@ -2205,6 +2303,11 @@ export function birthStart(entry, deps = {}) {
   // ③ 并发起飞：提纯（100% 跟随宿主模型/provider；端点/钥匙由注入的 distill 决定，本模块不碰）
   const distill = deps.distill
   const dsignal = task.abort ? task.abort.signal : undefined
+  // ★ v11.7 响应头信号：蒸馏一收到响应头就 resolve（排队结束、正在生成）。供 birthFinish 收尾宽限使用。
+  let headersResolve = null
+  task.headersAt = null
+  task.headersP = new Promise((r) => { headersResolve = r })
+  const noteHeaders = (info) => { if (info && info.status != null && info.status !== 200) return; if (task.headersAt === null) { task.headersAt = Date.now(); trace('birth-distill-headers', { index: task.index, ttfbMs: info && info.ttfbMs, sinceFiredMs: task.firedAt ? task.headersAt - task.firedAt : null }); headersResolve(true) } }
   // ★★ 2026-09-21 任务状态记忆：把"原始 reasoning"升格为"证据信封"。★★
   //   时间截面在**这里**固定：此后不再补入任何"后来才发生"的事实。
   //   信封纯数据、被冻结；构造失败一律回落裸 raw，绝不因为观测层出问题而碰坏主流。
@@ -2382,7 +2485,7 @@ export function birthStart(entry, deps = {}) {
             revision: distillInput.stateSnapshot?.revision ?? null })
         }
         return distill(distillInput, dsignal, {
-          ...(ticket ? { timeoutMs: Math.max(1, deadline - Date.now()) } : {}), preparedJudgment,
+          ...(ticket ? { timeoutMs: Math.max(1, deadline - Date.now()) } : {}), preparedJudgment, onHeaders: noteHeaders,
           taskId, trace, scope: sessionId != null && String(sessionId).length > 0 && Number.isSafeInteger(adaptedCut) && adaptedCut >= 0 ? [String(sessionId), branchId, adaptedCut] : null,
         })
       })
@@ -2589,7 +2692,16 @@ export async function birthFinish(task, deps = {}) {
     // ★ 2026-09-21：短路信号一响就收网，绝不为一个已经注定走原文的结果陪跑到 budget。
     //   实测可回收：archive-failed 52 次 + distill-failed 4 次（本机 trace.log）。
     const shortP = task.shortP || new Promise(() => {})
-    await birthDeadline(Promise.race([Promise.all([task.diskP, task.distillP]), shortP]), budgetMs)
+    const all = Promise.all([task.diskP, task.distillP])
+    await birthDeadline(Promise.race([all, shortP]), budgetMs)
+    // ★ v11.7 收尾宽限：budget 到点但蒸馏**已收到响应头**（排队已结束、正在生成，实测 contentSpanMs 137~1,267ms）
+    //   ⇒ 再多等最多 finishHeadersGraceMs。没收到头 ⇒ 不加一毫秒（排队何时结束不可知）。
+    const grace = cfg.finishHeadersGraceMs == null ? 1500 : Number(cfg.finishHeadersGraceMs)
+    if (grace > 0 && task.distillState === null && !task.shortReason && task.headersAt !== null) {
+      const t0 = Date.now()
+      await birthDeadline(Promise.race([all, shortP]), grace)
+      trace('birth-finish-headers-grace', { index: task.index, graceMs: grace, waitedMs: Date.now() - t0, settled: task.distillState !== null })
+    }
   }
 
   const disk = task.diskState
@@ -4075,16 +4187,25 @@ function readSessionLog(session) {
         distill: compileModeOf(streamCfg) === 'memory'
           ? async (env, signal, budget) => generateStateMemory(env, budget?.timeoutMs != null ? { ...streamCfg, timeoutMs: budget.timeoutMs } : streamCfg, signal, { ...budget, flights: compilerFlights })
           : compileModeOf(streamCfg) === 'compress'
-            ? async (raw, signal) => {
+            ? async (raw, signal, budget) => {
                 // 提示词选择与版本号必须来自**同一次**裁决，否则 trace 会把 A 的产物记成 B 的版本。
                 const pv = compressPromptVersion(streamCfg)
                 const prompt = pv === 'compress-v1' ? buildDistillPrompt(raw)
                   : pv.indexOf('compress-v3') === 0
                     ? (() => { const t = compressTargets(streamCfg); return buildCompressPromptV3(raw, t.min, t.max) })()
                     : buildCompressPrompt(raw)
-                return generateDistillation(raw, streamCfg, signal, prompt, { promptVersion: pv })
+                // ★ v11.7：响应头信号透传（_onHeaders 只活在这次调用的 cfg 副本里，不进 BOOT、不进 trace）
+                const c = { ...streamCfg }
+                if (budget && typeof budget.onHeaders === 'function') c._onHeaders = budget.onHeaders
+                // ★ v11.7 缓存友好拆分（opt-in）：system=规则前缀、user=原文；字节等价，只改消息形状。v1 不拆（它无 marker）。
+                const pvOut = pv
+                if (streamCfg.compressSystemPrompt === true && pv !== 'compress-v1') {
+                  const sp = splitCompressPrompt(prompt)
+                  if (sp) c._promptMessages = [{ role: 'system', content: sp.system }, { role: 'user', content: sp.user }]
+                }
+                return generateDistillation(raw, c, signal, prompt, { promptVersion: pvOut })
               }
-            : async (raw, signal) => generateDistillation(raw, streamCfg, signal),
+            : async (raw, signal, budget) => generateDistillation(raw, budget && typeof budget.onHeaders === 'function' ? { ...streamCfg, _onHeaders: budget.onHeaders } : streamCfg, signal),
         prepareEvidence: (input) => {
           const started = performance.now()
           const frame = prepareCompilerEvidence(input, streamCfg.stateSnapshot)
