@@ -38,8 +38,12 @@ export interface CotFormBConfig {
    */
   stateMemory?: boolean
   stateCompress?: boolean
-  /** compress 提示词版本：'v2' 中性压缩（缺省，保留不确定性）；'v1' 与 legacy 蒸馏逐字相同（回滚/对照） */
-  compressPrompt?: 'v1' | 'v2'
+  /** compress 提示词版本：'v2' 中性压缩（缺省，相对长度目标）；'v1' 与 legacy 蒸馏逐字相同（回滚/对照）；'v3' = v2 的保真规则 + 绝对长度目标 */
+  compressPrompt?: 'v1' | 'v2' | 'v3'
+  /** 仅 v3 生效：绝对长度目标下限（字符，缺省 250） */
+  compressTargetMin?: number
+  /** 仅 v3 生效：绝对长度目标上限（字符，缺省 450） */
+  compressTargetMax?: number
   /** pre-step 整段 replace 时随看板带走的旧看板正文/可见回答/工具调用参数的内联总预算（字符，缺省 3000）；超出归档为句柄 */
   maxCarryChars?: number
   /** emit 仅在预计节省至少该字符数时替换（缺省 100） */
@@ -189,9 +193,13 @@ export declare function resolveCompileMode(cfg: CotFormBConfig | null | undefine
 /** 重试退避（纯函数）：非瞬时错误返回 null（不重试），否则返回带抖动的毫秒数 */
 export declare function retryDelayMs(e: unknown, attempt: number, rand?: () => number): number | null
 /** compress 提示词版本唯一裁决点（BOOT / 每次编译 / trace 共用） */
-export declare function compressPromptVersion(cfg: CotFormBConfig | null | undefined): 'compress-v1' | 'compress-v2'
-/** compress-v2 中性压缩提示词 */
+export declare function compressPromptVersion(cfg: CotFormBConfig | null | undefined): string
+/** v3 的绝对长度目标（字符）；非法输入回落缺省，保证 min < max */
+export declare function compressTargets(cfg: CotFormBConfig | null | undefined): { min: number; max: number }
+/** compress-v2 中性压缩提示词（相对长度目标 20%~35%） */
 export declare function buildCompressPrompt(cot: string): string
+/** compress-v3：v2 的保真规则 + 绝对长度目标 */
+export declare function buildCompressPromptV3(cot: string, minChars?: number, maxChars?: number): string
 /** 诊断：为何该原文认领不了 */
 export declare function explainLateMiss(sessionId: string, fullRaw: string, opts?: { branchId?: string | null }): 'empty' | 'no-candidate' | 'ambiguous' | 'partial-coverage' | 'ok'
 /** 混合认领（opt-in，见 lateClaimPartial） */

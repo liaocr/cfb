@@ -226,6 +226,31 @@ await test('compress-v2 提示词：中性（保留不确定性，无"不可重�
   assert.equal(I.DEFAULTS.compressPrompt, 'v2')
   assert.equal(I.normalizeConfig({ compressPrompt: 'v1' }).compressPrompt, 'v1')
 })
+await test('compress-v3：v2 的保真规则 + 绝对长度目标；版本号携带目标以便 trace 分桶', () => {
+  const v2 = I.buildCompressPrompt('COT')
+  const v3 = I.buildCompressPromptV3('COT', 250, 450)
+  // ① 保真规则 1~6 必须与 v2 逐字节共享（这是 v3 存在的全部理由）
+  const cut = (s) => s.slice(0, s.indexOf('7. '))
+  assert.equal(cut(v3), cut(v2))
+  // ② 目标口径必须从「相对」换成「绝对」，且带第 8 条对冲
+  assert.ok(v2.includes('20%~35%') && !v2.includes('绝对长度'))
+  assert.ok(v3.includes('250~450 字符') && v3.includes('绝对长度') && !v3.includes('20%~35%'))
+  assert.ok(v3.includes('宁可超出目标，不得删除'))
+  // ③ 仍然中性：不得退回 v1 的裁决式措辞
+  assert.ok(v3.includes('尚未确定') && !v3.includes('不可重开') && !v3.includes('自我怀疑'))
+  assert.ok(v3.endsWith('COT'))
+  // ④ 版本号携带目标 ⇒ analyze-efficiency 的分桶自动区分不同目标，无需另加字段
+  assert.equal(I.compressPromptVersion({}), 'compress-v2')
+  assert.equal(I.compressPromptVersion({ compressPrompt: 'v1' }), 'compress-v1')
+  assert.equal(I.compressPromptVersion({ compressPrompt: 'v3' }), 'compress-v3:250-450')
+  assert.equal(I.compressPromptVersion({ compressPrompt: 'v3', compressTargetMin: 300, compressTargetMax: 600 }), 'compress-v3:300-600')
+  // ⑤ 缺省与非法值：绝不抛错，且 min<max 恒成立
+  assert.equal(I.DEFAULTS.compressPrompt, 'v2')
+  assert.deepEqual(I.compressTargets({}), { min: 250, max: 450 })
+  assert.deepEqual(I.compressTargets({ compressTargetMin: 0, compressTargetMax: -5 }), { min: 250, max: 450 })
+  const inv = I.compressTargets({ compressTargetMin: 900, compressTargetMax: 100 })
+  assert.ok(inv.min < inv.max)
+})
 await test('混合认领（opt-in）：已就绪块用摘要、未就绪块逐字保留；缺省关闭时不生效', () => {
   const a = 'A'.repeat(300), b = 'B'.repeat(300), c = 'C'.repeat(300)
   I.pushLateMemory('pp', a, [{ id: '1', category: 'state', content: 'x' }], 'SUM-A', { taskId: '1' })

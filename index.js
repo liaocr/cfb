@@ -280,8 +280,18 @@ export const DEFAULTS = {
   // ★ 纯压缩：把这段 reasoning 改写成更短的摘要。与 stateMemory 独立开关。
   //   输入 ≈ 本段推理，不背整窗证据 ⇒ 输入体量回到设计预期，压缩率可核。
   stateCompress: false,
-  // compress 提示词版本：'v2' 中性压缩（缺省）；'v1' = 与 legacy 蒸馏逐字相同（回滚/对照用）
+  // compress 提示词版本：
+  //   'v2' 中性压缩（缺省）—— 保真规则 + **百分比**长度目标（20%~35%），输出随输入线性增长
+  //   'v1' 与 legacy 蒸馏逐字相同（三栏裁决式；回滚/对照用）
+  //   'v3' = v2 的保真规则 + **绝对值**长度目标（见 compressTargetMin/Max）
+  //        动机（2026-09-23 本机实测）：v1 的输出长度几乎不随输入变化（输入 892→9,794，输出仅 403→801），
+  //        而 v2 稳定贴住输入的 30%。二者在 <1,500 输入时输出几乎同长（v2 甚至更短：344 vs 403）
+  //        ⇒ **保真规则本身不花长度**，长度差异 100% 来自第 7 条目标口径。v3 即「v2 的规则 + v1 的口径」。
   compressPrompt: 'v2',
+  // v3 专用的绝对长度目标（字符）。只影响 v3；v1/v2 不看这两项。
+  //   为什么用绝对值：百分比对小输入是灾难（900 字符按 20% 压到 180 必然丢信息），绝对值不会。
+  compressTargetMin: 250,
+  compressTargetMax: 450,
   // pre-step 整段 replace 时，随看板带走的旧看板正文/可见回答/工具调用参数的内联总预算（字符）；超出归档为句柄
   maxCarryChars: 3000,
   // 只在估算至少节省 100 字符且 5% 时才替换；不满足就保留原始 surface，避免"压缩"后反增。
@@ -452,21 +462,82 @@ export function buildDistillPrompt(cot) {
  */
 /** compress 提示词版本的唯一裁决点（BOOT、每次编译、trace 三处共用，杜绝硬编码漂移）。 */
 export function compressPromptVersion(cfg) {
-  return cfg && cfg.compressPrompt === 'v1' ? 'compress-v1' : 'compress-v2'
+  const v = cfg && cfg.compressPrompt === 'v1' ? 'v1'
+    : cfg && cfg.compressPrompt === 'v3' ? 'v3' : 'v2'
+  if (v !== 'v3') return 'compress-' + v
+  // v3 把目标长度写进版本号 ⇒ trace / BOOT / A-B 分桶自动带上参数，无需另记字段。
+  const t = compressTargets(cfg)
+  return 'compress-v3:' + t.min + '-' + t.max
 }
+
+/** v3 的绝对长度目标（字符）。越界/非数一律回落缺省，绝不抛错。 */
+export function compressTargets(cfg) {
+  const num = (x, dflt) => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? Math.round(x) : dflt)
+  const d = (typeof DEFAULTS === 'object' && DEFAULTS) || {}
+  const min = num(cfg && cfg.compressTargetMin, num(d.compressTargetMin, 250))
+  const max = num(cfg && cfg.compressTargetMax, num(d.compressTargetMax, 450))
+  // min 必须严格小于 max，否则模型会收到自相矛盾的区间。
+  return max > min ? { min, max } : { min: Math.min(min, max), max: Math.max(min, max) + 1 }
+}
+
+/** v2/v3 共用的前缀与保真规则 1~6。
+ *  ⚠ **逐字冻结**：拆出来只是去重，v2 的最终输出必须与重构前字节一致
+ *    （coverage-provenance.selftest.mjs 断言 v2 保持中性、不得出现裁决式措辞）。
+ */
+const COMPRESS_PREAMBLE =
+  '你是上下文压缩器。把下面这段 Agent 上一轮的思维链，改写成一份更短的等价记录。\n\n' +
+  '只输出记录本身。不要解释，不要 markdown 代码围栏，不要客套。\n\n' +
+  '保真规则（优先级高于长度）：\n'
+
+const COMPRESS_FIDELITY_RULES =
+  '1. 保留原文的确定程度：已确定的写成已确定；原文仍在犹豫、比较或存疑的，保留"尚未确定 / 两种可能 / 待验证"的表述，不得升级为结论，也不得删掉。\n' +
+  '2. 保留被考虑过但未采用的方案及其原因（一句话即可）。\n' +
+  '3. 路径、文件名、命令、变量名、数字、错误信息原文逐字保留，不许意译。\n' +
+  '4. 不新增原文没有的事实，不给建议，不评价。\n' +
+  '5. 用中文；第三人称陈述句；不得出现祈使句，不得使用"你 / 您"。\n' +
+  '6. 删除重复表述与逐字复读的工具输出；合并同义段落。\n'
 
 export function buildCompressPrompt(cot) {
   return (
-    '你是上下文压缩器。把下面这段 Agent 上一轮的思维链，改写成一份更短的等价记录。\n\n' +
-    '只输出记录本身。不要解释，不要 markdown 代码围栏，不要客套。\n\n' +
-    '保真规则（优先级高于长度）：\n' +
-    '1. 保留原文的确定程度：已确定的写成已确定；原文仍在犹豫、比较或存疑的，保留"尚未确定 / 两种可能 / 待验证"的表述，不得升级为结论，也不得删掉。\n' +
-    '2. 保留被考虑过但未采用的方案及其原因（一句话即可）。\n' +
-    '3. 路径、文件名、命令、变量名、数字、错误信息原文逐字保留，不许意译。\n' +
-    '4. 不新增原文没有的事实，不给建议，不评价。\n' +
-    '5. 用中文；第三人称陈述句；不得出现祈使句，不得使用"你 / 您"。\n' +
-    '6. 删除重复表述与逐字复读的工具输出；合并同义段落。\n' +
+    COMPRESS_PREAMBLE +
+    COMPRESS_FIDELITY_RULES +
     '7. 目标长度为原文的 20%~35%；原文很短时宁可少删。\n\n' +
+    '【上一轮思维链】\n' +
+    cot
+  )
+}
+
+/**
+ * ★ 2026-09-23 compress-v3：**v2 的保真规则 + v1 的绝对长度目标**。
+ *
+ *  为什么存在：2026-09-23 本机实测（同一 trace.log，按输入大小分桶平均）——
+ *    v1（绝对 200~400 字符）：输入 892→9,794（11 倍），输出仅 403→801（2 倍）⇒ 压缩比 45.2%→8.2%
+ *    v2（相对 20%~35%）    ：输出 344/788/1120，稳定贴住输入的 30%
+ *    且在输入 <1,500 时 v2 比 v1 更短（344 vs 403）
+ *  ⇒ **v2 那 1~6 条保真规则不花长度**；长度差异 100% 来自第 7 条的口径（相对 vs 绝对）。
+ *  因此 v3 = v2 的规则原封不动 + v1 的绝对目标，并用第 8 条明确「长度服从保真」。
+ *
+ *  为什么用绝对值而不是更小的百分比：百分比对小输入是灾难
+ *    （900 字符按 20% 压到 180 必然丢信息）；绝对值在 892→9,794 的跨度上已被 v1 验证过。
+ *
+ *  ⚠ 第 8 条是对绝对目标的必要对冲：绝对目标比百分比更紧，模型必须知道
+ *    「宁可超出目标，也不许删事实」，否则保真规则会被长度目标压穿。
+ *
+ * @param cot 上一轮推理原文
+ * @param minChars 目标下限（字符）
+ * @param maxChars 目标上限（字符）
+ */
+export function buildCompressPromptV3(cot, minChars, maxChars) {
+  const num = (x, dflt) => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? Math.round(x) : dflt)
+  const min = num(minChars, 250)
+  const max = num(maxChars, 450)
+  const lo = Math.min(min, max)
+  const hi = Math.max(min, max)
+  return (
+    COMPRESS_PREAMBLE +
+    COMPRESS_FIDELITY_RULES +
+    '7. 目标长度 ' + lo + '~' + hi + ' 字符（**绝对长度**，不随原文比例伸缩）；原文很短（不足 800 字符）时宁可少删。\n' +
+    '8. ★ 长度目标服从保真规则：若在 ' + hi + ' 字符内无法保留全部待定项、备选方案与逐字标识符，**宁可超出目标，不得删除**。\n\n' +
     '【上一轮思维链】\n' +
     cot
   )
@@ -3899,9 +3970,15 @@ function readSessionLog(session) {
         distill: compileModeOf(streamCfg) === 'memory'
           ? async (env, signal, budget) => generateStateMemory(env, budget?.timeoutMs != null ? { ...streamCfg, timeoutMs: budget.timeoutMs } : streamCfg, signal, { ...budget, flights: compilerFlights })
           : compileModeOf(streamCfg) === 'compress'
-            ? async (raw, signal) => generateDistillation(raw, streamCfg, signal,
-                compressPromptVersion(streamCfg) === 'compress-v1' ? buildDistillPrompt(raw) : buildCompressPrompt(raw),
-                { promptVersion: compressPromptVersion(streamCfg) })
+            ? async (raw, signal) => {
+                // 提示词选择与版本号必须来自**同一次**裁决，否则 trace 会把 A 的产物记成 B 的版本。
+                const pv = compressPromptVersion(streamCfg)
+                const prompt = pv === 'compress-v1' ? buildDistillPrompt(raw)
+                  : pv.indexOf('compress-v3') === 0
+                    ? (() => { const t = compressTargets(streamCfg); return buildCompressPromptV3(raw, t.min, t.max) })()
+                    : buildCompressPrompt(raw)
+                return generateDistillation(raw, streamCfg, signal, prompt, { promptVersion: pv })
+              }
             : async (raw, signal) => generateDistillation(raw, streamCfg, signal),
         prepareEvidence: (input) => {
           const started = performance.now()
