@@ -1,0 +1,49 @@
+{
+  "scenario": "three overlapping birth tasks; 30 distinct 800-character tool results; local HTTP mock, not a real model; JSON and SSE transports",
+  "runs": [
+    {
+      "streaming": false,
+      "enabled": false,
+      "requests": 3,
+      "promptChars": [
+        29173,
+        29173,
+        29173
+      ],
+      "totalPromptChars": 87519
+    },
+    {
+      "streaming": false,
+      "enabled": true,
+      "requests": 2,
+      "promptChars": [
+        29173,
+        10647
+      ],
+      "totalPromptChars": 39820
+    },
+    {
+      "streaming": true,
+      "enabled": false,
+      "requests": 3,
+      "promptChars": [
+        29173,
+        29173,
+        29173
+      ],
+      "totalPromptChars": 87519
+    },
+    {
+      "streaming": true,
+      "enabled": true,
+      "requests": 2,
+      "promptChars": [
+        29173,
+        10647
+      ],
+      "totalPromptChars": 39820
+    }
+  ],
+  "unit": "characters, not tokens",
+  "limits": "Superseded block remains raw. Main-dialogue token cost and semantic quality were not measured."
+}

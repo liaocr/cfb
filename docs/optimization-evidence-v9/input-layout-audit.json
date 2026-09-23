@@ -1,0 +1,23 @@
+{
+  "fixtureOnly": true,
+  "kind": "input-layout-not-cache-or-quality-proof",
+  "versions": {
+    "v8": {
+      "promptChars": 7602,
+      "commonPrefixCharsWhenOnlyHostBlockChanges": 4530,
+      "exactGroundingRetained": true,
+      "reasoningRetained": true,
+      "priorMemoryVisible": false
+    },
+    "v9": {
+      "promptChars": 7895,
+      "commonPrefixCharsWhenOnlyHostBlockChanges": 5038,
+      "exactGroundingRetained": true,
+      "reasoningRetained": true,
+      "priorMemoryVisible": true
+    }
+  },
+  "retainedGroundingText": 3734,
+  "billingSavings": null,
+  "providerCacheHit": null
+}

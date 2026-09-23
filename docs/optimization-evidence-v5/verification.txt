@@ -1,0 +1,16 @@
+PASS balanced-span.selftest.mjs        60 passed
+  PASS headroom.selftest.mjs             33 passed
+  PASS imperative.selftest.mjs           25 passed
+  PASS emitter.selftest.mjs              101 passed
+  PASS state-memory.selftest.mjs         245 passed
+  PASS provider-endpoint.selftest.mjs    28 passed
+  PASS selftest.mjs                      281 passed
+  PASS selftest-birth.mjs                154 passed  (1 skipped)
+  PASS optimization.selftest.mjs         43 passed
+  PASS memory-quality.selftest.mjs       33 passed
+  PASS incremental.selftest.mjs          29 passed
+  PASS evidence-views.selftest.mjs       41 passed
+  PASS late-identity.selftest.mjs        15 passed
+
+  合计: 1088 通过 / 0 失败 / 1 跳过   (13/13 套件通过)
+  ==> 已执行检查通过；存在跳过项，非完整宿主验证

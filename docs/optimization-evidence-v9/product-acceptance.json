@@ -1,0 +1,26 @@
+{
+  "status": "未验收",
+  "reasons": [
+    "baseline: 缺完整真实主模型重放",
+    "baseline: 编译终局不完整",
+    "baseline: 缺同目标探索逐轮标注",
+    "baseline: 无实际应用，不能用零调用／零替换通过验收",
+    "baseline: 缺任务结局或未知结局",
+    "baseline: 编译身份缺失或重复",
+    "baseline: 探索身份重复或目标不在任务集合",
+    "candidate: 缺完整真实主模型重放",
+    "candidate: 编译终局不完整",
+    "candidate: 缺同目标探索逐轮标注",
+    "candidate: 无实际应用，不能用零调用／零替换通过验收",
+    "candidate: 缺任务结局或未知结局",
+    "candidate: 编译身份缺失或重复",
+    "candidate: 探索身份重复或目标不在任务集合",
+    "重放源未配对",
+    "模型／profile／预算不一致或未记录",
+    "缺绑定具体运行产物的独立审核",
+    "baseline: 成功编译未全部审查",
+    "baseline: 缺错误状态因果审核",
+    "candidate: 成功编译未全部审查",
+    "candidate: 缺错误状态因果审核"
+  ]
+}

@@ -1,0 +1,40 @@
+[
+  {
+    "mutation": "merge-prefix-not-full-text",
+    "detected": true,
+    "failures": [
+      "FAIL same prefix, different unseen suffixes are NOT the same body"
+    ]
+  },
+  {
+    "mutation": "omit-later-required-ranges",
+    "detected": true,
+    "failures": [
+      "FAIL same body with ordinary/error/latest views sends the union once, preserving all old ranges",
+      "FAIL adjacent ranges do not invent an omitted middle; event sequence remains in input order",
+      "FAIL 100 deterministic mixed workloads preserve every v7-selected character interval"
+    ]
+  },
+  {
+    "mutation": "promote-truncated-source",
+    "detected": true,
+    "failures": [
+      "FAIL source completeness and outcomes remain per event regardless of order",
+      "FAIL 100 deterministic mixed workloads preserve every v7-selected character interval"
+    ]
+  },
+  {
+    "mutation": "trust-old-file-without-recheck",
+    "detected": true,
+    "failures": [
+      "FAIL request and ledger verification caches are batch-local, not stale cross-request shortcuts"
+    ]
+  },
+  {
+    "mutation": "replay-bypasses-production-preparation",
+    "detected": true,
+    "failures": [
+      "FAIL HTTP compiler replay uses the same no-persistence preparation as production"
+    ]
+  }
+]

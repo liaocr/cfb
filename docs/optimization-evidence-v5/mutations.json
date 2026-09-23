@@ -1,0 +1,56 @@
+[
+  {
+    "mutation": "branch omitted from cache key",
+    "detected": true,
+    "failures": [
+      "FAIL same session and raw cannot cross branch boundaries",
+      "FAIL wrong branch acknowledgement cannot consume another branch result",
+      "FAIL production birth settlement stores in its captured branch and carries task ID",
+      "FAIL real pre-step branch claim, duplicate surface = false"
+    ]
+  },
+  {
+    "mutation": "ambiguity not retained after eviction",
+    "detected": true,
+    "failures": [
+      "FAIL ambiguous marker survives eviction of one colliding record",
+      "FAIL new collision invalidates an already peeked receipt before emission"
+    ]
+  },
+  {
+    "mutation": "pending receipt not revalidated",
+    "detected": true,
+    "failures": [
+      "FAIL emitter rechecks pending receipt after async preparation"
+    ]
+  },
+  {
+    "mutation": "production branch not passed on settlement",
+    "detected": true,
+    "failures": [
+      "FAIL production birth settlement stores in its captured branch and carries task ID"
+    ]
+  },
+  {
+    "mutation": "live duplicate raw accepted",
+    "detected": true,
+    "failures": [
+      "FAIL real pre-step branch claim, duplicate surface = true"
+    ]
+  },
+  {
+    "mutation": "byte caps bypassed",
+    "detected": true,
+    "failures": [
+      "FAIL oversize late item is rejected rather than retaining unbounded raw data",
+      "FAIL aggregate serialized size is bounded, not just record count"
+    ]
+  },
+  {
+    "mutation": "cached entries share mutable input",
+    "detected": true,
+    "failures": [
+      "FAIL cached entries are independent and immutable"
+    ]
+  }
+]

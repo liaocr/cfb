@@ -55,6 +55,7 @@ export function buildEvidenceEnvelope(o = {}) {
     name: (t && t.name) || 'unknown',
     // 参数只留字符串化后的前 400 字符：够编译器判断「做了什么」，不塞爆 prompt
     args: t && t.args != null ? String(typeof t.args === 'string' ? t.args : JSON.stringify(t.args)).slice(0, 400) : null,
+    argsTruncated: !!(t && t.argsTruncated) || !!(t && t.args != null && String(typeof t.args === 'string' ? t.args : JSON.stringify(t.args)).length > 400),
     // ★ 时间截面 + 精确生命周期：**不再靠 result != null 单独决定**。
     //   未显式给出 status ⇒ 有 result 记 completed/failed，没有则记 requested（绝不补造 running）。
     status: (() => {
@@ -69,13 +70,17 @@ export function buildEvidenceEnvelope(o = {}) {
     resultTruncated: !!(t && t.resultTruncated) || (t && t.result != null && String(t.result).length > 1200),
     isError: !!(t && t.isError),
     seq: t && t.seq != null ? t.seq : null,
+    resultSeq: t && t.resultSeq != null ? t.resultSeq : null,
+    resultDeferred: t && t.resultDeferred ? String(t.resultDeferred) : null,
+    evidenceView: t && t.evidenceView ? String(t.evidenceView) : null,
+    viewReceipt: t && t.viewReceipt ? String(t.viewReceipt) : null,
   }))
   const host = Object.assign({}, o.host || {})
   return Object.freeze({
     cot,
-    userAsks,
-    tools,
-    host,
+    userAsks: Object.freeze(userAsks.map(Object.freeze)),
+    tools: Object.freeze(tools.map(Object.freeze)),
+    host: Object.freeze(host),
     at: o.at == null ? Date.now() : o.at,
     reason: o.reason || null,
     // ★★ 证据覆盖范围：适配器拿到的是**某个范围内**的证据，不一定是全部证据。
@@ -370,14 +375,16 @@ export function renderToolEvidence(tools, opts) {
     const t = list[i]
     const ref = 'E' + (i + 1)
     const trunc = t.resultTruncated ? '（⚠ 正文过长，**未完整纳入**；不得据此生成超出可见证据的结论）' : ''
-    const head = '· [' + ref + '] [' + t.name + '] ' + lifecyclePhrase(t)
+    const head = '· [' + ref + '] [' + t.name + '] ' + lifecyclePhrase(t) + (t.evidenceView ? '（输入区间 ' + t.evidenceView + '）' + (t.args ? ' 参数=' + t.args + (t.argsTruncated ? '（参数未完整纳入）' : '') : '') : '')
+    if (t.resultDeferred) { out.push(head + '：' + t.resultDeferred + (t.args ? ' 参数=' + t.args + (t.argsTruncated ? '（参数未完整纳入）' : '') : '')); continue }
     if (!isTerminal(t.status)) { out.push(head + (t.args ? ' 参数=' + t.args : '')); continue }
     // ★ 第一步：确定性清洗（零信息字符）。先洗再去重 —— 洗过之后更多正文会变得相同。
     const rawBody = String(t.result || '')
-    const cleaned = compactToolText(rawBody, opts)
+    const viewOpts = t.evidenceView ? { ...opts, bypass: true } : opts
+    const cleaned = compactToolText(rawBody, viewOpts)
     // ★ 第二步：定向诊断精简（只折叠已确认结构；边界见 compactDiagnosticText）
     //   顺序固定：通用清洗 → 定向精简 → 模型输入。原文与 CAS 不受影响。
-    const diag = compactDiagnosticText(cleaned.text, opts)
+    const diag = compactDiagnosticText(cleaned.text, viewOpts)
     const body = diag.text
     cleanSaved += cleaned.saved
     diagSaved += diag.saved
@@ -505,10 +512,10 @@ export function buildStateCompilePrompt(env, opts) {
   parts.push(
     '\n【文体 · 硬性】\n' +
     '1. 用中文输出，不要翻译成其他语言。\n' +
-    '2. 正文一律第三人称 + 过去时/完成时陈述；不得出现祈使句，不得使用第二人称。\n' +
-    '   例：「禁止再动代码」⇒「代码修改阶段已结束。」\n' +
+    '2. 正文使用第三人称状态描述；保留原有时态、条件与不确定性，不把尚未发生的事改成完成时。\n' +
+    '   例：「禁止再动代码」⇒「用户明确禁止继续修改代码。」（禁止不等于阶段已结束。）\n' +
     '   例：「下一步跑 X」⇒「X 尚未执行。」\n' +
-    '3. 严禁「建议」「备选」「可以考虑」「或许」「可能应该」等软性措辞。\n' +
+    '3. 不新增建议或行动计划；材料中的假设、备选及「可能」「未确认」必须保持原强度，不得为简洁写成定论。\n' +
     '4. 路径、文件名、命令、变量名、数字、错误信息原文一律**逐字保留**，不许意译。\n' +
     '5. 删掉推理过程、自我怀疑、重复表述；但**不得删掉否定条件，不得把「未知」改成「确定」**。\n' +
     '6. 长度以「必要信息优先」为准，默认目标 400~900 字符（**可突破**，不是硬上限）；\n' +
@@ -518,6 +525,13 @@ export function buildStateCompilePrompt(env, opts) {
     '   ⚠ 资源上限仍然存在（调用有 max_tokens 硬顶）：一旦被截断，格式残缺 ⇒ 整份作废、原文放行，\n' +
     '     所以宁可写短写准，也不要写到临界点。'
   )
+
+  if ((e.tools || []).some(t => t.evidenceView || t.resultDeferred)) {
+    parts.push('\n【范围工作集与输出重点】\n' +
+      '工具正文按标明的 UTF-16 区间提供；未纳入的正文不是空结果，也不是未执行。不能把片段当作全文，也不能把区间边缘截断的命令或路径当作完整原文。\n' +
+      '六栏主要记录本轮新增、修正、分歧及直接影响当前判断的约束；不要逐条复述未变化的快照背景。\n' +
+      '未纳入正文只是输入范围限制，不要为每个工具编造一项任务缺口；保留真正影响验收的未知。')
+  }
 
   // ── 材料 ──
   // ── 输入指令隔离（防止提示注入被提权成用户约束）──
@@ -575,16 +589,14 @@ export function buildStateCompilePrompt(env, opts) {
     for (const x of e.priorMemory) parts.push('· ' + String(x.text).slice(0, 1200))
   }
 
-  // ★★ 结构化状态快照（2026-09-22）★★
-  //   这是**插件自己保存的、已确认编译成功**的完整有效状态 —— 权威基线，不是"可能过时的记忆"。
-  //   不截断：快照本身就是"已经编译进去的证据"的载体，腰斩它等于让模型丢失已确认状态。
+  // Persisted compilation is a continuity baseline, not an authority upgrade.
   if (e.stateSnapshot && String(e.stateSnapshot.text || '').trim()) {
     parts.push(
-      '\n【当前有效状态快照 · 权威基线（revision ' + (e.stateSnapshot.revision == null ? '?' : e.stateSnapshot.revision) +
-      '，已归档，非推测）】\n' +
-      '这份状态由上一轮编译成功产出并已可靠保存。它**已经包含了**下面材料中较早的工具结果 —— ' +
-      '凡是这里已经写明的结论，不要因为"下面没看到原始输出"就当作未知。\n' +
-      '若下面的新材料与它冲突，以**新材料**为准，并在【当前有效状态】里写明修正关系。'
+      '\n【已保存的任务状态快照（revision ' + (e.stateSnapshot.revision == null ? '?' : e.stateSnapshot.revision) +
+      '，模型编译记录）】\n' +
+      '编译成功与可靠保存只证明记录完整，不证明每个判断已经独立核验。保留各条原有来源、范围、冲突与不确定性。\n' +
+      '部分旧工具证据由这份记忆承载，不要仅因本轮没有重发原文就判断相关事件未发生。\n' +
+      '新材料不因较新就自动胜出；只有来源、适用范围和明确证据支持时才修正，否则保留分歧。'
     )
     parts.push(String(e.stateSnapshot.text))
   }
@@ -650,19 +662,23 @@ export function parseStateCompile(text) {
  * 每个条目带少量必要属性（主要服务宿主，不需要全部打印给模型）：
  *   内容 / 类别 / 来源 / 形成时间 / 适用范围 / 证据状态 / 有效状态 / 被谁修正
  */
-export function createMemoryProjection() {
+export function createMemoryProjection(opts = {}) {
+  const namespace = opts.namespace == null ? '' : String(opts.namespace) + ':'
   const entries = []
   let nextId = 1
 
   const add = (o = {}) => {
     const en = {
-      id: 'm' + nextId++,
+      id: namespace + 'm' + nextId++,
       category: SEC_ORDER.indexOf(o.category) >= 0 ? o.category : 'state',
       content: String(o.content || '').trim(),
       origin: ORIGIN[o.origin] ? o.origin : 'model',
       evidence: EVIDENCE[o.evidence] ? o.evidence : 'inferred',
       validity: VALIDITY[o.validity] ? o.validity : 'active',
       scope: o.scope == null ? null : String(o.scope),
+      objectId: o.objectId == null ? null : String(o.objectId),
+      problemId: o.problemId == null ? null : String(o.problemId),
+      propositionKind: o.propositionKind == null ? null : String(o.propositionKind),
       at: o.at == null ? Date.now() : o.at,
       // ★ 来源与依据：**不是装饰**，它限制一句话能被说到多强
       source: SOURCE[o.source] ? o.source : 'model',
@@ -756,7 +772,9 @@ function markLine(it) {
   else if (it.validity === 'historical') mark = '（历史观察，适用性未确认）'
   else if (it.validity === 'superseded') mark = '（已被后续记录修正）'
   const scope = it.scope ? '（范围：' + it.scope + '）' : ''
-  return '· ' + it.content + scope + mark
+  const provenance = it.legacyEvidence === 'observed'
+    ? '（旧版模型编译记录，未独立核验）' : ''
+  return '· ' + it.content + scope + mark + provenance
 }
 
 /** 组装可见文本：只保留有内容的栏位，顺序固定。 */
@@ -1042,6 +1060,7 @@ export function lifecyclePhrase(t) {
  */
 export const SOURCE = {
   human: 'human',                 // ★ 已确认的人类输入 —— 唯一可支持「用户明确要求」
+  runtime: 'runtime-context',       // compatibility alias used by the adapter/classifier
   runtimeContext: 'runtime-context',   // 宿主生成的运行上下文
   generatedMemory: 'generated-memory',  // ledger 等生成记忆
   unknownUserEvent: 'unknown-user-event', // 类型是 user/message，但来源未确认
@@ -1208,6 +1227,7 @@ export function pickToolEvidence(events, opts = {}) {
       transportOutcome, executionOutcome,
       // 结果体积：过大时**明确标注未完整纳入**，绝不静默截断还标成完整证据
       result: r ? String(r.text == null ? '' : r.text) : null,
+      sourceTruncated: r && r.sourceTruncated != null ? !!r.sourceTruncated : !!(r && r.truncated),
       resultTruncated: !!(r && r.truncated), seq: c.seq == null ? null : c.seq,
       resultSeq: r && r.seq != null ? r.seq : null,
     }))
@@ -1233,7 +1253,7 @@ export function adaptEvidence(input = {}) {
   const frozen = within.map((e) => Object.freeze(JSON.parse(JSON.stringify({
     seq: e.seq == null ? null : e.seq, type: e.type, source: e.source, text: e.text,
     toolCallId: e.toolCallId, toolCalls: e.toolCalls, isError: e.isError,
-    exitCode: e.exitCode, cancelled: e.cancelled, truncated: e.truncated, at: e.at,
+    exitCode: e.exitCode, cancelled: e.cancelled, truncated: e.truncated, sourceTruncated: e.sourceTruncated, at: e.at,
     origin: e.origin == null ? null : String(e.origin),
     kind: e.kind == null ? null : String(e.kind),
     sourceKind: e.sourceKind == null ? null : String(e.sourceKind),
@@ -1274,6 +1294,9 @@ export function adaptAndBuild(input = {}) {
 // ════════════════════════════════════════════════════════════════════════════
 export const SCHEMA_VERSION = 2
 export const COMPILER_VERSION = 'state-v1'
+// Model prose is not independently observed evidence. Version storage policy separately.
+export const MEMORY_POLICY_VERSION = 3
+export const MODEL_MEMORY_PREAMBLE = '〔模型编译的任务记忆：条目未经独立逐条核验；与新证据冲突时保留分歧。〕'
 export const RENDERER_VERSION = 'render-v1'
 
 /**
@@ -1284,15 +1307,18 @@ export const RENDERER_VERSION = 'render-v1'
 export function cacheIdentity(env) {
   const e = env || {}
   const stable = JSON.stringify([
-    COMPILER_VERSION,
+    COMPILER_VERSION, MEMORY_POLICY_VERSION,
     e.cot || '',
     (e.userAsks || []).map((u) => u.text),
     (e.tools || []).map((t) => [t.id, t.name, t.args == null ? null : String(t.args), t.status, t.exitCode, t.isError,
       // 结果参与身份，但**截断标记也参与**：同一份截断结果与完整结果不得共用摘要
-      t.result == null ? null : String(t.result), !!t.resultTruncated]),
+      t.result == null ? null : String(t.result), !!t.resultTruncated, t.resultSeq, t.evidenceView, t.resultDeferred, !!t.argsTruncated]),
     Object.keys(e.host || {}).sort().map((k) => [k, String(e.host[k])]),
+    ['runtimeFacts', 'priorMemory', 'unknownUserEvents'].map(k => (e[k] || []).map(x => x.text)),
+    Object.keys(e.coverage || {}).sort().map(k => [k, e.coverage[k]]),
     // ★ 快照 revision 参与身份：新快照 ⇒ 输入变了 ⇒ 绝不复用旧摘要
-    e.stateSnapshot ? [e.stateSnapshot.revision, String(e.stateSnapshot.text || '').length, e.stateSnapshot.covered] : null,
+    e.stateSnapshot ? [e.stateSnapshot.revision, String(e.stateSnapshot.text || ''), e.stateSnapshot.covered] : null,
+    e.deterministicFrame ? [e.deterministicFrame.protocol, e.deterministicFrame.indexPath, e.deterministicFrame.evidenceInput?.policy, e.deterministicFrame.evidenceInput?.text] : null,
   ])
   return stable
 }
@@ -1347,7 +1373,7 @@ function objectKey(it) {
   //   都落到同一个 's:' 槽位，于是 14~20 条互相判冲突，active 掉到 0 —— 记忆整体作废。
   //   「没有对象标识」意味着**我们不知道它们是否在说同一件事** ⇒ 绝不能比较，
   //   更不能因此判定冲突。每条各占一个独占槽位。
-  return 'u:' + String((it && it.id) || Math.random())
+  return null // An entry ID is not an object identity; never compare unknown objects.
 }
 
 /**
@@ -1370,7 +1396,9 @@ export function mergeByEvidence(entries) {
   const bySlot = new Map()
   for (const it of (Array.isArray(entries) ? entries : [])) {
     if (!it || !it.content) continue
-    const slot = it.category + '|' + objectKey(it)
+    const key = objectKey(it)
+    if (key === null) { out.push(it); continue }
+    const slot = it.category + '|' + key
     const prev = bySlot.get(slot)
     if (!prev) { bySlot.set(slot, it); out.push(it); continue }
     const a = EVIDENCE_RANK[prev.evidence] == null ? 0 : EVIDENCE_RANK[prev.evidence]
@@ -1382,11 +1410,6 @@ export function mergeByEvidence(entries) {
         (prev.propositionKind || '未标注') + ' / ' + (it.propositionKind || '未标注') + '），并存'
       it.relation = 'coexist'
       out.push(it); continue
-    }
-    const same = String(prev.content).trim() === String(it.content).trim()
-    if (same) {   // 同结论 ⇒ 合并来源，减少重复
-      prev.evidenceIds = (prev.evidenceIds || []).concat(it.evidenceIds || [])
-      continue
     }
     // ★★ 收敛后的替代条件（2026-09-21）：不是笼统的"证据更强就覆盖"，而是
     //   **同一命题 + 可比较的适用范围 + 明确的更新或修正关系**。
@@ -1420,6 +1443,14 @@ export function mergeByEvidence(entries) {
       it.note = '与已有记录适用范围不同（' + prevScope + ' ≠ ' + itScope + '），并存'
       it.relation = 'coexist'
       out.push(it); continue
+    }
+    // Equal wording is only a duplicate inside the SAME scope/proposition and
+    // evidence/validity state. Equal text in a different environment is not.
+    if (String(prev.content).trim() === String(it.content).trim()) {
+      if (prev.evidence === it.evidence && prev.validity === it.validity) {
+        prev.evidenceIds = [...new Set([...(prev.evidenceIds || []), ...(it.evidenceIds || [])])]
+      } else { out.push(it) }
+      continue
     }
     if (b > a) {
       // 证据更强 ⇒ 更新当前视图，**保留历史**（可追溯谁说了什么）
@@ -1466,7 +1497,7 @@ export function mergeOrdered(results) {
     order.push(r.sourceIndex)   // ← 时间顺序：只决定处理顺序
     mp.ingest(r.parsed, {
       at: r.at == null ? Date.now() : r.at, origin: 'model',
-      evidence: r.evidence || 'observed', blockIndex: r.sourceIndex,
+      evidence: r.evidence || 'inferred', blockIndex: r.sourceIndex,
     })
   }
   // ② 证据关系：决定能不能替代（不是最后写入获胜）
@@ -1603,6 +1634,7 @@ export function normalizeEvidenceEvent(raw, seqHint) {
     return Object.freeze({
       seq, type, toolCallId: id, text,
       truncated: text.length > TOOL_RESULT_MAX,
+      sourceTruncated: !!d.truncated || blocks.some(b => !!b.truncated),
       isError,
       exitCode: typeof d.exitCode === 'number' ? d.exitCode : null,
       cancelled: !!d.cancelled,

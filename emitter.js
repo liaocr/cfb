@@ -164,6 +164,10 @@ function ownBoardSeqs(events, pluginName) {
  */
 export function emitCheckpoint(deps) {
   const { session, span, ledgerText, pluginName = 'cot-form-b', dryRun, trace, summaryRecord = true } = deps
+  if (!span || !Number.isSafeInteger(span.startSeq) || !Number.isSafeInteger(span.endSeq) || span.startSeq > span.endSeq || span.startSeq < 0 || !Array.isArray(span.shadowedSeqs)) {
+    if (trace) trace('emit-refused-range', { startSeq: span?.startSeq, endSeq: span?.endSeq })
+    return { emitted: false, reason: 'invalid-range' }
+  }
   const message = {
     id: crypto.randomUUID(),
     role: 'user',
@@ -278,6 +282,14 @@ export async function runPreStepEmit(deps) {
     const raw = typeof rawOf === 'function' ? await rawOf(last.raw, last.seq) : null
     if (!raw) { t('emit-no-raw', { seq: last.seq }); return { emitted: false, reason: 'no-raw' } }
 
+    if (deps.requireUniqueRaw) {
+      for (const ev of events) {
+        if (ev.seq === last.seq || ev.type !== 'assistant/message') continue
+        const other = await rawOf(ev.raw, ev.seq)
+        if (other === raw) { t('emit-ambiguous-raw', { targetSeq: last.seq, otherSeq: ev.seq }); return { emitted: false, reason: 'ambiguous-raw' } }
+      }
+    }
+
     // ① 感知 + ② 动态门槛
     const surfaceChars = typeof session.surfaceChars === 'number' ? session.surfaceChars : undefined
     const pressure = readPressure({ session, ctx, surfaceChars })
@@ -317,6 +329,9 @@ export async function runPreStepEmit(deps) {
       maxInlineChars: cfg.maxInlineToolResultChars, archive, trace: t,
     })
 
+    if (typeof deps.validatePending === 'function' && !deps.validatePending()) {
+      t('emit-stale-distill'); return { emitted: false, reason: 'stale-distill' }
+    }
     // ⑤ 合规发射
     return emitCheckpoint({
       session, span, ledgerText: ledger.text,

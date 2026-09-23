@@ -1,0 +1,16 @@
+{
+  "scenario": "1000 surface nodes, then 100 one-node appends",
+  "baseline": "5a4def6daed0da4e0d2678d36d398d80f258aef2",
+  "before": {
+    "eventAtCalls": 106050,
+    "elapsedMs": 51.861,
+    "finalNodes": 1100
+  },
+  "after": {
+    "eventAtCalls": 1100,
+    "elapsedMs": 15.972,
+    "finalNodes": 1100
+  },
+  "eventReadsReducedPct": 98.963,
+  "scope": "Synthetic local index microbenchmark only; not API latency or token savings."
+}

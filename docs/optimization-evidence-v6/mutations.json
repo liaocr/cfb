@@ -1,0 +1,51 @@
+[
+  {
+    "mutation": "default-wiring-removed",
+    "detected": true,
+    "exitCode": 1,
+    "failures": [
+      "FAIL REAL default hooks: 8000ms timeout then empty then success; same observations remain committed, bodies never re-sent",
+      "FAIL runnable recorded compiler replay is explicitly NOT product acceptance"
+    ]
+  },
+  {
+    "mutation": "old-full-window-prompt",
+    "detected": true,
+    "exitCode": 1,
+    "failures": [
+      "FAIL REAL default hooks: 8000ms timeout then empty then success; same observations remain committed, bodies never re-sent",
+      "FAIL runnable recorded compiler replay is explicitly NOT product acceptance"
+    ]
+  },
+  {
+    "mutation": "model-dependent-recording",
+    "detected": true,
+    "exitCode": 1,
+    "failures": [
+      "FAIL 28 bodies persisted once; repeated prompt contains references, not old body; history remains reachable",
+      "FAIL late low-seq evidence and changed old event are new versions despite cut 999",
+      "FAIL branch/session scoped state and unidentified observations are not content-only identities",
+      "FAIL unknown source/runtime retained, immutable frames cannot be changed by next cut",
+      "FAIL lock contention/corrupt body cannot advance observation state",
+      "FAIL foreground does not wait for unresolved model; observations survive failed judgment",
+      "FAIL REAL default hooks: 8000ms timeout then empty then success; same observations remain committed, bodies never re-sent",
+      "FAIL runnable recorded compiler replay is explicitly NOT product acceptance"
+    ]
+  },
+  {
+    "mutation": "cut-is-not-observation-identity",
+    "detected": true,
+    "exitCode": 1,
+    "failures": [
+      "FAIL late low-seq evidence and changed old event are new versions despite cut 999"
+    ]
+  },
+  {
+    "mutation": "foreground-background-gate-removed",
+    "detected": true,
+    "exitCode": 1,
+    "failures": [
+      "FAIL foreground does not wait for unresolved model; observations survive failed judgment"
+    ]
+  }
+]

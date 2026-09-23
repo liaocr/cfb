@@ -1,0 +1,44 @@
+{
+  "kind": "consumption-funnel",
+  "boots": 1,
+  "counts": {
+    "fired": 1,
+    "inputPrepared": 1,
+    "generated": 1,
+    "generatedAndArchived": 1,
+    "stored": 1,
+    "storedWithLaterOpportunity": 1,
+    "hit": 1,
+    "inlineProduced": 0,
+    "applied": 1,
+    "acknowledged": 1,
+    "observedInLaterOptions": 1,
+    "storedWithoutObservedOpportunity": 0
+  },
+  "tasks": [
+    {
+      "taskId": "93cffc05-f8e4-423b-9d8a-da6053e1b8de",
+      "prepared": true,
+      "generated": true,
+      "archived": true,
+      "stored": true,
+      "opportunities": 3,
+      "hits": 2,
+      "applied": true,
+      "acknowledged": true,
+      "presented": 1,
+      "failure": null,
+      "fired": true,
+      "lastSkip": "threw:fixture append rejected"
+    }
+  ],
+  "productAcceptance": "未验收",
+  "billingSavings": null,
+  "limitations": [
+    "A log end is not proof of session end; no observed opportunity is not a failed claim.",
+    "Applied means the host append call returned successfully, not independently verified host projection.",
+    "Presented means exact text observed in subsequent llm options within a bounded in-process meter, not billed tokens.",
+    "No semantic-understanding claim is inferred from recording, transmission, or successful compilation."
+  ],
+  "evidenceKind": "local HTTP fixture + simulated host, NOT real production session"
+}

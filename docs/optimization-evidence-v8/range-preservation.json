@@ -1,0 +1,10 @@
+{
+  "kind": "synthetic-range-preservation-not-product-performance",
+  "events": 3,
+  "bodyGroups": 1,
+  "v7SelectedBodyChars": 15888,
+  "v8SelectedBodyChars": 9392,
+  "allPriorRangesPreserved": true,
+  "tokenSavings": null,
+  "qualityImprovement": null
+}

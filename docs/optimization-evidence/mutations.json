@@ -1,0 +1,57 @@
+[
+  {
+    "mutation": "coverage rollback ignored",
+    "detected": true,
+    "failures": [
+      "FAIL stateCoveredEvidence:false genuinely restores all tools"
+    ]
+  },
+  {
+    "mutation": "partial snapshot accepted",
+    "detected": true,
+    "failures": [
+      "FAIL oversized snapshot does not return a partial view",
+      "FAIL no full snapshot view means no filtering"
+    ]
+  },
+  {
+    "mutation": "claim consumed before append",
+    "detected": true,
+    "failures": [
+      "FAIL REAL pre-step hook retains late result on append failure, retries successfully",
+      "FAIL REAL pre-step dry-run never consumes late result"
+    ]
+  },
+  {
+    "mutation": "reverse queue deletion bug",
+    "detected": true,
+    "failures": [
+      "FAIL reverse completion order removes ALL consumed blocks"
+    ]
+  },
+  {
+    "mutation": "JSON completion gate bypassed",
+    "detected": true,
+    "failures": [
+      "FAIL transport stream=false json-length rejects partial output with prompt fingerprint",
+      "FAIL transport stream=false sse-length rejects partial output with prompt fingerprint",
+      "FAIL transport stream=false sse-missing rejects partial output with prompt fingerprint",
+      "FAIL transport stream=true json-length rejects partial output with prompt fingerprint",
+      "FAIL transport stream=true sse-missing rejects partial output with prompt fingerprint"
+    ]
+  },
+  {
+    "mutation": "weak surface cache identity",
+    "detected": true,
+    "failures": [
+      "FAIL mid-surface replacement invalidates index even if ends/size unchanged"
+    ]
+  },
+  {
+    "mutation": "archive prerequisite removed",
+    "detected": true,
+    "failures": [
+      "FAIL archive failure cannot persist or stage compiled memory"
+    ]
+  }
+]

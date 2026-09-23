@@ -1,0 +1,282 @@
+{
+  "kind": "compiler-efficiency-diagnostics",
+  "sourceSha256": "42ee99e4ae9cbef4c28e948470b18c3320900e6d7d323df00fbbc510f78f0f40",
+  "boots": [
+    {
+      "bootIndex": 0,
+      "anchored": true,
+      "boot": {
+        "at": "2026-09-22T12:40:21.191Z",
+        "tag": "BOOT",
+        "stateMemory": true,
+        "compilerMode": "grounded-judgment-v2",
+        "promptVersion": "grounded-decisions-v3",
+        "retiredOptions": [],
+        "memoryPolicyVersion": 3,
+        "stateSnapshot": true,
+        "stateCoveredEvidence": true,
+        "stateStructuralFirst": false,
+        "birth": {
+          "finishWaitMs": 1500,
+          "deferredClaim": true
+        },
+        "schemaVersion": 2,
+        "compilerVersion": "state-v1",
+        "rendererVersion": "render-v1",
+        "emitting": "step-aware@agent/request+birth@llm/stream+promptV2+ledgerImperativeMetric",
+        "selfId": "210756@1790080820773",
+        "deps": "emitter.js=18383@1790079564689 imperative.js=3887@1790079564689 balanced-span.js=12610@1790079564681 headroom.js=3230@1790079564689 rules.js=12958@1790079564689 state-memory.js=95014@1790079564689 snapshot-store.js=29281@1790079564689 compile-lane.js=2155@1790079564681 evidence-views.js=3177@1790079564689 evidence-ledger.js=17076@1790080820329 evidence-input.js=4908@1790079564689 evidence-storage.js=6124@1790079564689 consumption.js=1936@1790079564681",
+        "mode": "birth",
+        "dryRun": false,
+        "keepTail": 1,
+        "minRawChars": 800,
+        "hurdleRounds": 4,
+        "templateChars": 500,
+        "breakevenRaw": 774,
+        "earlyFire": true,
+        "timeoutMs": 8000,
+        "graceMs": 300,
+        "maxAttempts": 1,
+        "rulesEnabled": true,
+        "rulesFoldRuns": true,
+        "rulesMinSavedChars": 20,
+        "rulesRequireArchive": true,
+        "birthArchive": true,
+        "birthMinChars": 500,
+        "birthHandleInText": true,
+        "birthProducer": "cot-birth",
+        "keepAlive": false,
+        "keepAliveMsecs": 60000,
+        "prewarm": false,
+        "model": "fixture",
+        "modelAtBoot": "fixture",
+        "followHostModel": false,
+        "disableThinking": true,
+        "maxOutputTokens": 1200,
+        "invariant": "H2 首次出站不变律：块只在「还没出站」时允许替换，否则永久放弃",
+        "stats": {
+          "seen": 0,
+          "replaced": 0,
+          "rules": 0,
+          "distilled": 0,
+          "distFailed": 0,
+          "short": 0,
+          "hurdle": 0,
+          "charsRaw": 0,
+          "charsFinal": 0,
+          "argsSeen": 0,
+          "argsOver500": 0,
+          "argsChars": 0,
+          "inspectCalls": 0,
+          "skel": 0,
+          "skelChars": 0
+        }
+      },
+      "counts": {
+        "transportAttemptsStarted": 2,
+        "transportAttemptsSettled": 2,
+        "sharedAttachments": 1,
+        "archiveTerminalConsumers": 0
+      },
+      "preparationMs": {
+        "samples": 3,
+        "p50": 2.2379379999999855,
+        "p90": 6.2822929999999815,
+        "max": 6.2822929999999815
+      },
+      "parseRenderMs": {
+        "samples": 3,
+        "p50": 0.13136700000001156,
+        "p90": 0.15871299999997746,
+        "max": 0.15871299999997746
+      },
+      "transportTimings": [
+        {
+          "config": {
+            "model": "fixture",
+            "endpoint": "legacy|explicit",
+            "timeoutMs": 8000,
+            "maxOutputTokens": 1200,
+            "thinkingOff": true,
+            "stream": true,
+            "promptVersion": "grounded-decisions-v3"
+          },
+          "successfulTransport": {
+            "toFirstContentMs": {
+              "samples": 2,
+              "p50": 5,
+              "p90": 7,
+              "max": 7
+            },
+            "contentSpanMs": {
+              "samples": 2,
+              "p50": 0,
+              "p90": 0,
+              "max": 0
+            },
+            "afterContentMs": {
+              "samples": 2,
+              "p50": 0,
+              "p90": 0,
+              "max": 0
+            },
+            "totalMs": {
+              "samples": 2,
+              "p50": 5,
+              "p90": 7,
+              "max": 7
+            }
+          },
+          "failedTransport": {
+            "toFirstContentMs": {
+              "samples": 0,
+              "p50": null,
+              "p90": null,
+              "max": null
+            },
+            "contentSpanMs": {
+              "samples": 0,
+              "p50": null,
+              "p90": null,
+              "max": null
+            },
+            "afterContentMs": {
+              "samples": 0,
+              "p50": null,
+              "p90": null,
+              "max": null
+            },
+            "totalMs": {
+              "samples": 0,
+              "p50": null,
+              "p90": null,
+              "max": null
+            }
+          }
+        }
+      ],
+      "requests": [
+        {
+          "requestId": "f5bf0f14-0a02-4f8c-9e5f-05ad52c91f26",
+          "flightId": "5f3e711a-07db-475b-ae9b-9ade2c5442f0",
+          "model": "fixture",
+          "timeoutMs": 8000,
+          "endpoint": "legacy|explicit",
+          "maxOutputTokens": 1200,
+          "thinkingOff": true,
+          "stream": true,
+          "promptVersion": "grounded-decisions-v3",
+          "ok": true,
+          "reason": null,
+          "stage": null,
+          "toFirstContentMs": 5,
+          "contentSpanMs": 0,
+          "afterContentMs": 0,
+          "totalMs": 5,
+          "usage": {
+            "inputTokens": 100,
+            "cachedInputTokens": 30,
+            "source": "provider-reported-not-invoice",
+            "raw": {
+              "prompt_tokens": 100,
+              "prompt_tokens_details": {
+                "cached_tokens": 30
+              },
+              "completion_tokens": 20
+            }
+          }
+        },
+        {
+          "requestId": "2d358f56-e8b5-41eb-8943-38ca5336e611",
+          "flightId": "c3805b48-241b-4c5b-925a-4f961392a276",
+          "model": "fixture",
+          "timeoutMs": 8000,
+          "endpoint": "legacy|explicit",
+          "maxOutputTokens": 1200,
+          "thinkingOff": true,
+          "stream": true,
+          "promptVersion": "grounded-decisions-v3",
+          "ok": true,
+          "reason": null,
+          "stage": null,
+          "toFirstContentMs": 7,
+          "contentSpanMs": 0,
+          "afterContentMs": 0,
+          "totalMs": 7,
+          "usage": {
+            "inputTokens": 100,
+            "cachedInputTokens": 30,
+            "source": "provider-reported-not-invoice",
+            "raw": {
+              "prompt_tokens": 100,
+              "prompt_tokens_details": {
+                "cached_tokens": 30
+              },
+              "completion_tokens": 20
+            }
+          }
+        }
+      ],
+      "tasks": [
+        {
+          "taskId": "785e1087-7332-403f-886c-c7ad1aa7c25a",
+          "presented": 0,
+          "acknowledged": false,
+          "semanticUse": null,
+          "preparationMs": 6.2822929999999815,
+          "ok": true,
+          "reason": null,
+          "requestId": "f5bf0f14-0a02-4f8c-9e5f-05ad52c91f26",
+          "flightId": "5f3e711a-07db-475b-ae9b-9ade2c5442f0",
+          "sharedFlight": false,
+          "promptVersion": "grounded-decisions-v3",
+          "parseRenderMs": 0.13136700000001156,
+          "promptBuildMs": 0.032850999999993746
+        },
+        {
+          "taskId": "529cb139-88d0-403a-9148-8959d82ed1af",
+          "presented": 0,
+          "acknowledged": false,
+          "semanticUse": null,
+          "preparationMs": 2.2379379999999855,
+          "ok": true,
+          "reason": null,
+          "requestId": "2d358f56-e8b5-41eb-8943-38ca5336e611",
+          "flightId": "c3805b48-241b-4c5b-925a-4f961392a276",
+          "sharedFlight": false,
+          "promptVersion": "grounded-decisions-v3",
+          "parseRenderMs": 0.12101999999998725,
+          "promptBuildMs": 0.01722100000000637
+        },
+        {
+          "taskId": "652e7b03-94f1-4d10-8887-333e38d5d002",
+          "presented": 0,
+          "acknowledged": false,
+          "semanticUse": null,
+          "preparationMs": 1.2465439999999717,
+          "ok": true,
+          "reason": null,
+          "requestId": "2d358f56-e8b5-41eb-8943-38ca5336e611",
+          "flightId": "c3805b48-241b-4c5b-925a-4f961392a276",
+          "sharedFlight": true,
+          "promptVersion": "grounded-decisions-v3",
+          "parseRenderMs": 0.15871299999997746,
+          "promptBuildMs": 0.013885000000016134
+        }
+      ],
+      "decisionReview": []
+    }
+  ],
+  "productAcceptance": "未验收",
+  "billingSavings": null,
+  "limitations": [
+    "BOOT partitions are not pooled; an unanchored prefix cannot establish a configuration epoch.",
+    "Transport-started is an attempted request, not proof of provider receipt or billing. Each retry has a distinct requestId.",
+    "Shared attachments do not imply saved money; usage is deduplicated by requestId and remains provider-reported.",
+    "Endpoint labels identify provider/API, not full URL or credential epochs; route or credential hot-reconfiguration still requires separate external attribution.",
+    "Content timestamps do not establish completion; the original full-success gate is unchanged.",
+    "Decision-review fields are intentionally null. Presentation/acknowledgment cannot establish understanding, repetition or causality.",
+    "Use the existing paired full-session replay and independent audit for product acceptance."
+  ],
+  "fixtureOnly": true
+}

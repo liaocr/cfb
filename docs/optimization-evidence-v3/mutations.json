@@ -1,0 +1,70 @@
+[
+  {
+    "mutation": "truncated results gain whole-event coverage",
+    "detected": true,
+    "failures": [
+      "FAIL truncated, pending and invalid-seq results never acquire coverage",
+      "FAIL production commit does not cover the unseen tail of long results"
+    ]
+  },
+  {
+    "mutation": "result seq dropped from envelope",
+    "detected": true,
+    "failures": [
+      "FAIL rebase removes only covered old tools and retains tail eight",
+      "FAIL tool result sequence survives envelope construction",
+      "FAIL truncated, pending and invalid-seq results never acquire coverage",
+      "FAIL latest pending compiles after prior commit with smaller input",
+      "FAIL lane ownership includes archive completion and snapshot commit",
+      "FAIL actual HTTP burst benchmark: fewer calls and prompt characters, not tokens"
+    ]
+  },
+  {
+    "mutation": "future snapshot accepted by rebase",
+    "detected": true,
+    "failures": [
+      "FAIL rebase never reads a later evidence cut",
+      "FAIL production baseline snapshot from the future is not injected"
+    ]
+  },
+  {
+    "mutation": "release lane before snapshot transaction",
+    "detected": true,
+    "failures": [
+      "FAIL latest pending compiles after prior commit with smaller input",
+      "FAIL lane ownership includes archive completion and snapshot commit",
+      "FAIL actual HTTP burst benchmark: fewer calls and prompt characters, not tokens"
+    ]
+  },
+  {
+    "mutation": "dispatch without incremental rebase",
+    "detected": true,
+    "failures": [
+      "FAIL latest pending compiles after prior commit with smaller input",
+      "FAIL lane ownership includes archive completion and snapshot commit",
+      "FAIL actual HTTP burst benchmark: fewer calls and prompt characters, not tokens"
+    ]
+  },
+  {
+    "mutation": "mutable tool records while waiting",
+    "detected": true,
+    "failures": [
+      "FAIL frozen envelope cannot be modified by queued producer"
+    ]
+  },
+  {
+    "mutation": "long branch identities collide",
+    "detected": true,
+    "failures": [
+      "FAIL long branch identities do not collapse at character 120"
+    ]
+  },
+  {
+    "mutation": "old unsafe coverage keeps policy authority",
+    "detected": true,
+    "failures": [
+      "FAIL legacy snapshot cannot authorize incremental rebase",
+      "FAIL policy-2 migration revokes formerly truncated whole-result coverage"
+    ]
+  }
+]

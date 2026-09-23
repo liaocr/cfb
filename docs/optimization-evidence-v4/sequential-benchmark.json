@@ -1,0 +1,35 @@
+{
+  "scenario": "three sequential requests, no overlap; 28 distinct 3299-character results in each evidence window; fixed local SSE response; not production replay or semantic evaluation",
+  "runs": [
+    {
+      "enabled": false,
+      "calls": 3,
+      "promptChars": [
+        39718,
+        39958,
+        39980
+      ],
+      "bodyChars": [
+        33600,
+        33600,
+        33600
+      ]
+    },
+    {
+      "enabled": true,
+      "calls": 3,
+      "promptChars": [
+        12715,
+        13215,
+        13007
+      ],
+      "bodyChars": [
+        6000,
+        5990,
+        6000
+      ]
+    }
+  ],
+  "units": "JavaScript string characters, not tokens",
+  "scope": "back-end compile inputs only; fewer supplied body ranges, all result metadata kept; gaps explicitly marked"
+}

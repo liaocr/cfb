@@ -1,0 +1,60 @@
+[
+  {
+    "mutation": "rebuild-prepared-prompt",
+    "detected": true,
+    "failures": [
+      "FAIL prepared prompt is serialized once and the same complete bytes go to HTTP"
+    ]
+  },
+  {
+    "mutation": "ignore-full-prompt-identity",
+    "detected": true,
+    "failures": [
+      "FAIL HTTP identity includes complete prompt, scope, endpoint credential and generation settings",
+      "FAIL default production hooks enable sharing without a switch and emit preparation/transport traces"
+    ]
+  },
+  {
+    "mutation": "ignore-credential-identity",
+    "detected": true,
+    "failures": [
+      "FAIL HTTP identity includes complete prompt, scope, endpoint credential and generation settings"
+    ]
+  },
+  {
+    "mutation": "cancel-healthy-subscriber",
+    "detected": true,
+    "failures": [
+      "FAIL one cancellation detaches; final cancellation aborts and removes flight immediately",
+      "FAIL repeated detachments cannot create unbounded callbacks on one active flight"
+    ]
+  },
+  {
+    "mutation": "leave-doomed-compiler-running",
+    "detected": true,
+    "failures": [
+      "FAIL archive terminal failure cancels only its consumer; same-flight healthy consumer completes"
+    ]
+  },
+  {
+    "mutation": "forget-first-content-on-timeout",
+    "detected": true,
+    "failures": [
+      "FAIL content then stall keeps timeout failure and first-content timing; no finish shortcut"
+    ]
+  },
+  {
+    "mutation": "omit-prior-inference-context",
+    "detected": true,
+    "failures": [
+      "FAIL decision prompt retains correction scope, conflicts, prohibitions, prior inference and grounding"
+    ]
+  },
+  {
+    "mutation": "bypass-default-production-sharing",
+    "detected": true,
+    "failures": [
+      "FAIL default production hooks enable sharing without a switch and emit preparation/transport traces"
+    ]
+  }
+]

@@ -15,7 +15,7 @@ export interface CotFormBConfig {
   /** 总开关。false = 完全不介入（回滚用）。默认 true */
   enabled?: boolean
   /**
-   * true = 只判定、只写 trace，不真的 replace。灰度观察用。默认 false
+   * true = 只判定、只写 trace，不真的 replace。灰度观察用。默认 true
    *
    * 回滚优先级：① dryRun=true → ② rulesEnabled=false → ③ mode='off' → ④ 摘掉插件
    */
@@ -27,7 +27,32 @@ export interface CotFormBConfig {
    *   'rules'   纯规则：零网络、零 await、同步 <10ms
    *   'off'     完全不介入，原样放行
    */
-  mode?: 'distill' | 'rules' | 'off'
+  mode?: 'distill' | 'rules' | 'birth' | 'checkpoint' | 'off'
+
+  /** 库启用默认不变。birth 开启状态编译后走确定性证据记录 + 两栏判断，无新增启用开关。 */
+  stateMemory?: boolean
+  /** false disables the ledger; current in-memory evidence is still available for compilation. */
+  stateSnapshot?: boolean
+  stateCoveredEvidence?: boolean
+  stateStructuralFirst?: boolean
+  stateEvidenceLimit?: number
+  stateCacheKeyTrace?: boolean
+  stateProblemUnits?: boolean
+  distillStream?: boolean
+  birthDeferredClaim?: boolean
+  /** Legacy maximum (1500ms); hybrid birth only uses already-ready results. */
+  birthFinishWaitMs?: number
+  birthMinChars?: number
+  birthArchive?: boolean
+  birthArchiveTimeoutMs?: number
+  birthMinSavedChars?: number
+  birth?: {
+    minChars?: number; archive?: boolean; handleInText?: boolean; producer?: string
+    archiveTimeoutMs?: number; finishWaitMs?: number; minSavedChars?: number
+  }
+  followHostProvider?: boolean
+  followProvider?: string
+  settingsPath?: string
 
   /**
    * 防线①：触发门槛。raw 思维链短于此值**不发起伴生调用**。默认 800。
@@ -74,7 +99,7 @@ export interface CotFormBConfig {
    */
   keepAlive?: boolean
   keepAliveMsecs?: number
-  /** 启动 / 每步之前用一次 HEAD 把 TLS 通道捂热。零 token（不产生 completion）。默认 true */
+  /** 启动 / 每步之前用一次 HEAD 把 TLS 通道捂热。零 token（不产生 completion）。默认 false */
   prewarm?: boolean
   /** 两次预热的最小间隔（ms）。默认 20000 */
   prewarmMinGapMs?: number
@@ -123,13 +148,13 @@ export interface CotFormBConfig {
   trace?: boolean
 }
 
-export declare const DEFAULTS: Required<CotFormBConfig>
+export declare const DEFAULTS: Readonly<CotFormBConfig>
 
 /**
  * 配置归一化：同时接受扁平键与用户文档里的嵌套写法（`distill: {...}` / `rules: {...}`）。
  * 嵌套键覆盖同名扁平键；非法 `mode` 回落到 `'distill'`（绝不带电裸奔）。
  */
-export declare function normalizeConfig(config?: CotFormBConfig): Required<CotFormBConfig>
+export declare function normalizeConfig(config?: CotFormBConfig): CotFormBConfig
 
 /** 组装三态提纯提示词（硬标签、无用户原话栏、无工具栏） */
 export declare function buildDistillPrompt(cot: string): string

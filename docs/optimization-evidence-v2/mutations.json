@@ -1,0 +1,87 @@
+[
+  {
+    "mutation": "model prose promoted to observed",
+    "detected": true,
+    "failures": [
+      "FAIL generateStateMemory creates unique compile IDs and inferred grades on real HTTP"
+    ]
+  },
+  {
+    "mutation": "compile namespace removed",
+    "detected": true,
+    "failures": [
+      "FAIL generateStateMemory creates unique compile IDs and inferred grades on real HTTP"
+    ]
+  },
+  {
+    "mutation": "entry ID treated as object identity",
+    "detected": true,
+    "failures": [
+      "FAIL same local ID does not associate unknown objects",
+      "FAIL separate commits with compile-local IDs preserve unrelated active states"
+    ]
+  },
+  {
+    "mutation": "dedupe before scope check",
+    "detected": true,
+    "failures": [
+      "FAIL same object/text in different scopes must remain two records",
+      "FAIL unknown scope does not erase known scope even with identical text",
+      "FAIL same-scope duplicates combine unique references only",
+      "FAIL equal wording with different validity is not silently deduplicated",
+      "FAIL equal wording with different evidence grades retains both records"
+    ]
+  },
+  {
+    "mutation": "legacy coverage authority retained",
+    "detected": true,
+    "failures": [
+      "FAIL legacy load keeps text but revokes unverified evidence grade and old coverage",
+      "FAIL post-migration commit covers only new evidence and keeps old prose"
+    ]
+  },
+  {
+    "mutation": "legacy model evidence not downgraded",
+    "detected": true,
+    "failures": [
+      "FAIL legacy load keeps text but revokes unverified evidence grade and old coverage",
+      "FAIL legacy provenance warning is visible, not hidden metadata",
+      "FAIL persistent model prose cannot claim observed even under new policy"
+    ]
+  },
+  {
+    "mutation": "provider update requires model change",
+    "detected": true,
+    "failures": [
+      "FAIL same model changing provider routes the next compile to the new endpoint/key"
+    ]
+  },
+  {
+    "mutation": "stream configuration remains mutable",
+    "detected": true,
+    "failures": [
+      "FAIL interleaved acquired streams retain session, evidence, model, provider and branch"
+    ]
+  },
+  {
+    "mutation": "dry-run stream gate removed",
+    "detected": true,
+    "failures": [
+      "FAIL REAL llm hook dry-run preserves stream identity and makes zero calls"
+    ]
+  },
+  {
+    "mutation": "disabled stream gate removed",
+    "detected": true,
+    "failures": [
+      "FAIL REAL llm hook disabled preserves stream identity and makes zero calls"
+    ]
+  },
+  {
+    "mutation": "invalid existing snapshot overwritten",
+    "detected": true,
+    "failures": [
+      "FAIL commit never overwrites a future-policy or corrupt existing snapshot"
+    ]
+  }
+]

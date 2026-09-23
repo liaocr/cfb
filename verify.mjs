@@ -2,7 +2,7 @@
 /**
  * verify.mjs —— 一条命令跑完本包**全部**自测。
  *
- *   node verify.mjs            跑全部（8 个套件）
+ *   node verify.mjs            跑全部（16 个套件）
  *   node verify.mjs --json     机器可读输出
  *
  * 退出码 0 = 所有套件通过；非 0 = 有失败（并逐条列出）。
@@ -28,6 +28,15 @@ const SUITES = [
   'provider-endpoint.selftest.mjs',
   'selftest.mjs',
   'selftest-birth.mjs',
+  'optimization.selftest.mjs',
+  'memory-quality.selftest.mjs',
+  'incremental.selftest.mjs',
+  'evidence-views.selftest.mjs',
+  'late-identity.selftest.mjs',
+  'hybrid.selftest.mjs',
+  'grounding.selftest.mjs',
+  'evidence-sharing.selftest.mjs',
+  'efficiency.selftest.mjs',
 ]
 
 const rows = []
@@ -66,9 +75,10 @@ if (json) {
   }
   const tp = rows.reduce((a, r) => a + r.pass, 0)
   const tf = rows.reduce((a, r) => a + r.fail, 0)
+  const ts = rows.reduce((a, r) => a + (r.skips || 0), 0)
   console.log('')
-  console.log('  合计: ' + tp + ' 通过 / ' + tf + ' 失败   (' + (rows.length - bad.length) + '/' + rows.length + ' 套件通过)')
-  console.log(bad.length === 0 ? '  ==> 全部通过' : '  ==> 有失败，见上')
+  console.log('  合计: ' + tp + ' 通过 / ' + tf + ' 失败 / ' + ts + ' 跳过   (' + (rows.length - bad.length) + '/' + rows.length + ' 套件通过)')
+  console.log(bad.length === 0 ? (ts ? '  ==> 已执行检查通过；存在跳过项，非完整宿主验证' : '  ==> 全部通过') : '  ==> 有失败，见上')
   console.log('')
 }
 process.exit(bad.length === 0 ? 0 : 1)

@@ -1,3 +1,4 @@
+import { validReceipt } from './evidence-views.js'
 /**
  * ★★ 结构化状态快照持久化（2026-09-22，用户批准的"快照持久化"路线）★★
  *
@@ -41,7 +42,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { mergeByEvidence, renderCheckpoint, SCHEMA_VERSION, COMPILER_VERSION, RENDERER_VERSION } from './state-memory.js'
+import { mergeByEvidence, renderCheckpoint, SCHEMA_VERSION, COMPILER_VERSION, RENDERER_VERSION, MEMORY_POLICY_VERSION, MODEL_MEMORY_PREAMBLE } from './state-memory.js'
 
 /** 快照文件格式版本。与 state-memory 的 SCHEMA_VERSION 是两件事，各自演进。 */
 export const SNAPSHOT_SCHEMA_VERSION = 1
@@ -49,21 +50,17 @@ export const SNAPSHOT_SCHEMA_VERSION = 1
 /** 覆盖集合上限：超过就只保留最大的 N 个（防无界增长）。仅影响极长会话。 */
 export const COVERED_SEQ_MAX = 4000
 
-const LOCK_WAIT_MS = 2500
-const LOCK_STALE_MS = 20000
 
 // ── 路径 ────────────────────────────────────────────────────────────────────
-let _dir = null
-
-/** 快照目录：~/.dsh/storages/cot-form-b/snapshots（与 cover.json 同一 storages 根）。 */
+/** Follow the same DSH_HOME contract as the plugin; do not cache a foreign home. */
 export function snapshotsDir() {
-  if (_dir) return _dir
   try {
-    const d = path.join(os.homedir(), '.dsh', 'storages', 'cot-form-b', 'snapshots')
+    const home = process.env.DSH_HOME && process.env.DSH_HOME.trim()
+      ? process.env.DSH_HOME : path.join(os.homedir(), '.dsh')
+    const d = path.join(home, 'storages', 'cot-form-b', 'snapshots')
     fs.mkdirSync(d, { recursive: true })
-    _dir = d
-  } catch { _dir = null }
-  return _dir
+    return d
+  } catch { return null }
 }
 
 /** 分支键：宿主当前没有分支概念 ⇒ 恒为 'main'；一旦宿主提供 branchId，不同分支互不串味。 */
@@ -71,10 +68,10 @@ export function normalizeBranchId(session) {
   if (session && typeof session === 'object') {
     for (const k of ['branchId', 'branch', 'parentId', 'forkFrom']) {
       const v = session[k]
-      if (v != null && String(v).trim()) return String(v).trim().slice(0, 120)
+      if (v != null && String(v).trim()) return String(v).trim()
     }
   }
-  if (typeof session === 'string' && session.trim()) return session.trim().slice(0, 120)
+  if (typeof session === 'string' && session.trim()) return session.trim()
   return 'main'
 }
 
@@ -102,46 +99,28 @@ export function snapshotIdOf(sessionId, branchId, revision) {
   } catch { return null }
 }
 
-// ── 同步小睡（Node 主线程允许 Atomics.wait）────────────────────────────────
-function sleepSync(ms) {
-  try {
-    const sab = new SharedArrayBuffer(4)
-    Atomics.wait(new Int32Array(sab), 0, 0, ms)
-  } catch { /* 退化为忙等 */ const t = Date.now(); while (Date.now() - t < ms) { /* spin */ } }
-}
-
-function lockPathFor(file) { return file + '.lock' }
-
-/**
- * 取文件锁（best-effort）。
- * 为什么要锁：迟到的旧任务与新一轮编译可能同时提交；"先读-再归并-再写"的窗口若被并发插入，
- * 后写者会**覆盖**先写者的归并结果 ⇒ 丢状态。加锁后同一进程内串行、跨进程也基本串行。
- * 拿不到锁**不阻塞主流程**：仍然执行归并写（宁可极小概率丢一次归并，也不许卡住主链路）。
- */
+// No Atomics.wait/busy loop on the gateway thread. Lock contention must fail
+// closed, never turn into an unlocked read/merge/write. Stale locks are not
+// stolen by age: a suspended live writer can still own one.
 function acquireLock(file) {
-  const lp = lockPathFor(file)
-  const deadline = Date.now() + LOCK_WAIT_MS
-  for (;;) {
-    try {
-      const fd = fs.openSync(lp, 'wx')
-      try { fs.writeSync(fd, String(process.pid) + '@' + Date.now()) } catch {}
-      fs.closeSync(fd)
-      return true
-    } catch (e) {
-      if (!e || e.code !== 'EEXIST') return false
-      // 陈旧锁（进程崩了没清）⇒ 抢占
-      try {
-        const st = fs.statSync(lp)
-        if (Date.now() - st.mtimeMs > LOCK_STALE_MS) { fs.unlinkSync(lp); continue }
-      } catch {}
-      if (Date.now() > deadline) return false
-      sleepSync(25)
-    }
-  }
+  const lock = file + '.lock'
+  let fd
+  try {
+    fd = fs.openSync(lock, 'wx')
+    fs.writeSync(fd, String(process.pid) + '@' + Date.now())
+    return true
+  } catch {
+    if (fd !== undefined) { try { fs.unlinkSync(lock) } catch {} }
+    return false
+  } finally { if (fd !== undefined) { try { fs.closeSync(fd) } catch {} } }
 }
-
-function releaseLock(file) {
-  try { fs.unlinkSync(lockPathFor(file)) } catch {}
+function releaseLock(file) { try { fs.unlinkSync(file + '.lock') } catch {} }
+function atomicWrite(file, value) {
+  const tmp = file + '.tmp-' + process.pid + '-' + crypto.randomBytes(4).toString('hex')
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(value), 'utf8')
+    fs.renameSync(tmp, file)
+  } finally { try { fs.unlinkSync(tmp) } catch {} }
 }
 
 // ── 构造 / 校验 ─────────────────────────────────────────────────────────────
@@ -151,6 +130,7 @@ export function emptySnapshot(sessionId, branchId) {
   return {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     compilerVersion: COMPILER_VERSION,
+    memoryPolicyVersion: MEMORY_POLICY_VERSION,
     rendererVersion: RENDERER_VERSION,
     sessionId: sessionId == null ? null : String(sessionId),
     branchId: branchId == null ? 'main' : String(branchId),
@@ -160,6 +140,7 @@ export function emptySnapshot(sessionId, branchId) {
     coverage: { coveredSeqs: [], upTo: null, entries: 0, at: null, sourceCutSeq: null },
     applied: null,
     entries: [],
+    viewReceipts: [],
   }
 }
 
@@ -177,16 +158,41 @@ export function validateSnapshot(obj, opts = {}) {
       return { ok: false, reason: 'branch-mismatch' }
     }
     if (!Array.isArray(obj.entries)) return { ok: false, reason: 'entries-not-array' }
+    if (!obj.entries.every((e) => e && typeof e.content === 'string' && e.content.trim()
+      && ['goal', 'state', 'judgment', 'constraint', 'attempt', 'gap'].includes(e.category))) {
+      return { ok: false, reason: 'invalid-entry' }
+    }
+    if (!Number.isSafeInteger(obj.revision) || obj.revision < 0) return { ok: false, reason: 'invalid-revision' }
     const cov = obj.coverage && typeof obj.coverage === 'object' ? obj.coverage : {}
     const seqs = Array.isArray(cov.coveredSeqs) ? cov.coveredSeqs : []
+    if (seqs.length && !obj.entries.length) return { ok: false, reason: 'coverage-without-state' }
+    if (!seqs.every((n) => Number.isSafeInteger(n) && n >= 0)) return { ok: false, reason: 'invalid-coverage' }
+    const policy = obj.memoryPolicyVersion == null ? 1 : obj.memoryPolicyVersion
+    if (!Number.isSafeInteger(policy) || policy < 1 || policy > MEMORY_POLICY_VERSION) {
+      return { ok: false, reason: 'memory-policy-mismatch' }
+    }
+    const legacy = policy < MEMORY_POLICY_VERSION
+    if (obj.viewReceipts != null && (!Array.isArray(obj.viewReceipts) || !obj.viewReceipts.every(validReceipt) || (obj.viewReceipts.length && !obj.entries.length))) return { ok: false, reason: 'invalid-view-receipts' }
+    // Preserve old prose, but never treat the old blanket 'observed' assignment
+    // as independent verification. Read migration does not modify the file.
+    const entries = obj.entries.map((e) => {
+      const unverified = e.evidence === 'observed' &&
+        (e.origin === 'model' || e.source === 'model' || (e.origin == null && e.source == null))
+      return unverified ? { ...e, evidence: 'inferred', legacyEvidence: 'observed' } : { ...e }
+    })
     const clean = []
     for (const v of seqs) { const n = Number(v); if (Number.isFinite(n) && n >= 0) clean.push(n) }
     clean.sort((a, b) => a - b)
+    // Old merges may already have conflated compile-local m1 IDs. No safe way
+    // to infer which evidence survived: retain prose, revoke omission authority.
+    if (legacy) clean.length = 0
     return {
       ok: true,
       snapshot: {
         schemaVersion: SNAPSHOT_SCHEMA_VERSION,
         compilerVersion: COMPILER_VERSION,
+        memoryPolicyVersion: MEMORY_POLICY_VERSION,
+        migratedFromPolicy: legacy ? policy : (obj.migratedFromPolicy ?? null),
         rendererVersion: String(obj.rendererVersion || RENDERER_VERSION),
         sessionId: obj.sessionId == null ? null : String(obj.sessionId),
         branchId: obj.branchId == null ? 'main' : String(obj.branchId),
@@ -197,13 +203,14 @@ export function validateSnapshot(obj, opts = {}) {
           coveredSeqs: dedupeSeqs(clean),
           upTo: clean.length ? clean[clean.length - 1] : null,
           entries: Number(cov.entries) || 0,
-          at: cov.at == null ? null : Number(cov.at),
+          at: legacy ? null : (cov.at == null ? null : Number(cov.at)),
           sourceCutSeq: cov.sourceCutSeq == null ? null : Number(cov.sourceCutSeq),
         },
-        applied: (obj.applied && typeof obj.applied === 'object')
+        applied: (!legacy && obj.applied && typeof obj.applied === 'object')
           ? { at: obj.applied.at == null ? null : Number(obj.applied.at), revision: obj.applied.revision == null ? null : Number(obj.applied.revision), mode: obj.applied.mode == null ? null : String(obj.applied.mode), seq: obj.applied.seq == null ? null : Number(obj.applied.seq) }
           : null,
-        entries: obj.entries.slice(),
+        entries,
+        viewReceipts: legacy ? [] : [...new Set(obj.viewReceipts || [])].slice(-4000),
       },
     }
   } catch (e) { return { ok: false, reason: 'validate-threw:' + String((e && e.message) || e) } }
@@ -266,26 +273,33 @@ export function commitSnapshot(o = {}) {
   if (!f) return { ok: false, snapshot: null, reason: 'no-dir' }
 
   const locked = acquireLock(f)
+  if (!locked) return { ok: false, snapshot: null, reason: 'lock-busy' }
   try {
     // ① 权威基线 = 磁盘现值（**每次重新读**，不用内存缓存 ⇒ 跨进程也安全）
-    const prev = loadSnapshot(sessionId, branchId, { file: f }) || emptySnapshot(sessionId, branchId)
+    const loaded = loadSnapshot(sessionId, branchId, { file: f })
+    if (!loaded && fs.existsSync(f)) return { ok: false, snapshot: null, reason: 'invalid-existing-snapshot' }
+    const prev = loaded || emptySnapshot(sessionId, branchId)
 
     // ② 归并 entries：证据驱动，时间顺序只决定处理顺序
     const incoming = Array.isArray(o.entries) ? o.entries : []
+    if (o.viewReceipts != null && (!Array.isArray(o.viewReceipts) || !o.viewReceipts.every(validReceipt))) return { ok: false, reason: 'invalid-view-receipts' }
+    const incomingCheck = validateSnapshot({ ...emptySnapshot(sessionId, branchId), entries: incoming })
+    if (!incoming.length || !incomingCheck.ok) {
+      return { ok: false, snapshot: null, reason: 'invalid-entries' }
+    }
     let mergedEntries = prev.entries
     let added = 0
     try {
       const clone = (x) => JSON.parse(JSON.stringify(x))
-      const all = prev.entries.map(clone).concat(incoming.map(clone))
+      const all = prev.entries.map(clone).concat(incomingCheck.snapshot.entries.map(clone))
       const m = mergeByEvidence(all)
       if (Array.isArray(m)) {
         mergedEntries = m
         added = Math.max(0, mergedEntries.length - prev.entries.length)
       }
-    } catch {
-      // 归并失败 ⇒ 退化为"直接采用本轮"，绝不因为归并器出问题而丢状态
-      mergedEntries = incoming.slice()
-      added = mergedEntries.length
+    } catch (e) {
+      // Never retain old coverage while discarding the state it represents.
+      return { ok: false, snapshot: null, reason: 'merge-failed:' + String(e.message || e) }
     }
 
     // ③ 覆盖集合 = 并集（只增不减；本轮新覆盖的并入基线）
@@ -306,6 +320,8 @@ export function commitSnapshot(o = {}) {
     const snapshot = {
       schemaVersion: SNAPSHOT_SCHEMA_VERSION,
       compilerVersion: COMPILER_VERSION,
+      memoryPolicyVersion: MEMORY_POLICY_VERSION,
+      migratedFromPolicy: prev.migratedFromPolicy ?? null,
       rendererVersion: RENDERER_VERSION,
       sessionId,
       branchId,
@@ -322,12 +338,11 @@ export function commitSnapshot(o = {}) {
       // ★ 宿主已应用：提交编译结果**不等于**已经进入主请求面。初始一律 null。
       applied: prev.applied || null,
       entries: mergedEntries,
+      viewReceipts: [...new Set([...(prev.viewReceipts || []), ...(o.viewReceipts || [])])].slice(-4000),
     }
 
     // ④ 先写完整快照，再原子替换（tmp 与目标同目录 ⇒ rename 同文件系统，原子）
-    const tmp = f + '.tmp-' + process.pid + '-' + crypto.randomBytes(4).toString('hex')
-    fs.writeFileSync(tmp, JSON.stringify(snapshot), 'utf8')
-    fs.renameSync(tmp, f)
+    atomicWrite(f, snapshot)
 
     return { ok: true, snapshot, mergedFrom: Number(prev.revision) || 0, added, newSeqs, locked }
   } catch (e) {
@@ -345,9 +360,10 @@ export function markSnapshotApplied(sessionId, branchId, info = {}) {
   const f = snapshotPath(sessionId, branchId)
   if (!f) return false
   const locked = acquireLock(f)
+  if (!locked) return false
   try {
     const prev = loadSnapshot(sessionId, branchId, { file: f })
-    if (!prev) return false
+    if (!prev || info.revision !== prev.revision) return false
     const next = Object.assign({}, prev, {
       applied: {
         at: info.at == null ? Date.now() : Number(info.at),
@@ -356,9 +372,7 @@ export function markSnapshotApplied(sessionId, branchId, info = {}) {
         seq: info.seq == null ? null : Number(info.seq),
       },
     })
-    const tmp = f + '.tmp-' + process.pid + '-' + crypto.randomBytes(4).toString('hex')
-    fs.writeFileSync(tmp, JSON.stringify(next), 'utf8')
-    fs.renameSync(tmp, f)
+    atomicWrite(f, next)
     return true
   } catch { return false } finally {
     if (locked) releaseLock(f)
@@ -370,6 +384,7 @@ export function markSnapshotApplied(sessionId, branchId, info = {}) {
 /** 覆盖集合 → Set（消费侧精确成员判定用）。 */
 export function coveredSeqSet(snapshot) {
   const s = new Set()
+  if (!snapshot || snapshot.memoryPolicyVersion !== MEMORY_POLICY_VERSION) return s
   try {
     const list = snapshot && snapshot.coverage && Array.isArray(snapshot.coverage.coveredSeqs) ? snapshot.coverage.coveredSeqs : []
     for (const v of list) { const n = Number(v); if (Number.isFinite(n)) s.add(n) }
@@ -383,18 +398,17 @@ export function coveredSeqSet(snapshot) {
  */
 export function snapshotToText(snapshot, opts = {}) {
   try {
-    if (!snapshot) return ''
+    const checked = validateSnapshot(snapshot)
+    if (!checked.ok || !checked.snapshot.entries.length) return ''
+    snapshot = checked.snapshot
     const max = opts.maxChars == null ? 12000 : Number(opts.maxChars)
-    let t = ''
-    try { t = String(renderCheckpoint(snapshot.entries) || '') } catch { t = '' }
-    if (!t.trim()) {
-      // 渲染器失败也必须给出**某些**可用状态：退化为条目原文拼接
-      try {
-        t = (snapshot.entries || []).map((e) => '· ' + String((e && (e.text || e.value || e.statement)) || '')).filter(Boolean).join('\n')
-      } catch { t = '' }
-    }
-    if (t.length > max) t = t.slice(0, max) + '\n〔快照过长已截断：完整内容见 snapshot revision ' + snapshot.revision + '〕'
-    return t
+    const preamble = snapshot.entries.some(e => e.origin === 'model' && e.evidence !== 'observed')
+      ? MODEL_MEMORY_PREAMBLE : undefined
+    const text = String(renderCheckpoint(snapshot.entries, { preamble }) || '')
+    // Partial rendering cannot justify filtering the full coverage set.
+    // No silent slicing or fallback that drops scope/conflict/superseded markers.
+    if (!text.trim() || !(max > 0) || text.length > max) return ''
+    return text
   } catch { return '' }
 }
 
@@ -404,6 +418,8 @@ export function snapshotStats(snapshot) {
     if (!snapshot) return null
     return {
       revision: snapshot.revision,
+      memoryPolicyVersion: snapshot.memoryPolicyVersion ?? 1,
+      migratedFromPolicy: snapshot.migratedFromPolicy ?? null,
       entries: (snapshot.entries || []).length,
       covered: (snapshot.coverage && snapshot.coverage.coveredSeqs ? snapshot.coverage.coveredSeqs.length : 0),
       upTo: snapshot.coverage ? snapshot.coverage.upTo : null,
@@ -418,7 +434,7 @@ export function snapshotStats(snapshot) {
 
 /** CAS 目录（dsh-context-memory-bundle 提供）。 */
 export function casCatalogPath() {
-  try { return path.join(os.homedir(), '.dsh', 'storages', 'dsh-context-memory', 'catalog.jsonl') } catch { return null }
+  try { return path.join(process.env.DSH_HOME && process.env.DSH_HOME.trim() ? process.env.DSH_HOME : path.join(os.homedir(), '.dsh'), 'storages', 'dsh-context-memory', 'catalog.jsonl') } catch { return null }
 }
 
 /**
@@ -452,21 +468,19 @@ export function scanCatalog(opts = {}) {
 export async function readCasText(store, rec, sessionId) {
   try {
     if (!store || typeof store.readRangeByHandle !== 'function') return null
-    const want = Math.max(1, Number(rec.lines) || 1)
     const lines = []
-    let start = 1
+    let start = 1, chars = 0
     for (let guard = 0; guard < 200; guard++) {
-      const out = await store.readRangeByHandle(rec.handle, sessionId, start, Math.min(400, want - lines.length + 1))
-      const got = (out && Array.isArray(out.lines)) ? out.lines : []
-      if (!got.length) break
-      for (const l of got) lines.push(l)
-      if (out && out.atEof) break
-      if (lines.length >= want) break
-      const next = out && out.nextLine != null ? Number(out.nextLine) : null
-      if (!next || next <= start) break
-      start = next
+      const out = await store.readRangeByHandle(rec.handle, sessionId, start, 400)
+      if (!out || !Array.isArray(out.lines) || !out.lines.every(l => typeof l === 'string')) return null
+      chars += out.lines.reduce((n, l) => n + l.length + 1, 0)
+      if (chars > 4 * 1024 * 1024) return null
+      lines.push(...out.lines)
+      if (out.atEof === true) return lines.length ? lines.join('\n') : null
+      if (!out.lines.length || !Number.isSafeInteger(out.nextLine) || out.nextLine <= start) return null
+      start = out.nextLine
     }
-    return lines.length ? lines.join('\n') : null
+    return null // no EOF, no complete artifact
   } catch { return null }
 }
 
@@ -493,20 +507,26 @@ export async function recoverSnapshot(o = {}) {
   const scan = scanCatalog({ producer: 'cot-snapshot', sessionId })
   report.cas = { records: scan.records.length, ok: scan.ok, reason: scan.reason || null }
   if (scan.ok && scan.records.length && o.store) {
-    for (const rec of scan.records) {
+    const candidates = []
+    for (const rec of scan.records.slice(0, 100)) {
       const text = await readCasText(o.store, rec, sessionId)
-      if (!text) continue
+      if (!text || typeof rec.sha256 !== 'string' || crypto.createHash('sha256').update(text).digest('hex') !== rec.sha256) continue
       let obj = null
       try { obj = JSON.parse(text) } catch { continue }
       const v = validateSnapshot(obj, { sessionId, branchId })
-      if (v.ok) {
-        report.ok = true
-        report.snapshot = v.snapshot
-        report.source = 'cas'
-        // 物化到本地，供同步的 birthStart 读取（已有更新版本则不覆盖）
-        if (o.materialize !== false) report.materialized = materializeSnapshot(sessionId, branchId, v.snapshot)
-        return report
+      if (v.ok) candidates.push(v.snapshot)
+    }
+    candidates.sort((a, b) => b.revision - a.revision)
+    if (candidates.length) {
+      const top = candidates.filter(s => s.revision === candidates[0].revision)
+      if (new Set(top.map(s => JSON.stringify(s))).size > 1) { report.reason = 'ambiguous-cas-revision'; return report }
+      report.snapshot = candidates[0]; report.source = 'cas'
+      if (o.materialize !== false) {
+        report.materialized = materializeSnapshot(sessionId, branchId, report.snapshot)
+        report.snapshot = loadSnapshot(sessionId, branchId)
+        if (!report.snapshot) { report.reason = 'materialize-failed'; return report }
       }
+      report.ok = true; return report
     }
   }
 
@@ -523,16 +543,19 @@ export async function recoverSnapshot(o = {}) {
  * 保护：本地已有**更新或同版**的快照 ⇒ 不覆盖（绝不回退状态）。
  */
 export function materializeSnapshot(sessionId, branchId, snapshot) {
+  const v = validateSnapshot(snapshot, { sessionId, branchId })
+  if (!v.ok) return { ok: false, reason: v.reason }
+  const f = snapshotPath(sessionId, branchId)
+  if (!f) return { ok: false, reason: 'no-dir' }
+  if (!acquireLock(f)) return { ok: false, reason: 'lock-busy' }
   try {
-    const f = snapshotPath(sessionId, branchId)
-    if (!f) return { ok: false, reason: 'no-dir' }
     const cur = loadSnapshot(sessionId, branchId, { file: f })
-    if (cur && Number(cur.revision) >= Number(snapshot.revision)) return { ok: false, reason: 'newer-local-present' }
-    const tmp = f + '.tmp-' + process.pid + '-' + crypto.randomBytes(4).toString('hex')
-    fs.writeFileSync(tmp, JSON.stringify(snapshot), 'utf8')
-    fs.renameSync(tmp, f)
+    if (!cur && fs.existsSync(f)) return { ok: false, reason: 'invalid-existing-snapshot' }
+    if (cur && cur.revision >= v.snapshot.revision) return { ok: false, reason: 'newer-local-present' }
+    atomicWrite(f, v.snapshot)
     return { ok: true, path: f }
-  } catch (e) { return { ok: false, reason: String((e && e.message) || e) } }
+  } catch (e) { return { ok: false, reason: String(e.message || e) } }
+  finally { releaseLock(f) }
 }
 
 /** 从任意 JSON 文本尝试解析出结构化快照（离线审计用；不做兼容性放宽）。 */

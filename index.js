@@ -1,3 +1,7 @@
+import { createExactFlights } from './exact-flights.js'
+import { createConsumptionMeter } from './consumption.js'
+import { prepareCompilerEvidence, prepareJudgmentPrompt, JUDGMENT_PROMPT_VERSION } from './evidence-ledger.js'
+import { selectEvidenceViews, validReceipt } from './evidence-views.js'
 // dsh-cot-form-b —— 形态 B（通道一）：尾部即时思维链提纯
 //
 // 人话：模型这一轮写完思维链后，当场把它压成一份「状态结算单」，
@@ -39,6 +43,7 @@
 //     字符 → token → 钱 的换算还缺一个可信的字符/token 比，
 //     且 §九 硬规矩#0 禁止把商户缓存信息（命中率/cache_hit_tokens）引入任何计算。
 // ─────────────────────────────────────────────────────────────────────────────
+import { createCompileLanes } from './compile-lane.js'
 import fs from 'node:fs'
 import http from 'node:http'
 import https from 'node:https'
@@ -54,7 +59,7 @@ import {
   normalizeEvidenceEvent, assembleEvidence, classifyUserEventSource, ATTRIBUTION,
   LEDGER_MARKERS, RUNTIME_MARKERS,
   renderIncrement, buildProblemUnits, renderProblemUnits, mergeByEvidence,
-  SCHEMA_VERSION, COMPILER_VERSION, RENDERER_VERSION,
+  SCHEMA_VERSION, COMPILER_VERSION, RENDERER_VERSION, MEMORY_POLICY_VERSION, MODEL_MEMORY_PREAMBLE,
 } from './state-memory.js'
 // ★★ 快照持久化（2026-09-22，用户批准路线）：把编译成功后的**完整结构化状态**存下来，
 //   下一轮直接从这里注入 —— 不再"从看板里捞快照"（看板是渲染产物且会被宿主压缩回收）。
@@ -78,7 +83,7 @@ export { normalizeEvidenceEvent, assembleEvidence } from './state-memory.js'
 const SELF_ID = (() => {
   try { const s = fs.statSync(new URL(import.meta.url)); return s.size + '@' + Math.round(s.mtimeMs) } catch { return 'unknown' }
 })()
-const DEP_ID = ['emitter.js', 'imperative.js', 'balanced-span.js', 'headroom.js', 'rules.js']
+const DEP_ID = ['emitter.js', 'imperative.js', 'balanced-span.js', 'headroom.js', 'rules.js', 'state-memory.js', 'snapshot-store.js', 'compile-lane.js', 'evidence-views.js', 'evidence-ledger.js', 'evidence-input.js', 'evidence-storage.js', 'consumption.js']
   .map((f) => {
     try { const s = fs.statSync(new URL('./' + f, import.meta.url)); return f + '=' + s.size + '@' + Math.round(s.mtimeMs) } catch { return f + '=?' }
   })
@@ -256,18 +261,33 @@ export const DEFAULTS = {
   //   打开后：插件与蒸馏服务之间改用 stream:true；会话协议 / 用户可见行为 / 兜底语义全不变。
   //   目的只是把"响应到达前的等待"与"可见输出阶段"分开，为下一刀提供证据。
   distillStream: false,
-  // ★★ 2026-09-21 任务状态记忆（有证据支撑）★★
-  //   打开后：蒸馏的输入从"裸 reasoning"升格为【证据信封】（原 reasoning + 用户原话 +
-  //   已返回的工具结果 + 宿主真实状态），提示词改走六栏状态编译，产物经
-  //   MemoryProjection 管理有效性后渲染。
-  //   ⚠ 仍然是**一次**模型调用，不新增串行调用链；提交仍走现有 birth/checkpoint 通路。
-  //   默认 false：必须先显式打开，旧路径完全不变，可随时回滚。
+  // ★★ 2026-09-22 开关切分（用户令）："压缩"与"状态记忆"原本焊死在 stateMemory 一个开关上 ★★
+  //   实测病征（本机 trace.log，27 次副编译）：
+  //     要压缩的原文（birth-fired.rawChars）  均值  5,371   合计   145,009
+  //     实际发出的 prompt（promptChars）      均值 40,522   合计 1,094,097
+  //                                            ⇒ 放大 7.5x，其中工具正文占 58.7%
+  //   根因：触发粒度是「每段 reasoning 结束」，输入范围却是「整个 60 节点证据窗口」。
+  //     每编译 5,371 字符的推理，就要重发 23,800 字符的窗口证据。
+  //   后果：副模型手握 23K 工具正文 + 11K 其他材料写两栏判断 ⇒ 1200 输出上限必然不够
+  //     ⇒ finish=length 60% / timeout 30% ⇒ 27 次里 0 次替换成功。
+  //   切分后两者互不拖累：
+  //     stateCompress → 输入=这段 reasoning，输出=它的摘要。**真压缩**
+  //     stateMemory   → 证据账本 + 状态快照 + 判断编译。**状态记忆**
+  //   ⚠ 两者仍共用同一条传输/重试/超时/取消机制（仍是**一次**模型调用）。
+  //   ⚠ 同时打开时 stateMemory 优先（它的产物已是判断稿，不再做二次摘要）。
+  //   ⚠ 预检在 makeConfig 里：两者都开会被显式拒绝，绝不静默二选一。
   stateMemory: false,
+  // ★ 纯压缩：把这段 reasoning 改写成更短的摘要。与 stateMemory 独立开关。
+  //   输入 ≈ 本段推理，不背整窗证据 ⇒ 输入体量回到设计预期，压缩率可核。
+  stateCompress: false,
   // 证据采集只看最后 N 个 surface 节点：**关联优先，不全文堆积**
+  // ⚠ 只在 stateMemory 打开时才进入编译输入；stateCompress 不采集证据。
   stateEvidenceLimit: 60,
   // ★ 编译输入止血（2026-09-22）：已覆盖的旧工具证据不再重复发送。
-  //   设 false 可一键回滚到「每轮全量重发」的旧行为。
+  //   此字段只控制旧兼容路径；默认 hybrid 不再依赖模型覆盖集合。
   stateCoveredEvidence: true,
+  stateSnapshot: true,
+  // Legacy-only options below; hybrid birth bypasses old body views and lanes.
   // ★ 结构性上下文跨窗口检索（2026-09-22，A 方案）。
   //   设 false 可一键回滚到「只看最后 N 个节点」的旧行为。
   // ★ A 方案（跨窗口结构节点检索）**默认关闭**（2026-09-22 用户裁定"暂不上线"）。
@@ -337,7 +357,46 @@ export function normalizeConfig(config = {}) {
   }
   // ⚠ 'birth' 必须在这个白名单里，否则会被静默重置回 DEFAULTS.mode
   if (['distill', 'rules', 'birth', 'checkpoint', 'off'].indexOf(c.mode) === -1) c.mode = DEFAULTS.mode
+  c.retiredOptions = ['stateEvidenceViews', 'stateEvidenceBodyBudget', 'stateSnapshotMirror', 'stateCompileQueue'].filter(k => Object.hasOwn(config, k))
+  for (const k of c.retiredOptions) delete c[k]
+  c.compileMode = resolveCompileMode(c)
+  if (c.stateMemory === true && c.stateCompress === true) {
+    // 绝不静默二选一：用户显式配了两个互斥目标，就在 BOOT 里报出来，并明确谁生效。
+    c.compileModeConflict = { stateMemory: true, stateCompress: true, winner: 'stateMemory' }
+  }
   return c
+}
+
+/**
+ * ★★ 2026-09-22 开关切分：把「压缩」与「状态记忆」的裁决收到一处。★★
+ *
+ * 背景：这两件事原本并排在同一个 stateMemory 开关下，导致
+ *   · 想要压缩的人打开 stateMemory，拿到的却是「整窗证据 → 状态判断」的编译；
+ *   · 编译输入 40,522 字符去压 5,371 字符的推理（7.5x），输出上限 1200 必然不够。
+ *
+ * 现在三个互斥模式，唯一裁决点：
+ *   'memory'   stateMemory   → 证据账本 / 快照 / 两栏判断（状态记忆）
+ *   'compress' stateCompress → 本段 reasoning 的摘要（纯压缩）
+ *   'legacy'   都没开        → 走进度条式的旧蒸馏提示词（保持既有行为）
+ *
+ * @returns {'memory'|'compress'|'legacy'}
+ */
+export function resolveCompileMode(cfg) {
+  if (!cfg) return 'legacy'
+  if (cfg.stateMemory === true) return 'memory'
+  if (cfg.stateCompress === true) return 'compress'
+  return 'legacy'
+}
+
+/**
+ * ★ 2026-09-22 容错读取：birthStart / birthFinish 可能收到**未经 normalizeConfig** 的 cfg
+ *   （裸库直调、旧回归夹具就是这么传的）。
+ *   若直接读 cfg.compileMode，缺字段时一律落到 undefined ⇒ 静默走 legacy，
+ *   而这正是本仓库栽过多次的「配了却没生效」。所以这里缺字段就地裁决。
+ */
+function compileModeOf(cfg) {
+  if (!cfg) return 'legacy'
+  return cfg.compileMode != null ? cfg.compileMode : resolveCompileMode(cfg)
 }
 
 // ── 提示词：三态硬标签 ───────────────────────────────────────────────────────
@@ -880,7 +939,16 @@ export function requestStream(urlStr, { method = 'POST', headers = {}, body = nu
     const events = []
     let killer = null
     let settled = false
-    const done = (fn, v) => { if (settled) return; settled = true; if (killer) clearTimeout(killer); fn(v) }
+    const done = (fn, v) => {
+      if (settled) return
+      settled = true; if (killer) clearTimeout(killer)
+      meta.totalMs ??= Date.now() - meta.requestSentAt
+      meta.toFirstEventMs = meta.firstEventAt == null ? null : meta.firstEventAt - meta.requestSentAt
+      meta.toFirstContentMs = meta.firstContentAt == null ? null : meta.firstContentAt - meta.requestSentAt
+      meta.contentSpanMs = meta.firstContentAt == null ? null : meta.lastContentAt - meta.firstContentAt
+      meta.afterContentMs = meta.lastContentAt == null ? null : Date.now() - meta.lastContentAt
+      fn(v)
+    }
     meta.requestSentAt = Date.now()
 
     const req = lib.request({
@@ -907,11 +975,24 @@ export function requestStream(urlStr, { method = 'POST', headers = {}, body = nu
         if (data === '[DONE]') { meta.done = true; return }
         if (meta.firstEventAt === null) meta.firstEventAt = Date.now()
         meta.eventCount += 1
+        try {
+          const obj = JSON.parse(data)
+          const usage = obj.usage || obj.response?.usage || obj.message?.usage
+          if (usage && typeof usage === 'object') meta.providerReportedUsage = { ...meta.providerReportedUsage, ...usage }
+          const content = obj.type === 'response.output_text.delta' ? obj.delta : obj.choices?.[0]?.delta?.content
+          if (typeof content === 'string' && content.length) {
+            meta.firstContentAt ??= Date.now(); meta.lastContentAt = Date.now()
+          }
+        } catch {}
         events.push({ at: Date.now(), data })
       }
       res.on('data', (c) => {
         meta.chunks += 1
         meta.bytes += c.length
+        if (meta.bytes > 4 * 1024 * 1024) {
+          const err = new Error('stream response exceeds 4MB'); err.meta = meta
+          req.destroy(err); done(reject, err); return
+        }
         // 上限 4MB：正常 completion 远小于此；超限即放弃兜底，绝不无限增长
         if (rawChunks && meta.bytes <= 4 * 1024 * 1024) rawChunks.push(c)
         buf = buf.length ? Buffer.concat([buf, c]) : c
@@ -1043,7 +1124,7 @@ function makePrewarmer(cfg, trace) {
 
 // 网关把「不认识的参数」拒掉时的错误长这样：http 400 ...
 function isParamRejection(e) {
-  return /^http 4\d\d/.test(String((e && e.message) || e))
+  return /^http (400|422)\b/.test(String((e && e.message) || e))
 }
 
 /**
@@ -1091,10 +1172,10 @@ export function assembleSseFrames(text) {
 export function collectSseFrames(datas, style) {
   let out = ''
   let finish = ''
-  let reasoningChars = 0
+  let reasoningChars = 0, badFrame = 0
   for (const data of (Array.isArray(datas) ? datas : [])) {
     let j
-    try { j = JSON.parse(data) } catch { continue }
+    try { j = JSON.parse(data) } catch { badFrame++; continue }
     if (style === 'responses') {
       if (j.type === 'response.output_text.delta' && typeof j.delta === 'string' && j.delta) out += j.delta
       else if (j.type === 'response.completed') finish = 'stop'
@@ -1109,7 +1190,7 @@ export function collectSseFrames(datas, style) {
     if (typeof d.content === 'string' && d.content) out += d.content
     if (ch.finish_reason) finish = ch.finish_reason
   }
-  return { out, finish, reasoningChars }
+  return { out, finish, reasoningChars, badFrame }
 }
 
 /**
@@ -1147,6 +1228,21 @@ export function extractFromJsonBody(j, style) {
   reasoningChars = String(msg.reasoning_content || '').length
   return { out, finish, reasoningChars }
 }
+// One completion gate for JSON, SSE and protocol-mismatch paths.
+function requireCompleteDistill(got, meta) {
+  if (got && got.badFrame) {
+    const err = new Error('malformed SSE frame: incomplete evidence')
+    err.meta = { ...meta, badFrame: got.badFrame }; throw err
+  }
+  const finish = got && got.finish
+  if (finish === 'stop' || finish === 'completed') return
+  const err = new Error((String((got && got.out) || '').trim() ? 'incomplete' : 'empty') +
+    ' distillate (finish=' + String(finish || 'missing') + ', reasoningChars=' + ((got && got.reasoningChars) || 0) + ')')
+  err.meta = Object.assign({}, meta, { finish, reasoningChars: got && got.reasoningChars,
+    outputChars: String((got && got.out) || '').length })
+  throw err
+}
+
 /**
  * ★★ 2026-09-21 流式单次尝试（观测型迁移）★★
  * 与 distillOnce 同输入、同输出形状，只把传输改成 `stream: true`。
@@ -1156,7 +1252,7 @@ export function extractFromJsonBody(j, style) {
  * ⚠ 只认【非空 content delta】为首个内容：role-only delta、空串、usage、心跳一律不算。
  * ⚠ 半成品绝不冒充成功：未收到正常 finish 的流一律抛错，由上层原文放行。
  */
-async function distillOnceStream(key, prompt, cfg, thinkingOff, ep, signal) {
+async function distillOnceStream(key, prompt, cfg, thinkingOff, ep, signal, inputChars = 0) {
   const style = ep && ep.api === 'openai-responses' ? 'responses' : 'chat'
   const url = (ep && ep.url) ? ep.url : endpointUrl(cfg.baseUrl, 'openai-completions')
   if (!url) throw new Error('no endpoint: neither host provider nor cfg.baseUrl resolved a URL')
@@ -1188,11 +1284,11 @@ async function distillOnceStream(key, prompt, cfg, thinkingOff, ep, signal) {
     //   这里只补请求指纹，**不改任何行为**，然后原样抛出。
     e.meta = Object.assign({}, e.meta, {
       promptChars: prompt.length, maxOutputTokens: cfg.maxOutputTokens, style,
-      stream: true, thinkingOff, model: cfg.model, stage: 'await-response',
+      stream: true, thinkingOff, model: cfg.model, stage: e.meta?.headersAt == null ? 'await-headers' : (e.meta?.eventCount ? 'receive-body' : 'await-first-event'),
     })
     throw e
   }
-  if (r.status !== 200) throw new Error('http ' + r.status + ' (stream)')
+  if (r.status !== 200) throw Object.assign(new Error('http ' + r.status + ' (stream)'), { meta: r.meta })
   // ★ 统一响应入口（反向错配）：要求流式（stream:true），上游却回了整段 JSON。
   //   按 JSON 解析并显式记录；仍然遵守「半成品绝不冒充成功」——空摘要照样抛错。
   if (r.meta && r.meta.nonSse) {
@@ -1201,14 +1297,16 @@ async function distillOnceStream(key, prompt, cfg, thinkingOff, ep, signal) {
     try { j = JSON.parse(String(r.text || '')) } catch (e) {
       throw new Error('bad json (stream request got non-sse body): ' + String(r.text || '').slice(0, 120))
     }
+    if (j.usage) r.meta.providerReportedUsage = j.usage
     const got = extractFromJsonBody(j, style)
     if (!got) throw new Error('no choices (stream request got non-sse body): ' + String(r.text || '').slice(0, 120))
+    requireCompleteDistill(got, { ...r.meta, promptChars: prompt.length, maxOutputTokens: cfg.maxOutputTokens, style, stream: true, model: cfg.model })
     if (!String(got.out).trim()) {
       throw new Error('empty distillate (finish=' + got.finish + ', reasoningChars=' + got.reasoningChars + ', protocol=json-on-stream)')
     }
     return {
       text: String(got.out).trim(),
-      meta: Object.assign({ finish: got.finish, reasoningChars: got.reasoningChars, thinkingOff, model: cfg.model,
+      meta: Object.assign({ finish: got.finish, reasoningChars: got.reasoningChars, thinkingOff, model: cfg.model, inputChars,
         promptChars: prompt.length, maxOutputTokens: cfg.maxOutputTokens, style,
         endpoint: ep ? (ep.provider + '|' + ep.api) : 'legacy|explicit' }, r.meta),
     }
@@ -1271,6 +1369,7 @@ async function distillOnceStream(key, prompt, cfg, thinkingOff, ep, signal) {
     })
     throw err
   }
+  requireCompleteDistill({ out, finish, reasoningChars, badFrame }, { ...r.meta, promptChars: prompt.length, maxOutputTokens: cfg.maxOutputTokens, style, stream: true, model: cfg.model })
   if (!String(out).trim()) {
     const err = new Error('empty distillate (finish=' + finish + ', reasoningChars=' + reasoningChars + ', stream)')
     err.meta = Object.assign({}, r.meta, {
@@ -1283,8 +1382,8 @@ async function distillOnceStream(key, prompt, cfg, thinkingOff, ep, signal) {
   return {
     text: String(out).trim(),
     meta: Object.assign({
-      finish, reasoningChars, thinkingOff, model: cfg.model,
-      promptChars: prompt.length, maxOutputTokens: cfg.maxOutputTokens, style,
+      finish, reasoningChars, thinkingOff, model: cfg.model, inputChars,
+      inputChars, promptChars: prompt.length, maxOutputTokens: cfg.maxOutputTokens, style,
       stream: true, eventCount: r.meta.eventCount, badFrame,
       outputChars: String(out).trim().length,
       firstEventAt: r.meta.firstEventAt, firstContentAt, lastContentAt, completedAt: r.meta.completedAt,
@@ -1300,7 +1399,7 @@ async function distillOnceStream(key, prompt, cfg, thinkingOff, ep, signal) {
 }
 
 // 单次尝试。thinkingOff=true 时带上 `thinking:{type:'disabled'}`（关掉模型的思考）
-async function distillOnce(key, prompt, cfg, thinkingOff, ep, signal) {
+async function distillOnce(key, prompt, cfg, thinkingOff, ep, signal, inputChars = 0) {
   const style = ep && ep.api === 'openai-responses' ? 'responses' : 'chat'
   // ⚠ 端点来自 resolveProviderEndpoint()；ep 为 null 时回落显式配置。
   //   2026-09-19：原写法 `cfg.baseUrl.replace(...)` 在 baseUrl 为空时会产出
@@ -1342,12 +1441,14 @@ async function distillOnce(key, prompt, cfg, thinkingOff, ep, signal) {
   } else {
     let j
     try { j = JSON.parse(r.text) } catch (e) { throw new Error('bad json: ' + r.text.slice(0, 120)) }
+    if (j.usage) r.meta.providerReportedUsage = j.usage
     got = extractFromJsonBody(j, style)
     if (!got) throw new Error('no choices: ' + r.text.slice(0, 120))
   }
   const out = got.out
   const finish = got.finish
   const reasoningChars = got.reasoningChars
+  requireCompleteDistill(got, { ...r.meta, promptChars: prompt.length, maxOutputTokens: cfg.maxOutputTokens, style, model: cfg.model })
   // ★ 2026-09-15 实测：思考型模型会把整个 max_tokens 烧在 reasoning_content 上，
   //   然后 content 返回空串、finish_reason='length'。
   //   这时必须**把 finish_reason 和 reasoning 长度写进错误**，
@@ -1357,7 +1458,7 @@ async function distillOnce(key, prompt, cfg, thinkingOff, ep, signal) {
   }
   return {
     text: String(out).trim(),
-    meta: Object.assign({ finish, reasoningChars, thinkingOff, model: cfg.model,
+    meta: Object.assign({ finish, reasoningChars, thinkingOff, model: cfg.model, inputChars,
       // ★ 2026-09-21 请求指纹（外部审计 P0-1）：把这次调用【实际发了什么】钉进 trace，
       //   否则「新旧构建交错测试」无法证明两次请求体是否等价。
       promptChars: prompt.length, maxOutputTokens: cfg.maxOutputTokens, style,
@@ -1371,23 +1472,36 @@ async function distillOnce(key, prompt, cfg, thinkingOff, ep, signal) {
  *
  * 与 generateDistillation **共用同一条传输/重试/超时/取消机制**：
  * 仍是**一次**模型调用，不加串行调用链。
- * 差别只在提示词（六栏状态编译）与产物的解析/渲染。
+ * 生产 birth 默认为确定性记录 + 两栏判断；无 frame 的导出调用保留旧六栏兼容。
  *
  * 输出仍受原有铁律约束：模型完整成功 AND CAS 成功 AND 输出可接受 AND 净省达标，
  * 否则原文放行（判定在 birthFinish，不在本函数）。
  */
-export async function generateStateMemory(env, cfg, signal) {
-  const prompt = buildStateCompilePromptSafe(env)
-  const r = await generateDistillation(env && env.cot, cfg, signal, prompt)
+export async function generateStateMemory(env, cfg, signal, runtime = {}) {
+  const hybrid = !!env?.deterministicFrame
+  const prepared = hybrid ? (runtime.preparedJudgment?.env === env ? runtime.preparedJudgment : prepareJudgmentPrompt(env)) : null
+  const prompt = prepared ? prepared.prompt : buildStateCompilePromptSafe(env)
+  let r
+  try { r = await generateDistillation(env && env.cot, cfg, signal, prompt, { ...runtime, promptVersion: prepared?.version }) }
+  catch (e) {
+    e.meta = { ...e.meta, promptBuildMs: prepared?.buildMs ?? null, promptBuildCount: prepared ? 1 : null,
+      promptVersion: prepared?.version ?? null, staticPrefixChars: prepared?.staticPrefixChars ?? null }
+    throw e
+  }
+  const renderStarted = performance.now()
   const parsed = parseStateCompile(r && r.text)
-  const mp = createMemoryProjection()
+  if (hybrid && (!parsed.labeled || !parsed.found.length || parsed.extra.length || parsed.found.some(k => k !== 'judgment' && k !== 'gap'))) {
+    const error = new Error('invalid judgment-only response'); error.meta = { ...r?.meta, parseRenderMs: performance.now() - renderStarted, promptVersion: prepared?.version }; throw error
+  }
+  const mp = createMemoryProjection({ namespace: 'compile-' + crypto.randomUUID() })
   const blockIndex = env && env.host && env.host.blockIndex != null ? env.host.blockIndex : null
-  mp.ingest(parsed, { at: Date.now(), origin: 'model', evidence: 'observed', blockIndex })
+  mp.ingest(parsed, { at: env && env.at != null ? env.at : Date.now(), origin: 'model', evidence: 'inferred', blockIndex })
   // ★ 证据驱动归并：时间顺序只决定处理顺序，证据关系决定能否替代
   const entries = mergeByEvidence(mp.all())
   // birth 用**本轮增量**（完整状态由 checkpoint 承载），避免每块复述所有历史约束
-  const born = renderIncrement(entries, blockIndex)
-  const board = renderCheckpoint(entries)
+  const renderOpts = { preamble: MODEL_MEMORY_PREAMBLE }
+  const born = renderIncrement(entries, blockIndex, renderOpts) + (hybrid && env.deterministicFrame.indexPath ? '\n〔确定性证据索引（工具事件不等于任务完成）：' + env.deterministicFrame.indexPath + '〕' : '')
+  const board = renderCheckpoint(entries, renderOpts)
   // ★ 问题单元：把同一问题的信息连起来（只归拢已有材料，不新增事实）
   const unitInfo = cfg.stateProblemUnits === false ? { units: [], orphan: [] } : buildProblemUnits(entries)
   return {
@@ -1395,6 +1509,16 @@ export async function generateStateMemory(env, cfg, signal) {
     text: born,
     meta: Object.assign({}, (r && r.meta) || {}, {
       stateMemory: true,
+      promptBuildMs: prepared?.buildMs ?? null, promptBuildCount: prepared ? 1 : null,
+      promptVersion: prepared?.version ?? null, staticPrefixChars: prepared?.staticPrefixChars ?? null,
+      parseRenderMs: performance.now() - renderStarted,
+      compilerMode: hybrid ? 'grounded-judgment-v2' : 'legacy-six-section',
+      deterministicRevision: env?.deterministicFrame?.revision ?? null,
+      evidenceProvided: env?.deterministicFrame?.evidenceInput?.receipts || null,
+      evidenceBodyChars: env?.deterministicFrame?.evidenceInput?.bodyChars ?? null,
+      duplicateBodyCharsAvoided: env?.deterministicFrame?.evidenceInput?.duplicateBodyCharsAvoided ?? null,
+      evidencePolicy: env?.deterministicFrame?.evidenceInput?.policy || null,
+      memoryPolicyVersion: MEMORY_POLICY_VERSION,
       schemaVersion: SCHEMA_VERSION, compilerVersion: COMPILER_VERSION, rendererVersion: RENDERER_VERSION,
       parsedSections: parsed.found,
       parsedExtra: parsed.extra.length,
@@ -1405,7 +1529,7 @@ export async function generateStateMemory(env, cfg, signal) {
       orphanEntries: unitInfo.orphan.length,
     }),
     // 供 checkpoint 路径使用（本函数不自行提交任何东西）
-    checkpointText: board,
+    checkpointText: hybrid ? born : board,
     entries,
     // ★ 供并行块的有序归并使用（按源块顺序，不按完成顺序）
     parsed,
@@ -1414,7 +1538,8 @@ export async function generateStateMemory(env, cfg, signal) {
   }
 }
 
-export async function generateDistillation(cot, cfg, signal, promptOverride) {
+export async function generateDistillation(cot, cfg, signal, promptOverride, runtime = {}) {
+  cfg = { ...cfg } // Freeze effective scalar request settings before asynchronous dispatch.
   if (!cfg.model) {
     // ⛔ 不猜模型名。followHostModel 开着但还没见过宿主模型 ⇒ 放弃提纯，让上层降级 rules。
     throw new Error('no model: followHostModel 开着但尚未读到宿主对话模型，且 cfg.model 为空')
@@ -1434,28 +1559,58 @@ export async function generateDistillation(cot, cfg, signal, promptOverride) {
   // ★ 2026-09-21 任务状态记忆：允许调用方提供自定义提示词（仍是**一次**模型调用）。
   //   不传就沿用旧的 buildDistillPrompt —— 旧路径完全不变，可随时回滚。
   const prompt = promptOverride != null ? String(promptOverride) : buildDistillPrompt(cot)
-  const rounds = Math.max(1, cfg.maxAttempts)
-  // 每一轮先带「关掉思考」试，被网关拒（4xx）再裸试一次。
-  // 4xx 不消耗 token ⇒ 这次降级重试是免费的。
-  const modes = cfg.disableThinking ? [true, false] : [false]
-  let lastErr
-  for (let attempt = 1; attempt <= rounds; attempt++) {
-    for (let i = 0; i < modes.length; i++) {
-      try {
-        if (signal && signal.aborted) throw Object.assign(new Error('cancelled'), { cancelled: true })
-        // ★ 2026-09-21 观测型流式迁移：cfg.distillStream=true 时走 SSE。
-        //   两者【同输入、同输出形状】，只有传输方式不同 ⇒ 可 A/B。
-        const fn = cfg.distillStream ? distillOnceStream : distillOnce
-        return await fn(key, prompt, cfg, modes[i], ep, signal)
-      } catch (e) {
-        lastErr = e
-        const canDowngrade = i < modes.length - 1 && isParamRejection(e)
-        if (!canDowngrade) break
+  // ★ 2026-09-22 切分：记下**真正要压缩的输入**长度，使放大倍数可核。
+  //   compress 模式：inputChars = 本段 reasoning 的字符数 ⇒ promptChars/inputChars 应 ≈ 1.x
+  //   memory  模式：inputChars 仍是 raw，但真实的证据体量在 evidenceBodyChars，
+  //                两者之差就是 7.5x 放大的来源，必须能被同一张表看出来。
+  const inputChars = typeof cot === 'string' ? cot.length : 0
+  const emit = (tag, data) => { try { runtime.trace?.(tag, data) } catch {} }
+  const execute = async (transportSignal, flightId = null) => {
+    const rounds = Math.max(1, cfg.maxAttempts)
+    // 每一轮先带「关掉思考」试，被网关拒（4xx）再裸试一次。
+    // 参数拒绝才沿用既有降级路径；实际请求与费用不能凭 4xx 推断。
+    const modes = cfg.disableThinking ? [true, false] : [false]
+    let lastErr
+    for (let attempt = 1; attempt <= rounds; attempt++) {
+      for (let i = 0; i < modes.length; i++) {
+        try {
+          if (transportSignal && transportSignal.aborted) throw Object.assign(new Error('cancelled'), { cancelled: true })
+          // ★ 2026-09-21 观测型流式迁移：cfg.distillStream=true 时走 SSE。
+          //   两者【同输入、同输出形状】，只有传输方式不同 ⇒ 可 A/B。
+          const fn = cfg.distillStream ? distillOnceStream : distillOnce
+          const requestId = crypto.randomUUID()
+          emit('compiler-transport-started', { requestId, flightId, attempt, thinkingOff: modes[i], model: cfg.model, timeoutMs: cfg.timeoutMs,
+            endpoint: ep ? ep.provider + '|' + ep.api : 'legacy|explicit', maxOutputTokens: cfg.maxOutputTokens,
+            stream: !!cfg.distillStream, promptVersion: runtime.promptVersion || null })
+          try {
+            const r = await fn(key, prompt, cfg, modes[i], ep, transportSignal, inputChars)
+            r.meta = { ...r.meta, requestId, flightId }
+            emit('compiler-transport-settled', { ...settledTraceData(null, r.meta.totalMs, { ok: true, ...r }), requestId, flightId })
+            return r
+          } catch (e) {
+            e.meta = { promptChars: prompt.length, inputChars, model: cfg.model, maxOutputTokens: cfg.maxOutputTokens,
+              thinkingOff: modes[i], stream: !!cfg.distillStream, ...e.meta, requestId, flightId }
+            emit('compiler-transport-settled', { ...settledTraceData(null, e.meta.totalMs, { ok: false, error: e.message, meta: e.meta }), requestId, flightId })
+            throw e
+          }
+        } catch (e) {
+          lastErr = e
+          const canDowngrade = i < modes.length - 1 && isParamRejection(e)
+          if (!canDowngrade) break
+        }
       }
+      if (attempt < rounds) await new Promise((s) => setTimeout(s, 1200 * attempt))
     }
-    if (attempt < rounds) await new Promise((s) => setTimeout(s, 1200 * attempt))
+    throw lastErr
   }
-  throw lastErr
+  if (!runtime.flights) return execute(signal)
+  // Exact text, scope, effective endpoint/credential and all transport knobs.
+  // Private ephemeral key; NEVER trace it or export a credential fingerprint.
+  const identity = runtime.scope == null ? null : JSON.stringify([runtime.scope,
+    ep?.url || endpointUrl(cfg.baseUrl, 'openai-completions'), ep?.api || 'openai-completions', ep?.provider || null,
+    key, cfg.model, cfg.maxOutputTokens, cfg.timeoutMs, cfg.maxAttempts, cfg.disableThinking,
+    cfg.distillStream, cfg.keepAlive, cfg.keepAliveMsecs]) + '\n' + prompt
+  return runtime.flights.run(identity, execute, { signal, trace: runtime.trace })
 }
 
 // ── 主入口 ──────────────────────────────────────────────────────────────────
@@ -1584,17 +1739,21 @@ export function evidenceIndex(session) {
   try { nodes = Array.isArray(session.surface && session.surface.nodes) ? session.surface.nodes : [] } catch { nodes = [] }
   // ★ surface 视图身份：节点数 + 首尾节点 + 替换代数（若能拿到）
   const gen = (() => { try { return session.surface && session.surface.replaceGeneration != null ? session.surface.replaceGeneration : null } catch { return null } })()
-  const nodeKey = nodes.length + ':' + (nodes[0] == null ? '-' : nodes[0]) + ':' + (nodes[nodes.length - 1] == null ? '-' : nodes[nodes.length - 1]) + ':' + (gen == null ? '-' : gen)
+  const nodeKey = JSON.stringify(nodes) + ':' + (gen == null ? '-' : gen)
   const prev = evidenceIndexCache.get(session)
   if (prev && prev.nodeKey === nodeKey) return prev
   const events = []
   const bySeq = new Map()
   for (const seq of nodes) {
-    let raw = null
-    try { raw = session.eventAt(seq) } catch { raw = null }
-    if (!raw) continue
-    // ★ 唯一解释出口 —— 索引不自己解释事件
-    const ev = normalizeEvidenceEvent(raw, seq)
+    // Session events are append-only; reuse surviving normalized events instead
+    // of parsing all historical tool bodies on every new block.
+    let ev = prev && prev.bySeq.get(seq)
+    if (!ev) {
+      let raw = null
+      try { raw = session.eventAt(seq) } catch { raw = null }
+      if (!raw) continue
+      ev = normalizeEvidenceEvent(raw, seq)
+    }
     if (!ev) continue
     bySeq.set(seq, ev)
     events.push(ev)
@@ -1735,18 +1894,50 @@ export function collectEvidence(session, opts = {}) {
   }
 }
 
+const compileLanes = createCompileLanes()
+
+/** A snapshot can replace old input only within the frozen evidence cut. */
+export function rebaseCompileEnvelope(env, snapshot, cutSeq, enabled = true) {
+  if (!enabled || !env || typeof env !== 'object' || !snapshot) return env
+  if (!Number.isSafeInteger(cutSeq) || !Number.isSafeInteger(snapshot.sourceCutSeq) || snapshot.sourceCutSeq > cutSeq) return env
+  if (env.stateSnapshot && snapshot.revision <= env.stateSnapshot.revision) return env
+  const text = snapshotToText(snapshot)
+  if (!text) return env
+  const covered = coveredSeqSet(snapshot)
+  if ([...covered].some(n => n > cutSeq)) return env
+  const filtered = filterCoveredTools(env.tools, covered, COVER_TAIL_FLOOR)
+  // Do not grow the prompt merely because a newer snapshot exists.
+  if (!filtered.info) return env
+  const candidate = buildEvidenceEnvelope({ ...env, tools: filtered.tools, stateSnapshot: {
+    text, revision: snapshot.revision, entries: snapshot.entries.length,
+    covered: covered.size, sourceCutSeq: snapshot.sourceCutSeq,
+    snapshotId: snapshotIdOf(snapshot.sessionId, snapshot.branchId, snapshot.revision),
+  } })
+  return buildStateCompilePromptSafe(candidate).length < buildStateCompilePromptSafe(env).length ? candidate : env
+}
+
+/** Only a fully visible terminal result can acquire omission authority. */
+export function fullyVisibleResultSeqs(tools) {
+  return [...new Set((tools || []).filter(t => t && !t.resultTruncated && t.result != null &&
+    ['completed', 'failed', 'cancelled'].includes(t.status) && Number.isSafeInteger(t.resultSeq) && t.resultSeq >= 0
+  ).map(t => t.resultSeq))]
+}
+
 export function birthStart(entry, deps = {}) {
   const cfg = deps.cfg || {}
-  const trace = deps.trace || (() => {})
+  const preparationStarted = performance.now()
+  const taskId = crypto.randomUUID()
+  const trace = (tag, data) => (deps.trace || (() => {}))(tag, { ...data, taskId })
   const raw = String(entry.text || '')
   const floor = cfg.birthMinChars == null ? 500 : cfg.birthMinChars
   const sessionId = typeof deps.sessionId === 'function' ? deps.sessionId() : (deps.sessionId || null)
   // ★ 分支键：宿主当前无分支概念 ⇒ normalizeBranchId 返回 'main'；一旦宿主提供则按分支隔离。
   const branchId = typeof deps.branchId === 'function'
     ? normalizeBranchId(deps.branchId())
-    : normalizeBranchId(deps.branch || null)
+    : normalizeBranchId(deps.branchId ?? deps.branch ?? null)
   const task = {
-    index: entry.index, raw, end: entry.end || null,
+    taskId, index: entry.index, raw, end: entry.end || null,
+    canDefer: sessionId != null && Buffer.byteLength(raw) <= 192 * 1024,
     handle: null, diskP: null, distillP: null,
     diskState: null, distillState: null,
     belowFloor: false, why: null,
@@ -1761,6 +1952,7 @@ export function birthStart(entry, deps = {}) {
     if (!task.shortReason) task.shortReason = why
     if (shortResolve) { const r = shortResolve; shortResolve = null; r(why) }
   }
+  if (cfg.enabled === false || cfg.mode === 'off' || cfg.dryRun === true) { task.belowFloor = true; task.why = cfg.dryRun ? 'dry-run' : 'disabled'; return task }
   if (!raw.trim() || raw.length < floor) { task.belowFloor = true; task.why = 'below-floor'; return task }
   if (cfg.birthArchive === false) { task.belowFloor = true; task.why = 'archive-off'; return task }
   const archive = deps.archive
@@ -1785,8 +1977,15 @@ export function birthStart(entry, deps = {}) {
     })
     .then((s) => {
       task.diskState = s
+      trace('birth-archive-settled', { index: task.index, ok: s.ok, handle: s.handle, rawSha256: crypto.createHash('sha256').update(raw).digest('hex') })
       // 归档终局失败 ⇒ 拿不到句柄 ⇒ 提纯结果永远无法应用（铁律③）⇒ 立即短路
-      if (!s.ok) noteShort('archive-failed-early')
+      if (!s.ok) {
+        noteShort('archive-failed-early')
+        // This consumer can never pass the mandatory archive gate, even if a
+        // timed-out write eventually finishes. Do not cancel other consumers.
+        task.abort?.abort()
+        trace('compiler-consumer-unusable', { reason: 'archive-terminal-failure' })
+      }
       return s
     })
 
@@ -1802,14 +2001,21 @@ export function birthStart(entry, deps = {}) {
   //   ⇒ 覆盖水位一次都没真正推进过（这正是"过滤从未生效"的第二重原因）。
   let toolsForPrompt = null
   let adaptedCut = null
-  if (cfg.stateMemory && typeof deps.buildEnvelope === 'function') {
+  let viewReceipts = []
+  let preparationError = null
+  let deterministicFrame = null
+  let preparedJudgment = null
+  // ★ 2026-09-22 切分：证据信封只在「状态记忆」模式构造。
+  //   stateCompress（纯压缩）**不采集证据** —— 它只需要这段 reasoning，
+  //   带上整窗工具正文正是实测 7.5x 放大的来源。
+  if (compileModeOf(cfg) === 'memory' && typeof deps.buildEnvelope === 'function') {
     try {
       // ① 采集：只读 session；来源按**原事件类型**判定，绝不用最终 role
       const collected = typeof deps.collectEvidence === 'function'
         ? deps.collectEvidence({
             limit: cfg.stateEvidenceLimit == null ? 60 : cfg.stateEvidenceLimit,
             // ★ 结构性上下文跨窗口检索：看板/用户要求/运行时抬头不受 60 节点窗口限制
-            structural: cfg.stateStructuralFirst !== false,
+            structural: cfg.stateStructuralFirst === true,
           })
         : { events: [], inFlightIds: new Set(), cutSeq: null }
       // ② 适配：转独立数据 + 冻结快照（杜绝事后共享引用改动破坏时间截面）
@@ -1817,6 +2023,16 @@ export function birthStart(entry, deps = {}) {
         events: collected.events, inFlightIds: collected.inFlightIds, cutSeq: collected.cutSeq,
         coverage: collected.coverage,
       })
+      if (typeof deps.prepareEvidence === 'function') {
+        try {
+          deterministicFrame = deps.prepareEvidence({ sessionId, branchId, tools: adapted.tools,
+            userAsks: adapted.userAsks, runtimeFacts: adapted.runtimeFacts, unknownUserEvents: adapted.unknownUserEvents, coverage: adapted.coverage, cutSeq: adapted.cut })
+          task.deterministic = true
+          trace(deterministicFrame.durable === false ? 'evidence-ledger-unavailable' : 'evidence-ledger-committed', { storageReason: deterministicFrame.storageReason, revision: deterministicFrame.revision,
+            indexPath: deterministicFrame.indexPath, newObservations: deterministicFrame.newObservations, repeatedObservations: deterministicFrame.repeatedObservations,
+            totalObservations: deterministicFrame.totalObservations })
+        } catch (e) { preparationError = e; throw e }
+      }
       // ★★ 快照持久化：编译输入止血（2026-09-22，用户批准路线）★★
       //   旧实现的两个根本缺陷（真机 + 会话日志逐条核对确认）：
       //     ① 覆盖判据依赖「本轮 priorMemory 里有一份更新的看板」，而看板是**渲染产物**，
@@ -1833,14 +2049,20 @@ export function birthStart(entry, deps = {}) {
       let snapInfo = null
       let snapText = ''
       try {
-        snapshot = cfg.stateSnapshot === false ? null : loadSnapshot(sessionId, branchId)
+        snapshot = deterministicFrame || cfg.stateSnapshot === false ? null : loadSnapshot(sessionId, branchId)
+        if (snapshot && Number.isSafeInteger(adaptedCut) && Number.isSafeInteger(snapshot.sourceCutSeq) && snapshot.sourceCutSeq > adaptedCut) {
+          trace('state-snapshot-future-cut', { index: task.index, cutSeq: adaptedCut, snapshotCut: snapshot.sourceCutSeq })
+          snapshot = null
+        }
         if (snapshot) {
           snapInfo = snapshotStats(snapshot)
           snapText = snapshotToText(snapshot)
+          if (!snapText) trace('state-snapshot-view-unavailable', { index: task.index, revision: snapshot.revision, reason: 'incomplete-or-oversize', filtering: false })
         }
       } catch (e) { trace('state-snapshot-error', { index: task.index, error: String((e && e.message) || e) }) }
       try {
-        const covered = snapshot ? coveredSeqSet(snapshot) : null
+        const covered = !cfg.stateEvidenceViews && cfg.stateCoveredEvidence !== false && snapshot && snapText
+          ? coveredSeqSet(snapshot) : null
         if (covered && covered.size) {
           // ★ 过滤走**导出的纯函数**（与自测/重放同一份实现，杜绝「验证的是手抄副本」）
           const res = filterCoveredTools(adapted.tools, covered, COVER_TAIL_FLOOR)
@@ -1852,6 +2074,12 @@ export function birthStart(entry, deps = {}) {
           }
         }
       } catch (e) { trace('state-cover-error', { index: task.index, error: String((e && e.message) || e) }) }
+      if (!deterministicFrame && cfg.stateEvidenceViews === true) {
+        const receipts = cfg.stateCoveredEvidence !== false && snapText ? snapshot.viewReceipts || [] : []
+        const view = selectEvidenceViews(toolsForPrompt, receipts, { budget: cfg.stateEvidenceBodyBudget })
+        toolsForPrompt = view.tools
+        trace('state-evidence-view', { index: task.index, ...view.stats })
+      }
       // ③ 构造信封（仍是**一次**模型调用；仍是纯数据）
       // ⚠ 这里**不**注入迟到结果：收网器一旦发射 ledger，assembleEvidence 会
       //   自动把它读回来当 priorMemory（同一条通路），此处再注入就是重复。
@@ -1859,7 +2087,7 @@ export function birthStart(entry, deps = {}) {
         cot: raw,
         userAsks: adapted.userAsks,
         // ⚠ 绝不能改 adapted（Object.freeze）—— 传过滤后的数组本身
-        tools: toolsForPrompt,
+        tools: deterministicFrame ? [] : toolsForPrompt,
         runtimeFacts: adapted.runtimeFacts,
         priorMemory: adapted.priorMemory,
         // ★ 结构化状态快照：**完整**注入（走独立字段，不经 priorMemory 的 1200 字符腰斩）
@@ -1872,7 +2100,7 @@ export function birthStart(entry, deps = {}) {
           snapshotId: snapshotIdOf(snapshot.sessionId, snapshot.branchId, snapshot.revision),
         } : null,
         unknownUserEvents: adapted.unknownUserEvents,
-        coverage: adapted.coverage,
+        coverage: cfg.stateEvidenceViews ? { ...adapted.coverage, omittedEvidence: true } : adapted.coverage,
         host: Object.assign({
           step: entry.step == null ? null : entry.step,
           blockIndex: task.index,
@@ -1880,10 +2108,17 @@ export function birthStart(entry, deps = {}) {
         }, entry.host || {}),
         at: Date.now(),
       })
+      if (deterministicFrame) distillInput = Object.freeze({ ...distillInput, deterministicFrame })
+      if (deterministicFrame) trace('compiler-input-prepared', { revision: deterministicFrame.revision, bodyChars: deterministicFrame.evidenceInput?.bodyChars || 0, receipts: deterministicFrame.evidenceInput?.receipts || [], meaning: 'input-prepared-not-proof-of-transmission-or-understanding' })
+      toolsForPrompt = distillInput.tools
+      viewReceipts = toolsForPrompt.filter(t => t.result != null && validReceipt(t.viewReceipt)).map(t => t.viewReceipt)
       // ★ 提示词体量画像（2026-09-21）：把「优化省了多少」变成可核对的生产数据。
       //   此前只能靠本地合成场景猜重复率，现在真实分布直接落 trace。
       let pstats = null
-      try { pstats = promptStats(distillInput) } catch { pstats = null }
+      try {
+        if (deterministicFrame) preparedJudgment = prepareJudgmentPrompt(distillInput)
+        pstats = preparedJudgment ? { totalChars: preparedJudgment.prompt.length, toolBodyChars: deterministicFrame.evidenceInput?.bodyChars || 0, compilerMode: 'grounded-judgment-v2', promptVersion: preparedJudgment.version, promptBuildMs: preparedJudgment.buildMs } : promptStats(distillInput)
+      } catch { pstats = null }
       trace('state-envelope', {
         index: task.index, cotChars: raw.length,
         tools: distillInput.counts.tools, pending: distillInput.counts.pending,
@@ -1902,14 +2137,42 @@ export function birthStart(entry, deps = {}) {
         prompt: pstats,
       })
       // 缓存身份：**影响摘要结论的内容才进入**（同一 reasoning 在不同工具终局下不得共用摘要）
-      if (cfg.stateCacheKeyTrace) trace('state-cache-identity', { index: task.index, hash: sha256Hex(cacheIdentity(distillInput)).slice(0, 16) })
+      if (cfg.stateCacheKeyTrace) trace('state-cache-identity', { index: task.index, hash: crypto.createHash('sha256').update(cacheIdentity(distillInput)).digest('hex').slice(0, 16) })
     } catch (e) {
+      if (typeof deps.prepareEvidence === 'function') preparationError ||= e
       trace('state-envelope-error', { index: task.index, error: String((e && e.message) || e) })
       distillInput = raw
     }
   }
+  trace('compiler-preparation-cost', { ms: performance.now() - preparationStarted, promptBuilt: !!preparedJudgment })
+  const queued = !deterministicFrame && cfg.stateCompileQueue === true && compileModeOf(cfg) === 'memory' && cfg.stateSnapshot !== false &&
+    cfg.stateCoveredEvidence !== false && sessionId != null && Number.isSafeInteger(adaptedCut) &&
+    typeof distill === 'function' && typeof distillInput === 'object'
+  // The existing transport budget now includes queue residence, not extra time.
+  const queueBudget = Number(cfg.timeoutMs == null ? 8000 : cfg.timeoutMs)
+  const deadline = Date.now() + (Number.isFinite(queueBudget) && queueBudget > 0 ? queueBudget : 8000)
+  const ticket = queued ? compileLanes.reserve(JSON.stringify([sessionId, branchId]), { signal: dsignal, deadline }) : null
+  let queueTimer = null
+  if (queued && task.abort) queueTimer = setTimeout(() => task.abort.abort(), Math.max(1, deadline - Date.now()))
   task.distillP = (typeof distill === 'function'
-    ? Promise.resolve().then(() => distill(distillInput, dsignal))
+    ? Promise.resolve().then(async () => {
+        if (preparationError) throw preparationError
+        if (ticket) {
+          await ticket.ready
+          if (dsignal?.aborted || Date.now() >= deadline) throw new Error('compile-queue-expired')
+          const before = buildStateCompilePromptSafe(distillInput).length
+          const snapshot = loadSnapshot(sessionId, branchId)
+          if (!cfg.stateEvidenceViews) distillInput = rebaseCompileEnvelope(distillInput, snapshot, adaptedCut)
+          toolsForPrompt = distillInput.tools
+          trace('state-queue-dispatched', { index: task.index, remainingMs: deadline - Date.now(),
+            beforeChars: before, afterChars: buildStateCompilePromptSafe(distillInput).length,
+            revision: distillInput.stateSnapshot?.revision ?? null })
+        }
+        return distill(distillInput, dsignal, {
+          ...(ticket ? { timeoutMs: Math.max(1, deadline - Date.now()) } : {}), preparedJudgment,
+          taskId, trace, scope: sessionId != null && String(sessionId).length > 0 && Number.isSafeInteger(adaptedCut) && adaptedCut >= 0 ? [String(sessionId), branchId, adaptedCut] : null,
+        })
+      })
     : Promise.reject(new Error('no-distiller')))
     .then((r) => {
       const text = r && r.text != null ? String(r.text).trim() : ''
@@ -1934,7 +2197,7 @@ export function birthStart(entry, deps = {}) {
         } : {}))
       return { ok: false, error: String((e && e.message) || e), meta: em }
     })
-    .then((s) => {
+    .then(async (s) => {
       task.distillState = s
       // 提纯终局失败 ⇒ 必定原文放行 ⇒ 没有理由再等（归档仍在后台继续）
       if (!s.ok) noteShort('distill-failed-early')
@@ -1946,17 +2209,23 @@ export function birthStart(entry, deps = {}) {
       //   为什么不是 cutSeq / maxSeq：cutSeq 可能指向 pending 调用，maxSeq 会跳过未采集
       //   与迟到返回的结果 —— 两者都会把"结果未返回"当成已知，违反时间截面。
       //   写入顺序由 commitSnapshot 保证：先归并 entries → 先写完整快照 → 再原子替换指针。
-      if (s.ok && s.entries && cfg.stateSnapshot !== false) {
+      // The archive is a prerequisite for both persistent and deferred memory.
+      // Waiting here is background work; birthFinish retains its own deadline.
+      const archived = s.ok && s.entries ? await task.diskP : null
+      if (s.ok && s.entries && archived && archived.ok && cfg.stateSnapshot !== false) {
         try {
-          const seqs = []
-          for (const t of (toolsForPrompt || [])) {
-            if (t && t.resultSeq != null) { const v = Number(t.resultSeq); if (Number.isFinite(v) && v >= 0) seqs.push(v) }
-          }
+          const seqs = fullyVisibleResultSeqs(toolsForPrompt)
           const c = commitSnapshot({
-            sessionId, branchId, entries: s.entries, coveredSeqs: seqs,
+            sessionId, branchId, entries: s.entries, coveredSeqs: seqs, viewReceipts,
             sourceCutSeq: adaptedCut, at: Date.now(),
           })
           if (c.ok) {
+            if (cfg.stateSnapshotMirror && typeof deps.mirrorSnapshot === 'function') {
+              const mirror = JSON.stringify(c.snapshot)
+              setImmediate(() => Promise.resolve().then(() => deps.mirrorSnapshot(mirror, sessionId))
+                .then(ref => trace('state-snapshot-mirrored', { revision: c.snapshot.revision, ok: !!(ref && ref.handle) }),
+                  e => trace('state-snapshot-mirror-failed', { error: String(e.message || e) })))
+            }
             trace('state-snapshot-committed', {
               index: task.index, revision: c.snapshot.revision, parentRevision: c.mergedFrom,
               entries: c.snapshot.entries.length, added: c.added,
@@ -1969,8 +2238,10 @@ export function birthStart(entry, deps = {}) {
           }
         } catch (e) { trace('state-snapshot-error', { index: task.index, where: 'commit', error: String((e && e.message) || e) }) }
       }
-      if (s.ok && s.entries && task.passedThrough && cfg.birthDeferredClaim !== false) {
-        const stored = pushLateMemory(sessionId, raw, s.entries, s.checkpointText)
+      if (s.ok && s.entries && archived && archived.ok && task.passedThrough && cfg.birthDeferredClaim !== false) {
+        const worthStoring = !task.deterministic || raw.length - String(s.checkpointText || s.text).length >= (cfg.birthMinSavedChars ?? 50)
+        const stored = worthStoring && pushLateMemory(sessionId, raw, s.entries, s.checkpointText, { branchId, taskId })
+        if (!stored) trace('birth-late-memory-refused', { index: task.index, reason: worthStoring ? 'invalid-or-capacity' : 'no-gain', branchId })
         if (stored) trace('birth-late-memory-stored', {
           index: task.index, entries: s.entries.length,
           chars: s.text ? s.text.length : 0,
@@ -1981,6 +2252,9 @@ export function birthStart(entry, deps = {}) {
         })
       }
       return s
+    }).finally(() => {
+      clearTimeout(queueTimer)
+      ticket?.release() // Must be AFTER successful snapshot commit (or failure).
     })
 
     // ★ 真工期探针（2026-09-18）：收尾即使已熔断，伴生调用真正结束时也会落一条记录。
@@ -2010,7 +2284,7 @@ export function birthStart(entry, deps = {}) {
  */
 export async function birthFinish(task, deps = {}) {
   const cfg = deps.cfg || {}
-  const trace = deps.trace || (() => {})
+  const trace = (tag, data) => (deps.trace || (() => {}))(tag, { ...data, taskId: task.taskId || null })
   const handleInText = cfg.birthHandleInText !== false
   const raw = String(task.raw || '')
   // ★★ 2026-09-18 用户令：句柄标记从上下文中【彻底删除】，一个字符都不许出现。★★
@@ -2066,11 +2340,16 @@ export async function birthFinish(task, deps = {}) {
 
   if (task.belowFloor) return pass(task.why || 'below-floor', null)
 
-  const budgetMs = cfg.birthFinishWaitMs == null ? 1500 : cfg.birthFinishWaitMs
+  const readyOnly = task.deterministic && cfg.birthDeferredClaim !== false && task.canDefer !== false
+  task.finishEnterAt = Date.now()
+  trace('birth-finish-enter', { index: task.index, gapMs: task.finishEnterAt - (task.firedAt || 0), waitPolicy: readyOnly ? 'ready-only' : 'budgeted' })
+  if (readyOnly && (!task.diskState || !task.distillState)) {
+    const why = task.distillState?.ok === false ? 'judgment-failed' : task.diskState?.ok === false ? 'archive-failed' : 'background-judgment-pending'
+    return pass(why, null)
+  }
+  const budgetMs = readyOnly ? 0 : (cfg.birthFinishWaitMs == null ? 1500 : cfg.birthFinishWaitMs)
   // ★ 自然窗口探针（2026-09-18）：量出「block-end → finish」这段**免费**时间。
   //   α 的成败全看它：摘要在这一段里落地 = 白捡的 A 态；没落地 = 纯句柄（零等待）。
-  task.finishEnterAt = Date.now()
-  trace('birth-finish-enter', { index: task.index, gapMs: task.finishEnterAt - (task.firedAt || 0) })
   // ★★ 终审 α（2026-09-18）：budgetMs <= 0 ⇒ 真零等待模式 ★★
   //   实测伴生提纯真工期 3.3~4.0s（探针 birth-distill-settled）。任何 0 < budget < 真工期的取值
   //   都是「白等一段还拿不到摘要」——2000ms 实测 0/2 命中，是被支配的选项。故：
@@ -2124,11 +2403,15 @@ export async function birthFinish(task, deps = {}) {
 //
 // ⚠ 铁律不变：只暂存**成功**的结果；失败/取消一律不存（绝不把半成品当记忆）。
 // ⚠ 一旦被某个信封消费就移除，绝不重复注入（防止同一结论反复占位）。
-// ⚠ 按 sessionId 隔离，绝不跨会话串味。
+// 按 sessionId + branchId 隔离；相同 raw 不证明相同源任务。
 // ════════════════════════════════════════════════════════════════════════════
 // ⚠ 按【原始推理文本】索引 —— 收网器只能从 assistant 事件里拿到 raw 文本，
-//   没有 blockIndex。用 raw 当键是唯一能让「起火处」与「收网处」对上的办法。
-const lateMemory = new Map()      // sessionId -> [{ at, raw, entries, board, chars }]
+//   没有可靠宿主消息 ID；raw 仅用于候选匹配，已知歧义必须拒绝。
+const lateMemory = new Map()      // JSON([sessionId, branchId]) -> bounded records
+const lateKey = (sid, opts = {}) => JSON.stringify([String(sid), normalizeBranchId(opts.branchId)])
+const LATE_MEMORY_KEYS_MAX = 128
+const LATE_MEMORY_BYTES_MAX = 8 * 1024 * 1024
+const LATE_MEMORY_ITEM_BYTES_MAX = 256 * 1024
 const LATE_MEMORY_MAX = 8         // 每个会话最多暂存 8 个块，防止无界增长
 // ★ 过期清理：放行后继续跑的任务不等于无限保留。超过 TTL 的结果一律丢弃，
 //   绝不把十分钟前的旧状态当成「当前记忆」注入。
@@ -2142,18 +2425,37 @@ function pruneLateMemory(q) {
 }
 
 /** 暂存一个「没赶上自己那块」的编译结果。纯内存、绝不抛错。 */
-export function pushLateMemory(sessionId, raw, entries, board) {
+export function pushLateMemory(sessionId, raw, entries, board, opts = {}) {
   try {
     if (sessionId == null || typeof raw !== 'string' || !raw) return false
     if (!Array.isArray(entries) || !entries.length) return false
-    const key = String(sessionId)
+    for (const [key, queue] of lateMemory) {
+      pruneLateMemory(queue)
+      if (!queue.length) lateMemory.delete(key)
+    }
+    const key = lateKey(sessionId, opts)
     let q = lateMemory.get(key)
+    if (!q && lateMemory.size >= LATE_MEMORY_KEYS_MAX) return false
     if (!q) { q = []; lateMemory.set(key, q) }
-    pruneLateMemory(q)
-    // 同一块重复入队（重试/多次 settle）⇒ 覆盖，绝不堆积
-    const at = q.findIndex((x) => x.raw === raw)
-    const item = { at: Date.now(), raw, entries, board: board || null, chars: String(board || '').length }
-    if (at >= 0) q[at] = item; else q.push(item)
+    const taskId = opts.taskId == null ? null : String(opts.taskId)
+    const at = taskId == null ? -1 : q.findIndex(x => x.taskId === taskId && x.raw === raw)
+    const freeze = x => { if (x && typeof x === 'object') { Object.values(x).forEach(freeze); Object.freeze(x) }; return x }
+    const encoded = JSON.stringify(entries)
+    const bytes = Buffer.byteLength(raw) + Buffer.byteLength(encoded) + Buffer.byteLength(String(board || ''))
+    const used = [...lateMemory.values()].reduce((n, queue) => n + queue.reduce((m, x) => m + (x.bytes || 0), 0), 0)
+    if (bytes > LATE_MEMORY_ITEM_BYTES_MAX || used - (at >= 0 ? q[at].bytes || 0 : 0) + bytes > LATE_MEMORY_BYTES_MAX) {
+      if (!q.length) lateMemory.delete(key)
+      return false
+    }
+    const safeEntries = freeze(JSON.parse(encoded))
+    const item = { at: Date.now(), bytes, raw, taskId, entries: safeEntries, board: board == null ? null : String(board), chars: String(board || '').length }
+    if (at >= 0) { item.ambiguous = q[at].ambiguous; q[at] = item }
+    else {
+      // Raw equality is not source identity. Keep a poison marker even if a
+      // colliding candidate is later evicted by the capacity bound.
+      for (const old of q) if (old.raw === raw) { old.ambiguous = true; item.ambiguous = true }
+      q.push(item)
+    }
     while (q.length > LATE_MEMORY_MAX) q.shift()
     return true
   } catch { return false }
@@ -2380,19 +2682,22 @@ function segmentAligned(hay, needle) {
  *   ③ 拼起来必须与 fullRaw **逐字相等**。
  * 任一条不满足 ⇒ 返回 null（不认领、**也不消费**，留待下轮或过期）。
  *
- * 副产品：不同轮次出现**完全相同推理文本**时会有多个候选 ⇒ 拼接必不等于 fullRaw
- *   ⇒ 自动 no-op。绝不「取第一个」。
+ * 同文多个任务被显式标为 ambiguous，包含容量淘汰后的存活项；不取第一个。
  *
  * @returns { idxs } 命中下标（升序）或 null
  */
 function coverageMatch(q, fullRaw) {
   if (typeof fullRaw !== 'string' || !fullRaw) return null
   const idxs = []
+  const exact = q.map((x, i) => ({ x, i })).filter(({ x }) => x.raw === fullRaw)
+  if (exact.length) return exact.length === 1 && !exact[0].x.ambiguous ? { idxs: [exact[0].i] } : null
   for (let i = 0; i < q.length; i++) {
     const a = q[i].raw
     // ① 逐字相同 ⇒ 单块即全覆盖（生产 583/583 都是这一支）
-    if (a === fullRaw) return { idxs: [i] }
-    if (a.length >= LATE_MATCH_MIN && segmentAligned(fullRaw, a)) idxs.push(i)
+    if (a.length >= LATE_MATCH_MIN && segmentAligned(fullRaw, a)) {
+      if (q[i].ambiguous) return null
+      idxs.push(i)
+    }
   }
   if (!idxs.length) return null
   // ② 按在 fullRaw 中的出现位置升序
@@ -2409,16 +2714,17 @@ function coverageMatch(q, fullRaw) {
 }
 
 /** 只查不取。找到返回 { texts, count, entries }，否则 null。 */
-export function peekLateMemory(sessionId, fullRaw) {
+export function peekLateMemory(sessionId, fullRaw, opts = {}) {
   try {
     if (sessionId == null) return null
-    const q = lateMemory.get(String(sessionId))
+    const q = lateMemory.get(lateKey(sessionId, opts))
     if (!q || !q.length) return null
     pruneLateMemory(q)
     const m = coverageMatch(q, fullRaw)
     if (!m) return null
     return {
       count: m.idxs.length,
+      receipt: m.idxs.map((i) => q[i]),
       texts: m.idxs.map((i) => q[i].board).filter((t) => t && String(t).trim()),
       entries: m.idxs.reduce((acc, i) => acc.concat(q[i].entries), []),
     }
@@ -2429,10 +2735,10 @@ export function peekLateMemory(sessionId, fullRaw) {
  * ★★ 认领（消费即移除，绝不重复收网）★★
  * 只有【全覆盖】时才消费；否则原样保留、返回 null。
  */
-export function claimLateMemory(sessionId, fullRaw) {
+export function claimLateMemory(sessionId, fullRaw, opts = {}) {
   try {
     if (sessionId == null) return null
-    const key = String(sessionId)
+    const key = lateKey(sessionId, opts)
     const q = lateMemory.get(key)
     if (!q || !q.length) return null
     pruneLateMemory(q)
@@ -2440,7 +2746,7 @@ export function claimLateMemory(sessionId, fullRaw) {
     if (!m) return null
     const picked = m.idxs.map((i) => q[i])
     // 从后往前删，避免下标位移
-    for (let k = m.idxs.length - 1; k >= 0; k--) q.splice(m.idxs[k], 1)
+    for (const i of [...m.idxs].sort((a, b) => b - a)) q.splice(i, 1)
     return {
       count: picked.length,
       texts: picked.map((x) => x.board).filter((t) => t && String(t).trim()),
@@ -2449,17 +2755,39 @@ export function claimLateMemory(sessionId, fullRaw) {
   } catch { return null }
 }
 
+/** Acknowledge only the exact records that were successfully emitted.
+ * New arrivals/replacements while archive awaits must never be consumed. */
+export function lateReceiptValid(sessionId, receipt, opts = {}) {
+  const q = lateMemory.get(lateKey(sessionId, opts))
+  if (!q || !Array.isArray(receipt) || !receipt.length) return false
+  pruneLateMemory(q)
+  return receipt.every(item => q.includes(item) && !item.ambiguous)
+}
+
+export function acknowledgeLateMemory(sessionId, receipt, opts = {}) {
+  const key = lateKey(sessionId, opts)
+  const q = lateMemory.get(key)
+  if (!q || !Array.isArray(receipt)) return 0
+  const items = new Set(receipt)
+  let removed = 0
+  for (let i = q.length - 1; i >= 0; i--) {
+    if (items.has(q[i])) { q.splice(i, 1); removed++ }
+  }
+  if (!q.length) lateMemory.delete(key)
+  return removed
+}
+
 /** 兼容旧名：等价于 claimLateMemory，返回单条形状（自测与旧调用点用）。 */
-export function takeLateMemory(sessionId, fullRaw) {
-  const c = claimLateMemory(sessionId, fullRaw)
+export function takeLateMemory(sessionId, fullRaw, opts = {}) {
+  const c = claimLateMemory(sessionId, fullRaw, opts)
   if (!c || !c.texts.length) return null
   return { board: c.texts.join('\n\n'), entries: c.entries, count: c.count }
 }
 
 /** 仅供自测/快速路径：观察暂存量，不消费（先清过期）。 */
-export function lateMemorySize(sessionId) {
+export function lateMemorySize(sessionId, opts = {}) {
   try {
-    const q = lateMemory.get(String(sessionId))
+    const q = lateMemory.get(lateKey(sessionId, opts))
     if (!q) return 0
     pruneLateMemory(q)
     return q.length
@@ -2569,7 +2897,7 @@ export function birthTransform(inner, deps = {}) {
               for (const s of ordered) if (s.r) for (const c of s.r.chunks) yield c
               // ② 记忆：同样按源块顺序归并；失败块被跳过，不污染记忆
               // ⚠ 关闭 stateMemory 时**绝不**归并或消费新格式记忆（回滚语义）
-              if (cfg.stateMemory === true) {
+              if (compileModeOf(cfg) === 'memory') {
                 try {
                   const merged = mergeOrdered(ordered.map((s) => ({
                     sourceIndex: s.sourceIndex,
@@ -2639,9 +2967,15 @@ export function settledTraceData(index, ms, s) {
   return {
     index, ms, ok: !!(s && s.ok),
     chars: (s && s.text) ? s.text.length : 0,
-    reason: (s && s.ok) ? null : ((s && s.error) || null),
+    reason: (s && s.ok) ? null : ((s && s.error) || 'unknown-failure'),
     ...(m ? {
       model: m.model, endpoint: m.endpoint, style: m.style, thinkingOff: m.thinkingOff,
+      compilerMode: m.compilerMode, deterministicRevision: m.deterministicRevision, evidenceBodyChars: m.evidenceBodyChars, evidencePolicy: m.evidencePolicy, duplicateBodyCharsAvoided: m.duplicateBodyCharsAvoided,
+      // ★ 2026-09-22 切分验收字段：compress 模式的放大倍数 = promptChars / inputChars。
+      //   设计预期 ≈ 1.x（输入≈本段推理）。实测 stateMemory 模式是 7.5x，这条字段就是判据。
+      inputChars: m.inputChars, promptVersion: m.promptVersion,
+      compressRatio: (typeof m.promptChars === 'number' && typeof m.inputChars === 'number' && m.inputChars > 0)
+        ? Number((m.promptChars / m.inputChars).toFixed(2)) : undefined,
       promptChars: m.promptChars, maxOutputTokens: m.maxOutputTokens,
       connectMs: m.connectMs, ttfbMs: m.ttfbMs, firstByteMs: m.firstByteMs,
       totalMs: m.totalMs, chunks: m.chunks, reused: m.reused, status: m.status,
@@ -2649,6 +2983,11 @@ export function settledTraceData(index, ms, s) {
       stream: m.stream === true ? true : undefined,
       // ★ 失败阶段（2026-09-21）：区分「还没拿到响应头就超时」与「拿到了但生成太慢」
       stage: m.stage,
+      providerReportedUsage: m.providerReportedUsage || null,
+      requestId: m.requestId, flightId: m.flightId, sharedFlight: m.sharedFlight,
+      promptBuildMs: m.promptBuildMs, promptBuildCount: m.promptBuildCount,
+      parseRenderMs: m.parseRenderMs, promptVersion: m.promptVersion, staticPrefixChars: m.staticPrefixChars,
+      afterContentMs: m.afterContentMs,
       // ★ 协议错配（2026-09-21）：响应实际协议与请求模式不一致时显式留痕
       protocolMismatch: m.protocolMismatch,
       eventCount: m.eventCount, badFrame: m.badFrame, outputChars: m.outputChars,
@@ -2660,6 +2999,7 @@ export function settledTraceData(index, ms, s) {
 
 export function apply(ctx, config = {}) {
   const cfg = normalizeConfig(config)
+  const compilerFlights = createExactFlights()
   // 出生即提纯：本轮会话 id（在 agent/pre-step 捕获，供 CAS 归档登记）
   let birthSessionId = null
 // ★ 2026-09-21 消息溯源（外部审计 P0-3）：同时持有 session 对象本身。
@@ -2667,9 +3007,6 @@ export function apply(ctx, config = {}) {
 //   寿命与 birthSessionId 相同（同一个 agent/pre-step 里捕获）。
 let birthSession = null
 /** 当前会话（供证据采集只读访问）。 */
-function currentSession() { return birthSession }
-/** 纯函数 sha256 前 N 位（缓存身份用，非安全用途）。 */
-function sha256Hex(s) { return crypto.createHash('sha256').update(String(s), 'utf8').digest('hex') }
 
   // ── 运行计数器（常驻内存；随每条 trace 快照落盘，零外部依赖）──
   const stats = { seen: 0, replaced: 0, rules: 0, distilled: 0, distFailed: 0, short: 0, hurdle: 0, charsRaw: 0, charsFinal: 0 }
@@ -2687,11 +3024,26 @@ function sha256Hex(s) { return crypto.createHash('sha256').update(String(s), 'ut
   //   的**端到端**测试成为可能。只测 meta 里有字段，挡不住"字段没进白名单"这类问题
   //   —— 本文件刚刚就栽过一次（流式阶段字段写进 meta 却没落 trace）。
   const trace = makeTraceWriter(cfg, () => stats)
+  const consumption = createConsumptionMeter(trace)
 
   trace('BOOT', {
     // ★ 回滚所需版本号：关闭功能时**停止新的状态编译**，不把新格式强塞给旧解析器，
     //   已合法出站的内容保持原样，CAS 与事件日志不受影响（回滚 = 停用，不是回写历史）。
     stateMemory: cfg.stateMemory === true,
+    // ★ 2026-09-22 切分：把裁决结果落在 BOOT 里，避免"开了哪个开关却不知道跑的是哪条路"
+    stateCompress: cfg.stateCompress === true,
+    compileMode: cfg.compileMode,
+    ...(cfg.compileModeConflict ? { compileModeConflict: cfg.compileModeConflict } : {}),
+    compilerMode: cfg.compileMode === 'memory' ? 'grounded-judgment-v2'
+      : cfg.compileMode === 'compress' ? 'compress-v1' : 'reasoning-distill',
+    promptVersion: cfg.compileMode === 'memory' ? JUDGMENT_PROMPT_VERSION
+      : cfg.compileMode === 'compress' ? 'compress-v1' : null,
+    retiredOptions: cfg.retiredOptions,
+    memoryPolicyVersion: MEMORY_POLICY_VERSION,
+    stateSnapshot: cfg.stateSnapshot !== false,
+    stateCoveredEvidence: cfg.stateCoveredEvidence !== false,
+    stateStructuralFirst: cfg.stateStructuralFirst === true,
+    birth: { finishWaitMs: cfg.birthFinishWaitMs, deferredClaim: cfg.birthDeferredClaim !== false },
     schemaVersion: SCHEMA_VERSION, compilerVersion: COMPILER_VERSION, rendererVersion: RENDERER_VERSION,
     // ★★ 复电上岗判据（模块改动必须重启网关才生效）★★
     //   ① emitting 是**手写常量**，只能说明版本意图，**不能**证明载入的是哪一份文件；
@@ -3069,7 +3421,9 @@ function readSessionLog(session) {
     // ★ birth 模式也要先捕获 sessionId —— CAS 归档要用它登记会话归属
     try {
       const s = payload && payload.agent && payload.agent.session
-      if (s && s.id) { birthSessionId = s.id; birthSession = s }
+      const sid = s && (s.id ?? s.sessionId)
+      birthSessionId = sid == null ? null : String(sid)
+      birthSession = sid == null ? null : s
     } catch { /* ignore */ }
     // ★ birth 模式的削减在「出生那一刻」已完成 ⇒ 事后替换路径必须全关，
     //   否则同一段推理会被二次削减（且会撞上面那堵 replace 墙）。
@@ -3097,9 +3451,14 @@ function readSessionLog(session) {
         const bpSid = bpSession && (bpSession.id || bpSession.sessionId)
         // ★ 快速路径：本会话没有任何「没赶上的结果」⇒ 直接返回，
         //   不做表面读取、不做区间选择（收网器只在真有东西可收时才启动）。
-        if (!lateMemorySize(bpSid)) { trace('birth-claim-idle', { n }); return decision }
+        if (!lateMemorySize(bpSid, { branchId: normalizeBranchId(bpSession) })) { trace('birth-claim-idle', { n }); return decision }
+        const claimScope = { branchId: normalizeBranchId(bpSession) }
+        trace('birth-claim-opportunity', { n, sessionId: bpSid, branchId: claimScope.branchId, taskIds: (lateMemory.get(lateKey(bpSid, claimScope)) || []).map(x => x.taskId).filter(Boolean) })
+        let pendingClaim = null
         const r = await runPreStepEmit({
           session: bpSession,
+          requireUniqueRaw: true,
+          validatePending: () => lateReceiptValid(bpSid, pendingClaim, claimScope),
           ctx,
           cfg,
           trace,
@@ -3125,30 +3484,27 @@ function readSessionLog(session) {
           // ★ birth 专属：结果不是「等」来的，是从暂存区**认领**来的。
           //   认领要求【全覆盖】：本消息的每一个推理块都有就绪结果，且拼起来逐字等于原文。
           //   只部分就绪 ⇒ 不认领、不消费（否则未就绪块的推理会凭空消失）。
-          //   认领即移除 ⇒ 同一结论绝不重复收网；没认领到就保持原文。
+          //   先 peek，只有发射成功才 acknowledge；拒发/漂移/dry-run 不消费。
           awaitDistilled: async (raw) => {
-            const c = claimLateMemory(bpSid, raw)
+            const c = peekLateMemory(bpSid, raw, claimScope)
             if (!c) return null
             // 多块时按块序拼接（顺序由 coverageMatch 保证，绝不按 promise 完成序）
             const text = c.texts.join('\n\n') || renderCheckpoint(c.entries)
             if (!text || !String(text).trim()) return null
-            trace('birth-claim-hit', { n, blocks: c.count, chars: String(text).length })
+            pendingClaim = c.receipt
+            trace('birth-claim-hit', { n, blocks: c.count, chars: String(text).length, taskIds: c.receipt.map(x => x.taskId).filter(Boolean) })
             return { ok: true, text: String(text) }
           },
         })
         trace(r && r.emitted ? 'birth-claim-emitted' : 'birth-claim-skip', {
-          n, reason: r && r.reason, returnedSeq: r && r.returnedSeq,
+          n, reason: r && r.reason, returnedSeq: r && r.returnedSeq, taskIds: (pendingClaim || []).map(x => x.taskId).filter(Boolean),
         })
-        // ★★ 「宿主已应用」（用户第 4 点）★★
-        //   编译成功只是"编译已覆盖"（coverage.at）；只有**真的**把记忆提交到主请求面，
-        //   才算"宿主已应用"。两者绝不互相赋值 —— 此处才是 applied 的唯一写入点。
         if (r && r.emitted) {
-          try {
-            const okApplied = markSnapshotApplied(bpSid, normalizeBranchId(bpSession), {
-              mode: 'deferred-claim', seq: r.returnedSeq == null ? null : r.returnedSeq, at: Date.now(),
-            })
-            trace('state-snapshot-applied', { n, ok: okApplied, seq: r.returnedSeq == null ? null : r.returnedSeq })
-          } catch (e) { trace('state-snapshot-error', { where: 'applied', error: String((e && e.message) || e) }) }
+          const consumed = acknowledgeLateMemory(bpSid, pendingClaim, claimScope)
+          trace('birth-claim-acknowledged', { n, consumed, seq: r.returnedSeq ?? null, taskIds: (pendingClaim || []).map(x => x.taskId).filter(Boolean), rawChars: (pendingClaim || []).reduce((n, x) => n + x.raw.length, 0), summaryChars: (pendingClaim || []).reduce((n, x) => n + String(x.board || '').length, 0), accounting: 'characters-not-tokens-or-money' })
+          for (const item of pendingClaim || []) consumption.applied(item.taskId, item.board)
+          // A block-level ledger is NOT the entire latest persistent snapshot.
+          // Do not mark that unrelated revision as host-applied.
         }
       } catch (e) {
         trace('birth-claim-error', { n, error: String((e && e.message) || e) })
@@ -3248,15 +3604,18 @@ function readSessionLog(session) {
   // ⚠ 包装流的写法照抄 `deploy/probe/index.mjs` —— 那是本项目已在真实会话里跑过的既有模式：
   //   任何**观察**异常都不许影响主流；主流自己抛错必须原样抛出，不许吞。
   ctx.on('llm/stream', (options, next) => {
+    if (cfg.enabled && cfg.mode !== 'off') consumption.observe(options)
+    if (!cfg.enabled || cfg.mode === 'off') return next()
     // ★★ 宿主对话模型捕获（必须在 fireEarly 之前）★★
     //   本次 llm/stream 就是「生成当前这条 assistant 消息」的那次调用
     //   ⇒ options.model 正是宿主此刻对话用的模型 ⇒ 拿它提纯，就是用户要的「跟着对话模型走」。
     try {
       const hm = options && options.model
-      if (hm && hm !== hostModel) {
-        hostModel = hm
-        hostProvider = (options && options.provider) || hostProvider
-        if (cfg.followHostModel) cfg.model = hm
+      const hp = options && options.provider
+      if ((hm && hm !== hostModel) || (hp && hp !== hostProvider)) {
+        if (hm) hostModel = hm
+        hostProvider = hp || hostProvider
+        if (cfg.followHostModel && hm) cfg.model = hm
         // ★ 模型跟随之外，端点/钥匙也跟随宿主 provider（禁止硬编码）
         if (cfg.followHostProvider !== false) cfg.followProvider = hostProvider
         trace('distill-endpoint-target', { hostProvider, followProvider: cfg.followProvider || null })
@@ -3315,20 +3674,25 @@ function readSessionLog(session) {
         trace("birth-no-async-iter", { n, kind: inner === null ? "null" : typeof inner })
         return inner
       }
+      if (cfg.dryRun) { trace('birth-dry-run-stream', { n }); return inner }
+      // Capture now: another pre-step/provider update may run before this stream
+      // is consumed or before block-end. No mutable session/config lookup later.
+      const streamSession = birthSession
+      const streamSessionId = birthSessionId
+      const streamBranchId = normalizeBranchId(streamSession)
+      const streamCfg = { ...cfg }
       return birthTransform(inner, {
-        cfg,
+        cfg: streamCfg,
         trace,
-        sessionId: () => birthSessionId,
-        // ★ 分支键（宿主当前无分支概念 ⇒ 'main'）
-        branchId: () => birthSession,
-        // ★ 冷启动恢复：本地没有快照时，从 CAS 镜像找回并物化（同步的 birthStart 之前完成）
-        recoverSnapshot: (o) => recoverSnapshot(o),
+        sessionId: streamSessionId,
+        branchId: () => streamBranchId,
+        // Mirror runs outside finish; nonblocking recovery is scheduled by pre-step.
         archive: async (text, sid) => {
           const store = (ctx.get && ctx.get("cmbStore", false)) || null
           if (!store || typeof store.putText !== "function") { trace("birth-no-store", { n }); return null }
           try {
             const ref = await store.putText(text, {
-              producer: cfg.birthProducer || 'cot-birth',
+              producer: streamCfg.birthProducer || 'cot-birth',
               sessionId: sid || null,
               retention: 'session',
             })
@@ -3341,11 +3705,23 @@ function readSessionLog(session) {
         // ★ 方案一：唯一压缩器 = 宿主模型提纯（100% 跟随宿主 provider/model；本模块不碰端点与钥匙）
         // ★ 状态记忆打开时：输入是【证据信封】，产物是六栏状态渲染 + 记忆条目。
         //   两者共用同一条传输/重试/超时/取消机制（仍是**一次**模型调用）。
-        distill: cfg.stateMemory
-          ? async (env, signal) => generateStateMemory(env, cfg, signal)
-          : async (raw, signal) => generateDistillation(raw, cfg, signal),
+        // ★★ 2026-09-22 切分后：按 compileMode 三选一 ★★
+        //   memory   → 证据信封 + 两栏判断（状态记忆）
+        //   compress → 本段 reasoning 的摘要（纯压缩）★ 输入不背整窗证据
+        //   legacy   → 旧的 generateDistillation 默认提示词
+        distill: compileModeOf(streamCfg) === 'memory'
+          ? async (env, signal, budget) => generateStateMemory(env, budget?.timeoutMs != null ? { ...streamCfg, timeoutMs: budget.timeoutMs } : streamCfg, signal, { ...budget, flights: compilerFlights })
+          : compileModeOf(streamCfg) === 'compress'
+            ? async (raw, signal) => generateDistillation(raw, streamCfg, signal, buildDistillPrompt(raw), { promptVersion: 'compress-v1' })
+            : async (raw, signal) => generateDistillation(raw, streamCfg, signal),
+        prepareEvidence: (input) => {
+          const started = performance.now()
+          const frame = prepareCompilerEvidence(input, streamCfg.stateSnapshot)
+          trace('evidence-prepare-cost', { ms: performance.now() - started, io: frame.ioStats || null })
+          return frame
+        },
         buildEnvelope: (o) => buildEvidenceEnvelope(o),
-        collectEvidence: (o) => collectEvidence(currentSession(), o),
+        collectEvidence: (o) => collectEvidence(streamSession, o),
         // ★ 优化1：句柄内存秒算（与 store.deriveHandle 同一公式，纯函数）
         deriveHandle: (sessionId, text) => deriveArtHandle(sessionId, text),
         // ★ 优化2：思考一开始就捂热连接（HEAD，零 token）

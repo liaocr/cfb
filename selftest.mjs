@@ -780,7 +780,7 @@ console.log('\n【19】失败路径的请求指纹 —— 分得清「TTFB 吃�
   let em = null
   try { await generateDistillation('x'.repeat(3000), fcfg) } catch (e) { em = e.meta || null }
   ok('★ 超时/取消路径带上了 promptChars（本轮补的缺口）', em && typeof em.promptChars === 'number' && em.promptChars > 0, em)
-  eq('  且能看出失败发生在「等响应」阶段', em && em.stage, 'await-response')
+  eq('  且能看出失败发生在「等响应」阶段', em && em.stage, 'await-headers')
   eq('  并带回本次实际请求的模型名', em && em.model, 'test-model-fm')
   ok('  maxOutputTokens 也被钉住（可与预算对照）', em && em.maxOutputTokens === fcfg.maxOutputTokens, em)
   try { srv.close() } catch {}
@@ -815,11 +815,11 @@ console.log('【20】birth 下轮收网：暂存区语义')
   ok('20.8 ★ 取走即移除（绝不重复收网）', lateMemorySize(sid) === 0)
   ok('20.9 二次取同一条返回 null', takeLateMemory(sid, rawA) === null)
 
-  // ③ 同一块重复 settle ⇒ 覆盖，不堆积
+  // ③ 同文本但没有任务身份 ⇒ 保留歧义，不擅取最新版
   pushLateMemory(sid, rawA, entA, '第一版')
   pushLateMemory(sid, rawA, entA, '第二版')
-  ok('20.10 ★ 同 raw 重复入队只留一条（覆盖）', lateMemorySize(sid) === 1, String(lateMemorySize(sid)))
-  ok('20.11 覆盖取到的是最新版', takeLateMemory(sid, rawA).board === '第二版')
+  ok('20.10 ★ 同 raw 无身份重复入队保留两条', lateMemorySize(sid) === 2, String(lateMemorySize(sid)))
+  ok('20.11 同 raw 无身份歧义不认领', takeLateMemory(sid, rawA) === null)
 
   // ④ 有界
   for (let i = 0; i < 20; i++) pushLateMemory(sid, rawA + '#' + i, entB, '看板' + i)

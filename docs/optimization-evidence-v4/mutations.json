@@ -1,0 +1,87 @@
+[
+  {
+    "mutation": "body budget bypassed",
+    "detected": true,
+    "failures": [
+      "FAIL body budget is enforced while all tool metadata remains present",
+      "FAIL failed evidence is prioritized before newer successful results",
+      "FAIL deferred body and interval limits are explicit in model input",
+      "FAIL successful production compile writes receipts to real disk plus observable trace",
+      "FAIL sequential HTTP workload sends bounded views without requiring concurrency"
+    ]
+  },
+  {
+    "mutation": "full source hash omitted",
+    "detected": true,
+    "failures": [
+      "FAIL changed unseen suffix invalidates old prefix receipt"
+    ]
+  },
+  {
+    "mutation": "oversize snapshot still authorizes reuse",
+    "detected": true,
+    "failures": [
+      "FAIL oversize snapshot disables receipt reuse rather than using a partial view"
+    ]
+  },
+  {
+    "mutation": "receipt side effect silently omitted",
+    "detected": true,
+    "failures": [
+      "FAIL successful production compile writes receipts to real disk plus observable trace",
+      "FAIL next sequential production call advances ranges instead of repeating prefix"
+    ]
+  },
+  {
+    "mutation": "CAS line metadata treated as EOF",
+    "detected": true,
+    "failures": [
+      "FAIL CAS reader ignores declared line count and proves EOF",
+      "FAIL CAS no-progress or missing EOF never returns a partial artifact",
+      "FAIL recovery uses owner-bound paged read, hash and highest revision, not latest timestamp"
+    ]
+  },
+  {
+    "mutation": "CAS content hash not checked",
+    "detected": true,
+    "failures": [
+      "FAIL CAS hash mismatch never materializes state"
+    ]
+  },
+  {
+    "mutation": "ambiguous CAS revision accepted",
+    "detected": true,
+    "failures": [
+      "FAIL equal CAS revisions with different state are refused, not arbitrarily selected"
+    ]
+  },
+  {
+    "mutation": "mirror not connected",
+    "detected": true,
+    "failures": [
+      "FAIL mirror is scheduled outside compile/finish wait and failure leaves local state",
+      "FAIL actual llm hook calls cot-snapshot putText with structured JSON"
+    ]
+  },
+  {
+    "mutation": "malformed SSE accepted",
+    "detected": true,
+    "failures": [
+      "FAIL malformed SSE cannot become success even with stop and DONE"
+    ]
+  },
+  {
+    "mutation": "authorization rejection retried as parameter issue",
+    "detected": true,
+    "failures": [
+      "FAIL 401 is not retried as unsupported thinking parameter"
+    ]
+  },
+  {
+    "mutation": "inverted range not rejected",
+    "detected": true,
+    "failures": [
+      "FAIL inverted destructive range is refused, never swapped into a new deletion"
+    ]
+  }
+]

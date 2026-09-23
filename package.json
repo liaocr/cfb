@@ -11,7 +11,7 @@
       "default": "./index.js"
     }
   },
-  "description": "形态 B（通道一）：尾部即时思维链提纯。assistant/message 承载 surfaceOp:replace，tool-call 原样保活。",
+  "description": "DSH reasoning 状态编译插件：birth 原文兜底、历史 checkpoint 认领与结构化快照持久化。",
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1"
   },

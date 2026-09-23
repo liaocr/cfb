@@ -31,13 +31,21 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const CHECKOUT = path.resolve(HERE, '..')
 
 /** id → { dir: 相对 checkout 的包目录, pkg: 包名, main: 入口 } */
-const PLUGINS = {
+const MONOREPO_PLUGINS = {
   'cmb-probe':             { dir: 'deploy/probe',                     pkg: '@dsh-external/dsh-probe',              main: 'index.mjs' },
   'context-memory-bundle': { dir: 'packages/dsh-context-memory-bundle', pkg: '@dsh-external/dsh-context-memory-bundle', main: 'index.js' },
   'boundary-plugin':       { dir: 'packages/dsh-boundary-plugin',     pkg: 'dsh-boundary-plugin',                  main: 'index.js' },
   'cot-form-b':            { dir: 'packages/dsh-cot-form-b',          pkg: '@dsh-external/dsh-cot-form-b',         main: 'index.js' },
   'degeneration-guard':    { dir: 'packages/dsh-degeneration-guard',  pkg: '@dsh-external/dsh-degeneration-guard', main: 'index.js' },
 }
+
+// This repository is distributed as a standalone plugin, not the whole DSH
+// monorepo. Detect that layout before looking for non-existent sibling packages.
+let standalone = false
+try { standalone = JSON.parse(fs.readFileSync(path.join(CHECKOUT, 'package.json'), 'utf8')).name === '@dsh-external/dsh-cot-form-b' } catch {}
+const PLUGINS = standalone
+  ? { 'cot-form-b': { dir: '.', pkg: '@dsh-external/dsh-cot-form-b', main: 'index.js' } }
+  : MONOREPO_PLUGINS
 
 const argv = process.argv.slice(2)
 const APPLY = argv.includes('--apply')

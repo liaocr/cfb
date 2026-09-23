@@ -1,0 +1,50 @@
+[
+  {
+    "mutation": "omit-normal-evidence",
+    "detected": true,
+    "failures": [
+      "FAIL normal results remain grounding, including empty/semantic failure with exit zero",
+      "FAIL all visible normal results retain the old 1200-character prefix; old storage never authorizes omission",
+      "FAIL identical bodies deduplicate inside the request but retain both event associations",
+      "FAIL long source is not falsely called source-truncated merely because old prompt used 1200 chars"
+    ]
+  },
+  {
+    "mutation": "lost-error-tail",
+    "detected": true,
+    "failures": [
+      "FAIL isError/nonzero exit/failed/cancelled all carry body; overflow is explicit head plus tail, not whole-result coverage"
+    ]
+  },
+  {
+    "mutation": "quota-not-enforced",
+    "detected": true,
+    "failures": [
+      "FAIL managed store cap refuses growth without deleting live evidence; orphan GC preserves every view",
+      "FAIL real hooks: delayed result, next turns, retry, consumption; ledger quota full=true"
+    ]
+  },
+  {
+    "mutation": "skip-storage-fallback",
+    "detected": true,
+    "failures": [
+      "FAIL real hooks: delayed result, next turns, retry, consumption; ledger quota full=true"
+    ]
+  },
+  {
+    "mutation": "no-consumer-still-ready-only",
+    "detected": true,
+    "failures": [
+      "FAIL no deferred consumer => original bounded wait remains, avoiding guaranteed abandonment",
+      "FAIL already-ready result still compresses; missing session falls back to configured wait"
+    ]
+  },
+  {
+    "mutation": "early-consumption-on-failed-append",
+    "detected": true,
+    "failures": [
+      "FAIL real hooks: delayed result, next turns, retry, consumption; ledger quota full=false",
+      "FAIL real hooks: delayed result, next turns, retry, consumption; ledger quota full=true"
+    ]
+  }
+]

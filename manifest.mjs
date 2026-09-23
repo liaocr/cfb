@@ -6,7 +6,7 @@
  *   node manifest.mjs --check  逐文件校验，任何漂移都非零退出
  *
  * 为什么需要：这个包会被复制到别的机器/云端 workspace，
- * 「我拿到的是不是那份经过 928 项自测的代码」必须能用一条命令回答。
+ * 「我拿到的是不是那份经过自测的代码」必须能用一条命令回答。
  */
 import fs from 'node:fs'
 import path from 'node:path'
