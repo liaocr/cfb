@@ -275,7 +275,7 @@ export const DEFAULTS = {
   //     stateMemory   → 证据账本 + 状态快照 + 判断编译。**状态记忆**
   //   ⚠ 两者仍共用同一条传输/重试/超时/取消机制（仍是**一次**模型调用）。
   //   ⚠ 同时打开时 stateMemory 优先（它的产物已是判断稿，不再做二次摘要）。
-  //   ⚠ 预检在 makeConfig 里：两者都开会被显式拒绝，绝不静默二选一。
+  //   ⚠ 两者都开：normalizeConfig 记录 compileModeConflict（BOOT 里可见）并按 stateMemory 生效；不抛错。
   stateMemory: false,
   // ★ 纯压缩：把这段 reasoning 改写成更短的摘要。与 stateMemory 独立开关。
   //   输入 ≈ 本段推理，不背整窗证据 ⇒ 输入体量回到设计预期，压缩率可核。
@@ -860,9 +860,16 @@ export function requestOnce(urlStr, { method = 'POST', headers = {}, body = null
       // ★ 统一响应入口的旁证：协议判定以【响应体结构】为主，Content-Type 只作补充
       meta.contentType = res.headers['content-type'] || null
       const chunks = []
+      let bytes = 0
       res.on('data', (c) => {
         if (meta.firstByteMs === null) meta.firstByteMs = Date.now() - t0
         meta.chunks += 1
+        bytes += c.length
+        // 上限 4MB：与 requestStream 对齐；正常 completion 远小于此，超限即放弃，绝不无限累积
+        if (bytes > RESPONSE_BYTES_MAX) {
+          const err = new Error('response exceeds 4MB'); err.meta = meta
+          req.destroy(err); done(reject, err); return
+        }
         chunks.push(c)
       })
       res.on('end', () => {
@@ -975,8 +982,10 @@ export function requestStream(urlStr, { method = 'POST', headers = {}, body = nu
         if (data === '[DONE]') { meta.done = true; return }
         if (meta.firstEventAt === null) meta.firstEventAt = Date.now()
         meta.eventCount += 1
+        let parsed
         try {
           const obj = JSON.parse(data)
+          parsed = obj
           const usage = obj.usage || obj.response?.usage || obj.message?.usage
           if (usage && typeof usage === 'object') meta.providerReportedUsage = { ...meta.providerReportedUsage, ...usage }
           const content = obj.type === 'response.output_text.delta' ? obj.delta : obj.choices?.[0]?.delta?.content
@@ -984,17 +993,18 @@ export function requestStream(urlStr, { method = 'POST', headers = {}, body = nu
             meta.firstContentAt ??= Date.now(); meta.lastContentAt = Date.now()
           }
         } catch {}
-        events.push({ at: Date.now(), data })
+        // ★ 只解析一次：下游 parseStreamEvents 直接用 json，不再对同一帧二次 JSON.parse
+        events.push({ at: Date.now(), data, json: parsed })
       }
       res.on('data', (c) => {
         meta.chunks += 1
         meta.bytes += c.length
-        if (meta.bytes > 4 * 1024 * 1024) {
+        if (meta.bytes > RESPONSE_BYTES_MAX) {
           const err = new Error('stream response exceeds 4MB'); err.meta = meta
           req.destroy(err); done(reject, err); return
         }
         // 上限 4MB：正常 completion 远小于此；超限即放弃兜底，绝不无限增长
-        if (rawChunks && meta.bytes <= 4 * 1024 * 1024) rawChunks.push(c)
+        if (rawChunks && meta.bytes <= RESPONSE_BYTES_MAX) rawChunks.push(c)
         buf = buf.length ? Buffer.concat([buf, c]) : c
         let idx
         while ((idx = buf.indexOf(0x0a)) !== -1) {
@@ -1123,6 +1133,26 @@ function makePrewarmer(cfg, trace) {
 }
 
 // 网关把「不认识的参数」拒掉时的错误长这样：http 400 ...
+/** 响应体上限（流式与非流式共用）。 */
+const RESPONSE_BYTES_MAX = 4 * 1024 * 1024
+
+/**
+ * 重试退避：按错误类分级 + 抖动。
+ *   429 / 5xx / 网络类 ⇒ 基线 1200·attempt，±30% 抖动（避免并发编译同拍重试）；
+ *   401 / 403 / 404 / 参数 4xx ⇒ 不重试（再试也是同样的结果，纯白付）。
+ * 纯函数，供自测钉住。
+ */
+export function retryDelayMs(e, attempt, rand = Math.random) {
+  const msg = String((e && e.message) || e)
+  const m = /^http (\d{3})\b/.exec(msg)
+  const status = m ? Number(m[1]) : (e && e.meta && typeof e.meta.status === 'number' ? e.meta.status : null)
+  if (status != null && status !== 429 && status < 500) return null   // 非瞬时错误：不重试
+  if (e && e.cancelled) return null
+  const base = 1200 * Math.max(1, attempt)
+  const jitter = (rand() * 2 - 1) * 0.3 * base
+  return Math.max(100, Math.round(base + jitter))
+}
+
 function isParamRejection(e) {
   return /^http (400|422)\b/.test(String((e && e.message) || e))
 }
@@ -1320,8 +1350,8 @@ async function distillOnceStream(key, prompt, cfg, thinkingOff, ep, signal, inpu
   let sawDone = false
   let badFrame = 0
   for (const ev of r.events) {
-    let j
-    try { j = JSON.parse(ev.data) } catch { badFrame += 1; continue }
+    let j = ev.json
+    if (j === undefined) { try { j = JSON.parse(ev.data) } catch { badFrame += 1; continue } }
     if (style === 'responses') {
       // responses 流：只认 output_text.delta
       if (j.type === 'response.output_text.delta' && typeof j.delta === 'string' && j.delta) {
@@ -1599,7 +1629,11 @@ export async function generateDistillation(cot, cfg, signal, promptOverride, run
           if (!canDowngrade) break
         }
       }
-      if (attempt < rounds) await new Promise((s) => setTimeout(s, 1200 * attempt))
+      if (attempt < rounds) {
+        const delay = retryDelayMs(lastErr, attempt)
+        if (delay == null) { emit('compiler-retry-skipped', { attempt, error: String((lastErr && lastErr.message) || lastErr) }); break }
+        await new Promise((s) => setTimeout(s, delay))
+      }
     }
     throw lastErr
   }
@@ -1955,6 +1989,7 @@ export function birthStart(entry, deps = {}) {
   if (cfg.enabled === false || cfg.mode === 'off' || cfg.dryRun === true) { task.belowFloor = true; task.why = cfg.dryRun ? 'dry-run' : 'disabled'; return task }
   if (!raw.trim() || raw.length < floor) { task.belowFloor = true; task.why = 'below-floor'; return task }
   if (cfg.birthArchive === false) { task.belowFloor = true; task.why = 'archive-off'; return task }
+  task.compressMode = compileModeOf(cfg) === 'compress'
   const archive = deps.archive
   if (typeof archive !== 'function') { task.belowFloor = true; task.why = 'no-store'; return task }
 
@@ -2179,8 +2214,14 @@ export function birthStart(entry, deps = {}) {
       if (!text) throw new Error('empty distillate')
       // ★ 状态记忆分支：把六栏对象与有效性一并带出去，供 trace 与后续 checkpoint 使用。
       //   注意此处**不**提交任何东西 —— 提交仍由 birthFinish + 现有 surface 通路决定。
-      return { ok: true, text, meta: (r && r.meta) || null, entries: (r && r.entries) || null,
-               checkpointText: (r && r.checkpointText) || null, parsed: (r && r.parsed) || null }
+      let entries = (r && r.entries) || null
+      // ★ 2026-09-23 compress 接入迟到通路：纯压缩没有六栏，但摘要本身就是可认领的产物。
+      //   包成一条最小 entry ⇒ pushLateMemory 的 entries 门禁放行；快照仍不提交（见下方 stateSnapshot 门）。
+      if (!entries && compileModeOf(cfg) === 'compress') {
+        entries = [{ id: 'compress:' + taskId.slice(0, 8), category: 'state', content: text, source: 'model', basis: 'compressed-reasoning' }]
+      }
+      return { ok: true, text, meta: (r && r.meta) || null, entries,
+               checkpointText: (r && r.checkpointText) || text, parsed: (r && r.parsed) || null }
     })
     .catch((e) => {
       // ★ 2026-09-21 补漏：这里原本把 `e.meta` 丢了 ⇒ **超时/取消**这条最该诊断的路径
@@ -2212,7 +2253,8 @@ export function birthStart(entry, deps = {}) {
       // The archive is a prerequisite for both persistent and deferred memory.
       // Waiting here is background work; birthFinish retains its own deadline.
       const archived = s.ok && s.entries ? await task.diskP : null
-      if (s.ok && s.entries && archived && archived.ok && cfg.stateSnapshot !== false) {
+      // ⚠ 快照只属于 memory 模式：compress 的最小 entry 是摘要，不是判断，绝不写进持久快照。
+      if (s.ok && s.entries && archived && archived.ok && cfg.stateSnapshot !== false && compileModeOf(cfg) === 'memory') {
         try {
           const seqs = fullyVisibleResultSeqs(toolsForPrompt)
           const c = commitSnapshot({
@@ -2239,7 +2281,7 @@ export function birthStart(entry, deps = {}) {
         } catch (e) { trace('state-snapshot-error', { index: task.index, where: 'commit', error: String((e && e.message) || e) }) }
       }
       if (s.ok && s.entries && archived && archived.ok && task.passedThrough && cfg.birthDeferredClaim !== false) {
-        const worthStoring = !task.deterministic || raw.length - String(s.checkpointText || s.text).length >= (cfg.birthMinSavedChars ?? 50)
+        const worthStoring = !(task.deterministic || task.compressMode) || raw.length - String(s.checkpointText || s.text).length >= (cfg.birthMinSavedChars ?? 50)
         const stored = worthStoring && pushLateMemory(sessionId, raw, s.entries, s.checkpointText, { branchId, taskId })
         if (!stored) trace('birth-late-memory-refused', { index: task.index, reason: worthStoring ? 'invalid-or-capacity' : 'no-gain', branchId })
         if (stored) trace('birth-late-memory-stored', {
@@ -2340,7 +2382,11 @@ export async function birthFinish(task, deps = {}) {
 
   if (task.belowFloor) return pass(task.why || 'below-floor', null)
 
-  const readyOnly = task.deterministic && cfg.birthDeferredClaim !== false && task.canDefer !== false
+  // ★ 2026-09-23：compress 也走 ready-only。它的迟到产物现在能进暂存区被下轮认领，
+  //   没有理由再让用户在 finish 处等 finishWaitMs（线上 4000ms）却大概率拿不到结果。
+  //   legacy（无迟到消费者）保持原预算等待语义。
+  const lateCapable = task.deterministic || task.compressMode === true
+  const readyOnly = lateCapable && cfg.birthDeferredClaim !== false && task.canDefer !== false
   task.finishEnterAt = Date.now()
   trace('birth-finish-enter', { index: task.index, gapMs: task.finishEnterAt - (task.firedAt || 0), waitPolicy: readyOnly ? 'ready-only' : 'budgeted' })
   if (readyOnly && (!task.diskState || !task.distillState)) {
@@ -3470,6 +3516,8 @@ function readSessionLog(session) {
           //   清洗只允许发生在「模型输入视图」那一侧（buildLedger 内联时），
           //   绝不能让归档副本被洗 —— 那是原始证据，必须字节保真。
           toolTextOf: async (ev) => toolTextFromEvent(ev),
+          // ★ 零等待探测：让发射器在缺省目标未就绪时回头找「更早但已就绪」的候选（机会饥饿修正）
+          isReady: async (raw) => !!peekLateMemory(bpSid, raw, claimScope),
           archive: async (text) => {
             if (!bpCmb || typeof bpCmb.putText !== 'function') return null
             try {

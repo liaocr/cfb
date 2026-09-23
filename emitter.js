@@ -91,10 +91,75 @@ export function toolTextFromEvent(ev) {
   return out
 }
 
+/**
+ * ★ 2026-09-23 覆盖完整性：整段 replace 遮蔽的不只是 reasoning 与 tool/result。
+ *   被吞并的旧看板正文、区间内每条 assistant 的**可见回答**（text 块）、tool-call 的
+ *   name+args 此前都不在 ledger 里 ⇒ replace 后从模型视野里凭空消失（哨兵复现：
+ *   OLD_BOARD / VISIBLE_ANSWER / ARGS 三类全丢）。现在由 collectSpanCarry() 抽出，
+ *   与 tool/result 走同一条「短内联 / 长归档 / 归档失败内联」通路。
+ *   目标 assistant 的 reasoning 不在此列（它由 distilled 摘要代表）。
+ *
+ * @returns { boards:[{seq,text}], answers:[{seq,text}], calls:[{seq,text}] } 或 null（形状不认识 ⇒ 拒发）
+ */
+export function collectSpanCarry(events, span, opts = {}) {
+  const pluginName = opts.pluginName || 'cot-form-b'
+  const out = { boards: [], answers: [], calls: [] }
+  if (!Array.isArray(events) || !span) return out
+  for (let i = span.startIdx; i <= span.endIdx; i++) {
+    const ev = events[i]
+    const raw = ev && ev.raw
+    const d = raw && raw.data
+    if (ev.type === 'user/message') {
+      const src = d && d.source
+      if (!(src && src.kind === 'plugin' && src.plugin === pluginName)) continue   // 非本插件看板不会在区间内；防御
+      const blocks = d && d.message && Array.isArray(d.message.content) ? d.message.content : (Array.isArray(d && d.content) ? d.content : null)
+      if (!blocks) return null
+      let text = ''
+      for (const b of blocks) { if (!b || b.type !== 'text') return null; text += typeof b.text === 'string' ? b.text : '' }
+      // 只保留 <cot-ledger> 内的正文（去掉固定抬头，避免抬头反复嵌套）
+      const o = text.indexOf(LEDGER_OPEN), c = text.lastIndexOf(LEDGER_CLOSE)
+      const body = (o >= 0 && c > o) ? text.slice(o + LEDGER_OPEN.length, c) : text
+      if (body.trim()) out.boards.push({ seq: ev.seq, text: body.trim() })
+      continue
+    }
+    if (ev.type !== 'assistant/message') continue
+    const blocks = d && d.message && Array.isArray(d.message.content) ? d.message.content : null
+    if (!blocks) return null
+    let answer = ''
+    for (const b of blocks) {
+      if (!b) continue
+      if (b.type === 'text') { answer += typeof b.text === 'string' ? b.text : ''; continue }
+      if (b.type === 'tool-call') {
+        const name = b.name || b.toolName || '?'
+        let args = b.args == null ? (b.arguments == null ? '' : b.arguments) : b.args
+        if (typeof args !== 'string') { try { args = JSON.stringify(args) } catch { args = String(args) } }
+        out.calls.push({ seq: ev.seq, text: (b.id || b.toolCallId || '') + ' ' + name + ' ' + args })
+      }
+    }
+    if (answer.trim()) out.answers.push({ seq: ev.seq, text: answer.trim() })
+  }
+  return out
+}
+
 export async function buildLedger(deps) {
-  const { distilled, toolResults = [], maxInlineChars = 2000, archive, trace, cleanView } = deps
+  const { distilled, toolResults = [], maxInlineChars = 2000, archive, trace, cleanView, carry } = deps
   const parts = [String(distilled == null ? '' : distilled).trim()]
   let inlined = 0, archived = 0, archiveFailed = 0, viewSaved = 0
+  // 被吞并旧看板正文 / 区间内可见回答 / 工具调用参数：同一条「短内联、长归档」通路
+  if (carry) {
+    const pushCarry = async (label, item) => {
+      const text = String(item && item.text != null ? item.text : '')
+      if (!text) return
+      if (text.length <= maxInlineChars) { parts.push('[' + label + ' seq=' + item.seq + ']\n' + text); inlined++; return }
+      let handle = null
+      if (typeof archive === 'function') { try { handle = await archive(text, { seq: item.seq, chars: text.length, kind: label }) } catch { handle = null } }
+      if (handle) { parts.push('[' + label + ' seq=' + item.seq + ' · ' + text.length + ' 字符 · 原文 ' + handle + ']'); archived++ }
+      else { parts.push('[' + label + ' seq=' + item.seq + ']\n' + text); archiveFailed++ }
+    }
+    for (const b of carry.boards || []) await pushCarry('早前看板', b)
+    for (const a of carry.answers || []) await pushCarry('早前回答', a)
+    for (const c of carry.calls || []) await pushCarry('工具调用', c)
+  }
   // ★★ 2026-09-22 证据边界（评审第 5 点）★★
   //   清洗只作用于**模型输入视图**（内联进 ledger 的那份）；
   //   **CAS 归档一律拿原文** —— 原始证据必须字节保真。
@@ -263,8 +328,8 @@ export async function runPreStepEmit(deps) {
     //   历史事故：这里曾用"最后一条 assistant"作锚点 ⇒ 当轮回答被换成 user 检查点
     //   ⇒ 模型看不到自己答过 ⇒ 无限重答。见 balanced-span.js 顶部注释。
     // ★★ 看板单例自吞噬：把上一条本插件看板一并纳入遮蔽区间 ⇒ 表面恒 ≤ 1 份看板
-    const boards = ownBoardSeqs(events, 'cot-form-b')
-    const span = selectBalancedSpan(events, {
+    const boards = ownBoardSeqs(events, cfg.pluginName || 'cot-form-b')
+    let span = selectBalancedSpan(events, {
       allowWholeSurface: false,
       keepTail: cfg.keepTail,
       absorbSeqs: boards,
@@ -278,9 +343,32 @@ export async function runPreStepEmit(deps) {
     // 取这一组的原始推理与工具结果
     // ★ 有了"吞并旧看板"之后，span.startIdx 可能指向一条 user/message（旧看板），
     //   而推理原文在【目标那条 assistant】身上 ⇒ 必须按 targetSeq 取，不能按 startIdx。
-    const last = events.find((x) => x.seq === span.targetSeq) || events[span.startIdx]
-    const raw = typeof rawOf === 'function' ? await rawOf(last.raw, last.seq) : null
+    let last = events.find((x) => x.seq === span.targetSeq) || events[span.startIdx]
+    let raw = typeof rawOf === 'function' ? await rawOf(last.raw, last.seq) : null
     if (!raw) { t('emit-no-raw', { seq: last.seq }); return { emitted: false, reason: 'no-raw' } }
+
+    // ★ 2026-09-23 迟到候选反查（机会饥饿修正）：
+    //   缺省目标 = 倒数第 keepTail+1 条 assistant。若它的摘要尚未就绪，而更早的某条 assistant
+    //   的迟到结果**已经就绪**，旧逻辑永远不会再回头问它 ⇒ 用户付过的那次编译到 TTL 直接作废。
+    //   现在：先问缺省目标；未就绪时按「从旧到新」逐条询问尾部之前的其它 assistant，
+    //   每条都重新用 targetSeq 走 selectBalancedSpan（keepTail / 人类围栏 / 平衡切点三道闸原样生效）。
+    //   由调用方以 deps.isReady(raw) 提供**零等待**探测；未提供则保持旧行为。
+    if (typeof deps.isReady === 'function' && !(await deps.isReady(raw))) {
+      let picked = null
+      for (let i = 0; i < events.length && !picked; i++) {
+        const ev = events[i]
+        if (ev.type !== 'assistant/message' || ev.seq === span.targetSeq) continue
+        if (i >= span.tailStartIdx) break
+        const r0 = typeof rawOf === 'function' ? await rawOf(ev.raw, ev.seq) : null
+        if (!r0 || !(await deps.isReady(r0))) continue
+        const alt = selectBalancedSpan(events, { targetSeq: ev.seq, allowWholeSurface: false, keepTail: cfg.keepTail, absorbSeqs: boards })
+        if (alt) picked = { span: alt, ev, raw: r0 }
+      }
+      if (picked) {
+        t('emit-retarget-ready', { from: span.targetSeq, to: picked.ev.seq })
+        span = picked.span; last = picked.ev; raw = picked.raw
+      }
+    }
 
     if (deps.requireUniqueRaw) {
       for (const ev of events) {
@@ -324,8 +412,12 @@ export async function runPreStepEmit(deps) {
         toolResults.push({ seq: ev.seq, text: String(text) })
       }
     }
+    // ⛔ 覆盖完整性（2026-09-23）：被吞并旧看板 / 可见回答 / 工具调用参数也不许凭空消失。
+    const carry = collectSpanCarry(events, span, { pluginName: cfg.pluginName || 'cot-form-b' })
+    if (!carry) { t('emit-span-unreadable'); return { emitted: false, reason: 'span-unreadable' } }
+    t('emit-carry', { boards: carry.boards.length, answers: carry.answers.length, calls: carry.calls.length })
     const ledger = await buildLedger({
-      distilled: pending.text, toolResults,
+      distilled: pending.text, toolResults, carry,
       maxInlineChars: cfg.maxInlineToolResultChars, archive, trace: t,
     })
 

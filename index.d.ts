@@ -29,8 +29,26 @@ export interface CotFormBConfig {
    */
   mode?: 'distill' | 'rules' | 'birth' | 'checkpoint' | 'off'
 
-  /** 库启用默认不变。birth 开启状态编译后走确定性证据记录 + 两栏判断，无新增启用开关。 */
+  /**
+   * 编译模式三选一（唯一裁决点 resolveCompileMode）：
+   *   stateMemory   → 'memory'   证据账本 / 快照 / 两栏判断（状态记忆）
+   *   stateCompress → 'compress' 仅本段 reasoning 的摘要（不采集证据；产物可进迟到暂存区）
+   *   都不开        → 'legacy'   旧蒸馏提示词
+   * 两者同时为 true 时 memory 生效，并在 BOOT 里记录 compileModeConflict（不抛错）。
+   */
   stateMemory?: boolean
+  stateCompress?: boolean
+  /** 由 normalizeConfig 派生，调用方不应手填 */
+  compileMode?: 'memory' | 'compress' | 'legacy'
+  compileModeConflict?: { stateMemory: true; stateCompress: true; winner: 'stateMemory' }
+  /** pre-step 发射器：活跃尾部宽度（≥1）、看板署名插件名、工具结果内联上限 */
+  keepTail?: number
+  pluginName?: string
+  maxInlineToolResultChars?: number
+  staticMinRawChars?: number
+  emitterProducer?: string
+  birthCancelOnGiveUp?: boolean
+  birthDiskWaitMs?: number
   /** false disables the ledger; current in-memory evidence is still available for compilation. */
   stateSnapshot?: boolean
   stateCoveredEvidence?: boolean
@@ -155,6 +173,9 @@ export declare const DEFAULTS: Readonly<CotFormBConfig>
  * 嵌套键覆盖同名扁平键；非法 `mode` 回落到 `'distill'`（绝不带电裸奔）。
  */
 export declare function normalizeConfig(config?: CotFormBConfig): CotFormBConfig
+export declare function resolveCompileMode(cfg: CotFormBConfig | null | undefined): 'memory' | 'compress' | 'legacy'
+/** 重试退避（纯函数）：非瞬时错误返回 null（不重试），否则返回带抖动的毫秒数 */
+export declare function retryDelayMs(e: unknown, attempt: number, rand?: () => number): number | null
 
 /** 组装三态提纯提示词（硬标签、无用户原话栏、无工具栏） */
 export declare function buildDistillPrompt(cot: string): string

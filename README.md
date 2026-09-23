@@ -74,7 +74,7 @@ DSH 外部插件。当前 `birth + stateMemory` 路径：
 ## 快速开始
 
 ```bash
-node verify.mjs        # 跑全部 15 个自测套件（含本地 HTTP；零外部 API 调用）
+node verify.mjs        # 跑全部 18 个自测套件（含本地 HTTP；零外部 API 调用）
 node manifest.mjs      # 生成 MANIFEST.sha256
 node manifest.mjs --check   # 校验完整性（换机器后第一件事）
 node deploy/onboard.mjs     # 体检：确认插件在本机装好了

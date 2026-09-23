@@ -2,7 +2,7 @@
 /**
  * verify.mjs —— 一条命令跑完本包**全部**自测。
  *
- *   node verify.mjs            跑全部（16 个套件）
+ *   node verify.mjs            跑全部（18 个套件）
  *   node verify.mjs --json     机器可读输出
  *
  * 退出码 0 = 所有套件通过；非 0 = 有失败（并逐条列出）。
@@ -37,6 +37,7 @@ const SUITES = [
   'grounding.selftest.mjs',
   'evidence-sharing.selftest.mjs',
   'efficiency.selftest.mjs',
+  'coverage-provenance.selftest.mjs',
 ]
 
 const rows = []

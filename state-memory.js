@@ -1123,11 +1123,14 @@ export const LEDGER_MARKERS = ['<cot-ledger>', '[自动生成的工作记忆看�
  */
 export function classifyUserEventMetadata(e) {
   const md = e || {}
-  const o = String(md.origin || md.sourceKind || md.source || '').toLowerCase()
-  const k = String(md.kind || md.intent || md.kindHint || '').toLowerCase()
+  const o = String(md.origin || md.sourceKind || hostOriginKind(md.source) || md.hostOrigin || '').toLowerCase()
+  const k = String(md.kind || md.intent || md.kindHint || md.hostKind || '').toLowerCase()
   if (o === 'user' || o === 'human' || k === 'user-input' || k === 'user' || k === 'human') return SOURCE.human
   if (o === 'runtime' || o === 'host' || k.includes('runtime')) return SOURCE.runtimeContext
   if (o === 'ledger' || o === 'memory' || k.includes('ledger') || k.includes('memory')) return SOURCE.generatedMemory
+  // 显式非人类创建路径（plugin 等）⇒ 不是 null（null 会让调用方退回 inboxDefault 提权）
+  if (o === 'plugin') return SOURCE.generatedMemory
+  if (o) return SOURCE.unknownUserEvent
   return null
 }
 
@@ -1569,12 +1572,24 @@ function toolCallBlocks(content) {
 export function classifyUserEventSource(opts = {}) {
   const o = opts || {}
   // ① 可信创建路径（优先级最高，且只能来自这里）
-  const hp = String(o.hostOrigin || '').toLowerCase()
+  //   ★ 2026-09-23 修正：宿主真实形状是 data.source = { kind: 'user' | 'plugin', plugin? }（对象），
+  //     旧代码 String(对象) ⇒ "[object Object]" ⇒ 第①步永远不命中 ⇒ 落 inboxDefault ⇒
+  //     **插件注入的无标头消息被提权为 human**，而显式 kind:'user' 的真人粘贴看板反被降级。
+  //     现在统一由 hostOriginKind() 抽取 kind 字符串；对象形状的非 user kind 一律不是人类。
+  const hp = hostOriginKind(o.hostOrigin)
   const hk = String(o.hostKind || '').toLowerCase()
   if (hp === 'user' || hp === 'human' || hk === 'user-input' || hk === 'user' || hk === 'human') return SOURCE.human
   // ② 创建路径明确说明是宿主产生
   if (hp === 'runtime' || hp === 'host' || hk.includes('runtime')) return SOURCE.runtimeContext
   if (hp === 'ledger' || hp === 'memory' || hk.includes('ledger') || hk.includes('memory')) return SOURCE.generatedMemory
+  // ②′ 显式的**非人类**创建路径（plugin / system / assistant / tool …）：
+  //     宿主已经声明了生产者，绝不能再靠 inboxDefault 提权 ⇒ 至多按标头识别风险，否则 unknown。
+  if (hp && hp !== 'user' && hp !== 'human') {
+    const text0 = String(o.text || '')
+    if (LEDGER_MARKERS.some((m) => text0.includes(m))) return SOURCE.generatedMemory
+    if (RUNTIME_MARKERS.some((m) => text0.includes(m))) return SOURCE.runtimeContext
+    return hp === 'plugin' ? SOURCE.generatedMemory : SOURCE.unknownUserEvent
+  }
   // ③ 创建路径未确认 ⇒ 标头只能识别风险，不能建立人类权限
   const text = String(o.text || '')
   if (LEDGER_MARKERS.some((m) => text.includes(m))) return SOURCE.generatedMemory
@@ -1601,6 +1616,22 @@ export function classifyUserEventSource(opts = {}) {
  * ★ 唯一规范化出口。索引与回退扫描**必须**都经过这里。
  * 返回 null 表示该事件不产生证据（例如无可取正文的空事件）。
  */
+/**
+ * 统一读取「创建路径」的 kind 字符串。
+ *   'user' / { kind: 'user' } / { kind: 'plugin', plugin } / { type: 'runtime' } ⇒ 小写 kind；
+ *   读不出 ⇒ ''（绝不返回 "[object Object]"）。
+ * 所有消费 data.source 的地方（此处、emitter.ownBoardSeqs）都必须与它一致。
+ */
+export function hostOriginKind(v) {
+  if (v == null) return ''
+  if (typeof v === 'string') return v.toLowerCase()
+  if (typeof v === 'object') {
+    const k = v.kind ?? v.type ?? v.origin ?? null
+    return typeof k === 'string' ? k.toLowerCase() : ''
+  }
+  return ''
+}
+
 export function normalizeEvidenceEvent(raw, seqHint) {
   if (!raw) return null
   const type = raw.type
@@ -1608,7 +1639,8 @@ export function normalizeEvidenceEvent(raw, seqHint) {
   const msg = d.message || d
   const content = msg && msg.content
   const seq = raw.seq == null ? (seqHint == null ? null : seqHint) : raw.seq
-  const hostOrigin = d.origin || d.sourceKind || d.source || null
+  // ★ 对象形状（宿主真实形状 data.source={kind}）在此就被压成字符串，杜绝 "[object Object]"。
+  const hostOrigin = d.origin || d.sourceKind || hostOriginKind(d.source) || (msg !== d ? hostOriginKind(msg.source) : '') || null
   const hostKind = d.kind || d.intent || null
 
   if (type === 'assistant/message') {
