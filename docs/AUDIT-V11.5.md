@@ -5,7 +5,7 @@
 
 ## 摘要
 
-1. **最重要的一件事**：压缩是否回本只取决于一个没测过的量——birth 模式下宿主主请求的真实缓存折扣 `d_eff`。净收益 = `(R−1)·d·(B−B′) − T − 5·B′`：d≈0.02 时要 150 轮才回本，d≈1 时 4 轮即回本（正是现有门槛）。代码里的 0.022 是 checkpoint 时代测的。**先用一行 trace 把它测出来**，再决定是加压力门控还是维持现状。
+1. **最重要的一件事**：按缓存记账 `净收益 = (R−1)·d·(B−B′) − T − 5·B′`，在真实工程工况（95% 冗余）下压缩是正收益，但保本原长在 0.6K~43K 之间随 (d,R) 变化，而现行门槛只有 500/800 字符——**短块几乎都在亏，长块才该压**。建议先把 `birthMinChars` 提到 3K，并用一行 trace 补测 d。
 2. 3 秒 TTFB 在代码侧确实已无可挤（已证实），但**有一个未被利用的免费窗口**：`gapMs p50 = 4ms` 说明 reasoning 的 `block-end` 几乎和 `finish` 同时到达——起火点可以从 block-end 提前到「第一个非 reasoning 块出现」（推测，需 1 个 trace 字段验证）。
 3. 缺陷 C/D 是两个 10 行的修复，今天就能落。
 4. 缺陷 B 在 `birthDeferredClaim:false` 下是**休眠的**，不要为它花时间；要么删掉整条 late-claim 路径，要么按块匹配修——不要两条都留。
@@ -14,56 +14,55 @@
 
 ## 一、压缩的收益判据（问题 2 + 缺陷 E）—— ROI 最高
 
-**结论：压缩是否回本，完全取决于一个当前没有实测值的量——birth 模式下宿主主请求的真实缓存命中折扣 `d_eff`。代码里的 0.022~0.032 是 checkpoint 时代测的。必须先补测它；在它出来之前，birth 路径应加上下文压力门控作为保底。**
+**结论：压缩在真实工程工况（长思维链、~95% 冗余）下是正收益，但当前触发门槛（500/800 字符）远低于保本线——短块几乎都是亏的，长块才是该压的对象。门槛应由缓存折扣 d 与后续轮数 R 反解，并需补测 d。**
 
-**逐轮记账（用户 2026-09-23 订正后的口径）**
-设 B = 原思维链，B′ = 压缩稿，T = 提示词模板（≈600 字符），d = 缓存命中价/全价，R = 该块之后还会出现在前缀里的轮数。
+⚠ 数据口径：v11.5 的 `1610→555`（65.6%）来自当前「修改+测试+工具」短链工况，**不能**作为 ROI 基线；用户早期在真实工程会话上的实测是 **95% 冗余**（B′≈0.05·B）。当前 trace.log 全是短链，无法复核该数。
 
-| | 不压缩 | 压缩 |
-|---|---|---|
-| 压缩调用 | — | 输入 `T + B` 全价；输出 `B′` 按 4× 价 |
-| 第 N+1 轮 | 预填 `B` 全价 | 预填 `B′` 全价 |
-| 第 N+2 … N+R 轮 | 每轮 `B·d` | 每轮 `B′·d` |
-
-`B` 的那次全价预填两边都要付（只是从主请求挪到了压缩请求），相互抵消。相减得：
+**逐轮记账（用户 2026-09-23 订正口径）**
+B = 原思维链，B′ = 压缩稿，T ≈ 600 = 提示词模板，d = 缓存价/全价，R = 该块之后还在前缀里出现的轮数。
+B 的那次全价预填两边都要付（只是从主请求挪到压缩请求），抵消。剩下：
 
 ```
 净收益 = (R−1)·d·(B − B′)  −  T  −  5·B′
 ```
-`5·B′` = 压缩稿按输出价生成一次（4×）+ 按全价进一次上下文（1×）。**大头不是输入，是压缩稿自己的生成费。**
+`5·B′` = 压缩稿按输出价生成一次（4×）+ 按全价进一次上下文（1×）。
 
-代入 v11.5 实测均值 `B=1610, B′=555`（12,879→4,436 / 8）：
-- `d = 0.022`（L36-39 记录值）：每轮省 23，一次性付 3,375 ⇒ **R−1 > 147**，必亏。
-- `d = 0.3`：每轮省 317 ⇒ R−1 > 10.6。
-- `d = 1`（前缀从不命中）：每轮省 1,055 ⇒ R−1 > 3.2，即 **R > 4，正是现有 `hurdleRounds=4` 门槛的来源**（L22, L135）。
+**代入 B′ = 0.05·B（真实工况）**：`(R−1)·d·0.95·B − T − 0.25·B` ⇒ 回本条件 `(R−1)·d > 0.26 + T/B`
+
+| d | 回本所需 R−1 |
+|---|---|
+| 0.022（L36-39 记录值） | 15 |
+| 0.1 | 3.3 |
+| 1 | <1 |
+
+**反解保本原长**（v3 绝对目标把 B′ 钉在 ≈450，L297-298）：`B > 450 + 2850 / ((R−1)·d)`
+
+| | d=0.022 | d=0.1 | d=1 |
+|---|---|---|---|
+| R=4 | 43K | 9.9K | 1.4K |
+| R=16 | 9.1K | 2.4K | 0.64K |
 
 **证据（已证实）**
-- L36-39：`输入:输出:缓存 = 1:4:0.02`，`d_hit=0.0223`，`d_eff≈0.032`，注明来自 09-18 账单差分（docs/d-eff-result.md，仓库里不存在该文件）。那是 checkpoint 时代的会话形态。
-- L731-735 `passesHurdle` 的 `(raw−final)×R > T+raw+final` 隐含 `d=1`，且没有 `4×` 输出价项。它与 L36-39 的参数不一致——**但只要 birth 模式下真实 d_eff 接近 1，它就是对的。**
-- birth 路径不看压力：`birthStart` 只有 `birthMinChars=500` 固定门槛（L2080, L2104）；`emitter.js:283-286` 的 `readPressure/minRawCharsFor` 只在 checkpoint 路径生效。
+- L36-39：`输入:输出:缓存 = 1:4:0.02`，`d_hit=0.0223`，`d_eff≈0.032`，注明来自 09-18 账单差分（checkpoint 时代）。
+- L731-735 `passesHurdle`：`(raw−final)×R > T+raw+final` 隐含 d=1 且缺 4× 输出价项；L22 `R=4 保本原长 774` 由此而来。按上表它只在 d≈1 时成立。
+- 现行门槛 `birthMinChars=500`（L2080）、`minRawChars=800`（L133）在表中**所有** (d,R) 组合下都低于保本线 ⇒ 当前短链工况下的大部分压缩调用是净亏的。
+- 长块恰好也是缺陷 A/C 最集中的群体（timeout / finish=length 都随输入增长）。
 
-**推测（决定性、必须先测）**：birth 模式下前缀命中率可能远低于 checkpoint 时代——原因是 birth 在**每条** assistant 消息出站前改写它，若同一条消息在流式装配期间已被宿主以原文形态发过任何一次（例如 GUI 中间态、子 agent、标题生成），前缀就断了。此外 DSH 若在系统提示或首条 user 消息里放了随轮变化的内容（时间戳、token 计数），d 也会趋向 1。这两点代码里看不出来，只有 trace 能回答。
+**推测（需测）**
+- birth 模式下的真实 d 可能与 checkpoint 时代不同（birth 逐条改写出站前的 assistant 消息；若 DSH 系统提示含随轮变化内容，d→1）。
+- 95% 冗余在 v3 提示词下是否仍成立（v3 是 09-23 新上的，早期实测用的是 v1/legacy）。
 
-**怎么测 d_eff（不改插件、不发请求）**
-宿主主请求的 usage 不经过本插件，但压缩请求的经过：`birth-distill-settled.providerReportedUsage`（L3234）带 `prompt_cache_hit_tokens`。它对 d_eff 没有直接意义（压缩 prompt 每次都新）。真正需要的是**宿主主请求**的 `prompt_cache_hit_tokens / prompt_tokens`，需在 `llm/stream` 钩子里读宿主响应 usage——`birthTransform` 已透传 `usage` chunk（selftest-birth T12「tool-call/usage 原样透传」），加一行 trace 即可：在 L3116 `finish` 分支前，若 `chunk.type==='usage'` 则 `trace('host-usage', chunk.usage)`。跑 20 轮，算 `1 − Σhit/Σprompt` 的加权值就是 d_eff 的上界。
-
-**建议方案（按测出的 d_eff 分叉）**
-- `d_eff < 0.1`：压缩在费用上必亏，只能以上下文余量立项 ⇒ birth 接压力门控（`ratio < 0.5` 不压），并把 `passesHurdle` 改成上式或删掉，只留 `birthMinSavedChars`。
-- `d_eff > 0.3`：现有 R=4 门槛基本合理，第一节降级为「补上 4× 输出价项」的小修，优先级回到第二节 TTFB。
-- 无论哪种：BOOT trace 里输出 `d_eff` 实测值与采样轮数，以后每次改价格模型都有依据。
-
-**还有一个前置问题（推测）**：DeepSeek 兼容 API 多轮对话默认**不回传历史 `reasoning_content`**。若宿主出站 payload 里不含旧 reasoning，则 `B−B′` 对上游为 0，压缩只影响本地 surface / compaction 阈值。探针已在：L3909 `llm-stream.reasoningChars`。**看历史 assistant 消息（非最后一条）是否 >0**，这一个数决定整条链路对上游 token 有没有影响。
-
-**还有一个前置问题必须先查（推测）**：DeepSeek 兼容 API 在多轮对话里**默认不回传历史 `reasoning_content`**。若宿主出站 payload 里根本不含旧 reasoning，则 `raw−out` 的节省为 0，压缩只影响本地 surface。代码已埋了探针：L3909 `llm-stream.reasoningChars: msgs.map(reasoningTextOf(m).length)`。**请在 trace 里看 `llm-stream` 事件：除最后一条 assistant 外，历史消息的 reasoningChars 是否 >0。** 若全为 0，整条压缩链路对上游 token 零影响，只剩「宿主本地 compaction 阈值」这一个收益。
+**怎么测 d（不改行为）**：`birthTransform` 已透传宿主 `usage` chunk（selftest-birth T12）。在 L3116 `finish` 分支前加 `if (chunk.type==='usage') trace('host-usage', chunk.usage)`，跑 20 轮，`Σprompt_cache_hit / Σprompt_tokens` 即 1−d 的估计。
 
 **建议方案**
-1. birth 路径接入压力门控：在 `birthStart` 增加 `deps.pressure()`（复用 `emitter.js readPressure` 的 `usedTokens/contextWindow`），`ratio < birthPressureFloor（建议 0.5）` 时 `belowFloor=true, why='no-pressure'`，零调用零等待。
-2. `passesHurdle` 改为上式，或干脆删掉字符保本判定，只保留 `birthMinSavedChars`（它只防"越压越长"，语义正确）。
-3. 在 BOOT trace 里输出 `llm-stream` 历史 reasoningChars 的汇总，把「上游是否重发 reasoning」变成可核事实。
+1. `birthMinChars` 从 500 提到 **3000**（对应 d≈0.1、R≈16 一档，保守），把上表写进 DEFAULTS 注释；实测 d 出来后照表调。
+2. `passesHurdle` 补上 `5·B′` 与 d 项，或删掉只留 `birthMinSavedChars`（它只防"越压越长"，语义正确）。birth 路径实际不调用 passesHurdle（只在 L3626 legacy 路径），所以主要是门槛 1。
+3. 用一段真实工程会话的 trace 复核 95%：`birth-condensed.rawChars/outChars` 按 rawChars 分桶。
+4. 上下文压力门控降级为可选保底（`d<0.05` 时才需要），不是主线。
 
-**最坏情况**：门控打开后大多数轮不压缩 = 退回宿主原生行为，这是已知安全态。门控只能减少调用，不会引入新的替换路径。
+**最坏情况**：门槛提高 = 短块不再压缩 = 退回宿主原生行为（已知安全态）；长块行为不变。
 
----
+**前置问题（推测，一个数即可判定）**：DeepSeek 兼容 API 多轮默认不回传历史 `reasoning_content`。若宿主出站 payload 不含旧 reasoning，则 B−B′ 对上游为 0。看 L3909 `llm-stream.reasoningChars`：历史 assistant 消息（非最后一条）是否 >0。
 
 ## 二、缺陷 A：TTFB 3 秒
 
