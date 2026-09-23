@@ -5,6 +5,7 @@ import { normalizeEvidenceEvent, classifyUserEventSource, classifyUserEventMetad
 import * as I from './index.js'
 import * as I_emitter from './emitter.js'
 import { readFileSync } from 'node:fs'
+import http from 'node:http'
 
 let pass = 0, fail = 0
 const test = async (name, fn) => { try { await fn(); pass++; console.log('PASS ' + name) } catch (e) { fail++; console.log('FAIL ' + name + '\n   ' + (e && e.message)) } }
@@ -201,7 +202,7 @@ await test('carry 预算：超出 maxCarryChars 的项整体归档为句柄；tr
   const L = await buildLedger({ distilled: 'D', carry, maxInlineChars: 2000, maxCarryChars: 2000, archive: async () => 'art://OVF', trace: (t, d) => traces.push([t, d]) })
   assert.ok(L.text.includes('a'.repeat(1500)) && !L.text.includes('b'.repeat(1500)) && L.text.includes('art://OVF'))
   const lb = traces.find(([t]) => t === 'ledger-built')[1]
-  assert.equal(lb.carryChars, 3000); assert.equal(lb.carryInlineChars, 1500); assert.equal(lb.carryOverflow, true)
+  assert.equal(lb.carryChars, 3000); assert.equal(lb.carryInlineChars, 1500); assert.equal(lb.carryOverflow, true); assert.equal(lb.carryBudgetOverflow, 1)
 })
 await test('retarget 不打穿看板单例：既有看板在候选右侧且吞不到 ⇒ 拒绝 retarget', async () => {
   const log = [user(1, 'q1'), asst(2, 'OLD_'.repeat(500)), user(3, 'q2'), board(5, 'old'), user(6, 'q3'), asst(7, 'MID_'.repeat(500)), user(8, 'q4'), asst(9, 'NEW_'.repeat(500))]
@@ -249,13 +250,14 @@ await test('analyze-efficiency：claimFunnel / claimMiss / v11 计数从 trace �
   const rows = [['BOOT', {}], ['birth-passthrough', { taskId: 't1' }], ['birth-late-memory-stored', { taskId: 't1' }],
     ['birth-claim-opportunity', {}], ['birth-claim-miss', { why: 'partial-coverage' }], ['birth-claim-opportunity', {}], ['birth-claim-hit', {}],
     ['birth-claim-emitted', {}], ['birth-claim-acknowledged', { taskIds: ['t1'] }], ['emit-retarget-ready', {}],
-    ['ledger-built', { chars: 500, carryChars: 200, carryInlineChars: 200, carryOverflow: false }], ['compiler-retry-skipped', {}]]
+    ['ledger-built', { chars: 500, ledgerChars: 500, carryChars: 200, carryInlineChars: 200, carryOverflow: false }], ['emit-carry', { boards: 1, reasoning: 2, userInputs: 0, answers: 1, calls: 1 }], ['emit-net-savings', { sourceChars: 1000, ledgerChars: 500, netSavedChars: 500 }], ['emit-no-net-savings', { sourceChars: 300, ledgerChars: 400, netSavedChars: -100 }], ['compiler-retry-skipped', {}]]
   const text = rows.map(([tag, d]) => '[' + new Date().toISOString() + '] [' + tag + '] ' + JSON.stringify(d)).join('\n') + '\n'
   const rep = analyzeEfficiency(text)
   const b = rep.boots[0]
   assert.equal(b.claimFunnel.stored, 1); assert.equal(b.claimFunnel.claimHit, 1); assert.equal(b.claimFunnel.opportunity, 2)
   assert.deepEqual(b.claimFunnel.claimMiss, { 'partial-coverage': 1 })
   assert.equal(b.v11.retargetReady, 1); assert.equal(b.v11.retrySkipped, 1); assert.equal(b.v11.carryChars.max, 200)
+  assert.equal(b.v11.netSavingsGate.blocked, 1); assert.equal(b.v11.carryCounts.reasoning.max, 2)
 })
 
 // ── v11.2：真机 trace 回读后的修正 ──
@@ -301,6 +303,75 @@ await test('analyze-efficiency：promptVersions 分桶与 no-candidate 细分', 
   const b = analyzeEfficiency(text).boots[0]
   assert.equal(b.v11.promptVersions['compress-v2'].ok, 1); assert.equal(b.v11.promptVersions['compress-v1'].settled, 1)
   assert.equal(b.claimFunnel.claimMissNoCandidateInFlight, 1); assert.equal(b.claimFunnel.claimMissNoCandidateIdle, 1)
+})
+
+await test('净节省门：替换输出比原 span 更长 ⇒ no-net-savings，不 append，原文保留', async () => {
+  const log = [user(1, 'q'), asst(2, 'R'.repeat(500)), asst(3, 'tail')]
+  let appended = false; const traces = []
+  const r = await runPreStepEmit(baseDeps(session(log, () => { appended = true }), {
+    cfg: { keepTail: 1, pluginName: 'cot-form-b', staticMinRawChars: 100, emitterMinSavingsChars: 100, emitterMinSavingsRatio: 0.05 },
+    awaitDistilled: async () => ({ ok: true, text: 'SUMMARY'.repeat(100) }), trace: (t, d) => traces.push([t, d]),
+  }))
+  assert.equal(r.reason, 'no-net-savings'); assert.equal(appended, false)
+  assert.ok(traces.some(([t]) => t === 'emit-no-net-savings'))
+})
+await test('净节省门：有足够的保真压缩才 replace，并报告字符估算（非 token）', async () => {
+  const log = [user(1, 'q'), asst(2, 'R'.repeat(1800)), asst(3, 'tail')]
+  let appended = false; const traces = []
+  const r = await runPreStepEmit(baseDeps(session(log, () => { appended = true }), {
+    cfg: { keepTail: 1, pluginName: 'cot-form-b', staticMinRawChars: 100, emitterMinSavingsChars: 100, emitterMinSavingsRatio: 0.05 },
+    awaitDistilled: async () => ({ ok: true, text: '短摘要' }), trace: (t, d) => traces.push([t, d]),
+  }))
+  assert.equal(r.emitted, true); assert.equal(appended, true)
+  const d = traces.find(([t]) => t === 'emit-net-savings')[1]
+  assert.equal(d.sourceChars, 1800); assert.equal(d.spanSourceChars, 1800); assert.equal(d.sourceEstimateFallback, false); assert.ok(d.netSavedChars > 100); assert.equal(d.sourceUnit, 'chars-not-tokenizer-tokens')
+})
+await test('P1 保真：同一 replace 区间中非目标 assistant 推理及真人 user 文本都 carry', async () => {
+  const multi = [
+    user(1, 'first'),
+    mk(2, 'assistant/message', { message: { role: 'assistant', content: [
+      { type: 'reasoning', text: 'EARLIER_REASONING_SENTINEL' }, { type: 'tool-call', id: 'c1', name: 'x', args: {} }] } }),
+    user(3, 'HUMAN_INSIDE_SPAN_SENTINEL'),
+    asst(4, 'TARGET_'.repeat(250)),
+    tool(5, 'c1', 'result'),
+    asst(6, 'active', 'active'),
+  ]
+  let appended = null
+  const s = session(multi, (t, m, o) => { appended = { m, o } })
+  const r = await runPreStepEmit(baseDeps(s, { rawOf: async (ev) => ev.data.message.content.find((b) => b.type === 'reasoning')?.text || '' ,
+    awaitDistilled: async () => ({ ok: true, text: 'short' }) }))
+  assert.equal(r.emitted, true)
+  const txt = appended.m.content[0].text
+  assert.ok(txt.includes('EARLIER_REASONING_SENTINEL')); assert.ok(txt.includes('HUMAN_INSIDE_SPAN_SENTINEL'))
+})
+await test('carry flatten：新增加的早前推理/用户原话标签可识别并去嵌套', () => {
+  const b = 'summary\n\n[早前推理 seq=1]\nold reasoning\n\n[用户原话 seq=2]\nold user\n\n[用户原话 seq=3 · 500 字符 · 原文 art://U]'
+  assert.equal(flattenCarriedBoard(b), 'summary\n\n[用户原话 seq=3 · 500 字符 · 原文 art://U]')
+})
+
+await test('requestOnce 4MiB 硬上限：超大 HTTP 响应拒绝，不无限缓冲', async () => {
+  const srv = http.createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    const chunk = Buffer.alloc(256 * 1024, 0x61)
+    let n = 0
+    const pump = () => { while (n < 17) { n++; if (!res.write(chunk)) { res.once('drain', pump); return } } res.end() }
+    pump()
+  })
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r))
+  try {
+    await assert.rejects(I.requestOnce('http://127.0.0.1:' + srv.address().port + '/', { timeoutMs: 5000 }), /4MB/)
+  } finally { await new Promise((r) => srv.close(r)) }
+})
+await test('inputAmplificationRatio 命名准确且 compressRatio 仅作兼容别名', () => {
+  const d = I.settledTraceData(0, 1, { ok: true, text: 'x', meta: { inputChars: 100, promptChars: 150, promptVersion: 'compress-v2' } })
+  assert.equal(d.inputAmplificationRatio, 1.5); assert.equal(d.compressRatio, 1.5); assert.equal(d.promptVersion, 'compress-v2')
+})
+
+await test('净节省/覆盖 fail-closed：未知 assistant block 不做替换', async () => {
+  const log = [user(1, 'q'), mk(2, 'assistant/message', { message: { role: 'assistant', content: [
+    { type: 'reasoning', text: 'R'.repeat(500) }, { type: 'image', url: 'asset://opaque' }] } }), asst(3, 'tail')]
+  const r = await runPreStepEmit(baseDeps(session(log), { rawOf: async () => 'R'.repeat(500), awaitDistilled: async () => ({ ok: true, text: 'short' }) }))
+  assert.equal(r.reason, 'span-unreadable')
 })
 
 console.log(`PASS=${pass} FAIL=${fail}`)

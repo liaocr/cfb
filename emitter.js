@@ -97,12 +97,12 @@ export function toolTextFromEvent(ev) {
  *   name+args 此前都不在 ledger 里 ⇒ replace 后从模型视野里凭空消失（哨兵复现：
  *   OLD_BOARD / VISIBLE_ANSWER / ARGS 三类全丢）。现在由 collectSpanCarry() 抽出，
  *   与 tool/result 走同一条「短内联 / 长归档 / 归档失败内联」通路。
- *   目标 assistant 的 reasoning 不在此列（它由 distilled 摘要代表）。
+ *   目标 assistant 的 reasoning 由 distilled 摘要代表；区间内其它 reasoning 与真人 user 内容也必须保留。
  *
- * @returns { boards:[{seq,text}], answers:[{seq,text}], calls:[{seq,text}] } 或 null（形状不认识 ⇒ 拒发）
+ * @returns { boards, reasoning, userInputs, answers, calls } 或 null（形状不认识 ⇒ 拒发）
  */
 /** carry 段落标签（buildLedger 写入、flattenCarriedBoard 识别）。 */
-const CARRY_LABELS = ['早前看板', '早前回答', '工具调用', '工具结果']
+const CARRY_LABELS = ['早前看板', '早前推理', '用户原话', '早前回答', '工具调用', '工具结果']
 const CARRY_HEAD_RE = new RegExp('^\\[(' + CARRY_LABELS.join('|') + ') seq=\\d+(?: · \\d+ 字符 · 原文 \\S+)?\\]$')
 
 /**
@@ -123,7 +123,7 @@ export function flattenCarriedBoard(body) {
 
 export function collectSpanCarry(events, span, opts = {}) {
   const pluginName = opts.pluginName || 'cot-form-b'
-  const out = { boards: [], answers: [], calls: [] }
+  const out = { boards: [], reasoning: [], userInputs: [], answers: [], calls: [] }
   if (!Array.isArray(events) || !span) return out
   for (let i = span.startIdx; i <= span.endIdx; i++) {
     const ev = events[i]
@@ -131,16 +131,18 @@ export function collectSpanCarry(events, span, opts = {}) {
     const d = raw && raw.data
     if (ev.type === 'user/message') {
       const src = d && d.source
-      if (!(src && src.kind === 'plugin' && src.plugin === pluginName)) continue   // 非本插件看板不会在区间内；防御
       const blocks = d && d.message && Array.isArray(d.message.content) ? d.message.content : (Array.isArray(d && d.content) ? d.content : null)
       if (!blocks) return null
       let text = ''
       for (const b of blocks) { if (!b || b.type !== 'text') return null; text += typeof b.text === 'string' ? b.text : '' }
-      // 只保留 <cot-ledger> 内的正文（去掉固定抬头，避免抬头反复嵌套）
+      if (!(src && src.kind === 'plugin' && src.plugin === pluginName)) {
+        // 任意非插件 user/message 若落入替换区间，显式带走；不能靠「通常不会发生」丢真人输入。
+        if (text.trim()) out.userInputs.push({ seq: ev.seq, text: text.trim() })
+        continue
+      }
       const o = text.indexOf(LEDGER_OPEN), c = text.lastIndexOf(LEDGER_CLOSE)
       const body = (o >= 0 && c > o) ? text.slice(o + LEDGER_OPEN.length, c) : text
-      // ★ 去嵌套：旧看板里由上一轮 carry 进来的 [早前看板/早前回答/工具调用/工具结果] 段
-      //   已经被消化过一次；再原样带走就是跨轮线性累积。只保留顶层摘要 + 归档句柄行。
+      // 去掉已嵌套 carry，防止跨轮线性累积。
       const flat = flattenCarriedBoard(body)
       if (flat.trim()) out.boards.push({ seq: ev.seq, text: flat.trim() })
       continue
@@ -151,17 +153,58 @@ export function collectSpanCarry(events, span, opts = {}) {
     let answer = ''
     for (const b of blocks) {
       if (!b) continue
+      if (b.type === 'reasoning') {
+        // 目标推理由 distilled 摘要代表；区间内其它 assistant 推理也会被 replace，必须带走。
+        if (ev.seq !== opts.targetSeq && typeof b.text === 'string' && b.text.trim()) out.reasoning.push({ seq: ev.seq, text: b.text.trim() })
+        continue
+      }
       if (b.type === 'text') { answer += typeof b.text === 'string' ? b.text : ''; continue }
       if (b.type === 'tool-call') {
         const name = b.name || b.toolName || '?'
         let args = b.args == null ? (b.arguments == null ? '' : b.arguments) : b.args
         if (typeof args !== 'string') { try { args = JSON.stringify(args) } catch { args = String(args) } }
         out.calls.push({ seq: ev.seq, text: (b.id || b.toolCallId || '') + ' ' + name + ' ' + args })
+        continue
       }
+      // 未识别的 assistant 内容形状（image/audio/refusal 等）不可静默丢失，保留原表面。
+      return null
     }
     if (answer.trim()) out.answers.push({ seq: ev.seq, text: answer.trim() })
   }
   return out
+}
+
+/** Replace 前可读正文长度估算；char proxy，不是 tokenizer token 数。 */
+export function countSpanSourceChars(events, span) {
+  if (!Array.isArray(events) || !span) return 0
+  let total = 0
+  const payloadChars = (v) => {
+    if (typeof v === 'string') return v.length
+    if (Array.isArray(v)) return v.reduce((n, x) => n + payloadChars(x), 0)
+    if (!v || typeof v !== 'object') return 0
+    let n = 0
+    if (typeof v.text === 'string') n += v.text.length
+    if (typeof v.name === 'string') n += v.name.length
+    if (typeof v.id === 'string') n += v.id.length
+    if (v.args != null || v.arguments != null) {
+      const a = v.args == null ? v.arguments : v.args
+      if (typeof a === 'string') n += a.length
+      else { try { n += JSON.stringify(a).length } catch { n += String(a).length } }
+    }
+    if (v.content != null) n += payloadChars(v.content)
+    return n
+  }
+  for (let i = span.startIdx; i <= span.endIdx; i++) {
+    const ev = events[i], d = ev && ev.raw && ev.raw.data
+    const blocks = d && d.message && Array.isArray(d.message.content) ? d.message.content : Array.isArray(d && d.content) ? d.content : null
+    if (!blocks) continue
+    for (const b of blocks) {
+      if (!b) continue
+      if (b.type === 'reasoning' || b.type === 'text') total += typeof b.text === 'string' ? b.text.length : 0
+      else if (b.type === 'tool-call' || b.type === 'tool-result') total += payloadChars(b)
+    }
+  }
+  return total
 }
 
 export async function buildLedger(deps) {
@@ -170,21 +213,28 @@ export async function buildLedger(deps) {
   const parts = [String(distilled == null ? '' : distilled).trim()]
   let inlined = 0, archived = 0, archiveFailed = 0, viewSaved = 0
   let carryChars = 0, carryInlineChars = 0, carryOverflow = false
+  let carryBudgetOverflow = 0, carryItemOversize = 0
   // 被吞并旧看板正文 / 区间内可见回答 / 工具调用参数：同一条「短内联、长归档」通路
   // ★ 预算：carry 内联总量 ≤ maxCarryChars。超出的项**整体**归档为句柄（归档失败才内联，信息不丢）。
   //   目的：P1 补齐覆盖不能反过来把编译输入体量吹回去；增长必须可观测（trace carryChars）。
   if (carry) {
     const items = []
     for (const b of carry.boards || []) items.push(['早前看板', b])
+    for (const r of carry.reasoning || []) items.push(['早前推理', r])
+    for (const u of carry.userInputs || []) items.push(['用户原话', u])
     for (const a of carry.answers || []) items.push(['早前回答', a])
     for (const c of carry.calls || []) items.push(['工具调用', c])
     for (const [label, item] of items) {
       const text = String(item && item.text != null ? item.text : '')
       if (!text) continue
       carryChars += text.length
-      const fits = text.length <= maxInlineChars && carryInlineChars + text.length <= maxCarryChars
+      const itemOversize = text.length > maxInlineChars
+      const budgetExceeded = !itemOversize && carryInlineChars + text.length > maxCarryChars
+      const fits = !itemOversize && !budgetExceeded
       if (fits) { parts.push('[' + label + ' seq=' + item.seq + ']\n' + text); inlined++; carryInlineChars += text.length; continue }
-      if (!(text.length <= maxInlineChars)) { /* 单项过长 */ } else carryOverflow = true
+      carryOverflow = true
+      if (itemOversize) carryItemOversize++
+      if (budgetExceeded) carryBudgetOverflow++
       let handle = null
       if (typeof archive === 'function') { try { handle = await archive(text, { seq: item.seq, chars: text.length, kind: label }) } catch { handle = null } }
       if (handle) { parts.push('[' + label + ' seq=' + item.seq + ' · ' + text.length + ' 字符 · 原文 ' + handle + ']'); archived++ }
@@ -227,7 +277,7 @@ export async function buildLedger(deps) {
   // 合闸判据：连续若干轮 ledger-imperative 的 verdict=clean 之前，不带电。
   const imp = verdictOf(body)
   if (typeof trace === 'function') {
-    trace('ledger-built', { inlined, archived, archiveFailed, chars: body.length, viewSaved, carryChars, carryInlineChars, carryOverflow, maxCarryChars })
+    trace('ledger-built', { inlined, archived, archiveFailed, chars: body.length, ledgerChars: body.length, distilledChars: String(distilled == null ? '' : distilled).trim().length, toolResultChars: toolResults.reduce((n, x) => n + String(x && x.text != null ? x.text : '').length, 0), summaryFirst: true, viewSaved, carryChars, carryInlineChars, carryOverflow, carryBudgetOverflow, carryItemOversize, maxCarryChars })
     trace('ledger-imperative', { verdict: imp.verdict, count: imp.count, ids: imp.ids.join(',') })
   }
   return { text: body, inlined, archived, archiveFailed }
@@ -455,13 +505,28 @@ export async function runPreStepEmit(deps) {
       }
     }
     // ⛔ 覆盖完整性（2026-09-23）：被吞并旧看板 / 可见回答 / 工具调用参数也不许凭空消失。
-    const carry = collectSpanCarry(events, span, { pluginName: cfg.pluginName || 'cot-form-b' })
+    const carry = collectSpanCarry(events, span, { pluginName: cfg.pluginName || 'cot-form-b', targetSeq: last.seq })
     if (!carry) { t('emit-span-unreadable'); return { emitted: false, reason: 'span-unreadable' } }
-    t('emit-carry', { boards: carry.boards.length, answers: carry.answers.length, calls: carry.calls.length })
+    t('emit-carry', { boards: carry.boards.length, reasoning: carry.reasoning.length, userInputs: carry.userInputs.length, answers: carry.answers.length, calls: carry.calls.length })
     const ledger = await buildLedger({
       distilled: pending.text, toolResults, carry,
       maxInlineChars: cfg.maxInlineToolResultChars, maxCarryChars: cfg.maxCarryChars, archive, trace: t,
     })
+    // Never replace with a board that is larger or only trivially smaller than the text it hides.
+    // On failure the original surface remains verbatim; no source text is discarded.
+    const spanSourceChars = countSpanSourceChars(events, span)
+    const explicitSourceChars = raw.length + toolResults.reduce((n, x) => n + String(x.text || '').length, 0) +
+      ['boards', 'reasoning', 'userInputs', 'answers', 'calls'].reduce((n, k) => n + (carry[k] || []).reduce((m, x) => m + String(x.text || '').length, 0), 0)
+    const sourceChars = Math.max(spanSourceChars, explicitSourceChars)
+    const sourceEstimateFallback = sourceChars > spanSourceChars
+    const minSavedChars = Math.max(Number.isFinite(cfg.emitterMinSavingsChars) ? cfg.emitterMinSavingsChars : 100,
+      Math.ceil(sourceChars * (Number.isFinite(cfg.emitterMinSavingsRatio) ? cfg.emitterMinSavingsRatio : 0.05)))
+    const netSavedChars = sourceChars - ledger.text.length
+    t('emit-net-savings', { sourceChars, spanSourceChars, sourceEstimateFallback, ledgerChars: ledger.text.length, netSavedChars, minSavedChars, sourceUnit: 'chars-not-tokenizer-tokens' })
+    if (sourceChars > 0 && netSavedChars < minSavedChars) {
+      t('emit-no-net-savings', { sourceChars, ledgerChars: ledger.text.length, netSavedChars, minSavedChars })
+      return { emitted: false, reason: 'no-net-savings', sourceChars, ledgerChars: ledger.text.length, netSavedChars }
+    }
 
     if (typeof deps.validatePending === 'function' && !deps.validatePending()) {
       t('emit-stale-distill'); return { emitted: false, reason: 'stale-distill' }

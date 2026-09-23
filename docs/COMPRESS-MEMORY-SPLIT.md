@@ -1,3 +1,5 @@
+> 历史记录说明：本文记录 v10 切分时的实现与测量；其中 `compress-v1`、旧 `compressRatio` 名称及“迟到结果会丢弃”等状态不是当前结论。当前 promptVersion 与迟到漏斗见 [`CORRECTNESS-V11.md`](CORRECTNESS-V11.md)。历史计数保留为当时事实。
+
 # v10：压缩与状态记忆开关切分
 
 日期：2026-09-23。基线：v9（commit 5a4def6 之后的 v9 交付）。未部署到他人机器、未改宿主 profile。
@@ -70,10 +72,10 @@ export function resolveCompileMode(cfg) {
 ```
 inputChars      真正要压缩的输入长度
 promptChars     实际发出的 prompt 长度
-compressRatio   promptChars / inputChars
+inputAmplificationRatio   promptChars / inputChars（旧字段 compressRatio 仅作兼容别名）
 ```
 
-**`compressRatio` 是这次切分是否生效的唯一判据。** 设计预期 ≈ 1.x；切分前实测 7.5。
+**输入放大比只是输入组织判据，不是输出压缩率、真实 token 节省或产品收益判据。** 设计预期 ≈ 1.x；切分前实测 7.5。
 
 ## 切分后实测（本机，compress 模式）
 

@@ -27,7 +27,7 @@
 
 - `emitCheckpoint` 的 `startSeq > endSeq` 守卫保留；「吞并后表面非单调」是否合法需要真实宿主合约，未放宽。
 - compress 提示词仍是 `buildDistillPrompt`（与 legacy 逐字相同）；本轮不改提示词语义。
-- `compressRatio` 语义不变（输入侧放大比）。
+- 原 `compressRatio`（输入侧放大比）保留为 deprecated trace alias，新字段名 `inputAmplificationRatio`。
 - 未拆分 `index.js`。
 
 ## 验证
@@ -75,3 +75,15 @@ node manifest.mjs --check
 | carry 预算 | `carryInlineChars` max 2189 ≤ 3000，溢出 4 次走归档；看板 p50 2943 | 无改动 |
 
 下一轮 trace 要看的三个数：`v11.promptVersions['compress-v2'].ok/settled`、`claimFunnel.claimMissNoCandidateIdle`、`v11.refusedRangeNonMonotonic`。
+
+---
+
+# v11.3 追加：面向 token 节省且不牺牲上下文完整性的优化
+
+- `promptVersion` 贯通（v11.2 已完成）：BOOT、传输请求、`birth-distill-settled` 共用 `compressPromptVersion()`。`compress-v2` 可与 v1 分桶抽样。
+- `countSpanSourceChars()` + `emit-net-savings`：替换前估算 span 原文字符数，发射至少满足 `max(100 chars, 5%)` 字符净省；否则 `emit-no-net-savings` 并保留原 surface。此为**字符代理指标**，非 tokenizer token 保证；不改变模型输入的语义内容，只避免扩张/微小收益替换。
+- Carry 覆盖补齐：除旧看板/assistant 可见回答/tool-call 参数外，增加同一 span 内**非目标 assistant reasoning**与意外落入范围的**真人 user 文本**；目标 reasoning 仍由摘要代表。未知 assistant 内容块 fail-closed，避免 image/audio 等形状被静默吞掉。
+- `ledger-built` 记录摘要、工具结果、carry 分项字符数；`analyze-efficiency` 记录净省分布、no-net-savings 次数与 answers/reasoning/calls 等 carry 计数。摘要原本就位于 ledger 首位，本轮不再插入额外提示 token。
+- `inputAmplificationRatio = promptChars / inputChars` 成为准确字段名；`compressRatio` 保留为 deprecated 兼容别名。
+
+**模型质量约束**：不缩短 grace/finish 等待、不主动取消有迟到消费者的编译、不把工具结果/回答截断成摘要、不启用混合认领。净收益不足时保留原文，意味着该轮不节省 token，但避免上下文被扩张或缩水。`

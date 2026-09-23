@@ -36,7 +36,7 @@ export function analyzeEfficiency(text) {
         if (r.taskId) {
           const t = task(r.taskId)
           if (r.tag === 'compiler-preparation-cost') t.preparationMs = r.ms
-          if (r.tag === 'birth-distill-settled') { t.ok = r.ok; t.reason = r.reason; t.requestId = r.requestId; t.flightId = r.flightId; t.sharedFlight = r.sharedFlight; t.promptVersion = r.promptVersion; t.parseRenderMs = r.parseRenderMs; t.promptBuildMs = r.promptBuildMs }
+          if (r.tag === 'birth-distill-settled') { t.ok = r.ok; t.reason = r.reason; t.requestId = r.requestId; t.flightId = r.flightId; t.sharedFlight = r.sharedFlight; t.promptVersion = r.promptVersion; t.parseRenderMs = r.parseRenderMs; t.promptBuildMs = r.promptBuildMs; t.inputAmplificationRatio = r.inputAmplificationRatio ?? r.compressRatio ?? null }
           if (r.tag === 'memory-presented-in-options') t.presented++
         }
         if (r.tag === 'birth-claim-acknowledged') for (const id of r.taskIds || []) task(id).acknowledged = true
@@ -103,7 +103,24 @@ export function analyzeEfficiency(text) {
         carryChars: distribution(carryRows.map(r => r.carryChars)),
         carryInlineChars: distribution(carryRows.map(r => r.carryInlineChars)),
         carryOverflow: carryRows.filter(r => r.carryOverflow === true).length,
-        ledgerChars: distribution(carryRows.map(r => r.chars)),
+        carryBudgetOverflow: carryRows.reduce((n, r) => n + (r.carryBudgetOverflow || 0), 0),
+        carryItemOversize: carryRows.reduce((n, r) => n + (r.carryItemOversize || 0), 0),
+        carryCounts: { boards: distribution(g.rows.filter(r => r.tag === 'emit-carry').map(r => r.boards)),
+          reasoning: distribution(g.rows.filter(r => r.tag === 'emit-carry').map(r => r.reasoning)),
+          userInputs: distribution(g.rows.filter(r => r.tag === 'emit-carry').map(r => r.userInputs)),
+          answers: distribution(g.rows.filter(r => r.tag === 'emit-carry').map(r => r.answers)),
+          calls: distribution(g.rows.filter(r => r.tag === 'emit-carry').map(r => r.calls)) },
+        ledgerChars: distribution(carryRows.map(r => r.ledgerChars ?? r.chars)),
+        sourceChars: distribution(g.rows.filter(r => r.tag === 'emit-net-savings').map(r => r.sourceChars)),
+        netSavedChars: distribution(g.rows.filter(r => r.tag === 'emit-net-savings').map(r => r.netSavedChars)),
+        noNetSavings: count('emit-no-net-savings'),
+        netSavingsGate: {
+          evaluated: count('emit-net-savings'),
+          blocked: count('emit-no-net-savings'),
+          sourceChars: distribution(g.rows.filter(r => r.tag === 'emit-net-savings').map(r => r.sourceChars)),
+          netSavedChars: distribution(g.rows.filter(r => r.tag === 'emit-net-savings').map(r => r.netSavedChars)),
+          note: 'character proxy with 5% + 100-char minimum; not tokenizer token savings',
+        },
       }
       return { bootIndex: g.bootIndex, anchored: g.anchored, boot: g.boot,
         counts: { transportAttemptsStarted: starts.size, transportAttemptsSettled: completed.size,

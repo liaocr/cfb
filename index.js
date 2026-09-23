@@ -284,6 +284,9 @@ export const DEFAULTS = {
   compressPrompt: 'v2',
   // pre-step 整段 replace 时，随看板带走的旧看板正文/可见回答/工具调用参数的内联总预算（字符）；超出归档为句柄
   maxCarryChars: 3000,
+  // 只在估算至少节省 100 字符且 5% 时才替换；不满足就保留原始 surface，避免"压缩"后反增。
+  emitterMinSavingsChars: 100,
+  emitterMinSavingsRatio: 0.05,
   // ★ 迟到认领：多块消息允许「已就绪块用摘要、未就绪块保留原文」的混合认领。缺省 false（保持全覆盖铁律）。
   lateClaimPartial: false,
   // 证据采集只看最后 N 个 surface 节点：**关联优先，不全文堆积**
@@ -3139,9 +3142,12 @@ export function settledTraceData(index, ms, s) {
     ...(m ? {
       model: m.model, endpoint: m.endpoint, style: m.style, thinkingOff: m.thinkingOff,
       compilerMode: m.compilerMode, deterministicRevision: m.deterministicRevision, evidenceBodyChars: m.evidenceBodyChars, evidencePolicy: m.evidencePolicy, duplicateBodyCharsAvoided: m.duplicateBodyCharsAvoided,
-      // ★ 2026-09-22 切分验收字段：compress 模式的放大倍数 = promptChars / inputChars。
-      //   设计预期 ≈ 1.x（输入≈本段推理）。实测 stateMemory 模式是 7.5x，这条字段就是判据。
+      // 输入放大度量：promptChars / inputChars。不是输出压缩率，也不是实际 token 节省。
       inputChars: m.inputChars, promptVersion: m.promptVersion,
+      // promptChars/inputChars is request-side amplification, not output compression or savings.
+      inputAmplificationRatio: (typeof m.promptChars === 'number' && typeof m.inputChars === 'number' && m.inputChars > 0)
+        ? Number((m.promptChars / m.inputChars).toFixed(2)) : undefined,
+      /** @deprecated compatibility alias; use inputAmplificationRatio. */
       compressRatio: (typeof m.promptChars === 'number' && typeof m.inputChars === 'number' && m.inputChars > 0)
         ? Number((m.promptChars / m.inputChars).toFixed(2)) : undefined,
       promptChars: m.promptChars, maxOutputTokens: m.maxOutputTokens,
@@ -3154,7 +3160,7 @@ export function settledTraceData(index, ms, s) {
       providerReportedUsage: m.providerReportedUsage || null,
       requestId: m.requestId, flightId: m.flightId, sharedFlight: m.sharedFlight,
       promptBuildMs: m.promptBuildMs, promptBuildCount: m.promptBuildCount,
-      parseRenderMs: m.parseRenderMs, promptVersion: m.promptVersion, staticPrefixChars: m.staticPrefixChars,
+      parseRenderMs: m.parseRenderMs, staticPrefixChars: m.staticPrefixChars,
       afterContentMs: m.afterContentMs,
       // ★ 协议错配（2026-09-21）：响应实际协议与请求模式不一致时显式留痕
       protocolMismatch: m.protocolMismatch,
@@ -3227,6 +3233,9 @@ let birthSession = null
     // ★ 2026-09-17 路线 A：活跃尾部宽度（最近多少条 assistant/message 逐字保留）。
     //   官方规范 dsh-compaction/README.md:145 —— "leaves the recent tail unchanged"。
     keepTail: Number.isInteger(cfg.keepTail) && cfg.keepTail >= 1 ? cfg.keepTail : 1,
+    maxCarryChars: cfg.maxCarryChars,
+    emitterMinSavingsChars: cfg.emitterMinSavingsChars,
+    emitterMinSavingsRatio: cfg.emitterMinSavingsRatio,
     minRawChars: cfg.minRawChars,
     hurdleRounds: cfg.hurdleRounds,
     templateChars: cfg.templateChars,
