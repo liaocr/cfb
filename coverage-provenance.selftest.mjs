@@ -94,9 +94,11 @@ await test('P3 宿主真实形状 {source:{kind:plugin}} 无标头 ⇒ 不是 hu
   assert.equal(ev.source, SOURCE.generatedMemory); assert.equal(ev.hostOrigin, 'plugin')
   assert.equal(pickUserAsks([ev]).length, 0)
 })
-await test('P3 显式 {kind:user} + 正文粘贴看板标头 ⇒ 仍是 human（创建路径优先，不得降级）', () => {
+await test('P3 显式 {kind:user} + 正文粘贴看板标头 ⇒ 仍是 human（契约 I8），并打 markerConflict 供审计/可选排除', () => {
   const ev = normalizeEvidenceEvent({ type: 'user/message', seq: 2, data: { source: { kind: 'user' }, message: { content: [{ type: 'text', text: '贴一段 <cot-ledger> 供参考，以我的话为准' }] } } })
-  assert.equal(ev.source, SOURCE.human); assert.equal(pickUserAsks([ev]).length, 1)
+  assert.equal(ev.source, SOURCE.human); assert.equal(ev.markerConflict, true)
+  assert.equal(pickUserAsks([ev]).length, 1, '既有契约 I8：缺省仍采信')
+  assert.equal(pickUserAsks([ev], { excludeMarkerConflict: true }).length, 0, '可选排除')
 })
 await test('P3 无任何元数据 ⇒ inboxDefault ⇒ human（真机 agent-loop 形状不回归）', () => {
   const ev = normalizeEvidenceEvent({ type: 'user/message', seq: 3, data: { message: { content: [{ type: 'text', text: 'hi' }] } } })
@@ -163,6 +165,95 @@ await test('配置契约：stateMemory+stateCompress 只记冲突不抛错；com
   assert.equal(c.compileMode, 'memory'); assert.equal(c.compileModeConflict.winner, 'stateMemory')
   assert.equal(I.normalizeConfig({ stateCompress: true }).compileMode, 'compress')
   assert.equal(I.normalizeConfig({}).compileMode, 'legacy')
+})
+
+// ── v11.1：carry 预算 / 去嵌套 / retarget 单例 / P3 退半步 / compress-v2 / 混合认领 / 漏斗 ──
+import { flattenCarriedBoard } from './emitter.js'
+await test('carry 去嵌套：旧看板里的内联 carry 段被剥掉，句柄行保留，幂等', () => {
+  const b = '摘要\n\n[早前看板 seq=2]\n更早摘要\n\n[早前看板 seq=1 · 9000 字符 · 原文 art://X]\n\n[早前回答 seq=3]\n回答\n\n[工具结果 seq=4]\nout'
+  const f = flattenCarriedBoard(b)
+  assert.equal(f, '摘要\n\n[早前看板 seq=1 · 9000 字符 · 原文 art://X]')
+  assert.equal(flattenCarriedBoard(f), f)
+})
+await test('carry 跨轮不累积：连续三轮 replace，看板长度有界', async () => {
+  const runRound = async (prevBoardText, i) => {
+    const log = [user(1, 'u'), ...(prevBoardText ? [board(2, prevBoardText)] : []),
+      asst(3, 'R'.repeat(2000), 'ANSWER_' + i + '_' + 'x'.repeat(400)), asst(5, 'tail', 'tail')]
+    let appended = null
+    const s = session(log, (t, m, o) => { appended = m })
+    const r = await runPreStepEmit(baseDeps(s, { awaitDistilled: async () => ({ ok: true, text: 'SUM' + i }) }))
+    assert.equal(r.emitted, true)
+    const txt = appended.content[0].text
+    const o = txt.indexOf('<cot-ledger>') + '<cot-ledger>'.length, c = txt.lastIndexOf('</cot-ledger>')
+    return txt.slice(o, c).trim()
+  }
+  const b1 = await runRound(null, 1); const b2 = await runRound(b1, 2); const b3 = await runRound(b2, 3)
+  assert.ok(b3.includes('SUM3') && b3.includes('ANSWER_3'))
+  assert.ok(b3.includes('SUM2'), '上一轮摘要保留')
+  assert.ok(!b3.includes('ANSWER_1'), '两轮前的 carry 正文不得再出现')
+  assert.ok(b3.length < b2.length + 600, '看板长度有界：' + b2.length + ' -> ' + b3.length)
+})
+await test('carry 预算：超出 maxCarryChars 的项整体归档为句柄；trace 带 carryChars/carryOverflow', async () => {
+  const carry = { boards: [], answers: [{ seq: 3, text: 'a'.repeat(1500) }, { seq: 4, text: 'b'.repeat(1500) }], calls: [] }
+  const traces = []
+  const L = await buildLedger({ distilled: 'D', carry, maxInlineChars: 2000, maxCarryChars: 2000, archive: async () => 'art://OVF', trace: (t, d) => traces.push([t, d]) })
+  assert.ok(L.text.includes('a'.repeat(1500)) && !L.text.includes('b'.repeat(1500)) && L.text.includes('art://OVF'))
+  const lb = traces.find(([t]) => t === 'ledger-built')[1]
+  assert.equal(lb.carryChars, 3000); assert.equal(lb.carryInlineChars, 1500); assert.equal(lb.carryOverflow, true)
+})
+await test('retarget 不打穿看板单例：既有看板在候选右侧且吞不到 ⇒ 拒绝 retarget', async () => {
+  const log = [user(1, 'q1'), asst(2, 'OLD_'.repeat(500)), user(3, 'q2'), board(5, 'old'), user(6, 'q3'), asst(7, 'MID_'.repeat(500)), user(8, 'q4'), asst(9, 'NEW_'.repeat(500))]
+  let ap = null; const traces = []
+  const s = session(log, (t, m, o) => { ap = o })
+  const r = await runPreStepEmit(baseDeps(s, { isReady: async (raw) => raw.startsWith('OLD_'), awaitDistilled: async (raw) => (raw.startsWith('OLD_') ? { ok: true, text: 'x' } : null), trace: (t, d) => traces.push(t) }))
+  assert.equal(r.emitted, false); assert.equal(ap, null)
+  assert.ok(traces.includes('emit-retarget-refused-board-singleton'))
+})
+await test('P3 markerConflict：缺省进 userAsks（契约 I8），excludeMarkerConflict 时排除', () => {
+  const ev = normalizeEvidenceEvent({ type: 'user/message', seq: 2, data: { source: { kind: 'user' }, message: { content: [{ type: 'text', text: '贴 <cot-ledger> 参考' }] } } })
+  assert.equal(ev.source, SOURCE.human); assert.equal(ev.markerConflict, true)
+  assert.equal(pickUserAsks([ev]).length, 1); assert.equal(pickUserAsks([ev], { excludeMarkerConflict: true }).length, 0)
+  const ok = normalizeEvidenceEvent({ type: 'user/message', seq: 3, data: { source: { kind: 'user' }, message: { content: [{ type: 'text', text: '正常' }] } } })
+  assert.equal(ok.markerConflict, undefined); assert.equal(pickUserAsks([ok]).length, 1)
+})
+await test('compress-v2 提示词：中性（保留不确定性，无"不可重开"裁决）；v1 可回滚为 legacy 文本', () => {
+  const p2 = I.buildCompressPrompt('COT')
+  assert.ok(p2.includes('保留') && p2.includes('尚未确定') && !p2.includes('不可重开') && !p2.includes('自我怀疑'))
+  assert.ok(p2.endsWith('COT'))
+  assert.equal(I.DEFAULTS.compressPrompt, 'v2')
+  assert.equal(I.normalizeConfig({ compressPrompt: 'v1' }).compressPrompt, 'v1')
+})
+await test('混合认领（opt-in）：已就绪块用摘要、未就绪块逐字保留；缺省关闭时不生效', () => {
+  const a = 'A'.repeat(300), b = 'B'.repeat(300), c = 'C'.repeat(300)
+  I.pushLateMemory('pp', a, [{ id: '1', category: 'state', content: 'x' }], 'SUM-A', { taskId: '1' })
+  I.pushLateMemory('pp', c, [{ id: '2', category: 'state', content: 'y' }], 'SUM-C', { taskId: '2' })
+  const full = a + '\n' + b + '\n' + c
+  assert.equal(I.peekLateMemory('pp', full), null)
+  assert.equal(I.explainLateMiss('pp', full), 'partial-coverage')
+  const p = I.peekLateMemoryPartial('pp', full)
+  assert.equal(p.texts[0], 'SUM-A\n' + b + '\nSUM-C'); assert.equal(p.count, 2); assert.equal(p.keptChars, 302)
+  assert.equal(I.acknowledgeLateMemory('pp', p.receipt), 2); assert.equal(I.lateMemorySize('pp'), 0)
+  assert.equal(I.DEFAULTS.lateClaimPartial, false)
+})
+await test('混合认领拒绝歧义候选与无命中', () => {
+  const a = 'D'.repeat(300)
+  I.pushLateMemory('amb2', a, [{ id: '1', category: 'state', content: 'x' }], 'one', { taskId: '1' })
+  I.pushLateMemory('amb2', a, [{ id: '2', category: 'state', content: 'y' }], 'two', { taskId: '2' })
+  assert.equal(I.peekLateMemoryPartial('amb2', a + '\nZZZ'), null)
+  assert.equal(I.peekLateMemoryPartial('amb2', 'Q'.repeat(300)), null)
+})
+await test('analyze-efficiency：claimFunnel / claimMiss / v11 计数从 trace 中得出', async () => {
+  const { analyzeEfficiency } = await import('./analyze-efficiency.mjs')
+  const rows = [['BOOT', {}], ['birth-passthrough', { taskId: 't1' }], ['birth-late-memory-stored', { taskId: 't1' }],
+    ['birth-claim-opportunity', {}], ['birth-claim-miss', { why: 'partial-coverage' }], ['birth-claim-opportunity', {}], ['birth-claim-hit', {}],
+    ['birth-claim-emitted', {}], ['birth-claim-acknowledged', { taskIds: ['t1'] }], ['emit-retarget-ready', {}],
+    ['ledger-built', { chars: 500, carryChars: 200, carryInlineChars: 200, carryOverflow: false }], ['compiler-retry-skipped', {}]]
+  const text = rows.map(([tag, d]) => '[' + new Date().toISOString() + '] [' + tag + '] ' + JSON.stringify(d)).join('\n') + '\n'
+  const rep = analyzeEfficiency(text)
+  const b = rep.boots[0]
+  assert.equal(b.claimFunnel.stored, 1); assert.equal(b.claimFunnel.claimHit, 1); assert.equal(b.claimFunnel.opportunity, 2)
+  assert.deepEqual(b.claimFunnel.claimMiss, { 'partial-coverage': 1 })
+  assert.equal(b.v11.retargetReady, 1); assert.equal(b.v11.retrySkipped, 1); assert.equal(b.v11.carryChars.max, 200)
 })
 
 console.log(`PASS=${pass} FAIL=${fail}`)

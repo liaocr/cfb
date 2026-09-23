@@ -280,6 +280,12 @@ export const DEFAULTS = {
   // ★ 纯压缩：把这段 reasoning 改写成更短的摘要。与 stateMemory 独立开关。
   //   输入 ≈ 本段推理，不背整窗证据 ⇒ 输入体量回到设计预期，压缩率可核。
   stateCompress: false,
+  // compress 提示词版本：'v2' 中性压缩（缺省）；'v1' = 与 legacy 蒸馏逐字相同（回滚/对照用）
+  compressPrompt: 'v2',
+  // pre-step 整段 replace 时，随看板带走的旧看板正文/可见回答/工具调用参数的内联总预算（字符）；超出归档为句柄
+  maxCarryChars: 3000,
+  // ★ 迟到认领：多块消息允许「已就绪块用摘要、未就绪块保留原文」的混合认领。缺省 false（保持全覆盖铁律）。
+  lateClaimPartial: false,
   // 证据采集只看最后 N 个 surface 节点：**关联优先，不全文堆积**
   // ⚠ 只在 stateMemory 打开时才进入编译输入；stateCompress 不采集证据。
   stateEvidenceLimit: 60,
@@ -425,6 +431,32 @@ export function buildDistillPrompt(cot) {
     '   · "下一步跑 X"     ⇒ "X 尚未执行。"\n' +
     '   · "不要删会话"     ⇒ "会话文件删除动作经评估为破坏性，已归档为不可行。"\n' +
     '   ⚠ 第 7 条只改变句式，不改变强度：已否决的方案必须仍然读起来不可重开。\n\n' +
+    '【上一轮思维链】\n' +
+    cot
+  )
+}
+
+/**
+ * ★ 2026-09-23 compress-v2：**中性压缩**提示词（与 legacy 蒸馏的裁决式提示词分离）。
+ *   legacy/buildDistillPrompt 要求「已否决·不可重开」「删掉自我怀疑」—— 那是不可逆裁决，
+ *   把 reasoning 里的犹豫与备选项抹掉。纯压缩的目标只是**更短且保真**：
+ *     · 保留未决问题、备选方案与不确定性的措辞（不升级为结论）；
+ *     · 路径 / 命令 / 数字 / 报错逐字保留；
+ *     · 不新增事实、不给建议、不使用祈使句与第二人称（作为 user 角色注入时不得与当前任务冲突）。
+ *   通过 promptVersion 'compress-v2' 与 v1（=legacy 文本）区分，便于 A/B。
+ */
+export function buildCompressPrompt(cot) {
+  return (
+    '你是上下文压缩器。把下面这段 Agent 上一轮的思维链，改写成一份更短的等价记录。\n\n' +
+    '只输出记录本身。不要解释，不要 markdown 代码围栏，不要客套。\n\n' +
+    '保真规则（优先级高于长度）：\n' +
+    '1. 保留原文的确定程度：已确定的写成已确定；原文仍在犹豫、比较或存疑的，保留"尚未确定 / 两种可能 / 待验证"的表述，不得升级为结论，也不得删掉。\n' +
+    '2. 保留被考虑过但未采用的方案及其原因（一句话即可）。\n' +
+    '3. 路径、文件名、命令、变量名、数字、错误信息原文逐字保留，不许意译。\n' +
+    '4. 不新增原文没有的事实，不给建议，不评价。\n' +
+    '5. 用中文；第三人称陈述句；不得出现祈使句，不得使用"你 / 您"。\n' +
+    '6. 删除重复表述与逐字复读的工具输出；合并同义段落。\n' +
+    '7. 目标长度为原文的 20%~35%；原文很短时宁可少删。\n\n' +
     '【上一轮思维链】\n' +
     cot
   )
@@ -2759,6 +2791,63 @@ function coverageMatch(q, fullRaw) {
   return { idxs: withPos.map((x) => x.i) }
 }
 
+/**
+ * 诊断：为什么这段 fullRaw 认领不了。纯只读，供 trace 用（"积压"与"丢弃"在漏斗里必须能区分）。
+ * @returns 'empty' | 'no-candidate' | 'ambiguous' | 'partial-coverage' | 'ok'
+ */
+export function explainLateMiss(sessionId, fullRaw, opts = {}) {
+  try {
+    const q = lateMemory.get(lateKey(sessionId, opts))
+    if (!q || !q.length) return 'empty'
+    if (coverageMatch(q, fullRaw)) return 'ok'
+    const cands = q.filter(x => x.raw === fullRaw || (x.raw.length >= LATE_MATCH_MIN && segmentAligned(fullRaw, x.raw)))
+    if (!cands.length) return 'no-candidate'
+    if (cands.some(x => x.ambiguous)) return 'ambiguous'
+    return 'partial-coverage'
+  } catch { return 'no-candidate' }
+}
+
+/**
+ * ★ 混合认领（opt-in：cfg.lateClaimPartial=true）。全覆盖失败时，把 fullRaw 按 '\n' 切段，
+ *   已就绪的块用其摘要、其余段**逐字保留原文**，拼成一份文本。
+ *   保证：① 只用非歧义、整段对齐的候选；② 未命中的原文一个字不丢；③ 至少命中 1 块才返回；
+ *        ④ 回执只包含真正用到的记录（ack 时只消费这些）。
+ *   全覆盖可用时**不走这里**（调用方先 peek）。默认关闭，因为它改变了「绝不部分认领」的既有铁律。
+ */
+export function peekLateMemoryPartial(sessionId, fullRaw, opts = {}) {
+  try {
+    if (sessionId == null || typeof fullRaw !== 'string' || !fullRaw) return null
+    const q = lateMemory.get(lateKey(sessionId, opts))
+    if (!q || !q.length) return null
+    pruneLateMemory(q)
+    const hits = []
+    for (const x of q) {
+      if (x.ambiguous || x.raw.length < LATE_MATCH_MIN || !segmentAligned(fullRaw, x.raw)) continue
+      const p = fullRaw.indexOf(x.raw)
+      if (p < 0) continue
+      hits.push({ x, p, e: p + x.raw.length })
+    }
+    if (!hits.length) return null
+    hits.sort((a, b) => a.p - b.p)
+    // 去重叠：按位置贪心，只保留互不重叠的命中
+    const used = []
+    let cursor = 0
+    for (const h of hits) { if (h.p >= cursor) { used.push(h); cursor = h.e } }
+    let text = '', pos = 0, replacedChars = 0
+    for (const h of used) {
+      if (h.p > pos) text += fullRaw.slice(pos, h.p)
+      const board = String(h.x.board || '').trim() || renderCheckpoint(h.x.entries)
+      if (!board) { text += fullRaw.slice(h.p, h.e); pos = h.e; continue }
+      text += board; replacedChars += h.x.raw.length; pos = h.e
+    }
+    if (pos < fullRaw.length) text += fullRaw.slice(pos)
+    if (!replacedChars) return null
+    const receipt = used.map(h => h.x)
+    return { count: receipt.length, receipt, texts: [text], entries: receipt.reduce((a, x) => a.concat(x.entries), []),
+      partial: true, replacedChars, keptChars: fullRaw.length - replacedChars }
+  } catch { return null }
+}
+
 /** 只查不取。找到返回 { texts, count, entries }，否则 null。 */
 export function peekLateMemory(sessionId, fullRaw, opts = {}) {
   try {
@@ -3517,7 +3606,7 @@ function readSessionLog(session) {
           //   绝不能让归档副本被洗 —— 那是原始证据，必须字节保真。
           toolTextOf: async (ev) => toolTextFromEvent(ev),
           // ★ 零等待探测：让发射器在缺省目标未就绪时回头找「更早但已就绪」的候选（机会饥饿修正）
-          isReady: async (raw) => !!peekLateMemory(bpSid, raw, claimScope),
+          isReady: async (raw) => !!(peekLateMemory(bpSid, raw, claimScope) || (cfg.lateClaimPartial === true && peekLateMemoryPartial(bpSid, raw, claimScope))),
           archive: async (text) => {
             if (!bpCmb || typeof bpCmb.putText !== 'function') return null
             try {
@@ -3534,8 +3623,12 @@ function readSessionLog(session) {
           //   只部分就绪 ⇒ 不认领、不消费（否则未就绪块的推理会凭空消失）。
           //   先 peek，只有发射成功才 acknowledge；拒发/漂移/dry-run 不消费。
           awaitDistilled: async (raw) => {
-            const c = peekLateMemory(bpSid, raw, claimScope)
-            if (!c) return null
+            let c = peekLateMemory(bpSid, raw, claimScope)
+            if (!c && cfg.lateClaimPartial === true) {
+              c = peekLateMemoryPartial(bpSid, raw, claimScope)
+              if (c) trace('birth-claim-partial', { n, blocks: c.count, replacedChars: c.replacedChars, keptChars: c.keptChars })
+            }
+            if (!c) { trace('birth-claim-miss', { n, why: explainLateMiss(bpSid, raw, claimScope), rawChars: raw.length }); return null }
             // 多块时按块序拼接（顺序由 coverageMatch 保证，绝不按 promise 完成序）
             const text = c.texts.join('\n\n') || renderCheckpoint(c.entries)
             if (!text || !String(text).trim()) return null
@@ -3760,7 +3853,9 @@ function readSessionLog(session) {
         distill: compileModeOf(streamCfg) === 'memory'
           ? async (env, signal, budget) => generateStateMemory(env, budget?.timeoutMs != null ? { ...streamCfg, timeoutMs: budget.timeoutMs } : streamCfg, signal, { ...budget, flights: compilerFlights })
           : compileModeOf(streamCfg) === 'compress'
-            ? async (raw, signal) => generateDistillation(raw, streamCfg, signal, buildDistillPrompt(raw), { promptVersion: 'compress-v1' })
+            ? async (raw, signal) => (streamCfg.compressPrompt === 'v1'
+                ? generateDistillation(raw, streamCfg, signal, buildDistillPrompt(raw), { promptVersion: 'compress-v1' })
+                : generateDistillation(raw, streamCfg, signal, buildCompressPrompt(raw), { promptVersion: 'compress-v2' }))
             : async (raw, signal) => generateDistillation(raw, streamCfg, signal),
         prepareEvidence: (input) => {
           const started = performance.now()

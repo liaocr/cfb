@@ -69,10 +69,38 @@ export function analyzeEfficiency(text) {
         }
         return { config: p.config, ...timings }
       })
+      const count = tag => g.rows.filter(r => r.tag === tag).length
+      // ★ 迟到认领漏斗：每一级都是**计数**，不是收益。stored>0 而 claimHit=0 = 积压，不是修复。
+      const claimFunnel = {
+        compiled: ts.filter(t => t.ok === true).length,
+        passedThrough: count('birth-passthrough'),
+        stored: count('birth-late-memory-stored'),
+        storeRefused: count('birth-late-memory-refused'),
+        opportunity: count('birth-claim-opportunity'),
+        claimHit: count('birth-claim-hit'),
+        claimMiss: Object.fromEntries([...g.rows.filter(r => r.tag === 'birth-claim-miss').reduce((m, r) => m.set(r.why || 'unknown', (m.get(r.why || 'unknown') || 0) + 1), new Map())]),
+        claimSkip: Object.fromEntries([...g.rows.filter(r => r.tag === 'birth-claim-skip').reduce((m, r) => m.set(r.reason || 'unknown', (m.get(r.reason || 'unknown') || 0) + 1), new Map())]),
+        emitted: count('birth-claim-emitted'),
+        acknowledged: count('birth-claim-acknowledged'),
+        presentedInOptions: count('memory-presented-in-options'),
+        meaning: 'counts-per-boot; stored without claimHit is backlog, not delivery',
+      }
+      const carryRows = g.rows.filter(r => r.tag === 'ledger-built')
+      const v11 = {
+        retargetReady: count('emit-retarget-ready'),
+        retargetRefusedBoardSingleton: count('emit-retarget-refused-board-singleton'),
+        spanUnreadable: count('emit-span-unreadable'),
+        retrySkipped: count('compiler-retry-skipped'),
+        carryChars: distribution(carryRows.map(r => r.carryChars)),
+        carryInlineChars: distribution(carryRows.map(r => r.carryInlineChars)),
+        carryOverflow: carryRows.filter(r => r.carryOverflow === true).length,
+        ledgerChars: distribution(carryRows.map(r => r.chars)),
+      }
       return { bootIndex: g.bootIndex, anchored: g.anchored, boot: g.boot,
         counts: { transportAttemptsStarted: starts.size, transportAttemptsSettled: completed.size,
-          sharedAttachments: g.rows.filter(r => r.tag === 'compiler-flight-shared').length,
-          archiveTerminalConsumers: g.rows.filter(r => r.tag === 'compiler-consumer-unusable').length },
+          sharedAttachments: count('compiler-flight-shared'),
+          archiveTerminalConsumers: count('compiler-consumer-unusable') },
+        claimFunnel, v11,
         preparationMs: distribution(ts.map(t => t.preparationMs)), parseRenderMs: distribution(ts.map(t => t.parseRenderMs)), transportTimings, requests, tasks: ts,
         decisionReview: ts.filter(t => t.acknowledged || t.presented).map(t => ({ taskId: t.taskId, requestId: t.requestId ?? null,
           observedInOptions: t.presented > 0, subsequentRoundIds: null, goalId: null,

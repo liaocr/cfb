@@ -1134,7 +1134,7 @@ export function classifyUserEventMetadata(e) {
   return null
 }
 
-export function pickUserAsks(events) {
+export function pickUserAsks(events, opts = {}) {
   const out = []
   for (const e of (Array.isArray(events) ? events : [])) {
     if (!e) continue
@@ -1156,6 +1156,10 @@ export function pickUserAsks(events) {
       : (classifyUserEventMetadata(e) || (e.inboxDefault === true ? SOURCE.human : SOURCE.unknownUserEvent)))
     // ⚠ 只有**已确认的人类输入**才能支持「用户明确要求」。未确认一律不进 userAsks。
     if (src !== SOURCE.human) continue
+    // ⚠ markerConflict（显式 kind:'user' + 正文带生成标头）**仍进 userAsks**：
+    //   既有契约 I7/I8 钉死「创建路径已确认 ⇒ 适配层完全采信，不因正文标头降级」。
+    //   标记只用于审计与下游可选过滤（opts.excludeMarkerConflict），不在这里单方面反转契约。
+    if (e.markerConflict === true && opts.excludeMarkerConflict === true) continue
     out.push(Object.freeze({ text, seq: e.seq == null ? null : e.seq, at: e.at == null ? null : e.at }))
   }
   return out
@@ -1679,9 +1683,14 @@ export function normalizeEvidenceEvent(raw, seqHint) {
     if (!text) return null
     // 结构化标头（ledger / runtime 抬头）都不命中 ⇒ 该消息只能来自 inbox.claim()
     const hasMarker = LEDGER_MARKERS.some((m) => text.includes(m)) || RUNTIME_MARKERS.some((m) => text.includes(m))
+    const source = classifyUserEventSource({ hostOrigin, hostKind, text, inboxDefault: !hasMarker })
+    // ★ 2026-09-23 退半步（安全权衡）：创建路径显式 kind:'user' 但正文带看板/运行时标头 ⇒
+    //   仍标 human（既有契约 I7/I8：创建路径已确认 ⇒ 不因正文降级），并打 **markerConflict=true**
+    //   供审计；pickUserAsks(events, { excludeMarkerConflict: true }) 可选择不把它当权威来源。
+    //   缺省不排除 —— 是否信任「能写 kind:'user' 的写入者」是宿主层的裁决，这里只留痕不反转。
     return Object.freeze({
-      seq, type, text, hostOrigin, hostKind,
-      source: classifyUserEventSource({ hostOrigin, hostKind, text, inboxDefault: !hasMarker }),
+      seq, type, text, hostOrigin, hostKind, source,
+      ...(source === SOURCE.human && hasMarker ? { markerConflict: true } : {}),
     })
   }
 

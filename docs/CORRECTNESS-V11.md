@@ -38,3 +38,23 @@ node manifest.mjs --check
 ```
 
 跳过项为宿主依赖检查，本轮结果不构成完整宿主验收。
+
+---
+
+# v11.1 追加（同日）：对 v11 评审的回应
+
+评审指出 v11 的两处自引入回归与若干未交代事项。逐条处理如下。
+
+| 评审点 | 处理 | 验收 |
+|---|---|---|
+| ③ carry 无预算、跨轮累积 | `flattenCarriedBoard()`：carry 旧看板时剥掉其中已内联的 `[早前看板/早前回答/工具调用/工具结果]` 段，只留顶层摘要与句柄行（幂等）；`maxCarryChars`（缺省 3000）限制 carry 内联总量，超出项整体归档为句柄、归档失败才内联；`ledger-built` trace 新增 `carryChars / carryInlineChars / carryOverflow` | 三轮连续 replace 看板长度有界、两轮前正文不再出现 |
+| ⑤ retarget 打穿看板单例 | 反查候选时要求既有看板全部在新区间内（`absorbSeqs` 只向左吞并，右侧看板吞不到）；否则 `emit-retarget-refused-board-singleton`，本轮不发 | 看板位于候选右侧的场景：拒绝，表面不出现两份看板 |
+| ② compress 验收口径 | 新增 `explainLateMiss()` 与 `birth-claim-miss{why}` trace（`empty / no-candidate / ambiguous / partial-coverage`）；`analyze-efficiency.mjs` 输出 `claimFunnel`（compiled → passedThrough → stored → opportunity → claimHit/claimMiss → emitted → acknowledged → presentedInOptions）。**验收看 `claimHit`，不看 `stored`。** 实测双块 compress 场景可用拼接原文全覆盖认领 | 漏斗自测 |
+| ⑥ P3 反转安全决定 | 退回：既有契约 I7/I8（创建路径已确认 ⇒ 不因正文标头降级、适配层完全采信）**保持不变**。新增 `markerConflict` 审计标记；`pickUserAsks(events, { excludeMarkerConflict: true })` 提供可选排除。是否信任「能写 `kind:'user'` 的写入者」留给宿主层裁决 | I7/I8 继续通过 |
+| ① 表格"可取消"措辞 | 更正：compress **不取消**在飞编译，与 memory 缺省行为一致（T18a 契约） | — |
+| ⑦ 重试分类全局生效 | 说明：`DEFAULTS.maxAttempts = 1`，缺省不触发退避；仅影响显式配置 `maxAttempts > 1` 的部署 | — |
+| compress 提示词有名无实 | 新增 `buildCompressPrompt()`（`compress-v2`，缺省）：保留不确定性与被否决备选、不做不可逆裁决、无祈使句；`compressPrompt: 'v1'` 回滚为 legacy 文本，`promptVersion` 可 A/B | 提示词自测 |
+| all-or-nothing 认领 | 新增 `peekLateMemoryPartial()`（opt-in `lateClaimPartial`，缺省 **false**）：已就绪块用摘要、未就绪段逐字保留，回执只含用到的记录；歧义候选一律拒绝 | 混合认领自测 ×2 |
+| 新 trace 可观测 | `analyze-efficiency.mjs` 新增 `v11` 段：retargetReady / retargetRefusedBoardSingleton / spanUnreadable / retrySkipped / carryChars 分布 / carryOverflow | 漏斗自测 |
+
+未量化项（诚实记录）：`span-unreadable` 的线上触发频率未知（真机 assistant 形状固定，理论上不触发），已加计数；compress-v2 的语义保真只有提示词层面的约束，没有模型侧验收。

@@ -38,6 +38,12 @@ export interface CotFormBConfig {
    */
   stateMemory?: boolean
   stateCompress?: boolean
+  /** compress 提示词版本：'v2' 中性压缩（缺省，保留不确定性）；'v1' 与 legacy 蒸馏逐字相同（回滚/对照） */
+  compressPrompt?: 'v1' | 'v2'
+  /** pre-step 整段 replace 时随看板带走的旧看板正文/可见回答/工具调用参数的内联总预算（字符，缺省 3000）；超出归档为句柄 */
+  maxCarryChars?: number
+  /** 迟到认领：多块消息允许「已就绪块用摘要、未就绪块逐字保留」的混合认领。缺省 false（保持全覆盖铁律） */
+  lateClaimPartial?: boolean
   /** 由 normalizeConfig 派生，调用方不应手填 */
   compileMode?: 'memory' | 'compress' | 'legacy'
   compileModeConflict?: { stateMemory: true; stateCompress: true; winner: 'stateMemory' }
@@ -176,6 +182,12 @@ export declare function normalizeConfig(config?: CotFormBConfig): CotFormBConfig
 export declare function resolveCompileMode(cfg: CotFormBConfig | null | undefined): 'memory' | 'compress' | 'legacy'
 /** 重试退避（纯函数）：非瞬时错误返回 null（不重试），否则返回带抖动的毫秒数 */
 export declare function retryDelayMs(e: unknown, attempt: number, rand?: () => number): number | null
+/** compress-v2 中性压缩提示词 */
+export declare function buildCompressPrompt(cot: string): string
+/** 诊断：为何该原文认领不了 */
+export declare function explainLateMiss(sessionId: string, fullRaw: string, opts?: { branchId?: string | null }): 'empty' | 'no-candidate' | 'ambiguous' | 'partial-coverage' | 'ok'
+/** 混合认领（opt-in，见 lateClaimPartial） */
+export declare function peekLateMemoryPartial(sessionId: string, fullRaw: string, opts?: { branchId?: string | null }): { count: number; receipt: unknown[]; texts: string[]; entries: unknown[]; partial: true; replacedChars: number; keptChars: number } | null
 
 /** 组装三态提纯提示词（硬标签、无用户原话栏、无工具栏） */
 export declare function buildDistillPrompt(cot: string): string

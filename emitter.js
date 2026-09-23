@@ -101,6 +101,26 @@ export function toolTextFromEvent(ev) {
  *
  * @returns { boards:[{seq,text}], answers:[{seq,text}], calls:[{seq,text}] } 或 null（形状不认识 ⇒ 拒发）
  */
+/** carry 段落标签（buildLedger 写入、flattenCarriedBoard 识别）。 */
+const CARRY_LABELS = ['早前看板', '早前回答', '工具调用', '工具结果']
+const CARRY_HEAD_RE = new RegExp('^\\[(' + CARRY_LABELS.join('|') + ') seq=\\d+(?: · \\d+ 字符 · 原文 \\S+)?\\]$')
+
+/**
+ * 把上一轮看板正文压平：内联的 carry 段整段去掉，只留「摘要正文」与「归档句柄行」。
+ * 幂等：对已压平文本再压平结果不变。纯函数。
+ */
+export function flattenCarriedBoard(body) {
+  const paras = String(body || '').split('\n\n')
+  const kept = []
+  for (const p of paras) {
+    const first = p.split('\n', 1)[0].trim()
+    if (!CARRY_HEAD_RE.test(first)) { kept.push(p); continue }
+    // 句柄行（单行、含 · 原文 art://）保留；内联正文段整段丢弃
+    if (first.includes(' · 原文 ') && p.trim() === first) kept.push(p)
+  }
+  return kept.join('\n\n')
+}
+
 export function collectSpanCarry(events, span, opts = {}) {
   const pluginName = opts.pluginName || 'cot-form-b'
   const out = { boards: [], answers: [], calls: [] }
@@ -119,7 +139,10 @@ export function collectSpanCarry(events, span, opts = {}) {
       // 只保留 <cot-ledger> 内的正文（去掉固定抬头，避免抬头反复嵌套）
       const o = text.indexOf(LEDGER_OPEN), c = text.lastIndexOf(LEDGER_CLOSE)
       const body = (o >= 0 && c > o) ? text.slice(o + LEDGER_OPEN.length, c) : text
-      if (body.trim()) out.boards.push({ seq: ev.seq, text: body.trim() })
+      // ★ 去嵌套：旧看板里由上一轮 carry 进来的 [早前看板/早前回答/工具调用/工具结果] 段
+      //   已经被消化过一次；再原样带走就是跨轮线性累积。只保留顶层摘要 + 归档句柄行。
+      const flat = flattenCarriedBoard(body)
+      if (flat.trim()) out.boards.push({ seq: ev.seq, text: flat.trim() })
       continue
     }
     if (ev.type !== 'assistant/message') continue
@@ -143,22 +166,30 @@ export function collectSpanCarry(events, span, opts = {}) {
 
 export async function buildLedger(deps) {
   const { distilled, toolResults = [], maxInlineChars = 2000, archive, trace, cleanView, carry } = deps
+  const maxCarryChars = Number.isFinite(deps.maxCarryChars) && deps.maxCarryChars >= 0 ? deps.maxCarryChars : 3000
   const parts = [String(distilled == null ? '' : distilled).trim()]
   let inlined = 0, archived = 0, archiveFailed = 0, viewSaved = 0
+  let carryChars = 0, carryInlineChars = 0, carryOverflow = false
   // 被吞并旧看板正文 / 区间内可见回答 / 工具调用参数：同一条「短内联、长归档」通路
+  // ★ 预算：carry 内联总量 ≤ maxCarryChars。超出的项**整体**归档为句柄（归档失败才内联，信息不丢）。
+  //   目的：P1 补齐覆盖不能反过来把编译输入体量吹回去；增长必须可观测（trace carryChars）。
   if (carry) {
-    const pushCarry = async (label, item) => {
+    const items = []
+    for (const b of carry.boards || []) items.push(['早前看板', b])
+    for (const a of carry.answers || []) items.push(['早前回答', a])
+    for (const c of carry.calls || []) items.push(['工具调用', c])
+    for (const [label, item] of items) {
       const text = String(item && item.text != null ? item.text : '')
-      if (!text) return
-      if (text.length <= maxInlineChars) { parts.push('[' + label + ' seq=' + item.seq + ']\n' + text); inlined++; return }
+      if (!text) continue
+      carryChars += text.length
+      const fits = text.length <= maxInlineChars && carryInlineChars + text.length <= maxCarryChars
+      if (fits) { parts.push('[' + label + ' seq=' + item.seq + ']\n' + text); inlined++; carryInlineChars += text.length; continue }
+      if (!(text.length <= maxInlineChars)) { /* 单项过长 */ } else carryOverflow = true
       let handle = null
       if (typeof archive === 'function') { try { handle = await archive(text, { seq: item.seq, chars: text.length, kind: label }) } catch { handle = null } }
       if (handle) { parts.push('[' + label + ' seq=' + item.seq + ' · ' + text.length + ' 字符 · 原文 ' + handle + ']'); archived++ }
-      else { parts.push('[' + label + ' seq=' + item.seq + ']\n' + text); archiveFailed++ }
+      else { parts.push('[' + label + ' seq=' + item.seq + ']\n' + text); archiveFailed++; carryInlineChars += text.length }
     }
-    for (const b of carry.boards || []) await pushCarry('早前看板', b)
-    for (const a of carry.answers || []) await pushCarry('早前回答', a)
-    for (const c of carry.calls || []) await pushCarry('工具调用', c)
   }
   // ★★ 2026-09-22 证据边界（评审第 5 点）★★
   //   清洗只作用于**模型输入视图**（内联进 ledger 的那份）；
@@ -196,7 +227,7 @@ export async function buildLedger(deps) {
   // 合闸判据：连续若干轮 ledger-imperative 的 verdict=clean 之前，不带电。
   const imp = verdictOf(body)
   if (typeof trace === 'function') {
-    trace('ledger-built', { inlined, archived, archiveFailed, chars: body.length, viewSaved })
+    trace('ledger-built', { inlined, archived, archiveFailed, chars: body.length, viewSaved, carryChars, carryInlineChars, carryOverflow, maxCarryChars })
     trace('ledger-imperative', { verdict: imp.verdict, count: imp.count, ids: imp.ids.join(',') })
   }
   return { text: body, inlined, archived, archiveFailed }
@@ -362,6 +393,9 @@ export async function runPreStepEmit(deps) {
         const r0 = typeof rawOf === 'function' ? await rawOf(ev.raw, ev.seq) : null
         if (!r0 || !(await deps.isReady(r0))) continue
         const alt = selectBalancedSpan(events, { targetSeq: ev.seq, allowWholeSurface: false, keepTail: cfg.keepTail, absorbSeqs: boards })
+        // ★ 看板单例不变量：absorbSeqs 只向左吞并。回头选更早的目标时，既有看板可能在它**右侧**
+        //   ⇒ 吞不到 ⇒ 表面同时两份看板。吞不干净就不 retarget（宁可这轮不发，绝不出两份）。
+        if (alt && !boards.every((q) => alt.shadowedSeqs.includes(q))) { t('emit-retarget-refused-board-singleton', { candidate: ev.seq }); continue }
         if (alt) picked = { span: alt, ev, raw: r0 }
       }
       if (picked) {
@@ -418,7 +452,7 @@ export async function runPreStepEmit(deps) {
     t('emit-carry', { boards: carry.boards.length, answers: carry.answers.length, calls: carry.calls.length })
     const ledger = await buildLedger({
       distilled: pending.text, toolResults, carry,
-      maxInlineChars: cfg.maxInlineToolResultChars, archive, trace: t,
+      maxInlineChars: cfg.maxInlineToolResultChars, maxCarryChars: cfg.maxCarryChars, archive, trace: t,
     })
 
     if (typeof deps.validatePending === 'function' && !deps.validatePending()) {
