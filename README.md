@@ -1,5 +1,13 @@
 # dsh-cot-form-b — 尾部即时思维链提纯 + 结构化状态记忆
 
+> **当前实现：v11.6（2026-09-23）**。成本模型落地第一批（`docs/AUDIT-V11.5.md`）：
+> `birth.minChars` 500→**3100**（`净收益=(R−1)·d·(B−B′)−T−5B′`，d=0.02、R=55、B′≈450 反解保本原长 2,959）；
+> `maxOutputTokens` 1200→**850 恒定**（不随输入放大，否则与「ρ 越小净收益恒增」反向）；
+> `normalizeConfig` 保证 `timeoutMs ≥ finishWaitMs+2000`（缺陷 D，只抬不降，BOOT `configAdjusted` 留痕）；
+> 替换结果空白硬断言 `empty-candidate`；新增**纯观测** trace：`birth-window-probe`（免费窗口三时刻）、`birth-econ`（三态判定，只记录不判定）、`birth-condensed.fidelity`（`identifierRecall`，空集标 `unmeasurable` 不算 pass）。
+> `analyze-efficiency.mjs` 新增 `windowProbe / economics / fidelity` 段。验证：**1207 通过 / 0 失败 / 1 跳过，18 套件**。
+> ⚠ 判定行为唯一变化 = 门槛与输出上限；动态门槛、保真放行门槛、提前起火**均未接管**，等 trace 数据。
+
 > **当前实现：v11.4（2026-09-23）**。compress PromptVersion 贯通 trace；迟到认领漏斗已在 boot26 真机 trace 命中 10/11；carry 有预算与去嵌套；只在字符估算满足至少 5% 且 100 字符净节省时发射看板，否则保留原文；可选 token-meter 前后采样仅用于诊断。验证套件当前 18 套。
 > 这些是代码/单次 trace 事实，不代表每次发射都节省 tokenizer tokens 或模型质量已做 A/B。见 [`docs/CORRECTNESS-V11.md`](docs/CORRECTNESS-V11.md)。
 > 下列 v10/v9…段落是对应版本的**历史记录**；其中的开关、待办、套件计数不得当作当前状态。历史套件数按当时记录保留，不做伪造性回写。

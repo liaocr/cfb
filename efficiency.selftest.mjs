@@ -11,7 +11,7 @@ import { analyzeEfficiency } from './analyze-efficiency.mjs'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-efficiency-')), previous = process.env.DSH_HOME
 process.env.DSH_HOME = home
 const credentialsPath = path.join(home, 'keys'); fs.writeFileSync(credentialsPath, 'LOCAL: unused\nOTHER: alternate')
-const cfg = { ...I.DEFAULTS, enabled: true, dryRun: false, mode: 'birth', stateMemory: true, model: 'fixture', followHostModel: false, followHostProvider: false, credentialRef: 'LOCAL', credentialsPath, keepAlive: false, distillStream: true }
+const cfg = { ...I.DEFAULTS, enabled: true, dryRun: false, mode: 'birth', stateMemory: true, birthMinChars: 100, model: 'fixture', followHostModel: false, followHostProvider: false, credentialRef: 'LOCAL', credentialsPath, keepAlive: false, distillStream: true }
 const defer = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b }); return { promise, resolve, reject } }
 const tick = () => new Promise(r => setImmediate(r))
 async function bounded(p) { let timer; try { return await Promise.race([p, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('fixture deadline')), 3000) })]) } finally { clearTimeout(timer) } }

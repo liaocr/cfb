@@ -1015,6 +1015,63 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
      c.userAsks.some((x) => x.text.includes('无来源的普通发言')), JSON.stringify(c.userAsks.map(x => x.text)))
 }
 
+// ═══ T33 v11.6：免费窗口探针 / 空白候选断言 / 保真观测 / 成本模型字段 ═══
+{
+  const raw = bulkReasoning()
+  // (a) 三时刻探针：tool-call block-start 在 reasoning block-end 之前出现 ⇒ otherStartToLastEndMs ≥ 0
+  {
+    const traces = []
+    const src = [BS(0, 'reasoning'), RD(0, raw), BS(1, 'tool-call'), BE(0, { type: 'reasoning', text: raw }), FIN()]
+    const deps = { cfg: mkCfg(), trace: (t, d) => traces.push([t, d]), archive: async () => 'art://p', sessionId: () => 's', distill: async () => ({ text: SUMMARY }) }
+    const got = await collect(birthTransform(mkStream(src), deps))
+    const probe = traces.find(([t]) => t === 'birth-window-probe')
+    ok('T33.1 ★ 每条含 reasoning 的流恰好落一条 birth-window-probe', traces.filter(([t]) => t === 'birth-window-probe').length === 1)
+    ok('T33.2 探针记录 firstOtherType=tool-call 且三时刻齐全', probe && probe[1].firstOtherType === 'tool-call' && Number.isFinite(probe[1].finishMs) && probe[1].reasoningEndMs.length === 1, probe && JSON.stringify(probe[1]))
+    ok('T33.3 探针纯观测：出站 chunk 序列不变', types(got) === 'block-start:0 reasoning-delta:0 block-start:1 block-end:0 finish', types(got))
+    const econ = traces.find(([t]) => t === 'birth-econ')
+    ok('T33.4 birth-econ 字段落 trace（B/R/rhoMax/bAbs/bMin/verdict）', econ && econ[1].B === raw.length && econ[1].verdict && Number.isFinite(econ[1].bAbs), econ && JSON.stringify(econ[1]))
+    const cond = traces.find(([t]) => t === 'birth-condensed')
+    ok('T33.5 birth-condensed 带 fidelity 观测字段（不拦截）', cond && cond[1].fidelity && typeof cond[1].fidelity.unmeasurable === 'boolean', cond && JSON.stringify(cond[1].fidelity))
+  }
+  // (b) 没有 reasoning 块的流：不落探针
+  {
+    const traces = []
+    const src = [BS(0, 'text'), { type: 'text-delta', index: 0, text: 'hi' }, BE(0, { type: 'text', text: 'hi' }), FIN()]
+    await collect(birthTransform(mkStream(src), { cfg: mkCfg(), trace: (t, d) => traces.push([t, d]) }))
+    ok('T33.6 无 reasoning 块 ⇒ 不落 birth-window-probe', !traces.some(([t]) => t === 'birth-window-probe'))
+  }
+  // (c) 空白蒸馏稿绝不替换：原文逐字放行
+  {
+    const traces = []
+    const src = [BS(0, 'reasoning'), RD(0, raw), BE(0, { type: 'reasoning', text: raw }), FIN()]
+    const deps = { cfg: mkCfg({ birthMinSavedChars: -100000 }), trace: (t, d) => traces.push([t, d]), archive: async () => 'art://p', sessionId: () => 's', distill: async () => ({ text: '   \n  ' }) }
+    const got = await collect(birthTransform(mkStream(src), deps))
+    const end = got.find((c) => c.type === 'block-end')
+    ok('T33.7 ★ 空白候选 ⇒ 原文放行（即使 minSaved 放到负数也不替换）', end && end.block.text === raw)
+    // 空白稿在 distillP 处已被判 'empty distillate'（第一道闸）；birthFinish 的 empty-candidate 是第二道闸。
+    ok('T33.8 放行原因为 distill-failed（第一道闸）或 empty-candidate（第二道闸），二者必居其一', traces.some(([t, d]) => t === 'birth-passthrough' && (d.why === 'distill-failed' || d.why === 'empty-candidate')))
+    // 直接验证第二道闸：绕过 distillP，手工构造 distillState.ok=true 且 text 为空白
+    {
+      const t2 = []
+      const task = birthStart({ index: 0, text: raw, end: BE(0, { type: 'reasoning', text: raw }) }, { cfg: mkCfg({ birthMinSavedChars: -100000 }), trace: (t, d) => t2.push([t, d]), archive: async () => 'art://p', sessionId: () => 's', distill: async () => ({ text: SUMMARY }) })
+      await Promise.all([task.diskP, task.distillP])
+      task.distillState = { ok: true, text: '  \n ' }
+      const r = await birthFinish(task, { cfg: mkCfg({ birthMinSavedChars: -100000 }), trace: (t, d) => t2.push([t, d]) })
+      ok('T33.8b ★ 第二道闸：distillState.ok 但 text 空白 ⇒ 原文放行且 why=empty-candidate', r.text === raw && r.why === 'empty-candidate', r.why)
+    }
+  }
+  // (d) 无受保护 token 的原文 ⇒ fidelity.unmeasurable=true（不算 pass）
+  {
+    const traces = []
+    // rules.protectedTokens 也保护 ≥3 字的中文连串 ⇒ 构造真正无受保护 token 的文本（两字词 + 空格）
+    const plain = ('好的 可以 继续 ').repeat(20)
+    const deps = { cfg: mkCfg({ birthMinChars: 10 }), trace: (t, d) => traces.push([t, d]), archive: async () => 'art://p', sessionId: () => 's', distill: async () => ({ text: '短' }) }
+    await collect(birthTransform(mkStream([BS(0, 'reasoning'), RD(0, plain), BE(0, { type: 'reasoning', text: plain }), FIN()]), deps))
+    const cond = traces.find(([t]) => t === 'birth-condensed')
+    ok('T33.9 fidelity 空集 ⇒ unmeasurable=true 且 identifierRecall=null', cond && cond[1].fidelity && cond[1].fidelity.unmeasurable === true && cond[1].fidelity.identifierRecall === null, cond && JSON.stringify(cond[1].fidelity))
+  }
+}
+
 console.log('')
 console.log('selftest-birth: PASS=' + pass + ' FAIL=' + failn + (skipn ? ' SKIP=' + skipn : '') +
   (invariantLoaded ? '  (结构由真实 dsh-llm 不变式校验' : '  (⚠ 不变式未加载') +

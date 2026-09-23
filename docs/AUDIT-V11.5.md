@@ -153,3 +153,27 @@ B 的那次全价预填两边都要付（只是从主请求挪到压缩请求）
 3. `birth-distill-settled` 里 `ok=true` 样本的 `providerReportedUsage.prompt_cache_hit_tokens` 是否恒为 0，以及 `ttfbMs` 与 `promptChars` 的相关性（若无关 ⇒ 排队，支持 H1/H2）。
 
 有这 3 个数，第一、二节的「推测」就能全部落成「已证实」或被否掉。
+
+---
+
+## 附：v11.6 第一批落地记录（2026-09-23，同分支提交）
+
+审计后经三轮订正（`T/B` 项、绝对下界、滞回、`maxOutputTokens` 恒定、免费窗口双时刻、自适应缓做、工具结果已有工具层、分段压缩否决），第一批只做**已定且最坏情况明确**的项：
+
+| 改动 | 位置 | 性质 | 最坏情况 |
+|---|---|---|---|
+| `birthMinChars` 500 → 3100 | `DEFAULTS` | 判定变化 | 短块不压 = 宿主原生行为 |
+| `maxOutputTokens` 1200 → 850 恒定 | `DEFAULTS` | 判定变化 | 长块更易 `finish=length` ⇒ 原文放行（已有闸） |
+| `timeoutMs ≥ finishWaitMs+2000` | `normalizeConfig`，仅 `mode:'birth' && birthDeferredClaim===false` | 只抬不降 | 线上 20000/12000 零变化 |
+| 空白候选硬断言 | `birthFinish` → `pass('empty-candidate')` | 新增安全闸 | 无（只会更保守） |
+| `birth-window-probe` | `birthTransform` | 纯观测 | 无 |
+| `birth-econ`（`birthEconomics` 纯函数） | `birthStart`，`deps.pressure` 接 `emitter.readPressure` | 纯观测，**不判定** | 无；`econCharsPerTurn` 未配 ⇒ R 回落 55 |
+| `birth-condensed.fidelity` | `birthFinish`，复用 `rules.fidelity()` | 纯观测，**不拦截** | 无 |
+| `analyze-efficiency.mjs` `windowProbe/economics/fidelity` | 离线 | 诊断 | 无 |
+
+**未接管、等数据**：动态门槛（需 `econCharsPerTurn` 标定 + 滞回）、保真放行门槛（需离线分布 + 白付成本）、提前起火（需 `windowProbe.verdict==='window-exists'`）、hedged request / 缓存友好前缀（第二批）。
+
+**自测**：新增 `selftest.mjs §23`（16 项）与 `selftest-birth.mjs T33`（10 项）；全量 1207 通过 / 0 失败 / 1 跳过。
+受影响的既有夹具（`hybrid/grounding/efficiency/replay`）显式传 `birthMinChars: 100/1`，因为它们的原文不足 3100 字符且测的是别的东西。
+
+**部署提醒**：真正加载点是 `~/.dsh/profiles/web/node_modules/@dsh-external/dsh-cot-form-b`，需同步并重启。线上 profile 若显式写了 `birth.minChars: 500` 或 `maxOutputTokens: 1200`，会覆盖新默认值——请核对 `cordis.patch.yml`。

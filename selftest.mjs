@@ -8,7 +8,7 @@ import {
   DEFAULTS, buildDistillPrompt, sliceVerbatim, messageOfEvent, textOfContent,
   findLastUserMessage, findLastUserText, assembleCheckpoint, passesHurdle,
   reasoningTextOf, toolCallsOf, rebuildContent, findLastAssistantEvent,
-  breakevenRaw, FIT, apply, normalizeConfig, requestOnce, generateDistillation,
+  breakevenRaw, FIT, apply, normalizeConfig, requestOnce, generateDistillation, birthEconomics,
   detectResponseProtocol, assembleSseFrames, collectSseFrames, extractFromJsonBody, requestStream,
   pushLateMemory, takeLateMemory, peekLateMemory, lateMemorySize,
   coverWatermarkOf, coverSnapshotOk, markCovered, coverVersionOf,
@@ -1044,6 +1044,34 @@ async function test22() {
     try { a.tools = [] } catch { threw = true }
     ok('22.13 ★★ 证明改冻结字段必抛错 ⇒ 生产代码必须构造新数组而非赋值', threw === true)
   }
+}
+
+console.log('\n【23】v11.6 成本模型与门槛（2026-09-23，docs/AUDIT-V11.5.md §一）')
+{
+  // 默认值锁定
+  eq('23.1 ★ birthMinChars = 3100（自洽保本原长 2,959 保守取整）', DEFAULTS.birthMinChars, 3100)
+  eq('23.2 ★ maxOutputTokens = 850（v3 目标 450 字符 ×2 安全系数，恒定不随输入放大）', DEFAULTS.maxOutputTokens, 850)
+  // 成本模型纯函数
+  const e0 = birthEconomics(3100, null, {})
+  ok('23.3 R 取不到 ⇒ 回落 55 且标 fallback', e0.R === 55 && e0.rSource === 'fallback', e0)
+  eq('23.4 绝对下界 B_abs = ceil(460 / (54×0.02)) = 426', e0.bAbs, 426)
+  ok('23.5 默认门槛 3100 在 R=55 下 verdict=ok 且 bMin ≤ 3100', e0.verdict === 'ok' && e0.bMin <= 3100, e0)
+  ok('23.6 旧门槛 500 在 R=55 下必亏（below-min，netAtTarget<0）', birthEconomics(500, null, {}).verdict === 'below-min' && birthEconomics(500, null, {}).netAtTarget < 0)
+  ok('23.7 低于绝对下界 ⇒ below-abs', birthEconomics(300, null, {}).verdict === 'below-abs')
+  const e1 = birthEconomics(5000, { usedTokens: 100000, contextWindow: 128000, source: 'meter' }, { econCharsPerTurn: 4000 })
+  ok('23.8 有水位 + 每轮增量 ⇒ R 由剩余窗口估出（28）且 rSource=meter', e1.R === 28 && e1.rSource === 'meter', e1)
+  ok('23.9 剩余窗口变小 ⇒ 允许 ρ 变小（单调）', e1.rhoMax < e0.rhoMax, { e1: e1.rhoMax, e0: e0.rhoMax })
+  ok('23.10 每轮增量未标定时**不**用水位（避免抖动），回落 fallback', birthEconomics(5000, { usedTokens: 1, contextWindow: 128000, source: 'meter' }, {}).rSource === 'fallback')
+  eq('23.11 B 非正 ⇒ null（绝不抛）', birthEconomics(0, null, {}), null)
+  // 缺陷 D：timeoutMs / finishWaitMs 关系校验
+  const c1 = normalizeConfig({ mode: 'birth', birthDeferredClaim: false, birth: { finishWaitMs: 12000 }, timeoutMs: 8000 })
+  eq('23.12 ★ timeoutMs < finishWaitMs+2000 ⇒ 抬到 14000', c1.timeoutMs, 14000)
+  ok('23.13 抬高必留痕 configAdjusted.timeoutMs', c1.configAdjusted && c1.configAdjusted.timeoutMs && c1.configAdjusted.timeoutMs.from === 8000, c1.configAdjusted)
+  const c2 = normalizeConfig({ mode: 'birth', birthDeferredClaim: false, birth: { finishWaitMs: 12000 }, timeoutMs: 20000 })
+  ok('23.14 已满足（线上 20000）⇒ 零变化、无 configAdjusted', c2.timeoutMs === 20000 && !c2.configAdjusted)
+  const c3 = normalizeConfig({ mode: 'birth', birth: { finishWaitMs: 12000 }, timeoutMs: 8000 })
+  ok('23.15 deferredClaim 开着（ready-only，不等 finishWait）⇒ 不改 timeoutMs', c3.timeoutMs === 8000 && !c3.configAdjusted)
+  ok('23.16 非 birth 模式不改 timeoutMs', normalizeConfig({ mode: 'checkpoint', birthDeferredClaim: false, birth: { finishWaitMs: 12000 }, timeoutMs: 8000 }).timeoutMs === 8000)
 }
 
 console.log('  通过 ' + pass + ' / 失败 ' + fail)

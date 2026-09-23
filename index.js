@@ -50,8 +50,8 @@ import https from 'node:https'
 import crypto from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
-import { compressByRules } from './rules.js'
-import { runPreStepEmit, toolTextFromEvent, LEDGER_OPEN } from './emitter.js'
+import { compressByRules, fidelity } from './rules.js'
+import { runPreStepEmit, toolTextFromEvent, LEDGER_OPEN, readPressure } from './emitter.js'
 import {
   buildEvidenceEnvelope, buildStateCompilePrompt as buildStateCompilePromptSafe, promptStats,
   parseStateCompile, createMemoryProjection, renderBirth, renderCheckpoint, memoryStats,
@@ -165,7 +165,13 @@ export const DEFAULTS = {
   //   铁律③：先归档后压缩。归档失败 ⇒ 原样透传（原始 CoT 绝不允许因压缩而丢失）。
   birthArchive: true,
   //   低于此长度不值得归档+压缩（CAS 写盘是 async，块太小会白付 I/O 又压不动）
-  birthMinChars: 500,
+  // ★★ 2026-09-23 v11.6：500 → 3100（成本模型反解，见 docs/AUDIT-V11.5.md §一）★★
+  //   净收益 = (R−1)·d·(B−B′) − T − 5·B′   d=0.02（缓存命中价/全价，官方价目）
+  //   v3 把 B′ 钉在 ≈450、T≈460（v3 前缀实测）、R=55（生产实测压缩间隔）：
+  //     自洽保本原长 B = 2,959 ⇒ 保守取 3,100。
+  //   绝对下界 B_abs = T/((R−1)·d) = 426：低于它无论压多狠都亏。旧值 500 贴着下界。
+  //   最坏情况：短块不再压缩 = 宿主原生行为（已知安全态）。
+  birthMinChars: 3100,
   //   把 CAS 句柄附在压缩文本尾部，给模型留一条「可回查」的路
   birthHandleInText: true,
   //   CAS 归档的 producer 标签（事后可按来源检索）
@@ -224,7 +230,11 @@ export const DEFAULTS = {
   prewarm: false,
   // 两次预热之间的最小间隔（毫秒）；池里已有空闲 socket 且未超此间隔则不重复预热
   prewarmMinGapMs: 20000,
-  maxOutputTokens: 1200,
+  // ★★ 2026-09-23 v11.6：1200 → 850，且**恒定、不随输入放大**★★
+  //   v3 目标 250~450 字符 ≈ 200~400 token，×2 安全系数 = 850。
+  //   为什么不按输入派生：输出上限随输入增长 ⇒ 允许的 B′ 变大 ⇒ 与「ρ 越小净收益恒增」反向。
+  //   仍打满 finish=length ⇒ 原文放行 + trace（说明 v3 目标对该块不可达），不放宽、不分段。
+  maxOutputTokens: 850,
 
   // 伴生调用
   // ★★ 2026-09-19 公测加固：原为作者商户端点字面量 ★★
@@ -381,6 +391,17 @@ export function normalizeConfig(config = {}) {
   c.retiredOptions = ['stateEvidenceViews', 'stateEvidenceBodyBudget', 'stateSnapshotMirror', 'stateCompileQueue'].filter(k => Object.hasOwn(config, k))
   for (const k of c.retiredOptions) delete c[k]
   c.compileMode = resolveCompileMode(c)
+  // ★★ 2026-09-23 v11.6 缺陷 D：timeoutMs 是请求硬顶，finishWaitMs 是收尾等待。★★
+  //   实测 finishWaitMs 8000→12000→20000 命中率恒为 23.1%，因为 timeoutMs(8000) 先杀了请求。
+  //   只抬不降：timeoutMs < finishWaitMs + 收尾余量(2000) 时抬到该值，并在 BOOT 里留痕。
+  //   已满足的配置（如线上 20000 ≥ 12000+2000）零变化。
+  if (c.mode === 'birth' && c.birthDeferredClaim === false) {
+    const need = Number(c.birthFinishWaitMs) + 2000
+    if (Number.isFinite(need) && Number.isFinite(Number(c.timeoutMs)) && Number(c.timeoutMs) < need) {
+      c.configAdjusted = Object.assign({}, c.configAdjusted, { timeoutMs: { from: c.timeoutMs, to: need, why: 'timeoutMs < birthFinishWaitMs + 2000' } })
+      c.timeoutMs = need
+    }
+  }
   if (c.stateMemory === true && c.stateCompress === true) {
     // 绝不静默二选一：用户显式配了两个互斥目标，就在 BOOT 里报出来，并明确谁生效。
     c.compileModeConflict = { stateMemory: true, stateCompress: true, winner: 'stateMemory' }
@@ -2071,6 +2092,43 @@ export function fullyVisibleResultSeqs(tools) {
   ).map(t => t.resultSeq))]
 }
 
+/**
+ * ★ 成本模型（2026-09-23 v11.6，纯函数，只用于观测与自测）。
+ *   净收益 = (R−1)·d·(B−B′) − T − 5·B′
+ *   ρ_max  = [(R−1)·d − T/B] / [5 + (R−1)·d]      允许的最大压缩后占比
+ *   B_abs  = T / ((R−1)·d)                          绝对下界：低于它无论多压都亏
+ *   B_min  = B′_est / ρ_max                         保本原长（B′_est 冷启动 = compressTargetMax）
+ *   R_est  = 剩余窗口 / 每轮增量；增量取不到 ⇒ R 回落 econR（55），rSource='fallback'
+ * @param B 原文字符数
+ * @param pressure {usedTokens, contextWindow, source} | null（emitter.readPressure 形状）
+ */
+export function birthEconomics(B, pressure, cfg = {}) {
+  const d = Number.isFinite(cfg.econCacheDiscount) ? cfg.econCacheDiscount : 0.02
+  const T = Number.isFinite(cfg.econTemplateChars) ? cfg.econTemplateChars : 460
+  const Rfb = Number.isFinite(cfg.econR) ? cfg.econR : 55
+  const perTurn = Number.isFinite(cfg.econCharsPerTurn) && cfg.econCharsPerTurn > 0 ? cfg.econCharsPerTurn : null
+  const bPrime = Number.isFinite(cfg.compressTargetMax) ? cfg.compressTargetMax : 450
+  if (!(B > 0)) return null
+  let R = Rfb, rSource = 'fallback', remainingTokens = null
+  if (pressure && Number.isFinite(pressure.usedTokens) && Number.isFinite(pressure.contextWindow) && perTurn) {
+    remainingTokens = Math.max(0, pressure.contextWindow - pressure.usedTokens)
+    const est = Math.floor((remainingTokens * 4) / perTurn)   // 4 字符/token 粗估，与 emitter CHARS_PER_TOKEN 同口径
+    if (est >= 2) { R = est; rSource = pressure.source || 'meter' }
+  }
+  const k = (R - 1) * d
+  const rhoMax = (k - T / B) / (5 + k)
+  const bAbs = Math.ceil(T / k)
+  const bMin = rhoMax > 0 ? Math.ceil(bPrime / rhoMax) : Infinity
+  const netAtTarget = k * (B - bPrime) - T - 5 * bPrime
+  return {
+    B, R, rSource, remainingTokens, d, T,
+    rhoMax: Number(rhoMax.toFixed(4)), bAbs, bMin: Number.isFinite(bMin) ? bMin : null,
+    netAtTarget: Math.round(netAtTarget),
+    // 三态判定（只记录）：below-abs 必亏；below-min 目标长度下亏；ok 目标长度下赚
+    verdict: B < bAbs ? 'below-abs' : (B < bMin ? 'below-min' : 'ok'),
+  }
+}
+
 export function birthStart(entry, deps = {}) {
   const cfg = deps.cfg || {}
   const preparationStarted = performance.now()
@@ -2104,6 +2162,12 @@ export function birthStart(entry, deps = {}) {
   if (!raw.trim() || raw.length < floor) { task.belowFloor = true; task.why = 'below-floor'; return task }
   if (cfg.birthArchive === false) { task.belowFloor = true; task.why = 'archive-off'; return task }
   task.compressMode = compileModeOf(cfg) === 'compress'
+  // ★ 2026-09-23 v11.6 成本模型字段（**只记录，不参与判定**；见 docs/AUDIT-V11.5.md §一）。
+  //   目的：为「按剩余窗口动态门槛」积累标定数据（R_est 的每轮增量尚未标定，直接接管会抖动）。
+  try {
+    const econ = birthEconomics(raw.length, typeof deps.pressure === 'function' ? deps.pressure() : null, cfg)
+    if (econ) { task.econ = econ; trace('birth-econ', { index: entry.index, ...econ }) }
+  } catch { /* 观测失败绝不影响主流 */ }
   const archive = deps.archive
   if (typeof archive !== 'function') { task.belowFloor = true; task.why = 'no-store'; return task }
 
@@ -2540,10 +2604,23 @@ export async function birthFinish(task, deps = {}) {
   // 零 rules：只有宿主模型提纯成功且净省够本才替换
   if (dist && dist.ok) {
     const candidate = withHandle(dist.text, handle)
+    // ★ 2026-09-23 v11.6 硬断言：替换结果绝不能为空白。
+    //   DeepSeek 带 tools 的请求要求每条历史 assistant 都携带 reasoning_content；API 只查字段存在，
+    //   但空白内容会让模型失去该轮思维链（H8 事故同形）。空白 ⇒ 原文放行。
+    if (!String(candidate).trim()) return pass('empty-candidate', handle)
     const netSaved = raw.length - candidate.length
     const minSaved = cfg.birthMinSavedChars == null ? 50 : cfg.birthMinSavedChars
+    // ★ 2026-09-23 v11.6 保真观测（**只记录，不拦截**）：逐字标识符召回率。
+    //   受保护 token 集为空 ⇒ unmeasurable（不能算 pass，单独统计）。门槛待离线分布 + 白付成本模型后再定。
+    let fid = null
+    try {
+      const f = fidelity(raw, dist.text)
+      fid = f.stats.protectedTokens === 0
+        ? { identifierRecall: null, protectedTokens: 0, lostTokens: 0, unmeasurable: true }
+        : { identifierRecall: f.stats.tokenRecall, protectedTokens: f.stats.protectedTokens, lostTokens: f.stats.lostTokens, lostSample: f.stats.lostSample, unmeasurable: false }
+    } catch { fid = null }
     if (netSaved >= minSaved) {
-      trace('birth-condensed', { index: task.index, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, minSaved, handle, waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0 })
+      trace('birth-condensed', { index: task.index, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, minSaved, handle, waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0, fidelity: fid, econ: task.econ || null })
       return { chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, handle }
     }
     return pass('no-gain', handle, { netSaved, minSaved })
@@ -3060,6 +3137,13 @@ export function birthTransform(inner, deps = {}) {
   return (async function* () {
     const held = new Map()   // index -> 累计中的 reasoning 块
     const pending = []       // 已起火、等 finish 收网的 task
+    // ★ 2026-09-23 v11.6 免费窗口探针（纯观测，不改任何行为）：
+    //   记录 reasoning block-end / 第一个非 reasoning block-start / finish 三个时刻。
+    //   判读：firstOtherStart 早于 reasoningEnd >1s ⇒ 有窗口（可提前起火）；
+    //         两者都贴着 finish ⇒ 宿主攒完再发，无窗口；reasoningEnd 早于 firstOtherStart ⇒ 现有起火点已最早。
+    const streamT0 = Date.now()
+    let firstOtherStartAt = null, firstOtherType = null
+    const reasoningEndAt = []   // [{index, at}]
     let sourceError = null
     let prewarmed = false
     const handleInText = cfg.birthHandleInText !== false
@@ -3077,6 +3161,9 @@ export function birthTransform(inner, deps = {}) {
       for await (const chunk of inner) {
         const t = chunk && chunk.type
         // 约束①：block-start 必须立刻透传（不变式要求 delta 落在已开的块上）
+        if (t === 'block-start' && chunk.blockType !== 'reasoning' && firstOtherStartAt === null) {
+          firstOtherStartAt = Date.now(); firstOtherType = chunk.blockType || null
+        }
         if (t === 'block-start' && chunk.blockType === 'reasoning') {
           held.set(chunk.index, birthHoldNew(chunk.index))
           // 优化2：思考一开始就捂热连接（HEAD，零 token；每次流只做一次）
@@ -3100,6 +3187,7 @@ export function birthTransform(inner, deps = {}) {
           if (h) {
             h.end = chunk
             held.delete(chunk.index)
+            reasoningEndAt.push({ index: chunk.index, at: Date.now() })
             const task = birthStart(h, settleDeps)
             if (task.belowFloor) {
               // 无需异步工作 ⇒ 立即放行，零延迟
@@ -3115,6 +3203,20 @@ export function birthTransform(inner, deps = {}) {
         if (t === 'finish') {
           const reason = (chunk && chunk.reason) || {}
           const hardStop = reason.kind === 'error' || reason.kind === 'aborted'
+          if (reasoningEndAt.length) {
+            const finishAt = Date.now()
+            const lastEnd = reasoningEndAt[reasoningEndAt.length - 1].at
+            trace('birth-window-probe', {
+              reasoningBlocks: reasoningEndAt.length,
+              reasoningEndMs: reasoningEndAt.map((x) => x.at - streamT0),
+              firstOtherStartMs: firstOtherStartAt === null ? null : firstOtherStartAt - streamT0,
+              firstOtherType,
+              finishMs: finishAt - streamT0,
+              // 关键读数：>1000 ⇒ 有免费窗口；≈0 且 finish−lastEnd≈0 ⇒ 宿主攒完再发，无窗口
+              otherStartToLastEndMs: firstOtherStartAt === null ? null : lastEnd - firstOtherStartAt,
+              lastEndToFinishMs: finishAt - lastEnd,
+            })
+          }
           if (pending.length) {
             if (hardStop) {
               // 异常/中断：绝不等待，立即降级放行
@@ -3281,6 +3383,7 @@ let birthSession = null
     stateCompress: cfg.stateCompress === true,
     compileMode: cfg.compileMode,
     ...(cfg.compileModeConflict ? { compileModeConflict: cfg.compileModeConflict } : {}),
+    ...(cfg.configAdjusted ? { configAdjusted: cfg.configAdjusted } : {}),
     // ★ 从实际配置派生，不写死：compress 的版本由 compressPrompt 决定（v11.1 起缺省 v2）
     compilerMode: cfg.compileMode === 'memory' ? 'grounded-judgment-v2'
       : cfg.compileMode === 'compress' ? compressPromptVersion(cfg) : 'reasoning-distill',
@@ -3944,6 +4047,8 @@ function readSessionLog(session) {
         trace,
         sessionId: streamSessionId,
         branchId: () => streamBranchId,
+        // ★ v11.6 成本模型观测用：此刻物理水位（emitter.readPressure 形状）。失败返回 null，绝不抛。
+        pressure: () => { try { return readPressure({ session: streamSession, ctx }) } catch { return null } },
         // Mirror runs outside finish; nonblocking recovery is scheduled by pre-step.
         archive: async (text, sid) => {
           const store = (ctx.get && ctx.get("cmbStore", false)) || null

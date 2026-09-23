@@ -80,7 +80,7 @@ try {
   })
   await test('already-ready result still compresses; missing session falls back to configured wait', async () => {
     for (const sid of ['ready-before-finish', null]) {
-      const cfg = { ...I.DEFAULTS, dryRun: false, mode: 'birth', stateMemory: true }
+      const cfg = { ...I.DEFAULTS, dryRun: false, mode: 'birth', stateMemory: true, birthMinChars: 100 }
       const deps = { cfg, sessionId: sid, collectEvidence: () => ({ events: [] }), buildEnvelope: M.buildEvidenceEnvelope, prepareEvidence: input => transientEvidenceFrame(input, 'fixture'), archive: async () => 'confirmed', distill: async () => { await new Promise(r => setImmediate(r)); return { text: '保留已有判断。' } } }
       const task = I.birthStart({ index: 0, text: '原始判断'.repeat(500) }, deps)
       if (sid) await task.distillP
@@ -89,7 +89,7 @@ try {
   })
   await test('production envelope failure cannot silently invoke an ungrounded legacy compiler', async () => {
     let calls = 0
-    const cfg = { ...I.DEFAULTS, dryRun: false, mode: 'birth', stateMemory: true }
+    const cfg = { ...I.DEFAULTS, dryRun: false, mode: 'birth', stateMemory: true, birthMinChars: 100 }
     const deps = { cfg, sessionId: 'invalid-envelope', collectEvidence: () => ({ events: [] }),
       prepareEvidence: input => transientEvidenceFrame(input, 'fixture'),
       buildEnvelope: () => { throw Error('fixture envelope failure') }, archive: async () => 'confirmed',

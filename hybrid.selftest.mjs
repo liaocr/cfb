@@ -71,7 +71,7 @@ await test('lock contention/corrupt body cannot advance observation state', () =
 })
 await test('foreground does not wait for unresolved model; observations survive failed judgment', async () => {
   let release
-  const cfg = { ...I.DEFAULTS, dryRun: false, mode: 'birth', stateMemory: true }
+  const cfg = { ...I.DEFAULTS, dryRun: false, mode: 'birth', stateMemory: true, birthMinChars: 100 }
   const o = input('no-wait'), raw = '原始 reasoning 必须完整保留。'.repeat(100)
   const deps = { cfg, sessionId: o.sessionId, archive: async () => 'confirmed-test-archive',
     collectEvidence: () => observationEvents({ ...o, cut: 999 }), buildEnvelope: M.buildEvidenceEnvelope,
@@ -87,7 +87,7 @@ await test('foreground does not wait for unresolved model; observations survive 
 })
 await test('ledger unavailable keeps exact raw and never invokes model with legacy full window', async () => {
   let calls = 0
-  const raw = '原文'.repeat(500), cfg = { ...I.DEFAULTS, dryRun: false, mode: 'birth', stateMemory: true }
+  const raw = '原文'.repeat(500), cfg = { ...I.DEFAULTS, dryRun: false, mode: 'birth', stateMemory: true, birthMinChars: 100 }
   const deps = { cfg, sessionId: 'prepare-fail', archive: async () => null, collectEvidence: () => ({}),
     adaptEvidence: () => ({ tools: [], userAsks: [] }), buildEnvelope: M.buildEvidenceEnvelope,
     prepareEvidence: () => { throw Error('disk unavailable') }, distill: () => { calls++; return { text: 'wrong' } } }
@@ -118,7 +118,7 @@ const server = http.createServer((req, res) => {
 })
 await new Promise(r => server.listen(0, '127.0.0.1', r))
 const credentials = path.join(home, 'credentials'); fs.writeFileSync(credentials, 'FIXTURE: unused-local-key')
-const cfg = { ...I.DEFAULTS, enabled: true, dryRun: false, mode: 'birth', stateMemory: true, model: 'fixture-only',
+const cfg = { ...I.DEFAULTS, enabled: true, dryRun: false, mode: 'birth', stateMemory: true, birthMinChars: 100, model: 'fixture-only',
   followHostModel: false, followHostProvider: false, baseUrl: 'http://127.0.0.1:' + server.address().port + '/v1',
   credentialsPath: credentials, credentialRef: 'FIXTURE', keepAlive: false, prewarm: false, distillStream: true,
   trace: true, traceFile: path.join(home, 'trace.log') }
@@ -199,7 +199,7 @@ await test('compile mode is adjudicated in one place; memory wins but conflict i
 await test('stateCompress NEVER collects evidence: prompt carries only this reasoning', async () => {
   let collected = 0, envelopeBuilt = 0, seenPrompt = null
   const raw = '推理正文。'.repeat(200)
-  const cfg = { ...I.normalizeConfig({ mode: 'birth', dryRun: false, stateCompress: true }),
+  const cfg = { ...I.normalizeConfig({ mode: 'birth', dryRun: false, stateCompress: true, birthMinChars: 100 }),
     model: 'fixture-only', baseUrl: 'http://127.0.0.1:1/v1', maxAttempts: 1, timeoutMs: 50 }
   const deps = { cfg, sessionId: 'compress-scope',
     archive: async () => 'confirmed-archive',
@@ -218,7 +218,7 @@ await test('stateCompress NEVER collects evidence: prompt carries only this reas
 })
 await test('stateMemory still collects evidence (切分不得破坏状态记忆)', async () => {
   let collected = 0
-  const cfg = { ...I.normalizeConfig({ mode: 'birth', dryRun: false, stateMemory: true }), model: 'fixture-only', maxAttempts: 1, timeoutMs: 50 }
+  const cfg = { ...I.normalizeConfig({ mode: 'birth', dryRun: false, stateMemory: true, birthMinChars: 100 }), model: 'fixture-only', maxAttempts: 1, timeoutMs: 50 }
   const o = input('memory-still-collects')
   const deps = { cfg, sessionId: o.sessionId, archive: async () => 'confirmed-archive',
     collectEvidence: () => { collected++; return observationEvents({ ...o, cut: 999 }) },

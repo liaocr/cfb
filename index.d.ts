@@ -76,7 +76,13 @@ export interface CotFormBConfig {
   birthDeferredClaim?: boolean
   /** Legacy maximum (1500ms); hybrid birth only uses already-ready results. */
   birthFinishWaitMs?: number
+  /** v11.6 默认 3100（成本模型自洽保本原长 2,959，见 docs/AUDIT-V11.5.md §一）。 */
   birthMinChars?: number
+  /** v11.6 成本模型观测参数（只影响 birth-econ trace，不参与判定）。 */
+  econCacheDiscount?: number
+  econTemplateChars?: number
+  econR?: number
+  econCharsPerTurn?: number
   birthArchive?: boolean
   birthArchiveTimeoutMs?: number
   birthMinSavedChars?: number
@@ -124,6 +130,7 @@ export interface CotFormBConfig {
   /** ★ pre-step 里最多额外等多久 = **用户感知延迟的上限**。默认 300 */
   graceMs?: number
   maxAttempts?: number
+  /** v11.6 默认 850，恒定；不随输入放大。 */
   maxOutputTokens?: number
 
   /**
@@ -319,3 +326,10 @@ export declare function generateDistillation(
 
 /** Cordis 插件入口 */
 export declare function apply(ctx: unknown, config?: CotFormBConfig): void
+
+/** v11.6 成本模型（纯函数，只用于观测与自测）。见 docs/AUDIT-V11.5.md §一。 */
+export declare function birthEconomics(
+  B: number,
+  pressure: { usedTokens?: number; contextWindow?: number; source?: string } | null,
+  cfg?: { econCacheDiscount?: number; econTemplateChars?: number; econR?: number; econCharsPerTurn?: number; compressTargetMax?: number },
+): { B: number; R: number; rSource: string; remainingTokens: number | null; d: number; T: number; rhoMax: number; bAbs: number; bMin: number | null; netAtTarget: number; verdict: 'below-abs' | 'below-min' | 'ok' } | null

@@ -153,7 +153,41 @@ export function analyzeEfficiency(text) {
           note: 'positive measuredSurfaceTokenDelta means host-meter surface tokens fell; this is not provider billing. Character deltas are not tokenizer counts.',
         },
       }
+      // ★ v11.6 观测段（2026-09-23）。三者都只是诊断证据，不是收益证明。
+      //   windowProbe：免费窗口是否存在。判读：otherStartToLastEndMs p50 > 1000 ⇒ 有窗口（可提前起火）；
+      //                lastEndToFinishMs≈0 且 otherStartToLastEndMs≈0/null ⇒ 宿主攒完再发，无窗口。
+      //   economics  ：成本模型三态分布（below-abs / below-min / ok）与 R 来源；用于标定动态门槛，不参与判定。
+      //   fidelity   ：identifierRecall 分布，按 promptVersion 分桶；unmeasurable 单独计数、绝不算 pass。
+      const probes = g.rows.filter(r => r.tag === 'birth-window-probe')
+      const windowProbe = { samples: probes.length,
+        otherStartToLastEndMs: signedDistribution(probes.map(r => r.otherStartToLastEndMs)),
+        lastEndToFinishMs: distribution(probes.map(r => r.lastEndToFinishMs)),
+        noOtherBlock: probes.filter(r => r.firstOtherStartMs == null).length,
+        firstOtherType: Object.fromEntries([...probes.reduce((m, r) => m.set(r.firstOtherType || 'none', (m.get(r.firstOtherType || 'none') || 0) + 1), new Map())]),
+        verdict: probes.length < 5 ? 'insufficient-samples' : null }
+      if (windowProbe.verdict === null) {
+        const p50 = windowProbe.otherStartToLastEndMs.p50
+        windowProbe.verdict = p50 != null && p50 > 1000 ? 'window-exists' : (p50 != null && p50 < 0 ? 'block-end-already-earliest' : 'no-window')
+      }
+      const econRows = g.rows.filter(r => r.tag === 'birth-econ')
+      const economics = { samples: econRows.length,
+        verdict: Object.fromEntries([...econRows.reduce((m, r) => m.set(r.verdict || 'unknown', (m.get(r.verdict || 'unknown') || 0) + 1), new Map())]),
+        rSource: Object.fromEntries([...econRows.reduce((m, r) => m.set(r.rSource || 'unknown', (m.get(r.rSource || 'unknown') || 0) + 1), new Map())]),
+        B: distribution(econRows.map(r => r.B)), bMin: distribution(econRows.map(r => r.bMin)), netAtTarget: signedDistribution(econRows.map(r => r.netAtTarget)) }
+      const condensed = g.rows.filter(r => r.tag === 'birth-condensed' && r.fidelity)
+      const byPv = new Map()
+      for (const r of condensed) {
+        const pv = (ts.find(t => t.taskId === r.taskId) || {}).promptVersion || 'unknown'
+        if (!byPv.has(pv)) byPv.set(pv, { measured: [], unmeasurable: 0 })
+        if (r.fidelity.unmeasurable) byPv.get(pv).unmeasurable++
+        else byPv.get(pv).measured.push(r.fidelity.identifierRecall)
+      }
+      const fidelity = { samples: condensed.length,
+        byPromptVersion: Object.fromEntries([...byPv].map(([pv, v]) => [pv, { measured: v.measured.length, unmeasurable: v.unmeasurable,
+          identifierRecall: distribution(v.measured), below95: v.measured.filter(x => x < 95).length }])),
+        meaning: 'identifier-recall-is-a-necessary-condition-not-fidelity-proof' }
       return { bootIndex: g.bootIndex, anchored: g.anchored, boot: g.boot,
+        windowProbe, economics, fidelity,
         counts: { transportAttemptsStarted: starts.size, transportAttemptsSettled: completed.size,
           sharedAttachments: count('compiler-flight-shared'),
           archiveTerminalConsumers: count('compiler-consumer-unusable') },
