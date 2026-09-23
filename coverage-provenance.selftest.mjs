@@ -374,5 +374,64 @@ await test('净节省/覆盖 fail-closed：未知 assistant block 不做替换',
   assert.equal(r.reason, 'span-unreadable')
 })
 
+await test('发射 attemptId 贯穿候选/最终结果/替换；tokenMeter 可选前后采样出实际表面 token delta', async () => {
+  assert.equal(I.DEFAULTS.emitterMeasureTokens, false)
+  const log = [user(1, 'q'), asst(2, 'R'.repeat(1800)), asst(3, 'tail')]
+  const values = [1200, 1000, 700] // pressure read, append 前, append 后
+  let meterCalls = 0, appended = false; const traces = []
+  const ctx = { get: (key) => key === 'tokenMeter' ? { measure: () => { meterCalls++; return { usedTokens: values.shift() } } } : null }
+  const r = await runPreStepEmit(baseDeps(session(log, () => { appended = true }), {
+    ctx, cfg: { keepTail: 1, pluginName: 'cot-form-b', staticMinRawChars: 100, emitterMeasureTokens: true },
+    awaitDistilled: async () => ({ ok: true, text: 'short summary' }), trace: (t, d) => traces.push([t, d]),
+  }))
+  assert.equal(r.emitted, true); assert.equal(appended, true); assert.equal(meterCalls, 3)
+  const candidates = traces.filter(([t]) => t === 'emit-net-savings')
+  const finals = traces.filter(([t]) => t === 'emit-net-savings-result')
+  const replacements = traces.filter(([t]) => t === 'emit-replaced')
+  assert.equal(candidates.length, 1); assert.equal(finals.length, 1); assert.equal(replacements.length, 1)
+  assert.ok(candidates[0][1].emitAttemptId)
+  assert.equal(candidates[0][1].emitAttemptId, finals[0][1].emitAttemptId)
+  assert.equal(finals[0][1].emitAttemptId, replacements[0][1].emitAttemptId)
+  assert.equal(finals[0][1].measuredSurfaceTokenDelta, 300)
+  assert.equal(finals[0][1].tokenMeterSource, 'host-token-meter')
+})
+await test('净收益被拦时同样落一条可关联最终结果，tokenMeter 不采样', async () => {
+  const log = [user(1, 'q'), asst(2, 'R'.repeat(500)), asst(3, 'tail')]
+  let meterCalls = 0; const traces = []
+  const ctx = { get: (key) => key === 'tokenMeter' ? { measure: () => { meterCalls++; return { usedTokens: 1 } } } : null }
+  const r = await runPreStepEmit(baseDeps(session(log), { ctx,
+    cfg: { keepTail: 1, pluginName: 'cot-form-b', staticMinRawChars: 100, emitterMeasureTokens: true },
+    awaitDistilled: async () => ({ ok: true, text: 'X'.repeat(600) }), trace: (t, d) => traces.push([t, d]),
+  }))
+  assert.equal(r.reason, 'no-net-savings'); assert.equal(meterCalls, 1, '仅 dynamic threshold 的既有计量，不做前后采样')
+  const c = traces.find(([t]) => t === 'emit-net-savings')[1]
+  const f = traces.find(([t]) => t === 'emit-net-savings-result')[1]
+  assert.equal(c.emitAttemptId, f.emitAttemptId); assert.equal(f.stage, 'gate'); assert.equal(f.tokenMeterSource, undefined)
+})
+await test('分析器算出拦截占比、真实替换数、实际 token delta，并能读取 attempt 关联', async () => {
+  const { analyzeEfficiency } = await import('./analyze-efficiency.mjs')
+  const rows = [['BOOT', {}], ['emit-net-savings', { emitAttemptId: 'a', sourceChars: 1000, ledgerChars: 500, netSavedChars: 500 }],
+    ['emit-net-savings-result', { emitAttemptId: 'a', stage: 'emit', emitted: true, netSavedChars: 500, measuredSurfaceTokenDelta: 120 }], ['emit-replaced', { emitAttemptId: 'a' }],
+    ['emit-net-savings', { emitAttemptId: 'b', sourceChars: 300, ledgerChars: 400, netSavedChars: -100 }],
+    ['emit-no-net-savings', { emitAttemptId: 'b' }], ['emit-net-savings-result', { emitAttemptId: 'b', stage: 'gate', emitted: false, reason: 'no-net-savings' }]]
+  const text = rows.map(([tag, d]) => '[' + new Date().toISOString() + '] [' + tag + '] ' + JSON.stringify(d)).join('\n') + '\n'
+  const g = analyzeEfficiency(text).boots[0].v11.netSavingsGate
+  assert.equal(g.evaluated, 2); assert.equal(g.blocked, 1); assert.equal(g.blockedShare, 0.5)
+  assert.equal(g.passedGate, 1); assert.equal(g.emittedAfterGate, 1); assert.equal(g.traceEmitReplaced, 1)
+  assert.equal(g.measuredSurfaceTokenDelta.sum, 120); assert.equal(g.measuredPositiveTokenSavings, 1); assert.equal(g.measuredPositiveTokenSavingsShare, 1)
+  assert.equal(g.candidateNetSavedChars.min, -100)
+})
+
+await test('dryRun 不额外采样 tokenMeter（没有实际 surface append）', async () => {
+  const log = [user(1, 'q'), asst(2, 'R'.repeat(1800)), asst(3, 'tail')]
+  let meterCalls = 0
+  const ctx = { get: (key) => key === 'tokenMeter' ? { measure: () => { meterCalls++; return { usedTokens: 1000 } } } : null }
+  const r = await runPreStepEmit(baseDeps(session(log), { ctx,
+    cfg: { keepTail: 1, pluginName: 'cot-form-b', staticMinRawChars: 100, dryRun: true, emitterMeasureTokens: true },
+    awaitDistilled: async () => ({ ok: true, text: 'short' }),
+  }))
+  assert.equal(r.emitted, false); assert.equal(meterCalls, 1, '只调用既有压力计量，不做前后采样')
+})
+
 console.log(`PASS=${pass} FAIL=${fail}`)
 process.exit(fail ? 1 : 0)

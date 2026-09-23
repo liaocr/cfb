@@ -287,6 +287,8 @@ export const DEFAULTS = {
   // 只在估算至少节省 100 字符且 5% 时才替换；不满足就保留原始 surface，避免"压缩"后反增。
   emitterMinSavingsChars: 100,
   emitterMinSavingsRatio: 0.05,
+  // 默认关闭；短期诊断时在实际 surface append 前后读宿主 tokenMeter，不发模型请求。
+  emitterMeasureTokens: false,
   // ★ 迟到认领：多块消息允许「已就绪块用摘要、未就绪块保留原文」的混合认领。缺省 false（保持全覆盖铁律）。
   lateClaimPartial: false,
   // 证据采集只看最后 N 个 surface 节点：**关联优先，不全文堆积**
@@ -3236,6 +3238,7 @@ let birthSession = null
     maxCarryChars: cfg.maxCarryChars,
     emitterMinSavingsChars: cfg.emitterMinSavingsChars,
     emitterMinSavingsRatio: cfg.emitterMinSavingsRatio,
+    emitterMeasureTokens: cfg.emitterMeasureTokens === true,
     minRawChars: cfg.minRawChars,
     hurdleRounds: cfg.hurdleRounds,
     templateChars: cfg.templateChars,

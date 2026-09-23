@@ -11,6 +11,12 @@ function distribution(values) {
   const q = p => xs.length ? xs[Math.ceil(xs.length * p) - 1] : null
   return { samples: xs.length, p50: q(.5), p90: q(.9), max: xs.at(-1) ?? null }
 }
+function signedDistribution(values) {
+  const xs = values.filter(x => typeof x === 'number' && Number.isFinite(x)).sort((a, b) => a - b)
+  const q = p => xs.length ? xs[Math.ceil(xs.length * p) - 1] : null
+  return { samples: xs.length, p50: q(.5), p90: q(.9), min: xs[0] ?? null, max: xs.at(-1) ?? null,
+    sum: xs.length ? xs.reduce((a, b) => a + b, 0) : 0, mean: xs.length ? Number((xs.reduce((a, b) => a + b, 0) / xs.length).toFixed(2)) : null }
+}
 function usageOf(u) {
   if (!u || typeof u !== 'object') return null
   const input = u.prompt_tokens ?? u.input_tokens
@@ -70,6 +76,18 @@ export function analyzeEfficiency(text) {
         return { config: p.config, ...timings }
       })
       const count = tag => g.rows.filter(r => r.tag === tag).length
+      const netCandidates = g.rows.filter(r => r.tag === 'emit-net-savings')
+      const netBlockedIds = new Set(g.rows.filter(r => r.tag === 'emit-no-net-savings').map(r => r.emitAttemptId).filter(Boolean))
+      const netResults = g.rows.filter(r => r.tag === 'emit-net-savings-result')
+      const netEvaluatedIds = new Set(netCandidates.map(r => r.emitAttemptId).filter(Boolean))
+      const emittedResults = netResults.filter(r => r.stage === 'emit' && r.emitted === true && netEvaluatedIds.has(r.emitAttemptId))
+      const passedGateIds = new Set([...netEvaluatedIds].filter(id => !netBlockedIds.has(id)))
+      const finalizedPassedIds = new Set(netResults.filter(r => passedGateIds.has(r.emitAttemptId) && r.stage !== 'gate').map(r => r.emitAttemptId))
+      const gatePassed = Math.max(0, netCandidates.length - g.rows.filter(r => r.tag === 'emit-no-net-savings').length)
+      const evaluatedCount = netCandidates.length
+      const blockedCount = g.rows.filter(r => r.tag === 'emit-no-net-savings').length
+      const measuredEmits = emittedResults.filter(r => Number.isFinite(r.measuredSurfaceTokenDelta))
+      const tokenDeltas = measuredEmits.map(r => r.measuredSurfaceTokenDelta)
       // ★ 迟到认领漏斗：每一级都是**计数**，不是收益。stored>0 而 claimHit=0 = 积压，不是修复。
       const claimFunnel = {
         compiled: ts.filter(t => t.ok === true).length,
@@ -115,11 +133,24 @@ export function analyzeEfficiency(text) {
         netSavedChars: distribution(g.rows.filter(r => r.tag === 'emit-net-savings').map(r => r.netSavedChars)),
         noNetSavings: count('emit-no-net-savings'),
         netSavingsGate: {
-          evaluated: count('emit-net-savings'),
-          blocked: count('emit-no-net-savings'),
-          sourceChars: distribution(g.rows.filter(r => r.tag === 'emit-net-savings').map(r => r.sourceChars)),
-          netSavedChars: distribution(g.rows.filter(r => r.tag === 'emit-net-savings').map(r => r.netSavedChars)),
-          note: 'character proxy with 5% + 100-char minimum; not tokenizer token savings',
+          evaluated: evaluatedCount,
+          blocked: blockedCount,
+          blockedShare: evaluatedCount ? Number((blockedCount / evaluatedCount).toFixed(4)) : null,
+          passedGate: gatePassed,
+          emittedAfterGate: emittedResults.length,
+          postGateNotEmitted: Math.max(0, finalizedPassedIds.size - emittedResults.length),
+          unfinalizedAfterGate: Math.max(0, passedGateIds.size - finalizedPassedIds.size),
+          attemptCorrelationSamples: netEvaluatedIds.size,
+          traceEmitReplaced: count('emit-replaced'),
+          sourceChars: distribution(netCandidates.map(r => r.sourceChars)),
+          candidateNetSavedChars: signedDistribution(netCandidates.map(r => r.netSavedChars)),
+          realizedNetSavedChars: signedDistribution(emittedResults.map(r => r.netSavedChars)),
+          tokenMeterSamples: tokenDeltas.length,
+          measuredSurfaceTokenDelta: signedDistribution(tokenDeltas),
+          measuredPositiveTokenSavings: tokenDeltas.filter(x => x > 0).length,
+          measuredPositiveTokenSavingsShare: tokenDeltas.length ? Number((tokenDeltas.filter(x => x > 0).length / tokenDeltas.length).toFixed(4)) : null,
+          measuredNonPositiveTokenSavings: tokenDeltas.filter(x => x <= 0).length,
+          note: 'positive measuredSurfaceTokenDelta means host-meter surface tokens fell; this is not provider billing. Character deltas are not tokenizer counts.',
         },
       }
       return { bootIndex: g.bootIndex, anchored: g.anchored, boot: g.boot,

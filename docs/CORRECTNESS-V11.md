@@ -87,3 +87,12 @@ node manifest.mjs --check
 - `inputAmplificationRatio = promptChars / inputChars` 成为准确字段名；`compressRatio` 保留为 deprecated 兼容别名。
 
 **模型质量约束**：不缩短 grace/finish 等待、不主动取消有迟到消费者的编译、不把工具结果/回答截断成摘要、不启用混合认领。净收益不足时保留原文，意味着该轮不节省 token，但避免上下文被扩张或缩水。`
+
+---
+
+# v11.4 追加：净收益门观测闭环（默认不额外计量）
+
+- 每次 `runPreStepEmit` 生成唯一 `emitAttemptId`，通过 trace wrapper 贯穿候选净收益、门槛拦截、最终发射结果与 `emit-replaced`。
+- `analyze-efficiency` 的 `netSavingsGate` 汇总 `evaluated / blocked / blockedShare / passedGate / emittedAfterGate / postGateNotEmitted / unfinalizedAfterGate / traceEmitReplaced`，并给出候选与已替换案例的净省字符分布。旧 trace 无 attempt ID 时仍保留总计，相关性样本数为 0。
+- `emitterMeasureTokens` 缺省 false。短期诊断启用后，在**真实表面 append 前后**读取 `ctx.get('tokenMeter').measure(session)`，trace `measuredSurfaceTokenDelta = before - after`；正值表示宿主计量的表面 token 下降。它不是 provider invoice token。不开启时不增加前后采样调用、不发额外模型请求。
+- 分析器仅对真实 `emit` 成功且有有效采样的记录计算 token delta 分布、正向占比；被净收益门拦下的候选仍需匹配模型 tokenizer 做离线 shadow 计数，不能从实际表面 delta 推断其反事实收益。

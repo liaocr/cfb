@@ -1,6 +1,6 @@
 # dsh-cot-form-b — 尾部即时思维链提纯 + 结构化状态记忆
 
-> **当前实现：v11.3（2026-09-23）**。compress PromptVersion 贯通 trace；迟到认领漏斗已在 boot26 真机 trace 命中 10/11；carry 有预算与去嵌套；只在字符估算满足至少 5% 且 100 字符净节省时发射看板，否则保留原文。验证套件当前 18 套。
+> **当前实现：v11.4（2026-09-23）**。compress PromptVersion 贯通 trace；迟到认领漏斗已在 boot26 真机 trace 命中 10/11；carry 有预算与去嵌套；只在字符估算满足至少 5% 且 100 字符净节省时发射看板，否则保留原文；可选 token-meter 前后采样仅用于诊断。验证套件当前 18 套。
 > 这些是代码/单次 trace 事实，不代表每次发射都节省 tokenizer tokens 或模型质量已做 A/B。见 [`docs/CORRECTNESS-V11.md`](docs/CORRECTNESS-V11.md)。
 > 下列 v10/v9…段落是对应版本的**历史记录**；其中的开关、待办、套件计数不得当作当前状态。历史套件数按当时记录保留，不做伪造性回写。
 

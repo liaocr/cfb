@@ -402,7 +402,18 @@ export function emitCheckpoint(deps) {
  */
 export async function runPreStepEmit(deps) {
   const { session, ctx, cfg = {}, rawOf, toolTextOf, archive, trace } = deps
-  const t = typeof trace === 'function' ? trace : () => {}
+  const emitAttemptId = crypto.randomUUID()
+  const rawTrace = typeof trace === 'function' ? trace : () => {}
+  const t = (tag, data = {}) => rawTrace(tag, { ...data, emitAttemptId })
+  const tokenMeterSample = () => {
+    try {
+      const meter = ctx && typeof ctx.get === 'function' ? ctx.get('tokenMeter', false) : null
+      if (!meter || typeof meter.measure !== 'function') return { tokens: null, source: 'unavailable' }
+      const m = meter.measure(session)
+      const tokens = m && (m.usedTokens ?? m.pressureTokens ?? m.surfaceTokens)
+      return Number.isFinite(tokens) ? { tokens, source: 'host-token-meter' } : { tokens: null, source: 'invalid-meter-result' }
+    } catch (e) { return { tokens: null, source: 'meter-error:' + String((e && e.message) || e) } }
+  }
   try {
     if (!session || typeof session.append !== 'function') return { emitted: false, reason: 'no-session' }
     const nodes = session.surface && session.surface.nodes
@@ -525,18 +536,35 @@ export async function runPreStepEmit(deps) {
     t('emit-net-savings', { sourceChars, spanSourceChars, sourceEstimateFallback, ledgerChars: ledger.text.length, netSavedChars, minSavedChars, sourceUnit: 'chars-not-tokenizer-tokens' })
     if (sourceChars > 0 && netSavedChars < minSavedChars) {
       t('emit-no-net-savings', { sourceChars, ledgerChars: ledger.text.length, netSavedChars, minSavedChars })
+      t('emit-net-savings-result', { stage: 'gate', emitted: false, reason: 'no-net-savings', sourceChars, ledgerChars: ledger.text.length, netSavedChars })
       return { emitted: false, reason: 'no-net-savings', sourceChars, ledgerChars: ledger.text.length, netSavedChars }
     }
 
     if (typeof deps.validatePending === 'function' && !deps.validatePending()) {
-      t('emit-stale-distill'); return { emitted: false, reason: 'stale-distill' }
+      t('emit-stale-distill')
+      t('emit-net-savings-result', { stage: 'pre-emit', emitted: false, reason: 'stale-distill', sourceChars, ledgerChars: ledger.text.length, netSavedChars })
+      return { emitted: false, reason: 'stale-distill' }
     }
+    // Optional, read-only canary. The host token meter is sampled around the actual surface append;
+    // disabled by default so no extra measurement work is added to normal turns.
+    const shouldMeasureTokens = cfg.emitterMeasureTokens === true && cfg.dryRun !== true
+    const tokenBefore = shouldMeasureTokens ? tokenMeterSample() : null
     // ⑤ 合规发射
-    return emitCheckpoint({
+    const emitted = emitCheckpoint({
       session, span, ledgerText: ledger.text,
       pluginName: cfg.pluginName, dryRun: cfg.dryRun, trace: t,
       summaryRecord: cfg.emitterSummaryRecord, targetSeq: last.seq,
     })
+    const tokenAfter = shouldMeasureTokens ? tokenMeterSample() : null
+    const tokenDelta = tokenBefore && tokenAfter && tokenBefore.tokens != null && tokenAfter.tokens != null
+      ? tokenBefore.tokens - tokenAfter.tokens : null
+    t('emit-net-savings-result', {
+      stage: 'emit', emitted: !!emitted.emitted, reason: emitted.reason || null,
+      sourceChars, ledgerChars: ledger.text.length, netSavedChars,
+      ...(tokenBefore ? { tokenMeterBefore: tokenBefore.tokens, tokenMeterAfter: tokenAfter.tokens,
+        measuredSurfaceTokenDelta: tokenDelta, tokenMeterSource: tokenBefore.source === tokenAfter.source ? tokenBefore.source : 'mixed' } : { tokenMeterSource: 'disabled' }),
+    })
+    return emitted
   } catch (e) {
     t('emit-error', { error: String((e && e.message) || e) })
     return { emitted: false, reason: 'error' }
