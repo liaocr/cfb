@@ -7,7 +7,7 @@ export function createTraceAudit() {
   const groups = []; let current = null, ignored = 0, malformed = 0
   const fresh = (at, boot) => ({ start: at, boot: boot ? {
     selfId: boot.selfId ?? null, deps: boot.deps ?? null, mode: boot.mode ?? null,
-    timeoutMs: boot.timeoutMs ?? null, birthFinishWaitMs: boot.birthFinishWaitMs ?? null,
+    timeoutMs: boot.timeoutMs ?? null, birthFinishWaitMs: boot.birth?.finishWaitMs ?? boot.birthFinishWaitMs ?? null,
   } : null, events: Object.create(null), settled: { ok: 0, failed: 0, unknown: 0 },
     reasons: Object.create(null), promptChars: [], durationMs: [], coverObserved: 0 })
   function add(line) {

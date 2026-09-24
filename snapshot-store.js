@@ -265,6 +265,26 @@ export function loadSnapshot(sessionId, branchId, opts = {}) {
  *   sourceCutSeq(本轮时间截面), at
  * @returns {{ok:boolean, snapshot:object|null, reason?:string, mergedFrom?:number, added?:number}}
  */
+// ★ 条目有界（v11.8）：hybrid 模式的条目没有 objectKey ⇒ mergeByEvidence 不去重，
+//   同一批判断反复提交会让 entries 无限增长、且每次整文件重写（实测同样 2 条提交 5 次 = 10 条）；
+//   超过 snapshotToText 的 12000 字符上限后快照还会整体失去可读性。
+//   ① 同一陈述（忽略 id / at / blockIndex / 归并注记）只留最后一次出现；② 总数封顶，保留最新。
+export const SNAPSHOT_ENTRIES_MAX = 256
+const VOLATILE_ENTRY_KEYS = new Set(['id', 'at', 'blockIndex', 'note', 'relation'])
+function entryIdentity(e) {
+  const o = {}
+  for (const k of Object.keys(e || {}).sort()) if (!VOLATILE_ENTRY_KEYS.has(k)) o[k] = e[k]
+  return JSON.stringify(o)
+}
+export function boundSnapshotEntries(entries, max = SNAPSHOT_ENTRIES_MAX) {
+  const list = Array.isArray(entries) ? entries : []
+  const ids = list.map(entryIdentity)
+  const last = new Map()
+  ids.forEach((id, i) => last.set(id, i))
+  const kept = list.filter((_, i) => last.get(ids[i]) === i)
+  return kept.length > max ? kept.slice(kept.length - max) : kept
+}
+
 export function commitSnapshot(o = {}) {
   const sessionId = o.sessionId == null ? null : String(o.sessionId)
   if (sessionId == null) return { ok: false, snapshot: null, reason: 'no-session' }
@@ -294,7 +314,7 @@ export function commitSnapshot(o = {}) {
       const all = prev.entries.map(clone).concat(incomingCheck.snapshot.entries.map(clone))
       const m = mergeByEvidence(all)
       if (Array.isArray(m)) {
-        mergedEntries = m
+        mergedEntries = boundSnapshotEntries(m)
         added = Math.max(0, mergedEntries.length - prev.entries.length)
       }
     } catch (e) {

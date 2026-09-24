@@ -1067,13 +1067,16 @@ console.log('\n【23】v11.6 成本模型与门槛（2026-09-23，docs/AUDIT-V11
   eq('23.11 B 非正 ⇒ null（绝不抛）', birthEconomics(0, null, {}), null)
   // 缺陷 D：timeoutMs / finishWaitMs 关系校验
   const c1 = normalizeConfig({ mode: 'birth', birthDeferredClaim: false, birth: { finishWaitMs: 12000 }, timeoutMs: 8000 })
-  eq('23.12 ★ timeoutMs < finishWaitMs+2000 ⇒ 抬到 14000', c1.timeoutMs, 14000)
+  eq('23.12 ★ timeoutMs < finishWaitMs+宽限(1500)+2000 ⇒ 抬到 15500', c1.timeoutMs, 15500)
   ok('23.13 抬高必留痕 configAdjusted.timeoutMs', c1.configAdjusted && c1.configAdjusted.timeoutMs && c1.configAdjusted.timeoutMs.from === 8000, c1.configAdjusted)
   const c2 = normalizeConfig({ mode: 'birth', birthDeferredClaim: false, birth: { finishWaitMs: 12000 }, timeoutMs: 20000 })
   ok('23.14 已满足（线上 20000）⇒ 零变化、无 configAdjusted', c2.timeoutMs === 20000 && !c2.configAdjusted)
   const c3 = normalizeConfig({ mode: 'birth', birth: { finishWaitMs: 12000 }, timeoutMs: 8000 })
   ok('23.15 deferredClaim 开着（ready-only，不等 finishWait）⇒ 不改 timeoutMs', c3.timeoutMs === 8000 && !c3.configAdjusted)
   ok('23.16 非 birth 模式不改 timeoutMs', normalizeConfig({ mode: 'checkpoint', birthDeferredClaim: false, birth: { finishWaitMs: 12000 }, timeoutMs: 8000 }).timeoutMs === 8000)
+  // v11.8：finish 最多等 finishWaitMs + finishHeadersGraceMs ⇒ 宽限必须计入抬高目标
+  eq('23.17 ★ 宽限 5000 ⇒ 抬到 12000+5000+2000=19000', normalizeConfig({ mode: 'birth', birthDeferredClaim: false, birth: { finishWaitMs: 12000, finishHeadersGraceMs: 5000 }, timeoutMs: 14000 }).timeoutMs, 19000)
+  eq('23.18 宽限关（0）⇒ 仍按 finishWaitMs+2000', normalizeConfig({ mode: 'birth', birthDeferredClaim: false, birth: { finishWaitMs: 12000, finishHeadersGraceMs: 0 }, timeoutMs: 8000 }).timeoutMs, 14000)
 }
 
 console.log('\n【24】阶段 0 bug 回归（2026-09-24 大清扫）')
@@ -1118,6 +1121,8 @@ console.log('\n【24】阶段 0 bug 回归（2026-09-24 大清扫）')
   ok('24.12 退役键走 retiredOptions 而非 unknownOptions', (u3.retiredOptions || []).includes('stateEvidenceViews') && !(u3.unknownOptions || []).includes('stateEvidenceViews'))
   const u4 = normalizeConfig({ trace: true })
   eq('24.13 已知键不误报', (u4.unknownOptions || []).length, 0)
+  const u5 = normalizeConfig({ birth: { finishWait: 6000, finishWaitMs: 5000 }, distill: { timeout: 1 }, rules: { foldRun: true } })
+  ok('24.13a ★ 嵌套容器里拼错的键同样进 unknownOptions', ['birth.finishWait', 'distill.timeout', 'rules.foldRun'].every((k) => u5.unknownOptions.includes(k)) && !u5.unknownOptions.includes('birth.finishWaitMs'), u5.unknownOptions)
 
   // ④ DEP_ID 必须覆盖全部 import 的本地模块（BOOT 上岗自证）
   ok('24.14 ★ DEP_ID 含 exact-flights.js（曾漏）', typeof DEP_ID === 'string' && DEP_ID.includes('exact-flights.js'))

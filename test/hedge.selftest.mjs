@@ -91,6 +91,45 @@ await test('两份都失败 ⇒ 抛错（与不对冲同形），不挂起', asy
   } finally { srv3.closeAllConnections(); await new Promise((r) => srv3.close(r)) }
 })
 
+await test('★ 主请求先失败（400）且对冲未发 ⇒ 不再对冲，立即按主请求错误结算', async () => {
+  let n = 0
+  const srv = http.createServer((req, res) => { n++; res.writeHead(400); res.end('bad request') })
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r))
+  try {
+    const t0 = Date.now()
+    await assert.rejects(I.generateDistillation('x'.repeat(100), { ...cfgBase, baseUrl: 'http://127.0.0.1:' + srv.address().port, hedgeAfterMs: 1000 }, undefined, 'p'), /http 400/)
+    const took = Date.now() - t0
+    await sleep(1200)
+    assert.equal(n, 1, '主请求已失败，计时器到点不得再发对冲')
+    assert.ok(took < 800, '不得陪计时器空等：took ' + took)
+  } finally { srv.closeAllConnections(); await new Promise((r) => srv.close(r)) }
+})
+
+await test('★ compress 模式经 apply()：对冲/传输 trace 落盘，birth-distill-settled 带 hedged', async () => {
+  reset(1500, 50)
+  const hooks = new Map(), traceFile = path.join(home, 'compress-hedge.log')
+  I.apply({ on: (n, fn) => hooks.set(n, fn), get: (k) => (k === 'cmbStore' ? { putText: async () => ({ handle: 'art://compress-hedge' }) } : null) }, {
+    ...cfgBase, mode: 'birth', dryRun: false, stateCompress: true, compressPrompt: 'v3', birthMinChars: 100, birthDeferredClaim: false,
+    birth: { finishWaitMs: 3000 }, hedgeAfterMs: 200, trace: true, traceFile, prewarm: false,
+  })
+  const session = { id: 'compress-hedge', surface: { nodes: [] }, eventAt: () => null }
+  await hooks.get('agent/pre-step')({ agent: { session } }, async () => ({}))
+  const raw = 'CHECK module alpha verified ok step\n'.repeat(120)
+  const chunks = [{ type: 'block-start', blockType: 'reasoning', index: 0 }, { type: 'reasoning-delta', index: 0, text: raw },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: raw } }, { type: 'finish', reason: { kind: 'end' } }]
+  const out = []
+  for await (const c of hooks.get('llm/stream')({ messages: [] }, () => (async function* () { yield* chunks })())) out.push(c)
+  let text = ''
+  for (let i = 0; i < 40 && !/\[birth-distill-settled\]/.test(text); i++) { await sleep(50); try { text = fs.readFileSync(traceFile, 'utf8') } catch {} }
+  assert.ok(text.includes('[compiler-transport-started]'), 'compress 路径必须有 compiler-transport-started')
+  assert.ok(text.includes('[compiler-hedge-fired]'), '对冲真的发出时 trace 必须可见')
+  assert.ok(text.includes('[compiler-hedge-settled]'))
+  const settled = text.split('\n').find((l) => l.includes('[birth-distill-settled]'))
+  assert.ok(settled && settled.includes('"hedged":"hedge"') && settled.includes('"hedgeAfterMs":200'), settled)
+  assert.ok(settled.includes('"promptVersion":"compress-v3:250-450"'), 'promptVersion 仍须贯通')
+  await sleep(1600)
+})
+
 await test('外部 signal abort ⇒ 两份都取消', async () => {
   reset(3000, 3000)
   const ctl = new AbortController()

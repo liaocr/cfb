@@ -373,11 +373,16 @@ export const DEFAULTS = {
 //   distill: { timeoutMs, minRawChars, hurdleRounds, maxVerbatimChars }
 //   rules:   { foldRuns, dropDuplicateLines, minSavingPct }
 // 嵌套对象里的键**覆盖**同名扁平键。不认识的键一律忽略，绝不报错。
+// 嵌套容器里认识的键（其余进 unknownOptions，形如 'birth.finishWait'）
+const NESTED_DISTILL_KEYS = ['timeoutMs', 'minRawChars', 'hurdleRounds', 'templateChars', 'maxVerbatimChars', 'maxAttempts', 'maxOutputTokens', 'baseUrl', 'model', 'credentialRef', 'credentialsPath', 'graceMs', 'keepAlive', 'keepAliveMsecs', 'prewarm', 'prewarmMinGapMs', 'followHostModel', 'disableThinking', 'hedgeAfterMs']
+const NESTED_RULES_KEYS = ['foldRuns', 'dropDuplicateLines', 'minSavedChars', 'requireArchive', 'minSavingPct']
+const NESTED_BIRTH_KEYS = ['minChars', 'archive', 'handleInText', 'producer', 'archiveTimeoutMs', 'finishWaitMs', 'minSavedChars', 'finishHeadersGraceMs']
+
 export function normalizeConfig(config = {}) {
   const c = Object.assign({}, DEFAULTS, config)
   const d = config && config.distill
   if (d && typeof d === 'object') {
-    for (const k of ['timeoutMs', 'minRawChars', 'hurdleRounds', 'templateChars', 'maxVerbatimChars', 'maxAttempts', 'maxOutputTokens', 'baseUrl', 'model', 'credentialRef', 'credentialsPath', 'graceMs', 'keepAlive', 'keepAliveMsecs', 'prewarm', 'prewarmMinGapMs', 'followHostModel', 'disableThinking', 'hedgeAfterMs']) {
+    for (const k of NESTED_DISTILL_KEYS) {
       if (d[k] !== undefined) c[k] = d[k]
     }
   }
@@ -419,16 +424,26 @@ export function normalizeConfig(config = {}) {
       ...c.retiredOptions,                            // 退役键算已知（另有专门报法）
     ])
     c.unknownOptions = Object.keys(config || {}).filter((k) => !known.has(k))
+    // 嵌套容器里拼错的键同样要报（如 birth: { finishWait: 6000 } 会被静默忽略）
+    for (const [box, keys] of [['distill', NESTED_DISTILL_KEYS], ['rules', NESTED_RULES_KEYS], ['birth', NESTED_BIRTH_KEYS]]) {
+      const v = config && config[box]
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        for (const k of Object.keys(v)) if (!keys.includes(k)) c.unknownOptions.push(box + '.' + k)
+      }
+    }
   }
   c.compileMode = resolveCompileMode(c)
   // ★★ 2026-09-23 v11.6 缺陷 D：timeoutMs 是请求硬顶，finishWaitMs 是收尾等待。★★
   //   实测 finishWaitMs 8000→12000→20000 命中率恒为 23.1%，因为 timeoutMs(8000) 先杀了请求。
-  //   只抬不降：timeoutMs < finishWaitMs + 收尾余量(2000) 时抬到该值，并在 BOOT 里留痕。
-  //   已满足的配置（如线上 20000 ≥ 12000+2000）零变化。
+  //   只抬不降：timeoutMs < finishWaitMs + 响应头宽限 + 收尾余量(2000) 时抬到该值，并在 BOOT 里留痕。
+  //   v11.7 起 finish 最多等 finishWaitMs + finishHeadersGraceMs，宽限也必须算进去，
+  //   否则 grace 调大后请求会先被 timeoutMs 杀掉（宽限形同虚设）。
+  //   已满足的配置（如线上 20000 ≥ 12000+1500+2000）零变化。
   if (c.mode === 'birth' && c.birthDeferredClaim === false) {
-    const need = Number(c.birthFinishWaitMs) + 2000
+    const grace = Number(c.finishHeadersGraceMs)
+    const need = Number(c.birthFinishWaitMs) + (Number.isFinite(grace) && grace > 0 ? grace : 0) + 2000
     if (Number.isFinite(need) && Number.isFinite(Number(c.timeoutMs)) && Number(c.timeoutMs) < need) {
-      c.configAdjusted = Object.assign({}, c.configAdjusted, { timeoutMs: { from: c.timeoutMs, to: need, why: 'timeoutMs < birthFinishWaitMs + 2000' } })
+      c.configAdjusted = Object.assign({}, c.configAdjusted, { timeoutMs: { from: c.timeoutMs, to: need, why: 'timeoutMs < birthFinishWaitMs + finishHeadersGraceMs + 2000' } })
       c.timeoutMs = need
     }
   }
@@ -1787,15 +1802,19 @@ export async function hedgedDistill(fn, key, prompt, cfg, thinkingOff, ep, signa
     return ctl
   }
   const primaryCtl = mkCtl()
-  let primaryHeaders = false, hedgeCtl = null, hedgeTimer = null, hedgeStartedAt = null, winner = null
+  // primaryDone：主请求已结算（成功或失败）⇒ 计时器到点也不得再发对冲
+  //   （v11.7 缺陷：主请求 8ms 就 400，计时器仍在 1000ms 发出对冲，白付一次输入费且推迟降级）。
+  let primaryHeaders = false, primaryDone = false, hedgeCtl = null, hedgeTimer = null, hedgeStartedAt = null, winner = null
+  let hedgeResolve = null
   const outer = typeof cfg._onHeaders === 'function' ? cfg._onHeaders : null
   // ⚠ 只有 **200** 的响应头才算「排队结束、开始生成」；4xx/5xx 的头不得宣布胜出、不得取消另一份、
   //   也不得对外报告 headers（否则一个瞬时 503 会把健康的那份掐掉 —— 自测抓出）。
   const primaryCfg = { ...cfg, _onHeaders: (info) => { if (!info || info.status !== 200) return; primaryHeaders = true; if (hedgeCtl && !winner) { winner = 'primary'; hedgeCtl.abort() } if (outer) outer(info) } }
   const primary = fn(key, prompt, primaryCfg, thinkingOff, ep, primaryCtl.signal, inputChars)
   const hedgeP = new Promise((resolve, reject) => {
+    hedgeResolve = resolve
     hedgeTimer = setTimeout(() => {
-      if (primaryHeaders || primaryCtl.signal.aborted || hedgeInFlight >= 1) { resolve(null); return }
+      if (primaryDone || primaryHeaders || primaryCtl.signal.aborted || hedgeInFlight >= 1) { resolve(null); return }
       hedgeInFlight++
       hedgeCtl = mkCtl()
       hedgeStartedAt = Date.now()
@@ -1811,7 +1830,12 @@ export async function hedgedDistill(fn, key, prompt, cfg, thinkingOff, ep, signa
     const r = await new Promise((resolve, reject) => {
       let failed = 0, firstErr = null
       const fail = (e) => { failed++; firstErr ||= e; if (failed === 2) reject(firstErr) }
-      primary.then((r) => resolve(tag(r, 'primary')), (e) => { if (e && e.cancelled && winner === 'hedge') { failed++; if (failed === 2) reject(firstErr || e) } else fail(e) })
+      primary.then((r) => { primaryDone = true; resolve(tag(r, 'primary')) }, (e) => {
+        primaryDone = true
+        if (e && e.cancelled && winner === 'hedge') { failed++; if (failed === 2) reject(firstErr || e) } else fail(e)
+        // 主请求失败时对冲尚未发出 ⇒ 不再对冲，立即按主请求的错误结算（不陪计时器空等）
+        if (hedgeStartedAt == null) { clearTimeout(hedgeTimer); hedgeResolve(null) }
+      })
       hedgeP.then((r) => { if (r == null) { failed++; if (failed === 2) reject(firstErr) } else resolve(tag(r, 'hedge')) },
         (e) => { if (e && e.cancelled && winner === 'primary') { failed++; if (failed === 2) reject(firstErr || e) } else fail(e) })
     })
@@ -3471,6 +3495,8 @@ export function settledTraceData(index, ms, s) {
       stage: m.stage,
       providerReportedUsage: m.providerReportedUsage || null,
       requestId: m.requestId, flightId: m.flightId, sharedFlight: m.sharedFlight,
+      // v11.7 对冲：谁胜出（primary/hedge；未启用 = undefined）、阈值、对冲发出时刻（未发 = null）
+      hedged: m.hedged, hedgeAfterMs: m.hedgeAfterMs, hedgeStartedAt: m.hedgeStartedAt,
       promptBuildMs: m.promptBuildMs, promptBuildCount: m.promptBuildCount,
       parseRenderMs: m.parseRenderMs, staticPrefixChars: m.staticPrefixChars,
       afterContentMs: m.afterContentMs,
@@ -3486,6 +3512,11 @@ export function settledTraceData(index, ms, s) {
 export function apply(ctx, config = {}) {
   const cfg = normalizeConfig(config)
   const compilerFlights = createExactFlights()
+  // compress / legacy 的传输观测：只透传 trace（compiler-transport-* / compiler-hedge-* / compiler-retry-skipped）。
+  //   v11.7 前这两条路径没传，对冲真的触发了 trace 里却一条都没有。
+  //   ⚠ 不传 flights：这两种模式没有 scope（证据截面只在 memory 模式存在）⇒ 共享永不命中，
+  //     反而会把取消路径的传输 meta（ttfbMs/stage 等）换成合成错误，损失线上诊断数据。
+  const compileRuntime = (budget) => ({ trace: budget && typeof budget.trace === 'function' ? budget.trace : undefined })
   // 出生即提纯：本轮会话 id（在 agent/pre-step 捕获，供 CAS 归档登记）
   let birthSessionId = null
 // ★ 2026-09-21 消息溯源（外部审计 P0-3）：同时持有 session 对象本身。
@@ -4229,9 +4260,9 @@ function readSessionLog(session) {
                   const sp = splitCompressPrompt(prompt)
                   if (sp) c._promptMessages = [{ role: 'system', content: sp.system }, { role: 'user', content: sp.user }]
                 }
-                return generateDistillation(raw, c, signal, prompt, { promptVersion: pvOut })
+                return generateDistillation(raw, c, signal, prompt, { ...compileRuntime(budget), promptVersion: pvOut })
               }
-            : async (raw, signal, budget) => generateDistillation(raw, budget && typeof budget.onHeaders === 'function' ? { ...streamCfg, _onHeaders: budget.onHeaders } : streamCfg, signal),
+            : async (raw, signal, budget) => generateDistillation(raw, budget && typeof budget.onHeaders === 'function' ? { ...streamCfg, _onHeaders: budget.onHeaders } : streamCfg, signal, undefined, compileRuntime(budget)),
         prepareEvidence: (input) => {
           const started = performance.now()
           const frame = prepareCompilerEvidence(input, streamCfg.stateSnapshot)

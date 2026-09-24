@@ -54,6 +54,20 @@ try {
     assert.ok(c.ok); assert.equal(c.snapshot.entries.length, 2); assert.deepEqual(c.snapshot.coverage.coveredSeqs, [2, 4])
   })
   await test('compile does not mark host application', () => assert.equal(S.loadSnapshot('round', 'main').applied, null))
+  await test('★ identical judgments re-committed do not grow the snapshot (hybrid entries have no objectKey)', () => {
+    let c
+    for (let i = 0; i < 5; i++) c = S.commitSnapshot({ sessionId: 'bounded', branchId: 'main', coveredSeqs: [],
+      entries: [entry('判断甲', { id: 'x' + i, at: i }), entry('差距乙', { id: 'y' + i, at: i, category: 'gap' })] })
+    assert.ok(c.ok); assert.equal(c.snapshot.revision, 5); assert.equal(c.snapshot.entries.length, 2)
+    assert.equal(c.added, 0)
+  })
+  await test('snapshot entries are capped, keeping the newest', () => {
+    const many = Array.from({ length: S.SNAPSHOT_ENTRIES_MAX + 40 }, (_, i) => entry('条目' + i, { id: 'c' + i }))
+    const kept = S.boundSnapshotEntries(many)
+    assert.equal(kept.length, S.SNAPSHOT_ENTRIES_MAX)
+    assert.equal(kept.at(-1).content, '条目' + (S.SNAPSHOT_ENTRIES_MAX + 39)); assert.equal(kept[0].content, '条目40')
+  })
+
   await test('applied marker requires explicit matching revision', () => assert.equal(S.markSnapshotApplied('round', 'main', {}), false))
   await test('stale applied revision is rejected', () => assert.equal(S.markSnapshotApplied('round', 'main', { revision: 1 }), false))
   await test('explicit current revision may be marked applied', () => assert.equal(S.markSnapshotApplied('round', 'main', { revision: 2 }), true))
