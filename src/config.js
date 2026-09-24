@@ -235,7 +235,7 @@ export const DEFAULTS = {
   //   profile 里显式给值仍然优先，本机行为不变。
   credentialsPath: dshHomePath('.credentials.yaml'),
   // ★★ 2026-09-17 端点/钥匙也跟随宿主 provider（禁止硬编码）★★
-  //   实测根因：followHostModel 只重写【模型名】(index.js:1300)，端点与钥匙被钉死在
+  //   实测根因：followHostModel 只重写【模型名】（当时 index.js:1300，现 plugin.js 的 llm/stream 钩子），端点与钥匙被钉死在
   //   作者那家商户（baseUrl/credentialRef）。宿主 provider 一旦不是它
   //   （本机 settings.yaml:50-52 agent-default-model.provider = 'open'），
   //   提纯就发到一个不承载该模型路由的商户上 ⇒ 40 次全部打满 timeoutMs（tookMs 8002~8012）。

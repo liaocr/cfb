@@ -7,7 +7,7 @@
 //   （见 docs/AUDIT-V11.5.md §六）。削减率更不是保真度指标。
 //
 // 历史：本文件曾是纯规则压缩器 compressByRules（字面去重 + 同构空环折叠）。
-//   v11.8 随 'rules' / 'distill' 模式退役一并移除（写回路径协议上永久非法，见 index.js DEFAULTS.mode）；
+//   v11.8 随 'rules' / 'distill' 模式退役一并移除（写回路径协议上永久非法，见 src/config.js 的 DEFAULTS.mode）；
 //   需要时可从 v11.7（e818cff）取回。受保护 token 的判据与门禁语义保持不变。
 
 // ── 保护性 token ───────────────────────────────────────────────────────────
