@@ -168,6 +168,10 @@ node deploy/onboard.mjs --revert   # 从最近一次备份还原
 
 ## 参考
 
-- 就绪评估与全部实测证据：`docs/go-live-readiness.md`
-- 融合设计（含官方契约逐条核实）：`docs/plugin-fusion-design.md`
-- 检索审计：`docs/missed-retrieval-report.md`
+以下三份写于姊妹仓库（CMB / boundary），**从未进入本包**，此处只留名字便于对照：
+
+- 就绪评估与全部实测证据：`docs/go-live-readiness.md`（外部，本包无此文件）
+- 融合设计（含官方契约逐条核实）：`docs/plugin-fusion-design.md`（外部，本包无此文件）
+- 检索审计：`docs/missed-retrieval-report.md`（外部，本包无此文件）
+
+本包内现行文档见 [`README.md`](../README.md) 的「证据与文档」一节。

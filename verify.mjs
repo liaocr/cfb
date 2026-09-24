@@ -20,25 +20,25 @@ const json = process.argv.includes('--json')
 
 // 套件顺序：先纯函数层，再集成层（失败时定位最快）
 const SUITES = [
-  'balanced-span.selftest.mjs',
-  'headroom.selftest.mjs',
-  'imperative.selftest.mjs',
-  'emitter.selftest.mjs',
-  'state-memory.selftest.mjs',
-  'provider-endpoint.selftest.mjs',
-  'selftest.mjs',
-  'selftest-birth.mjs',
-  'optimization.selftest.mjs',
-  'memory-quality.selftest.mjs',
-  'incremental.selftest.mjs',
-  'evidence-views.selftest.mjs',
-  'late-identity.selftest.mjs',
-  'hybrid.selftest.mjs',
-  'grounding.selftest.mjs',
-  'evidence-sharing.selftest.mjs',
-  'efficiency.selftest.mjs',
-  'coverage-provenance.selftest.mjs',
-  'hedge.selftest.mjs',
+  'test/balanced-span.selftest.mjs',
+  'test/headroom.selftest.mjs',
+  'test/imperative.selftest.mjs',
+  'test/emitter.selftest.mjs',
+  'test/state-memory.selftest.mjs',
+  'test/provider-endpoint.selftest.mjs',
+  'test/selftest.mjs',
+  'test/selftest-birth.mjs',
+  'test/optimization.selftest.mjs',
+  'test/memory-quality.selftest.mjs',
+  'test/incremental.selftest.mjs',
+  'test/evidence-views.selftest.mjs',
+  'test/late-identity.selftest.mjs',
+  'test/hybrid.selftest.mjs',
+  'test/grounding.selftest.mjs',
+  'test/evidence-sharing.selftest.mjs',
+  'test/efficiency.selftest.mjs',
+  'test/coverage-provenance.selftest.mjs',
+  'test/hedge.selftest.mjs',
 ]
 
 const rows = []
@@ -73,7 +73,7 @@ if (json) {
   console.log('')
   for (const r of rows) {
     const tag = r.status === 'PASS' ? 'PASS' : (r.status === 'SKIP' ? 'SKIP' : 'FAIL')
-    console.log('  ' + tag.padEnd(5) + r.suite.padEnd(34) + r.note)
+    console.log('  ' + tag.padEnd(5) + r.suite.padEnd(40) + r.note)
   }
   const tp = rows.reduce((a, r) => a + r.pass, 0)
   const tf = rows.reduce((a, r) => a + r.fail, 0)

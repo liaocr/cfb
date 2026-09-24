@@ -81,7 +81,7 @@ B 的那次全价预填两边都要付（只是从主请求挪到压缩请求）
 ① 同一 prompt，`thinking disabled` vs 不带 thinking 字段（用 `max_tokens` 大一点防 length）；② 同一 prompt 连发两次看第二次 `prompt_cache_hit_tokens>0` 时 TTFB 是否骤降；③ 把 prompt 前缀固定为一段 1K 的常量文字（人为制造缓存命中）。任一组差 >1s 即定位。
 
 **与 TTFB 无关的免费窗口（推测，ROI 高）**
-`gapMs p50 = 4ms`（docs/brief-why-we-wait §1.2，n=293）意味着 reasoning 的 `block-end` 到 `finish` 只有 4ms。但一次带工具调用的回复里，reasoning 之后还要生成 tool-call 参数，通常几百毫秒到几秒。**两者只能有一个成立**：要么宿主 `dsh-llm` 的 BlockAssembler 把 reasoning 的 `block-end` 延迟到 finish 才发，要么这些回复几乎没有后续块。若是前者，`birthTransform` 在 L3080-3103 只在 `block-end` 起火就浪费了整段 tool-call 生成时间——而 earlyFire 路径（L4018-4021）早就知道「tool-call/text 的 block-start 一到，reasoning 必定已写完」。
+`gapMs p50 = 4ms`（docs/archive/brief-cot-form-b-why-we-wait §1.2，n=293）意味着 reasoning 的 `block-end` 到 `finish` 只有 4ms。但一次带工具调用的回复里，reasoning 之后还要生成 tool-call 参数，通常几百毫秒到几秒。**两者只能有一个成立**：要么宿主 `dsh-llm` 的 BlockAssembler 把 reasoning 的 `block-end` 延迟到 finish 才发，要么这些回复几乎没有后续块。若是前者，`birthTransform` 在 L3080-3103 只在 `block-end` 起火就浪费了整段 tool-call 生成时间——而 earlyFire 路径（L4018-4021）早就知道「tool-call/text 的 block-start 一到，reasoning 必定已写完」。
 - 验证字段：在 `birthTransform` 里记录「第一个非 reasoning 块的 `block-start` 时间 → 该 reasoning 的 `block-end` 时间」差值。**> 1s 即成立。**
 - 若成立：在收到第一个其它类型 `block-start` 时，用 `held` 里已累积的 `h.text` 提前 `birthStart`（block-end 到达时只补 `task.end`）。多块回复里替换点仍在 block-end，出站顺序不变。
 - 最坏情况：提前起火后 reasoning 又来了 delta（协议上不应发生）⇒ 文本不一致 ⇒ 必须走「原文放行」并 trace。用 `h.text === task.raw` 在 block-end 处硬校验即可。
@@ -119,7 +119,7 @@ B 的那次全价预填两边都要付（只是从主请求挪到压缩请求）
 
 **结论：09-18 事故的根因是「替换手段」不是「替换对象」；用 birth 式（出站前、同节点类型）改写工具结果不会触发那个不变式。但工具结果**首次**必须让模型看全文，所以只能在第二次出站前压——那就又回到了「改已出站内容」的缓存/一致性问题。当前不建议动。**
 
-- 已证实：事故机理在 docs/phase2-settler-design.md:115-125——`tool-pairing.js` 对 `tool/result` 计 −1，对含 tool-call 的 assistant 计 +n；用 `user/message` 替换一个区间若切开了配对 ⇒ `corrupt surface`。这是 **surfaceOp replace + 换节点类型**才有的问题。
+- 已证实：事故机理在 docs/archive/phase2-settler-design.md:115-125——`tool-pairing.js` 对 `tool/result` 计 −1，对含 tool-call 的 assistant 计 +n；用 `user/message` 替换一个区间若切开了配对 ⇒ `corrupt surface`。这是 **surfaceOp replace + 换节点类型**才有的问题。
 - 已证实：L2631 `toolBlockChars 25~28K 每轮几乎不变` 这句话本身就说明它们**是前缀缓存的最佳受益者**（不变 ⇒ 命中 ⇒ 0.022 价）。按第一节的判据，压它们的费用收益同样 ≈ 0，收益仍只是余量。
 - 推测：如果要做，正确形态是「tool/result → 更短的 tool/result（同 toolCallId）」的同类型替换，配对计数不变；但需要在 `dsh-compaction` 里确认 replace 后 shadowed 节点是否仍参与计数。这是一个独立项目，不该在 cfb 里做。
 

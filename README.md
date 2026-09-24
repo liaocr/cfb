@@ -1,79 +1,13 @@
 # dsh-cot-form-b — 尾部即时思维链提纯 + 结构化状态记忆
 
-> **当前实现：v11.6（2026-09-23）**。成本模型落地第一批（`docs/AUDIT-V11.5.md`）：
-> `birth.minChars` 500→**3100**（`净收益=(R−1)·d·(B−B′)−T−5B′`，d=0.02、R=55、B′≈450 反解保本原长 2,959）；
-> `maxOutputTokens` 1200→**850 恒定**（不随输入放大，否则与「ρ 越小净收益恒增」反向）；
-> `normalizeConfig` 保证 `timeoutMs ≥ finishWaitMs+2000`（缺陷 D，只抬不降，BOOT `configAdjusted` 留痕）；
-> 替换结果空白硬断言 `empty-candidate`；新增**纯观测** trace：`birth-window-probe`（免费窗口三时刻）、`birth-econ`（三态判定，只记录不判定）、`birth-condensed.fidelity`（`identifierRecall`，空集标 `unmeasurable` 不算 pass）。
-> **v11.7（2026-09-23，第二批）**：TTFB 3 秒的三条正面处置，全部**可关、缺省保守**。
-> ① `distill.hedgeAfterMs`（缺省 0=关；建议 3000）：主请求 N ms 内未收到 200 响应头就再发一份相同请求，谁先回头用谁、另一份立即 abort（头一到即取消，输出只付一份）；同一时刻至多 1 份对冲在飞，仅 `maxAttempts ≤ 1` 生效；4xx/5xx 的头不算胜出。trace：`compiler-hedge-fired / compiler-hedge-settled`，`meta.hedged`。最坏情况：尾部请求多付一次输入费（≈0.3K tokens）。
-> ② `birth.finishHeadersGraceMs`（缺省 1500）：finish 处 budget 到点但蒸馏**已收到 200 响应头**（排队已结束、正在生成，实测 contentSpanMs 137~1,267ms）⇒ 再多等最多 1.5s；没收到头不加一毫秒。trace：`birth-distill-headers / birth-finish-headers-grace`。最坏情况：单次 finish 多阻塞 1.5s 且仍超时（此时对方已在生成，概率由 contentSpan 分布决定，p90 < 1.3s）。
-> ③ `compressSystemPrompt`（缺省 false）：v2/v3 提示词按 `【上一轮思维链】` 拆成 system（规则，字节不变）+ user（原文），让 DeepSeek 缓存前缀单元匹配到规则段（现状 `prompt_cache_hit_tokens` 恒 0）；promptVersion 追加 `:sys` 自动分桶做 A/B。
-> 新增套件 `hedge.selftest.mjs`（15 断言，本机 HTTP 可控延迟）。验证：**1222 通过 / 0 失败 / 1 跳过，19 套件**。
+> **当前实现：v11.7（2026-09-23）** · 验证 **1242 通过 / 0 失败 / 1 跳过，19 套件**。
+> 版本沿革与每版细节见 [`CHANGELOG.md`](CHANGELOG.md)；成本模型见 [`docs/AUDIT-V11.5.md`](docs/AUDIT-V11.5.md)。
+> ⚠ 判定行为的唯一变化 = 门槛与输出上限；动态门槛、保真放行、提前起火**均未接管**，等真实 trace 数据。
 >
-> `analyze-efficiency.mjs` 新增 `windowProbe / economics / fidelity` 段。验证：**1207 通过 / 0 失败 / 1 跳过，18 套件**。
-> ⚠ 判定行为唯一变化 = 门槛与输出上限；动态门槛、保真放行门槛、提前起火**均未接管**，等 trace 数据。
-
-> **当前实现：v11.4（2026-09-23）**。compress PromptVersion 贯通 trace；迟到认领漏斗已在 boot26 真机 trace 命中 10/11；carry 有预算与去嵌套；只在字符估算满足至少 5% 且 100 字符净节省时发射看板，否则保留原文；可选 token-meter 前后采样仅用于诊断。验证套件当前 18 套。
-> 这些是代码/单次 trace 事实，不代表每次发射都节省 tokenizer tokens 或模型质量已做 A/B。见 [`docs/CORRECTNESS-V11.md`](docs/CORRECTNESS-V11.md)。
-> 下列 v10/v9…段落是对应版本的**历史记录**；其中的开关、待办、套件计数不得当作当前状态。历史套件数按当时记录保留，不做伪造性回写。
-
-> **v10（历史版本记录）：压缩 与 状态记忆 开关切分。**
-> 这两件事原本焊在 `stateMemory` 一个开关上：触发粒度是「每段 reasoning」，
-> 输入范围却是「整个 60 节点证据窗口」⇒ 每编译 5,371 字符的推理要重发 23,800 字符的窗口证据，
-> 实测放大 **7.5x**（工具正文占 58.7%），27 次副编译 0 次替换成功。
-> 现在拆成两个独立开关，裁决只在 `resolveCompileMode()` 一处：
-> `stateCompress` 只压本段 reasoning，**不采集任何证据**（实测 ratio 1.16~2.0）；
-> `stateMemory` 保留证据账本 + 快照 + 两栏判断。
-> 见 [`docs/COMPRESS-MEMORY-SPLIT.md`](docs/COMPRESS-MEMORY-SPLIT.md)。
-> 当时遗留的 compress 迟到问题已在 v11 接通；压缩率/费用收益仍须按真实 token 用量与任务质量评估。
-
-> **v9：减少无效编译，改善判断交接。**
-> 默认路径精确共享相同在途请求；归档终局失败只取消对应消费者；提示词统计与发送复用一次构造。
-> 判断保留适用条件、修正原因及待核对旧记忆；新增分阶段时延、请求级缓存用量和人工决策审核入口。
-> 见 [`docs/COMPILER-EFFICIENCY-V9.md`](docs/COMPILER-EFFICIENCY-V9.md)。无新增开关或等待预算；真实产品收益仍未验收。
-
-> **v8：保留证据，减少同请求内的重复展示与准备。**
-> 相同采集正文按原可见区间取并集，调用身份、状态与完整性仍逐事件保留。
-> 批内复用正文 hash 与文件校验；生产和重放共用证据准备入口。
-> 见 [`docs/EVIDENCE-SHARING-V8.md`](docs/EVIDENCE-SHARING-V8.md)。真实产品指标仍未验收，无新增开关或等待预算。
-
-> **v7：恢复有依据的判断编译，验证结果真正被消费。**
-> 工具正文重新进入默认副编译请求，包含正常结果；不因已落盘而省略核对材料。
-> 新增有上限的证据存储、满额后的内存证据回退、认领消费漏斗；四个旧生产开关退役。
-> 见 [`docs/GROUNDED-COMPILER-V7.md`](docs/GROUNDED-COMPILER-V7.md)。
-> **不承诺未经真实重放证明的性能／压缩率不下降。v6“工具正文跨轮零重发”的取舍已撤回。**
-
-> **v6：确定性证据记录＋两栏判断编译（历史）**。用户现有 `birth + stateMemory:true` 路径直接切换，无新开关。
-> 工具原文先落盘，失败不再触发旧正文全量重发；finish 只采用已就绪结果，不主动等副模型。
-> 方案、代价与重放方法见 [`docs/HYBRID-COMPILER.md`](docs/HYBRID-COMPILER.md)。
-> **真实产品指标尚未验收**：完整会话、主模型探索标注和运行凭据未提供。本地回归不能替代这些指标。
-
-> **v5：迟到认领加固**，见 [`docs/LATE-CLAIM-HARDENING.md`](docs/LATE-CLAIM-HARDENING.md)。
-> 当批验证：1088 通过、0 失败、1 跳过，13 套件。新增分支隔离、歧义拒绝、发射前复检及缓存体量限制。
-
-> **统一优化版 v4**：范围回执、编译输入工作集、后台 CAS 镜像／恢复与故障门禁已接线。
-> 见 [`docs/OPTIMIZATION-INTEGRATED.md`](docs/OPTIMIZATION-INTEGRATED.md)。
-> 当批验证：1073 通过、0 失败、1 跳过，12 套件。
-> 新策略 `stateEvidenceViews` / `stateSnapshotMirror` 默认关闭；配置、代价和真机验收边界见报告。
-> 历史报告中“CAS 尚未接通”等描述仅适用于当时版本；不代表 v4 源码状态。
-
-> **第三批更新：安全覆盖修复＋增量编译通道实验**，见
-> [`docs/OPTIMIZATION-PHASE3.md`](docs/OPTIMIZATION-PHASE3.md)。
-> 当批验证：1032 通过、0 失败、1 跳过，11 套件。
-> 新实验 `stateCompileQueue` 默认关闭；policy 3 不再把截断工具结果整条标成已覆盖。
-> policy 1/2 升级保留正文、重新积累覆盖，短期输入可能增加。
-
-> **第二批更新：记忆可信度与执行隔离**，见
-> [`docs/OPTIMIZATION-PHASE2.md`](docs/OPTIMIZATION-PHASE2.md)。
-> 当批验证：1003 通过、0 失败、1 跳过，10 套件。
-> 旧快照正文保留；旧覆盖集合需要通过新编译重新建立，迁移初期输入可能增加。
-
-> **第一批优化记录（2026-09-22）**：当时的变更、验证与待办见
-> [`docs/OPTIMIZATION-REPORT.md`](docs/OPTIMIZATION-REPORT.md)。
-> 本轮不改等待预算、模型、输出上限或 surface 替换协议；未部署到真实网关。
-> 第一批时快照只有本地原子文件存储；v4 已另行接通可选 CAS 镜像及后台恢复。
-> 现有下文的历史设计说明不应被当成这些能力已经上线的证明。
+> 三条当前要点：
+> 1. `birthMinChars=3100`（成本模型反解保本原长 2,959 保守取整）、`maxOutputTokens=850` 恒定；
+> 2. v11.7 三个可关的延迟/缓存开关：`hedgeAfterMs`（对冲，缺省关）、`finishHeadersGraceMs=1500`、`compressSystemPrompt`（缓存友好拆分，缺省关）；
+> 3. 配置未知键会进 `unknownOptions` 并落 BOOT（不再静默吞掉）；凭据读取已锚定行首，防子串误命中。
 
 DSH 外部插件。当前 `birth + stateMemory` 路径：
 
@@ -91,7 +25,7 @@ DSH 外部插件。当前 `birth + stateMemory` 路径：
 ## 快速开始
 
 ```bash
-node verify.mjs        # 跑全部 18 个自测套件（含本地 HTTP；零外部 API 调用）
+node verify.mjs        # 跑全部 19 个自测套件（含本地 HTTP；零外部 API 调用）
 node manifest.mjs      # 生成 MANIFEST.sha256
 node manifest.mjs --check   # 校验完整性（换机器后第一件事）
 node deploy/onboard.mjs     # 体检：确认插件在本机装好了
@@ -111,29 +45,35 @@ dsh-cot-form-b/
 ├── README.md                  本文件
 ├── MANIFEST.sha256            完整性清单
 │
-├── index.js            184 KB  插件入口：生命周期、证据采集、覆盖过滤、快照接线
-├── state-memory.js      90 KB  四层状态记忆：信封 / 编译器 / 投影 / 渲染器
-├── snapshot-store.js    26 KB  ★ 结构化状态快照持久化（CAS + 原子指针）
-├── emitter.js           17 KB  收网器：唯一发射出口（官方 surfaceOp replace）
+├── index.js            245 KB  插件入口：生命周期、证据采集、覆盖过滤、快照接线
+├── state-memory.js      96 KB  四层状态记忆：信封 / 编译器 / 投影 / 渲染器
+├── emitter.js           33 KB  收网器：唯一发射出口（官方 surfaceOp replace）
+├── snapshot-store.js    29 KB  ★ 结构化状态快照持久化（CAS + 原子指针）
+├── evidence-ledger.js   17 KB  证据账本准备与判断提示词
 ├── rules.js             13 KB  规则层压缩（离线、确定性，与模型提纯互为回退）
 ├── balanced-span.js     12 KB  平衡整步：找可安全替换的 span 边界
+├── evidence-storage.js 6.0 KB  证据 CAS 存储
 ├── imperative.js       3.8 KB  祈使句提取（哪些推理块值得进记忆）
-├── headroom.js         3.2 KB  预算余量计算
+├── evidence-input.js   4.8 KB  证据正文截取
+├── headroom.js / evidence-views.js / exact-flights.js /
+│   compile-lane.js / consumption.js         小模块（预算、视图、航班、编译道、计量）
 ├── index.d.ts / rules.d.ts     TypeScript 类型声明
 ├── package.json                npm 包清单（声明 dsh.bundle.patch）
 ├── cordis.patch.yml            bundle 层：把插件挂进组合树（写包名，零绝对路径）
+├── CHANGELOG.md                版本沿革（自 README 迁出）
 │
-├── selftest.mjs               281 项  端到端 + 规则层 + 覆盖/快照
-├── selftest-birth.mjs         155 项  birth 流式拦截器（真实 dsh-llm 不变式当裁判）
-├── state-memory.selftest.mjs  245 项  四层状态记忆
-├── emitter.selftest.mjs       101 项  收网器
-├── balanced-span.selftest.mjs  60 项
-├── headroom.selftest.mjs       33 项
-├── provider-endpoint.selftest.mjs 28 项
-├── imperative.selftest.mjs     25 项
+├── 自测（node verify.mjs 一键，共 19 套件 / 1242 断言）
+│   test/selftest.mjs 317 · selftest-birth.mjs 164 · state-memory 245 · emitter 101
+│   balanced-span 60 · optimization 43 · evidence-views 41 · coverage-provenance 41
+│   memory-quality 33 · headroom 33 · incremental 29 · provider-endpoint 28
+│   imperative 25 · hybrid 16 · hedge 15 · late-identity 15 · efficiency 13
+│   grounding 13 · evidence-sharing 10
+│
+├── tools/                     离线 trace 分析与编译重放（analyze-*、replay）
+├── test/                      全部 19 个自测套件（node verify.mjs 一键调度）
 ├── fixtures/                  真机原文错误样本（非合成）
 ├── deploy/onboard.mjs         安装体检（跨机器，无硬编码路径）
-└── docs/                      设计文档与运行手册
+└── docs/                      现行文档；docs/archive/ = 历史报告与证据（不删）
 ```
 
 ---
@@ -267,7 +207,7 @@ node deploy/onboard.mjs         # 必须报 drift 0
 | `stateStructuralFirst: false` | 关闭跨窗口结构节点检索（**当前默认已是 false**） |
 | `birthDeferredClaim: false` | 关闭下轮认领（迟到结果直接丢弃） |
 | `birthArchive: false` | 关闭 CAS 归档 |
-| `finishWaitMs: 6000` | 回到旧的长等待 |
+| `birth: { finishWaitMs: 6000 }` | 回到旧的长等待（扁平 `finishWaitMs` 不生效，只认 `birth.finishWaitMs` / `birthFinishWaitMs`） |
 | `mode: 'off'` | 整体停用 |
 
 ---
@@ -297,19 +237,21 @@ node deploy/onboard.mjs         # 必须报 drift 0
 
 ## 证据与文档
 
-`docs/` 里的设计文档按用途分：
+文档分两层（2026-09-24 整理；**只归档不删除**）：
+
+**现行（`docs/` 顶层）**
 
 | 文件 | 内容 |
 |---|---|
 | `INSTALL.md` | 安装与配置 |
-| `ARCHITECTURE-CONSOLIDATED.md` | 架构总览 |
-| `at-birth-interception.md` | birth 模式（出生即拦截）设计 |
-| `brief-cot-form-b-why-we-wait.md` | 为什么要等 / 预算怎么定 |
-| `brief-cot-form-b-late-claim.md` | 下轮认领（迟到结果回收）设计 |
-| `phase2-settler-design.md` | 收网器设计 |
-| `next-stage-spec.md` | 下一阶段规格 |
-| `phase2-go-live-runbook.md` | 上线运行手册 |
-| `STATE.md` / `PROJECT-REPORT.md` | 项目状态与总报告 |
+| `ARCHITECTURE-CONSOLIDATED.md` | 架构总览（可逆上下文分层，读一条线） |
+| `at-birth-interception.md` | birth 模式（出生即拦截）设计规范 |
+| `AUDIT-V11.5.md` | v11.5 成本模型审计（门槛反解、收益判据） |
+| `CORRECTNESS-V11.md` | v11 正确性修正（覆盖 / 迟到 / 来源 / compress 通路） |
+
+**历史归档（`docs/archive/`）** —— 各版本详报、外部简报、phase2 设计/手册、
+作废状态卡，以及 `optimization-evidence{,-v2..v9}/` 原始证据目录。
+索引见 [`docs/archive/README.md`](docs/archive/README.md)；版本时间线见根目录 [`CHANGELOG.md`](CHANGELOG.md)。
 
 ---
 
