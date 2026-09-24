@@ -79,8 +79,8 @@
 
 两份本地记录：
 
-- `docs/optimization-evidence-v7/local-consumption.json`
-- `docs/optimization-evidence-v7/quota-fallback-consumption.json`
+- `docs/archive/optimization-evidence-v7/local-consumption.json`
+- `docs/archive/optimization-evidence-v7/quota-fallback-consumption.json`
 
 每份都有1个生成且归档成功、1个发射、1个确认消费、1个后续 options 呈现。这证明本地接线不是“生成了但根本用不到”。**不证明真实宿主中772次机会的认领率，不证明真实宿主投影实现，也不证明模型任务正确率。**
 
@@ -164,7 +164,7 @@ GC 保留所有已提交索引与所有 view 的引用，仅删除识别出的�
 
 全量：1114通过／0失败／1宿主跳过，15套件。这些不是产品性能结论。
 
-验证文件都在 `docs/optimization-evidence-v7/`：
+验证文件都在 `docs/archive/optimization-evidence-v7/`：
 
 - verification.txt
 - mutations.json

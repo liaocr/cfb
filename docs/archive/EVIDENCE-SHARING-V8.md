@@ -88,7 +88,7 @@ v7 重放器之前直接调用持久化函数，并不完全等同于生产的�
 
 全量：1124通过／0失败／1宿主跳过，16套件。v7 的完整迟到认领、append失败重试、满额后继续消费等回归仍通过。
 
-记录目录：`docs/optimization-evidence-v8/`：
+记录目录：`docs/archive/optimization-evidence-v8/`：
 
 - `range-preservation.json`：合成区间保留样本；
 - `mutations.json`：反证结果；

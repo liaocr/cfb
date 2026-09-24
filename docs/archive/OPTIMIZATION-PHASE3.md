@@ -131,7 +131,7 @@ JSON 与 SSE 两种传输均得到同样结果。这个样例包含约 29k 字�
 
 样例内编译侧字符约减少 **54.5%**；不能解释为 token、账单或合格任务总成本减少 54.5%。被替代块保留的原文成本未计入这个表。
 
-证据：`docs/optimization-evidence-v3/{verification.txt,mutations.json,http-burst.json}`。
+证据：`docs/archive/optimization-evidence-v3/{verification.txt,mutations.json,http-burst.json}`。
 
 ## 五、产品下一步架构：三层，而不是无限叠摘要
 

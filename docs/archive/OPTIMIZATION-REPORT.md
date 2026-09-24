@@ -156,7 +156,7 @@
 6. 回到首尾节点缓存键；
 7. 去掉归档成功前置条件。
 
-反证摘要随报告提供在 `docs/optimization-evidence/mutations.json`。
+反证摘要随报告提供在 `docs/archive/optimization-evidence/mutations.json`。
 
 ## 4. 尚未修复，但已找到具体代码原因
 

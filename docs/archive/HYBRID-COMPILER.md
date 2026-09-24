@@ -112,9 +112,9 @@ node replay.mjs inspect /实际路径/view-….json history-records.json
 
 证据文件：
 
-- `docs/optimization-evidence-v6/verification.txt`
-- `docs/optimization-evidence-v6/mutations.json`
-- `docs/optimization-evidence-v6/product-acceptance.json`：当前结果为 **未验收**，退出码 2。
+- `docs/archive/optimization-evidence-v6/verification.txt`
+- `docs/archive/optimization-evidence-v6/mutations.json`
+- `docs/archive/optimization-evidence-v6/product-acceptance.json`：当前结果为 **未验收**，退出码 2。
 
 ## 录制、重放、产品验收分开
 

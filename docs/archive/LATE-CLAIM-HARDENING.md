@@ -86,7 +86,7 @@ birth 的迟到认领在现有 surface 中发现另一条 assistant/message 有�
 
 旧测试的有意变更：两条“同 raw 自动取最新版”断言改为“无任务身份时拒绝猜测”；原 receipt 更新竞态测试补上明确同 taskId，以继续验证合法重试。没有删掉失败测试来凑通过数。
 
-证据保存在 `docs/optimization-evidence-v5/`。
+证据保存在 `docs/archive/optimization-evidence-v5/`。
 
 ## 效果与代价
 

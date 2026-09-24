@@ -175,7 +175,7 @@ emitCheckpoint 对非法／倒置目标区间直接拒绝，不 Math.min/Math.ma
 
 字符变化约 **67.5%**，包括少提供正文片段的贡献，不能称为相同完整信息的无损压缩。未测真实模型语义质量、主对话后续 token、缓存命中、账单或生产成功率。
 
-证据在 `docs/optimization-evidence-v4/`。
+证据在 `docs/archive/optimization-evidence-v4/`。
 
 ## 7. 开关与交付
 

@@ -130,10 +130,10 @@ node analyze-efficiency.mjs trace.log efficiency.json
 7. 隐去既有推断材料；
 8. 默认生产路径绕过在途复用。
 
-证据目录：`docs/optimization-evidence-v9/`，包含生产 hook 夹具原始 trace、HTTP 请求正文与分析结果，可直接核对分析报告的 sourceSha256。其中 HTTP、usage、时延、重复请求数量均来自**本地合成夹具**，不是线上实测。反证脚本可在无活动进程的源码副本上运行：
+证据目录：`docs/archive/optimization-evidence-v9/`，包含生产 hook 夹具原始 trace、HTTP 请求正文与分析结果，可直接核对分析报告的 sourceSha256。其中 HTTP、usage、时延、重复请求数量均来自**本地合成夹具**，不是线上实测。反证脚本可在无活动进程的源码副本上运行：
 
 ```bash
-python3 docs/optimization-evidence-v9/run-mutations.py
+python3 docs/archive/optimization-evidence-v9/run-mutations.py
 node verify.mjs
 node manifest.mjs --check
 ```

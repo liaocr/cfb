@@ -129,7 +129,7 @@
 10. 去掉 disabled 流门禁；
 11. 允许覆盖未来版本／损坏的现存快照。
 
-证据：`docs/optimization-evidence-v2/verification.txt`、`mutations.json`。
+证据：`docs/archive/optimization-evidence-v2/verification.txt`、`mutations.json`。
 
 ## 预期效果与不能承诺的效果
 

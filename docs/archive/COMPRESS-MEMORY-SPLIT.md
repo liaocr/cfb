@@ -1,4 +1,4 @@
-> 历史记录说明：本文记录 v10 切分时的实现与测量；其中 `compress-v1`、旧 `compressRatio` 名称及“迟到结果会丢弃”等状态不是当前结论。当前 promptVersion 与迟到漏斗见 [`CORRECTNESS-V11.md`](CORRECTNESS-V11.md)。历史计数保留为当时事实。
+> 历史记录说明：本文记录 v10 切分时的实现与测量；其中 `compress-v1`、旧 `compressRatio` 名称及“迟到结果会丢弃”等状态不是当前结论。当前 promptVersion 与迟到漏斗见 [`CORRECTNESS-V11.md`](../CORRECTNESS-V11.md)。历史计数保留为当时事实。
 
 # v10：压缩与状态记忆开关切分
 
