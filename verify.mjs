@@ -37,6 +37,7 @@ const ORDER = [
   'balanced-span', 'headroom', 'imperative', 'emitter', 'state-memory', 'provider-endpoint',
   'core', 'birth', 'optimization', 'memory-quality', 'snapshot-invariants', 'robustness',
   'late-identity', 'hybrid', 'grounding', 'evidence-sharing', 'efficiency', 'coverage-provenance', 'hedge',
+  'checkpoint-hooks', 'hook-wiring',
 ]
 
 const found = fs.readdirSync(TEST_DIR).filter((f) => f.endsWith(SUFFIX)).map((f) => f.slice(0, -SUFFIX.length))

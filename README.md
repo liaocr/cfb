@@ -127,6 +127,10 @@ birth 模式内部再按编译模式三选一（唯一裁决点 `resolveCompileM
 | `maxOutputTokens` | `850` | 恒定，不随输入放大 |
 | `distill.hedgeAfterMs` | `0`（关） | 对冲请求：N ms 内没有 200 响应头就再发一份，先回头者胜；建议 ≥ TTFB p50（约 3000） |
 | `compressSystemPrompt` | `false` | 压缩提示词拆成 system（规则前缀）+ user（原文），字节等价，便于前缀缓存命中；promptVersion 追加 `:sys` |
+| `emitterSelectiveArchive` | `true` | **P1**：归档行后附「工具名 + 参数摘要 + 内容样本 +（选择性）头尾摘录」。只改视图，归档一律原文；关掉 = 只留句柄（A/B 对照腿） |
+| `emitterToolSampleChars` | `120` | **P1**：内容样本长度上限（`0` = 连富化段都不出，最省） |
+| `emitterExcerptChars` | `800` | **P1**：选择性摘录预算。错误现场给「错误行 + 上下文」，最近结果给头尾；中间显式标出省略 |
+| `emitterKeepRecentToolResults` | `2` | **P1**：「最近 N 条工具结果」判定（模型刚跑完、大概率正在引用 ⇒ 先给一眼，省一次回读） |
 | `emitHandleProbeMax` | `2` | **P0-2**：checkpoint 发射前按句柄读回抽样验证此条数；只有「正面证伪」才拦住发射（保持原文）。无读 API 的宿主自动退化为只记录 |
 | `birth.probeTimeoutMs` | `800` | **P0-2**：birth 内存预推句柄的读回验证限时；超时=不可证 ⇒ 原文放行（绝不用没验证过的地址顶替原文） |
 | `birthDeferredClaim` | `false` | **实验**：没赶上 finish 的结果进暂存区、下一轮 pre-step 认领（见「当前状态」缺陷 B）；只认显式 `true` |
@@ -237,6 +241,10 @@ trace 写在 `$DSH_HOME/storages/cot-form-b/trace.log`，一行一条：`[ISO时
 **v11.9 评估态零副作用**（评估态不写 CAS、不改表面，且仍能算出净收益与真 token 水位）；
 **v11.9 句柄读回验证**（发射前抽样按句柄取回；birth 内存预推句柄须先验证，无证据则原文放行）；
 对冲、响应头宽限、缓存友好拆分（均可关）；配置自检；memory 模式的证据账本与有界快照；测试隔离。
+
+**v11.9 P1 工具结果可检索化**：归档行带工具名/参数/样本，错误现场与最近结果附摘录 —— 目标是**压低回看概率**
+（保本点 = 每项平均读回一次，读回粒度比压缩率更决定胜负）。代价口径单列：`enrichChars` 与
+`netSavedIfHandleOnly`，供 A/B 归因。
 
 **只观测、未接管判定**：按剩余窗口的动态门槛（`birth-econ`）、保真度放行门槛（`identifierRecall`）、
 提前到「第一个非 reasoning 块」起火（`birth-window-probe`）—— 等真实 trace 标定。

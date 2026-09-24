@@ -5,6 +5,63 @@
 
 ---
 
+## v11.9.1（2026-09-24）P1 工具结果可检索化 + 钩子级端到端测试
+
+**验证**：1219 通过 / 0 失败 / 1 跳过，**21 套件**（新增 2 套：`checkpoint-hooks` 7 条、`hook-wiring` 5 条）。
+覆盖率（c8 实测，source-map 到源码）：`plugin.js` 84.21% → **95.8%** 行 / 64.24% → 70.6% 分支；
+`emitter.js` **98.64%**；`birth.js` **98.28%**。
+
+### P1 工具结果可检索化（`emitter.js`）
+
+**问题**：归档行此前只有 `[工具结果 seq=N · X 字符 · 原文 art://…]` —— 没有工具名、没有调用参数、没有内容样本
+⇒ 模型看到一排句柄**无从判断哪根有用** ⇒ 只能整块回读。而按保本算术，回读一次的代价 ≈ 把整块原文按全价重新
+吃回上下文（一次性抵消约 50 轮 × 0.02 的缓存收益）⇒ **回看概率比压缩率更决定胜负**。
+
+- 每条归档的工具结果后附一段富化视图（**独立成段**）：`↳ 工具 bash · 参数 {…} · 类别 recent` +
+  `↳ 样本 <单行、限长>` +（选择性）`↳ 摘录（原文 N 字符，错误行 + 上下文 / 头尾）`。
+- ⚠ **格式约束**：句柄行必须**单独成段且逐字不变** —— `flattenCarriedBoard()` 只保留「单行且含 `· 原文 `」的段，
+  把样本挂进同一段会在旧看板被吞并时**连句柄一起丢掉**。有回归测试专门钉住这条。
+- **选择性**：`error`（isError 标记，或**头尾 3500 字符内**出现错误特征 —— 中间夹一句 `error` 不算）⇒
+  附「**错误行 + 上下文**」摘录（不是头尾截断：错误现场几乎总在中部，头尾截断会正好把唯一有价值的行挖掉）；
+  `dump`（低熵：重复行占比 <15%，或超长单行）⇒ **不给摘录**（摘录一坨重复行 = 白花预算）；
+  `recent`（区间内最后 N 条）⇒ 头尾摘录；`plain` ⇒ 只给样本。
+  判定顺序：error → **dump → recent**（dump 必须排在 recent 前）。
+- 新键：`emitterSelectiveArchive`(true) / `emitterToolSampleChars`(120) / `emitterExcerptChars`(800) /
+  `emitterKeepRecentToolResults`(2)；全部进 BOOT。**归档一律仍然原文**（信息不丢铁律不动）。
+- 代价可审计：`ledger-built` 增 `enrichChars / enrichParts / excerpted / errorSeen / dumpSeen /
+  toolResultLensMax / toolResultBuckets`（`<2K / 2–8K / 8–32K / >32K` 四桶直方图，用于标定
+  `maxInlineToolResultChars`）；`emit-net-savings` 增 `enrichChars / netSavedIfHandleOnly`
+  （净收益已扣富化代价，上界单列 ⇒ A/B 能归因「花的视图预算买到了什么」）。
+- 工具名只在调用侧（`tool-call` 块）⇒ 新增 `toolCallsFromSpan()` 建立 `toolCallId → {name,args}` 索引；
+  形状不认识一律跳过（**不猜**：猜错的名字比没有名字更坏）。
+
+### 钩子级端到端测试（新增 2 套）
+
+此前 `plugin.js` 的接线**没有任何测试钉住**（emitter 的单测直接调纯函数，绕过了钩子入口）。现在：
+
+- `test/checkpoint-hooks.selftest.mjs`：**真实 HTTP 夹具 + 真实钩子入口**，7 条。覆盖全链路
+  （llm/stream 触发 early-fire → agent/pre-step 收网 → 合规 `replace` 发射），并逐条断言：
+  ① 工具配对平衡（区间左端=目标 assistant、右端=配对的 tool/result、绝不越过真人 user）；
+  ② 活跃尾部永不被遮蔽；③ 真人原话与归档原文都不许消失；④ 评估态零 CAS 写入 / 零表面改写；
+  ⑤ **读回闭环**（文本里的句柄必须能按同 session 读回原文；**跨 session 读不回 ⇒ 拒发**，真机约束在夹具里同样成立）；
+  ⑥ 形状不认识 ⇒ 整块拒发；⑦ 提纯终局失败 ⇒ 不发射且原文逐字不变。
+- `test/hook-wiring.selftest.mjs`：5 条，专打「只有出错才会走到、于是从来没人走过」的分支：
+  服务获取抛错只降级不阻断、坏形状不包装（原样返回同一个对象）、CAS 写入抛错 ⇒ 原文逐字放行、
+  **主流自己的错误原样抛出**（插件只许降级自己）、birth 评估态零改写零写入。
+
+### 其他
+
+- `.gitignore` 增 `coverage/`（c8 产物不进包）；`MANIFEST.sha256` 重新生成（122 个文件）。
+- `README.md` / `docs/ARCHITECTURE.md` 同步新键、新套件与「评估态零副作用 / 地址必须可读回」两条不变式。
+
+### 仍然做不到（要真机才能收的）
+
+- 句柄**读回成本**与**回看概率**只能在真机采；本轮的 `netSavedIfHandleOnly` 只是给了归因口径；
+- 探针在真机上的语义（读 API 抛错是否等价于「查无此记录」）仍需小流量 A/B 用真 trace 标定；
+- `mode:'search'/'lines'` 的细粒度回读（几百 token 而非整块）依赖宿主侧 `inspect_artifact` 的行为，本机无法验。
+
+---
+
 ## v11.9（2026-09-24）评估态零副作用 + 句柄读回验证
 
 **验证**：1162 通过 / 0 失败 / 1 跳过，19 套件（跳过项同前：T13 需要宿主兄弟包 `dsh-context-memory-bundle`）。

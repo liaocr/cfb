@@ -127,7 +127,7 @@ CAS（原文归档）不在这里：它是宿主注入的 `cmbStore` 服务（`c
 
 ## 6. 测试布局
 
-`verify.mjs` 按 `ORDER` 顺序运行（纯函数层 → 核心 → birth → 持久化/证据 → 集成与观测），每个套件独立进程、独立临时 `DSH_HOME`：
+`verify.mjs` 按 `ORDER` 顺序运行（纯函数层 → 核心 → birth → 持久化/证据 → 集成与观测 → 钩子级端到端），每个套件独立进程、独立临时 `DSH_HOME`：
 
 | 套件 | 覆盖 |
 |---|---|
@@ -138,5 +138,7 @@ CAS（原文归档）不在这里：它是宿主注入的 `cmbStore` 服务（`c
 | birth | birth 主路径（含真实 dsh-llm 不变式校验，找不到宿主安装时用替身并 WARN）、句柄可归因（T34） |
 | optimization / memory-quality / snapshot-invariants | 快照与记忆质量、覆盖不变式 |
 | robustness | 失败语义、CAS 读取与恢复、退役开关不生效、传输层错误形态、trace 审计器、句柄读回探针契约 |
+| checkpoint-hooks | **钩子级端到端**（真实 HTTP + 真实钩子入口）：early-fire → pre-step 收网 → 合规 replace；工具配对平衡、活跃尾部、评估态零副作用、句柄读回闭环、拒发语义 |
+| hook-wiring | 只剩出错才会走到的接线：服务获取抛错、坏形状不包装、CAS 写入抛错、**主流抛错原样抛出** |
 | late-identity / hybrid / grounding / evidence-sharing / efficiency / coverage-provenance | 迟到认领身份、确定性账本、证据共享、效率观测、覆盖与来源 |
 | hedge | 对冲与响应头宽限（本机 HTTP 可控延迟） |

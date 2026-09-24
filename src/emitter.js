@@ -92,6 +92,165 @@ export function toolTextFromEvent(ev) {
 }
 
 /**
+ * ★★ 2026-09-24 P1：让归档行「可检索」★★
+ *
+ * 问题（真机观测）：归档行此前只有 `[工具结果 seq=N · X 字符 · 原文 art://…]` ——
+ *   · 没有工具名、没有调用参数、没有内容样本 ⇒ 模型看到一排句柄，**无从判断哪一根有用**；
+ *   · 而回读一次的代价 ≈ 把整块原文按全价重新吃回上下文（见 docs/AUDIT-V11.5.md 的保本算术）。
+ * 于是「该不该回读」这个决定只能靠猜 ⇒ 回看概率被人为抬高，压缩收益被读回成本吃掉。
+ *
+ * 现在每一条归档的工具结果后面补一段（**独立成段**，不碰句柄行本身）：
+ *
+ *   ↳ 工具 bash · 参数 rg -n "foo" src/
+ *   ↳ 样本 src/foo.js:12: export function foo(… 〔省略 35,800 字符〕
+ *
+ * 要害是**格式约束**：句柄行必须是单独一段且逐字不变 —— `flattenCarriedBoard()` 只保留
+ * 「单行且含 · 原文 」的段，把样本挂在同一段里会在旧看板被吞并时**连句柄一起丢掉**。
+ */
+
+/** 工具结果块的真机形状：`{ type:'tool-result', toolCallId, isError, content:[{type:'text',text}] }`。 */
+export function toolResultMetaFromEvent(ev) {
+  const blocks = ev && ev.data && ev.data.message && ev.data.message.content
+  if (!Array.isArray(blocks)) return null
+  for (const b of blocks) if (b && b.type === 'tool-result') return { toolCallId: b.toolCallId || b.id || null, isError: b.isError === true }
+  return null
+}
+
+/**
+ * 从 span 内的 assistant 消息建立 `toolCallId → { name, args }` 索引。
+ * 工具名不在 tool/result 块里（真机只在 tool-call 块里），所以必须回查调用侧。
+ * 形状不认识 ⇒ 跳过（**绝不猜**：猜错的名字比没有名字更坏）。
+ */
+export function toolCallsFromSpan(events, span) {
+  const out = new Map()
+  if (!Array.isArray(events) || !span) return out
+  for (let i = span.startIdx; i <= span.endIdx; i++) {
+    const ev = events[i], d = ev && ev.raw && ev.raw.data
+    const blocks = d && d.message && Array.isArray(d.message.content) ? d.message.content : null
+    if (!blocks) continue
+    for (const b of blocks) {
+      if (!b || b.type !== 'tool-call') continue
+      const id = b.id || b.toolCallId || null
+      if (!id) continue
+      const args = b.args != null ? b.args : b.arguments
+      out.set(id, { name: typeof b.name === 'string' && b.name ? b.name : null, args })
+    }
+  }
+  return out
+}
+
+/** 压成单行、限长（用于「参数摘要」与「内容样本」，两处都绝不允许换行逃逸）。 */
+export function oneLine(s, max) {
+  const flat = String(s == null ? '' : s).replace(/\s+/g, ' ').trim()
+  if (!(max > 0) || flat.length <= max) return flat
+  return flat.slice(0, Math.max(0, max - 1)) + '…'
+}
+
+/** 参数摘要：只取一层（够模型对上"这是哪次调用"），失败绝不抛。 */
+export function argsSummary(args, max = 96) {
+  if (args == null) return ''
+  if (typeof args === 'string') return oneLine(args, max)
+  try { return oneLine(JSON.stringify(args), max) } catch { return '' }
+}
+
+// 错误特征只扫**头尾**：36K 日志中间夹一句 "error" 不能把整块判成错误现场。
+const ERR_RE = /(?:^|[\s'"`([{<]) ?(?:Error|Exception|Panic|Traceback|FATAL|Fatal|FAIL(?:ED|URE)?|AssertionError|SyntaxError|TypeError|ReferenceError|RangeError|E[A-Z]{2,6}Err(?:or)?|ERR_[A-Z_]+|EACCES|ENOENT|EPERM|EADDRINUSE|denied|refused|not found|no such file)\b/
+
+/**
+ * ★ P1 选择性归档分类（纯函数，无副作用）。
+ *
+ * 判据只影响**视图**（是否附摘录），**不影响归档**：原文一律字节保真进 CAS。
+ * 这么设计是为了同时守住两条约束 —— ①信息不丢（归档永远有全量）；②回看概率（该回看的先给一眼）。
+ *
+ *   error  → 头尾任一出现错误特征 ⇒ 附摘录（错误现场是模型下一步必然要引用的东西）
+ *   recent → 最近的 N 条工具结果 ⇒ 附摘录（模型刚跑完，正在引用）
+ *   dump   → 低熵大块（重复行 / 超长单行 / 日志转储）⇒ 不附摘录，只留样本
+ *   plain  → 其余 ⇒ 不附摘录
+ */
+export function classifyToolResult(o = {}) {
+  const text = String(o.text == null ? '' : o.text)
+  const head = text.slice(0, 2000), tail = text.length > 3500 ? text.slice(-1500) : ''
+  if (o.isError === true || ERR_RE.test(head) || (tail && ERR_RE.test(tail))) return { kind: 'error', excerpt: true }
+  // ⚠ dump 判定必须排在 recent 之前：一坨重复行转储就算刚跑完也不值得占视图预算
+  //   （摘录它 = 白花几百字符买一堆 "repeated log line"）。
+  const sample = text.slice(0, 20000)
+  const lines = sample.split('\n')
+  if (lines.length >= 40) {
+    const uniq = new Set(lines.map((l) => l.trim()))
+    if (uniq.size / lines.length < 0.15) return { kind: 'dump', excerpt: false }
+  } else if (lines.length <= 3 && text.length > 8000) return { kind: 'dump', excerpt: false }
+  if (o.recent === true) return { kind: 'recent', excerpt: true }
+  return { kind: 'plain', excerpt: false }
+}
+
+/**
+ * 头尾摘录：中间用显式省略标记挖空，并写明**可按句柄取回**。
+ * ⚠ 这是**视图**构造，不是归档 —— 归档永远拿原文（见 buildLedger 的 toView 边界注释）。
+ */
+export function excerptText(text, budget) {
+  const t = String(text == null ? '' : text)
+  if (!Number.isFinite(budget) || budget <= 0 || t.length <= budget) return null
+  const headLen = Math.max(0, Math.floor(budget * 0.6))
+  const tailLen = Math.max(0, budget - headLen)
+  const head = t.slice(0, headLen)
+  const tail = tailLen > 0 ? t.slice(-tailLen) : ''
+  const elided = t.length - head.length - tail.length
+  return head + '\n〔… 省略 ' + elided + ' 字符；原文可按句柄取回 …〕\n' + tail
+}
+
+/**
+ * ★ 错误摘录：**错误行 + 少量上下文**，而不是头尾截断。
+ *
+ * 血泪理由：错误现场几乎总在原文**中部**（前面是进度输出、后面是收尾输出），
+ * 头尾截断会正好把唯一有价值的那几行挖掉 —— 那样摘录不但没用，还白占视图预算。
+ */
+export function errorExcerpt(text, budget) {
+  const lines = String(text == null ? '' : text).split('\n')
+  const hits = []
+  for (let i = 0; i < lines.length && hits.length < 40; i++) if (ERR_RE.test(lines[i])) hits.push(i)
+  if (!hits.length) return null
+  const picked = new Map()
+  for (const h of hits) for (let j = Math.max(0, h - 2); j <= Math.min(lines.length - 1, h + 3); j++) picked.set(j, lines[j])
+  const idx = [...picked.keys()].sort((a, b) => a - b)
+  let chars = 0, prev = null
+  const out = []
+  for (const i of idx) {
+    if (prev !== null && i !== prev + 1) {
+      const skipped = i - prev - 1
+      const mark = '〔… 省略 ' + skipped + ' 行 …〕'
+      if (chars + mark.length > budget) break
+      out.push(mark); chars += mark.length + 1
+    }
+    const l = lines[i]
+    if (chars + l.length > budget) { out.push('〔… 余下 ' + (idx.length - out.length) + ' 行已省略，可按句柄取回 …〕'); break }
+    out.push(l); chars += l.length + 1; prev = i
+  }
+  return out.length ? out.join('\n') : null
+}
+
+/** 一条归档工具结果的富化段（样本 + 可选摘录）。返回 null ⇒ 不附加任何东西。 */
+export function enrichArchivedToolLine(o = {}) {
+  const { seq, text, name, args, kind, excerpt, sampleChars, excerptChars } = o
+  const bits = []
+  if (name) bits.push('工具 ' + oneLine(name, 40))
+  const a = argsSummary(args, 96)
+  if (a) bits.push('参数 ' + a)
+  if (kind) bits.push('类别 ' + kind)
+  const lines = []
+  if (bits.length) lines.push('↳ ' + bits.join(' · '))
+  const head = oneLine(text, sampleChars > 0 ? sampleChars : 0)
+  if (head) lines.push('↳ 样本 ' + head)
+  if (excerpt) {
+    // 错误现场走「命中行 + 上下文」；其余走头尾。两者都是视图，归档一律原文。
+    const isErr = kind === 'error'
+    const ex = isErr ? (errorExcerpt(text, excerptChars) || excerptText(text, excerptChars))
+      : excerptText(text, excerptChars)
+    if (ex) lines.push('↳ 摘录（原文 ' + String(text).length + ' 字符，' + (isErr ? '错误行 + 上下文' : '头尾') + '）\n' + ex)
+  }
+  return lines.length ? lines.join('\n') : null
+}
+
+/**
  * ★ 2026-09-23 覆盖完整性：整段 replace 遮蔽的不只是 reasoning 与 tool/result。
  *   被吞并的旧看板正文、区间内每条 assistant 的**可见回答**（text 块）、tool-call 的
  *   name+args 此前都不在 ledger 里 ⇒ replace 后从模型视野里凭空消失（哨兵复现：
@@ -289,6 +448,27 @@ export async function buildLedger(deps) {
     viewSaved += c.saved
     return c.text
   }
+  // ★ P1 选择性视图：富化段**独立成段**，句柄行保持单行逐字不变（否则 flattenCarriedBoard 会丢句柄）
+  const sampling = deps.emitToolSample !== false
+  const sampleChars = Number.isFinite(deps.toolSampleChars) ? deps.toolSampleChars : 120
+  const excerptChars = Number.isFinite(deps.excerptChars) ? deps.excerptChars : 800
+  const selective = deps.selectiveArchive !== false
+  const callMap = deps.toolCalls instanceof Map ? deps.toolCalls : null
+  let excerpted = 0, errorSeen = 0, dumpSeen = 0, enrichChars = 0, enrichParts = 0
+  const enrichOf = (tr, text) => {
+    if (!sampling) return null
+    const meta = callMap && tr.toolCallId ? callMap.get(tr.toolCallId) : null
+    const cls = selective ? classifyToolResult({ text, isError: tr.isError, recent: tr.recent }) : { kind: null, excerpt: false }
+    if (cls.kind === 'error') errorSeen++
+    if (cls.kind === 'dump') dumpSeen++
+    if (cls.excerpt) excerpted++
+    const enrich = enrichArchivedToolLine({
+      seq: tr.seq, text, name: (meta && meta.name) || tr.name || null, args: meta && meta.args,
+      kind: cls.kind, excerpt: cls.excerpt, sampleChars, excerptChars,
+    })
+    if (enrich) { enrichChars += enrich.length; enrichParts++ }
+    return enrich
+  }
   for (const tr of toolResults) {
     const text = String(tr && tr.text != null ? tr.text : '')
     if (text.length <= maxInlineChars) {
@@ -298,6 +478,8 @@ export async function buildLedger(deps) {
     }
     if (planOnly) {
       parts.push(handleLine('工具结果', tr.seq, text, HANDLE_PLACEHOLDER))
+      const planEnrich = enrichOf(tr, text)
+      if (planEnrich) parts.push(planEnrich)
       slots.push({ slotKey: slots.length, seq: tr.seq, kind: null, text })
       archived++
       continue
@@ -309,6 +491,8 @@ export async function buildLedger(deps) {
     }
     if (handle) {
       parts.push(handleLine('工具结果', tr.seq, text, handle))
+      const enrich = enrichOf(tr, text)
+      if (enrich) parts.push(enrich)
       archived++
     } else {
       // 归档失败 ⇒ 原文内联（信息不丢铁律），但仍走视图清洗
@@ -324,10 +508,15 @@ export async function buildLedger(deps) {
     // ★ toolResultLens：逐项长度分布（升序，最多留 32 项）。没有它，maxInlineToolResultChars
     //   这个门槛就只能拍脑袋 —— 原先只有总和，看不出「2000 以下 vs 以上」各有多少项。
     const lens = toolResults.map((x) => String(x && x.text != null ? x.text : '').length).sort((a, b) => a - b)
-    trace('ledger-built', { inlined, archived, archiveFailed, chars: body.length, ledgerChars: body.length, distilledChars: String(distilled == null ? '' : distilled).trim().length, toolResultChars: toolResults.reduce((n, x) => n + String(x && x.text != null ? x.text : '').length, 0), toolResultItems: toolResults.length, toolResultLens: lens.slice(0, 32).join(','), toolResultLensTruncated: lens.length > 32, archivePending: slots.length, planOnly, summaryFirst: true, viewSaved, carryChars, carryInlineChars, carryOverflow, carryBudgetOverflow, carryItemOversize, maxCarryChars })
+    // 分桶直方图：maxInlineToolResultChars(2000) 这个门槛此前**无从标定** —— 只有总和，看不出
+    // 「多少项在门槛以下 / 多少项在 8K 以上」。四个桶正好对应四类处置（内联 / 归档 / 归档+摘录 / 大块）。
+    const buck = (n) => (n <= 2000 ? 0 : n <= 8000 ? 1 : n <= 32000 ? 2 : 3)
+    const buckets = [0, 0, 0, 0]
+    for (const n of lens) buckets[buck(n)]++
+    trace('ledger-built', { inlined, archived, archiveFailed, chars: body.length, ledgerChars: body.length, distilledChars: String(distilled == null ? '' : distilled).trim().length, toolResultChars: toolResults.reduce((n, x) => n + String(x && x.text != null ? x.text : '').length, 0), toolResultItems: toolResults.length, toolResultLens: lens.slice(0, 32).join(','), toolResultLensTruncated: lens.length > 32, toolResultLensMax: lens.length ? lens[lens.length - 1] : 0, toolResultBuckets: buckets.join('/'), excerpted, errorSeen, dumpSeen, enrichChars, enrichParts, archivePending: slots.length, planOnly, summaryFirst: true, viewSaved, carryChars, carryInlineChars, carryOverflow, carryBudgetOverflow, carryItemOversize, maxCarryChars })
     trace('ledger-imperative', { verdict: imp.verdict, count: imp.count, ids: imp.ids.join(',') })
   }
-  return { text: body, inlined, archived, archiveFailed, slots, planOnly }
+  return { text: body, inlined, archived, archiveFailed, slots, planOnly, enrichChars, enrichParts }
 }
 
 /**
@@ -628,6 +817,13 @@ export async function runPreStepEmit(deps) {
         t('emit-no-tool-extractor', { count: toolResultEvents })
         return { emitted: false, reason: 'tool-result-unreadable' }
       }
+      // ★ P1：工具名只在调用侧（tool-call 块）里 ⇒ 先建索引，再逐条回查
+      const callMap = toolCallsFromSpan(events, span)
+      const seqs = []
+      for (let i = span.startIdx; i <= span.endIdx; i++) if (events[i].type === 'tool/result') seqs.push(events[i].seq)
+      // 「最近 N 条」= 区间内最后的 N 条（模型刚跑完，大概率正在引用）
+      const keepRecent = Number.isFinite(cfg.emitterKeepRecentToolResults) ? Math.max(0, cfg.emitterKeepRecentToolResults) : 2
+      const recentSeqs = new Set(keepRecent > 0 ? seqs.slice(-keepRecent) : [])
       for (let i = span.startIdx; i <= span.endIdx; i++) {
         const ev = events[i]
         if (ev.type !== 'tool/result') continue
@@ -636,7 +832,13 @@ export async function runPreStepEmit(deps) {
           t('emit-tool-result-unreadable', { seq: ev.seq })
           return { emitted: false, reason: 'tool-result-unreadable' }
         }
-        toolResults.push({ seq: ev.seq, text: String(text) })
+        const meta = toolResultMetaFromEvent(ev.raw)
+        const call = meta && meta.toolCallId ? callMap.get(meta.toolCallId) : null
+        toolResults.push({
+          seq: ev.seq, text: String(text),
+          name: (call && call.name) || null, toolCallId: meta ? meta.toolCallId : null,
+          isError: !!(meta && meta.isError), recent: recentSeqs.has(ev.seq),
+        })
       }
     }
     // ⛔ 覆盖完整性（2026-09-23）：被吞并旧看板 / 可见回答 / 工具调用参数也不许凭空消失。
@@ -649,6 +851,12 @@ export async function runPreStepEmit(deps) {
     const ledgerDeps = {
       distilled: pending.text, toolResults, carry,
       maxInlineChars: cfg.maxInlineToolResultChars, maxCarryChars: cfg.maxCarryChars, archive, trace: t,
+      // ★ P1：让归档行可检索（工具名 + 参数 + 样本 + 选择性摘录）
+      toolCalls: toolCallsFromSpan(events, span),
+      selectiveArchive: cfg.emitterSelectiveArchive !== false,
+      emitToolSample: cfg.emitterToolSampleChars !== 0,
+      toolSampleChars: cfg.emitterToolSampleChars,
+      excerptChars: cfg.emitterExcerptChars,
     }
     const plan = await buildLedger({ ...ledgerDeps, planOnly: true })
     // Never replace with a board that is larger or only trivially smaller than the text it hides.
@@ -666,6 +874,10 @@ export async function runPreStepEmit(deps) {
     t('emit-net-savings', {
       sourceChars, spanSourceChars, sourceEstimateFallback, ledgerChars: plan.text.length, netSavedChars, minSavedChars,
       sourceUnit: 'chars-not-tokenizer-tokens', archivePending: plan.slots.length,
+      // ★ P1 代价可见：富化段花掉的视图预算（买「模型自己判断要不要回读」）。
+      //   净收益已扣掉它；netSavedIfHandleOnly 给出「完全不做富化」的上界，供 A/B 归因。
+      enrichChars: plan.enrichChars || 0, enrichParts: plan.enrichParts || 0,
+      netSavedIfHandleOnly: netSavedChars + (plan.enrichChars || 0),
       archiveMode: cfg.dryRun === true ? 'simulated' : 'planned',
       ...(Number.isFinite(pressure.usedTokens) ? { usedTokens: pressure.usedTokens } : {}), usedTokensSource: pressure.source,
     })

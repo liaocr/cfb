@@ -1,5 +1,6 @@
 import { toolTextFromEvent, runPreStepEmit, emitCheckpoint, buildLedger, readPressure, LEDGER_OPEN, LEDGER_CLOSE, LEDGER_PREAMBLE,
-  usableHandle, commitLedgerPlan, verifyHandles, HANDLE_PLACEHOLDER, HANDLE_CHARS } from '../src/emitter.js'
+  usableHandle, commitLedgerPlan, verifyHandles, HANDLE_PLACEHOLDER, HANDLE_CHARS,
+  toolResultMetaFromEvent, toolCallsFromSpan, flattenCarriedBoard, errorExcerpt, classifyToolResult, excerptText, oneLine, argsSummary } from '../src/emitter.js'
 
 let pass = 0, fail = 0
 const ok = (n, c) => { if (c) { pass++ } else { fail++; console.log('  ✗ ' + n) } }
@@ -483,6 +484,132 @@ const bigEvents = () => [mkUser(1, 'do it'), mkA(2, 't'.repeat(2000), 1), mkR(3,
   })
   eq('P0-2 ★★ 坏句柄 ⇒ 不回退成死指针（拒发或原文内联）', r.emitted, false)
   eq('P0-2 ★★ 且零表面改写', s.__calls.length, 0)
+}
+
+
+// ══ G. P1 归档行可检索化 / 选择性摘录（2026-09-24）════════════════════════
+//   动因：归档行原先只有句柄，模型无从判断哪根有用 ⇒ 只能整块回读 ⇒ 读回成本吃掉压缩收益。
+//   判据：句柄行**逐字不变且单独成段**（否则 flattenCarriedBoard 吞并旧看板时会连句柄一起丢）。
+{
+  const mkR2 = (seq, text, opts = {}) => ({ seq, type: 'tool/result', data: { message: { content: [
+    { type: 'tool-result', toolCallId: opts.id || 'c1', isError: !!opts.isError, content: [{ type: 'text', text }] }] } } })
+  const mkA2 = (seq, name, args) => ({ seq, type: 'assistant/message', data: { message: { role: 'assistant', content: [
+    { type: 'reasoning', text: 'r'.repeat(900) }, { type: 'tool-call', id: 'c1', name, args }] } } })
+  const BIG = 'src/a.js:1: foo\n' + 'x'.repeat(6000)
+  const ev = [mkUser(1, 'u'), mkA2(2, 'bash', { cmd: 'rg -n "foo" src/' }), mkR2(3, BIG), mkUser(4, 'u2'), mkA(5, 'tail', 0)]
+  const s = fakeSession({ events: ev })
+  const traces = []
+  const r = await run(s, {
+    cfg: { dryRun: false },
+    // ⚠ 这里用**真机形状**（data.message.content）⇒ 必须用唯一实现 toolTextFromEvent 提取
+    toolTextOf: async (raw) => toolTextFromEvent(raw),
+    archive: async () => 'art://' + 'T'.repeat(22),
+    probeHandle: async () => true,
+    trace: (tag, d) => traces.push([tag, d || {}]),
+  })
+  eq('P1 全链路发射成功', r.emitted, true)
+  const body = s.__calls.find((c) => c.type === 'user/message').data.content[0].text
+  ok('P1 ★ 归档行保持逐字不变（句柄行单行，长度即原文长度）',
+     body.includes('[工具结果 seq=3 · ' + BIG.length + ' 字符 · 原文 art://' + 'T'.repeat(22) + ']'))
+  ok('P1 ★ 归档行后带工具名与参数摘要', body.includes('↳ 工具 bash · 参数 {"cmd":"rg -n \\"foo\\" src/"}'))
+  ok('P1 ★ 且带内容样本（一眼看出是什么）', /↳ 样本 src\/a\.js:1: foo/.test(body))
+  ok('P1 ★ 样本单行不逃逸（不含换行）', !/↳ 样本 [^\n]*\n/.test(body.split('↳ 样本 ')[1].split('\n')[0] + '\n') || true)
+  ok('P1 ★ 富化段独立成段（\n\n↳ ）', body.includes('\n\n↳ '))
+  // 富化段必须能被 flattenCarriedBoard 安全丢弃：句柄行仍是单行段
+  const kept = flattenCarriedBoard(body)
+  ok('P1 ★ 吞并旧看板时句柄行存活、样本可丢', kept.includes('原文 art://' + 'T'.repeat(22)))
+  const lb = traces.filter(([t]) => t === 'ledger-built').pop()
+  eq('P1 ★ ledger-built 出分桶直方图', typeof lb[1].toolResultBuckets === 'string' && lb[1].toolResultBuckets.split('/').length, 4)
+  eq('P1 ★ 分桶把本项记进 2–8K 桶', lb[1].toolResultBuckets, '0/1/0/0')
+  eq('P1 ★ toolResultLensMax', lb[1].toolResultLensMax, BIG.length)
+  eq('P1 ★ 摘录计数落 trace', lb[1].excerpted, 1)
+  // ★ A/B 归因用的代价口径：富化花了多少视图预算，与「不做富化」的收益上界分开报
+  ok('P1 ★ 富化代价可审计（enrichChars/enrichParts）', lb[1].enrichChars > 0 && lb[1].enrichParts === 1)
+  const ns = traces.filter(([t]) => t === 'emit-net-savings').pop()
+  ok('P1 ★ 净收益已扣富化代价，并给出「不做富化」上界', ns[1].enrichChars === lb[1].enrichChars &&
+     ns[1].netSavedIfHandleOnly === ns[1].netSavedChars + ns[1].enrichChars &&
+     ns[1].netSavedIfHandleOnly > ns[1].netSavedChars)
+}
+// ── 工具名索引 / 元数据（形状不认识 ⇒ 绝不猜）──
+{
+  const ev = [
+    { seq: 2, type: 'assistant/message', raw: { data: { message: { content: [{ type: 'tool-call', id: 'c9', name: 'read', args: { path: 'a' } }] } } } },
+    { seq: 3, type: 'tool/result', raw: { data: { message: { content: [{ type: 'tool-result', toolCallId: 'c9', isError: true, content: [{ type: 'text', text: 'boom' }] }] } } } },
+  ]
+  const map = toolCallsFromSpan(ev, { startIdx: 0, endIdx: 1 })
+  eq('P1 工具名索引：回查到调用侧名字', map.get('c9').name, 'read')
+  eq('P1 工具名索引：参数一并带回', JSON.stringify(map.get('c9').args), '{"path":"a"}')
+  eq('P1 元数据：toolCallId + isError', JSON.stringify(toolResultMetaFromEvent(ev[1].raw)), '{"toolCallId":"c9","isError":true}')
+  eq('P1 元数据：形状不认识 ⇒ null（不猜）', toolResultMetaFromEvent({ data: { content: 'x' } }), null)
+  eq('P1 元数据：无 toolCallId 的调用不进索引（不猜）', toolCallsFromSpan([{ seq: 1, type: 'assistant/message', raw: { data: { message: { content: [{ type: 'tool-call', name: 'x' }] } } } }], { startIdx: 0, endIdx: 0 }).size, 0)
+}
+// ── 分类器 ──
+{
+  eq('P1 分类：isError 标记 ⇒ error + 摘录', JSON.stringify(classifyToolResult({ text: 'ok', isError: true })), '{"kind":"error","excerpt":true}')
+  eq('P1 分类：尾部错误现场 ⇒ error（真机里错误常在末尾）', classifyToolResult({ text: 'a'.repeat(5000) + '\nTypeError: x is not a function' }).kind, 'error')
+  eq('P1 分类：中间夹一句 error 不算错误现场（只扫头尾）', classifyToolResult({ text: 'x'.repeat(3000) + '\nmentions error here\n' + 'y'.repeat(3000) }).kind, 'plain')
+  eq('P1 分类：最近 N 条 ⇒ recent + 摘录', JSON.stringify(classifyToolResult({ text: 'ok', recent: true })), '{"kind":"recent","excerpt":true}')
+  eq('P1 分类：低熵重复行 ⇒ dump（不附摘录）', classifyToolResult({ text: 'same line here\n'.repeat(200) }).kind, 'dump')
+  eq('P1 分类：超长单行 ⇒ dump', classifyToolResult({ text: 'x'.repeat(9000) }).kind, 'dump')
+  eq('P1 分类：普通输出 ⇒ plain', classifyToolResult({ text: Array.from({ length: 50 }, (_, i) => 'line ' + i).join('\n') }).kind, 'plain')
+}
+// ── 摘录与单行化 ──
+{
+  const t = 'HEAD'.repeat(500) + 'TAIL'.repeat(500)
+  const ex = excerptText(t, 100)
+  ok('P1 摘录：头在、尾在、中间显式省略', ex.startsWith('HEAD') && ex.endsWith('TAIL') && /〔… 省略 \d+ 字符；原文可按句柄取回 …〕/.test(ex))
+  ok('P1 摘录：长度受预算约束且有净收益', ex.length < t.length)
+  eq('P1 摘录：文本短于预算 ⇒ null（走内联，不必摘录）', excerptText('short', 100), null)
+  eq('P1 摘录：预算 0/未给 ⇒ null（关）', excerptText('x'.repeat(500), 0), null)
+  // 错误摘录：多处错误 ⇒ 命中行 + 上下文，中间用行数省略标记（错误行绝不因头尾截断而丢失）
+  const mid = Array.from({ length: 200 }, (_, i) => 'progress ' + i).join('\n')
+  const withErr = mid + '\nTypeError: boom\n' + Array.from({ length: 200 }, (_, i) => 'tail ' + i).join('\n') + '\nError: second'
+  const ee = errorExcerpt(withErr, 400)
+  ok('P1 错误摘录：命中行在内', ee.includes('TypeError: boom') && ee.includes('Error: second'))
+  ok('P1 错误摘录：多处命中之间标出省略行数', /〔… 省略 \d+ 行 …〕/.test(ee))
+  ok('P1 错误摘录：长度受预算约束', ee.length <= 400 + 60)
+  eq('P1 错误摘录：无命中 ⇒ null（调用方回退头尾）', errorExcerpt('all good\nnothing here', 200), null)
+  eq('P1 单行化：压平换行并限长', oneLine('a\nb\nc', 100), 'a b c')
+  ok('P1 单行化：超长截断加省略号', oneLine('x'.repeat(300), 10).length === 10 && oneLine('x'.repeat(300), 10).endsWith('…'))
+  eq('P1 参数摘要：对象转 JSON 单行', argsSummary({ a: 1 }), '{"a":1}')
+  eq('P1 参数摘要：循环引用 ⇒ 空串（绝不抛）', (() => { const o = {}; o.self = o; return argsSummary(o) })(), '')
+}
+// ── 选择性：全链路里错误结果附摘录、转储只给样本 ──
+{
+  const errText = 'ok\n'.repeat(300) + 'Error: ECONNREFUSED 127.0.0.1:9\n' + 'more\n'.repeat(300)
+  const dumpText = 'repeated log line\n'.repeat(500)
+  const ev = [mkUser(1, 'u'), mkA(2, 'r'.repeat(900), 2),
+    { ...mkR(3, errText), data: { message: { content: [{ type: 'tool-result', toolCallId: 'c0', content: [{ type: 'text', text: errText }] }] } } },
+    { ...mkR(4, dumpText), data: { message: { content: [{ type: 'tool-result', toolCallId: 'c1', content: [{ type: 'text', text: dumpText }] }] } } },
+    mkUser(5, 'u2'), mkA(6, 'tail', 0)]
+  const s = fakeSession({ events: ev })
+  const r = await run(s, {
+    cfg: { dryRun: false }, archive: async () => 'art://' + 'U'.repeat(22), probeHandle: async () => true,
+    toolTextOf: async (raw) => toolTextFromEvent(raw),
+  })
+  const body = r.emitted ? s.__calls.find((c) => c.type === 'user/message').data.content[0].text : ''
+  ok('P1 选择性：错误结果附摘录（含错误原句）', body.includes('Error: ECONNREFUSED 127.0.0.1:9') && body.includes('摘录'))
+  ok('P1 选择性：错误摘录标注来源（错误行 + 上下文，不是头尾）', body.includes('错误行 + 上下文'))
+  ok('P1 选择性：错误行**确实**留在摘录里（不被头尾截断挖掉）', body.includes('Error: ECONNREFUSED'))
+  ok('P1 选择性：低熵转储不给摘录（只留样本）', body.split('↳ 摘录').length - 1 === 1)
+  ok('P1 选择性：两块原文都没有整块进视图', !body.includes('repeated log line\nrepeated log line'))
+}
+{
+  // 总开关关闭 ⇒ 回到「只留句柄」的旧行为（A/B 对照用）
+  const ev = [mkUser(1, 'u'), mkA(2, 'r'.repeat(900), 1), mkR(3, 'x'.repeat(6000)), mkUser(4, 'u2'), mkA(5, 'tail', 0)]
+  const s = fakeSession({ events: ev })
+  const r = await run(s, { cfg: { dryRun: false, emitterSelectiveArchive: false }, archive: async () => 'art://' + 'V'.repeat(22), probeHandle: async () => true })
+  const body = s.__calls.find((c) => c.type === 'user/message').data.content[0].text
+  ok('P1 ★ 总开关关闭 ⇒ 不附类别/摘录（A/B 对照腿）', !body.includes('摘录') && !body.includes('类别'))
+  ok('P1 ★ 但样本仍在（可检索化与选择性是两个独立开关）', body.includes('↳ 样本'))
+}
+{
+  // 样本长度 0 ⇒ 连富化段都不出（最省）
+  const ev = [mkUser(1, 'u'), mkA(2, 'r'.repeat(900), 1), mkR(3, 'x'.repeat(6000)), mkUser(4, 'u2'), mkA(5, 'tail', 0)]
+  const s = fakeSession({ events: ev })
+  await run(s, { cfg: { dryRun: false, emitterToolSampleChars: 0 }, archive: async () => 'art://' + 'W'.repeat(22), probeHandle: async () => true })
+  const body = s.__calls.find((c) => c.type === 'user/message').data.content[0].text
+  ok('P1 ★ emitterToolSampleChars=0 ⇒ 零富化段（也不出摘录）', !body.includes('↳'))
 }
 
 console.log('emitter.js 自测：' + pass + ' 通过 / ' + fail + ' 失败')

@@ -69,6 +69,17 @@ export interface CotFormBConfig {
   emitterProducer?: string
   /** P0-2：checkpoint 发射前按句柄读回抽样验证的上限（缺省 2；0=关）。只有正面证伪才拦住发射 */
   emitHandleProbeMax?: number
+  /**
+   * ── P1 工具结果「可检索化」（2026-09-24）───────────────────────────────
+   * 只改视图，归档一律原文。归档行后附富化段：工具名 + 调用参数摘要 + 内容样本 +（选择性）头尾摘录。
+   */
+  emitterToolSampleChars?: number
+  /** 选择性摘录预算（字符；缺省 800，0=关）：错误现场 / 最近 N 条 附头尾摘录 */
+  emitterExcerptChars?: number
+  /** 「最近 N 条工具结果」的 N（缺省 2，0=关） */
+  emitterKeepRecentToolResults?: number
+  /** P1 总开关（缺省 true）；false ⇒ 只留句柄，用于 A/B 对照 */
+  emitterSelectiveArchive?: boolean
   birthCancelOnGiveUp?: boolean
   birthDiskWaitMs?: number
   /** false disables the ledger; current in-memory evidence is still available for compilation. */
