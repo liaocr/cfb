@@ -64,9 +64,6 @@ const mkCfg = (over = {}) => Object.assign({
 //   $DSH_HOME 推导 > 常见全局安装位置。全部失败 ⇒ 下面 catch 里 WARN 并按替身继续
 //   （本来就是 try/catch 可选加载，测试不会因此挂）。
 let listener = null
-const DSH_HOME_DIR = process.env.DSH_HOME && String(process.env.DSH_HOME).trim()
-  ? String(process.env.DSH_HOME).replace(/[\\/]+$/, '')
-  : ((process.env.USERPROFILE || process.env.HOME || '') + '/.dsh')
 function findDshLlm() {
   const cands = []
   if (process.env.DSH_LLM_DIR) cands.push(String(process.env.DSH_LLM_DIR))
@@ -338,7 +335,10 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
   const cands = []
   if (process.env.CMB_STORE_PATH) cands.push(process.env.CMB_STORE_PATH)
   cands.push(new URL('../../dsh-context-memory-bundle/store/dshb-store.js', import.meta.url).href)
-  if (process.env.DSH_HOME) cands.push(path.join(process.env.DSH_HOME, 'profiles/web/node_modules/@dsh-external/dsh-context-memory-bundle/store/dshb-store.js'))
+  // verify.mjs 会把 DSH_HOME 换成临时目录，原值经 CFB_REAL_DSH_HOME 传入（只读探测用）
+  for (const h of [process.env.CFB_REAL_DSH_HOME, process.env.DSH_HOME]) {
+    if (h && String(h).trim()) cands.push(path.join(String(h).trim(), 'profiles/web/node_modules/@dsh-external/dsh-context-memory-bundle/store/dshb-store.js'))
+  }
   cands.push(path.join(os.homedir(), '.dsh', 'profiles/web/node_modules/@dsh-external/dsh-context-memory-bundle/store/dshb-store.js'))
   let found = null
   for (const c of cands) {

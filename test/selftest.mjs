@@ -1029,7 +1029,8 @@ async function test22() {
   {
     const sid = 'cover-22-persist-' + Date.now()
     markCovered(sid, 31442, 26)
-    const f = path.join(os.homedir(), '.dsh', 'storages', 'cot-form-b', 'cover.json')
+    // 与生产同源：cover.json 走 $DSH_HOME（verify.mjs 为每个套件隔离临时 home）
+    const f = path.join(String(process.env.DSH_HOME || '').trim() || path.join(os.homedir(), '.dsh'), 'storages', 'cot-form-b', 'cover.json')
     let onDisk = null
     try { onDisk = JSON.parse(fs.readFileSync(f, 'utf8')) } catch {}
     ok('22.10 ★★ 覆盖水位落盘（TTL 只清内存，不清归档关系）',

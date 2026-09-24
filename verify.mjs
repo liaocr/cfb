@@ -2,16 +2,20 @@
 /**
  * verify.mjs —— 一条命令跑完本包**全部**自测。
  *
- *   node verify.mjs            跑全部（18 个套件）
+ *   node verify.mjs            跑全部套件（清单见下方 SUITES）
  *   node verify.mjs --json     机器可读输出
  *
  * 退出码 0 = 所有套件通过；非 0 = 有失败（并逐条列出）。
  * ⚠ 跑不起来的套件报 SKIP，**绝不**报 PASS —— 样本 != 总体。
  *
+ * 隔离：每个套件在**独立的临时 DSH_HOME** 里跑，跑完即删 ⇒ 自测绝不写真实 ~/.dsh。
+ *   原 DSH_HOME（若有）经 CFB_REAL_DSH_HOME 传给套件，仅用于**只读**探测宿主兄弟包。
+ *
  * 纯 Node 内置模块，无第三方依赖，无硬编码路径 ⇒ 在任何机器/容器里都能跑。
  */
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -45,7 +49,12 @@ const rows = []
 for (const s of SUITES) {
   const f = path.join(HERE, s)
   if (!fs.existsSync(f)) { rows.push({ suite: s, status: 'SKIP', note: 'file missing', pass: 0, fail: 0 }); continue }
-  const r = spawnSync(process.execPath, [f], { encoding: 'utf8', timeout: 300000, cwd: HERE })
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-verify-home-'))
+  const env = { ...process.env, DSH_HOME: home }
+  if (process.env.DSH_HOME && String(process.env.DSH_HOME).trim()) env.CFB_REAL_DSH_HOME = process.env.DSH_HOME
+  let r
+  try { r = spawnSync(process.execPath, [f], { encoding: 'utf8', timeout: 300000, cwd: HERE, env }) }
+  finally { fs.rmSync(home, { recursive: true, force: true }) }
   const out = (r.stdout || '') + (r.stderr || '')
   if (r.error) { rows.push({ suite: s, status: 'SKIP', note: String(r.error.message).slice(0, 100), pass: 0, fail: 0 }); continue }
   // 各套件的计数格式不同，逐个认；认不出就不报数（绝不猜）
