@@ -189,6 +189,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       const result = evaluateProduct(b ? read(b) : null, c ? read(c) : null, a ? read(a) : null)
       if (output) save(output, result); else console.log(JSON.stringify(result, null, 2))
       if (result.status !== '通过') process.exitCode = result.status === '未验收' ? 2 : 1
-    } else throw Error('Usage: replay.mjs inspect VIEW [OUT] | capture TRACE STORE_ADAPTER OUT | run CAPTURE CONFIG MODULE_DIR EMPTY_HOME OUT [baseline] | evaluate [BASELINE CANDIDATE AUDIT OUT]')
+    } else throw Error('Usage: node tools/replay.mjs inspect VIEW [OUT] | capture TRACE STORE_ADAPTER OUT | run CAPTURE CONFIG MODULE_DIR EMPTY_HOME OUT [baseline] | evaluate [BASELINE CANDIDATE AUDIT OUT]')
   } catch (e) { console.error(e.message); process.exitCode = 2 }
 }
