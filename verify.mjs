@@ -73,7 +73,7 @@ if (json) {
   console.log('')
   for (const r of rows) {
     const tag = r.status === 'PASS' ? 'PASS' : (r.status === 'SKIP' ? 'SKIP' : 'FAIL')
-    console.log('  ' + tag.padEnd(5) + r.suite.padEnd(34) + r.note)
+    console.log('  ' + tag.padEnd(5) + r.suite.padEnd(40) + r.note)
   }
   const tp = rows.reduce((a, r) => a + r.pass, 0)
   const tf = rows.reduce((a, r) => a + r.fail, 0)
