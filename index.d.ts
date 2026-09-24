@@ -65,7 +65,7 @@ export interface CotFormBConfig {
   keepTail?: number
   pluginName?: string
   maxInlineToolResultChars?: number
-  staticMinRawChars?: number
+  staticMinRawChars?: number | null
   emitterProducer?: string
   /** P0-2：checkpoint 发射前按句柄读回抽样验证的上限（缺省 2；0=关）。只有正面证伪才拦住发射 */
   emitHandleProbeMax?: number
@@ -105,22 +105,40 @@ export interface CotFormBConfig {
   econTemplateChars?: number
   /** R 回落值（取不到每轮增量时用）。默认 60（2026-09-24 用户拍板） */
   econR?: number
-  econCharsPerTurn?: number
+  econCharsPerTurn?: number | null
   birthArchive?: boolean
   birthArchiveTimeoutMs?: number
   /** P0-2：内存预推句柄（deriveArtHandle）的读回验证限时（ms，缺省 800）。超时=不可证 ⇒ 原文放行 */
   birthHandleProbeTimeoutMs?: number
   birthMinSavedChars?: number
-  /** 归档句柄是否拼进正文。默认 true */
+  /**
+   * @deprecated v11.10 退役：2026-09-18 起句柄绝不进模型可见文本，本键早已无任何效果。
+   * 配置里出现时进 BOOT 的 retiredOptions，并从生效配置中删除。
+   */
   birthHandleInText?: boolean
+  /** v11.10（opt-in）：正数 ⇒ 按 token 估算判定「值得压缩」，完全接管 birthMinChars。缺省 null（仍按字符） */
+  birthMinTokens?: number | null
+  /** v11.10 token 闸门（缺省 true）：字符净省达标但估算 token 净省 < max(1, birthMinSavedTokens) ⇒ 原文放行（why=no-token-gain） */
+  birthTokenGate?: boolean
+  /** v11.10：token 闸门的最小估算净省（缺省 0 ⇒ 按 1 计，即「token 必须真的变少」） */
+  birthMinSavedTokens?: number
+  /** v11.10：trace.log 轮转阈值（字节，缺省 64 MiB；0 = 不轮转）。超限改名 trace.log.1 */
+  traceMaxBytes?: number
+  /** v11.10：llm-stream 溯源里用户原话开头片段长度（缺省 48；0 = 不记录任何正文片段） */
+  tracePreviewChars?: number
   /** CAS 归档 producer 名。默认 'cot-birth' */
   birthProducer?: string
   /** v11.7：birth finish 处 budget 到点但蒸馏已收到 200 响应头（正在生成）时再多等的上限（ms，缺省 1500；0 关） */
   finishHeadersGraceMs?: number
   birth?: {
-    minChars?: number; archive?: boolean; handleInText?: boolean; producer?: string
+    minChars?: number; archive?: boolean
+    /** @deprecated v11.10 退役（见 birthHandleInText） */
+    handleInText?: boolean
+    producer?: string
     archiveTimeoutMs?: number; probeTimeoutMs?: number; finishWaitMs?: number; minSavedChars?: number
     finishHeadersGraceMs?: number
+    /** = birthMinTokens / birthTokenGate / birthMinSavedTokens */
+    minTokens?: number | null; tokenGate?: boolean; minSavedTokens?: number
   }
   followHostProvider?: boolean
   followProvider?: string
@@ -314,3 +332,18 @@ export declare function birthEconomics(
   pressure: { usedTokens?: number; contextWindow?: number; source?: string } | null,
   cfg?: { econCacheDiscount?: number; econTemplateChars?: number; econR?: number; econCharsPerTurn?: number; compressTargetMax?: number },
 ): { B: number; R: number; rSource: string; remainingTokens: number | null; d: number; T: number; rhoMax: number; bAbs: number; bMin: number | null; netAtTarget: number; verdict: 'below-abs' | 'below-min' | 'ok' } | null
+
+// ── v11.10 ──────────────────────────────────────────────────────────────────
+/** 按书写系统区分的 token 粗估（DeepSeek 官方口径：中文 0.6/字、其余 0.3/字）。估算，不是分词器读数，更不是钱。 */
+export declare function estimateTokens(text: string): number
+/** 宽字符（CJK）占比 0~1，trace 画像用。 */
+export declare function wideShare(text: string): number
+/** birth 编译器工厂：按 compileMode 三选一构造 deps.distill(input, signal, budget)。 */
+export declare function makeBirthCompiler(
+  cfg: CotFormBConfig,
+  opts?: { flights?: unknown },
+): (input: unknown, signal?: AbortSignal, budget?: { onHeaders?: (info: { status: number; ttfbMs: number }) => void; trace?: (tag: string, data: object) => void; [k: string]: unknown }) => Promise<{ text: string; meta: Record<string, unknown> }>
+/** 取消一个 birth 任务仍在飞的提纯（已落地的结果绝不取消）。返回是否真的取消了。 */
+export declare function birthCancelFlying(task: unknown, cfg?: CotFormBConfig, trace?: (tag: string, data: object) => void, why?: string, honorDeferred?: boolean): boolean
+/** 本进程内的锁统计（staleRecovered = 接管「持有者已死」的残留锁次数）。 */
+export declare function lockStats(): { acquired: number; busy: number; staleRecovered: number }

@@ -9,10 +9,21 @@
 //       所以给的是**保本预算**（`breakeven.fullReadBacksAffordable`）：还能整块回读几次，超出即亏。
 //   单位纪律：字符数不是钱。真账单必须用宿主 tokenMeter / usage（`measuredSurfaceTokenDelta` 只在
 //   配了 emitterMeasureTokens 且非评估态时才有值）。
+//
+// ★ v11.10：每组新增 `birth` —— 生产路径（birth）的结局漏斗与**收网等待该给多少**的实测依据。
+//   关键量 needWaitMs = 副模型真工期（birth-distill-settled.ms，自 block-end 起算）
+//                     − 免费窗口（birth-finish-enter.gapMs，block-end → finish 之间本来就有的时间），按 taskId 关联。
+//   它就是「这一块要在 finish 处再等多久才能拿到摘要」。按分位数给出 finishWaitMs 候选，
+//   以及当前 finishWaitMs(+响应头宽限) 覆盖了多少比例的成功结果 —— 取值是产品权衡，工具只给数据。
 import fs from 'node:fs'
 import readline from 'node:readline'
 import { pathToFileURL } from 'node:url'
 
+const freshBirth = () => ({
+  tasks: new Map(),            // taskId -> { gapMs, settledMs, ok }
+  outcomes: Object.create(null), flush: Object.create(null), cancelled: Object.create(null),
+  condensed: 0, netSavedChars: 0, netSavedTokensEst: 0, tokenFields: 0, waitedMs: [],
+})
 const freshCp = () => ({
   attempts: new Map(), emitted: 0, blocked: 0, blockedBy: Object.create(null),
   enrichChars: 0, excerpted: 0, dumpSeen: 0, errorSeen: 0,
@@ -23,17 +34,21 @@ const freshCp = () => ({
 })
 
 export function createTraceAudit() {
-  const groups = []; let current = null, ignored = 0, malformed = 0
+  const groups = []; let current = null, ignored = 0, malformed = 0, rotations = 0
   const fresh = (at, boot) => ({ start: at, boot: boot ? {
     selfId: boot.selfId ?? null, deps: boot.deps ?? null, mode: boot.mode ?? null,
     timeoutMs: boot.timeoutMs ?? null, birthFinishWaitMs: boot.birth?.finishWaitMs ?? boot.birthFinishWaitMs ?? null,
     dryRun: boot.dryRun ?? null,
+    // v11.10：轮转后 trace.js 续写的 BOOT 副本 —— 同一次启动的延续，不是一次重启
+    rotatedCopy: boot.rotatedCopy === true,
   } : null, events: Object.create(null), settled: { ok: 0, failed: 0, unknown: 0 },
-    reasons: Object.create(null), promptChars: [], durationMs: [], coverObserved: 0, cp: freshCp() })
+    reasons: Object.create(null), promptChars: [], durationMs: [], coverObserved: 0, cp: freshCp(), bt: freshBirth(),
+    graceMs: boot ? (boot.finishHeadersGraceMs ?? null) : null })
   function add(line) {
     const m = /^\[(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z)\] \[([A-Za-z0-9_-]+)\] (\{.*\})$/.exec(line)
     if (!m) { ignored++; return }
     let obj; try { obj = JSON.parse(m[3]) } catch { malformed++; return }
+    if (m[2] === 'trace-rotated') { rotations++; return }   // 元信息：不开组、不计事件（其后紧跟 BOOT 副本）
     if (!current || m[2] === 'BOOT') { current = fresh(m[1], m[2] === 'BOOT' ? obj : null); groups.push(current) }
     const tag = m[2]; current.events[tag] = (current.events[tag] || 0) + 1
     if (tag === 'state-envelope' && obj.cover) current.coverObserved++
@@ -49,6 +64,70 @@ export function createTraceAudit() {
       if (Number.isFinite(obj.ms) && obj.ms >= 0) current.durationMs.push(obj.ms)
     }
     addToolResultPath(current.cp, tag, obj)
+    addBirth(current.bt, tag, obj)
+  }
+
+  function addBirth(bt, tag, obj) {
+    const task = () => {
+      if (typeof obj.taskId !== 'string' || !obj.taskId) return null
+      let t = bt.tasks.get(obj.taskId)
+      if (!t) { t = { gapMs: null, settledMs: null, ok: null }; bt.tasks.set(obj.taskId, t) }
+      return t
+    }
+    if (tag === 'birth-finish-enter') { const t = task(); if (t && Number.isFinite(obj.gapMs)) t.gapMs = Math.max(0, obj.gapMs); return }
+    if (tag === 'birth-distill-settled') {
+      const t = task(); if (t) { t.ok = obj.ok === true; if (Number.isFinite(obj.ms)) t.settledMs = obj.ms }
+      return
+    }
+    if (tag === 'birth-condensed') {
+      bt.condensed++; bt.outcomes.condensed = (bt.outcomes.condensed || 0) + 1
+      if (Number.isFinite(obj.netSaved)) bt.netSavedChars += obj.netSaved
+      if (Number.isFinite(obj.netSavedTokensEst)) { bt.netSavedTokensEst += obj.netSavedTokensEst; bt.tokenFields++ }
+      if (Number.isFinite(obj.waitedMs)) bt.waitedMs.push(obj.waitedMs)
+      return
+    }
+    if (tag === 'birth-passthrough') {
+      const why = typeof obj.why === 'string' && obj.why ? obj.why : 'unknown'
+      bt.outcomes[why] = (bt.outcomes[why] || 0) + 1
+      if (Number.isFinite(obj.waitedMs)) bt.waitedMs.push(obj.waitedMs)
+      return
+    }
+    if (tag === 'birth-flush') { const w = obj.why || 'unknown'; bt.flush[w] = (bt.flush[w] || 0) + 1; return }
+    if (tag === 'birth-distill-cancelled') { const w = obj.why || 'unknown'; bt.cancelled[w] = (bt.cancelled[w] || 0) + 1 }
+  }
+
+  function birthSummary(g) {
+    const bt = g.bt
+    const need = [], okMs = []
+    let joined = 0
+    for (const t of bt.tasks.values()) {
+      if (t.ok !== true || !Number.isFinite(t.settledMs)) continue
+      okMs.push(t.settledMs)
+      if (Number.isFinite(t.gapMs)) { joined++; need.push(Math.max(0, t.settledMs - t.gapMs)) }
+    }
+    need.sort((a, b) => a - b)
+    const q = (p) => need.length ? need[Math.ceil(p * need.length) - 1] : null
+    const wait = g.boot && Number.isFinite(g.boot.birthFinishWaitMs) ? g.boot.birthFinishWaitMs : null
+    const grace = Number.isFinite(g.graceMs) ? g.graceMs : 0
+    const covered = (ms) => need.length && ms != null ? Number((need.filter((x) => x <= ms).length / need.length).toFixed(3)) : null
+    const total = Object.values(bt.outcomes).reduce((a, b) => a + b, 0)
+    return {
+      outcomes: bt.outcomes, total,
+      condensedRate: total ? Number((bt.condensed / total).toFixed(3)) : null,
+      flush: bt.flush, cancelled: bt.cancelled,
+      netSavedChars: bt.netSavedChars,
+      netSavedTokensEst: bt.tokenFields ? bt.netSavedTokensEst : null,
+      waitedMs: stats(bt.waitedMs),
+      distillOkMs: stats(okMs),
+      needWaitMs: { n: need.length, joined, p50: q(0.5), p75: q(0.75), p90: q(0.9), p95: q(0.95), max: need.length ? need.at(-1) : null },
+      finishWait: {
+        configuredMs: wait, headersGraceMs: grace,
+        coverageAtConfigured: covered(wait), coverageWithGrace: wait == null ? null : covered(wait + grace),
+        candidates: need.length ? { p50: q(0.5), p75: q(0.75), p90: q(0.9) } : null,
+        note: 'needWaitMs = distill settled ms − free window (block-end→finish). Coverage counts successful distills only; the choice is a latency/benefit trade-off, not a tool verdict.',
+      },
+      unit: 'chars and *TokensEst are estimates, not provider billing',
+    }
   }
 
   /**
@@ -190,10 +269,10 @@ export function createTraceAudit() {
     }
   }
 
-  return { add, result: () => ({ ignored, malformed, quantile: 'nearest-rank',
+  return { add, result: () => ({ ignored, malformed, rotations, quantile: 'nearest-rank',
     warning: 'Per-BOOT samples only. Missing fields remain unknown; no causal or task-success claims.',
     toolResultPath: toolResultPath(groups),
-    groups: groups.map(g => ({ ...g, cp: undefined, promptChars: stats(g.promptChars), durationMs: stats(g.durationMs) })) }) }
+    groups: groups.map(g => ({ ...g, cp: undefined, bt: undefined, graceMs: undefined, birth: birthSummary(g), promptChars: stats(g.promptChars), durationMs: stats(g.durationMs) })) }) }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (!process.argv[2]) { console.error('Usage: node tools/analyze-trace.mjs trace.log'); process.exitCode = 2 }

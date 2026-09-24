@@ -5,6 +5,56 @@
 
 ---
 
+## v11.10（2026-09-24）全面加固：取消泄漏、token 闸门、死锁接管、trace 有界、测试并发、CI
+
+**验证**：1266 通过 / 0 失败 / 1 跳过，**22 套件**（新增 `hardening` 40 条；`core` §10 新增 5 条默认值钉子）。
+`npm test` 墙钟 **36s → 14s**（并发 + 慢套件先跑）。关键修复均做过**变异验证**：换回旧实现后对应测试必挂。
+
+### P0
+- **取消泄漏**（`birth.js`）：此前只有「finish 到点」这一条放弃路径会取消在飞提纯；**硬停（error/aborted/length）、
+  源流结束却没有 finish、源流抛错、消费者提前退出（用户取消）** 四条路径都会让副模型白跑到 `timeoutMs` 并白付费。
+  现在全部经由唯一实现 `birthCancelFlying`（已导出），并分别留 `birth-flush`（`why=hard-stop:<kind>|no-finish|source-error`）
+  与 `birth-consumer-return` trace。迟到认领打开时尊重它；消费者提前退出除外（块从未出站，不可能被认领）。
+- **`birth.probeTimeoutMs` 进了 `unknownOptions`**（`config.js`）：d.ts 与注释都写了嵌套写法，但 `NESTED_BIRTH_KEYS` 漏了它 ⇒
+  配置静默无效。已登记；新增嵌套键 `minTokens` / `tokenGate` / `minSavedTokens`。
+- **崩溃残留锁永不释放**（新 `src/fs-lock.js`）：`snapshot-store` / `evidence-ledger` / `evidence-storage` 三处锁文件此前为空，
+  进程崩溃后锁永远 busy ⇒ memory 模式永久降级。现在锁文件写 `pid@hostname@ms`，**只在同机且 pid 已不存在（ESRCH）时**接管；
+  活进程、别的机器、旧格式/空锁一律照旧 fail-closed，**不按年龄抢锁**。`lockStats()` 已导出。
+- **字符门槛 ≠ token 门槛**（新 `src/tokens.js`）：3100 字符对英文 ≈ 930 token、对中文 ≈ 1,860 token；中文摘要替换英文推理时
+  字符净省为正但 token 可能反而变多。新增 **token 闸门**（缺省开，`why=no-token-gain`）与 opt-in 的 `birthMinTokens`。
+  估算口径取 DeepSeek 官方：中文 0.6/字、其余 0.3/字 —— **只用于拒绝，不用于宣称节省**；trace 新增 `*TokensEst` 字段。
+
+### P1
+- **trace 有界**（`trace.js`）：`traceMaxBytes`（64 MiB）轮转到 `.1`；新文件首行 `trace-rotated` + `BOOT` 副本（`rotatedCopy:true`）。
+  大小在内存累加，不再每行 stat。`analyze-trace` 识别轮转元信息、不另开组。
+- **用户正文片段**：`tracePreviewChars`（缺省 48 = 原先写死的值，行为不变；现在可调，0 = 不留任何正文）。
+- **`llm-stream` 体积 O(n²)**：`roles` 改为游程字符串（`system user assistant tool*3`），`reasoningChars` 改为稀疏 `[[下标, 字符数]]`。
+  ⚠ 字段**形状变了**（仓库内无消费者；外部脚本若按数组读需要跟进）。
+- **provider / 凭据热路径同步重解析**（`provider.js`）：按文件身份（ino/size/mtime/ctime）缓存，文件一变即重读；
+  只缓存成功结果与单个键值（不常驻整份凭据）；返回副本。`clearProviderCache()` 已导出。
+
+### P2
+- `plugin.js` 的 `deps.distill` 三元内联抽成 `distill.js` 的 **`makeBirthCompiler`**（已导出、有真实 HTTP 单测）。
+- 隐藏默认值显式化进 `DEFAULTS`（`staticMinRawChars` / `econCharsPerTurn` 等）；**`birthHandleInText` 退役**
+  （2026-09-18 起已无任何效果）——出现即进 `retiredOptions`。
+- `index.js` 新导出：`estimateTokens` `wideShare` `makeBirthCompiler` `birthCancelFlying` `lockStats`；`index.d.ts` 同步（`tsc --strict` 通过）。
+
+### P3 工程
+- `verify.mjs` 并发（缺省 `max(6, CPU 数)`；`-j N` / `--serial`；结果仍按 ORDER 打印；JSON 带 `jobs`/`wallMs`；单套件 300s 看门狗）。
+- `.github/workflows/ci.yml`：Node 20/22 × 清单校验 + 全部自测 + 类型契约。
+- `analyze-trace` 每组新增 **`birth`**：结局漏斗与 **`needWaitMs`**（真工期 − 免费窗口，按 taskId 关联）分位数、
+  当前 `finishWaitMs`(+宽限) 覆盖率 —— `finishWaitMs` 该取多少从此有数据可依（取值仍是产品决定）。
+- README / ARCHITECTURE / INSTALL 去掉写死的测试数字（只在本文件按版本记录）。
+
+### 刻意未做（原因见各条）
+- 按模式懒加载实验模块：`plugin.js` 顶层与三种模式的交叉引用较深，拆开收益小、回归面大。
+- 从 stream options 取 session/model 取代全局 `birthSessionId` / 共享 `cfg.model` 改写：宿主 API 未确认，不猜。
+- 流式期间分段压缩、退役 memory/legacy 模式：产品决策，不在工程加固范围。
+- trace 异步缓冲写：大量测试与离线工具依赖「写完即可读」的同步语义。
+- 自动恢复旧格式 / 空锁文件：无法证明持有者已死，按 fail-closed 保留（README 写明人工处理方式）。
+
+---
+
 ## v11.9.1（2026-09-24）P1 工具结果可检索化 + 钩子级端到端测试
 
 **验证**：1219 通过 / 0 失败 / 1 跳过，**21 套件**（新增 2 套：`checkpoint-hooks` 7 条、`hook-wiring` 5 条）。

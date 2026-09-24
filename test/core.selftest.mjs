@@ -92,6 +92,12 @@ console.log('\n【10】默认值 —— 安全默认 + 延迟预算')
   eq('★ birthDeferredClaim 默认 false（实验路径，显式打开）', DEFAULTS.birthDeferredClaim, false)
   eq('★ earlyFire 默认 true（仅 checkpoint 模式生效）', DEFAULTS.earlyFire, true)
   eq('★ graceMs 默认 300（= 用户感知延迟上限）', DEFAULTS.graceMs, 300)
+  // ★ v11.10：token 闸门缺省开、token 门槛缺省不接管（opt-in）；trace 有界；预览片段收短；句柄进正文开关已退役
+  eq('★ birthTokenGate 默认 true', DEFAULTS.birthTokenGate, true)
+  eq('★ birthMinTokens 默认 null（仍按 birthMinChars）', DEFAULTS.birthMinTokens, null)
+  eq('★ traceMaxBytes 默认 64 MiB', DEFAULTS.traceMaxBytes, 64 * 1024 * 1024)
+  eq('★ tracePreviewChars 默认 48', DEFAULTS.tracePreviewChars, 48)
+  ok('★ 不含 birthHandleInText（v11.10 退役）', !('birthHandleInText' in DEFAULTS))
   for (const k of ['rulesEnabled', 'rulesRequireArchive', 'hurdleRounds', 'templateChars', 'maxVerbatimChars', 'skeletonizeArgs']) {
     ok('⛔ 随 distill/rules 退役的键已从 DEFAULTS 移除：' + k, !(k in DEFAULTS))
   }

@@ -1,6 +1,7 @@
 # dsh-cot-form-b — reasoning 块「出生即压缩」
 
-> **当前实现：v11.8（2026-09-24）** · 自测 **1102 通过 / 0 失败 / 1 跳过，19 套件** · 真实产品验收：**未验收**
+> **当前实现：v11.10（2026-09-24）** · 自测：`npm test` 全绿（22 套件，固定 1 项 SKIP，逐版数字见 CHANGELOG） · 真实产品验收：**未验收**
+> CI：`.github/workflows/ci.yml` 在 Node 20 / 22 上跑完整性清单 + 全部自测 + 类型契约。
 > 版本沿革见 [`CHANGELOG.md`](CHANGELOG.md)；开发者视角的模块与数据流见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
 DSH 外部插件（Cordis 协议）。主模型每写完一段 reasoning，插件在它进入会话**之前**：
@@ -18,8 +19,9 @@ DSH 外部插件（Cordis 协议）。主模型每写完一段 reasoning，插�
 ## 快速开始
 
 ```bash
-npm test                    # = node verify.mjs：跑全部 19 个自测套件（本地 HTTP，零外部 API 调用）
+npm test                    # = node verify.mjs：并发跑全部自测套件（本地 HTTP，零外部 API 调用，约 14s）
 node verify.mjs birth hedge # 只跑文件名含关键字的套件
+node verify.mjs --serial    # 串行（排查定时相关问题时用）；-j N 指定并发度
 npm run manifest:check      # = node manifest.mjs --check：校验 MANIFEST.sha256（换机器后第一件事）
 npm run manifest            # 改过文件后重新生成清单
 npm run onboard             # = node deploy/onboard.mjs：体检插件在本机的注册与部署漂移
@@ -55,7 +57,9 @@ dsh-cot-form-b/
 │   ├── late-memory.js    迟到结果暂存区（Deferred Claim，实验）
 │   ├── evidence.js       从会话只读采集证据（memory 模式）
 │   ├── messages.js       出站消息溯源（只观测）
-│   ├── trace.js          trace 落盘与 settled 字段白名单
+│   ├── trace.js          trace 落盘（v11.10 按大小轮转）与 settled 字段白名单
+│   ├── tokens.js         按书写系统区分的 token 粗估（中文 0.6/字、其余 0.3/字；估算不是账单）
+│   ├── fs-lock.js        独占锁文件 + 「持锁进程已死」的保守接管（三处持久化共用）
 │   ├── fidelity.js       受保护 token 与逐字标识符召回率
 │   ├── state-memory.js   证据信封 / 判断编译 / 记忆投影 / 渲染（纯函数）
 │   ├── snapshot-store.js 结构化状态快照持久化（原子写、归并、精确覆盖集合）
@@ -63,7 +67,8 @@ dsh-cot-form-b/
 │   ├── emitter.js / balanced-span.js / headroom.js / imperative.js   pre-step 看板发射器（迟到认领 / checkpoint）
 │   └── exact-flights.js / consumption.js   精确在途请求共享 / 认领消费计量
 │
-├── test/                 19 个 *.selftest.mjs 套件 + fixtures/（真机原文错误样本）
+├── test/                 *.selftest.mjs 套件（verify.mjs 自动发现）+ fixtures/（真机原文错误样本）
+├── .github/workflows/    CI：完整性清单 + 全部自测 + 类型契约（Node 20 / 22）
 ├── tools/                离线分析：analyze-trace / analyze-efficiency / analyze-consumption / replay / benchmark-index
 ├── deploy/onboard.mjs    部署体检（注册形态、部署漂移；跨机器、无硬编码路径）
 └── docs/                 现行文档；docs/archive/ = 历史报告与证据（只进不出）
@@ -121,6 +126,8 @@ birth 模式内部再按编译模式三选一（唯一裁决点 `resolveCompileM
 | `stateCompress` / `stateMemory` | `false` / `false` | 编译模式 |
 | `compressPrompt` | `'v2'` | `v1` 旧蒸馏 · `v2` 相对长度 · `v3` 绝对长度（`compressTargetMin/Max` = 250/450） |
 | `birth.minChars` | `3100` | 短于此长度不压缩（成本模型反解：R=60、d=0.02、B′≈450 ⇒ 保本原长 2,747，保守取整且不下调） |
+| `birth.minTokens` | `null` | **v11.10 opt-in**：正数 ⇒ 按 token 估算判定、完全接管 `minChars`（3100 字符对英文 ≈ 930 token、对中文 ≈ 1,860 token，同一门槛随语言差 2 倍） |
+| `birth.tokenGate` / `birth.minSavedTokens` | `true` / `0` | **v11.10**：字符净省达标但估算 token 不降 ⇒ 原文放行（`why=no-token-gain`；典型是英文原文 → 中文摘要）。`minSavedTokens` 0 按 1 计 |
 | `birth.finishWaitMs` | `1500` | finish 处收网等待上限 |
 | `birth.finishHeadersGraceMs` | `1500` | 到点时若副模型已收到 200 响应头（正在生成），再多等的上限；`0` 关 |
 | `timeoutMs` | `8000` | 副模型请求硬超时。birth 且未开迟到认领时，自动抬到 ≥ `finishWaitMs + finishHeadersGraceMs + 2000`（BOOT `configAdjusted` 留痕） |
@@ -136,10 +143,12 @@ birth 模式内部再按编译模式三选一（唯一裁决点 `resolveCompileM
 | `birthDeferredClaim` | `false` | **实验**：没赶上 finish 的结果进暂存区、下一轮 pre-step 认领（见「当前状态」缺陷 B）；只认显式 `true` |
 | `followHostModel` / `followHostProvider` | `true` / `true` | 副模型、端点、钥匙都跟随宿主当前对话所用的 provider；解析不出来就不发起（不猜） |
 | `trace` / `traceFile` | `true` / `$DSH_HOME/storages/cot-form-b/trace.log` | 观测 |
+| `traceMaxBytes` | `64 MiB` | **v11.10**：超限把 `trace.log` 改名 `trace.log.1`（覆盖上一份）再续写，新文件首行 `trace-rotated`、紧跟一份 `BOOT` 副本（`rotatedCopy:true`，保证离线分析仍能按构建归组）；`0` = 不轮转 |
+| `tracePreviewChars` | `48` | **v11.10**：`llm-stream` 溯源里用户原话开头片段长度；`0` = 不记录任何正文片段 |
 
 配置自检（全部进 BOOT，只报不抛）：
 - `unknownOptions`：不认识的键，包括嵌套容器里拼错的（如 `birth.finishWait`）；
-- `retiredOptions`：已退役的键（v7 的 4 个旧开关、v11.8 随 distill/rules 退役的键与整个 `rules:` 容器），已从生效配置删除；
+- `retiredOptions`：已退役的键（v7 的 4 个旧开关、v11.8 随 distill/rules 退役的键与整个 `rules:` 容器、v11.10 的 `birthHandleInText` / `birth.handleInText`），已从生效配置删除；
 - `retiredMode` / `invalidMode`：写了退役或不认识的 `mode`（生效值为 `'off'`）；
 - `configAdjusted`：自动调整（目前只有 `timeoutMs` 抬高）。
 
@@ -177,6 +186,9 @@ compress 模式不采集证据、不写快照；以下只在 memory 模式生效
   - 「编译已覆盖」（`coverage.at`）与「宿主已应用」（`applied`）严格分开，永不互相赋值；
   - v11.8：同一陈述反复提交只留最后一次，条目总数封顶 256（此前会无限增长）。
 - 关联靠插件自己保存的 `(sessionId, branchId)` 指针，**不**解析消息文本、不认 role、不认看板标记。
+- **锁**（v11.10，`fs-lock.js`）：三处持久化都用独占锁文件，内容为 `pid@hostname@ms`。只有**同机且持锁 pid 已不存在**时才接管
+  （崩溃残留锁不再让 memory 模式永久降级）；活进程、别的机器、旧格式/空锁文件一律照旧 fail-closed。
+  v11.10 之前崩溃留下的**空锁文件**无法证明持有者已死，仍需人工确认后删除。
 
 ---
 
@@ -209,6 +221,8 @@ compress 模式不采集证据、不写快照；以下只在 memory 模式生效
 | `stateSnapshot: false` | memory 模式停止读写快照与证据账本 |
 | `stateCoveredEvidence: false` | memory 模式停止按覆盖集合过滤旧证据（全量发送） |
 | `birth: { minChars: N }` | 调整压缩门槛 |
+| `birth: { tokenGate: false }` | 关闭 v11.10 token 闸门（回到纯字符判定） |
+| `traceMaxBytes: 0` | 关闭 trace 轮转 |
 
 ⚠ 扁平的 `finishWaitMs` 不是配置键（会进 `unknownOptions`），只认 `birth.finishWaitMs` 或 `birthFinishWaitMs`。
 
@@ -224,7 +238,10 @@ trace 写在 `$DSH_HOME/storages/cot-form-b/trace.log`，一行一条：`[ISO时
 | 事件 | 看什么 |
 |---|---|
 | `BOOT` | 生效配置、`selfId`/`deps` 上岗判据、`retired*`/`unknownOptions`/`configAdjusted` |
-| `birth-fired` / `birth-condensed` / `birth-passthrough` | 起火、替换成功（含 `fidelity.identifierRecall`）、放行原因 |
+| `birth-fired` / `birth-condensed` / `birth-passthrough` | 起火、替换成功（含 `fidelity.identifierRecall`、v11.10 `rawTokensEst/outTokensEst/netSavedTokensEst`）、放行原因（含 `no-token-gain`） |
+| `birth-flush` / `birth-consumer-return` / `birth-distill-cancelled` | **v11.10**：硬停 / 源流无 finish / 源流抛错时的降级放行，消费者提前退出；在飞提纯是否被取消（`why`） |
+| `llm-stream` | 出站消息溯源；v11.10 起 `roles` 为游程字符串（`system user assistant tool*3`），`reasoningChars` 为稀疏 `[[下标, 字符数], …]` |
+| `trace-rotated` | **v11.10**：轮转后新文件的第一行（上一份文件名与字节数） |
 | `birth-distill-settled` | 副模型真工期与阶段：`ttfbMs`、`totalMs`、`promptVersion`、`hedged`、失败 `stage` |
 | `compiler-transport-*` / `compiler-hedge-*` | 每次请求的发出与结算、对冲是否触发与胜者 |
 | `birth-econ` / `birth-window-probe` | 成本模型三态判定、免费窗口时刻（只记录，不参与判定） |
@@ -248,7 +265,13 @@ trace 写在 `$DSH_HOME/storages/cot-form-b/trace.log`，一行一条：`[ISO时
 - 单位纪律：`chars` 是字符，不是钱。真账单必须用宿主 `tokenMeter` / `usage`；
   `measuredSurfaceTokenDelta` 仅在配置了 `emitterMeasureTokens` 且**非**评估态时才有值。
 
-离线分析：`npm run trace:audit -- trace.log`（按 BOOT 分组，不同构建绝不混算）、`npm run trace:efficiency -- trace.log`（耗时、promptVersion 分桶、保真度、对冲）。
+### birth 收网等待该给多少（v11.10）
+
+`npm run trace:audit -- trace.log` 每组新增 `birth`：结局漏斗（`outcomes`、`condensedRate`、`flush`、`cancelled`）与
+`needWaitMs` = 副模型真工期 − 免费窗口（block-end → finish 本来就有的时间，按 `taskId` 关联）——
+即「这一块要在 finish 处**再等多久**才能拿到摘要」。`finishWait.coverageAtConfigured / coverageWithGrace`
+给出当前 `finishWaitMs`（+响应头宽限）覆盖了多少比例的成功结果，`candidates` 给 p50/p75/p90 候选值。
+取值是延迟与收益的产品权衡，工具只给数据、不下结论。
 
 ---
 
@@ -258,6 +281,9 @@ trace 写在 `$DSH_HOME/storages/cot-form-b/trace.log`，一行一条：`[ISO时
 **v11.9 评估态零副作用**（评估态不写 CAS、不改表面，且仍能算出净收益与真 token 水位）；
 **v11.9 句柄读回验证**（发射前抽样按句柄取回；birth 内存预推句柄须先验证，无证据则原文放行）；
 对冲、响应头宽限、缓存友好拆分（均可关）；配置自检；memory 模式的证据账本与有界快照；测试隔离。
+
+**v11.10 加固**：放弃应用的每条路径都取消在飞提纯（此前硬停 / 无 finish / 源流抛错 / 用户取消四条路径会白跑到 `timeoutMs`）；
+token 闸门；崩溃残留锁的保守接管；trace 轮转；provider/凭据解析按文件身份缓存；编译器工厂可单测；测试并发（36s → 14s）；CI。
 
 **v11.9 P1 工具结果可检索化**：归档行带工具名/参数/样本，错误现场与最近结果附摘录 —— 目标是**压低回看概率**
 （保本点 = 每项平均读回一次，读回粒度比压缩率更决定胜负）。代价口径单列：`enrichChars` 与

@@ -3,6 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { openLockExclusive } from './fs-lock.js'
 export const STORAGE_LIMITS = Object.freeze({ globalBytes: 256 * 1024 * 1024, scopeBytes: 64 * 1024 * 1024, globalFiles: 100000, scopeFiles: 20000 })
 function census(root) {
   const state = { schema: 1, bytes: 0, files: 0, scopes: {} }
@@ -30,7 +31,7 @@ export function boundedEvidenceBatch(writes) {
   if (writes.some(w => path.dirname(w.file) !== scopeDir)) throw Error('evidence-batch-scope-mismatch')
   const lock = path.join(root, '.quota.lock'), usage = path.join(root, '.usage.json')
   let fd
-  try { fd = fs.openSync(lock, 'wx') } catch (e) { if (e.code === 'EEXIST') throw Error('evidence-quota-busy'); throw e }
+  try { fd = openLockExclusive(lock) } catch (e) { if (e.code === 'EEXIST') throw Error('evidence-quota-busy'); throw e }
   try {
     const state = fs.existsSync(usage) ? JSON.parse(fs.readFileSync(usage, 'utf8')) : census(root)
     if (state.schema !== 1 || !Number.isSafeInteger(state.bytes) || !Number.isSafeInteger(state.files) || !state.scopes) throw Error('invalid-evidence-quota')

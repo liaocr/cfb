@@ -1,0 +1,30 @@
+# 每次 push / PR：完整性清单 + 全部自测（零第三方依赖、零外网 API 调用）。
+# 清单先跑：它便宜，而且「代码改了却忘了 npm run manifest」是本仓库最常见的漂移。
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Integrity manifest (MANIFEST.sha256)
+        run: node manifest.mjs --check
+      - name: Self-tests (all suites, isolated temp DSH_HOME per suite)
+        run: node verify.mjs
+      - name: Type contract (index.d.ts)
+        run: npx --yes -p typescript@5 tsc --noEmit --strict index.d.ts

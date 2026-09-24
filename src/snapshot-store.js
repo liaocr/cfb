@@ -38,6 +38,7 @@
  *   两者绝不混同；applied 只在真正发射时由 markSnapshotApplied() 写入，初始为 null。
  */
 import fs from 'node:fs'
+import { openLockExclusive } from './fs-lock.js'
 import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -105,15 +106,15 @@ export function snapshotIdOf(sessionId, branchId, revision) {
 // No Atomics.wait/busy loop on the gateway thread. Lock contention must fail
 // closed, never turn into an unlocked read/merge/write. Stale locks are not
 // stolen by age: a suspended live writer can still own one.
+// v11.10: a lock whose owner provably no longer exists (same host, pid ESRCH)
+// is recovered by fs-lock.js; anything unprovable still fails closed.
 function acquireLock(file) {
   const lock = file + '.lock'
   let fd
   try {
-    fd = fs.openSync(lock, 'wx')
-    fs.writeSync(fd, String(process.pid) + '@' + Date.now())
+    fd = openLockExclusive(lock)
     return true
   } catch {
-    if (fd !== undefined) { try { fs.unlinkSync(lock) } catch {} }
     return false
   } finally { if (fd !== undefined) { try { fs.closeSync(fd) } catch {} } }
 }

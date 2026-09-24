@@ -8,9 +8,9 @@
 // SELF_ID / DEP_ID：模块首次求值时从磁盘读到的 size@mtime，写进 BOOT，用来证明「网关里跑的是哪一版文件」。
 import fs from 'node:fs'
 import { birthTransform, deriveArtHandle } from './birth.js'
-import { normalizeConfig, compileModeOf } from './config.js'
+import { normalizeConfig } from './config.js'
 import { createConsumptionMeter } from './consumption.js'
-import { generateDistillation, generateStateMemory } from './distill.js'
+import { generateDistillation, makeBirthCompiler } from './distill.js'
 import { runPreStepEmit, toolTextFromEvent, readPressure } from './emitter.js'
 import { JUDGMENT_PROMPT_VERSION, prepareCompilerEvidence } from './evidence-ledger.js'
 import { collectEvidence } from './evidence.js'
@@ -19,11 +19,8 @@ import {
   lateMemorySize, lateMemory, lateKey, lateReceiptValid, peekLateMemory, peekLateMemoryPartial,
   explainLateMiss, lateInFlightCount, acknowledgeLateMemory,
 } from './late-memory.js'
-import { reasoningTextOf, provenanceOf, mapMessagesToSeqs } from './messages.js'
-import {
-  compressPromptVersion, buildDistillPrompt, compressTargets, buildCompressPromptV3, buildCompressPrompt,
-  splitCompressPrompt,
-} from './prompts.js'
+import { reasoningTextOf, provenanceOf, mapMessagesToSeqs, rolesRunLength, sparseLengths } from './messages.js'
+import { compressPromptVersion } from './prompts.js'
 import { normalizeBranchId } from './snapshot-store.js'
 import {
   MEMORY_POLICY_VERSION, SCHEMA_VERSION, COMPILER_VERSION, RENDERER_VERSION, renderCheckpoint,
@@ -109,11 +106,7 @@ export const inject = []
 export function apply(ctx, config = {}) {
   const cfg = normalizeConfig(config)
   const compilerFlights = createExactFlights()
-  // compress / legacy 的传输观测：只透传 trace（compiler-transport-* / compiler-hedge-* / compiler-retry-skipped）。
-  //   v11.7 前这两条路径没传，对冲真的触发了 trace 里却一条都没有。
-  //   ⚠ 不传 flights：这两种模式没有 scope（证据截面只在 memory 模式存在）⇒ 共享永不命中，
-  //     反而会把取消路径的传输 meta（ttfbMs/stage 等）换成合成错误，损失线上诊断数据。
-  const compileRuntime = (budget) => ({ trace: budget && typeof budget.trace === 'function' ? budget.trace : undefined })
+  // 编译器（副模型调用闭包）按 compileMode 三选一的逻辑在 distill.js 的 makeBirthCompiler（v11.10 抽出，可单测）。
   // 出生即提纯：本轮会话 id（在 agent/pre-step 捕获，供 CAS 归档登记）
   let birthSessionId = null
   // ★ 2026-09-21 消息溯源（外部审计 P0-3）：同时持有 session 对象本身（供证据采集只读访问）。
@@ -190,7 +183,10 @@ export function apply(ctx, config = {}) {
     finishHeadersGraceMs: cfg.finishHeadersGraceMs,
     birthArchive: cfg.birthArchive,
     birthMinChars: cfg.birthMinChars,
-    birthHandleInText: cfg.birthHandleInText,
+    birthMinTokens: cfg.birthMinTokens,
+    birthTokenGate: cfg.birthTokenGate !== false,
+    traceMaxBytes: cfg.traceMaxBytes,
+    tracePreviewChars: cfg.tracePreviewChars,
     birthProducer: cfg.birthProducer,
     keepAlive: cfg.keepAlive,
     keepAliveMsecs: cfg.keepAliveMsecs,
@@ -470,7 +466,7 @@ export function apply(ctx, config = {}) {
       const msgs = (options && options.messages) || []
       // ★ 2026-09-21 消息溯源（外部审计 P0-3）：只观测，绝不删/改/合并任何消息。
       //   判据是"来源与时间线"，不是"role 数了几个"。
-      const prov = provenanceOf(msgs)
+      const prov = provenanceOf(msgs, { previewChars: cfg.tracePreviewChars })
       // ★ 建立"出站消息 → 源事件 seq"的链条（只读；不改任何事件）
       const seqMap = mapMessagesToSeqs(birthSession, msgs.length)
       // ★ 2026-09-21 守住最危险的假阳性（外部审计）：**数量不一致时绝不按下标硬配** ——
@@ -484,8 +480,9 @@ export function apply(ctx, config = {}) {
         model: options && options.model,
         provider: options && options.provider,
         messageCount: msgs.length,
-        roles: msgs.map((m) => m && m.role),
-        reasoningChars: msgs.map((m) => reasoningTextOf(m).length),
+        // v11.10：游程编码 + 稀疏列表（旧的逐条数组让 trace 随会话长度平方增长）
+        roles: rolesRunLength(msgs),
+        reasoningChars: sparseLengths(msgs.map((m) => reasoningTextOf(m).length)),
         // 连续同 role 的游程（只报 n>1）
         runs: prov.runs,
         // 末尾若干条的溯源（看板 / 人类 user 开头 / 长度）
@@ -550,28 +547,7 @@ export function apply(ctx, config = {}) {
         //   memory   → 证据信封 + 两栏判断（状态记忆）
         //   compress → 本段 reasoning 的摘要（纯压缩）★ 输入不背整窗证据
         //   legacy   → 旧的 generateDistillation 默认提示词
-        distill: compileModeOf(streamCfg) === 'memory'
-          ? async (env, signal, budget) => generateStateMemory(env, streamCfg, signal, { ...budget, flights: compilerFlights })
-          : compileModeOf(streamCfg) === 'compress'
-            ? async (raw, signal, budget) => {
-                // 提示词选择与版本号必须来自**同一次**裁决，否则 trace 会把 A 的产物记成 B 的版本。
-                const pv = compressPromptVersion(streamCfg)
-                const prompt = pv === 'compress-v1' ? buildDistillPrompt(raw)
-                  : pv.indexOf('compress-v3') === 0
-                    ? (() => { const t = compressTargets(streamCfg); return buildCompressPromptV3(raw, t.min, t.max) })()
-                    : buildCompressPrompt(raw)
-                // ★ v11.7：响应头信号透传（_onHeaders 只活在这次调用的 cfg 副本里，不进 BOOT、不进 trace）
-                const c = { ...streamCfg }
-                if (budget && typeof budget.onHeaders === 'function') c._onHeaders = budget.onHeaders
-                // ★ v11.7 缓存友好拆分（opt-in）：system=规则前缀、user=原文；字节等价，只改消息形状。v1 不拆（它无 marker）。
-                const pvOut = pv
-                if (streamCfg.compressSystemPrompt === true && pv !== 'compress-v1') {
-                  const sp = splitCompressPrompt(prompt)
-                  if (sp) c._promptMessages = [{ role: 'system', content: sp.system }, { role: 'user', content: sp.user }]
-                }
-                return generateDistillation(raw, c, signal, prompt, { ...compileRuntime(budget), promptVersion: pvOut })
-              }
-            : async (raw, signal, budget) => generateDistillation(raw, budget && typeof budget.onHeaders === 'function' ? { ...streamCfg, _onHeaders: budget.onHeaders } : streamCfg, signal, undefined, compileRuntime(budget)),
+        distill: makeBirthCompiler(streamCfg, { flights: compilerFlights }),
         prepareEvidence: (input) => {
           const started = performance.now()
           const frame = prepareCompilerEvidence(input, streamCfg.stateSnapshot)

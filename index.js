@@ -18,8 +18,9 @@ export { DEFAULTS, normalizeConfig, resolveCompileMode, dshHome, dshHomePath } f
 
 // ── 出生即压缩（birth）───────────────────────────────────────────────────────
 export {
-  birthTransform, birthStart, birthFinish, birthSettle, birthHoldNew, deriveArtHandle, birthEconomics,
+  birthTransform, birthStart, birthFinish, birthSettle, birthHoldNew, deriveArtHandle, birthEconomics, birthCancelFlying,
 } from './src/birth.js'
+export { estimateTokens, wideShare } from './src/tokens.js'
 
 // ── 迟到结果暂存区（Deferred Claim，实验）────────────────────────────────────
 export {
@@ -29,7 +30,7 @@ export {
 } from './src/late-memory.js'
 
 // ── 副模型调用 ───────────────────────────────────────────────────────────────
-export { generateDistillation, generateStateMemory, hedgedDistill } from './src/distill.js'
+export { generateDistillation, generateStateMemory, hedgedDistill, makeBirthCompiler } from './src/distill.js'
 export {
   buildDistillPrompt, buildCompressPrompt, buildCompressPromptV3, splitCompressPrompt,
   compressPromptVersion, compressTargets,
@@ -48,3 +49,4 @@ export { normalizeEvidenceEvent, assembleEvidence } from './src/state-memory.js'
 
 // ── 观测 ─────────────────────────────────────────────────────────────────────
 export { makeTraceWriter, settledTraceData } from './src/trace.js'
+export { lockStats } from './src/fs-lock.js'

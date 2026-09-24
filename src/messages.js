@@ -18,8 +18,10 @@ import { LEDGER_OPEN } from './emitter.js'
  * @param {Array} messages 出站请求的消息数组
  * @returns {{items:Array, runs:Array}}
  */
-export function provenanceOf(messages) {
+export function provenanceOf(messages, opts = {}) {
   const arr = Array.isArray(messages) ? messages : []
+  // v11.10：片段长度可配（cfg.tracePreviewChars）；0 = 不记录任何正文片段。缺省 48 与旧行为一致。
+  const previewChars = Number.isInteger(opts.previewChars) && opts.previewChars >= 0 ? opts.previewChars : 48
   const items = []
   for (let i = 0; i < arr.length; i++) {
     const m = arr[i] || {}
@@ -65,9 +67,9 @@ export function provenanceOf(messages) {
     // 人类 user 的开头片段：用于区分"真用户发言"与"宿主注入的 runtime context"。
     // 只取 48 字符，足以辨认，不足以泄露大段内容。
     // 人类 user 才取开头片段；tool-result 的 user 没有顶层文本，取嵌套文本开头。
-    if (role === 'user' && !isLedger) {
+    if (role === 'user' && !isLedger && previewChars > 0) {
       const src = text || (Array.isArray(c) ? c.map((blk) => (blk && Array.isArray(blk.content) ? blk.content.map((x) => (x && x.text) || '').join('') : '')).join('') : '')
-      if (src) it.head = src.slice(0, 48).replace(/\s+/g, ' ')
+      if (src) it.head = src.slice(0, previewChars).replace(/\s+/g, ' ')
     }
     items.push(it)
   }
@@ -137,4 +139,29 @@ export function textOfContent(content) {
 export function reasoningTextOf(message) {
   if (!message || !Array.isArray(message.content)) return ''
   return message.content.filter((b) => b && b.type === 'reasoning').map((b) => String(b.text || '')).join('\n')
+}
+
+/**
+ * v11.10：llm-stream 的 role 序列做游程编码 —— 旧的逐条数组随会话长度线性增长、且每轮都写一次（trace 体积 O(n²)）。
+ *   ['system','user','assistant','tool','tool','tool'] → 'system user assistant tool*3'
+ * 非字符串 role 记为 '?'。
+ */
+export function rolesRunLength(msgs) {
+  const out = []
+  let prev = null, n = 0
+  const flush = () => { if (n) out.push(n > 1 ? prev + '*' + n : prev) }
+  for (const m of Array.isArray(msgs) ? msgs : []) {
+    const r = m && typeof m.role === 'string' && m.role ? m.role : '?'
+    if (r === prev) { n++; continue }
+    flush(); prev = r; n = 1
+  }
+  flush()
+  return out.join(' ')
+}
+
+/** v11.10：只列出 reasoning 非空的消息 [下标, 字符数]（绝大多数消息为 0，逐条数组纯属噪声）。 */
+export function sparseLengths(lengths) {
+  const out = []
+  for (let i = 0; i < lengths.length; i++) if (lengths[i] > 0) out.push([i, lengths[i]])
+  return out
 }

@@ -14,7 +14,7 @@
 ```bash
 # 1. 拿到代码并自检（全部离线、零 API 成本）
 git clone <本仓库地址> dsh-cot-form-b && cd dsh-cot-form-b
-npm test                      # 期望：19/19 套件通过（1 项需要宿主兄弟包的断言会 SKIP）
+npm test                      # 期望：全部套件通过（1 项需要宿主兄弟包的断言会 SKIP）
 npm run manifest:check        # 期望：全部一致
 
 # 2. 在 profile 里登记依赖与 bundle（~/.dsh/profiles/web/package.json，见下）
