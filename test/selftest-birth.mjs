@@ -489,13 +489,15 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
   //           若仍取消，暂存区永远拿不到迟到成功 ⇒ 收网每轮空转。
   //   真机证据（04:50:04）：waitedMs=1506 → [birth-distill-cancelled]
   //                        → [birth-distill-failed] error="cancelled"。
-  //   ⇒ 缺省（birthDeferredClaim 开）**不取消**；显式关闭才回到旧行为。
+  //   ⇒ 下轮收网打开（birthDeferredClaim:true）时**不取消**；关闭时回到旧行为。
+  //   ⚠ v11.8：birthDeferredClaim 缺省改为 false（AUDIT §四 ②），且只认显式 true ⇒
+  //     缺省 = 取消在飞提纯（与线上配置一致），T18a-1 必须显式打开。
 
-  // T18a-1：缺省 ⇒ 放行后**不取消**（提纯继续跑，等待被收网认领）
+  // T18a-1：下轮收网打开 ⇒ 放行后**不取消**（提纯继续跑，等待被收网认领）
   {
     const seen = []
     const deps = {
-      cfg: mkCfg({ birthFinishWaitMs: 120 }), trace: noTrace,
+      cfg: mkCfg({ birthFinishWaitMs: 120, birthDeferredClaim: true }), trace: noTrace,
       archive: async () => 'art://PRE18',
       distill: (r, signal) => new Promise((_res, rej) => {
         seen.push(signal ? 'signal-given' : 'no-signal')
@@ -509,7 +511,7 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
     const r = await birthFinish(task, deps)
     ok('T18a ★ 超时后放行原文', r.why === 'distill-timeout' && r.text === raw, r.why)
     await sleep(20)
-    ok('T18a ★★ 缺省不取消在飞提纯（暂存区才有东西可收网）',
+    ok('T18a ★★ 下轮收网打开时不取消在飞提纯（暂存区才有东西可收网）',
        !seen.includes('aborted'), JSON.stringify(seen))
     ok('T18a ★ 已标记 passedThrough（后续成功会转入暂存）', task.passedThrough === true)
   }
@@ -531,6 +533,23 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
     ok('T18a ★ 关闭方案二仍放行原文', r.why === 'distill-timeout' && r.text === raw, r.why)
     await sleep(20)
     ok('T18a ★★ 关闭方案二 ⇒ 恢复取消（旧契约可回滚）', seen.includes('aborted'), JSON.stringify(seen))
+  }
+
+  // T18a-3：v11.8 缺省只认显式 true ⇒ 裸库直调不传该键时与 DEFAULTS（false）一致：取消、不进暂存区
+  {
+    const seen = []
+    const deps = {
+      cfg: mkCfg({ birthFinishWaitMs: 120 }), trace: noTrace, sessionId: () => 'T18a3',
+      archive: async () => 'art://PRE18D',
+      distill: (r, signal) => new Promise((_res, rej) => {
+        if (signal) signal.addEventListener('abort', () => { seen.push('aborted'); rej(Object.assign(new Error('cancelled'), { cancelled: true })) }, { once: true })
+      }),
+    }
+    const task = birthStart(entry, deps)
+    await Promise.resolve(); await Promise.resolve()
+    const r = await birthFinish(task, deps)
+    await sleep(20)
+    ok('T18a ★★ 缺省（不传键）= DEFAULTS.birthDeferredClaim=false：放行后取消在飞提纯', r.why === 'distill-timeout' && seen.includes('aborted'), JSON.stringify({ why: r.why, seen }))
   }
 
   // T18b：提纯【已经落地】⇒ 绝不许取消（那是已经付过的钱）
@@ -609,7 +628,7 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
   const raw = bulkReasoning()
   const entry = { index: 0, text: raw, end: BE(0, { type: 'reasoning', text: raw }) }
   const deps = {
-    cfg: mkCfg({ birthFinishWaitMs: 100 }), trace: noTrace,
+    cfg: mkCfg({ birthFinishWaitMs: 100, birthDeferredClaim: true }), trace: noTrace,
     sessionId: sid,
     archive: async () => 'art://PRE21',
     // 提纯 300ms 后才成功 —— 远超 100ms 预算（模拟真机 5~7s 的真工期）

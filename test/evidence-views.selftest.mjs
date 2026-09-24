@@ -1,10 +1,12 @@
+// 健壮性回归：快照失败语义、CAS 读取与恢复、退役开关不生效、宿主 pre-step 不被插件拖垮、
+// emitter 拒绝倒置区间、trace 审计器、taskId 贯通、传输层错误形态（SSE 畸形帧 / 401 / 4MB 上限）。
+// v11.8：证据视图（selectEvidenceViews / 回执复用）与快照镜像已随退役开关移除，对应用例一并删除。
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import http from 'node:http'
-import { selectEvidenceViews } from '../evidence-views.js'
 import { createTraceAudit } from '../deploy/analyze-trace.mjs'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-views-')), oldHome = process.env.DSH_HOME
 process.env.DSH_HOME = home
@@ -16,8 +18,6 @@ const tick = () => new Promise(r => setImmediate(r))
 const hash = s => crypto.createHash('sha256').update(s).digest('hex')
 const ent = (text = '记录') => ({ id: text, category: 'state', content: text, evidence: 'inferred', origin: 'model', validity: 'active' })
 const result = { text: '【当前有效状态】\n已记录本轮可见内容。', entries: [ent()], checkpointText: '本轮记录' }
-const tool = (extra = {}) => ({ id: 'c', name: 'read', args: '{}', resultSeq: 2, status: 'completed', result: 'HEAD'.repeat(150) + 'MIDDLE'.repeat(100) + 'TAIL'.repeat(150), ...extra })
-const receipts = view => view.tools.filter(t => t.viewReceipt).map(t => t.viewReceipt)
 function data(n = 28, len = 3299) {
   const events = []
   for (let i = 0; i < n; i++) {
@@ -27,108 +27,29 @@ function data(n = 28, len = 3299) {
   }
   return { events, inFlightIds: new Set(), cutSeq: n * 2 }
 }
-function start(sid, { distill = async () => result, archive = async () => 'h', cfg = {}, mirrorSnapshot, source = data(), traces = [] } = {}) {
+function start(sid, { distill = async () => result, archive = async () => 'h', cfg = {}, source = data(), traces = [] } = {}) {
   return I.birthStart({ index: 0, text: '原始推理'.repeat(300) }, { sessionId: sid, branchId: 'main',
-    cfg: { stateMemory: true, stateEvidenceViews: true, stateSnapshotMirror: true, timeoutMs: 1000, ...cfg },
-    distill, archive, mirrorSnapshot, buildEnvelope: M.buildEvidenceEnvelope, collectEvidence: () => source,
+    cfg: { stateMemory: true, timeoutMs: 1000, ...cfg },
+    distill, archive, buildEnvelope: M.buildEvidenceEnvelope, collectEvidence: () => source,
     trace: (tag, v) => traces.push({ tag, ...v }),
   })
 }
 let server
 try {
-  await test('one long result progresses head, tail, interior without new model calls', () => {
-    let known = [], seen = []
-    for (let i = 0; i < 3; i++) { const v = selectEvidenceViews([tool()], known); seen.push(v.tools[0].result); known.push(...receipts(v)) }
-    assert.deepEqual(seen, ['HEAD'.repeat(150), 'TAIL'.repeat(150), 'MIDDLE'.repeat(100)])
-    assert.equal(selectEvidenceViews([tool()], known).tools[0].result, null)
-  })
-  await test('changed unseen suffix invalidates old prefix receipt', () => {
-    const a = selectEvidenceViews([tool()]); const b = selectEvidenceViews([tool({ result: tool().result.slice(0, -1) + '!' })], receipts(a))
-    assert.equal(b.tools[0].result, a.tools[0].result); assert.notEqual(b.tools[0].viewReceipt, a.tools[0].viewReceipt)
-  })
-  await test('event identity, args, status and error flag are part of receipt identity', () => {
-    const a = selectEvidenceViews([tool()]); for (const extra of [{ resultSeq: 4 }, { args: 'different' }, { status: 'failed' }, { isError: true }])
-      assert.notEqual(selectEvidenceViews([tool(extra)], receipts(a)).tools[0].viewReceipt, a.tools[0].viewReceipt)
-  })
-  await test('already truncated source cannot mint a complete-source receipt', () => assert.equal(selectEvidenceViews([tool({ resultTruncated: true })]).tools[0].viewReceipt, null))
-  await test('missing result identity cannot authorize future omission', () => assert.equal(selectEvidenceViews([tool({ resultSeq: null })]).tools[0].viewReceipt, null))
-  await test('surrogate pairs are not split at view boundaries', () => {
-    const raw = 'a'.repeat(599) + '😀' + 'z'.repeat(20)
-    const v = selectEvidenceViews([tool({ result: raw })]); assert.equal(v.tools[0].result, 'a'.repeat(599))
-    const next = selectEvidenceViews([tool({ result: raw })], receipts(v)); assert.ok(next.tools[0].result.startsWith('😀'))
-  })
-  await test('body budget is enforced while all tool metadata remains present', () => {
-    const v = selectEvidenceViews(Array.from({ length: 28 }, (_, i) => tool({ id: 'c' + i, resultSeq: i + 1 })), [], { budget: 1800 })
-    assert.equal(v.stats.bodyChars, 1800); assert.equal(v.tools.length, 28); assert.equal(v.stats.deferred, 25)
-    assert.ok(v.tools.filter(t => t.result === null).every(t => t.resultDeferred))
-  })
-  await test('pending tools are not represented as completed or silently removed', () => {
-    const v = selectEvidenceViews([tool({ status: 'requested', result: null })], [], { budget: 0 })
-    assert.equal(v.tools[0].status, 'requested'); assert.equal(v.tools[0].result, null)
-  })
-  await test('failed evidence is prioritized before newer successful results', () => {
-    const v = selectEvidenceViews([tool({ status: 'failed', result: 'ERROR' }), tool({ id: 'new' })], [], { budget: 5 })
-    assert.equal(v.tools[0].result, 'ERROR'); assert.equal(v.tools[1].result, null)
-  })
-  await test('deferred body and interval limits are explicit in model input', () => {
-    const v = selectEvidenceViews([tool(), tool({ id: 'other' })], [], { budget: 600 })
-    const text = M.buildStateCompilePrompt(M.buildEvidenceEnvelope({ tools: v.tools, coverage: { omittedEvidence: true } }))
-    assert.match(text, /正文未纳入本轮/); assert.match(text, /utf16-chunks-v1/); assert.match(text, /覆盖\*\*不完整/)
-  })
-  await test('selected view retains command context and explicitly marks truncated arguments', () => {
-    const v = selectEvidenceViews([tool({ args: 'command-' + 'x'.repeat(450) })])
-    const text = M.renderToolEvidence(M.buildEvidenceEnvelope({ tools: v.tools }).tools).text
-    assert.match(text, /参数=command-/); assert.match(text, /参数未完整纳入/)
-  })
-  await test('view receipts refer to verbatim text, not cleanup-altered body', () => {
-    const raw = 'x  \n\n\n\n\x1b[31merror\x1b[0m'
-    const v = selectEvidenceViews([tool({ result: raw })])
-    assert.ok(M.renderToolEvidence(M.buildEvidenceEnvelope({ tools: v.tools }).tools).text.includes(raw))
-  })
-  await test('diagnostic identity distinguishes equal-length snapshots and different view ranges', () => {
-    const a = M.buildEvidenceEnvelope({ stateSnapshot: { revision: 1, text: 'AAA' } })
-    const b = M.buildEvidenceEnvelope({ stateSnapshot: { revision: 1, text: 'BBB' } })
-    assert.notEqual(M.cacheIdentity(a), M.cacheIdentity(b))
-    const c = M.buildEvidenceEnvelope({ tools: [tool({ result: 'x', evidenceView: '[0,1)' })] })
-    const d = M.buildEvidenceEnvelope({ tools: [tool({ result: 'x', evidenceView: '[1,2)' })] })
-    assert.notEqual(M.cacheIdentity(c), M.cacheIdentity(d))
-  })
-  await test('receipt metadata survives the exact production envelope', () => {
-    const v = selectEvidenceViews([tool()]); const env = M.buildEvidenceEnvelope({ tools: v.tools })
-    assert.equal(env.tools[0].viewReceipt, v.tools[0].viewReceipt); assert.equal(env.tools[0].evidenceView, v.tools[0].evidenceView)
-  })
-  await test('successful production compile writes receipts to real disk plus observable trace', async () => {
-    const traces = []; const t = start('receipts', { traces }); await t.distillP
-    assert.equal(S.loadSnapshot('receipts', 'main').viewReceipts.length, 10)
-    assert.deepEqual(S.loadSnapshot('receipts', 'main').coverage.coveredSeqs, [])
-    assert.ok(traces.some(t => t.tag === 'state-evidence-view' && t.bodyChars === 6000))
-    assert.ok(traces.some(t => t.tag === 'state-snapshot-committed'))
-  })
-  await test('next sequential production call advances ranges instead of repeating prefix', async () => {
-    const inputs = []; const distill = async env => { inputs.push(env); return result }
-    await start('sequential', { distill, source: data(1, 1800) }).distillP
-    await start('sequential', { distill, source: data(1, 1800) }).distillP
-    assert.match(inputs[0].tools[0].evidenceView, /\[0,600\)/)
-    assert.match(inputs[1].tools[0].evidenceView, /\[1200,1800\)/)
-    assert.ok(inputs[1].stateSnapshot); assert.equal(S.loadSnapshot('sequential', 'main').viewReceipts.length, 2)
-  })
-  for (const failure of ['model', 'archive', 'lock']) await test(`${failure} failure cannot mint receipt authority`, async () => {
+  for (const failure of ['model', 'archive', 'lock']) await test(`${failure} failure cannot commit a snapshot`, async () => {
     const sid = 'failed-' + failure, f = S.snapshotPath(sid, 'main')
     if (failure === 'lock') fs.writeFileSync(f + '.lock', 'busy')
     await start(sid, { distill: async () => { if (failure === 'model') throw Error('failure'); return result }, archive: async () => failure === 'archive' ? null : 'h' }).distillP
     assert.equal(S.loadSnapshot(sid, 'main'), null)
     if (failure === 'lock') fs.unlinkSync(f + '.lock')
   })
-  await test('oversize snapshot disables receipt reuse rather than using a partial view', async () => {
+  await test('oversize snapshot is never injected as a partial view', async () => {
     await start('oversize', { source: data(1, 1800) }).distillP
     S.commitSnapshot({ sessionId: 'oversize', branchId: 'main', entries: [ent('x'.repeat(13000))] })
     let input; await start('oversize', { source: data(1, 1800), distill: async e => { input = e; return result } }).distillP
-    assert.equal(input.stateSnapshot, null); assert.match(input.tools[0].evidenceView, /\[0,600\)/)
+    assert.equal(input.stateSnapshot, null)
   })
-  await test('coverage off prevents receipt reuse; snapshots off do not write receipts', async () => {
-    await start('switch', { source: data(1, 1800) }).distillP
-    let input; await start('switch', { source: data(1, 1800), cfg: { stateCoveredEvidence: false }, distill: async e => { input = e; return result } }).distillP
-    assert.match(input.tools[0].evidenceView, /\[0,600\)/)
+  await test('stateSnapshot:false never writes a snapshot', async () => {
     await start('no-snapshot', { cfg: { stateSnapshot: false } }).distillP
     assert.equal(S.loadSnapshot('no-snapshot', 'main'), null)
   })
@@ -171,13 +92,6 @@ try {
     const x = await putRecord('corrupt-local', 1, 1), f = S.snapshotPath('corrupt-local', 'main'); fs.writeFileSync(f, '{broken')
     const r = await S.recoverSnapshot({ sessionId: 'corrupt-local', store: { readRangeByHandle: () => ({ lines: [x.text], atEof: true }) } })
     assert.equal(r.ok, false); assert.equal(fs.readFileSync(f, 'utf8'), '{broken')
-  })
-  await test('mirror is scheduled outside compile/finish wait and failure leaves local state', async () => {
-    let called = false, release
-    const mirror = new Promise(r => { release = r })
-    const t = start('mirror', { mirrorSnapshot: async (text, sid) => { called = true; assert.equal(sid, 'mirror'); assert.equal(JSON.parse(text).viewReceipts.length, 10); await mirror; throw Error('offline') } })
-    assert.equal((await t.distillP).ok, true); assert.equal(called, false)
-    await tick(); assert.equal(called, true); assert.ok(S.loadSnapshot('mirror', 'main')); release(); await tick()
   })
   await test('retired mirror flag cannot silently restore production state', async () => {
     const x = await putRecord('hook-recover', 7, 1), hooks = new Map(); let release, reads = 0
@@ -230,7 +144,11 @@ try {
     }
   })
   await test('unknown failure stays explicit rather than null or invented timeout', () => assert.equal(I.settledTraceData(0, 1, { ok: false }).reason, 'unknown-failure'))
-
+  await test('trace auditor reads birth.finishWaitMs from the nested BOOT field', () => {
+    const a = createTraceAudit(), prefix = '[2026-09-24T07:00:00.000Z] '
+    a.add(prefix + '[BOOT] {"selfId":"C","timeoutMs":20000,"birth":{"finishWaitMs":12000,"deferredClaim":false}}')
+    const g = a.result().groups[0]; assert.equal(g.boot.birthFinishWaitMs, 12000); assert.equal(g.boot.timeoutMs, 20000)
+  })
   let mode = 'ok', requests = []
   server = http.createServer((req, res) => { let body = ''; req.on('data', c => { body += c }); req.on('end', () => {
     const p = JSON.parse(body); requests.push(p)
@@ -252,19 +170,6 @@ try {
   })
   await test('SSE body buffer has an actual enforced upper bound', async () => {
     mode = 'oversize'; await assert.rejects(I.requestStream(cfg.baseUrl, { body: '{}', timeoutMs: 1000 }), /exceeds 4MB/)
-  })
-  await test('sequential HTTP workload sends bounded views without requiring concurrency', async () => {
-    mode = 'ok'; const metrics = []
-    for (const enabled of [false, true]) {
-      const n = requests.length, inputs = [], sid = 'http-' + enabled
-      for (let i = 0; i < 3; i++) await start(sid, { cfg: { stateEvidenceViews: enabled }, distill: async (env, signal) => { inputs.push(env); return I.generateStateMemory(env, cfg, signal) } }).distillP
-      const prompts = requests.slice(n).map(x => x.messages[0].content)
-      assert.equal(prompts.length, 3)
-      metrics.push({ enabled, calls: 3, promptChars: prompts.map(x => x.length), bodyChars: inputs.map(e => e.tools.reduce((n, t) => n + String(t.result || '').length, 0)) })
-    }
-    assert.ok(metrics[1].promptChars.every((n, i) => n < metrics[0].promptChars[i]))
-    assert.ok(metrics[1].bodyChars.every(n => n <= 6000))
-    console.log('SEQUENTIAL_BENCHMARK ' + JSON.stringify(metrics))
   })
   await test('retired profile switches no longer activate old production implementations', () => {
     const config = I.normalizeConfig({ stateMemory: true, stateEvidenceViews: true, stateEvidenceBodyBudget: 6000, stateSnapshotMirror: true, stateCompileQueue: true })

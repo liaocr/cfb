@@ -121,7 +121,7 @@ await test('P3 classifyUserEventSource / classifyUserEventMetadata 对对象形�
 // ── P4 compress 迟到通路 ───────────────────────────────────────
 await test('P4 compress：finish 走 ready-only（不再白等 finishWaitMs），迟到成功进入暂存区并可认领', async () => {
   const raw = 'compress-raw-' + 'z'.repeat(1200)
-  const cfg = { ...I.normalizeConfig({ mode: 'birth', dryRun: false, stateCompress: true, birthMinChars: 100, birthFinishWaitMs: 4000 }) }
+  const cfg = { ...I.normalizeConfig({ mode: 'birth', birthDeferredClaim: true, dryRun: false, stateCompress: true, birthMinChars: 100, birthFinishWaitMs: 4000 }) }
   let release
   const traces = []
   const deps = { cfg, sessionId: 'compress-late', trace: (t, d) => traces.push([t, d]),
@@ -312,7 +312,7 @@ await test('emit-refused-range 带诊断字段（不放宽守卫）', () => {
 })
 
 await test('in-flight 登记：放行后计 1，编译落地后清 0；claim-miss 可区分"还在飞"', async () => {
-  const cfg = I.normalizeConfig({ mode: 'birth', dryRun: false, stateCompress: true, birthMinChars: 100 })
+  const cfg = I.normalizeConfig({ mode: 'birth', birthDeferredClaim: true, dryRun: false, stateCompress: true, birthMinChars: 100 })
   let rel
   const deps = { cfg, sessionId: 'inf2', trace: () => {}, archive: async () => 'art://x', deriveHandle: () => 'art://x', distill: () => new Promise((r) => { rel = () => r({ text: 's' }) }) }
   const t = I.birthStart({ index: 0, text: 'Q'.repeat(900), end: {} }, deps); await Promise.resolve(); await Promise.resolve()

@@ -192,7 +192,7 @@ try {
   async function hookFixture(sid, config = {}) {
     const hooks = new Map(), traceFile = path.join(home, sid + '.log')
     I.apply({ on: (n, fn) => hooks.set(n, fn), get: () => null }, {
-      mode: 'birth', dryRun: false, trace: true, traceFile, prewarm: false, ...config,
+      mode: 'birth', birthDeferredClaim: true, dryRun: false, trace: true, traceFile, prewarm: false, ...config,
     })
     const raw = '原'.repeat(1000)
     const events = [user(1, 'u'), assistant(2, raw), user(3, 'u2'), assistant(4, 'tail')]

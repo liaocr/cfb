@@ -13,8 +13,8 @@
  * 三条铁律：
  *   ① 任何异常、任何异常读数、任何自检不过 ⇒ **什么都不做**（D3′ 保持原文）；
  *   ② 绝不丢信息：归档失败就内联，绝不让工具结果凭空消失；
- *   ③ source.kind 必须是 'plugin'，**绝不是 'user'** —— 否则会污染
- *      findLastUserMessage() 的「用户原话」机械注入。
+ *   ③ source.kind 必须是 'plugin'，**绝不是 'user'** —— 否则看板会被当成真人消息
+ *      （state-memory 的来源判定据此区分人类要求与插件生成的记忆）。
  *
  * @module dsh-cot-form-b/emitter
  */

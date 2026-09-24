@@ -1,4 +1,3 @@
-import { validReceipt } from './evidence-views.js'
 /**
  * ★★ 结构化状态快照持久化（2026-09-22，用户批准的"快照持久化"路线）★★
  *
@@ -45,6 +44,10 @@ import crypto from 'node:crypto'
 import { mergeByEvidence, renderCheckpoint, SCHEMA_VERSION, COMPILER_VERSION, RENDERER_VERSION, MEMORY_POLICY_VERSION, MODEL_MEMORY_PREAMBLE } from './state-memory.js'
 
 /** 快照文件格式版本。与 state-memory 的 SCHEMA_VERSION 是两件事，各自演进。 */
+// 视图回执：sha256 十六进制串。只用于校验/保留旧快照里的 viewReceipts 字段
+//   （证据视图 stateEvidenceViews 已于 v7 退役、代码于 v11.8 移除；字段保留以兼容已落盘的快照）。
+export const validReceipt = s => typeof s === 'string' && /^[a-f0-9]{64}$/.test(s)
+
 export const SNAPSHOT_SCHEMA_VERSION = 1
 
 /** 覆盖集合上限：超过就只保留最大的 N 个（防无界增长）。仅影响极长会话。 */

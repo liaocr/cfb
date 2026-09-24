@@ -124,7 +124,7 @@ try {
     try {
       const archived = new Map(), store = { putText: async (text, opts) => { const handle = 'art://' + sha(opts.sessionId + text); archived.set(handle, text); return { handle, sha256: sha(text) } } }
       I.apply({ on: (name, fn) => hooks.set(name, fn), get: key => key === 'cmbStore' ? store : null }, {
-        ...I.DEFAULTS, mode: 'birth', stateMemory: true, dryRun: false, model: 'fixture', followHostModel: false, followHostProvider: false,
+        ...I.DEFAULTS, mode: 'birth', birthDeferredClaim: true, stateMemory: true, dryRun: false, model: 'fixture', followHostModel: false, followHostProvider: false,
         baseUrl: 'http://127.0.0.1:' + server.address().port, credentialRef: 'LOCAL', credentialsPath,
         keepAlive: false, distillStream: true, trace: true, traceFile,
       })

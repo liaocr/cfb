@@ -1,62 +1,32 @@
 import { createExactFlights } from './exact-flights.js'
 import { createConsumptionMeter } from './consumption.js'
 import { prepareCompilerEvidence, prepareJudgmentPrompt, JUDGMENT_PROMPT_VERSION } from './evidence-ledger.js'
-import { selectEvidenceViews, validReceipt } from './evidence-views.js'
-// dsh-cot-form-b —— 形态 B（通道一）：尾部即时思维链提纯
+// dsh-cot-form-b —— 推理块「出生即压缩」插件（DSH 外部插件）
 //
-// 人话：模型这一轮写完思维链后，当场把它压成一份「状态结算单」，
-//       再用官方通道把历史里那条又长又啰嗦的思维链换掉，
-//       这样后续每一轮都不用再重复携带它。
+// 人话：模型每写完一段 reasoning，就在它进入会话之前把它压成短摘要；
+//       原文先写进 CAS（可按句柄取回），摘要以普通 append 落进会话。
+//       后续每一轮携带的都是短摘要，而不是又长又啰嗦的原文。
 //
-// 通道（实测已通）：
-//   session.append('assistant/message', {turn, step, message}, {
-//     surfaceOp: { op: 'replace', startSeq: seq, endSeq: seq },
-//     sourceEventSeqs: [seq],
-//   })
-//   ⇒ 保持原生 assistant 角色；tool-call 块原样保活；原文留在落盘日志；UI 零污染。
+// 生产路径（mode: 'birth'）：
+//   llm/stream 包装主流 → block-end 起火（CAS 归档 ∥ 副模型压缩）→ finish 前限时收网
+//   → 成功且净省达标 ⇒ 改写 reasoning；否则原文放行（+句柄）。任何内部异常只降级为原样透传。
+// 其余模式：'checkpoint'（pre-step 用官方 user/message 看板整段替换，实验）、'off'。
+//   'distill' / 'rules' 已于 v11.8 退役（写回路径协议上永久非法），配置里出现时按 'off' 处理。
 //
-// ─────────────────────────────────────────────────────────────────────────────
-// 五道防线（全部为纯物理判据，不做任何"未来会怎样"的预测）
-// ─────────────────────────────────────────────────────────────────────────────
-//   ① 触发门槛      raw < minRawChars(800) → 不发起伴生调用（省延迟、省调用）
-//                   800 = R=4 保本原长（三点拟合：774，保守取整）
-//   ② 防增肥        final >= raw → 放弃替换
-//   ③ 保本后验      (raw - final) × hurdleRounds > templateChars + raw + final
-//                   这是①的同一个不等式，只是用**实测的** final 再验一次。
-//                   它包含②；单独用②不够（raw=5000/final=4900 会漏过）。
-//   ④ 原话机械注入  用户原话绝不让模型背诵/翻译，由本模块从宿主消息里字符串截取。
-//                   定位是「提升显著性」，不是「防止丢失」——用户原话本来就
-//                   原封不动留在历史里（replace 只动 assistant）。
-//   ⑤ 契约焊死      三态硬标签；无内容整栏省略；严禁软性措辞。
-//
-// ⚠ 口径纪律（写在代码里，防以后被误读）：
-//   本模块只做「字符数」判定。字符数不是钱。
-//   ★ 2026-09-18 状态更新：d_eff 已实测（原文写「至今未测」，现已作废）。
-//     官方价格参数（用户提供）：输入 : 输出 : 缓存 = 1 : 4 : 0.02
-//     独立复现（e1d/e1e 账单差分，见 docs/d-eff-result.md —— 外部仓库材料，本包无此文件）：
-//       d_hit  = 0.0223  （缓存命中单价 / 全价）
-//       d_miss = 0.9981  （实测全价 ≈ 官方 1，偏差 0.19%）
-//       d_eff  ≈ 0.032   ⇒ 字符→钱的杠杆 ≈ 2.4×（不是 74×；74× 是「0 缓存」的幻觉）
-//     结论变化：外置到 CAS 省不了多少钱（杠杆只有 ~2.4×），
-//     它的正当性必须建立在**质量/可读性**上，不能建立在省钱上。
-//   ⇒ 但本模块的 trace 字符数**仍然不得**被当作 cost savings：
-//     字符 → token → 钱 的换算还缺一个可信的字符/token 比，
-//     且 §九 硬规矩#0 禁止把商户缓存信息（命中率/cache_hit_tokens）引入任何计算。
-// ─────────────────────────────────────────────────────────────────────────────
-import { createCompileLanes } from './compile-lane.js'
+// ⚠ 口径纪律：本模块只做「字符数」判定。字符数不是钱；trace 里的字符数不得当作费用节省。
 import fs from 'node:fs'
 import http from 'node:http'
 import https from 'node:https'
 import crypto from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
-import { compressByRules, fidelity } from './rules.js'
+import { fidelity } from './rules.js'
 import { runPreStepEmit, toolTextFromEvent, LEDGER_OPEN, readPressure } from './emitter.js'
 import {
   buildEvidenceEnvelope, buildStateCompilePrompt as buildStateCompilePromptSafe, promptStats,
-  parseStateCompile, createMemoryProjection, renderBirth, renderCheckpoint, memoryStats,
-  adaptEvidence, mergeOrdered, cacheIdentity, classifySource, SOURCE,
-  normalizeEvidenceEvent, assembleEvidence, classifyUserEventSource, ATTRIBUTION,
+  parseStateCompile, createMemoryProjection, renderCheckpoint, memoryStats,
+  adaptEvidence, mergeOrdered, cacheIdentity, SOURCE,
+  normalizeEvidenceEvent, assembleEvidence,
   LEDGER_MARKERS, RUNTIME_MARKERS,
   renderIncrement, buildProblemUnits, renderProblemUnits, mergeByEvidence,
   SCHEMA_VERSION, COMPILER_VERSION, RENDERER_VERSION, MEMORY_POLICY_VERSION, MODEL_MEMORY_PREAMBLE,
@@ -64,9 +34,8 @@ import {
 // ★★ 快照持久化（2026-09-22，用户批准路线）：把编译成功后的**完整结构化状态**存下来，
 //   下一轮直接从这里注入 —— 不再"从看板里捞快照"（看板是渲染产物且会被宿主压缩回收）。
 import {
-  loadSnapshot, commitSnapshot, markSnapshotApplied, coveredSeqSet, snapshotToText,
-  snapshotStats, snapshotIdOf, normalizeBranchId, recoverSnapshot, snapshotStoreInfo,
-  SNAPSHOT_SCHEMA_VERSION,
+  loadSnapshot, commitSnapshot, coveredSeqSet, snapshotToText,
+  snapshotStats, snapshotIdOf, normalizeBranchId,
 } from './snapshot-store.js'
 
 // ★ 供测试直接校验「唯一解释出口」：索引与回退必须得到同样的证据。
@@ -83,7 +52,7 @@ export { normalizeEvidenceEvent, assembleEvidence } from './state-memory.js'
 const SELF_ID = (() => {
   try { const s = fs.statSync(new URL(import.meta.url)); return s.size + '@' + Math.round(s.mtimeMs) } catch { return 'unknown' }
 })()
-export const DEP_ID = ['emitter.js', 'imperative.js', 'balanced-span.js', 'headroom.js', 'rules.js', 'state-memory.js', 'snapshot-store.js', 'compile-lane.js', 'evidence-views.js', 'evidence-ledger.js', 'evidence-input.js', 'evidence-storage.js', 'consumption.js', 'exact-flights.js']
+export const DEP_ID = ['emitter.js', 'imperative.js', 'balanced-span.js', 'headroom.js', 'rules.js', 'state-memory.js', 'snapshot-store.js', 'evidence-ledger.js', 'evidence-input.js', 'evidence-storage.js', 'consumption.js', 'exact-flights.js']
   .map((f) => {
     try { const s = fs.statSync(new URL('./' + f, import.meta.url)); return f + '=' + s.size + '@' + Math.round(s.mtimeMs) } catch { return f + '=?' }
   })
@@ -116,50 +85,22 @@ export const DEFAULTS = {
   //   这样即使 config 没被正确传入，也绝不会带电裸奔。
   dryRun: true,
 
-  // ★★ 三级模式（2026-09-15 用户主权开关）★★
-  //   'distill' 伴生提纯（默认）：削减 ~67%，但要一次外部调用；拿不到就自动降级 rules
-  //   'rules'   纯规则：零网络、零 await、同步 <10ms；削减率见 rules.js 顶部的认知等级说明
-  //   'off'     完全不介入，原样放行
-  //   'birth'   ★ 出生即提纯（At-Birth Interception）：在 llm/stream 里扣住 reasoning 块，
-  //             先归档进 CAS、再用纯规则压缩，然后以【普通 append】放行。
-  //             为什么必须用它：0.1.5-rc.1 的 surface.js:207/234 使 assistant/message
-  //             永远无法充当 surfaceOp:replace 的载体 ⇒ 事后改写被架构性禁止。
-  mode: 'distill',
+  // ★★ 模式 ★★
+  //   'birth'      ★ 出生即提纯（缺省，唯一生产路径）：在 llm/stream 里扣住 reasoning 块，
+  //                先归档进 CAS、再由副模型压缩，然后以【普通 append】放行。
+  //                为什么必须用它：0.1.5-rc.1 的 surface.js:207/234 使 assistant/message
+  //                永远无法充当 surfaceOp:replace 的载体 ⇒ 事后改写被架构性禁止。
+  //   'checkpoint' 实验：pre-step 用官方 user/message 看板整段替换已出站的推理（emitter.js）
+  //   'off'        完全不介入，原样放行
+  //   ⛔ v11.8 退役：'distill'（事后改写 assistant/message）与 'rules'（纯规则改写）——
+  //      两者唯一的写回路径被 surface.js:207 永久禁止（恒为 replace-refused-h2），
+  //      'distill' 还会在缺省 dryRun 下照样发起副模型调用（白花钱）。配置里出现时按 'off' 处理，
+  //      BOOT 的 retiredMode 可见。代码可从 v11.7（e818cff）取回。
+  //   ⚠ 缺省 dryRun:true ⇒ birth 在合闸前零调用、零改写（只落观测 trace）。
+  mode: 'birth',
 
-  // ① 触发门槛：R=4 保本原长。
-  //   breakevenRaw(4) = 774（由三点拟合 final ≈ 0.26·raw + 163 反解），保守取整 800。
-  //   ⚠ 这只是**便宜的前置筛子**（省一次 API 调用），不是保本判据；真正的判据是 ③。
-  //   ⚠ 低于门槛**不再等于不压缩**：会降级走纯规则（规则档零成本，没有 API 费用问题）。
+  // checkpoint 模式提前发起（early-fire）的最小推理长度：低于此长度不发起副模型调用。
   minRawChars: 800,
-  // ③ 保本不等式的结构轮数 =「这块之后还会被携带几轮」的保守假设
-  hurdleRounds: 4,
-  // ③ 不等式里的模板量级（提示词本身）
-  templateChars: 500,
-  // ④ 机械注入的用户原话上限
-  maxVerbatimChars: 600,
-  // 09-16 骨架化（默认关）：把超长工具参数外置成句柄 + 首尾骨架
-  // ⚠ 必须两阶段：CAS 写盘是 async，而 appendReplace/rebuildContent 是同步链
-  skeletonizeArgs: false,
-  skeletonMinChars: 600,
-  skeletonKeepHead: 300,
-  skeletonKeepTail: 200,
-
-  // ── 纯规则档 ──
-  rulesEnabled: true,
-  // 游程折叠：连续 ≥3 行「已验证 OK」折成区间（含稀有实体的行永不折叠）
-  rulesFoldRuns: true,
-  // 逐字重复行删除（最弱的一条有损规则）
-  rulesDropDuplicateLines: true,
-  // ⛔⛔ 2026-09-17 事故修正（原为 `rulesMinSavingPct: 10`）——
-  //   那是一个**奖励暴力的逆向淘汰闸**：只有删得够狠（≥10%）的方案才准过线，
-  //   而 100% 保真的精细去重（本语料实测 2.45%）反而被判 no-gain 丢弃
-  //   ⇒ 越暴力越容易通过，越保守越被淘汰。这正是旧规则被逼成杀手的原因之一。
-  //   新判据**彻底与百分比解耦**：① 零丢失受保护 token ② 净省 ≥ N 字符。
-  rulesMinSavedChars: 20,
-  // ⛔ 归档前置闸（约束⑤ 先存后压）：拿不到 CAS 句柄就绝不允许替换掉原始 CoT。
-  //   注意 appendReplace → flushPendingEmit 这条路上**没有任何归档**，
-  //   所以在给它接上归档之前，它会一直拒发 —— 这是**安全状态**，不是故障。
-  rulesRequireArchive: true,
 
   // ── 出生即提纯（mode: 'birth'）──
   //   铁律③：先归档后压缩。归档失败 ⇒ 原样透传（原始 CoT 绝不允许因压缩而丢失）。
@@ -182,26 +123,26 @@ export const DEFAULTS = {
   //   块尾**不阻塞主流**：reasoning delta 实时透传、text/tool 实时透传，
   //   只有 finish 前的收网最多等这么久，到点立即熔断，放行 raw + 句柄。
   birthFinishWaitMs: 1500,
-  // ★★ 方案二「下轮收网」（Deferred Claim）2026-09-21 ★★
-  //   出生即提纯照旧；**没赶上 finishWaitMs 的结果不再丢弃**，而是进暂存区，
-  //   在下一轮 pre-step 用官方 user/message + surfaceOp replace 收网。
-  //   ⇒ 实际等待 0（结果早就在「用户阅读/工具执行」这段时间里跑完了）。
-  //   设为 false 可一键退回旧行为（直接旁路收网器）。
-  birthDeferredClaim: true,
+  // ★★ 方案二「下轮收网」（Deferred Claim，实验）★★
+  //   打开后：没赶上 finishWaitMs 的结果进暂存区，在下一轮 pre-step 用官方
+  //   user/message + surfaceOp replace 收网（finish 处只取已就绪结果，不等待）。
+  //   ⚠ v11.8 缺省改为 false（docs/AUDIT-V11.5.md §四 建议 ②，与线上配置一致）：
+  //     当轮阻塞的最坏情况是确定的（等满 finishWaitMs 后原文放行）；late-claim 的最坏情况是
+  //     部分认领 / 歧义匹配（缺陷 B）/ 重启丢失，且替换已出站块的缓存代价至今无定论。
+  //     打开时 BOOT 的 birth.experimental=true。
+  birthDeferredClaim: false,
   //   净省保本线：蒸馏稿 + 句柄必须比原文少 ≥ 这么多字符才允许替换。
   //   低于此线说明模型在抄书（没完成有效浓缩）⇒ 原样放行 raw + 句柄。
   birthMinSavedChars: 50,
 
 
   // ── 延迟预算 ──
-  // ★ 提前发起（early-fire）：在 llm/stream 里一看到 reasoning 块结束就**非阻塞**地
-  //   拉起伴生调用，用「模型自己生成工具参数的那段时间」把 5.4 秒消化掉。
-  //   ⇒ pre-step 到达时结果通常已经就绪 ⇒ 用户感知延迟 ≈ 0。
+  // ★ 提前发起（early-fire，仅 checkpoint 模式）：在 llm/stream 里一看到 reasoning 块结束就
+  //   **非阻塞**地拉起副模型调用，pre-step 到达时结果通常已经就绪。
   earlyFire: true,
-  // 伴生调用自身的超时（用户可调：网络差就调大，追求速度就调小）
+  // 副模型单次请求的硬超时（所有模式共用；birth 下会按 finishWaitMs 自动抬高，见 normalizeConfig）
   timeoutMs: 8000,
-  // ★ pre-step 里最多额外等多久。early-fire 已经把大头吃掉了，这里只是补最后一段。
-  //   ⚠ 这个数就是**用户感知延迟的上限**。默认 300ms。
+  // checkpoint 模式：pre-step 里最多额外等 early-fire 结果多久（= 用户感知延迟上限）
   graceMs: 300,
   // 重试 4 → 1。退避 1200×attempt 会让"抖动一次 + 两次重试"多出 3.6 秒。
   maxAttempts: 1,
@@ -250,14 +191,14 @@ export const DEFAULTS = {
   //   ② 与自身契约矛盾：上面 followHostProvider 段写着"解析不出来**不猜**"，
   //      但"回落到上面的 baseUrl"这个回落目标却是作者自己的商户 ⇒ 外人装上后，
   //      宿主 provider 不是作者那家商户时会去连一个不属于他的端点：连不上，且暴露来源。
-  //   改为空串 = 没有端点 ⇒ 提纯不发起、降级 rules（与 L751 的 no-model 抛错路径完全同形）。
+  //   改为空串 = 没有端点 ⇒ 提纯不发起、原文放行（与 no-model 抛错路径完全同形）。
   //   本机行为不变：profile 显式 baseUrl 与 followHostProvider 解析两条路照旧。
   baseUrl: '',
   // ★★ 提纯用哪个模型：**跟着宿主对话模型走**（2026-09-15 用户拍板）★★
   //   「宿主用哪个模型对话，我们就用那个模型压缩。」
   //   ⇒ `model` 留空 = 不指定；运行期从 `llm/stream` 的 options.model 实时读取宿主模型。
   //   ⇒ 不写死任何具体模型名（写死的名字都是从商户目录里挑的，身份不可核实）。
-  //   ⇒ 读不到宿主模型时**不猜**：直接放弃提纯、降级 rules，并把原因落 trace。
+  //   ⇒ 读不到宿主模型时**不猜**：直接放弃提纯、原文放行，并把原因落 trace。
   model: '',
   // 是否跟随宿主模型（关掉则必须显式给 `model`，否则不发起提纯）
   followHostModel: true,
@@ -367,16 +308,22 @@ export const DEFAULTS = {
   trace: true,
 }
 
-// ── 配置归一化：同时接受扁平键与用户文档里的嵌套写法 ─────────────────────────
-// 用户配置规范（cordis.patch.yml）：
-//   mode: "distill" | "rules" | "off"
-//   distill: { timeoutMs, minRawChars, hurdleRounds, maxVerbatimChars }
-//   rules:   { foldRuns, dropDuplicateLines, minSavingPct }
-// 嵌套对象里的键**覆盖**同名扁平键。不认识的键一律忽略，绝不报错。
-// 嵌套容器里认识的键（其余进 unknownOptions，形如 'birth.finishWait'）
-const NESTED_DISTILL_KEYS = ['timeoutMs', 'minRawChars', 'hurdleRounds', 'templateChars', 'maxVerbatimChars', 'maxAttempts', 'maxOutputTokens', 'baseUrl', 'model', 'credentialRef', 'credentialsPath', 'graceMs', 'keepAlive', 'keepAliveMsecs', 'prewarm', 'prewarmMinGapMs', 'followHostModel', 'disableThinking', 'hedgeAfterMs']
-const NESTED_RULES_KEYS = ['foldRuns', 'dropDuplicateLines', 'minSavedChars', 'requireArchive', 'minSavingPct']
+// ── 配置归一化：同时接受扁平键与嵌套写法 ─────────────────────────────────────
+// 用户配置规范（profile 的 cordis.patch.yml → config）：
+//   mode: "birth" | "checkpoint" | "off"
+//   distill: { timeoutMs, maxOutputTokens, hedgeAfterMs, ... }   ← 副模型传输参数
+//   birth:   { minChars, finishWaitMs, finishHeadersGraceMs, ... }
+// 嵌套对象里的键**覆盖**同名扁平键。不认识的键不报错，但进 unknownOptions（BOOT 可见）；
+// 退役的键/模式进 retiredOptions / retiredMode，并从生效配置里删除。
+const NESTED_DISTILL_KEYS = ['timeoutMs', 'minRawChars', 'maxAttempts', 'maxOutputTokens', 'baseUrl', 'model', 'credentialRef', 'credentialsPath', 'graceMs', 'keepAlive', 'keepAliveMsecs', 'prewarm', 'prewarmMinGapMs', 'followHostModel', 'disableThinking', 'hedgeAfterMs']
 const NESTED_BIRTH_KEYS = ['minChars', 'archive', 'handleInText', 'producer', 'archiveTimeoutMs', 'finishWaitMs', 'minSavedChars', 'finishHeadersGraceMs']
+// 退役键：v7 四个旧生产开关 + v11.8 随 'distill'/'rules' 模式退役的键（含整个 rules: 容器）
+const RETIRED_OPTIONS = ['stateEvidenceViews', 'stateEvidenceBodyBudget', 'stateSnapshotMirror', 'stateCompileQueue',
+  'hurdleRounds', 'templateChars', 'maxVerbatimChars', 'skeletonizeArgs', 'skeletonMinChars', 'skeletonKeepHead', 'skeletonKeepTail',
+  'rulesEnabled', 'rulesFoldRuns', 'rulesDropDuplicateLines', 'rulesMinSavedChars', 'rulesRequireArchive', 'rules']
+const RETIRED_NESTED_DISTILL = ['hurdleRounds', 'templateChars', 'maxVerbatimChars']
+const RETIRED_MODES = ['distill', 'rules']
+const MODES = ['birth', 'checkpoint', 'off']
 
 export function normalizeConfig(config = {}) {
   const c = Object.assign({}, DEFAULTS, config)
@@ -385,15 +332,6 @@ export function normalizeConfig(config = {}) {
     for (const k of NESTED_DISTILL_KEYS) {
       if (d[k] !== undefined) c[k] = d[k]
     }
-  }
-  const r = config && config.rules
-  if (r && typeof r === 'object') {
-    if (r.foldRuns !== undefined) c.rulesFoldRuns = r.foldRuns
-    if (r.dropDuplicateLines !== undefined) c.rulesDropDuplicateLines = r.dropDuplicateLines
-    if (r.minSavedChars !== undefined) c.rulesMinSavedChars = r.minSavedChars
-    if (r.requireArchive !== undefined) c.rulesRequireArchive = r.requireArchive
-    // @deprecated 百分比判据已废弃；若仍被配置，只在 BOOT 里报出来提醒，不参与任何决策。
-    if (r.minSavingPct !== undefined) c.rulesMinSavingPctDeprecated = r.minSavingPct
   }
   const b = config && config.birth
   if (b && typeof b === 'object') {
@@ -406,18 +344,21 @@ export function normalizeConfig(config = {}) {
     if (b.minSavedChars !== undefined) c.birthMinSavedChars = b.minSavedChars
     if (b.finishHeadersGraceMs !== undefined) c.finishHeadersGraceMs = b.finishHeadersGraceMs
   }
-  // ⚠ 'birth' 必须在这个白名单里，否则会被静默重置回 DEFAULTS.mode
-  if (['distill', 'rules', 'birth', 'checkpoint', 'off'].indexOf(c.mode) === -1) c.mode = DEFAULTS.mode
-  c.retiredOptions = ['stateEvidenceViews', 'stateEvidenceBodyBudget', 'stateSnapshotMirror', 'stateCompileQueue'].filter(k => Object.hasOwn(config, k))
+  // 模式：退役模式按 'off' 处理（它们本来就无法改写任何东西）；不认识的值同样按 'off'
+  //   —— 绝不把拼错的模式名「猜」成一个会改写会话的模式。两种情况都在 BOOT 里可见。
+  if (RETIRED_MODES.includes(c.mode)) { c.retiredMode = c.mode; c.mode = 'off' }
+  else if (!MODES.includes(c.mode)) { c.invalidMode = c.mode; c.mode = 'off' }
+  c.retiredOptions = RETIRED_OPTIONS.filter(k => Object.hasOwn(config || {}, k))
+  if (d && typeof d === 'object') for (const k of RETIRED_NESTED_DISTILL) if (Object.hasOwn(d, k)) c.retiredOptions.push('distill.' + k)
   for (const k of c.retiredOptions) delete c[k]
   // ★ 未知键不再静默吞掉：拼错的键（如 finishWaitMs 扁平写法）进 unknownOptions，BOOT 里可见。
   //   只报不删 —— 不改变任何既有合法行为；嵌套容器键与运行期注入键都在白名单里。
   {
     const known = new Set([
       ...Object.keys(DEFAULTS),
-      'distill', 'rules', 'birth',                    // 嵌套别名容器
+      'distill', 'birth',                             // 嵌套别名容器
       'compileMode', 'compileModeConflict', 'configAdjusted', 'retiredOptions', 'unknownOptions',
-      'rulesMinSavingPctDeprecated', 'followProvider', '_promptMessages', '_onHeaders',
+      'retiredMode', 'invalidMode', 'followProvider', '_promptMessages', '_onHeaders',
       'keepTail', 'pluginName', 'maxInlineToolResultChars', 'staticMinRawChars', 'emitterProducer',
       'birthCancelOnGiveUp', 'birthDiskWaitMs',
       'econCacheDiscount', 'econTemplateChars', 'econR', 'econCharsPerTurn',
@@ -425,7 +366,7 @@ export function normalizeConfig(config = {}) {
     ])
     c.unknownOptions = Object.keys(config || {}).filter((k) => !known.has(k))
     // 嵌套容器里拼错的键同样要报（如 birth: { finishWait: 6000 } 会被静默忽略）
-    for (const [box, keys] of [['distill', NESTED_DISTILL_KEYS], ['rules', NESTED_RULES_KEYS], ['birth', NESTED_BIRTH_KEYS]]) {
+    for (const [box, keys] of [['distill', [...NESTED_DISTILL_KEYS, ...RETIRED_NESTED_DISTILL]], ['birth', NESTED_BIRTH_KEYS]]) {
       const v = config && config[box]
       if (v && typeof v === 'object' && !Array.isArray(v)) {
         for (const k of Object.keys(v)) if (!keys.includes(k)) c.unknownOptions.push(box + '.' + k)
@@ -439,7 +380,7 @@ export function normalizeConfig(config = {}) {
   //   v11.7 起 finish 最多等 finishWaitMs + finishHeadersGraceMs，宽限也必须算进去，
   //   否则 grace 调大后请求会先被 timeoutMs 杀掉（宽限形同虚设）。
   //   已满足的配置（如线上 20000 ≥ 12000+1500+2000）零变化。
-  if (c.mode === 'birth' && c.birthDeferredClaim === false) {
+  if (c.mode === 'birth' && c.birthDeferredClaim !== true) {
     const grace = Number(c.finishHeadersGraceMs)
     const need = Number(c.birthFinishWaitMs) + (Number.isFinite(grace) && grace > 0 ? grace : 0) + 2000
     if (Number.isFinite(need) && Number.isFinite(Number(c.timeoutMs)) && Number(c.timeoutMs) < need) {
@@ -624,22 +565,6 @@ export function buildCompressPromptV3(cot, minChars, maxChars) {
   )
 }
 
-// ── ④ 机械注入：从宿主消息里字符串截取用户原话 ───────────────────────────────
-// 超限时保留「头 60% + 尾 40%」而不是砍尾——约束通常写在最后。
-export function sliceVerbatim(text, maxChars) {
-  const s = String(text || '')
-  if (s.length <= maxChars) return s
-  const head = Math.floor(maxChars * 0.6)
-  const tail = maxChars - head
-  return s.slice(0, head) + '\n…（原话过长，中间省略）…\n' + s.slice(s.length - tail)
-}
-
-// ⚠ 实测形状差异（2026-09-15 金丝雀抓出，别再猜）：
-//   assistant/message → 消息挂在 `data.message` 上
-//   user/message      → **没有 data.message**，字段平铺在 `data` 上
-//   content           → 可能是纯字符串，也可能是 [{type:'text', text}] 块数组 ⇒ 必须双兼容
-//   source.kind       → "user" = 真·人类消息；"plugin" / "skill-catalog" / "system-prompt"
-//                       = 系统注入 ⇒ **必须排除**，否则注入进去的是系统提示，比不注入更毒
 /**
  * ★★ 2026-09-21 消息溯源（外部审计 P0-3）★★
  * 回答"最终请求里那些连续 user 到底是什么"，而**不是**数 role。
@@ -759,11 +684,6 @@ export function mapMessagesToSeqs(session, messageCount) {
   }
 }
 
-export function messageOfEvent(e) {
-  if (!e || !e.data) return null
-  return e.data.message && typeof e.data.message === 'object' ? e.data.message : e.data
-}
-
 export function textOfContent(content) {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return ''
@@ -773,145 +693,10 @@ export function textOfContent(content) {
     .join('\n')
 }
 
-export function findLastUserMessage(sessionLog, beforeSeq) {
-  const pick = (strict) => {
-    for (let i = sessionLog.length - 1; i >= 0; i--) {
-      const e = sessionLog[i]
-      if (!e || e.type !== 'user/message') continue
-      if (typeof beforeSeq === 'number' && typeof e.seq === 'number' && e.seq >= beforeSeq) continue
-      const m = messageOfEvent(e)
-      if (!m) continue
-      const kind = (m.source && m.source.kind) || null
-      // 严格档：只认人类消息。宽松档：仍排除已知的系统来源。
-      if (strict ? kind !== 'user' : (kind && kind !== 'user')) continue
-      const t = textOfContent(m.content)
-      if (t.trim()) return { text: t, kind, seq: e.seq }
-    }
-    return null
-  }
-  return pick(true) || pick(false)
-}
-
-export function findLastUserText(sessionLog, beforeSeq) {
-  const hit = findLastUserMessage(sessionLog, beforeSeq)
-  return hit ? hit.text : ''
-}
-
-export function assembleCheckpoint(distilled, verbatim) {
-  const parts = []
-  if (verbatim && verbatim.trim()) {
-    parts.push('【用户原话·逐字引用】（以下由宿主机械注入，非模型生成，具最高约束力）\n' + verbatim)
-  }
-  parts.push(String(distilled || '').trim())
-  return parts.join('\n\n')
-}
-
-// ── ③ 保本后验不等式 ────────────────────────────────────────────────────────
-// (raw - final) × R > template + raw + final
-// 它同时覆盖「防增肥」：final >= raw 时左侧 ≤ 0，必失败。
-export function passesHurdle(rawChars, finalChars, cfg) {
-  const saved = rawChars - finalChars
-  const lhs = saved * cfg.hurdleRounds
-  const rhs = cfg.templateChars + rawChars + finalChars
-  return { pass: lhs > rhs, saved, lhs, rhs }
-}
-
-// ── 保本原长的反解 ──────────────────────────────────────────────────────────
-// final ≈ a·raw + b 是三点拟合出的经验式（774 那个数就是这么来的）。
-// 代进 (raw − final)·H > template + raw + final：
-//   raw·(1−a)H − bH > T + raw·(1+a) + b
-//   raw·[(1−a)H − (1+a)] > T + b(1+H)
-//   raw* = (T + b(1+H)) / [(1−a)H − (1+a)]
-// 取 floor+1 而不是 ceil：H=3 时正好整除（1200），ceil 会给出一个**恰好不通过**的数。
-//
-// ⚠ 用途已经收窄（2026-09-15）：延迟替换被否决后，本模块只用 H = hurdleRounds = 4
-//   ⇒ 保本原长 774，门槛取 800。保留这个函数是因为它是**门槛的唯一推导来源**：
-//   自测里用它锁住「门槛 ≥ 保本原长」，防止以后有人手改 minRawChars 而不同步改轮数。
-export const FIT = { a: 0.26, b: 163 }
-export function breakevenRaw(hurdleRounds, cfg) {
-  const T = (cfg && cfg.templateChars) || DEFAULTS.templateChars
-  const den = (1 - FIT.a) * hurdleRounds - (1 + FIT.a)
-  if (den <= 0) return Infinity // H ≤ 1.70 时分母 ≤ 0：无论多长都保不了本
-  return Math.floor((T + FIT.b * (1 + hurdleRounds)) / den) + 1
-}
-
 // ── 消息工具 ────────────────────────────────────────────────────────────────
 export function reasoningTextOf(message) {
   if (!message || !Array.isArray(message.content)) return ''
   return message.content.filter((b) => b && b.type === 'reasoning').map((b) => String(b.text || '')).join('\n')
-}
-
-export function toolCallsOf(message) {
-  if (!message || !Array.isArray(message.content)) return []
-  return message.content.filter((b) => b && b.type === 'tool-call')
-}
-
-// 新 reasoning 放最前，其余非 reasoning 块（text / tool-call）原序保活
-// 09-16：plan = [{key, handle, text}] 由 buildSkeletonPlan 异步产出后传入；不传则行为完全不变
-// ── 09-16 骨架化：超长工具参数外置（两阶段：async 写盘 → 同步应用）──────────────
-// 为什么两阶段：CAS 写盘是 async，而 appendReplace/rebuildContent 是同步链；
-// 在同步函数里 await 会把整条链断掉（这是最初草图的坑，必须避开）。
-export function collectBigStrings(message, minChars) {
-  const out = []
-  if (!message || !Array.isArray(message.content)) return out
-  message.content.forEach((b, bi) => {
-    if (!b || b.type !== 'tool-call' || !b.input || typeof b.input !== 'object') return
-    for (const k of Object.keys(b.input)) {
-      const v = b.input[k]
-      if (typeof v === 'string' && v.length >= minChars) out.push({ bi, k, text: v })
-    }
-  })
-  return out
-}
-
-// 首尾保留 + 中间句柄：字段名与类型都不变 ⇒ 工具调用 schema 仍然合法
-export function makeSkeleton(full, handle, head, tail) {
-  const h = Number(head || 300), t = Number(tail || 200)
-  const dropped = full.length - (h + t)
-  return full.slice(0, h) + '\n// …[省略 ' + dropped + ' 字符；全文句柄 ' + handle + ' ，可用 inspect_artifact 读回]…\n' + full.slice(full.length - t)
-}
-
-export function applySkeletons(message, plan) {
-  if (!plan || !plan.length || !message || !Array.isArray(message.content)) return message
-  const byKey = new Map(plan.map((p) => [p.bi + '|' + p.k, p]))
-  const content = message.content.map((b, bi) => {
-    if (!b || b.type !== 'tool-call' || !b.input || typeof b.input !== 'object') return b
-    let changed = false
-    const input = Object.assign({}, b.input)
-    for (const k of Object.keys(input)) {
-      const p = byKey.get(bi + '|' + k)
-      if (p) { input[k] = p.text; changed = true }
-    }
-    return changed ? Object.assign({}, b, { input }) : b
-  })
-  return Object.assign({}, message, { content })
-}
-
-// 异步阶段：把大串写进 CAS，产出同步阶段要用的 plan
-async function buildSkeletonPlan(orig, cfg, store, sessionId, trace) {
-  const big = collectBigStrings(orig, cfg.skeletonMinChars)
-  const plan = []
-  for (const it of big) {
-    const ref = await store.putText(it.text, { producer: 'cot-settler-skel', sessionId, retention: 'session' })
-    const handle = (ref && ref.handle) || ''
-    if (!handle) continue
-    plan.push({ bi: it.bi, k: it.k, fullChars: it.text.length, handle, text: makeSkeleton(it.text, handle, cfg.skeletonKeepHead, cfg.skeletonKeepTail) })
-  }
-  return plan
-}
-export function rebuildContent(message, newReasoningText, plan) {
-  const skel = plan && plan.length ? applySkeletons(message, plan) : message
-  message = skel || message
-  const rest = Array.isArray(message.content) ? message.content.filter((b) => b && b.type !== 'reasoning') : []
-  return [{ type: 'reasoning', text: newReasoningText }, ...rest]
-}
-
-export function findLastAssistantEvent(sessionLog) {
-  for (let i = sessionLog.length - 1; i >= 0; i--) {
-    const e = sessionLog[i]
-    if (e && e.type === 'assistant/message') return e
-  }
-  return null
 }
 
 // ── 伴生调用 ────────────────────────────────────────────────────────────────
@@ -923,7 +708,7 @@ export function findLastAssistantEvent(sessionLog) {
  *   ① 不锚定 ⇒ 在 `MY_DEEPSEEK_API_KEY: sk-WRONG` 里查 `DEEPSEEK_API_KEY` 会命中
  *      （子串匹配），静默拿错钥匙 —— 比抛错难查得多；
  *   ② 键名直接进正则 ⇒ 特殊字符会改变语义；值带引号时引号会被当成钥匙的一部分。
- * 空 ref 仍然先拦：没指定过钥匙名 ⇒ 明确失败（上层降级 rules）。
+ * 空 ref 仍然先拦：没指定过钥匙名 ⇒ 明确失败（上层原文放行）。
  */
 export function readApiKey(cfg) {
   if (!cfg.credentialRef) throw new Error('credentialRef is empty: no key name was resolved or configured')
@@ -1851,14 +1636,14 @@ export async function hedgedDistill(fn, key, prompt, cfg, thinkingOff, ep, signa
 export async function generateDistillation(cot, cfg, signal, promptOverride, runtime = {}) {
   cfg = { ...cfg } // Freeze effective scalar request settings before asynchronous dispatch.
   if (!cfg.model) {
-    // ⛔ 不猜模型名。followHostModel 开着但还没见过宿主模型 ⇒ 放弃提纯，让上层降级 rules。
+    // ⛔ 不猜模型名。followHostModel 开着但还没见过宿主模型 ⇒ 放弃提纯，由上层原文放行。
     throw new Error('no model: followHostModel 开着但尚未读到宿主对话模型，且 cfg.model 为空')
   }
   // ★ 端点与钥匙跟随宿主 provider；解析失败**不猜**。
   //   2026-09-19 加固：原实现「解析失败 ⇒ 回落显式 baseUrl/credentialRef」，而那两个
   //   默认值曾经是作者的商户 ⇒ 外人装上后会去连不属于他的端点。现在两条路都要求
   //   【有人真的给过值】：宿主 provider 解析，或 patch 里的显式配置。都没有 ⇒ 抛错，
-  //   由上层降级 rules —— 与上面 no-model 完全同形。
+  //   由上层原文放行 —— 与上面 no-model 完全同形。
   const ep = resolveProviderEndpoint(cfg, cfg.followProvider)
   if (!ep && !cfg.baseUrl) {
     throw new Error('no endpoint: followHostProvider 解析不出宿主 provider，且 cfg.baseUrl 为空')
@@ -2209,28 +1994,6 @@ export function collectEvidence(session, opts = {}) {
   }
 }
 
-const compileLanes = createCompileLanes()
-
-/** A snapshot can replace old input only within the frozen evidence cut. */
-export function rebaseCompileEnvelope(env, snapshot, cutSeq, enabled = true) {
-  if (!enabled || !env || typeof env !== 'object' || !snapshot) return env
-  if (!Number.isSafeInteger(cutSeq) || !Number.isSafeInteger(snapshot.sourceCutSeq) || snapshot.sourceCutSeq > cutSeq) return env
-  if (env.stateSnapshot && snapshot.revision <= env.stateSnapshot.revision) return env
-  const text = snapshotToText(snapshot)
-  if (!text) return env
-  const covered = coveredSeqSet(snapshot)
-  if ([...covered].some(n => n > cutSeq)) return env
-  const filtered = filterCoveredTools(env.tools, covered, COVER_TAIL_FLOOR)
-  // Do not grow the prompt merely because a newer snapshot exists.
-  if (!filtered.info) return env
-  const candidate = buildEvidenceEnvelope({ ...env, tools: filtered.tools, stateSnapshot: {
-    text, revision: snapshot.revision, entries: snapshot.entries.length,
-    covered: covered.size, sourceCutSeq: snapshot.sourceCutSeq,
-    snapshotId: snapshotIdOf(snapshot.sessionId, snapshot.branchId, snapshot.revision),
-  } })
-  return buildStateCompilePromptSafe(candidate).length < buildStateCompilePromptSafe(env).length ? candidate : env
-}
-
 /** Only a fully visible terminal result can acquire omission authority. */
 export function fullyVisibleResultSeqs(tools) {
   return [...new Set((tools || []).filter(t => t && !t.resultTruncated && t.result != null &&
@@ -2365,7 +2128,6 @@ export function birthStart(entry, deps = {}) {
   //   ⇒ 覆盖水位一次都没真正推进过（这正是"过滤从未生效"的第二重原因）。
   let toolsForPrompt = null
   let adaptedCut = null
-  let viewReceipts = []
   let preparationError = null
   let deterministicFrame = null
   let preparedJudgment = null
@@ -2425,7 +2187,7 @@ export function birthStart(entry, deps = {}) {
         }
       } catch (e) { trace('state-snapshot-error', { index: task.index, error: String((e && e.message) || e) }) }
       try {
-        const covered = !cfg.stateEvidenceViews && cfg.stateCoveredEvidence !== false && snapshot && snapText
+        const covered = cfg.stateCoveredEvidence !== false && snapshot && snapText
           ? coveredSeqSet(snapshot) : null
         if (covered && covered.size) {
           // ★ 过滤走**导出的纯函数**（与自测/重放同一份实现，杜绝「验证的是手抄副本」）
@@ -2438,12 +2200,6 @@ export function birthStart(entry, deps = {}) {
           }
         }
       } catch (e) { trace('state-cover-error', { index: task.index, error: String((e && e.message) || e) }) }
-      if (!deterministicFrame && cfg.stateEvidenceViews === true) {
-        const receipts = cfg.stateCoveredEvidence !== false && snapText ? snapshot.viewReceipts || [] : []
-        const view = selectEvidenceViews(toolsForPrompt, receipts, { budget: cfg.stateEvidenceBodyBudget })
-        toolsForPrompt = view.tools
-        trace('state-evidence-view', { index: task.index, ...view.stats })
-      }
       // ③ 构造信封（仍是**一次**模型调用；仍是纯数据）
       // ⚠ 这里**不**注入迟到结果：收网器一旦发射 ledger，assembleEvidence 会
       //   自动把它读回来当 priorMemory（同一条通路），此处再注入就是重复。
@@ -2464,7 +2220,7 @@ export function birthStart(entry, deps = {}) {
           snapshotId: snapshotIdOf(snapshot.sessionId, snapshot.branchId, snapshot.revision),
         } : null,
         unknownUserEvents: adapted.unknownUserEvents,
-        coverage: cfg.stateEvidenceViews ? { ...adapted.coverage, omittedEvidence: true } : adapted.coverage,
+        coverage: adapted.coverage,
         host: Object.assign({
           step: entry.step == null ? null : entry.step,
           blockIndex: task.index,
@@ -2475,7 +2231,6 @@ export function birthStart(entry, deps = {}) {
       if (deterministicFrame) distillInput = Object.freeze({ ...distillInput, deterministicFrame })
       if (deterministicFrame) trace('compiler-input-prepared', { revision: deterministicFrame.revision, bodyChars: deterministicFrame.evidenceInput?.bodyChars || 0, receipts: deterministicFrame.evidenceInput?.receipts || [], meaning: 'input-prepared-not-proof-of-transmission-or-understanding' })
       toolsForPrompt = distillInput.tools
-      viewReceipts = toolsForPrompt.filter(t => t.result != null && validReceipt(t.viewReceipt)).map(t => t.viewReceipt)
       // ★ 提示词体量画像（2026-09-21）：把「优化省了多少」变成可核对的生产数据。
       //   此前只能靠本地合成场景猜重复率，现在真实分布直接落 trace。
       let pstats = null
@@ -2509,31 +2264,11 @@ export function birthStart(entry, deps = {}) {
     }
   }
   trace('compiler-preparation-cost', { ms: performance.now() - preparationStarted, promptBuilt: !!preparedJudgment })
-  const queued = !deterministicFrame && cfg.stateCompileQueue === true && compileModeOf(cfg) === 'memory' && cfg.stateSnapshot !== false &&
-    cfg.stateCoveredEvidence !== false && sessionId != null && Number.isSafeInteger(adaptedCut) &&
-    typeof distill === 'function' && typeof distillInput === 'object'
-  // The existing transport budget now includes queue residence, not extra time.
-  const queueBudget = Number(cfg.timeoutMs == null ? 8000 : cfg.timeoutMs)
-  const deadline = Date.now() + (Number.isFinite(queueBudget) && queueBudget > 0 ? queueBudget : 8000)
-  const ticket = queued ? compileLanes.reserve(JSON.stringify([sessionId, branchId]), { signal: dsignal, deadline }) : null
-  let queueTimer = null
-  if (queued && task.abort) queueTimer = setTimeout(() => task.abort.abort(), Math.max(1, deadline - Date.now()))
   task.distillP = (typeof distill === 'function'
     ? Promise.resolve().then(async () => {
         if (preparationError) throw preparationError
-        if (ticket) {
-          await ticket.ready
-          if (dsignal?.aborted || Date.now() >= deadline) throw new Error('compile-queue-expired')
-          const before = buildStateCompilePromptSafe(distillInput).length
-          const snapshot = loadSnapshot(sessionId, branchId)
-          if (!cfg.stateEvidenceViews) distillInput = rebaseCompileEnvelope(distillInput, snapshot, adaptedCut)
-          toolsForPrompt = distillInput.tools
-          trace('state-queue-dispatched', { index: task.index, remainingMs: deadline - Date.now(),
-            beforeChars: before, afterChars: buildStateCompilePromptSafe(distillInput).length,
-            revision: distillInput.stateSnapshot?.revision ?? null })
-        }
         return distill(distillInput, dsignal, {
-          ...(ticket ? { timeoutMs: Math.max(1, deadline - Date.now()) } : {}), preparedJudgment, onHeaders: noteHeaders,
+          preparedJudgment, onHeaders: noteHeaders,
           taskId, trace, scope: sessionId != null && String(sessionId).length > 0 && Number.isSafeInteger(adaptedCut) && adaptedCut >= 0 ? [String(sessionId), branchId, adaptedCut] : null,
         })
       })
@@ -2588,16 +2323,10 @@ export function birthStart(entry, deps = {}) {
         try {
           const seqs = fullyVisibleResultSeqs(toolsForPrompt)
           const c = commitSnapshot({
-            sessionId, branchId, entries: s.entries, coveredSeqs: seqs, viewReceipts,
+            sessionId, branchId, entries: s.entries, coveredSeqs: seqs,
             sourceCutSeq: adaptedCut, at: Date.now(),
           })
           if (c.ok) {
-            if (cfg.stateSnapshotMirror && typeof deps.mirrorSnapshot === 'function') {
-              const mirror = JSON.stringify(c.snapshot)
-              setImmediate(() => Promise.resolve().then(() => deps.mirrorSnapshot(mirror, sessionId))
-                .then(ref => trace('state-snapshot-mirrored', { revision: c.snapshot.revision, ok: !!(ref && ref.handle) }),
-                  e => trace('state-snapshot-mirror-failed', { error: String(e.message || e) })))
-            }
             trace('state-snapshot-committed', {
               index: task.index, revision: c.snapshot.revision, parentRevision: c.mergedFrom,
               entries: c.snapshot.entries.length, added: c.added,
@@ -2610,7 +2339,7 @@ export function birthStart(entry, deps = {}) {
           }
         } catch (e) { trace('state-snapshot-error', { index: task.index, where: 'commit', error: String((e && e.message) || e) }) }
       }
-      if (s.ok && s.entries && archived && archived.ok && task.passedThrough && cfg.birthDeferredClaim !== false) {
+      if (s.ok && s.entries && archived && archived.ok && task.passedThrough && cfg.birthDeferredClaim === true) {
         const worthStoring = !(task.deterministic || task.compressMode) || raw.length - String(s.checkpointText || s.text).length >= (cfg.birthMinSavedChars ?? 50)
         const stored = worthStoring && pushLateMemory(sessionId, raw, s.entries, s.checkpointText, { branchId, taskId })
         if (!stored) trace('birth-late-memory-refused', { index: task.index, reason: worthStoring ? 'invalid-or-capacity' : 'no-gain', branchId })
@@ -2624,9 +2353,6 @@ export function birthStart(entry, deps = {}) {
         })
       }
       return s
-    }).finally(() => {
-      clearTimeout(queueTimer)
-      ticket?.release() // Must be AFTER successful snapshot commit (or failure).
     })
 
     // ★ 真工期探针（2026-09-18）：收尾即使已熔断，伴生调用真正结束时也会落一条记录。
@@ -2690,7 +2416,7 @@ export async function birthFinish(task, deps = {}) {
   //   暂存区另有容量上限与过期清理。放行本身仍是零等待。
   const cancelFlying = (why) => {
     if (!task.abort || task.distillState !== null) return false
-    if (cfg.birthDeferredClaim !== false) return false
+    if (cfg.birthDeferredClaim === true) return false
     if (cfg.birthCancelOnGiveUp === false) return false
     try { task.abort.abort() } catch { /* ignore */ }
     trace('birth-distill-cancelled', {
@@ -2717,7 +2443,7 @@ export async function birthFinish(task, deps = {}) {
   //   没有理由再让用户在 finish 处等 finishWaitMs（线上 4000ms）却大概率拿不到结果。
   //   legacy（无迟到消费者）保持原预算等待语义。
   const lateCapable = task.deterministic || task.compressMode === true
-  const readyOnly = lateCapable && cfg.birthDeferredClaim !== false && task.canDefer !== false
+  const readyOnly = lateCapable && cfg.birthDeferredClaim === true && task.canDefer !== false
   task.finishEnterAt = Date.now()
   trace('birth-finish-enter', { index: task.index, gapMs: task.finishEnterAt - (task.firedAt || 0), waitPolicy: readyOnly ? 'ready-only' : 'budgeted' })
   if (readyOnly && (!task.diskState || !task.distillState)) {
@@ -2919,135 +2645,6 @@ export function filterCoveredTools(tools, covered, floor) {
   return { tools: Object.freeze(keep), info: { total: list.length, kept: keep.length, dropped: skipped, savedChars: saved } }
 }
 
-// ★★ 水位与快照必须成对（用户 2026-09-22 指出的缺陷）★★
-//   旧实现只记「这个会话曾经编译成功」就过滤 ⇒ 三个漏洞：
-//     ① 迟到结果尚未进入 priorMemory 时，旧证据仍被省略（模型看不到新状态）；
-//     ② 快照过期/被替换后，水位还在 ⇒ 省略的依据已经不存在；
-//     ③ 分支变化时水位串用。
-//   修法：构建输入时先确认「本轮确实携带了一份覆盖该水位的快照」
-//   （判据见 coverSnapshotOk），确认不了就**恢复全量发送**（宁可多发，不可漏发）。
-//
-//   持久化（用户第 3 点）：覆盖关系已可靠归档，TTL 只该清内存缓存，
-//   不该等同于丢弃覆盖关系 ⇒ 落盘到 storages/cot-form-b/cover.json，重启可恢复。
-const COVER_STORE_VERSION = 1
-const coveredEvidence = new Map()  // sessionId -> { upTo, at, entries }
-let coverStorePath = null
-let coverStoreLoaded = false
-
-function coverFile() {
-  // ⚠ 必须走 dshHome()（显式 config > $DSH_HOME > ~/.dsh），与 trace/snapshot/evidence 同一契约。
-  //   旧版这里写死 os.homedir()+'/.dsh' ⇒ 设了 $DSH_HOME 时覆盖关系写进【真实】家目录（已复现）。
-  //   不做永久缓存：home 可能在测试里变化；每次解析成本可忽略（markCovered 频率极低）。
-  try {
-    const dir = path.join(dshHome(), 'storages', 'cot-form-b')
-    fs.mkdirSync(dir, { recursive: true })
-    coverStorePath = path.join(dir, 'cover.json')
-    return coverStorePath
-  } catch { coverStorePath = null; return null }
-}
-
-/** 惰性载入覆盖关系（重启后恢复；损坏则当作空，绝不抛错）。 */
-function loadCoverStore() {
-  if (coverStoreLoaded) return
-  coverStoreLoaded = true
-  try {
-    const f = coverFile()
-    if (!f) return
-    if (!fs.existsSync(f)) return
-    const raw = JSON.parse(fs.readFileSync(f, 'utf8'))
-    if (!raw || raw.v !== COVER_STORE_VERSION || !raw.sessions) return
-    for (const [k, v] of Object.entries(raw.sessions)) {
-      if (v && v.upTo != null) coveredEvidence.set(k, {
-        upTo: Number(v.upTo), at: Number(v.at) || 0, entries: Number(v.entries) || 0,
-      })
-    }
-  } catch {}
-}
-
-/** 落盘（best-effort；失败绝不影响主流程）。 */
-function saveCoverStore() {
-  try {
-    const f = coverFile()
-    if (!f) return
-    const sessions = {}
-    for (const [k, v] of coveredEvidence.entries()) {
-      if (v && v.upTo != null) sessions[k] = { upTo: v.upTo, at: v.at, entries: v.entries || 0 }
-    }
-    fs.writeFileSync(f, JSON.stringify({ v: COVER_STORE_VERSION, sessions }))
-  } catch {}
-}
-
-/**
- * 读取某会话的覆盖水位。返回 {upTo, entries} 或 null。
- * 用**水位线**而不是 seq 集合：集合会随会话无界增长，水位线是常数空间。
- * ⚠ 拿到水位**不等于**可以省略证据 —— 调用方还必须通过下面的快照校验。
- */
-export function coverWatermarkOf(sessionId) {
-  try {
-    loadCoverStore()
-    const c = coveredEvidence.get(String(sessionId))
-    if (!c) return null
-    // ⚠ TTL 只清**内存**缓存；磁盘上仍有该关系，下次会重新载入。
-    //   但本次一律按「无覆盖」处理 —— 宁可多发，不可漏发。
-    if (Date.now() - c.at > LATE_MEMORY_TTL_MS) return null
-    if (c.upTo == null) return null
-    return { upTo: c.upTo, entries: c.entries || 0, at: c.at }
-  } catch { return null }
-}
-
-/**
- * ★ 成对校验（用户第 1 点的可自证形式）。
- *
- * 为什么不需要额外记一个 memoryVersion：
- *   覆盖证据 W 的那份快照，是**在那些事件之后**才被创建并 append 到 surface 的
- *   ⇒ 它的 seq 必然 **严格大于** W。反过来，只要本轮携带的快照 seq > W，
- *   就证明「有一份覆盖 W 的快照此刻确实在输入里」。
- *
- * 三种失效场景因此自动恢复全量发送：
- *   · 迟到结果尚未进入 priorMemory ⇒ 携带的还是旧快照，seq ≤ W ⇒ 不发过滤；
- *   · 快照过期/收网失败 ⇒ priorMemory 里没有更新的快照 ⇒ 不发过滤；
- *   · 分支变化/水位串用 ⇒ 快照 seq 对不上 ⇒ 不发过滤。
- *
- * @returns {ok:boolean, snapSeq:number|null} ok=false ⇒ 调用方必须全量发送
- */
-export function coverSnapshotOk(priorMemory, upTo) {
-  try {
-    if (upTo == null) return { ok: false, snapSeq: null }
-    const list = Array.isArray(priorMemory) ? priorMemory : []
-    let snapSeq = null
-    for (const x of list) {
-      const s = x && x.seq != null ? Number(x.seq) : null
-      if (s != null && Number.isFinite(s) && (snapSeq == null || s > snapSeq)) snapSeq = s
-    }
-    return { ok: snapSeq != null && snapSeq > Number(upTo), snapSeq }
-  } catch { return { ok: false, snapSeq: null } }
-}
-
-/**
- * 推进覆盖水位。**只在编译成功时调用**；失败/取消一律不推进（下轮仍能看到这些证据）。
- * 水位只增不减：乱序事件不得把水位往回拉。
- */
-export function markCovered(sessionId, upTo, entries) {
-  try {
-    loadCoverStore()
-    if (sessionId == null || upTo == null) return false
-    const key = String(sessionId)
-    const v = Number(upTo)
-    if (!Number.isFinite(v)) return false
-    let c = coveredEvidence.get(key)
-    if (!c) { c = { upTo: null, at: 0, entries: 0 }; coveredEvidence.set(key, c) }
-    if (c.upTo == null || v > c.upTo) c.upTo = v
-    c.entries = Number(entries) || 0
-    c.at = Date.now()
-    saveCoverStore()
-    return true
-  } catch { return false }
-}
-
-/** 覆盖水位（进快照/诊断用）。 */
-export function coverVersionOf(sessionId) {
-  try { loadCoverStore(); const c = coveredEvidence.get(String(sessionId)); return c ? (c.upTo == null ? 0 : c.upTo) : 0 } catch { return 0 }
-}
 // ⚠ 键匹配的坑（2026-09-21 实测发现）：
 //   起火处（birthStart）拿的是 entry.text —— **单个** reasoning 块的文本；
 //   收网处（pre-step）拿的是 reasoningTextOf(message) —— 把**所有** reasoning 块
@@ -3525,22 +3122,14 @@ export function apply(ctx, config = {}) {
 let birthSession = null
 /** 当前会话（供证据采集只读访问）。 */
 
-  // ── 运行计数器（常驻内存；随每条 trace 快照落盘，零外部依赖）──
-  const stats = { seen: 0, replaced: 0, rules: 0, distilled: 0, distFailed: 0, short: 0, hurdle: 0, charsRaw: 0, charsFinal: 0 }
-  // 09-16 工具参数遥测（只读，零行为变化）：骨架化收益上界的唯一实测来源
-  for (const k of ['argsSeen','argsOver500','argsChars','inspectCalls']) stats[k] = 0
-  for (const k of ['skel','skelChars']) stats[k] = 0
-  const ARGS_MIN = 500
-  let pendingSkelPlan = null
-  const bump = (k, by) => { stats[k] = (stats[k] || 0) + (by === undefined ? 1 : by) }
-
   // ★ 2026-09-18 公测可移植性：traceFile 现在由 harness home 推导，其父目录默认不存在。
   //   旧代码只 catch ⇒ 在别人机器上「trace 开着但一直没写」，把证据静默丢光。
   //   这里首次写之前递归建目录；建失败照样不阻断宿主，只吞掉证据。
   // ★ 2026-09-21：trace writer 抽成导出的工厂（makeTraceWriter），使"写入→读回"
   //   的**端到端**测试成为可能。只测 meta 里有字段，挡不住"字段没进白名单"这类问题
   //   —— 本文件刚刚就栽过一次（流式阶段字段写进 meta 却没落 trace）。
-  const trace = makeTraceWriter(cfg, () => stats)
+  // v11.8：不再给每行附 stats —— 那组计数器只在已退役的 distill 路径里递增，birth 下恒为 0。
+  const trace = makeTraceWriter(cfg)
   const consumption = createConsumptionMeter(trace)
 
   trace('BOOT', {
@@ -3559,18 +3148,21 @@ let birthSession = null
       : cfg.compileMode === 'compress' ? compressPromptVersion(cfg) : null,
     retiredOptions: cfg.retiredOptions,
     unknownOptions: cfg.unknownOptions,
+    ...(cfg.retiredMode ? { retiredMode: cfg.retiredMode } : {}),
+    ...(cfg.invalidMode !== undefined ? { invalidMode: cfg.invalidMode } : {}),
     memoryPolicyVersion: MEMORY_POLICY_VERSION,
     stateSnapshot: cfg.stateSnapshot !== false,
     stateCoveredEvidence: cfg.stateCoveredEvidence !== false,
     stateStructuralFirst: cfg.stateStructuralFirst === true,
-    birth: { finishWaitMs: cfg.birthFinishWaitMs, deferredClaim: cfg.birthDeferredClaim !== false },
+    birth: { finishWaitMs: cfg.birthFinishWaitMs, deferredClaim: cfg.birthDeferredClaim === true,
+      ...(cfg.birthDeferredClaim === true ? { experimental: true } : {}) },
     schemaVersion: SCHEMA_VERSION, compilerVersion: COMPILER_VERSION, rendererVersion: RENDERER_VERSION,
     // ★★ 复电上岗判据（模块改动必须重启网关才生效）★★
     //   ① emitting 是**手写常量**，只能说明版本意图，**不能**证明载入的是哪一份文件；
     //   ② selfId / deps 是**模块首次求值时从磁盘读到的** size@mtimeMs ——
     //      旧模块在内存里根本不含这段代码 ⇒ 不会打印这两个字段。
     //   复电前先确认本行出现 selfId，且与 `node -e` 现读值一致。
-    emitting: 'step-aware@agent/request+birth@llm/stream+promptV2+ledgerImperativeMetric',
+    emitting: 'birth@llm/stream+deferredClaim@agent/pre-step+checkpoint@agent/pre-step',
     selfId: SELF_ID,
     deps: DEP_ID,
     mode: cfg.mode,
@@ -3583,18 +3175,12 @@ let birthSession = null
     emitterMinSavingsRatio: cfg.emitterMinSavingsRatio,
     emitterMeasureTokens: cfg.emitterMeasureTokens === true,
     minRawChars: cfg.minRawChars,
-    hurdleRounds: cfg.hurdleRounds,
-    templateChars: cfg.templateChars,
-    breakevenRaw: breakevenRaw(cfg.hurdleRounds, cfg),
     earlyFire: cfg.earlyFire,
     timeoutMs: cfg.timeoutMs,
     graceMs: cfg.graceMs,
     maxAttempts: cfg.maxAttempts,
-    rulesEnabled: cfg.rulesEnabled,
-    rulesFoldRuns: cfg.rulesFoldRuns,
-    rulesMinSavedChars: cfg.rulesMinSavedChars,
-    rulesRequireArchive: cfg.rulesRequireArchive,
-    rulesMinSavingPctDeprecated: cfg.rulesMinSavingPctDeprecated,
+    hedgeAfterMs: cfg.hedgeAfterMs,
+    finishHeadersGraceMs: cfg.finishHeadersGraceMs,
     birthArchive: cfg.birthArchive,
     birthMinChars: cfg.birthMinChars,
     birthHandleInText: cfg.birthHandleInText,
@@ -3627,7 +3213,7 @@ let birthSession = null
   //   ⚠ 不猜：`explicitModel` 是 patch 里显式写的那个（可能为空串）。
   //     - 见过宿主模型 ⇒ cfg.model = 宿主模型（跟随成立）
   //     - 没见过但有显式配置 ⇒ cfg.model 仍是显式值（**这是用户的显式选择，不是猜**）
-  //     - 都没 ⇒ cfg.model 为空 ⇒ generateDistillation 直接抛 `no model:` ⇒ 降级 rules
+  //     - 都没 ⇒ cfg.model 为空 ⇒ generateDistillation 直接抛 `no model:` ⇒ 原文放行
   //   ⚠ 我们的提纯调用走 `requestOnce`（node:https 直连），**不经过宿主 llm/stream**
   //     ⇒ 不存在自己污染自己（把提纯模型当成宿主模型）的风险。
   //   ⚠ 但宿主若有其他模型调用（子 agent / 标题生成）也会打这里 ⇒ 只取**最近一次**，
@@ -3636,28 +3222,15 @@ let birthSession = null
   let hostModel = null
   let hostProvider = null
 
-  // ★★ H2 硬闸（2026-09-15 用户终审后落定）★
-  //   一个块只有在「还没进过任何出站 payload」时才允许被替换。
-  //   本模块认的时机只有一个：该块成为「最后一条 assistant 事件」的那个 pre-step ——
-  //   因为本步 payload 正是它第一次出站的地方。
-  //   ⇒ 在那个 pre-step 里，要么把替换做完，要么**永久上锁**，之后谁都不许再碰它。
-  //   这条不是优化，是防止 suffix cascade invalidation（前缀哈希断裂 ⇒ 后缀全价重算）。
-  //   ⚠ 「提前发起（early-fire）」**不违反**这条：提前发起只是把**结果准备好**，
-  //     落盘仍然只发生在那一个 pre-step 里。违反它的是「事后落盘」，不是「提前准备」。
-  const locked = new Set()
-
-  // ★ 2026-09-17：会话级 df 已随角色状态机一并移除。新规则引擎不需要词频表——
-  //   它只做字面去重和同构折叠，从不判断「哪个词稀有不稀有」（那正是事故的根源）。
-
   // ── 提前发起的结果槽（只留最近 3 个，按 reasoning 原文精确匹配）──
   const early = new Map()
   const EARLY_MAX = 3
 
   function fireEarly(raw) {
-    if (!cfg.earlyFire || (cfg.mode !== 'distill' && cfg.mode !== 'checkpoint')) return
+    if (!cfg.earlyFire || cfg.mode !== 'checkpoint') return
     if (!raw || raw.length < cfg.minRawChars) return
     // ★ 跟随宿主模型时，还没见过宿主模型就**不发起** —— 不猜模型名。
-    //   直接跳过，让 pre-step 走 rules；比发一次注定失败的调用干净
+    //   直接跳过（pre-step 拿不到结果 ⇒ 原文保持）；比发一次注定失败的调用干净
     //   （不产生 `early-failed` 噪音，也不占 EARLY_MAX 槽位）。
     if (!cfg.model) {
       trace('early-no-model', { rawChars: raw.length, followHostModel: cfg.followHostModel, explicitModel })
@@ -3707,237 +3280,6 @@ let birthSession = null
     return e.settled ? e : null
   }
 
-  // ── 落盘：**唯一**允许替换的地方（H2）──
-  // ★ 20260916 Step-Aware Emitting。原来在这里直接 append，用的是【已经关闭的】aev.data.turn/step。
-  //   dsh-token-meter 规定 assistant/message 必须落在与之匹配的、**已开启**的 step 内
-  //   （lib/index.js:588-590），否则 `throw: token meter: assistant/message at seq N has no matching
-  //   step/start event` —— 这正是 09-16 压缩死锁的成因。
-  //   离线重放（deploy/probe/_meter-replay-proof.mjs）已证：把 surfaceOp 的 start/end 补上**不解决**
-  //   ——错误只是从 "token surface: invalid current range" 那道闸门挪到 step 这道闸门。唯一可行解是
-  //   **换时机**：等到下一个 step 开着再发。agent/request 在 agent-loop 的 this.step() 内部派发
-  //   （:708，位于 :548 step/start 与 :558 step/end 之间）⇒ 那一刻 step 必然是开着的。
-  //   所以这里只入队，真正的 append 交给 flushPendingEmit()。
-  let pendingEmit = null
-  function appendReplace(session, aev, orig, newReasoning, meta) {
-    const plan = pendingSkelPlan; pendingSkelPlan = null
-    pendingEmit = { session, aev, orig, newReasoning, plan, meta }
-    trace('emit-queued', Object.assign({ n, seq: aev.seq }, meta))
-  }
-
-  // 日志层的"当前是否有开着的 step"——判据与计量器一致：最后一条 step 事件若是 step/start，即为开。
-  // 这是**失败安全**闸门：拿不准就什么都不发（等价于今天的 mode:'off' 行为），绝不冒险写一条会让
-  // 计量器在日后重放时抛错的事件进日志。
-// ★ 0.1.5-rc.1 破坏性变更：宿主会话对象不再暴露 .log，只暴露 eventAt(seq) / get seq()。
-//   实测：dsh-session 仅有 eventAt(:481,:1096) 与 get seq(:515,:1130)，全生态零处消费 session.log。
-//   旧宿主回退 .log；新宿主按访问器重建并按 seq 缓存 —— 保证同一份逻辑在新旧宿主上都能拿到日志视图。
-let _sLogCache = { key: null, seq: -1, log: null }
-function readSessionLog(session) {
-  if (!session) return null
-  let legacy = null
-  try { legacy = session.log } catch { /* 访问器可能抛错，忽略 */ }
-  if (Array.isArray(legacy)) return legacy
-  if (typeof session.eventAt !== 'function') return null
-  const n = typeof session.seq === 'number' ? session.seq : 0
-  if (_sLogCache.key === session && _sLogCache.seq === n) return _sLogCache.log
-  const arr = new Array(n)
-  for (let i = 0; i < n; i += 1) {
-    try { arr[i] = session.eventAt(i) } catch { return null }
-  }
-  _sLogCache = { key: session, seq: n, log: arr }
-  return arr
-}
-
-  function openStepOf(sLog) {
-    if (!Array.isArray(sLog)) return null
-    for (let i = sLog.length - 1; i >= 0; i--) {
-      const t = sLog[i] && sLog[i].type
-      if (t === 'step/end') return null
-      if (t === 'step/start') {
-        const d = sLog[i].data || {}
-        return { turn: d.turn, step: d.step }
-      }
-    }
-    return null
-  }
-
-  function flushPendingEmit(payload) {
-    if (pendingEmit === null) return
-    const item = pendingEmit; pendingEmit = null
-    const meta = item.meta
-    try {
-      const session = item.session
-      if (!session || typeof session.append !== 'function') { trace('emit-dropped-no-session', Object.assign({ n }, meta)); return }
-      const open = openStepOf(readSessionLog(session))
-      if (open === null) { trace('emit-skipped-no-open-step', Object.assign({ n, seq: item.aev.seq }, meta)); return }
-      if (open.turn !== payload.turn || open.step !== payload.step) {
-        trace('emit-skipped-step-mismatch', Object.assign({ n, seq: item.aev.seq, openTurn: open.turn, openStep: open.step, payTurn: payload.turn, payStep: payload.step }, meta))
-        return
-      }
-      // ⛔⛔ 2026-09-21 外部审计第一批：这条路径【协议上永久非法】，已显式禁用 ⛔⛔
-      //   dsh-session/lib/types/surface.js:207-208 硬抛：
-      //     'assistant/message embeds its source stream and cannot carry sourceEventSeqs'
-      //   即 assistant/message **永远不能当替换者**（H2）。此前这里照发不误，只因 appendReplace
-      //   在生产配置下从未被调用（trace.log: emit-queued=0）才没炸；一旦有人打开旧模式开关，
-      //   100% 抛错并被 :catch 吞成 replace-threw 静默失败 —— 是一颗哑弹，不是一条备用路径。
-      //   ⇒ 改为显式拒绝 + 独立留痕。想压缩历史块，唯一合法通道是 emitter.js 的 user/message 看板。
-      trace('replace-refused-h2', Object.assign({ n, seq: item.aev.seq, emitTurn: open.turn, emitStep: open.step,
-        why: 'assistant/message cannot be a replacer (surface.js:207)' }, meta))
-      return
-    } catch (e) {
-      trace('replace-threw', Object.assign({ n, seq: item.aev.seq }, meta, { error: String((e && e.message) || e) }))
-    }
-  }
-
-  // ── 纯规则兜底（同步、零网络、零 await）──
-  function applyRules(session, aev, orig, raw, why) {
-    if (!cfg.rulesEnabled) { trace('rules-disabled', { n, seq: aev.seq, why }); return }
-    let r
-    try {
-      r = compressByRules(raw, {
-        foldRuns: cfg.rulesFoldRuns,
-        dropDuplicateLines: cfg.rulesDropDuplicateLines,
-      })
-    } catch (e) {
-      trace('rules-threw', { n, seq: aev.seq, why, error: String((e && e.message) || e) })
-      return
-    }
-    // ⚠ finalChars 是补的：rules 路径原本只报 outChars/savedChars，
-    //   与 distill 路径的 finalChars 不同名 ⇒ 两条路径的指标不可比（2026-09-15 统计时撞到）。
-    //   这里统一成与 distill 路径同名的 finalChars，并补 waitMs=0（规则档同步执行，从不等待）。
-    const meta = Object.assign({ why, path: 'rules', rawChars: raw.length, finalChars: r.out.length, waitMs: 0 }, r.stats)
-    // ⛔ 判据与百分比解耦（2026-09-17 事故修正）。三条，缺一不放行：
-    //   ① 零丢失受保护 token
-    const lost = r.stats.lostTokens || 0
-    if (lost !== 0) {
-      trace('rules-lossy-refused', Object.assign(meta, { lostTokens: lost, lostSample: r.stats.candidateLostSample || [] }))
-      return
-    }
-    //   ② 归档前置闸（约束⑤ 先存后压）。这条路（appendReplace → flushPendingEmit）
-    //      **没有任何归档**：替换掉就等于在没有句柄的情况下物理销毁原始 CoT。
-    //      给它接上 CAS 归档之前一律拒发。
-    if (cfg.rulesRequireArchive !== false) {
-      trace('rules-no-archive-refused', Object.assign(meta, {
-        hint: 'appendReplace 路径未接 CAS 归档；接上归档后再放开 rulesRequireArchive',
-      }))
-      return
-    }
-    //   ③ 净省字符数（抵消协议开销）
-    const minChars = cfg.rulesMinSavedChars == null ? 20 : cfg.rulesMinSavedChars
-    if (raw.length - r.out.length < minChars) {
-      trace('rules-below-min-saved-chars', Object.assign(meta, { savedChars: raw.length - r.out.length, floor: minChars }))
-      return
-    }
-    if (cfg.dryRun) { trace('dry-run-would-replace', Object.assign(meta, { mode: 'rules' })); return }
-    appendReplace(session, aev, orig, r.out, meta)
-  }
-
-  // ── 一个块的完整决策流（三级自适应）──
-  async function handleBlock(session, sLog, aev) {
-    const orig = aev.data && aev.data.message
-    if (!orig) { trace('no-message', { n, seq: aev.seq }); return }
-
-    const raw = reasoningTextOf(orig)
-    const rawChars = raw.length
-    if (!rawChars) { trace('no-reasoning-block', { n, seq: aev.seq }); return }
-
-    bump('seen')
-    { const tcs = toolCallsOf(orig)
-      if (tcs.length) {
-        const c = tcs.reduce((a, b) => a + JSON.stringify(b).length, 0)
-        bump('argsSeen', tcs.length); bump('argsChars', c)
-        if (c >= ARGS_MIN) bump('argsOver500')
-        if (tcs.some((b) => String(b.name || '').includes('inspect'))) bump('inspectCalls')
-      } }
-    // ── 档 1：mode 'rules' —— 完全不走网络 ──
-    bump('rules')
-    if (cfg.mode === 'rules') { applyRules(session, aev, orig, raw, 'mode-rules'); return }
-
-    // ── 档 2/3：mode 'distill' —— 低于门槛不调 API，但**仍然**走规则（规则档零成本）──
-    if (rawChars < cfg.minRawChars) {
-    bump('short')
-      trace('skip-below-threshold', { n, seq: aev.seq, rawChars, minRawChars: cfg.minRawChars })
-      applyRules(session, aev, orig, raw, 'below-threshold')
-      return
-    }
-
-    // ── 取「提前发起」的结果。没就绪就只等 graceMs，绝不挂起 ──
-    const t0 = Date.now()
-    let distilled = null
-    const e = early.get(raw)
-    if (!e) {
-      trace('no-early-result', { n, seq: aev.seq, rawChars })
-    } else {
-      if (!e.settled && cfg.graceMs > 0) await Promise.race([e.promise, sleep(cfg.graceMs)])
-      if (e.settled && e.ok) distilled = e.text
-    if (e.settled && e.ok) bump('distilled')
-      else if (e.settled) trace('distill-failed', { n, seq: aev.seq, rawChars, error: e.err })
-      else trace('distill-not-ready', { n, seq: aev.seq, rawChars, graceMs: cfg.graceMs, waitedMs: Date.now() - t0 })
-    if (e.settled && !e.ok) bump('distFailed')
-      early.delete(raw)
-    }
-    const waitMs = Date.now() - t0
-
-    bump('rules')
-    if (!distilled) { applyRules(session, aev, orig, raw, 'distill-unavailable'); return }
-
-    // ── 防线④ 用户原话机械注入（字符串截取，不经过模型）──
-    const hit = findLastUserMessage(sLog, aev.seq)
-    const verbatim = sliceVerbatim(hit ? hit.text : '', cfg.maxVerbatimChars)
-    const finalText = assembleCheckpoint(distilled, verbatim)
-    const finalChars = finalText.length
-
-    // 人工审查用：把提纯稿原文与注入的用户原话完整落盘（各自封顶 4000 字符）
-    const audit = {
-      distilledText: distilled.slice(0, 4000),
-      verbatimText: verbatim.slice(0, 4000),
-      verbatimFromSeq: hit ? hit.seq : null,
-      verbatimFromKind: hit ? hit.kind : null,
-    }
-
-    // ── 防线③ 保本后验不等式（含防线② 防增肥）──
-    const h = passesHurdle(rawChars, finalChars, cfg)
-    const meta = Object.assign({
-      rawChars, distilledChars: distilled.length, finalChars,
-      saved: h.saved, lhs: h.lhs, rhs: h.rhs, hurdleRounds: cfg.hurdleRounds,
-      waitMs, earlyTookMs: e && e.readyAt ? e.readyAt - e.firedAt : null,
-      earlyReused: e && e.meta ? e.meta.reused : null,
-      earlyConnectMs: e && e.meta ? e.meta.connectMs : null,
-      earlyTtfbMs: e && e.meta ? e.meta.ttfbMs : null,
-      // ★ 这一块到底是哪个模型提纯的、有没有关掉思考（followHostModel 生效证据）
-      earlyModel: e && e.meta ? e.meta.model : null,
-      earlyHostModel: hostModel,
-      earlyThinkingOff: e && e.meta ? e.meta.thinkingOff : null,
-      toolCallsKept: toolCallsOf(orig).length, verbatimChars: verbatim.length,
-    }, audit)
-
-    if (!h.pass) {
-      trace('reject-hurdle', Object.assign(meta, {
-        path: 'distill', reason: h.saved <= 0 ? 'expansion' : 'insufficient-saving',
-      }))
-    bump('hurdle')
-      applyRules(session, aev, orig, raw, 'hurdle-rejected')
-      return
-    }
-
-    if (cfg.dryRun) { trace('dry-run-would-replace', Object.assign(meta, { path: 'distill' })); return }
-    if (cfg.skeletonizeArgs) {
-      try {
-        const cmb = (ctx.get && ctx.get('cmbStore', false)) || null
-        if (cmb && typeof cmb.putText === 'function') {
-          const sid = (session && (session.id || session.sessionId)) || ''
-          const plan = await buildSkeletonPlan(orig, cfg, cmb, sid, trace)
-          pendingSkelPlan = plan
-          bump('skel', plan.length)
-          bump('skelChars', plan.reduce((a, p) => a + p.fullChars, 0))
-        } else trace('skel-no-store', { n })
-      } catch (e) { trace('skel-failed', { n, error: String((e && e.message) || e) }) }
-    }
-    bump('replaced')
-    bump('charsRaw', rawChars)
-    bump('charsFinal', finalChars)
-    appendReplace(session, aev, orig, finalText, Object.assign(meta, { path: 'distill' }))
-  }
-
   ctx.on('agent/pre-step', async (payload, next) => {
     const decision = await next()
     n++
@@ -3949,8 +3291,6 @@ function readSessionLog(session) {
       birthSessionId = sid == null ? null : String(sid)
       birthSession = sid == null ? null : s
     } catch { /* ignore */ }
-    // ★ birth 模式的削减在「出生那一刻」已完成 ⇒ 事后替换路径必须全关，
-    //   否则同一段推理会被二次削减（且会撞上面那堵 replace 墙）。
     // ════════════════════════════════════════════════════════════════════════
     // ★★ 2026-09-21 方案二：birth 模式的「下轮收网」（Deferred Claim）★★
     //
@@ -3968,7 +3308,7 @@ function readSessionLog(session) {
     // ⚠ 任何一步不满足 ⇒ 一律 no-op 保持原文，绝不抛错、绝不写坏表面。
     // ════════════════════════════════════════════════════════════════════════
     if (cfg.mode === 'birth') {
-      if (cfg.birthDeferredClaim === false) { trace('skip-mode-birth', { n }); return decision }
+      if (cfg.birthDeferredClaim !== true) { trace('skip-mode-birth', { n }); return decision }
       try {
         const bpSession = payload && payload.agent && payload.agent.session
         const bpCmb = (ctx.get && ctx.get('cmbStore', false)) || null
@@ -4084,50 +3424,7 @@ function readSessionLog(session) {
       return decision
     }
 
-    // ★ 每步之前补一次预热（非阻塞）。若池里已有热 socket 且未超最小间隔，内部会直接跳过。
-    //   目的是保证 early-fire 真发生时 socket 是温的 —— 冷连接要多花 ~411ms。
-    prewarm('pre-step')
-
-    try {
-      const session = payload && payload.agent && payload.agent.session
-      if (!session || typeof session.append !== 'function') { trace('no-session', { n }); return decision }
-      const sLog = readSessionLog(session)
-      if (!Array.isArray(sLog)) { trace('no-log', { n }); return decision }
-
-      const aev = findLastAssistantEvent(sLog)
-      if (!aev) { trace('no-assistant-event', { n }); return decision }
-
-      // ── H2 硬闸：已经处理过的块 = 已经随 payload 出站过 ⇒ 物理上永不可改 ──
-      if (locked.has(aev.seq)) { trace('skip-locked-already-sent', { n, seq: aev.seq }); return decision }
-
-      try {
-        await handleBlock(session, sLog, aev)
-      } finally {
-        // ★★ 无论成功、被拒、超时还是异常，本步之后这条块都已经随 payload 出站
-        //    ⇒ 立刻上锁，之后任何路径都不许再碰它（这就是 H2）。
-        locked.add(aev.seq)
-        // 有界：只会查询「最后一条 assistant 事件」，所以最老的键可以安全丢弃
-        if (locked.size > 4096) {
-          let drop = 1024
-          for (const s of locked) { locked.delete(s); if (--drop <= 0) break }
-        }
-      }
-    } catch (e) {
-      trace('pre-step-error', { n, error: String((e && e.message) || e) })
-    }
     return decision
-  })
-
-  // ── agent/request：★ 唯一被允许的发射时机（此刻 step 已开启）────────────────
-  //   payload = { turn, step, signal }（agent-loop :708）——没有 agent 字段，所以 session 由入队时捕获。
-  //   全程 try/catch：本插件任何异常都不许影响宿主发请求；next() 必须在所有路径上被调用并返回。
-  ctx.on('agent/request', async (payload, next) => {
-    try {
-      if (cfg.enabled && cfg.mode !== 'off' && cfg.mode !== 'birth' && cfg.mode !== 'checkpoint') flushPendingEmit(payload || {})
-    } catch (e) {
-      trace('request-emit-error', { error: String((e && e.message) || e) })
-    }
-    return next()
   })
 
   // ── llm/stream：只读观测 + 提前发起（非阻塞）──────────────────────────────
@@ -4242,7 +3539,7 @@ function readSessionLog(session) {
         //   compress → 本段 reasoning 的摘要（纯压缩）★ 输入不背整窗证据
         //   legacy   → 旧的 generateDistillation 默认提示词
         distill: compileModeOf(streamCfg) === 'memory'
-          ? async (env, signal, budget) => generateStateMemory(env, budget?.timeoutMs != null ? { ...streamCfg, timeoutMs: budget.timeoutMs } : streamCfg, signal, { ...budget, flights: compilerFlights })
+          ? async (env, signal, budget) => generateStateMemory(env, streamCfg, signal, { ...budget, flights: compilerFlights })
           : compileModeOf(streamCfg) === 'compress'
             ? async (raw, signal, budget) => {
                 // 提示词选择与版本号必须来自**同一次**裁决，否则 trace 会把 A 的产物记成 B 的版本。
@@ -4277,7 +3574,7 @@ function readSessionLog(session) {
         prewarm: (why) => prewarm(why),
       })
     }
-    if (!cfg.earlyFire || (cfg.mode !== 'distill' && cfg.mode !== 'checkpoint')) return inner
+    if (!cfg.earlyFire || cfg.mode !== 'checkpoint') return inner
 
     // ★ 保险：拿到的不是 async iterable 就**原样返回，绝不包装**。
     //   包装一个不认识的形状会让 `for await` 直接抛错 ⇒ 主模型调用当场失败。

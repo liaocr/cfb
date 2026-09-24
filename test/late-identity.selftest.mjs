@@ -74,7 +74,7 @@ try {
   })
   await test('production birth settlement stores in its captured branch and carries task ID', async () => {
     const t = I.birthStart({ index: 0, text: raw }, { sessionId: 'born', branchId: 'branch-X',
-      cfg: { stateMemory: true, stateSnapshot: false }, archive: async () => 'h', buildEnvelope: M.buildEvidenceEnvelope,
+      cfg: { stateMemory: true, stateSnapshot: false, birthDeferredClaim: true }, archive: async () => 'h', buildEnvelope: M.buildEvidenceEnvelope,
       distill: async () => ({ text: '简短状态', entries: entries(), checkpointText: 'board' }) })
     t.passedThrough = true; await t.distillP
     assert.equal(I.lateMemorySize('born'), 0)
@@ -83,7 +83,7 @@ try {
   })
   for (const duplicate of [false, true]) await test(`real pre-step branch claim, duplicate surface = ${duplicate}`, async () => {
     const hooks = new Map(), sid = 'hook-' + duplicate
-    I.apply({ on: (n, fn) => hooks.set(n, fn), get: () => null }, { mode: 'birth', dryRun: false, trace: false, prewarm: false })
+    I.apply({ on: (n, fn) => hooks.set(n, fn), get: () => null }, { mode: 'birth', birthDeferredClaim: true, dryRun: false, trace: false, prewarm: false })
     I.pushLateMemory(sid, raw, entries(), '【当前有效状态】\n已记录', scope('branch-A'))
     const wrong = session(sid, 'branch-B', duplicate)
     await hooks.get('agent/pre-step')({ agent: { session: wrong } }, async () => ({})); assert.equal(wrong.appends, 0)
