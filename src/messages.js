@@ -165,3 +165,43 @@ export function sparseLengths(lengths) {
   for (let i = 0; i < lengths.length; i++) if (lengths[i] > 0) out.push([i, lengths[i]])
   return out
 }
+
+/**
+ * v11.11（从 plugin.js 抽出）：llm-stream trace 的内容 —— 出站消息溯源，只读，绝不改任何消息。
+ * @param {{ n: number, options: any, session: any, previewChars?: number }} o
+ */
+export function streamProvenanceRecord({ n, options, session, previewChars }) {
+  const msgs = (options && options.messages) || []
+  // ★ 2026-09-21 消息溯源（外部审计 P0-3）：只观测，绝不删/改/合并任何消息。
+  //   判据是"来源与时间线"，不是"role 数了几个"。
+  const prov = provenanceOf(msgs, { previewChars })
+  // ★ 建立"出站消息 → 源事件 seq"的链条（只读；不改任何事件）
+  const seqMap = mapMessagesToSeqs(session, msgs.length)
+  // ★ 2026-09-21 守住最危险的假阳性（外部审计）：**数量不一致时绝不按下标硬配** ——
+  //   错位的 seq 比没有 seq 更糟，它会让人顺着错误的链条得出结论。
+  //   只有 note==='aligned' 才写 seq；否则整批不写，只留 note 说明原因。
+  if (seqMap.map && seqMap.note === 'aligned') {
+    for (let i = 0; i < prov.items.length; i++) prov.items[i].seq = seqMap.map[i]
+  }
+  return {
+    n,
+    model: options && options.model,
+    provider: options && options.provider,
+    messageCount: msgs.length,
+    // v11.10：游程编码 + 稀疏列表（旧的逐条数组让 trace 随会话长度平方增长）
+    roles: rolesRunLength(msgs),
+    reasoningChars: sparseLengths(msgs.map((m) => reasoningTextOf(m).length)),
+    // 连续同 role 的游程（只报 n>1）
+    runs: prov.runs,
+    // 末尾若干条的溯源（看板 / 人类 user 开头 / 长度）
+    tail: prov.items.slice(-8),
+    // 开头一段（连续 user 游程所在），用于追溯注入来源
+    head8: prov.items.slice(0, 8),
+    seqMapNote: seqMap.note,
+    seqMapCount: seqMap.count, seqMapExpected: seqMap.expected,
+    ledgerCount: prov.items.filter((x) => x.isLedger).length,
+    toolResultCount: prov.items.filter((x) => x.blockTypes && x.blockTypes.includes('tool-result')).length,
+    userCount: prov.items.filter((x) => x.role === 'user').length,
+    assistantCount: prov.items.filter((x) => x.role === 'assistant').length,
+  }
+}

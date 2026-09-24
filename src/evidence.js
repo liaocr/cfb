@@ -139,7 +139,10 @@ export function collectEvidence(session, opts = {}) {
   const structuralLimit = opts.structuralLimit == null ? STRUCT_LIMIT_DEFAULT : opts.structuralLimit
   // ① 取证据：优先走索引；索引不可用则**回退到同一规范化出口**（不是另一套解释）
   let all = null
-  const idx = evidenceIndex(session)
+  // v11.11：索引构建抛错（例如节点里有不可序列化的值）时走回退扫描 —— 此前这里没有保护，
+  //   回退分支实际上不可达，而索引一抛整个采集就抛。观测层的失败只许降级，不许传染。
+  let idx = null
+  try { idx = evidenceIndex(session) } catch { idx = null }
   if (idx) all = idx.events
   if (!all) {
     all = []

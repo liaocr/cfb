@@ -20,7 +20,9 @@ export { DEFAULTS, normalizeConfig, resolveCompileMode, dshHome, dshHomePath } f
 export {
   birthTransform, birthStart, birthFinish, birthSettle, birthHoldNew, deriveArtHandle, birthEconomics, birthCancelFlying,
 } from './src/birth.js'
-export { estimateTokens, wideShare } from './src/tokens.js'
+export { estimateTokens, wideShare, scriptCounts } from './src/tokens.js'
+export { createHostFollower } from './src/host-follow.js'
+export { createSessionTracker } from './src/session-tracker.js'
 
 // ── 迟到结果暂存区（Deferred Claim，实验）────────────────────────────────────
 export {

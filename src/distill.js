@@ -7,6 +7,7 @@
 import crypto from 'node:crypto'
 import { prepareJudgmentPrompt } from './evidence-ledger.js'
 import { compileModeOf } from './config.js'
+import { scriptCounts } from './tokens.js'
 import {
   buildDistillPrompt, compressPromptVersion, compressTargets, buildCompressPromptV3, buildCompressPrompt,
   splitCompressPrompt,
@@ -522,8 +523,25 @@ export function makeBirthCompiler(cfg, opts = {}) {
         const sp = splitCompressPrompt(prompt)
         if (sp) c._promptMessages = [{ role: 'system', content: sp.system }, { role: 'user', content: sp.user }]
       }
-      return generateDistillation(raw, c, signal, prompt, { ...runtimeOf(budget), promptVersion: pv })
+      return withCalibration(prompt, generateDistillation(raw, c, signal, prompt, { ...runtimeOf(budget), promptVersion: pv }))
     }
   }
-  return async (raw, signal, budget) => generateDistillation(raw, withHeaders(budget), signal, undefined, runtimeOf(budget))
+  return async (raw, signal, budget) => withCalibration(buildDistillPrompt(raw), generateDistillation(raw, withHeaders(budget), signal, undefined, runtimeOf(budget)))
+}
+
+/**
+ * v11.11 token 估算校准：在成功结果的 meta 上记下「请求与产物按书写系统的字符数」。
+ * 与同一条 settled 里的 providerReportedUsage 放在一起，离线即可回归出真实的每字 token 系数
+ * （tools/analyze-trace.mjs → tokenCalibration）。只记数量，不记内容；不影响任何判定。
+ * memory 模式的提示词在 generateStateMemory 内部拼装，这里拿不到全文 ⇒ 不记（该模式本就不是缺省）。
+ */
+async function withCalibration(prompt, pending) {
+  const r = await pending
+  try {
+    if (r && r.meta && typeof prompt === 'string') {
+      const p = scriptCounts(prompt), o = scriptCounts(r.text)
+      Object.assign(r.meta, { promptWideChars: p.wide, promptOtherChars: p.other, outputWideChars: o.wide, outputOtherChars: o.other })
+    }
+  } catch { /* 观测失败不影响结果 */ }
+  return r
 }

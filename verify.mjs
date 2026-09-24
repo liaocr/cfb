@@ -47,7 +47,7 @@ const ORDER = [
   'balanced-span', 'headroom', 'imperative', 'emitter', 'state-memory', 'provider-endpoint',
   'core', 'birth', 'optimization', 'memory-quality', 'snapshot-invariants', 'robustness',
   'late-identity', 'hybrid', 'grounding', 'evidence-sharing', 'efficiency', 'coverage-provenance', 'hedge',
-  'checkpoint-hooks', 'hook-wiring', 'hardening',
+  'checkpoint-hooks', 'hook-wiring', 'hardening', 'concurrency', 'protocol', 'branches',
 ]
 
 const found = fs.readdirSync(TEST_DIR).filter((f) => f.endsWith(SUFFIX)).map((f) => f.slice(0, -SUFFIX.length))
@@ -102,7 +102,7 @@ function runSuite(name) {
 // 并发池：按 ORDER 依次领取；结果按 ORDER 下标回填 ⇒ 打印顺序与串行版相同
 const wallStart = Date.now()
 // 调度顺序：已知的慢套件先起跑（墙钟 ≈ 最慢套件本身，而不是「最慢套件 + 它前面排队的时间」）
-const SLOW_FIRST = ['hedge', 'hybrid', 'core', 'birth']
+const SLOW_FIRST = ['hybrid', 'hedge', 'core', 'birth']
 const queue = selected.map((name, i) => ({ name, i }))
   .sort((a, b) => ((SLOW_FIRST.indexOf(a.name) + 1 || 99) - (SLOW_FIRST.indexOf(b.name) + 1 || 99)) || a.i - b.i)
 const rows = new Array(selected.length)

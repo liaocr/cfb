@@ -76,6 +76,9 @@ export function settledTraceData(index, ms, s) {
       compressRatio: (typeof m.promptChars === 'number' && typeof m.inputChars === 'number' && m.inputChars > 0)
         ? Number((m.promptChars / m.inputChars).toFixed(2)) : undefined,
       promptChars: m.promptChars, maxOutputTokens: m.maxOutputTokens,
+      // v11.11 token 估算校准：按书写系统的字符数（只有数量）；与 providerReportedUsage 同行，离线回归系数
+      promptWideChars: m.promptWideChars, promptOtherChars: m.promptOtherChars,
+      outputWideChars: m.outputWideChars, outputOtherChars: m.outputOtherChars,
       connectMs: m.connectMs, ttfbMs: m.ttfbMs, firstByteMs: m.firstByteMs,
       totalMs: m.totalMs, chunks: m.chunks, reused: m.reused, status: m.status,
       bytes: m.bytes, cancelled: m.cancelled, finish: m.finish, reasoningChars: m.reasoningChars,

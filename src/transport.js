@@ -298,7 +298,10 @@ export function makePrewarmer(cfg, trace) {
   let lastAt = 0
   let inflight = null
   let prewarmDisabled = false
-  return function prewarm(why) {
+  // v11.11：callCfg = 本次调用派生的配置（host-follow.js）—— 端点跟随**这次**调用的宿主 provider，
+  //   不再读被改写的共享 cfg。连接池（getAgent）与节流状态仍按插件实例共享。
+  return function prewarm(why, callCfg) {
+    const ep0 = callCfg && typeof callCfg === 'object' ? callCfg : cfg
     if (!cfg.prewarm || (cfg.mode !== 'distill' && cfg.mode !== 'checkpoint' && cfg.mode !== 'birth')) return
     // ★ 2026-09-21：一旦实测到非 2xx（会吃掉连接池），永久停用预热 —— 失败安全。
     if (prewarmDisabled) return
@@ -314,9 +317,9 @@ export function makePrewarmer(cfg, trace) {
     // ★ 跟随宿主 provider 时，预热必须打宿主端点（否则捂热的是别人的 socket）
     //  2026-09-19：解析不出就**不预热**（原为回落 cfg.baseUrl，而那个默认值曾是作者商户）。
     //  预热只是省 411ms 的优化，不值得为它连一个不属于用户的端点。
-    let base = cfg.baseUrl
+    let base = ep0.baseUrl
     try {
-      const ep = resolveProviderEndpoint(cfg, cfg.followProvider)
+      const ep = resolveProviderEndpoint(ep0, ep0.followProvider)
       if (ep && ep.baseURL) base = ep.baseURL
     } catch { /* 解析失败 ⇒ 回落显式 baseUrl */ }
     if (!base) return

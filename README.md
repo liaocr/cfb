@@ -1,6 +1,6 @@
 # dsh-cot-form-b — reasoning 块「出生即压缩」
 
-> **当前实现：v11.10（2026-09-24）** · 自测：`npm test` 全绿（22 套件，固定 1 项 SKIP，逐版数字见 CHANGELOG） · 真实产品验收：**未验收**
+> **当前实现：v11.11（2026-09-24）** · 自测：`npm test` 全绿（固定 1 项 SKIP，逐版数字见 CHANGELOG） · 真实产品验收：**未验收**
 > CI：`.github/workflows/ci.yml` 在 Node 20 / 22 上跑完整性清单 + 全部自测 + 类型契约。
 > 版本沿革见 [`CHANGELOG.md`](CHANGELOG.md)；开发者视角的模块与数据流见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
@@ -19,7 +19,7 @@ DSH 外部插件（Cordis 协议）。主模型每写完一段 reasoning，插�
 ## 快速开始
 
 ```bash
-npm test                    # = node verify.mjs：并发跑全部自测套件（本地 HTTP，零外部 API 调用，约 14s）
+npm test                    # = node verify.mjs：并发跑全部自测套件（本地 HTTP，零外部 API 调用，约 9s）
 node verify.mjs birth hedge # 只跑文件名含关键字的套件
 node verify.mjs --serial    # 串行（排查定时相关问题时用）；-j N 指定并发度
 npm run manifest:check      # = node manifest.mjs --check：校验 MANIFEST.sha256（换机器后第一件事）
@@ -47,7 +47,13 @@ dsh-cot-form-b/
 ├── CHANGELOG.md          版本沿革
 │
 ├── src/                  实现（全部 ESM，零依赖）
-│   ├── plugin.js         apply()：注册 agent/pre-step、llm/stream 钩子；BOOT 上岗自证（SELF_ID/DEP_ID）
+│   ├── plugin.js         apply()：只做接线 —— 注册 agent/pre-step、llm/stream 钩子；BOOT 上岗自证（SELF_ID/DEP_ID）
+│   ├── boot-record.js    BOOT 行内容（生效配置与版本号）
+│   ├── host-follow.js    宿主模型 / provider 跟随：每次调用派生专属配置，共享配置永不改写（v11.11）
+│   ├── session-tracker.js 流归属检测：多会话交错 ⇒ 不可证（v11.11）
+│   ├── birth-claim.js    下轮收网（Deferred Claim，实验）的 pre-step 逻辑
+│   ├── checkpoint.js     checkpoint 模式：early-fire + pre-step 看板发射
+│   ├── handle-probe.js   句柄读回探针（三态：可读回 / 读不回 / 不可证）
 │   ├── config.js         DEFAULTS + normalizeConfig（退役/未知键留痕）+ 编译模式裁决
 │   ├── birth.js          ★ 出生即压缩：birthTransform / birthStart / birthFinish / 成本模型
 │   ├── distill.js        副模型调用：重试降级、对冲、传输 trace；memory 模式的状态编译
@@ -141,7 +147,8 @@ birth 模式内部再按编译模式三选一（唯一裁决点 `resolveCompileM
 | `emitHandleProbeMax` | `2` | **P0-2**：checkpoint 发射前按句柄读回抽样验证此条数；只有「正面证伪」才拦住发射（保持原文）。无读 API 的宿主自动退化为只记录 |
 | `birth.probeTimeoutMs` | `800` | **P0-2**：birth 内存预推句柄的读回验证限时；超时=不可证 ⇒ 原文放行（绝不用没验证过的地址顶替原文） |
 | `birthDeferredClaim` | `false` | **实验**：没赶上 finish 的结果进暂存区、下一轮 pre-step 认领（见「当前状态」缺陷 B）；只认显式 `true` |
-| `followHostModel` / `followHostProvider` | `true` / `true` | 副模型、端点、钥匙都跟随宿主当前对话所用的 provider；解析不出来就不发起（不猜） |
+| `followHostModel` / `followHostProvider` | `true` / `true` | 副模型、端点、钥匙都跟随宿主当前对话所用的 provider；解析不出来就不发起（不猜）。v11.11 起按**每次调用**派生（本次调用带的模型 → 最近见过的宿主模型 → 显式 `model`），不再改写共享配置 |
+| `birthSessionAmbiguity` | `'passthrough'` | **v11.11**：多个会话交错进入 pre-step、这条流属于谁不可证时：`passthrough` 原文放行（不归档不压缩），`'latest'` 回到旧行为（按最近 pre-step 的会话）。单会话宿主永不触发 |
 | `trace` / `traceFile` | `true` / `$DSH_HOME/storages/cot-form-b/trace.log` | 观测 |
 | `traceMaxBytes` | `64 MiB` | **v11.10**：超限把 `trace.log` 改名 `trace.log.1`（覆盖上一份）再续写，新文件首行 `trace-rotated`、紧跟一份 `BOOT` 副本（`rotatedCopy:true`，保证离线分析仍能按构建归组）；`0` = 不轮转 |
 | `tracePreviewChars` | `48` | **v11.10**：`llm-stream` 溯源里用户原话开头片段长度；`0` = 不记录任何正文片段 |
@@ -222,6 +229,7 @@ compress 模式不采集证据、不写快照；以下只在 memory 模式生效
 | `stateCoveredEvidence: false` | memory 模式停止按覆盖集合过滤旧证据（全量发送） |
 | `birth: { minChars: N }` | 调整压缩门槛 |
 | `birth: { tokenGate: false }` | 关闭 v11.10 token 闸门（回到纯字符判定） |
+| `birthSessionAmbiguity: 'latest'` | 流归属不可证时照旧按最近会话处理（v11.10 行为） |
 | `traceMaxBytes: 0` | 关闭 trace 轮转 |
 
 ⚠ 扁平的 `finishWaitMs` 不是配置键（会进 `unknownOptions`），只认 `birth.finishWaitMs` 或 `birthFinishWaitMs`。
@@ -242,6 +250,8 @@ trace 写在 `$DSH_HOME/storages/cot-form-b/trace.log`，一行一条：`[ISO时
 | `birth-flush` / `birth-consumer-return` / `birth-distill-cancelled` | **v11.10**：硬停 / 源流无 finish / 源流抛错时的降级放行，消费者提前退出；在飞提纯是否被取消（`why`） |
 | `llm-stream` | 出站消息溯源；v11.10 起 `roles` 为游程字符串（`system user assistant tool*3`），`reasoningChars` 为稀疏 `[[下标, 字符数], …]` |
 | `trace-rotated` | **v11.10**：轮转后新文件的第一行（上一份文件名与字节数） |
+| `birth-session-ambiguous` | **v11.11**：流归属不可证（`candidates` = 窗口里的会话，`action` = 处置） |
+| `birth-distill-settled` 的 `prompt/output{Wide,Other}Chars` | **v11.11**：按书写系统的字符数（只有数量），与同行 `providerReportedUsage` 一起用于校准 token 估算 |
 | `birth-distill-settled` | 副模型真工期与阶段：`ttfbMs`、`totalMs`、`promptVersion`、`hedged`、失败 `stage` |
 | `compiler-transport-*` / `compiler-hedge-*` | 每次请求的发出与结算、对冲是否触发与胜者 |
 | `birth-econ` / `birth-window-probe` | 成本模型三态判定、免费窗口时刻（只记录，不参与判定） |
@@ -265,6 +275,14 @@ trace 写在 `$DSH_HOME/storages/cot-form-b/trace.log`，一行一条：`[ISO时
 - 单位纪律：`chars` 是字符，不是钱。真账单必须用宿主 `tokenMeter` / `usage`；
   `measuredSurfaceTokenDelta` 仅在配置了 `emitterMeasureTokens` 且**非**评估态时才有值。
 
+### token 估算要不要改系数（v11.11）
+
+`npm run trace:audit -- trace.log` 每组新增 `tokenCalibration`：用副模型自报的 usage 对
+`tokens ≈ 中文字数·W + 其他字数·O + C` 做最小二乘，给出拟合系数、现行 0.6/0.3 的偏差（`estimateOverActual`）
+与两者的平均百分比误差（`currentMape` / `fitMape`）。`followHostModel`（缺省）下副模型 = 对话模型，
+所以拟合出的就是 token 闸门该用的系数。样本少于 3 条、只有一种书写系统、或样本共线时不给该维度的系数（不猜）。
+memory 模式的提示词在内部拼装，不产生校准样本。
+
 ### birth 收网等待该给多少（v11.10）
 
 `npm run trace:audit -- trace.log` 每组新增 `birth`：结局漏斗（`outcomes`、`condensedRate`、`flush`、`cancelled`）与
@@ -281,6 +299,9 @@ trace 写在 `$DSH_HOME/storages/cot-form-b/trace.log`，一行一条：`[ISO时
 **v11.9 评估态零副作用**（评估态不写 CAS、不改表面，且仍能算出净收益与真 token 水位）；
 **v11.9 句柄读回验证**（发射前抽样按句柄取回；birth 内存预推句柄须先验证，无证据则原文放行）；
 对冲、响应头宽限、缓存友好拆分（均可关）；配置自检；memory 模式的证据账本与有界快照；测试隔离。
+
+**v11.11 并发正确性**：模型/provider 跟随不再改写共享配置（此前 checkpoint 的 early-fire 会用到**别的调用**的模型，已由测试复现）；
+流归属交错检测（缺省原文放行）；Responses 协议端到端测试；token 估算校准链路；`plugin.js` 拆为接线层（618 → 188 行）。
 
 **v11.10 加固**：放弃应用的每条路径都取消在飞提纯（此前硬停 / 无 finish / 源流抛错 / 用户取消四条路径会白跑到 `timeoutMs`）；
 token 闸门；崩溃残留锁的保守接管；trace 轮转；provider/凭据解析按文件身份缓存；编译器工厂可单测；测试并发（36s → 14s）；CI。

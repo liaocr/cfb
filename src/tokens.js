@@ -38,3 +38,15 @@ export function wideShare(text) {
   if (!s) return 0
   return Number(((s.match(RE_WIDE) || []).length / s.length).toFixed(3))
 }
+
+/**
+ * v11.11：按书写系统拆分字符数 —— 供 token 估算**校准**（trace 记录 wide/other，离线与 provider usage 回归出真实系数）。
+ * 只记数量，不记内容。
+ * @returns {{ wide: number, other: number }}
+ */
+export function scriptCounts(text) {
+  const s = typeof text === 'string' ? text : String(text == null ? '' : text)
+  if (!s) return { wide: 0, other: 0 }
+  const wide = (s.match(RE_WIDE) || []).length
+  return { wide, other: s.length - wide }
+}

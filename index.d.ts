@@ -126,6 +126,12 @@ export interface CotFormBConfig {
   traceMaxBytes?: number
   /** v11.10：llm-stream 溯源里用户原话开头片段长度（缺省 48；0 = 不记录任何正文片段） */
   tracePreviewChars?: number
+  /**
+   * v11.11：流归属不可证（多个会话交错进入 agent/pre-step，无法判定这条 llm/stream 属于谁）时的处置。
+   * 'passthrough'（缺省）= 原文放行、不归档不压缩；'latest' = v11.10 行为（按最近一次 pre-step 的会话）。
+   * 非法值回到 'passthrough' 并进 configAdjusted。两种都留 birth-session-ambiguous trace。
+   */
+  birthSessionAmbiguity?: 'passthrough' | 'latest'
   /** CAS 归档 producer 名。默认 'cot-birth' */
   birthProducer?: string
   /** v11.7：birth finish 处 budget 到点但蒸馏已收到 200 响应头（正在生成）时再多等的上限（ms，缺省 1500；0 关） */
@@ -139,6 +145,8 @@ export interface CotFormBConfig {
     finishHeadersGraceMs?: number
     /** = birthMinTokens / birthTokenGate / birthMinSavedTokens */
     minTokens?: number | null; tokenGate?: boolean; minSavedTokens?: number
+    /** = birthSessionAmbiguity */
+    sessionAmbiguity?: 'passthrough' | 'latest'
   }
   followHostProvider?: boolean
   followProvider?: string
@@ -347,3 +355,24 @@ export declare function makeBirthCompiler(
 export declare function birthCancelFlying(task: unknown, cfg?: CotFormBConfig, trace?: (tag: string, data: object) => void, why?: string, honorDeferred?: boolean): boolean
 /** 本进程内的锁统计（staleRecovered = 接管「持有者已死」的残留锁次数）。 */
 export declare function lockStats(): { acquired: number; busy: number; staleRecovered: number }
+
+// ── v11.11 ──────────────────────────────────────────────────────────────────
+/** 按书写系统拆分字符数（只有数量）；trace 用它记录校准样本。 */
+export declare function scriptCounts(text: string): { wide: number; other: number }
+/** 宿主模型 / provider 跟随：每次调用派生专属配置，共享配置永不改写。 */
+export declare function createHostFollower(
+  cfg: CotFormBConfig,
+  trace: (tag: string, data: object) => void,
+): {
+  observe(options: { model?: string; provider?: string } | null | undefined, n: number): void
+  callConfig(options: { model?: string; provider?: string } | null | undefined): CotFormBConfig
+  hostModel(): string | null
+  explicitModel: string | undefined
+}
+/** 流归属检测：多个会话交错进入 pre-step 时判定为不可证。 */
+export declare function createSessionTracker(opts?: { staleMs?: number; now?: () => number }): {
+  onPreStep(session: unknown): void
+  forStream(): { session: unknown; sessionId: string | null; ambiguous: boolean; candidates: string[] }
+  latest(): { session: unknown; sessionId: string | null }
+  pendingCount(): number
+}

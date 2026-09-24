@@ -5,6 +5,57 @@
 
 ---
 
+## v11.11（2026-09-24）并发正确性、Responses 协议测试、token 校准链路、plugin.js 拆分
+
+**验证**：1308 通过 / 0 失败 / 1 跳过，**25 套件**（新增 `concurrency` 13、`protocol` 15、`branches` 14）。
+`npm test` 墙钟 **14s → 8.5s**。行覆盖 97.0% → **98.5%**（`evidence.js` 分支 62% → 84%，`transport.js` 行 85% → 98.5%）。
+关键修复均做过变异验证：换回 v11.10 的 `plugin.js` / `evidence.js`，对应测试必挂。
+
+### 修复
+- **checkpoint early-fire 用错模型**（已由测试复现）：followHostModel 看到新模型就改写共享 `cfg.model`，而 early-fire
+  在**流被消费时**才读它 ⇒ A 流开 → B 流开（换模型）→ 消费 A ⇒ A 的提前调用用了 B 的模型。
+  新 `host-follow.js`：每次 `llm/stream` 派生**调用级**配置，共享 `cfg` 永不改写（不变式 12）。
+  birth 路径此前在同一同步调用里就复制了配置，**不受影响**（上一轮报告里「birth 可能用错模型」的说法不准确，特此更正）。
+  预热同样改为跟随本次调用的 provider（`prewarm(why, callCfg)`）。
+  顺带：只见过模型、没见过 provider 时，旧实现会把显式 `followProvider` 覆盖成 null；现在保留显式值。
+- **流归属交错**（新 `session-tracker.js`）：宿主的 `llm/stream` 不带会话，旧实现用全局 `birthSessionId`（pre-step 写、流读）。
+  A.pre → B.pre → 开流时，A 的块会登记到 B（CAS 挂错会话；memory 模式还会把 B 的证据喂给 A 的摘要）。
+  现在维护「已 pre-step、未开流」窗口：出现 ≥2 个会话 ⇒ 不可证 ⇒ 缺省**原文放行**（`birthSessionAmbiguity:'passthrough'`，
+  可设 `'latest'` 回到旧行为），留 `birth-session-ambiguous`。单会话宿主永不触发。
+  ⚠ 这是检测器不是证明：抓得住交错形态，抓不住所有误归属；假阳性代价 = 偶发一块原文放行（测试 §3e 钉住）。
+  根治需要宿主在 `llm/stream` 里带会话。
+- **`manifest.mjs` 会把 gitignore 掉的生成物收进清单**：本地量过覆盖率（`coverage/`）再 `npm run manifest`，清单里就多出几十个
+  本地文件，干净的 CI 检出里它们不存在 ⇒ `--check` 必挂。现在跳过 `coverage/`、`.nyc_output/` 等生成物目录。
+- **`collectEvidence` 在索引构建抛错时整体抛出**：回退扫描分支因此不可达。现在索引失败即走回退扫描（`evidence.js`）。
+
+### 新能力
+- **token 估算校准链路**：compress / legacy 模式的成功结果记录 `prompt/output{Wide,Other}Chars`（只有数量），进 settled 白名单；
+  `analyze-trace` 每组新增 `tokenCalibration`：对 provider 自报 usage 做最小二乘 `tokens ≈ 中文·W + 其他·O + C`，
+  输出拟合系数、现行 0.6/0.3 的偏差与误差对照；产物侧扣除思考 token；样本不足 / 单一书写系统 / 共线时不给该维度（不猜）。
+  memory 模式提示词在内部拼装，不产生样本。
+- `analyze-trace` 的 birth 漏斗计入 `session-ambiguous`。
+
+### 测试
+- **Responses 协议首次有功能测试**（此前只测了 URL 拼接）：completed / incomplete / failed / 缺 status / 仅顶层 output_text /
+  reasoning 不混入摘要 / `reasoning.effort` 被拒后降级重试 / 非流式收到 SSE / 流式 completed / incomplete / 断流。
+  结论：该路径的完成判据是对的（半成品一律抛错 ⇒ 原文放行），未发现缺陷。
+- 分支补齐：跨窗口结构性证据（opt-in）的逐类上限与时间序、覆盖判据四形态、预热节流 / 非 2xx 永久停用 / 连不上、消费计量、token 非串输入。
+- `hedge` 套件提速（13.8s → 7.6s）：「慢的那份必须被 abort」改为直接观察服务端连接提前关闭，不再等它的延迟跑完；
+  「不得发生」的断言仍真实等过计时器（改用更短的计时器）。
+
+### 重构
+- `plugin.js` 618 → 188 行，只做接线：`boot-record.js`、`host-follow.js`、`session-tracker.js`、`birth-claim.js`、
+  `checkpoint.js`、`handle-probe.js`（`mkHandleProbe` 从 `src/plugin.js` 的旧导入路径仍可用）；
+  `streamProvenanceRecord` 移入 `messages.js`。搬移部分逐字不变（脚本切割），全部既有测试不改即通过。
+- `index.js` 新导出 `scriptCounts`、`createHostFollower`、`createSessionTracker`；`index.d.ts` 同步（`tsc --strict` 通过）。
+
+### 刻意未做
+- `hybrid` 套件（约 8s，现为墙钟下限）里那条「REAL default hooks: 8000ms timeout」故意跑生产缺省超时，缩短会改变测试本意。
+- memory 模式三个存储文件的同步 I/O：缺省 birth 模式不走这些路径；等 memory 模式要上线再改。
+- `birth-claim.js`（实验路径，缺省关）的部分认领与归档失败分支仍未覆盖（行 85%）。
+
+---
+
 ## v11.10（2026-09-24）全面加固：取消泄漏、token 闸门、死锁接管、trace 有界、测试并发、CI
 
 **验证**：1266 通过 / 0 失败 / 1 跳过，**22 套件**（新增 `hardening` 40 条；`core` §10 新增 5 条默认值钉子）。

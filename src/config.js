@@ -87,6 +87,10 @@ export const DEFAULTS = {
   //     部分认领 / 歧义匹配（缺陷 B）/ 重启丢失，且替换已出站块的缓存代价至今无定论。
   //     打开时 BOOT 的 birth.experimental=true。
   birthDeferredClaim: false,
+  //   v11.11 流归属不可证时（多个会话交错进入 pre-step，见 session-tracker.js）怎么办：
+  //   'passthrough'（缺省）= 这条流原文放行、不归档不压缩 —— 挂错会话的 CAS 归档与跨会话证据泄漏都比少压一块更糟；
+  //   'latest' = v11.10 及以前的行为（按最近一次 pre-step 的会话）。两种都留 birth-session-ambiguous trace。
+  birthSessionAmbiguity: 'passthrough',
   //   净省保本线：蒸馏稿 + 句柄必须比原文少 ≥ 这么多字符才允许替换。
   //   低于此线说明模型在抄书（没完成有效浓缩）⇒ 原样放行 raw + 句柄。
   birthMinSavedChars: 50,
@@ -316,7 +320,7 @@ export const DEFAULTS = {
 const NESTED_DISTILL_KEYS = ['timeoutMs', 'minRawChars', 'maxAttempts', 'maxOutputTokens', 'baseUrl', 'model', 'credentialRef', 'credentialsPath', 'graceMs', 'keepAlive', 'keepAliveMsecs', 'prewarm', 'prewarmMinGapMs', 'followHostModel', 'disableThinking', 'hedgeAfterMs']
 // v11.10：补上 probeTimeoutMs —— normalizeConfig 一直在读它、README 也写了，却漏了登记 ⇒ BOOT 把它误报成 unknownOptions。
 const NESTED_BIRTH_KEYS = ['minChars', 'archive', 'producer', 'archiveTimeoutMs', 'probeTimeoutMs', 'finishWaitMs', 'minSavedChars', 'finishHeadersGraceMs',
-  'minTokens', 'tokenGate', 'minSavedTokens']
+  'minTokens', 'tokenGate', 'minSavedTokens', 'sessionAmbiguity']
 const RETIRED_NESTED_BIRTH = ['handleInText']
 // 退役键：v7 四个旧生产开关 + v11.8 随 'distill'/'rules' 模式退役的键（含整个 rules: 容器）
 const RETIRED_OPTIONS = ['stateEvidenceViews', 'stateEvidenceBodyBudget', 'stateSnapshotMirror', 'stateCompileQueue',
@@ -348,6 +352,12 @@ export function normalizeConfig(config = {}) {
     if (b.minTokens !== undefined) c.birthMinTokens = b.minTokens
     if (b.tokenGate !== undefined) c.birthTokenGate = b.tokenGate
     if (b.minSavedTokens !== undefined) c.birthMinSavedTokens = b.minSavedTokens
+    if (b.sessionAmbiguity !== undefined) c.birthSessionAmbiguity = b.sessionAmbiguity
+  }
+  // 不认识的处置值 ⇒ 回到安全缺省（passthrough）并在 BOOT 留痕；绝不把拼错的值猜成「照旧归属」
+  if (c.birthSessionAmbiguity !== 'passthrough' && c.birthSessionAmbiguity !== 'latest') {
+    c.configAdjusted = Object.assign({}, c.configAdjusted, { birthSessionAmbiguity: { from: c.birthSessionAmbiguity, to: 'passthrough', why: "must be 'passthrough' or 'latest'" } })
+    c.birthSessionAmbiguity = 'passthrough'
   }
   // 模式：退役模式按 'off' 处理（它们本来就无法改写任何东西）；不认识的值同样按 'off'
   //   —— 绝不把拼错的模式名「猜」成一个会改写会话的模式。两种情况都在 BOOT 里可见。
