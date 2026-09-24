@@ -230,6 +230,23 @@ trace 写在 `$DSH_HOME/storages/cot-form-b/trace.log`，一行一条：`[ISO时
 | `birth-econ` / `birth-window-probe` | 成本模型三态判定、免费窗口时刻（只记录，不参与判定） |
 | `state-envelope` / `state-snapshot-committed` | memory 模式的输入画像与快照提交 |
 | `birth-claim-*` | 迟到认领漏斗（仅 `birthDeferredClaim:true`） |
+| `emit-gate` / `emit-net-savings` / `emit-net-savings-result` | checkpoint 闸门读数：`sourceChars`、`netSavedChars`、`enrichChars`、`casWrites`、真 token 水位 |
+| `ledger-built` / `ledger-archive-commit` | 看板构成（`toolResultBuckets` 四桶直方图）、归档写入量与失败数、富化代价 |
+| `emit-handle-verify` / `handle-probe-*` | **句柄读回验证**：`resolved` / `unresolvable` / `unverifiable` 三态（读不回是唯一的静默失效模式） |
+
+离线分析：`npm run trace:audit -- trace.log`（按 BOOT 分组，不同构建绝不混算）、`npm run trace:efficiency -- trace.log`（耗时、promptVersion 分桶、保真度、对冲）。
+
+### 工具结果路径的验收口径（真机 A/B 怎么判）
+
+`npm run trace:audit -- trace.log` 输出里的 `toolResultPath` 就是判据本身：
+
+- `chars.netSavedChars` —— **只算真正发射的尝试**（被闸门拦下的尝试既没省上下文也没改表面，不得计入），
+  且已扣掉 P1 富化的视图代价（`enrichChars`）；`netSavedIfHandleOnly` 是「完全不做富化」的对照上界。
+- `breakeven.fullReadBacksAffordable` —— **净下降 ÷ 归档条目均长** = 还能整块回读几次；超出即亏。
+  这就是判据「净下降 − 读回成本 > 0」的可读数形式（宿主侧的回读次数只有宿主 trace 看得到，故给预算而非常量）。
+- `handle.*` —— 句柄读回验证的三态分布；`archive.rechecks` > 0 表示归档失败真实发生过（看板已被迫回退内联）。
+- 单位纪律：`chars` 是字符，不是钱。真账单必须用宿主 `tokenMeter` / `usage`；
+  `measuredSurfaceTokenDelta` 仅在配置了 `emitterMeasureTokens` 且**非**评估态时才有值。
 
 离线分析：`npm run trace:audit -- trace.log`（按 BOOT 分组，不同构建绝不混算）、`npm run trace:efficiency -- trace.log`（耗时、promptVersion 分桶、保真度、对冲）。
 

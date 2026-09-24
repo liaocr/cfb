@@ -54,6 +54,17 @@
 - `.gitignore` 增 `coverage/`（c8 产物不进包）；`MANIFEST.sha256` 重新生成（122 个文件）。
 - `README.md` / `docs/ARCHITECTURE.md` 同步新键、新套件与「评估态零副作用 / 地址必须可读回」两条不变式。
 
+### 验收口径工具化（`tools/analyze-trace.mjs`）
+
+真机 A/B 不再需要人肉算表：`npm run trace:audit -- trace.log` 输出 `toolResultPath`，即判据本身。
+
+- **净下降只算真正发射的尝试** —— 同一 `emitAttemptId` 在闸门/重算/结果三处各落一条，取**最后一次**读数；
+  被闸门拦下的尝试既没省上下文也没改表面，不得计入收益（有回归测试钉住"不得重复计数"）。
+- `breakeven.fullReadBacksAffordable` = 净下降 ÷ 归档条目均长 ⇒ **还能整块回读几次，超出即亏**；
+  这是「净下降 − 读回成本 > 0」的可读数形式（宿主侧回读次数本机看不到，故给预算而非常量）。
+- 同时给出 `enrichShareOfSaving`（P1 富化代价占收益比）、`archive.rechecks`（归档失败真实发生过的证据）、
+  `handle.*` 三态分布、`lens.buckets` 四桶直方图（标定 `maxInlineToolResultChars` 用）。
+
 ### 仍然做不到（要真机才能收的）
 
 - 句柄**读回成本**与**回看概率**只能在真机采；本轮的 `netSavedIfHandleOnly` 只是给了归因口径；

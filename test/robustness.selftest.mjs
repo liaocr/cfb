@@ -149,6 +149,56 @@ try {
     a.add(prefix + '[BOOT] {"selfId":"C","timeoutMs":20000,"birth":{"finishWaitMs":12000,"deferredClaim":false}}')
     const g = a.result().groups[0]; assert.equal(g.boot.birthFinishWaitMs, 12000); assert.equal(g.boot.timeoutMs, 20000)
   })
+  await test('trace auditor: tool-result path accounting counts only emitted attempts (no double counting)', () => {
+    const a = createTraceAudit(), p = '[2026-09-24T07:00:00.000Z] '
+    const L = (tag, o) => a.add(p + '[' + tag + '] ' + JSON.stringify(o))
+    L('BOOT', { selfId: 'X', mode: 'checkpoint', dryRun: false })
+    // 成功发射：gate → commit → verify → result（同一 attemptId 四次读数，只能算一次）
+    L('ledger-built', { emitAttemptId: 'a1', archived: 2, toolResultChars: 60000, toolResultItems: 3, toolResultLensMax: 30000, toolResultBuckets: '1/1/1/0', enrichChars: 700, excerpted: 1 })
+    L('emit-net-savings', { emitAttemptId: 'a1', sourceChars: 90000, ledgerChars: 2500, netSavedChars: 87500, enrichChars: 700, netSavedIfHandleOnly: 88200 })
+    L('ledger-archive-commit', { emitAttemptId: 'a1', pending: 2, ok: 2, failed: 0, wroteChars: 60000 })
+    L('emit-handle-verify', { emitAttemptId: 'a1', verdict: 'resolved' })
+    L('emit-net-savings-result', { emitAttemptId: 'a1', stage: 'emit', emitted: true, sourceChars: 90000, ledgerChars: 2500, netSavedChars: 87500, casWrites: 2, measuredSurfaceTokenDelta: 8000 })
+    // 被闸门拦下：不得计收益，但要计入 blockedBy
+    L('emit-net-savings', { emitAttemptId: 'a2', sourceChars: 5000, ledgerChars: 4900, netSavedChars: 100 })
+    L('emit-net-savings-result', { emitAttemptId: 'a2', stage: 'gate', emitted: false, reason: 'no-net-savings' })
+    // 归档失败重算后发射：以**最后一次**读数为准
+    L('emit-net-savings', { emitAttemptId: 'a3', sourceChars: 50000, ledgerChars: 3000, netSavedChars: 47000 })
+    L('emit-net-savings-recheck', { emitAttemptId: 'a3', ledgerChars: 9000, netSavedChars: 41000 })
+    L('emit-net-savings-result', { emitAttemptId: 'a3', stage: 'emit', emitted: true, sourceChars: 50000, ledgerChars: 9000, netSavedChars: 41000, casWrites: 1 })
+    // 句柄读不回 ⇒ 拒发
+    L('emit-net-savings', { emitAttemptId: 'a4', sourceChars: 40000, ledgerChars: 1200, netSavedChars: 38800 })
+    L('emit-net-savings-result', { emitAttemptId: 'a4', stage: 'handle-verify', emitted: false, reason: 'handle-unresolvable', casWrites: 1 })
+    const r = a.result().toolResultPath
+    assert.equal(r.emits.emitted, 2); assert.equal(r.emits.blocked, 2)
+    assert.equal(r.blockedBy['no-net-savings'], 1); assert.equal(r.blockedBy['handle-unresolvable'], 1)
+    // ★ 只算真正发射的尝试：87500（a1，取最终读数）+ 41000（a3 的 recheck 值，不是 47000）
+    assert.equal(r.chars.netSavedChars, 128500)
+    assert.equal(r.chars.sourceChars, 140000); assert.equal(r.chars.ledgerChars, 11500)
+    assert.equal(r.archive.rechecks, 1, '归档失败重算必须留痕')
+    assert.equal(r.archive.writeChars, 60000)
+    assert.equal(r.handle.resolved, 1)
+    assert.equal(r.lens.buckets.lt2K + r.lens.buckets.k2to8 + r.lens.buckets.k8to32 + r.lens.buckets.gt32K, 3)
+    assert.equal(r.measuredSurfaceTokenDelta.p50, 8000)
+    // 保本预算：128500 / (60000/2) = 4.28 次整块回读
+    assert.equal(r.breakeven.avgArchivedCharsEstimate, 30000)
+    assert.equal(r.breakeven.fullReadBacksAffordable, 4.28)
+    assert.match(r.breakeven.acceptanceRule, /readBackCost/)
+  })
+  await test('trace auditor: un-emitted attempts cannot inflate the saving; empty trace yields no claims', () => {
+    const a = createTraceAudit(), p = '[2026-09-24T07:00:00.000Z] '
+    a.add(p + '[BOOT] {"selfId":"Y"}')
+    a.add(p + '[emit-net-savings] {"emitAttemptId":"z1","netSavedChars":99999}')
+    let r = a.result().toolResultPath
+    assert.equal(r.emits.emitted, 0); assert.equal(r.emits.blocked, 0)
+    assert.equal(r.chars.netSavedChars, 0, '没有终结的尝试不得计入收益')
+    assert.equal(r.breakeven.fullReadBacksAffordable, null)
+    assert.match(r.breakeven.note, /nothing to judge yet/)
+    const b = createTraceAudit()
+    r = b.result().toolResultPath
+    assert.equal(r.emits.emitted, 0); assert.equal(r.chars.netSavedChars, 0)
+  })
+
   let mode = 'ok', requests = []
   server = http.createServer((req, res) => { let body = ''; req.on('data', c => { body += c }); req.on('end', () => {
     const p = JSON.parse(body); requests.push(p)
