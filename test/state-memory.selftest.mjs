@@ -18,7 +18,7 @@ import {
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
-const fixtureDir = dirname(fileURLToPath(import.meta.url)) + '/../fixtures'
+const fixtureDir = dirname(fileURLToPath(import.meta.url)) + '/fixtures'
 
 let pass = 0, fail = 0
 const ok = (name, cond, detail) => {

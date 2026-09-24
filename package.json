@@ -11,7 +11,16 @@
       "default": "./index.js"
     }
   },
-  "description": "DSH reasoning 状态编译插件：birth 原文兜底、历史 checkpoint 认领与结构化快照持久化。",
+  "scripts": {
+    "test": "node verify.mjs",
+    "verify": "node verify.mjs",
+    "manifest": "node manifest.mjs",
+    "manifest:check": "node manifest.mjs --check",
+    "onboard": "node deploy/onboard.mjs",
+    "trace:audit": "node tools/analyze-trace.mjs",
+    "trace:efficiency": "node tools/analyze-efficiency.mjs"
+  },
+  "description": "DSH 外部插件：reasoning 块出生即压缩（CAS 原文归档 + 副模型摘要，失败原文放行），附可选的状态记忆与迟到认领。",
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1"
   },

@@ -90,7 +90,8 @@ export async function replayCompiler(capture, cfg, moduleDir, home, candidate = 
     const M = await import(pathToFileURL(moduleFile(moduleDir, 'state-memory.js')))
     const L = candidate ? await import(pathToFileURL(moduleFile(moduleDir, 'evidence-ledger.js'))) : null
     cfg = { ...I.DEFAULTS, ...cfg, dryRun: false, mode: 'birth', stateMemory: true,
-      birthFinishWaitMs: 1500, timeoutMs: 8000, maxOutputTokens: 1200, prewarm: false, distillStream: true, birthDeferredClaim: true,
+      // maxOutputTokens 跟随被重放实现自己的缺省（v11.6 起 850；对照旧提交时即其当年值），不再写死 1200
+      birthFinishWaitMs: 1500, timeoutMs: 8000, maxOutputTokens: I.DEFAULTS.maxOutputTokens ?? 850, prewarm: false, distillStream: true, birthDeferredClaim: true,
       birthMinChars: 1 } // Replay recorded captures regardless of the production floor (v11.6 raised it to 3100).
     const sharingPath = moduleFile(moduleDir, 'exact-flights.js')
     const flights = fs.existsSync(sharingPath) ? (await import(pathToFileURL(sharingPath))).createExactFlights() : null

@@ -1,4 +1,4 @@
-// dsh-cot-form-b 自测 —— 纯本地，零网络、零会话、零 API 调用。
+// core.selftest.mjs —— 配置 / 提示词 / 传输层 / 副模型调用 / 迟到暂存 / 回归钉子。纯本地，零网络、零会话、零 API 调用。
 // 目标：把金丝雀抓出的两个 bug 和它们的边界钉死，防止回归。
 import fs from 'node:fs'
 import os from 'node:os'

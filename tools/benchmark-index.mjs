@@ -1,3 +1,4 @@
+// Usage: node tools/benchmark-index.mjs
 // Reproducible local microbenchmark against the actual original Git revision.
 // Requires a Git checkout. No provider calls, no production session access.
 import { execFileSync } from 'node:child_process'

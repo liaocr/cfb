@@ -1,4 +1,5 @@
-// Usage: node deploy/analyze-trace.mjs /path/to/trace.log
+// Usage: node tools/analyze-trace.mjs /path/to/trace.log
+// 按 BOOT 分组统计 trace（每次网关重启 = 一组；selfId/deps 不同的构建绝不混算）。
 // Only anchored records are evidence. Never split on '[BOOT]' inside JSON text.
 import fs from 'node:fs'
 import readline from 'node:readline'
@@ -39,7 +40,7 @@ export function createTraceAudit() {
     groups: groups.map(g => ({ ...g, promptChars: stats(g.promptChars), durationMs: stats(g.durationMs) })) }) }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  if (!process.argv[2]) { console.error('Usage: node deploy/analyze-trace.mjs trace.log'); process.exitCode = 2 }
+  if (!process.argv[2]) { console.error('Usage: node tools/analyze-trace.mjs trace.log'); process.exitCode = 2 }
   else {
     const audit = createTraceAudit()
     for await (const line of readline.createInterface({ input: fs.createReadStream(process.argv[2]), crlfDelay: Infinity })) audit.add(line)

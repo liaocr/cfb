@@ -1,6 +1,6 @@
 /**
  * imperative.js 单测。纯函数，零依赖，零网络。
- * 运行：node imperative.selftest.mjs
+ * 运行：node test/imperative.selftest.mjs
  */
 import { findImperatives, verdictOf, IMPERATIVE_RULES, REWRITE_WITHHELD } from '../src/imperative.js'
 

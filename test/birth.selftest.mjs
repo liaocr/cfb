@@ -1,4 +1,4 @@
-// selftest-birth.mjs — 方案一：流式双轨并发拦截器（Stream-Tee）自测
+// birth.selftest.mjs — 出生即压缩（mode: 'birth'）：流式双轨并发拦截器（Stream-Tee）自测
 // 纯本地：零网络、零会话、零 API 调用。
 // ★ 结构合法性由**真实的** dsh-llm invariant.js 当裁判；
 // ★ 最终消息由**真实的** dsh-llm BlockAssembler 装配裁定（不再用替身）。
@@ -1092,7 +1092,7 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
 }
 
 console.log('')
-console.log('selftest-birth: PASS=' + pass + ' FAIL=' + failn + (skipn ? ' SKIP=' + skipn : '') +
+console.log('birth.selftest: PASS=' + pass + ' FAIL=' + failn + (skipn ? ' SKIP=' + skipn : '') +
   (invariantLoaded ? '  (结构由真实 dsh-llm 不变式校验' : '  (⚠ 不变式未加载') +
   (BA ? ' + 真实 BlockAssembler 装配)' : ' + 替身装配)'))
 if (failn > 0) { console.log('失败项: ' + fails.join(' | ')); process.exit(1) }
