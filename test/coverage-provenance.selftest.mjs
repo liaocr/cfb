@@ -1,9 +1,9 @@
 // 2026-09-23 回归闸：整段 replace 覆盖完整性 / 迟到候选反查 / 来源对象解析 / compress 迟到通路 / 退避
 import assert from 'node:assert/strict'
-import { runPreStepEmit, collectSpanCarry, buildLedger } from '../emitter.js'
-import { normalizeEvidenceEvent, classifyUserEventSource, classifyUserEventMetadata, hostOriginKind, pickUserAsks, SOURCE } from '../state-memory.js'
+import { runPreStepEmit, collectSpanCarry, buildLedger } from '../src/emitter.js'
+import { normalizeEvidenceEvent, classifyUserEventSource, classifyUserEventMetadata, hostOriginKind, pickUserAsks, SOURCE } from '../src/state-memory.js'
 import * as I from '../index.js'
-import * as I_emitter from '../emitter.js'
+import * as I_emitter from '../src/emitter.js'
 import { readFileSync } from 'node:fs'
 import http from 'node:http'
 
@@ -171,7 +171,7 @@ await test('配置契约：stateMemory+stateCompress 只记冲突不抛错；com
 })
 
 // ── v11.1：carry 预算 / 去嵌套 / retarget 单例 / P3 退半步 / compress-v2 / 混合认领 / 漏斗 ──
-import { flattenCarriedBoard } from '../emitter.js'
+import { flattenCarriedBoard } from '../src/emitter.js'
 await test('carry 去嵌套：旧看板里的内联 carry 段被剥掉，句柄行保留，幂等', () => {
   const b = '摘要\n\n[早前看板 seq=2]\n更早摘要\n\n[早前看板 seq=1 · 9000 字符 · 原文 art://X]\n\n[早前回答 seq=3]\n回答\n\n[工具结果 seq=4]\nout'
   const f = flattenCarriedBoard(b)

@@ -16,7 +16,7 @@ import {
   SEC, buildEvidenceEnvelope, buildStateCompilePrompt as buildStateCompilePromptX,
   parseStateCompile, createMemoryProjection, renderBirth, renderCheckpoint,
   mergeOrdered, cacheIdentity,
-} from '../state-memory.js'
+} from '../src/state-memory.js'
 import os from 'node:os'
 
 let pass = 0, failn = 0, skipn = 0
@@ -373,12 +373,12 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
 
 // ═══ T15 零 rules 污染：birth 段不出现 compressByRules ═══
 {
-  const srcText = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8')
-  const a = srcText.indexOf('export function birthStart')
-  const b = srcText.indexOf('export function apply(ctx')
-  const seg = (a >= 0 && b > a) ? srcText.slice(a, b) : ''
-  ok('T15 ★ birth 实现段非空（可定位）', seg.length > 1000, String(seg.length))
-  ok('T15 ★ 零 rules 兜底（段内无 compressByRules）', seg.indexOf('compressByRules') === -1)
+  // v11.8：birth 实现独立成 src/birth.js；规则引擎已整体移除 ⇒ 全部 src/ 都不得再出现它
+  const seg = fs.readFileSync(new URL('../src/birth.js', import.meta.url), 'utf8')
+  ok('T15 ★ birth 实现段非空（可定位）', seg.includes('export function birthStart') && seg.length > 1000, String(seg.length))
+  const srcDir = new URL('../src/', import.meta.url)
+  const withRules = fs.readdirSync(srcDir).filter((f) => f.endsWith('.js') && fs.readFileSync(new URL(f, srcDir), 'utf8').includes('compressByRules('))
+  ok('T15 ★ 零 rules 兜底（src/ 内无 compressByRules 调用）', withRules.length === 0, withRules.join(','))
 }
 
 // ═══ T16 两段式 API：block-end 处同步起火（不阻塞），finish 处收网 ═══
@@ -608,7 +608,7 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
      prewarmTargetUrl('') === null && prewarmTargetUrl(null) === null,
      String(prewarmTargetUrl('')))
   // ⚠ 用字面子串而不是正则 —— 第一版正则写坏了，恒过（空测试）。这里钉死调用点。
-  const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8')
+  const src = fs.readFileSync(new URL('../src/transport.js', import.meta.url), 'utf8')
   const LEGACY = "replace(/\\/+$/, '') + '/'"
   ok('T19 ★ 调用点必须走 prewarmTargetUrl（不许再手拼 base）',
      src.includes('const url = prewarmTargetUrl(base)'), 'call site not using prewarmTargetUrl')

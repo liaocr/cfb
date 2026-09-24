@@ -4,9 +4,9 @@ import os from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
 import * as I from '../index.js'
-import * as M from '../state-memory.js'
-import { createExactFlights } from '../exact-flights.js'
-import { prepareJudgmentPrompt, buildJudgmentPrompt, transientEvidenceFrame } from '../evidence-ledger.js'
+import * as M from '../src/state-memory.js'
+import { createExactFlights } from '../src/exact-flights.js'
+import { prepareJudgmentPrompt, buildJudgmentPrompt, transientEvidenceFrame } from '../src/evidence-ledger.js'
 import { analyzeEfficiency } from '../tools/analyze-efficiency.mjs'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-efficiency-')), previous = process.env.DSH_HOME
 process.env.DSH_HOME = home

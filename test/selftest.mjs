@@ -11,9 +11,9 @@ import {
   pushLateMemory, takeLateMemory, peekLateMemory, lateMemorySize,
   readApiKey, DEP_ID,
 } from '../index.js'
-import { fidelity, protectedTokens } from '../rules.js'
-import { runPreStepEmit } from '../emitter.js'
-import { adaptEvidence } from '../state-memory.js'
+import { fidelity, protectedTokens } from '../src/fidelity.js'
+import { runPreStepEmit } from '../src/emitter.js'
+import { adaptEvidence } from '../src/state-memory.js'
 
 // 本进程独占的临时目录：固定文件名会让并发跑多个 selftest 时互相读到对方写的
 // trace / credentials，产生假失败（外审 R-1 复现：并发时 204/0 与 203/1 并存）。
@@ -768,6 +768,11 @@ console.log('\n【24】阶段 0 bug 回归（2026-09-24 大清扫）')
   for (const dep of ['emitter.js', 'evidence-ledger.js', 'consumption.js', 'state-memory.js', 'snapshot-store.js']) {
     ok('24.15 DEP_ID 含 ' + dep, DEP_ID.includes(dep))
   }
+  // v11.8：DEP_ID 改为自动枚举 src/ ⇒ 新增模块不可能再漏登记
+  const srcFiles = fs.readdirSync(new URL('../src/', import.meta.url)).filter((f) => f.endsWith('.js') && f !== 'plugin.js')
+  const listed = DEP_ID.split(' ').map((x) => x.split('=')[0])
+  ok('24.16 ★ DEP_ID 覆盖 src/ 下全部模块 + 包入口', srcFiles.every((f) => listed.includes(f)) && listed.includes('index.js') && listed.length === srcFiles.length + 1, { missing: srcFiles.filter((f) => !listed.includes(f)), listed: listed.length })
+  ok('24.17 DEP_ID 每项都读到了 size@mtime（无 =?）', !DEP_ID.includes('=?'), DEP_ID)
 }
 
 console.log('  通过 ' + pass + ' / 失败 ' + fail)

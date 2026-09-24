@@ -12,7 +12,7 @@ import {
   classifyUserEventSource, ATTRIBUTION, SOURCE as SOURCE2,
   PROPOSITION_KIND, samePropositionKind, compactToolText, renderToolEvidence, promptStats,
   compactDiagnosticText, DIAG_MARK,
-} from '../state-memory.js'
+} from '../src/state-memory.js'
 
 // 真实错误 fixture 目录（真机原文导出，非合成）
 import { readFileSync } from 'node:fs'

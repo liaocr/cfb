@@ -1,7 +1,7 @@
 import {
   selectBalancedSpan, verifyBalancedSpan, eventDelta, balanceAfterEach, balanceBefore,
   countToolCalls, eventsFromSurface, ASSISTANT_MESSAGE, TOOL_RESULT,
-} from '../balanced-span.js'
+} from '../src/balanced-span.js'
 
 let pass = 0, fail = 0
 const ok = (name, cond) => { if (cond) { pass++ } else { fail++; console.log('  ✗ ' + name) } }

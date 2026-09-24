@@ -5,10 +5,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import http from 'node:http'
 import crypto from 'node:crypto'
-import { prepareEvidenceLedger as prepare, loadEvidenceLedger as load, ledgerDirectory, buildJudgmentPrompt, createEvidenceArchiver, readEvidenceHistory } from '../evidence-ledger.js'
+import { prepareEvidenceLedger as prepare, loadEvidenceLedger as load, ledgerDirectory, buildJudgmentPrompt, createEvidenceArchiver, readEvidenceHistory } from '../src/evidence-ledger.js'
 import { captureTrace, parseTrace, replayCompiler, evaluateProduct, observationEvents } from '../tools/replay.mjs'
 import * as I from '../index.js'
-import * as M from '../state-memory.js'
+import * as M from '../src/state-memory.js'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-hybrid-')), oldHome = process.env.DSH_HOME
 process.env.DSH_HOME = home
 let pass = 0, fail = 0

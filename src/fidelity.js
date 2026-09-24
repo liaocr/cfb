@@ -1,4 +1,4 @@
-// dsh-cot-form-b / rules.js —— 受保护 token 与保真度核算（纯函数，零网络、同步）
+// dsh-cot-form-b / fidelity.js —— 受保护 token 与保真度核算（纯函数，零网络、同步）
 //
 // 用途：birthFinish 用 fidelity() 统计压缩稿对原文「逐字标识符」的召回率（只记录，进 trace）；
 //       tools/analyze-efficiency.mjs 离线复算同一指标。

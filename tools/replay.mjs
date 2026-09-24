@@ -75,6 +75,11 @@ export function observationEvents(o) {
   }
   return { events, inFlightIds, cutSeq: o.cut ?? o.cutSeq, coverage: o.coverage }
 }
+// 被重放的实现目录可能是 v11.8 起的 src/ 布局，也可能是更早的扁平布局（对照旧提交时）。
+function moduleFile(moduleDir, file) {
+  const nested = path.join(moduleDir, 'src', file)
+  return fs.existsSync(nested) ? nested : path.join(moduleDir, file)
+}
 export async function replayCompiler(capture, cfg, moduleDir, home, candidate = true) {
   if (!capture.complete || !capture.cases?.length) throw Error('incomplete capture')
   if (fs.existsSync(home) && fs.readdirSync(home).length) throw Error('replay home must be empty')
@@ -82,12 +87,12 @@ export async function replayCompiler(capture, cfg, moduleDir, home, candidate = 
   const oldHome = process.env.DSH_HOME; process.env.DSH_HOME = home
   try {
     const I = await import(pathToFileURL(path.join(moduleDir, 'index.js')))
-    const M = await import(pathToFileURL(path.join(moduleDir, 'state-memory.js')))
-    const L = candidate ? await import(pathToFileURL(path.join(moduleDir, 'evidence-ledger.js'))) : null
+    const M = await import(pathToFileURL(moduleFile(moduleDir, 'state-memory.js')))
+    const L = candidate ? await import(pathToFileURL(moduleFile(moduleDir, 'evidence-ledger.js'))) : null
     cfg = { ...I.DEFAULTS, ...cfg, dryRun: false, mode: 'birth', stateMemory: true,
       birthFinishWaitMs: 1500, timeoutMs: 8000, maxOutputTokens: 1200, prewarm: false, distillStream: true, birthDeferredClaim: true,
       birthMinChars: 1 } // Replay recorded captures regardless of the production floor (v11.6 raised it to 3100).
-    const sharingPath = path.join(moduleDir, 'exact-flights.js')
+    const sharingPath = moduleFile(moduleDir, 'exact-flights.js')
     const flights = fs.existsSync(sharingPath) ? (await import(pathToFileURL(sharingPath))).createExactFlights() : null
     const compiles = []
     for (const item of capture.cases) {
@@ -160,12 +165,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   const [cmd, ...args] = process.argv.slice(2)
   try {
     if (cmd === 'storage-audit' || cmd === 'storage-gc') {
-      const { auditEvidenceStorage, collectEvidenceGarbage } = await import('../evidence-storage.js')
+      const { auditEvidenceStorage, collectEvidenceGarbage } = await import('../src/evidence-storage.js')
       const [root, output] = args
       const result = cmd === 'storage-gc' ? collectEvidenceGarbage(root) : auditEvidenceStorage(root)
       if (output) save(output, result); else console.log(JSON.stringify(result, null, 2))
     } else if (cmd === 'inspect') {
-      const { readEvidenceHistory } = await import('../evidence-ledger.js')
+      const { readEvidenceHistory } = await import('../src/evidence-ledger.js')
       const [view, output] = args
       const records = readEvidenceHistory(view)
       if (output) save(output, records); else console.log(JSON.stringify(records, null, 2))
