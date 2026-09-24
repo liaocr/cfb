@@ -1,8 +1,8 @@
 /**
  * imperative.js 单测。纯函数，零依赖，零网络。
- * 运行：node imperative.selftest.mjs
+ * 运行：node test/imperative.selftest.mjs
  */
-import { findImperatives, verdictOf, IMPERATIVE_RULES, REWRITE_WITHHELD } from '../imperative.js'
+import { findImperatives, verdictOf, IMPERATIVE_RULES, REWRITE_WITHHELD } from '../src/imperative.js'
 
 let pass = 0, fail = 0
 const ok = (name, cond) => { if (cond) { pass++; console.log('  ✓ ' + name) } else { fail++; console.log('  ✗ ' + name) } }
@@ -61,7 +61,7 @@ console.log('— 5. 纯裁判性质：绝不改一个字 —')
 const mutated = REAL
 findImperatives(REAL)
 ok('★ findImperatives 不修改输入（字符串不可变 + 无副作用回写）', mutated === REAL && REAL.includes('禁止再动代码'))
-ok('★ 本模块不导出任何改写函数', typeof (await import('../imperative.js')).sanitize === 'undefined' && typeof (await import('../imperative.js')).rewrite === 'undefined')
+ok('★ 本模块不导出任何改写函数', typeof (await import('../src/imperative.js')).sanitize === 'undefined' && typeof (await import('../src/imperative.js')).rewrite === 'undefined')
 ok('★ 显式声明了"改写权不回授"', typeof REWRITE_WITHHELD === 'string' && REWRITE_WITHHELD.length > 0)
 
 console.log('— 6. 边界与健壮性 —')

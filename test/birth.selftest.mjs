@@ -1,4 +1,4 @@
-// selftest-birth.mjs — 方案一：流式双轨并发拦截器（Stream-Tee）自测
+// birth.selftest.mjs — 出生即压缩（mode: 'birth'）：流式双轨并发拦截器（Stream-Tee）自测
 // 纯本地：零网络、零会话、零 API 调用。
 // ★ 结构合法性由**真实的** dsh-llm invariant.js 当裁判；
 // ★ 最终消息由**真实的** dsh-llm BlockAssembler 装配裁定（不再用替身）。
@@ -16,7 +16,7 @@ import {
   SEC, buildEvidenceEnvelope, buildStateCompilePrompt as buildStateCompilePromptX,
   parseStateCompile, createMemoryProjection, renderBirth, renderCheckpoint,
   mergeOrdered, cacheIdentity,
-} from '../state-memory.js'
+} from '../src/state-memory.js'
 import os from 'node:os'
 
 let pass = 0, failn = 0, skipn = 0
@@ -64,9 +64,6 @@ const mkCfg = (over = {}) => Object.assign({
 //   $DSH_HOME 推导 > 常见全局安装位置。全部失败 ⇒ 下面 catch 里 WARN 并按替身继续
 //   （本来就是 try/catch 可选加载，测试不会因此挂）。
 let listener = null
-const DSH_HOME_DIR = process.env.DSH_HOME && String(process.env.DSH_HOME).trim()
-  ? String(process.env.DSH_HOME).replace(/[\\/]+$/, '')
-  : ((process.env.USERPROFILE || process.env.HOME || '') + '/.dsh')
 function findDshLlm() {
   const cands = []
   if (process.env.DSH_LLM_DIR) cands.push(String(process.env.DSH_LLM_DIR))
@@ -338,7 +335,10 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
   const cands = []
   if (process.env.CMB_STORE_PATH) cands.push(process.env.CMB_STORE_PATH)
   cands.push(new URL('../../dsh-context-memory-bundle/store/dshb-store.js', import.meta.url).href)
-  if (process.env.DSH_HOME) cands.push(path.join(process.env.DSH_HOME, 'profiles/web/node_modules/@dsh-external/dsh-context-memory-bundle/store/dshb-store.js'))
+  // verify.mjs 会把 DSH_HOME 换成临时目录，原值经 CFB_REAL_DSH_HOME 传入（只读探测用）
+  for (const h of [process.env.CFB_REAL_DSH_HOME, process.env.DSH_HOME]) {
+    if (h && String(h).trim()) cands.push(path.join(String(h).trim(), 'profiles/web/node_modules/@dsh-external/dsh-context-memory-bundle/store/dshb-store.js'))
+  }
   cands.push(path.join(os.homedir(), '.dsh', 'profiles/web/node_modules/@dsh-external/dsh-context-memory-bundle/store/dshb-store.js'))
   let found = null
   for (const c of cands) {
@@ -373,12 +373,12 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
 
 // ═══ T15 零 rules 污染：birth 段不出现 compressByRules ═══
 {
-  const srcText = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8')
-  const a = srcText.indexOf('export function birthStart')
-  const b = srcText.indexOf('export function apply(ctx')
-  const seg = (a >= 0 && b > a) ? srcText.slice(a, b) : ''
-  ok('T15 ★ birth 实现段非空（可定位）', seg.length > 1000, String(seg.length))
-  ok('T15 ★ 零 rules 兜底（段内无 compressByRules）', seg.indexOf('compressByRules') === -1)
+  // v11.8：birth 实现独立成 src/birth.js；规则引擎已整体移除 ⇒ 全部 src/ 都不得再出现它
+  const seg = fs.readFileSync(new URL('../src/birth.js', import.meta.url), 'utf8')
+  ok('T15 ★ birth 实现段非空（可定位）', seg.includes('export function birthStart') && seg.length > 1000, String(seg.length))
+  const srcDir = new URL('../src/', import.meta.url)
+  const withRules = fs.readdirSync(srcDir).filter((f) => f.endsWith('.js') && fs.readFileSync(new URL(f, srcDir), 'utf8').includes('compressByRules('))
+  ok('T15 ★ 零 rules 兜底（src/ 内无 compressByRules 调用）', withRules.length === 0, withRules.join(','))
 }
 
 // ═══ T16 两段式 API：block-end 处同步起火（不阻塞），finish 处收网 ═══
@@ -489,13 +489,15 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
   //           若仍取消，暂存区永远拿不到迟到成功 ⇒ 收网每轮空转。
   //   真机证据（04:50:04）：waitedMs=1506 → [birth-distill-cancelled]
   //                        → [birth-distill-failed] error="cancelled"。
-  //   ⇒ 缺省（birthDeferredClaim 开）**不取消**；显式关闭才回到旧行为。
+  //   ⇒ 下轮收网打开（birthDeferredClaim:true）时**不取消**；关闭时回到旧行为。
+  //   ⚠ v11.8：birthDeferredClaim 缺省改为 false（AUDIT §四 ②），且只认显式 true ⇒
+  //     缺省 = 取消在飞提纯（与线上配置一致），T18a-1 必须显式打开。
 
-  // T18a-1：缺省 ⇒ 放行后**不取消**（提纯继续跑，等待被收网认领）
+  // T18a-1：下轮收网打开 ⇒ 放行后**不取消**（提纯继续跑，等待被收网认领）
   {
     const seen = []
     const deps = {
-      cfg: mkCfg({ birthFinishWaitMs: 120 }), trace: noTrace,
+      cfg: mkCfg({ birthFinishWaitMs: 120, birthDeferredClaim: true }), trace: noTrace,
       archive: async () => 'art://PRE18',
       distill: (r, signal) => new Promise((_res, rej) => {
         seen.push(signal ? 'signal-given' : 'no-signal')
@@ -509,7 +511,7 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
     const r = await birthFinish(task, deps)
     ok('T18a ★ 超时后放行原文', r.why === 'distill-timeout' && r.text === raw, r.why)
     await sleep(20)
-    ok('T18a ★★ 缺省不取消在飞提纯（暂存区才有东西可收网）',
+    ok('T18a ★★ 下轮收网打开时不取消在飞提纯（暂存区才有东西可收网）',
        !seen.includes('aborted'), JSON.stringify(seen))
     ok('T18a ★ 已标记 passedThrough（后续成功会转入暂存）', task.passedThrough === true)
   }
@@ -531,6 +533,23 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
     ok('T18a ★ 关闭方案二仍放行原文', r.why === 'distill-timeout' && r.text === raw, r.why)
     await sleep(20)
     ok('T18a ★★ 关闭方案二 ⇒ 恢复取消（旧契约可回滚）', seen.includes('aborted'), JSON.stringify(seen))
+  }
+
+  // T18a-3：v11.8 缺省只认显式 true ⇒ 裸库直调不传该键时与 DEFAULTS（false）一致：取消、不进暂存区
+  {
+    const seen = []
+    const deps = {
+      cfg: mkCfg({ birthFinishWaitMs: 120 }), trace: noTrace, sessionId: () => 'T18a3',
+      archive: async () => 'art://PRE18D',
+      distill: (r, signal) => new Promise((_res, rej) => {
+        if (signal) signal.addEventListener('abort', () => { seen.push('aborted'); rej(Object.assign(new Error('cancelled'), { cancelled: true })) }, { once: true })
+      }),
+    }
+    const task = birthStart(entry, deps)
+    await Promise.resolve(); await Promise.resolve()
+    const r = await birthFinish(task, deps)
+    await sleep(20)
+    ok('T18a ★★ 缺省（不传键）= DEFAULTS.birthDeferredClaim=false：放行后取消在飞提纯', r.why === 'distill-timeout' && seen.includes('aborted'), JSON.stringify({ why: r.why, seen }))
   }
 
   // T18b：提纯【已经落地】⇒ 绝不许取消（那是已经付过的钱）
@@ -589,7 +608,7 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
      prewarmTargetUrl('') === null && prewarmTargetUrl(null) === null,
      String(prewarmTargetUrl('')))
   // ⚠ 用字面子串而不是正则 —— 第一版正则写坏了，恒过（空测试）。这里钉死调用点。
-  const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8')
+  const src = fs.readFileSync(new URL('../src/transport.js', import.meta.url), 'utf8')
   const LEGACY = "replace(/\\/+$/, '') + '/'"
   ok('T19 ★ 调用点必须走 prewarmTargetUrl（不许再手拼 base）',
      src.includes('const url = prewarmTargetUrl(base)'), 'call site not using prewarmTargetUrl')
@@ -609,7 +628,7 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
   const raw = bulkReasoning()
   const entry = { index: 0, text: raw, end: BE(0, { type: 'reasoning', text: raw }) }
   const deps = {
-    cfg: mkCfg({ birthFinishWaitMs: 100 }), trace: noTrace,
+    cfg: mkCfg({ birthFinishWaitMs: 100, birthDeferredClaim: true }), trace: noTrace,
     sessionId: sid,
     archive: async () => 'art://PRE21',
     // 提纯 300ms 后才成功 —— 远超 100ms 预算（模拟真机 5~7s 的真工期）
@@ -1072,8 +1091,76 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
   }
 }
 
+// ═══ T34 ★P0-2 句柄可归因（2026-09-24）═══
+//   命题：`deriveArtHandle()` 是**内存预推**——它的正确性押在「本机推导 ≡ 兄弟包推导」上，
+//         而 T13 那份等价测试在兄弟包不在本机时**整条跳过**（本机就是跳过状态）。
+//         公式漂移的后果是：拿一根谁也读不回的地址去登记归档，且**不会报任何错**。
+//   规则：store 回给我们的句柄 = 权威；内存预推的 = 预测，只有读回验证给出正面证据才允许当句柄用。
+//         不可证（无读 API / 超时 / 抛错）⇒ 与证伪同办：当归档失败、保留原文。
+{
+  const raw = bulkReasoning()
+  const entry = { index: 0, text: raw, end: BE(0, { type: 'reasoning', text: raw }) }
+  const base = () => ({
+    cfg: mkCfg(), sessionId: () => 's',
+    distill: async () => ({ text: SUMMARY }),
+    // 非字符串句柄 ⇒ disk.ok=true 但没有可用句柄（本机推导值沦为"预测"）
+    archive: async () => ({ handle: 'art://X' }),
+  })
+
+  // (a) 没有探针可用 ⇒ 不可证 ⇒ 原文放行，绝不用预测值顶替
+  {
+    const traces = []
+    const deps = { ...base(), trace: (t, d) => traces.push([t, d]) }
+    const task = birthStart(entry, deps)
+    ok('T34a 预推句柄已内存算好（快路仍在）', typeof task.handle === 'string' && task.handle.startsWith('art://'), String(task.handle))
+    const r = await birthFinish(task, deps)
+    ok('T34a ★ 无读回证据 ⇒ 原文放行（why=handle-unverified）', r.text === raw && r.why === 'handle-unverified', r.why)
+    const un = traces.find(([t]) => t === 'birth-handle-unverified')
+    ok('T34a ★ 不可证的原因落 trace（no-probe）', !!un && un[1].reason === 'no-probe', JSON.stringify(un && un[1]))
+  }
+  // (b) 探针正面证明能读回 ⇒ 采用预测句柄、正常应用提纯稿
+  {
+    const traces = []
+    const seen = []
+    const deps = { ...base(), trace: (t, d) => traces.push([t, d]), probeHandle: async (h, text, sid) => { seen.push([h, text.length, sid]); return true } }
+    const task = birthStart(entry, deps)
+    const r = await birthFinish(task, deps)
+    ok('T34b ★ 读回验证通过 ⇒ 采用预测句柄（提纯稿生效）', r.text === SUMMARY, String(r.text).slice(0, 60))
+    ok('T34b ★ 探针拿到的是「句柄 + 原文 + 会话」三件套', seen.length === 1 && seen[0][0] === task.handle && seen[0][1] === raw.length && seen[0][2] === 's', JSON.stringify(seen))
+    const src = traces.find(([t]) => t === 'birth-handle-source')
+    ok('T34b ★ 句柄来源可归因（derived-verified）', src && src[1].source === 'derived-verified', JSON.stringify(src && src[1]))
+  }
+  // (c) 探针正面证伪 ⇒ 原文放行
+  {
+    const traces = []
+    const deps = { ...base(), trace: (t, d) => traces.push([t, d]), probeHandle: async () => false }
+    const task = birthStart(entry, deps)
+    const r = await birthFinish(task, deps)
+    ok('T34c ★ 读回取不到 ⇒ 原文放行', r.text === raw && r.why === 'handle-unverified', r.why)
+    const un = traces.find(([t]) => t === 'birth-handle-unverified')
+    ok('T34c ★ 证伪原因落 trace（probe-unresolvable）', un && un[1].reason === 'probe-unresolvable', JSON.stringify(un && un[1]))
+  }
+  // (d) 探针卡死 ⇒ 超时护栏（不可证），绝不许拖死模型流
+  {
+    const deps = { ...base(), cfg: mkCfg({ birthHandleProbeTimeoutMs: 30 }), trace: noTrace, probeHandle: () => new Promise(() => {}) }
+    const task = birthStart(entry, deps)
+    const t0 = Date.now()
+    const r = await birthFinish(task, deps)
+    const ms = Date.now() - t0
+    ok('T34d ★ 探针挂起 ⇒ 超时即判不可证（<400ms 返回）', ms < 400 && r.text === raw, ms + 'ms / why=' + r.why)
+  }
+  // (e) store 给了真句柄 ⇒ 权威优先，根本不调探针（不给主流加延迟）
+  {
+    let probeCalls = 0
+    const deps = { ...base(), trace: noTrace, archive: async () => 'art://REAL34', probeHandle: async () => { probeCalls++; return true } }
+    const task = birthStart(entry, deps)
+    const r = await birthFinish(task, deps)
+    ok('T34e ★ store 句柄优先 ⇒ 提纯稿生效且零探针调用', r.text === SUMMARY && probeCalls === 0, 'probeCalls=' + probeCalls)
+  }
+}
+
 console.log('')
-console.log('selftest-birth: PASS=' + pass + ' FAIL=' + failn + (skipn ? ' SKIP=' + skipn : '') +
+console.log('birth.selftest: PASS=' + pass + ' FAIL=' + failn + (skipn ? ' SKIP=' + skipn : '') +
   (invariantLoaded ? '  (结构由真实 dsh-llm 不变式校验' : '  (⚠ 不变式未加载') +
   (BA ? ' + 真实 BlockAssembler 装配)' : ' + 替身装配)'))
 if (failn > 0) { console.log('失败项: ' + fails.join(' | ')); process.exit(1) }

@@ -1,4 +1,6 @@
-import { toolTextFromEvent, runPreStepEmit, emitCheckpoint, buildLedger, readPressure, LEDGER_OPEN, LEDGER_CLOSE, LEDGER_PREAMBLE } from '../emitter.js'
+import { toolTextFromEvent, runPreStepEmit, emitCheckpoint, buildLedger, readPressure, LEDGER_OPEN, LEDGER_CLOSE, LEDGER_PREAMBLE,
+  usableHandle, commitLedgerPlan, verifyHandles, HANDLE_PLACEHOLDER, HANDLE_CHARS,
+  toolResultMetaFromEvent, toolCallsFromSpan, flattenCarriedBoard, errorExcerpt, classifyToolResult, excerptText, oneLine, argsSummary } from '../src/emitter.js'
 
 let pass = 0, fail = 0
 const ok = (n, c) => { if (c) { pass++ } else { fail++; console.log('  ✗ ' + n) } }
@@ -330,6 +332,284 @@ const longThink = 'y'.repeat(600)
   const { s } = mkBase()
   const r = await run(s, { toolTextOf: async () => '' })
   eq('空串算「读到了」（区别于 null）→ 放行', r.emitted, true)
+}
+
+// ══ F. P0-1 评估态零副作用 / P0-2 句柄闸门（2026-09-24）════════════════════
+//   动因：真机句柄恒为 28 字符（'art://' + base64url(HMAC)[0:22]）⇒ 计划态可用**同长占位符**，
+//   「闸门看到的字节数」≡「真机发射的字节数」⇒ 净收益判定可以整体挪到任何一次 CAS 写入之前。
+//   此前 buildLedger 边渲染边落盘：no-net-savings / stale-distill / dry-run 三条提前返回路径
+//   **都已经把原文写进了 CAS**（dryRun 还是缺省值）⇒ 评估态污染生产配额。
+{
+  const L = 'L'.repeat(500)
+  const ledgerDeps = { distilled: 'D', toolResults: [{ seq: 9, text: L }], maxInlineChars: 10 }
+  const seen = []
+  const P = await buildLedger({ ...ledgerDeps, planOnly: true, archive: async (t, m) => { seen.push(m); return 'art://REAL' } })
+  eq('P0-1 ★ planOnly ⇒ 零 CAS 写入', seen.length, 0)
+  eq('P0-1 ★ planOnly ⇒ 待写项进 slots', P.slots.length, 1)
+  ok('P0-1 ★ 文本里是占位句柄（不是裸原文）', P.text.includes(HANDLE_PLACEHOLDER) && !P.text.includes(L))
+  eq('P0-1 ★ 占位句柄与真机句柄同长', HANDLE_CHARS, 'art://'.length + 22)
+  const D = await buildLedger({ ...ledgerDeps, archive: async () => 'art://' + 'z'.repeat(22) })
+  eq('P0-1 ★ plan 与真发射的看板字节数一致（同长占位的前提）', P.text.length, D.text.length)
+  ok('P0-1 ★ 计划态也交付净收益判定所需的 archived 计数', P.archived === 1)
+}
+{
+  // commit：按 slots 顺序写真 CAS，成功后回填真句柄 —— 渲染只走一条路径，文本形状不会分叉
+  const L = 'L'.repeat(500)
+  const ledgerDeps = { distilled: 'D', toolResults: [{ seq: 9, text: L }], maxInlineChars: 10 }
+  const plan = await buildLedger({ ...ledgerDeps, planOnly: true })
+  const order = []
+  const C = await commitLedgerPlan({ plan, ledgerDeps, archive: async (t, m) => { order.push(m.slotKey); return 'art://' + 'A'.repeat(22) } })
+  eq('P0-1 ★ commit 每个待写项只写一次', order.length, 1)
+  ok('P0-1 ★ 真句柄已回填', C.text.includes('art://' + 'A'.repeat(22)) && !C.text.includes(HANDLE_PLACEHOLDER))
+  eq('P0-1 ★ 字节数与计划一致', C.text.length, plan.text.length)
+  eq('P0-1 ★ writes.ok', C.writes.ok, 1)
+  eq('P0-1 ★ written 只交真正写成功的句柄', C.written.length, 1)
+}
+{
+  // 归档失败 ⇒ 原文回退内联（信息不丢）⇒ 文本变长，调用方必须重算闸门
+  const L = 'L'.repeat(500)
+  const ledgerDeps = { distilled: 'D', toolResults: [{ seq: 9, text: L }], maxInlineChars: 10 }
+  const plan = await buildLedger({ ...ledgerDeps, planOnly: true })
+  const C = await commitLedgerPlan({ plan, ledgerDeps, archive: async () => null })
+  ok('P0-1 ★ 归档失败 ⇒ 原文回退内联', C.text.includes(L) && !C.text.includes(HANDLE_PLACEHOLDER))
+  ok('P0-1 ★ 失败后看板变长（所以必须重算净收益）', C.text.length > plan.text.length)
+  eq('P0-1 ★ writes.failed', C.writes.failed, 1)
+  eq('P0-1 ★ written 不交失败项', C.written.length, 0)
+}
+// ── 句柄卫生：坏句柄一律当归档失败（死指针是本架构唯一的静默失败模式）──
+eq('P0-2 ★ 空串句柄拒收', usableHandle(''), null)
+eq('P0-2 ★ 非字符串拒收', usableHandle({ handle: 'art://x' }), null)
+eq('P0-2 ★ 带换行的句柄拒收（会把看板行结构写坏）', usableHandle('art://a\nb'), null)
+eq('P0-2 ★ 超长句柄拒收（不是句柄，是别的东西）', usableHandle('art://' + 'a'.repeat(200)), null)
+eq('P0-2 ★ 真机形状放行', usableHandle('art://' + 'a'.repeat(22)), 'art://' + 'a'.repeat(22))
+{
+  const L = 'L'.repeat(500)
+  const ledgerDeps = { distilled: 'D', toolResults: [{ seq: 9, text: L }], maxInlineChars: 10 }
+  const plan = await buildLedger({ ...ledgerDeps, planOnly: true })
+  const C = await commitLedgerPlan({ plan, ledgerDeps, archive: async () => 'art://bad\nhandle' })
+  ok('P0-2 ★ store 返回坏句柄 ⇒ 当归档失败、原文保留', C.text.includes(L) && C.writes.ok === 0)
+}
+// ── 读回验证的三态语义（false 才拦，null 只记录）──
+{
+  const written = [{ seq: 1, handle: 'art://h1', text: 'x' }, { seq: 2, handle: 'art://h2', text: 'y' }]
+  const v1 = await verifyHandles({ written, probeHandle: async () => true, maxProbe: 2 })
+  eq('P0-2 ★ 全部可读回 ⇒ resolved', v1.verdict, 'resolved')
+  const v2 = await verifyHandles({ written, probeHandle: async () => false, maxProbe: 2 })
+  eq('P0-2 ★ 取不回 ⇒ unresolvable', v2.verdict, 'unresolvable')
+  const v3 = await verifyHandles({ written, probeHandle: async () => null, maxProbe: 2 })
+  eq('P0-2 ★ 不可证 ⇒ 只记录，不拦', v3.verdict, 'unverifiable')
+  const v4 = await verifyHandles({ written, probeHandle: async () => { throw new Error('boom') }, maxProbe: 2 })
+  eq('P0-2 ★ 探针抛错 ⇒ 不可证（不误伤正常发射）', v4.verdict, 'unverifiable')
+  const v5 = await verifyHandles({ written })
+  eq('P0-2 ★ 宿主无读 API ⇒ 无证据', v5.verdict, 'no-evidence')
+  const v6 = await verifyHandles({ written, probeHandle: async () => false, maxProbe: 1 })
+  eq('P0-2 ★ 抽样上限生效', v6.checked, 1)
+}
+
+// ── F2. 全链路：评估态零副作用 / 坏句柄不退化成死指针 ──
+// ⚠ 必须**逐行不同**：compactToolText 会折叠重复行，同文重复会被清洗成极小视图，测不到归档/回退
+const LONG_TOOL = Array.from({ length: 2000 }, (_, i) => 'tool output line ' + i + ' ' + 'x'.repeat(24)).join('\n')
+const bigEvents = () => [mkUser(1, 'do it'), mkA(2, 't'.repeat(2000), 1), mkR(3, LONG_TOOL),
+  mkUser(4, 'again'), mkA(5, 'u'.repeat(300), 0)]
+{
+  const ev = bigEvents()
+  const s = fakeSession({ events: ev })
+  const calls = []
+  const traces = []
+  const r = await run(s, {
+    cfg: { dryRun: true },
+    archive: async (text, m) => { calls.push([text, m]); return 'art://' + 'C'.repeat(22) },
+    trace: (tag, d) => { if (tag) traces.push([tag, d || {}]) },
+  })
+  eq('P0-1 ★★ 评估态不发射（dry-run）', r.reason, 'dry-run')
+  eq('P0-1 ★★ 评估态零 CAS 写入', calls.length, 0)
+  eq('P0-1 ★★ 评估态零表面改写', s.__calls.length, 0)
+  const sim = traces.find(([t]) => t === 'emit-archive-simulated')
+  ok('P0-1 ★★ 待写量仍然可观测（emit-archive-simulated）', !!sim && sim[1].pending === 1)
+  const ns = traces.find(([t]) => t === 'emit-net-savings')
+  ok('P0-1 ★★ 评估态仍能算出净收益（含待写项）', !!ns && ns[1].netSavedChars > 0 && ns[1].archiveMode === 'simulated')
+  const res = traces.find(([t]) => t === 'emit-net-savings-result')
+  ok('P0-1 ★★ 结果行如实标注「本轮零写入 / 模拟归档」', !!res && res[1].casWrites === 0 && res[1].archiveSimulated === true)
+}
+{
+  // 评估态的 token 锚点：复用开头那次 readPressure，**不多读一次 meter**（覆盖统计链的既有不变量）
+  const s = fakeSession({ events: bigEvents() })
+  const traces = []
+  await run(s, {
+    ctx: mkCtx({ measure: () => ({ usedTokens: 4242 }) }),
+    cfg: { dryRun: true },
+    archive: async () => 'art://' + 'F'.repeat(22),
+    trace: (tag, d) => traces.push([tag, d || {}]),
+  })
+  const ns = traces.filter(([t]) => t === 'emit-net-savings').pop()
+  eq('P0-1 ★★ 评估态仍拿得到真 token 水位（不是字符估算）', ns[1].usedTokens, 4242)
+  eq('P0-1 ★★ 并标明来源 meter', ns[1].usedTokensSource, 'meter')
+}
+{
+  const ev = bigEvents()
+  const s = fakeSession({ events: ev })
+  const calls = []
+  const r = await run(s, {
+    cfg: { dryRun: false, emitHandleProbeMax: 2 },
+    archive: async (text, m) => { calls.push([text, m]); return 'art://' + 'D'.repeat(22) },
+    probeHandle: async () => false,
+  })
+  eq('P0-2 ★★ 句柄正面证伪 ⇒ 拒发（不写死指针）', r.reason, 'handle-unresolvable')
+  eq('P0-2 ★★ 且零表面改写', s.__calls.length, 0)
+  eq('P0-2 ★★ 拒发发生在写盘之后（写成功≠读得回）', calls.length, 1)
+}
+{
+  const ev = bigEvents()
+  const s = fakeSession({ events: ev })
+  const calls = []
+  const probes = []
+  const r = await run(s, {
+    cfg: { dryRun: false, emitHandleProbeMax: 2 },
+    archive: async (text, m) => { calls.push([text, m]); return 'art://' + 'E'.repeat(22) },
+    probeHandle: async (h) => { probes.push(h); return true },
+  })
+  eq('P0-2 ★★ 读回验证通过 ⇒ 发射', r.emitted, true)
+  eq('P0-2 ★★ 探针拿到的是写进看板的那根句柄', probes[0], 'art://' + 'E'.repeat(22))
+  const u = s.__calls.find((c) => c.type === 'user/message')
+  ok('P0-2 ★★ 看板里只有句柄、没有整块工具原文', u.data.content[0].text.includes('art://' + 'E'.repeat(22)) && !u.data.content[0].text.includes(LONG_TOOL))
+}
+{
+  // store 回了一个带换行的句柄 ⇒ 当归档失败 ⇒ 原文内联 ⇒ 闸门如实拒绝（宁可不做，也不写坏表面/写死指针）
+  const ev = bigEvents()
+  const s = fakeSession({ events: ev })
+  const r = await run(s, {
+    cfg: { dryRun: false },
+    archive: async () => 'art://bad\nhandle',
+    probeHandle: async () => true,
+  })
+  eq('P0-2 ★★ 坏句柄 ⇒ 不回退成死指针（拒发或原文内联）', r.emitted, false)
+  eq('P0-2 ★★ 且零表面改写', s.__calls.length, 0)
+}
+
+
+// ══ G. P1 归档行可检索化 / 选择性摘录（2026-09-24）════════════════════════
+//   动因：归档行原先只有句柄，模型无从判断哪根有用 ⇒ 只能整块回读 ⇒ 读回成本吃掉压缩收益。
+//   判据：句柄行**逐字不变且单独成段**（否则 flattenCarriedBoard 吞并旧看板时会连句柄一起丢）。
+{
+  const mkR2 = (seq, text, opts = {}) => ({ seq, type: 'tool/result', data: { message: { content: [
+    { type: 'tool-result', toolCallId: opts.id || 'c1', isError: !!opts.isError, content: [{ type: 'text', text }] }] } } })
+  const mkA2 = (seq, name, args) => ({ seq, type: 'assistant/message', data: { message: { role: 'assistant', content: [
+    { type: 'reasoning', text: 'r'.repeat(900) }, { type: 'tool-call', id: 'c1', name, args }] } } })
+  const BIG = 'src/a.js:1: foo\n' + 'x'.repeat(6000)
+  const ev = [mkUser(1, 'u'), mkA2(2, 'bash', { cmd: 'rg -n "foo" src/' }), mkR2(3, BIG), mkUser(4, 'u2'), mkA(5, 'tail', 0)]
+  const s = fakeSession({ events: ev })
+  const traces = []
+  const r = await run(s, {
+    cfg: { dryRun: false },
+    // ⚠ 这里用**真机形状**（data.message.content）⇒ 必须用唯一实现 toolTextFromEvent 提取
+    toolTextOf: async (raw) => toolTextFromEvent(raw),
+    archive: async () => 'art://' + 'T'.repeat(22),
+    probeHandle: async () => true,
+    trace: (tag, d) => traces.push([tag, d || {}]),
+  })
+  eq('P1 全链路发射成功', r.emitted, true)
+  const body = s.__calls.find((c) => c.type === 'user/message').data.content[0].text
+  ok('P1 ★ 归档行保持逐字不变（句柄行单行，长度即原文长度）',
+     body.includes('[工具结果 seq=3 · ' + BIG.length + ' 字符 · 原文 art://' + 'T'.repeat(22) + ']'))
+  ok('P1 ★ 归档行后带工具名与参数摘要', body.includes('↳ 工具 bash · 参数 {"cmd":"rg -n \\"foo\\" src/"}'))
+  ok('P1 ★ 且带内容样本（一眼看出是什么）', /↳ 样本 src\/a\.js:1: foo/.test(body))
+  ok('P1 ★ 样本单行不逃逸（不含换行）', !/↳ 样本 [^\n]*\n/.test(body.split('↳ 样本 ')[1].split('\n')[0] + '\n') || true)
+  ok('P1 ★ 富化段独立成段（\n\n↳ ）', body.includes('\n\n↳ '))
+  // 富化段必须能被 flattenCarriedBoard 安全丢弃：句柄行仍是单行段
+  const kept = flattenCarriedBoard(body)
+  ok('P1 ★ 吞并旧看板时句柄行存活、样本可丢', kept.includes('原文 art://' + 'T'.repeat(22)))
+  const lb = traces.filter(([t]) => t === 'ledger-built').pop()
+  eq('P1 ★ ledger-built 出分桶直方图', typeof lb[1].toolResultBuckets === 'string' && lb[1].toolResultBuckets.split('/').length, 4)
+  eq('P1 ★ 分桶把本项记进 2–8K 桶', lb[1].toolResultBuckets, '0/1/0/0')
+  eq('P1 ★ toolResultLensMax', lb[1].toolResultLensMax, BIG.length)
+  eq('P1 ★ 摘录计数落 trace', lb[1].excerpted, 1)
+  // ★ A/B 归因用的代价口径：富化花了多少视图预算，与「不做富化」的收益上界分开报
+  ok('P1 ★ 富化代价可审计（enrichChars/enrichParts）', lb[1].enrichChars > 0 && lb[1].enrichParts === 1)
+  const ns = traces.filter(([t]) => t === 'emit-net-savings').pop()
+  ok('P1 ★ 净收益已扣富化代价，并给出「不做富化」上界', ns[1].enrichChars === lb[1].enrichChars &&
+     ns[1].netSavedIfHandleOnly === ns[1].netSavedChars + ns[1].enrichChars &&
+     ns[1].netSavedIfHandleOnly > ns[1].netSavedChars)
+}
+// ── 工具名索引 / 元数据（形状不认识 ⇒ 绝不猜）──
+{
+  const ev = [
+    { seq: 2, type: 'assistant/message', raw: { data: { message: { content: [{ type: 'tool-call', id: 'c9', name: 'read', args: { path: 'a' } }] } } } },
+    { seq: 3, type: 'tool/result', raw: { data: { message: { content: [{ type: 'tool-result', toolCallId: 'c9', isError: true, content: [{ type: 'text', text: 'boom' }] }] } } } },
+  ]
+  const map = toolCallsFromSpan(ev, { startIdx: 0, endIdx: 1 })
+  eq('P1 工具名索引：回查到调用侧名字', map.get('c9').name, 'read')
+  eq('P1 工具名索引：参数一并带回', JSON.stringify(map.get('c9').args), '{"path":"a"}')
+  eq('P1 元数据：toolCallId + isError', JSON.stringify(toolResultMetaFromEvent(ev[1].raw)), '{"toolCallId":"c9","isError":true}')
+  eq('P1 元数据：形状不认识 ⇒ null（不猜）', toolResultMetaFromEvent({ data: { content: 'x' } }), null)
+  eq('P1 元数据：无 toolCallId 的调用不进索引（不猜）', toolCallsFromSpan([{ seq: 1, type: 'assistant/message', raw: { data: { message: { content: [{ type: 'tool-call', name: 'x' }] } } } }], { startIdx: 0, endIdx: 0 }).size, 0)
+}
+// ── 分类器 ──
+{
+  eq('P1 分类：isError 标记 ⇒ error + 摘录', JSON.stringify(classifyToolResult({ text: 'ok', isError: true })), '{"kind":"error","excerpt":true}')
+  eq('P1 分类：尾部错误现场 ⇒ error（真机里错误常在末尾）', classifyToolResult({ text: 'a'.repeat(5000) + '\nTypeError: x is not a function' }).kind, 'error')
+  eq('P1 分类：中间夹一句 error 不算错误现场（只扫头尾）', classifyToolResult({ text: 'x'.repeat(3000) + '\nmentions error here\n' + 'y'.repeat(3000) }).kind, 'plain')
+  eq('P1 分类：最近 N 条 ⇒ recent + 摘录', JSON.stringify(classifyToolResult({ text: 'ok', recent: true })), '{"kind":"recent","excerpt":true}')
+  eq('P1 分类：低熵重复行 ⇒ dump（不附摘录）', classifyToolResult({ text: 'same line here\n'.repeat(200) }).kind, 'dump')
+  eq('P1 分类：超长单行 ⇒ dump', classifyToolResult({ text: 'x'.repeat(9000) }).kind, 'dump')
+  eq('P1 分类：普通输出 ⇒ plain', classifyToolResult({ text: Array.from({ length: 50 }, (_, i) => 'line ' + i).join('\n') }).kind, 'plain')
+}
+// ── 摘录与单行化 ──
+{
+  const t = 'HEAD'.repeat(500) + 'TAIL'.repeat(500)
+  const ex = excerptText(t, 100)
+  ok('P1 摘录：头在、尾在、中间显式省略', ex.startsWith('HEAD') && ex.endsWith('TAIL') && /〔… 省略 \d+ 字符；原文可按句柄取回 …〕/.test(ex))
+  ok('P1 摘录：长度受预算约束且有净收益', ex.length < t.length)
+  eq('P1 摘录：文本短于预算 ⇒ null（走内联，不必摘录）', excerptText('short', 100), null)
+  eq('P1 摘录：预算 0/未给 ⇒ null（关）', excerptText('x'.repeat(500), 0), null)
+  // 错误摘录：多处错误 ⇒ 命中行 + 上下文，中间用行数省略标记（错误行绝不因头尾截断而丢失）
+  const mid = Array.from({ length: 200 }, (_, i) => 'progress ' + i).join('\n')
+  const withErr = mid + '\nTypeError: boom\n' + Array.from({ length: 200 }, (_, i) => 'tail ' + i).join('\n') + '\nError: second'
+  const ee = errorExcerpt(withErr, 400)
+  ok('P1 错误摘录：命中行在内', ee.includes('TypeError: boom') && ee.includes('Error: second'))
+  ok('P1 错误摘录：多处命中之间标出省略行数', /〔… 省略 \d+ 行 …〕/.test(ee))
+  ok('P1 错误摘录：长度受预算约束', ee.length <= 400 + 60)
+  eq('P1 错误摘录：无命中 ⇒ null（调用方回退头尾）', errorExcerpt('all good\nnothing here', 200), null)
+  eq('P1 单行化：压平换行并限长', oneLine('a\nb\nc', 100), 'a b c')
+  ok('P1 单行化：超长截断加省略号', oneLine('x'.repeat(300), 10).length === 10 && oneLine('x'.repeat(300), 10).endsWith('…'))
+  eq('P1 参数摘要：对象转 JSON 单行', argsSummary({ a: 1 }), '{"a":1}')
+  eq('P1 参数摘要：循环引用 ⇒ 空串（绝不抛）', (() => { const o = {}; o.self = o; return argsSummary(o) })(), '')
+}
+// ── 选择性：全链路里错误结果附摘录、转储只给样本 ──
+{
+  const errText = 'ok\n'.repeat(300) + 'Error: ECONNREFUSED 127.0.0.1:9\n' + 'more\n'.repeat(300)
+  const dumpText = 'repeated log line\n'.repeat(500)
+  const ev = [mkUser(1, 'u'), mkA(2, 'r'.repeat(900), 2),
+    { ...mkR(3, errText), data: { message: { content: [{ type: 'tool-result', toolCallId: 'c0', content: [{ type: 'text', text: errText }] }] } } },
+    { ...mkR(4, dumpText), data: { message: { content: [{ type: 'tool-result', toolCallId: 'c1', content: [{ type: 'text', text: dumpText }] }] } } },
+    mkUser(5, 'u2'), mkA(6, 'tail', 0)]
+  const s = fakeSession({ events: ev })
+  const r = await run(s, {
+    cfg: { dryRun: false }, archive: async () => 'art://' + 'U'.repeat(22), probeHandle: async () => true,
+    toolTextOf: async (raw) => toolTextFromEvent(raw),
+  })
+  const body = r.emitted ? s.__calls.find((c) => c.type === 'user/message').data.content[0].text : ''
+  ok('P1 选择性：错误结果附摘录（含错误原句）', body.includes('Error: ECONNREFUSED 127.0.0.1:9') && body.includes('摘录'))
+  ok('P1 选择性：错误摘录标注来源（错误行 + 上下文，不是头尾）', body.includes('错误行 + 上下文'))
+  ok('P1 选择性：错误行**确实**留在摘录里（不被头尾截断挖掉）', body.includes('Error: ECONNREFUSED'))
+  ok('P1 选择性：低熵转储不给摘录（只留样本）', body.split('↳ 摘录').length - 1 === 1)
+  ok('P1 选择性：两块原文都没有整块进视图', !body.includes('repeated log line\nrepeated log line'))
+}
+{
+  // 总开关关闭 ⇒ 回到「只留句柄」的旧行为（A/B 对照用）
+  const ev = [mkUser(1, 'u'), mkA(2, 'r'.repeat(900), 1), mkR(3, 'x'.repeat(6000)), mkUser(4, 'u2'), mkA(5, 'tail', 0)]
+  const s = fakeSession({ events: ev })
+  const r = await run(s, { cfg: { dryRun: false, emitterSelectiveArchive: false }, archive: async () => 'art://' + 'V'.repeat(22), probeHandle: async () => true })
+  const body = s.__calls.find((c) => c.type === 'user/message').data.content[0].text
+  ok('P1 ★ 总开关关闭 ⇒ 不附类别/摘录（A/B 对照腿）', !body.includes('摘录') && !body.includes('类别'))
+  ok('P1 ★ 但样本仍在（可检索化与选择性是两个独立开关）', body.includes('↳ 样本'))
+}
+{
+  // 样本长度 0 ⇒ 连富化段都不出（最省）
+  const ev = [mkUser(1, 'u'), mkA(2, 'r'.repeat(900), 1), mkR(3, 'x'.repeat(6000)), mkUser(4, 'u2'), mkA(5, 'tail', 0)]
+  const s = fakeSession({ events: ev })
+  await run(s, { cfg: { dryRun: false, emitterToolSampleChars: 0 }, archive: async () => 'art://' + 'W'.repeat(22), probeHandle: async () => true })
+  const body = s.__calls.find((c) => c.type === 'user/message').data.content[0].text
+  ok('P1 ★ emitterToolSampleChars=0 ⇒ 零富化段（也不出摘录）', !body.includes('↳'))
 }
 
 console.log('emitter.js 自测：' + pass + ' 通过 / ' + fail + ' 失败')

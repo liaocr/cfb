@@ -1,23 +1,23 @@
+// 健壮性回归：快照失败语义、CAS 读取与恢复、退役开关不生效、宿主 pre-step 不被插件拖垮、
+// emitter 拒绝倒置区间、trace 审计器、taskId 贯通、传输层错误形态（SSE 畸形帧 / 401 / 4MB 上限）。
+// v11.8：证据视图（selectEvidenceViews / 回执复用）与快照镜像已随退役开关移除，对应用例一并删除。
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import http from 'node:http'
-import { selectEvidenceViews } from '../evidence-views.js'
-import { createTraceAudit } from '../deploy/analyze-trace.mjs'
+import { createTraceAudit } from '../tools/analyze-trace.mjs'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-views-')), oldHome = process.env.DSH_HOME
 process.env.DSH_HOME = home
-const I = await import('../index.js'), M = await import('../state-memory.js'), S = await import('../snapshot-store.js')
-const { emitCheckpoint } = await import('../emitter.js')
+const I = await import('../index.js'), M = await import('../src/state-memory.js'), S = await import('../src/snapshot-store.js')
+const { emitCheckpoint } = await import('../src/emitter.js')
 let pass = 0, fail = 0
 async function test(name, fn) { try { await fn(); pass++; console.log('PASS ' + name) } catch(e) { fail++; console.error('FAIL ' + name + '\n' + e.stack) } }
 const tick = () => new Promise(r => setImmediate(r))
 const hash = s => crypto.createHash('sha256').update(s).digest('hex')
 const ent = (text = '记录') => ({ id: text, category: 'state', content: text, evidence: 'inferred', origin: 'model', validity: 'active' })
 const result = { text: '【当前有效状态】\n已记录本轮可见内容。', entries: [ent()], checkpointText: '本轮记录' }
-const tool = (extra = {}) => ({ id: 'c', name: 'read', args: '{}', resultSeq: 2, status: 'completed', result: 'HEAD'.repeat(150) + 'MIDDLE'.repeat(100) + 'TAIL'.repeat(150), ...extra })
-const receipts = view => view.tools.filter(t => t.viewReceipt).map(t => t.viewReceipt)
 function data(n = 28, len = 3299) {
   const events = []
   for (let i = 0; i < n; i++) {
@@ -27,108 +27,29 @@ function data(n = 28, len = 3299) {
   }
   return { events, inFlightIds: new Set(), cutSeq: n * 2 }
 }
-function start(sid, { distill = async () => result, archive = async () => 'h', cfg = {}, mirrorSnapshot, source = data(), traces = [] } = {}) {
+function start(sid, { distill = async () => result, archive = async () => 'h', cfg = {}, source = data(), traces = [] } = {}) {
   return I.birthStart({ index: 0, text: '原始推理'.repeat(300) }, { sessionId: sid, branchId: 'main',
-    cfg: { stateMemory: true, stateEvidenceViews: true, stateSnapshotMirror: true, timeoutMs: 1000, ...cfg },
-    distill, archive, mirrorSnapshot, buildEnvelope: M.buildEvidenceEnvelope, collectEvidence: () => source,
+    cfg: { stateMemory: true, timeoutMs: 1000, ...cfg },
+    distill, archive, buildEnvelope: M.buildEvidenceEnvelope, collectEvidence: () => source,
     trace: (tag, v) => traces.push({ tag, ...v }),
   })
 }
 let server
 try {
-  await test('one long result progresses head, tail, interior without new model calls', () => {
-    let known = [], seen = []
-    for (let i = 0; i < 3; i++) { const v = selectEvidenceViews([tool()], known); seen.push(v.tools[0].result); known.push(...receipts(v)) }
-    assert.deepEqual(seen, ['HEAD'.repeat(150), 'TAIL'.repeat(150), 'MIDDLE'.repeat(100)])
-    assert.equal(selectEvidenceViews([tool()], known).tools[0].result, null)
-  })
-  await test('changed unseen suffix invalidates old prefix receipt', () => {
-    const a = selectEvidenceViews([tool()]); const b = selectEvidenceViews([tool({ result: tool().result.slice(0, -1) + '!' })], receipts(a))
-    assert.equal(b.tools[0].result, a.tools[0].result); assert.notEqual(b.tools[0].viewReceipt, a.tools[0].viewReceipt)
-  })
-  await test('event identity, args, status and error flag are part of receipt identity', () => {
-    const a = selectEvidenceViews([tool()]); for (const extra of [{ resultSeq: 4 }, { args: 'different' }, { status: 'failed' }, { isError: true }])
-      assert.notEqual(selectEvidenceViews([tool(extra)], receipts(a)).tools[0].viewReceipt, a.tools[0].viewReceipt)
-  })
-  await test('already truncated source cannot mint a complete-source receipt', () => assert.equal(selectEvidenceViews([tool({ resultTruncated: true })]).tools[0].viewReceipt, null))
-  await test('missing result identity cannot authorize future omission', () => assert.equal(selectEvidenceViews([tool({ resultSeq: null })]).tools[0].viewReceipt, null))
-  await test('surrogate pairs are not split at view boundaries', () => {
-    const raw = 'a'.repeat(599) + '😀' + 'z'.repeat(20)
-    const v = selectEvidenceViews([tool({ result: raw })]); assert.equal(v.tools[0].result, 'a'.repeat(599))
-    const next = selectEvidenceViews([tool({ result: raw })], receipts(v)); assert.ok(next.tools[0].result.startsWith('😀'))
-  })
-  await test('body budget is enforced while all tool metadata remains present', () => {
-    const v = selectEvidenceViews(Array.from({ length: 28 }, (_, i) => tool({ id: 'c' + i, resultSeq: i + 1 })), [], { budget: 1800 })
-    assert.equal(v.stats.bodyChars, 1800); assert.equal(v.tools.length, 28); assert.equal(v.stats.deferred, 25)
-    assert.ok(v.tools.filter(t => t.result === null).every(t => t.resultDeferred))
-  })
-  await test('pending tools are not represented as completed or silently removed', () => {
-    const v = selectEvidenceViews([tool({ status: 'requested', result: null })], [], { budget: 0 })
-    assert.equal(v.tools[0].status, 'requested'); assert.equal(v.tools[0].result, null)
-  })
-  await test('failed evidence is prioritized before newer successful results', () => {
-    const v = selectEvidenceViews([tool({ status: 'failed', result: 'ERROR' }), tool({ id: 'new' })], [], { budget: 5 })
-    assert.equal(v.tools[0].result, 'ERROR'); assert.equal(v.tools[1].result, null)
-  })
-  await test('deferred body and interval limits are explicit in model input', () => {
-    const v = selectEvidenceViews([tool(), tool({ id: 'other' })], [], { budget: 600 })
-    const text = M.buildStateCompilePrompt(M.buildEvidenceEnvelope({ tools: v.tools, coverage: { omittedEvidence: true } }))
-    assert.match(text, /正文未纳入本轮/); assert.match(text, /utf16-chunks-v1/); assert.match(text, /覆盖\*\*不完整/)
-  })
-  await test('selected view retains command context and explicitly marks truncated arguments', () => {
-    const v = selectEvidenceViews([tool({ args: 'command-' + 'x'.repeat(450) })])
-    const text = M.renderToolEvidence(M.buildEvidenceEnvelope({ tools: v.tools }).tools).text
-    assert.match(text, /参数=command-/); assert.match(text, /参数未完整纳入/)
-  })
-  await test('view receipts refer to verbatim text, not cleanup-altered body', () => {
-    const raw = 'x  \n\n\n\n\x1b[31merror\x1b[0m'
-    const v = selectEvidenceViews([tool({ result: raw })])
-    assert.ok(M.renderToolEvidence(M.buildEvidenceEnvelope({ tools: v.tools }).tools).text.includes(raw))
-  })
-  await test('diagnostic identity distinguishes equal-length snapshots and different view ranges', () => {
-    const a = M.buildEvidenceEnvelope({ stateSnapshot: { revision: 1, text: 'AAA' } })
-    const b = M.buildEvidenceEnvelope({ stateSnapshot: { revision: 1, text: 'BBB' } })
-    assert.notEqual(M.cacheIdentity(a), M.cacheIdentity(b))
-    const c = M.buildEvidenceEnvelope({ tools: [tool({ result: 'x', evidenceView: '[0,1)' })] })
-    const d = M.buildEvidenceEnvelope({ tools: [tool({ result: 'x', evidenceView: '[1,2)' })] })
-    assert.notEqual(M.cacheIdentity(c), M.cacheIdentity(d))
-  })
-  await test('receipt metadata survives the exact production envelope', () => {
-    const v = selectEvidenceViews([tool()]); const env = M.buildEvidenceEnvelope({ tools: v.tools })
-    assert.equal(env.tools[0].viewReceipt, v.tools[0].viewReceipt); assert.equal(env.tools[0].evidenceView, v.tools[0].evidenceView)
-  })
-  await test('successful production compile writes receipts to real disk plus observable trace', async () => {
-    const traces = []; const t = start('receipts', { traces }); await t.distillP
-    assert.equal(S.loadSnapshot('receipts', 'main').viewReceipts.length, 10)
-    assert.deepEqual(S.loadSnapshot('receipts', 'main').coverage.coveredSeqs, [])
-    assert.ok(traces.some(t => t.tag === 'state-evidence-view' && t.bodyChars === 6000))
-    assert.ok(traces.some(t => t.tag === 'state-snapshot-committed'))
-  })
-  await test('next sequential production call advances ranges instead of repeating prefix', async () => {
-    const inputs = []; const distill = async env => { inputs.push(env); return result }
-    await start('sequential', { distill, source: data(1, 1800) }).distillP
-    await start('sequential', { distill, source: data(1, 1800) }).distillP
-    assert.match(inputs[0].tools[0].evidenceView, /\[0,600\)/)
-    assert.match(inputs[1].tools[0].evidenceView, /\[1200,1800\)/)
-    assert.ok(inputs[1].stateSnapshot); assert.equal(S.loadSnapshot('sequential', 'main').viewReceipts.length, 2)
-  })
-  for (const failure of ['model', 'archive', 'lock']) await test(`${failure} failure cannot mint receipt authority`, async () => {
+  for (const failure of ['model', 'archive', 'lock']) await test(`${failure} failure cannot commit a snapshot`, async () => {
     const sid = 'failed-' + failure, f = S.snapshotPath(sid, 'main')
     if (failure === 'lock') fs.writeFileSync(f + '.lock', 'busy')
     await start(sid, { distill: async () => { if (failure === 'model') throw Error('failure'); return result }, archive: async () => failure === 'archive' ? null : 'h' }).distillP
     assert.equal(S.loadSnapshot(sid, 'main'), null)
     if (failure === 'lock') fs.unlinkSync(f + '.lock')
   })
-  await test('oversize snapshot disables receipt reuse rather than using a partial view', async () => {
+  await test('oversize snapshot is never injected as a partial view', async () => {
     await start('oversize', { source: data(1, 1800) }).distillP
     S.commitSnapshot({ sessionId: 'oversize', branchId: 'main', entries: [ent('x'.repeat(13000))] })
     let input; await start('oversize', { source: data(1, 1800), distill: async e => { input = e; return result } }).distillP
-    assert.equal(input.stateSnapshot, null); assert.match(input.tools[0].evidenceView, /\[0,600\)/)
+    assert.equal(input.stateSnapshot, null)
   })
-  await test('coverage off prevents receipt reuse; snapshots off do not write receipts', async () => {
-    await start('switch', { source: data(1, 1800) }).distillP
-    let input; await start('switch', { source: data(1, 1800), cfg: { stateCoveredEvidence: false }, distill: async e => { input = e; return result } }).distillP
-    assert.match(input.tools[0].evidenceView, /\[0,600\)/)
+  await test('stateSnapshot:false never writes a snapshot', async () => {
     await start('no-snapshot', { cfg: { stateSnapshot: false } }).distillP
     assert.equal(S.loadSnapshot('no-snapshot', 'main'), null)
   })
@@ -171,13 +92,6 @@ try {
     const x = await putRecord('corrupt-local', 1, 1), f = S.snapshotPath('corrupt-local', 'main'); fs.writeFileSync(f, '{broken')
     const r = await S.recoverSnapshot({ sessionId: 'corrupt-local', store: { readRangeByHandle: () => ({ lines: [x.text], atEof: true }) } })
     assert.equal(r.ok, false); assert.equal(fs.readFileSync(f, 'utf8'), '{broken')
-  })
-  await test('mirror is scheduled outside compile/finish wait and failure leaves local state', async () => {
-    let called = false, release
-    const mirror = new Promise(r => { release = r })
-    const t = start('mirror', { mirrorSnapshot: async (text, sid) => { called = true; assert.equal(sid, 'mirror'); assert.equal(JSON.parse(text).viewReceipts.length, 10); await mirror; throw Error('offline') } })
-    assert.equal((await t.distillP).ok, true); assert.equal(called, false)
-    await tick(); assert.equal(called, true); assert.ok(S.loadSnapshot('mirror', 'main')); release(); await tick()
   })
   await test('retired mirror flag cannot silently restore production state', async () => {
     const x = await putRecord('hook-recover', 7, 1), hooks = new Map(); let release, reads = 0
@@ -230,6 +144,60 @@ try {
     }
   })
   await test('unknown failure stays explicit rather than null or invented timeout', () => assert.equal(I.settledTraceData(0, 1, { ok: false }).reason, 'unknown-failure'))
+  await test('trace auditor reads birth.finishWaitMs from the nested BOOT field', () => {
+    const a = createTraceAudit(), prefix = '[2026-09-24T07:00:00.000Z] '
+    a.add(prefix + '[BOOT] {"selfId":"C","timeoutMs":20000,"birth":{"finishWaitMs":12000,"deferredClaim":false}}')
+    const g = a.result().groups[0]; assert.equal(g.boot.birthFinishWaitMs, 12000); assert.equal(g.boot.timeoutMs, 20000)
+  })
+  await test('trace auditor: tool-result path accounting counts only emitted attempts (no double counting)', () => {
+    const a = createTraceAudit(), p = '[2026-09-24T07:00:00.000Z] '
+    const L = (tag, o) => a.add(p + '[' + tag + '] ' + JSON.stringify(o))
+    L('BOOT', { selfId: 'X', mode: 'checkpoint', dryRun: false })
+    // 成功发射：gate → commit → verify → result（同一 attemptId 四次读数，只能算一次）
+    L('ledger-built', { emitAttemptId: 'a1', archived: 2, toolResultChars: 60000, toolResultItems: 3, toolResultLensMax: 30000, toolResultBuckets: '1/1/1/0', enrichChars: 700, excerpted: 1 })
+    L('emit-net-savings', { emitAttemptId: 'a1', sourceChars: 90000, ledgerChars: 2500, netSavedChars: 87500, enrichChars: 700, netSavedIfHandleOnly: 88200 })
+    L('ledger-archive-commit', { emitAttemptId: 'a1', pending: 2, ok: 2, failed: 0, wroteChars: 60000 })
+    L('emit-handle-verify', { emitAttemptId: 'a1', verdict: 'resolved' })
+    L('emit-net-savings-result', { emitAttemptId: 'a1', stage: 'emit', emitted: true, sourceChars: 90000, ledgerChars: 2500, netSavedChars: 87500, casWrites: 2, measuredSurfaceTokenDelta: 8000 })
+    // 被闸门拦下：不得计收益，但要计入 blockedBy
+    L('emit-net-savings', { emitAttemptId: 'a2', sourceChars: 5000, ledgerChars: 4900, netSavedChars: 100 })
+    L('emit-net-savings-result', { emitAttemptId: 'a2', stage: 'gate', emitted: false, reason: 'no-net-savings' })
+    // 归档失败重算后发射：以**最后一次**读数为准
+    L('emit-net-savings', { emitAttemptId: 'a3', sourceChars: 50000, ledgerChars: 3000, netSavedChars: 47000 })
+    L('emit-net-savings-recheck', { emitAttemptId: 'a3', ledgerChars: 9000, netSavedChars: 41000 })
+    L('emit-net-savings-result', { emitAttemptId: 'a3', stage: 'emit', emitted: true, sourceChars: 50000, ledgerChars: 9000, netSavedChars: 41000, casWrites: 1 })
+    // 句柄读不回 ⇒ 拒发
+    L('emit-net-savings', { emitAttemptId: 'a4', sourceChars: 40000, ledgerChars: 1200, netSavedChars: 38800 })
+    L('emit-net-savings-result', { emitAttemptId: 'a4', stage: 'handle-verify', emitted: false, reason: 'handle-unresolvable', casWrites: 1 })
+    const r = a.result().toolResultPath
+    assert.equal(r.emits.emitted, 2); assert.equal(r.emits.blocked, 2)
+    assert.equal(r.blockedBy['no-net-savings'], 1); assert.equal(r.blockedBy['handle-unresolvable'], 1)
+    // ★ 只算真正发射的尝试：87500（a1，取最终读数）+ 41000（a3 的 recheck 值，不是 47000）
+    assert.equal(r.chars.netSavedChars, 128500)
+    assert.equal(r.chars.sourceChars, 140000); assert.equal(r.chars.ledgerChars, 11500)
+    assert.equal(r.archive.rechecks, 1, '归档失败重算必须留痕')
+    assert.equal(r.archive.writeChars, 60000)
+    assert.equal(r.handle.resolved, 1)
+    assert.equal(r.lens.buckets.lt2K + r.lens.buckets.k2to8 + r.lens.buckets.k8to32 + r.lens.buckets.gt32K, 3)
+    assert.equal(r.measuredSurfaceTokenDelta.p50, 8000)
+    // 保本预算：128500 / (60000/2) = 4.28 次整块回读
+    assert.equal(r.breakeven.avgArchivedCharsEstimate, 30000)
+    assert.equal(r.breakeven.fullReadBacksAffordable, 4.28)
+    assert.match(r.breakeven.acceptanceRule, /readBackCost/)
+  })
+  await test('trace auditor: un-emitted attempts cannot inflate the saving; empty trace yields no claims', () => {
+    const a = createTraceAudit(), p = '[2026-09-24T07:00:00.000Z] '
+    a.add(p + '[BOOT] {"selfId":"Y"}')
+    a.add(p + '[emit-net-savings] {"emitAttemptId":"z1","netSavedChars":99999}')
+    let r = a.result().toolResultPath
+    assert.equal(r.emits.emitted, 0); assert.equal(r.emits.blocked, 0)
+    assert.equal(r.chars.netSavedChars, 0, '没有终结的尝试不得计入收益')
+    assert.equal(r.breakeven.fullReadBacksAffordable, null)
+    assert.match(r.breakeven.note, /nothing to judge yet/)
+    const b = createTraceAudit()
+    r = b.result().toolResultPath
+    assert.equal(r.emits.emitted, 0); assert.equal(r.chars.netSavedChars, 0)
+  })
 
   let mode = 'ok', requests = []
   server = http.createServer((req, res) => { let body = ''; req.on('data', c => { body += c }); req.on('end', () => {
@@ -253,25 +221,65 @@ try {
   await test('SSE body buffer has an actual enforced upper bound', async () => {
     mode = 'oversize'; await assert.rejects(I.requestStream(cfg.baseUrl, { body: '{}', timeoutMs: 1000 }), /exceeds 4MB/)
   })
-  await test('sequential HTTP workload sends bounded views without requiring concurrency', async () => {
-    mode = 'ok'; const metrics = []
-    for (const enabled of [false, true]) {
-      const n = requests.length, inputs = [], sid = 'http-' + enabled
-      for (let i = 0; i < 3; i++) await start(sid, { cfg: { stateEvidenceViews: enabled }, distill: async (env, signal) => { inputs.push(env); return I.generateStateMemory(env, cfg, signal) } }).distillP
-      const prompts = requests.slice(n).map(x => x.messages[0].content)
-      assert.equal(prompts.length, 3)
-      metrics.push({ enabled, calls: 3, promptChars: prompts.map(x => x.length), bodyChars: inputs.map(e => e.tools.reduce((n, t) => n + String(t.result || '').length, 0)) })
-    }
-    assert.ok(metrics[1].promptChars.every((n, i) => n < metrics[0].promptChars[i]))
-    assert.ok(metrics[1].bodyChars.every(n => n <= 6000))
-    console.log('SEQUENTIAL_BENCHMARK ' + JSON.stringify(metrics))
-  })
   await test('retired profile switches no longer activate old production implementations', () => {
     const config = I.normalizeConfig({ stateMemory: true, stateEvidenceViews: true, stateEvidenceBodyBudget: 6000, stateSnapshotMirror: true, stateCompileQueue: true })
     assert.equal(config.retiredOptions.length, 4)
     for (const key of config.retiredOptions) { assert.equal(Object.hasOwn(config, key), false); assert.equal(Object.hasOwn(I.DEFAULTS, key), false) }
     assert.equal(config.stateMemory, true)
   })
+
+
+// ══ 句柄读回探针（P0-2，2026-09-24）══════════════════════════════════════════
+//   契约三态：true=有正面证据能读回；false=有正面证据读不回；null=不可证（不拦发射）。
+//   关键设计：先用一根**必然不存在**的同形句柄做受控探针，确认"失败信号可信"，
+//   否则读 API 抛错究竟意味着"没这条记录"还是"我调用方式不对"无从区分 ⇒ 误伤所有正常发射。
+{
+  const { mkHandleProbe } = await import('../src/plugin.js')
+  const silent = () => {}
+  const mk = (store) => mkHandleProbe({ get: (k) => (k === 'cmbStore' ? store : null) }, silent)
+
+  await test('句柄探针：无读 API ⇒ null（不可证，不拦）', async () => {
+    const probe = mk({ putText: async () => ({ handle: 'art://x' }) })
+    assert.equal(await probe('art://h', 'text', 's'), null)
+  })
+
+  await test('句柄探针：读得到内容 ⇒ true', async () => {
+    const probe = mk({ readRangeByHandle: async (h) => ({ lines: ['hello world'], atEof: true }) })
+    assert.equal(await probe('art://h', 'hello world and more', 's'), true)
+  })
+
+  await test('句柄探针：查无此记录（返回空页）⇒ false', async () => {
+    const probe = mk({ readRangeByHandle: async () => ({ lines: [], atEof: true }) })
+    assert.equal(await probe('art://h', 'x', 's'), false)
+  })
+
+  await test('句柄探针：受控探针确认失败信号可信后，抛错 = 证伪 ⇒ false', async () => {
+    const probe = mk({ readRangeByHandle: async (h) => { throw new Error('resolve-owner-mismatch') } })
+    assert.equal(await probe('art://h', 'x', 's'), false)
+  })
+
+  await test('句柄探针：连"必然不存在的句柄"都读得到 ⇒ 抛错不可信 ⇒ null（不误伤）', async () => {
+    const probe = mk({ readRangeByHandle: async () => ({ lines: ['anything'], atEof: true }) })
+    assert.equal(await probe('art://real', 'x', 's'), true)   // 直接读成功
+    const probe2 = mk({ readRangeByHandle: async (h) => {
+      if (h === 'art://' + '0'.repeat(22)) return { lines: ['impossible'], atEof: true }
+      throw new Error('boom')
+    } })
+    assert.equal(await probe2('art://real', 'x', 's'), null)
+  })
+
+  await test('句柄探针：读 API 抛错且会话 id 与归档同源（跨 session 所有权校验）', async () => {
+    const seen = []
+    const probe = mk({ readRangeByHandle: async (h, sid) => { seen.push(sid); return { lines: ['a'], atEof: true } } })
+    await probe('art://h', 'abc', 'sess-9')
+    assert.equal(seen.every((sid) => sid === 'sess-9'), true, JSON.stringify(seen))
+  })
+
+  await test('句柄探针：store 服务缺失/ctx.get 抛错 ⇒ 不向外抛', async () => {
+    const probe = mkHandleProbe({ get: () => { throw new Error('no service') } }, silent)
+    assert.equal(await probe('art://h', 'x', 's'), null)
+  })
+}
 
 } finally {
   if (server) { server.closeAllConnections(); await new Promise(r => server.close(r)) }

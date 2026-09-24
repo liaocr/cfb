@@ -1,22 +1,19 @@
-// dsh-cot-form-b 自测 —— 纯本地，零网络、零会话、零 API 调用。
+// core.selftest.mjs —— 配置 / 提示词 / 传输层 / 副模型调用 / 迟到暂存 / 回归钉子。纯本地，零网络、零会话、零 API 调用。
 // 目标：把金丝雀抓出的两个 bug 和它们的边界钉死，防止回归。
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
 import {
-  DEFAULTS, buildDistillPrompt, sliceVerbatim, messageOfEvent, textOfContent,
-  findLastUserMessage, findLastUserText, assembleCheckpoint, passesHurdle,
-  reasoningTextOf, toolCallsOf, rebuildContent, findLastAssistantEvent,
-  breakevenRaw, FIT, apply, normalizeConfig, requestOnce, generateDistillation, birthEconomics,
+  DEFAULTS, buildDistillPrompt, textOfContent, reasoningTextOf,
+  apply, normalizeConfig, requestOnce, generateDistillation, birthEconomics,
   detectResponseProtocol, assembleSseFrames, collectSseFrames, extractFromJsonBody, requestStream,
   pushLateMemory, takeLateMemory, peekLateMemory, lateMemorySize,
-  coverWatermarkOf, coverSnapshotOk, markCovered, coverVersionOf,
   readApiKey, DEP_ID,
 } from '../index.js'
-import { compressByRules, fidelity, protectedTokens } from '../rules.js'
-import { runPreStepEmit } from '../emitter.js'
-import { adaptEvidence } from '../state-memory.js'
+import { fidelity, protectedTokens } from '../src/fidelity.js'
+import { runPreStepEmit } from '../src/emitter.js'
+import { adaptEvidence } from '../src/state-memory.js'
 
 // 本进程独占的临时目录：固定文件名会让并发跑多个 selftest 时互相读到对方写的
 // trace / credentials，产生假失败（外审 R-1 复现：并发时 204/0 与 203/1 并存）。
@@ -62,36 +59,6 @@ console.log('\n【1】buildDistillPrompt —— 契约焊死')
   ok('每个状态栏各出现一次', heads.filter((h) => h !== '【上一轮思维链】').length === 3)
 }
 
-console.log('\n【2】sliceVerbatim —— 超长截断（复测里从未触发的边界）')
-{
-  const short = 'a'.repeat(100)
-  eq('未超限原样返回', sliceVerbatim(short, 600), short)
-
-  const exact = 'b'.repeat(600)
-  eq('正好等于上限原样返回', sliceVerbatim(exact, 600), exact)
-
-  const long = 'H'.repeat(400) + 'M'.repeat(400) + 'T'.repeat(400) // 1200
-  const out = sliceVerbatim(long, 600)
-  ok('超限后长度 = 上限 + 省略标记', out.length === 600 + '\n…（原话过长，中间省略）…\n'.length, out.length)
-  ok('★ 保留了开头', out.startsWith('H'.repeat(10)))
-  ok('★ 保留了结尾（约束通常在最后）', out.endsWith('T'.repeat(10)))
-  ok('中间被省略', out.includes('原话过长，中间省略'))
-  const headKept = out.split('\n…')[0].length
-  eq('头 60% = 360', headKept, 360)
-}
-
-console.log('\n【3】messageOfEvent —— 实测形状差异（bug 根因 1）')
-{
-  const assistantEv = { type: 'assistant/message', data: { turn: 1, message: { role: 'assistant', content: [] } } }
-  eq('assistant：取 data.message', messageOfEvent(assistantEv).role, 'assistant')
-
-  // ★ user/message 没有 data.message，字段平铺在 data 上
-  const userEv = { type: 'user/message', data: { role: 'user', content: [], source: { kind: 'user' }, id: 'x' } }
-  eq('user：平铺在 data 上也能取到', messageOfEvent(userEv).role, 'user')
-  ok('user 事件确实没有 data.message', userEv.data.message === undefined)
-  eq('data 为空返回 null', messageOfEvent({ type: 'x', data: null }), null)
-}
-
 console.log('\n【4】textOfContent —— content 双兼容（bug 根因 3）')
 {
   eq('纯字符串', textOfContent('hello'), 'hello')
@@ -102,123 +69,17 @@ console.log('\n【4】textOfContent —— content 双兼容（bug 根因 3）')
   eq('undefined', textOfContent(undefined), '')
 }
 
-console.log('\n【5】findLastUserMessage —— 必须挑中人类消息（bug 根因 2）')
-{
-  const log = [
-    { seq: 7, type: 'user/message', data: { role: 'user', content: [{ type: 'text', text: '真·用户任务' }], source: { kind: 'user' } } },
-    { seq: 8, type: 'user/message', data: { role: 'user', content: [{ type: 'text', text: '系统注入：运行时上下文' }], source: { kind: 'plugin', plugin: 'dsh-system-prompt' } } },
-    { seq: 9, type: 'user/message', data: { role: 'user', content: [{ type: 'text', text: '系统注入：skill 目录' }], source: { kind: 'skill-catalog' } } },
-    { seq: 100, type: 'assistant/message', data: { turn: 1, step: 1, message: { role: 'assistant', content: [] } } },
-  ]
-  const hit = findLastUserMessage(log, 100)
-  eq('★ 挑中 seq=7（人类），而非 seq=9（skill-catalog）', hit.seq, 7)
-  eq('kind = user', hit.kind, 'user')
-  eq('文本逐字', hit.text, '真·用户任务')
-  eq('findLastUserText 代理一致', findLastUserText(log, 100), '真·用户任务')
-
-  // beforeSeq 过滤：目标之前
-  eq('目标 seq=8 时只能看到 seq=7', findLastUserMessage(log, 8).seq, 7)
-  eq('目标 seq=7 时看不到任何人类消息', findLastUserMessage(log, 7), null)
-
-  // 全无 source.kind 时走宽松档（仍排除已知系统来源）
-  const noKind = [
-    { seq: 5, type: 'user/message', data: { role: 'user', content: '旧格式无 source' } },
-  ]
-  eq('宽松档兜底', findLastUserMessage(noKind, 100).text, '旧格式无 source')
-
-  // 宽松档也要排除系统来源
-  const onlySystem = [
-    { seq: 5, type: 'user/message', data: { role: 'user', content: '注入', source: { kind: 'plugin' } } },
-  ]
-  eq('★ 只有系统消息时返回 null（宁可不注入）', findLastUserMessage(onlySystem, 100), null)
-}
-
-console.log('\n【6】passesHurdle —— 保本后验不等式（含我加的补丁）')
-{
-  // 反例：raw=5000 / final=4900 —— 旧的「防增肥」会放行，实际净亏
-  const bad = passesHurdle(5000, 4900, cfg)
-  ok('★ 5000→4900 必须被拦（微量节约陷阱）', bad.pass === false, bad)
-  eq('  saved = 100', bad.saved, 100)
-  eq('  lhs = 100×4', bad.lhs, 400)
-  eq('  rhs = 500+5000+4900', bad.rhs, 10400)
-
-  // 增肥：final >= raw
-  ok('final == raw 被拦', passesHurdle(1000, 1000, cfg).pass === false)
-  ok('final > raw 被拦', passesHurdle(1000, 1200, cfg).pass === false)
-
-  // 实测样本必须通过
-  const s1 = passesHurdle(1871, 566, cfg) // 金丝雀 n=2
-  ok('★ 实测 1871→566 通过', s1.pass === true, s1)
-  const s2 = passesHurdle(2745, 513, cfg) // 金丝雀 n=3
-  ok('★ 实测 2745→513 通过', s2.pass === true, s2)
-  const s3 = passesHurdle(1187, 184, cfg) // runC n=2
-  ok('★ 实测 1187→184 通过', s3.pass === true, s3)
-
-  // 临界：raw=800（门槛）配拟合比例 0.26*800+163 = 371
-  const edge = passesHurdle(800, 371, cfg)
-  ok('★ 临界 raw=800 恰好通过（验证 800 门槛自洽）', edge.pass === true, edge)
-  const below = passesHurdle(774, 364, cfg)
-  console.log('    （参考）raw=774 →', JSON.stringify(below))
-}
-
-console.log('\n【7】rebuildContent —— tool-call / text 必须原样保活')
-{
-  const orig = {
-    role: 'assistant',
-    content: [
-      { type: 'reasoning', text: 'OLD_COT' },
-      { type: 'text', text: '最终答复' },
-      { type: 'tool-call', name: 'write', input: { file_path: 'a.txt' } },
-      { type: 'tool-call', name: 'read', input: { file_path: 'a.txt' } },
-    ],
-  }
-  const out = rebuildContent(orig, 'NEW_CHECKPOINT')
-  eq('新 reasoning 置顶', out[0], { type: 'reasoning', text: 'NEW_CHECKPOINT' })
-  eq('块数不变', out.length, 4)
-  eq('text 保活', out[1], { type: 'text', text: '最终答复' })
-  eq('tool-call#1 保活', out[2].name, 'write')
-  eq('tool-call#2 保活', out[3].name, 'read')
-  ok('★ 旧 reasoning 已被替换掉', !JSON.stringify(out).includes('OLD_COT'))
-  ok('★ 原对象未被就地修改', orig.content[0].text === 'OLD_COT')
-  eq('role 未变', orig.role, 'assistant')
-}
-
-console.log('\n【8】assembleCheckpoint —— 注入与不注入')
-{
-  const a = assembleCheckpoint('【已定决策】做事。', '用户原话')
-  ok('含机械注入声明', a.includes('机械注入'))
-  ok('含用户原话', a.includes('用户原话'))
-  ok('含模型产出', a.includes('【已定决策】做事。'))
-  ok('原话在前、模型产出在后', a.indexOf('用户原话') < a.indexOf('【已定决策】做事。'))
-
-  const b = assembleCheckpoint('【已定决策】做事。', '')
-  eq('无原话时只剩模型产出', b, '【已定决策】做事。')
-  const c = assembleCheckpoint('【已定决策】做事。', '   ')
-  eq('空白原话同样被丢弃', c, '【已定决策】做事。')
-}
-
 console.log('\n【9】消息抽取工具')
 {
   const m = { role: 'assistant', content: [{ type: 'reasoning', text: 'abc' }, { type: 'reasoning', text: 'de' }, { type: 'tool-call', name: 'w' }] }
   eq('reasoning 多块拼接', reasoningTextOf(m), 'abc\nde')
-  eq('toolCallsOf 只取 tool-call', toolCallsOf(m).length, 1)
   eq('无 content 返回空', reasoningTextOf({ role: 'assistant' }), '')
-
-  const log = [
-    { seq: 1, type: 'assistant/message', data: { message: { content: [] } } },
-    { seq: 2, type: 'tool/result', data: {} },
-    { seq: 3, type: 'assistant/message', data: { message: { content: [] } } },
-  ]
-  eq('findLastAssistantEvent 取最后一条', findLastAssistantEvent(log).seq, 3)
-  eq('无 assistant 时返回 null', findLastAssistantEvent([{ seq: 1, type: 'tool/result' }]), null)
 }
 
 console.log('\n【10】默认值 —— 安全默认 + 延迟预算')
 {
   eq('★ dryRun 默认 true（防带电裸奔）', DEFAULTS.dryRun, true)
-  eq('门槛 800', DEFAULTS.minRawChars, 800)
-  eq('保本轮数 4', DEFAULTS.hurdleRounds, 4)
-  eq('模板量级 500', DEFAULTS.templateChars, 500)
+  eq('checkpoint 提前发起门槛 800', DEFAULTS.minRawChars, 800)
   // ★ 延迟回归锁：实测中位 5.4s / 最差 20.0s，180000 是灾难性配置，绝不许改回去
   eq('★ 超时预算 8 秒（不是 180 秒）', DEFAULTS.timeoutMs, 8000)
   eq('★ 重试 1 次（不是 4 次）', DEFAULTS.maxAttempts, 1)
@@ -226,183 +87,43 @@ console.log('\n【10】默认值 —— 安全默认 + 延迟预算')
   // ★ 不许再引入「延迟替换」相关开关：块一旦出站就永不可改（H2）。
   ok('★ 不含 deferApply（延迟替换已被终审否决）', !('deferApply' in DEFAULTS))
   ok('★ 不含 maxInflight（同上，属延迟路径）', !('maxInflight' in DEFAULTS))
-  // ★ 三级模式 + 延迟预算
-  eq('★ mode 默认 distill', DEFAULTS.mode, 'distill')
-  eq('★ earlyFire 默认 true（提前发起，非阻塞）', DEFAULTS.earlyFire, true)
+  // ★ v11.8：缺省 birth（唯一生产路径；dryRun 下零调用零改写），下轮收网缺省关（AUDIT §四 ②）
+  eq('★ mode 默认 birth', DEFAULTS.mode, 'birth')
+  eq('★ birthDeferredClaim 默认 false（实验路径，显式打开）', DEFAULTS.birthDeferredClaim, false)
+  eq('★ earlyFire 默认 true（仅 checkpoint 模式生效）', DEFAULTS.earlyFire, true)
   eq('★ graceMs 默认 300（= 用户感知延迟上限）', DEFAULTS.graceMs, 300)
-  eq('★ 规则兜底默认开', DEFAULTS.rulesEnabled, true)
-  // ⛔ 2026-09-17 事故修正：原来的 `rulesMinSavingPct: 10` 是个**奖励暴力的逆向淘汰闸**
-  //   —— 只有删得够狠的方案才准过线，100% 保真的精细去重反被判 no-gain。
-  eq('★ 新判据：净省 20 字符即放行（与百分比解耦）', DEFAULTS.rulesMinSavedChars, 20)
-  eq('★ 归档前置闸默认开（约束⑤ 先存后压）', DEFAULTS.rulesRequireArchive, true)
-  ok('⛔ 反向淘汰闸 rulesMinSavingPct 必须已从 DEFAULTS 移除', !('rulesMinSavingPct' in DEFAULTS),
-    Object.keys(DEFAULTS).filter((k) => /SavingPct/.test(k)))
+  for (const k of ['rulesEnabled', 'rulesRequireArchive', 'hurdleRounds', 'templateChars', 'maxVerbatimChars', 'skeletonizeArgs']) {
+    ok('⛔ 随 distill/rules 退役的键已从 DEFAULTS 移除：' + k, !(k in DEFAULTS))
+  }
 }
 
-console.log('\n【10.1】配置归一化 —— 必须能吃下用户文档里的嵌套写法')
+console.log('\n【10.1】配置归一化 —— 嵌套写法 / 退役模式 / 退役键')
 {
-  const a = normalizeConfig({ mode: 'rules', distill: { timeoutMs: 3000, minRawChars: 1200, hurdleRounds: 5, maxVerbatimChars: 400 } })
+  const a = normalizeConfig({ mode: 'checkpoint', distill: { timeoutMs: 3000, minRawChars: 1200, maxOutputTokens: 600 } })
   eq('嵌套 distill.timeoutMs 覆盖扁平键', a.timeoutMs, 3000)
   eq('嵌套 distill.minRawChars', a.minRawChars, 1200)
-  eq('嵌套 distill.hurdleRounds', a.hurdleRounds, 5)
-  eq('嵌套 distill.maxVerbatimChars', a.maxVerbatimChars, 400)
-  eq('mode 透传', a.mode, 'rules')
-  eq('未覆盖的键保持默认（templateChars）', a.templateChars, 500)
+  eq('嵌套 distill.maxOutputTokens', a.maxOutputTokens, 600)
+  eq('mode 透传', a.mode, 'checkpoint')
 
-  const b = normalizeConfig({ rules: { foldRuns: false, dropDuplicateLines: false, minSavedChars: 64, requireArchive: false } })
-  eq('rules.foldRuns', b.rulesFoldRuns, false)
-  eq('rules.dropDuplicateLines', b.rulesDropDuplicateLines, false)
-  eq('rules.minSavedChars', b.rulesMinSavedChars, 64)
-  eq('rules.requireArchive', b.rulesRequireArchive, false)
-  // @deprecated：旧百分比键仍可被配置，但只落成提醒字段，不参与任何决策。
-  const dp = normalizeConfig({ rules: { minSavingPct: 25 } })
-  eq('rules.minSavingPct 已降级为提醒字段', dp.rulesMinSavingPctDeprecated, 25)
-  ok('★ 且它不再影响任何放行决策', normalizeConfig({ rules: { minSavingPct: 25 } }).rulesMinSavedChars === 20)
-
-  eq('★ 非法 mode 回落到 distill（绝不带电裸奔）', normalizeConfig({ mode: 'nonsense' }).mode, 'distill')
-  eq('★ 空配置就是默认值', normalizeConfig().mode, 'distill')
-}
-
-console.log('\n【11】门槛推导 —— 保本反解与代数自洽')
-{
-  eq('FIT.a = 0.26', FIT.a, 0.26)
-  eq('FIT.b = 163', FIT.b, 163)
-  eq('★ breakevenRaw(4) = 774（复现原推导）', breakevenRaw(4, { templateChars: 500 }), 774)
-  ok('★ H≤1.7 时无解（Infinity）', breakevenRaw(1, { templateChars: 500 }) === Infinity)
-
-  // 反解出来的 774 必须**真的**刚好通过（floor+1 的用意：ceil 会在整除时给出一个恰好不通过的数）
-  const at774 = passesHurdle(774, 364, { hurdleRounds: 4, templateChars: 500 })
-  ok('★ breakevenRaw(4)=774 恰好通过（与历史结论一致）', at774.pass === true, at774)
-  const below774 = passesHurdle(773, 364, { hurdleRounds: 4, templateChars: 500 })
-  ok('★ 773 恰好不通过（临界点没错位）', below774.pass === false, below774)
-
-  // ★ 门槛必须 ≥ 保本原长：防止以后有人手改 minRawChars 而不同步改轮数
-  const be = breakevenRaw(DEFAULTS.hurdleRounds, DEFAULTS)
-  ok('★ minRawChars(800) ≥ breakevenRaw(' + DEFAULTS.hurdleRounds + ')=' + be, DEFAULTS.minRawChars >= be, { minRawChars: DEFAULTS.minRawChars, be })
-
-  // 参考值：延迟替换（已否决）所需门槛。留着是为了让以后想重提的人先看到代价。
-  eq('（参考）breakevenRaw(3) = 1201（延迟替换所需门槛，已否决）', breakevenRaw(3, { templateChars: 500 }), 1201)
-  const at1200 = passesHurdle(1200, 475, { hurdleRounds: 3, templateChars: 500 })
-  ok('（参考）H=3 时 1200 恰好不通过', at1200.pass === false, at1200)
-}
-
-console.log('\n【12】★ H2 首次出站不变律 —— 块只允许被处理一次（纯本地，零网络）')
-{
-  const tmp = tmpFile('trace.log')
-  try { fs.unlinkSync(tmp) } catch { /* first run */ }
-
-  let handler = null
-  const ctx = { on: (n2, fn) => { if (n2 === 'agent/pre-step') handler = fn } }
-  const mkAev = (seq) => ({
-    seq, type: 'assistant/message',
-    data: { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'reasoning', text: 'x'.repeat(10) }] } },
-  })
-  const log = [mkAev(42)]
-  const appended = []
-  const session = { log, append: (...a) => { appended.push(a); return { seq: 999 } } }
-
-  // ⛔ prewarm:false —— 自测必须零网络。开着它会往真实网关发 HEAD（虽然零 token）。
-  apply(ctx, { trace: true, traceFile: tmp, dryRun: false, minRawChars: 800, prewarm: false })
-  ok('handler 已注册', typeof handler === 'function')
-
-  // 第 1 次：块 42 低于门槛 → 拦下，但**这一步之后它就已经出站了**
-  await handler({ agent: { session } }, async () => ({}))
-  // 第 2 次：同一个块再出现 → 必须被 H2 硬闸拦住，不许重试、更不许事后改写
-  await handler({ agent: { session } }, async () => ({}))
-
-  const t = fs.readFileSync(tmp, 'utf8')
-  ok('第 1 次：低于门槛被拦（skip-below-threshold）', t.includes('skip-below-threshold'))
-  ok('★ 第 2 次：被 H2 硬闸拦下（skip-locked-already-sent）', t.includes('skip-locked-already-sent'))
-  eq('★ 全程零 append —— 已出站的块绝无任何事后改写', appended.length, 0)
-
-  // 新块必须不被旧锁影响
-  log.push(mkAev(43))
-  await handler({ agent: { session } }, async () => ({}))
-  const t2 = fs.readFileSync(tmp, 'utf8')
-  eq('★ 新块（seq=43）照常被处理，未被旧锁误伤', (t2.match(/skip-below-threshold/g) || []).length, 2)
-  eq('★ 且仍然零 append', appended.length, 0)
-}
-
-console.log('\n【13】纯规则引擎 —— 永不增肥 / 逐字重复行 / 游程折叠（纯本地，零网络）')
-{
-  // ① 空输入
-  const e0 = compressByRules('')
-  eq('空输入原样返回', e0.out, '')
-  eq('空输入标记 skipped', e0.stats.skipped, 'empty')
-
-  // ② ★ 永不增肥：任何路径都不允许把输出做得比输入还长
-  const tricky = 'Alpha one. Bravo two. Charlie three. Delta four.'
-  const r2 = compressByRules(tricky)
-  ok('★ 永不增肥：输出长度 ≤ 输入长度', r2.out.length <= tricky.length, { in: tricky.length, out: r2.out.length })
-  ok('★ 没赚到就原样返回（noGain）', r2.out === tricky && r2.stats.noGain === true, r2.stats)
-
-  // ③ 逐字重复行（唯一一条信息论恒等的规则）
-  const dup = ['KEEP_THIS_LINE_AAAA', 'x', 'KEEP_THIS_LINE_AAAA', 'y'].join('\n')
-  const r3 = compressByRules(dup, { foldRuns: false })
-  eq('★ 逐字重复行只留第一次', (r3.out.match(/KEEP_THIS_LINE_AAAA/g) || []).length, 1)
-  eq('  计数正确', r3.stats.dupLinesDropped, 1)
-
-  // ④ 游程折叠：连续 ≥3 行同构「已验证 OK」⇒ 只折公共前后缀，变体一个不许丢
-  const ok3 = ['✓ alpha module verified', '✓ beta module verified', '✓ gamma module verified', 'tail line'].join('\n')
-  const r4 = compressByRules(ok3, { dropDuplicateLines: false })
-  ok('★ 连续 3 行 OK 被折叠', r4.out.includes('同构「已验证通过」共 3 行'), r4.out)
-  ok('★ 折叠后确实更短', r4.out.length < ok3.length, { in: ok3.length, out: r4.out.length })
-  eq('  折叠计数 = 2（run 3 → 1 行 + 断言行）', r4.stats.okRunsFolded, 2)
-  ok('★ 变体逐个列全、绝不许切词（beta / gamma 必须完整）', r4.out.includes('beta / gamma'), r4.out)
-  ok('★ 折叠后受保护 token 一个不丢', r4.stats.lostTokens === 0 && r4.stats.tokenRecall === 100, r4.stats)
-
-  // ④b 数字连续变体 ⇒ 用区间断言代替列表（用户点名的形态 [§0-§14: 18 items]）
-  const num4 = ['✓ §1 verified', '✓ §2 verified', '✓ §3 verified', '✓ §4 verified', 'tail'].join('\n')
-  const r4b = compressByRules(num4, { dropDuplicateLines: false })
-  ok('★ 连续数字变体折成区间断言', r4b.out.includes('序列 1–4'), r4b.out)
-  ok('★ 区间端点与计数都还在', r4b.out.includes('共 4 行'), r4b.out)
-  ok('★ 区间折叠必须保真（允许丢的是可推导的中间数字）', r4b.stats.lostTokens === 0 && r4b.stats.tokenRecall === 100, r4b.stats)
-
-  // ④c 非连续数字 ⇒ 不折（中间值推不出来，不许猜）
-  const num4c = ['✓ item 3 ok', '✓ item 7 ok', '✓ item 9 ok', 'tail'].join('\n')
-  const r4c = compressByRules(num4c, { dropDuplicateLines: false })
-  ok('★ 非连续数字变体不折叠（不认识的形态一律保留）', !r4c.out.includes('序列'), r4c.out)
-
-  // ⑤ ★ 实体保活：折叠可以折，但标识符一个都不许丢
-  const risky = ['✓ `rare_alpha_x` ok', '✓ `rare_beta_y` ok', '✓ `rare_gamma_z` ok'].join('\n')
-  const r5 = compressByRules(risky, { dropDuplicateLines: false })
-  for (const id of ['rare_alpha_x', 'rare_beta_y', 'rare_gamma_z']) {
-    ok('★ 折叠不许丢标识符 ' + id, r5.out.includes(id), r5.out)
+  // ⛔ v11.8 退役模式：按 'off' 处理（它们的写回路径协议上永久非法），BOOT 可见
+  for (const m of ['distill', 'rules']) {
+    const r = normalizeConfig({ mode: m })
+    ok('★ 退役模式 ' + m + ' ⇒ off + retiredMode', r.mode === 'off' && r.retiredMode === m, { mode: r.mode, retiredMode: r.retiredMode })
   }
-  ok('★ 交付出去的文本必须 100% 保真', r5.stats.tokenRecall === 100 && r5.stats.lostTokens === 0, r5.stats)
-  ok('★ 若折叠会拆断 token，门禁必须拒发并退回原文（不丢信息优先于省字）',
-    !r5.stats.refused || (r5.out === risky && r5.stats.candidateLostTokens > 0), r5.stats)
-  ok('★ 拒发时交付的就是原文', r5.stats.refused ? r5.out === risky : true, r5.out)
+  const bad = normalizeConfig({ mode: 'nonsense' })
+  ok('★ 非法 mode ⇒ off（绝不把拼错的模式猜成会改写会话的模式）', bad.mode === 'off' && bad.invalidMode === 'nonsense', bad.mode)
+  eq('★ 空配置就是默认值（birth）', normalizeConfig().mode, 'birth')
 
-  // ⑥ ⛔ 事故回归：逆向支配剪枝已被连根拔除。
-  //    2026-09-16 生产事故：`Let me write.` 被当成「结论」，把它之前的全部
-  //    斟酌与事实一刀切掉（1017→145 字符，5 个事实全灭，关键 token 召回 0/3）。
-  //    下面每一句都必须原样存活。
-  const cot = [
-    'Let me explore the deploy directory first.',
-    'Consider whether the cache is warm.',
-    'The raw CoT was 3330 chars and the final message is 722 chars.',
-    'The handle art://abc123 was archived first, in 4ms, with zero API calls.',
-    'However, do not touch the production profile.',
-    'Let me write the final message.',
-    'Let me write.',
-  ].join('\n')
-  const r6 = compressByRules(cot)
-  ok('⛔ 事故回归：ACTION 之前的斟酌句必须原样存活', r6.out.includes('Consider whether the cache is warm'), r6.out)
-  ok('⛔ 事故回归：ACTION 之前的数字事实必须原样存活', r6.out.includes('3330 chars and the final message is 722 chars'), r6.out)
-  ok('⛔ 事故回归：句柄 / 4ms / zero API calls 必须原样存活',
-    r6.out.includes('art://abc123') && r6.out.includes('4ms') && r6.out.includes('zero API calls'), r6.out)
-  ok('⛔ 事故回归：负向约束句必须存活', r6.out.includes('do not touch the production profile'), r6.out)
-  ok('⛔ 事故回归：没有可去重可折叠的内容时，输出必须逐字等于原文', r6.out === cot, { in: cot.length, out: r6.out.length })
-  ok('⛔ 事故回归：角色裁判已下线（不再有任何「被支配」的删除理由）', r6.stats.lostTokens === 0 && r6.stats.tokenRecall === 100, r6.stats)
+  // 退役键：进 retiredOptions、从生效配置删除，不算 unknownOptions
+  const r = normalizeConfig({ rules: { foldRuns: false }, rulesEnabled: true, hurdleRounds: 5, distill: { maxVerbatimChars: 400, maxOutputTokens: 600 } })
+  for (const k of ['rules', 'rulesEnabled', 'hurdleRounds', 'distill.maxVerbatimChars']) ok('★ 退役键进 retiredOptions：' + k, r.retiredOptions.includes(k), r.retiredOptions)
+  ok('★ 退役键不在生效配置里', !('rulesEnabled' in r) && !('hurdleRounds' in r) && !('maxVerbatimChars' in r))
+  eq('★ 退役键不误报为 unknownOptions', r.unknownOptions.length, 0)
+  eq('同一容器里的有效键照常生效', r.maxOutputTokens, 600)
+}
 
-  // ⑦ 中文：角色规则已下线，中文块按同一条法处理（只去重/折叠，不判价值）
-  const zh = '决定先跑探针。然后检查缓存。'
-  const r7 = compressByRules(zh)
-  eq('  中文块 rawChars 记录正确', r7.stats.rawChars, zh.length)
-  ok('★ 中文块不增肥', r7.out.length <= zh.length, { in: zh.length, out: r7.out.length })
-  ok('★ 中文块没有任何内容被删（已无角色裁判）', r7.out === zh, r7.out)
-
+console.log('\n【13】保真度核算 —— fidelity / protectedTokens（birth 的逐字标识符召回率用它）')
+{
   // ⑧ ★ 保真度门禁负控制：门禁必须能识别「真的丢了」
   const fLost = fidelity('The handle art://abc123 and 3350 bytes', 'nothing here')
   ok('★ 门禁负控制：真丢了就必须报出来', fLost.lost.length >= 2 && fLost.stats.tokenRecall < 100, fLost.stats)
@@ -412,13 +133,6 @@ console.log('\n【13】纯规则引擎 —— 永不增肥 / 逐字重复行 / �
   ok('★ 门禁不误解：句柄内部的数字不单独算 token（曾经的假阳性来源）', !gh.has('49') && !gh.has('3'), [...gh])
   const gh2 = protectedTokens('art://abc123 and 3350 bytes in 4ms')
   ok('★ 门禁不误解：全小写句柄与数字/单位必须被抓到', gh2.has('art://abc123') && gh2.has('3350 bytes') && gh2.has('4ms'), [...gh2])
-
-  // ⑨ ★ 保真不变量（性质测试）：任何输入、任何路径，都不许丢失受保护 token
-  for (const probe of [ok3, num4, num4c, risky, cot, zh, dup, tricky]) {
-    const rp = compressByRules(probe)
-    ok('★ 保真不变量：交付出去的文本永远不许丢受保护 token', rp.stats.lostTokens === 0 && rp.stats.tokenRecall === 100,
-      { recall: rp.stats.tokenRecall, bad: rp.stats.candidateLostSample, refused: rp.stats.refused })
-  }
 }
 
 // ──【14】传输层：requestOnce（本地 http server，零外网、零 API）──────────────
@@ -590,7 +304,7 @@ console.log('\n【17】★ 提纯模型跟随宿主对话模型（本地 server 
 
   // ⛔ prewarm:false / baseUrl 指向本地 ⇒ 零外网
   apply(ctx, {
-    trace: true, traceFile: tmp, dryRun: false, minRawChars: 10,
+    mode: 'checkpoint', trace: true, traceFile: tmp, dryRun: false, minRawChars: 10,
     prewarm: false, model: '', followHostModel: true,
     baseUrl: 'http://127.0.0.1:' + srv.address().port,
     credentialsPath: cred, credentialRef: 'TEST_KEY_ZZ', maxAttempts: 1, timeoutMs: 3000,
@@ -663,7 +377,7 @@ console.log('\n【17】★ 提纯模型跟随宿主对话模型（本地 server 
     let ls2 = null
     const ctx2 = { on: (nm, fn) => { if (nm === 'llm/stream') ls2 = fn } }
     apply(ctx2, {
-      trace: true, traceFile: tmp2, dryRun: false, minRawChars: 10, prewarm: false,
+      mode: 'checkpoint', trace: true, traceFile: tmp2, dryRun: false, minRawChars: 10, prewarm: false,
       model: 'FIXED-MODEL-Z', followHostModel: false,
       baseUrl: 'http://127.0.0.1:' + srv2.address().port,
       credentialsPath: cred, credentialRef: 'TEST_KEY_ZZ', maxAttempts: 1, timeoutMs: 3000,
@@ -978,65 +692,12 @@ console.log('【21】birth 下轮收网：端到端')
 console.log('')
 console.log('【22】编译输入止血：覆盖水位与成对校验')
 await test22()
-
 // ══════════════════════════════════════════════════════════════════════════
-// 22. ★ 编译输入止血：覆盖水位 + 成对校验（2026-09-22）
-//   背景：真机实测「已编译过的工具证据每轮全量重发」= 25~28k 字符，是输入膨胀主因。
-//   这里钉死四件事：① 成对校验三态；② 水位只增不减；③ 持久化可恢复；④ 空值安全。
+// 22. 证据截面冻结（adaptEvidence 返回冻结对象；过滤只能构造新数组）
+//   v11.8：cover.json 覆盖水位（markCovered / coverWatermarkOf / coverSnapshotOk）已无生产调用方，
+//   随代码一并删除（22.1–22.11）；覆盖判据现由结构化快照 coverage.coveredSeqs 精确成员判定承担。
 // ══════════════════════════════════════════════════════════════════════════
 async function test22() {
-  const W = 26158
-  const pm = (seq) => ({ text: '<cot-ledger>x</cot-ledger>', seq })
-
-  // ── 成对校验：唯一允许过滤的形态 ──
-  {
-    const r = coverSnapshotOk([pm(26210)], W)
-    ok('22.1 ★ 快照 seq > 水位 ⇒ 允许过滤（有依据）', r.ok === true && r.snapSeq === 26210, JSON.stringify(r))
-  }
-  // ── 三种失效场景必须恢复全量 ──
-  {
-    const r = coverSnapshotOk([], W)
-    ok('22.2 ★★ 无快照（迟到结果未收网）⇒ 必须全量发送', r.ok === false, JSON.stringify(r))
-  }
-  {
-    const r = coverSnapshotOk([pm(26100)], W)
-    ok('22.3 ★★ 快照 seq ≤ 水位（旧快照/分支变化）⇒ 必须全量发送', r.ok === false, JSON.stringify(r))
-  }
-  {
-    const r = coverSnapshotOk([pm(26210)], null)
-    ok('22.4 ★★ 水位为 null（从未成功编译）⇒ 必须全量发送', r.ok === false, JSON.stringify(r))
-  }
-  // ── 多条快照取最大 ──
-  {
-    const r = coverSnapshotOk([pm(26100), pm(26579)], W)
-    ok('22.5 多条快照取最大 seq（不被首条旧快照误导）', r.ok === true && r.snapSeq === 26579, JSON.stringify(r))
-  }
-  // ── 水位只增不减 ──
-  {
-    const sid = 'cover-22-' + Date.now()
-    markCovered(sid, 26158, 13)
-    markCovered(sid, 5, 1)
-    const c = coverWatermarkOf(sid)
-    ok('22.6 ★ 乱序事件不得把水位往回拉（只增不减）', !!c && c.upTo === 26158, JSON.stringify(c))
-  }
-  // ── 空值安全 ──
-  {
-    ok('22.7 markCovered(null) 返回 false（绝不抛错）', markCovered(null, 1, 0) === false)
-    ok('22.8 未标记会话返回 null ⇒ 调用方按全量处理', coverWatermarkOf('cover-22-unknown') === null)
-    ok('22.9 coverSnapshotOk(null, …) 安全返回 ok:false', coverSnapshotOk(null, 5).ok === false)
-  }
-  // ── 持久化：水位必须能跨重启恢复（用户第 3 点）──
-  {
-    const sid = 'cover-22-persist-' + Date.now()
-    markCovered(sid, 31442, 26)
-    const f = path.join(os.homedir(), '.dsh', 'storages', 'cot-form-b', 'cover.json')
-    let onDisk = null
-    try { onDisk = JSON.parse(fs.readFileSync(f, 'utf8')) } catch {}
-    ok('22.10 ★★ 覆盖水位落盘（TTL 只清内存，不清归档关系）',
-       !!onDisk && onDisk.v === 1 && !!onDisk.sessions && !!onDisk.sessions[sid], JSON.stringify(onDisk && onDisk.sessions && onDisk.sessions[sid]))
-    ok('22.11 落盘内容含水位与条数',
-       !!onDisk && onDisk.sessions[sid].upTo === 31442 && onDisk.sessions[sid].entries === 26)
-  }
   // ── 冻结对象回归（核心 bug：adaptEvidence 返回冻结对象）──
   {
     const a = adaptEvidence({ events: [], inFlightIds: new Set(), cutSeq: null })
@@ -1050,14 +711,14 @@ async function test22() {
 console.log('\n【23】v11.6 成本模型与门槛（2026-09-23，docs/AUDIT-V11.5.md §一）')
 {
   // 默认值锁定
-  eq('23.1 ★ birthMinChars = 3100（自洽保本原长 2,959 保守取整）', DEFAULTS.birthMinChars, 3100)
+  eq('23.1 ★ birthMinChars = 3100（R=60 自洽保本原长 2,747，保守取整且不下调）', DEFAULTS.birthMinChars, 3100)
   eq('23.2 ★ maxOutputTokens = 850（v3 目标 450 字符 ×2 安全系数，恒定不随输入放大）', DEFAULTS.maxOutputTokens, 850)
   // 成本模型纯函数
   const e0 = birthEconomics(3100, null, {})
-  ok('23.3 R 取不到 ⇒ 回落 55 且标 fallback', e0.R === 55 && e0.rSource === 'fallback', e0)
-  eq('23.4 绝对下界 B_abs = ceil(460 / (54×0.02)) = 426', e0.bAbs, 426)
-  ok('23.5 默认门槛 3100 在 R=55 下 verdict=ok 且 bMin ≤ 3100', e0.verdict === 'ok' && e0.bMin <= 3100, e0)
-  ok('23.6 旧门槛 500 在 R=55 下必亏（below-min，netAtTarget<0）', birthEconomics(500, null, {}).verdict === 'below-min' && birthEconomics(500, null, {}).netAtTarget < 0)
+  ok('23.3 R 取不到 ⇒ 回落 60（用户拍板值）且标 fallback', e0.R === 60 && e0.rSource === 'fallback', e0)
+  eq('23.4 绝对下界 B_abs = ceil(460 / (59×0.02)) = 390', e0.bAbs, 390)
+  ok('23.5 默认门槛 3100 在 R=60 下 verdict=ok 且 bMin ≤ 3100', e0.verdict === 'ok' && e0.bMin <= 3100, e0)
+  ok('23.6 旧门槛 500 在 R=60 下必亏（below-min，netAtTarget<0）', birthEconomics(500, null, {}).verdict === 'below-min' && birthEconomics(500, null, {}).netAtTarget < 0)
   ok('23.7 低于绝对下界 ⇒ below-abs', birthEconomics(300, null, {}).verdict === 'below-abs')
   const e1 = birthEconomics(5000, { usedTokens: 100000, contextWindow: 128000, source: 'meter' }, { econCharsPerTurn: 4000 })
   ok('23.8 有水位 + 每轮增量 ⇒ R 由剩余窗口估出（28）且 rSource=meter', e1.R === 28 && e1.rSource === 'meter', e1)
@@ -1066,13 +727,17 @@ console.log('\n【23】v11.6 成本模型与门槛（2026-09-23，docs/AUDIT-V11
   eq('23.11 B 非正 ⇒ null（绝不抛）', birthEconomics(0, null, {}), null)
   // 缺陷 D：timeoutMs / finishWaitMs 关系校验
   const c1 = normalizeConfig({ mode: 'birth', birthDeferredClaim: false, birth: { finishWaitMs: 12000 }, timeoutMs: 8000 })
-  eq('23.12 ★ timeoutMs < finishWaitMs+2000 ⇒ 抬到 14000', c1.timeoutMs, 14000)
+  eq('23.12 ★ timeoutMs < finishWaitMs+宽限(1500)+2000 ⇒ 抬到 15500', c1.timeoutMs, 15500)
   ok('23.13 抬高必留痕 configAdjusted.timeoutMs', c1.configAdjusted && c1.configAdjusted.timeoutMs && c1.configAdjusted.timeoutMs.from === 8000, c1.configAdjusted)
   const c2 = normalizeConfig({ mode: 'birth', birthDeferredClaim: false, birth: { finishWaitMs: 12000 }, timeoutMs: 20000 })
   ok('23.14 已满足（线上 20000）⇒ 零变化、无 configAdjusted', c2.timeoutMs === 20000 && !c2.configAdjusted)
-  const c3 = normalizeConfig({ mode: 'birth', birth: { finishWaitMs: 12000 }, timeoutMs: 8000 })
+  const c3 = normalizeConfig({ mode: 'birth', birthDeferredClaim: true, birth: { finishWaitMs: 12000 }, timeoutMs: 8000 })
   ok('23.15 deferredClaim 开着（ready-only，不等 finishWait）⇒ 不改 timeoutMs', c3.timeoutMs === 8000 && !c3.configAdjusted)
+  eq('23.15a v11.8 缺省 deferredClaim=false ⇒ 缺省配置同样受抬高保护', normalizeConfig({ mode: 'birth', birth: { finishWaitMs: 12000 }, timeoutMs: 8000 }).timeoutMs, 15500)
   ok('23.16 非 birth 模式不改 timeoutMs', normalizeConfig({ mode: 'checkpoint', birthDeferredClaim: false, birth: { finishWaitMs: 12000 }, timeoutMs: 8000 }).timeoutMs === 8000)
+  // v11.8：finish 最多等 finishWaitMs + finishHeadersGraceMs ⇒ 宽限必须计入抬高目标
+  eq('23.17 ★ 宽限 5000 ⇒ 抬到 12000+5000+2000=19000', normalizeConfig({ mode: 'birth', birthDeferredClaim: false, birth: { finishWaitMs: 12000, finishHeadersGraceMs: 5000 }, timeoutMs: 14000 }).timeoutMs, 19000)
+  eq('23.18 宽限关（0）⇒ 仍按 finishWaitMs+2000', normalizeConfig({ mode: 'birth', birthDeferredClaim: false, birth: { finishWaitMs: 12000, finishHeadersGraceMs: 0 }, timeoutMs: 8000 }).timeoutMs, 14000)
 }
 
 console.log('\n【24】阶段 0 bug 回归（2026-09-24 大清扫）')
@@ -1085,28 +750,6 @@ console.log('\n【24】阶段 0 bug 回归（2026-09-24 大清扫）')
   ok('24.3 空 ref 仍明确失败', (() => { try { readApiKey({ credentialRef: '', credentialsPath: credF }); return false } catch { return true } })())
   ok('24.4 缺失键仍明确失败', (() => { try { readApiKey({ credentialRef: 'NOPE_KEY', credentialsPath: credF }); return false } catch { return true } })())
 
-  // ② cover.json 必须走 dshHome()（$DSH_HOME），不得写死 ~/.dsh
-  const oldHome = process.env.DSH_HOME
-  const coverHome = fs.mkdtempSync(path.join(selftestTmpRoot(), 'bug0-dshhome-'))
-  process.env.DSH_HOME = coverHome
-  try {
-    // coverStorePath 不再永久缓存 home ⇒ 这里切 env 即生效
-    ok('24.5 markCovered 在 $DSH_HOME 下生效', markCovered('bug0-cover-1', 4242, 7))
-    const expect = path.join(coverHome, 'storages', 'cot-form-b', 'cover.json')
-    ok('24.6 ★ cover.json 落在 $DSH_HOME（不再写死 ~/.dsh）', fs.existsSync(expect), expect)
-    const w = coverWatermarkOf('bug0-cover-1')
-    ok('24.7 新 home 下水位可读回', w && w.upTo === 4242, w)
-    // 回归旧家目录不应出现本次写入
-    const legacy = path.join(os.homedir(), '.dsh', 'storages', 'cot-form-b', 'cover.json')
-    if (fs.existsSync(legacy)) {
-      const raw = JSON.parse(fs.readFileSync(legacy, 'utf8'))
-      ok('24.8 真实 ~/.dsh 里没有本次会话', !(raw.sessions && raw.sessions['bug0-cover-1']), raw)
-    } else ok('24.8 真实 ~/.dsh 无 cover.json（干净）', true)
-  } finally {
-    if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome
-    fs.rmSync(coverHome, { recursive: true, force: true })
-  }
-
   // ③ 未知配置键进 unknownOptions（BOOT 可见），不再静默吞掉
   const u = normalizeConfig({ totallyTypoKey: 123, mode: 'birth' })
   ok('24.9 ★ 未知键进 unknownOptions', Array.isArray(u.unknownOptions) && u.unknownOptions.includes('totallyTypoKey'), u.unknownOptions)
@@ -1117,12 +760,19 @@ console.log('\n【24】阶段 0 bug 回归（2026-09-24 大清扫）')
   ok('24.12 退役键走 retiredOptions 而非 unknownOptions', (u3.retiredOptions || []).includes('stateEvidenceViews') && !(u3.unknownOptions || []).includes('stateEvidenceViews'))
   const u4 = normalizeConfig({ trace: true })
   eq('24.13 已知键不误报', (u4.unknownOptions || []).length, 0)
+  const u5 = normalizeConfig({ birth: { finishWait: 6000, finishWaitMs: 5000 }, distill: { timeout: 1 } })
+  ok('24.13a ★ 嵌套容器里拼错的键同样进 unknownOptions', ['birth.finishWait', 'distill.timeout'].every((k) => u5.unknownOptions.includes(k)) && !u5.unknownOptions.includes('birth.finishWaitMs'), u5.unknownOptions)
 
   // ④ DEP_ID 必须覆盖全部 import 的本地模块（BOOT 上岗自证）
   ok('24.14 ★ DEP_ID 含 exact-flights.js（曾漏）', typeof DEP_ID === 'string' && DEP_ID.includes('exact-flights.js'))
-  for (const dep of ['emitter.js', 'compile-lane.js', 'evidence-ledger.js', 'consumption.js', 'state-memory.js', 'snapshot-store.js']) {
+  for (const dep of ['emitter.js', 'evidence-ledger.js', 'consumption.js', 'state-memory.js', 'snapshot-store.js']) {
     ok('24.15 DEP_ID 含 ' + dep, DEP_ID.includes(dep))
   }
+  // v11.8：DEP_ID 改为自动枚举 src/ ⇒ 新增模块不可能再漏登记
+  const srcFiles = fs.readdirSync(new URL('../src/', import.meta.url)).filter((f) => f.endsWith('.js') && f !== 'plugin.js')
+  const listed = DEP_ID.split(' ').map((x) => x.split('=')[0])
+  ok('24.16 ★ DEP_ID 覆盖 src/ 下全部模块 + 包入口', srcFiles.every((f) => listed.includes(f)) && listed.includes('index.js') && listed.length === srcFiles.length + 1, { missing: srcFiles.filter((f) => !listed.includes(f)), listed: listed.length })
+  ok('24.17 DEP_ID 每项都读到了 size@mtime（无 =?）', !DEP_ID.includes('=?'), DEP_ID)
 }
 
 console.log('  通过 ' + pass + ' / 失败 ' + fail)

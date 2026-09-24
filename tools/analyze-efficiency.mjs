@@ -214,6 +214,6 @@ export function analyzeEfficiency(text) {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const [file, output] = process.argv.slice(2)
-  if (!file) { console.error('Usage: node analyze-efficiency.mjs TRACE [OUTPUT]'); process.exitCode = 2 }
+  if (!file) { console.error('Usage: node tools/analyze-efficiency.mjs TRACE [OUTPUT]'); process.exitCode = 2 }
   else { const report = JSON.stringify(analyzeEfficiency(fs.readFileSync(file, 'utf8')), null, 2) + '\n'; if (output) fs.writeFileSync(output, report); else console.log(report) }
 }

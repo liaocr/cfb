@@ -4,6 +4,12 @@ node_modules/
 # 运行痕迹（trace / 日志不进仓库）
 *.log
 
+# 覆盖率产物（c8 / nyc；本地量覆盖率用，不属于包内容）
+coverage/
+.nyc_output/
+# 自测临时目录（os.tmpdir 不可写时 core.selftest 的回退位置）
+.cot-form-b-selftest-tmp/
+
 # 历史备份（本包有意不收录，见 README「本包不包含什么」）
 *.bak
 *.bak-*

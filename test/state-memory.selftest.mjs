@@ -12,13 +12,13 @@ import {
   classifyUserEventSource, ATTRIBUTION, SOURCE as SOURCE2,
   PROPOSITION_KIND, samePropositionKind, compactToolText, renderToolEvidence, promptStats,
   compactDiagnosticText, DIAG_MARK,
-} from '../state-memory.js'
+} from '../src/state-memory.js'
 
 // 真实错误 fixture 目录（真机原文导出，非合成）
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
-const fixtureDir = dirname(fileURLToPath(import.meta.url)) + '/../fixtures'
+const fixtureDir = dirname(fileURLToPath(import.meta.url)) + '/fixtures'
 
 let pass = 0, fail = 0
 const ok = (name, cond, detail) => {

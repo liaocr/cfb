@@ -8,8 +8,8 @@ const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-quality-'))
 const oldHome = process.env.DSH_HOME
 process.env.DSH_HOME = home
 const I = await import('../index.js')
-const M = await import('../state-memory.js')
-const S = await import('../snapshot-store.js')
+const M = await import('../src/state-memory.js')
+const S = await import('../src/snapshot-store.js')
 let pass = 0, fail = 0
 async function test(name, fn) {
   try { await fn(); pass++; console.log('PASS ' + name) }

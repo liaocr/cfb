@@ -1,38 +1,34 @@
-# dsh-cot-form-b — 尾部即时思维链提纯 + 结构化状态记忆
+# dsh-cot-form-b — reasoning 块「出生即压缩」
 
-> **当前实现：v11.7（2026-09-23）** · 验证 **1242 通过 / 0 失败 / 1 跳过，19 套件**。
-> 版本沿革与每版细节见 [`CHANGELOG.md`](CHANGELOG.md)；成本模型见 [`docs/AUDIT-V11.5.md`](docs/AUDIT-V11.5.md)。
-> ⚠ 判定行为的唯一变化 = 门槛与输出上限；动态门槛、保真放行、提前起火**均未接管**，等真实 trace 数据。
->
-> 三条当前要点：
-> 1. `birthMinChars=3100`（成本模型反解保本原长 2,959 保守取整）、`maxOutputTokens=850` 恒定；
-> 2. v11.7 三个可关的延迟/缓存开关：`hedgeAfterMs`（对冲，缺省关）、`finishHeadersGraceMs=1500`、`compressSystemPrompt`（缓存友好拆分，缺省关）；
-> 3. 配置未知键会进 `unknownOptions` 并落 BOOT（不再静默吞掉）；凭据读取已锚定行首，防子串误命中。
+> **当前实现：v11.8（2026-09-24）** · 自测 **1102 通过 / 0 失败 / 1 跳过，19 套件** · 真实产品验收：**未验收**
+> 版本沿革见 [`CHANGELOG.md`](CHANGELOG.md)；开发者视角的模块与数据流见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
-DSH 外部插件。当前 `birth + stateMemory` 路径：
+DSH 外部插件（Cordis 协议）。主模型每写完一段 reasoning，插件在它进入会话**之前**：
 
-1. 固定并记录采集证据；持久化不依赖模型成功。
-2. 副模型接收 reasoning、用户／运行材料、工具正文视图及事件状态。普通结果保留原1200字符前缀；错误和最近结果扩展，缺失区间明示。
-3. 两栏承载原 reasoning 的必要语义，不把生命周期表当项目状态。
-4. 正常迟到认领开启时 ready-only，未就绪原文先走；没有消费者、没有 sessionId 或原文超出保守迟到容量时保留原配置的等待机会。
-5. 满额／I/O失败时以当轮内存证据继续编译，不伪造索引，不因记录失败直接停掉副模型。
+1. 把原文写进 CAS（内容寻址存储，可按 `art://` 句柄取回）；
+2. 同时请副模型把这段推理压成短摘要；
+3. 在 `finish` 前限时收网：归档成功 **且** 摘要成功 **且** 净省达标 ⇒ 用摘要替换这段 reasoning；
+   否则原文放行（可附句柄）。任何内部异常只会降级成「原样透传」，绝不碰坏主流。
 
-配置1500／8000／1200、生产模型和 profile 未修改，没有新增启用开关或模型调用链。
-原始工具消息不遮蔽、不删除。真实产品验收仍为未验收。
+替换发生在宿主装配 assistant 消息之前，走的是**普通 append**，不需要 `surfaceOp: replace`。
+后续每一轮携带的都是短摘要。字符数只是上下文余量的度量，**不是费用节省**。
 
 ---
 
 ## 快速开始
 
 ```bash
-node verify.mjs        # 跑全部 19 个自测套件（含本地 HTTP；零外部 API 调用）
-node manifest.mjs      # 生成 MANIFEST.sha256
-node manifest.mjs --check   # 校验完整性（换机器后第一件事）
-node deploy/onboard.mjs     # 体检：确认插件在本机装好了
+npm test                    # = node verify.mjs：跑全部 19 个自测套件（本地 HTTP，零外部 API 调用）
+node verify.mjs birth hedge # 只跑文件名含关键字的套件
+npm run manifest:check      # = node manifest.mjs --check：校验 MANIFEST.sha256（换机器后第一件事）
+npm run manifest            # 改过文件后重新生成清单
+npm run onboard             # = node deploy/onboard.mjs：体检插件在本机的注册与部署漂移
 ```
 
-`verify.mjs` 只用 Node 内置模块，**无第三方依赖、无硬编码路径** —— 复制到任何机器/容器都能跑。
-跑不起来的套件报 `SKIP`；当前独立仓库还会跳过 1 项需要宿主兄弟包的断言，不能视为真实宿主验收。
+- 零第三方依赖，只用 Node 内置模块（Node ≥ 20，实测 v22）。
+- 每个套件都在**临时 `DSH_HOME`** 里跑，自测绝不写真实 `~/.dsh`。
+- 固定跳过 1 项：T13（句柄公式与真实 CMB store 逐字比对）需要宿主兄弟包 `dsh-context-memory-bundle`；
+  找不到就 SKIP，不算通过 —— 独立仓库的自测不能替代真实宿主验收。
 
 ---
 
@@ -40,249 +36,258 @@ node deploy/onboard.mjs     # 体检：确认插件在本机装好了
 
 ```
 dsh-cot-form-b/
-├── verify.mjs                 一键跑全部自测（可移植）
-├── manifest.mjs               sha256 清单生成 / 校验
-├── README.md                  本文件
-├── MANIFEST.sha256            完整性清单
+├── index.js              包入口：只导出 name / inject / apply 与自测用的纯函数（实现全在 src/）
+├── index.d.ts            对外类型契约
+├── cordis.patch.yml      bundle 层：用包名把插件插进组合树（零绝对路径）
+├── package.json          npm 包清单（dsh.bundle.patch、scripts）
+├── verify.mjs            一键跑全部自测（自动发现 test/*.selftest.mjs）
+├── manifest.mjs          sha256 完整性清单生成 / 校验 → MANIFEST.sha256
+├── CHANGELOG.md          版本沿革
 │
-├── index.js            245 KB  插件入口：生命周期、证据采集、覆盖过滤、快照接线
-├── state-memory.js      96 KB  四层状态记忆：信封 / 编译器 / 投影 / 渲染器
-├── emitter.js           33 KB  收网器：唯一发射出口（官方 surfaceOp replace）
-├── snapshot-store.js    29 KB  ★ 结构化状态快照持久化（CAS + 原子指针）
-├── evidence-ledger.js   17 KB  证据账本准备与判断提示词
-├── rules.js             13 KB  规则层压缩（离线、确定性，与模型提纯互为回退）
-├── balanced-span.js     12 KB  平衡整步：找可安全替换的 span 边界
-├── evidence-storage.js 6.0 KB  证据 CAS 存储
-├── imperative.js       3.8 KB  祈使句提取（哪些推理块值得进记忆）
-├── evidence-input.js   4.8 KB  证据正文截取
-├── headroom.js / evidence-views.js / exact-flights.js /
-│   compile-lane.js / consumption.js         小模块（预算、视图、航班、编译道、计量）
-├── index.d.ts / rules.d.ts     TypeScript 类型声明
-├── package.json                npm 包清单（声明 dsh.bundle.patch）
-├── cordis.patch.yml            bundle 层：把插件挂进组合树（写包名，零绝对路径）
-├── CHANGELOG.md                版本沿革（自 README 迁出）
+├── src/                  实现（全部 ESM，零依赖）
+│   ├── plugin.js         apply()：注册 agent/pre-step、llm/stream 钩子；BOOT 上岗自证（SELF_ID/DEP_ID）
+│   ├── config.js         DEFAULTS + normalizeConfig（退役/未知键留痕）+ 编译模式裁决
+│   ├── birth.js          ★ 出生即压缩：birthTransform / birthStart / birthFinish / 成本模型
+│   ├── distill.js        副模型调用：重试降级、对冲、传输 trace；memory 模式的状态编译
+│   ├── prompts.js        提示词（legacy / compress-v2 / compress-v3）与版本号
+│   ├── transport.js      HTTP 传输（keep-alive、4MB 上限、SSE/JSON 按实际协议解析）
+│   ├── provider.js       端点与凭据解析（跟随宿主 provider，解析不出来不猜）
+│   ├── late-memory.js    迟到结果暂存区（Deferred Claim，实验）
+│   ├── evidence.js       从会话只读采集证据（memory 模式）
+│   ├── messages.js       出站消息溯源（只观测）
+│   ├── trace.js          trace 落盘与 settled 字段白名单
+│   ├── fidelity.js       受保护 token 与逐字标识符召回率
+│   ├── state-memory.js   证据信封 / 判断编译 / 记忆投影 / 渲染（纯函数）
+│   ├── snapshot-store.js 结构化状态快照持久化（原子写、归并、精确覆盖集合）
+│   ├── evidence-ledger.js / evidence-input.js / evidence-storage.js   确定性证据账本（memory 模式）
+│   ├── emitter.js / balanced-span.js / headroom.js / imperative.js   pre-step 看板发射器（迟到认领 / checkpoint）
+│   └── exact-flights.js / consumption.js   精确在途请求共享 / 认领消费计量
 │
-├── 自测（node verify.mjs 一键，共 19 套件 / 1242 断言）
-│   test/selftest.mjs 317 · selftest-birth.mjs 164 · state-memory 245 · emitter 101
-│   balanced-span 60 · optimization 43 · evidence-views 41 · coverage-provenance 41
-│   memory-quality 33 · headroom 33 · incremental 29 · provider-endpoint 28
-│   imperative 25 · hybrid 16 · hedge 15 · late-identity 15 · efficiency 13
-│   grounding 13 · evidence-sharing 10
-│
-├── tools/                     离线 trace 分析与编译重放（analyze-*、replay）
-├── test/                      全部 19 个自测套件（node verify.mjs 一键调度）
-├── fixtures/                  真机原文错误样本（非合成）
-├── deploy/onboard.mjs         安装体检（跨机器，无硬编码路径）
-└── docs/                      现行文档；docs/archive/ = 历史报告与证据（不删）
+├── test/                 19 个 *.selftest.mjs 套件 + fixtures/（真机原文错误样本）
+├── tools/                离线分析：analyze-trace / analyze-efficiency / analyze-consumption / replay / benchmark-index
+├── deploy/onboard.mjs    部署体检（注册形态、部署漂移；跨机器、无硬编码路径）
+└── docs/                 现行文档；docs/archive/ = 历史报告与证据（只进不出）
 ```
 
 ---
 
-## 运行时架构
+## 模式
 
-### 一次「出生」的完整生命周期
-
-```
-主模型流式输出
-  │
-  ├─ reasoning-delta ──► 累积到 task.raw（同时**逐字实时冲出**，主流程零延迟）
-  │
-  ├─ block-end ────────► birthStart()
-  │                        ├─ diskP    : CAS 归档原文（独立超时护栏）
-  │                        └─ distillP : 状态编译（一次模型调用）
-  │
-  └─ finish ───────────► birthFinish()
-                          等 min(finishWaitMs, 真工期)
-                          赶上 → 用压缩产物替换本块
-                          没赶上 → 原文放行（passthrough）
-                                    └─ 迟到结果存 lateMemory
-                                         └─ 下一轮 agent/pre-step 认领发射
-```
-
-**关键不变式**：观测层出任何问题都**绝不**碰坏主流程。信封构造失败、过滤失败、快照读写失败
-一律回落「原文全量」，绝不抛错。
-
-### 四层状态记忆
-
-```
-EvidenceEnvelope   纯数据、冻结的时间截面（此后不再补入"后来才发生"的事实）
-      ↓
-StateCompiler      六栏编译：目标/状态/判断/约束/尝试/差距
-      ↓
-MemoryProjection   证据驱动归并（时间只决定处理顺序，证据决定能否替代）
-      ↓
-MemoryRenderer     birth 用增量渲染 / checkpoint 用完整看板
-```
-
-六栏固定顺序：`【目标与验收条件】【当前有效状态】【关键判断与依据】【约束与禁止】【已试路径】【未决差距】`
-
----
-
-## 结构化状态快照持久化（当前工作重点）
-
-### 它要解决的真实死锁
-
-真机 trace + 会话日志逐条核对确认的因果链：
-
-1. 编译成功产出的**结构化条目只存在于内存**；
-2. 宿主压缩会把带看板的消息从 surface 上**整段删除**
-   （实测 `seq=27097` 替换掉 `[26309,26733]`，171 个节点消失，两个看板一并消失）；
-3. 于是下一轮 `priorMemory=0` ⇒ 覆盖判据不成立 ⇒ 全量重发 ~24.5k 字符
-   ⇒ 提纯超时 ⇒ 又没有新看板 ⇒ **自锁**。
-
-结论：**「从看板里捞快照」这条路本身不可靠** —— 看板是渲染产物，且会被宿主回收。
-正确做法是把编译成功后的完整有效状态**直接存下来**，看板只负责展示。
-
-### 快照形状
-
-```js
-{
-  schemaVersion, compilerVersion, rendererVersion,
-  sessionId, branchId,
-  revision, parentRevision,        // 单调递增，可审计
-  sourceCutSeq,                    // 本轮时间截面
-  coverage: {
-    coveredSeqs: [...],            // ★ 本轮真正编译进去的工具结果 seq 集合
-    upTo, entries, at, sourceCutSeq
-  },
-  applied: { at, revision, mode, seq } | null,   // ★ 宿主已应用（与"编译已覆盖"严格分开）
-  entries: [...]                   // 完整有效状态，非本轮局部摘要、非展示文本
-}
-```
-
-### 三条硬规则
-
-| 规则 | 为什么 |
-|---|---|
-| **先归并再写**：磁盘现值是权威基线，本轮 entries 与它归并 | 迟到的旧任务只会被并进去，**不可能覆盖更新的快照** |
-| **先写完整快照，再原子替换指针**（tmp + rename，单文件） | 不存在「水位推进了但 entries 没落盘」的中间态 |
-| **精确成员判定**，不用水位线 | 水位线会连带跳过"未采集"和"迟到返回"的结果；集合不会 |
-
-### 关联方式：不解析消息文本
-
-**不**靠 role、**不**靠 `<cot-ledger>` 标记判断来源 —— 标记可能出现在引用、日志和普通回答里。
-关联 = 插件自己保存的 `(sessionId, branchId)` 指针，这比认标记更强。
-
-### 「编译已覆盖」≠「宿主已应用」
-
-| 字段 | 含义 | 何时写 |
+| `mode` | 做什么 | 状态 |
 |---|---|---|
-| `coverage.at` | 编译已覆盖：这批证据进入了一份**已可靠保存**的有效状态 | 编译成功时 |
-| `applied.at` | 宿主已应用：这份记忆**已提交到主请求面** | 真的发射时（唯一写入点） |
+| `'birth'`（缺省） | 在 `llm/stream` 里扣住 reasoning 块，CAS 归档 + 副模型压缩后放行 | **唯一生产路径** |
+| `'checkpoint'` | pre-step 用官方 `user/message` 看板整段替换已出站的推理（emitter.js） | 实验 |
+| `'off'` | 完全不介入 | — |
+| `'distill'` / `'rules'` | **v11.8 退役**：写回路径被宿主协议永久禁止（恒为 `replace-refused-h2`），`distill` 还会白发副模型调用 | 按 `'off'` 处理，BOOT 的 `retiredMode` 可见 |
 
-两者**永不互相赋值**。
+`dryRun` 缺省 **`true`**：birth 模式下零副模型调用、零改写，只落观测 trace。必须由 profile 显式设 `dryRun: false` 才合闸。
+
+birth 模式内部再按编译模式三选一（唯一裁决点 `resolveCompileMode`）：
+
+| 开关 | 编译模式 | 副模型输入 → 产物 |
+|---|---|---|
+| `stateCompress: true` | `compress` | 只有这段 reasoning → 它的摘要（**压缩**；配合 `compressPrompt`） |
+| `stateMemory: true` | `memory` | 证据账本 + 状态快照 + 这段 reasoning → 两栏判断稿（**状态记忆**） |
+| 都不开 | `legacy` | 这段 reasoning → 旧三态蒸馏提示词 |
+
+两者都开时 `memory` 生效，BOOT 记 `compileModeConflict`（不抛错）。
 
 ---
 
-## 安装到 DSH
+## 配置
 
-插件是 npm 包，通过 `package.json` 的 `dsh.bundle.patch` 自携 patch 层，
-patch 里 `name` 写**包名**（不是路径）⇒ 跨机器、跨盘符、跨 checkout 直接能装，**零绝对路径**。
+写在 profile 的 `cordis.patch.yml` 里（`- id: cot-form-b` + `config:`）。⚠ patch 的 `config` 是**整体替换**、不是深合并。
+嵌套写法 `distill: {...}` / `birth: {...}` 与扁平键等价，嵌套优先。
 
-profile 侧只需在 `dsh.profile.bundles` 里列出包名，并在 profile 的 `cordis.patch.yml` 用
-`- id: cot-form-b` + `config` 覆盖配置（patch 的 config 是**整体替换**，不是深合并）。
+**起步示例**（压缩模式；数值依据见 [`docs/AUDIT-V11.5.md`](docs/AUDIT-V11.5.md)）：
 
-开发时用 `file:` 依赖，注意 pnpm 会**复制**而不是链接 —— 改了源码必须重装：
-
-```powershell
-Remove-Item -Recurse -Force "<profile>/node_modules/@dsh-external/dsh-cot-form-b"
-pnpm install --ignore-scripts   # 在 profile 目录
-node deploy/onboard.mjs         # 必须报 drift 0
+```yaml
+- id: cot-form-b
+  config:
+    mode: birth
+    dryRun: false            # 先保持 true 跑一段金丝雀，确认 BOOT 与 trace 正常后再合闸
+    stateCompress: true
+    compressPrompt: v3       # 绝对长度目标 250~450 字符
+    birth:
+      finishWaitMs: 12000    # finish 处最多等多久（线上用值）
+    timeoutMs: 20000         # 副模型单次请求硬超时（线上用值）
 ```
 
-改完源码要**重启网关**才生效（Node ESM 有模块缓存）。
-`BOOT` 事件里的 `selfId` = 模块首次求值时读到的 `size@mtimeMs` ——
-旧模块在内存里根本不含这段代码，不会打印它，所以这是**可证伪**的上岗判据。
+**常用键**（完整列表与每个值的来历见 `src/config.js` 的 `DEFAULTS`，类型见 `index.d.ts`）：
+
+| 键 | 缺省 | 说明 |
+|---|---|---|
+| `mode` / `dryRun` | `'birth'` / `true` | 见上 |
+| `stateCompress` / `stateMemory` | `false` / `false` | 编译模式 |
+| `compressPrompt` | `'v2'` | `v1` 旧蒸馏 · `v2` 相对长度 · `v3` 绝对长度（`compressTargetMin/Max` = 250/450） |
+| `birth.minChars` | `3100` | 短于此长度不压缩（成本模型反解：R=60、d=0.02、B′≈450 ⇒ 保本原长 2,747，保守取整且不下调） |
+| `birth.finishWaitMs` | `1500` | finish 处收网等待上限 |
+| `birth.finishHeadersGraceMs` | `1500` | 到点时若副模型已收到 200 响应头（正在生成），再多等的上限；`0` 关 |
+| `timeoutMs` | `8000` | 副模型请求硬超时。birth 且未开迟到认领时，自动抬到 ≥ `finishWaitMs + finishHeadersGraceMs + 2000`（BOOT `configAdjusted` 留痕） |
+| `maxOutputTokens` | `850` | 恒定，不随输入放大 |
+| `distill.hedgeAfterMs` | `0`（关） | 对冲请求：N ms 内没有 200 响应头就再发一份，先回头者胜；建议 ≥ TTFB p50（约 3000） |
+| `compressSystemPrompt` | `false` | 压缩提示词拆成 system（规则前缀）+ user（原文），字节等价，便于前缀缓存命中；promptVersion 追加 `:sys` |
+| `emitterSelectiveArchive` | `true` | **P1**：归档行后附「工具名 + 参数摘要 + 内容样本 +（选择性）头尾摘录」。只改视图，归档一律原文；关掉 = 只留句柄（A/B 对照腿） |
+| `emitterToolSampleChars` | `120` | **P1**：内容样本长度上限（`0` = 连富化段都不出，最省） |
+| `emitterExcerptChars` | `800` | **P1**：选择性摘录预算。错误现场给「错误行 + 上下文」，最近结果给头尾；中间显式标出省略 |
+| `emitterKeepRecentToolResults` | `2` | **P1**：「最近 N 条工具结果」判定（模型刚跑完、大概率正在引用 ⇒ 先给一眼，省一次回读） |
+| `emitHandleProbeMax` | `2` | **P0-2**：checkpoint 发射前按句柄读回抽样验证此条数；只有「正面证伪」才拦住发射（保持原文）。无读 API 的宿主自动退化为只记录 |
+| `birth.probeTimeoutMs` | `800` | **P0-2**：birth 内存预推句柄的读回验证限时；超时=不可证 ⇒ 原文放行（绝不用没验证过的地址顶替原文） |
+| `birthDeferredClaim` | `false` | **实验**：没赶上 finish 的结果进暂存区、下一轮 pre-step 认领（见「当前状态」缺陷 B）；只认显式 `true` |
+| `followHostModel` / `followHostProvider` | `true` / `true` | 副模型、端点、钥匙都跟随宿主当前对话所用的 provider；解析不出来就不发起（不猜） |
+| `trace` / `traceFile` | `true` / `$DSH_HOME/storages/cot-form-b/trace.log` | 观测 |
+
+配置自检（全部进 BOOT，只报不抛）：
+- `unknownOptions`：不认识的键，包括嵌套容器里拼错的（如 `birth.finishWait`）；
+- `retiredOptions`：已退役的键（v7 的 4 个旧开关、v11.8 随 distill/rules 退役的键与整个 `rules:` 容器），已从生效配置删除；
+- `retiredMode` / `invalidMode`：写了退役或不认识的 `mode`（生效值为 `'off'`）；
+- `configAdjusted`：自动调整（目前只有 `timeoutMs` 抬高）。
+
+---
+
+## 一次 birth 的生命周期
+
+```
+主模型流式输出（birth.js · birthTransform）
+  ├─ block-start / reasoning-delta ─► 立即透传（主流零延迟）
+  ├─ block-end ───────────────────► birthStart()：同步起火，绝不 await
+  │                                   ├─ 内存算句柄 art://…（与 CMB store 同一公式）
+  │                                   ├─ diskP    : CAS 归档原文（独立超时护栏）
+  │                                   └─ distillP : 副模型压缩（一次请求；可对冲）
+  └─ finish（押后到最后）─────────► birthFinish()：最多等 finishWaitMs（+ 响应头宽限）
+                                      ├─ 归档成功 && 压缩成功 && 净省 ≥ birthMinSavedChars ⇒ 改写 block-end.text
+                                      └─ 否则原文放行（+句柄）；在飞请求被取消
+                                          └─ 仅 birthDeferredClaim:true：不取消、结果进暂存区，下一轮 pre-step 认领
+```
+
+四条硬约束（违反即坏，出处见 `src/birth.js` 文件头）：`block-start` 立即透传；`finish` 押后到最后；
+**归档先于压缩**（归档失败 ⇒ 原样透传，原始推理绝不因压缩而丢失）；主流自己的错误原样抛出，插件内部异常只降级为原样重放。
+
+---
+
+## 状态记忆与快照（`stateMemory: true` 时）
+
+compress 模式不采集证据、不写快照；以下只在 memory 模式生效。
+
+- **确定性证据账本**（`evidence-ledger.js`）：工具事件先落盘到 `$DSH_HOME/storages/cot-form-b/evidence-v1/`（总配额 256MB / 10 万文件，单作用域 64MB / 2 万文件），
+  持久化不依赖副模型成功；满额或 I/O 失败时用当轮内存证据继续编译，不伪造索引。
+- **结构化快照**（`snapshot-store.js`，`$DSH_HOME/storages/cot-form-b/snapshots/`）：编译成功后把完整有效状态存下来，看板只负责展示。
+  - 先归并再写（磁盘现值是权威基线，迟到的旧任务不可能覆盖更新的快照）；先写完整快照再原子替换（tmp + rename）；
+  - 覆盖判定用**精确成员集合** `coverage.coveredSeqs`，不用水位线（水位线会连带跳过未采集和迟到返回的结果）；
+  - 「编译已覆盖」（`coverage.at`）与「宿主已应用」（`applied`）严格分开，永不互相赋值；
+  - v11.8：同一陈述反复提交只留最后一次，条目总数封顶 256（此前会无限增长）。
+- 关联靠插件自己保存的 `(sessionId, branchId)` 指针，**不**解析消息文本、不认 role、不认看板标记。
+
+---
+
+## 安装与上岗
+
+详见 [`docs/INSTALL.md`](docs/INSTALL.md)。要点：
+
+- 插件按**包名**注册（`dsh.profile.bundles` 列包名 + 包内自带 `cordis.patch.yml`），跨机器、跨盘符零改动；
+- `file:` 依赖装进 profile 时是**复制**，改完源码必须删掉副本重装，再 `npm run onboard` 确认 **drift 0**，最后**重启网关**；
+- 上岗判据看 BOOT 行：`selfId` = `src/plugin.js` 的 `size@mtimeMs`，`deps` = 包入口与 `src/` 下全部其他模块的 `size@mtimeMs`
+  （v11.8 起自动枚举，新增模块不会漏报）。旧模块在内存里根本没有这段代码，所以这是可证伪的判据。
 
 ---
 
 ## 回滚开关
 
-任何一项都可以单独关掉，不需要改代码：
+任何一项都可以单独改，不需要改代码：
 
-| 开关 | 关掉后 |
+| 开关 | 效果 |
 |---|---|
-| `stateSnapshot: false` | 停止读写结构化快照（回到无状态注入） |
-| `stateCoveredEvidence: false` | 停止按覆盖集合过滤证据（全量发送） |
-| `stateStructuralFirst: false` | 关闭跨窗口结构节点检索（**当前默认已是 false**） |
-| `birthDeferredClaim: false` | 关闭下轮认领（迟到结果直接丢弃） |
-| `birthArchive: false` | 关闭 CAS 归档 |
-| `birth: { finishWaitMs: 6000 }` | 回到旧的长等待（扁平 `finishWaitMs` 不生效，只认 `birth.finishWaitMs` / `birthFinishWaitMs`） |
+| `dryRun: true` | 只观测：零副模型调用、零改写 |
 | `mode: 'off'` | 整体停用 |
+| `enabled: false` | 总开关关闭 |
+| `stateCompress: false`（且 `stateMemory: false`） | 回到 legacy 蒸馏提示词 |
+| `compressPrompt: 'v2'` / `'v1'` | 回到相对长度目标 / 旧蒸馏提示词 |
+| `distill: { hedgeAfterMs: 0 }` | 关闭对冲（缺省即关） |
+| `birth: { finishHeadersGraceMs: 0 }` | 关闭响应头宽限 |
+| `birthDeferredClaim: false` | 关闭下轮认领（缺省即关） |
+| `birthArchive: false` | 关闭 CAS 归档（⚠ 同时意味着不再压缩：归档先于压缩） |
+| `stateSnapshot: false` | memory 模式停止读写快照与证据账本 |
+| `stateCoveredEvidence: false` | memory 模式停止按覆盖集合过滤旧证据（全量发送） |
+| `birth: { minChars: N }` | 调整压缩门槛 |
 
----
-
-## 当前状态（诚实版）
-
-**已完成并自测通过**：
-
-- 结构化快照持久化（`snapshot-store.js`）：原子写、归并而非覆盖、精确成员判定、`applied` 与 `coverage` 分离；
-- 下一轮编译直接注入快照（走独立字段，**不经过** `priorMemory` 的 1200 字符截断）；
-- A 方案（跨窗口结构节点检索）已下线：实测 `priorMemory 0→0`、`userAsks 3→9`、
-  `prompt.total 26381→30092`（**+3711 字符**），净负；
-- 修掉两个"过滤从未生效"的根因：
-  ① 对 `Object.freeze` 的冻结对象赋值（必然抛 TypeError，被自己的 catch 吞掉）；
-  ② `toolsForPrompt` / `adapted.cut` 声明在 `try` 块内，settle 钩子引用必然 ReferenceError。
-
-**未完成 / 未解决**：
-
-- **快照持久化尚未部署到网关**（本包是源码态，网关里跑的是旧构建）；
-- **冷启动未解决**：CAS catalog 里 `cot-snapshot` 记录数为 **0**；
-  `cot-checkpoint` 记录停在 `2026-09-18T06:00:24Z`。三次成功编译的结构化 entries
-  **一条都没留下**（只活在内存 `lateMemory` 里），现存的只有渲染后的六栏文本。
-  ⇒ **必须重新跑出一次完整成功**，持久化才能真正起效。
-  不要把「持久化已实现」误当成「冷启动也解决了」。
-
----
-
-## 证据与文档
-
-文档分两层（2026-09-24 整理；**只归档不删除**）：
-
-**现行（`docs/` 顶层）**
-
-| 文件 | 内容 |
-|---|---|
-| `INSTALL.md` | 安装与配置 |
-| `ARCHITECTURE-CONSOLIDATED.md` | 架构总览（可逆上下文分层，读一条线） |
-| `at-birth-interception.md` | birth 模式（出生即拦截）设计规范 |
-| `AUDIT-V11.5.md` | v11.5 成本模型审计（门槛反解、收益判据） |
-| `CORRECTNESS-V11.md` | v11 正确性修正（覆盖 / 迟到 / 来源 / compress 通路） |
-
-**历史归档（`docs/archive/`）** —— 各版本详报、外部简报、phase2 设计/手册、
-作废状态卡，以及 `optimization-evidence{,-v2..v9}/` 原始证据目录。
-索引见 [`docs/archive/README.md`](docs/archive/README.md)；版本时间线见根目录 [`CHANGELOG.md`](CHANGELOG.md)。
+⚠ 扁平的 `finishWaitMs` 不是配置键（会进 `unknownOptions`），只认 `birth.finishWaitMs` 或 `birthFinishWaitMs`。
 
 ---
 
 ## 观测
 
-运行痕迹写在 `<DSH_HOME>/storages/cot-form-b/trace.log`，格式：
+trace 写在 `$DSH_HOME/storages/cot-form-b/trace.log`，一行一条：`[ISO时间] [事件名] {JSON}`。
 
-```
-[ISO-时间] [事件名] {JSON}
-```
+⚠ 必须**锚定**解析：`llm-stream` 行会内嵌对话正文（可能含字面量 `[BOOT]`）。正则：
+`/^\[(\d{4}-\d\d-\d\dT[\d:.]+Z)\] \[([A-Za-z0-9_-]+)\] (\{.*\})$/`
 
-⚠ **必须锚定解析**：`llm-stream` 行里会内嵌对话正文（可能含字面量 `[BOOT]` 之类），
-用 `indexOf` 过滤会被正文里的方括号带偏。正则：
+| 事件 | 看什么 |
+|---|---|
+| `BOOT` | 生效配置、`selfId`/`deps` 上岗判据、`retired*`/`unknownOptions`/`configAdjusted` |
+| `birth-fired` / `birth-condensed` / `birth-passthrough` | 起火、替换成功（含 `fidelity.identifierRecall`）、放行原因 |
+| `birth-distill-settled` | 副模型真工期与阶段：`ttfbMs`、`totalMs`、`promptVersion`、`hedged`、失败 `stage` |
+| `compiler-transport-*` / `compiler-hedge-*` | 每次请求的发出与结算、对冲是否触发与胜者 |
+| `birth-econ` / `birth-window-probe` | 成本模型三态判定、免费窗口时刻（只记录，不参与判定） |
+| `state-envelope` / `state-snapshot-committed` | memory 模式的输入画像与快照提交 |
+| `birth-claim-*` | 迟到认领漏斗（仅 `birthDeferredClaim:true`） |
+| `emit-gate` / `emit-net-savings` / `emit-net-savings-result` | checkpoint 闸门读数：`sourceChars`、`netSavedChars`、`enrichChars`、`casWrites`、真 token 水位 |
+| `ledger-built` / `ledger-archive-commit` | 看板构成（`toolResultBuckets` 四桶直方图）、归档写入量与失败数、富化代价 |
+| `emit-handle-verify` / `handle-probe-*` | **句柄读回验证**：`resolved` / `unresolvable` / `unverifiable` 三态（读不回是唯一的静默失效模式） |
 
-```js
-/^\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\] \[([a-zA-Z0-9_\-\/]+)\]/
-```
+离线分析：`npm run trace:audit -- trace.log`（按 BOOT 分组，不同构建绝不混算）、`npm run trace:efficiency -- trace.log`（耗时、promptVersion 分桶、保真度、对冲）。
 
-常用事件：`BOOT`（含 selfId 上岗判据）、`state-envelope`（本轮输入画像）、
-`state-snapshot-committed`、`state-snapshot-applied`、`birth-distill-settled`（真工期）、
-`birth-passthrough`（放行原因）、`state-cover`（覆盖过滤省了多少）。
+### 工具结果路径的验收口径（真机 A/B 怎么判）
+
+`npm run trace:audit -- trace.log` 输出里的 `toolResultPath` 就是判据本身：
+
+- `chars.netSavedChars` —— **只算真正发射的尝试**（被闸门拦下的尝试既没省上下文也没改表面，不得计入），
+  且已扣掉 P1 富化的视图代价（`enrichChars`）；`netSavedIfHandleOnly` 是「完全不做富化」的对照上界。
+- `breakeven.fullReadBacksAffordable` —— **净下降 ÷ 归档条目均长** = 还能整块回读几次；超出即亏。
+  这就是判据「净下降 − 读回成本 > 0」的可读数形式（宿主侧的回读次数只有宿主 trace 看得到，故给预算而非常量）。
+- `handle.*` —— 句柄读回验证的三态分布；`archive.rechecks` > 0 表示归档失败真实发生过（看板已被迫回退内联）。
+- 单位纪律：`chars` 是字符，不是钱。真账单必须用宿主 `tokenMeter` / `usage`；
+  `measuredSurfaceTokenDelta` 仅在配置了 `emitterMeasureTokens` 且**非**评估态时才有值。
+
+离线分析：`npm run trace:audit -- trace.log`（按 BOOT 分组，不同构建绝不混算）、`npm run trace:efficiency -- trace.log`（耗时、promptVersion 分桶、保真度、对冲）。
+
+---
+
+## 当前状态（诚实版）
+
+**已完成、自测覆盖**：birth 压缩主路径与四条硬约束；compress-v3；成本模型门槛（3100）与恒定输出上限（850）；
+**v11.9 评估态零副作用**（评估态不写 CAS、不改表面，且仍能算出净收益与真 token 水位）；
+**v11.9 句柄读回验证**（发射前抽样按句柄取回；birth 内存预推句柄须先验证，无证据则原文放行）；
+对冲、响应头宽限、缓存友好拆分（均可关）；配置自检；memory 模式的证据账本与有界快照；测试隔离。
+
+**v11.9 P1 工具结果可检索化**：归档行带工具名/参数/样本，错误现场与最近结果附摘录 —— 目标是**压低回看概率**
+（保本点 = 每项平均读回一次，读回粒度比压缩率更决定胜负）。代价口径单列：`enrichChars` 与
+`netSavedIfHandleOnly`，供 A/B 归因。
+
+**只观测、未接管判定**：按剩余窗口的动态门槛（`birth-econ`）、保真度放行门槛（`identifierRecall`）、
+提前到「第一个非 reasoning 块」起火（`birth-window-probe`）—— 等真实 trace 标定。
+
+**已知缺陷 / 未完成**：
+- **缺陷 B**（迟到认领的多块匹配）未修：`birthDeferredClaim` 缺省关闭时休眠；打开前请读 [`docs/AUDIT-V11.5.md`](docs/AUDIT-V11.5.md) §四；
+- **冷启动未解决**：快照只在本机文件里；`recoverSnapshot`（从 CAS 恢复）、`markSnapshotApplied`（宿主已应用标记）、
+  `createEvidenceArchiver` 代码在但**未接线**；
+- 真实产品验收（完整会话、任务质量 A/B、真实 token 账单）**未做**。本地回归不能替代。
+
+---
+
+## 文档
+
+| 文件 | 内容 |
+|---|---|
+| [`docs/README.md`](docs/README.md) | 文档索引（现行 / 历史） |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 模块地图、数据流、不变式、改哪里 |
+| [`docs/INSTALL.md`](docs/INSTALL.md) | 安装、注册形态、改完源码如何生效、排错 |
+| [`docs/AUDIT-V11.5.md`](docs/AUDIT-V11.5.md) | 成本模型与收益判据审计（门槛反解表；仍有未落实的建议） |
+| [`docs/archive/`](docs/archive/README.md) | 各版本详报、设计稿、简报、原始证据（只进不出） |
 
 ---
 
 ## 本包不包含什么
 
-有意排除（避免把"某台机器的状态"伪装成"可交付代码"）：
-
-- `*.bak` 历史备份（13 个）；
-- `_roles-ab*.mjs` 一次性 trace 分析脚本（路径绑死本机仓库布局）；
-- `restart-gateway.mjs`、`verify-all.mjs` 等含硬编码本机路径的脚本；
-- 会话日志、CAS blob、trace 原文（体量巨大且含真实对话内容）。
-
-这些留在原仓库 `D:\dsh\` 下，需要时再单独取。
+有意排除（避免把「某台机器的状态」伪装成「可交付代码」）：`*.bak` 历史备份；绑死本机仓库布局或含硬编码路径的一次性脚本
+（`_roles-ab*.mjs`、`restart-gateway.mjs`、`verify-all.mjs` 等）；会话日志、CAS blob、trace 原文（体量巨大且含真实对话内容）。
+这些留在原开发机的仓库里，需要时再单独取。

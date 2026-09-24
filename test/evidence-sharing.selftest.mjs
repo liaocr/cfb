@@ -4,8 +4,8 @@ import os from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
 import { fileURLToPath } from 'node:url'
-import { compilerEvidence, unionEvidenceRanges } from '../evidence-input.js'
-import { prepareEvidenceLedger, prepareCompilerEvidence, ledgerDirectory } from '../evidence-ledger.js'
+import { compilerEvidence, unionEvidenceRanges } from '../src/evidence-input.js'
+import { prepareEvidenceLedger, prepareCompilerEvidence, ledgerDirectory } from '../src/evidence-ledger.js'
 import { replayCompiler, captureTrace } from '../tools/replay.mjs'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-sharing-')), previous = process.env.DSH_HOME
 process.env.DSH_HOME = home

@@ -15,19 +15,21 @@ export interface CotFormBConfig {
   /** 总开关。false = 完全不介入（回滚用）。默认 true */
   enabled?: boolean
   /**
-   * true = 只判定、只写 trace，不真的 replace。灰度观察用。默认 true
+   * true = 只观测、只写 trace：birth 模式下零副模型调用、零改写。灰度观察用。默认 true
    *
-   * 回滚优先级：① dryRun=true → ② rulesEnabled=false → ③ mode='off' → ④ 摘掉插件
+   * 回滚优先级：① dryRun=true → ② mode='off' → ③ enabled=false → ④ 摘掉插件
    */
   dryRun?: boolean
 
   /**
-   * ★ 三级模式（2026-09-15 用户主权开关）。
-   *   'distill'（默认）伴生提纯 ~67%；未就绪 / 超时 / 未保本 ⇒ 自动降级 rules
-   *   'rules'   纯规则：零网络、零 await、同步 <10ms
-   *   'off'     完全不介入，原样放行
+   * 模式（缺省 'birth'）：
+   *   'birth'      出生即压缩（唯一生产路径）：llm/stream 里扣住 reasoning，CAS 归档 + 副模型压缩后放行
+   *   'checkpoint' 实验：pre-step 用官方 user/message 看板整段替换已出站的推理
+   *   'off'        完全不介入，原样放行
+   * ⛔ 'distill' / 'rules' 已于 v11.8 退役：写回路径协议上永久非法；传入时按 'off' 处理，
+   *    并由 normalizeConfig 记入 retiredMode（BOOT 可见）。不认识的值同样按 'off'（记入 invalidMode）。
    */
-  mode?: 'distill' | 'rules' | 'birth' | 'checkpoint' | 'off'
+  mode?: 'birth' | 'checkpoint' | 'off' | 'distill' | 'rules'
 
   /**
    * 编译模式三选一（唯一裁决点 resolveCompileMode）：
@@ -65,6 +67,19 @@ export interface CotFormBConfig {
   maxInlineToolResultChars?: number
   staticMinRawChars?: number
   emitterProducer?: string
+  /** P0-2：checkpoint 发射前按句柄读回抽样验证的上限（缺省 2；0=关）。只有正面证伪才拦住发射 */
+  emitHandleProbeMax?: number
+  /**
+   * ── P1 工具结果「可检索化」（2026-09-24）───────────────────────────────
+   * 只改视图，归档一律原文。归档行后附富化段：工具名 + 调用参数摘要 + 内容样本 +（选择性）头尾摘录。
+   */
+  emitterToolSampleChars?: number
+  /** 选择性摘录预算（字符；缺省 800，0=关）：错误现场 / 最近 N 条 附头尾摘录 */
+  emitterExcerptChars?: number
+  /** 「最近 N 条工具结果」的 N（缺省 2，0=关） */
+  emitterKeepRecentToolResults?: number
+  /** P1 总开关（缺省 true）；false ⇒ 只留句柄，用于 A/B 对照 */
+  emitterSelectiveArchive?: boolean
   birthCancelOnGiveUp?: boolean
   birthDiskWaitMs?: number
   /** false disables the ledger; current in-memory evidence is still available for compilation. */
@@ -75,18 +90,26 @@ export interface CotFormBConfig {
   stateCacheKeyTrace?: boolean
   stateProblemUnits?: boolean
   distillStream?: boolean
+  /**
+   * 下轮收网（Deferred Claim，实验）。v11.8 缺省 false（docs/AUDIT-V11.5.md §四 建议 ②）：
+   * 关闭时 finish 处限时等待（birthFinishWaitMs + finishHeadersGraceMs）后原文放行；
+   * 打开时 finish 只取已就绪结果，未就绪的进暂存区、下一轮 pre-step 认领。BOOT 的 birth.experimental 标记。
+   */
   birthDeferredClaim?: boolean
-  /** Legacy maximum (1500ms); hybrid birth only uses already-ready results. */
+  /** finish 处收网等待上限（ms，缺省 1500）。birth + deferredClaim 关时 timeoutMs 至少会被抬到 本值 + finishHeadersGraceMs + 2000 */
   birthFinishWaitMs?: number
-  /** v11.6 默认 3100（成本模型自洽保本原长 2,959，见 docs/AUDIT-V11.5.md §一）。 */
+  /** v11.6 默认 3100（R=60 自洽保本原长 2,747，保守取整且不下调；见 docs/AUDIT-V11.5.md §一）。 */
   birthMinChars?: number
   /** v11.6 成本模型观测参数（只影响 birth-econ trace，不参与判定）。 */
   econCacheDiscount?: number
   econTemplateChars?: number
+  /** R 回落值（取不到每轮增量时用）。默认 60（2026-09-24 用户拍板） */
   econR?: number
   econCharsPerTurn?: number
   birthArchive?: boolean
   birthArchiveTimeoutMs?: number
+  /** P0-2：内存预推句柄（deriveArtHandle）的读回验证限时（ms，缺省 800）。超时=不可证 ⇒ 原文放行 */
+  birthHandleProbeTimeoutMs?: number
   birthMinSavedChars?: number
   /** 归档句柄是否拼进正文。默认 true */
   birthHandleInText?: boolean
@@ -96,51 +119,33 @@ export interface CotFormBConfig {
   finishHeadersGraceMs?: number
   birth?: {
     minChars?: number; archive?: boolean; handleInText?: boolean; producer?: string
-    archiveTimeoutMs?: number; finishWaitMs?: number; minSavedChars?: number
+    archiveTimeoutMs?: number; probeTimeoutMs?: number; finishWaitMs?: number; minSavedChars?: number
     finishHeadersGraceMs?: number
   }
   followHostProvider?: boolean
   followProvider?: string
   settingsPath?: string
 
-  /**
-   * 防线①：触发门槛。raw 思维链短于此值**不发起伴生调用**。默认 800。
-   *
-   * ⚠ 低于门槛**不等于不压缩**：会降级走纯规则（规则档零成本）。
-   * 800 = `breakevenRaw(4) = 774` 的保守取整；自测锁死 `minRawChars >= breakevenRaw(hurdleRounds)`。
-   */
+  /** checkpoint 模式：推理短于此值不发起提前调用（early-fire）。默认 800 */
   minRawChars?: number
-  /** 防线③：保本不等式的结构轮数 =「这块之后还会被携带几轮」的保守假设。默认 4 */
-  hurdleRounds?: number
-  /** 防线③：不等式里的提示词模板量级。默认 500 */
-  templateChars?: number
 
-  /** 防线④：机械注入的用户原话上限（超限保留头 60% + 尾 40%）。默认 600 */
-  maxVerbatimChars?: number
-
-  /** 纯规则档总开关。默认 true */
-  rulesEnabled?: boolean
-  /** 纯规则档：游程折叠（连续 ≥3 行「已验证 OK」折成区间；含稀有实体的行永不折叠）。默认 true */
-  rulesFoldRuns?: boolean
-  /** 纯规则档：逐字重复行只留第一次。默认 true */
-  rulesDropDuplicateLines?: boolean
-  /** 纯规则档：削减字符数下限。默认 20 */
-  rulesMinSavedChars?: number
-  /** 纯规则档：无归档句柄时不替换。默认 true */
-  rulesRequireArchive?: boolean
-  /** 凭据键名拼错/未知键不再静默：由 normalizeConfig 填入，BOOT 上报 */
+  /** 以下四项由 normalizeConfig 填入（调用方不应手填），BOOT 上报 */
+  /** 不认识的键（含嵌套容器里拼错的键，形如 'birth.finishWait'） */
   unknownOptions?: string[]
+  /** 已退役、已从生效配置里删除的键（v7 四个旧开关 + v11.8 随 distill/rules 退役的键，含 'rules' 容器） */
+  retiredOptions?: string[]
+  /** 配置里写了已退役模式（'distill' | 'rules'）时记录原值；生效 mode 为 'off' */
+  retiredMode?: 'distill' | 'rules'
+  /** 配置里写了不认识的 mode 时记录原值；生效 mode 为 'off' */
+  invalidMode?: unknown
+  /** 自动调整留痕（目前只有 timeoutMs 抬高） */
+  configAdjusted?: { timeoutMs?: { from: number; to: number; why: string } }
 
-  /**
-   * ★ 提前发起：在 `llm/stream` 里一看到 reasoning 块结束就**非阻塞**地拉起伴生调用，
-   * 用「模型自己生成工具参数的那段时间」消化掉那 5.4 秒。默认 true。
-   *
-   * ⚠ 这不违反 H2：提前发起只把**结果准备好**，落盘仍只发生在那个 pre-step 里。
-   */
+  /** checkpoint 模式：在 `llm/stream` 里一看到 reasoning 块结束就**非阻塞**地发起副模型调用。默认 true */
   earlyFire?: boolean
-  /** 伴生调用自身的超时。默认 8000 */
+  /** 副模型单次请求硬超时（所有模式共用）。默认 8000；birth 下可能被自动抬高（见 configAdjusted） */
   timeoutMs?: number
-  /** ★ pre-step 里最多额外等多久 = **用户感知延迟的上限**。默认 300 */
+  /** checkpoint 模式：pre-step 里最多额外等提前调用结果多久 = 用户感知延迟上限。默认 300 */
   graceMs?: number
   maxAttempts?: number
   /** v11.7 对冲请求：主请求 N ms 内未收到 200 响应头就再发一份相同请求，先回头者胜、另一份 abort。0 = 关（缺省）；建议 ≥ TTFB p50（3000）；仅 maxAttempts ≤ 1 时生效 */
@@ -175,7 +180,7 @@ export interface CotFormBConfig {
    * ★ 是否跟随宿主对话模型（`llm/stream` 的 `options.model`）。默认 true。
    *
    * 用户原话：「宿主用哪个模型对话，我们就用那个模型压缩。」
-   * 读不到宿主模型且 `model` 为空 ⇒ **不猜**，放弃提纯、降级 rules（原因落 trace）。
+   * 读不到宿主模型且 `model` 为空 ⇒ **不猜**，放弃提纯、原文放行（原因落 trace）。
    */
   followHostModel?: boolean
   /**
@@ -206,7 +211,7 @@ export interface CotFormBConfig {
 
 export declare const DEFAULTS: Readonly<CotFormBConfig>
 
-/** 依赖模块指纹（BOOT 自证上岗用）：`file=size@mtimeMs ...`，含 exact-flights.js */
+/** 依赖模块指纹（BOOT 自证上岗用）：`file=size@mtimeMs ...`，覆盖全部本地依赖模块 */
 export declare const DEP_ID: string
 
 /**
@@ -216,8 +221,9 @@ export declare const DEP_ID: string
 export declare function readApiKey(cfg: Pick<CotFormBConfig, 'credentialRef' | 'credentialsPath'>): string
 
 /**
- * 配置归一化：同时接受扁平键与用户文档里的嵌套写法（`distill: {...}` / `rules: {...}`）。
- * 嵌套键覆盖同名扁平键；非法 `mode` 回落到 `'distill'`（绝不带电裸奔）。
+ * 配置归一化：同时接受扁平键与嵌套写法（`distill: {...}` / `birth: {...}`）。
+ * 嵌套键覆盖同名扁平键；退役模式 / 非法 `mode` 按 `'off'` 处理（绝不猜成会改写会话的模式）；
+ * 退役键进 retiredOptions、未知键进 unknownOptions（都只报不抛）。
  */
 export declare function normalizeConfig(config?: CotFormBConfig): CotFormBConfig
 export declare function resolveCompileMode(cfg: CotFormBConfig | null | undefined): 'memory' | 'compress' | 'legacy'
@@ -239,67 +245,11 @@ export declare function peekLateMemoryPartial(sessionId: string, fullRaw: string
 /** 组装三态提纯提示词（硬标签、无用户原话栏、无工具栏） */
 export declare function buildDistillPrompt(cot: string): string
 
-/** 机械截取：超限保留头 60% + 尾 40% */
-export declare function sliceVerbatim(text: string, maxChars: number): string
-
-/**
- * ⚠ 实测形状差异（2026-09-15 金丝雀抓出）：
- *   assistant/message → 消息挂在 `data.message`
- *   user/message      → 没有 `data.message`，字段平铺在 `data` 上
- */
-export declare function messageOfEvent(e: unknown): Record<string, unknown> | null
-
 /** content 双兼容：纯字符串 或 [{type:'text',text}] 块数组 */
 export declare function textOfContent(content: unknown): string
 
-/** 取「目标 seq 之前最后一条**人类** user/message」（排除 plugin / skill-catalog 等系统注入） */
-export declare function findLastUserMessage(
-  sessionLog: unknown[],
-  beforeSeq: number,
-): { text: string; kind: string | null; seq: number } | null
-
-/** 从会话日志里取「目标 seq 之前最后一条 user/message」的文本 */
-export declare function findLastUserText(sessionLog: unknown[], beforeSeq: number): string
-
-/** 把「机械注入的用户原话」与「模型产出的三态结算单」拼成最终替换文本 */
-export declare function assembleCheckpoint(distilled: string, verbatim: string): string
-
-/** 防线③ 保本后验不等式：(raw - final) × R > template + raw + final（同时覆盖防线②） */
-export declare function passesHurdle(
-  rawChars: number,
-  finalChars: number,
-  cfg: Pick<Required<CotFormBConfig>, 'hurdleRounds' | 'templateChars'>,
-): { pass: boolean; saved: number; lhs: number; rhs: number }
-
-/** 拟合式 `final ≈ a·raw + b` 的系数（三点拟合，774 那个数由它反解而来） */
-export declare const FIT: { a: number; b: number }
-
-/**
- * 由保本不等式反解出的保本原长（取 floor+1，因为恰好整除时等式取等号不通过）。
- *
- * `breakevenRaw(4) = 774` —— 本模块的默认轮数，门槛 800 由它取整而来。
- *
- * ⚠ 这个函数现在的用途**只剩一个**：它是 `minRawChars` 的唯一推导来源，
- *   自测用它锁死「门槛 ≥ 保本原长」，防止以后有人手改门槛而不同步改轮数。
- *   `breakevenRaw(3) = 1201` 只是参考值 —— 那是「延迟一轮替换」所需门槛，
- *   而延迟替换已被终审否决（H2 首次出站不变律，见 index.js 顶部注释）。
- */
-export declare function breakevenRaw(
-  hurdleRounds: number,
-  cfg?: Pick<Required<CotFormBConfig>, 'templateChars'>,
-): number
-
 /** 取一条 assistant 消息里的 reasoning 文本（多块拼接） */
 export declare function reasoningTextOf(message: unknown): string
-
-/** 取一条 assistant 消息里的 tool-call 块（原样保活） */
-export declare function toolCallsOf(message: unknown): unknown[]
-
-/** 新 reasoning 置顶，其余非 reasoning 块原序保活 */
-export declare function rebuildContent(message: unknown, newReasoningText: string): unknown[]
-
-/** 会话日志里最后一条 assistant/message 事件 */
-export declare function findLastAssistantEvent(sessionLog: unknown[]): unknown | null
 
 /** 一次请求的传输层证据（直接落 trace） */
 export interface RequestMeta {
@@ -338,14 +288,19 @@ export interface DistillMeta extends RequestMeta {
 }
 
 /**
- * 发起伴生提纯调用。返回 { text, meta }。
+ * 发起一次副模型调用（压缩 / 蒸馏共用的传输、重试、对冲、超时与取消）。返回 { text, meta }。
  *
  * ⛔ `cfg.model` 为空时**直接抛错**（`no model: ...`），绝不猜模型名 ——
- *    上层据此降级 rules。这是「跟随宿主模型」的执行机构。
+ *    上层据此原文放行。这是「跟随宿主模型」的执行机构。
+ * @param promptOverride 自定义提示词（不传 = buildDistillPrompt(cot)）
+ * @param runtime        { trace, promptVersion, flights, scope }：传输 trace、版本号贯通与精确在途共享
  */
 export declare function generateDistillation(
   cot: string,
   cfg: CotFormBConfig,
+  signal?: AbortSignal,
+  promptOverride?: string,
+  runtime?: { trace?: (tag: string, data: object) => void; promptVersion?: string; flights?: unknown; scope?: unknown },
 ): Promise<{ text: string; meta: DistillMeta }>
 
 /** Cordis 插件入口 */

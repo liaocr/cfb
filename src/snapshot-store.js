@@ -1,4 +1,3 @@
-import { validReceipt } from './evidence-views.js'
 /**
  * ★★ 结构化状态快照持久化（2026-09-22，用户批准的"快照持久化"路线）★★
  *
@@ -45,6 +44,10 @@ import crypto from 'node:crypto'
 import { mergeByEvidence, renderCheckpoint, SCHEMA_VERSION, COMPILER_VERSION, RENDERER_VERSION, MEMORY_POLICY_VERSION, MODEL_MEMORY_PREAMBLE } from './state-memory.js'
 
 /** 快照文件格式版本。与 state-memory 的 SCHEMA_VERSION 是两件事，各自演进。 */
+// 视图回执：sha256 十六进制串。只用于校验/保留旧快照里的 viewReceipts 字段
+//   （证据视图 stateEvidenceViews 已于 v7 退役、代码于 v11.8 移除；字段保留以兼容已落盘的快照）。
+export const validReceipt = s => typeof s === 'string' && /^[a-f0-9]{64}$/.test(s)
+
 export const SNAPSHOT_SCHEMA_VERSION = 1
 
 /** 覆盖集合上限：超过就只保留最大的 N 个（防无界增长）。仅影响极长会话。 */
@@ -265,6 +268,26 @@ export function loadSnapshot(sessionId, branchId, opts = {}) {
  *   sourceCutSeq(本轮时间截面), at
  * @returns {{ok:boolean, snapshot:object|null, reason?:string, mergedFrom?:number, added?:number}}
  */
+// ★ 条目有界（v11.8）：hybrid 模式的条目没有 objectKey ⇒ mergeByEvidence 不去重，
+//   同一批判断反复提交会让 entries 无限增长、且每次整文件重写（实测同样 2 条提交 5 次 = 10 条）；
+//   超过 snapshotToText 的 12000 字符上限后快照还会整体失去可读性。
+//   ① 同一陈述（忽略 id / at / blockIndex / 归并注记）只留最后一次出现；② 总数封顶，保留最新。
+export const SNAPSHOT_ENTRIES_MAX = 256
+const VOLATILE_ENTRY_KEYS = new Set(['id', 'at', 'blockIndex', 'note', 'relation'])
+function entryIdentity(e) {
+  const o = {}
+  for (const k of Object.keys(e || {}).sort()) if (!VOLATILE_ENTRY_KEYS.has(k)) o[k] = e[k]
+  return JSON.stringify(o)
+}
+export function boundSnapshotEntries(entries, max = SNAPSHOT_ENTRIES_MAX) {
+  const list = Array.isArray(entries) ? entries : []
+  const ids = list.map(entryIdentity)
+  const last = new Map()
+  ids.forEach((id, i) => last.set(id, i))
+  const kept = list.filter((_, i) => last.get(ids[i]) === i)
+  return kept.length > max ? kept.slice(kept.length - max) : kept
+}
+
 export function commitSnapshot(o = {}) {
   const sessionId = o.sessionId == null ? null : String(o.sessionId)
   if (sessionId == null) return { ok: false, snapshot: null, reason: 'no-session' }
@@ -294,7 +317,7 @@ export function commitSnapshot(o = {}) {
       const all = prev.entries.map(clone).concat(incomingCheck.snapshot.entries.map(clone))
       const m = mergeByEvidence(all)
       if (Array.isArray(m)) {
-        mergedEntries = m
+        mergedEntries = boundSnapshotEntries(m)
         added = Math.max(0, mergedEntries.length - prev.entries.length)
       }
     } catch (e) {

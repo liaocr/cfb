@@ -5,10 +5,10 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import http from 'node:http'
 import * as I from '../index.js'
-import * as M from '../state-memory.js'
-import { compilerEvidence } from '../evidence-input.js'
-import { prepareEvidenceLedger, transientEvidenceFrame, ledgerDirectory, buildJudgmentPrompt, readEvidenceHistory } from '../evidence-ledger.js'
-import { STORAGE_LIMITS, auditEvidenceStorage, collectEvidenceGarbage } from '../evidence-storage.js'
+import * as M from '../src/state-memory.js'
+import { compilerEvidence } from '../src/evidence-input.js'
+import { prepareEvidenceLedger, transientEvidenceFrame, ledgerDirectory, buildJudgmentPrompt, readEvidenceHistory } from '../src/evidence-ledger.js'
+import { STORAGE_LIMITS, auditEvidenceStorage, collectEvidenceGarbage } from '../src/evidence-storage.js'
 import { analyzeConsumption } from '../tools/analyze-consumption.mjs'
 import { parseTrace } from '../tools/replay.mjs'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-grounding-')), previous = process.env.DSH_HOME
@@ -124,7 +124,7 @@ try {
     try {
       const archived = new Map(), store = { putText: async (text, opts) => { const handle = 'art://' + sha(opts.sessionId + text); archived.set(handle, text); return { handle, sha256: sha(text) } } }
       I.apply({ on: (name, fn) => hooks.set(name, fn), get: key => key === 'cmbStore' ? store : null }, {
-        ...I.DEFAULTS, mode: 'birth', stateMemory: true, dryRun: false, model: 'fixture', followHostModel: false, followHostProvider: false,
+        ...I.DEFAULTS, mode: 'birth', birthDeferredClaim: true, stateMemory: true, dryRun: false, model: 'fixture', followHostModel: false, followHostProvider: false,
         baseUrl: 'http://127.0.0.1:' + server.address().port, credentialRef: 'LOCAL', credentialsPath,
         keepAlive: false, distillStream: true, trace: true, traceFile,
       })

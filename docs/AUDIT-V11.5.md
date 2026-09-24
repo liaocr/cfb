@@ -167,7 +167,8 @@ B 的那次全价预填两边都要付（只是从主请求挪到压缩请求）
 | `timeoutMs ≥ finishWaitMs+2000` | `normalizeConfig`，仅 `mode:'birth' && birthDeferredClaim===false` | 只抬不降 | 线上 20000/12000 零变化 |
 | 空白候选硬断言 | `birthFinish` → `pass('empty-candidate')` | 新增安全闸 | 无（只会更保守） |
 | `birth-window-probe` | `birthTransform` | 纯观测 | 无 |
-| `birth-econ`（`birthEconomics` 纯函数） | `birthStart`，`deps.pressure` 接 `emitter.readPressure` | 纯观测，**不判定** | 无；`econCharsPerTurn` 未配 ⇒ R 回落 55 |
+| `toolResultPath`（`tools/analyze-trace.mjs`） | 真机 trace → 工具结果路径的验收判据 | 纯离线 | 无；**净下降只算真正发射的尝试**，回读成本以「保本整块回读次数」形式给出（宿主侧回读计数本机看不到） |
+| `birth-econ`（`birthEconomics` 纯函数） | `birthStart`，`deps.pressure` 接 `emitter.readPressure` | 纯观测，**不判定** | 无；`econCharsPerTurn` 未配 ⇒ R 回落 60（2026-09-24 用户拍板） |
 | `birth-condensed.fidelity` | `birthFinish`，复用 `rules.fidelity()` | 纯观测，**不拦截** | 无 |
 | `analyze-efficiency.mjs` `windowProbe/economics/fidelity` | 离线 | 诊断 | 无 |
 

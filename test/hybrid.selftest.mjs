@@ -5,10 +5,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import http from 'node:http'
 import crypto from 'node:crypto'
-import { prepareEvidenceLedger as prepare, loadEvidenceLedger as load, ledgerDirectory, buildJudgmentPrompt, createEvidenceArchiver, readEvidenceHistory } from '../evidence-ledger.js'
+import { prepareEvidenceLedger as prepare, loadEvidenceLedger as load, ledgerDirectory, buildJudgmentPrompt, createEvidenceArchiver, readEvidenceHistory } from '../src/evidence-ledger.js'
 import { captureTrace, parseTrace, replayCompiler, evaluateProduct, observationEvents } from '../tools/replay.mjs'
 import * as I from '../index.js'
-import * as M from '../state-memory.js'
+import * as M from '../src/state-memory.js'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-hybrid-')), oldHome = process.env.DSH_HOME
 process.env.DSH_HOME = home
 let pass = 0, fail = 0
@@ -71,7 +71,7 @@ await test('lock contention/corrupt body cannot advance observation state', () =
 })
 await test('foreground does not wait for unresolved model; observations survive failed judgment', async () => {
   let release
-  const cfg = { ...I.DEFAULTS, dryRun: false, mode: 'birth', stateMemory: true, birthMinChars: 100 }
+  const cfg = { ...I.DEFAULTS, dryRun: false, mode: 'birth', stateMemory: true, birthMinChars: 100, birthDeferredClaim: true }
   const o = input('no-wait'), raw = '原始 reasoning 必须完整保留。'.repeat(100)
   const deps = { cfg, sessionId: o.sessionId, archive: async () => 'confirmed-test-archive',
     collectEvidence: () => observationEvents({ ...o, cut: 999 }), buildEnvelope: M.buildEvidenceEnvelope,
@@ -118,7 +118,7 @@ const server = http.createServer((req, res) => {
 })
 await new Promise(r => server.listen(0, '127.0.0.1', r))
 const credentials = path.join(home, 'credentials'); fs.writeFileSync(credentials, 'FIXTURE: unused-local-key')
-const cfg = { ...I.DEFAULTS, enabled: true, dryRun: false, mode: 'birth', stateMemory: true, birthMinChars: 100, model: 'fixture-only',
+const cfg = { ...I.DEFAULTS, enabled: true, dryRun: false, mode: 'birth', stateMemory: true, birthMinChars: 100, birthDeferredClaim: true, model: 'fixture-only',
   followHostModel: false, followHostProvider: false, baseUrl: 'http://127.0.0.1:' + server.address().port + '/v1',
   credentialsPath: credentials, credentialRef: 'FIXTURE', keepAlive: false, prewarm: false, distillStream: true,
   trace: true, traceFile: path.join(home, 'trace.log') }

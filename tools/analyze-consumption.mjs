@@ -41,6 +41,6 @@ export function analyzeConsumption(text) {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const [file, out] = process.argv.slice(2)
-  if (!file) { console.error('Usage: node analyze-consumption.mjs TRACE [OUTPUT]'); process.exitCode = 2 }
+  if (!file) { console.error('Usage: node tools/analyze-consumption.mjs TRACE [OUTPUT]'); process.exitCode = 2 }
   else { const report = JSON.stringify(analyzeConsumption(fs.readFileSync(file, 'utf8')), null, 2); if (out) fs.writeFileSync(out, report + '\n'); else console.log(report) }
 }

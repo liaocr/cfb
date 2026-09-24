@@ -4,8 +4,8 @@ import os from 'node:os'
 import path from 'node:path'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-late-')), oldHome = process.env.DSH_HOME
 process.env.DSH_HOME = home
-const I = await import('../index.js'), M = await import('../state-memory.js')
-const { runPreStepEmit } = await import('../emitter.js')
+const I = await import('../index.js'), M = await import('../src/state-memory.js')
+const { runPreStepEmit } = await import('../src/emitter.js')
 let pass = 0, fail = 0
 async function test(name, fn) { try { await fn(); pass++; console.log('PASS ' + name) } catch(e) { fail++; console.error('FAIL ' + name + '\n' + e.stack) } }
 const entries = () => [{ id: 'm1', category: 'state', content: '状态', evidence: 'inferred', origin: 'model', validity: 'active' }]
@@ -74,7 +74,7 @@ try {
   })
   await test('production birth settlement stores in its captured branch and carries task ID', async () => {
     const t = I.birthStart({ index: 0, text: raw }, { sessionId: 'born', branchId: 'branch-X',
-      cfg: { stateMemory: true, stateSnapshot: false }, archive: async () => 'h', buildEnvelope: M.buildEvidenceEnvelope,
+      cfg: { stateMemory: true, stateSnapshot: false, birthDeferredClaim: true }, archive: async () => 'h', buildEnvelope: M.buildEvidenceEnvelope,
       distill: async () => ({ text: '简短状态', entries: entries(), checkpointText: 'board' }) })
     t.passedThrough = true; await t.distillP
     assert.equal(I.lateMemorySize('born'), 0)
@@ -83,7 +83,7 @@ try {
   })
   for (const duplicate of [false, true]) await test(`real pre-step branch claim, duplicate surface = ${duplicate}`, async () => {
     const hooks = new Map(), sid = 'hook-' + duplicate
-    I.apply({ on: (n, fn) => hooks.set(n, fn), get: () => null }, { mode: 'birth', dryRun: false, trace: false, prewarm: false })
+    I.apply({ on: (n, fn) => hooks.set(n, fn), get: () => null }, { mode: 'birth', birthDeferredClaim: true, dryRun: false, trace: false, prewarm: false })
     I.pushLateMemory(sid, raw, entries(), '【当前有效状态】\n已记录', scope('branch-A'))
     const wrong = session(sid, 'branch-B', duplicate)
     await hooks.get('agent/pre-step')({ agent: { session: wrong } }, async () => ({})); assert.equal(wrong.appends, 0)
