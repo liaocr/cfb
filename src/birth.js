@@ -57,6 +57,31 @@ export function deriveArtHandle(sessionId, text) {
     .update(sha).digest('base64url').slice(0, 22)
 }
 
+/**
+ * ★★ P0-2 句柄读回探针（birth 侧）★★
+ *
+ * 背景：`deriveArtHandle()` 是**内存预推**——它在 putText 之前就把句柄算好了（方案一 优化1）。
+ * 这条快路的正确性完全押在「本机推导 ≡ 兄弟包推导」上，而那份等价测试在兄弟包不在本机时**整条跳过**。
+ * 公式一旦漂移，我们会拿一根**谁也读不回**的地址去登记归档，而且不会有任何报错。
+ *
+ * 判据（保守）：`true` = 有正面证据能取回；`false` = 正面证据取不回；`null` = 不可证（无读 API / 超时 / 抛错）。
+ * 调用点只在「store 说写成功但没给句柄」这条罕见分支上，所以绝不给主流加延迟。
+ */
+async function probeDerivedHandle(deps, handle, text, sessionId) {
+  const probe = deps && deps.probeHandle
+  if (typeof probe !== 'function') return { ok: false, reason: 'no-probe' }
+  const cfg = (deps && deps.cfg) || {}
+  const ms = Number.isFinite(cfg.birthHandleProbeTimeoutMs) ? Math.max(1, cfg.birthHandleProbeTimeoutMs) : 800
+  try {
+    const r = await birthDeadline(Promise.resolve().then(() => probe(handle, text, sessionId)), ms)
+    if (r === true) return { ok: true, reason: 'probe-resolved' }
+    if (r === false) return { ok: false, reason: 'probe-unresolvable' }
+    return { ok: false, reason: r == null ? 'probe-timeout' : 'probe-inconclusive' }
+  } catch (e) {
+    return { ok: false, reason: 'probe-error:' + String((e && e.message) || e) }
+  }
+}
+
 /** 到点即返回 null 的期限守卫。结算后立刻清定时器；**绝不 unref**（unref 会让事件循环当场排空）。 */
 function birthDeadline(p, ms) {
   return new Promise((resolve) => {
@@ -96,14 +121,14 @@ function birthEmitChunks(task, text, deps) {
  *   ρ_max  = [(R−1)·d − T/B] / [5 + (R−1)·d]      允许的最大压缩后占比
  *   B_abs  = T / ((R−1)·d)                          绝对下界：低于它无论多压都亏
  *   B_min  = B′_est / ρ_max                         保本原长（B′_est 冷启动 = compressTargetMax）
- *   R_est  = 剩余窗口 / 每轮增量；增量取不到 ⇒ R 回落 econR（55），rSource='fallback'
+ *   R_est  = 剩余窗口 / 每轮增量；增量取不到 ⇒ R 回落 econR（60，2026-09-24 用户拍板），rSource='fallback'
  * @param B 原文字符数
  * @param pressure {usedTokens, contextWindow, source} | null（emitter.readPressure 形状）
  */
 export function birthEconomics(B, pressure, cfg = {}) {
   const d = Number.isFinite(cfg.econCacheDiscount) ? cfg.econCacheDiscount : 0.02
   const T = Number.isFinite(cfg.econTemplateChars) ? cfg.econTemplateChars : 460
-  const Rfb = Number.isFinite(cfg.econR) ? cfg.econR : 55
+  const Rfb = Number.isFinite(cfg.econR) ? cfg.econR : 60   // 用户拍板：复用轮数 R=60（原 55 为生产实测压缩间隔，凭据见 docs/AUDIT-V11.5.md）
   const perTurn = Number.isFinite(cfg.econCharsPerTurn) && cfg.econCharsPerTurn > 0 ? cfg.econCharsPerTurn : null
   const bPrime = Number.isFinite(cfg.compressTargetMax) ? cfg.compressTargetMax : 450
   if (!(B > 0)) return null
@@ -576,9 +601,24 @@ export async function birthFinish(task, deps = {}) {
 
   const disk = task.diskState
   const dist = task.distillState
-  const handle = disk && disk.ok && typeof disk.handle === 'string' && disk.handle
-    ? disk.handle
-    : (disk && disk.ok ? (task.handle || null) : null)
+  // ★★ P0-2（2026-09-24）：句柄必须**可归因**。★★
+  //   store 回给我们的句柄 = 权威（它自己写的，它自己认）；
+  //   内存预推的 task.handle = **预测**，只在读回验证给出正面证据后才允许当成句柄用。
+  //   预测错 ⇒ 原文会被换成一根读不回的地址（且无任何报错）⇒ 宁可当归档失败、保留原文。
+  let handle = null
+  let handleSource = null
+  if (disk && disk.ok) {
+    if (typeof disk.handle === 'string' && disk.handle) { handle = disk.handle; handleSource = 'store-returned' }
+    else if (task.handle) {
+      const v = await probeDerivedHandle(deps, task.handle, raw, task.sessionId)
+      if (v.ok) { handle = task.handle; handleSource = 'derived-verified'; trace('birth-handle-derived-verified', { index: task.index, handle: task.handle }) }
+      else {
+        trace('birth-handle-unverified', { index: task.index, reason: v.reason, derived: task.handle })
+        return pass('handle-unverified', null)
+      }
+    }
+  }
+  if (handle && handleSource) trace('birth-handle-source', { index: task.index, source: handleSource })
 
   // 铁律③：拿不到句柄（或写盘未落地）⇒ 绝不替换原文
   if (!handle) return pass(task.shortReason || (disk === null ? 'archive-timeout' : 'archive-failed'), null)

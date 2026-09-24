@@ -5,6 +5,60 @@
 
 ---
 
+## v11.9（2026-09-24）评估态零副作用 + 句柄读回验证
+
+**验证**：1162 通过 / 0 失败 / 1 跳过，19 套件（跳过项同前：T13 需要宿主兄弟包 `dsh-context-memory-bundle`）。
+新增回归 60 条：emitter 43（P0-1 两阶段组装 / 句柄卫生 / 三态读回验证 / 全链路零副作用）、birth 10（T34 句柄可归因）、
+robustness 7（句柄探针契约）。
+
+### P0-1 评估态零副作用（`emitter.js`）
+
+**问题**：`buildLedger` 边渲染边落盘 ⇒ `no-net-savings` / `stale-distill` / `dryRun` 三条**提前返回路径**
+都先把工具结果原文写进了 CAS 才被闸门拦下；`dryRun` 还是缺省值 ⇒ 出厂评估态就在持续污染生产 CAS 配额。
+
+- **两阶段组装**：`buildLedger({ planOnly: true })` 零 I/O 出计划 —— 该归档的项换成**与真机同长的占位句柄**
+  （`HANDLE_PLACEHOLDER` = `'art://'` + 22 位，共 28 字符，与 `deriveArtHandle` 同式）。
+  于是「闸门看到的字节数」≡「真机发射的字节数」，净收益判定整体挪到**任何一次 CAS 写入之前**。
+- `commitLedgerPlan()` 按计划顺序写真 CAS，再用**同一个** `buildLedger` 回填真句柄（渲染只有一条路径，形状不会分叉）。
+  归档失败的项原文回退内联 ⇒ 看板变长 ⇒ `runPreStepEmit` **重算闸门**（`emit-net-savings-recheck`，
+  拒绝原因 `no-net-savings-after-archive`），并在落盘后复检一次 `validatePending`。
+- **句柄卫生** `usableHandle()`：非字符串 / 空 / 带换行 / >96 字符一律**当归档失败**（原文内联）。
+  死指针是本架构唯一的静默失败模式，宁可不压也不写坏。
+- 可观测新增：`emit-archive-simulated`、`ledger-archive-commit`、`emit-net-savings-recheck`；
+  `ledger-built` 增 `toolResultItems / toolResultLens / archivePending`（逐项长度分布，用于标定
+  `maxInlineToolResultChars`）；`emit-net-savings` 增 `usedTokens / usedTokensSource / archiveMode`；
+  `emit-net-savings-result` 增 `casWrites / casWriteChars / archiveSimulated`。
+
+### P0-2 句柄读回验证（句柄是唯一会进模型上下文的地址）
+
+写成功 ≠ 读得回（跨 session 所有权校验 / 配额驱逐 / TTL / 公式漂移）。读不回 = 模型侧一根永远打不开的指针，**静默**。
+
+- **`emitter.verifyHandles()`**：发射前抽样按句柄读回（`emitHandleProbeMax`，缺省 2）。三态：
+  `true` 有正面证据能读回；`false` 有正面证据读不回；`null` 不可证（无读 API / 超时 / 抛错）。
+  **只有正面证伪才拦住发射**（`handle-unresolvable` ⇒ 保持原文）；不可证只落 trace，不误伤正常发射。
+- **birth 句柄可归因**：store 回给的句柄是权威（`store-returned`）；`task.handle`（`deriveArtHandle` 内存预推）
+  只是**预测**，必须 `deps.probeHandle` 给出正面证据（`derived-verified`）才允许当句柄用；
+  否则按 `handle-unverified` 原文放行。限时 `birthHandleProbeTimeoutMs`（缺省 800ms），超时=不可证。
+  依据：T13 的「本机推导 ≡ 兄弟包推导」等价测试在同机没有兄弟包时**整条跳过**（本机即跳过状态）。
+  调用点只在「store 说成功却没给句柄」这条罕见分支，不给主流加延迟。
+- **`plugin.mkHandleProbe()`**：读回探针。先用一根**必然不存在**的同形句柄做受控探针，确认失败信号可信，
+  才把抛错当证伪（否则读 API 签名不符会误伤所有发射）；控制结果缓存，不进常规路径。
+
+### 其他
+
+- 成本模型 `R` 回落值 **55 → 60**（2026-09-24 用户拍板；`d=0.02` 已在用）。保本原长 2,959 → **2,747**，
+  `birthMinChars` **不下调**（仍 3100）：实测 token/账单未到手前不放松闸门；运行期观测只用于校验模型假设。
+- `index.d.ts` / `README.md` / `docs/ARCHITECTURE.md` 同步新增键与两条不变式（评估态零副作用、地址必须可读回）。
+- 读取口径：净收益行的 `usedTokens` **复用**开头那次 `readPressure`，不再多读一次 `tokenMeter`
+  （字符 ≠ 钱；评估态也需要一个真 token 锚点，但绝不多花读数）。
+
+### 已知边界（诚实）
+
+- 以上全部是**本地自测**：读回探针在真机上的行为（尤其「抛错是否等价于查无此记录」）仍需小流量 A/B 用真 trace 标定；
+- 句柄读回的**成本**（每项平均读回一次 ≈ 一次全价前缀）尚未计入净收益判据，回看概率与本机分布仍缺实测。
+
+---
+
 ## v11.8（2026-09-24）整理、缺陷修复与默认值收敛
 
 **验证**：1102 通过 / 0 失败 / 1 跳过，19 套件（跳过项同前：T13 需要宿主兄弟包）。

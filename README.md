@@ -120,13 +120,15 @@ birth 模式内部再按编译模式三选一（唯一裁决点 `resolveCompileM
 | `mode` / `dryRun` | `'birth'` / `true` | 见上 |
 | `stateCompress` / `stateMemory` | `false` / `false` | 编译模式 |
 | `compressPrompt` | `'v2'` | `v1` 旧蒸馏 · `v2` 相对长度 · `v3` 绝对长度（`compressTargetMin/Max` = 250/450） |
-| `birth.minChars` | `3100` | 短于此长度不压缩（成本模型反解的保本原长 2,959 保守取整） |
+| `birth.minChars` | `3100` | 短于此长度不压缩（成本模型反解：R=60、d=0.02、B′≈450 ⇒ 保本原长 2,747，保守取整且不下调） |
 | `birth.finishWaitMs` | `1500` | finish 处收网等待上限 |
 | `birth.finishHeadersGraceMs` | `1500` | 到点时若副模型已收到 200 响应头（正在生成），再多等的上限；`0` 关 |
 | `timeoutMs` | `8000` | 副模型请求硬超时。birth 且未开迟到认领时，自动抬到 ≥ `finishWaitMs + finishHeadersGraceMs + 2000`（BOOT `configAdjusted` 留痕） |
 | `maxOutputTokens` | `850` | 恒定，不随输入放大 |
 | `distill.hedgeAfterMs` | `0`（关） | 对冲请求：N ms 内没有 200 响应头就再发一份，先回头者胜；建议 ≥ TTFB p50（约 3000） |
 | `compressSystemPrompt` | `false` | 压缩提示词拆成 system（规则前缀）+ user（原文），字节等价，便于前缀缓存命中；promptVersion 追加 `:sys` |
+| `emitHandleProbeMax` | `2` | **P0-2**：checkpoint 发射前按句柄读回抽样验证此条数；只有「正面证伪」才拦住发射（保持原文）。无读 API 的宿主自动退化为只记录 |
+| `birth.probeTimeoutMs` | `800` | **P0-2**：birth 内存预推句柄的读回验证限时；超时=不可证 ⇒ 原文放行（绝不用没验证过的地址顶替原文） |
 | `birthDeferredClaim` | `false` | **实验**：没赶上 finish 的结果进暂存区、下一轮 pre-step 认领（见「当前状态」缺陷 B）；只认显式 `true` |
 | `followHostModel` / `followHostProvider` | `true` / `true` | 副模型、端点、钥匙都跟随宿主当前对话所用的 provider；解析不出来就不发起（不猜） |
 | `trace` / `traceFile` | `true` / `$DSH_HOME/storages/cot-form-b/trace.log` | 观测 |
@@ -232,6 +234,8 @@ trace 写在 `$DSH_HOME/storages/cot-form-b/trace.log`，一行一条：`[ISO时
 ## 当前状态（诚实版）
 
 **已完成、自测覆盖**：birth 压缩主路径与四条硬约束；compress-v3；成本模型门槛（3100）与恒定输出上限（850）；
+**v11.9 评估态零副作用**（评估态不写 CAS、不改表面，且仍能算出净收益与真 token 水位）；
+**v11.9 句柄读回验证**（发射前抽样按句柄取回；birth 内存预推句柄须先验证，无证据则原文放行）；
 对冲、响应头宽限、缓存友好拆分（均可关）；配置自检；memory 模式的证据账本与有界快照；测试隔离。
 
 **只观测、未接管判定**：按剩余窗口的动态门槛（`birth-econ`）、保真度放行门槛（`identifierRecall`）、

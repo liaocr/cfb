@@ -167,7 +167,7 @@ B 的那次全价预填两边都要付（只是从主请求挪到压缩请求）
 | `timeoutMs ≥ finishWaitMs+2000` | `normalizeConfig`，仅 `mode:'birth' && birthDeferredClaim===false` | 只抬不降 | 线上 20000/12000 零变化 |
 | 空白候选硬断言 | `birthFinish` → `pass('empty-candidate')` | 新增安全闸 | 无（只会更保守） |
 | `birth-window-probe` | `birthTransform` | 纯观测 | 无 |
-| `birth-econ`（`birthEconomics` 纯函数） | `birthStart`，`deps.pressure` 接 `emitter.readPressure` | 纯观测，**不判定** | 无；`econCharsPerTurn` 未配 ⇒ R 回落 55 |
+| `birth-econ`（`birthEconomics` 纯函数） | `birthStart`，`deps.pressure` 接 `emitter.readPressure` | 纯观测，**不判定** | 无；`econCharsPerTurn` 未配 ⇒ R 回落 60（2026-09-24 用户拍板） |
 | `birth-condensed.fidelity` | `birthFinish`，复用 `rules.fidelity()` | 纯观测，**不拦截** | 无 |
 | `analyze-efficiency.mjs` `windowProbe/economics/fidelity` | 离线 | 诊断 | 无 |
 

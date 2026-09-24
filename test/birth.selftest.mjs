@@ -1091,6 +1091,74 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
   }
 }
 
+// ═══ T34 ★P0-2 句柄可归因（2026-09-24）═══
+//   命题：`deriveArtHandle()` 是**内存预推**——它的正确性押在「本机推导 ≡ 兄弟包推导」上，
+//         而 T13 那份等价测试在兄弟包不在本机时**整条跳过**（本机就是跳过状态）。
+//         公式漂移的后果是：拿一根谁也读不回的地址去登记归档，且**不会报任何错**。
+//   规则：store 回给我们的句柄 = 权威；内存预推的 = 预测，只有读回验证给出正面证据才允许当句柄用。
+//         不可证（无读 API / 超时 / 抛错）⇒ 与证伪同办：当归档失败、保留原文。
+{
+  const raw = bulkReasoning()
+  const entry = { index: 0, text: raw, end: BE(0, { type: 'reasoning', text: raw }) }
+  const base = () => ({
+    cfg: mkCfg(), sessionId: () => 's',
+    distill: async () => ({ text: SUMMARY }),
+    // 非字符串句柄 ⇒ disk.ok=true 但没有可用句柄（本机推导值沦为"预测"）
+    archive: async () => ({ handle: 'art://X' }),
+  })
+
+  // (a) 没有探针可用 ⇒ 不可证 ⇒ 原文放行，绝不用预测值顶替
+  {
+    const traces = []
+    const deps = { ...base(), trace: (t, d) => traces.push([t, d]) }
+    const task = birthStart(entry, deps)
+    ok('T34a 预推句柄已内存算好（快路仍在）', typeof task.handle === 'string' && task.handle.startsWith('art://'), String(task.handle))
+    const r = await birthFinish(task, deps)
+    ok('T34a ★ 无读回证据 ⇒ 原文放行（why=handle-unverified）', r.text === raw && r.why === 'handle-unverified', r.why)
+    const un = traces.find(([t]) => t === 'birth-handle-unverified')
+    ok('T34a ★ 不可证的原因落 trace（no-probe）', !!un && un[1].reason === 'no-probe', JSON.stringify(un && un[1]))
+  }
+  // (b) 探针正面证明能读回 ⇒ 采用预测句柄、正常应用提纯稿
+  {
+    const traces = []
+    const seen = []
+    const deps = { ...base(), trace: (t, d) => traces.push([t, d]), probeHandle: async (h, text, sid) => { seen.push([h, text.length, sid]); return true } }
+    const task = birthStart(entry, deps)
+    const r = await birthFinish(task, deps)
+    ok('T34b ★ 读回验证通过 ⇒ 采用预测句柄（提纯稿生效）', r.text === SUMMARY, String(r.text).slice(0, 60))
+    ok('T34b ★ 探针拿到的是「句柄 + 原文 + 会话」三件套', seen.length === 1 && seen[0][0] === task.handle && seen[0][1] === raw.length && seen[0][2] === 's', JSON.stringify(seen))
+    const src = traces.find(([t]) => t === 'birth-handle-source')
+    ok('T34b ★ 句柄来源可归因（derived-verified）', src && src[1].source === 'derived-verified', JSON.stringify(src && src[1]))
+  }
+  // (c) 探针正面证伪 ⇒ 原文放行
+  {
+    const traces = []
+    const deps = { ...base(), trace: (t, d) => traces.push([t, d]), probeHandle: async () => false }
+    const task = birthStart(entry, deps)
+    const r = await birthFinish(task, deps)
+    ok('T34c ★ 读回取不到 ⇒ 原文放行', r.text === raw && r.why === 'handle-unverified', r.why)
+    const un = traces.find(([t]) => t === 'birth-handle-unverified')
+    ok('T34c ★ 证伪原因落 trace（probe-unresolvable）', un && un[1].reason === 'probe-unresolvable', JSON.stringify(un && un[1]))
+  }
+  // (d) 探针卡死 ⇒ 超时护栏（不可证），绝不许拖死模型流
+  {
+    const deps = { ...base(), cfg: mkCfg({ birthHandleProbeTimeoutMs: 30 }), trace: noTrace, probeHandle: () => new Promise(() => {}) }
+    const task = birthStart(entry, deps)
+    const t0 = Date.now()
+    const r = await birthFinish(task, deps)
+    const ms = Date.now() - t0
+    ok('T34d ★ 探针挂起 ⇒ 超时即判不可证（<400ms 返回）', ms < 400 && r.text === raw, ms + 'ms / why=' + r.why)
+  }
+  // (e) store 给了真句柄 ⇒ 权威优先，根本不调探针（不给主流加延迟）
+  {
+    let probeCalls = 0
+    const deps = { ...base(), trace: noTrace, archive: async () => 'art://REAL34', probeHandle: async () => { probeCalls++; return true } }
+    const task = birthStart(entry, deps)
+    const r = await birthFinish(task, deps)
+    ok('T34e ★ store 句柄优先 ⇒ 提纯稿生效且零探针调用', r.text === SUMMARY && probeCalls === 0, 'probeCalls=' + probeCalls)
+  }
+}
+
 console.log('')
 console.log('birth.selftest: PASS=' + pass + ' FAIL=' + failn + (skipn ? ' SKIP=' + skipn : '') +
   (invariantLoaded ? '  (结构由真实 dsh-llm 不变式校验' : '  (⚠ 不变式未加载') +

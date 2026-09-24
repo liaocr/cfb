@@ -53,8 +53,8 @@ export const DEFAULTS = {
   //   低于此长度不值得归档+压缩（CAS 写盘是 async，块太小会白付 I/O 又压不动）
   // ★★ 2026-09-23 v11.6：500 → 3100（成本模型反解，见 docs/AUDIT-V11.5.md §一）★★
   //   净收益 = (R−1)·d·(B−B′) − T − 5·B′   d=0.02（缓存命中价/全价，官方价目）
-  //   v3 把 B′ 钉在 ≈450、T≈460（v3 前缀实测）、R=55（生产实测压缩间隔）：
-  //     自洽保本原长 B = 2,959 ⇒ 保守取 3,100。
+  //   v3 把 B′ 钉在 ≈450、T≈460（v3 前缀实测）、R=60（2026-09-24 用户拍板；原值 55 为生产实测压缩间隔）：
+  //     自洽保本原长 B = 2,747 ⇒ 仍保守取 3,100（门槛不下调：实测 token/账单未到手前不放松闸门）。
   //   绝对下界 B_abs = T/((R−1)·d) = 426：低于它无论压多狠都亏。旧值 500 贴着下界。
   //   最坏情况：短块不再压缩 = 宿主原生行为（已知安全态）。
   birthMinChars: 3100,
@@ -64,6 +64,9 @@ export const DEFAULTS = {
   birthProducer: 'cot-birth',
   //   CAS 写盘超时护栏：卡住就当归档失败处理（原样透传），绝不许拖死模型流
   birthArchiveTimeoutMs: 3000,
+  //   ★ P0-2：内存预推句柄的读回验证上限。只在「store 说成功但没给句柄」这条罕见分支上花这个时间；
+  //     超时 = 不可证 ⇒ 当归档失败、保留原文（绝不用一根没验证过的地址顶替原文）。
+  birthHandleProbeTimeoutMs: 800,
   // ★ 方案一（流式双轨）2026-09-18 终审锁定 —— finish 处收尾等待硬上限。
   //   块尾**不阻塞主流**：reasoning delta 实时透传、text/tool 实时透传，
   //   只有 finish 前的收网最多等这么久，到点立即熔断，放行 raw + 句柄。
@@ -208,6 +211,10 @@ export const DEFAULTS = {
   emitterMinSavingsRatio: 0.05,
   // 默认关闭；短期诊断时在实际 surface append 前后读宿主 tokenMeter，不发模型请求。
   emitterMeasureTokens: false,
+  // ★ P0-2：checkpoint 发射前抽样做几次「按句柄读回」验证（1 页）。句柄是这条路径唯一写进模型
+  //   上下文的地址，写成功 ≠ 读得回（跨 session / 配额驱逐 / 公式漂移 ⇒ 死指针，且静默）。
+  //   只有**正面证伪**才拦住发射；设 0 = 关闭抽样（无读 API 的宿主自动退化为只记录）。
+  emitHandleProbeMax: 2,
   // ★ 迟到认领：多块消息允许「已就绪块用摘要、未就绪块保留原文」的混合认领。缺省 false（保持全覆盖铁律）。
   lateClaimPartial: false,
   // 证据采集只看最后 N 个 surface 节点：**关联优先，不全文堆积**
@@ -284,6 +291,7 @@ export function normalizeConfig(config = {}) {
     if (b.handleInText !== undefined) c.birthHandleInText = b.handleInText
     if (b.producer !== undefined) c.birthProducer = b.producer
     if (b.archiveTimeoutMs !== undefined) c.birthArchiveTimeoutMs = b.archiveTimeoutMs
+    if (b.probeTimeoutMs !== undefined) c.birthHandleProbeTimeoutMs = b.probeTimeoutMs
     if (b.finishWaitMs !== undefined) c.birthFinishWaitMs = b.finishWaitMs
     if (b.minSavedChars !== undefined) c.birthMinSavedChars = b.minSavedChars
     if (b.finishHeadersGraceMs !== undefined) c.finishHeadersGraceMs = b.finishHeadersGraceMs

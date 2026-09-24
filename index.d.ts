@@ -67,6 +67,8 @@ export interface CotFormBConfig {
   maxInlineToolResultChars?: number
   staticMinRawChars?: number
   emitterProducer?: string
+  /** P0-2：checkpoint 发射前按句柄读回抽样验证的上限（缺省 2；0=关）。只有正面证伪才拦住发射 */
+  emitHandleProbeMax?: number
   birthCancelOnGiveUp?: boolean
   birthDiskWaitMs?: number
   /** false disables the ledger; current in-memory evidence is still available for compilation. */
@@ -85,15 +87,18 @@ export interface CotFormBConfig {
   birthDeferredClaim?: boolean
   /** finish 处收网等待上限（ms，缺省 1500）。birth + deferredClaim 关时 timeoutMs 至少会被抬到 本值 + finishHeadersGraceMs + 2000 */
   birthFinishWaitMs?: number
-  /** v11.6 默认 3100（成本模型自洽保本原长 2,959，见 docs/AUDIT-V11.5.md §一）。 */
+  /** v11.6 默认 3100（R=60 自洽保本原长 2,747，保守取整且不下调；见 docs/AUDIT-V11.5.md §一）。 */
   birthMinChars?: number
   /** v11.6 成本模型观测参数（只影响 birth-econ trace，不参与判定）。 */
   econCacheDiscount?: number
   econTemplateChars?: number
+  /** R 回落值（取不到每轮增量时用）。默认 60（2026-09-24 用户拍板） */
   econR?: number
   econCharsPerTurn?: number
   birthArchive?: boolean
   birthArchiveTimeoutMs?: number
+  /** P0-2：内存预推句柄（deriveArtHandle）的读回验证限时（ms，缺省 800）。超时=不可证 ⇒ 原文放行 */
+  birthHandleProbeTimeoutMs?: number
   birthMinSavedChars?: number
   /** 归档句柄是否拼进正文。默认 true */
   birthHandleInText?: boolean
@@ -103,7 +108,7 @@ export interface CotFormBConfig {
   finishHeadersGraceMs?: number
   birth?: {
     minChars?: number; archive?: boolean; handleInText?: boolean; producer?: string
-    archiveTimeoutMs?: number; finishWaitMs?: number; minSavedChars?: number
+    archiveTimeoutMs?: number; probeTimeoutMs?: number; finishWaitMs?: number; minSavedChars?: number
     finishHeadersGraceMs?: number
   }
   followHostProvider?: boolean

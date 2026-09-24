@@ -40,6 +40,53 @@ import { makePrewarmer } from './transport.js'
 // 现在改为记录**模块首次求值那一刻**从磁盘读到的 size/mtimeMs：
 //   · 网关里若是旧模块（Node ESM 缓存命中），它根本没有这段代码 ⇒ BOOT 里不会有 selfId；
 //   · 出现 selfId 且与磁盘现值逐字一致 ⇒ 新模块确实上岗，可直接 grep 复验。
+/**
+ * ★★ P0-2（2026-09-24）句柄读回探针 ★★
+ *
+ * 契约（三态，务必别把不可证当成证伪）：
+ *   true  = 有**正面证据**能按句柄取回（读到内容；内容抽样对不上也算能读回，不拦发射）
+ *   false = 有**正面证据**取不回（读 API 明确说没有这条记录，或用受控探针确认"失败信号可信"后抛错）
+ *   null  = **不可证**（宿主没提供读 API / 读 API 抛错但探针无法区分是"没记录"还是"调用方式不对"）
+ *
+ * 为什么要受控探针：若读 API 对不存在的句柄也是抛错，那"抛错"本身就是证据；但若抛错源于签名不符，
+ * 把抛错当证伪会误伤所有正常发射。所以先拿一根**必然不存在**的同形句柄试一次，确认失败信号可信。
+ * 这一步只在首次探针时做一次（结果缓存在闭包里），不进入常规路径。
+ */
+export function mkHandleProbe(ctx, trace) {
+  let control = null // null=未测；'can-fail'=失败信号可信；'cannot-fail'=无法区分
+  const readStore = () => {
+    try { return (ctx.get && ctx.get('cmbStore', false)) || null } catch { return null }
+  }
+  const controlProbe = async (store, sessionId) => {
+    if (control) return control
+    try {
+      const out = await store.readRangeByHandle('art://' + '0'.repeat(22), sessionId, 1, 1)
+      control = (out && Array.isArray(out.lines) && out.lines.length > 0) ? 'cannot-fail' : 'can-fail'
+    } catch { control = 'can-fail' }
+    return control
+  }
+  return async function probeHandle(handle, text, sessionId) {
+    const store = readStore()
+    if (!store || typeof store.readRangeByHandle !== 'function') return null
+    if (typeof handle !== 'string' || !handle) return false
+    try {
+      const out = await store.readRangeByHandle(handle, sessionId, 1, 1)
+      if (!out || !Array.isArray(out.lines) || out.lines.length === 0) return false
+      // 内容抽样：首行前 40 字符（首行不含换行 ⇒ 不受 CAS 行拼接语义影响）
+      const want = String(text || '').split('\n')[0].slice(0, 40)
+      if (want && typeof out.lines[0] === 'string' && out.lines[0].slice(0, want.length) !== want) {
+        trace('handle-probe-mismatch', { handle, wantChars: want.length })
+      }
+      return true
+    } catch (e) {
+      const c = await controlProbe(store, sessionId)
+      if (c === 'can-fail') { trace('handle-probe-reject', { handle, error: String((e && e.message) || e) }); return false }
+      trace('handle-probe-inconclusive', { handle, error: String((e && e.message) || e) })
+      return null
+    }
+  }
+}
+
 const SELF_ID = (() => {
   try { const s = fs.statSync(new URL(import.meta.url)); return s.size + '@' + Math.round(s.mtimeMs) } catch { return 'unknown' }
 })()
@@ -83,6 +130,8 @@ export function apply(ctx, config = {}) {
   // v11.8：不再给每行附 stats —— 那组计数器只在已退役的 distill 路径里递增，birth 下恒为 0。
   const trace = makeTraceWriter(cfg)
   const consumption = createConsumptionMeter(trace)
+  // ★ P0-2：句柄读回探针（birth 的预推句柄验证 + checkpoint 发射前抽样验证共用同一个）
+  const probeHandle = mkHandleProbe(ctx, trace)
 
   trace('BOOT', {
     // ★ 回滚所需版本号：关闭功能时**停止新的状态编译**，不把新格式强塞给旧解析器，
@@ -126,6 +175,8 @@ export function apply(ctx, config = {}) {
     emitterMinSavingsChars: cfg.emitterMinSavingsChars,
     emitterMinSavingsRatio: cfg.emitterMinSavingsRatio,
     emitterMeasureTokens: cfg.emitterMeasureTokens === true,
+    emitHandleProbeMax: cfg.emitHandleProbeMax,
+    birthHandleProbeTimeoutMs: cfg.birthHandleProbeTimeoutMs,
     minRawChars: cfg.minRawChars,
     earlyFire: cfg.earlyFire,
     timeoutMs: cfg.timeoutMs,
@@ -288,6 +339,7 @@ export function apply(ctx, config = {}) {
           toolTextOf: async (ev) => toolTextFromEvent(ev),
           // ★ 零等待探测：让发射器在缺省目标未就绪时回头找「更早但已就绪」的候选（机会饥饿修正）
           isReady: async (raw) => !!(peekLateMemory(bpSid, raw, claimScope) || (cfg.lateClaimPartial === true && peekLateMemoryPartial(bpSid, raw, claimScope))),
+          probeHandle,
           archive: async (text) => {
             if (!bpCmb || typeof bpCmb.putText !== 'function') return null
             try {
@@ -354,6 +406,8 @@ export function apply(ctx, config = {}) {
           },
           // 复用 emitter.js 里的唯一实现（真机形状已实测 11,802/11,802 命中）
           toolTextOf: async (ev) => toolTextFromEvent(ev),
+          // ★ P0-2：句柄是本路径唯一进模型上下文的地址 ⇒ 发射前读回抽样验证
+          probeHandle,
           archive: async (text) => {
             if (!cpCmb || typeof cpCmb.putText !== 'function') return null
             try {
@@ -467,6 +521,8 @@ export function apply(ctx, config = {}) {
         branchId: () => streamBranchId,
         // ★ v11.6 成本模型观测用：此刻物理水位（emitter.readPressure 形状）。失败返回 null，绝不抛。
         pressure: () => { try { return readPressure({ session: streamSession, ctx }) } catch { return null } },
+        // ★ P0-2：内存预推句柄只在读回验证通过后才允许当成句柄用（详见 mkHandleProbe 契约）
+        probeHandle,
         // Mirror runs outside finish; nonblocking recovery is scheduled by pre-step.
         archive: async (text, sid) => {
           const store = (ctx.get && ctx.get("cmbStore", false)) || null

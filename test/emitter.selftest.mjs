@@ -1,4 +1,5 @@
-import { toolTextFromEvent, runPreStepEmit, emitCheckpoint, buildLedger, readPressure, LEDGER_OPEN, LEDGER_CLOSE, LEDGER_PREAMBLE } from '../src/emitter.js'
+import { toolTextFromEvent, runPreStepEmit, emitCheckpoint, buildLedger, readPressure, LEDGER_OPEN, LEDGER_CLOSE, LEDGER_PREAMBLE,
+  usableHandle, commitLedgerPlan, verifyHandles, HANDLE_PLACEHOLDER, HANDLE_CHARS } from '../src/emitter.js'
 
 let pass = 0, fail = 0
 const ok = (n, c) => { if (c) { pass++ } else { fail++; console.log('  ✗ ' + n) } }
@@ -330,6 +331,158 @@ const longThink = 'y'.repeat(600)
   const { s } = mkBase()
   const r = await run(s, { toolTextOf: async () => '' })
   eq('空串算「读到了」（区别于 null）→ 放行', r.emitted, true)
+}
+
+// ══ F. P0-1 评估态零副作用 / P0-2 句柄闸门（2026-09-24）════════════════════
+//   动因：真机句柄恒为 28 字符（'art://' + base64url(HMAC)[0:22]）⇒ 计划态可用**同长占位符**，
+//   「闸门看到的字节数」≡「真机发射的字节数」⇒ 净收益判定可以整体挪到任何一次 CAS 写入之前。
+//   此前 buildLedger 边渲染边落盘：no-net-savings / stale-distill / dry-run 三条提前返回路径
+//   **都已经把原文写进了 CAS**（dryRun 还是缺省值）⇒ 评估态污染生产配额。
+{
+  const L = 'L'.repeat(500)
+  const ledgerDeps = { distilled: 'D', toolResults: [{ seq: 9, text: L }], maxInlineChars: 10 }
+  const seen = []
+  const P = await buildLedger({ ...ledgerDeps, planOnly: true, archive: async (t, m) => { seen.push(m); return 'art://REAL' } })
+  eq('P0-1 ★ planOnly ⇒ 零 CAS 写入', seen.length, 0)
+  eq('P0-1 ★ planOnly ⇒ 待写项进 slots', P.slots.length, 1)
+  ok('P0-1 ★ 文本里是占位句柄（不是裸原文）', P.text.includes(HANDLE_PLACEHOLDER) && !P.text.includes(L))
+  eq('P0-1 ★ 占位句柄与真机句柄同长', HANDLE_CHARS, 'art://'.length + 22)
+  const D = await buildLedger({ ...ledgerDeps, archive: async () => 'art://' + 'z'.repeat(22) })
+  eq('P0-1 ★ plan 与真发射的看板字节数一致（同长占位的前提）', P.text.length, D.text.length)
+  ok('P0-1 ★ 计划态也交付净收益判定所需的 archived 计数', P.archived === 1)
+}
+{
+  // commit：按 slots 顺序写真 CAS，成功后回填真句柄 —— 渲染只走一条路径，文本形状不会分叉
+  const L = 'L'.repeat(500)
+  const ledgerDeps = { distilled: 'D', toolResults: [{ seq: 9, text: L }], maxInlineChars: 10 }
+  const plan = await buildLedger({ ...ledgerDeps, planOnly: true })
+  const order = []
+  const C = await commitLedgerPlan({ plan, ledgerDeps, archive: async (t, m) => { order.push(m.slotKey); return 'art://' + 'A'.repeat(22) } })
+  eq('P0-1 ★ commit 每个待写项只写一次', order.length, 1)
+  ok('P0-1 ★ 真句柄已回填', C.text.includes('art://' + 'A'.repeat(22)) && !C.text.includes(HANDLE_PLACEHOLDER))
+  eq('P0-1 ★ 字节数与计划一致', C.text.length, plan.text.length)
+  eq('P0-1 ★ writes.ok', C.writes.ok, 1)
+  eq('P0-1 ★ written 只交真正写成功的句柄', C.written.length, 1)
+}
+{
+  // 归档失败 ⇒ 原文回退内联（信息不丢）⇒ 文本变长，调用方必须重算闸门
+  const L = 'L'.repeat(500)
+  const ledgerDeps = { distilled: 'D', toolResults: [{ seq: 9, text: L }], maxInlineChars: 10 }
+  const plan = await buildLedger({ ...ledgerDeps, planOnly: true })
+  const C = await commitLedgerPlan({ plan, ledgerDeps, archive: async () => null })
+  ok('P0-1 ★ 归档失败 ⇒ 原文回退内联', C.text.includes(L) && !C.text.includes(HANDLE_PLACEHOLDER))
+  ok('P0-1 ★ 失败后看板变长（所以必须重算净收益）', C.text.length > plan.text.length)
+  eq('P0-1 ★ writes.failed', C.writes.failed, 1)
+  eq('P0-1 ★ written 不交失败项', C.written.length, 0)
+}
+// ── 句柄卫生：坏句柄一律当归档失败（死指针是本架构唯一的静默失败模式）──
+eq('P0-2 ★ 空串句柄拒收', usableHandle(''), null)
+eq('P0-2 ★ 非字符串拒收', usableHandle({ handle: 'art://x' }), null)
+eq('P0-2 ★ 带换行的句柄拒收（会把看板行结构写坏）', usableHandle('art://a\nb'), null)
+eq('P0-2 ★ 超长句柄拒收（不是句柄，是别的东西）', usableHandle('art://' + 'a'.repeat(200)), null)
+eq('P0-2 ★ 真机形状放行', usableHandle('art://' + 'a'.repeat(22)), 'art://' + 'a'.repeat(22))
+{
+  const L = 'L'.repeat(500)
+  const ledgerDeps = { distilled: 'D', toolResults: [{ seq: 9, text: L }], maxInlineChars: 10 }
+  const plan = await buildLedger({ ...ledgerDeps, planOnly: true })
+  const C = await commitLedgerPlan({ plan, ledgerDeps, archive: async () => 'art://bad\nhandle' })
+  ok('P0-2 ★ store 返回坏句柄 ⇒ 当归档失败、原文保留', C.text.includes(L) && C.writes.ok === 0)
+}
+// ── 读回验证的三态语义（false 才拦，null 只记录）──
+{
+  const written = [{ seq: 1, handle: 'art://h1', text: 'x' }, { seq: 2, handle: 'art://h2', text: 'y' }]
+  const v1 = await verifyHandles({ written, probeHandle: async () => true, maxProbe: 2 })
+  eq('P0-2 ★ 全部可读回 ⇒ resolved', v1.verdict, 'resolved')
+  const v2 = await verifyHandles({ written, probeHandle: async () => false, maxProbe: 2 })
+  eq('P0-2 ★ 取不回 ⇒ unresolvable', v2.verdict, 'unresolvable')
+  const v3 = await verifyHandles({ written, probeHandle: async () => null, maxProbe: 2 })
+  eq('P0-2 ★ 不可证 ⇒ 只记录，不拦', v3.verdict, 'unverifiable')
+  const v4 = await verifyHandles({ written, probeHandle: async () => { throw new Error('boom') }, maxProbe: 2 })
+  eq('P0-2 ★ 探针抛错 ⇒ 不可证（不误伤正常发射）', v4.verdict, 'unverifiable')
+  const v5 = await verifyHandles({ written })
+  eq('P0-2 ★ 宿主无读 API ⇒ 无证据', v5.verdict, 'no-evidence')
+  const v6 = await verifyHandles({ written, probeHandle: async () => false, maxProbe: 1 })
+  eq('P0-2 ★ 抽样上限生效', v6.checked, 1)
+}
+
+// ── F2. 全链路：评估态零副作用 / 坏句柄不退化成死指针 ──
+// ⚠ 必须**逐行不同**：compactToolText 会折叠重复行，同文重复会被清洗成极小视图，测不到归档/回退
+const LONG_TOOL = Array.from({ length: 2000 }, (_, i) => 'tool output line ' + i + ' ' + 'x'.repeat(24)).join('\n')
+const bigEvents = () => [mkUser(1, 'do it'), mkA(2, 't'.repeat(2000), 1), mkR(3, LONG_TOOL),
+  mkUser(4, 'again'), mkA(5, 'u'.repeat(300), 0)]
+{
+  const ev = bigEvents()
+  const s = fakeSession({ events: ev })
+  const calls = []
+  const traces = []
+  const r = await run(s, {
+    cfg: { dryRun: true },
+    archive: async (text, m) => { calls.push([text, m]); return 'art://' + 'C'.repeat(22) },
+    trace: (tag, d) => { if (tag) traces.push([tag, d || {}]) },
+  })
+  eq('P0-1 ★★ 评估态不发射（dry-run）', r.reason, 'dry-run')
+  eq('P0-1 ★★ 评估态零 CAS 写入', calls.length, 0)
+  eq('P0-1 ★★ 评估态零表面改写', s.__calls.length, 0)
+  const sim = traces.find(([t]) => t === 'emit-archive-simulated')
+  ok('P0-1 ★★ 待写量仍然可观测（emit-archive-simulated）', !!sim && sim[1].pending === 1)
+  const ns = traces.find(([t]) => t === 'emit-net-savings')
+  ok('P0-1 ★★ 评估态仍能算出净收益（含待写项）', !!ns && ns[1].netSavedChars > 0 && ns[1].archiveMode === 'simulated')
+  const res = traces.find(([t]) => t === 'emit-net-savings-result')
+  ok('P0-1 ★★ 结果行如实标注「本轮零写入 / 模拟归档」', !!res && res[1].casWrites === 0 && res[1].archiveSimulated === true)
+}
+{
+  // 评估态的 token 锚点：复用开头那次 readPressure，**不多读一次 meter**（覆盖统计链的既有不变量）
+  const s = fakeSession({ events: bigEvents() })
+  const traces = []
+  await run(s, {
+    ctx: mkCtx({ measure: () => ({ usedTokens: 4242 }) }),
+    cfg: { dryRun: true },
+    archive: async () => 'art://' + 'F'.repeat(22),
+    trace: (tag, d) => traces.push([tag, d || {}]),
+  })
+  const ns = traces.filter(([t]) => t === 'emit-net-savings').pop()
+  eq('P0-1 ★★ 评估态仍拿得到真 token 水位（不是字符估算）', ns[1].usedTokens, 4242)
+  eq('P0-1 ★★ 并标明来源 meter', ns[1].usedTokensSource, 'meter')
+}
+{
+  const ev = bigEvents()
+  const s = fakeSession({ events: ev })
+  const calls = []
+  const r = await run(s, {
+    cfg: { dryRun: false, emitHandleProbeMax: 2 },
+    archive: async (text, m) => { calls.push([text, m]); return 'art://' + 'D'.repeat(22) },
+    probeHandle: async () => false,
+  })
+  eq('P0-2 ★★ 句柄正面证伪 ⇒ 拒发（不写死指针）', r.reason, 'handle-unresolvable')
+  eq('P0-2 ★★ 且零表面改写', s.__calls.length, 0)
+  eq('P0-2 ★★ 拒发发生在写盘之后（写成功≠读得回）', calls.length, 1)
+}
+{
+  const ev = bigEvents()
+  const s = fakeSession({ events: ev })
+  const calls = []
+  const probes = []
+  const r = await run(s, {
+    cfg: { dryRun: false, emitHandleProbeMax: 2 },
+    archive: async (text, m) => { calls.push([text, m]); return 'art://' + 'E'.repeat(22) },
+    probeHandle: async (h) => { probes.push(h); return true },
+  })
+  eq('P0-2 ★★ 读回验证通过 ⇒ 发射', r.emitted, true)
+  eq('P0-2 ★★ 探针拿到的是写进看板的那根句柄', probes[0], 'art://' + 'E'.repeat(22))
+  const u = s.__calls.find((c) => c.type === 'user/message')
+  ok('P0-2 ★★ 看板里只有句柄、没有整块工具原文', u.data.content[0].text.includes('art://' + 'E'.repeat(22)) && !u.data.content[0].text.includes(LONG_TOOL))
+}
+{
+  // store 回了一个带换行的句柄 ⇒ 当归档失败 ⇒ 原文内联 ⇒ 闸门如实拒绝（宁可不做，也不写坏表面/写死指针）
+  const ev = bigEvents()
+  const s = fakeSession({ events: ev })
+  const r = await run(s, {
+    cfg: { dryRun: false },
+    archive: async () => 'art://bad\nhandle',
+    probeHandle: async () => true,
+  })
+  eq('P0-2 ★★ 坏句柄 ⇒ 不回退成死指针（拒发或原文内联）', r.emitted, false)
+  eq('P0-2 ★★ 且零表面改写', s.__calls.length, 0)
 }
 
 console.log('emitter.js 自测：' + pass + ' 通过 / ' + fail + ' 失败')

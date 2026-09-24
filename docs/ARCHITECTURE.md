@@ -1,4 +1,4 @@
-# 架构（v11.8，开发者视角）
+# 架构（v11.9，开发者视角）
 
 > 面向改代码的人：模块怎么分、数据怎么流、哪些不变式不能碰、加东西该改哪里。
 > 使用与配置见根目录 [`README.md`](../README.md)；设计沿革见 [`CHANGELOG.md`](../CHANGELOG.md) 与 [`archive/`](archive/README.md)。
@@ -107,6 +107,11 @@ CAS（原文归档）不在这里：它是宿主注入的 `cmbStore` 服务（`c
 4. **不猜**：模型名、端点、钥匙都跟随宿主；解析不出来就不发起，绝不回落到写死的值。
 5. **时间截面冻结**：证据信封在 block-end 那一刻固定（`adaptEvidence` 冻结对象），之后不补入后来才发生的事实。
 6. **字符 ≠ 钱**：trace 里的字符数只描述上下文余量，不得当作费用节省汇报。
+7. **评估态零副作用**（v11.9）：`dryRun` 下不写 CAS、不改表面。组装先出计划
+   （`buildLedger({planOnly:true})`，占位句柄与真机同长），净收益/stale/评估三道闸门全跑在**任何一次写入之前**。
+8. **地址必须可读回**（v11.9）：`art://` 句柄只在「有正面证据能按句柄取回」时才允许进模型可见文本。
+   emitter 发射前抽样验证（`verifyHandles`，正面证伪 ⇒ 拒发保持原文）；birth 的内存预推句柄须先验证，
+   不可证即按归档失败处理（原文放行）。
 
 ## 5. 改哪里
 
@@ -130,8 +135,8 @@ CAS（原文归档）不在这里：它是宿主注入的 `cmbStore` 服务（`c
 | state-memory | 信封、编译提示词、解析、投影、渲染、来源判定 |
 | provider-endpoint | 端点解析 |
 | core | 配置归一化、提示词、传输层、副模型调用、迟到暂存、回归钉子 |
-| birth | birth 主路径（含真实 dsh-llm 不变式校验，找不到宿主安装时用替身并 WARN） |
+| birth | birth 主路径（含真实 dsh-llm 不变式校验，找不到宿主安装时用替身并 WARN）、句柄可归因（T34） |
 | optimization / memory-quality / snapshot-invariants | 快照与记忆质量、覆盖不变式 |
-| robustness | 失败语义、CAS 读取与恢复、退役开关不生效、传输层错误形态、trace 审计器 |
+| robustness | 失败语义、CAS 读取与恢复、退役开关不生效、传输层错误形态、trace 审计器、句柄读回探针契约 |
 | late-identity / hybrid / grounding / evidence-sharing / efficiency / coverage-provenance | 迟到认领身份、确定性账本、证据共享、效率观测、覆盖与来源 |
 | hedge | 对冲与响应头宽限（本机 HTTP 可控延迟） |

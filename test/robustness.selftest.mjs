@@ -178,6 +178,59 @@ try {
     assert.equal(config.stateMemory, true)
   })
 
+
+// ══ 句柄读回探针（P0-2，2026-09-24）══════════════════════════════════════════
+//   契约三态：true=有正面证据能读回；false=有正面证据读不回；null=不可证（不拦发射）。
+//   关键设计：先用一根**必然不存在**的同形句柄做受控探针，确认"失败信号可信"，
+//   否则读 API 抛错究竟意味着"没这条记录"还是"我调用方式不对"无从区分 ⇒ 误伤所有正常发射。
+{
+  const { mkHandleProbe } = await import('../src/plugin.js')
+  const silent = () => {}
+  const mk = (store) => mkHandleProbe({ get: (k) => (k === 'cmbStore' ? store : null) }, silent)
+
+  await test('句柄探针：无读 API ⇒ null（不可证，不拦）', async () => {
+    const probe = mk({ putText: async () => ({ handle: 'art://x' }) })
+    assert.equal(await probe('art://h', 'text', 's'), null)
+  })
+
+  await test('句柄探针：读得到内容 ⇒ true', async () => {
+    const probe = mk({ readRangeByHandle: async (h) => ({ lines: ['hello world'], atEof: true }) })
+    assert.equal(await probe('art://h', 'hello world and more', 's'), true)
+  })
+
+  await test('句柄探针：查无此记录（返回空页）⇒ false', async () => {
+    const probe = mk({ readRangeByHandle: async () => ({ lines: [], atEof: true }) })
+    assert.equal(await probe('art://h', 'x', 's'), false)
+  })
+
+  await test('句柄探针：受控探针确认失败信号可信后，抛错 = 证伪 ⇒ false', async () => {
+    const probe = mk({ readRangeByHandle: async (h) => { throw new Error('resolve-owner-mismatch') } })
+    assert.equal(await probe('art://h', 'x', 's'), false)
+  })
+
+  await test('句柄探针：连"必然不存在的句柄"都读得到 ⇒ 抛错不可信 ⇒ null（不误伤）', async () => {
+    const probe = mk({ readRangeByHandle: async () => ({ lines: ['anything'], atEof: true }) })
+    assert.equal(await probe('art://real', 'x', 's'), true)   // 直接读成功
+    const probe2 = mk({ readRangeByHandle: async (h) => {
+      if (h === 'art://' + '0'.repeat(22)) return { lines: ['impossible'], atEof: true }
+      throw new Error('boom')
+    } })
+    assert.equal(await probe2('art://real', 'x', 's'), null)
+  })
+
+  await test('句柄探针：读 API 抛错且会话 id 与归档同源（跨 session 所有权校验）', async () => {
+    const seen = []
+    const probe = mk({ readRangeByHandle: async (h, sid) => { seen.push(sid); return { lines: ['a'], atEof: true } } })
+    await probe('art://h', 'abc', 'sess-9')
+    assert.equal(seen.every((sid) => sid === 'sess-9'), true, JSON.stringify(seen))
+  })
+
+  await test('句柄探针：store 服务缺失/ctx.get 抛错 ⇒ 不向外抛', async () => {
+    const probe = mkHandleProbe({ get: () => { throw new Error('no service') } }, silent)
+    assert.equal(await probe('art://h', 'x', 's'), null)
+  })
+}
+
 } finally {
   if (server) { server.closeAllConnections(); await new Promise(r => server.close(r)) }
   if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome

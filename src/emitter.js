@@ -207,10 +207,45 @@ export function countSpanSourceChars(events, span) {
   return total
 }
 
+/**
+ * ★★ 2026-09-24 两阶段组装（评估态零副作用）★★
+ *
+ * 真机句柄恒为 28 字符：`'art://' + base64url(HMAC-SHA256)[0:22]`（与 birth.js:deriveArtHandle 同式）。
+ * 计划态用**同长占位符** ⇒ 「闸门看到的字节数」≡「真机发射的字节数」，于是净收益判定可以整体
+ * 挪到任何一次 CAS 写入之前。此前 buildLedger 边渲染边落盘 ⇒ no-net-savings / stale-distill /
+ * dry-run 三条提前返回路径**都已经把原文写进了 CAS**，白白吃配额（dryRun 还是缺省值）。
+ */
+export const HANDLE_PLACEHOLDER = 'art://' + 'x'.repeat(22)
+export const HANDLE_CHARS = HANDLE_PLACEHOLDER.length
+
+/**
+ * 句柄要安全地待在**单行**模型文本里。非字符串 / 空 / 带换行 / 长到不像句柄 ⇒ 一律当归档失败。
+ * ⚠ 悬空句柄是这套架构唯一的静默失败模式：原文已被 replace 遮蔽，而文本里的地址谁也读不回。
+ *   所以宁可回退内联（信息不丢），也绝不把 store 返回的任意值写进原文位。
+ */
+export function usableHandle(h) {
+  return typeof h === 'string' && h.length > 0 && h.length <= 96 && !/[\r\n]/.test(h) ? h : null
+}
+
+const handleLine = (label, seq, text, handle) =>
+  '[' + label + ' seq=' + seq + ' · ' + text.length + ' 字符 · 原文 ' + handle + ']'
+
+/** 会话 id 的读取口径（archive 与读回验证必须**严格同源**，否则宿主所有权校验会拒发）。 */
+function sessionIdOf(session) {
+  if (!session || typeof session !== 'object') return null
+  return session.id || session.sessionId || null
+}
+
+/**
+ * ④′ 混合组装。`planOnly: true` ⇒ 零 I/O：该归档的项换成同长占位句柄，待写项记进 `slots`。
+ * 真机发射前用 commitLedgerPlan() 按 slots 落盘并回填真句柄。
+ */
 export async function buildLedger(deps) {
   const { distilled, toolResults = [], maxInlineChars = 2000, archive, trace, cleanView, carry } = deps
+  const planOnly = deps.planOnly === true
   const maxCarryChars = Number.isFinite(deps.maxCarryChars) && deps.maxCarryChars >= 0 ? deps.maxCarryChars : 3000
   const parts = [String(distilled == null ? '' : distilled).trim()]
+  const slots = []
   let inlined = 0, archived = 0, archiveFailed = 0, viewSaved = 0
   let carryChars = 0, carryInlineChars = 0, carryOverflow = false
   let carryBudgetOverflow = 0, carryItemOversize = 0
@@ -235,9 +270,12 @@ export async function buildLedger(deps) {
       carryOverflow = true
       if (itemOversize) carryItemOversize++
       if (budgetExceeded) carryBudgetOverflow++
+      if (planOnly) { parts.push(handleLine(label, item.seq, text, HANDLE_PLACEHOLDER)); slots.push({ slotKey: slots.length, seq: item.seq, kind: label, text }); archived++; continue }
       let handle = null
-      if (typeof archive === 'function') { try { handle = await archive(text, { seq: item.seq, chars: text.length, kind: label }) } catch { handle = null } }
-      if (handle) { parts.push('[' + label + ' seq=' + item.seq + ' · ' + text.length + ' 字符 · 原文 ' + handle + ']'); archived++ }
+      if (typeof archive === 'function') {
+        try { handle = usableHandle(await archive(text, { seq: item.seq, chars: text.length, kind: label, slotKey: slots.length })) } catch { handle = null }
+      }
+      if (handle) { parts.push(handleLine(label, item.seq, text, handle)); archived++ }
       else { parts.push('[' + label + ' seq=' + item.seq + ']\n' + text); archiveFailed++; carryInlineChars += text.length }
     }
   }
@@ -258,13 +296,19 @@ export async function buildLedger(deps) {
       inlined++
       continue
     }
+    if (planOnly) {
+      parts.push(handleLine('工具结果', tr.seq, text, HANDLE_PLACEHOLDER))
+      slots.push({ slotKey: slots.length, seq: tr.seq, kind: null, text })
+      archived++
+      continue
+    }
     let handle = null
     // ⚠ 归档用原文（text），绝不用清洗后的视图
     if (typeof archive === 'function') {
-      try { handle = await archive(text, { seq: tr.seq, chars: text.length }) } catch { handle = null }
+      try { handle = usableHandle(await archive(text, { seq: tr.seq, chars: text.length, slotKey: slots.length })) } catch { handle = null }
     }
     if (handle) {
-      parts.push('[工具结果 seq=' + tr.seq + ' · ' + text.length + ' 字符 · 原文 ' + handle + ']')
+      parts.push(handleLine('工具结果', tr.seq, text, handle))
       archived++
     } else {
       // 归档失败 ⇒ 原文内联（信息不丢铁律），但仍走视图清洗
@@ -277,10 +321,87 @@ export async function buildLedger(deps) {
   // 合闸判据：连续若干轮 ledger-imperative 的 verdict=clean 之前，不带电。
   const imp = verdictOf(body)
   if (typeof trace === 'function') {
-    trace('ledger-built', { inlined, archived, archiveFailed, chars: body.length, ledgerChars: body.length, distilledChars: String(distilled == null ? '' : distilled).trim().length, toolResultChars: toolResults.reduce((n, x) => n + String(x && x.text != null ? x.text : '').length, 0), summaryFirst: true, viewSaved, carryChars, carryInlineChars, carryOverflow, carryBudgetOverflow, carryItemOversize, maxCarryChars })
+    // ★ toolResultLens：逐项长度分布（升序，最多留 32 项）。没有它，maxInlineToolResultChars
+    //   这个门槛就只能拍脑袋 —— 原先只有总和，看不出「2000 以下 vs 以上」各有多少项。
+    const lens = toolResults.map((x) => String(x && x.text != null ? x.text : '').length).sort((a, b) => a - b)
+    trace('ledger-built', { inlined, archived, archiveFailed, chars: body.length, ledgerChars: body.length, distilledChars: String(distilled == null ? '' : distilled).trim().length, toolResultChars: toolResults.reduce((n, x) => n + String(x && x.text != null ? x.text : '').length, 0), toolResultItems: toolResults.length, toolResultLens: lens.slice(0, 32).join(','), toolResultLensTruncated: lens.length > 32, archivePending: slots.length, planOnly, summaryFirst: true, viewSaved, carryChars, carryInlineChars, carryOverflow, carryBudgetOverflow, carryItemOversize, maxCarryChars })
     trace('ledger-imperative', { verdict: imp.verdict, count: imp.count, ids: imp.ids.join(',') })
   }
-  return { text: body, inlined, archived, archiveFailed }
+  return { text: body, inlined, archived, archiveFailed, slots, planOnly }
+}
+
+/**
+ * 把计划落成现实：按 slots **顺序**写 CAS，成功后用真句柄重渲染一次。
+ *
+ * 只有一遍渲染逻辑（仍由 buildLedger 负责），所以回填靠"注入查表式 archive"完成 ——
+ * 渲染路径与真机逐字一致，绝不会在计划态和发射态之间出现两种文本形状。
+ *
+ * ★ 重渲染后文本可能变长（某个写入失败 ⇒ 该项回退内联原文）⇒ 调用方【必须】重算净收益再决定发射。
+ * @param deps { plan, ledgerDeps, archive, trace }
+ */
+export async function commitLedgerPlan(deps) {
+  const { plan, ledgerDeps, archive, trace } = deps
+  const slots = (plan && plan.slots) || []
+  if (slots.length === 0) return { ...plan, writes: { pending: 0, ok: 0, failed: 0, chars: 0 } }
+  const handles = new Map()
+  let wroteChars = 0
+  for (const s of slots) {
+    let h = null
+    if (typeof archive === 'function') {
+      try { h = usableHandle(await archive(s.text, { seq: s.seq, chars: s.text.length, kind: s.kind, slotKey: s.slotKey })) } catch (e) { h = null }
+    }
+    if (h) { handles.set(s.slotKey, h); wroteChars += s.text.length }
+  }
+  const failed = slots.length - handles.size
+  if (typeof trace === 'function') trace('ledger-archive-commit', { pending: slots.length, ok: handles.size, failed, wroteChars })
+  const rebuilt = await buildLedger({
+    ...ledgerDeps,
+    planOnly: false,
+    archive: async (text, meta) => {
+      const k = meta && meta.slotKey
+      return k != null && handles.has(k) ? handles.get(k) : null
+    },
+  })
+  // 供发射前的读回验证：只交出**真正写成功**的那些句柄（失败的项已回退内联，没有地址可验）
+  const written = slots.filter((s) => handles.has(s.slotKey)).map((s) => ({ seq: s.seq, kind: s.kind, handle: handles.get(s.slotKey), text: s.text }))
+  return { ...rebuilt, written, writes: { pending: slots.length, ok: handles.size, failed, chars: wroteChars } }
+}
+
+/**
+ * ★★ P0-2 句柄读回验证（发射前）★★
+ *
+ * 为什么必须验：句柄是本架构里**唯一**会进模型上下文的地址（`[工具结果 seq=N · X 字符 · 原文 art://…]`），
+ * 而"写成功"不等于"读得回"——三者都会让它变成死指针：
+ *   ① 跨 session（宿主所有权校验 resolve-owner-mismatch）；
+ *   ② 配额驱逐 / TTL 过期（总 256MB、单作用域 64MB、retention:'session'）；
+ *   ③ 公式漂移（store 换了派生方式，写进去的地址和文本里的地址不是一个东西）。
+ * 死指针在模型侧表现为"照着地址取回，什么都没有"——静默、且无从归因。
+ *
+ * 判据（保守）：只有**正面证伪**（探针明确说"取不回"）才拦住发射；探针缺席/抛错 = 不可证 ⇒ 只记录。
+ * 因为"拦"的代价是保持原文（安全但白花钱），"放"的代价是死指针（静默失效），所以不可证时不冒险拦。
+ *
+ * @returns {{ checked, resolved, unresolved, unverifiable, verdict }}
+ */
+export async function verifyHandles(deps) {
+  const { written = [], probeHandle, sessionId, trace, traceTag = 'emit-handle-verify' } = deps
+  const maxProbe = Number.isFinite(deps.maxProbe) ? Math.max(0, deps.maxProbe) : 2
+  const list = written.slice(0, maxProbe)
+  const out = { checked: 0, resolved: 0, unresolved: 0, unverifiable: 0, verdict: 'no-evidence', handles: [] }
+  if (typeof probeHandle !== 'function') {
+    if (typeof trace === 'function') trace(traceTag, { ...out, reason: 'no-read-api', pending: written.length })
+    return out
+  }
+  for (const w of list) {
+    out.checked++
+    let r
+    try { r = await probeHandle(w.handle, w.text, sessionId) } catch { r = null }
+    if (r === true) out.resolved++
+    else if (r === false) { out.unresolved++; out.handles.push(w.handle) }
+    else out.unverifiable++
+  }
+  out.verdict = out.unresolved > 0 ? 'unresolvable' : out.resolved > 0 ? 'resolved' : 'unverifiable'
+  if (typeof trace === 'function') trace(traceTag, { ...out, pending: written.length, maxProbe })
+  return out
 }
 
 /**
@@ -485,7 +606,10 @@ export async function runPreStepEmit(deps) {
     const surfaceChars = typeof session.surfaceChars === 'number' ? session.surfaceChars : undefined
     const pressure = readPressure({ session, ctx, surfaceChars })
     const minChars = minRawCharsFor(pressure.usedTokens, pressure.contextWindow, { staticMinRawChars: cfg.staticMinRawChars })
-    t('emit-gate', { rawChars: raw.length, minChars, band: bandNameFor(minChars), pressureSource: pressure.source })
+    t('emit-gate', { rawChars: raw.length, minChars, band: bandNameFor(minChars), pressureSource: pressure.source,
+      // ★ 真 token 锚点（host-token-meter 来源时）：字符/账单换算与 A/B 对照全靠它，别只留 pressureSource
+      ...(Number.isFinite(pressure.usedTokens) ? { usedTokens: pressure.usedTokens } : {}),
+      ...(Number.isFinite(pressure.contextWindow) ? { contextWindow: pressure.contextWindow } : {}) })
     if (raw.length < minChars) { t('emit-below-threshold'); return { emitted: false, reason: 'below-threshold' } }
 
     // ④ 伴生提纯收网（未就绪即保持原文；宽限由调用方在 pre-step 处用 waitMs 控制）
@@ -519,10 +643,14 @@ export async function runPreStepEmit(deps) {
     const carry = collectSpanCarry(events, span, { pluginName: cfg.pluginName || 'cot-form-b', targetSeq: last.seq })
     if (!carry) { t('emit-span-unreadable'); return { emitted: false, reason: 'span-unreadable' } }
     t('emit-carry', { boards: carry.boards.length, reasoning: carry.reasoning.length, userInputs: carry.userInputs.length, answers: carry.answers.length, calls: carry.calls.length })
-    const ledger = await buildLedger({
+    // ★★ 2026-09-24 两阶段组装：先零 I/O 出计划 ⇒ 所有闸门都跑在任何 CAS 写入之前。★★
+    //   占位句柄与真句柄同长（HANDLE_CHARS=28），所以计划态的字节数就是发射态的字节数；
+    //   「净收益不足 ⇒ 保持原文」这条判定从此不再需要先写一份永远不会被引用的 CAS 条目。
+    const ledgerDeps = {
       distilled: pending.text, toolResults, carry,
       maxInlineChars: cfg.maxInlineToolResultChars, maxCarryChars: cfg.maxCarryChars, archive, trace: t,
-    })
+    }
+    const plan = await buildLedger({ ...ledgerDeps, planOnly: true })
     // Never replace with a board that is larger or only trivially smaller than the text it hides.
     // On failure the original surface remains verbatim; no source text is discarded.
     const spanSourceChars = countSpanSourceChars(events, span)
@@ -532,21 +660,74 @@ export async function runPreStepEmit(deps) {
     const sourceEstimateFallback = sourceChars > spanSourceChars
     const minSavedChars = Math.max(Number.isFinite(cfg.emitterMinSavingsChars) ? cfg.emitterMinSavingsChars : 100,
       Math.ceil(sourceChars * (Number.isFinite(cfg.emitterMinSavingsRatio) ? cfg.emitterMinSavingsRatio : 0.05)))
-    const netSavedChars = sourceChars - ledger.text.length
-    t('emit-net-savings', { sourceChars, spanSourceChars, sourceEstimateFallback, ledgerChars: ledger.text.length, netSavedChars, minSavedChars, sourceUnit: 'chars-not-tokenizer-tokens' })
+    let netSavedChars = sourceChars - plan.text.length
+    // 会话级 token 水位：复用本函数开头那次 readPressure 的读数（**不再多读一次** meter）。
+    //   字符数不能当账单依据，这一行是把「字符节省」与「真 token」对上的唯一锚点。
+    t('emit-net-savings', {
+      sourceChars, spanSourceChars, sourceEstimateFallback, ledgerChars: plan.text.length, netSavedChars, minSavedChars,
+      sourceUnit: 'chars-not-tokenizer-tokens', archivePending: plan.slots.length,
+      archiveMode: cfg.dryRun === true ? 'simulated' : 'planned',
+      ...(Number.isFinite(pressure.usedTokens) ? { usedTokens: pressure.usedTokens } : {}), usedTokensSource: pressure.source,
+    })
     if (sourceChars > 0 && netSavedChars < minSavedChars) {
-      t('emit-no-net-savings', { sourceChars, ledgerChars: ledger.text.length, netSavedChars, minSavedChars })
-      t('emit-net-savings-result', { stage: 'gate', emitted: false, reason: 'no-net-savings', sourceChars, ledgerChars: ledger.text.length, netSavedChars })
-      return { emitted: false, reason: 'no-net-savings', sourceChars, ledgerChars: ledger.text.length, netSavedChars }
+      t('emit-no-net-savings', { sourceChars, ledgerChars: plan.text.length, netSavedChars, minSavedChars, archivePending: plan.slots.length, casWrites: 0 })
+      t('emit-net-savings-result', { stage: 'gate', emitted: false, reason: 'no-net-savings', sourceChars, ledgerChars: plan.text.length, netSavedChars, casWrites: 0 })
+      return { emitted: false, reason: 'no-net-savings', sourceChars, ledgerChars: plan.text.length, netSavedChars }
     }
 
     if (typeof deps.validatePending === 'function' && !deps.validatePending()) {
       t('emit-stale-distill')
-      t('emit-net-savings-result', { stage: 'pre-emit', emitted: false, reason: 'stale-distill', sourceChars, ledgerChars: ledger.text.length, netSavedChars })
+      t('emit-net-savings-result', { stage: 'pre-emit', emitted: false, reason: 'stale-distill', sourceChars, ledgerChars: plan.text.length, netSavedChars, casWrites: 0 })
       return { emitted: false, reason: 'stale-distill' }
     }
+
+    // ★ 评估态（dryRun）连 CAS 都不碰：零配额消耗、零表面改写，而量出来的 ledgerChars
+    //   与合闸后一致（同长占位句柄）。emitCheckpoint 仍会在最后拒绝 append。
+    let ledger = plan
+    let writes = { pending: plan.slots.length, ok: 0, failed: 0, chars: 0, simulated: true }
+    if (cfg.dryRun === true) {
+      t('emit-archive-simulated', {
+        pending: plan.slots.length, pendingChars: plan.slots.reduce((n, x) => n + x.text.length, 0),
+        note: 'dry-run: no CAS write, no surface change',
+      })
+    } else {
+      ledger = await commitLedgerPlan({ plan, ledgerDeps, archive, trace: t })
+      writes = { ...(ledger.writes || {}), simulated: false }
+      // 有项归档失败 ⇒ 原文被内联回来、账变胖。必须重算闸门，否则等于拿计划态的"看着省"当真机收益。
+      if (ledger.text.length > plan.text.length) {
+        const netAfterArchive = sourceChars - ledger.text.length
+        t('emit-net-savings-recheck', { ledgerCharsBefore: plan.text.length, ledgerChars: ledger.text.length, netSavedChars: netAfterArchive, minSavedChars })
+        if (sourceChars > 0 && netAfterArchive < minSavedChars) {
+          t('emit-net-savings-result', { stage: 'post-archive', emitted: false, reason: 'no-net-savings-after-archive', sourceChars, ledgerChars: ledger.text.length, netSavedChars: netAfterArchive, casWrites: writes.ok })
+          return { emitted: false, reason: 'no-net-savings-after-archive', sourceChars, ledgerChars: ledger.text.length, netSavedChars: netAfterArchive }
+        }
+        netSavedChars = netAfterArchive
+      }
+      // 落盘是异步的 ⇒ 发射前再确认一次提纯/表面没漂（CAS 可能已写，但表面绝不写坏）
+      if (typeof deps.validatePending === 'function' && !deps.validatePending()) {
+        t('emit-stale-distill', { stage: 'post-archive', casWrites: writes.ok })
+        t('emit-net-savings-result', { stage: 'post-archive', emitted: false, reason: 'stale-distill', sourceChars, ledgerChars: ledger.text.length, netSavedChars, casWrites: writes.ok })
+        return { emitted: false, reason: 'stale-distill' }
+      }
+      // ★★ P0-2：句柄是本路径唯一会写进模型上下文的地址 ⇒ 发射前读回验证一次。★★
+      //   正面证伪（取不回）才拦住发射；探针缺席/抛错 = 不可证 ⇒ 只落 trace，不拦。
+      if (Array.isArray(ledger.written) && ledger.written.length > 0) {
+        const v = await verifyHandles({
+          written: ledger.written, probeHandle: deps.probeHandle, sessionId: sessionIdOf(session),
+          maxProbe: cfg.emitHandleProbeMax, trace: t,
+        })
+        if (v.verdict === 'unresolvable') {
+          t('emit-net-savings-result', { stage: 'handle-verify', emitted: false, reason: 'handle-unresolvable',
+            casWrites: writes.ok, handleChecked: v.checked, handleUnresolved: v.unresolved })
+          return { emitted: false, reason: 'handle-unresolvable' }
+        }
+      }
+    }
+
     // Optional, read-only canary. The host token meter is sampled around the actual surface append;
     // disabled by default so no extra measurement work is added to normal turns.
+    // ⚠ dryRun 下**这项前后差没有意义**（压根没有 append），所以仍然关掉；
+    //   但 emit-gate / emit-net-savings 里的会话级 usedTokens 是只读采样，评估态照样有 token 锚点。
     const shouldMeasureTokens = cfg.emitterMeasureTokens === true && cfg.dryRun !== true
     const tokenBefore = shouldMeasureTokens ? tokenMeterSample() : null
     // ⑤ 合规发射
@@ -561,6 +742,8 @@ export async function runPreStepEmit(deps) {
     t('emit-net-savings-result', {
       stage: 'emit', emitted: !!emitted.emitted, reason: emitted.reason || null,
       sourceChars, ledgerChars: ledger.text.length, netSavedChars,
+      // ★ 配额与副作用可见性：这一轮到底往 CAS 写了几条、多少字符；simulated ⇒ 一条都没写。
+      casWrites: writes.ok, casWriteChars: writes.chars, archiveSimulated: writes.simulated === true,
       ...(tokenBefore ? { tokenMeterBefore: tokenBefore.tokens, tokenMeterAfter: tokenAfter.tokens,
         measuredSurfaceTokenDelta: tokenDelta, tokenMeterSource: tokenBefore.source === tokenAfter.source ? tokenBefore.source : 'mixed' } : { tokenMeterSource: 'disabled' }),
     })

@@ -711,14 +711,14 @@ async function test22() {
 console.log('\n【23】v11.6 成本模型与门槛（2026-09-23，docs/AUDIT-V11.5.md §一）')
 {
   // 默认值锁定
-  eq('23.1 ★ birthMinChars = 3100（自洽保本原长 2,959 保守取整）', DEFAULTS.birthMinChars, 3100)
+  eq('23.1 ★ birthMinChars = 3100（R=60 自洽保本原长 2,747，保守取整且不下调）', DEFAULTS.birthMinChars, 3100)
   eq('23.2 ★ maxOutputTokens = 850（v3 目标 450 字符 ×2 安全系数，恒定不随输入放大）', DEFAULTS.maxOutputTokens, 850)
   // 成本模型纯函数
   const e0 = birthEconomics(3100, null, {})
-  ok('23.3 R 取不到 ⇒ 回落 55 且标 fallback', e0.R === 55 && e0.rSource === 'fallback', e0)
-  eq('23.4 绝对下界 B_abs = ceil(460 / (54×0.02)) = 426', e0.bAbs, 426)
-  ok('23.5 默认门槛 3100 在 R=55 下 verdict=ok 且 bMin ≤ 3100', e0.verdict === 'ok' && e0.bMin <= 3100, e0)
-  ok('23.6 旧门槛 500 在 R=55 下必亏（below-min，netAtTarget<0）', birthEconomics(500, null, {}).verdict === 'below-min' && birthEconomics(500, null, {}).netAtTarget < 0)
+  ok('23.3 R 取不到 ⇒ 回落 60（用户拍板值）且标 fallback', e0.R === 60 && e0.rSource === 'fallback', e0)
+  eq('23.4 绝对下界 B_abs = ceil(460 / (59×0.02)) = 390', e0.bAbs, 390)
+  ok('23.5 默认门槛 3100 在 R=60 下 verdict=ok 且 bMin ≤ 3100', e0.verdict === 'ok' && e0.bMin <= 3100, e0)
+  ok('23.6 旧门槛 500 在 R=60 下必亏（below-min，netAtTarget<0）', birthEconomics(500, null, {}).verdict === 'below-min' && birthEconomics(500, null, {}).netAtTarget < 0)
   ok('23.7 低于绝对下界 ⇒ below-abs', birthEconomics(300, null, {}).verdict === 'below-abs')
   const e1 = birthEconomics(5000, { usedTokens: 100000, contextWindow: 128000, source: 'meter' }, { econCharsPerTurn: 4000 })
   ok('23.8 有水位 + 每轮增量 ⇒ R 由剩余窗口估出（28）且 rSource=meter', e1.R === 28 && e1.rSource === 'meter', e1)
