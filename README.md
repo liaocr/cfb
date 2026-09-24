@@ -267,7 +267,7 @@ node deploy/onboard.mjs         # 必须报 drift 0
 | `stateStructuralFirst: false` | 关闭跨窗口结构节点检索（**当前默认已是 false**） |
 | `birthDeferredClaim: false` | 关闭下轮认领（迟到结果直接丢弃） |
 | `birthArchive: false` | 关闭 CAS 归档 |
-| `finishWaitMs: 6000` | 回到旧的长等待 |
+| `birth: { finishWaitMs: 6000 }` | 回到旧的长等待（扁平 `finishWaitMs` 不生效，只认 `birth.finishWaitMs` / `birthFinishWaitMs`） |
 | `mode: 'off'` | 整体停用 |
 
 ---

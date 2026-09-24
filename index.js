@@ -83,7 +83,7 @@ export { normalizeEvidenceEvent, assembleEvidence } from './state-memory.js'
 const SELF_ID = (() => {
   try { const s = fs.statSync(new URL(import.meta.url)); return s.size + '@' + Math.round(s.mtimeMs) } catch { return 'unknown' }
 })()
-const DEP_ID = ['emitter.js', 'imperative.js', 'balanced-span.js', 'headroom.js', 'rules.js', 'state-memory.js', 'snapshot-store.js', 'compile-lane.js', 'evidence-views.js', 'evidence-ledger.js', 'evidence-input.js', 'evidence-storage.js', 'consumption.js']
+export const DEP_ID = ['emitter.js', 'imperative.js', 'balanced-span.js', 'headroom.js', 'rules.js', 'state-memory.js', 'snapshot-store.js', 'compile-lane.js', 'evidence-views.js', 'evidence-ledger.js', 'evidence-input.js', 'evidence-storage.js', 'consumption.js', 'exact-flights.js']
   .map((f) => {
     try { const s = fs.statSync(new URL('./' + f, import.meta.url)); return f + '=' + s.size + '@' + Math.round(s.mtimeMs) } catch { return f + '=?' }
   })
@@ -405,6 +405,21 @@ export function normalizeConfig(config = {}) {
   if (['distill', 'rules', 'birth', 'checkpoint', 'off'].indexOf(c.mode) === -1) c.mode = DEFAULTS.mode
   c.retiredOptions = ['stateEvidenceViews', 'stateEvidenceBodyBudget', 'stateSnapshotMirror', 'stateCompileQueue'].filter(k => Object.hasOwn(config, k))
   for (const k of c.retiredOptions) delete c[k]
+  // ★ 未知键不再静默吞掉：拼错的键（如 finishWaitMs 扁平写法）进 unknownOptions，BOOT 里可见。
+  //   只报不删 —— 不改变任何既有合法行为；嵌套容器键与运行期注入键都在白名单里。
+  {
+    const known = new Set([
+      ...Object.keys(DEFAULTS),
+      'distill', 'rules', 'birth',                    // 嵌套别名容器
+      'compileMode', 'compileModeConflict', 'configAdjusted', 'retiredOptions', 'unknownOptions',
+      'rulesMinSavingPctDeprecated', 'followProvider', '_promptMessages', '_onHeaders',
+      'keepTail', 'pluginName', 'maxInlineToolResultChars', 'staticMinRawChars', 'emitterProducer',
+      'birthCancelOnGiveUp', 'birthDiskWaitMs',
+      'econCacheDiscount', 'econTemplateChars', 'econR', 'econCharsPerTurn',
+      ...c.retiredOptions,                            // 退役键算已知（另有专门报法）
+    ])
+    c.unknownOptions = Object.keys(config || {}).filter((k) => !known.has(k))
+  }
   c.compileMode = resolveCompileMode(c)
   // ★★ 2026-09-23 v11.6 缺陷 D：timeoutMs 是请求硬顶，finishWaitMs 是收尾等待。★★
   //   实测 finishWaitMs 8000→12000→20000 命中率恒为 23.1%，因为 timeoutMs(8000) 先杀了请求。
@@ -885,16 +900,25 @@ export function findLastAssistantEvent(sessionLog) {
 }
 
 // ── 伴生调用 ────────────────────────────────────────────────────────────────
-function readApiKey(cfg) {
-  // ⛔ 2026-09-19 公测加固：空 ref 必须先拦。
-  //   new RegExp('' + ':\s*([^\s]+)') 退化成只看冒号后面那段的表达式，会把 credentials 里
-  //   【任意一行】的键名后面那段当钥匙 —— 静默用错钥匙比抛错难查得多。
-  //   空 ref = 没人指定过钥匙名 ⇒ 明确失败（上层降级 rules）。
+/**
+ * 按键名从 credentials 文件取钥匙。
+ *
+ * ⛔ 匹配必须【锚定行首 + 转义键名】：
+ *   旧版 `new RegExp(ref + ':\\s*([^\\s]+)')` 有两个已复现的坑：
+ *   ① 不锚定 ⇒ 在 `MY_DEEPSEEK_API_KEY: sk-WRONG` 里查 `DEEPSEEK_API_KEY` 会命中
+ *      （子串匹配），静默拿错钥匙 —— 比抛错难查得多；
+ *   ② 键名直接进正则 ⇒ 特殊字符会改变语义；值带引号时引号会被当成钥匙的一部分。
+ * 空 ref 仍然先拦：没指定过钥匙名 ⇒ 明确失败（上层降级 rules）。
+ */
+export function readApiKey(cfg) {
   if (!cfg.credentialRef) throw new Error('credentialRef is empty: no key name was resolved or configured')
   const t = fs.readFileSync(cfg.credentialsPath, 'utf8')
-  const m = t.match(new RegExp(cfg.credentialRef + ':\\s*([^\\s]+)'))
+  const esc = String(cfg.credentialRef).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const m = t.match(new RegExp('^[ \\t]*' + esc + ':\\s*([^\\s#]+)', 'm'))
   if (!m) throw new Error(cfg.credentialRef + ' not found in ' + cfg.credentialsPath)
-  return m[1]
+  const v = m[1]
+  if (v.length >= 2 && ((v[0] === '"' && v[v.length - 1] === '"') || (v[0] === "'" && v[v.length - 1] === "'"))) return v.slice(1, -1)
+  return v
 }
 
 // 按【任意键名】取钥匙（从宿主 provider 的 apiKeyEnv 来，不写死具体名字）
@@ -2887,14 +2911,15 @@ let coverStorePath = null
 let coverStoreLoaded = false
 
 function coverFile() {
-  if (coverStorePath) return coverStorePath
+  // ⚠ 必须走 dshHome()（显式 config > $DSH_HOME > ~/.dsh），与 trace/snapshot/evidence 同一契约。
+  //   旧版这里写死 os.homedir()+'/.dsh' ⇒ 设了 $DSH_HOME 时覆盖关系写进【真实】家目录（已复现）。
+  //   不做永久缓存：home 可能在测试里变化；每次解析成本可忽略（markCovered 频率极低）。
   try {
-    // ⚠ 本文件是 ESM（顶部 import）—— 不能用 require。fs/os/path 已导入。
-    const dir = path.join(os.homedir(), '.dsh', 'storages', 'cot-form-b')
+    const dir = path.join(dshHome(), 'storages', 'cot-form-b')
     fs.mkdirSync(dir, { recursive: true })
     coverStorePath = path.join(dir, 'cover.json')
-  } catch { coverStorePath = null }
-  return coverStorePath
+    return coverStorePath
+  } catch { coverStorePath = null; return null }
 }
 
 /** 惰性载入覆盖关系（重启后恢复；损坏则当作空，绝不抛错）。 */
@@ -3502,6 +3527,7 @@ let birthSession = null
     promptVersion: cfg.compileMode === 'memory' ? JUDGMENT_PROMPT_VERSION
       : cfg.compileMode === 'compress' ? compressPromptVersion(cfg) : null,
     retiredOptions: cfg.retiredOptions,
+    unknownOptions: cfg.unknownOptions,
     memoryPolicyVersion: MEMORY_POLICY_VERSION,
     stateSnapshot: cfg.stateSnapshot !== false,
     stateCoveredEvidence: cfg.stateCoveredEvidence !== false,

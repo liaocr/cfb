@@ -88,11 +88,16 @@ export interface CotFormBConfig {
   birthArchive?: boolean
   birthArchiveTimeoutMs?: number
   birthMinSavedChars?: number
+  /** 归档句柄是否拼进正文。默认 true */
+  birthHandleInText?: boolean
+  /** CAS 归档 producer 名。默认 'cot-birth' */
+  birthProducer?: string
   /** v11.7：birth finish 处 budget 到点但蒸馏已收到 200 响应头（正在生成）时再多等的上限（ms，缺省 1500；0 关） */
   finishHeadersGraceMs?: number
   birth?: {
     minChars?: number; archive?: boolean; handleInText?: boolean; producer?: string
     archiveTimeoutMs?: number; finishWaitMs?: number; minSavedChars?: number
+    finishHeadersGraceMs?: number
   }
   followHostProvider?: boolean
   followProvider?: string
@@ -119,8 +124,12 @@ export interface CotFormBConfig {
   rulesFoldRuns?: boolean
   /** 纯规则档：逐字重复行只留第一次。默认 true */
   rulesDropDuplicateLines?: boolean
-  /** 纯规则档：削减不足此百分比就不做替换。默认 10 */
-  rulesMinSavingPct?: number
+  /** 纯规则档：削减字符数下限。默认 20 */
+  rulesMinSavedChars?: number
+  /** 纯规则档：无归档句柄时不替换。默认 true */
+  rulesRequireArchive?: boolean
+  /** 凭据键名拼错/未知键不再静默：由 normalizeConfig 填入，BOOT 上报 */
+  unknownOptions?: string[]
 
   /**
    * ★ 提前发起：在 `llm/stream` 里一看到 reasoning 块结束就**非阻塞**地拉起伴生调用，
@@ -196,6 +205,15 @@ export interface CotFormBConfig {
 }
 
 export declare const DEFAULTS: Readonly<CotFormBConfig>
+
+/** 依赖模块指纹（BOOT 自证上岗用）：`file=size@mtimeMs ...`，含 exact-flights.js */
+export declare const DEP_ID: string
+
+/**
+ * 按键名从 credentials 文件取钥匙。
+ * ⛔ 行首锚定 + 键名转义 + 剥引号：防止 `MY_DEEPSEEK_API_KEY` 被 `DEEPSEEK_API_KEY` 子串误命中。
+ */
+export declare function readApiKey(cfg: Pick<CotFormBConfig, 'credentialRef' | 'credentialsPath'>): string
 
 /**
  * 配置归一化：同时接受扁平键与用户文档里的嵌套写法（`distill: {...}` / `rules: {...}`）。

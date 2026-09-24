@@ -12,6 +12,7 @@ import {
   detectResponseProtocol, assembleSseFrames, collectSseFrames, extractFromJsonBody, requestStream,
   pushLateMemory, takeLateMemory, peekLateMemory, lateMemorySize,
   coverWatermarkOf, coverSnapshotOk, markCovered, coverVersionOf,
+  readApiKey, DEP_ID,
 } from './index.js'
 import { compressByRules, fidelity, protectedTokens } from './rules.js'
 import { runPreStepEmit } from './emitter.js'
@@ -1072,6 +1073,56 @@ console.log('\n【23】v11.6 成本模型与门槛（2026-09-23，docs/AUDIT-V11
   const c3 = normalizeConfig({ mode: 'birth', birth: { finishWaitMs: 12000 }, timeoutMs: 8000 })
   ok('23.15 deferredClaim 开着（ready-only，不等 finishWait）⇒ 不改 timeoutMs', c3.timeoutMs === 8000 && !c3.configAdjusted)
   ok('23.16 非 birth 模式不改 timeoutMs', normalizeConfig({ mode: 'checkpoint', birthDeferredClaim: false, birth: { finishWaitMs: 12000 }, timeoutMs: 8000 }).timeoutMs === 8000)
+}
+
+console.log('\n【24】阶段 0 bug 回归（2026-09-24 大清扫）')
+{
+  // ① 凭据读取：行首锚定 + 键名转义 + 剥引号
+  const credF = tmpFile('bug0-credentials.yaml')
+  fs.writeFileSync(credF, 'MY_DEEPSEEK_API_KEY: sk-WRONG-belongs-to-another-provider\nDEEPSEEK_API_KEY: sk-RIGHT\nQUOTED_KEY: "sk-quoted"\n')
+  eq('24.1 ★ 前缀键不得误命中（子串陷阱）', readApiKey({ credentialRef: 'DEEPSEEK_API_KEY', credentialsPath: credF }), 'sk-RIGHT')
+  eq('24.2 ★ 值带引号时剥掉引号', readApiKey({ credentialRef: 'QUOTED_KEY', credentialsPath: credF }), 'sk-quoted')
+  ok('24.3 空 ref 仍明确失败', (() => { try { readApiKey({ credentialRef: '', credentialsPath: credF }); return false } catch { return true } })())
+  ok('24.4 缺失键仍明确失败', (() => { try { readApiKey({ credentialRef: 'NOPE_KEY', credentialsPath: credF }); return false } catch { return true } })())
+
+  // ② cover.json 必须走 dshHome()（$DSH_HOME），不得写死 ~/.dsh
+  const oldHome = process.env.DSH_HOME
+  const coverHome = fs.mkdtempSync(path.join(selftestTmpRoot(), 'bug0-dshhome-'))
+  process.env.DSH_HOME = coverHome
+  try {
+    // coverStorePath 不再永久缓存 home ⇒ 这里切 env 即生效
+    ok('24.5 markCovered 在 $DSH_HOME 下生效', markCovered('bug0-cover-1', 4242, 7))
+    const expect = path.join(coverHome, 'storages', 'cot-form-b', 'cover.json')
+    ok('24.6 ★ cover.json 落在 $DSH_HOME（不再写死 ~/.dsh）', fs.existsSync(expect), expect)
+    const w = coverWatermarkOf('bug0-cover-1')
+    ok('24.7 新 home 下水位可读回', w && w.upTo === 4242, w)
+    // 回归旧家目录不应出现本次写入
+    const legacy = path.join(os.homedir(), '.dsh', 'storages', 'cot-form-b', 'cover.json')
+    if (fs.existsSync(legacy)) {
+      const raw = JSON.parse(fs.readFileSync(legacy, 'utf8'))
+      ok('24.8 真实 ~/.dsh 里没有本次会话', !(raw.sessions && raw.sessions['bug0-cover-1']), raw)
+    } else ok('24.8 真实 ~/.dsh 无 cover.json（干净）', true)
+  } finally {
+    if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome
+    fs.rmSync(coverHome, { recursive: true, force: true })
+  }
+
+  // ③ 未知配置键进 unknownOptions（BOOT 可见），不再静默吞掉
+  const u = normalizeConfig({ totallyTypoKey: 123, mode: 'birth' })
+  ok('24.9 ★ 未知键进 unknownOptions', Array.isArray(u.unknownOptions) && u.unknownOptions.includes('totallyTypoKey'), u.unknownOptions)
+  const u2 = normalizeConfig({ distill: { timeoutMs: 1000 }, rules: { foldRuns: false }, birth: { finishWaitMs: 6000 } })
+  ok('24.10 嵌套别名容器不算未知键', (u2.unknownOptions || []).length === 0, u2.unknownOptions)
+  eq('24.11 README 回滚键 birth.finishWaitMs 生效（旧扁平 finishWaitMs 是 no-op）', u2.birthFinishWaitMs, 6000)
+  const u3 = normalizeConfig({ stateEvidenceViews: true })
+  ok('24.12 退役键走 retiredOptions 而非 unknownOptions', (u3.retiredOptions || []).includes('stateEvidenceViews') && !(u3.unknownOptions || []).includes('stateEvidenceViews'))
+  const u4 = normalizeConfig({ trace: true })
+  eq('24.13 已知键不误报', (u4.unknownOptions || []).length, 0)
+
+  // ④ DEP_ID 必须覆盖全部 import 的本地模块（BOOT 上岗自证）
+  ok('24.14 ★ DEP_ID 含 exact-flights.js（曾漏）', typeof DEP_ID === 'string' && DEP_ID.includes('exact-flights.js'))
+  for (const dep of ['emitter.js', 'compile-lane.js', 'evidence-ledger.js', 'consumption.js', 'state-memory.js', 'snapshot-store.js']) {
+    ok('24.15 DEP_ID 含 ' + dep, DEP_ID.includes(dep))
+  }
 }
 
 console.log('  通过 ' + pass + ' / 失败 ' + fail)
