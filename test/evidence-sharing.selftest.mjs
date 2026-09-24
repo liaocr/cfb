@@ -4,9 +4,9 @@ import os from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
 import { fileURLToPath } from 'node:url'
-import { compilerEvidence, unionEvidenceRanges } from './evidence-input.js'
-import { prepareEvidenceLedger, prepareCompilerEvidence, ledgerDirectory } from './evidence-ledger.js'
-import { replayCompiler, captureTrace } from './replay.mjs'
+import { compilerEvidence, unionEvidenceRanges } from '../evidence-input.js'
+import { prepareEvidenceLedger, prepareCompilerEvidence, ledgerDirectory } from '../evidence-ledger.js'
+import { replayCompiler, captureTrace } from '../tools/replay.mjs'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-sharing-')), previous = process.env.DSH_HOME
 process.env.DSH_HOME = home
 let pass = 0, fail = 0
@@ -120,7 +120,7 @@ try {
       const archived = path.join(home, 'fixture-reasoning.txt'); fs.writeFileSync(archived, raw)
       const capture = { kind: 'compiler-capture', complete: true, sourceSha256: 'f'.repeat(64), cases: [{ id: 'fixture', sessionId: 'replay-disabled', branchId: 'main', raw, rawHandle: 'fixture-file://' + archived,
         observations: { tools: [tool(1, 'READ_THIS_ERROR', { isError: true, status: 'failed' })], userAsks: [], runtimeFacts: [], cut: 3 } }] }
-      const report = await replayCompiler(capture, { model: 'fixture', baseUrl: 'http://127.0.0.1:' + server.address().port, credentialsPath: keyFile, credentialRef: 'LOCAL', followHostProvider: false, stateSnapshot: false, keepAlive: false }, path.dirname(fileURLToPath(import.meta.url)), path.join(home, 'replay'))
+      const report = await replayCompiler(capture, { model: 'fixture', baseUrl: 'http://127.0.0.1:' + server.address().port, credentialsPath: keyFile, credentialRef: 'LOCAL', followHostProvider: false, stateSnapshot: false, keepAlive: false }, path.join(path.dirname(fileURLToPath(import.meta.url)), '..'), path.join(home, 'replay'))
       assert.equal(report.compiles[0].status, 'ok'); assert.equal(report.productAccepted, false)
       assert.ok(prompt.includes('READ_THIS_ERROR')); assert.ok(prompt.includes('持久化不可用'))
       assert.ok(report.compiles[0].traces.some(r => r.tag === 'evidence-ledger-unavailable' && r.storageReason === 'stateSnapshot-disabled'))

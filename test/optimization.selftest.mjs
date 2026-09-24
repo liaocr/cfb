@@ -9,9 +9,9 @@ import { fileURLToPath } from 'node:url'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-optimization-'))
 const oldHome = process.env.DSH_HOME
 process.env.DSH_HOME = home
-const I = await import('./index.js')
-const S = await import('./snapshot-store.js')
-const M = await import('./state-memory.js')
+const I = await import('../index.js')
+const S = await import('../snapshot-store.js')
+const M = await import('../state-memory.js')
 let pass = 0, fail = 0
 async function test(name, fn) {
   try { await fn(); pass++; console.log('PASS ' + name) }
@@ -210,7 +210,7 @@ try {
     assert.match(data.deps, /snapshot-store\.js=/)
   })
   await test('standalone onboard detects correct deployment and actual drift', () => {
-    const root = path.dirname(fileURLToPath(import.meta.url))
+    const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
     const profile = path.join(home, 'profiles', 'web')
     const installed = path.join(profile, 'node_modules', '@dsh-external', 'dsh-cot-form-b')
     fs.mkdirSync(profile, { recursive: true })

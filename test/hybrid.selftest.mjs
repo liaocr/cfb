@@ -5,10 +5,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import http from 'node:http'
 import crypto from 'node:crypto'
-import { prepareEvidenceLedger as prepare, loadEvidenceLedger as load, ledgerDirectory, buildJudgmentPrompt, createEvidenceArchiver, readEvidenceHistory } from './evidence-ledger.js'
-import { captureTrace, parseTrace, replayCompiler, evaluateProduct, observationEvents } from './replay.mjs'
-import * as I from './index.js'
-import * as M from './state-memory.js'
+import { prepareEvidenceLedger as prepare, loadEvidenceLedger as load, ledgerDirectory, buildJudgmentPrompt, createEvidenceArchiver, readEvidenceHistory } from '../evidence-ledger.js'
+import { captureTrace, parseTrace, replayCompiler, evaluateProduct, observationEvents } from '../tools/replay.mjs'
+import * as I from '../index.js'
+import * as M from '../state-memory.js'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-hybrid-')), oldHome = process.env.DSH_HOME
 process.env.DSH_HOME = home
 let pass = 0, fail = 0
@@ -173,7 +173,7 @@ try {
     // ⚠ Windows 修复：new URL(import.meta.url).pathname 会产出 "/C:/Users/..."（前导斜杠 + 盘符），
     //   path.resolve 再拼一次就变成 "C:\C:\Users\..." ⇒ ERR_MODULE_NOT_FOUND。
     //   改用 fileURLToPath，它在 Windows 上给出正确盘符路径，在 POSIX 上行为不变。
-    const report = await replayCompiler(captured, cfg, path.dirname(fileURLToPath(import.meta.url)), path.join(home, 'replay-home'))
+    const report = await replayCompiler(captured, cfg, path.join(path.dirname(fileURLToPath(import.meta.url)), '..'), path.join(home, 'replay-home'))
     assert.equal(report.compiles.length, 3); assert.ok(report.compiles.every(c => c.status === 'ok'))
     assert.equal(report.productAccepted, false)
     assert.equal(evaluateProduct(report, report, {}).status, '未验收')

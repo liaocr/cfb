@@ -4,12 +4,12 @@ import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import http from 'node:http'
-import { selectEvidenceViews } from './evidence-views.js'
-import { createTraceAudit } from './deploy/analyze-trace.mjs'
+import { selectEvidenceViews } from '../evidence-views.js'
+import { createTraceAudit } from '../deploy/analyze-trace.mjs'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-views-')), oldHome = process.env.DSH_HOME
 process.env.DSH_HOME = home
-const I = await import('./index.js'), M = await import('./state-memory.js'), S = await import('./snapshot-store.js')
-const { emitCheckpoint } = await import('./emitter.js')
+const I = await import('../index.js'), M = await import('../state-memory.js'), S = await import('../snapshot-store.js')
+const { emitCheckpoint } = await import('../emitter.js')
 let pass = 0, fail = 0
 async function test(name, fn) { try { await fn(); pass++; console.log('PASS ' + name) } catch(e) { fail++; console.error('FAIL ' + name + '\n' + e.stack) } }
 const tick = () => new Promise(r => setImmediate(r))

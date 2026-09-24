@@ -8,7 +8,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { readProviderSpec, endpointUrl, resolveProviderEndpoint } from './index.js'
+import { readProviderSpec, endpointUrl, resolveProviderEndpoint } from '../index.js'
 
 // ── 合成 settings.yaml：形状与真实文件一致（含 models 块，用来验"不污染字段"）──
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'provider-endpoint-'))
@@ -91,7 +91,7 @@ console.log('== 5. ★ 2026-09-19 加固：没有端点就不猜 ==')
 // generateDistillation 抛 no endpoint、distillOnce 抛 no endpoint，两条都由上层降级 rules。
 eq('空 baseUrl + 解析不出 ⇒ 没有任何 URL 可拼', endpointUrl('', 'openai-completions'), null)
 eq('DEFAULTS.baseUrl 已是空串（不再指向任何商户）',
-   (await import('./index.js')).DEFAULTS.baseUrl, '')
+   (await import('../index.js')).DEFAULTS.baseUrl, '')
 
 fs.rmSync(TMP, { recursive: true, force: true })
 

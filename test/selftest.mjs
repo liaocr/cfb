@@ -13,10 +13,10 @@ import {
   pushLateMemory, takeLateMemory, peekLateMemory, lateMemorySize,
   coverWatermarkOf, coverSnapshotOk, markCovered, coverVersionOf,
   readApiKey, DEP_ID,
-} from './index.js'
-import { compressByRules, fidelity, protectedTokens } from './rules.js'
-import { runPreStepEmit } from './emitter.js'
-import { adaptEvidence } from './state-memory.js'
+} from '../index.js'
+import { compressByRules, fidelity, protectedTokens } from '../rules.js'
+import { runPreStepEmit } from '../emitter.js'
+import { adaptEvidence } from '../state-memory.js'
 
 // 本进程独占的临时目录：固定文件名会让并发跑多个 selftest 时互相读到对方写的
 // trace / credentials，产生假失败（外审 R-1 复现：并发时 204/0 与 203/1 并存）。

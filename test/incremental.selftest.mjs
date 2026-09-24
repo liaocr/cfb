@@ -3,10 +3,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
-import { createCompileLanes } from './compile-lane.js'
+import { createCompileLanes } from '../compile-lane.js'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-incremental-'))
 const oldHome = process.env.DSH_HOME; process.env.DSH_HOME = home
-const I = await import('./index.js'), M = await import('./state-memory.js'), S = await import('./snapshot-store.js')
+const I = await import('../index.js'), M = await import('../state-memory.js'), S = await import('../snapshot-store.js')
 let pass = 0, fail = 0
 async function test(name, fn) { try { await fn(); pass++; console.log('PASS ' + name) } catch(e) { fail++; console.error('FAIL ' + name + '\n' + e.stack) } }
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r }); return { promise, resolve } }

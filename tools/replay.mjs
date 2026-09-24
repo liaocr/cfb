@@ -160,12 +160,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   const [cmd, ...args] = process.argv.slice(2)
   try {
     if (cmd === 'storage-audit' || cmd === 'storage-gc') {
-      const { auditEvidenceStorage, collectEvidenceGarbage } = await import('./evidence-storage.js')
+      const { auditEvidenceStorage, collectEvidenceGarbage } = await import('../evidence-storage.js')
       const [root, output] = args
       const result = cmd === 'storage-gc' ? collectEvidenceGarbage(root) : auditEvidenceStorage(root)
       if (output) save(output, result); else console.log(JSON.stringify(result, null, 2))
     } else if (cmd === 'inspect') {
-      const { readEvidenceHistory } = await import('./evidence-ledger.js')
+      const { readEvidenceHistory } = await import('../evidence-ledger.js')
       const [view, output] = args
       const records = readEvidenceHistory(view)
       if (output) save(output, records); else console.log(JSON.stringify(records, null, 2))

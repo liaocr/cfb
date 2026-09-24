@@ -1,9 +1,9 @@
 // 2026-09-23 回归闸：整段 replace 覆盖完整性 / 迟到候选反查 / 来源对象解析 / compress 迟到通路 / 退避
 import assert from 'node:assert/strict'
-import { runPreStepEmit, collectSpanCarry, buildLedger } from './emitter.js'
-import { normalizeEvidenceEvent, classifyUserEventSource, classifyUserEventMetadata, hostOriginKind, pickUserAsks, SOURCE } from './state-memory.js'
-import * as I from './index.js'
-import * as I_emitter from './emitter.js'
+import { runPreStepEmit, collectSpanCarry, buildLedger } from '../emitter.js'
+import { normalizeEvidenceEvent, classifyUserEventSource, classifyUserEventMetadata, hostOriginKind, pickUserAsks, SOURCE } from '../state-memory.js'
+import * as I from '../index.js'
+import * as I_emitter from '../emitter.js'
 import { readFileSync } from 'node:fs'
 import http from 'node:http'
 
@@ -171,7 +171,7 @@ await test('配置契约：stateMemory+stateCompress 只记冲突不抛错；com
 })
 
 // ── v11.1：carry 预算 / 去嵌套 / retarget 单例 / P3 退半步 / compress-v2 / 混合认领 / 漏斗 ──
-import { flattenCarriedBoard } from './emitter.js'
+import { flattenCarriedBoard } from '../emitter.js'
 await test('carry 去嵌套：旧看板里的内联 carry 段被剥掉，句柄行保留，幂等', () => {
   const b = '摘要\n\n[早前看板 seq=2]\n更早摘要\n\n[早前看板 seq=1 · 9000 字符 · 原文 art://X]\n\n[早前回答 seq=3]\n回答\n\n[工具结果 seq=4]\nout'
   const f = flattenCarriedBoard(b)
@@ -271,7 +271,7 @@ await test('混合认领拒绝歧义候选与无命中', () => {
   assert.equal(I.peekLateMemoryPartial('amb2', 'Q'.repeat(300)), null)
 })
 await test('analyze-efficiency：claimFunnel / claimMiss / v11 计数从 trace 中得出', async () => {
-  const { analyzeEfficiency } = await import('./analyze-efficiency.mjs')
+  const { analyzeEfficiency } = await import('../tools/analyze-efficiency.mjs')
   const rows = [['BOOT', {}], ['birth-passthrough', { taskId: 't1' }], ['birth-late-memory-stored', { taskId: 't1' }],
     ['birth-claim-opportunity', {}], ['birth-claim-miss', { why: 'partial-coverage' }], ['birth-claim-opportunity', {}], ['birth-claim-hit', {}],
     ['birth-claim-emitted', {}], ['birth-claim-acknowledged', { taskIds: ['t1'] }], ['emit-retarget-ready', {}],
@@ -301,7 +301,7 @@ await test('no-raw 目标（纯 text/tool-call 的 assistant）不再直接放�
 await test('promptVersion 贯通：compressPromptVersion 唯一裁决；settled meta 透传', () => {
   assert.equal(I.compressPromptVersion({}), 'compress-v2'); assert.equal(I.compressPromptVersion({ compressPrompt: 'v1' }), 'compress-v1')
   assert.equal(I.settledTraceData(0, 1, { ok: true, text: 'x', meta: { promptVersion: 'compress-v2' } }).promptVersion, 'compress-v2')
-  const src = readFileSync(new URL('./index.js', import.meta.url), 'utf8')
+  const src = readFileSync(new URL('../index.js', import.meta.url), 'utf8')
   assert.ok(!/compileMode === 'compress' \? 'compress-v1'/.test(src), 'BOOT 不得硬编码 compress-v1')
 })
 await test('emit-refused-range 带诊断字段（不放宽守卫）', () => {
@@ -321,7 +321,7 @@ await test('in-flight 登记：放行后计 1，编译落地后清 0；claim-mis
   assert.equal(I.lateInFlightCount('inf2'), 0); assert.equal(I.lateMemorySize('inf2'), 1)
 })
 await test('analyze-efficiency：promptVersions 分桶与 no-candidate 细分', async () => {
-  const { analyzeEfficiency } = await import('./analyze-efficiency.mjs')
+  const { analyzeEfficiency } = await import('../tools/analyze-efficiency.mjs')
   const rows = [['BOOT', {}], ['birth-distill-settled', { ok: true, chars: 300, promptVersion: 'compress-v2' }], ['birth-distill-settled', { ok: false, promptVersion: 'compress-v1' }],
     ['birth-claim-miss', { why: 'no-candidate', inFlight: 2 }], ['birth-claim-miss', { why: 'no-candidate', inFlight: 0 }]]
   const text = rows.map(([tag, d]) => '[' + new Date().toISOString() + '] [' + tag + '] ' + JSON.stringify(d)).join('\n') + '\n'
@@ -434,7 +434,7 @@ await test('净收益被拦时同样落一条可关联最终结果，tokenMeter 
   assert.equal(c.emitAttemptId, f.emitAttemptId); assert.equal(f.stage, 'gate'); assert.equal(f.tokenMeterSource, undefined)
 })
 await test('分析器算出拦截占比、真实替换数、实际 token delta，并能读取 attempt 关联', async () => {
-  const { analyzeEfficiency } = await import('./analyze-efficiency.mjs')
+  const { analyzeEfficiency } = await import('../tools/analyze-efficiency.mjs')
   const rows = [['BOOT', {}], ['emit-net-savings', { emitAttemptId: 'a', sourceChars: 1000, ledgerChars: 500, netSavedChars: 500 }],
     ['emit-net-savings-result', { emitAttemptId: 'a', stage: 'emit', emitted: true, netSavedChars: 500, measuredSurfaceTokenDelta: 120 }], ['emit-replaced', { emitAttemptId: 'a' }],
     ['emit-net-savings', { emitAttemptId: 'b', sourceChars: 300, ledgerChars: 400, netSavedChars: -100 }],

@@ -63,13 +63,14 @@ dsh-cot-form-b/
 ├── CHANGELOG.md                版本沿革（自 README 迁出）
 │
 ├── 自测（node verify.mjs 一键，共 19 套件 / 1242 断言）
-│   selftest.mjs 317 · selftest-birth.mjs 164 · state-memory 245 · emitter 101
+│   test/selftest.mjs 317 · selftest-birth.mjs 164 · state-memory 245 · emitter 101
 │   balanced-span 60 · optimization 43 · evidence-views 41 · coverage-provenance 41
 │   memory-quality 33 · headroom 33 · incremental 29 · provider-endpoint 28
 │   imperative 25 · hybrid 16 · hedge 15 · late-identity 15 · efficiency 13
 │   grounding 13 · evidence-sharing 10
 │
-├── analyze-efficiency.mjs / analyze-consumption.mjs / replay.mjs   离线 trace 分析
+├── tools/                     离线 trace 分析与编译重放（analyze-*、replay）
+├── test/                      全部 19 个自测套件（node verify.mjs 一键调度）
 ├── fixtures/                  真机原文错误样本（非合成）
 ├── deploy/onboard.mjs         安装体检（跨机器，无硬编码路径）
 └── docs/                      现行文档；docs/archive/ = 历史报告与证据（不删）

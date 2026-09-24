@@ -11,12 +11,12 @@ import {
   makeTraceWriter, settledTraceData, mapMessagesToSeqs, generateStateMemory,
   collectEvidence, evidenceIndex, normalizeEvidenceEvent, assembleEvidence, DEFAULTS,
   lateMemorySize, takeLateMemory,
-} from './index.js'
+} from '../index.js'
 import {
   SEC, buildEvidenceEnvelope, buildStateCompilePrompt as buildStateCompilePromptX,
   parseStateCompile, createMemoryProjection, renderBirth, renderCheckpoint,
   mergeOrdered, cacheIdentity,
-} from './state-memory.js'
+} from '../state-memory.js'
 import os from 'node:os'
 
 let pass = 0, failn = 0, skipn = 0
@@ -337,7 +337,7 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
   // 兄弟包位置候选（跨 checkout / 独立分发都要能找到；找不到就 SKIP）
   const cands = []
   if (process.env.CMB_STORE_PATH) cands.push(process.env.CMB_STORE_PATH)
-  cands.push(new URL('../dsh-context-memory-bundle/store/dshb-store.js', import.meta.url).href)
+  cands.push(new URL('../../dsh-context-memory-bundle/store/dshb-store.js', import.meta.url).href)
   if (process.env.DSH_HOME) cands.push(path.join(process.env.DSH_HOME, 'profiles/web/node_modules/@dsh-external/dsh-context-memory-bundle/store/dshb-store.js'))
   cands.push(path.join(os.homedir(), '.dsh', 'profiles/web/node_modules/@dsh-external/dsh-context-memory-bundle/store/dshb-store.js'))
   let found = null
@@ -373,7 +373,7 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
 
 // ═══ T15 零 rules 污染：birth 段不出现 compressByRules ═══
 {
-  const srcText = fs.readFileSync(new URL('./index.js', import.meta.url), 'utf8')
+  const srcText = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8')
   const a = srcText.indexOf('export function birthStart')
   const b = srcText.indexOf('export function apply(ctx')
   const seg = (a >= 0 && b > a) ? srcText.slice(a, b) : ''
@@ -589,7 +589,7 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
      prewarmTargetUrl('') === null && prewarmTargetUrl(null) === null,
      String(prewarmTargetUrl('')))
   // ⚠ 用字面子串而不是正则 —— 第一版正则写坏了，恒过（空测试）。这里钉死调用点。
-  const src = fs.readFileSync(new URL('./index.js', import.meta.url), 'utf8')
+  const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8')
   const LEGACY = "replace(/\\/+$/, '') + '/'"
   ok('T19 ★ 调用点必须走 prewarmTargetUrl（不许再手拼 base）',
      src.includes('const url = prewarmTargetUrl(base)'), 'call site not using prewarmTargetUrl')

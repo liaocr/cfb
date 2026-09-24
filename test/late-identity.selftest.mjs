@@ -4,8 +4,8 @@ import os from 'node:os'
 import path from 'node:path'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-late-')), oldHome = process.env.DSH_HOME
 process.env.DSH_HOME = home
-const I = await import('./index.js'), M = await import('./state-memory.js')
-const { runPreStepEmit } = await import('./emitter.js')
+const I = await import('../index.js'), M = await import('../state-memory.js')
+const { runPreStepEmit } = await import('../emitter.js')
 let pass = 0, fail = 0
 async function test(name, fn) { try { await fn(); pass++; console.log('PASS ' + name) } catch(e) { fail++; console.error('FAIL ' + name + '\n' + e.stack) } }
 const entries = () => [{ id: 'm1', category: 'state', content: '状态', evidence: 'inferred', origin: 'model', validity: 'active' }]

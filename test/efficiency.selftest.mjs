@@ -3,11 +3,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
-import * as I from './index.js'
-import * as M from './state-memory.js'
-import { createExactFlights } from './exact-flights.js'
-import { prepareJudgmentPrompt, buildJudgmentPrompt, transientEvidenceFrame } from './evidence-ledger.js'
-import { analyzeEfficiency } from './analyze-efficiency.mjs'
+import * as I from '../index.js'
+import * as M from '../state-memory.js'
+import { createExactFlights } from '../exact-flights.js'
+import { prepareJudgmentPrompt, buildJudgmentPrompt, transientEvidenceFrame } from '../evidence-ledger.js'
+import { analyzeEfficiency } from '../tools/analyze-efficiency.mjs'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-efficiency-')), previous = process.env.DSH_HOME
 process.env.DSH_HOME = home
 const credentialsPath = path.join(home, 'keys'); fs.writeFileSync(credentialsPath, 'LOCAL: unused\nOTHER: alternate')

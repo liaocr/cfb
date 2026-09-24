@@ -1,4 +1,4 @@
-import { headroomOf, minRawCharsFor, bandNameFor, DEFAULT_BANDS, CONSERVATIVE_MIN_CHARS } from './headroom.js'
+import { headroomOf, minRawCharsFor, bandNameFor, DEFAULT_BANDS, CONSERVATIVE_MIN_CHARS } from '../headroom.js'
 
 let pass = 0, fail = 0
 const ok = (name, cond) => { if (cond) { pass++ } else { fail++; console.log('  ✗ ' + name) } }
