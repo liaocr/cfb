@@ -5,6 +5,36 @@
 
 ---
 
+## v11.12.0（2026-09-25）抽取式压缩 compress-x1 + 反事实续写评测 + 准则自进化回路（**缺省关闭，线上零变化**）
+
+设计与论文依据见 [`docs/RESEARCH-COT-SHAPING.md`](docs/RESEARCH-COT-SHAPING.md) §10。
+
+### 新增
+- **`src/extractive.js` — `compressPrompt: 'x1'`（抽取式）**：副模型不写摘要，只回 JSON 选择（句子编号 / `verified|refuted|unverified` 标签 / 状态变量 / 块类型），
+  正文由本地从原文**逐字**拼装：开头计划句 + 按原文顺序的锚点句（行内认知标签）+ `[状态] k=v` 行 + 空行 + 逐字尾巴。
+  硬校验：「证实/否定」必须在所引 seq 的工具结果里逐字找到引用，否则只降级；状态值必须逐字出现在原文或用户输入里；
+  explore 块的转折句强制保留；逐字标识符全部丢失时补回含它的句子（上限为 min(6, 15% 句数)）；拼装稿超过原文 0.7 按失败处理（原文放行）。
+- **birth 接线**：仅 x1 在 block-end 冻结最近 12 条工具结果供标签核对（发给副模型的只是每条 ≤160 字符的索引行）；
+  流归属不可证（`sessionAmbiguous`）时不采集，标签全部降级。句柄**已验证**后首行写 `〔原文 art://… · 删去的句子可按句柄取回〕`，计入净省核算。
+- 新配置键（仅 x1 生效）：`extractiveTailChars` 400 · `extractiveMaxKeepRatio` 0.7 · `extractiveRepairMax` 6 · `extractiveEvidence` true ·
+  `extractiveEvidenceLimit` 12 · `extractiveHandleLine` true · `extractiveGuideline` ''。promptVersion `compress-x1`，准则非空时带 `:g<8 位指纹>`。
+- 新 trace：`extractive-evidence` / `extractive-assembled` / `extractive-rejected` / `extractive-evidence-error`。
+- **`tools/cf-eval.mjs` 反事实续写评测**：同一会话前缀，分别用 raw / v3 / x1 推理块续写，按 next / avoid / violate 判分，
+  并记录 promptTokens、completionTokens、reasoningChars、keptRatio、fallback。直接复用 `src/` 的提示词与拼装代码。示例 fixture：`tools/cf-fixtures/example-await.json`（合成）。
+- **`tools/acon-optimize.mjs` 准则自进化**：ACON 对比失败分析（UT 步）/ 求更短（CO 步）+ GEPA 式候选评测，`score = success − λ·keptRatio`，
+  只收改进，并保留 Pareto 前沿。产物不会自动上线。
+- `index.js` / `index.d.ts` 导出抽取式纯函数；`compressPrompt` 类型加 `'x1'`。
+
+### 不变
+- `DEFAULTS.compressPrompt` 仍为 `'v2'`；非 x1 的 compress 仍**不采集证据**（新增测试钉住）。
+- `birthFinish` 里保真观测改为对最终候选（含句柄行）计算；非 x1 路径候选与此前逐字相同。
+
+### 验证
+`npm test` 1342 通过 / 0 失败 / 1 跳过（26/26 套件，新增 `extractive` 34 条，全部本机、零外网）；`tsc --strict` 通过；`node manifest.mjs` 已重新生成。
+**尚未**用真实 CAS 原文跑 cf-eval。上线门槛：x1 successRate ≥ raw 的 95%，且 avoidRate 不高于 raw。
+
+---
+
 ## v11.11.2（2026-09-25）可改写思维链的表现提升调研（**仅文档，无代码改动**）
 
 新增 [`docs/RESEARCH-COT-SHAPING.md`](docs/RESEARCH-COT-SHAPING.md)，并登记进 `docs/README.md` 索引。

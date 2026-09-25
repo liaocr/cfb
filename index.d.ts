@@ -40,14 +40,28 @@ export interface CotFormBConfig {
    */
   stateMemory?: boolean
   stateCompress?: boolean
-  /** compress 提示词版本：'v2' 中性压缩（缺省，相对长度目标）；'v1' 与 legacy 蒸馏逐字相同（回滚/对照）；'v3' = v2 的保真规则 + 绝对长度目标 */
-  compressPrompt?: 'v1' | 'v2' | 'v3'
+  /** compress 提示词版本：'v2' 中性压缩（缺省，相对长度目标）；'v1' 与 legacy 蒸馏逐字相同（回滚/对照）；'v3' = v2 的保真规则 + 绝对长度目标；'x1'（v11.12）= 抽取式：副模型只回句子编号/标签/状态，正文本地逐字拼装 */
+  compressPrompt?: 'v1' | 'v2' | 'v3' | 'x1'
   /** 仅 v3 生效：绝对长度目标下限（字符，缺省 250） */
   compressTargetMin?: number
   /** 仅 v3 生效：绝对长度目标上限（字符，缺省 450） */
   compressTargetMax?: number
   /** v11.7（opt-in，缺省 false）：把 v2/v3 压缩提示词的固定规则前缀放进 system 消息、原文放 user 消息（字节等价），让 DeepSeek Context Caching 命中规则前缀；打开后 promptVersion 追加 ':sys' */
   compressSystemPrompt?: boolean
+  /** v11.12 仅 x1：逐字保留的尾巴长度（字符，缺省 400） */
+  extractiveTailChars?: number
+  /** v11.12 仅 x1：拼装稿/原文 超过该比例按失败处理（缺省 0.7） */
+  extractiveMaxKeepRatio?: number
+  /** v11.12 仅 x1：逐字标识符缺失时最多补回的句子数（缺省 6） */
+  extractiveRepairMax?: number
+  /** v11.12 仅 x1：是否为标签核对冻结近期工具结果（缺省 true；false ⇒ 所有「证实」降级） */
+  extractiveEvidence?: boolean
+  /** v11.12 仅 x1：冻结的最近工具结果条数（缺省 12） */
+  extractiveEvidenceLimit?: number
+  /** v11.12 仅 x1：句柄已验证时首行写原文句柄（缺省 true） */
+  extractiveHandleLine?: boolean
+  /** v11.12 仅 x1：可进化的补充准则（tools/acon-optimize.mjs 产物；缺省 ''） */
+  extractiveGuideline?: string
   /** pre-step 整段 replace 时随看板带走的旧看板正文/可见回答/工具调用参数的内联总预算（字符，缺省 3000）；超出归档为句柄 */
   maxCarryChars?: number
   /** emit 仅在预计节省至少该字符数时替换（缺省 100） */
@@ -263,6 +277,40 @@ export declare function compressTargets(cfg: CotFormBConfig | null | undefined):
 export declare function buildCompressPrompt(cot: string): string
 /** compress-v3：v2 的保真规则 + 绝对长度目标 */
 export declare function buildCompressPromptV3(cot: string, minChars?: number, maxChars?: number): string
+
+// ── v11.12 抽取式压缩（compress-x1）────────────────────────────────────────
+export interface ExtractiveSentence { i: number; start: number; end: number; text: string }
+export interface ExtractiveEvidence {
+  tools: Array<{ seq: number | string; name: string | null; text: string; isError: boolean; exitCode: number | null }>
+  asks: Array<{ seq: number | string; text: string }>
+}
+export interface ExtractiveSelection {
+  kind: 'explore' | 'closed' | 'exec'
+  plan: number[]
+  keep: number[]
+  tags: Array<{ i: number; s: 'verified' | 'refuted' | 'unverified'; seq: number | string | null; quote: string }>
+  state: Array<{ k: string; v: string }>
+  dropped: number
+}
+export interface ExtractiveStats {
+  kind: string; sentences: number; kept: number; forced: number; repaired: number; tailSentences: number
+  tagsVerified: number; tagsRefuted: number; tagsUnverified: number; tagsDowngraded: number
+  stateKept: number; stateDropped: number; lang: string
+  identifierRecall?: number | null; outChars?: number; ratio?: number | null; dropped?: number
+}
+export declare const EXTRACTIVE_VERSION: string
+export declare const EXTRACTIVE_BASE_RULES: string[]
+export declare function segmentSentences(raw: string): ExtractiveSentence[]
+export declare function hardIdentifiers(text: string): { has(v: string): boolean; readonly size: number; forEach(cb: (v: string) => void): void }
+export declare function tailStartIndex(sentences: ExtractiveSentence[], tailChars?: number): number
+export declare function extractiveEvidence(events: unknown[], opts?: { limit?: number }): ExtractiveEvidence
+export declare function buildExtractivePrompt(sentences: ExtractiveSentence[], ctx?: { evidence?: ExtractiveEvidence | null; guideline?: string; tailFrom?: number }): string
+export declare function parseExtractiveOutput(text: string, n: number): ExtractiveSelection | null
+export declare function assembleExtractive(raw: string, sentences: ExtractiveSentence[], sel: ExtractiveSelection, opts?: { evidence?: ExtractiveEvidence | null; tailChars?: number; repairMax?: number; lang?: 'zh' | 'en' }): { text: string; stats: ExtractiveStats }
+export declare function extractiveHandleLine(handle: string, raw: string): string
+export declare function extractivePromptVersion(cfg: CotFormBConfig | null | undefined): string
+export declare function prepareExtractive(raw: string, cfg?: CotFormBConfig, evidence?: ExtractiveEvidence | null): { sentences: ExtractiveSentence[]; tailFrom: number; prompt: string }
+export declare function finalizeExtractive(raw: string, prepared: { sentences: ExtractiveSentence[]; tailFrom: number; prompt: string }, modelText: string, cfg?: CotFormBConfig, evidence?: ExtractiveEvidence | null): { text: string; stats: ExtractiveStats }
 /** 诊断：为何该原文认领不了 */
 export declare function explainLateMiss(sessionId: string, fullRaw: string, opts?: { branchId?: string | null }): 'empty' | 'no-candidate' | 'ambiguous' | 'partial-coverage' | 'ok'
 /** 混合认领（opt-in，见 lateClaimPartial） */

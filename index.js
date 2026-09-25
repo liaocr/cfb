@@ -38,6 +38,11 @@ export {
   compressPromptVersion, compressTargets,
 } from './src/prompts.js'
 export {
+  segmentSentences, buildExtractivePrompt, parseExtractiveOutput, assembleExtractive, tailStartIndex,
+  extractiveEvidence, extractiveHandleLine, extractivePromptVersion, prepareExtractive, finalizeExtractive,
+  hardIdentifiers, EXTRACTIVE_BASE_RULES, EXTRACTIVE_VERSION,
+} from './src/extractive.js'
+export {
   requestOnce, requestStream, prewarmTargetUrl, retryDelayMs,
   detectResponseProtocol, assembleSseFrames, collectSseFrames, extractFromJsonBody,
 } from './src/transport.js'

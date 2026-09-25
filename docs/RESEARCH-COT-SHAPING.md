@@ -310,3 +310,99 @@
 22. Fu et al. — Deep Think with Confidence（DeepConf）. https://huggingface.co/papers/2508.15260
 23. Korbak et al. — Chain of Thought Monitorability: A New and Fragile Opportunity for AI Safety. https://www.alphaxiv.org/abs/2507.11473
 24. Anthropic — Emergent Introspective Awareness（预填 "bread" 实验的转述）. https://dcthemedian.substack.com/p/newly-discovered-introspective-awareness
+
+---
+
+## 10. 实现（v11.12）：抽取式压缩 compress-x1 + 反事实续写评测 + 准则自进化回路
+
+> 本节是 §4 的 S1、S2 与 §6.1 的**落地版**，并按第三轮文献调研做了修正。三件东西全部**缺省关闭**，线上行为零变化。
+
+### 10.1 核心判断：不存在「最优摘要格式」
+
+下一步推理需要四种东西，每种有各自最合适的表示：
+
+| 下一步需要什么 | 表示方式 | 依据 |
+|---|---|---|
+| 计划与续写起点 | **开头的计划句 + 逐字尾巴** | Markovian Thinker / Delethink（arXiv 2510.06557）：现成推理模型零样本只看「问题 + 前约 100 token 计划 + 最后 m 个 token」续写，效果持平甚至超过完整长思维链 |
+| 推理骨架 | **按原文顺序抽取的锚点句**（计划、回溯、验证、发现、决定、未决问题） | 打乱 67% 步骤顺序 AIME −13.3%，换成错误答案只 −3.2%（arXiv 2502.07374）；前提顺序打乱掉 30% 以上（arXiv 2402.08939）；转折词处是信息量峰值（arXiv 2506.02867）；思维锚点（arXiv 2506.19143） |
+| 状态 | 逐字的 `k=v` 变量行 | 只保留中间结果 token 即可持平（arXiv 2505.04955）；ACON 保留进度/变量/护栏（arXiv 2510.00615）；MEM1 按目标合并状态（arXiv 2506.15841） |
+| 被删掉的部分 | **原文句柄** `art://…` | ReadAgent：要点记忆 + 按需翻回原页，有效上下文 20×（arXiv 2402.09727）；Anthropic 上下文工程：保留轻量标识符、即用即取 |
+
+认知状态**不分栏**，而是作为行内标签贴在句末（`⟨证实·seq41⟩` / `⟨已否定·seq38⟩` / `⟨未验证⟩`），这样不破坏原文顺序。
+「证实」「已否定」必须有逐字证据，否则只能降级（§3 的不对称纪律）。
+
+### 10.2 为什么是「抽取」而不是「改写」
+
+- **写不出原文没有的句子** ⇒ 结构上杜绝编造（v1 的「伪造引用」bug 在此不可能发生）。
+- **副模型只输出编号**：输出 token 是副模型的主要成本（输出单价约为输入的 4 倍），一次选择通常只要几十到两百个 token。
+- 保留原句 = 保留主模型**自己的分布**（Learnability Gap，arXiv 2502.12143：越接近模型自身分布的数据越容易被利用）。
+- 这不是用户否决过的「非 LLM 确定性抽取」：**选哪句由副模型理解语义后决定**，代码只负责逐字拼装与核对。
+
+### 10.3 compress-x1 的流水线（`src/extractive.js`）
+
+1. `segmentSentences`：按 。！？；、换行、`. ` 切句；``` 围栏整体一句；超长句按逗号软切。每一句都是 `raw.slice(start, end)`。
+2. `buildExtractivePrompt`：编号句子 + 近期工具结果**索引**（每条 ≤160 字符，只供标签引用，不是整窗正文，不会重演 7.5 倍放大）+ 用户输入 + 缺省规则 + 可进化的补充准则。
+3. 副模型输出 JSON：`{kind, plan, keep, tags:[{i,s,seq,quote}], state:[{k,v}]}`。
+4. `assembleExtractive`（硬校验在这里）：
+   - 保留句一律**按原文顺序**；连续的句子按原文切片拼接；断开处以「… 」起行；
+   - 尾巴（最后约 `extractiveTailChars`=400 字符）逐字保留，与正文之间空一行；
+   - `explore` 类块中，转折/回溯句（等等、不对、不过、wait、but、actually……）强制保留；
+   - `verified` / `refuted` 必须能在所引 seq 的工具结果里逐字找到 quote：`verified` 找不到 ⇒ 降为 `⟨未验证⟩`；`refuted` 找不到 ⇒ 去掉标签（句子本身照原文保留）；
+   - 状态值必须能在原文或用户输入里逐字找到；来自用户输入的加引号；
+   - 原文里的逐字标识符（路径、`code`、file.ext、XxxError、camelCase、snake_case）若全部丢失 ⇒ 补回首个含它的句子，至多 min(`extractiveRepairMax`, 15% 句数) 句；
+   - 拼装稿超过原文 `extractiveMaxKeepRatio`（0.7）⇒ 按失败处理（原文放行）。
+5. `birthFinish`：句柄**已验证**（store 回执或读回探针）后，才在首行加 `〔原文 art://… · 删去的句子可按句柄取回〕`（铁律⑧）；句柄行计入净省核算。
+
+`kind` 的三种渲染：`explore` = 计划 + 锚点 + 转折 + 状态 + 尾巴；`closed` = 结论句 + 状态 + 尾巴（不强制转折句）；`exec` = 状态 + 尾巴。
+
+示例（原文 12 句 → 保留 8 句；"计算一下…""日志格式…"被删；"刚才 grep…"有证据，得到 `证实`）：
+
+```
+〔原文 art://… · 删去的句子可按句柄取回〕
+用户说 /api/users 返回 500。我先看 src/routes/user.js 的第 42 行。这里 const u = db.find(id) 没有 await，所以 u 是 Promise。等等，db.find 真的是异步的吗？刚才 grep 显示 find 返回 Promise。⟨证实·seq41⟩那么 u.name 就是 undefined。可能也是数据库本身没有数据。⟨未验证⟩不过刚才的查询结果显示有 3 条记录，所以不是这个原因。⟨已否定·seq38⟩
+… 结论：在 db.find 前加 await 即可。
+[状态] 出错点=src/routes/user.js 的第 42 行 · 约束="不要改测试文件"
+
+下一步修改 user.js 第 42 行，然后跑 npm test 验证。
+```
+
+### 10.4 反事实续写评测（`tools/cf-eval.mjs`）
+
+问的不是「摘要像不像原文」，而是「**把历史推理块换成压缩稿后，主模型的下一步还对不对**」。
+同一段会话前缀，分别用 raw / v3 / x1 续写，每个变体采样 N 次，逐样本判分：
+
+- `next`：下一步动作命中参考动作；`avoid`：重走已被否定的路径；`violate`：违反约束；`success = next ∧ ¬avoid ∧ ¬violate`；
+- 同时记录 `promptTokens`（上下文实付）、`completionTokens` / `reasoningChars`（信息缺失时续写会变长）、`keptRatio`、`compressFallbacks`。
+
+压缩提示词与拼装直接 import `src/`，**评的就是线上那一套**。x1 的证据取自会话前缀里该推理块**之前**的工具结果（时间截面）。
+Fixture 格式、参数见文件头注释；`tools/cf-fixtures/example-await.json` 是合成示例（非真实会话）。
+
+### 10.5 准则自进化回路（`tools/acon-optimize.mjs`）
+
+进化对象是 `extractiveGuideline`（追加在缺省规则之后，缺省规则本身不动）。
+
+- **UT 步（ACON 对比失败分析）**：挑出「raw 续写成功、x1 续写失败」的案例，把原文、压缩稿、参考动作、两边的实际动作交给优化模型，让它找出「压缩稿丢了哪类信息」，写出修订后的完整准则。
+- **CO 步**：没有失败时，让优化模型在不损失成功率的前提下找出可以删的句型。
+- **GEPA 式选择**：每代产出若干候选，逐一用 cf-eval 评测；`score = successRate − λ·keptRatio`，只有超过现任才换代；同时保留 (成功率↑, 保留比例↓) 的 Pareto 前沿。GEPA（arXiv 2507.19457）用反思式自然语言进化，比 GRPO 平均高 6pp，rollout 少到 1/35。
+- 产物：`guideline.best.txt`、`history.json`、`patch-snippet.txt`。**不会自动上线**；贴进 patch 后 promptVersion 带 `:g<指纹>`，线上 trace 自动按准则分桶。
+
+### 10.6 启用方式与上线门槛
+
+```yaml
+stateCompress: true
+compressPrompt: x1          # 缺省 v2；改回 v2/v3 即回滚
+# extractiveTailChars: 400  extractiveMaxKeepRatio: 0.7  extractiveRepairMax: 6
+# extractiveEvidence: true  extractiveEvidenceLimit: 12  extractiveHandleLine: true
+# extractiveGuideline: ""   # acon-optimize 的产物
+```
+
+新增 trace：`extractive-evidence`、`extractive-assembled`（kept / forced / repaired / tags* / stateKept / ratio / identifierRecall / selectionChars）、`extractive-rejected`（code = unparseable / empty / too-long）。
+
+**上线前必须**：用真实 CAS 原文构造 fixture，跑 cf-eval。x1 的 `successRate` 不低于 raw 的 95%、且 `avoidRate` 不高于 raw，才允许灰度开启。在此之前，§8 的未验证假设全部仍然成立。
+
+### 10.7 仍未解决 / 诚实声明
+
+- 没有任何论文直接测过「把压缩后的历史思维链喂回 agent」；以上都是相邻证据的综合，最终以 cf-eval 为准。
+- 按原文顺序抽取无法做 LongLLMLingua 式「把关键信息挪到显著位置」（arXiv 2310.06839）。这是**有意取舍**：顺序证据（2502.07374、2402.08939）比位置证据更直接。
+- 句柄行假设主模型能用宿主工具按 `art://` 读回原文；emitter 的工具结果归档行已经依赖同一约定。cf-eval 里读不回，所以缺省不加句柄行。
+- 转折词表是启发式规则，会误伤（例如「但是」出现在无关语境里），代价只是多留一句。

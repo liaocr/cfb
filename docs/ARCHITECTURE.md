@@ -81,7 +81,7 @@ birthTransform(inner, deps)
 | 编译模式 | distill 闭包 | runtime（传输观测） |
 |---|---|---|
 | `memory` | `generateStateMemory(env, cfg, signal, { ...budget, flights })` | trace + scope + 精确在途共享 |
-| `compress` | 按 `compressPromptVersion` 选提示词 → `generateDistillation(raw, cfg, signal, prompt, …)` | 只透传 trace（无 scope，共享永不命中；不改取消语义） |
+| `compress` | 按 `compressPromptVersion` 选提示词 → `generateDistillation(raw, cfg, signal, prompt, …)`；`compress-x1` 走 `compileExtractive`：`prepareExtractive` → 副模型回 JSON 选择 → `finalizeExtractive` 本地逐字拼装（失败即抛 ⇒ 原文放行） | 只透传 trace（无 scope，共享永不命中；不改取消语义）；x1 另收 `budget.extractiveEvidence`（block-end 冻结，流归属不可证时为 null） |
 | `legacy` | `generateDistillation(raw, cfg, signal)`（旧蒸馏提示词） | 只透传 trace |
 
 ### 2.2 副模型调用（`distill.js`）
