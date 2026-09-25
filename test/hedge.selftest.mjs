@@ -11,18 +11,21 @@ import * as I from '../index.js'
 let pass = 0, fail = 0
 async function test(name, fn) { try { await fn(); pass++; console.log('PASS ' + name) } catch (e) { fail++; console.log('FAIL ' + name + '\n' + (e.stack || e)) } }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+// v11.11 提速：「慢的那份必须被 abort」改为**直接观察**服务端连接提前关闭（closedEarly），
+//   不再傻等它的延迟跑完。被 abort 的请求其定时器看到 gone 就不会再写响应 ⇒ 观察到关闭后断言即充分。
+const until = async (pred, ms = 3000) => { const t = Date.now(); while (!pred() && Date.now() - t < ms) await sleep(10); return pred() }
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-hedge-'))
 const keyFile = path.join(home, 'keys'); fs.writeFileSync(keyFile, 'LOCAL: unused')
 
 // 服务器：每个请求按 queue 里下一个延迟值等待后再发响应头；记录收到与被中断的请求数
-let delays = [], received = 0, aborted = 0, completed = 0
+let delays = [], received = 0, aborted = 0, completed = 0, closedEarly = 0
 const server = http.createServer((req, res) => {
   received++
   const d = delays.length ? delays.shift() : 0
   let gone = false
   req.on('aborted', () => { gone = true; aborted++ })
-  res.on('close', () => { if (!res.writableFinished) { gone = true } })
+  res.on('close', () => { if (!res.writableFinished) { gone = true; closedEarly++ } })
   let body = ''; req.on('data', (c) => { body += c })
   req.on('end', () => {
     setTimeout(() => {
@@ -36,7 +39,7 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r))
 const baseUrl = 'http://127.0.0.1:' + server.address().port
 const cfgBase = { ...I.DEFAULTS, model: 'fixture', baseUrl, credentialsPath: keyFile, credentialRef: 'LOCAL', followHostModel: false, followHostProvider: false, keepAlive: false, maxAttempts: 1, timeoutMs: 5000, disableThinking: false }
-const reset = (...d) => { delays = d; received = 0; aborted = 0; completed = 0 }
+const reset = (...d) => { delays = d; received = 0; aborted = 0; completed = 0; closedEarly = 0 }
 
 await test('hedgeAfterMs=0（缺省）⇒ 只发一份，行为与 v11.6 相同', async () => {
   reset(50)
@@ -59,7 +62,7 @@ await test('★ 主请求慢、对冲快 ⇒ 用对冲结果，主请求被 abor
   const took = Date.now() - t0
   assert.equal(r.text, '摘要：50'); assert.equal(r.meta.hedged, 'hedge')
   assert.ok(took < 1200, 'took ' + took)
-  await sleep(1700)
+  assert.ok(await until(() => closedEarly >= 1), '慢的那份必须被 abort（服务端看到连接提前关闭）')
   assert.equal(received, 2); assert.equal(completed, 1, '慢的那份必须被 abort，不得完成')
   assert.ok(traces.some(([t]) => t === 'compiler-hedge-fired')); assert.ok(traces.some(([t, d]) => t === 'compiler-hedge-settled' && d.winner === 'hedge'))
 })
@@ -68,7 +71,7 @@ await test('主请求先回头（对冲已发出）⇒ 用主结果，对冲被 
   reset(300, 2000)
   const r = await I.generateDistillation('x'.repeat(100), { ...cfgBase, hedgeAfterMs: 100 }, undefined, 'p')
   assert.equal(r.meta.hedged, 'primary')
-  await sleep(2200)
+  assert.ok(await until(() => closedEarly >= 1), '对冲份必须被 abort')
   assert.equal(received, 2); assert.equal(completed, 1)
 })
 
@@ -97,11 +100,11 @@ await test('★ 主请求先失败（400）且对冲未发 ⇒ 不再对冲，�
   await new Promise((r) => srv.listen(0, '127.0.0.1', r))
   try {
     const t0 = Date.now()
-    await assert.rejects(I.generateDistillation('x'.repeat(100), { ...cfgBase, baseUrl: 'http://127.0.0.1:' + srv.address().port, hedgeAfterMs: 1000 }, undefined, 'p'), /http 400/)
+    await assert.rejects(I.generateDistillation('x'.repeat(100), { ...cfgBase, baseUrl: 'http://127.0.0.1:' + srv.address().port, hedgeAfterMs: 400 }, undefined, 'p'), /http 400/)
     const took = Date.now() - t0
-    await sleep(1200)
+    await sleep(550)   // 越过对冲计时器（400ms）：这是「不得发生」的断言，必须真等过点
     assert.equal(n, 1, '主请求已失败，计时器到点不得再发对冲')
-    assert.ok(took < 800, '不得陪计时器空等：took ' + took)
+    assert.ok(took < 300, '不得陪计时器空等：took ' + took)
   } finally { srv.closeAllConnections(); await new Promise((r) => srv.close(r)) }
 })
 
@@ -127,7 +130,7 @@ await test('★ compress 模式经 apply()：对冲/传输 trace 落盘，birth-
   const settled = text.split('\n').find((l) => l.includes('[birth-distill-settled]'))
   assert.ok(settled && settled.includes('"hedged":"hedge"') && settled.includes('"hedgeAfterMs":200'), settled)
   assert.ok(settled.includes('"promptVersion":"compress-v3:250-450"'), 'promptVersion 仍须贯通')
-  await sleep(1600)
+  await until(() => closedEarly >= 1 || completed >= 2)   // 等慢的那份收尾，免得串到下一条测试
 })
 
 await test('外部 signal abort ⇒ 两份都取消', async () => {

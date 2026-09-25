@@ -58,8 +58,16 @@ export const DEFAULTS = {
   //   绝对下界 B_abs = T/((R−1)·d) = 426：低于它无论压多狠都亏。旧值 500 贴着下界。
   //   最坏情况：短块不再压缩 = 宿主原生行为（已知安全态）。
   birthMinChars: 3100,
-  //   把 CAS 句柄附在压缩文本尾部，给模型留一条「可回查」的路
-  birthHandleInText: true,
+  // ⛔ v11.10 退役 birthHandleInText：2026-09-18 用户令「句柄绝不进模型可见文本」之后它就不再有任何效果
+  //   （birthFinish 恒输出摘要或原文逐字）。留着只会误导读配置的人；出现时进 retiredOptions。
+  // ★ v11.10 与语言无关的长度门槛（opt-in）：正数 ⇒ 按 token 估算（tokens.js，中文 0.6/字、其余 0.3/字）
+  //   判定是否值得压缩，**完全接管** birthMinChars。缺省 null = 仍按字符（行为不变）。
+  //   参考：birthMinChars 3100 对英文 ≈ 930 token、对中文 ≈ 1,860 token —— 同一门槛随语言差 2 倍。
+  birthMinTokens: null,
+  // ★ v11.10 token 闸门（缺省开）：字符净省达标但估算 token 净省 < birthMinSavedTokens（缺省按 1）⇒ 不替换。
+  //   只会拒绝「字符变少、上下文却没变小」的替换（英文原文 → 中文摘要的典型陷阱）；false 关闭。
+  birthTokenGate: true,
+  birthMinSavedTokens: 0,
   //   CAS 归档的 producer 标签（事后可按来源检索）
   birthProducer: 'cot-birth',
   //   CAS 写盘超时护栏：卡住就当归档失败处理（原样透传），绝不许拖死模型流
@@ -79,6 +87,10 @@ export const DEFAULTS = {
   //     部分认领 / 歧义匹配（缺陷 B）/ 重启丢失，且替换已出站块的缓存代价至今无定论。
   //     打开时 BOOT 的 birth.experimental=true。
   birthDeferredClaim: false,
+  //   v11.11 流归属不可证时（多个会话交错进入 pre-step，见 session-tracker.js）怎么办：
+  //   'passthrough'（缺省）= 这条流原文放行、不归档不压缩 —— 挂错会话的 CAS 归档与跨会话证据泄漏都比少压一块更糟；
+  //   'latest' = v11.10 及以前的行为（按最近一次 pre-step 的会话）。两种都留 birth-session-ambiguous trace。
+  birthSessionAmbiguity: 'passthrough',
   //   净省保本线：蒸馏稿 + 句柄必须比原文少 ≥ 这么多字符才允许替换。
   //   低于此线说明模型在抄书（没完成有效浓缩）⇒ 原样放行 raw + 句柄。
   birthMinSavedChars: 50,
@@ -266,9 +278,36 @@ export const DEFAULTS = {
   // 宿主 provider 表位置（与宿主同源读取；只读，不改写、不复制端点）
   settingsPath: dshHomePath('settings.yaml'),
 
+  // ── v11.10：此前只在「已知键白名单」里、却不在 DEFAULTS 的内部旋钮，全部显式化 ──
+  //   值与各调用点原先的回落值逐字相同 ⇒ 行为零变化；好处是 BOOT/类型/文档终于能看见它们。
+  // checkpoint 活跃尾部宽度（最近多少条 assistant/message 逐字保留；官方规范最小 1）
+  keepTail: 1,
+  // 自己发射的看板以此插件名识别（emitter 用它排除/吸收自家旧看板）
+  pluginName: 'cot-form-b',
+  // checkpoint / 迟到认领写 CAS 时的 producer 标签
+  emitterProducer: 'cot-checkpoint',
+  // checkpoint 看板里单条工具结果内联上限（字符）；超出归档为句柄
+  maxInlineToolResultChars: 2000,
+  // 有限数 ⇒ 静态接管 checkpoint 动态门槛（headroom.js 的逃生门）；null = 按水位动态判定
+  staticMinRawChars: null,
+  // birth 放弃应用时取消在飞提纯（false = 让它跑完，仅用于诊断「真工期」）
+  birthCancelOnGiveUp: true,
+  // finishWaitMs ≤ 0（真零等待）时只等写盘落地的护栏
+  birthDiskWaitMs: 400,
+  // 成本模型（只记录，不参与判定；见 birth.js birthEconomics 与 docs/AUDIT-V11.5.md §一）
+  econCacheDiscount: 0.02,
+  econTemplateChars: 460,
+  econR: 60,
+  econCharsPerTurn: null,
+
   // 观测
   traceFile: dshHomePath('storages', 'cot-form-b', 'trace.log'),
   trace: true,
+  // ★ v11.10 trace 轮转：trace.log 超过此字节数时改名为 trace.log.1（覆盖上一份）再重新写。
+  //   此前无上限 —— 每次 llm/stream 都写一行、行内带全部消息的画像，长期运行只增不减。0 = 不轮转。
+  traceMaxBytes: 64 * 1024 * 1024,
+  // ★ v11.10 llm-stream 溯源里「人类 user 开头片段」的长度（原固定 48）。0 = 不记录任何正文片段（隐私优先）。
+  tracePreviewChars: 48,
 }
 
 // ── 配置归一化：同时接受扁平键与嵌套写法 ─────────────────────────────────────
@@ -279,11 +318,15 @@ export const DEFAULTS = {
 // 嵌套对象里的键**覆盖**同名扁平键。不认识的键不报错，但进 unknownOptions（BOOT 可见）；
 // 退役的键/模式进 retiredOptions / retiredMode，并从生效配置里删除。
 const NESTED_DISTILL_KEYS = ['timeoutMs', 'minRawChars', 'maxAttempts', 'maxOutputTokens', 'baseUrl', 'model', 'credentialRef', 'credentialsPath', 'graceMs', 'keepAlive', 'keepAliveMsecs', 'prewarm', 'prewarmMinGapMs', 'followHostModel', 'disableThinking', 'hedgeAfterMs']
-const NESTED_BIRTH_KEYS = ['minChars', 'archive', 'handleInText', 'producer', 'archiveTimeoutMs', 'finishWaitMs', 'minSavedChars', 'finishHeadersGraceMs']
+// v11.10：补上 probeTimeoutMs —— normalizeConfig 一直在读它、README 也写了，却漏了登记 ⇒ BOOT 把它误报成 unknownOptions。
+const NESTED_BIRTH_KEYS = ['minChars', 'archive', 'producer', 'archiveTimeoutMs', 'probeTimeoutMs', 'finishWaitMs', 'minSavedChars', 'finishHeadersGraceMs',
+  'minTokens', 'tokenGate', 'minSavedTokens', 'sessionAmbiguity']
+const RETIRED_NESTED_BIRTH = ['handleInText']
 // 退役键：v7 四个旧生产开关 + v11.8 随 'distill'/'rules' 模式退役的键（含整个 rules: 容器）
 const RETIRED_OPTIONS = ['stateEvidenceViews', 'stateEvidenceBodyBudget', 'stateSnapshotMirror', 'stateCompileQueue',
   'hurdleRounds', 'templateChars', 'maxVerbatimChars', 'skeletonizeArgs', 'skeletonMinChars', 'skeletonKeepHead', 'skeletonKeepTail',
-  'rulesEnabled', 'rulesFoldRuns', 'rulesDropDuplicateLines', 'rulesMinSavedChars', 'rulesRequireArchive', 'rules']
+  'rulesEnabled', 'rulesFoldRuns', 'rulesDropDuplicateLines', 'rulesMinSavedChars', 'rulesRequireArchive', 'rules',
+  'birthHandleInText']
 const RETIRED_NESTED_DISTILL = ['hurdleRounds', 'templateChars', 'maxVerbatimChars']
 const RETIRED_MODES = ['distill', 'rules']
 const MODES = ['birth', 'checkpoint', 'off']
@@ -300,13 +343,21 @@ export function normalizeConfig(config = {}) {
   if (b && typeof b === 'object') {
     if (b.minChars !== undefined) c.birthMinChars = b.minChars
     if (b.archive !== undefined) c.birthArchive = b.archive
-    if (b.handleInText !== undefined) c.birthHandleInText = b.handleInText
     if (b.producer !== undefined) c.birthProducer = b.producer
     if (b.archiveTimeoutMs !== undefined) c.birthArchiveTimeoutMs = b.archiveTimeoutMs
     if (b.probeTimeoutMs !== undefined) c.birthHandleProbeTimeoutMs = b.probeTimeoutMs
     if (b.finishWaitMs !== undefined) c.birthFinishWaitMs = b.finishWaitMs
     if (b.minSavedChars !== undefined) c.birthMinSavedChars = b.minSavedChars
     if (b.finishHeadersGraceMs !== undefined) c.finishHeadersGraceMs = b.finishHeadersGraceMs
+    if (b.minTokens !== undefined) c.birthMinTokens = b.minTokens
+    if (b.tokenGate !== undefined) c.birthTokenGate = b.tokenGate
+    if (b.minSavedTokens !== undefined) c.birthMinSavedTokens = b.minSavedTokens
+    if (b.sessionAmbiguity !== undefined) c.birthSessionAmbiguity = b.sessionAmbiguity
+  }
+  // 不认识的处置值 ⇒ 回到安全缺省（passthrough）并在 BOOT 留痕；绝不把拼错的值猜成「照旧归属」
+  if (c.birthSessionAmbiguity !== 'passthrough' && c.birthSessionAmbiguity !== 'latest') {
+    c.configAdjusted = Object.assign({}, c.configAdjusted, { birthSessionAmbiguity: { from: c.birthSessionAmbiguity, to: 'passthrough', why: "must be 'passthrough' or 'latest'" } })
+    c.birthSessionAmbiguity = 'passthrough'
   }
   // 模式：退役模式按 'off' 处理（它们本来就无法改写任何东西）；不认识的值同样按 'off'
   //   —— 绝不把拼错的模式名「猜」成一个会改写会话的模式。两种情况都在 BOOT 里可见。
@@ -314,6 +365,7 @@ export function normalizeConfig(config = {}) {
   else if (!MODES.includes(c.mode)) { c.invalidMode = c.mode; c.mode = 'off' }
   c.retiredOptions = RETIRED_OPTIONS.filter(k => Object.hasOwn(config || {}, k))
   if (d && typeof d === 'object') for (const k of RETIRED_NESTED_DISTILL) if (Object.hasOwn(d, k)) c.retiredOptions.push('distill.' + k)
+  if (b && typeof b === 'object') for (const k of RETIRED_NESTED_BIRTH) if (Object.hasOwn(b, k)) c.retiredOptions.push('birth.' + k)
   for (const k of c.retiredOptions) delete c[k]
   // ★ 未知键不再静默吞掉：拼错的键（如 finishWaitMs 扁平写法）进 unknownOptions，BOOT 里可见。
   //   只报不删 —— 不改变任何既有合法行为；嵌套容器键与运行期注入键都在白名单里。
@@ -323,14 +375,11 @@ export function normalizeConfig(config = {}) {
       'distill', 'birth',                             // 嵌套别名容器
       'compileMode', 'compileModeConflict', 'configAdjusted', 'retiredOptions', 'unknownOptions',
       'retiredMode', 'invalidMode', 'followProvider', '_promptMessages', '_onHeaders',
-      'keepTail', 'pluginName', 'maxInlineToolResultChars', 'staticMinRawChars', 'emitterProducer',
-      'birthCancelOnGiveUp', 'birthDiskWaitMs',
-      'econCacheDiscount', 'econTemplateChars', 'econR', 'econCharsPerTurn',
       ...c.retiredOptions,                            // 退役键算已知（另有专门报法）
     ])
     c.unknownOptions = Object.keys(config || {}).filter((k) => !known.has(k))
     // 嵌套容器里拼错的键同样要报（如 birth: { finishWait: 6000 } 会被静默忽略）
-    for (const [box, keys] of [['distill', [...NESTED_DISTILL_KEYS, ...RETIRED_NESTED_DISTILL]], ['birth', NESTED_BIRTH_KEYS]]) {
+    for (const [box, keys] of [['distill', [...NESTED_DISTILL_KEYS, ...RETIRED_NESTED_DISTILL]], ['birth', [...NESTED_BIRTH_KEYS, ...RETIRED_NESTED_BIRTH]]]) {
       const v = config && config[box]
       if (v && typeof v === 'object' && !Array.isArray(v)) {
         for (const k of Object.keys(v)) if (!keys.includes(k)) c.unknownOptions.push(box + '.' + k)

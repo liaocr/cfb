@@ -9,10 +9,27 @@
 //       所以给的是**保本预算**（`breakeven.fullReadBacksAffordable`）：还能整块回读几次，超出即亏。
 //   单位纪律：字符数不是钱。真账单必须用宿主 tokenMeter / usage（`measuredSurfaceTokenDelta` 只在
 //   配了 emitterMeasureTokens 且非评估态时才有值）。
+//
+// ★ v11.10：每组新增 `birth` —— 生产路径（birth）的结局漏斗与**收网等待该给多少**的实测依据。
+//   关键量 needWaitMs = 副模型真工期（birth-distill-settled.ms，自 block-end 起算）
+//                     − 免费窗口（birth-finish-enter.gapMs，block-end → finish 之间本来就有的时间），按 taskId 关联。
+//   它就是「这一块要在 finish 处再等多久才能拿到摘要」。按分位数给出 finishWaitMs 候选，
+//   以及当前 finishWaitMs(+响应头宽限) 覆盖了多少比例的成功结果 —— 取值是产品权衡，工具只给数据。
+//
+// ★ v11.11：每组新增 `tokenCalibration` —— 用 provider 自报 usage 校准 src/tokens.js 的估算系数。
+//   样本 = 成功的 birth-distill-settled 里同时有 prompt{Wide,Other}Chars 与 usage 的行；
+//   最小二乘拟合 tokens ≈ wide·W + other·O + C（C 吸收聊天模板开销）。只对**副模型的分词器**成立；
+//   followHostModel（缺省）下副模型 = 对话模型，所以它就是 token 闸门该用的系数。
 import fs from 'node:fs'
 import readline from 'node:readline'
 import { pathToFileURL } from 'node:url'
 
+const freshBirth = () => ({
+  tasks: new Map(),            // taskId -> { gapMs, settledMs, ok }
+  outcomes: Object.create(null), flush: Object.create(null), cancelled: Object.create(null),
+  condensed: 0, netSavedChars: 0, netSavedTokensEst: 0, tokenFields: 0, waitedMs: [],
+  calPrompt: [], calOutput: [],   // [wide, other, tokens]
+})
 const freshCp = () => ({
   attempts: new Map(), emitted: 0, blocked: 0, blockedBy: Object.create(null),
   enrichChars: 0, excerpted: 0, dumpSeen: 0, errorSeen: 0,
@@ -23,17 +40,21 @@ const freshCp = () => ({
 })
 
 export function createTraceAudit() {
-  const groups = []; let current = null, ignored = 0, malformed = 0
+  const groups = []; let current = null, ignored = 0, malformed = 0, rotations = 0
   const fresh = (at, boot) => ({ start: at, boot: boot ? {
     selfId: boot.selfId ?? null, deps: boot.deps ?? null, mode: boot.mode ?? null,
     timeoutMs: boot.timeoutMs ?? null, birthFinishWaitMs: boot.birth?.finishWaitMs ?? boot.birthFinishWaitMs ?? null,
     dryRun: boot.dryRun ?? null,
+    // v11.10：轮转后 trace.js 续写的 BOOT 副本 —— 同一次启动的延续，不是一次重启
+    rotatedCopy: boot.rotatedCopy === true,
   } : null, events: Object.create(null), settled: { ok: 0, failed: 0, unknown: 0 },
-    reasons: Object.create(null), promptChars: [], durationMs: [], coverObserved: 0, cp: freshCp() })
+    reasons: Object.create(null), promptChars: [], durationMs: [], coverObserved: 0, cp: freshCp(), bt: freshBirth(),
+    graceMs: boot ? (boot.finishHeadersGraceMs ?? null) : null })
   function add(line) {
     const m = /^\[(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z)\] \[([A-Za-z0-9_-]+)\] (\{.*\})$/.exec(line)
     if (!m) { ignored++; return }
     let obj; try { obj = JSON.parse(m[3]) } catch { malformed++; return }
+    if (m[2] === 'trace-rotated') { rotations++; return }   // 元信息：不开组、不计事件（其后紧跟 BOOT 副本）
     if (!current || m[2] === 'BOOT') { current = fresh(m[1], m[2] === 'BOOT' ? obj : null); groups.push(current) }
     const tag = m[2]; current.events[tag] = (current.events[tag] || 0) + 1
     if (tag === 'state-envelope' && obj.cover) current.coverObserved++
@@ -49,6 +70,95 @@ export function createTraceAudit() {
       if (Number.isFinite(obj.ms) && obj.ms >= 0) current.durationMs.push(obj.ms)
     }
     addToolResultPath(current.cp, tag, obj)
+    addBirth(current.bt, tag, obj)
+  }
+
+  function addBirth(bt, tag, obj) {
+    const task = () => {
+      if (typeof obj.taskId !== 'string' || !obj.taskId) return null
+      let t = bt.tasks.get(obj.taskId)
+      if (!t) { t = { gapMs: null, settledMs: null, ok: null }; bt.tasks.set(obj.taskId, t) }
+      return t
+    }
+    if (tag === 'birth-finish-enter') { const t = task(); if (t && Number.isFinite(obj.gapMs)) t.gapMs = Math.max(0, obj.gapMs); return }
+    if (tag === 'birth-distill-settled') {
+      const t = task(); if (t) { t.ok = obj.ok === true; if (Number.isFinite(obj.ms)) t.settledMs = obj.ms }
+      if (obj.ok === true) addCalibration(bt, obj)
+      return
+    }
+    if (tag === 'birth-condensed') {
+      bt.condensed++; bt.outcomes.condensed = (bt.outcomes.condensed || 0) + 1
+      if (Number.isFinite(obj.netSaved)) bt.netSavedChars += obj.netSaved
+      if (Number.isFinite(obj.netSavedTokensEst)) { bt.netSavedTokensEst += obj.netSavedTokensEst; bt.tokenFields++ }
+      if (Number.isFinite(obj.waitedMs)) bt.waitedMs.push(obj.waitedMs)
+      return
+    }
+    if (tag === 'birth-passthrough') {
+      const why = typeof obj.why === 'string' && obj.why ? obj.why : 'unknown'
+      bt.outcomes[why] = (bt.outcomes[why] || 0) + 1
+      if (Number.isFinite(obj.waitedMs)) bt.waitedMs.push(obj.waitedMs)
+      return
+    }
+    if (tag === 'birth-session-ambiguous') {
+      // v11.11：流归属不可证。passthrough 时这就是该流的结局（不会再有 condensed/passthrough 行）
+      bt.ambiguous = (bt.ambiguous || 0) + 1
+      if (obj.action !== 'latest') bt.outcomes['session-ambiguous'] = (bt.outcomes['session-ambiguous'] || 0) + 1
+      return
+    }
+    if (tag === 'birth-flush') { const w = obj.why || 'unknown'; bt.flush[w] = (bt.flush[w] || 0) + 1; return }
+    if (tag === 'birth-distill-cancelled') { const w = obj.why || 'unknown'; bt.cancelled[w] = (bt.cancelled[w] || 0) + 1 }
+  }
+
+  function addCalibration(bt, obj) {
+    const u = obj.providerReportedUsage
+    if (!u || typeof u !== 'object') return
+    const num = (...xs) => { for (const x of xs) if (Number.isFinite(x)) return x; return null }
+    const inTok = num(u.prompt_tokens, u.input_tokens)
+    if (inTok != null && Number.isFinite(obj.promptWideChars) && Number.isFinite(obj.promptOtherChars)) bt.calPrompt.push([obj.promptWideChars, obj.promptOtherChars, inTok])
+    const outAll = num(u.completion_tokens, u.output_tokens)
+    // 思考 token 不属于可见产物（关思考失败时才会有）⇒ 扣掉
+    const reasoning = num(u.completion_tokens_details?.reasoning_tokens, u.output_tokens_details?.reasoning_tokens) || 0
+    if (outAll != null && Number.isFinite(obj.outputWideChars) && Number.isFinite(obj.outputOtherChars)) bt.calOutput.push([obj.outputWideChars, obj.outputOtherChars, Math.max(0, outAll - reasoning)])
+  }
+
+  function birthSummary(g) {
+    const bt = g.bt
+    const need = [], okMs = []
+    let joined = 0
+    for (const t of bt.tasks.values()) {
+      if (t.ok !== true || !Number.isFinite(t.settledMs)) continue
+      okMs.push(t.settledMs)
+      if (Number.isFinite(t.gapMs)) { joined++; need.push(Math.max(0, t.settledMs - t.gapMs)) }
+    }
+    need.sort((a, b) => a - b)
+    const q = (p) => need.length ? need[Math.ceil(p * need.length) - 1] : null
+    const wait = g.boot && Number.isFinite(g.boot.birthFinishWaitMs) ? g.boot.birthFinishWaitMs : null
+    const grace = Number.isFinite(g.graceMs) ? g.graceMs : 0
+    const covered = (ms) => need.length && ms != null ? Number((need.filter((x) => x <= ms).length / need.length).toFixed(3)) : null
+    const total = Object.values(bt.outcomes).reduce((a, b) => a + b, 0)
+    return {
+      outcomes: bt.outcomes, total,
+      condensedRate: total ? Number((bt.condensed / total).toFixed(3)) : null,
+      flush: bt.flush, cancelled: bt.cancelled, sessionAmbiguous: bt.ambiguous || 0,
+      netSavedChars: bt.netSavedChars,
+      netSavedTokensEst: bt.tokenFields ? bt.netSavedTokensEst : null,
+      waitedMs: stats(bt.waitedMs),
+      distillOkMs: stats(okMs),
+      needWaitMs: { n: need.length, joined, p50: q(0.5), p75: q(0.75), p90: q(0.9), p95: q(0.95), max: need.length ? need.at(-1) : null },
+      finishWait: {
+        configuredMs: wait, headersGraceMs: grace,
+        coverageAtConfigured: covered(wait), coverageWithGrace: wait == null ? null : covered(wait + grace),
+        candidates: need.length ? { p50: q(0.5), p75: q(0.75), p90: q(0.9) } : null,
+        note: 'needWaitMs = distill settled ms − free window (block-end→finish). Coverage counts successful distills only; the choice is a latency/benefit trade-off, not a tool verdict.',
+      },
+      unit: 'chars and *TokensEst are estimates, not provider billing',
+    }
+  }
+
+  function calibrationSummary(g) {
+    return { prompt: fitTokenModel(g.bt.calPrompt), output: fitTokenModel(g.bt.calOutput),
+      current: { wide: 0.6, other: 0.3, intercept: 0 },
+      note: 'least squares tokens ≈ wide·W + other·O + C on provider-reported usage; valid for the side model tokenizer (= host model under followHostModel)' }
   }
 
   /**
@@ -190,10 +300,10 @@ export function createTraceAudit() {
     }
   }
 
-  return { add, result: () => ({ ignored, malformed, quantile: 'nearest-rank',
+  return { add, result: () => ({ ignored, malformed, rotations, quantile: 'nearest-rank',
     warning: 'Per-BOOT samples only. Missing fields remain unknown; no causal or task-success claims.',
     toolResultPath: toolResultPath(groups),
-    groups: groups.map(g => ({ ...g, cp: undefined, promptChars: stats(g.promptChars), durationMs: stats(g.durationMs) })) }) }
+    groups: groups.map(g => ({ ...g, cp: undefined, bt: undefined, graceMs: undefined, birth: birthSummary(g), tokenCalibration: calibrationSummary(g), promptChars: stats(g.promptChars), durationMs: stats(g.durationMs) })) }) }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (!process.argv[2]) { console.error('Usage: node tools/analyze-trace.mjs trace.log'); process.exitCode = 2 }
@@ -202,4 +312,50 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     for await (const line of readline.createInterface({ input: fs.createReadStream(process.argv[2]), crlfDelay: Infinity })) audit.add(line)
     console.log(JSON.stringify(audit.result(), null, 2))
   }
+}
+
+/**
+ * v11.11：最小二乘拟合 tokens ≈ wide·W + other·O + C。
+ * 退化（样本只有一种书写系统 / 太少）时自动降维：去掉恒为 0 的那一列；仍不可解 ⇒ fit=null。
+ * 同时报告现行估算（0.6/0.3，无截距）与拟合结果的平均绝对百分比误差，便于判断要不要改系数。
+ * @param {Array<[number, number, number]>} samples [wide, other, tokens]
+ */
+export function fitTokenModel(samples) {
+  const xs = (Array.isArray(samples) ? samples : []).filter((r) => Array.isArray(r) && r.every(Number.isFinite) && r[2] > 0)
+  const n = xs.length
+  const mape = (pred) => n ? Number((xs.reduce((a, r) => a + Math.abs(pred(r) - r[2]) / r[2], 0) / n).toFixed(3)) : null
+  const current = (r) => r[0] * 0.6 + r[1] * 0.3
+  const sumEst = xs.reduce((a, r) => a + current(r), 0), sumAct = xs.reduce((a, r) => a + r[2], 0)
+  const base = { n, estimateOverActual: sumAct ? Number((sumEst / sumAct).toFixed(3)) : null, currentMape: mape(current) }
+  if (n < 3) return { ...base, fit: null, fitMape: null, why: 'need >= 3 samples' }
+  const cols = [0, 1].filter((j) => xs.some((r) => r[j] > 0))
+  // 设计矩阵：选中的字符列 + 截距列
+  const X = xs.map((r) => cols.map((j) => r[j]).concat(1)), y = xs.map((r) => r[2])
+  const k = cols.length + 1
+  if (n < k + 1) return { ...base, fit: null, fitMape: null, why: 'too few samples for ' + k + ' parameters' }
+  const A = Array.from({ length: k }, (_, i) => Array.from({ length: k }, (_, j) => X.reduce((a, row) => a + row[i] * row[j], 0)))
+  const b = Array.from({ length: k }, (_, i) => X.reduce((a, row, t) => a + row[i] * y[t], 0))
+  const beta = solveLinear(A, b)
+  if (!beta) return { ...base, fit: null, fitMape: null, why: 'degenerate samples' }
+  const fit = { wide: null, other: null, intercept: Number(beta[k - 1].toFixed(2)) }
+  cols.forEach((j, i) => { fit[j === 0 ? 'wide' : 'other'] = Number(beta[i].toFixed(4)) })
+  const pred = (r) => cols.reduce((a, j, i) => a + beta[i] * r[j], 0) + beta[k - 1]
+  return { ...base, fit, fitMape: mape(pred) }
+}
+
+function solveLinear(A, b) {
+  const k = b.length, M = A.map((row, i) => row.concat(b[i]))
+  for (let c = 0; c < k; c++) {
+    let p = c
+    for (let r = c + 1; r < k; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r
+    const scale = Math.max(1, ...M.map((row) => Math.abs(row[c])))
+    if (Math.abs(M[p][c]) < 1e-9 * scale) return null
+    ;[M[c], M[p]] = [M[p], M[c]]
+    for (let r = 0; r < k; r++) {
+      if (r === c) continue
+      const f = M[r][c] / M[c][c]
+      for (let j = c; j <= k; j++) M[r][j] -= f * M[c][j]
+    }
+  }
+  return M.map((row, i) => row[k] / row[i])   // Gauss-Jordan 之后 row[i] 就是主元
 }

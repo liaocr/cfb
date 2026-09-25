@@ -55,7 +55,7 @@ const SUMMARY = '【已归档决策】alpha 模块 5 个校验步骤全部通过
   '【已否决分支·不可重开】逐行重排方案已否决。\n【已证伪路径·归档】并行化尝试失败。'
 
 const mkCfg = (over = {}) => Object.assign({
-  birthMinChars: 100, birthArchive: true, birthHandleInText: true,
+  birthMinChars: 100, birthArchive: true,
   birthArchiveTimeoutMs: 3000, birthFinishWaitMs: 1500, birthMinSavedChars: 50,
 }, over)
 

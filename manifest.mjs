@@ -16,10 +16,14 @@ import { fileURLToPath } from 'node:url'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const LIST = path.join(HERE, 'MANIFEST.sha256')
 const SELF = new Set(['MANIFEST.sha256'])
+const SKIP_DIRS = new Set(['.git', 'node_modules', 'coverage', '.nyc_output', '.cot-form-b-selftest-tmp'])
 
 function walk(dir, base) {
   const out = []
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    // 与 .gitignore 对齐的生成物目录：本地量过覆盖率（c8 → coverage/）再生成清单，曾把几十个本地文件写进清单，
+    // 干净的 CI 检出里它们不存在 ⇒ --check 必然失败。只收录真正属于包的文件。
+    if (SKIP_DIRS.has(e.name) && e.isDirectory()) continue
     if (e.name === '.git' || e.name === 'node_modules') continue
     const abs = path.join(dir, e.name)
     const rel = base ? base + '/' + e.name : e.name

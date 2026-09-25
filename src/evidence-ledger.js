@@ -1,5 +1,6 @@
 import { compilerEvidence } from './evidence-input.js'
 import { boundedEvidenceWrite, boundedEvidenceBatch } from './evidence-storage.js'
+import { openLockExclusive } from './fs-lock.js'
 // Deterministic observation state. No semantic goal extraction, no model output
 // may advance this ledger. Immutable source records, atomic scoped index.
 import fs from 'node:fs'
@@ -29,7 +30,7 @@ export function prepareEvidenceLedger(input) {
   fs.mkdirSync(dir, { recursive: true })
   const lock = path.join(dir, 'index.lock')
   let fd
-  try { fd = fs.openSync(lock, 'wx') } catch (e) { if (e.code === 'EEXIST') throw Error('evidence-index-busy'); throw e }
+  try { fd = openLockExclusive(lock) } catch (e) { if (e.code === 'EEXIST') throw Error('evidence-index-busy'); throw e }
   try {
     const state = loadEvidenceLedger(sessionId, branchId) || { schema: 1, sessionId: String(sessionId), branchId: String(branchId), revision: 0, records: {} }
     const delta = [], current = [], archives = [], writes = new Map(), verified = new Map(), bodyHashes = new Map()

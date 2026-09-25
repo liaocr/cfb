@@ -1,4 +1,4 @@
-# 架构（v11.9，开发者视角）
+# 架构（v11.11，开发者视角）
 
 > 面向改代码的人：模块怎么分、数据怎么流、哪些不变式不能碰、加东西该改哪里。
 > 使用与配置见根目录 [`README.md`](../README.md)；设计沿革见 [`CHANGELOG.md`](../CHANGELOG.md) 与 [`archive/`](archive/README.md)。
@@ -11,14 +11,20 @@
 依赖从上往下，**无环**：
 
 ```
-plugin.js ─────────────────────────────────────────────── 组合根：apply() 注册钩子、接线、BOOT
+plugin.js ─────────────────────────────────────────────── 组合根：apply() 注册钩子、接线（v11.11 只剩接线）
+  ├─ boot-record.js       BOOT 行内容
+  ├─ host-follow.js       调用级模型 / provider（共享 cfg 不变）
+  ├─ session-tracker.js   流归属（交错 ⇒ 不可证）
+  ├─ handle-probe.js      句柄读回探针
+  ├─ birth-claim.js ───── 下轮收网（实验）→ emitter.js, late-memory.js
+  ├─ checkpoint.js ────── checkpoint 模式 → distill.js, emitter.js
   ├─ birth.js ─────────── 出生即压缩（生产路径）
   │    ├─ late-memory.js    迟到结果暂存区（实验）
   │    ├─ evidence.js       会话证据采集（memory 模式）
   │    ├─ snapshot-store.js 结构化快照持久化
   │    ├─ fidelity.js       逐字标识符召回率
   │    └─ trace.js          settled 字段白名单
-  ├─ distill.js ───────── 副模型调用（重试降级 / 对冲 / 传输 trace / memory 编译）
+  ├─ distill.js ───────── 副模型调用（重试降级 / 对冲 / 传输 trace / memory 编译 / makeBirthCompiler 工厂）
   │    ├─ prompts.js ─ config.js
   │    ├─ transport.js ─ provider.js ─ config.js
   │    └─ evidence-ledger.js ─ evidence-input.js, evidence-storage.js
@@ -30,16 +36,23 @@ plugin.js ───────────────────────�
 state-memory.js          纯函数底座（信封 / 编译提示词 / 解析 / 投影 / 渲染 / 来源判定），被多数模块引用
 ```
 
-规模：最大的是 `state-memory.js`（约 1750 行，纯函数）、`birth.js`（约 780 行）、`plugin.js`（约 580 行）。
+规模：最大的是 `state-memory.js`（约 1757 行，纯函数）、`birth.js`（约 859 行）。
+（行数只是量级提示，以 `wc -l src/*.js` 为准。）
+
+v11.11 起 `plugin.js` 只做接线（约 190 行）：`boot-record.js`（BOOT 内容）、`host-follow.js`（调用级模型/provider）、
+`session-tracker.js`（流归属）、`birth-claim.js`（下轮收网）、`checkpoint.js`（checkpoint 模式）、`handle-probe.js`（句柄读回探针）。
+
+横切小模块（v11.10）：`tokens.js`（token 粗估，被 birth 引用）、`fs-lock.js`（独占锁 + 死锁接管，被
+`snapshot-store` / `evidence-ledger` / `evidence-storage` 引用）。
 
 ## 2. 钩子与数据流
 
-`apply(ctx, config)`（`plugin.js`）先 `normalizeConfig`，写一行 `BOOT`，然后注册：
+`apply(ctx, config)`（`plugin.js`，v11.11 起只做接线）先 `normalizeConfig`，写一行 `BOOT`（内容在 `boot-record.js`），然后注册：
 
 | 钩子 | 做什么 |
 |---|---|
-| `agent/pre-step` | 捕获当前会话（`birthSession` / `birthSessionId`，供归档登记与证据采集）；`birth + birthDeferredClaim:true` 时尝试认领暂存区里的迟到结果；`checkpoint` 模式发射看板 |
-| `llm/stream`（`prepend`） | 只读观测：消费计量、宿主模型/provider 跟随、`llm-stream` 溯源 trace；`birth` 模式用 `birthTransform` 包装主流；`checkpoint` 模式在 reasoning 结束时 early-fire |
+| `agent/pre-step` | 捕获当前会话（`session-tracker.js`，供归档登记与证据采集）；`birth + birthDeferredClaim:true` 时尝试认领暂存区里的迟到结果（`birth-claim.js`）；`checkpoint` 模式发射看板（`checkpoint.js`） |
+| `llm/stream`（`prepend`） | 只读观测：消费计量、宿主模型/provider 跟随（`host-follow.js` 派生**本次调用专属**配置）、`llm-stream` 溯源 trace；判定流归属（交错 ⇒ 不可证）；`birth` 模式用 `birthTransform` 包装主流；`checkpoint` 模式在 reasoning 结束时 early-fire |
 
 任何观测或内部异常都被 `try/catch` 吞成 trace；**主流自己的错误原样抛出**。拿到的流不是 async iterable 就原样返回、绝不包装。
 
@@ -63,7 +76,7 @@ birthTransform(inner, deps)
                                     background-judgment-pending/judgment-failed（readyOnly）
 ```
 
-`deps.distill` 由 `plugin.js` 按编译模式三选一构造：
+`deps.distill` 由 `distill.js` 的 `makeBirthCompiler(streamCfg, { flights })` 按编译模式三选一构造（v11.10 前是 `plugin.js` 里的内联三元，无法单测）：
 
 | 编译模式 | distill 闭包 | runtime（传输观测） |
 |---|---|---|
@@ -92,7 +105,7 @@ birthTransform(inner, deps)
 
 | 路径 | 写入者 | 何时 |
 |---|---|---|
-| `trace.log` | `trace.js` | `trace: true` 时每个事件一行 |
+| `trace.log`（+ `trace.log.1`） | `trace.js` | `trace: true` 时每个事件一行；超过 `traceMaxBytes`（64 MiB）轮转一次 |
 | `snapshots/` | `snapshot-store.js` | memory 模式编译成功（且 `stateSnapshot !== false`） |
 | `evidence-v1/` | `evidence-storage.js` | memory 模式的确定性证据账本 |
 
@@ -112,6 +125,14 @@ CAS（原文归档）不在这里：它是宿主注入的 `cmbStore` 服务（`c
 8. **地址必须可读回**（v11.9）：`art://` 句柄只在「有正面证据能按句柄取回」时才允许进模型可见文本。
    emitter 发射前抽样验证（`verifyHandles`，正面证伪 ⇒ 拒发保持原文）；birth 的内存预推句柄须先验证，
    不可证即按归档失败处理（原文放行）。
+9. **放弃即取消**（v11.10）：凡是决定「这块用原文」的路径（finish 到点、硬停、源流无 finish、源流抛错、消费者提前退出），
+   都经由唯一实现 `birthCancelFlying` 取消仍在飞的提纯；迟到认领打开时尊重它（消费者提前退出除外 —— 块从未出站，不可能被认领）。
+10. **token 不降不替换**（v11.10）：字符净省达标但估算 token 不降 ⇒ 原文放行（`no-token-gain`）。估算只用于**拒绝**，不用于宣称节省。
+11. **锁只在可证明时接管**（v11.10）：`fs-lock.js` 只接管「同机且 pid 已不存在」的锁；任何不可证的情况照旧 fail-closed，永不按年龄抢锁。
+12. **共享配置不可变**（v11.11）：`apply()` 里归一化出的 `cfg` 在运行期永不改写；随调用变化的量（宿主模型、provider）
+   由 `host-follow.js` 派生到调用级副本里。凡是「稍后才读配置」的地方（early-fire、预热）都必须拿调用级副本。
+13. **流归属不可证不归档**（v11.11）：多个会话交错进入 pre-step 时，这条流属于谁无法证明 ⇒ 缺省原文放行，
+   不写 CAS、不采集证据（挂错会话的归档与跨会话证据泄漏都比少压一块更糟）。
 
 ## 5. 改哪里
 
@@ -122,12 +143,15 @@ CAS（原文归档）不在这里：它是宿主注入的 `cmbStore` 服务（`c
 | 给 `birth-distill-settled` / `compiler-transport-settled` 加字段 | `trace.js` 的 `settledTraceData` 白名单（只写进 meta 不会落盘，出过真实事故） |
 | 改提示词 | `prompts.js`；版本号必须从 `compressPromptVersion` 同一次裁决里取 |
 | 加一个模块 | 放进 `src/` 即可；`DEP_ID` 自动枚举，BOOT 会带上它 |
-| 加一个测试套件 | `test/<名字>.selftest.mjs`，末尾打印 `PASS=n FAIL=m`；把名字加进 `verify.mjs` 的 `ORDER`（不加也会被自动纳入，但会提示） |
+| 加一个测试套件 | `test/<名字>.selftest.mjs`，末尾打印 `PASS=n FAIL=m`；把名字加进 `verify.mjs` 的 `ORDER`（不加也会被自动纳入，但会提示）。套件会**并发**运行，不得依赖其他套件的副作用；特别慢的套件加进 `SLOW_FIRST` |
+| 改了任何文件 | `npm run manifest` 重新生成清单（CI 会 `--check`） |
+| 在钩子里需要「随调用变化」的配置 | 用 `host.callConfig(options)` 的返回值，**不要**改写共享 `cfg`（不变式 12） |
+| 需要知道这条流属于哪个会话 | `sessions.forStream()`；`ambiguous` 为真时不得归档或采集证据（不变式 13） |
 | 测试里需要写盘 | 不用管隔离：`verify.mjs` 已为每个套件设临时 `DSH_HOME`；单独运行时请自己设 |
 
 ## 6. 测试布局
 
-`verify.mjs` 按 `ORDER` 顺序运行（纯函数层 → 核心 → birth → 持久化/证据 → 集成与观测 → 钩子级端到端），每个套件独立进程、独立临时 `DSH_HOME`：
+`verify.mjs` 并发运行（缺省 `max(6, CPU 数)`，`--serial` / `-j N` 可调；慢套件先起跑），结果按 `ORDER` 顺序打印（纯函数层 → 核心 → birth → 持久化/证据 → 集成与观测 → 钩子级端到端）。每个套件独立进程、独立临时 `DSH_HOME`：
 
 | 套件 | 覆盖 |
 |---|---|
@@ -142,3 +166,7 @@ CAS（原文归档）不在这里：它是宿主注入的 `cmbStore` 服务（`c
 | hook-wiring | 只剩出错才会走到的接线：服务获取抛错、坏形状不包装、CAS 写入抛错、**主流抛错原样抛出** |
 | late-identity / hybrid / grounding / evidence-sharing / efficiency / coverage-provenance | 迟到认领身份、确定性账本、证据共享、效率观测、覆盖与来源 |
 | hedge | 对冲与响应头宽限（本机 HTTP 可控延迟） |
+| concurrency | v11.11：调用级配置（共享 cfg 不变）、checkpoint early-fire 用自己那次调用的模型（v11.10 复现失败）、流归属交错检测与处置 |
+| protocol | v11.11：OpenAI Responses 端点（非流式 / 流式 / 协议错配 / 完成判据 / 降级重试）、token 估算校准链路 |
+| branches | v11.11：跨窗口结构性证据、索引失败回退、覆盖判据四形态、预热（节流 / 停用 / 调用级 provider）、消费计量 |
+| hardening | v11.10：取消泄漏四条路径、配置登记/退役/显式化、token 估算与闸门、死锁接管（三处锁）、trace 轮转、provider 缓存、编译器工厂（真实 HTTP）、analyze-trace 的 birth 等待依据 |

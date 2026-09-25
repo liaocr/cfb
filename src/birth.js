@@ -16,6 +16,7 @@ import {
 } from './snapshot-store.js'
 import { adaptEvidence, promptStats, cacheIdentity, mergeOrdered, memoryStats } from './state-memory.js'
 import { settledTraceData } from './trace.js'
+import { estimateTokens } from './tokens.js'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ── 出生即提纯（mode: 'birth'）: At-Birth Interception ────────────────────────
@@ -96,6 +97,28 @@ function birthDeadline(p, ms) {
     if (ms > 0) timer = setTimeout(() => settle(null), ms)
     Promise.resolve(p).then(settle, () => settle(null))
   })
+}
+
+/**
+ * ★ v11.10 取消在飞提纯的唯一实现（birthFinish 放行、flush 降级、消费者提前退出三处共用）。
+ *   判据严格：只有【本任务确实起了提纯】且【它还没落地】时才取消 —— 已落地的结果绝不取消。
+ *   honorDeferred=true 时尊重迟到认领（birthDeferredClaim:true ⇒ 不取消，结果留给下一轮）；
+ *   消费者提前退出时本块从未出站，迟到结果不可能被认领 ⇒ 传 false，一律取消。
+ *   v11.10 前 flush / 提前退出两条路径完全不取消 ⇒ 请求一直跑到 timeoutMs（线上 20s），白付一次调用。
+ */
+export function birthCancelFlying(task, cfg = {}, trace = () => {}, why = 'give-up', honorDeferred = true) {
+  if (!task || !task.abort || task.distillState !== null || !task.distillP) return false
+  if (honorDeferred && cfg.birthDeferredClaim === true) return false
+  if (cfg.birthCancelOnGiveUp === false) return false
+  if (task.abort.signal && task.abort.signal.aborted) return false
+  try { task.abort.abort() } catch { /* ignore */ }
+  try {
+    trace('birth-distill-cancelled', {
+      index: task.index, why,
+      waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0,
+    })
+  } catch { /* 观测失败绝不影响主流 */ }
+  return true
 }
 
 /** 把结算稿组装成下游该看到的 chunk 序列（live 模式只发改写后的 block-end）。 */
@@ -189,14 +212,18 @@ export function birthStart(entry, deps = {}) {
     if (shortResolve) { const r = shortResolve; shortResolve = null; r(why) }
   }
   if (cfg.enabled === false || cfg.mode === 'off' || cfg.dryRun === true) { task.belowFloor = true; task.why = cfg.dryRun ? 'dry-run' : 'disabled'; return task }
-  if (!raw.trim() || raw.length < floor) { task.belowFloor = true; task.why = 'below-floor'; return task }
+  // ★ v11.10 与语言无关的门槛（opt-in）：birthMinTokens 为正数时按 token 估算判定、完全接管字符门槛。
+  //   缺省 null ⇒ 行为与 v11.9 逐字一致（仍按 birthMinChars 判）。
+  const minTokens = Number.isFinite(cfg.birthMinTokens) && cfg.birthMinTokens > 0 ? cfg.birthMinTokens : null
+  const tooShort = minTokens != null ? estimateTokens(raw) < minTokens : raw.length < floor
+  if (!raw.trim() || tooShort) { task.belowFloor = true; task.why = 'below-floor'; return task }
   if (cfg.birthArchive === false) { task.belowFloor = true; task.why = 'archive-off'; return task }
   task.compressMode = compileModeOf(cfg) === 'compress'
   // ★ 2026-09-23 v11.6 成本模型字段（**只记录，不参与判定**；见 docs/AUDIT-V11.5.md §一）。
   //   目的：为「按剩余窗口动态门槛」积累标定数据（R_est 的每轮增量尚未标定，直接接管会抖动）。
   try {
     const econ = birthEconomics(raw.length, typeof deps.pressure === 'function' ? deps.pressure() : null, cfg)
-    if (econ) { task.econ = econ; trace('birth-econ', { index: entry.index, ...econ }) }
+    if (econ) { econ.rawTokensEst = estimateTokens(raw); task.econ = econ; trace('birth-econ', { index: entry.index, ...econ }) }
   } catch { /* 观测失败绝不影响主流 */ }
   const archive = deps.archive
   if (typeof archive !== 'function') { task.belowFloor = true; task.why = 'no-store'; return task }
@@ -504,13 +531,12 @@ export function birthStart(entry, deps = {}) {
 export async function birthFinish(task, deps = {}) {
   const cfg = deps.cfg || {}
   const trace = (tag, data) => (deps.trace || (() => {}))(tag, { ...data, taskId: task.taskId || null })
-  const handleInText = cfg.birthHandleInText !== false
   const raw = String(task.raw || '')
   // ★★ 2026-09-18 用户令：句柄标记从上下文中【彻底删除】，一个字符都不许出现。★★
   //   理由（血的教训）：模型对着一根裸指针无法思考。替换文本必须携带【语义内容】：
   //     A 态 → 宿主模型提纯出的语义摘要；B 态 → 原文逐字。
   //   句柄只用于 CAS 归档登记（磁盘上的证据索引），绝不写进模型可见的文本。
-  const withHandle = (text, _handle) => text
+  //   （v11.10：据此退役 birthHandleInText —— 它自 2026-09-18 起就不再有任何效果。）
   // ★★ 2026-09-18 终审（用户令）——兜底 = 原文逐字，句柄绝不进上下文 ★★
   //   事故复盘：曾把兜底改成「裸句柄指针」，导致模型失去自身思维链、
   //   对着一根指针无法思考。该做法已永久废除。
@@ -535,20 +561,10 @@ export async function birthFinish(task, deps = {}) {
   //
   //   不取消 ≠ 无限等：提纯仍受自身 timeoutMs(8000) 约束，到点自然失败；
   //   暂存区另有容量上限与过期清理。放行本身仍是零等待。
-  const cancelFlying = (why) => {
-    if (!task.abort || task.distillState !== null) return false
-    if (cfg.birthDeferredClaim === true) return false
-    if (cfg.birthCancelOnGiveUp === false) return false
-    try { task.abort.abort() } catch { /* ignore */ }
-    trace('birth-distill-cancelled', {
-      index: task.index, why,
-      waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0,
-    })
-    return true
-  }
+  const cancelFlying = (why) => birthCancelFlying(task, cfg, trace, why, true)
 
   const pass = (why, handle, extra) => {
-    const text = withHandle(raw, handle)
+    const text = raw
     const waitedMs = task.finishEnterAt ? Date.now() - task.finishEnterAt : 0
     const cancelled = cancelFlying(why)
     // ★ 方案二：标记「本块已放行原文」⇒ 若 distill 稍后才成功，它的结果改走暂存给下一轮。
@@ -625,7 +641,7 @@ export async function birthFinish(task, deps = {}) {
 
   // 零 rules：只有宿主模型提纯成功且净省够本才替换
   if (dist && dist.ok) {
-    const candidate = withHandle(dist.text, handle)
+    const candidate = dist.text
     // ★ 2026-09-23 v11.6 硬断言：替换结果绝不能为空白。
     //   DeepSeek 带 tools 的请求要求每条历史 assistant 都携带 reasoning_content；API 只查字段存在，
     //   但空白内容会让模型失去该轮思维链（H8 事故同形）。空白 ⇒ 原文放行。
@@ -641,11 +657,22 @@ export async function birthFinish(task, deps = {}) {
         ? { identifierRecall: null, protectedTokens: 0, lostTokens: 0, unmeasurable: true }
         : { identifierRecall: f.stats.tokenRecall, protectedTokens: f.stats.protectedTokens, lostTokens: f.stats.lostTokens, lostSample: f.stats.lostSample, unmeasurable: false }
     } catch { fid = null }
-    if (netSaved >= minSaved) {
-      trace('birth-condensed', { index: task.index, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, minSaved, handle, waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0, fidelity: fid, econ: task.econ || null })
-      return { chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, handle }
+    // ★ v11.10 token 闸门（缺省开）：字符净省达标但**估算 token 不降**时不替换。
+    //   典型：英文原文 → 中文摘要。中文每字符 token 约是英文的 2 倍，字符变少不代表上下文变小。
+    //   只会拒绝「本来就不该发生」的替换（最坏 = 原文放行 = 宿主原生行为）；birthTokenGate:false 关闭。
+    const rawTokensEst = estimateTokens(raw)
+    const outTokensEst = estimateTokens(candidate)
+    const netSavedTokensEst = rawTokensEst - outTokensEst
+    const minSavedTokens = Number.isFinite(cfg.birthMinSavedTokens) && cfg.birthMinSavedTokens > 0 ? cfg.birthMinSavedTokens : 1
+    const tokens = { rawTokensEst, outTokensEst, netSavedTokensEst, unit: 'estimate-not-tokenizer' }
+    if (netSaved >= minSaved && cfg.birthTokenGate !== false && netSavedTokensEst < minSavedTokens) {
+      return pass('no-token-gain', handle, { netSaved, minSaved, ...tokens, minSavedTokens })
     }
-    return pass('no-gain', handle, { netSaved, minSaved })
+    if (netSaved >= minSaved) {
+      trace('birth-condensed', { index: task.index, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, minSaved, ...tokens, handle, waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0, fidelity: fid, econ: task.econ || null })
+      return { chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, netSavedTokensEst, handle }
+    }
+    return pass('no-gain', handle, { netSaved, minSaved, ...tokens })
   }
   return pass(dist === null ? 'distill-timeout' : 'distill-failed', handle, { error: (dist && dist.error) || null })
 }
@@ -681,138 +708,152 @@ export function birthTransform(inner, deps = {}) {
     const reasoningEndAt = []   // [{index, at}]
     let sourceError = null
     let prewarmed = false
-    const handleInText = cfg.birthHandleInText !== false
+    // ★ v11.10：流是否已走完自己的收尾（正常结束 / 源流抛错）。false 而进入 finally ⇒ 消费者提前退出。
+    let drained = false
 
     // 立即降级放行（abort/异常路径，绝不等待）：无条件给出【原文逐字】（句柄不进上下文）
-    const flushTask = function* (task) {
-      const s = task.diskState
-      const handle = s && s.ok ? (s.handle || task.handle || null) : null
-      // 句柄不写进文本：降级放行时给出【原文逐字】
-      const text = task.raw
-      for (const c of birthEmitChunks(task, text, settleDeps)) yield c
+    // ★ v11.10：降级放行 = 放弃应用 ⇒ 同样掐掉仍在飞的提纯（此前这里不取消，请求白跑到 timeoutMs）。
+    //   与 birthFinish 的 pass() 同语义：标记 passedThrough，迟到认领打开时结果仍可进暂存区。
+    const flushTask = function* (task, why) {
+      const cancelled = birthCancelFlying(task, cfg, trace, why, true)
+      task.passedThrough = true
+      try { trace('birth-flush', { index: task.index, why, rawChars: task.raw.length, cancelled, taskId: task.taskId || null }) } catch { /* ignore */ }
+      for (const c of birthEmitChunks(task, task.raw, settleDeps)) yield c
     }
 
     try {
-      for await (const chunk of inner) {
-        const t = chunk && chunk.type
-        // 约束①：block-start 必须立刻透传（不变式要求 delta 落在已开的块上）
-        if (t === 'block-start' && chunk.blockType !== 'reasoning' && firstOtherStartAt === null) {
-          firstOtherStartAt = Date.now(); firstOtherType = chunk.blockType || null
-        }
-        if (t === 'block-start' && chunk.blockType === 'reasoning') {
-          held.set(chunk.index, birthHoldNew(chunk.index))
-          // 优化2：思考一开始就捂热连接（HEAD，零 token；每次流只做一次）
-          if (!prewarmed && typeof deps.prewarm === 'function') {
-            prewarmed = true
-            try { deps.prewarm('birth-reasoning-start') } catch { /* 预热失败绝不影响主流 */ }
+      try {
+        for await (const chunk of inner) {
+          const t = chunk && chunk.type
+          // 约束①：block-start 必须立刻透传（不变式要求 delta 落在已开的块上）
+          if (t === 'block-start' && chunk.blockType !== 'reasoning' && firstOtherStartAt === null) {
+            firstOtherStartAt = Date.now(); firstOtherType = chunk.blockType || null
           }
-          yield chunk
-          continue
-        }
-        if (t === 'reasoning-delta') {
-          const h = held.get(chunk.index)
-          // live：delta 实时透传（GUI 不卡顿），同时累积原文供 block-end 结算
-          if (h) { h.text += (chunk.text || ''); yield chunk; continue }
-          yield chunk
-          continue
-        }
-        // ★ 流式双轨：block-end 处扣住（不 yield），起飞并发任务
-        if (t === 'block-end') {
-          const h = held.get(chunk.index)
-          if (h) {
-            h.end = chunk
-            held.delete(chunk.index)
-            reasoningEndAt.push({ index: chunk.index, at: Date.now() })
-            const task = birthStart(h, settleDeps)
-            if (task.belowFloor) {
-              // 无需异步工作 ⇒ 立即放行，零延迟
-              for (const c of birthEmitChunks(task, task.raw, settleDeps)) yield c
-            } else {
-              pending.push(task)
+          if (t === 'block-start' && chunk.blockType === 'reasoning') {
+            held.set(chunk.index, birthHoldNew(chunk.index))
+            // 优化2：思考一开始就捂热连接（HEAD，零 token；每次流只做一次）
+            if (!prewarmed && typeof deps.prewarm === 'function') {
+              prewarmed = true
+              try { deps.prewarm('birth-reasoning-start') } catch { /* 预热失败绝不影响主流 */ }
             }
+            yield chunk
+            continue
+          }
+          if (t === 'reasoning-delta') {
+            const h = held.get(chunk.index)
+            // live：delta 实时透传（GUI 不卡顿），同时累积原文供 block-end 结算
+            if (h) { h.text += (chunk.text || ''); yield chunk; continue }
+            yield chunk
+            continue
+          }
+          // ★ 流式双轨：block-end 处扣住（不 yield），起飞并发任务
+          if (t === 'block-end') {
+            const h = held.get(chunk.index)
+            if (h) {
+              h.end = chunk
+              held.delete(chunk.index)
+              reasoningEndAt.push({ index: chunk.index, at: Date.now() })
+              const task = birthStart(h, settleDeps)
+              if (task.belowFloor) {
+                // 无需异步工作 ⇒ 立即放行，零延迟
+                for (const c of birthEmitChunks(task, task.raw, settleDeps)) yield c
+              } else {
+                pending.push(task)
+              }
+              continue
+            }
+            yield chunk
+            continue
+          }
+          if (t === 'finish') {
+            const reason = (chunk && chunk.reason) || {}
+            const hardStop = reason.kind === 'error' || reason.kind === 'aborted'
+            if (reasoningEndAt.length) {
+              const finishAt = Date.now()
+              const lastEnd = reasoningEndAt[reasoningEndAt.length - 1].at
+              trace('birth-window-probe', {
+                reasoningBlocks: reasoningEndAt.length,
+                reasoningEndMs: reasoningEndAt.map((x) => x.at - streamT0),
+                firstOtherStartMs: firstOtherStartAt === null ? null : firstOtherStartAt - streamT0,
+                firstOtherType,
+                finishMs: finishAt - streamT0,
+                // 关键读数：>1000 ⇒ 有免费窗口；≈0 且 finish−lastEnd≈0 ⇒ 宿主攒完再发，无窗口
+                otherStartToLastEndMs: firstOtherStartAt === null ? null : lastEnd - firstOtherStartAt,
+                lastEndToFinishMs: finishAt - lastEnd,
+              })
+            }
+            if (pending.length) {
+              if (hardStop) {
+                // 异常/中断：绝不等待，立即降级放行
+                for (const task of pending.sort((a, b) => a.index - b.index)) for (const c of flushTask(task, 'hard-stop:' + reason.kind)) yield c
+              } else {
+                // 收网：多块**并行**兑现（总耗时 ≈ 单块），再按 index 升序放行
+                // ★ 2026-09-21 共享绝对截止（外部审计 P0-2）：先把所有待收网任务的进入时刻
+                //   钉成同一个值，保证多块并行收网共用【一个】budget，而不是每块各拿一份。
+                //   （Promise.all 本已并发，这里把它变成显式不变量，防止将来改成串行时静默劣化。）
+                const sharedEnterAt = Date.now()
+                for (const t of pending) t.finishEnterAt = sharedEnterAt
+                // ★ 2026-09-21 并行块的有序归并（外部评审）：蒸馏是并发的，
+                //   「较早块→蒸馏较晚完成」完全可能。**出站与记忆都必须按源块顺序**，
+                //   绝不能按 promise 完成顺序 —— 那会让旧状态压回新状态。
+                const settled = await Promise.all(pending.map(async (task) => {
+                  try { return { sourceIndex: task.index, r: await birthFinish(task, settleDeps), task } }
+                  catch (e) {
+                    trace('birth-settle-error', { index: task.index, error: String((e && e.message) || e) })
+                    return { sourceIndex: task.index, r: null, task }
+                  }
+                }))
+                // ① 出站：按源块 index 升序（原有不变量，保持）
+                const ordered = settled.slice().sort((a, b) => a.sourceIndex - b.sourceIndex)
+                for (const s of ordered) if (s.r) for (const c of s.r.chunks) yield c
+                // ② 记忆：同样按源块顺序归并；失败块被跳过，不污染记忆
+                // ⚠ 关闭 stateMemory 时**绝不**归并或消费新格式记忆（回滚语义）
+                if (compileModeOf(cfg) === 'memory') {
+                  try {
+                    const merged = mergeOrdered(ordered.map((s) => ({
+                      sourceIndex: s.sourceIndex,
+                      ok: !!(s.task && s.task.distillState && s.task.distillState.ok && s.task.distillState.entries),
+                      parsed: s.task && s.task.distillState && s.task.distillState.parsed ? s.task.distillState.parsed : null,
+                      at: sharedEnterAt,
+                    })).filter((x) => x.ok))
+                    if (merged.entries.length) {
+                      trace('state-memory-merged', {
+                        blocks: merged.order,
+                        entries: memoryStats(merged.entries),
+                      })
+                    }
+                  } catch (e) {
+                    trace('state-memory-merge-error', { error: String((e && e.message) || e) })
+                  }
+                }
+              }
+              pending.length = 0
+            }
+            // 源流没给 block-end 的块：绝不补造（源流没关就不许我们关）
+            held.clear()
+            yield chunk
             continue
           }
           yield chunk
-          continue
         }
-        if (t === 'finish') {
-          const reason = (chunk && chunk.reason) || {}
-          const hardStop = reason.kind === 'error' || reason.kind === 'aborted'
-          if (reasoningEndAt.length) {
-            const finishAt = Date.now()
-            const lastEnd = reasoningEndAt[reasoningEndAt.length - 1].at
-            trace('birth-window-probe', {
-              reasoningBlocks: reasoningEndAt.length,
-              reasoningEndMs: reasoningEndAt.map((x) => x.at - streamT0),
-              firstOtherStartMs: firstOtherStartAt === null ? null : firstOtherStartAt - streamT0,
-              firstOtherType,
-              finishMs: finishAt - streamT0,
-              // 关键读数：>1000 ⇒ 有免费窗口；≈0 且 finish−lastEnd≈0 ⇒ 宿主攒完再发，无窗口
-              otherStartToLastEndMs: firstOtherStartAt === null ? null : lastEnd - firstOtherStartAt,
-              lastEndToFinishMs: finishAt - lastEnd,
-            })
-          }
-          if (pending.length) {
-            if (hardStop) {
-              // 异常/中断：绝不等待，立即降级放行
-              for (const task of pending.sort((a, b) => a.index - b.index)) for (const c of flushTask(task)) yield c
-            } else {
-              // 收网：多块**并行**兑现（总耗时 ≈ 单块），再按 index 升序放行
-              // ★ 2026-09-21 共享绝对截止（外部审计 P0-2）：先把所有待收网任务的进入时刻
-              //   钉成同一个值，保证多块并行收网共用【一个】budget，而不是每块各拿一份。
-              //   （Promise.all 本已并发，这里把它变成显式不变量，防止将来改成串行时静默劣化。）
-              const sharedEnterAt = Date.now()
-              for (const t of pending) t.finishEnterAt = sharedEnterAt
-              // ★ 2026-09-21 并行块的有序归并（外部评审）：蒸馏是并发的，
-              //   「较早块→蒸馏较晚完成」完全可能。**出站与记忆都必须按源块顺序**，
-              //   绝不能按 promise 完成顺序 —— 那会让旧状态压回新状态。
-              const settled = await Promise.all(pending.map(async (task) => {
-                try { return { sourceIndex: task.index, r: await birthFinish(task, settleDeps), task } }
-                catch (e) {
-                  trace('birth-settle-error', { index: task.index, error: String((e && e.message) || e) })
-                  return { sourceIndex: task.index, r: null, task }
-                }
-              }))
-              // ① 出站：按源块 index 升序（原有不变量，保持）
-              const ordered = settled.slice().sort((a, b) => a.sourceIndex - b.sourceIndex)
-              for (const s of ordered) if (s.r) for (const c of s.r.chunks) yield c
-              // ② 记忆：同样按源块顺序归并；失败块被跳过，不污染记忆
-              // ⚠ 关闭 stateMemory 时**绝不**归并或消费新格式记忆（回滚语义）
-              if (compileModeOf(cfg) === 'memory') {
-                try {
-                  const merged = mergeOrdered(ordered.map((s) => ({
-                    sourceIndex: s.sourceIndex,
-                    ok: !!(s.task && s.task.distillState && s.task.distillState.ok && s.task.distillState.entries),
-                    parsed: s.task && s.task.distillState && s.task.distillState.parsed ? s.task.distillState.parsed : null,
-                    at: sharedEnterAt,
-                  })).filter((x) => x.ok))
-                  if (merged.entries.length) {
-                    trace('state-memory-merged', {
-                      blocks: merged.order,
-                      entries: memoryStats(merged.entries),
-                    })
-                  }
-                } catch (e) {
-                  trace('state-memory-merge-error', { error: String((e && e.message) || e) })
-                }
-              }
-            }
-            pending.length = 0
-          }
-          // 源流没给 block-end 的块：绝不补造（源流没关就不许我们关）
-          held.clear()
-          yield chunk
-          continue
-        }
-        yield chunk
+      } catch (e) {
+        sourceError = e
       }
-    } catch (e) {
-      sourceError = e
+      // 源流结束/抛错时仍未收网的 task：立即降级放行（原文逐字）
+      const flushWhy = sourceError ? 'source-error' : 'no-finish'
+      for (const task of pending.sort((a, b) => a.index - b.index)) for (const c of flushTask(task, flushWhy)) yield c
+      pending.length = 0
+      held.clear()
+      drained = true
+      if (sourceError) throw sourceError
+    } finally {
+      // ★ v11.10 消费者提前退出（用户取消 / 宿主 break / return()）：生成器不会再走到上面的收尾，
+      //   pending 里的提纯会一直跑到 timeoutMs。本块从未出站 ⇒ 迟到结果不可能被认领 ⇒ 一律取消。
+      if (!drained && pending.length) {
+        for (const task of pending) birthCancelFlying(task, cfg, trace, 'consumer-return', false)
+        try { trace('birth-consumer-return', { pending: pending.length }) } catch { /* ignore */ }
+        pending.length = 0
+      }
     }
-    // 源流结束/抛错时仍未收网的 task：立即降级放行（原文 + 句柄）
-    for (const task of pending.sort((a, b) => a.index - b.index)) for (const c of flushTask(task)) yield c
-    pending.length = 0
-    held.clear()
-    if (sourceError) throw sourceError
   })()
 }

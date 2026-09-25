@@ -5,6 +5,29 @@
 import fs from 'node:fs'
 import { DEFAULTS } from './config.js'
 
+// ── v11.10 按文件身份缓存（stat 校验）──────────────────────────────────────
+// 此前每次副模型调用都重新读取并逐行解析 settings.yaml 与 .credentials.yaml（同步 I/O，热路径上）。
+// 现在只 stat 一次：文件身份（ino/size/mtime/ctime）不变 ⇒ 复用上次的解析结果；一变就重读。
+// ⚠ 凭据缓存只存「按键名取出的那一个值」，不在内存里常驻整份凭据文件。
+const fileCache = new Map()   // kind|path|name -> { sig, value }
+const CACHE_MAX = 64
+function fileSig(file) {
+  try { const st = fs.statSync(file); return st.ino + ':' + st.size + ':' + st.mtimeMs + ':' + st.ctimeMs } catch { return null }
+}
+function cached(kind, file, name, compute) {
+  const sig = fileSig(file)
+  if (sig === null) return compute()        // 读不到 ⇒ 走原路径（它会给出原有的报错/null 语义）
+  const k = kind + '|' + file + '|' + name
+  const hit = fileCache.get(k)
+  if (hit && hit.sig === sig) return hit.value
+  const value = compute()
+  fileCache.delete(k); fileCache.set(k, { sig, value })
+  while (fileCache.size > CACHE_MAX) fileCache.delete(fileCache.keys().next().value)
+  return value
+}
+/** 测试 / 诊断用：清空解析缓存。 */
+export function clearProviderCache() { fileCache.clear() }
+
 // ── 伴生调用 ────────────────────────────────────────────────────────────────
 /**
  * 按键名从 credentials 文件取钥匙。
@@ -18,6 +41,10 @@ import { DEFAULTS } from './config.js'
  */
 export function readApiKey(cfg) {
   if (!cfg.credentialRef) throw new Error('credentialRef is empty: no key name was resolved or configured')
+  // 只缓存成功结果：找不到键时照旧每次抛错（不缓存异常，避免把一次瞬时错误钉住）
+  return cached('cred', cfg.credentialsPath, String(cfg.credentialRef), () => readApiKeyUncached(cfg))
+}
+function readApiKeyUncached(cfg) {
   const t = fs.readFileSync(cfg.credentialsPath, 'utf8')
   const esc = String(cfg.credentialRef).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const m = t.match(new RegExp('^[ \\t]*' + esc + ':\\s*([^\\s#]+)', 'm'))
@@ -43,6 +70,10 @@ export function readApiKeyRef(cfg, refName) {
 //         baseURL: https://...
 export function readProviderSpec(settingsPath, providerName) {
   if (!providerName) return null
+  const spec = cached('spec', settingsPath, String(providerName), () => readProviderSpecUncached(settingsPath, providerName))
+  return spec ? { ...spec } : null   // 返回副本：调用方改它不会污染缓存
+}
+function readProviderSpecUncached(settingsPath, providerName) {
   let text
   try { text = fs.readFileSync(settingsPath, 'utf8') } catch { return null }
   const indentOf = (s) => s.length - s.replace(/^[ \t]*/, '').length

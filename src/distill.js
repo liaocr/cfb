@@ -6,7 +6,12 @@
 //   distillOnce / distillOnceStream  非流式 / SSE 两种传输形态，同输入同输出形状
 import crypto from 'node:crypto'
 import { prepareJudgmentPrompt } from './evidence-ledger.js'
-import { buildDistillPrompt } from './prompts.js'
+import { compileModeOf } from './config.js'
+import { scriptCounts } from './tokens.js'
+import {
+  buildDistillPrompt, compressPromptVersion, compressTargets, buildCompressPromptV3, buildCompressPrompt,
+  splitCompressPrompt,
+} from './prompts.js'
 import { endpointUrl, resolveProviderEndpoint, readApiKeyRef, readApiKey } from './provider.js'
 import {
   buildStateCompilePrompt as buildStateCompilePromptSafe, parseStateCompile, createMemoryProjection,
@@ -342,7 +347,7 @@ export async function generateStateMemory(env, cfg, signal, runtime = {}) {
  * 成本纪律（硬约束「稳定优先」）：
  *   · 只在 hedgeAfterMs（缺省 = 关闭；建议 ≥ p50 ≈ 3000）之后才对冲 ⇒ 大多数请求只发一份，只有尾部触发；
  *   · 判据是**响应头**而不是完成：头一到就说明排队已结束，此时另一份还没出 token，abort 掉不计费；
- *   · 同一时刻每个 cfg 至多 1 份对冲在飞（进程级计数），并发绝不翻倍；
+ *   · 同一时刻**整个进程**至多 1 份对冲在飞（模块级计数，跨会话共享），并发绝不翻倍；
  *   · 对冲份用同一 prompt / 同一 key / 同一 endpoint ⇒ 结果等价，不引入任何新语义；
  *   · 任一失败不影响另一份；两份都失败 ⇒ 抛主份的错误（与不对冲时同形）。
  *   最坏情况：hedge 从未触发（= 今天的行为）；或触发后两份都慢（多付一次输入费，输出仍只有一份）。
@@ -482,4 +487,61 @@ export async function generateDistillation(cot, cfg, signal, promptOverride, run
     key, cfg.model, cfg.maxOutputTokens, cfg.timeoutMs, cfg.maxAttempts, cfg.disableThinking,
     cfg.distillStream, cfg.keepAlive, cfg.keepAliveMsecs]) + '\n' + prompt
   return runtime.flights.run(identity, execute, { signal, trace: runtime.trace })
+}
+
+/**
+ * ★ v11.10 birth 编译器工厂：按 compileMode 三选一构造 `deps.distill(input, signal, budget)`。
+ *   原先是 plugin.js 里一段内联三元表达式（无法单测）；现在搬到这里，语义逐字不变：
+ *     memory   → generateStateMemory(env, cfg, signal, { ...budget, flights })   证据信封 → 判断稿
+ *     compress → 按 compressPromptVersion 选提示词 → generateDistillation(raw, …) 本段推理的摘要
+ *     legacy   → generateDistillation(raw, cfg, signal)                         旧蒸馏提示词
+ *   compress / legacy 只透传 trace（compiler-transport-* / compiler-hedge-*）。
+ *   ⚠ 不传 flights：这两种模式没有 scope（证据截面只在 memory 模式存在）⇒ 共享永不命中，
+ *     反而会把取消路径的传输 meta（ttfbMs/stage 等）换成合成错误，损失线上诊断数据。
+ * @param cfg 本条流冻结的配置副本（调用方负责拷贝）
+ * @param opts { flights } 精确在途共享（仅 memory 模式使用）
+ */
+export function makeBirthCompiler(cfg, opts = {}) {
+  const runtimeOf = (budget) => ({ trace: budget && typeof budget.trace === 'function' ? budget.trace : undefined })
+  const withHeaders = (budget) => (budget && typeof budget.onHeaders === 'function' ? { ...cfg, _onHeaders: budget.onHeaders } : cfg)
+  const mode = compileModeOf(cfg)
+  if (mode === 'memory') {
+    return async (env, signal, budget) => generateStateMemory(env, cfg, signal, { ...budget, flights: opts.flights })
+  }
+  if (mode === 'compress') {
+    return async (raw, signal, budget) => {
+      // 提示词选择与版本号必须来自**同一次**裁决，否则 trace 会把 A 的产物记成 B 的版本。
+      const pv = compressPromptVersion(cfg)
+      const prompt = pv === 'compress-v1' ? buildDistillPrompt(raw)
+        : pv.indexOf('compress-v3') === 0
+          ? (() => { const t = compressTargets(cfg); return buildCompressPromptV3(raw, t.min, t.max) })()
+          : buildCompressPrompt(raw)
+      // 响应头信号只活在这次调用的 cfg 副本里，不进 BOOT、不进 trace
+      const c = { ...withHeaders(budget) }
+      // 缓存友好拆分（opt-in）：system=规则前缀、user=原文；字节等价，只改消息形状。v1 不拆（它无 marker）。
+      if (cfg.compressSystemPrompt === true && pv !== 'compress-v1') {
+        const sp = splitCompressPrompt(prompt)
+        if (sp) c._promptMessages = [{ role: 'system', content: sp.system }, { role: 'user', content: sp.user }]
+      }
+      return withCalibration(prompt, generateDistillation(raw, c, signal, prompt, { ...runtimeOf(budget), promptVersion: pv }))
+    }
+  }
+  return async (raw, signal, budget) => withCalibration(buildDistillPrompt(raw), generateDistillation(raw, withHeaders(budget), signal, undefined, runtimeOf(budget)))
+}
+
+/**
+ * v11.11 token 估算校准：在成功结果的 meta 上记下「请求与产物按书写系统的字符数」。
+ * 与同一条 settled 里的 providerReportedUsage 放在一起，离线即可回归出真实的每字 token 系数
+ * （tools/analyze-trace.mjs → tokenCalibration）。只记数量，不记内容；不影响任何判定。
+ * memory 模式的提示词在 generateStateMemory 内部拼装，这里拿不到全文 ⇒ 不记（该模式本就不是缺省）。
+ */
+async function withCalibration(prompt, pending) {
+  const r = await pending
+  try {
+    if (r && r.meta && typeof prompt === 'string') {
+      const p = scriptCounts(prompt), o = scriptCounts(r.text)
+      Object.assign(r.meta, { promptWideChars: p.wide, promptOtherChars: p.other, outputWideChars: o.wide, outputOtherChars: o.other })
+    }
+  } catch { /* 观测失败不影响结果 */ }
+  return r
 }

@@ -5,6 +5,151 @@
 
 ---
 
+## v11.11.1（2026-09-25）压缩经济性审计与路线决议（**仅文档，无代码改动**）
+
+新增 [`docs/ECONOMICS-V11.11.md`](docs/ECONOMICS-V11.11.md)，并登记进 `docs/README.md` 索引。
+**结论上取代 `AUDIT-V11.5.md` 的成本模型部分**；后者按「只追加不回写」保留原文，更正写在 §6.1。
+
+**验证**：`npm test` 1308 通过 / 0 失败 / 1 跳过（25/25 套件），与 v11.11 基线一致。
+文中每个数字都用 `node` 重算过一遍，**改掉了两处自相矛盾**（见下）。`node manifest.mjs` 已重新生成。
+
+### 口径变更
+- **不再使用用户会话的缓存命中数据**（第三方接入，不可信）。一律按 Harness 官方默认：
+  `thresholdRatio 0.8` / `retainRatio 0.16` / 压缩 `maxTokens 8192` / cache-replay 摘要器，定价 d=0.02、输出 4×。
+
+### 主要结论
+- **按官方参数重算，cfb 当前设计净亏**：单次宿主压缩 `C ≈ 34k~45k` token，262k 会话下 cfb 多花 **+1.5%~+4.3%**。
+  只有 `maxTokens=16384` + thinking on（C ≈ 70k）才转正。
+- **单块收益存在数学天花板 `净 ≤ 0.5·r − 4·o − T`**。原因是原文是新生成内容、副模型首读**不命中缓存**，
+  按全价 1× 计费 ⇒ 成本至少 `r`、收益上限 `1.5r`。**压缩率优化改变不了这个上限。**
+  `r = 1075`（实测均值）时天花板仅 **≈ 390 token**。
+- 当前设计回本线 **`r ≥ 11·o + 2·T ≈ 3635` token**；实测均值 1075 ⇒ 每块净亏 **1,280 token**。
+
+### 路线裁决
+- **否决 确定性抽取**（用户判断：非大模型无法理解语义；且召回率指标用同一提取器度量属自证）。
+  仅保留为失败降级路径。
+- **否决 主模型自写摘要**：ReasonIF 基准显示推理模型在思考过程中的指令遵守率 **< 25%**（放最终回答里 57.3%，
+  要求思考里按 JSON 写则 **0**），且越难的题遵守越差；"Let Me Speak Freely?" 显示格式限制会降低推理能力。
+  此前「占 15%」是假设值非实测，特此更正。
+- **否决 跨轮批量**（**推翻上一轮的建议**）：批量摊薄每块只多赚 ≈ 80 token，
+  而等 3 块再压造成的延迟衰减每块亏 ≈ 860 token，**净 −780**。
+- **保留 语义选句**（模型只输出保留句的序号、本地 `slice()` 原样拼接）：零幻觉、损失可计算、
+  可用 `fidelity.js` 做**硬门控**（缺标识符即放弃压缩）。**先做离线评估，不接线上。**
+- **保留 副模型只压大块**：经济上唯一明确盈利（10k 块净 +3,183），但实测均值 2,763 字符 ⇒ 覆盖率不足。
+
+### 写文档时自查出的两处错误（已在文中改正）
+- **chars/token 自相矛盾**：文中同时写了 `r=1075 token = 2,763 字符`（⇒ 2.57）和「实测 1.67」。
+  查 `AUDIT-V11.5.md` 确认两个数字**都不在该文件里**，1.67 实为 DeepSeek 官方对**中文字符**的估算（0.6 token/字），
+  不是实测。**仓库内无 trace.log，无法裁定**，已列为阻塞项——它决定回本门槛是 6,070 还是 9,342 字符。
+- **副模型 1/5 定价的收益**：原写 +641，漏加模板 T；实为 **+633**（成本 486，非 478）。
+
+### 新增阻塞项
+chars/token 实测值、`rawChars` 分布、归档失败率 ≥ 28% 的成因（铁律③依赖归档成功）。
+`AUDIT-V11.5.md` 建议的 `birthMinChars` 3K 已执行，但**在两种口径下都仍低于回本线**。
+
+---
+
+## v11.11（2026-09-24）并发正确性、Responses 协议测试、token 校准链路、plugin.js 拆分
+
+**验证**：1308 通过 / 0 失败 / 1 跳过，**25 套件**（新增 `concurrency` 13、`protocol` 15、`branches` 14）。
+`npm test` 墙钟 **14s → 8.5s**。行覆盖 97.0% → **98.5%**（`evidence.js` 分支 62% → 84%，`transport.js` 行 85% → 98.5%）。
+关键修复均做过变异验证：换回 v11.10 的 `plugin.js` / `evidence.js`，对应测试必挂。
+
+### 修复
+- **checkpoint early-fire 用错模型**（已由测试复现）：followHostModel 看到新模型就改写共享 `cfg.model`，而 early-fire
+  在**流被消费时**才读它 ⇒ A 流开 → B 流开（换模型）→ 消费 A ⇒ A 的提前调用用了 B 的模型。
+  新 `host-follow.js`：每次 `llm/stream` 派生**调用级**配置，共享 `cfg` 永不改写（不变式 12）。
+  birth 路径此前在同一同步调用里就复制了配置，**不受影响**（上一轮报告里「birth 可能用错模型」的说法不准确，特此更正）。
+  预热同样改为跟随本次调用的 provider（`prewarm(why, callCfg)`）。
+  顺带：只见过模型、没见过 provider 时，旧实现会把显式 `followProvider` 覆盖成 null；现在保留显式值。
+- **流归属交错**（新 `session-tracker.js`）：宿主的 `llm/stream` 不带会话，旧实现用全局 `birthSessionId`（pre-step 写、流读）。
+  A.pre → B.pre → 开流时，A 的块会登记到 B（CAS 挂错会话；memory 模式还会把 B 的证据喂给 A 的摘要）。
+  现在维护「已 pre-step、未开流」窗口：出现 ≥2 个会话 ⇒ 不可证 ⇒ 缺省**原文放行**（`birthSessionAmbiguity:'passthrough'`，
+  可设 `'latest'` 回到旧行为），留 `birth-session-ambiguous`。单会话宿主永不触发。
+  ⚠ 这是检测器不是证明：抓得住交错形态，抓不住所有误归属；假阳性代价 = 偶发一块原文放行（测试 §3e 钉住）。
+  根治需要宿主在 `llm/stream` 里带会话。
+- **`manifest.mjs` 会把 gitignore 掉的生成物收进清单**：本地量过覆盖率（`coverage/`）再 `npm run manifest`，清单里就多出几十个
+  本地文件，干净的 CI 检出里它们不存在 ⇒ `--check` 必挂。现在跳过 `coverage/`、`.nyc_output/` 等生成物目录。
+- **`collectEvidence` 在索引构建抛错时整体抛出**：回退扫描分支因此不可达。现在索引失败即走回退扫描（`evidence.js`）。
+
+### 新能力
+- **token 估算校准链路**：compress / legacy 模式的成功结果记录 `prompt/output{Wide,Other}Chars`（只有数量），进 settled 白名单；
+  `analyze-trace` 每组新增 `tokenCalibration`：对 provider 自报 usage 做最小二乘 `tokens ≈ 中文·W + 其他·O + C`，
+  输出拟合系数、现行 0.6/0.3 的偏差与误差对照；产物侧扣除思考 token；样本不足 / 单一书写系统 / 共线时不给该维度（不猜）。
+  memory 模式提示词在内部拼装，不产生样本。
+- `analyze-trace` 的 birth 漏斗计入 `session-ambiguous`。
+
+### 测试
+- **Responses 协议首次有功能测试**（此前只测了 URL 拼接）：completed / incomplete / failed / 缺 status / 仅顶层 output_text /
+  reasoning 不混入摘要 / `reasoning.effort` 被拒后降级重试 / 非流式收到 SSE / 流式 completed / incomplete / 断流。
+  结论：该路径的完成判据是对的（半成品一律抛错 ⇒ 原文放行），未发现缺陷。
+- 分支补齐：跨窗口结构性证据（opt-in）的逐类上限与时间序、覆盖判据四形态、预热节流 / 非 2xx 永久停用 / 连不上、消费计量、token 非串输入。
+- `hedge` 套件提速（13.8s → 7.6s）：「慢的那份必须被 abort」改为直接观察服务端连接提前关闭，不再等它的延迟跑完；
+  「不得发生」的断言仍真实等过计时器（改用更短的计时器）。
+
+### 重构
+- `plugin.js` 618 → 188 行，只做接线：`boot-record.js`、`host-follow.js`、`session-tracker.js`、`birth-claim.js`、
+  `checkpoint.js`、`handle-probe.js`（`mkHandleProbe` 从 `src/plugin.js` 的旧导入路径仍可用）；
+  `streamProvenanceRecord` 移入 `messages.js`。搬移部分逐字不变（脚本切割），全部既有测试不改即通过。
+- `index.js` 新导出 `scriptCounts`、`createHostFollower`、`createSessionTracker`；`index.d.ts` 同步（`tsc --strict` 通过）。
+
+### 刻意未做
+- `hybrid` 套件（约 8s，现为墙钟下限）里那条「REAL default hooks: 8000ms timeout」故意跑生产缺省超时，缩短会改变测试本意。
+- memory 模式三个存储文件的同步 I/O：缺省 birth 模式不走这些路径；等 memory 模式要上线再改。
+- `birth-claim.js`（实验路径，缺省关）的部分认领与归档失败分支仍未覆盖（行 85%）。
+
+---
+
+## v11.10（2026-09-24）全面加固：取消泄漏、token 闸门、死锁接管、trace 有界、测试并发、CI
+
+**验证**：1266 通过 / 0 失败 / 1 跳过，**22 套件**（新增 `hardening` 40 条；`core` §10 新增 5 条默认值钉子）。
+`npm test` 墙钟 **36s → 14s**（并发 + 慢套件先跑）。关键修复均做过**变异验证**：换回旧实现后对应测试必挂。
+
+### P0
+- **取消泄漏**（`birth.js`）：此前只有「finish 到点」这一条放弃路径会取消在飞提纯；**硬停（error/aborted/length）、
+  源流结束却没有 finish、源流抛错、消费者提前退出（用户取消）** 四条路径都会让副模型白跑到 `timeoutMs` 并白付费。
+  现在全部经由唯一实现 `birthCancelFlying`（已导出），并分别留 `birth-flush`（`why=hard-stop:<kind>|no-finish|source-error`）
+  与 `birth-consumer-return` trace。迟到认领打开时尊重它；消费者提前退出除外（块从未出站，不可能被认领）。
+- **`birth.probeTimeoutMs` 进了 `unknownOptions`**（`config.js`）：d.ts 与注释都写了嵌套写法，但 `NESTED_BIRTH_KEYS` 漏了它 ⇒
+  配置静默无效。已登记；新增嵌套键 `minTokens` / `tokenGate` / `minSavedTokens`。
+- **崩溃残留锁永不释放**（新 `src/fs-lock.js`）：`snapshot-store` / `evidence-ledger` / `evidence-storage` 三处锁文件此前为空，
+  进程崩溃后锁永远 busy ⇒ memory 模式永久降级。现在锁文件写 `pid@hostname@ms`，**只在同机且 pid 已不存在（ESRCH）时**接管；
+  活进程、别的机器、旧格式/空锁一律照旧 fail-closed，**不按年龄抢锁**。`lockStats()` 已导出。
+- **字符门槛 ≠ token 门槛**（新 `src/tokens.js`）：3100 字符对英文 ≈ 930 token、对中文 ≈ 1,860 token；中文摘要替换英文推理时
+  字符净省为正但 token 可能反而变多。新增 **token 闸门**（缺省开，`why=no-token-gain`）与 opt-in 的 `birthMinTokens`。
+  估算口径取 DeepSeek 官方：中文 0.6/字、其余 0.3/字 —— **只用于拒绝，不用于宣称节省**；trace 新增 `*TokensEst` 字段。
+
+### P1
+- **trace 有界**（`trace.js`）：`traceMaxBytes`（64 MiB）轮转到 `.1`；新文件首行 `trace-rotated` + `BOOT` 副本（`rotatedCopy:true`）。
+  大小在内存累加，不再每行 stat。`analyze-trace` 识别轮转元信息、不另开组。
+- **用户正文片段**：`tracePreviewChars`（缺省 48 = 原先写死的值，行为不变；现在可调，0 = 不留任何正文）。
+- **`llm-stream` 体积 O(n²)**：`roles` 改为游程字符串（`system user assistant tool*3`），`reasoningChars` 改为稀疏 `[[下标, 字符数]]`。
+  ⚠ 字段**形状变了**（仓库内无消费者；外部脚本若按数组读需要跟进）。
+- **provider / 凭据热路径同步重解析**（`provider.js`）：按文件身份（ino/size/mtime/ctime）缓存，文件一变即重读；
+  只缓存成功结果与单个键值（不常驻整份凭据）；返回副本。`clearProviderCache()` 已导出。
+
+### P2
+- `plugin.js` 的 `deps.distill` 三元内联抽成 `distill.js` 的 **`makeBirthCompiler`**（已导出、有真实 HTTP 单测）。
+- 隐藏默认值显式化进 `DEFAULTS`（`staticMinRawChars` / `econCharsPerTurn` 等）；**`birthHandleInText` 退役**
+  （2026-09-18 起已无任何效果）——出现即进 `retiredOptions`。
+- `index.js` 新导出：`estimateTokens` `wideShare` `makeBirthCompiler` `birthCancelFlying` `lockStats`；`index.d.ts` 同步（`tsc --strict` 通过）。
+
+### P3 工程
+- `verify.mjs` 并发（缺省 `max(6, CPU 数)`；`-j N` / `--serial`；结果仍按 ORDER 打印；JSON 带 `jobs`/`wallMs`；单套件 300s 看门狗）。
+- `.github/workflows/ci.yml`：Node 20/22 × 清单校验 + 全部自测 + 类型契约。
+- `analyze-trace` 每组新增 **`birth`**：结局漏斗与 **`needWaitMs`**（真工期 − 免费窗口，按 taskId 关联）分位数、
+  当前 `finishWaitMs`(+宽限) 覆盖率 —— `finishWaitMs` 该取多少从此有数据可依（取值仍是产品决定）。
+- README / ARCHITECTURE / INSTALL 去掉写死的测试数字（只在本文件按版本记录）。
+
+### 刻意未做（原因见各条）
+- 按模式懒加载实验模块：`plugin.js` 顶层与三种模式的交叉引用较深，拆开收益小、回归面大。
+- 从 stream options 取 session/model 取代全局 `birthSessionId` / 共享 `cfg.model` 改写：宿主 API 未确认，不猜。
+- 流式期间分段压缩、退役 memory/legacy 模式：产品决策，不在工程加固范围。
+- trace 异步缓冲写：大量测试与离线工具依赖「写完即可读」的同步语义。
+- 自动恢复旧格式 / 空锁文件：无法证明持有者已死，按 fail-closed 保留（README 写明人工处理方式）。
+
+---
+
 ## v11.9.1（2026-09-24）P1 工具结果可检索化 + 钩子级端到端测试
 
 **验证**：1219 通过 / 0 失败 / 1 跳过，**21 套件**（新增 2 套：`checkpoint-hooks` 7 条、`hook-wiring` 5 条）。

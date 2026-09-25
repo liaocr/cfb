@@ -13,14 +13,41 @@ import path from 'node:path'
  */
 export function makeTraceWriter(cfg, statsOf) {
   let dirReady = false
+  // ★ v11.10 轮转：已知文件大小（首次写入时 stat 一次，之后在内存里累加，不再每行 stat）。
+  let size = null
+  const stamp = () => '[' + new Date().toISOString() + '] '
+  const rotateIfNeeded = (file, incoming) => {
+    const max = Number(cfg.traceMaxBytes)
+    if (!(Number.isFinite(max) && max > 0)) return
+    if (size === null) { try { size = fs.statSync(file).size } catch { size = 0 } }
+    if (size + incoming <= max || size === 0) return
+    const from = size
+    try { fs.renameSync(file, file + '.1') } catch { /* 改名失败 ⇒ 继续追加，绝不因轮转丢证据 */ return }
+    size = 0
+    // 新文件的第一行说明来历（锚定格式，analyze-trace 可识别；BOOT 分组语义不变）
+    const head = stamp() + '[trace-rotated] ' + JSON.stringify({ previous: path.basename(file) + '.1', previousBytes: from, maxBytes: max }) + '\n'
+    fs.appendFileSync(file, head)
+    size += Buffer.byteLength(head)
+    // 续写 BOOT 副本：analyze-trace 按 BOOT 分组，否则轮转后的事件会落进「无构建」组、无法归因
+    if (lastBoot) {
+      const boot = stamp() + '[BOOT] ' + JSON.stringify(Object.assign({}, lastBoot, { rotatedCopy: true })) + '\n'
+      fs.appendFileSync(file, boot)
+      size += Buffer.byteLength(boot)
+    }
+  }
+  let lastBoot = null
   return function trace(tag, data) {
     if (!cfg.trace) return null
     const stats = typeof statsOf === 'function' ? statsOf() : undefined
     const payload = Object.assign({}, data, stats === undefined ? {} : { stats })
-    const line = '[' + new Date().toISOString() + '] [' + tag + '] ' + JSON.stringify(payload)
+    const line = stamp() + '[' + tag + '] ' + JSON.stringify(payload)
+    if (tag === 'BOOT') lastBoot = payload
     try {
       if (!dirReady) { fs.mkdirSync(path.dirname(cfg.traceFile), { recursive: true }); dirReady = true }
+      const bytes = Buffer.byteLength(line) + 1
+      rotateIfNeeded(cfg.traceFile, bytes)
       fs.appendFileSync(cfg.traceFile, line + '\n')
+      if (size !== null) size += bytes
       return line
     } catch { return null /* evidence only */ }
   }
@@ -49,6 +76,9 @@ export function settledTraceData(index, ms, s) {
       compressRatio: (typeof m.promptChars === 'number' && typeof m.inputChars === 'number' && m.inputChars > 0)
         ? Number((m.promptChars / m.inputChars).toFixed(2)) : undefined,
       promptChars: m.promptChars, maxOutputTokens: m.maxOutputTokens,
+      // v11.11 token 估算校准：按书写系统的字符数（只有数量）；与 providerReportedUsage 同行，离线回归系数
+      promptWideChars: m.promptWideChars, promptOtherChars: m.promptOtherChars,
+      outputWideChars: m.outputWideChars, outputOtherChars: m.outputOtherChars,
       connectMs: m.connectMs, ttfbMs: m.ttfbMs, firstByteMs: m.firstByteMs,
       totalMs: m.totalMs, chunks: m.chunks, reused: m.reused, status: m.status,
       bytes: m.bytes, cancelled: m.cancelled, finish: m.finish, reasoningChars: m.reasoningChars,
