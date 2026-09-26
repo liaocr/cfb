@@ -62,6 +62,14 @@ export interface CotFormBConfig {
   extractiveHandleLine?: boolean
   /** v11.12 仅 x1：可进化的补充准则（tools/acon-optimize.mjs 产物；缺省 ''） */
   extractiveGuideline?: string
+  /** v11.13 仅 x1（r2）：死分支折叠——被否定/自我推翻的支线只留假设句 + 否定理由句（缺省 true） */
+  extractiveFoldBranches?: boolean
+  /** v11.13 仅 x1（r2）：含报错/失败且指向具体对象的句子补回（缺省 true） */
+  extractiveKeepFailures?: boolean
+  /** v11.13 仅 x1（r2）：按块类型的目标长度写进提示词（缺省 true） */
+  extractiveKindTargets?: boolean
+  /** v11.13 仅 x1（r2）：状态行去重（缺省 true） */
+  extractiveStateDedupe?: boolean
   /** pre-step 整段 replace 时随看板带走的旧看板正文/可见回答/工具调用参数的内联总预算（字符，缺省 3000）；超出归档为句柄 */
   maxCarryChars?: number
   /** emit 仅在预计节省至少该字符数时替换（缺省 100） */
@@ -289,6 +297,8 @@ export interface ExtractiveSelection {
   plan: number[]
   keep: number[]
   tags: Array<{ i: number; s: 'verified' | 'refuted' | 'unverified'; seq: number | string | null; quote: string }>
+  /** v11.13（r2）：已放下的支线；缺省视为空数组 */
+  branches?: Array<{ from: number; to: number; head: number; why: number | null; s: 'refuted' | 'abandoned' | 'parked'; seq: number | string | null; quote: string }>
   state: Array<{ k: string; v: string }>
   dropped: number
 }
@@ -297,16 +307,22 @@ export interface ExtractiveStats {
   tagsVerified: number; tagsRefuted: number; tagsUnverified: number; tagsDowngraded: number
   stateKept: number; stateDropped: number; lang: string
   identifierRecall?: number | null; outChars?: number; ratio?: number | null; dropped?: number
+  /** v11.13（r2） */
+  branchesFolded?: number; branchesParked?: number; branchesRejected?: number; foldedSentences?: number; foldRepaired?: number
+  failuresKept?: number; stateDeduped?: number; target?: number; overTarget?: boolean | null
 }
 export declare const EXTRACTIVE_VERSION: string
+export declare const EXTRACTIVE_REVISION: number
+export declare const EXTRACTIVE_KIND_TARGETS: Readonly<{ closed: number; exec: number; explore: number }>
+export declare function extractiveFeatures(cfg: CotFormBConfig | null | undefined): { fold: boolean; keepFailures: boolean; kindTargets: boolean; stateDedupe: boolean }
 export declare const EXTRACTIVE_BASE_RULES: string[]
 export declare function segmentSentences(raw: string): ExtractiveSentence[]
 export declare function hardIdentifiers(text: string): { has(v: string): boolean; readonly size: number; forEach(cb: (v: string) => void): void }
 export declare function tailStartIndex(sentences: ExtractiveSentence[], tailChars?: number): number
 export declare function extractiveEvidence(events: unknown[], opts?: { limit?: number }): ExtractiveEvidence
-export declare function buildExtractivePrompt(sentences: ExtractiveSentence[], ctx?: { evidence?: ExtractiveEvidence | null; guideline?: string; tailFrom?: number }): string
+export declare function buildExtractivePrompt(sentences: ExtractiveSentence[], ctx?: { evidence?: ExtractiveEvidence | null; guideline?: string; tailFrom?: number; fold?: boolean; kindTargets?: boolean }): string
 export declare function parseExtractiveOutput(text: string, n: number): ExtractiveSelection | null
-export declare function assembleExtractive(raw: string, sentences: ExtractiveSentence[], sel: ExtractiveSelection, opts?: { evidence?: ExtractiveEvidence | null; tailChars?: number; repairMax?: number; lang?: 'zh' | 'en' }): { text: string; stats: ExtractiveStats }
+export declare function assembleExtractive(raw: string, sentences: ExtractiveSentence[], sel: ExtractiveSelection, opts?: { evidence?: ExtractiveEvidence | null; tailChars?: number; repairMax?: number; lang?: 'zh' | 'en'; fold?: boolean; keepFailures?: boolean; stateDedupe?: boolean }): { text: string; stats: ExtractiveStats }
 export declare function extractiveHandleLine(handle: string, raw: string): string
 export declare function extractivePromptVersion(cfg: CotFormBConfig | null | undefined): string
 export declare function prepareExtractive(raw: string, cfg?: CotFormBConfig, evidence?: ExtractiveEvidence | null): { sentences: ExtractiveSentence[]; tailFrom: number; prompt: string }
@@ -324,6 +340,7 @@ export declare function textOfContent(content: unknown): string
 
 /** 取一条 assistant 消息里的 reasoning 文本（多块拼接） */
 export declare function reasoningTextOf(message: unknown): string
+export declare function artRefsOf(msgs: unknown): { handles: number; handleLines: number; toolCalls: number; retrieved: number }
 
 /** 一次请求的传输层证据（直接落 trace） */
 export interface RequestMeta {

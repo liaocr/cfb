@@ -8,6 +8,12 @@
 //   violate   违反了约束（越低越好）
 //   success = next && !avoid && !violate
 // 另记 promptTokens（上下文实付）、completionTokens / reasoningChars（续写是否因信息缺失而变长）。
+// v11.13（docs/RESEARCH-PERFORMANCE.md P6）：
+//   loop      续写**原样重发**了前缀里一次**失败过**的工具调用（重走已知失败 = 无效循环，Complexity Trap 2508.21433）
+//   recheck   续写原样重发了前缀里一次**成功过**的调用（重新取回已知信息 = 压缩丢了模型还要的东西）
+//   deltaVsRaw  按 fixture 配对的 bootstrap（固定种子，缺省 B=2000）95% 区间：variant − raw 的 success / loop / recheck。
+//             区间跨 0 = 没有证据说明有差别；fixture 少于 2 个不给区间。
+//   消融变体：x1:nofold+nofail+notargets+nodedupe（任意组合）= 关掉对应的 r2 特性，与 x1 并列跑即可看每项的贡献。
 //
 // ⚠ 这是**离线评测**：会真实调用你给的端点（主模型 + 压缩模型），费用自负。插件线上行为不受影响。
 // ⚠ 压缩提示词与拼装代码直接复用 src/（prompts.js / extractive.js）⇒ 评的就是线上那一套。
@@ -19,6 +25,7 @@
 //   其它：--guideline-file g.txt（x1 补充准则） --min-chars 800 --concurrency 4 --max-tokens 4096
 //         --temperature 0.7 --extra-body '{"thinking":{"type":"enabled"}}' --compressor-extra-body '{...}'
 //         --compress-only（只压缩并打印，不调主模型） --target-min 250 --target-max 450 --tail-chars 400 --max-keep-ratio 0.7
+//         --seed 1 --bootstrap 2000（配对 bootstrap 的种子与重采样次数）
 //         --reasoning-field reasoning_content|think-tag（历史推理怎么回传：DeepSeek 思考模式 + tools 要求
 //           每条历史 assistant 带 reasoning_content；不收该字段的端点用 think-tag 把推理以 <think> 前缀放进 content）
 //
@@ -30,6 +37,7 @@
 //                 "avoid":   [{ "tool": "bash", "args": ["SELECT count"] }],
 //                 "violate": [{ "tool": "edit_file", "args": ["test/"] }] } }
 //   动作匹配：tool 名相等且 JSON 参数包含 args 里每个子串；或 { "text": 正则 } 匹配回答正文。
+//   tool 消息可带 "is_error": true；没带时按内容启发式判断（Traceback / exit code 非 0 / ENOENT / command not found …）。
 //
 // 零依赖；Node ≥ 20（全局 fetch）。
 import fs from 'node:fs'
@@ -38,9 +46,23 @@ import { pathToFileURL } from 'node:url'
 import { buildCompressPromptV3 } from '../src/prompts.js'
 import { prepareExtractive, finalizeExtractive } from '../src/extractive.js'
 
+// x1 消融修饰符 → 配置开关（与 src/config.js 的 r2 开关一一对应）
+export const X1_MODIFIERS = Object.freeze({ nofold: 'extractiveFoldBranches', nofail: 'extractiveKeepFailures',
+  notargets: 'extractiveKindTargets', nodedupe: 'extractiveStateDedupe' })
+/** 'x1:nofold+nodedupe' → { base:'x1', cfg:{ extractiveFoldBranches:false, extractiveStateDedupe:false } }；未知修饰符直接抛错。 */
+export function parseVariant(variant) {
+  const [base, mods = ''] = String(variant).split(':')
+  const cfg = {}
+  for (const m of mods.split('+').map((x) => x.trim()).filter(Boolean)) {
+    if (base !== 'x1' || !X1_MODIFIERS[m]) throw new Error('unknown variant modifier ' + m + ' in ' + variant)
+    cfg[X1_MODIFIERS[m]] = false
+  }
+  return { base, cfg }
+}
+
 // ── 参数 ───────────────────────────────────────────────────────────────────
 export function parseArgs(argv) {
-  const o = { variants: ['raw', 'v3', 'x1'], samples: 3, minChars: 800, concurrency: 4, maxTokens: 4096,
+  const o = { variants: ['raw', 'v3', 'x1'], seed: 1, bootstrap: 2000, samples: 3, minChars: 800, concurrency: 4, maxTokens: 4096,
     temperature: null, targetMin: 250, targetMax: 450, tailChars: 400, compressOnly: false, apiKeyEnv: 'DEEPSEEK_API_KEY' }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i], v = () => argv[++i]
@@ -66,6 +88,8 @@ export function parseArgs(argv) {
     else if (a === '--max-keep-ratio') o.maxKeepRatio = Number(v())
     else if (a === '--compress-only') o.compressOnly = true
     else if (a === '--reasoning-field') o.reasoningField = v()
+    else if (a === '--seed') o.seed = Number(v())
+    else if (a === '--bootstrap') o.bootstrap = Number(v())
     else if (a === '--out') o.out = v()
     else if (a === '--help' || a === '-h') o.help = true
     else throw new Error('unknown argument: ' + a)
@@ -107,10 +131,21 @@ export function evidenceFromMessages(messages, before) {
     const m = messages[i]
     if (!m) continue
     if (m.role === 'assistant' && Array.isArray(m.tool_calls)) for (const tc of m.tool_calls) names.set(tc.id, tc.function && tc.function.name)
-    else if (m.role === 'tool') tools.push({ seq: i, name: names.get(m.tool_call_id) || null, text: contentText(m.content), isError: false, exitCode: null })
+    else if (m.role === 'tool') tools.push({ seq: i, name: names.get(m.tool_call_id) || null, text: contentText(m.content), isError: toolResultIsError(m), exitCode: null })
     else if (m.role === 'user' && contentText(m.content).trim()) asks.push({ seq: i, text: contentText(m.content) })
   }
   return { tools: tools.slice(-12), asks: asks.slice(-2) }
+}
+/**
+ * 工具结果是否失败：fixture 显式给 is_error / isError 优先；否则看内容。
+ * 启发式只认「行首报错前缀」或具体的失败形态，避免把正文里偶然出现的 error 一词当成失败。
+ */
+const RE_TOOL_ERROR = /(^|\n)\s*(error|fatal|traceback|exception|panic)\b[:\s]|exit(?:ed)?(?: with)? (?:code|status):? *[1-9]|non-zero exit|command not found|no such file or directory|permission denied|\bENOENT\b|\bEACCES\b|\bECONNREFUSED\b|timed out/i
+export function toolResultIsError(m) {
+  if (!m) return false
+  if (typeof m.is_error === 'boolean') return m.is_error
+  if (typeof m.isError === 'boolean') return m.isError
+  return RE_TOOL_ERROR.test(contentText(m.content))
 }
 const contentText = (c) => typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (x && typeof x.text === 'string' ? x.text : '')).join('') : ''
 
@@ -125,12 +160,13 @@ export function compressTargetsOf(fx, minChars) {
 export async function compressBlock(variant, raw, ctx) {
   const { compressor, opts, evidence } = ctx
   const body = (content) => ({ model: opts.compressorModel || opts.model, messages: [{ role: 'user', content }], max_tokens: 2000, ...(opts.compressorExtraBody || {}) })
-  if (variant === 'v3') {
+  const pv = parseVariant(variant)
+  if (pv.base === 'v3') {
     const r = await compressor(body(buildCompressPromptV3(raw, opts.targetMin, opts.targetMax)))
     return { text: String(r.message.content || '').trim(), usage: r.usage, ok: true }
   }
-  if (variant === 'x1') {
-    const cfg = { extractiveTailChars: opts.tailChars, extractiveGuideline: opts.guideline || '', extractiveMaxKeepRatio: opts.maxKeepRatio ?? 0.7 }
+  if (pv.base === 'x1') {
+    const cfg = { extractiveTailChars: opts.tailChars, extractiveGuideline: opts.guideline || '', extractiveMaxKeepRatio: opts.maxKeepRatio ?? 0.7, ...pv.cfg }
     const prep = prepareExtractive(raw, cfg, evidence)
     const r = await compressor(body(prep.prompt))
     try {
@@ -180,14 +216,68 @@ export function matches(pattern, actions, text) {
   if (pattern.text) return new RegExp(pattern.text, 'i').test(String(text || ''))
   return actions.some((a) => a.tool === pattern.tool && (pattern.args || []).every((s) => a.args.includes(s)))
 }
-export function scoreSample(expect, message) {
+/** 参数归一：能解析成 JSON 就按键排序后再序列化（键序/空白不同也算同一调用），否则压空白。 */
+export function normArgs(args) {
+  const sortKeys = (x) => Array.isArray(x) ? x.map(sortKeys) : (x && typeof x === 'object' ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, sortKeys(x[k])])) : x)
+  try { return JSON.stringify(sortKeys(JSON.parse(args))) } catch { return String(args || '').replace(/\s+/g, ' ').trim() }
+}
+/** 前缀里的全部工具调用 + 其结果是否失败（按 tool_call_id 配对；没有结果的调用 isError=null）。 */
+export function priorCalls(messages) {
+  const out = []
+  const byId = new Map()
+  for (const m of Array.isArray(messages) ? messages : []) {
+    if (!m) continue
+    if (m.role === 'assistant' && Array.isArray(m.tool_calls)) {
+      for (const c of m.tool_calls) {
+        const a = actionsOf({ tool_calls: [c] })[0]
+        const rec = { tool: a.tool, args: normArgs(a.args), isError: null }
+        out.push(rec)
+        if (c.id) byId.set(c.id, rec)
+      }
+    } else if (m.role === 'tool' && byId.has(m.tool_call_id)) byId.get(m.tool_call_id).isError = toolResultIsError(m)
+  }
+  return out
+}
+export function scoreSample(expect, message, prior) {
   const acts = actionsOf(message)
   const text = String((message && message.content) || '')
   const e = expect || {}
   const next = (e.next || []).length ? e.next.some((p) => matches(p, acts, text)) : null
   const avoid = (e.avoid || []).some((p) => matches(p, acts, text))
   const violate = (e.violate || []).some((p) => matches(p, acts, text))
-  return { next, avoid, violate, success: next !== false && !avoid && !violate, actions: acts.map((a) => a.tool + ' ' + a.args.slice(0, 160)) }
+  // 重发判定：同名工具 + 归一化参数完全相同。失败过的 ⇒ loop；成功过（或结果未知）的 ⇒ recheck
+  let loop = false, recheck = false
+  for (const a of acts) {
+    const na = normArgs(a.args)
+    const hits = (prior || []).filter((p) => p.tool === a.tool && p.args === na)
+    if (hits.some((p) => p.isError === true)) loop = true
+    else if (hits.length) recheck = true
+  }
+  return { next, avoid, violate, loop, recheck, success: next !== false && !avoid && !violate, actions: acts.map((a) => a.tool + ' ' + a.args.slice(0, 160)) }
+}
+
+// ── 配对 bootstrap ──────────────────────────────────────────────────────────
+/** mulberry32：固定种子的可复现 PRNG（报告必须能复算）。 */
+export function prng(seed) {
+  let a = (Number(seed) >>> 0) || 1
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
+}
+/**
+ * 按 fixture 配对：d_i = variant_i − raw_i（两边都有值的 fixture 才进）。对 d 重采样 B 次取均值，给 2.5%/97.5% 分位。
+ * @returns {{ n, mean, lo, hi } | null}  n<2 ⇒ lo/hi 为 null（一个点谈不上区间）
+ */
+export function pairedBootstrap(a, b, { B = 2000, seed = 1 } = {}) {
+  const d = []
+  for (let i = 0; i < Math.min(a.length, b.length); i++) if (Number.isFinite(a[i]) && Number.isFinite(b[i])) d.push(b[i] - a[i])
+  if (!d.length) return null
+  const m = d.reduce((x, y) => x + y, 0) / d.length
+  if (d.length < 2) return { n: d.length, mean: +m.toFixed(4), lo: null, hi: null }
+  const rnd = prng(seed)
+  const means = new Float64Array(B)
+  for (let k = 0; k < B; k++) { let sum = 0; for (let j = 0; j < d.length; j++) sum += d[(rnd() * d.length) | 0]; means[k] = sum / d.length }
+  means.sort()
+  const q = (p) => means[Math.min(B - 1, Math.max(0, Math.floor(p * B)))]
+  return { n: d.length, mean: +m.toFixed(4), lo: +q(0.025).toFixed(4), hi: +q(0.975).toFixed(4) }
 }
 
 // ── 并发池 ─────────────────────────────────────────────────────────────────
@@ -201,7 +291,7 @@ async function pool(items, n, fn) {
 }
 
 /** 压缩稿缓存键：只有影响压缩结果的参数进键（raw/v3 不看准则）。 */
-export const cacheKey = (id, variant, opts) => [id, variant, variant === 'x1' ? (opts.guideline || '') : '', opts.tailChars, opts.maxKeepRatio ?? '', opts.targetMin, opts.targetMax].join('|')
+export const cacheKey = (id, variant, opts) => [id, variant, String(variant).split(':')[0] === 'x1' ? (opts.guideline || '') : '', opts.tailChars, opts.maxKeepRatio ?? '', opts.targetMin, opts.targetMax].join('|')
 
 const mean = (xs) => { const v = xs.filter((x) => typeof x === 'number' && Number.isFinite(x)); return v.length ? +(v.reduce((a, b) => a + b, 0) / v.length).toFixed(4) : null }
 
@@ -215,6 +305,7 @@ export async function runEval(opts, deps) {
   const perFixture = []
   for (const fx of fixtures) {
     const row = { id: fx.id, variants: {} }
+    const prior = priorCalls(fx.messages)
     for (const variant of opts.variants) {
       const key = cacheKey(fx.id, variant, opts)
       let built = deps.cache && deps.cache.get(key)
@@ -227,10 +318,10 @@ export async function runEval(opts, deps) {
             const body = { model: opts.model, messages: shapeReasoning(built.messages, opts.reasoningField), max_tokens: opts.maxTokens, ...(fx.tools ? { tools: fx.tools } : {}),
               ...(opts.temperature != null ? { temperature: opts.temperature } : {}), ...(opts.extraBody || {}) }
             const r = await deps.chat(body)
-            const sc = scoreSample(fx.expect, r.message)
+            const sc = scoreSample(fx.expect, r.message, prior)
             return { ...sc, promptTokens: r.usage ? r.usage.prompt_tokens : null, completionTokens: r.usage ? r.usage.completion_tokens : null,
               reasoningChars: String(r.message.reasoning_content || '').length }
-          } catch (e) { return { error: String(e.message || e), success: false, next: false, avoid: false, violate: false } }
+          } catch (e) { return { error: String(e.message || e), success: false, next: false, avoid: false, violate: false, loop: false, recheck: false } }
         })
       }
       row.variants[variant] = {
@@ -238,6 +329,8 @@ export async function runEval(opts, deps) {
         blocks: built.blocks.map(({ raw, ...b }) => b),
         samples,
         successRate: samples.length ? mean(samples.map((s) => (s.success ? 1 : 0))) : null,
+        loopRate: samples.length ? mean(samples.map((s) => (s.loop ? 1 : 0))) : null,
+        recheckRate: samples.length ? mean(samples.map((s) => (s.recheck ? 1 : 0))) : null,
       }
     }
     perFixture.push(row)
@@ -254,6 +347,8 @@ export async function runEval(opts, deps) {
       nextRate: mean(all.filter((s) => s.next != null).map((s) => (s.next ? 1 : 0))),
       avoidRate: mean(all.map((s) => (s.avoid ? 1 : 0))),
       violateRate: mean(all.map((s) => (s.violate ? 1 : 0))),
+      loopRate: mean(all.map((s) => (s.loop ? 1 : 0))),
+      recheckRate: mean(all.map((s) => (s.recheck ? 1 : 0))),
       errorRate: mean(all.map((s) => (s.error ? 1 : 0))),
       promptTokens: mean(all.map((s) => s.promptTokens)),
       completionTokens: mean(all.map((s) => s.completionTokens)),
@@ -262,6 +357,19 @@ export async function runEval(opts, deps) {
       compressedBlocks: blocks.length,
       compressFallbacks: blocks.filter((b) => !b.ok).length,
       keptRatio: mean(blocks.filter((b) => b.ok).map((b) => b.outChars / Math.max(1, b.rawChars))),
+    }
+  }
+  // 配对 bootstrap：每个 variant 对 raw（同一 fixture 的 fixture 级比率配对）
+  if (opts.variants.includes('raw')) {
+    const col = (v, k) => perFixture.map((r) => (r.variants[v] ? r.variants[v][k] : null))
+    for (const variant of opts.variants) {
+      if (variant === 'raw') continue
+      const bo = { B: opts.bootstrap || 2000, seed: opts.seed ?? 1 }
+      summary[variant].deltaVsRaw = {
+        success: pairedBootstrap(col('raw', 'successRate'), col(variant, 'successRate'), bo),
+        loop: pairedBootstrap(col('raw', 'loopRate'), col(variant, 'loopRate'), bo),
+        recheck: pairedBootstrap(col('raw', 'recheckRate'), col(variant, 'recheckRate'), bo),
+      }
     }
   }
   return { summary, perFixture }
@@ -289,9 +397,13 @@ export function contrastivePairs(report, variant, fixtures, cache, opts) {
 }
 
 export function printSummary(summary, log = console.log) {
-  const cols = ['successRate', 'nextRate', 'avoidRate', 'violateRate', 'promptTokens', 'completionTokens', 'contextReasoningChars', 'keptRatio', 'compressFallbacks']
+  const cols = ['successRate', 'nextRate', 'avoidRate', 'violateRate', 'loopRate', 'recheckRate', 'promptTokens', 'completionTokens', 'contextReasoningChars', 'keptRatio', 'compressFallbacks']
   log(['variant'].concat(cols).join('\t'))
   for (const [v, s] of Object.entries(summary)) log([v].concat(cols.map((c) => (s[c] == null ? '-' : s[c]))).join('\t'))
+  const fmt = (x) => (x == null ? '-' : (x.mean >= 0 ? '+' : '') + x.mean + (x.lo == null ? ' (n=' + x.n + ', 无区间)' : ' [' + x.lo + ', ' + x.hi + '] n=' + x.n))
+  for (const [v, s] of Object.entries(summary)) {
+    if (s.deltaVsRaw) log('Δ vs raw · ' + v + '\tsuccess ' + fmt(s.deltaVsRaw.success) + '\tloop ' + fmt(s.deltaVsRaw.loop) + '\trecheck ' + fmt(s.deltaVsRaw.recheck))
+  }
 }
 
 async function main() {

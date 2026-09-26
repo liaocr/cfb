@@ -143,6 +143,22 @@ cfb 只能在出生时写、不能改旧块——这正是 AgentFold 与 Manus �
 
 价格影响以 v3 为基准（v3 ≈ +5% 总成本；见 `ECONOMICS-V11.11.md` 与上一轮 x1 定价表）。
 
+> **实现状态（v11.13.0，2026-09-26）**：P1–P6 的代码部分已落地，**全部只在 `compressPrompt: 'x1'` 下生效（x1 缺省关 ⇒ 线上零变化）**；
+> 既有的 `extractiveEvidence` / `extractiveMaxKeepRatio` 缺省值未动（待用户决定）。与下文原方案的差异：
+>
+> | 项 | 落地形式 | 与原方案的差异 |
+> |---|---|---|
+> | P1 | `branches` 字段 + `extractiveFoldBranches`（缺省 true） | 自否定标签定为 `⟨已放弃⟩`；`why` 的核对 = 该句含作者自己的否定原话（正则，只是合理性核对）；refuted 证据对不上但 why 合格 ⇒ 降为 abandoned，都不合格 ⇒ 不折叠（= r1 行为）。「分支内独有标识符」走既有的标识符修复（受 15% 上限约束，`foldRepaired` 计数），支线内被证实的句子与计划句永不折叠 |
+> | P2 | `extractiveKeepFailures`（缺省 true） | 独立于标识符修复：至多 min(4, 10% 句数)，从后往前，须指向具体对象（标识符 / 数字 / 引号） |
+> | P3 | `extractiveKindTargets`（缺省 true）+ `EXTRACTIVE_KIND_TARGETS` | **目标改为 closed 0.25 / exec 0.3 / explore 0.5**，且只写进提示词作上限提示、不做本地硬裁剪（超目标时本地拒绝只会退回原文 = 更贵）；唯一硬上限仍是 0.7。stats 记 `target` / `overTarget` |
+> | P4 | `extractiveStateDedupe`（缺省 true） | 值 ≥6 字符且已在保留句/尾巴逐字出现 ⇒ 去掉；用户原话约束永不去重 |
+> | P5 | `llm-stream` trace 新增 `artRefs {handles, handleLines, toolCalls, retrieved}`；`analyze-trace` 输出 `handleRetrieval` | 只做观测，不自动调 keep（数据出来再定）；计数是单次请求累计值，同一 BOOT 组可能混会话 |
+> | P6 | `cf-eval`：`loopRate` / `recheckRate` / 配对 bootstrap `deltaVsRaw`；消融变体 `x1:nofold+nofail+notargets+nodedupe` | `rederiveRate` 落地为 **`recheckRate`**（原样重发前缀里成功过的工具调用）——「重新推导已证实结论」要语义判定，不可自动可靠地算；loop = 重发**失败过**的调用 |
+> | P7 | 文档 | 无代码 |
+>
+> promptVersion 变为 `compress-x1r2`（关掉任一 r2 特性带 `:-fold` / `:-fail` / `:-tgt` / `:-dedupe` 后缀），trace 与 cf-eval 可按修订和开关分桶。
+> **仍未验证**：以上各项对表现的实际贡献——需要 30–50 个真实 CAS fixture 跑 `raw,v3,x1,x1:nofold,…` 的配对对比。
+
 ### P1 死分支折叠（x1 升级 · 核心）
 - **做什么**：副模型额外输出 `branches: [{from, to, status: refuted|abandoned|parked, head, why}]`。拼装时：
   - `refuted`（有工具证据）/ `abandoned`（主模型自己写了“不对/不行/放弃”，`why` 必须在原文逐字出现）⇒ 只留 `head`（假设句）+ `why`（否定原因句），

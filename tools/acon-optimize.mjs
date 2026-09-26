@@ -48,6 +48,9 @@ export function parseArgs(argv) {
 const clip = (s, n) => { s = String(s || ''); return s.length <= n ? s : s.slice(0, Math.floor(n * 0.6)) + '\n…（中略 ' + (s.length - n) + ' 字符）…\n' + s.slice(-Math.floor(n * 0.4)) }
 const fmtExpect = (e) => JSON.stringify(e || {})
 
+// v11.13 r2：压缩稿里会出现支线标记，优化器必须知道它们是什么，才能判断「丢的是支线内部的有用事实」这一类失败
+const R2_NOTE = '（另：已放下的尝试会被折叠——只留提出假设的句子与否定理由句，句末标 ⟨已否定·seqN⟩ / ⟨已放弃⟩；⟨搁置⟩ 表示暂时放下但未被否定、内部未删。含报错的具体句子会被自动补回。）'
+
 /** UT 步提示词：对比失败分析 → 修订准则。 */
 export function buildUtilityPrompt(guideline, failures, maxChars) {
   const L = []
@@ -55,6 +58,7 @@ export function buildUtilityPrompt(guideline, failures, maxChars) {
   L.push('')
   L.push('选句器的固定规则：')
   EXTRACTIVE_BASE_RULES.forEach((r, i) => L.push((i + 1) + '. ' + r))
+  L.push(R2_NOTE)
   L.push('')
   L.push('当前补充准则：')
   L.push(String(guideline || '').trim() || '（空）')
@@ -72,7 +76,7 @@ export function buildUtilityPrompt(guideline, failures, maxChars) {
     }
   })
   L.push('')
-  L.push('任务：逐案找出压缩稿**丢了哪类句子/信息**才导致续写出错（例如：否定某条路径的理由、用户约束、一个中间结论、计划的后半段）。')
+  L.push('任务：逐案找出压缩稿**丢了哪类句子/信息**才导致续写出错（例如：否定某条路径的理由、用户约束、一个中间结论、计划的后半段、被折叠支线里后续仍要用的事实）。')
   L.push('然后写出修订后的**完整**补充准则：每条一句、可操作、说清「什么样的句子必须留」或「什么样的句子可以删」，不要针对具体文件名或具体案例。')
   L.push('保留当前准则中仍然有用的条目；总长度不超过 ' + maxChars + ' 字符。只输出准则正文，每行一条，不要编号以外的任何解释。')
   return L.join('\n')
@@ -85,6 +89,7 @@ export function buildCompressionPrompt(guideline, successes, maxChars) {
   L.push('')
   L.push('固定规则：')
   EXTRACTIVE_BASE_RULES.forEach((r, i) => L.push((i + 1) + '. ' + r))
+  L.push(R2_NOTE)
   L.push('')
   L.push('当前补充准则：')
   L.push(String(guideline || '').trim() || '（空）')

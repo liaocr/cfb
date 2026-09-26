@@ -5,6 +5,42 @@
 
 ---
 
+## v11.13.0（2026-09-26）x1 r2：死分支折叠 / 失败信号保留 / 按块类型目标长度 / 状态行去重 + 句柄回取观测 + cf-eval 过程指标（**x1 仍缺省关闭，线上零变化**）
+
+落地 [`docs/RESEARCH-PERFORMANCE.md`](docs/RESEARCH-PERFORMANCE.md) §3 的 P1–P6 代码部分（与原方案的差异见该节「实现状态」表）。
+
+### x1（`src/extractive.js`，只在 `compressPrompt: 'x1'` 下生效）
+- **P1 死分支折叠**：副模型可回 `branches: [{from,to,head,why,s,seq,quote}]`。`refuted`（工具证据逐字命中）⇒ head 标 `⟨已否定·seqN⟩`；
+  `abandoned`（why 句含作者自己的否定原话）⇒ head 标 `⟨已放弃⟩`；两者都只留 head + why，内部句删掉，其中的转折句/失败句不再强制保留。
+  refuted 证据对不上但 why 合格 ⇒ 降为 abandoned；都不合格 ⇒ 不折叠（= r1 行为）。`parked` ⇒ `⟨搁置⟩`，内部不删。
+  支线内被证实的句子与计划句永不折叠；标识符只出现在折叠区时仍会被修复补回（`foldRepaired`）。尾巴里的支线、exec 块一律不折。
+  解析：from/to 反了交换，head 越界取 from，why 早于 head 置空，重叠的只收先出现的，最多 6 条。
+- **P2 失败信号保留**：含报错/失败且指向具体对象（标识符/数字/引号）的句子补回，至多 min(4, 10% 句数)，从后往前。
+- **P3 按块类型目标长度**：closed 25% / exec 30% / explore 50% 写进提示词作**上限提示**（`EXTRACTIVE_KIND_TARGETS`）；不做本地硬裁剪，硬上限仍是 0.7。
+- **P4 状态行去重**：值（≥6 字符）已在保留句/尾巴逐字出现就不再重复；用户原话约束除外。
+- 新配置键（缺省全 true，仅 x1）：`extractiveFoldBranches` · `extractiveKeepFailures` · `extractiveKindTargets` · `extractiveStateDedupe`。
+  既有 `extractiveEvidence` / `extractiveMaxKeepRatio` 缺省值**未改**。
+- promptVersion `compress-x1` → **`compress-x1r2`**；关掉的特性带 `:-fold` / `:-fail` / `:-tgt` / `:-dedupe` 后缀，准则指纹 `:g<fp>` 照旧。
+- 拼装 stats 新增 `branchesFolded` / `branchesParked` / `branchesRejected` / `foldedSentences` / `foldRepaired` / `failuresKept` / `stateDeduped` / `target` / `overTarget`。
+  标签改为在修复之后定稿（修复补回的句子也会带上它的标签）。
+- 新导出：`EXTRACTIVE_REVISION` · `EXTRACTIVE_KIND_TARGETS` · `extractiveFeatures`。
+
+### 观测（只读）
+- **P5**：`llm-stream` trace 新增 `artRefs: {handles, handleLines, toolCalls, retrieved}`（`artRefsOf`，只数不记内容）。
+- `tools/analyze-trace.mjs` 每组新增 `extractive`（按 promptVersion 分桶：回落率、超目标率、r2 计数、块类型分布）与 `handleRetrieval`（最大值 + 回取率）。
+
+### 评测（离线）
+- **P6** `tools/cf-eval.mjs`：`loopRate`（原样重发前缀里失败过的调用）· `recheckRate`（重发成功过的调用）· 按 fixture 配对的 bootstrap
+  `deltaVsRaw`（固定种子 `--seed`，`--bootstrap` 缺省 2000，95% 区间）；工具结果 `isError` 启发式（fixture 可用 `is_error` 显式给出）；
+  消融变体 `x1:nofold+nofail+notargets+nodedupe`。
+- `tools/acon-optimize.mjs` 的优化器提示词说明支线标记。
+
+### 验证
+- `test/extractive.selftest.mjs` 34 → 48（折叠 / 降级 / 搁置 / 失败信号 / 目标 / 去重 / loop·recheck / bootstrap / 消融 / artRefs / trace 汇总）。
+- `node verify.mjs`：1356 通过 / 0 失败 / 1 跳过。
+
+---
+
 ## v11.12.1（2026-09-26）提升主模型表现的第四轮调研（**仅文档，代码与缺省值零变化**）
 
 - 新增 [`docs/RESEARCH-PERFORMANCE.md`](docs/RESEARCH-PERFORMANCE.md)：从「推理保留 / 离策略代价 / 去噪 / 历史中的错误 / 想太多想太少 / 状态与复述 / 可逆性」7 个角度调研 30+ 篇来源。

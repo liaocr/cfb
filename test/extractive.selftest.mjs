@@ -125,10 +125,16 @@ await test('§3c 没有证据 ⇒ 任何「证实/否定」都拿不到（只允
   assert.equal(r.stats.tagsVerified + r.stats.tagsRefuted, 0)
 })
 await test('§3d 状态：值须逐字出现在原文/用户输入；用户约束加引号；编造的丢弃', () => {
-  const r = I.assembleExtractive(RAW, S, SEL, { evidence: EV, tailChars: 40 })
+  const r = I.assembleExtractive(RAW, S, SEL, { evidence: EV, tailChars: 40, stateDedupe: false })
   assert.ok(r.text.includes('[状态] 出错点=src/routes/user.js 的第 42 行 · 约束="不要改测试文件"'), r.text)
   assert.ok(!r.text.includes('原文里没有的值'))
   assert.equal(r.stats.stateDropped, 1)
+  // v11.13 去重（缺省开）：出错点的值已在保留的计划句里逐字出现 ⇒ 不再重复；用户原话约束永不去重
+  const d = I.assembleExtractive(RAW, S, SEL, { evidence: EV, tailChars: 40 })
+  assert.ok(d.text.includes('[状态] 约束="不要改测试文件"'), d.text)
+  assert.ok(!d.text.includes('出错点='))
+  assert.equal(d.stats.stateDeduped, 1)
+  assert.equal(d.stats.stateKept, 1)
 })
 await test('§3e 转折句强制保留（explore）；exec 只留状态 + 尾巴', () => {
   const r = I.assembleExtractive(RAW, S, { ...SEL, keep: [], tags: [], plan: [] }, { evidence: EV, tailChars: 40 })
@@ -156,7 +162,7 @@ await test('§3h 英文原文 ⇒ 英文标签与 [state]；句柄行跟随语�
   const raw = 'Plan: read src/app.js first. The crash might be a null config. But the log shows config loaded fine. So the bug is in parseArgs. Next I will edit src/app.js line 10.'
   const s = I.segmentSentences(raw)
   const ev = { tools: [{ seq: 7, name: 'bash', text: 'config loaded: ok' }], asks: [] }
-  const r = I.assembleExtractive(raw, s, { kind: 'explore', plan: [0], keep: [1, 3], tags: [{ i: 1, s: 'refuted', seq: 7, quote: 'config loaded: ok' }], state: [{ k: 'file', v: 'src/app.js' }], dropped: 0 }, { evidence: ev, tailChars: 40 })
+  const r = I.assembleExtractive(raw, s, { kind: 'explore', plan: [0], keep: [1, 3], tags: [{ i: 1, s: 'refuted', seq: 7, quote: 'config loaded: ok' }], state: [{ k: 'file', v: 'src/app.js' }], dropped: 0 }, { evidence: ev, tailChars: 40, stateDedupe: false })
   assert.ok(r.text.includes('⟨refuted·seq7⟩'), r.text)
   assert.ok(r.text.includes('[state] file=src/app.js'))
   assert.match(I.extractiveHandleLine('art://h', raw), /^\[full text art:\/\/h/)
@@ -193,6 +199,110 @@ await test('§3k extractiveEvidence：按 toolCallId 关联工具名；只取 hu
   assert.equal(I.extractiveEvidence(events).tools[0].name, 'bash')
 })
 
+// ═══ §3r v11.13 r2：死分支折叠 / 失败信号 / 目标长度 / 状态去重 ═════════════════════
+const R2 = 'Plan: fix the build. Maybe the cache is stale. Actually I cleared the cache dir. Rebuilt and checked timestamps. Hmm, that is not it, the cache was fine. Wait, the error says missing module foo_bar. I ran npm test and it failed with exit code 1 in test/a.spec.js. Some filler thought about lunch here. Final: add foo_bar to deps and rerun.'
+const R2S = I.segmentSentences(R2)
+const R2EV = { tools: [{ seq: 5, name: 'bash', text: 'cache ok: 0 stale entries' }], asks: [] }
+const r2sel = (branches, extra = {}) => ({ kind: 'explore', plan: [0], keep: [2, 3], tags: [], branches, state: [], dropped: 0, ...extra })
+await test('§3r-a 解析 branches：from/to 反了会交换；head 越界取 from；why 早于 head ⇒ null；重叠/未知状态丢弃；最多 6 条', () => {
+  const p = I.parseExtractiveOutput(JSON.stringify({ kind: 'explore', keep: [], branches: [
+    { from: 4, to: 1, head: 9, why: 0, s: 'abandoned' },
+    { from: 3, to: 5, head: 3, s: 'parked' },           // 与上一条重叠 ⇒ 丢
+    { from: 6, to: 6, head: 6, s: 'bogus' },             // 未知状态 ⇒ 丢
+    { from: '7', to: '7', head: '7', why: '8', s: 'REFUTED', seq: 'seq5', quote: 'x' },
+  ] }), 12)
+  assert.deepEqual(p.branches.map((b) => [b.from, b.to, b.head, b.why, b.s]), [[1, 4, 1, null, 'abandoned'], [7, 7, 7, 8, 'refuted']])
+  assert.equal(p.branches[1].seq, 5)
+  assert.equal(p.dropped, 2)
+  const many = I.parseExtractiveOutput(JSON.stringify({ kind: 'explore', keep: [], branches: Array.from({ length: 9 }, (_, k) => ({ from: k, to: k, head: k, s: 'parked' })) }), 12)
+  assert.equal(many.branches.length, 6)
+  assert.deepEqual(I.parseExtractiveOutput('{"kind":"closed","keep":[]}', 3).branches, [])
+})
+await test('§3r-b abandoned：why 含自我否定 ⇒ head 标 ⟨abandoned⟩，内部删掉（其中的转折句也不强制保留），why 留', () => {
+  const r = I.assembleExtractive(R2, R2S, r2sel([{ from: 1, to: 4, head: 1, why: 4, s: 'abandoned', seq: null, quote: '' }]), { evidence: R2EV, tailChars: 40 })
+  assert.ok(r.text.includes('Maybe the cache is stale.⟨abandoned⟩'), r.text)
+  assert.ok(r.text.includes('that is not it'))
+  assert.ok(!r.text.includes('Actually I cleared'), '折叠区里的转折句不再被强制保留')
+  assert.ok(!r.text.includes('Rebuilt and checked'))
+  assert.equal(r.stats.branchesFolded, 1)
+  assert.equal(r.stats.foldedSentences, 2)
+  assert.ok(r.text.includes('Wait, the error says'), '支线外的转折句照常强制保留')
+})
+await test('§3r-c refuted：证据逐字命中 ⇒ ⟨refuted·seqN⟩；证据对不上但 why 合格 ⇒ 降为 abandoned；都不合格 ⇒ 不折叠', () => {
+  const ok = I.assembleExtractive(R2, R2S, r2sel([{ from: 1, to: 4, head: 1, why: 4, s: 'refuted', seq: 5, quote: '0 stale entries' }]), { evidence: R2EV, tailChars: 40 })
+  assert.ok(ok.text.includes('Maybe the cache is stale.⟨refuted·seq5⟩'), ok.text)
+  const down = I.assembleExtractive(R2, R2S, r2sel([{ from: 1, to: 4, head: 1, why: 4, s: 'refuted', seq: 5, quote: '编造的证据' }]), { evidence: R2EV, tailChars: 40 })
+  assert.ok(down.text.includes('⟨abandoned⟩') && !down.text.includes('⟨refuted'), down.text)
+  const bad = I.assembleExtractive(R2, R2S, r2sel([{ from: 1, to: 3, head: 1, why: 3, s: 'abandoned', seq: null, quote: '' }]), { evidence: R2EV, tailChars: 40 })
+  assert.equal(bad.stats.branchesRejected, 1)
+  assert.equal(bad.stats.branchesFolded, 0)
+  assert.ok(bad.text.includes('Actually I cleared'), '不折叠 = r1 行为')
+  assert.ok(!bad.text.includes('⟨abandoned⟩'))
+})
+await test('§3r-d parked 只加 ⟨parked⟩ 不删；fold:false / exec / 尾巴里的支线一律不折叠；支线内被证实的句子与计划句不折叠', () => {
+  const pk = I.assembleExtractive(R2, R2S, r2sel([{ from: 1, to: 3, head: 1, why: null, s: 'parked', seq: null, quote: '' }]), { evidence: R2EV, tailChars: 40 })
+  assert.ok(pk.text.includes('stale.⟨parked⟩') && pk.text.includes('Actually I cleared'), pk.text)
+  assert.equal(pk.stats.branchesParked, 1)
+  const br = [{ from: 0, to: 4, head: 1, why: 4, s: 'abandoned', seq: null, quote: '' }]
+  const off = I.assembleExtractive(R2, R2S, r2sel(br), { evidence: R2EV, tailChars: 40, fold: false })
+  assert.ok(!off.text.includes('⟨abandoned⟩') && off.text.includes('Actually I cleared'))
+  const ex = I.assembleExtractive(R2, R2S, r2sel(br, { kind: 'exec' }), { evidence: R2EV, tailChars: 40 })
+  assert.equal(ex.stats.branchesFolded, 0)
+  const tail = I.assembleExtractive(R2, R2S, r2sel([{ from: 8, to: 8, head: 8, why: null, s: 'parked', seq: null, quote: '' }]), { evidence: R2EV, tailChars: 40 })
+  assert.equal(tail.stats.branchesRejected, 1)
+  const v = I.assembleExtractive(R2, R2S, r2sel(br, { tags: [{ i: 3, s: 'verified', seq: 5, quote: 'cache ok' }] }), { evidence: R2EV, tailChars: 40 })
+  assert.ok(v.text.startsWith('Plan: fix the build.'), '计划句在支线范围内也不折叠：' + v.text)
+  assert.ok(v.text.includes('Rebuilt and checked timestamps.⟨verified·seq5⟩'), '被证实的正知识不折叠')
+  assert.ok(!v.text.includes('Actually I cleared'))
+})
+await test('§3r-e 标识符只出现在折叠区 ⇒ 仍补回（foldRepaired 计数）；why 落在后一条支线里也不会被删', () => {
+  const raw = R2.replace('Rebuilt and checked timestamps.', 'Rebuilt with scripts/build.sh and checked timestamps.')
+  const s = I.segmentSentences(raw)
+  const r = I.assembleExtractive(raw, s, r2sel([{ from: 1, to: 4, head: 1, why: 4, s: 'abandoned', seq: null, quote: '' }]), { evidence: R2EV, tailChars: 40 })
+  assert.ok(r.text.includes('scripts/build.sh'), r.text)
+  assert.equal(r.stats.foldRepaired, 1)
+  const two = I.assembleExtractive(R2, R2S, r2sel([
+    { from: 1, to: 2, head: 1, why: 4, s: 'abandoned', seq: null, quote: '' },
+    { from: 3, to: 5, head: 5, why: 5, s: 'refuted', seq: 5, quote: 'cache ok' },
+  ]), { evidence: R2EV, tailChars: 40 })
+  assert.ok(two.text.includes('that is not it'), two.text)
+})
+await test('§3r-f 失败信号：含报错且指向具体对象的句子补回（keepFailures:false 不补）；空泛的「错误」不算；RAW 的「返回 500」不算', () => {
+  const sel = { kind: 'closed', plan: [], keep: [], tags: [], state: [], dropped: 0 }
+  const r = I.assembleExtractive(R2, R2S, sel, { evidence: R2EV, tailChars: 40, repairMax: 0 })
+  assert.ok(r.text.includes('failed with exit code 1'), r.text)
+  assert.equal(r.stats.failuresKept, 1)
+  const off = I.assembleExtractive(R2, R2S, sel, { evidence: R2EV, tailChars: 40, repairMax: 0, keepFailures: false })
+  assert.ok(!off.text.includes('failed with exit code 1'))
+  const vague = '先想一下。这个思路是错误的。' + '后面是很长的正常推理'.repeat(8) + '。最后改好了。'
+  assert.equal(I.assembleExtractive(vague, I.segmentSentences(vague), sel, { tailChars: 10, repairMax: 0 }).stats.failuresKept, 0)
+  assert.equal(I.assembleExtractive(RAW, S, SEL, { evidence: EV, tailChars: 40 }).stats.failuresKept, 0)
+})
+await test('§3r-g 目标长度：提示词按 kind 给上限（可关）；branches 字段随 fold 开关；stats 带 target / overTarget', () => {
+  const on = I.buildExtractivePrompt(R2S, { tailFrom: 8 })
+  assert.ok(on.includes('closed ≈25%') && on.includes('exec ≈30%') && on.includes('explore ≈50%'))
+  assert.ok(on.includes('"branches"') && on.includes('abandoned'))
+  const off = I.buildExtractivePrompt(R2S, { tailFrom: 8, fold: false, kindTargets: false })
+  assert.ok(!off.includes('"branches"') && !off.includes('closed ≈25%'))
+  assert.deepEqual({ ...I.EXTRACTIVE_KIND_TARGETS }, { closed: 0.25, exec: 0.3, explore: 0.5 })
+  const r = I.assembleExtractive(R2, R2S, { kind: 'closed', plan: [], keep: [], tags: [], state: [], dropped: 0 }, { evidence: R2EV, tailChars: 40 })
+  assert.equal(r.stats.target, 0.25)
+  assert.equal(typeof r.stats.overTarget, 'boolean')
+  const prep = I.prepareExtractive(R2, { extractiveTailChars: 40, extractiveFoldBranches: false, extractiveKindTargets: false }, R2EV)
+  assert.ok(!prep.prompt.includes('"branches"') && !prep.prompt.includes('长度上限'))
+})
+await test('§3r-h finalize 把 r2 开关传到拼装；DEFAULTS 四个开关缺省为 true 且是已知键', () => {
+  const prep = I.prepareExtractive(R2, { extractiveTailChars: 40 }, R2EV)
+  const out = JSON.stringify(r2sel([{ from: 1, to: 4, head: 1, why: 4, s: 'abandoned' }]))
+  const a = I.finalizeExtractive(R2, prep, out, { extractiveTailChars: 40, extractiveMaxKeepRatio: 1 }, R2EV)
+  assert.equal(a.stats.branchesFolded, 1)
+  const b = I.finalizeExtractive(R2, prep, out, { extractiveTailChars: 40, extractiveMaxKeepRatio: 1, extractiveFoldBranches: false }, R2EV)
+  assert.equal(b.stats.branchesFolded, 0)
+  for (const k of ['extractiveFoldBranches', 'extractiveKeepFailures', 'extractiveKindTargets', 'extractiveStateDedupe']) assert.equal(DEFAULTS[k], true, k)
+  const c = normalizeConfig({ extractiveFoldBranches: false })
+  assert.equal(c.extractiveFoldBranches, false)
+})
+
 // ═══ §4 配置与版本号 ════════════════════════════════════════════════════════════
 await test('§4a 缺省 compressPrompt 仍是 v2（x1 默认关）；新键已登记、不进 unknownOptions', () => {
   assert.equal(DEFAULTS.compressPrompt, 'v2')
@@ -201,12 +311,14 @@ await test('§4a 缺省 compressPrompt 仍是 v2（x1 默认关）；新键已�
   const c = normalizeConfig({ compressPrompt: 'x1', extractiveTailChars: 300, extractiveGuideline: 'g' })
   assert.deepEqual(c.unknownOptions, [])
 })
-await test('§4b promptVersion：x1 ⇒ compress-x1；准则非空带 8 位指纹；不追加 :sys', () => {
-  assert.equal(I.compressPromptVersion({ compressPrompt: 'x1' }), 'compress-x1')
-  assert.equal(I.compressPromptVersion({ compressPrompt: 'x1', compressSystemPrompt: true }), 'compress-x1')
+await test('§4b promptVersion：x1 ⇒ compress-x1r2；关掉的 r2 特性带后缀；准则非空带 8 位指纹；不追加 :sys', () => {
+  assert.equal(I.compressPromptVersion({ compressPrompt: 'x1' }), 'compress-x1r2')
+  assert.equal(I.compressPromptVersion({ compressPrompt: 'x1', compressSystemPrompt: true }), 'compress-x1r2')
+  assert.equal(I.compressPromptVersion({ compressPrompt: 'x1', extractiveFoldBranches: false, extractiveStateDedupe: false }), 'compress-x1r2:-fold:-dedupe')
+  assert.equal(I.compressPromptVersion({ compressPrompt: 'x1', extractiveKeepFailures: false, extractiveKindTargets: false }), 'compress-x1r2:-fail:-tgt')
   const a = I.compressPromptVersion({ compressPrompt: 'x1', extractiveGuideline: '规则 A' })
   const b = I.compressPromptVersion({ compressPrompt: 'x1', extractiveGuideline: '规则 B' })
-  assert.match(a, /^compress-x1:g[0-9a-f]{8}$/)
+  assert.match(a, /^compress-x1r2:g[0-9a-f]{8}$/)
   assert.notEqual(a, b)
   assert.equal(I.compressPromptVersion({}), 'compress-v2', '其它版本号不受影响')
 })
@@ -234,7 +346,7 @@ await test('§5a x1：提示词是编号句子；返回本地拼装稿；meta �
   const r = await makeBirthCompiler(base)(RAW, undefined, { extractiveEvidence: EV, onHeaders: () => headers++, trace: (t, d) => traces.push([t, d]) })
   assert.ok(lastBody.messages[0].content.includes('【编号思维链】'))
   assert.ok(r.text.includes('⟨证实·seq41⟩'))
-  assert.equal(r.meta.promptVersion, 'compress-x1')
+  assert.equal(r.meta.promptVersion, 'compress-x1r2')
   assert.equal(r.meta.extractive.tagsVerified, 1)
   assert.equal(r.meta.selectionChars, reply.length)
   assert.equal(headers, 1)
@@ -244,7 +356,7 @@ await test('§5b x1：选择不可解析 ⇒ 抛错（带传输 meta）+ extract
   reply = '我觉得第 3 句很重要'
   const traces = []
   await assert.rejects(makeBirthCompiler(base)(RAW, undefined, { trace: (t, d) => traces.push([t, d]) }),
-    (e) => e.code === 'extractive-unparseable' && e.meta && e.meta.promptVersion === 'compress-x1')
+    (e) => e.code === 'extractive-unparseable' && e.meta && e.meta.promptVersion === 'compress-x1r2')
   assert.ok(traces.some(([t, d]) => t === 'extractive-rejected' && d.code === 'extractive-unparseable'))
 })
 
@@ -365,6 +477,72 @@ await test('§7e 未知参数直接报错（不静默吞掉拼错的旗标）', 
   assert.throws(() => CF.parseArgs(['--sample', '3']), /unknown argument/)
 })
 
+await test('§7f v11.13 loop / recheck：原样重发失败过的调用 = loop，重发成功过的 = recheck；参数键序不同也算同一调用', () => {
+  const prior = CF.priorCalls(FX.messages)
+  assert.equal(prior.length, 3)
+  const again = call('bash', { command: "sqlite3 app.db 'SELECT count(*) FROM users WHERE id=42'" })
+  const s = CF.scoreSample(FX.expect, again, prior)
+  assert.equal(s.recheck, true); assert.equal(s.loop, false)
+  const msgs = [
+    { role: 'assistant', content: '', tool_calls: [{ id: 'a', type: 'function', function: { name: 'bash', arguments: '{"command":"npm test","cwd":"."}' } }] },
+    { role: 'tool', tool_call_id: 'a', content: 'npm ERR! Test failed.\nexit code 1' },
+  ]
+  const p2 = CF.priorCalls(msgs)
+  assert.equal(p2[0].isError, true)
+  const l = CF.scoreSample({}, call('bash', { cwd: '.', command: 'npm test' }), p2)
+  assert.equal(l.loop, true); assert.equal(l.recheck, false)
+  assert.equal(CF.scoreSample({}, call('bash', { command: 'npm run build' }), p2).loop, false)
+  assert.equal(CF.scoreSample({}, call('bash', { command: 'npm test' }), undefined).loop, false, '没有前缀 ⇒ 不判重发')
+})
+await test('§7g toolResultIsError：显式 is_error 优先；行首报错 / 非零退出 / ENOENT 算失败；正文里偶然出现 error 一词不算', () => {
+  assert.equal(CF.toolResultIsError({ content: 'Traceback (most recent call last):\n  ...' }), true)
+  assert.equal(CF.toolResultIsError({ content: 'ls: cannot access x: No such file or directory' }), true)
+  assert.equal(CF.toolResultIsError({ content: 'Process exited with code 2' }), true)
+  assert.equal(CF.toolResultIsError({ content: 'const error = null  // handles the error case' }), false)
+  assert.equal(CF.toolResultIsError({ content: 'Error: boom', is_error: false }), false)
+  assert.equal(CF.toolResultIsError({ content: 'ok', isError: true }), true)
+  assert.equal(CF.evidenceFromMessages([{ role: 'assistant', tool_calls: [{ id: 'x', function: { name: 'bash' } }] }, { role: 'tool', tool_call_id: 'x', content: 'fatal: not a git repository' }], 2).tools[0].isError, true)
+})
+await test('§7h 配对 bootstrap：固定种子可复现；区间包含均值；n<2 不给区间；runEval 汇总带 loop/recheck 与 deltaVsRaw', async () => {
+  const a = [1, 1, 0, 1, 0, 1, 1, 0], b = [1, 0, 0, 1, 0, 0, 1, 0]
+  const x = CF.pairedBootstrap(a, b, { B: 500, seed: 7 }), y = CF.pairedBootstrap(a, b, { B: 500, seed: 7 })
+  assert.deepEqual(x, y)
+  assert.equal(x.n, 8); assert.equal(x.mean, -0.25)
+  assert.ok(x.lo <= x.mean && x.mean <= x.hi && x.lo < 0)
+  assert.deepEqual(CF.pairedBootstrap([1], [0]), { n: 1, mean: -1, lo: null, hi: null })
+  assert.equal(CF.pairedBootstrap([null], [1]), null)
+  const opts = { ...CF.parseArgs(['--samples', '2', '--tail-chars', '120', '--max-keep-ratio', '0.95', '--seed', '3', '--bootstrap', '300']), model: 'm', guideline: '' }
+  assert.equal(opts.seed, 3); assert.equal(opts.bootstrap, 300)
+  const FX2 = { ...FX, id: 'example-await-2' }
+  const rep = await CF.runEval(opts, { chat: mockChat, compressor: mockCompressor, fixtures: [FX, FX2], cache: new Map() })
+  assert.equal(rep.summary.raw.recheckRate, 0)
+  assert.equal(rep.summary.x1.recheckRate, 1, '丢了否定理由 ⇒ 原样重发旧查询')
+  assert.equal(rep.summary.x1.loopRate, 0)
+  assert.equal(rep.summary.raw.deltaVsRaw, undefined)
+  assert.deepEqual(rep.summary.x1.deltaVsRaw.success, { n: 2, mean: -1, lo: -1, hi: -1 })
+  assert.deepEqual(rep.summary.x1.deltaVsRaw.recheck, { n: 2, mean: 1, lo: 1, hi: 1 })
+  const lines = []
+  CF.printSummary(rep.summary, (l) => lines.push(l))
+  assert.ok(lines[0].includes('loopRate') && lines.some((l) => l.startsWith('Δ vs raw · x1')))
+})
+await test('§7i 消融变体 x1:nofold+nodedupe：解析成配置开关、提示词随之变化、缓存键分开；未知修饰符报错', async () => {
+  assert.deepEqual(CF.parseVariant('x1:nofold+nodedupe'), { base: 'x1', cfg: { extractiveFoldBranches: false, extractiveStateDedupe: false } })
+  assert.deepEqual(CF.parseVariant('raw'), { base: 'raw', cfg: {} })
+  assert.throws(() => CF.parseVariant('x1:nofoo'), /unknown variant modifier/)
+  assert.throws(() => CF.parseVariant('v3:nofold'), /unknown variant modifier/)
+  const prompts = []
+  const comp = async (body) => { prompts.push(body.messages[0].content); return mockCompressor(body) }
+  const opts = { ...CF.parseArgs(['--samples', '1', '--variants', 'x1,x1:nofold+notargets', '--tail-chars', '120', '--max-keep-ratio', '0.95']), model: 'm', guideline: '' }
+  const cache = new Map()
+  const rep = await CF.runEval(opts, { chat: mockChat, compressor: comp, fixtures: [FX], cache })
+  assert.ok(rep.summary['x1:nofold+notargets'])
+  assert.equal(prompts.length, 2)
+  assert.ok(prompts[0].includes('"branches"') && prompts[0].includes('长度上限'))
+  assert.ok(!prompts[1].includes('"branches"') && !prompts[1].includes('长度上限'))
+  assert.notEqual(CF.cacheKey('f', 'x1', opts), CF.cacheKey('f', 'x1:nofold', opts))
+  assert.equal(CF.cacheKey('f', 'x1:nofold', { ...opts, guideline: 'g' }).split('|')[2], 'g', '修饰变体同样按准则分键')
+})
+
 // ═══ §8 acon-optimize ══════════════════════════════════════════════════════════
 await test('§8a UT 步：对比失败喂给优化器 ⇒ 新准则修复失败 ⇒ 换代；history/front 可用', async () => {
   const prompts = []
@@ -402,6 +580,47 @@ await test('§8c paretoFront / cleanGuideline / scoreOf', () => {
   assert.equal(AO.cleanGuideline('```text\n a \n\n b \n```', 100), 'a\nb')
   assert.equal(AO.cleanGuideline('第一条\n第二条很长很长', 5), '第一条')
   assert.equal(AO.scoreOf(a, 0.3), 0.9 - 0.15)
+})
+
+// ═══ §9 v11.13 句柄回取观测（P5）与 trace 汇总 ══════════════════════════════════
+const H1 = 'art://' + 'A'.repeat(22), H2 = 'art://' + 'b_-'.repeat(7) + 'c'
+await test('§9a artRefsOf：数 reasoning 里的句柄、含句柄的工具调用、真正被回取的句柄；只数不记内容', () => {
+  const msgs = [
+    { role: 'user', content: [{ type: 'text', text: '看看 ' + H2 }] },   // user 里的句柄不算
+    { role: 'assistant', content: [{ type: 'reasoning', text: '〔原文 ' + H1 + '〕摘要…' }, { type: 'tool-call', toolName: 'cot_read', input: { handle: H1, from: 1 } }] },
+    { role: 'assistant', content: [{ type: 'reasoning', text: '又见 ' + H1 + ' 与 ' + H2 }] },
+    { role: 'assistant', content: '', tool_calls: [{ id: 'z', function: { name: 'read', arguments: JSON.stringify({ h: H2 }) } }] },
+    { role: 'assistant', content: [{ type: 'tool_use', name: 'x', input: { q: 'no handle' } }] },
+  ]
+  assert.deepEqual(I.artRefsOf(msgs), { handles: 2, handleLines: 2, toolCalls: 2, retrieved: 2 })
+  assert.deepEqual(I.artRefsOf([]), { handles: 0, handleLines: 0, toolCalls: 0, retrieved: 0 })
+  assert.deepEqual(I.artRefsOf(null), { handles: 0, handleLines: 0, toolCalls: 0, retrieved: 0 })
+  assert.equal(I.artRefsOf([{ role: 'assistant', content: [{ type: 'reasoning', text: 'art://short' }] }]).handles, 0, '不是 22 位句柄不算')
+})
+await test('§9b analyze-trace：extractive 按 promptVersion 分桶（回落率 / 超目标率 / r2 计数）；handleRetrieval 取最大值', async () => {
+  const { createTraceAudit } = await import('../tools/analyze-trace.mjs')
+  const a = createTraceAudit()
+  const ln = (tag, o) => a.add('[2026-09-26T00:00:00.000Z] [' + tag + '] ' + JSON.stringify(o))
+  ln('BOOT', { selfId: 's' })
+  ln('extractive-assembled', { promptVersion: 'compress-x1r2', kind: 'explore', ratio: 0.4, overTarget: false, branchesFolded: 1, foldedSentences: 3, failuresKept: 1, stateDeduped: 2 })
+  ln('extractive-assembled', { promptVersion: 'compress-x1r2', kind: 'closed', ratio: 0.3, overTarget: true, branchesFolded: 0 })
+  ln('extractive-rejected', { promptVersion: 'compress-x1r2', code: 'extractive-too-long' })
+  ln('extractive-assembled', { promptVersion: 'compress-x1r2:-fold', kind: 'explore', ratio: 0.5 })
+  ln('llm-stream', { n: 1, artRefs: { handles: 1, handleLines: 1, toolCalls: 0, retrieved: 0 } })
+  ln('llm-stream', { n: 2, artRefs: { handles: 4, handleLines: 3, toolCalls: 1, retrieved: 1 } })
+  ln('llm-stream', { n: 3 })
+  const g = a.result().groups[0]
+  const r2 = g.extractive['compress-x1r2']
+  assert.equal(r2.assembled, 2); assert.equal(r2.rejected['extractive-too-long'], 1)
+  assert.equal(r2.fallbackRate, 0.333); assert.equal(r2.overTargetRate, 0.5)
+  assert.equal(r2.branchesFolded, 1); assert.equal(r2.foldedSentences, 3); assert.equal(r2.stateDeduped, 2)
+  assert.deepEqual({ ...r2.byKind }, { explore: 1, closed: 1 })
+  assert.equal(g.extractive['compress-x1r2:-fold'].assembled, 1)
+  assert.equal(g.handleRetrieval.records, 2)
+  assert.equal(g.handleRetrieval.handlesMax, 4); assert.equal(g.handleRetrieval.retrievalRate, 0.25)
+  assert.equal(g.x1, undefined); assert.equal(g.art, undefined)
+  const empty = createTraceAudit(); empty.add('[2026-09-26T00:00:00.000Z] [BOOT] {}')
+  assert.equal(empty.result().groups[0].extractive, null); assert.equal(empty.result().groups[0].handleRetrieval, null)
 })
 
 fs.rmSync(tmp, { recursive: true, force: true })
