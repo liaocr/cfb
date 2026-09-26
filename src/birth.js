@@ -17,6 +17,7 @@ import {
 import { adaptEvidence, promptStats, cacheIdentity, mergeOrdered, memoryStats } from './state-memory.js'
 import { settledTraceData } from './trace.js'
 import { estimateTokens } from './tokens.js'
+import { extractiveEvidence, extractiveHandleLine } from './extractive.js'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ── 出生即提纯（mode: 'birth'）: At-Birth Interception ────────────────────────
@@ -282,6 +283,22 @@ export function birthStart(entry, deps = {}) {
   // ★ 2026-09-22 切分：证据信封只在「状态记忆」模式构造。
   //   stateCompress（纯压缩）**不采集证据** —— 它只需要这段 reasoning，
   //   带上整窗工具正文正是实测 7.5x 放大的来源。
+  // ★ v11.12 compress-x1（抽取式）例外：只为「证实/否定」标签的**本地核对**冻结一份小证据
+  //   （最近 extractiveEvidenceLimit 条工具结果）。发给副模型的只是每条 ≤160 字符的索引行，
+  //   不是整窗正文 ⇒ 不重蹈 7.5x 放大。流归属不可证（sessionAmbiguous）⇒ 不采集，标签全部降级。
+  let extractiveEv = null
+  if (compileModeOf(cfg) === 'compress' && cfg.compressPrompt === 'x1' && cfg.extractiveEvidence !== false
+      && typeof deps.collectEvidence === 'function' && deps.sessionAmbiguous !== true) {
+    try {
+      const lim = Number.isFinite(cfg.extractiveEvidenceLimit) && cfg.extractiveEvidenceLimit >= 0 ? cfg.extractiveEvidenceLimit : 12
+      const got = lim > 0 ? deps.collectEvidence({ limit: Math.max(20, lim * 3) }) : null
+      extractiveEv = got ? extractiveEvidence(got.events, { limit: lim }) : null
+      trace('extractive-evidence', { index: task.index, tools: extractiveEv ? extractiveEv.tools.length : 0, asks: extractiveEv ? extractiveEv.asks.length : 0 })
+    } catch (e) {
+      extractiveEv = null
+      trace('extractive-evidence-error', { index: task.index, error: String((e && e.message) || e) })
+    }
+  }
   if (compileModeOf(cfg) === 'memory' && typeof deps.buildEnvelope === 'function') {
     try {
       // ① 采集：只读 session；来源按**原事件类型**判定，绝不用最终 role
@@ -416,7 +433,7 @@ export function birthStart(entry, deps = {}) {
     ? Promise.resolve().then(async () => {
         if (preparationError) throw preparationError
         return distill(distillInput, dsignal, {
-          preparedJudgment, onHeaders: noteHeaders,
+          preparedJudgment, onHeaders: noteHeaders, extractiveEvidence: extractiveEv,
           taskId, trace, scope: sessionId != null && String(sessionId).length > 0 && Number.isSafeInteger(adaptedCut) && adaptedCut >= 0 ? [String(sessionId), branchId, adaptedCut] : null,
         })
       })
@@ -641,7 +658,10 @@ export async function birthFinish(task, deps = {}) {
 
   // 零 rules：只有宿主模型提纯成功且净省够本才替换
   if (dist && dist.ok) {
-    const candidate = dist.text
+    let candidate = dist.text
+    // ★ v11.12 抽取式：删掉的句子可按句柄取回 ⇒ 句柄**已验证**（store 回执或读回探针）后才拼进可见文本（铁律⑧）。
+    //   句柄行计入净省核算（下方 netSaved 用的就是含句柄行的 candidate）。
+    if (dist.meta && dist.meta.extractive && cfg.extractiveHandleLine !== false) candidate = extractiveHandleLine(handle, raw) + '\n' + candidate
     // ★ 2026-09-23 v11.6 硬断言：替换结果绝不能为空白。
     //   DeepSeek 带 tools 的请求要求每条历史 assistant 都携带 reasoning_content；API 只查字段存在，
     //   但空白内容会让模型失去该轮思维链（H8 事故同形）。空白 ⇒ 原文放行。
@@ -652,7 +672,7 @@ export async function birthFinish(task, deps = {}) {
     //   受保护 token 集为空 ⇒ unmeasurable（不能算 pass，单独统计）。门槛待离线分布 + 白付成本模型后再定。
     let fid = null
     try {
-      const f = fidelity(raw, dist.text)
+      const f = fidelity(raw, candidate)
       fid = f.stats.protectedTokens === 0
         ? { identifierRecall: null, protectedTokens: 0, lostTokens: 0, unmeasurable: true }
         : { identifierRecall: f.stats.tokenRecall, protectedTokens: f.stats.protectedTokens, lostTokens: f.stats.lostTokens, lostSample: f.stats.lostSample, unmeasurable: false }

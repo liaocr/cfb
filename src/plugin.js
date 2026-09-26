@@ -176,6 +176,8 @@ export function apply(ctx, config = {}) {
         },
         buildEnvelope: (o) => buildEvidenceEnvelope(o),
         collectEvidence: (o) => collectEvidence(streamSession, o),
+        // v11.12：抽取式标签核对只在流归属可证时采集证据（铁律⑬）
+        sessionAmbiguous: owner.ambiguous === true,
         // ★ 优化1：句柄内存秒算（与 store.deriveHandle 同一公式，纯函数）
         deriveHandle: (sessionId, text) => deriveArtHandle(sessionId, text),
         // ★ 优化2：思考一开始就捂热连接（HEAD，零 token）
