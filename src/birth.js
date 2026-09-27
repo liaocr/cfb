@@ -127,6 +127,10 @@ function birthEmitChunks(task, text, deps) {
   const chunks = []
   if (!deps.live) chunks.push({ type: 'reasoning-delta', index: task.index, text })
   if (task.end) {
+    // ★ 2026-09-27 审计：**原样放行 = 原对象放行**。此前放行路径也会重建 block-end 并用 delta 累积值
+    //   覆盖宿主的 block.text —— 一旦两者不一致（宿主规范化、丢 delta、带 signature 的思考块），
+    //   「原样透传」就不再原样，而且没有任何留痕。现在只有真正改写时才重建 chunk。
+    if (text === task.raw) { chunks.push(task.end); return chunks }
     // ★★ 真机首跑抓出的关键 bug：BlockAssembler（dsh-llm/lib/index.js:936-940）在 block-end
     //   分支执行 `partial.block = chunk.block`，此后该块**以 block.text 为权威**
     //   （:924 `if (partial.block) return` 直接忽略后续 delta）。若把源流的 block-end 原样转发，
@@ -137,6 +141,18 @@ function birthEmitChunks(task, text, deps) {
       : { ...task.end, block: { type: 'reasoning', text } })
   }
   return chunks
+}
+
+/**
+ * ★ 2026-09-27 审计：birthStart / birthFinish 内部的 trace 包装。
+ *   trace 是观测，观测失败（JSON.stringify 遇到 BigInt/循环引用、statsOf 抛错…）不得变成主流异常。
+ *   此前两处 trace 包装都不吞错：block-end 处同步抛 ⇒ 生成器抛 ⇒ **主模型流被插件打断**；
+ *   finish 处抛 ⇒ birthFinish reject ⇒ 该块的 block-end 被静默丢弃（违反 invariant.js:53）。
+ */
+function safeTrace(deps, extra) {
+  const t = deps && deps.trace
+  if (typeof t !== 'function') return () => {}
+  return (tag, data) => { try { return t(tag, { ...data, ...extra }) } catch { return null } }
 }
 
 /**
@@ -187,7 +203,7 @@ export function birthStart(entry, deps = {}) {
   const cfg = deps.cfg || {}
   const preparationStarted = performance.now()
   const taskId = crypto.randomUUID()
-  const trace = (tag, data) => (deps.trace || (() => {}))(tag, { ...data, taskId })
+  const trace = safeTrace(deps, { taskId })
   const raw = String(entry.text || '')
   const floor = cfg.birthMinChars == null ? 500 : cfg.birthMinChars
   const sessionId = typeof deps.sessionId === 'function' ? deps.sessionId() : (deps.sessionId || null)
@@ -547,7 +563,7 @@ export function birthStart(entry, deps = {}) {
  */
 export async function birthFinish(task, deps = {}) {
   const cfg = deps.cfg || {}
-  const trace = (tag, data) => (deps.trace || (() => {}))(tag, { ...data, taskId: task.taskId || null })
+  const trace = safeTrace(deps, { taskId: task.taskId || null })
   const raw = String(task.raw || '')
   // ★★ 2026-09-18 用户令：句柄标记从上下文中【彻底删除】，一个字符都不许出现。★★
   //   理由（血的教训）：模型对着一根裸指针无法思考。替换文本必须携带【语义内容】：
@@ -713,7 +729,8 @@ export async function birthSettle(entry, deps = {}) {
  * @param deps  { cfg, trace, archive, sessionId, distill, prewarm }
  */
 export function birthTransform(inner, deps = {}) {
-  const trace = deps.trace || (() => {})
+  // ★ 2026-09-27 审计：生成器内所有观测 trace 都不得抛（同 safeTrace 语义）
+  const trace = safeTrace(deps)
   const cfg = deps.cfg || {}
   const settleDeps = { ...deps, live: true }
   return (async function* () {
@@ -773,7 +790,14 @@ export function birthTransform(inner, deps = {}) {
               h.end = chunk
               held.delete(chunk.index)
               reasoningEndAt.push({ index: chunk.index, at: Date.now() })
-              const task = birthStart(h, settleDeps)
+              // ★ 2026-09-27 审计（不变式③ 观测不碰主流）：起火本身抛错 ⇒ 这块按「从未介入」处理，原 chunk 原样放行。
+              //   此前同步异常会从生成器冒出去，主模型流被插件内部错误打断（自测 p11 复现）。
+              let task
+              try { task = birthStart(h, settleDeps) } catch (e) {
+                try { trace('birth-start-error', { index: chunk.index, error: String((e && e.message) || e) }) } catch { /* ignore */ }
+                yield chunk
+                continue
+              }
               if (task.belowFloor) {
                 // 无需异步工作 ⇒ 立即放行，零延迟
                 for (const c of birthEmitChunks(task, task.raw, settleDeps)) yield c
@@ -819,13 +843,19 @@ export function birthTransform(inner, deps = {}) {
                 const settled = await Promise.all(pending.map(async (task) => {
                   try { return { sourceIndex: task.index, r: await birthFinish(task, settleDeps), task } }
                   catch (e) {
-                    trace('birth-settle-error', { index: task.index, error: String((e && e.message) || e) })
+                    try { trace('birth-settle-error', { index: task.index, error: String((e && e.message) || e) }) } catch { /* ignore */ }
                     return { sourceIndex: task.index, r: null, task }
                   }
                 }))
                 // ① 出站：按源块 index 升序（原有不变量，保持）
+                // ★ 2026-09-27 审计：收网抛错的块 ⇒ **原文放行**（与 flushTask 同语义：取消在飞 + 原 chunk）。
+                //   此前 `if (s.r)` 直接跳过 ⇒ 该块的 block-end 永远不出站 ⇒ finish 时有未关闭块
+                //   （dsh-llm invariant.js:53）⇒ 宿主抛错。不变式③要求内部异常只能降级为原样重放。
                 const ordered = settled.slice().sort((a, b) => a.sourceIndex - b.sourceIndex)
-                for (const s of ordered) if (s.r) for (const c of s.r.chunks) yield c
+                for (const s of ordered) {
+                  if (s.r) { for (const c of s.r.chunks) yield c; continue }
+                  for (const c of flushTask(s.task, 'settle-error')) yield c
+                }
                 // ② 记忆：同样按源块顺序归并；失败块被跳过，不污染记忆
                 // ⚠ 关闭 stateMemory 时**绝不**归并或消费新格式记忆（回滚语义）
                 if (compileModeOf(cfg) === 'memory') {

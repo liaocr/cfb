@@ -38,9 +38,15 @@ export function makeTraceWriter(cfg, statsOf) {
   let lastBoot = null
   return function trace(tag, data) {
     if (!cfg.trace) return null
-    const stats = typeof statsOf === 'function' ? statsOf() : undefined
-    const payload = Object.assign({}, data, stats === undefined ? {} : { stats })
-    const line = stamp() + '[' + tag + '] ' + JSON.stringify(payload)
+    // ★ 2026-09-27 审计：序列化也在 try 里。statsOf() 抛错 / payload 含 BigInt 或循环引用 ⇒
+    //   此前异常从这里冒到调用方（birth 已由 safeTrace 兜住；checkpoint / pre-step 等路径则会被打断）。
+    //   trace 是证据，证据写不出去只能丢这一条，绝不能反过来影响主流。
+    let payload, line
+    try {
+      const stats = typeof statsOf === 'function' ? statsOf() : undefined
+      payload = Object.assign({}, data, stats === undefined ? {} : { stats })
+      line = stamp() + '[' + tag + '] ' + JSON.stringify(payload)
+    } catch { return null /* evidence only */ }
     if (tag === 'BOOT') lastBoot = payload
     try {
       if (!dirReady) { fs.mkdirSync(path.dirname(cfg.traceFile), { recursive: true }); dirReady = true }

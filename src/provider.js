@@ -47,10 +47,13 @@ export function readApiKey(cfg) {
 function readApiKeyUncached(cfg) {
   const t = fs.readFileSync(cfg.credentialsPath, 'utf8')
   const esc = String(cfg.credentialRef).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const m = t.match(new RegExp('^[ \\t]*' + esc + ':\\s*([^\\s#]+)', 'm'))
+  // ★ 2026-09-27 审计：冒号后只允许**行内**空白（[ \t]*），不能用 \s* —— 它会跨过换行，
+  //   把「值为空的键」的下一行（往往是别的键名）当成钥匙读走（自测复现：读到 "OPENAI_API_KEY:"）。
+  //   值的三种形态：双引号串 / 单引号串（引号内允许 # 与空格）/ 裸串（到空白或 # 为止）。
+  const m = t.match(new RegExp('^[ \\t]*' + esc + ':[ \\t]*(?:"([^"\\r\\n]*)"|\'([^\'\\r\\n]*)\'|([^\\s#]+))', 'm'))
   if (!m) throw new Error(cfg.credentialRef + ' not found in ' + cfg.credentialsPath)
-  const v = m[1]
-  if (v.length >= 2 && ((v[0] === '"' && v[v.length - 1] === '"') || (v[0] === "'" && v[v.length - 1] === "'"))) return v.slice(1, -1)
+  const v = m[1] != null ? m[1] : (m[2] != null ? m[2] : m[3])
+  if (!v) throw new Error(cfg.credentialRef + ' is empty in ' + cfg.credentialsPath)
   return v
 }
 
@@ -73,27 +76,55 @@ export function readProviderSpec(settingsPath, providerName) {
   const spec = cached('spec', settingsPath, String(providerName), () => readProviderSpecUncached(settingsPath, providerName))
   return spec ? { ...spec } : null   // 返回副本：调用方改它不会污染缓存
 }
+/** 宿主 provider 表所在的顶层键（与 dsh 的 settings.yaml 契约一致；本模块只认这一段）。 */
+export const PROVIDER_TABLE_ROOT = 'llm-pi-ai'
+
+/** YAML 标量的最小解析：去掉行内注释（空白 + #），再剥一层成对引号。不做转义处理（钥匙与 URL 用不到）。 */
+function yamlScalar(v) {
+  let s = String(v == null ? '' : v).trim()
+  if (s.startsWith('"')) { const j = s.indexOf('"', 1); return j > 0 ? s.slice(1, j) : s.slice(1) }
+  if (s.startsWith("'")) { const j = s.indexOf("'", 1); return j > 0 ? s.slice(1, j) : s.slice(1) }
+  const hash = s.search(/[ \t]#/)
+  if (hash >= 0) s = s.slice(0, hash).trim()
+  return s
+}
+
 function readProviderSpecUncached(settingsPath, providerName) {
   let text
   try { text = fs.readFileSync(settingsPath, 'utf8') } catch { return null }
+  // 缩进按「字符数」算；tab 记作 1 个缩进单位以上（YAML 本身禁止 tab 缩进，这里只求单调可比）
   const indentOf = (s) => s.length - s.replace(/^[ \t]*/, '').length
+  // ★ 2026-09-27 审计：此前只找**文件里第一个** `providers:`，不看它的父键。settings.yaml 里任何插件
+  //   只要在 llm-pi-ai 之前也有一段 providers:（自测复现），端点与钥匙名就会解析到别人的表上 ——
+  //   推理原文 + 钥匙发往一个不属于宿主 provider 的 baseURL，且无任何留痕。违反不变式④「不猜」。
+  //   现在用缩进栈追踪父键：只接受父键恰为 PROVIDER_TABLE_ROOT 的那一段 providers:。
+  const stack = []   // [{ indent, key }]，当前行的祖先链
   let pIndent = -1, nameIndent = -1, cur = null, hit = null
   for (const raw of String(text).split(/\r?\n/)) {
     if (!raw.trim() || /^[ \t]*#/.test(raw)) continue
     const i = indentOf(raw)
     const body = raw.trim()
-    if (pIndent < 0) { if (/^providers:\s*$/.test(body)) pIndent = i; continue }
+    if (pIndent < 0) {
+      while (stack.length && stack[stack.length - 1].indent >= i) stack.pop()
+      // 键名允许裸写或加引号（YAML 两种写法等价）
+      const km = body.match(/^(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_.\-]+)):(?:[ \t]+.*)?$/)
+      const key = km ? (km[1] ?? km[2] ?? km[3]) : null
+      if (key === 'providers' && /^(?:"providers"|'providers'|providers):[ \t]*(?:#.*)?$/.test(body)
+          && stack.length && stack[stack.length - 1].key === PROVIDER_TABLE_ROOT) { pIndent = i; continue }
+      if (key) stack.push({ indent: i, key })
+      continue
+    }
     if (i <= pIndent) break
     if (nameIndent < 0) nameIndent = i
     if (i === nameIndent) {
-      const m = body.match(/^([A-Za-z0-9_.\-]+):\s*$/)
-      cur = m ? m[1] : null
+      const m = body.match(/^(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_.\-]+)):[ \t]*(?:#.*)?$/)
+      cur = m ? (m[1] ?? m[2] ?? m[3]) : null
       if (cur && cur === providerName) hit = {}
       continue
     }
     if (i > nameIndent && cur === providerName && hit) {
-      const m = body.match(/^([A-Za-z0-9_]+):\s*(.+?)\s*$/)
-      if (m) { const k = m[1]; if (k !== 'id' && k !== 'name') hit[k] = m[2].replace(/^['"]|['"]$/g, '') }
+      const m = body.match(/^([A-Za-z0-9_]+):[ \t]*(.+?)[ \t]*$/)
+      if (m) { const k = m[1]; if (k !== 'id' && k !== 'name') { const v = yamlScalar(m[2]); if (v) hit[k] = v } }
     }
   }
   return hit && hit.baseURL ? hit : null

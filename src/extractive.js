@@ -114,7 +114,10 @@ function isFailureSentence(text) {
 // 逐字标识符：丢了就推不回来。缺失时把含它的句子补回（修复上限见 repairMax）。
 const RE_HARD_IDS = [
   /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'`,;)]+/gi,                  // scheme://
-  /(?:\.{0,2}\/)?[\w.-]+(?:\/[\w.-]+)+/g,                    // a/b/c
+  // ★ 2026-09-27 审计：原写法 /(?:\.{0,2}\/)?[\w.-]+(?:\/[\w.-]+)+/g 无起点锚定 ⇒ 对一个长 token
+  //   （base64 / 长 hash / minified 一行）每个位置都从头贪心再回溯 ⇒ O(n²)：实测 8K→44ms、64K→3s，
+  //   同步阻塞网关线程。加否定后顾 (?<![\w.\-/]) 只在 token 起点起搜，语义不变、复杂度回到线性。
+  /(?<![\w.\-/])(?:\.{0,2}\/)?[\w.-]+(?:\/[\w.-]+)+/g,      // a/b/c
   /`[^`\n]{2,80}`/g,                                         // `code`
   /\b[A-Za-z_][\w-]*\.(?:js|mjs|cjs|ts|tsx|jsx|py|go|rs|java|rb|json|ya?ml|toml|md|sh|sql|css|html|c|cc|cpp|h)\b(?::\d+)?/g, // file.ext[:line]
   /\b[A-Z][A-Za-z]*(?:Error|Exception)\b/g,                 // TypeError

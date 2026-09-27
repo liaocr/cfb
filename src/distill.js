@@ -483,10 +483,13 @@ export async function generateDistillation(cot, cfg, signal, promptOverride, run
   if (!runtime.flights) return execute(signal)
   // Exact text, scope, effective endpoint/credential and all transport knobs.
   // Private ephemeral key; NEVER trace it or export a credential fingerprint.
-  const identity = runtime.scope == null ? null : JSON.stringify([runtime.scope,
+  // ★ 2026-09-27 审计：identity 只用于「逐字相同才共享」的相等判定，不需要可逆。此前把明文钥匙 + 整段
+  //   prompt 原样当 Map 键挂在模块级 flights 里（在飞期间常驻堆，heap dump 可见，且 maxBytes 记账因它而存在）。
+  //   改为 SHA-256 摘要：相等语义不变（碰撞概率可忽略），堆里不再多一份钥匙与原文副本。
+  const identity = runtime.scope == null ? null : crypto.createHash('sha256').update(JSON.stringify([runtime.scope,
     ep?.url || endpointUrl(cfg.baseUrl, 'openai-completions'), ep?.api || 'openai-completions', ep?.provider || null,
     key, cfg.model, cfg.maxOutputTokens, cfg.timeoutMs, cfg.maxAttempts, cfg.disableThinking,
-    cfg.distillStream, cfg.keepAlive, cfg.keepAliveMsecs]) + '\n' + prompt
+    cfg.distillStream, cfg.keepAlive, cfg.keepAliveMsecs]) + '\n' + prompt, 'utf8').digest('hex')
   return runtime.flights.run(identity, execute, { signal, trace: runtime.trace })
 }
 
