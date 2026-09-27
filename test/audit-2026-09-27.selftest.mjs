@@ -9,6 +9,7 @@
 //   F. extractive：hardIdentifiers 路径正则线性化（此前：单个 64K token 同步阻塞 ≈3s）
 //   G. distill：在途共享 identity 不再以明文钥匙 + 全文 prompt 作 Map 键
 //   H. trace：makeTraceWriter 序列化失败（statsOf 抛 / BigInt）只丢这一条，不再向调用方抛
+//   I. 阶段 0 观测（DECISION-2026-09-27 §5）：below-floor 留痕 birth-below-floor；tools/phase0-report.mjs 纯函数
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -163,6 +164,23 @@ const invariantHolds = (out) => {
   try { w2('x', { big: 10n }) } catch (e) { threw = e }
   ok('H2 payload 含 BigInt ⇒ trace 返回 null 而非抛出', threw === null)
   ok('H3 正常事件仍照常落盘', typeof w2('ok', { a: 1 }) === 'string' && fs.readFileSync(traceFile, 'utf8').includes('[ok]'))
+}
+
+// ═══ I. 阶段 0 观测：below-floor 留痕 + phase0-report 纯函数 ═════════════════
+{
+  const tags = []
+  const out = await collect(I.birthTransform(mkSrc('short'), { ...baseDeps, cfg: { ...baseCfg, birthMinChars: 100000000 }, trace: (t, d) => tags.push([t, d]) }))
+  const bf = tags.find(([t]) => t === 'birth-below-floor')
+  ok('I1 门槛之下的块留一条 birth-below-floor（rawChars + why），且原对象放行', !!bf && bf[1].rawChars === 5 && bf[1].why === 'below-floor' && invariantHolds(out), JSON.stringify(bf))
+  ok('I2 below-floor 不起任何异步工作（无 birth-fired / 无 archive / 无 distill）', !tags.some(([t]) => t === 'birth-fired' || t === 'birth-archive-settled' || t === 'birth-distill-settled'), tags.map(([t]) => t).join(','))
+  const R = await import('../tools/phase0-report.mjs')
+  ok('I3 expandRoles 游程展开', JSON.stringify(R.expandRoles('system user assistant tool*3 user')) === JSON.stringify(['system', 'user', 'assistant', 'tool', 'tool', 'tool', 'user']))
+  const streams = [
+    { messageCount: 6, roles: 'system user assistant tool assistant user', reasoningChars: [[2, 4200], [4, 900]], userCount: 2, assistantCount: 2, toolResultCount: 1, model: 'm' },
+    { messageCount: 6, roles: 'system user assistant tool assistant user', reasoningChars: [[4, 900]], userCount: 2, assistantCount: 2, toolResultCount: 1, model: 'm' },
+  ]
+  const a = R.analyzeStreams(streams)
+  ok('I4 N1 统计：可判定 2，首条 assistant 带 reasoning 1，近似块去重后 2 块', a.n1.eligible === 2 && a.n1.firstAssistantHasReasoning === 1 && a.approxRaw.length === 2, JSON.stringify(a.n1) + ' ' + JSON.stringify(a.approxRaw))
 }
 
 console.log(`PASS=${pass} FAIL=${fail}`)

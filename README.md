@@ -78,6 +78,7 @@ dsh-cot-form-b/
 ├── .github/workflows/    CI：完整性清单 + 全部自测 + 类型契约（Node 20 / 22）
 ├── tools/                离线分析：analyze-trace / analyze-efficiency / analyze-consumption / replay / benchmark-index
 │                         v11.12：cf-eval（反事实续写评测）/ acon-optimize（抽取准则自进化）/ cf-fixtures/
+│                         2026-09-27：phase0-report（决议阶段 0 的六个数字 N1–N6，一条命令出判定）
 ├── deploy/onboard.mjs    部署体检（注册形态、部署漂移；跨机器、无硬编码路径）
 └── docs/                 现行文档；docs/archive/ = 历史报告与证据（只进不出）
 ```
@@ -249,6 +250,7 @@ trace 写在 `$DSH_HOME/storages/cot-form-b/trace.log`，一行一条：`[ISO时
 | 事件 | 看什么 |
 |---|---|
 | `BOOT` | 生效配置、`selfId`/`deps` 上岗判据、`retired*`/`unknownOptions`/`configAdjusted` |
+| `birth-below-floor` | **2026-09-27**：门槛之下（或 archive-off / no-store）直接放行的块，只记 `rawChars` 与 `why` —— reasoning 块长度分布的唯一精确来源（`tools/phase0-report.mjs` 用它算 N2） |
 | `birth-fired` / `birth-condensed` / `birth-passthrough` | 起火、替换成功（含 `fidelity.identifierRecall`、v11.10 `rawTokensEst/outTokensEst/netSavedTokensEst`）、放行原因（含 `no-token-gain`） |
 | `birth-flush` / `birth-consumer-return` / `birth-distill-cancelled` | **v11.10**：硬停 / 源流无 finish / 源流抛错时的降级放行，消费者提前退出；在飞提纯是否被取消（`why`） |
 | `llm-stream` | 出站消息溯源；v11.10 起 `roles` 为游程字符串（`system user assistant tool*3`），`reasoningChars` 为稀疏 `[[下标, 字符数], …]` |
@@ -265,6 +267,7 @@ trace 写在 `$DSH_HOME/storages/cot-form-b/trace.log`，一行一条：`[ISO时
 | `emit-handle-verify` / `handle-probe-*` | **句柄读回验证**：`resolved` / `unresolvable` / `unverifiable` 三态（读不回是唯一的静默失效模式） |
 
 离线分析：`npm run trace:audit -- trace.log`（按 BOOT 分组，不同构建绝不混算）、`npm run trace:efficiency -- trace.log`（耗时、promptVersion 分桶、保真度、对冲）。
+决议阶段 0：`node tools/phase0-report.mjs trace.log`（N1 历史 reasoning 是否跨轮保留 / N2 块长度分布 / N3–N4 免费窗口 / N5 宿主模型 / N6 基线 / 健康），操作步骤见 [`docs/RUNBOOK-PHASE0.md`](docs/RUNBOOK-PHASE0.md)。
 
 ### 工具结果路径的验收口径（真机 A/B 怎么判）
 

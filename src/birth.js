@@ -800,6 +800,9 @@ export function birthTransform(inner, deps = {}) {
               }
               if (task.belowFloor) {
                 // 无需异步工作 ⇒ 立即放行，零延迟
+                // ★ 2026-09-27 决议阶段 0（DECISION-2026-09-27 §5 N2）：此前门槛之下的块在 trace 里**完全不可见**，
+                //   于是 rawChars 分布（回本门槛唯一的实测依据）三轮文档都拿不到。只记长度与原因，不记正文。
+                trace('birth-below-floor', { index: chunk.index, rawChars: task.raw.length, why: task.why || 'below-floor' })
                 for (const c of birthEmitChunks(task, task.raw, settleDeps)) yield c
               } else {
                 pending.push(task)
