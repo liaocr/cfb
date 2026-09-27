@@ -10,6 +10,8 @@
 | [`AUDIT-V11.5.md`](AUDIT-V11.5.md) | 做取舍的人 | 成本模型与收益判据（`birthMinChars` 3100 的来历）、缺陷 A–G、仍未落实的建议。行号指 `1134ed7` 的旧 `index.js` |
 | [`ECONOMICS-V11.11.md`](ECONOMICS-V11.11.md) | 做取舍的人 | 按 Harness 官方默认参数重算的成本模型、单块收益天花板 `0.5·r`、五条压缩路线的裁决（含被推翻的跨轮批量）。**结论上取代 AUDIT-V11.5 的成本模型部分**，行号指 `669296b` |
 | [`RESEARCH-COT-SHAPING.md`](RESEARCH-COT-SHAPING.md) | 做取舍的人 | 可改写思维链下如何提升主模型表现：文献调研（24 篇）、双声道原则、S1–S9 方案、反模式、反事实续写评估法、路线图；§10 为 v11.12 的落地实现（compress-x1 抽取式、`tools/cf-eval.mjs`、`tools/acon-optimize.mjs`，均缺省关闭/离线） |
+| [`DECISION-2026-09-27.md`](DECISION-2026-09-27.md) | 做取舍的人 | **路线锁定决议**：唯一主干（birth · x1 · 解耦副模型 · 大块起步）、冻结清单、三阶段门禁与「数字 → 动作」决策表、预先承诺的熔断与可证伪条款。**关闭** ECONOMICS / RESEARCH-* 之间的路线之争；此后改路线必须带新测量数据 |
+| [`AUDIT-2026-09-27.md`](AUDIT-2026-09-27.md) | 改代码的人 | 外部审计：F1–F11 缺陷（provider 表锚定、birth 内部异常吞块/断流、O(n²) 正则…）、复现路径、修复与回归钉（`test/audit-2026-09-27.selftest.mjs`）、已排除假设、设计级建议 |
 | [`RESEARCH-PERFORMANCE.md`](RESEARCH-PERFORMANCE.md) | 做取舍的人 | 第四轮调研（30+ 篇、7 个角度）：以「提升主模型表现」为主线；「去噪收益 − 离策略代价」原则、死分支折叠、状态去重、取回率闭环、P1–P7 排序方案与待验证假设；§3「实现状态」记 v11.13 已落地的 P1–P6 代码部分（x1 r2，缺省关）与差异 |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | 所有人 | 版本沿革（最新在上） |
 
