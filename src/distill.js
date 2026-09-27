@@ -8,6 +8,7 @@ import crypto from 'node:crypto'
 import { prepareJudgmentPrompt } from './evidence-ledger.js'
 import { compileModeOf } from './config.js'
 import { scriptCounts } from './tokens.js'
+import { prepareExtractive, finalizeExtractive } from './extractive.js'
 import {
   buildDistillPrompt, compressPromptVersion, compressTargets, buildCompressPromptV3, buildCompressPrompt,
   splitCompressPrompt,
@@ -512,6 +513,7 @@ export function makeBirthCompiler(cfg, opts = {}) {
     return async (raw, signal, budget) => {
       // 提示词选择与版本号必须来自**同一次**裁决，否则 trace 会把 A 的产物记成 B 的版本。
       const pv = compressPromptVersion(cfg)
+      if (pv.indexOf('compress-x1') === 0) return compileExtractive(raw, cfg, signal, budget, pv)
       const prompt = pv === 'compress-v1' ? buildDistillPrompt(raw)
         : pv.indexOf('compress-v3') === 0
           ? (() => { const t = compressTargets(cfg); return buildCompressPromptV3(raw, t.min, t.max) })()
@@ -527,6 +529,31 @@ export function makeBirthCompiler(cfg, opts = {}) {
     }
   }
   return async (raw, signal, budget) => withCalibration(buildDistillPrompt(raw), generateDistillation(raw, withHeaders(budget), signal, undefined, runtimeOf(budget)))
+}
+
+/**
+ * ★ v11.12 compress-x1 抽取式编译：副模型只回「留哪几句 / 哪句被证实 / 状态变量」（JSON），
+ *   正文由 src/extractive.js 从原文逐字拼装并做硬校验。任何一步失败 ⇒ 抛错 ⇒ birth 原文放行。
+ *   budget.extractiveEvidence 由 birth 在 block-end 时刻冻结（可为 null：此时所有「证实」降级）。
+ */
+async function compileExtractive(raw, cfg, signal, budget, pv) {
+  const emit = (tag, data) => { try { budget?.trace?.(tag, data) } catch {} }
+  const ev = (budget && budget.extractiveEvidence) || null
+  const prep = prepareExtractive(raw, cfg, ev)
+  const c = budget && typeof budget.onHeaders === 'function' ? { ...cfg, _onHeaders: budget.onHeaders } : { ...cfg }
+  const r = await withCalibration(prep.prompt, generateDistillation(raw, c, signal, prep.prompt,
+    { trace: budget && typeof budget.trace === 'function' ? budget.trace : undefined, promptVersion: pv }))
+  try {
+    const fin = finalizeExtractive(raw, prep, r.text, cfg, ev)
+    emit('extractive-assembled', { ...fin.stats, rawChars: raw.length, selectionChars: String(r.text || '').length,
+      evidenceTools: ev && ev.tools ? ev.tools.length : 0, promptVersion: pv })
+    return { ...r, text: fin.text, meta: { ...r.meta, extractive: fin.stats, selectionChars: String(r.text || '').length } }
+  } catch (e) {
+    emit('extractive-rejected', { code: e.code || 'error', error: String(e.message || e), rawChars: raw.length,
+      selectionChars: String(r.text || '').length, stats: e.stats || null, promptVersion: pv })
+    e.meta = { ...(r.meta || {}), ...(e.meta || {}) }
+    throw e
+  }
 }
 
 /**

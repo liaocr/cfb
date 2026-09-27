@@ -58,6 +58,7 @@ dsh-cot-form-b/
 │   ├── birth.js          ★ 出生即压缩：birthTransform / birthStart / birthFinish / 成本模型
 │   ├── distill.js        副模型调用：重试降级、对冲、传输 trace；memory 模式的状态编译
 │   ├── prompts.js        提示词（legacy / compress-v2 / compress-v3）与版本号
+│   ├── extractive.js     v11.12 compress-x1 抽取式：切句 / 选择解析 / 逐字拼装与硬校验；v11.13 r2 死分支折叠等（缺省关）
 │   ├── transport.js      HTTP 传输（keep-alive、4MB 上限、SSE/JSON 按实际协议解析）
 │   ├── provider.js       端点与凭据解析（跟随宿主 provider，解析不出来不猜）
 │   ├── late-memory.js    迟到结果暂存区（Deferred Claim，实验）
@@ -76,6 +77,7 @@ dsh-cot-form-b/
 ├── test/                 *.selftest.mjs 套件（verify.mjs 自动发现）+ fixtures/（真机原文错误样本）
 ├── .github/workflows/    CI：完整性清单 + 全部自测 + 类型契约（Node 20 / 22）
 ├── tools/                离线分析：analyze-trace / analyze-efficiency / analyze-consumption / replay / benchmark-index
+│                         v11.12：cf-eval（反事实续写评测）/ acon-optimize（抽取准则自进化）/ cf-fixtures/
 ├── deploy/onboard.mjs    部署体检（注册形态、部署漂移；跨机器、无硬编码路径）
 └── docs/                 现行文档；docs/archive/ = 历史报告与证据（只进不出）
 ```
@@ -130,7 +132,8 @@ birth 模式内部再按编译模式三选一（唯一裁决点 `resolveCompileM
 |---|---|---|
 | `mode` / `dryRun` | `'birth'` / `true` | 见上 |
 | `stateCompress` / `stateMemory` | `false` / `false` | 编译模式 |
-| `compressPrompt` | `'v2'` | `v1` 旧蒸馏 · `v2` 相对长度 · `v3` 绝对长度（`compressTargetMin/Max` = 250/450） |
+| `compressPrompt` | `'v2'` | `v1` 旧蒸馏 · `v2` 相对长度 · `v3` 绝对长度（`compressTargetMin/Max` = 250/450）· **`x1` 抽取式**（v11.12，见下行） |
+| `extractive*` | 见 `DEFAULTS` | **v11.12，仅 `compressPrompt: x1`**：副模型只回句子编号、证实/否定标签和状态变量，正文由本地从原文逐字拼装；「证实」必须有逐字证据，否则降级；句柄已验证时首行写原文句柄。`extractiveTailChars` 400 · `extractiveMaxKeepRatio` 0.7 · `extractiveRepairMax` 6 · `extractiveEvidence` true · `extractiveEvidenceLimit` 12 · `extractiveHandleLine` true · `extractiveGuideline` ''（`tools/acon-optimize.mjs` 的产物）。v11.13 r2 开关（缺省全 true）：`extractiveFoldBranches` 死分支折叠 · `extractiveKeepFailures` 失败信号保留 · `extractiveKindTargets` 按块类型目标长度 · `extractiveStateDedupe` 状态行去重（promptVersion `compress-x1r2`）。详见 `docs/RESEARCH-COT-SHAPING.md` §10、`docs/RESEARCH-PERFORMANCE.md` §3 |
 | `birth.minChars` | `3100` | 短于此长度不压缩（成本模型反解：R=60、d=0.02、B′≈450 ⇒ 保本原长 2,747，保守取整且不下调） |
 | `birth.minTokens` | `null` | **v11.10 opt-in**：正数 ⇒ 按 token 估算判定、完全接管 `minChars`（3100 字符对英文 ≈ 930 token、对中文 ≈ 1,860 token，同一门槛随语言差 2 倍） |
 | `birth.tokenGate` / `birth.minSavedTokens` | `true` / `0` | **v11.10**：字符净省达标但估算 token 不降 ⇒ 原文放行（`why=no-token-gain`；典型是英文原文 → 中文摘要）。`minSavedTokens` 0 按 1 计 |
@@ -220,7 +223,7 @@ compress 模式不采集证据、不写快照；以下只在 memory 模式生效
 | `mode: 'off'` | 整体停用 |
 | `enabled: false` | 总开关关闭 |
 | `stateCompress: false`（且 `stateMemory: false`） | 回到 legacy 蒸馏提示词 |
-| `compressPrompt: 'v2'` / `'v1'` | 回到相对长度目标 / 旧蒸馏提示词 |
+| `compressPrompt: 'v2'` / `'v1'` | 回到相对长度目标 / 旧蒸馏提示词（x1 抽取式同样一键回滚） |
 | `distill: { hedgeAfterMs: 0 }` | 关闭对冲（缺省即关） |
 | `birth: { finishHeadersGraceMs: 0 }` | 关闭响应头宽限 |
 | `birthDeferredClaim: false` | 关闭下轮认领（缺省即关） |

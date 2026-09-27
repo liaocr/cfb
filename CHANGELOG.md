@@ -5,6 +5,103 @@
 
 ---
 
+## v11.13.0（2026-09-26）x1 r2：死分支折叠 / 失败信号保留 / 按块类型目标长度 / 状态行去重 + 句柄回取观测 + cf-eval 过程指标（**x1 仍缺省关闭，线上零变化**）
+
+落地 [`docs/RESEARCH-PERFORMANCE.md`](docs/RESEARCH-PERFORMANCE.md) §3 的 P1–P6 代码部分（与原方案的差异见该节「实现状态」表）。
+
+### x1（`src/extractive.js`，只在 `compressPrompt: 'x1'` 下生效）
+- **P1 死分支折叠**：副模型可回 `branches: [{from,to,head,why,s,seq,quote}]`。`refuted`（工具证据逐字命中）⇒ head 标 `⟨已否定·seqN⟩`；
+  `abandoned`（why 句含作者自己的否定原话）⇒ head 标 `⟨已放弃⟩`；两者都只留 head + why，内部句删掉，其中的转折句/失败句不再强制保留。
+  refuted 证据对不上但 why 合格 ⇒ 降为 abandoned；都不合格 ⇒ 不折叠（= r1 行为）。`parked` ⇒ `⟨搁置⟩`，内部不删。
+  支线内被证实的句子与计划句永不折叠；标识符只出现在折叠区时仍会被修复补回（`foldRepaired`）。尾巴里的支线、exec 块一律不折。
+  解析：from/to 反了交换，head 越界取 from，why 早于 head 置空，重叠的只收先出现的，最多 6 条。
+- **P2 失败信号保留**：含报错/失败且指向具体对象（标识符/数字/引号）的句子补回，至多 min(4, 10% 句数)，从后往前。
+- **P3 按块类型目标长度**：closed 25% / exec 30% / explore 50% 写进提示词作**上限提示**（`EXTRACTIVE_KIND_TARGETS`）；不做本地硬裁剪，硬上限仍是 0.7。
+- **P4 状态行去重**：值（≥6 字符）已在保留句/尾巴逐字出现就不再重复；用户原话约束除外。
+- 新配置键（缺省全 true，仅 x1）：`extractiveFoldBranches` · `extractiveKeepFailures` · `extractiveKindTargets` · `extractiveStateDedupe`。
+  既有 `extractiveEvidence` / `extractiveMaxKeepRatio` 缺省值**未改**。
+- promptVersion `compress-x1` → **`compress-x1r2`**；关掉的特性带 `:-fold` / `:-fail` / `:-tgt` / `:-dedupe` 后缀，准则指纹 `:g<fp>` 照旧。
+- 拼装 stats 新增 `branchesFolded` / `branchesParked` / `branchesRejected` / `foldedSentences` / `foldRepaired` / `failuresKept` / `stateDeduped` / `target` / `overTarget`。
+  标签改为在修复之后定稿（修复补回的句子也会带上它的标签）。
+- 新导出：`EXTRACTIVE_REVISION` · `EXTRACTIVE_KIND_TARGETS` · `extractiveFeatures`。
+
+### 观测（只读）
+- **P5**：`llm-stream` trace 新增 `artRefs: {handles, handleLines, toolCalls, retrieved}`（`artRefsOf`，只数不记内容）。
+- `tools/analyze-trace.mjs` 每组新增 `extractive`（按 promptVersion 分桶：回落率、超目标率、r2 计数、块类型分布）与 `handleRetrieval`（最大值 + 回取率）。
+
+### 评测（离线）
+- **P6** `tools/cf-eval.mjs`：`loopRate`（原样重发前缀里失败过的调用）· `recheckRate`（重发成功过的调用）· 按 fixture 配对的 bootstrap
+  `deltaVsRaw`（固定种子 `--seed`，`--bootstrap` 缺省 2000，95% 区间）；工具结果 `isError` 启发式（fixture 可用 `is_error` 显式给出）；
+  消融变体 `x1:nofold+nofail+notargets+nodedupe`。
+- `tools/acon-optimize.mjs` 的优化器提示词说明支线标记。
+
+### 验证
+- `test/extractive.selftest.mjs` 34 → 48（折叠 / 降级 / 搁置 / 失败信号 / 目标 / 去重 / loop·recheck / bootstrap / 消融 / artRefs / trace 汇总）。
+- `node verify.mjs`：1356 通过 / 0 失败 / 1 跳过。
+
+---
+
+## v11.12.1（2026-09-26）提升主模型表现的第四轮调研（**仅文档，代码与缺省值零变化**）
+
+- 新增 [`docs/RESEARCH-PERFORMANCE.md`](docs/RESEARCH-PERFORMANCE.md)：从「推理保留 / 离策略代价 / 去噪 / 历史中的错误 / 想太多想太少 / 状态与复述 / 可逆性」7 个角度调研 30+ 篇来源。
+- 核心判断：表现 = 去噪收益 − 离策略代价 ⇒ 逐字抽取（x1）在表现上应优于改写式摘要（v3），待 `cf-eval` 验证（H1）。
+- 排序方案：P1 死分支折叠（`refuted` / `abandoned` / `parked`）· P2 失败信号强制保留 · P3 按块类型自适应保留比例 · P4 状态行去重 ·
+  P5 句柄取回率闭环 · P6 cf-eval 过程指标（loopRate / rederiveRate / 配对 bootstrap）· P7 勘误写法。均**未实现**。
+- `docs/README.md` 索引加一行。
+
+---
+
+## v11.12.0（2026-09-25）抽取式压缩 compress-x1 + 反事实续写评测 + 准则自进化回路（**缺省关闭，线上零变化**）
+
+设计与论文依据见 [`docs/RESEARCH-COT-SHAPING.md`](docs/RESEARCH-COT-SHAPING.md) §10。
+
+### 新增
+- **`src/extractive.js` — `compressPrompt: 'x1'`（抽取式）**：副模型不写摘要，只回 JSON 选择（句子编号 / `verified|refuted|unverified` 标签 / 状态变量 / 块类型），
+  正文由本地从原文**逐字**拼装：开头计划句 + 按原文顺序的锚点句（行内认知标签）+ `[状态] k=v` 行 + 空行 + 逐字尾巴。
+  硬校验：「证实/否定」必须在所引 seq 的工具结果里逐字找到引用，否则只降级；状态值必须逐字出现在原文或用户输入里；
+  explore 块的转折句强制保留；逐字标识符全部丢失时补回含它的句子（上限为 min(6, 15% 句数)）；拼装稿超过原文 0.7 按失败处理（原文放行）。
+- **birth 接线**：仅 x1 在 block-end 冻结最近 12 条工具结果供标签核对（发给副模型的只是每条 ≤160 字符的索引行）；
+  流归属不可证（`sessionAmbiguous`）时不采集，标签全部降级。句柄**已验证**后首行写 `〔原文 art://… · 删去的句子可按句柄取回〕`，计入净省核算。
+- 新配置键（仅 x1 生效）：`extractiveTailChars` 400 · `extractiveMaxKeepRatio` 0.7 · `extractiveRepairMax` 6 · `extractiveEvidence` true ·
+  `extractiveEvidenceLimit` 12 · `extractiveHandleLine` true · `extractiveGuideline` ''。promptVersion `compress-x1`，准则非空时带 `:g<8 位指纹>`。
+- 新 trace：`extractive-evidence` / `extractive-assembled` / `extractive-rejected` / `extractive-evidence-error`。
+- **`tools/cf-eval.mjs` 反事实续写评测**：同一会话前缀，分别用 raw / v3 / x1 推理块续写，按 next / avoid / violate 判分，
+  并记录 promptTokens、completionTokens、reasoningChars、keptRatio、fallback。直接复用 `src/` 的提示词与拼装代码。示例 fixture：`tools/cf-fixtures/example-await.json`（合成）。
+- **`tools/acon-optimize.mjs` 准则自进化**：ACON 对比失败分析（UT 步）/ 求更短（CO 步）+ GEPA 式候选评测，`score = success − λ·keptRatio`，
+  只收改进，并保留 Pareto 前沿。产物不会自动上线。
+- `index.js` / `index.d.ts` 导出抽取式纯函数；`compressPrompt` 类型加 `'x1'`。
+
+### 不变
+- `DEFAULTS.compressPrompt` 仍为 `'v2'`；非 x1 的 compress 仍**不采集证据**（新增测试钉住）。
+- `birthFinish` 里保真观测改为对最终候选（含句柄行）计算；非 x1 路径候选与此前逐字相同。
+
+### 验证
+`npm test` 1342 通过 / 0 失败 / 1 跳过（26/26 套件，新增 `extractive` 34 条，全部本机、零外网）；`tsc --strict` 通过；`node manifest.mjs` 已重新生成。
+**尚未**用真实 CAS 原文跑 cf-eval。上线门槛：x1 successRate ≥ raw 的 95%，且 avoidRate 不高于 raw。
+
+---
+
+## v11.11.2（2026-09-25）可改写思维链的表现提升调研（**仅文档，无代码改动**）
+
+新增 [`docs/RESEARCH-COT-SHAPING.md`](docs/RESEARCH-COT-SHAPING.md)，并登记进 `docs/README.md` 索引。
+问题：cfb 能在出生时改写 reasoning，而且宿主压缩被推迟、信息留存更久——这时怎样改写，才能让主模型更专注、更有底气、想得更全？
+
+### 主要结论
+- **杠杆真实存在**：DeepSeek 带 tools 的请求会把历史 `reasoning_content` 全部拼进上下文；MiniMax 消融实验显示，
+  保留与丢弃历史思维链，Tau² 差 87 vs 64。cfb 应重新定位为主模型的**记忆写入控制器**，不只是压缩器。
+- **上一轮否决路线 B 的理由（ReasonIF）在这里不适用**：文本由我们来写，不需要模型配合。Thinking Intervention 证明，写进思考过程的文字远比写进提示词有效。
+- **双声道原则**：第一人称会加固信念（看得见自己的答案时，改主意的比例从 32.5% 降到 13.1%），用于有证据的事实与计划；
+  外部声音会动摇信念（对反对意见的权重是贝叶斯理想值的 2.58 倍），用于有证据的纠错。没有证据的质疑是煤气灯（准确率掉 25–29%）。
+- **首推「认知卫生」三件套**：S1 认知状态标注、S2 按句子功能保留思维锚点（与路线 E 合流）、S3 勘误随下一块出生。均不违反 H2。
+- **legacy 提示词（等同 compress-v1）的「严禁软性措辞」「删掉自我怀疑」与证据方向相反**，建议正式标为不推荐。
+- **主要风险是示范效应**：历史思维链也是推理风格的示范，可能导致模型想浅或跳过思考。必须监测新生成思维链的长度与质量。
+- **评估**：提出不依赖真实会话重放的「反事实续写重采样」方法；上线任何方案前必须先有它。
+
+### 验证
+`npm test` 1308 通过 / 0 失败 / 1 跳过（25/25 套件），与 v11.11 基线一致。`node manifest.mjs` 已重新生成。
+
+---
+
 ## v11.11.1（2026-09-25）压缩经济性审计与路线决议（**仅文档，无代码改动**）
 
 新增 [`docs/ECONOMICS-V11.11.md`](docs/ECONOMICS-V11.11.md)，并登记进 `docs/README.md` 索引。

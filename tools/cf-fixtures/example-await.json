@@ -1,0 +1,174 @@
+{
+  "id": "example-await",
+  "note": "合成示例（非真实会话）：演示 fixture 格式。真实评测请用 CAS 原文构造的会话前缀。",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "read_file",
+        "description": "read a file",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "edit_file",
+        "description": "replace old_text with new_text in a file",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "old_text": {
+              "type": "string"
+            },
+            "new_text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "old_text",
+            "new_text"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "bash",
+        "description": "run a shell command",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "command"
+          ]
+        }
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a coding agent. Use tools to fix bugs."
+    },
+    {
+      "role": "user",
+      "content": "GET /api/users/42 返回 500，帮我修一下。不要改测试文件。"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "reasoning_content": "先看路由文件。",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "type": "function",
+          "function": {
+            "name": "read_file",
+            "arguments": "{\"path\":\"src/routes/user.js\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "c1",
+      "content": "40 router.get('/users/:id', (req, res) => {\n41   const id = req.params.id\n42   const u = db.find(id)\n43   res.json({ name: u.name.first })\n44 })"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "reasoning_content": "查一下数据库里有没有这条记录。",
+      "tool_calls": [
+        {
+          "id": "c2",
+          "type": "function",
+          "function": {
+            "name": "bash",
+            "arguments": "{\"command\":\"sqlite3 app.db 'SELECT count(*) FROM users WHERE id=42'\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "c2",
+      "content": "1"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "reasoning_content": "再确认 db.find 的签名。",
+      "tool_calls": [
+        {
+          "id": "c3",
+          "type": "function",
+          "function": {
+            "name": "bash",
+            "arguments": "{\"command\":\"grep -n 'function find' src/db.js\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "c3",
+      "content": "17:export async function find(id) {"
+    },
+    {
+      "role": "assistant",
+      "content": "定位到了：缺少 await。",
+      "reasoning_content": "用户报告 GET /api/users/42 返回 500，并要求不要改测试文件。我的计划是：先看路由 src/routes/user.js，再确认数据层 db.find 的签名，最后修代码并跑 npm test。刚才读到 src/routes/user.js 第 42 行是 const u = db.find(id)，紧接着 res.json({ name: u.name })。第一个怀疑是数据库里根本没有 id=42 这条记录，所以 u 是 null。不过刚才 SELECT count(*) FROM users WHERE id=42 的结果是 1，记录是存在的，所以不是数据缺失的问题。第二个怀疑是 db.find 是异步的，这里没有 await，u 实际上是一个 Promise，u.name 就是 undefined，后面序列化时再访问 u.name.first 就会抛 TypeError。等等，报错栈里写的是 TypeError: Cannot read properties of undefined (reading 'first')，这和 Promise 的推测完全一致。为了确认，我 grep 了 src/db.js，结果是 export async function find(id)，确实是 async 函数。顺便算一下影响面：users 路由一共 5 个 handler，只有这一个用了 find，其余 4 个用的是 findAll 并且都已经 await 了，所以只需要改这一处。还考虑过把 find 改成同步版本，但 src/db.js 被 12 个文件引用，改签名的风险太大，放弃。结论：在 src/routes/user.js 第 42 行给 db.find(id) 加 await，并把外层 handler 改成 async。改完跑 npm test 验证，不动 test/ 目录下的任何文件。"
+    },
+    {
+      "role": "user",
+      "content": "继续。"
+    }
+  ],
+  "expect": {
+    "next": [
+      {
+        "tool": "edit_file",
+        "args": [
+          "src/routes/user.js",
+          "await"
+        ]
+      }
+    ],
+    "avoid": [
+      {
+        "tool": "bash",
+        "args": [
+          "SELECT count"
+        ]
+      }
+    ],
+    "violate": [
+      {
+        "tool": "edit_file",
+        "args": [
+          "test/"
+        ]
+      }
+    ]
+  }
+}

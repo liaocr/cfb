@@ -216,6 +216,31 @@ export const DEFAULTS = {
   //   缺省关闭：v3 是在「全部放 user」的形状下实测的，system/user 拆分是否影响输出需 A/B；
   //   打开后 promptVersion 追加 ':sys'，trace 自动分桶。
   compressSystemPrompt: false,
+  // ★ v11.12 compress-x1 抽取式（compressPrompt:'x1' 才生效；缺省 'v2' ⇒ 以下各项零影响）。
+  //   副模型只回 JSON 选择（句子编号 / 证实·否定标签 / 状态变量），正文由 src/extractive.js 从原文逐字拼装。
+  //   设计与论文依据：docs/RESEARCH-COT-SHAPING.md §10。
+  //   逐字保留的尾巴长度（字符）：续写最依赖最近上下文（Markovian Thinker）。
+  extractiveTailChars: 400,
+  //   拼装稿 / 原文 超过该比例 ⇒ 视为未压缩，按失败处理（原文放行）。
+  extractiveMaxKeepRatio: 0.7,
+  //   逐字标识符缺失时最多补回几句（防止「修复」把整段又补回来）。
+  extractiveRepairMax: 6,
+  //   为标签核对冻结的最近工具结果条数；0 或 extractiveEvidence:false ⇒ 不采集（所有「证实」降级为未验证）。
+  extractiveEvidence: true,
+  extractiveEvidenceLimit: 12,
+  //   句柄已验证时在拼装稿首行写「原文 art://… · 删去的句子可按句柄取回」。
+  extractiveHandleLine: true,
+  //   可进化的补充准则（tools/acon-optimize.mjs 的产物）；追加在缺省规则之后。非空时 promptVersion 带 ':g<指纹>'。
+  extractiveGuideline: '',
+  //   ★ v11.13 r2 特性（仅 x1；缺省全开；关掉任一项 promptVersion 带后缀，trace 自动分桶）。依据 docs/RESEARCH-PERFORMANCE.md P1–P4。
+  //   死分支折叠：被否定/自我推翻的支线只留「假设句 + 否定理由句」，内部删掉；未证伪就放下的标 ⟨搁置⟩。
+  extractiveFoldBranches: true,
+  //   失败信号保留：含报错/失败且指向具体对象的句子补回（至多 min(4, 10% 句数)）。
+  extractiveKeepFailures: true,
+  //   按块类型的目标长度写进提示词（closed 25% / exec 30% / explore 50%；只是提示，硬上限仍是 extractiveMaxKeepRatio）。
+  extractiveKindTargets: true,
+  //   状态行去重：值已在保留句/尾巴里逐字出现就不再重复（用户原话约束除外）。
+  extractiveStateDedupe: true,
   // pre-step 整段 replace 时，随看板带走的旧看板正文/可见回答/工具调用参数的内联总预算（字符）；超出归档为句柄
   maxCarryChars: 3000,
   // 只在估算至少节省 100 字符且 5% 时才替换；不满足就保留原始 surface，避免"压缩"后反增。

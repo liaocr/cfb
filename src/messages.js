@@ -167,6 +167,36 @@ export function sparseLengths(lengths) {
 }
 
 /**
+ * v11.13（docs/RESEARCH-PERFORMANCE.md P5）：句柄回取观测 —— 只数，不记内容，绝不改任何消息。
+ *   handles   = 出站 reasoning 里出现的不同 art:// 句柄数（x1 句柄行 / v3 句柄，都算）
+ *   handleLines = reasoning 含 art:// 的 assistant 消息数
+ *   toolCalls = 参数里含 art:// 的工具调用条数（m.tool_calls[] 或 type 形如 tool-call / tool_use 的内容块）
+ *   retrieved = 既出现在 reasoning、又出现在某次工具调用参数里的不同句柄数（= 模型真的回取过的句柄）
+ * 计数是**本次请求的出站消息累计值**（历史每轮重发），跨请求取最大值即可；同一 trace 里混有多个会话时须按会话分。
+ * 目的：句柄回取率长期为 0 ⇒ 句柄行只是噪声，可考虑去掉；回取频繁 ⇒ 压缩删掉了模型需要的东西。
+ */
+const RE_ART = /art:\/\/[A-Za-z0-9_-]{22}/g
+const RE_TOOL_CALL_TYPE = /tool[-_]?(call|use)/i
+export function artRefsOf(msgs) {
+  const inReasoning = new Set()
+  const inCalls = new Set()
+  let handleLines = 0, toolCalls = 0
+  const scan = (text, into) => { const m = String(text || '').match(RE_ART); if (m) for (const h of m) into.add(h); return !!m }
+  const json = (x) => { try { return JSON.stringify(x) || '' } catch { return '' } }
+  for (const m of Array.isArray(msgs) ? msgs : []) {
+    if (!m || typeof m !== 'object') continue
+    if (m.role === 'assistant' && scan(reasoningTextOf(m), inReasoning)) handleLines++
+    const calls = []
+    if (Array.isArray(m.tool_calls)) calls.push(...m.tool_calls)
+    if (Array.isArray(m.content)) for (const b of m.content) if (b && typeof b.type === 'string' && RE_TOOL_CALL_TYPE.test(b.type)) calls.push(b)
+    for (const c of calls) if (scan(json(c), inCalls)) toolCalls++
+  }
+  let retrieved = 0
+  for (const h of inCalls) if (inReasoning.has(h)) retrieved++
+  return { handles: inReasoning.size, handleLines, toolCalls, retrieved }
+}
+
+/**
  * v11.11（从 plugin.js 抽出）：llm-stream trace 的内容 —— 出站消息溯源，只读，绝不改任何消息。
  * @param {{ n: number, options: any, session: any, previewChars?: number }} o
  */
@@ -203,5 +233,7 @@ export function streamProvenanceRecord({ n, options, session, previewChars }) {
     toolResultCount: prov.items.filter((x) => x.blockTypes && x.blockTypes.includes('tool-result')).length,
     userCount: prov.items.filter((x) => x.role === 'user').length,
     assistantCount: prov.items.filter((x) => x.role === 'assistant').length,
+    // v11.13 句柄回取观测（只数不记内容）
+    artRefs: artRefsOf(msgs),
   }
 }

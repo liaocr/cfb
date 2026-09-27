@@ -4,8 +4,10 @@
 //   buildCompressPrompt    compress-v2：保真规则 + 相对长度目标
 //   buildCompressPromptV3  compress-v3：保真规则 + 绝对长度目标（compressTargetMin/Max）
 //   compressPromptVersion  版本号唯一裁决点（BOOT / 每次编译 / trace 共用）
+//   （compress-x1 抽取式的提示词在 src/extractive.js；版本号仍由 compressPromptVersion 统一裁决）
 //   splitCompressPrompt    compressSystemPrompt 打开时拆成 system（规则前缀）+ user（原文），字节等价
 import { DEFAULTS } from './config.js'
+import { extractivePromptVersion } from './extractive.js'
 
 // ── 提示词：三态硬标签 ───────────────────────────────────────────────────────
 export function buildDistillPrompt(cot) {
@@ -49,6 +51,9 @@ export function buildDistillPrompt(cot) {
  */
 /** compress 提示词版本的唯一裁决点（BOOT、每次编译、trace 三处共用，杜绝硬编码漂移）。 */
 export function compressPromptVersion(cfg) {
+  // x1 = 抽取式（src/extractive.js）：副模型只回句子编号，正文由本地逐字拼装。
+  //   不参与 compressSystemPrompt 拆分（提示词里没有「【上一轮思维链】」标记）。
+  if (cfg && cfg.compressPrompt === 'x1') return extractivePromptVersion(cfg)
   const v = cfg && cfg.compressPrompt === 'v1' ? 'v1'
     : cfg && cfg.compressPrompt === 'v3' ? 'v3' : 'v2'
   const sys = cfg && cfg.compressSystemPrompt === true && v !== 'v1' ? ':sys' : ''

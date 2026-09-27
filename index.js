@@ -38,6 +38,11 @@ export {
   compressPromptVersion, compressTargets,
 } from './src/prompts.js'
 export {
+  segmentSentences, buildExtractivePrompt, parseExtractiveOutput, assembleExtractive, tailStartIndex,
+  extractiveEvidence, extractiveHandleLine, extractivePromptVersion, prepareExtractive, finalizeExtractive,
+  hardIdentifiers, EXTRACTIVE_BASE_RULES, EXTRACTIVE_VERSION, EXTRACTIVE_REVISION, EXTRACTIVE_KIND_TARGETS, extractiveFeatures,
+} from './src/extractive.js'
+export {
   requestOnce, requestStream, prewarmTargetUrl, retryDelayMs,
   detectResponseProtocol, assembleSseFrames, collectSseFrames, extractFromJsonBody,
 } from './src/transport.js'
@@ -45,7 +50,7 @@ export { readApiKey, readProviderSpec, endpointUrl, resolveProviderEndpoint } fr
 
 // ── 证据采集与消息工具 ───────────────────────────────────────────────────────
 export { evidenceIndex, collectEvidence, filterCoveredTools, fullyVisibleResultSeqs } from './src/evidence.js'
-export { provenanceOf, mapMessagesToSeqs, textOfContent, reasoningTextOf } from './src/messages.js'
+export { provenanceOf, mapMessagesToSeqs, textOfContent, reasoningTextOf, artRefsOf } from './src/messages.js'
 // ★ 供测试直接校验「唯一解释出口」：索引与回退必须得到同样的证据。
 export { normalizeEvidenceEvent, assembleEvidence } from './src/state-memory.js'
 
