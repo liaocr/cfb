@@ -114,7 +114,7 @@ function startMock() {
       const by = Object.fromEntries(rep.rows.map((x) => [x.mode, x]))
       assert.equal(by.v4.why, 'distill-timeout', JSON.stringify(by.v4))
       assert.equal(by.v4inc.why, 'condensed', JSON.stringify({ ...by.v4inc, text: undefined }))
-      assert.equal(by.v4inc.promptVersion, 'compress-v4-ops6:450:inc500')
+      assert.equal(by.v4inc.promptVersion, 'compress-v4-ops7:800:inc500')
       assert.ok(by.v4inc.segments && by.v4inc.segments.n >= 4 && by.v4inc.segments.ok === by.v4inc.segments.n)
       assert.ok(by.v4inc.text.includes('stepFn') && by.v4inc.outChars < by.v4inc.rawChars * 0.5, by.v4inc.text)
       assert.ok(by.v4inc.finishHoldMs < 500, 'hold=' + by.v4inc.finishHoldMs)

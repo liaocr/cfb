@@ -199,6 +199,10 @@ export const DEFAULTS = {
   // 真机：偶发掉队段 13 s+（中转抖动）⇒ 非尾段 7 s 没回就对冲一份（复用 hedgedDistill）；同时在飞段数上限（突发到达时不一次放 11 个请求）
   compressV4SegmentHedgeMs: 7000,
   compressV4MaxInFlight: 3,
+  // v12.5：副模型漏标判读 / 改法时，由代码把原文句子逐字补成 IF / READY（只做保底）
+  compressV4AutoHints: true,
+  // 仅工具用：把副模型原始输出带回 meta.sideOutput（tools/compile-direct.mjs --recompile 零调用重编译）
+  captureSideOutput: false,
   // 首段目标长度（null ⇒ 段长的一半）
   compressV4FirstSegmentChars: null,
   // 尾段走流式 ⇒ 响应头宽限（finishHeadersGraceMs）才会生效。真机（中转 v4.1-flash）：流式首字节 ≈2 s、尾段 3.2–3.7 s，

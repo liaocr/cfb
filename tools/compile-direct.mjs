@@ -3,6 +3,9 @@
 // 用途：给 tools/effect-eval.mjs 准备变体文本（效果评测不关心时延；上游变慢时回放会整片 distill-timeout）。
 //   DEEPSEEK_API_KEY=... node tools/compile-direct.mjs --base-url https://a6api.com/v1 --model deepseek-v4.1-flash \
 //     --recordings live-all/recordings.json --modes v3,v4 --out direct.json [--only id1,id2] [--cfg '{"compressV4BudgetChars":600}']
+//   node tools/compile-direct.mjs --recompile direct.json --recordings live-all/recordings.json --out direct2.json
+//     零调用：用当前编译器 / 渲染规则，重编译 direct.json 里捕获的副模型原始输出（v4 行的 side 字段）
+// 副模型 = 主模型关思考，每次调用都花钱 ⇒ 改了 compile-v4 / 渲染后一律先 --recompile，不要重新压
 // 输出 { rows: [{ id, mode, why:'condensed'|'error', text, rawChars, outChars, ms, promptVersion, kinds }] }（effect-eval --report 可直接读）
 import fs from 'node:fs'
 import os from 'node:os'
@@ -21,14 +24,36 @@ export function parseArgs(argv) {
     else if (a === '--cfg') o.cfg = JSON.parse(v())
     else if (a === '--timeout') o.timeoutMs = Number(v())
     else if (a === '--out') o.out = v()
+    else if (a === '--recompile') o.recompile = v()
     else throw new Error('未知参数 ' + a)
   }
   if (!o.recordings || !o.out) throw new Error('需要 --recordings 与 --out')
   return o
 }
 
+/** 零调用重编译：rows[].side（副模型原始输出）+ 录音原文 ⇒ 当前 compileV4 */
+export async function recompile(direct, recs, cfg = {}) {
+  const I = await import('../index.js')
+  const c = I.normalizeConfig({ ...cfg, compressPrompt: 'v4' })
+  return direct.rows.map((r) => {
+    if (r.mode !== 'v4' || typeof r.side !== 'string') return r
+    const rec = recs.find((x) => x.id === r.id)
+    if (!rec) return r
+    const raw = rec.events.filter((e) => e.k === 'r').map((e) => e.s).join('')
+    const out = I.compileV4(r.side, raw, c, I.v4Budget(c))
+    return out.ok ? { ...r, why: 'condensed', text: out.text, outChars: out.text.length, kinds: out.stats.kinds, recompiled: true }
+      : { ...r, why: 'error', error: out.reason, text: undefined, recompiled: true }
+  })
+}
+
 async function main(argv) {
   const o = parseArgs(argv)
+  if (o.recompile) {
+    const rows = await recompile(JSON.parse(fs.readFileSync(o.recompile, 'utf8')), JSON.parse(fs.readFileSync(o.recordings, 'utf8')), o.cfg)
+    fs.writeFileSync(o.out, JSON.stringify({ rows }, null, 1))
+    for (const r of rows) console.log(`${r.id} ${r.mode} ${r.why} ${r.outChars ?? ''} ${r.kinds ? JSON.stringify(r.kinds) : ''} ${r.error || ''}`)
+    return
+  }
   const key = process.env.DEEPSEEK_API_KEY
   if (!key) throw new Error('需要 DEEPSEEK_API_KEY')
   const I = await import('../index.js')
@@ -41,13 +66,13 @@ async function main(argv) {
     await Promise.all(recs.flatMap((rec) => o.modes.map(async (mode) => {
       const raw = rec.events.filter((e) => e.k === 'r').map((e) => e.s).join('')
       const cfg = I.normalizeConfig({ ...o.cfg, compressPrompt: mode === 'v3' ? 'v3' : 'v4', compressV4Incremental: false, model: o.model, baseUrl: o.baseUrl,
-        credentialsPath: cred, credentialRef: 'K', followHostProvider: false, followHostModel: false, trace: false, timeoutMs: o.timeoutMs })
+        credentialsPath: cred, credentialRef: 'K', followHostProvider: false, followHostModel: false, trace: false, timeoutMs: o.timeoutMs, captureSideOutput: true })
       const t0 = Date.now()
       try {
         const g = await I.makeBirthCompiler(cfg)(raw)
         rows.push({ id: rec.id, mode, why: 'condensed', rawChars: raw.length, outChars: g.text.length, ms: Date.now() - t0,
-          promptVersion: g.meta && g.meta.promptVersion, kinds: g.meta && g.meta.v4 && g.meta.v4.kinds, text: g.text })
-      } catch (e) { rows.push({ id: rec.id, mode, why: 'error', error: String(e && e.message || e).slice(0, 200), ms: Date.now() - t0 }) }
+          promptVersion: g.meta && g.meta.promptVersion, kinds: g.meta && g.meta.v4 && g.meta.v4.kinds, text: g.text, side: g.meta && g.meta.sideOutput })
+      } catch (e) { rows.push({ id: rec.id, mode, why: 'error', error: String(e && e.message || e).slice(0, 200), ms: Date.now() - t0, side: e && e.meta && e.meta.sideOutput }) }
     })))
   } finally { fs.rmSync(d, { recursive: true, force: true }) }
   fs.writeFileSync(o.out, JSON.stringify({ rows }, null, 1))

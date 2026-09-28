@@ -5,6 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as E from '../tools/effect-eval.mjs'
 import { TASKS } from '../tools/v4-live.mjs'
+import { recompile } from '../tools/compile-direct.mjs'
 
 let pass = 0, fail = 0
 const test = async (name, fn) => { try { await fn(); pass++; console.log('PASS ' + name) } catch (e) { fail++; console.log('FAIL ' + name + '\n' + (e && e.stack || e)) } }
@@ -62,6 +63,15 @@ const specs = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/effect-specs.jso
     assert.equal(byVar.raw.overall, 5); assert.equal(byVar.v4.overall, 6)
     assert.ok(markdown.includes('v4：Δ均值 1.0（2 个任务：+3.0 -1.0）'), markdown)
     assert.ok(markdown.includes('错误 1 条'))
+  })
+  await test('§7 compile-direct --recompile：用捕获的副模型输出零调用重编译；无 side 的行原样保留', async () => {
+    const raw = '先看日志，测试用的 DSH_HOME 不对。\n若 grep 显示 verify.mjs 没有设置，则根因明确。\n' + '填充句子。'.repeat(300)
+    const recs = [{ id: 't1', events: [{ k: 'r', s: raw }] }]
+    const side = JSON.stringify({ ops: [{ id: 'o1', k: 'COMPUTED', ev: 'derived', text: '测试绕过了临时 DSH_HOME', anchor: '先看日志' }] })
+    const rows = await recompile({ rows: [{ id: 't1', mode: 'v4', side, text: '旧' }, { id: 't1', mode: 'v3', text: 'v3 稿' }] }, recs)
+    assert.equal(rows[0].why, 'condensed'); assert.ok(rows[0].recompiled && rows[0].text.includes('我目前判断：测试绕过了临时 DSH_HOME'))
+    assert.ok(rows[0].text.includes('若 grep 显示 verify.mjs 没有设置，则根因明确'), '保底判读句')
+    assert.deepEqual(rows[1], { id: 't1', mode: 'v3', text: 'v3 稿' })
   })
   console.log(`\nPASS=${pass} FAIL=${fail}`)
   process.exit(fail ? 1 : 0)

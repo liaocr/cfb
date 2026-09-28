@@ -55,6 +55,10 @@ export interface CotFormBConfig {
   compressV4SegmentHedgeMs?: number
   /** 仅 v4 增量：同时在飞的段数上限（缺省 3） */
   compressV4MaxInFlight?: number
+  /** 仅 v4（v12.5）：副模型漏标判读 / 改法时由代码把原文句子逐字补成 IF / READY（缺省 true） */
+  compressV4AutoHints?: boolean
+  /** 仅工具用：meta.sideOutput 带回副模型原始输出（缺省 false） */
+  captureSideOutput?: boolean
   /** 仅 v4 增量：目标段长（字符，缺省 1200；在段落 / 行 / 句末处切，0.6–1.5 倍浮动） */
   compressV4SegmentChars?: number
   /** 仅 v4 增量：非尾段的请求超时（缺省 30000；尾段仍用 timeoutMs） */
@@ -242,6 +246,8 @@ export declare function buildCompressPromptV3(cot: string, minChars?: number, ma
 export declare function buildCompressPromptV4(cot: string): string
 /** v12.4：从原文摘出「改法措辞 + 具体对象」的句子（逐字，最后 max 条），附在压缩提示词里供副模型核对 */
 export declare function fixHints(text: string, max?: number): string[]
+/** v12.5：从原文摘出条件判读句（若 A 则/就/说明 B），附在压缩提示词里供副模型标 IF */
+export declare function condHints(text: string, max?: number): string[]
 /** v4 提示词在内容之后的重申段（防副模型替 Agent 答题） */
 export declare const V4_TAIL: string
 /** v4 渲染预算（字符）：compressV4BudgetChars，未设则 compressTargetMax */
@@ -254,7 +260,7 @@ export declare function v4SegmentChars(cfg: CotFormBConfig | null | undefined): 
 export declare function buildCompressPromptV4Segment(seg: string, priorLines?: string[]): string
 
 // ── compress-v4-ops 编译器（src/compile-v4.js，纯函数） ──
-export type V4Kind = 'FACT' | 'COMPUTED' | 'INCUMBENT' | 'REFUTED' | 'SHELVED' | 'OPEN' | 'PLAN' | 'READY'
+export type V4Kind = 'FACT' | 'COMPUTED' | 'INCUMBENT' | 'REFUTED' | 'SHELVED' | 'OPEN' | 'PLAN' | 'READY' | 'IF'
 export type V4Ev = 'tool' | 'derived' | 'guess'
 export type V4Kind2 = 'pivot' | 'plan' | 'hypothesize' | 'localize' | 'inspect' | 'compute' | 'verify' | 'restate' | 'answer'
 export declare const V4_KINDS: V4Kind[]

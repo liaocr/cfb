@@ -60,13 +60,13 @@ try {
   })
   await test('§1c 版本号：v4 携带预算与尾段开关；缺省仍为 v3；compressPromptFor 分派一致', () => {
     assert.equal(I.DEFAULTS.compressPrompt, 'v3')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4' }), 'compress-v4-ops6:450:inc1200')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressTargetMax: 600, compressV4SegmentChars: 800 }), 'compress-v4-ops6:600:inc800')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Incremental: false }), 'compress-v4-ops6:450')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4BudgetChars: 520, compressV4Tail: false, compressV4Incremental: false, compressSystemPrompt: true }), 'compress-v4-ops6:520:notail:sys')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4' }), 'compress-v4-ops7:800:inc1200')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressTargetMax: 1000, compressV4SegmentChars: 800 }), 'compress-v4-ops7:1000:inc800')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Incremental: false }), 'compress-v4-ops7:800')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4BudgetChars: 520, compressV4Tail: false, compressV4Incremental: false, compressSystemPrompt: true }), 'compress-v4-ops7:520:notail:sys')
     assert.equal(I.v4Incremental({ compressPrompt: 'v4' }), true); assert.equal(I.v4Incremental({ compressPrompt: 'v3' }), false)
     assert.equal(I.compressPromptFor({ compressPrompt: 'v4' }, 'COT'), I.buildCompressPromptV4('COT'))
-    assert.equal(I.v4Budget({}), 450); assert.equal(I.v4Budget({ compressV4BudgetChars: -1 }), 450); assert.equal(I.v4Budget({ compressV4BudgetChars: 700 }), 700)
+    assert.equal(I.v4Budget({}), 800); assert.equal(I.v4Budget({ compressV4BudgetChars: -1 }), 800); assert.equal(I.v4Budget({ compressV4BudgetChars: 700 }), 700)
   })
   await test('§1d normalizeConfig：v4 合法（不进 configAdjusted）；四个 compressV4* 键已登记（不进 unknownOptions）', () => {
     const c = I.normalizeConfig({ compressPrompt: 'v4', compressV4BudgetChars: 500, compressV4MaxOutputTokens: 2000, compressV4Tail: false, compressV4MaxRejectRatio: 0.3 })
@@ -181,17 +181,17 @@ try {
   })
   await test('§5b 证据定粘性：tool 陈述带来源；derived 标「目前判断」；guess 标「未验证」；计划写过去时', () => {
     assert.ok(text.includes('- 进程 open /srv/app/conf.yaml 失败，read_file 读的是 /etc/app/conf.yaml（来源 strace）'))
-    assert.ok(text.includes('- 目前判断：根因是路径错配'))
-    assert.ok(text.includes('- 当时计划：把 APP_CONF 改成 /srv/app/conf.yaml'))
-    assert.equal(I.renderLine({ k: 'FACT', ev: 'guess', text: '可能是缓存', src: '', supersedes: '' }), '- 未验证的猜测：可能是缓存')
-    assert.equal(I.renderLine({ k: 'INCUMBENT', ev: 'guess', text: '先用 A', supersedes: '' }), '- 当前方案（未验证）：先用 A')
+    assert.ok(text.includes('- 我目前判断：根因是路径错配'))
+    assert.ok(text.includes('- 接下来要：把 APP_CONF 改成 /srv/app/conf.yaml'))
+    assert.equal(I.renderLine({ k: 'FACT', ev: 'guess', text: '可能是缓存', src: '', supersedes: '' }), '- 我猜（未验证）：可能是缓存')
+    assert.equal(I.renderLine({ k: 'INCUMBENT', ev: 'guess', text: '先用 A', supersedes: '' }), '- 我倾向（未验证）：先用 A')
   })
   await test('§5c 分组顺序：状态 → 当前方案 → 排除/搁置 → 计划 → 未决；尾段 = 结论 + 未决（陈述句）', () => {
     const lines = text.split('\n\n')[0].split('\n')
     const pos = (s) => lines.findIndex((l) => l.includes(s))
-    assert.ok(pos('来源 strace') < pos('当前方案') && pos('当前方案') < pos('已排除') && pos('已排除') < pos('当时计划') && pos('当时计划') < pos('未决'))
+    assert.ok(pos('来源 strace') < pos('我现在采用') && pos('我现在采用') < pos('已排除') && pos('已排除') < pos('接下来要') && pos('接下来要') < pos('还要确认'))
     const tail = text.split('\n\n')[1]
-    assert.equal(tail, '所以现在采用的是：APP_CONF 环境变量指向旧路径，需改为 /srv/app/conf.yaml。待确认：/srv/app/conf.yaml 是不是 symlink。')
+    assert.equal(tail, '所以我现在采用：APP_CONF 环境变量指向旧路径，需改为 /srv/app/conf.yaml。还要确认：/srv/app/conf.yaml 是不是 symlink。')
     assert.ok(!I.renderOps(all, { lang: 'zh', tail: false }).includes('\n\n'))
   })
   await test('§5f READY：已备好的改法排最后、带前提；尾段以它收束（若…就…）；最后 2 条必留，超预算也不丢', () => {
@@ -202,7 +202,7 @@ try {
     ]
     const out = I.renderOps(ops, { lang: 'zh' })
     const [body, tail] = out.split('\n\n')
-    assert.ok(body.split('\n').pop().startsWith('- 已备好的改法：在 verify.mjs 的 env 里加 CFB_REAL_DSH_HOME: tmp（前提：verify.mjs 没有设置该变量）'), body)
+    assert.ok(body.split('\n').pop().startsWith('- 我准备的改法：在 verify.mjs 的 env 里加 CFB_REAL_DSH_HOME: tmp（前提：verify.mjs 没有设置该变量）'), body)
     assert.ok(tail.endsWith('若 verify.mjs 没有设置该变量，就在 verify.mjs 的 env 里加 CFB_REAL_DSH_HOME: tmp。'), tail)
     assert.ok(!/？/.test(tail), '尾段不以问句收束')
     const many = [...ops, ...Array.from({ length: 12 }, (_, i) => ({ id: 'f' + i, k: 'FACT', ev: 'tool', text: '事实'.repeat(15) + i, anchor: 'x', src: 't', deps: [], retracts: [], idx: 10 + i }))]
@@ -226,6 +226,45 @@ try {
     assert.deepEqual(I.inventedIdentifiers('[birth-condensed] {"rawChars":8123,"outChars":212}', 'trace 里 `rawChars:8123`'), [])
     assert.ok(I.inventedIdentifiers('{"rawChars":8123}', '改 `src/made_up.js`').includes('src/made_up.js'))
   })
+  await test('§5i IF 判读：cond/then（别名 trigger）拼出 text；渲染「判读：若…，就…」；有判读时尾段不重复未决问题、以判读 + 改法收束；最后 4 条必留', () => {
+    const n = I.normalizeOp({ id: 'r1', k: 'IF', trigger: '升级前 finishReason=stop', then: 'compressTargetMax 是主因', anchor: 'x' }, 0)
+    assert.equal(n.text, '升级前 finishReason=stop ⇒ compressTargetMax 是主因'); assert.equal(n.trigger, '升级前 finishReason=stop'); assert.equal(n.then, 'compressTargetMax 是主因')
+    const ops = [
+      { id: 'a', k: 'COMPUTED', ev: 'derived', text: '输出变长来自长度目标或上限', anchor: 'x', deps: [], retracts: [], idx: 0 },
+      { id: 'b', k: 'OPEN', ev: 'derived', text: '升级前 finishReason 是 length 还是 stop？', anchor: 'x', deps: [], retracts: [], idx: 1 },
+      { ...n, idx: 2, deps: [], retracts: [] },
+      { id: 'r2', k: 'IF', trigger: '升级前 finishReason=length', then: 'maxOutputTokens 是主因', text: 'x', anchor: 'x', deps: [], retracts: [], idx: 3 },
+    ]
+    const out = I.renderOps(ops, { lang: 'zh' })
+    assert.ok(out.includes('- 判读：若升级前 finishReason=stop，就 compressTargetMax 是主因'), out)
+    const tail = out.split('\n\n')[1]
+    assert.ok(!tail.includes('还要确认'), '有判读 ⇒ 尾段不停在问题上')
+    assert.ok(tail.endsWith('若升级前 finishReason=length，就 maxOutputTokens 是主因。'), tail)
+    const many = [...ops, ...Array.from({ length: 12 }, (_, i) => ({ id: 'f' + i, k: 'FACT', ev: 'tool', text: '事实'.repeat(15) + i, anchor: 'x', src: 't', deps: [], retracts: [], idx: 10 + i }))]
+    const sel = I.selectOps(many, { budget: 100 }).chosen.map((o) => o.id)
+    assert.ok(sel.includes('r1') && sel.includes('r2'), 'IF 必留')
+  })
+  await test('§5j 模板语言跟随条目内容（原文英文多、条目中文 ⇒ 中文模板）；condHints 摘「若 A 则/就/说明 B」句', () => {
+    const raw = 'Let me think about this carefully. The throughput is the same. '.repeat(20) + '若 stop 则长度目标是主因。'
+    const r = I.compileV4(JSON.stringify({ ops: [{ id: 'o1', k: 'COMPUTED', ev: 'derived', text: '输出变长是长度目标导致', anchor: 'The throughput is the same' }] }), raw, {})
+    assert.ok(r.ok, JSON.stringify(r)); assert.equal(r.stats.lang, 'zh')
+    assert.deepEqual(I.condHints('先看看。\n若 grep 显示 verify.mjs 没有设置，则根因明确。\n好的。'), ['若 grep 显示 verify.mjs 没有设置，则根因明确。'])
+  })
+  await test('§5k 代码保底：副模型一条 IF / READY 都没标 ⇒ 原文判读 / 改法句逐字补上；已标过 ⇒ 不补；否定 / 犹豫句与超长句不补；可关', () => {
+    const raw = '先看日志。\n若 grep 显示 verify.mjs 没有设置，则根因明确。\n下一步修复：在 verify.mjs 的 env 中加 `CFB_REAL_DSH_HOME: tmp`。\n' +
+      '可以考虑修复权限：`sudo chown -R u:u /home/u/.dsh` 但不应修改真实 home。\n' + '填充句子。'.repeat(200)
+    const base = [{ id: 'o1', k: 'COMPUTED', ev: 'derived', text: '测试绕过了临时 DSH_HOME', anchor: '先看日志' }]
+    const r = I.compileV4(JSON.stringify({ ops: base }), raw, {})
+    assert.ok(r.ok, JSON.stringify(r)); assert.equal(r.stats.autoHints, 2)
+    assert.ok(r.text.includes('- 若 grep 显示 verify.mjs 没有设置，则根因明确'), r.text)
+    assert.ok(r.text.includes('- 下一步修复：在 verify.mjs 的 env 中加 `CFB_REAL_DSH_HOME: tmp`'), r.text)
+    assert.ok(!r.text.includes('sudo chown'), '否定句不补')
+    const withIf = [...base, { id: 'o2', k: 'IF', ev: 'derived', cond: 'verify.mjs 没设该变量', then: '根因明确', anchor: '则根因明确' }]
+    const r2 = I.compileV4(JSON.stringify({ ops: withIf }), raw, {})
+    assert.ok(!r2.text.includes('- 若 grep 显示'), '已标 IF ⇒ 不补 IF'); assert.equal(r2.stats.autoHints, 1)
+    const r3 = I.compileV4(JSON.stringify({ ops: base }), raw, { compressV4AutoHints: false })
+    assert.ok(!r3.stats.autoHints && !r3.text.includes('若 grep'))
+  })
   await test('§5d 产物不含第二人称与「我决定」；中文模板在中英交界处补空格', () => {
     assert.ok(!/[你您]|我决定|我应该/.test(text))
     assert.equal(I.renderLine({ k: 'SHELVED', ev: 'derived', text: '查网络', alt: '', why: '', trigger: 'ECONNREFUSED 出现', supersedes: '' }), '- 暂缓查网络（若 ECONNREFUSED 出现再回来）')
@@ -239,7 +278,7 @@ try {
     ] }), rawEn, {})
     assert.ok(r.ok, r.reason)
     assert.ok(r.text.includes('- check the config path (ruled out permissions: chmod 777 did not help)'), r.text)
-    assert.ok(r.text.includes('To confirm: is /srv/app/conf.yaml a symlink.'), r.text)
+    assert.ok(r.text.includes('Still to confirm: is /srv/app/conf.yaml a symlink.'), r.text)
   })
 
   // ═══ §6 compileV4 ═════════════════════════════════════════════════════════
@@ -247,7 +286,7 @@ try {
     const r = I.compileV4('```json\n' + JSON.stringify({ ops: [...OPS, { k: 'FACT', ev: 'tool', text: 'x', anchor: '不存在' }] }) + '\n```', RAW, {})
     assert.ok(r.ok)
     assert.equal(r.stats.ops, 9); assert.equal(r.stats.valid, 8); assert.deepEqual(r.stats.rejected, { I1: 1 })
-    assert.equal(r.stats.selected, 7); assert.equal(r.stats.dropped.verify, 1); assert.equal(r.stats.lang, 'zh'); assert.equal(r.stats.budget, 450)
+    assert.equal(r.stats.selected, 7); assert.equal(r.stats.dropped.verify, 1); assert.equal(r.stats.lang, 'zh'); assert.equal(r.stats.budget, 800, '预算下限 800')
     assert.equal(r.stats.chars, r.text.length)
   })
   await test('§6b 整块回退：解析失败 / 无有效条目 / 关键条目编造 / 拒绝率过高 —— 每条都有独立原因', () => {
@@ -289,7 +328,7 @@ try {
         assert.ok(lastBody.messages[0].content.includes(LONG) && lastBody.messages[0].content.endsWith(I.V4_TAIL))
         assert.equal(lastBody.max_tokens, 1600)
         assert.ok(r.text.includes('已排除权限问题') && !r.text.includes('{'))
-        assert.equal(r.meta.promptVersion, 'compress-v4-ops6:450:inc1200')
+        assert.equal(r.meta.promptVersion, 'compress-v4-ops7:800:inc1200')
         assert.equal(r.meta.v4.selected, 7)
         const t = traces.find(([x]) => x === 'compiler-v4-compiled')
         assert.ok(t && t[1].ok === true && t[1].valid === 8 && typeof t[1].compileMs === 'number', JSON.stringify(t))
@@ -316,7 +355,7 @@ try {
         reply = '权限不是问题，是路径错配。'
         const traces = []
         await assert.rejects(I.makeBirthCompiler(cfg)(LONG, undefined, { trace: (t, d) => traces.push([t, d]) }), (e) => {
-          assert.equal(e.message, 'v4-unparseable'); assert.equal(e.meta.v4.reason, 'v4-unparseable'); assert.equal(e.meta.promptVersion, 'compress-v4-ops6:450:inc1200'); return true
+          assert.equal(e.message, 'v4-unparseable'); assert.equal(e.meta.v4.reason, 'v4-unparseable'); assert.equal(e.meta.promptVersion, 'compress-v4-ops7:800:inc1200'); return true
         })
         assert.ok(traces.some(([x, d]) => x === 'compiler-v4-compiled' && d.ok === false))
       })
@@ -399,7 +438,7 @@ try {
     assert.equal(sg.segments.length, 3)
     assert.ok(r.meta.v4.incremental && !r.meta.v4.partial)
     assert.ok(!r.text.includes('先排查权限之外的原因'), '被第二段 retracts 的条目不得出现')
-    assert.ok(r.text.includes('- 查路径配置（已排除权限问题') && r.text.includes('待确认：'), r.text)
+    assert.ok(r.text.includes('- 查路径配置（已排除权限问题') && r.text.includes('还要确认：'), r.text)
   })
   await test('§9c 收网到点：已编译前缀 + 原文尾巴逐字（不出尾段）；无已编译前缀 ⇒ null', async () => {
     const sg = I.createSegmenter({ cfg: segCfg, compileSegment: mkCompile((t) => (t.includes('第三段') ? 5000 : 0)) })
@@ -493,7 +532,7 @@ try {
   await test('§9g birthTransform：各段都及时 ⇒ condensed（完整编译，无原文尾巴）', async () => {
     const { text, traces } = await runStream(async (segText) => ({ ops: opsFor(segText) }))
     assert.ok(traces.some(([t, d]) => t === 'birth-condensed' && d.why === 'condensed'))
-    assert.ok(!text.includes('最后的想法') && text.includes('待确认：'), text)
+    assert.ok(!text.includes('最后的想法') && text.includes('还要确认：'), text)
   })
   await test('§9h birthTransform：块低于门槛 ⇒ 已起飞的分段全部取消，原文放行', async () => {
     let aborted = 0
@@ -567,7 +606,7 @@ try {
     assert.equal(I.v4Incremental({ compressPrompt: 'v4', birthFinishWaitMs: 8000, compressV4Incremental: true }), true)
     assert.equal(I.v4Incremental({ compressPrompt: 'v4', compressV4Incremental: false }), false)
     assert.equal(I.v4Incremental(I.normalizeConfig({ compressPrompt: 'v4', birthFinishWaitMs: 8000 })), false, 'normalizeConfig 后缺省 auto 生效')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', birthFinishWaitMs: 8000 }), 'compress-v4-ops6:450')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', birthFinishWaitMs: 8000 }), 'compress-v4-ops7:800')
   })
   await test('§9p 在飞段数上限：突发到达时最多放出 3 段，其余等空位 / 并入尾段', async () => {
     const pend = []

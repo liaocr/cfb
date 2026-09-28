@@ -432,10 +432,11 @@ export function makeBirthCompiler(cfg) {
     try { trace?.('compiler-v4-compiled', { ok: out.ok, requestId: r.meta && r.meta.requestId, ...v4 }) } catch {}
     if (!out.ok) {
       const e = new Error(out.reason)
-      e.meta = { ...(r.meta || {}), v4 }
+      e.meta = { ...(r.meta || {}), v4, ...(cfg.captureSideOutput === true ? { sideOutput: r.text } : {}) }
       throw e
     }
-    return { text: out.text, meta: { ...(r.meta || {}), v4 } }
+    // captureSideOutput（仅工具用，缺省关）：带回副模型原始输出 ⇒ 改了编译 / 渲染后可零调用重编译
+    return { text: out.text, meta: { ...(r.meta || {}), v4, ...(cfg.captureSideOutput === true ? { sideOutput: r.text } : {}) } }
   }
 }
 

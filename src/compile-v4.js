@@ -19,8 +19,9 @@
 //   · I6（已编译文本永不作为副模型输入）是结构保证：birth 只把 reasoning 原文交给副模型。
 import { inventedIdentifiers } from './fidelity.js'
 import { wideShare } from './tokens.js'
+import { condHints, fixHints } from './prompts.js'
 
-export const V4_KINDS = ['FACT', 'COMPUTED', 'INCUMBENT', 'REFUTED', 'SHELVED', 'OPEN', 'PLAN', 'READY']
+export const V4_KINDS = ['FACT', 'COMPUTED', 'INCUMBENT', 'REFUTED', 'SHELVED', 'OPEN', 'PLAN', 'READY', 'IF']
 export const V4_EVS = ['tool', 'derived', 'guess']
 export const V4_KIND2 = ['pivot', 'plan', 'hypothesize', 'localize', 'inspect', 'compute', 'verify', 'restate', 'answer']
 
@@ -29,12 +30,18 @@ const MUST_KEEP = new Set(['INCUMBENT', 'REFUTED', 'OPEN'])
 // READY（已备好的改法）：原文里想好的具体改动 + 采用前提。turn 20 效果评测：原文保留它时主模型在观察证实前提后直接下手改
 // （eacces 9.5 分），v3/v4 把它当「推测」删光后一律回头重读文件（≈2 分，比完全没有思考还差）。最后 READY_KEEP 条必留。
 const READY_KEEP = 2
+// IF（预先判读，v12.5）：原文对「即将到来的观察」各种结果的解读（若结果 A ⇒ 结论/动作）。归因（EFFECT-EVAL §7）：
+// 原文每块有 1–7 句这种判读，v4 产物保留 0 句 —— 只留下「需查 finishReason 是 length 还是 stop」这个问题、删掉了答案表；
+// 观察回来后主模型只能重新推一遍（回头读文件）。最后 IF_KEEP 条必留。
+const IF_KEEP = 4
+// 渲染预算下限（v12.5）：450 字装不下「判读 + 改法 + 死路」；效果评测里稍长的稿（≈935 字）明显好于 ≈550 字
+export const V4_MIN_BUDGET = 800
 // 静态价值（理论 v(i;λ) 在无跨轮传感器时的退化形式；只用于非必留条目之间的取舍）
-const BASE = { INCUMBENT: 1.0, READY: 0.95, COMPUTED: 0.9, OPEN: 0.85, REFUTED: 0.8, SHELVED: 0.6, FACT: 0.6, PLAN: 0.35 }
+const BASE = { INCUMBENT: 1.0, IF: 1.0, READY: 0.95, COMPUTED: 0.9, OPEN: 0.85, REFUTED: 0.8, SHELVED: 0.6, FACT: 0.6, PLAN: 0.35 }
 const K2W = { pivot: 1.25, localize: 1.1, compute: 1.1, hypothesize: 1.0, answer: 0.4, plan: 0.8, inspect: 0.7, verify: 0.3, restate: 0.15 }
 const EVW = { tool: 1.0, derived: 0.95, guess: 0.7 }
 // 已备好的改法排最后（离下一步生成最近）；未决排在它前面
-const GROUP = { FACT: 0, COMPUTED: 0, INCUMBENT: 1, REFUTED: 2, SHELVED: 2, PLAN: 3, OPEN: 4, READY: 5 }
+const GROUP = { FACT: 0, COMPUTED: 0, INCUMBENT: 1, REFUTED: 2, SHELVED: 2, PLAN: 3, OPEN: 4, IF: 5, READY: 6 }
 
 // 副模型常把 supersedes 写成条目 id（「s3.o11」）而不是旧值 —— 语义就是 retracts；原样渲染会把内部 id 漏进出生文本（v12.3 真机）
 const ID_LIST_RE = /^\s*(?:s\d+\.)?o\d+(?:\s*[,，、]\s*(?:s\d+\.)?o\d+)*\s*$/
@@ -48,7 +55,7 @@ function supersedesText(o, supIds) {
   if (REFINE_KEYS.has(key) || /^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)+$/.test(v) || REFINE_KEYS.has(v)) return ''
   return v
 }
-const CAP = { text: 300, anchor: 120, alt: 200, why: 200, trigger: 160, supersedes: 160, src: 60, key: 60 }
+const CAP = { text: 300, anchor: 120, alt: 200, why: 200, then: 200, trigger: 160, supersedes: 160, src: 60, key: 60 }
 const str = (x, n) => (typeof x === 'string' ? x : x == null ? '' : typeof x === 'number' ? String(x) : '').trim().slice(0, n)
 const norm = (s) => String(s || '').normalize('NFKC').replace(/\s+/g, ' ').trim()
 const stripEnd = (s) => String(s || '').replace(/[\s。．.;；,，:：!！]+$/u, '')
@@ -115,13 +122,18 @@ export function normalizeOp(o, i) {
   const deps = ids(o.deps)
   const supIds = supersedesIds(o.supersedes)
   const retracts = [...new Set([...ids(o.retracts), ...(supIds || []).map((d) => str(d, 24))])].slice(0, 8)
+  // IF：cond（别名 trigger / if）→ trigger；then 单独保存；缺 text 时由两者拼出（校验与去重都看 text）
+  const isIf = k === 'IF'
+  const cond = isIf ? str(o.cond ?? o.trigger ?? o.if, CAP.trigger) : ''
+  const then = isIf ? str(o.then, CAP.then) : ''
+  const text0 = str(o.text, CAP.text)
   return {
-    id: str(o.id, 20) || 'o' + (i + 1), idx: i, k,
+    id: str(o.id, 20) || 'o' + (i + 1), idx: i, k, then,
     ev: V4_EVS.includes(ev) ? ev : 'derived',
     kind2: V4_KIND2.includes(kind2) ? kind2 : null,
-    text: str(o.text, CAP.text), anchor: str(o.anchor, CAP.anchor), key: str(o.key, CAP.key),
+    text: isIf && cond && then ? str(cond + ' ⇒ ' + then, CAP.text) : text0, anchor: str(o.anchor, CAP.anchor), key: str(o.key, CAP.key),
     src: str(o.src, CAP.src), alt: str(o.alt, CAP.alt), why: str(o.why, CAP.why),
-    trigger: str(o.trigger, CAP.trigger), supersedes: supersedesText(o, supIds), deps, retracts,
+    trigger: isIf ? cond : str(o.trigger, CAP.trigger), supersedes: supersedesText(o, supIds), deps, retracts,
   }
 }
 
@@ -156,7 +168,7 @@ export function validateOps(rawOps, raw) {
     if (!V4_KINDS.includes(op.k) || !op.text) { reject('schema'); continue }
     const a = norm(op.anchor)
     if (a.length < 2 || !hay.includes(a)) { reject('I1'); continue }
-    const inv = inventedIdentifiers(src, [op.text, op.alt, op.why, op.trigger, op.supersedes].filter(Boolean).join('\n'))
+    const inv = inventedIdentifiers(src, [op.text, op.alt, op.why, op.trigger, op.then, op.supersedes].filter(Boolean).join('\n'))
     if (inv.length) {
       reject('I2', inv.slice(0, 3))
       if (op.k === 'INCUMBENT' || op.k === 'COMPUTED') fatal = fatal || 'critical-I2'
@@ -166,7 +178,7 @@ export function validateOps(rawOps, raw) {
     if (/^tool:?/i.test(op.src) || op.ev === 'tool') {
       if (RE_DECIDE.test(op.text)) { reject('I5'); continue }
     }
-    if ([op.text, op.alt, op.why, op.trigger].some((t) => RE_SECOND.test(outsideQuotes(t)))) { reject('I8'); continue }
+    if ([op.text, op.alt, op.why, op.trigger, op.then].some((t) => RE_SECOND.test(outsideQuotes(t)))) { reject('I8'); continue }
     if (op.k === 'REFUTED' && op.ev !== 'tool') { converted.push({ id: op.id, from: 'REFUTED', to: 'SHELVED' }); op.k = 'SHELVED' }
     if (op.k === 'REFUTED' && !op.alt) { reject('I3'); continue }
     const sig = op.k + '|' + norm(op.text).toLowerCase()
@@ -228,7 +240,7 @@ export function selectOps(ops, opts = {}) {
     if (depth > 2) return
     for (const d of o.deps) { const x = byId.get(d); if (x && !chosen.has(x.id)) { take(x); closure(x, depth + 1) } }
   }
-  const readyKeep = new Set(ops.filter((o) => o.k === 'READY').slice(-READY_KEEP).map((o) => o.id))
+  const readyKeep = new Set([...ops.filter((o) => o.k === 'READY').slice(-READY_KEEP), ...ops.filter((o) => o.k === 'IF').slice(-IF_KEEP)].map((o) => o.id))
   const must = (o) => MUST_KEEP.has(o.k) || readyKeep.has(o.id)
   for (const o of ops) if (must(o)) take(o)
   for (const o of ops) if (must(o)) closure(o)
@@ -255,30 +267,35 @@ export function selectOps(ops, opts = {}) {
 const T = {
   zh: {
     src: (s, sup) => (s || sup) ? '（' + [s ? zj('来源', s) : '', sup ? zj('取代', sup) : ''].filter(Boolean).join('；') + '）' : '',
-    judged: '目前判断：', guess: '未验证的猜测：', incumbent: '当前方案：', incumbentGuess: '当前方案（未验证）：',
+    // v12.5 语域：reasoning_content 是主模型「自己的」思考 ⇒ 第一人称内心独白，而不是第三方笔记（「目前判断 / 当时计划」读起来像别人的过期记录）
+    judged: '我目前判断：', guess: '我猜（未验证）：', incumbent: '我现在采用：', incumbentGuess: '我倾向（未验证）：',
     refuted: (alt, x, why) => alt + '（' + zj('已排除', x) + (why ? '：' + why : '') + '）',
     shelved: (alt, x, why, trig) => alt
       ? alt + '（' + zj('暂缓', x) + (why ? '：' + why : '') + (trig ? '；' + zj('若', trig, '再回来') : '') + '）'
       : zj('暂缓', x) + ((why || trig) ? '（' + [why, trig ? zj('若', trig, '再回来') : ''].filter(Boolean).join('；') + '）' : ''),
-    plan: '当时计划：', open: '未决：',
-    ready: (t, trig) => '已备好的改法：' + t + (trig ? '（' + zj('前提：', trig) + '）' : ''),
-    tailReady: (t, trig) => trig ? zj('若', trig) + '，就' + t + '。' : '准备好的改法：' + t + '。',
-    tailIncumbent: (t) => '所以现在采用的是：' + t + '。', tailJudged: (t) => '所以目前判断：' + t + '。', tailFact: (t) => '已确认：' + t + '。',
+    plan: '接下来要：', open: '还要确认：',
+    rule: (c, t) => '判读：' + zj(zj('若', c) + '，就', t),
+    ready: (t, trig) => '我准备的改法：' + t + (trig ? '（' + zj('前提：', trig) + '）' : ''),
+    tailReady: (t, trig) => trig ? zj(zj('若', trig) + '，就', t) + '。' : '我准备的改法：' + t + '。',
+    tailRule: (c, t) => zj(zj('若', c) + '，就', t) + '。',
+    tailIncumbent: (t) => '所以我现在采用：' + t + '。', tailJudged: (t) => '所以我目前判断：' + t + '。', tailFact: (t) => '已确认：' + t + '。',
     // 未决在尾段写成陈述而不是问句：推理末尾的疑问句会把下一步推向「继续取证」（turn 20 效果评测）
-    tailOpen: (t) => '待确认：' + t + '。',
+    tailOpen: (t) => '还要确认：' + t + '。',
   },
   en: {
     src: (s, sup) => (s || sup) ? ' (' + [s ? 'source ' + s : '', sup ? 'replaces ' + sup : ''].filter(Boolean).join('; ') + ')' : '',
-    judged: 'Current judgment: ', guess: 'Unverified guess: ', incumbent: 'Current approach: ', incumbentGuess: 'Current approach (unverified): ',
+    judged: 'My current judgment: ', guess: 'My guess (unverified): ', incumbent: 'I am going with: ', incumbentGuess: 'I lean towards (unverified): ',
     refuted: (alt, x, why) => alt + ' (ruled out ' + x + (why ? ': ' + why : '') + ')',
     shelved: (alt, x, why, trig) => alt
       ? alt + ' (set aside ' + x + (why ? ': ' + why : '') + (trig ? '; revisit if ' + trig : '') + ')'
       : 'Set aside ' + x + ((why || trig) ? ' (' + [why, trig ? 'revisit if ' + trig : ''].filter(Boolean).join('; ') + ')' : ''),
-    plan: 'Plan at the time: ', open: 'Open: ',
+    plan: 'Next: ', open: 'Still to confirm: ',
+    rule: (c, t) => 'Reading: if ' + c + ', then ' + t,
     ready: (t, trig) => 'Prepared change: ' + t + (trig ? ' (if ' + trig + ')' : ''),
     tailReady: (t, trig) => trig ? 'If ' + trig + ', then ' + t + '.' : 'Prepared change: ' + t + '.',
-    tailIncumbent: (t) => 'So the current approach is: ' + t + '.', tailJudged: (t) => 'So far the judgment is: ' + t + '.', tailFact: (t) => 'Confirmed: ' + t + '.',
-    tailOpen: (t) => 'To confirm: ' + t + '.',
+    tailRule: (c, t) => 'If ' + c + ', then ' + t + '.',
+    tailIncumbent: (t) => 'So I am going with: ' + t + '.', tailJudged: (t) => 'So my current judgment is: ' + t + '.', tailFact: (t) => 'Confirmed: ' + t + '.',
+    tailOpen: (t) => 'Still to confirm: ' + t + '.',
   },
 }
 
@@ -303,7 +320,9 @@ export function renderLine(op, lang = 'zh') {
     case 'SHELVED': return '- ' + L.shelved(stripEnd(op.alt), t, stripEnd(op.why), stripEnd(op.trigger))
     case 'PLAN': return '- ' + L.plan + t
     case 'OPEN': return '- ' + L.open + stripQ(op.text)
-    case 'READY': return '- ' + L.ready(t, stripEnd(op.trigger))
+    case 'READY': return '- ' + (op.auto ? t : L.ready(t, stripEnd(op.trigger)))
+    case 'IF': return '- ' + (op.trigger && op.then ? L.rule(stripEnd(op.trigger), stripEnd(op.then)) : t)
+    // 代码补的条目是原文逐字句（本身就是第一人称的思考），不加前缀
     default: return '- ' + t
   }
 }
@@ -326,18 +345,50 @@ export function renderOps(chosen, opts = {}) {
       const t = stripEnd(concl.text)
       tail.push(concl.k === 'INCUMBENT' ? L.tailIncumbent(t) : concl.ev === 'tool' && concl.k === 'FACT' ? L.tailFact(t) : L.tailJudged(t))
     }
-    for (const o of ordered.filter((x) => x.k === 'OPEN').slice(-2)) tail.push(L.tailOpen(stripQ(o.text)))
+    // 有判读表时不再重复未决问题：判读本身就是「这个问题的各种答案意味着什么」，末尾停在问题上会把下一步推向重新推理
+    const ifs = ordered.filter((x) => x.k === 'IF')
+    const rules = (ifs.some((x) => !x.auto) ? ifs.filter((x) => !x.auto) : ifs).slice(-3)
+    if (!rules.length) for (const o of ordered.filter((x) => x.k === 'OPEN').slice(-2)) tail.push(L.tailOpen(stripQ(o.text)))
+    for (const o of rules) tail.push(o.trigger && o.then ? L.tailRule(stripEnd(o.trigger), stripEnd(o.then)) : stripEnd(o.text) + (lang === 'en' ? '.' : '。'))
     // 尾段以已备好的改法收束（最后一条）：观察一旦证实前提，下一步就是它
-    const rd = ordered.filter((x) => x.k === 'READY').slice(-1)[0]
-    if (rd) tail.push(L.tailReady(stripEnd(rd.text), stripEnd(rd.trigger)))
+    const rds = ordered.filter((x) => x.k === 'READY')
+    const rd = (rds.some((x) => !x.auto) ? rds.filter((x) => !x.auto) : rds).slice(-1)[0]
+    if (rd) tail.push(rd.auto ? stripEnd(rd.text) + (lang === 'en' ? '.' : '。') : L.tailReady(stripEnd(rd.text), stripEnd(rd.trigger)))
   }
   const sep = lang === 'en' ? ' ' : ''
   return lines.join('\n') + (tail.length ? '\n\n' + tail.join(sep) : '')
 }
 
 /** 渲染语言跟随原文（理论 S5 规则 4）：宽字符占比 ≥ 20% ⇒ 中文模板，否则英文模板。 */
-export function renderLang(raw) {
-  try { return wideShare(String(raw || '')) >= 0.2 ? 'zh' : 'en' } catch { return 'zh' }
+export function renderLang(raw, threshold = 0.2) {
+  try { return wideShare(String(raw || '')) >= threshold ? 'zh' : 'en' } catch { return 'zh' }
+}
+
+/**
+ * v12.5 代码保底：副模型漏标的判读句 / 改法句，由程序把原文句子**逐字**补成 IF / READY 条目。
+ * 实测（ops7）：判读句已逐字列进提示词，副模型仍在 2/5 块上一条 IF 都不标 —— 提示词约束不可靠，关键内容由代码兜底。
+ * 逐字原文 ⇒ 不可能编造；已被某条目覆盖（锚点落在句内 / 句子落在条目文本里）的不补；已在原文尾巴里的不补。
+ */
+export function autoHintOps(raw, kept, suffix = '') {
+  const covered = (h) => {
+    const nh = norm(h)
+    return kept.some((o) => (o.anchor && nh.includes(norm(o.anchor))) || (o.text && norm(o.text).includes(nh)))
+  }
+  const out = []
+  // 只做保底：副模型已标过这一类就不补（补进来的逐字句与它的条目重复、还会抢走尾段）；
+  // 带否定 / 犹豫措辞的不补（ops7b 实测：「可以考虑 sudo chown…但不应修改真实 home」被补成改法并排在尾段最后）；超长句不补也不截断
+  const has = (k) => kept.some((o) => o.k === k)
+  const NEG = /不应|不要|别再|不行|不确定|没用|行不通|不能|可能没|\bnot\b|\bdon't\b|\bshouldn't\b/i
+  const add = (k, h, i) => {
+    if (has(k) || h.length > 150 || NEG.test(h) || covered(h) || (suffix && suffix.includes(h))) return
+    out.push({ id: 'h' + k[0].toLowerCase() + (i + 1), idx: 10000 + out.length, k, ev: 'derived', kind2: null, text: stripEnd(h), anchor: h.slice(0, 40),
+      key: '', src: '', alt: '', why: '', then: '', trigger: '', supersedes: '', deps: [], retracts: [], auto: true })
+  }
+  const fx = fixHints(raw, 3)
+  const readyC = fx.filter((h) => h.length <= 150 && !NEG.test(h)).slice(-1)
+  readyC.forEach((h, i) => add('READY', h, i))
+  condHints(raw, 6).filter((h) => !fx.includes(h) && h.length <= 150 && !NEG.test(h)).slice(-2).forEach((h, i) => add('IF', h, i))
+  return out
 }
 
 // ── 总入口 ──────────────────────────────────────────────────────────────────
@@ -377,11 +428,16 @@ export function compileOpsV4(rawOps, raw, cfg = {}, budget = null, stats = {}, o
   if (!v.kept.length) return { ok: false, reason: 'v4-no-valid-ops', stats }
   // 副模型在这块上整体不可信（锚点对不上、编造多）⇒ 整块原文，而不是拼一份残缺的状态
   if (v.total >= 2 && v4RejectRatioOf(v) > maxRejectRatio(cfg)) return { ok: false, reason: 'v4-reject-ratio', stats }
-  const lang = renderLang(raw)
+  // 模板语言跟随条目内容而不是原文（v12.5：perf 原文英文多 ⇒ 英文模板套中文条目，中英混杂）
+  // 条目里标识符多，中文占比常在 10–20% ⇒ 阈值 0.1（ops7 实测：eacces 条目 0.2 以下被判成英文模板）
+  const lang = renderLang(v.kept.map((o) => o.text).join('\n') || raw, 0.1)
   const b = Number.isFinite(budget) && budget > 0 ? budget
     : (typeof cfg.compressV4BudgetChars === 'number' && cfg.compressV4BudgetChars > 0 ? cfg.compressV4BudgetChars
-      : (typeof cfg.compressTargetMax === 'number' && cfg.compressTargetMax > 0 ? cfg.compressTargetMax : 450))
-  const kept = opts.segmented ? freshenState(v.kept, stats) : v.kept
+      : Math.max(typeof cfg.compressTargetMax === 'number' && cfg.compressTargetMax > 0 ? cfg.compressTargetMax : 450, V4_MIN_BUDGET))
+  const kept0 = opts.segmented ? freshenState(v.kept, stats) : v.kept
+  const auto = cfg.compressV4AutoHints === false ? [] : autoHintOps(raw, kept0, typeof opts.rawSuffix === 'string' ? opts.rawSuffix : '')
+  const kept = auto.length ? [...kept0, ...auto] : kept0
+  if (auto.length) stats.autoHints = auto.length
   const sel = selectOps(kept, { budget: b, lang })
   const suffix = typeof opts.rawSuffix === 'string' ? opts.rawSuffix : ''
   // 有原文尾巴时不出尾段：尾巴本身就是最新的推理，「所以现在…」会比它旧
