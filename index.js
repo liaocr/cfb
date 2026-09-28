@@ -14,28 +14,21 @@
 export { name, inject, apply, DEP_ID } from './src/plugin.js'
 
 // ── 配置 ─────────────────────────────────────────────────────────────────────
-export { DEFAULTS, normalizeConfig, resolveCompileMode, dshHome, dshHomePath } from './src/config.js'
+export { DEFAULTS, normalizeConfig, dshHome, dshHomePath } from './src/config.js'
 
 // ── 出生即压缩（birth）───────────────────────────────────────────────────────
 export {
-  birthTransform, birthStart, birthFinish, birthSettle, birthHoldNew, deriveArtHandle, birthEconomics, birthCancelFlying,
+  birthTransform, birthStart, birthFinish, birthSettle, birthHoldNew, deriveArtHandle, birthEconomics, birthCancelFlying, readPressure,
 } from './src/birth.js'
 export { estimateTokens, wideShare, scriptCounts } from './src/tokens.js'
 export { createHostFollower } from './src/host-follow.js'
 export { createSessionTracker } from './src/session-tracker.js'
 
-// ── 迟到结果暂存区（Deferred Claim，实验）────────────────────────────────────
-export {
-  pushLateMemory, peekLateMemory, peekLateMemoryPartial, claimLateMemory, takeLateMemory,
-  acknowledgeLateMemory, lateReceiptValid, lateMemorySize, explainLateMiss,
-  noteLateInFlight, settleLateInFlight, lateInFlightCount,
-} from './src/late-memory.js'
-
 // ── 副模型调用 ───────────────────────────────────────────────────────────────
-export { generateDistillation, generateStateMemory, hedgedDistill, makeBirthCompiler } from './src/distill.js'
+export { generateDistillation, hedgedDistill, makeBirthCompiler } from './src/distill.js'
 export {
-  buildDistillPrompt, buildCompressPrompt, buildCompressPromptV3, splitCompressPrompt,
-  compressPromptVersion, compressTargets,
+  buildCompressPrompt, buildCompressPromptV3, splitCompressPrompt,
+  compressPromptVersion, compressPromptFor, compressTargets,
 } from './src/prompts.js'
 export {
   requestOnce, requestStream, prewarmTargetUrl, retryDelayMs,
@@ -43,12 +36,9 @@ export {
 } from './src/transport.js'
 export { readApiKey, readProviderSpec, endpointUrl, resolveProviderEndpoint } from './src/provider.js'
 
-// ── 证据采集与消息工具 ───────────────────────────────────────────────────────
-export { evidenceIndex, collectEvidence, filterCoveredTools, fullyVisibleResultSeqs } from './src/evidence.js'
+// ── 消息工具与保真度 ─────────────────────────────────────────────────────────
 export { provenanceOf, mapMessagesToSeqs, textOfContent, reasoningTextOf, artRefsOf } from './src/messages.js'
-// ★ 供测试直接校验「唯一解释出口」：索引与回退必须得到同样的证据。
-export { normalizeEvidenceEvent, assembleEvidence } from './src/state-memory.js'
+export { fidelity, protectedTokens, inventedIdentifiers } from './src/fidelity.js'
 
 // ── 观测 ─────────────────────────────────────────────────────────────────────
 export { makeTraceWriter, settledTraceData } from './src/trace.js'
-export { lockStats } from './src/fs-lock.js'

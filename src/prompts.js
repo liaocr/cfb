@@ -1,61 +1,38 @@
 // dsh-cot-form-b / prompts.js —— 副模型提示词与版本号（纯函数）
 //
-//   buildDistillPrompt     legacy 三态蒸馏（compress-v1 与之逐字相同）
 //   buildCompressPrompt    compress-v2：保真规则 + 相对长度目标
-//   buildCompressPromptV3  compress-v3：保真规则 + 绝对长度目标（compressTargetMin/Max）
+//   buildCompressPromptV3  compress-v3（缺省）：保真规则 + 绝对长度目标（compressTargetMin/Max）
+//   compressPromptFor      按配置选提示词（与 compressPromptVersion 同一次裁决）
 //   compressPromptVersion  版本号唯一裁决点（BOOT / 每次编译 / trace 共用）
+//   v12.1：legacy 三态蒸馏提示词（= compress-v1）删除。它的两项优点已被 v3 吸收：绝对长度目标（v3 第 7 条）、
+//          第三人称陈述不用祈使（v2/v3 第 5 条）；它独有的「已否决·不可重开」裁决式措辞被 v2 证明有害
+//          （把犹豫与备选抹成定论），不保留。原文可从 git cfba57b 的 src/prompts.js 取回。
 //   splitCompressPrompt    compressSystemPrompt 打开时拆成 system（规则前缀）+ user（原文），字节等价
 import { DEFAULTS } from './config.js'
 
-// ── 提示词：三态硬标签 ───────────────────────────────────────────────────────
-export function buildDistillPrompt(cot) {
-  return (
-    '你是上下文提纯器。把下面这段 Agent 上一轮的思维链，压成一份状态结算单（已归档状态记录）。\n\n' +
-    '只输出结算单本身。不要任何解释，不要 markdown 代码围栏，不要客套。\n\n' +
-    '必须且只能包含以下三栏，顺序固定：\n' +
-    '【已归档决策】已经定下来的事：做了什么、为什么、当前处在哪一步。\n' +
-    '【已否决分支·不可重开】被明确否决或禁止的方案。记录必须保持同等强度与不可逆性，不得软化、不得降级为"建议"。\n' +
-    '【已证伪路径·归档】已经试过并失败的做法。\n\n' +
-    '硬性规则：\n' +
-    '1. 某栏没有内容时，整栏省略，不要写"无"、不要写"暂无"。\n' +
-    '2. 严禁出现"建议""备选""可以考虑""或许""可能应该"等软性措辞。是就是，否就是否。\n' +
-    '3. 路径、文件名、命令、变量名、数字、错误信息原文，一律逐字保留，不许意译。\n' +
-    // 用正面指令而不是"不要复述用户原话"：模型对负向指令不敏感，点名反而可能诱导它去写那一栏。
-    // "用中文输出"是针对伪造引用 bug 的正面防线 —— 那个 bug 的本质就是模型把中文原话脑补翻译成了英文。
-    '4. 用中文输出。不要翻译成其他语言。\n' +
-    '5. 删掉推理过程、自我怀疑、重复表述。\n' +
-    '6. 目标长度 200~400 字符。\n' +
-    // ★ 2026-09-17 新增（红队方案 β 的提示词侧实现）。只改【句式】，不改【强度】。
-    //   理由：栏头与正文的祈使/第二人称句式会作为 user 角色注入，与当前任务直接冲突（见 _forensic-corrected.md §1.5）。
-    //   反例见 imperative.selftest.mjs「红队正则反例」：正则改写会发明事实，故改写只能由提示词侧完成。
-    '7. ★ 输出正文一律使用第三人称 + 过去时/完成时陈述；不得出现祈使句，不得使用第二人称"你"/"您"。\n' +
-    '   · "禁止再动代码"   ⇒ "代码修改阶段已于 <时间> 结束。"\n' +
-    '   · "下一步跑 X"     ⇒ "X 尚未执行。"\n' +
-    '   · "不要删会话"     ⇒ "会话文件删除动作经评估为破坏性，已归档为不可行。"\n' +
-    '   ⚠ 第 7 条只改变句式，不改变强度：已否决的方案必须仍然读起来不可重开。\n\n' +
-    '【上一轮思维链】\n' +
-    cot
-  )
-}
-
 /**
  * ★ 2026-09-23 compress-v2：**中性压缩**提示词（与 legacy 蒸馏的裁决式提示词分离）。
- *   legacy/buildDistillPrompt 要求「已否决·不可重开」「删掉自我怀疑」—— 那是不可逆裁决，
+ *   旧 legacy 蒸馏提示词要求「已否决·不可重开」「删掉自我怀疑」—— 那是不可逆裁决，
  *   把 reasoning 里的犹豫与备选项抹掉。纯压缩的目标只是**更短且保真**：
  *     · 保留未决问题、备选方案与不确定性的措辞（不升级为结论）；
  *     · 路径 / 命令 / 数字 / 报错逐字保留；
  *     · 不新增事实、不给建议、不使用祈使句与第二人称（作为 user 角色注入时不得与当前任务冲突）。
- *   通过 promptVersion 'compress-v2' 与 v1（=legacy 文本）区分，便于 A/B。
  */
 /** compress 提示词版本的唯一裁决点（BOOT、每次编译、trace 三处共用，杜绝硬编码漂移）。 */
 export function compressPromptVersion(cfg) {
-  const v = cfg && cfg.compressPrompt === 'v1' ? 'v1'
-    : cfg && cfg.compressPrompt === 'v3' ? 'v3' : 'v2'
-  const sys = cfg && cfg.compressSystemPrompt === true && v !== 'v1' ? ':sys' : ''
-  if (v !== 'v3') return 'compress-' + v + sys
+  const v = cfg && cfg.compressPrompt === 'v2' ? 'v2' : 'v3'
+  const sys = cfg && cfg.compressSystemPrompt === true ? ':sys' : ''
+  if (v === 'v2') return 'compress-v2' + sys
   // v3 把目标长度写进版本号 ⇒ trace / BOOT / A-B 分桶自动带上参数，无需另记字段。
   const t = compressTargets(cfg)
   return 'compress-v3:' + t.min + '-' + t.max + sys
+}
+
+/** 按配置构造压缩提示词；与 compressPromptVersion 同一口径（v2 显式选择，其余一律 v3）。 */
+export function compressPromptFor(cfg, cot) {
+  if (cfg && cfg.compressPrompt === 'v2') return buildCompressPrompt(cot)
+  const t = compressTargets(cfg)
+  return buildCompressPromptV3(cot, t.min, t.max)
 }
 
 /** v3 的绝对长度目标（字符）。越界/非数一律回落缺省，绝不抛错。 */

@@ -4,7 +4,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { pathToFileURL } from 'node:url'
-import { parseTrace } from './replay.mjs'
+// trace.log 一行 = `[ISO时间] [tag] {json}`（v12.1 从已删除的 tools/replay.mjs 搬来）
+export function parseTrace(text) {
+  return text.split('\n').flatMap(line => {
+    const m = /^\[([^\]]+)\] \[([^\]]+)\] (\{.*\})$/.exec(line)
+    if (!m) return []
+    try { return [{ at: m[1], tag: m[2], ...JSON.parse(m[3]) }] } catch { return [] }
+  })
+}
 const valid = n => typeof n === 'number' && Number.isFinite(n) && n >= 0
 function distribution(values) {
   const xs = values.filter(valid).sort((a, b) => a - b)
@@ -35,21 +42,19 @@ export function analyzeEfficiency(text) {
   return { kind: 'compiler-efficiency-diagnostics', sourceSha256: crypto.createHash('sha256').update(text).digest('hex'),
     boots: boots.map(g => {
       const starts = new Map(), completed = new Map(), tasks = new Map()
-      const task = id => { if (!tasks.has(id)) tasks.set(id, { taskId: id, presented: 0, acknowledged: false, semanticUse: null }); return tasks.get(id) }
+      const task = id => { if (!tasks.has(id)) tasks.set(id, { taskId: id }); return tasks.get(id) }
       for (const r of g.rows) {
         if (r.tag === 'compiler-transport-started' && r.requestId) starts.set(r.requestId, r)
         if (r.tag === 'compiler-transport-settled' && r.requestId) completed.set(r.requestId, r)
         if (r.taskId) {
           const t = task(r.taskId)
           if (r.tag === 'compiler-preparation-cost') t.preparationMs = r.ms
-          if (r.tag === 'birth-distill-settled') { t.ok = r.ok; t.reason = r.reason; t.requestId = r.requestId; t.flightId = r.flightId; t.sharedFlight = r.sharedFlight; t.promptVersion = r.promptVersion; t.parseRenderMs = r.parseRenderMs; t.promptBuildMs = r.promptBuildMs; t.inputAmplificationRatio = r.inputAmplificationRatio ?? r.compressRatio ?? null }
-          if (r.tag === 'memory-presented-in-options') t.presented++
+          if (r.tag === 'birth-distill-settled') { t.ok = r.ok; t.reason = r.reason; t.requestId = r.requestId; t.promptVersion = r.promptVersion; t.inputAmplificationRatio = r.inputAmplificationRatio ?? r.compressRatio ?? null }
         }
-        if (r.tag === 'birth-claim-acknowledged') for (const id of r.taskIds || []) task(id).acknowledged = true
       }
       const requests = [...new Set([...starts.keys(), ...completed.keys()])].map(id => {
         const r = completed.get(id), start = starts.get(id)
-        return { requestId: id, flightId: r?.flightId || start?.flightId, model: start?.model || r?.model,
+        return { requestId: id, model: start?.model || r?.model,
           timeoutMs: start?.timeoutMs, endpoint: start?.endpoint ?? r?.endpoint,
           maxOutputTokens: start?.maxOutputTokens ?? r?.maxOutputTokens, thinkingOff: start?.thinkingOff ?? r?.thinkingOff,
           stream: start?.stream ?? r?.stream, promptVersion: start?.promptVersion ?? null, ok: r?.ok ?? null, reason: r?.reason ?? null,
@@ -76,82 +81,16 @@ export function analyzeEfficiency(text) {
         return { config: p.config, ...timings }
       })
       const count = tag => g.rows.filter(r => r.tag === tag).length
-      const netCandidates = g.rows.filter(r => r.tag === 'emit-net-savings')
-      const netBlockedIds = new Set(g.rows.filter(r => r.tag === 'emit-no-net-savings').map(r => r.emitAttemptId).filter(Boolean))
-      const netResults = g.rows.filter(r => r.tag === 'emit-net-savings-result')
-      const netEvaluatedIds = new Set(netCandidates.map(r => r.emitAttemptId).filter(Boolean))
-      const emittedResults = netResults.filter(r => r.stage === 'emit' && r.emitted === true && netEvaluatedIds.has(r.emitAttemptId))
-      const passedGateIds = new Set([...netEvaluatedIds].filter(id => !netBlockedIds.has(id)))
-      const finalizedPassedIds = new Set(netResults.filter(r => passedGateIds.has(r.emitAttemptId) && r.stage !== 'gate').map(r => r.emitAttemptId))
-      const gatePassed = Math.max(0, netCandidates.length - g.rows.filter(r => r.tag === 'emit-no-net-savings').length)
-      const evaluatedCount = netCandidates.length
-      const blockedCount = g.rows.filter(r => r.tag === 'emit-no-net-savings').length
-      const measuredEmits = emittedResults.filter(r => Number.isFinite(r.measuredSurfaceTokenDelta))
-      const tokenDeltas = measuredEmits.map(r => r.measuredSurfaceTokenDelta)
-      // ★ 迟到认领漏斗：每一级都是**计数**，不是收益。stored>0 而 claimHit=0 = 积压，不是修复。
-      const claimFunnel = {
-        compiled: ts.filter(t => t.ok === true).length,
-        passedThrough: count('birth-passthrough'),
-        stored: count('birth-late-memory-stored'),
-        storeRefused: count('birth-late-memory-refused'),
-        opportunity: count('birth-claim-opportunity'),
-        claimHit: count('birth-claim-hit'),
-        claimMiss: Object.fromEntries([...g.rows.filter(r => r.tag === 'birth-claim-miss').reduce((m, r) => m.set(r.why || 'unknown', (m.get(r.why || 'unknown') || 0) + 1), new Map())]),
-        // no-candidate 细分：miss 当时还有编译在飞（"还没轮到"）vs 没有任何在飞（真正找不到 ⇒ 候选选择/身份问题）
-        claimMissNoCandidateInFlight: g.rows.filter(r => r.tag === 'birth-claim-miss' && r.why === 'no-candidate' && (r.inFlight || 0) > 0).length,
-        claimMissNoCandidateIdle: g.rows.filter(r => r.tag === 'birth-claim-miss' && r.why === 'no-candidate' && !(r.inFlight > 0)).length,
-        claimSkip: Object.fromEntries([...g.rows.filter(r => r.tag === 'birth-claim-skip').reduce((m, r) => m.set(r.reason || 'unknown', (m.get(r.reason || 'unknown') || 0) + 1), new Map())]),
-        emitted: count('birth-claim-emitted'),
-        acknowledged: count('birth-claim-acknowledged'),
-        presentedInOptions: count('memory-presented-in-options'),
-        meaning: 'counts-per-boot; stored without claimHit is backlog, not delivery',
-      }
-      const carryRows = g.rows.filter(r => r.tag === 'ledger-built')
-      const v11 = {
-        retargetReady: count('emit-retarget-ready'),
-        retargetRefusedBoardSingleton: count('emit-retarget-refused-board-singleton'),
-        spanUnreadable: count('emit-span-unreadable'),
+      // 放行原因分布（v12.1）：condensed 之外每一种原文放行都在这里，含 invented-identifier（发明标识符闸）
+      const outcomes = {
+        condensed: count('birth-condensed'),
+        passthrough: Object.fromEntries([...g.rows.filter(r => r.tag === 'birth-passthrough').reduce((m, r) => m.set(r.why || 'unknown', (m.get(r.why || 'unknown') || 0) + 1), new Map())]),
+        inventedSamples: g.rows.filter(r => r.tag === 'birth-passthrough' && r.why === 'invented-identifier').slice(0, 20).map(r => r.invented || []),
         retrySkipped: count('compiler-retry-skipped'),
-        noRawRetargetTried: g.rows.filter(r => r.tag === 'emit-no-raw' && r.retargetTried === true).length,
-        refusedRangeNonMonotonic: g.rows.filter(r => r.tag === 'emit-refused-range' && r.monotonic === false).length,
-        // v1/v2 A/B：按 promptVersion 分桶的成功率与长度（长度是字符，不是语义保真）
+        // 按 promptVersion 分桶的成功率与长度（长度是字符，不是语义保真）
         promptVersions: Object.fromEntries([...g.rows.filter(r => r.tag === 'birth-distill-settled').reduce((m, r) => {
           const k = r.promptVersion || 'unknown'; const b = m.get(k) || { settled: 0, ok: 0, chars: [] }
           b.settled++; if (r.ok) { b.ok++; b.chars.push(r.chars) } m.set(k, b); return m }, new Map())].map(([k, b]) => [k, { settled: b.settled, ok: b.ok, outputChars: distribution(b.chars) }])),
-        carryChars: distribution(carryRows.map(r => r.carryChars)),
-        carryInlineChars: distribution(carryRows.map(r => r.carryInlineChars)),
-        carryOverflow: carryRows.filter(r => r.carryOverflow === true).length,
-        carryBudgetOverflow: carryRows.reduce((n, r) => n + (r.carryBudgetOverflow || 0), 0),
-        carryItemOversize: carryRows.reduce((n, r) => n + (r.carryItemOversize || 0), 0),
-        carryCounts: { boards: distribution(g.rows.filter(r => r.tag === 'emit-carry').map(r => r.boards)),
-          reasoning: distribution(g.rows.filter(r => r.tag === 'emit-carry').map(r => r.reasoning)),
-          userInputs: distribution(g.rows.filter(r => r.tag === 'emit-carry').map(r => r.userInputs)),
-          answers: distribution(g.rows.filter(r => r.tag === 'emit-carry').map(r => r.answers)),
-          calls: distribution(g.rows.filter(r => r.tag === 'emit-carry').map(r => r.calls)) },
-        ledgerChars: distribution(carryRows.map(r => r.ledgerChars ?? r.chars)),
-        sourceChars: distribution(g.rows.filter(r => r.tag === 'emit-net-savings').map(r => r.sourceChars)),
-        netSavedChars: distribution(g.rows.filter(r => r.tag === 'emit-net-savings').map(r => r.netSavedChars)),
-        noNetSavings: count('emit-no-net-savings'),
-        netSavingsGate: {
-          evaluated: evaluatedCount,
-          blocked: blockedCount,
-          blockedShare: evaluatedCount ? Number((blockedCount / evaluatedCount).toFixed(4)) : null,
-          passedGate: gatePassed,
-          emittedAfterGate: emittedResults.length,
-          postGateNotEmitted: Math.max(0, finalizedPassedIds.size - emittedResults.length),
-          unfinalizedAfterGate: Math.max(0, passedGateIds.size - finalizedPassedIds.size),
-          attemptCorrelationSamples: netEvaluatedIds.size,
-          traceEmitReplaced: count('emit-replaced'),
-          sourceChars: distribution(netCandidates.map(r => r.sourceChars)),
-          candidateNetSavedChars: signedDistribution(netCandidates.map(r => r.netSavedChars)),
-          realizedNetSavedChars: signedDistribution(emittedResults.map(r => r.netSavedChars)),
-          tokenMeterSamples: tokenDeltas.length,
-          measuredSurfaceTokenDelta: signedDistribution(tokenDeltas),
-          measuredPositiveTokenSavings: tokenDeltas.filter(x => x > 0).length,
-          measuredPositiveTokenSavingsShare: tokenDeltas.length ? Number((tokenDeltas.filter(x => x > 0).length / tokenDeltas.length).toFixed(4)) : null,
-          measuredNonPositiveTokenSavings: tokenDeltas.filter(x => x <= 0).length,
-          note: 'positive measuredSurfaceTokenDelta means host-meter surface tokens fell; this is not provider billing. Character deltas are not tokenizer counts.',
-        },
       }
       // ★ v11.6 观测段（2026-09-23）。三者都只是诊断证据，不是收益证明。
       //   windowProbe：免费窗口是否存在。判读：otherStartToLastEndMs p50 > 1000 ⇒ 有窗口（可提前起火）；
@@ -196,20 +135,15 @@ export function analyzeEfficiency(text) {
       return { bootIndex: g.bootIndex, anchored: g.anchored, boot: g.boot,
         windowProbe, economics, fidelity, hedge, headersGrace,
         counts: { transportAttemptsStarted: starts.size, transportAttemptsSettled: completed.size,
-          sharedAttachments: count('compiler-flight-shared'),
           archiveTerminalConsumers: count('compiler-consumer-unusable') },
-        claimFunnel, v11,
-        preparationMs: distribution(ts.map(t => t.preparationMs)), parseRenderMs: distribution(ts.map(t => t.parseRenderMs)), transportTimings, requests, tasks: ts,
-        decisionReview: ts.filter(t => t.acknowledged || t.presented).map(t => ({ taskId: t.taskId, requestId: t.requestId ?? null,
-          observedInOptions: t.presented > 0, subsequentRoundIds: null, goalId: null,
-          usedJudgmentEvidence: null, repeatedExploration: null, wrongStateRoute: null, reviewer: null })) }
+        outcomes,
+        preparationMs: distribution(ts.map(t => t.preparationMs)), transportTimings, requests, tasks: ts }
     }), productAcceptance: '未验收', billingSavings: null,
     limitations: ['BOOT partitions are not pooled; an unanchored prefix cannot establish a configuration epoch.',
       'Transport-started is an attempted request, not proof of provider receipt or billing. Each retry has a distinct requestId.',
-      'Shared attachments do not imply saved money; usage is deduplicated by requestId and remains provider-reported.',
+      'Usage is deduplicated by requestId and remains provider-reported.',
       'Endpoint labels identify provider/API, not full URL or credential epochs; route or credential hot-reconfiguration still requires separate external attribution.',
       'Content timestamps do not establish completion; the original full-success gate is unchanged.',
-      'Decision-review fields are intentionally null. Presentation/acknowledgment cannot establish understanding, repetition or causality.',
       'Use the existing paired full-session replay and independent audit for product acceptance.'] }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {

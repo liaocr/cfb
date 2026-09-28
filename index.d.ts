@@ -24,79 +24,28 @@ export interface CotFormBConfig {
   /**
    * 模式（缺省 'birth'）：
    *   'birth'      出生即压缩（唯一生产路径）：llm/stream 里扣住 reasoning，CAS 归档 + 副模型压缩后放行
-   *   'checkpoint' 实验：pre-step 用官方 user/message 看板整段替换已出站的推理
    *   'off'        完全不介入，原样放行
-   * ⛔ 'distill' / 'rules' 已于 v11.8 退役：写回路径协议上永久非法；传入时按 'off' 处理，
+   * ⛔ 'distill' / 'rules'（v11.8）与 'checkpoint'（v12.1）已退役：写回路径协议上永久非法；传入时按 'off' 处理，
    *    并由 normalizeConfig 记入 retiredMode（BOOT 可见）。不认识的值同样按 'off'（记入 invalidMode）。
    */
-  mode?: 'birth' | 'checkpoint' | 'off' | 'distill' | 'rules'
+  mode?: 'birth' | 'off' | 'distill' | 'rules' | 'checkpoint'
 
   /**
-   * 编译模式三选一（唯一裁决点 resolveCompileMode）：
-   *   stateMemory   → 'memory'   证据账本 / 快照 / 两栏判断（状态记忆）
-   *   stateCompress → 'compress' 仅本段 reasoning 的摘要（不采集证据；产物可进迟到暂存区）
-   *   都不开        → 'legacy'   旧蒸馏提示词
-   * 两者同时为 true 时 memory 生效，并在 BOOT 里记录 compileModeConflict（不抛错）。
+   * compress 提示词版本（v12.1 起 compress 是唯一编译模式）：'v3'（缺省）= 保真规则 + 绝对长度目标；
+   * 'v2' = 同一套保真规则 + 相对长度目标（20%~35%）。'x1'（v12.0）与 'v1' legacy 蒸馏（v12.1）已退役，
+   * 出现时按 'v3' 处理并记入 configAdjusted。
    */
-  stateMemory?: boolean
-  stateCompress?: boolean
-  /** compress 提示词版本：'v2' 中性压缩（缺省，相对长度目标）；'v1' 与 legacy 蒸馏逐字相同（回滚/对照）；'v3' = v2 的保真规则 + 绝对长度目标（v12.0 起 'x1' 抽取式已退役，出现时按 'v2' 处理并记入 configAdjusted） */
-  compressPrompt?: 'v1' | 'v2' | 'v3'
+  compressPrompt?: 'v2' | 'v3'
   /** 仅 v3 生效：绝对长度目标下限（字符，缺省 250） */
   compressTargetMin?: number
   /** 仅 v3 生效：绝对长度目标上限（字符，缺省 450） */
   compressTargetMax?: number
   /** v11.7（opt-in，缺省 false）：把 v2/v3 压缩提示词的固定规则前缀放进 system 消息、原文放 user 消息（字节等价），让 DeepSeek Context Caching 命中规则前缀；打开后 promptVersion 追加 ':sys' */
   compressSystemPrompt?: boolean
-  /** pre-step 整段 replace 时随看板带走的旧看板正文/可见回答/工具调用参数的内联总预算（字符，缺省 3000）；超出归档为句柄 */
-  maxCarryChars?: number
-  /** emit 仅在预计节省至少该字符数时替换（缺省 100） */
-  emitterMinSavingsChars?: number
-  /** emit 仅在预计字符净省比例不低于该值时替换（缺省 0.05；字符估算非 tokenizer token） */
-  emitterMinSavingsRatio?: number
-  /** 短期诊断开关：实际 replace 前后采样宿主 tokenMeter；默认 false，不调用模型 API */
-  emitterMeasureTokens?: boolean
-  /** 迟到认领：多块消息允许「已就绪块用摘要、未就绪块逐字保留」的混合认领。缺省 false（保持全覆盖铁律） */
-  lateClaimPartial?: boolean
-  /** 由 normalizeConfig 派生，调用方不应手填 */
-  compileMode?: 'memory' | 'compress' | 'legacy'
-  compileModeConflict?: { stateMemory: true; stateCompress: true; winner: 'stateMemory' }
-  /** pre-step 发射器：活跃尾部宽度（≥1）、看板署名插件名、工具结果内联上限 */
-  keepTail?: number
-  pluginName?: string
-  maxInlineToolResultChars?: number
-  staticMinRawChars?: number | null
-  emitterProducer?: string
-  /** P0-2：checkpoint 发射前按句柄读回抽样验证的上限（缺省 2；0=关）。只有正面证伪才拦住发射 */
-  emitHandleProbeMax?: number
-  /**
-   * ── P1 工具结果「可检索化」（2026-09-24）───────────────────────────────
-   * 只改视图，归档一律原文。归档行后附富化段：工具名 + 调用参数摘要 + 内容样本 +（选择性）头尾摘录。
-   */
-  emitterToolSampleChars?: number
-  /** 选择性摘录预算（字符；缺省 800，0=关）：错误现场 / 最近 N 条 附头尾摘录 */
-  emitterExcerptChars?: number
-  /** 「最近 N 条工具结果」的 N（缺省 2，0=关） */
-  emitterKeepRecentToolResults?: number
-  /** P1 总开关（缺省 true）；false ⇒ 只留句柄，用于 A/B 对照 */
-  emitterSelectiveArchive?: boolean
   birthCancelOnGiveUp?: boolean
   birthDiskWaitMs?: number
-  /** false disables the ledger; current in-memory evidence is still available for compilation. */
-  stateSnapshot?: boolean
-  stateCoveredEvidence?: boolean
-  stateStructuralFirst?: boolean
-  stateEvidenceLimit?: number
-  stateCacheKeyTrace?: boolean
-  stateProblemUnits?: boolean
   distillStream?: boolean
-  /**
-   * 下轮收网（Deferred Claim，实验）。v11.8 缺省 false（docs/analysis/AUDIT-V11.5.md §四 建议 ②）：
-   * 关闭时 finish 处限时等待（birthFinishWaitMs + finishHeadersGraceMs）后原文放行；
-   * 打开时 finish 只取已就绪结果，未就绪的进暂存区、下一轮 pre-step 认领。BOOT 的 birth.experimental 标记。
-   */
-  birthDeferredClaim?: boolean
-  /** finish 处收网等待上限（ms，缺省 1500）。birth + deferredClaim 关时 timeoutMs 至少会被抬到 本值 + finishHeadersGraceMs + 2000 */
+  /** finish 处收网等待上限（ms，缺省 1500）。birth 下 timeoutMs 至少会被抬到 本值 + finishHeadersGraceMs + 2000 */
   birthFinishWaitMs?: number
   /** v11.6 默认 3100（R=60 自洽保本原长 2,747，保守取整且不下调；见 docs/analysis/AUDIT-V11.5.md §一）。 */
   birthMinChars?: number
@@ -107,6 +56,8 @@ export interface CotFormBConfig {
   econR?: number
   econCharsPerTurn?: number | null
   birthArchive?: boolean
+  /** v12.1 发明标识符闸（缺省 true）：摘要含原文没有的路径 / URL / 反引号代码 / camelCase / snake_case / file.ext ⇒ 原文放行（why=invented-identifier） */
+  birthIdentifierGate?: boolean
   birthArchiveTimeoutMs?: number
   /** P0-2：内存预推句柄（deriveArtHandle）的读回验证限时（ms，缺省 800）。超时=不可证 ⇒ 原文放行 */
   birthHandleProbeTimeoutMs?: number
@@ -147,32 +98,30 @@ export interface CotFormBConfig {
     minTokens?: number | null; tokenGate?: boolean; minSavedTokens?: number
     /** = birthSessionAmbiguity */
     sessionAmbiguity?: 'passthrough' | 'latest'
+    identifierGate?: boolean
   }
   followHostProvider?: boolean
   followProvider?: string
   settingsPath?: string
-
-  /** checkpoint 模式：推理短于此值不发起提前调用（early-fire）。默认 800 */
-  minRawChars?: number
 
   /** 以下四项由 normalizeConfig 填入（调用方不应手填），BOOT 上报 */
   /** 不认识的键（含嵌套容器里拼错的键，形如 'birth.finishWait'） */
   unknownOptions?: string[]
   /** 已退役、已从生效配置里删除的键（v7 四个旧开关 + v11.8 随 distill/rules 退役的键，含 'rules' 容器） */
   retiredOptions?: string[]
-  /** 配置里写了已退役模式（'distill' | 'rules'）时记录原值；生效 mode 为 'off' */
-  retiredMode?: 'distill' | 'rules'
+  /** 配置里写了已退役模式（'distill' | 'rules' | 'checkpoint'）时记录原值；生效 mode 为 'off' */
+  retiredMode?: 'distill' | 'rules' | 'checkpoint'
   /** 配置里写了不认识的 mode 时记录原值；生效 mode 为 'off' */
   invalidMode?: unknown
-  /** 自动调整留痕（目前只有 timeoutMs 抬高） */
-  configAdjusted?: { timeoutMs?: { from: number; to: number; why: string } }
+  /** 自动调整留痕：timeoutMs 抬高、退役的 compressPrompt 值回落 'v3'、stateMemory:true（memory 模式已删除） */
+  configAdjusted?: {
+    timeoutMs?: { from: number; to: number; why: string }
+    compressPrompt?: { from: unknown; to: 'v3'; why: string }
+    stateMemory?: { from: 'memory'; to: 'compress'; why: string }
+  }
 
-  /** checkpoint 模式：在 `llm/stream` 里一看到 reasoning 块结束就**非阻塞**地发起副模型调用。默认 true */
-  earlyFire?: boolean
-  /** 副模型单次请求硬超时（所有模式共用）。默认 8000；birth 下可能被自动抬高（见 configAdjusted） */
+  /** 副模型单次请求硬超时。默认 8000；birth 下可能被自动抬高（见 configAdjusted） */
   timeoutMs?: number
-  /** checkpoint 模式：pre-step 里最多额外等提前调用结果多久 = 用户感知延迟上限。默认 300 */
-  graceMs?: number
   maxAttempts?: number
   /** v11.7 对冲请求：主请求 N ms 内未收到 200 响应头就再发一份相同请求，先回头者胜、另一份 abort。0 = 关（缺省）；建议 ≥ TTFB p50（3000）；仅 maxAttempts ≤ 1 时生效 */
   hedgeAfterMs?: number
@@ -252,25 +201,18 @@ export declare function readApiKey(cfg: Pick<CotFormBConfig, 'credentialRef' | '
  * 退役键进 retiredOptions、未知键进 unknownOptions（都只报不抛）。
  */
 export declare function normalizeConfig(config?: CotFormBConfig): CotFormBConfig
-export declare function resolveCompileMode(cfg: CotFormBConfig | null | undefined): 'memory' | 'compress' | 'legacy'
 /** 重试退避（纯函数）：非瞬时错误返回 null（不重试），否则返回带抖动的毫秒数 */
 export declare function retryDelayMs(e: unknown, attempt: number, rand?: () => number): number | null
 /** compress 提示词版本唯一裁决点（BOOT / 每次编译 / trace 共用） */
 export declare function compressPromptVersion(cfg: CotFormBConfig | null | undefined): string
+/** 按 cfg 选压缩提示词（只有显式 'v2' 走 v2，其余一律 v3） */
+export declare function compressPromptFor(cfg: CotFormBConfig | null | undefined, cot: string): string
 /** v3 的绝对长度目标（字符）；非法输入回落缺省，保证 min < max */
 export declare function compressTargets(cfg: CotFormBConfig | null | undefined): { min: number; max: number }
 /** compress-v2 中性压缩提示词（相对长度目标 20%~35%） */
 export declare function buildCompressPrompt(cot: string): string
 /** compress-v3：v2 的保真规则 + 绝对长度目标 */
 export declare function buildCompressPromptV3(cot: string, minChars?: number, maxChars?: number): string
-
-/** 诊断：为何该原文认领不了 */
-export declare function explainLateMiss(sessionId: string, fullRaw: string, opts?: { branchId?: string | null }): 'empty' | 'no-candidate' | 'ambiguous' | 'partial-coverage' | 'ok'
-/** 混合认领（opt-in，见 lateClaimPartial） */
-export declare function peekLateMemoryPartial(sessionId: string, fullRaw: string, opts?: { branchId?: string | null }): { count: number; receipt: unknown[]; texts: string[]; entries: unknown[]; partial: true; replacedChars: number; keptChars: number } | null
-
-/** 组装三态提纯提示词（硬标签、无用户原话栏、无工具栏） */
-export declare function buildDistillPrompt(cot: string): string
 
 /** content 双兼容：纯字符串 或 [{type:'text',text}] 块数组 */
 export declare function textOfContent(content: unknown): string
@@ -320,15 +262,15 @@ export interface DistillMeta extends RequestMeta {
  *
  * ⛔ `cfg.model` 为空时**直接抛错**（`no model: ...`），绝不猜模型名 ——
  *    上层据此原文放行。这是「跟随宿主模型」的执行机构。
- * @param promptOverride 自定义提示词（不传 = buildDistillPrompt(cot)）
- * @param runtime        { trace, promptVersion, flights, scope }：传输 trace、版本号贯通与精确在途共享
+ * @param promptOverride 自定义提示词（不传 = compressPromptFor(cfg, cot)）
+ * @param runtime        { trace, promptVersion }：传输 trace 与版本号贯通
  */
 export declare function generateDistillation(
   cot: string,
   cfg: CotFormBConfig,
   signal?: AbortSignal,
   promptOverride?: string,
-  runtime?: { trace?: (tag: string, data: object) => void; promptVersion?: string; flights?: unknown; scope?: unknown },
+  runtime?: { trace?: (tag: string, data: object) => void; promptVersion?: string; [k: string]: unknown },
 ): Promise<{ text: string; meta: DistillMeta }>
 
 /** Cordis 插件入口 */
@@ -348,15 +290,16 @@ export declare function birthEconomics(
 export declare function estimateTokens(text: string): number
 /** 宽字符（CJK）占比 0~1，trace 画像用。 */
 export declare function wideShare(text: string): number
-/** birth 编译器工厂：按 compileMode 三选一构造 deps.distill(input, signal, budget)。 */
+/** birth 编译器工厂：构造 deps.distill(input, signal, budget)（compress-only）。 */
 export declare function makeBirthCompiler(
   cfg: CotFormBConfig,
-  opts?: { flights?: unknown },
 ): (input: unknown, signal?: AbortSignal, budget?: { onHeaders?: (info: { status: number; ttfbMs: number }) => void; trace?: (tag: string, data: object) => void; [k: string]: unknown }) => Promise<{ text: string; meta: Record<string, unknown> }>
 /** 取消一个 birth 任务仍在飞的提纯（已落地的结果绝不取消）。返回是否真的取消了。 */
-export declare function birthCancelFlying(task: unknown, cfg?: CotFormBConfig, trace?: (tag: string, data: object) => void, why?: string, honorDeferred?: boolean): boolean
-/** 本进程内的锁统计（staleRecovered = 接管「持有者已死」的残留锁次数）。 */
-export declare function lockStats(): { acquired: number; busy: number; staleRecovered: number }
+export declare function birthCancelFlying(task: unknown, cfg?: CotFormBConfig, trace?: (tag: string, data: object) => void, why?: string): boolean
+/** 此刻物理水位（tokenMeter 优先，其次 surfaceChars/4 估算），供 birth-econ 观测。 */
+export declare function readPressure(deps: { session?: unknown; ctx?: unknown; surfaceChars?: number }): { usedTokens: number | undefined; contextWindow: number | undefined; source: 'meter' | 'estimated' | 'none' }
+/** v12.1 发明标识符闸：返回摘要里原文没有的路径 / URL / 代码标识符（最多 8 个样本）；[] = 未发现 */
+export declare function inventedIdentifiers(src: string, out: string): string[]
 
 // ── v11.11 ──────────────────────────────────────────────────────────────────
 /** 按书写系统拆分字符数（只有数量）；trace 用它记录校准样本。 */

@@ -112,7 +112,7 @@ await test('★ compress 模式经 apply()：对冲/传输 trace 落盘，birth-
   reset(1500, 50)
   const hooks = new Map(), traceFile = path.join(home, 'compress-hedge.log')
   I.apply({ on: (n, fn) => hooks.set(n, fn), get: (k) => (k === 'cmbStore' ? { putText: async () => ({ handle: 'art://compress-hedge' }) } : null) }, {
-    ...cfgBase, mode: 'birth', dryRun: false, stateCompress: true, compressPrompt: 'v3', birthMinChars: 100, birthDeferredClaim: false,
+    ...cfgBase, mode: 'birth', dryRun: false, compressPrompt: 'v3', birthMinChars: 100,
     birth: { finishWaitMs: 3000 }, hedgeAfterMs: 200, trace: true, traceFile, prewarm: false,
   })
   const session = { id: 'compress-hedge', surface: { nodes: [] }, eventAt: () => null }
@@ -156,7 +156,7 @@ await test('★ 收尾宽限：budget 到点但已收到响应头 ⇒ 多等 gra
   const raw = 'CHECK module alpha verified ok step\n'.repeat(120)
   let onHeaders = null
   const deps = {
-    cfg: { birthMinChars: 100, birthArchive: true, birthArchiveTimeoutMs: 3000, birthFinishWaitMs: 200, birthMinSavedChars: 50, finishHeadersGraceMs: 1500, birthDeferredClaim: false },
+    cfg: { birthMinChars: 100, birthArchive: true, birthArchiveTimeoutMs: 3000, birthFinishWaitMs: 200, birthMinSavedChars: 50, finishHeadersGraceMs: 1500 },
     trace: (t, d) => traces.push([t, d]), archive: async () => 'art://p', sessionId: () => 's',
     // 模拟：100ms 后响应头到达，再 600ms 后内容完成（budget 200 会先到点）
     distill: async (_raw, _sig, budget) => { onHeaders = budget.onHeaders; await sleep(100); onHeaders({ ttfbMs: 100 }); await sleep(600); return { text: '摘要' } },
@@ -173,7 +173,7 @@ await test('收尾宽限：没收到响应头 ⇒ 不加一毫秒，budget 到�
   const traces = []
   const raw = 'CHECK module alpha verified ok step\n'.repeat(120)
   const deps = {
-    cfg: { birthMinChars: 100, birthArchive: true, birthArchiveTimeoutMs: 3000, birthFinishWaitMs: 200, birthMinSavedChars: 50, finishHeadersGraceMs: 1500, birthDeferredClaim: false },
+    cfg: { birthMinChars: 100, birthArchive: true, birthArchiveTimeoutMs: 3000, birthFinishWaitMs: 200, birthMinSavedChars: 50, finishHeadersGraceMs: 1500 },
     trace: (t, d) => traces.push([t, d]), archive: async () => 'art://p', sessionId: () => 's',
     distill: async () => { await sleep(1000); return { text: '摘要' } },
   }
@@ -189,7 +189,7 @@ await test('收尾宽限：grace 也到点 ⇒ 放行，宽限最多一次', asy
   const traces = []
   const raw = 'CHECK module alpha verified ok step\n'.repeat(120)
   const deps = {
-    cfg: { birthMinChars: 100, birthArchive: true, birthArchiveTimeoutMs: 3000, birthFinishWaitMs: 100, birthMinSavedChars: 50, finishHeadersGraceMs: 300, birthDeferredClaim: false },
+    cfg: { birthMinChars: 100, birthArchive: true, birthArchiveTimeoutMs: 3000, birthFinishWaitMs: 100, birthMinSavedChars: 50, finishHeadersGraceMs: 300 },
     trace: (t, d) => traces.push([t, d]), archive: async () => 'art://p', sessionId: () => 's',
     distill: async (_r, _s, budget) => { await sleep(50); budget.onHeaders({ ttfbMs: 50 }); await sleep(2000); return { text: '摘要' } },
   }
@@ -219,10 +219,10 @@ await test('splitCompressPrompt：v2/v3 拆分字节等价；无 marker 返回 n
   assert.equal(I.splitCompressPrompt('no marker'), null)
 })
 
-await test('compressPromptVersion：开关打开时版本号追加 :sys（v1 除外）', async () => {
+await test('compressPromptVersion：开关打开时版本号追加 :sys；v1 已退役 ⇒ 按 v3', async () => {
   assert.equal(I.compressPromptVersion({ compressPrompt: 'v3', compressSystemPrompt: true }), 'compress-v3:250-450:sys')
   assert.equal(I.compressPromptVersion({ compressPrompt: 'v2', compressSystemPrompt: true }), 'compress-v2:sys')
-  assert.equal(I.compressPromptVersion({ compressPrompt: 'v1', compressSystemPrompt: true }), 'compress-v1')
+  assert.equal(I.compressPromptVersion({ compressPrompt: 'v1', compressSystemPrompt: true }), 'compress-v3:250-450:sys')
   assert.equal(I.compressPromptVersion({ compressPrompt: 'v3' }), 'compress-v3:250-450')
   assert.equal(I.DEFAULTS.compressSystemPrompt, false)
 })

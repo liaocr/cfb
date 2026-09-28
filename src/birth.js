@@ -4,17 +4,9 @@
 //   birthStart      block-end 处同步起火：内存算句柄 → CAS 归档 ∥ 副模型压缩 并发起飞（绝不 await）
 //   birthFinish     finish 处收网：句柄落盘 && 压缩成功 && 净省达标 ⇒ 改写；否则原文(+句柄)放行
 //   birthEconomics  成本模型（只记录，不参与判定）
+//   readPressure    此刻物理水位（官方 tokenMeter；拿不到就如实标 source）
 import crypto from 'node:crypto'
-import { compileModeOf } from './config.js'
-import { prepareJudgmentPrompt } from './evidence-ledger.js'
-import { filterCoveredTools, COVER_TAIL_FLOOR, fullyVisibleResultSeqs } from './evidence.js'
-import { fidelity } from './fidelity.js'
-import { settleLateInFlight, pushLateMemory, noteLateInFlight } from './late-memory.js'
-import {
-  normalizeBranchId, loadSnapshot, snapshotStats, snapshotToText, coveredSeqSet, snapshotIdOf,
-  commitSnapshot,
-} from './snapshot-store.js'
-import { adaptEvidence, promptStats, cacheIdentity, mergeOrdered, memoryStats } from './state-memory.js'
+import { fidelity, inventedIdentifiers } from './fidelity.js'
 import { settledTraceData } from './trace.js'
 import { estimateTokens } from './tokens.js'
 
@@ -102,13 +94,10 @@ function birthDeadline(p, ms) {
 /**
  * ★ v11.10 取消在飞提纯的唯一实现（birthFinish 放行、flush 降级、消费者提前退出三处共用）。
  *   判据严格：只有【本任务确实起了提纯】且【它还没落地】时才取消 —— 已落地的结果绝不取消。
- *   honorDeferred=true 时尊重迟到认领（birthDeferredClaim:true ⇒ 不取消，结果留给下一轮）；
- *   消费者提前退出时本块从未出站，迟到结果不可能被认领 ⇒ 传 false，一律取消。
  *   v11.10 前 flush / 提前退出两条路径完全不取消 ⇒ 请求一直跑到 timeoutMs（线上 20s），白付一次调用。
  */
-export function birthCancelFlying(task, cfg = {}, trace = () => {}, why = 'give-up', honorDeferred = true) {
+export function birthCancelFlying(task, cfg = {}, trace = () => {}, why = 'give-up') {
   if (!task || !task.abort || task.distillState !== null || !task.distillP) return false
-  if (honorDeferred && cfg.birthDeferredClaim === true) return false
   if (cfg.birthCancelOnGiveUp === false) return false
   if (task.abort.signal && task.abort.signal.aborted) return false
   try { task.abort.abort() } catch { /* ignore */ }
@@ -162,7 +151,7 @@ function safeTrace(deps, extra) {
  *   B_min  = B′_est / ρ_max                         保本原长（B′_est 冷启动 = compressTargetMax）
  *   R_est  = 剩余窗口 / 每轮增量；增量取不到 ⇒ R 回落 econR（60，2026-09-24 用户拍板），rSource='fallback'
  * @param B 原文字符数
- * @param pressure {usedTokens, contextWindow, source} | null（emitter.readPressure 形状）
+ * @param pressure {usedTokens, contextWindow, source} | null（readPressure 形状）
  */
 export function birthEconomics(B, pressure, cfg = {}) {
   const d = Number.isFinite(cfg.econCacheDiscount) ? cfg.econCacheDiscount : 0.02
@@ -174,7 +163,7 @@ export function birthEconomics(B, pressure, cfg = {}) {
   let R = Rfb, rSource = 'fallback', remainingTokens = null
   if (pressure && Number.isFinite(pressure.usedTokens) && Number.isFinite(pressure.contextWindow) && perTurn) {
     remainingTokens = Math.max(0, pressure.contextWindow - pressure.usedTokens)
-    const est = Math.floor((remainingTokens * 4) / perTurn)   // 4 字符/token 粗估，与 emitter CHARS_PER_TOKEN 同口径
+    const est = Math.floor((remainingTokens * 4) / perTurn)   // 4 字符/token 粗估，与 CHARS_PER_TOKEN 同口径
     if (est >= 2) { R = est; rSource = pressure.source || 'meter' }
   }
   const k = (R - 1) * d
@@ -189,6 +178,37 @@ export function birthEconomics(B, pressure, cfg = {}) {
     // 三态判定（只记录）：below-abs 必亏；below-min 目标长度下亏；ok 目标长度下赚
     verdict: B < bAbs ? 'below-abs' : (B < bMin ? 'below-min' : 'ok'),
   }
+}
+
+/** 兜底用的字符/token 比（无计量服务时才用，且会落 trace 标明来源）。 */
+const CHARS_PER_TOKEN = 4
+
+/**
+ * 此刻物理水位（v12.1 从已删除的 emitter.js 搬来，供 birth-econ 观测）。
+ * 任何一步拿不到就诚实地把来源记下来，绝不假装知道。
+ * @returns { usedTokens, contextWindow, source } source ∈ meter|estimated|none
+ */
+export function readPressure(deps) {
+  const { session, ctx, surfaceChars } = deps
+  let contextWindow
+  try { contextWindow = session && session.requestContext && session.requestContext() && session.requestContext().contextWindow } catch { contextWindow = undefined }
+  if (!Number.isFinite(contextWindow)) contextWindow = undefined
+
+  // 首选官方计量服务
+  try {
+    const meter = ctx && typeof ctx.get === 'function' ? ctx.get('tokenMeter', false) : null
+    if (meter && typeof meter.measure === 'function') {
+      const m = meter.measure(session)
+      const used = m && (m.usedTokens != null ? m.usedTokens : (m.pressureTokens != null ? m.pressureTokens : m.surfaceTokens))
+      if (Number.isFinite(used) && Number.isFinite(contextWindow)) return { usedTokens: used, contextWindow, source: 'meter' }
+    }
+  } catch { /* 降级，不抛 */ }
+
+  // 降级：字符估算（只在窗口可读时才有意义）
+  if (Number.isFinite(contextWindow) && Number.isFinite(surfaceChars)) {
+    return { usedTokens: Math.ceil(surfaceChars / CHARS_PER_TOKEN), contextWindow, source: 'estimated' }
+  }
+  return { usedTokens: undefined, contextWindow: contextWindow, source: 'none' }
 }
 
 /**
@@ -206,13 +226,8 @@ export function birthStart(entry, deps = {}) {
   const raw = String(entry.text || '')
   const floor = cfg.birthMinChars == null ? 500 : cfg.birthMinChars
   const sessionId = typeof deps.sessionId === 'function' ? deps.sessionId() : (deps.sessionId || null)
-  // ★ 分支键：宿主当前无分支概念 ⇒ normalizeBranchId 返回 'main'；一旦宿主提供则按分支隔离。
-  const branchId = typeof deps.branchId === 'function'
-    ? normalizeBranchId(deps.branchId())
-    : normalizeBranchId(deps.branchId ?? deps.branch ?? null)
   const task = {
-    taskId, index: entry.index, raw, end: entry.end || null, sessionId, branchId,
-    canDefer: sessionId != null && Buffer.byteLength(raw) <= 192 * 1024,
+    taskId, index: entry.index, raw, end: entry.end || null, sessionId,
     handle: null, diskP: null, distillP: null,
     diskState: null, distillState: null,
     belowFloor: false, why: null,
@@ -234,7 +249,6 @@ export function birthStart(entry, deps = {}) {
   const tooShort = minTokens != null ? estimateTokens(raw) < minTokens : raw.length < floor
   if (!raw.trim() || tooShort) { task.belowFloor = true; task.why = 'below-floor'; return task }
   if (cfg.birthArchive === false) { task.belowFloor = true; task.why = 'archive-off'; return task }
-  task.compressMode = compileModeOf(cfg) === 'compress'
   // ★ 2026-09-23 v11.6 成本模型字段（**只记录，不参与判定**；见 docs/analysis/AUDIT-V11.5.md §一）。
   //   目的：为「按剩余窗口动态门槛」积累标定数据（R_est 的每轮增量尚未标定，直接接管会抖动）。
   try {
@@ -283,178 +297,19 @@ export function birthStart(entry, deps = {}) {
   task.headersAt = null
   task.headersP = new Promise((r) => { headersResolve = r })
   const noteHeaders = (info) => { if (info && info.status != null && info.status !== 200) return; if (task.headersAt === null) { task.headersAt = Date.now(); trace('birth-distill-headers', { index: task.index, ttfbMs: info && info.ttfbMs, sinceFiredMs: task.firedAt ? task.headersAt - task.firedAt : null }); headersResolve(true) } }
-  // ★★ 2026-09-21 任务状态记忆：把"原始 reasoning"升格为"证据信封"。★★
-  //   时间截面在**这里**固定：此后不再补入任何"后来才发生"的事实。
-  //   信封纯数据、被冻结；构造失败一律回落裸 raw，绝不因为观测层出问题而碰坏主流。
-  let distillInput = raw
-  // ⚠ 作用域修复（2026-09-22）：这两个值在 settle 钩子（try 块**之外**）里要用。
-  //   此前它们声明在 try 块内 ⇒ 钩子里引用必然 ReferenceError，又被 `catch {}` 吞掉
-  //   ⇒ 覆盖水位一次都没真正推进过（这正是"过滤从未生效"的第二重原因）。
-  let toolsForPrompt = null
-  let adaptedCut = null
-  let preparationError = null
-  let deterministicFrame = null
-  let preparedJudgment = null
-  // ★ 2026-09-22 切分：证据信封只在「状态记忆」模式构造。
-  //   stateCompress（纯压缩）**不采集证据** —— 它只需要这段 reasoning，
-  //   带上整窗工具正文正是实测 7.5x 放大的来源。
-  if (compileModeOf(cfg) === 'memory' && typeof deps.buildEnvelope === 'function') {
-    try {
-      // ① 采集：只读 session；来源按**原事件类型**判定，绝不用最终 role
-      const collected = typeof deps.collectEvidence === 'function'
-        ? deps.collectEvidence({
-            limit: cfg.stateEvidenceLimit == null ? 60 : cfg.stateEvidenceLimit,
-            // ★ 结构性上下文跨窗口检索：看板/用户要求/运行时抬头不受 60 节点窗口限制
-            structural: cfg.stateStructuralFirst === true,
-          })
-        : { events: [], inFlightIds: new Set(), cutSeq: null }
-      // ② 适配：转独立数据 + 冻结快照（杜绝事后共享引用改动破坏时间截面）
-      const adapted = adaptEvidence({
-        events: collected.events, inFlightIds: collected.inFlightIds, cutSeq: collected.cutSeq,
-        coverage: collected.coverage,
-      })
-      if (typeof deps.prepareEvidence === 'function') {
-        try {
-          deterministicFrame = deps.prepareEvidence({ sessionId, branchId, tools: adapted.tools,
-            userAsks: adapted.userAsks, runtimeFacts: adapted.runtimeFacts, unknownUserEvents: adapted.unknownUserEvents, coverage: adapted.coverage, cutSeq: adapted.cut })
-          task.deterministic = true
-          trace(deterministicFrame.durable === false ? 'evidence-ledger-unavailable' : 'evidence-ledger-committed', { storageReason: deterministicFrame.storageReason, revision: deterministicFrame.revision,
-            indexPath: deterministicFrame.indexPath, newObservations: deterministicFrame.newObservations, repeatedObservations: deterministicFrame.repeatedObservations,
-            totalObservations: deterministicFrame.totalObservations })
-        } catch (e) { preparationError = e; throw e }
-      }
-      // ★★ 快照持久化：编译输入止血（2026-09-22，用户批准路线）★★
-      //   旧实现的两个根本缺陷（真机 + 会话日志逐条核对确认）：
-      //     ① 覆盖判据依赖「本轮 priorMemory 里有一份更新的看板」，而看板是**渲染产物**，
-      //        且会被宿主压缩整段删除（实测 seq=27097 替换掉 [26309,26733]，171 节点消失）
-      //        ⇒ 判据恒为 false ⇒ 过滤一次都没生效；
-      //     ② 水位线会连带跳过"未采集/迟到返回"的结果。
-      //   现在改为：插件自己保存的**结构化快照**（不解析消息文本、不看 role、不认标记），
-      //   覆盖判据 = 快照 coverage.coveredSeqs 的**精确成员判定**。
-      //   ⚠ 没有快照 ⇒ 没有覆盖 ⇒ 全量发送（宁可多发，不可漏发）。
-      let coverInfo = null
-      toolsForPrompt = adapted.tools
-      adaptedCut = adapted.cut == null ? null : adapted.cut
-      let snapshot = null
-      let snapInfo = null
-      let snapText = ''
-      try {
-        snapshot = deterministicFrame || cfg.stateSnapshot === false ? null : loadSnapshot(sessionId, branchId)
-        if (snapshot && Number.isSafeInteger(adaptedCut) && Number.isSafeInteger(snapshot.sourceCutSeq) && snapshot.sourceCutSeq > adaptedCut) {
-          trace('state-snapshot-future-cut', { index: task.index, cutSeq: adaptedCut, snapshotCut: snapshot.sourceCutSeq })
-          snapshot = null
-        }
-        if (snapshot) {
-          snapInfo = snapshotStats(snapshot)
-          snapText = snapshotToText(snapshot)
-          if (!snapText) trace('state-snapshot-view-unavailable', { index: task.index, revision: snapshot.revision, reason: 'incomplete-or-oversize', filtering: false })
-        }
-      } catch (e) { trace('state-snapshot-error', { index: task.index, error: String((e && e.message) || e) }) }
-      try {
-        const covered = cfg.stateCoveredEvidence !== false && snapshot && snapText
-          ? coveredSeqSet(snapshot) : null
-        if (covered && covered.size) {
-          // ★ 过滤走**导出的纯函数**（与自测/重放同一份实现，杜绝「验证的是手抄副本」）
-          const res = filterCoveredTools(adapted.tools, covered, COVER_TAIL_FLOOR)
-          if (res.info) {
-            toolsForPrompt = res.tools
-            coverInfo = Object.assign({
-              source: 'snapshot', revision: snapshot.revision, coveredSeqs: covered.size,
-            }, res.info)
-          }
-        }
-      } catch (e) { trace('state-cover-error', { index: task.index, error: String((e && e.message) || e) }) }
-      // ③ 构造信封（仍是**一次**模型调用；仍是纯数据）
-      // ⚠ 这里**不**注入迟到结果：收网器一旦发射 ledger，assembleEvidence 会
-      //   自动把它读回来当 priorMemory（同一条通路），此处再注入就是重复。
-      distillInput = deps.buildEnvelope({
-        cot: raw,
-        userAsks: adapted.userAsks,
-        // ⚠ 绝不能改 adapted（Object.freeze）—— 传过滤后的数组本身
-        tools: deterministicFrame ? [] : toolsForPrompt,
-        runtimeFacts: adapted.runtimeFacts,
-        priorMemory: adapted.priorMemory,
-        // ★ 结构化状态快照：**完整**注入（走独立字段，不经 priorMemory 的 1200 字符腰斩）
-        stateSnapshot: snapText ? {
-          text: snapText,
-          revision: snapshot.revision,
-          entries: (snapshot.entries || []).length,
-          covered: (snapshot.coverage && snapshot.coverage.coveredSeqs) ? snapshot.coverage.coveredSeqs.length : 0,
-          sourceCutSeq: snapshot.sourceCutSeq,
-          snapshotId: snapshotIdOf(snapshot.sessionId, snapshot.branchId, snapshot.revision),
-        } : null,
-        unknownUserEvents: adapted.unknownUserEvents,
-        coverage: adapted.coverage,
-        host: Object.assign({
-          step: entry.step == null ? null : entry.step,
-          blockIndex: task.index,
-          archive: 'in-flight',
-        }, entry.host || {}),
-        at: Date.now(),
-      })
-      if (deterministicFrame) distillInput = Object.freeze({ ...distillInput, deterministicFrame })
-      if (deterministicFrame) trace('compiler-input-prepared', { revision: deterministicFrame.revision, bodyChars: deterministicFrame.evidenceInput?.bodyChars || 0, receipts: deterministicFrame.evidenceInput?.receipts || [], meaning: 'input-prepared-not-proof-of-transmission-or-understanding' })
-      toolsForPrompt = distillInput.tools
-      // ★ 提示词体量画像（2026-09-21）：把「优化省了多少」变成可核对的生产数据。
-      //   此前只能靠本地合成场景猜重复率，现在真实分布直接落 trace。
-      let pstats = null
-      try {
-        if (deterministicFrame) preparedJudgment = prepareJudgmentPrompt(distillInput)
-        pstats = preparedJudgment ? { totalChars: preparedJudgment.prompt.length, toolBodyChars: deterministicFrame.evidenceInput?.bodyChars || 0, compilerMode: 'grounded-judgment-v2', promptVersion: preparedJudgment.version, promptBuildMs: preparedJudgment.buildMs } : promptStats(distillInput)
-      } catch { pstats = null }
-      trace('state-envelope', {
-        index: task.index, cotChars: raw.length,
-        tools: distillInput.counts.tools, pending: distillInput.counts.pending,
-        terminal: distillInput.counts.terminal, userAsks: distillInput.counts.userAsks,
-        runtimeFacts: distillInput.counts.runtimeFacts, priorMemory: distillInput.counts.priorMemory,
-        unknownUser: distillInput.counts.unknownUserEvents, coverageIncomplete: distillInput.counts.coverageIncomplete,
-        coverage: distillInput.coverage, cutSeq: adapted.cut,
-        // ★ 编译输入止血（2026-09-22）：本轮因「已覆盖」而少发了多少旧工具证据
-        cover: coverInfo,
-        // ★ 快照持久化诊断：本轮注入的是哪个 revision、覆盖了多少条、是否已应用到主请求面
-        snapshot: snapInfo,
-        snapshotChars: distillInput.counts.snapshotChars,
-        // ★ 结构性上下文跨窗口取回了几条（A 方案；0 = 未启用或窗口外没有）
-        structural: collected.structuralFetched == null ? null : collected.structuralFetched,
-        structuralSeqs: collected.structuralSeqs || null,
-        prompt: pstats,
-      })
-      // 缓存身份：**影响摘要结论的内容才进入**（同一 reasoning 在不同工具终局下不得共用摘要）
-      if (cfg.stateCacheKeyTrace) trace('state-cache-identity', { index: task.index, hash: crypto.createHash('sha256').update(cacheIdentity(distillInput)).digest('hex').slice(0, 16) })
-    } catch (e) {
-      if (typeof deps.prepareEvidence === 'function') preparationError ||= e
-      trace('state-envelope-error', { index: task.index, error: String((e && e.message) || e) })
-      distillInput = raw
-    }
-  }
-  trace('compiler-preparation-cost', { ms: performance.now() - preparationStarted, promptBuilt: !!preparedJudgment })
+  // 输入 = 本段 reasoning 原文，不背任何窗口证据（v12.1 起只剩 compress 一种编译模式）。
+  trace('compiler-preparation-cost', { ms: performance.now() - preparationStarted })
   task.distillP = (typeof distill === 'function'
-    ? Promise.resolve().then(async () => {
-        if (preparationError) throw preparationError
-        return distill(distillInput, dsignal, {
-          preparedJudgment, onHeaders: noteHeaders,
-          taskId, trace, scope: sessionId != null && String(sessionId).length > 0 && Number.isSafeInteger(adaptedCut) && adaptedCut >= 0 ? [String(sessionId), branchId, adaptedCut] : null,
-        })
-      })
+    ? Promise.resolve().then(() => distill(raw, dsignal, { onHeaders: noteHeaders, taskId, trace }))
     : Promise.reject(new Error('no-distiller')))
     .then((r) => {
       const text = r && r.text != null ? String(r.text).trim() : ''
       if (!text) throw new Error('empty distillate')
-      // ★ 状态记忆分支：把六栏对象与有效性一并带出去，供 trace 与后续 checkpoint 使用。
-      //   注意此处**不**提交任何东西 —— 提交仍由 birthFinish + 现有 surface 通路决定。
-      let entries = (r && r.entries) || null
-      // ★ 2026-09-23 compress 接入迟到通路：纯压缩没有六栏，但摘要本身就是可认领的产物。
-      //   包成一条最小 entry ⇒ pushLateMemory 的 entries 门禁放行；快照仍不提交（见下方 stateSnapshot 门）。
-      if (!entries && compileModeOf(cfg) === 'compress') {
-        entries = [{ id: 'compress:' + taskId.slice(0, 8), category: 'state', content: text, source: 'model', basis: 'compressed-reasoning' }]
-      }
-      return { ok: true, text, meta: (r && r.meta) || null, entries,
-               checkpointText: (r && r.checkpointText) || text, parsed: (r && r.parsed) || null }
+      return { ok: true, text, meta: (r && r.meta) || null }
     })
     .catch((e) => {
       // ★ 2026-09-21 补漏：这里原本把 `e.meta` 丢了 ⇒ **超时/取消**这条最该诊断的路径
-      //   一个阶段字段都落不了盘（真机首条 settled 就是这样：ok:false, reason:cancelled,
-      //   无 ttfbMs / toFirstContentMs / chunks）。现在原样带出去。
+      //   一个阶段字段都落不了盘。现在原样带出去。
       const em = (e && e.meta) || null
       trace('birth-distill-failed', Object.assign(
         { index: task.index, error: String((e && e.message) || e) },
@@ -466,56 +321,10 @@ export function birthStart(entry, deps = {}) {
         } : {}))
       return { ok: false, error: String((e && e.message) || e), meta: em }
     })
-    .then(async (s) => {
+    .then((s) => {
       task.distillState = s
-      settleLateInFlight(sessionId, taskId, { branchId })
       // 提纯终局失败 ⇒ 必定原文放行 ⇒ 没有理由再等（归档仍在后台继续）
       if (!s.ok) noteShort('distill-failed-early')
-      // ★★ 方案二：这次结果没赶上自己那块（已放行原文）⇒ 暂存给下一轮。
-      //   仅当：编译成功 && 带六栏 entries && 确实已放行 && 开关打开。
-      //   失败/取消一律不存 —— 绝不把半成品当记忆。
-      // ★★ 快照持久化：**只在编译成功时**提交（失败/取消一律不提交 ⇒ 下轮仍能看到这批证据）。
-      //   覆盖集合 = 本轮**真正发给模型的**那些工具证据的 resultSeq（= toolsForPrompt）。
-      //   为什么不是 cutSeq / maxSeq：cutSeq 可能指向 pending 调用，maxSeq 会跳过未采集
-      //   与迟到返回的结果 —— 两者都会把"结果未返回"当成已知，违反时间截面。
-      //   写入顺序由 commitSnapshot 保证：先归并 entries → 先写完整快照 → 再原子替换指针。
-      // The archive is a prerequisite for both persistent and deferred memory.
-      // Waiting here is background work; birthFinish retains its own deadline.
-      const archived = s.ok && s.entries ? await task.diskP : null
-      // ⚠ 快照只属于 memory 模式：compress 的最小 entry 是摘要，不是判断，绝不写进持久快照。
-      if (s.ok && s.entries && archived && archived.ok && cfg.stateSnapshot !== false && compileModeOf(cfg) === 'memory') {
-        try {
-          const seqs = fullyVisibleResultSeqs(toolsForPrompt)
-          const c = commitSnapshot({
-            sessionId, branchId, entries: s.entries, coveredSeqs: seqs,
-            sourceCutSeq: adaptedCut, at: Date.now(),
-          })
-          if (c.ok) {
-            trace('state-snapshot-committed', {
-              index: task.index, revision: c.snapshot.revision, parentRevision: c.mergedFrom,
-              entries: c.snapshot.entries.length, added: c.added,
-              covered: c.snapshot.coverage.coveredSeqs.length, newSeqs: c.newSeqs,
-              sourceCutSeq: c.snapshot.sourceCutSeq, locked: c.locked,
-              snapshotId: snapshotIdOf(sessionId, branchId, c.snapshot.revision),
-            })
-          } else {
-            trace('state-snapshot-commit-failed', { index: task.index, reason: c.reason })
-          }
-        } catch (e) { trace('state-snapshot-error', { index: task.index, where: 'commit', error: String((e && e.message) || e) }) }
-      }
-      if (s.ok && s.entries && archived && archived.ok && task.passedThrough && cfg.birthDeferredClaim === true) {
-        const worthStoring = !(task.deterministic || task.compressMode) || raw.length - String(s.checkpointText || s.text).length >= (cfg.birthMinSavedChars ?? 50)
-        const stored = worthStoring && pushLateMemory(sessionId, raw, s.entries, s.checkpointText, { branchId, taskId })
-        if (!stored) trace('birth-late-memory-refused', { index: task.index, reason: worthStoring ? 'invalid-or-capacity' : 'no-gain', branchId })
-        if (stored) trace('birth-late-memory-stored', {
-          index: task.index, entries: s.entries.length,
-          chars: s.text ? s.text.length : 0,
-          // ★ 真工期：这是回答「预算该给多少」的唯一直接证据
-          distillMs: (s.meta && s.meta.toCompleteMs) || null,
-          ttfbMs: (s.meta && s.meta.ttfbMs) || null,
-          promptChars: (s.meta && s.meta.promptChars) || null,
-        })
-      }
       return s
     })
 
@@ -561,49 +370,22 @@ export async function birthFinish(task, deps = {}) {
   // ★ 2026-09-21 放弃应用 ⇒ 掐掉仍在飞的提纯（外部审计 P0-2）。
   //   判据严格：只有【本任务确实起了提纯】且【它还没落地】时才取消 —— 已落地的结果
   //   绝不取消（那是已经付过的钱）。
-  //
-  // ★★ 2026-09-22 方案二：**有消费者就不取消** ★★
-  //   上面这段注释自己预言了这一刻：「将来若接入『历史 checkpoint 回收』，
-  //   这里必须改成『有消费者就不取消』」。现在消费者出现了 —— 暂存区（lateMemory）。
-  //
-  //   真机证据（2026-09-22T04:50:04，finishWaitMs 刚降到 1500）：
-  //     [birth-finish-enter]      gapMs=15
-  //     [birth-distill-cancelled] why=distill-timeout waitedMs=1506
-  //     [birth-passthrough]       cancelled=true waitedMs=1501
-  //     [birth-distill-failed]    error="cancelled"
-  //     [birth-distill-settled]   ok=false reason="cancelled"
-  //   ⇒ 放行时把仍在飞的提纯 abort 掉 ⇒ 暂存区永远拿不到迟到成功
-  //   ⇒ 收网通路虽已接通，仍会**每轮空转**（birth-claim-idle）。
-  //
-  //   不取消 ≠ 无限等：提纯仍受自身 timeoutMs(8000) 约束，到点自然失败；
-  //   暂存区另有容量上限与过期清理。放行本身仍是零等待。
-  const cancelFlying = (why) => birthCancelFlying(task, cfg, trace, why, true)
+  //   （v12.1：迟到认领已删除 ⇒ 放行即取消，不再有「留给下一轮」的消费者。）
+  const cancelFlying = (why) => birthCancelFlying(task, cfg, trace, why)
 
   const pass = (why, handle, extra) => {
     const text = raw
     const waitedMs = task.finishEnterAt ? Date.now() - task.finishEnterAt : 0
     const cancelled = cancelFlying(why)
-    // ★ 方案二：标记「本块已放行原文」⇒ 若 distill 稍后才成功，它的结果改走暂存给下一轮。
-    task.passedThrough = true
-    if (task.distillState === null && task.distillP && !cancelled && task.sessionId != null) noteLateInFlight(task.sessionId, task.taskId, raw.length, { branchId: task.branchId })
     trace('birth-passthrough', { index: task.index, why, rawChars: raw.length, outChars: text.length, handle: handle || null, waitedMs, short: task.shortReason || null, cancelled, ...(extra || {}) })
     return { chunks: birthEmitChunks(task, text, deps), text, why, rawChars: raw.length, outChars: text.length, handle: handle || null }
   }
 
   if (task.belowFloor) return pass(task.why || 'below-floor', null)
 
-  // ★ 2026-09-23：compress 也走 ready-only。它的迟到产物现在能进暂存区被下轮认领，
-  //   没有理由再让用户在 finish 处等 finishWaitMs（线上 4000ms）却大概率拿不到结果。
-  //   legacy（无迟到消费者）保持原预算等待语义。
-  const lateCapable = task.deterministic || task.compressMode === true
-  const readyOnly = lateCapable && cfg.birthDeferredClaim === true && task.canDefer !== false
   task.finishEnterAt = Date.now()
-  trace('birth-finish-enter', { index: task.index, gapMs: task.finishEnterAt - (task.firedAt || 0), waitPolicy: readyOnly ? 'ready-only' : 'budgeted' })
-  if (readyOnly && (!task.diskState || !task.distillState)) {
-    const why = task.distillState?.ok === false ? 'judgment-failed' : task.diskState?.ok === false ? 'archive-failed' : 'background-judgment-pending'
-    return pass(why, null)
-  }
-  const budgetMs = readyOnly ? 0 : (cfg.birthFinishWaitMs == null ? 1500 : cfg.birthFinishWaitMs)
+  trace('birth-finish-enter', { index: task.index, gapMs: task.finishEnterAt - (task.firedAt || 0) })
+  const budgetMs = cfg.birthFinishWaitMs == null ? 1500 : cfg.birthFinishWaitMs
   // ★ 自然窗口探针（2026-09-18）：量出「block-end → finish」这段**免费**时间。
   //   α 的成败全看它：摘要在这一段里落地 = 白捡的 A 态；没落地 = 纯句柄（零等待）。
   // ★★ 终审 α（2026-09-18）：budgetMs <= 0 ⇒ 真零等待模式 ★★
@@ -662,6 +444,14 @@ export async function birthFinish(task, deps = {}) {
     //   DeepSeek 带 tools 的请求要求每条历史 assistant 都携带 reasoning_content；API 只查字段存在，
     //   但空白内容会让模型失去该轮思维链（H8 事故同形）。空白 ⇒ 原文放行。
     if (!String(candidate).trim()) return pass('empty-candidate', handle)
+    // ★ v12.1 发明标识符闸（缺省开，birthIdentifierGate:false 关闭）：摘要里出现原文没有的路径 / 代码 / 标识符
+    //   ⇒ 原文放行。压缩稿会被主模型当成「自己想过的事实」读回，一个编造的路径或函数名就是一次定向误导；
+    //   原文放行是已知安全态。来源：v4 理论不变量 I2（docs/theory 第五卷），判据见 fidelity.inventedIdentifiers。
+    if (cfg.birthIdentifierGate !== false) {
+      let invented = []
+      try { invented = inventedIdentifiers(raw, candidate) } catch { invented = [] }
+      if (invented.length) return pass('invented-identifier', handle, { invented })
+    }
     const netSaved = raw.length - candidate.length
     const minSaved = cfg.birthMinSavedChars == null ? 50 : cfg.birthMinSavedChars
     // ★ 2026-09-23 v11.6 保真观测（**只记录，不拦截**）：逐字标识符召回率。
@@ -730,10 +520,8 @@ export function birthTransform(inner, deps = {}) {
 
     // 立即降级放行（abort/异常路径，绝不等待）：无条件给出【原文逐字】（句柄不进上下文）
     // ★ v11.10：降级放行 = 放弃应用 ⇒ 同样掐掉仍在飞的提纯（此前这里不取消，请求白跑到 timeoutMs）。
-    //   与 birthFinish 的 pass() 同语义：标记 passedThrough，迟到认领打开时结果仍可进暂存区。
     const flushTask = function* (task, why) {
-      const cancelled = birthCancelFlying(task, cfg, trace, why, true)
-      task.passedThrough = true
+      const cancelled = birthCancelFlying(task, cfg, trace, why)
       try { trace('birth-flush', { index: task.index, why, rawChars: task.raw.length, cancelled, taskId: task.taskId || null }) } catch { /* ignore */ }
       for (const c of birthEmitChunks(task, task.raw, settleDeps)) yield c
     }
@@ -839,26 +627,6 @@ export function birthTransform(inner, deps = {}) {
                   if (s.r) { for (const c of s.r.chunks) yield c; continue }
                   for (const c of flushTask(s.task, 'settle-error')) yield c
                 }
-                // ② 记忆：同样按源块顺序归并；失败块被跳过，不污染记忆
-                // ⚠ 关闭 stateMemory 时**绝不**归并或消费新格式记忆（回滚语义）
-                if (compileModeOf(cfg) === 'memory') {
-                  try {
-                    const merged = mergeOrdered(ordered.map((s) => ({
-                      sourceIndex: s.sourceIndex,
-                      ok: !!(s.task && s.task.distillState && s.task.distillState.ok && s.task.distillState.entries),
-                      parsed: s.task && s.task.distillState && s.task.distillState.parsed ? s.task.distillState.parsed : null,
-                      at: sharedEnterAt,
-                    })).filter((x) => x.ok))
-                    if (merged.entries.length) {
-                      trace('state-memory-merged', {
-                        blocks: merged.order,
-                        entries: memoryStats(merged.entries),
-                      })
-                    }
-                  } catch (e) {
-                    trace('state-memory-merge-error', { error: String((e && e.message) || e) })
-                  }
-                }
               }
               pending.length = 0
             }
@@ -883,7 +651,7 @@ export function birthTransform(inner, deps = {}) {
       // ★ v11.10 消费者提前退出（用户取消 / 宿主 break / return()）：生成器不会再走到上面的收尾，
       //   pending 里的提纯会一直跑到 timeoutMs。本块从未出站 ⇒ 迟到结果不可能被认领 ⇒ 一律取消。
       if (!drained && pending.length) {
-        for (const task of pending) birthCancelFlying(task, cfg, trace, 'consumer-return', false)
+        for (const task of pending) birthCancelFlying(task, cfg, trace, 'consumer-return')
         try { trace('birth-consumer-return', { pending: pending.length }) } catch { /* ignore */ }
         pending.length = 0
       }

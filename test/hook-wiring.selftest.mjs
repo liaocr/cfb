@@ -43,7 +43,7 @@ function applyPlugin({ ctxGet, baseUrl, over = {}, traceFile }) {
   I.apply(ctx, {
     ...I.DEFAULTS, enabled: true, dryRun: false, mode: 'birth',
     model: 'fixture', followHostModel: false, followHostProvider: false, credentialRef: 'LOCAL', credentialsPath,
-    baseUrl, keepAlive: false, birthMinChars: 100, birthDeferredClaim: false,
+    baseUrl, keepAlive: false, birthMinChars: 100,
     finishHeadersGraceMs: 0, birthFinishWaitMs: 50, timeoutMs: 2000,
     trace: true, traceFile, ...over,
   })
@@ -56,20 +56,24 @@ const SESSION = (events) => {
 const LONG = '推理正文：' + '逐步核验。'.repeat(200)
 
 try {
-  // ══ 1. checkpoint 分支：宿主服务获取抛错 ⇒ 只降级，绝不阻断 ══════════════
-  await test('1. checkpoint：ctx.get 抛错 ⇒ 留一条 checkpoint-error 且 decision 照常透传', async () => {
+  // ══ 1. 宿主服务获取抛错 ⇒ 只降级，绝不阻断（v12.1：原 checkpoint 分支改为 birth 全链路）══
+  await test('1. ctx.get 抛错 ⇒ pre-step 照常透传 decision；birth 原文逐字放行', async () => {
     await withServer(async (baseUrl) => {
       const traceFile = path.join(home, 't-ctxget.log')
-      const hooks = applyPlugin({
-        baseUrl, traceFile, over: { mode: 'checkpoint' },
-        ctxGet: () => { throw new Error('service registry unavailable') },
-      })
+      const hooks = applyPlugin({ baseUrl, traceFile, ctxGet: () => { throw new Error('service registry unavailable') } })
       const session = SESSION([{ seq: 1, type: 'user/message', data: { message: { content: [{ type: 'text', text: 'u' }] } } }])
       const d = { host: 'decision' }
       assert.deepEqual(await hooks.get('agent/pre-step')({ agent: { session } }, async () => d), d, '绝不因为服务取不到而抛给宿主')
-      const err = readTrace(traceFile).find(([t]) => t === 'checkpoint-error')
-      assert.ok(err, '应留 checkpoint-error')
-      assert.match(err[1].error, /service registry unavailable/)
+      const chunks = [
+        { type: 'block-start', index: 0, blockType: 'reasoning' },
+        { type: 'reasoning-delta', index: 0, text: LONG },
+        { type: 'block-end', index: 0, block: { type: 'reasoning', text: LONG } },
+        { type: 'finish', reason: { kind: 'end' } },
+      ]
+      const out = []
+      for await (const c of hooks.get('llm/stream')({ model: 'fixture', messages: [] }, () => (async function* () { for (const c of chunks) yield c })())) out.push(c)
+      assert.equal(out.filter((c) => c.type === 'reasoning-delta').map((c) => c.text).join(''), LONG, '取不到存储 ⇒ 推理原文逐字保留')
+      assert.equal(out.find((c) => c.type === 'block-end').block.text, LONG)
     })
   })
 

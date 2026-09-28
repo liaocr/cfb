@@ -3,7 +3,6 @@
 //   DEFAULTS         全部可在 profile patch 的 config 里覆盖（每个值的来历写在旁边）
 //   normalizeConfig  扁平键 + 嵌套写法（distill: / birth:）→ 生效配置；
 //                    退役键/模式、未知键、自动调整全部留痕（BOOT 可见），只报不抛
-//   resolveCompileMode / compileModeOf  编译模式三选一（memory / compress / legacy）的唯一裁决点
 import os from 'node:os'
 
 // ── harness home 解析（★ 2026-09-18 公测可移植性：禁止把作者机器路径当默认值）──
@@ -35,17 +34,14 @@ export const DEFAULTS = {
   //                先归档进 CAS、再由副模型压缩，然后以【普通 append】放行。
   //                为什么必须用它：0.1.5-rc.1 的 surface.js:207/234 使 assistant/message
   //                永远无法充当 surfaceOp:replace 的载体 ⇒ 事后改写被架构性禁止。
-  //   'checkpoint' 实验：pre-step 用官方 user/message 看板整段替换已出站的推理（emitter.js）
   //   'off'        完全不介入，原样放行
   //   ⛔ v11.8 退役：'distill'（事后改写 assistant/message）与 'rules'（纯规则改写）——
   //      两者唯一的写回路径被 surface.js:207 永久禁止（恒为 replace-refused-h2），
   //      'distill' 还会在缺省 dryRun 下照样发起副模型调用（白花钱）。配置里出现时按 'off' 处理，
   //      BOOT 的 retiredMode 可见。代码可从 v11.7（e818cff）取回。
+  //   ⛔ v12.1 退役：'checkpoint'（pre-step 用 user/message 看板整段替换已出站推理）—— 同样按 'off' 处理。
   //   ⚠ 缺省 dryRun:true ⇒ birth 在合闸前零调用、零改写（只落观测 trace）。
   mode: 'birth',
-
-  // checkpoint 模式提前发起（early-fire）的最小推理长度：低于此长度不发起副模型调用。
-  minRawChars: 800,
 
   // ── 出生即提纯（mode: 'birth'）──
   //   铁律③：先归档后压缩。归档失败 ⇒ 原样透传（原始 CoT 绝不允许因压缩而丢失）。
@@ -79,14 +75,6 @@ export const DEFAULTS = {
   //   块尾**不阻塞主流**：reasoning delta 实时透传、text/tool 实时透传，
   //   只有 finish 前的收网最多等这么久，到点立即熔断，放行 raw + 句柄。
   birthFinishWaitMs: 1500,
-  // ★★ 方案二「下轮收网」（Deferred Claim，实验）★★
-  //   打开后：没赶上 finishWaitMs 的结果进暂存区，在下一轮 pre-step 用官方
-  //   user/message + surfaceOp replace 收网（finish 处只取已就绪结果，不等待）。
-  //   ⚠ v11.8 缺省改为 false（docs/analysis/AUDIT-V11.5.md §四 建议 ②，与线上配置一致）：
-  //     当轮阻塞的最坏情况是确定的（等满 finishWaitMs 后原文放行）；late-claim 的最坏情况是
-  //     部分认领 / 歧义匹配（缺陷 B）/ 重启丢失，且替换已出站块的缓存代价至今无定论。
-  //     打开时 BOOT 的 birth.experimental=true。
-  birthDeferredClaim: false,
   //   v11.11 流归属不可证时（多个会话交错进入 pre-step，见 session-tracker.js）怎么办：
   //   'passthrough'（缺省）= 这条流原文放行、不归档不压缩 —— 挂错会话的 CAS 归档与跨会话证据泄漏都比少压一块更糟；
   //   'latest' = v11.10 及以前的行为（按最近一次 pre-step 的会话）。两种都留 birth-session-ambiguous trace。
@@ -94,15 +82,13 @@ export const DEFAULTS = {
   //   净省保本线：蒸馏稿 + 句柄必须比原文少 ≥ 这么多字符才允许替换。
   //   低于此线说明模型在抄书（没完成有效浓缩）⇒ 原样放行 raw + 句柄。
   birthMinSavedChars: 50,
+  // ★ v12.1 发明标识符闸：摘要里出现原文没有的路径 / URL / 反引号代码 / camelCase / snake_case / file.ext
+  //   ⇒ 不替换（原文放行，why=invented-identifier）。来源：v4 理论不变量 I2「标识符必须有出处」。false 关闭。
+  birthIdentifierGate: true,
 
   // ── 延迟预算 ──
-  // ★ 提前发起（early-fire，仅 checkpoint 模式）：在 llm/stream 里一看到 reasoning 块结束就
-  //   **非阻塞**地拉起副模型调用，pre-step 到达时结果通常已经就绪。
-  earlyFire: true,
-  // 副模型单次请求的硬超时（所有模式共用；birth 下会按 finishWaitMs 自动抬高，见 normalizeConfig）
+  // 副模型单次请求的硬超时（会按 finishWaitMs 自动抬高，见 normalizeConfig）
   timeoutMs: 8000,
-  // checkpoint 模式：pre-step 里最多额外等 early-fire 结果多久（= 用户感知延迟上限）
-  graceMs: 300,
   // 重试 4 → 1。退避 1200×attempt 会让"抖动一次 + 两次重试"多出 3.6 秒。
   maxAttempts: 1,
   // ★ v11.7 对冲请求：主请求 N ms 内未收到响应头就再发一份相同请求，谁先回头用谁（见 hedgedDistill）。
@@ -178,34 +164,15 @@ export const DEFAULTS = {
   //   打开后：插件与蒸馏服务之间改用 stream:true；会话协议 / 用户可见行为 / 兜底语义全不变。
   //   目的只是把"响应到达前的等待"与"可见输出阶段"分开，为下一刀提供证据。
   distillStream: false,
-  // ★★ 2026-09-22 开关切分（用户令）："压缩"与"状态记忆"原本焊死在 stateMemory 一个开关上 ★★
-  //   实测病征（本机 trace.log，27 次副编译）：
-  //     要压缩的原文（birth-fired.rawChars）  均值  5,371   合计   145,009
-  //     实际发出的 prompt（promptChars）      均值 40,522   合计 1,094,097
-  //                                            ⇒ 放大 7.5x，其中工具正文占 58.7%
-  //   根因：触发粒度是「每段 reasoning 结束」，输入范围却是「整个 60 节点证据窗口」。
-  //     每编译 5,371 字符的推理，就要重发 23,800 字符的窗口证据。
-  //   后果：副模型手握 23K 工具正文 + 11K 其他材料写两栏判断 ⇒ 1200 输出上限必然不够
-  //     ⇒ finish=length 60% / timeout 30% ⇒ 27 次里 0 次替换成功。
-  //   切分后两者互不拖累：
-  //     stateCompress → 输入=这段 reasoning，输出=它的摘要。**真压缩**
-  //     stateMemory   → 证据账本 + 状态快照 + 判断编译。**状态记忆**
-  //   ⚠ 两者仍共用同一条传输/重试/超时/取消机制（仍是**一次**模型调用）。
-  //   ⚠ 同时打开时 stateMemory 优先（它的产物已是判断稿，不再做二次摘要）。
-  //   ⚠ 两者都开：normalizeConfig 记录 compileModeConflict（BOOT 里可见）并按 stateMemory 生效；不抛错。
-  stateMemory: false,
-  // ★ 纯压缩：把这段 reasoning 改写成更短的摘要。与 stateMemory 独立开关。
-  //   输入 ≈ 本段推理，不背整窗证据 ⇒ 输入体量回到设计预期，压缩率可核。
-  stateCompress: false,
-  // compress 提示词版本：
-  //   'v2' 中性压缩（缺省）—— 保真规则 + **百分比**长度目标（20%~35%），输出随输入线性增长
-  //   'v1' 与 legacy 蒸馏逐字相同（三栏裁决式；回滚/对照用）
-  //   'v3' = v2 的保真规则 + **绝对值**长度目标（见 compressTargetMin/Max）
+  // compress 提示词版本（v12.1 起唯一的编译模式就是 compress：输入 = 本段 reasoning，输出 = 它的摘要）：
+  //   'v3'（缺省）= 保真规则 + **绝对值**长度目标（见 compressTargetMin/Max）
   //        动机（2026-09-23 本机实测）：v1 的输出长度几乎不随输入变化（输入 892→9,794，输出仅 403→801），
   //        而 v2 稳定贴住输入的 30%。二者在 <1,500 输入时输出几乎同长（v2 甚至更短：344 vs 403）
-  //        ⇒ **保真规则本身不花长度**，长度差异 100% 来自第 7 条目标口径。v3 即「v2 的规则 + v1 的口径」。
-  compressPrompt: 'v2',
-  // v3 专用的绝对长度目标（字符）。只影响 v3；v1/v2 不看这两项。
+  //        ⇒ **保真规则本身不花长度**，长度差异 100% 来自目标口径。v3 即「v2 的规则 + v1 的口径」。
+  //   'v2' 中性压缩 —— 同一套保真规则 + **百分比**长度目标（20%~35%），输出随输入线性增长
+  //   ⛔ v12.1 退役 'v1'（legacy 三态蒸馏）：出现时回落 'v3'，BOOT 的 configAdjusted 可见。
+  compressPrompt: 'v3',
+  // v3 专用的绝对长度目标（字符）。只影响 v3；v2 不看这两项。
   //   为什么用绝对值：百分比对小输入是灾难（900 字符按 20% 压到 180 必然丢信息），绝对值不会。
   compressTargetMin: 250,
   compressTargetMax: 450,
@@ -216,49 +183,6 @@ export const DEFAULTS = {
   //   缺省关闭：v3 是在「全部放 user」的形状下实测的，system/user 拆分是否影响输出需 A/B；
   //   打开后 promptVersion 追加 ':sys'，trace 自动分桶。
   compressSystemPrompt: false,
-  // pre-step 整段 replace 时，随看板带走的旧看板正文/可见回答/工具调用参数的内联总预算（字符）；超出归档为句柄
-  maxCarryChars: 3000,
-  // 只在估算至少节省 100 字符且 5% 时才替换；不满足就保留原始 surface，避免"压缩"后反增。
-  emitterMinSavingsChars: 100,
-  emitterMinSavingsRatio: 0.05,
-  // 默认关闭；短期诊断时在实际 surface append 前后读宿主 tokenMeter，不发模型请求。
-  emitterMeasureTokens: false,
-  // ── P1 工具结果「可检索化」与选择性视图（2026-09-24）──
-  //   真机观测：工具结果约 25K/轮、约 55 轮，是本路径最大的压缩对象；但归档行原先只有句柄，
-  //   模型无从判断哪根有用 ⇒ 只能整块回读 ⇒ 回读成本（≈ 一次全价前缀）吃掉压缩收益。
-  //   下面的键只改**视图**（模型看到的那一份），**归档一律仍然原文**（信息不丢铁律）。
-  //   归档行后附加的富化段（工具名 / 参数 / 样本 / 摘录）里，样本长度上限。
-  emitterToolSampleChars: 120,
-  //   选择性摘录预算（字符；0 = 关）：命中「错误现场 / 最近 N 条」时附头尾摘录，中间显式标出省略。
-  emitterExcerptChars: 800,
-  //   「最近 N 条工具结果」的 N（0 = 关）。模型刚跑完的结果大概率正在被引用，先给一眼省一次回读。
-  emitterKeepRecentToolResults: 2,
-  //   总开关：false ⇒ 只留句柄（回到 P1 之前的行为），用于 A/B 对照。
-  emitterSelectiveArchive: true,
-  // ★ P0-2：checkpoint 发射前抽样做几次「按句柄读回」验证（1 页）。句柄是这条路径唯一写进模型
-  //   上下文的地址，写成功 ≠ 读得回（跨 session / 配额驱逐 / 公式漂移 ⇒ 死指针，且静默）。
-  //   只有**正面证伪**才拦住发射；设 0 = 关闭抽样（无读 API 的宿主自动退化为只记录）。
-  emitHandleProbeMax: 2,
-  // ★ 迟到认领：多块消息允许「已就绪块用摘要、未就绪块保留原文」的混合认领。缺省 false（保持全覆盖铁律）。
-  lateClaimPartial: false,
-  // 证据采集只看最后 N 个 surface 节点：**关联优先，不全文堆积**
-  // ⚠ 只在 stateMemory 打开时才进入编译输入；stateCompress 不采集证据。
-  stateEvidenceLimit: 60,
-  // ★ 编译输入止血（2026-09-22）：已覆盖的旧工具证据不再重复发送。
-  //   此字段只控制旧兼容路径；默认 hybrid 不再依赖模型覆盖集合。
-  stateCoveredEvidence: true,
-  stateSnapshot: true,
-  // Legacy-only options below; hybrid birth bypasses old body views and lanes.
-  // ★ 结构性上下文跨窗口检索（2026-09-22，A 方案）。
-  //   设 false 可一键回滚到「只看最后 N 个节点」的旧行为。
-  // ★ A 方案（跨窗口结构节点检索）**默认关闭**（2026-09-22 用户裁定"暂不上线"）。
-  //   实测：priorMemory 0→0、userAsks 3→9、prompt.total 26381→30092（+3711），净负。
-  //   代码与诊断字段全部保留，随时可开（stateStructuralFirst: true）。
-  stateStructuralFirst: false,
-  // 是否把缓存身份写进 trace（默认关，避免噪音；打开便于排查"为什么复用了旧摘要"）
-  stateCacheKeyTrace: false,
-  // 问题单元：把散在六栏里、属于同一问题的信息归拢（只归拢已有材料，不新增事实）
-  stateProblemUnits: true,
   // ★ 2026-09-19：原为作者商户的钥匙名，同样去具体化。
   //   留空 ⇒ 钥匙只能来自 followHostProvider 解析出的 apiKeyEnv 或显式配置。
   credentialRef: '',
@@ -280,16 +204,6 @@ export const DEFAULTS = {
 
   // ── v11.10：此前只在「已知键白名单」里、却不在 DEFAULTS 的内部旋钮，全部显式化 ──
   //   值与各调用点原先的回落值逐字相同 ⇒ 行为零变化；好处是 BOOT/类型/文档终于能看见它们。
-  // checkpoint 活跃尾部宽度（最近多少条 assistant/message 逐字保留；官方规范最小 1）
-  keepTail: 1,
-  // 自己发射的看板以此插件名识别（emitter 用它排除/吸收自家旧看板）
-  pluginName: 'cot-form-b',
-  // checkpoint / 迟到认领写 CAS 时的 producer 标签
-  emitterProducer: 'cot-checkpoint',
-  // checkpoint 看板里单条工具结果内联上限（字符）；超出归档为句柄
-  maxInlineToolResultChars: 2000,
-  // 有限数 ⇒ 静态接管 checkpoint 动态门槛（headroom.js 的逃生门）；null = 按水位动态判定
-  staticMinRawChars: null,
   // birth 放弃应用时取消在飞提纯（false = 让它跑完，仅用于诊断「真工期」）
   birthCancelOnGiveUp: true,
   // finishWaitMs ≤ 0（真零等待）时只等写盘落地的护栏
@@ -312,15 +226,15 @@ export const DEFAULTS = {
 
 // ── 配置归一化：同时接受扁平键与嵌套写法 ─────────────────────────────────────
 // 用户配置规范（profile 的 cordis.patch.yml → config）：
-//   mode: "birth" | "checkpoint" | "off"
+//   mode: "birth" | "off"
 //   distill: { timeoutMs, maxOutputTokens, hedgeAfterMs, ... }   ← 副模型传输参数
 //   birth:   { minChars, finishWaitMs, finishHeadersGraceMs, ... }
 // 嵌套对象里的键**覆盖**同名扁平键。不认识的键不报错，但进 unknownOptions（BOOT 可见）；
 // 退役的键/模式进 retiredOptions / retiredMode，并从生效配置里删除。
-const NESTED_DISTILL_KEYS = ['timeoutMs', 'minRawChars', 'maxAttempts', 'maxOutputTokens', 'baseUrl', 'model', 'credentialRef', 'credentialsPath', 'graceMs', 'keepAlive', 'keepAliveMsecs', 'prewarm', 'prewarmMinGapMs', 'followHostModel', 'disableThinking', 'hedgeAfterMs']
+const NESTED_DISTILL_KEYS = ['timeoutMs', 'maxAttempts', 'maxOutputTokens', 'baseUrl', 'model', 'credentialRef', 'credentialsPath', 'keepAlive', 'keepAliveMsecs', 'prewarm', 'prewarmMinGapMs', 'followHostModel', 'disableThinking', 'hedgeAfterMs']
 // v11.10：补上 probeTimeoutMs —— normalizeConfig 一直在读它、README 也写了，却漏了登记 ⇒ BOOT 把它误报成 unknownOptions。
 const NESTED_BIRTH_KEYS = ['minChars', 'archive', 'producer', 'archiveTimeoutMs', 'probeTimeoutMs', 'finishWaitMs', 'minSavedChars', 'finishHeadersGraceMs',
-  'minTokens', 'tokenGate', 'minSavedTokens', 'sessionAmbiguity']
+  'minTokens', 'tokenGate', 'minSavedTokens', 'sessionAmbiguity', 'identifierGate']
 const RETIRED_NESTED_BIRTH = ['handleInText']
 // 退役键：v7 四个旧生产开关 + v11.8 随 'distill'/'rules' 模式退役的键（含整个 rules: 容器）
 const RETIRED_OPTIONS = ['stateEvidenceViews', 'stateEvidenceBodyBudget', 'stateSnapshotMirror', 'stateCompileQueue',
@@ -330,10 +244,17 @@ const RETIRED_OPTIONS = ['stateEvidenceViews', 'stateEvidenceBodyBudget', 'state
   // v12.0 随 compress-x1（抽取式）一并退役：实测句子保留率 80–92%，路线否决。代码可从 cfba57b 取回。
   'extractiveTailChars', 'extractiveMaxKeepRatio', 'extractiveRepairMax', 'extractiveEvidence', 'extractiveEvidenceLimit',
   'extractiveHandleLine', 'extractiveGuideline', 'extractiveFoldBranches', 'extractiveKeepFailures', 'extractiveKindTargets',
-  'extractiveStateDedupe']
-const RETIRED_NESTED_DISTILL = ['hurdleRounds', 'templateChars', 'maxVerbatimChars']
-const RETIRED_MODES = ['distill', 'rules']
-const MODES = ['birth', 'checkpoint', 'off']
+  'extractiveStateDedupe',
+  // v12.1 随 checkpoint 模式 / 迟到认领 / memory 模式（状态记忆）/ legacy 编译一并退役（单一路径：birth + compress）。
+  //   stateCompress 退役 = 永远是 compress（不再需要开关）；stateMemory:true 另在 configAdjusted 留痕。代码可从 git 取回（见 CHANGELOG v12.1）。
+  'stateMemory', 'stateCompress', 'birthDeferredClaim', 'lateClaimPartial', 'minRawChars', 'earlyFire', 'graceMs',
+  'maxCarryChars', 'emitterMinSavingsChars', 'emitterMinSavingsRatio', 'emitterMeasureTokens', 'emitterToolSampleChars',
+  'emitterExcerptChars', 'emitterKeepRecentToolResults', 'emitterSelectiveArchive', 'emitHandleProbeMax', 'emitterProducer',
+  'stateEvidenceLimit', 'stateCoveredEvidence', 'stateSnapshot', 'stateStructuralFirst', 'stateCacheKeyTrace', 'stateProblemUnits',
+  'keepTail', 'pluginName', 'maxInlineToolResultChars', 'staticMinRawChars']
+const RETIRED_NESTED_DISTILL = ['hurdleRounds', 'templateChars', 'maxVerbatimChars', 'minRawChars', 'graceMs']
+const RETIRED_MODES = ['distill', 'rules', 'checkpoint']
+const MODES = ['birth', 'off']
 
 export function normalizeConfig(config = {}) {
   const c = Object.assign({}, DEFAULTS, config)
@@ -357,6 +278,7 @@ export function normalizeConfig(config = {}) {
     if (b.tokenGate !== undefined) c.birthTokenGate = b.tokenGate
     if (b.minSavedTokens !== undefined) c.birthMinSavedTokens = b.minSavedTokens
     if (b.sessionAmbiguity !== undefined) c.birthSessionAmbiguity = b.sessionAmbiguity
+    if (b.identifierGate !== undefined) c.birthIdentifierGate = b.identifierGate
   }
   // 不认识的处置值 ⇒ 回到安全缺省（passthrough）并在 BOOT 留痕；绝不把拼错的值猜成「照旧归属」
   if (c.birthSessionAmbiguity !== 'passthrough' && c.birthSessionAmbiguity !== 'latest') {
@@ -368,10 +290,15 @@ export function normalizeConfig(config = {}) {
   if (RETIRED_MODES.includes(c.mode)) { c.retiredMode = c.mode; c.mode = 'off' }
   else if (!MODES.includes(c.mode)) { c.invalidMode = c.mode; c.mode = 'off' }
   c.retiredOptions = RETIRED_OPTIONS.filter(k => Object.hasOwn(config || {}, k))
-  // v12.0：compressPrompt 'x1' 已退役 ⇒ 回到缺省 'v2'，BOOT 的 configAdjusted 可见
-  if (c.compressPrompt === 'x1') {
-    c.configAdjusted = Object.assign({}, c.configAdjusted, { compressPrompt: { from: 'x1', to: 'v2', why: 'compress-x1 retired in v12.0' } })
-    c.compressPrompt = 'v2'
+  // v12.0 / v12.1：compressPrompt 'x1'（抽取式）与 'v1'（legacy 蒸馏）已退役；其它不认识的值同样回落缺省 'v3'。BOOT 的 configAdjusted 可见
+  if (c.compressPrompt !== 'v2' && c.compressPrompt !== 'v3') {
+    const why = c.compressPrompt === 'x1' ? 'compress-x1 retired in v12.0' : c.compressPrompt === 'v1' ? 'compress-v1 (legacy distill) retired in v12.1' : "must be 'v2' or 'v3'"
+    c.configAdjusted = Object.assign({}, c.configAdjusted, { compressPrompt: { from: c.compressPrompt, to: 'v3', why } })
+    c.compressPrompt = 'v3'
+  }
+  // v12.1：memory 模式已删除。显式要过它的配置要看得见「现在跑的是 compress」
+  if (config && config.stateMemory === true) {
+    c.configAdjusted = Object.assign({}, c.configAdjusted, { stateMemory: { from: 'memory', to: 'compress', why: 'memory mode retired in v12.1' } })
   }
   if (d && typeof d === 'object') for (const k of RETIRED_NESTED_DISTILL) if (Object.hasOwn(d, k)) c.retiredOptions.push('distill.' + k)
   if (b && typeof b === 'object') for (const k of RETIRED_NESTED_BIRTH) if (Object.hasOwn(b, k)) c.retiredOptions.push('birth.' + k)
@@ -382,7 +309,7 @@ export function normalizeConfig(config = {}) {
     const known = new Set([
       ...Object.keys(DEFAULTS),
       'distill', 'birth',                             // 嵌套别名容器
-      'compileMode', 'compileModeConflict', 'configAdjusted', 'retiredOptions', 'unknownOptions',
+      'configAdjusted', 'retiredOptions', 'unknownOptions',
       'retiredMode', 'invalidMode', 'followProvider', '_promptMessages', '_onHeaders',
       ...c.retiredOptions,                            // 退役键算已知（另有专门报法）
     ])
@@ -395,14 +322,13 @@ export function normalizeConfig(config = {}) {
       }
     }
   }
-  c.compileMode = resolveCompileMode(c)
   // ★★ 2026-09-23 v11.6 缺陷 D：timeoutMs 是请求硬顶，finishWaitMs 是收尾等待。★★
   //   实测 finishWaitMs 8000→12000→20000 命中率恒为 23.1%，因为 timeoutMs(8000) 先杀了请求。
   //   只抬不降：timeoutMs < finishWaitMs + 响应头宽限 + 收尾余量(2000) 时抬到该值，并在 BOOT 里留痕。
   //   v11.7 起 finish 最多等 finishWaitMs + finishHeadersGraceMs，宽限也必须算进去，
   //   否则 grace 调大后请求会先被 timeoutMs 杀掉（宽限形同虚设）。
   //   已满足的配置（如线上 20000 ≥ 12000+1500+2000）零变化。
-  if (c.mode === 'birth' && c.birthDeferredClaim !== true) {
+  if (c.mode === 'birth') {
     const grace = Number(c.finishHeadersGraceMs)
     const need = Number(c.birthFinishWaitMs) + (Number.isFinite(grace) && grace > 0 ? grace : 0) + 2000
     if (Number.isFinite(need) && Number.isFinite(Number(c.timeoutMs)) && Number(c.timeoutMs) < need) {
@@ -410,41 +336,5 @@ export function normalizeConfig(config = {}) {
       c.timeoutMs = need
     }
   }
-  if (c.stateMemory === true && c.stateCompress === true) {
-    // 绝不静默二选一：用户显式配了两个互斥目标，就在 BOOT 里报出来，并明确谁生效。
-    c.compileModeConflict = { stateMemory: true, stateCompress: true, winner: 'stateMemory' }
-  }
   return c
-}
-
-/**
- * ★★ 2026-09-22 开关切分：把「压缩」与「状态记忆」的裁决收到一处。★★
- *
- * 背景：这两件事原本并排在同一个 stateMemory 开关下，导致
- *   · 想要压缩的人打开 stateMemory，拿到的却是「整窗证据 → 状态判断」的编译；
- *   · 编译输入 40,522 字符去压 5,371 字符的推理（7.5x），输出上限 1200 必然不够。
- *
- * 现在三个互斥模式，唯一裁决点：
- *   'memory'   stateMemory   → 证据账本 / 快照 / 两栏判断（状态记忆）
- *   'compress' stateCompress → 本段 reasoning 的摘要（纯压缩）
- *   'legacy'   都没开        → 走进度条式的旧蒸馏提示词（保持既有行为）
- *
- * @returns {'memory'|'compress'|'legacy'}
- */
-export function resolveCompileMode(cfg) {
-  if (!cfg) return 'legacy'
-  if (cfg.stateMemory === true) return 'memory'
-  if (cfg.stateCompress === true) return 'compress'
-  return 'legacy'
-}
-
-/**
- * ★ 2026-09-22 容错读取：birthStart / birthFinish 可能收到**未经 normalizeConfig** 的 cfg
- *   （裸库直调、旧回归夹具就是这么传的）。
- *   若直接读 cfg.compileMode，缺字段时一律落到 undefined ⇒ 静默走 legacy，
- *   而这正是本仓库栽过多次的「配了却没生效」。所以这里缺字段就地裁决。
- */
-export function compileModeOf(cfg) {
-  if (!cfg) return 'legacy'
-  return cfg.compileMode != null ? cfg.compileMode : resolveCompileMode(cfg)
 }

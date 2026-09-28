@@ -1,81 +1,67 @@
-// v12.0 自测：① compress-x1 退役后的配置兼容（旧配置不抛、不静默）；② src/value.js（v4 参考实现，未接入 birth）的理论不变量。
-import { normalizeConfig, compressPromptVersion } from '../index.js'
-import { validateOps, compileBirth, updateLambda, recencyCompiledShare, neededLabels } from '../src/value.js'
+// v12 自测：退役配置的兼容性 —— 旧配置不抛、不静默（retiredOptions / retiredMode / configAdjusted 可见）。
+//   v12.0：compress-x1（抽取式）退役
+//   v12.1：checkpoint 模式、迟到认领（deferred claim / late-memory）、memory 模式（状态记忆）、legacy v1 提示词退役
+//   （v12.0 的 ② src/value.js 理论不变量随 value.js 删除一并移除；源码存于 docs/theory/CFB-THEORY-COMPLETE.md 附录 B）
+import { normalizeConfig, compressPromptVersion, DEFAULTS } from '../index.js'
+import { bootRecord } from '../src/boot-record.js'
 
 let pass = 0, fail = 0
 const ok = (name, cond, note) => { if (cond) pass++; else { fail++; console.log('  ✗ ' + name + (note !== undefined ? '  ' + note : '')) } }
 
-// ── ① x1 退役 ──────────────────────────────────────────────────────────────
+// ── ① x1 退役（v12.0；v12.1 起回落目标改为缺省 v3）─────────────────────────
 {
   const c = normalizeConfig({ compressPrompt: 'x1', extractiveTailChars: 400, extractiveGuideline: 'g' })
-  ok('x1 ⇒ compressPrompt 回到 v2', c.compressPrompt === 'v2', c.compressPrompt)
+  ok('x1 ⇒ compressPrompt 回到缺省 v3', c.compressPrompt === 'v3', c.compressPrompt)
   ok('x1 ⇒ configAdjusted 留痕', c.configAdjusted && c.configAdjusted.compressPrompt && c.configAdjusted.compressPrompt.from === 'x1')
   ok('extractive* 键进 retiredOptions', c.retiredOptions.includes('extractiveTailChars') && c.retiredOptions.includes('extractiveGuideline'))
   ok('extractive* 键从生效配置删除', !('extractiveTailChars' in c) && !('extractiveGuideline' in c))
   ok('extractive* 键不误报为 unknownOptions', !(c.unknownOptions || []).some((k) => k.startsWith('extractive')), JSON.stringify(c.unknownOptions))
-  ok('promptVersion 为 compress-v2', compressPromptVersion(c) === 'compress-v2', compressPromptVersion(c))
+  ok('promptVersion 为 compress-v3', compressPromptVersion(c) === 'compress-v3:250-450', compressPromptVersion(c))
   const d = normalizeConfig({})
   ok('缺省配置不含 extractive* 键', !Object.keys(d).some((k) => k.startsWith('extractive')))
 }
 
-// ── ② value.js 不变量 ────────────────────────────────────────────────────
-const toolText = 'strace: open("/srv/app/conf.yaml") = -1 EACCES\nread_file#3: /etc/app/conf.yaml (template)'
-const raw = [
-  '服务启动报 EACCES。先看权限吧，也许是 /srv/app 目录权限不对。试试 chmod 777 /srv/app/conf.yaml。',
-  '执行后仍然 EACCES。嗯，也许还是权限，要不试试 chown？',
-  '让我再检查一下 2+2=4 确认没算错。会不会是网络问题？不太像。',
-  '回头看 chmod 777 那步……不对，已经证明不是权限。',
-  '换个思路：strace 显示 open("/srv/app/conf.yaml") 失败，而 read_file 读的是 /etc/app/conf.yaml！',
-  '现在的问题是 /srv/app/conf.yaml 是不是 symlink。',
-].join('\n')
-const ctx = { raw, toolText, contextText: toolText, nextToolArgs: 'ls -l /srv/app/conf.yaml' }
-const ops = [
-  { id: 'o1', k: 'FACT', key: 'config.path', text: '进程实际读取 /srv/app/conf.yaml', ev: 'tool', src: 'tool:strace', kind2: 'pivot', anchor: '换个思路', supersedes: '/etc/app/conf.yaml' },
-  { id: 'o3', k: 'REFUTED', text: '改权限类方案', alt: '是路径错配', why: 'chmod 777 后仍 EACCES', ev: 'tool', src: 'tool:shell', kind2: 'hypothesize', anchor: '先看权限吧' },
-  { id: 'o4', k: 'REFUTED', text: '网络问题', alt: '（无）', why: '不太像', ev: 'derived', src: 'self', kind2: 'hypothesize', anchor: '会不会是网络问题' },
-  { id: 'o5', k: 'FACT', text: '2+2=4', ev: 'derived', src: 'self', kind2: 'verify', anchor: '让我再检查一下' },
-  { id: 'o6', k: 'OPEN', text: '/srv/app/conf.yaml 是不是 symlink', ev: 'guess', src: 'self', kind2: 'plan', anchor: '现在的问题是' },
-]
+// ── ② v1（legacy 蒸馏）退役 ⇒ v3 ──────────────────────────────────────────
 {
-  const v = validateOps([...ops,
-    { id: 'bad1', k: 'FACT', text: '/opt/fake/path 存在', ev: 'tool', anchor: '换个思路' },
-    { id: 'bad2', k: 'REFUTED', text: 'x', ev: 'tool', anchor: '先看权限吧' },
-    { id: 'bad3', k: 'FACT', text: 'y', ev: 'tool', anchor: '原文里没有这句' }], ctx)
-  const dropped = Object.fromEntries(v.dropped.map((d) => [d.op.id, d.why.join(',')]))
-  ok('I2 无出处标识符被拦截', /I2/.test(dropped.bad1 || ''), dropped.bad1)
-  ok('I3 无替代方案的 REFUTED 被拦截', /I3/.test(dropped.bad2 || ''), dropped.bad2)
-  ok('I1 非逐字 anchor 被拦截', /I1/.test(dropped.bad3 || ''), dropped.bad3)
-  ok('I4 非工具证据的否定降为 SHELVED', v.kept.find((o) => o.id === 'o4').k === 'SHELVED')
+  const c = normalizeConfig({ compressPrompt: 'v1' })
+  ok('v1 ⇒ v3', c.compressPrompt === 'v3', c.compressPrompt)
+  ok('v1 ⇒ configAdjusted 留痕', c.configAdjusted?.compressPrompt?.from === 'v1' && /v12\.1/.test(c.configAdjusted.compressPrompt.why), JSON.stringify(c.configAdjusted))
+  ok('不认识的值同样回落 v3 并留痕', normalizeConfig({ compressPrompt: 'v9' }).configAdjusted?.compressPrompt?.to === 'v3')
+  ok('v2 显式保留', normalizeConfig({ compressPrompt: 'v2' }).compressPrompt === 'v2')
+  ok('缺省 compressPrompt = v3', DEFAULTS.compressPrompt === 'v3' && normalizeConfig({}).configAdjusted === undefined)
 }
+
+// ── ③ checkpoint 模式退役 ⇒ off ───────────────────────────────────────────
 {
-  const r = compileBirth(ops, ctx, { handle: 'art://h' })
-  const ids = r.chosen.map((c) => c.op.id)
-  ok('中和项：取代行入选', ids.includes('o1'))
-  ok('工具证伪 + 配对：入选', ids.includes('o3'))
-  ok('自检（可重导）落选', !ids.includes('o5'), ids.join(','))
-  ok('浅尝且无触发条件的搁置落选', !ids.includes('o4'), ids.join(','))
-  ok('OPEN 入选', ids.includes('o6'))
-  ok('替代先行渲染', /- 是路径错配（已排除：改权限类方案/.test(r.text), r.text)
-  ok('被否定对象只出现一次', (r.text.match(/改权限类方案/g) || []).length === 1)
-  ok('OPEN 渲染为问句', /symlink？/.test(r.text))
-  ok('工具来源内容不写成「我决定/我应该」（I5）', !/我决定|我应该/.test(r.text))
-  const hi = compileBirth(ops, ctx, { lambda: 0.05 })
-  ok('λ 升高 ⇒ 入选条目不增', hi.chosen.length <= r.chosen.length, hi.chosen.length + ' vs ' + r.chosen.length)
-  ok('全部 op 非法 ⇒ 回退原文', compileBirth([{ id: 'z', k: 'FACT', text: 'q', ev: 'tool', anchor: 'nope' }], ctx).fallback === 'raw')
+  const c = normalizeConfig({ mode: 'checkpoint', earlyFire: true, graceMs: 300, minRawChars: 800, keepTail: 2 })
+  ok('checkpoint ⇒ mode off', c.mode === 'off', c.mode)
+  ok('checkpoint ⇒ retiredMode 留痕', c.retiredMode === 'checkpoint', c.retiredMode)
+  for (const k of ['earlyFire', 'graceMs', 'minRawChars', 'keepTail']) ok(k + ' 进 retiredOptions 且删除', c.retiredOptions.includes(k) && !(k in c))
+  ok('checkpoint 专属键不误报 unknown', !(c.unknownOptions || []).length, JSON.stringify(c.unknownOptions))
+  const n = normalizeConfig({ distill: { minRawChars: 900, graceMs: 100, timeoutMs: 9000 } })
+  ok('嵌套 distill.minRawChars / graceMs 不误报 unknown', !(n.unknownOptions || []).length, JSON.stringify(n.unknownOptions))
+  ok('嵌套 distill.timeoutMs 仍生效', n.timeoutMs === 9000)
 }
+
+// ── ④ memory 模式 / 迟到认领退役 ⇒ compress ────────────────────────────────
 {
-  let st = { lambda: 0.004 }
-  st = updateLambda(st, { readbackExcess: true, sw: 0.3 })
-  ok('丢失信号 ⇒ λ 乘性下降', Math.abs(st.lambda - 0.0024) < 1e-9, st.lambda)
-  const a = updateLambda({ lambda: 0.004 }, { loopRising: true, sw: 0.3 })
-  ok('噪声信号需连续 2 轮才升', a.lambda === 0.004 && a.noiseRun === 1)
-  const b = updateLambda(a, { loopRising: true, sw: 0.3 })
-  ok('连续 2 轮噪声 ⇒ λ 加性上升', b.lambda > 0.004, b.lambda)
-  const c = updateLambda({ lambda: 0.004 }, { loopRising: true, sw: 0.8 })
-  ok('打转 + s_w 高 ⇒ 判为饱和：降 λ 并强制 raw-near', c.lambda < 0.004 && c.forceRawNear === true)
-  ok('s_w 近因加权：近处原文拉低占比', recencyCompiledShare([{ tok: 5000, compiled: true }, { tok: 900, compiled: false }], 900) < 0.5)
-  const lab = neededLabels(ops, ['ls -l /srv/app/conf.yaml'])
-  ok('自监督标签：后续复现 ⇒ needed=1', lab.find((x) => x.id === 'o6').needed === 1 && lab.find((x) => x.id === 'o5').needed === 0)
+  const c = normalizeConfig({ stateMemory: true, stateCompress: true, birthDeferredClaim: true, lateClaimPartial: true, stateEvidenceLimit: 60, emitterMinSavingsChars: 100 })
+  for (const k of ['stateMemory', 'stateCompress', 'birthDeferredClaim', 'lateClaimPartial', 'stateEvidenceLimit', 'emitterMinSavingsChars']) {
+    ok(k + ' 进 retiredOptions 且删除', c.retiredOptions.includes(k) && !(k in c))
+  }
+  ok('stateMemory:true ⇒ configAdjusted 写明现在跑 compress', c.configAdjusted?.stateMemory?.to === 'compress')
+  ok('stateMemory:false 不留 configAdjusted', normalizeConfig({ stateMemory: false }).configAdjusted === undefined)
+  ok('无 compileMode 派生字段', !('compileMode' in c) && !('compileModeConflict' in c))
+  ok('birthDeferredClaim:true 不再阻止 timeoutMs 抬高', c.timeoutMs >= c.birthFinishWaitMs + c.finishHeadersGraceMs + 2000, String(c.timeoutMs))
+}
+
+// ── ⑤ BOOT：单一路径 ────────────────────────────────────────────────────
+{
+  const b = bootRecord(normalizeConfig({}), { selfId: 's', deps: 'd' })
+  ok('BOOT compilerMode = compress-v3', b.compilerMode === 'compress-v3:250-450', b.compilerMode)
+  ok('BOOT 无 memory / checkpoint 字段', !('stateMemory' in b) && !('compileMode' in b) && !('keepTail' in b) && !('earlyFire' in b))
+  ok('BOOT 报告 identifierGate', b.birth && b.birth.identifierGate === true, JSON.stringify(b.birth))
+  ok('DEFAULTS 不含退役键', !['stateMemory', 'stateCompress', 'birthDeferredClaim', 'earlyFire', 'keepTail', 'minRawChars'].some((k) => k in DEFAULTS))
 }
 
 console.log('v12 自测：' + pass + ' 通过 / ' + fail + ' 失败')

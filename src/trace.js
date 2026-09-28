@@ -39,7 +39,7 @@ export function makeTraceWriter(cfg, statsOf) {
   return function trace(tag, data) {
     if (!cfg.trace) return null
     // ★ 2026-09-27 审计：序列化也在 try 里。statsOf() 抛错 / payload 含 BigInt 或循环引用 ⇒
-    //   此前异常从这里冒到调用方（birth 已由 safeTrace 兜住；checkpoint / pre-step 等路径则会被打断）。
+    //   此前异常从这里冒到调用方（birth 已由 safeTrace 兜住；pre-step 等路径则会被打断）。
     //   trace 是证据，证据写不出去只能丢这一条，绝不能反过来影响主流。
     let payload, line
     try {
@@ -72,7 +72,7 @@ export function settledTraceData(index, ms, s) {
     reason: (s && s.ok) ? null : ((s && s.error) || 'unknown-failure'),
     ...(m ? {
       model: m.model, endpoint: m.endpoint, style: m.style, thinkingOff: m.thinkingOff,
-      compilerMode: m.compilerMode, deterministicRevision: m.deterministicRevision, evidenceBodyChars: m.evidenceBodyChars, evidencePolicy: m.evidencePolicy, duplicateBodyCharsAvoided: m.duplicateBodyCharsAvoided,
+      compilerMode: m.compilerMode,
       // 输入放大度量：promptChars / inputChars。不是输出压缩率，也不是实际 token 节省。
       inputChars: m.inputChars, promptVersion: m.promptVersion,
       // promptChars/inputChars is request-side amplification, not output compression or savings.
@@ -92,7 +92,7 @@ export function settledTraceData(index, ms, s) {
       // ★ 失败阶段（2026-09-21）：区分「还没拿到响应头就超时」与「拿到了但生成太慢」
       stage: m.stage,
       providerReportedUsage: m.providerReportedUsage || null,
-      requestId: m.requestId, flightId: m.flightId, sharedFlight: m.sharedFlight,
+      requestId: m.requestId,
       // v11.7 对冲：谁胜出（primary/hedge；未启用 = undefined）、阈值、对冲发出时刻（未发 = null）
       hedged: m.hedged, hedgeAfterMs: m.hedgeAfterMs, hedgeStartedAt: m.hedgeStartedAt,
       promptBuildMs: m.promptBuildMs, promptBuildCount: m.promptBuildCount,

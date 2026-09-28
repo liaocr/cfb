@@ -1,19 +1,16 @@
-// core.selftest.mjs —— 配置 / 提示词 / 传输层 / 副模型调用 / 迟到暂存 / 回归钉子。纯本地，零网络、零会话、零 API 调用。
+// core.selftest.mjs —— 配置 / 传输层 / 副模型调用 / 回归钉子（v12.1：legacy 提示词与迟到暂存用例随代码删除）。纯本地，零网络、零会话、零 API 调用。
 // 目标：把金丝雀抓出的两个 bug 和它们的边界钉死，防止回归。
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
 import {
-  DEFAULTS, buildDistillPrompt, textOfContent, reasoningTextOf,
+  DEFAULTS, textOfContent, reasoningTextOf,
   apply, normalizeConfig, requestOnce, generateDistillation, birthEconomics,
   detectResponseProtocol, assembleSseFrames, collectSseFrames, extractFromJsonBody, requestStream,
-  pushLateMemory, takeLateMemory, peekLateMemory, lateMemorySize,
   readApiKey, DEP_ID,
 } from '../index.js'
 import { fidelity, protectedTokens } from '../src/fidelity.js'
-import { runPreStepEmit } from '../src/emitter.js'
-import { adaptEvidence } from '../src/state-memory.js'
 
 // 本进程独占的临时目录：固定文件名会让并发跑多个 selftest 时互相读到对方写的
 // trace / credentials，产生假失败（外审 R-1 复现：并发时 204/0 与 203/1 并存）。
@@ -39,26 +36,6 @@ function eq(name, got, want) { ok(name, JSON.stringify(got) === JSON.stringify(w
 
 const cfg = { hurdleRounds: 4, templateChars: 500 }
 
-console.log('\n【1】buildDistillPrompt —— 契约焊死')
-{
-  const p = buildDistillPrompt('X')
-  ok('含【已归档决策】', p.includes('【已归档决策】'))
-  ok('含【已否决分支·不可重开】', p.includes('【已否决分支·不可重开】'))
-  ok('含【已证伪路径·归档】', p.includes('【已证伪路径·归档】'))
-  // ★ 防伪造引用：模板里不得把【用户原话…】定义成一个要模型填的栏。
-  //   注意断言的是「栏头」，不是「用户原话」四个字 —— 正文里出现这四个字不算违规。
-  ok('★ 未把【用户原话】定义为必需栏', !p.includes('【用户原话'))
-  ok('★ 含"用中文输出"（正面防线，治脑补翻译）', p.includes('用中文输出'))
-  ok('★ 不含【已执行的工具调用】栏（已删）', !p.includes('已执行的工具调用'))
-  ok('含"整栏省略"负向指令', p.includes('整栏省略'))
-  ok('含硬语气禁令（建议/备选/可以考虑）', p.includes('建议') && p.includes('备选') && p.includes('可以考虑'))
-  ok('结尾带上思维链', p.endsWith('X'))
-  // 栏头集合必须**正好**是这三栏 + 结尾的输入标签，多一栏都不行
-  const heads = (p.match(/^【[^】]*】/gm) || []).sort()
-  eq('★ 栏头集合精确等于三态 + 输入标签', heads, ['【上一轮思维链】', '【已否决分支·不可重开】', '【已归档决策】', '【已证伪路径·归档】'].sort())
-  ok('每个状态栏各出现一次', heads.filter((h) => h !== '【上一轮思维链】').length === 3)
-}
-
 console.log('\n【4】textOfContent —— content 双兼容（bug 根因 3）')
 {
   eq('纯字符串', textOfContent('hello'), 'hello')
@@ -79,7 +56,6 @@ console.log('\n【9】消息抽取工具')
 console.log('\n【10】默认值 —— 安全默认 + 延迟预算')
 {
   eq('★ dryRun 默认 true（防带电裸奔）', DEFAULTS.dryRun, true)
-  eq('checkpoint 提前发起门槛 800', DEFAULTS.minRawChars, 800)
   // ★ 延迟回归锁：实测中位 5.4s / 最差 20.0s，180000 是灾难性配置，绝不许改回去
   eq('★ 超时预算 8 秒（不是 180 秒）', DEFAULTS.timeoutMs, 8000)
   eq('★ 重试 1 次（不是 4 次）', DEFAULTS.maxAttempts, 1)
@@ -89,9 +65,11 @@ console.log('\n【10】默认值 —— 安全默认 + 延迟预算')
   ok('★ 不含 maxInflight（同上，属延迟路径）', !('maxInflight' in DEFAULTS))
   // ★ v11.8：缺省 birth（唯一生产路径；dryRun 下零调用零改写），下轮收网缺省关（AUDIT §四 ②）
   eq('★ mode 默认 birth', DEFAULTS.mode, 'birth')
-  eq('★ birthDeferredClaim 默认 false（实验路径，显式打开）', DEFAULTS.birthDeferredClaim, false)
-  eq('★ earlyFire 默认 true（仅 checkpoint 模式生效）', DEFAULTS.earlyFire, true)
-  eq('★ graceMs 默认 300（= 用户感知延迟上限）', DEFAULTS.graceMs, 300)
+  eq('★ compressPrompt 默认 v3（v12.1）', DEFAULTS.compressPrompt, 'v3')
+  eq('★ birthIdentifierGate 默认 true（v12.1）', DEFAULTS.birthIdentifierGate, true)
+  for (const k of ['birthDeferredClaim', 'earlyFire', 'graceMs', 'minRawChars', 'stateMemory', 'stateCompress', 'keepTail']) {
+    ok('⛔ 随 checkpoint / 迟到认领 / memory 退役的键已从 DEFAULTS 移除：' + k, !(k in DEFAULTS))
+  }
   // ★ v11.10：token 闸门缺省开、token 门槛缺省不接管（opt-in）；trace 有界；预览片段收短；句柄进正文开关已退役
   eq('★ birthTokenGate 默认 true', DEFAULTS.birthTokenGate, true)
   eq('★ birthMinTokens 默认 null（仍按 birthMinChars）', DEFAULTS.birthMinTokens, null)
@@ -105,14 +83,13 @@ console.log('\n【10】默认值 —— 安全默认 + 延迟预算')
 
 console.log('\n【10.1】配置归一化 —— 嵌套写法 / 退役模式 / 退役键')
 {
-  const a = normalizeConfig({ mode: 'checkpoint', distill: { timeoutMs: 3000, minRawChars: 1200, maxOutputTokens: 600 } })
+  const a = normalizeConfig({ mode: 'off', distill: { timeoutMs: 3000, maxOutputTokens: 600 } })
   eq('嵌套 distill.timeoutMs 覆盖扁平键', a.timeoutMs, 3000)
-  eq('嵌套 distill.minRawChars', a.minRawChars, 1200)
   eq('嵌套 distill.maxOutputTokens', a.maxOutputTokens, 600)
-  eq('mode 透传', a.mode, 'checkpoint')
+  eq('mode 透传', a.mode, 'off')
 
-  // ⛔ v11.8 退役模式：按 'off' 处理（它们的写回路径协议上永久非法），BOOT 可见
-  for (const m of ['distill', 'rules']) {
+  // ⛔ v11.8 / v12.1 退役模式：按 'off' 处理，BOOT 可见
+  for (const m of ['distill', 'rules', 'checkpoint']) {
     const r = normalizeConfig({ mode: m })
     ok('★ 退役模式 ' + m + ' ⇒ off + retiredMode', r.mode === 'off' && r.retiredMode === m, { mode: r.mode, retiredMode: r.retiredMode })
   }
@@ -306,11 +283,14 @@ console.log('\n【17】★ 提纯模型跟随宿主对话模型（本地 server 
   await new Promise((r) => srv.listen(0, '127.0.0.1', r))
 
   let llmStream = null
-  const ctx = { on: (nm, fn) => { if (nm === 'llm/stream') llmStream = fn } }
+  // v12.1：原 checkpoint early-fire 改为 birth 全链路（需要一个 CAS 存储；本地假存储即可）
+  const store = { putText: async (text) => ({ handle: 'art://t' + text.length }) }
+  const ctx = { on: (nm, fn) => { if (nm === 'llm/stream') llmStream = fn }, get: (k) => (k === 'cmbStore' ? store : null) }
+  const BIRTH = { mode: 'birth', birthMinChars: 10, birthTokenGate: false, birthMinSavedChars: 0, birthFinishWaitMs: 1500, finishHeadersGraceMs: 0 }
 
   // ⛔ prewarm:false / baseUrl 指向本地 ⇒ 零外网
   apply(ctx, {
-    mode: 'checkpoint', trace: true, traceFile: tmp, dryRun: false, minRawChars: 10,
+    ...BIRTH, trace: true, traceFile: tmp, dryRun: false,
     prewarm: false, model: '', followHostModel: true,
     baseUrl: 'http://127.0.0.1:' + srv.address().port,
     credentialsPath: cred, credentialRef: 'TEST_KEY_ZZ', maxAttempts: 1, timeoutMs: 3000,
@@ -318,12 +298,11 @@ console.log('\n【17】★ 提纯模型跟随宿主对话模型（本地 server 
   ok('llm/stream handler 已注册', typeof llmStream === 'function')
 
   const fakeStream = async function* (chunks) { for (const c of chunks) yield c }
-  // ⚠ 每次要用**不同的 reasoning 文本**：fireEarly 按原文精确匹配去重，
-  //   同一段文本第二次会直接命中缓存而不重新发起（这是设计，不是 bug）。
   const mkChunks = (ch, len) => [
     { type: 'block-start', index: 0, blockType: 'reasoning' },
     { type: 'reasoning-delta', index: 0, text: ch.repeat(len) },
-    { type: 'block-start', index: 1, blockType: 'text' },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: ch.repeat(len) } },
+    { type: 'finish', reason: { kind: 'stop' } },
   ]
 
   // ── 17A：还没见过宿主模型 ⇒ **不许发起提纯**（不猜模型名）──
@@ -332,9 +311,9 @@ console.log('\n【17】★ 提纯模型跟随宿主对话模型（本地 server 
     for await (const _ of ret) { /* drain */ }
     await new Promise((r) => setTimeout(r, 200))
     const t = fs.readFileSync(tmp, 'utf8')
-    ok('★ 没读到宿主模型 → 不发提纯（early-no-model）', t.includes('early-no-model'))
-    ok('★ 且绝不发 early-fired（不猜模型名去撞墙）', !t.includes('early-fired'))
-    eq('★ 一个包都没发给网关', got.length, 0)
+    ok('★ 没读到宿主模型 → 提纯失败且报出真因（no model）', t.includes('birth-distill-failed') && t.includes('no model'))
+    ok('★ 原文放行（birth-passthrough）', t.includes('birth-passthrough'))
+    eq('★ 一个包都没发给网关（不猜模型名去撞墙）', got.length, 0)
   }
 
   // ── 17B：llm/stream 报出宿主模型 ⇒ cfg.model 被改写 ⇒ 发出去的 model 就是它 ──
@@ -349,8 +328,8 @@ console.log('\n【17】★ 提纯模型跟随宿主对话模型（本地 server 
     const t = fs.readFileSync(tmp, 'utf8')
     ok('★ 捕获到宿主模型并落 trace（host-model）', t.includes('host-model'))
     ok('★ trace 里 effectiveModel = 宿主模型', t.includes('"effectiveModel":"HOST-MODEL-X"'))
-    ok('★ 提纯被发起（early-fired）', t.includes('early-fired'))
-    ok('★ 提纯成功且带上实际模型名（early-ready）', t.includes('"model":"HOST-MODEL-X"'))
+    ok('★ 提纯被发起（birth-fired）', t.includes('birth-fired'))
+    ok('★ 压缩结果落地（birth-condensed）', t.includes('birth-condensed'))
 
     eq('★ 网关收到的 model 就是宿主对话模型', got.length >= 1 ? got[0].model : null, 'HOST-MODEL-X')
     ok('★ 且带上了 thinking={type:disabled}（关掉思考）',
@@ -381,9 +360,9 @@ console.log('\n【17】★ 提纯模型跟随宿主对话模型（本地 server 
     })
     await new Promise((r) => srv2.listen(0, '127.0.0.1', r))
     let ls2 = null
-    const ctx2 = { on: (nm, fn) => { if (nm === 'llm/stream') ls2 = fn } }
+    const ctx2 = { on: (nm, fn) => { if (nm === 'llm/stream') ls2 = fn }, get: (k) => (k === 'cmbStore' ? store : null) }
     apply(ctx2, {
-      mode: 'checkpoint', trace: true, traceFile: tmp2, dryRun: false, minRawChars: 10, prewarm: false,
+      ...BIRTH, trace: true, traceFile: tmp2, dryRun: false, prewarm: false,
       model: 'FIXED-MODEL-Z', followHostModel: false,
       baseUrl: 'http://127.0.0.1:' + srv2.address().port,
       credentialsPath: cred, credentialRef: 'TEST_KEY_ZZ', maxAttempts: 1, timeoutMs: 3000,
@@ -508,212 +487,6 @@ console.log('\n【19】失败路径的请求指纹 —— 分得清「TTFB 吃�
 }
 console.log('\n' + '='.repeat(56))
 
-// ──【20】方案二「下轮收网」暂存区（2026-09-21）───────────────────────────
-//   核心不变量：① 按【原始推理文本】索引（收网器只拿得到 raw）；
-//              ② 取走即移除（同一结论绝不重复注入）；
-//              ③ 同一块重复入队只留一条（绝不堆积）；④ 有界。
-console.log('')
-console.log('【20】birth 下轮收网：暂存区语义')
-{
-  const sid = 'sess-' + Math.random().toString(36).slice(2)
-  const rawA = '推理原文 A'.repeat(20)
-  const rawB = '推理原文 B'.repeat(20)
-  const entA = [{ id: 'a1' }]
-  const entB = [{ id: 'b1' }]
-
-  ok('20.1 初始为空', lateMemorySize(sid) === 0, String(lateMemorySize(sid)))
-  ok('20.2 push 成功', pushLateMemory(sid, rawA, entA, '看板A') === true)
-  ok('20.3 入队后可见', lateMemorySize(sid) === 1)
-
-  // ② 按 raw 索引：拿错 raw 必须取不到（否则会把 A 的结论贴到 B 上）
-  ok('20.4 ★ 错误的 raw 取不到（绝不张冠李戴）', takeLateMemory(sid, rawB) === null)
-  ok('20.5 取错后原条目仍在', lateMemorySize(sid) === 1)
-  ok('20.6 peek 不消费', peekLateMemory(sid, rawA) !== null && lateMemorySize(sid) === 1)
-
-  const got = takeLateMemory(sid, rawA)
-  ok('20.7 ★ 正确 raw 取到且内容一致',
-     !!got && got.board === '看板A' && JSON.stringify(got.entries) === JSON.stringify(entA))
-  ok('20.8 ★ 取走即移除（绝不重复收网）', lateMemorySize(sid) === 0)
-  ok('20.9 二次取同一条返回 null', takeLateMemory(sid, rawA) === null)
-
-  // ③ 同文本但没有任务身份 ⇒ 保留歧义，不擅取最新版
-  pushLateMemory(sid, rawA, entA, '第一版')
-  pushLateMemory(sid, rawA, entA, '第二版')
-  ok('20.10 ★ 同 raw 无身份重复入队保留两条', lateMemorySize(sid) === 2, String(lateMemorySize(sid)))
-  ok('20.11 同 raw 无身份歧义不认领', takeLateMemory(sid, rawA) === null)
-
-  // ④ 有界
-  for (let i = 0; i < 20; i++) pushLateMemory(sid, rawA + '#' + i, entB, '看板' + i)
-  ok('20.12 ★ 有界（最多 8 条，绝不无界增长）', lateMemorySize(sid) === 8, String(lateMemorySize(sid)))
-
-  // 会话隔离：另一个会话看不到本会话的暂存
-  ok('20.13 ★ 会话隔离', lateMemorySize(sid + '-other') === 0)
-
-  // 边界：脏输入不得抛错
-  ok('20.14 null session 安全', pushLateMemory(null, rawA, entA, 'x') === false && takeLateMemory(null, rawA) === null)
-  ok('20.15 空 raw 拒收', pushLateMemory(sid, '', entA, 'x') === false)
-  ok('20.16 空 entries 拒收', pushLateMemory(sid, rawA, [], 'x') === false)
-  ok('20.17 非字符串 raw 拒收', pushLateMemory(sid, 123, entA, 'x') === false)
-  ok('20.18 未知会话取用安全', takeLateMemory('never-seen', 'x') === null)
-
-  // ★★ 2026-09-22 全覆盖认领语义 ★★
-  //   收网用一条 ledger 替换**整条**消息的推理，而暂存的是**块级**结果。
-  //   只部分就绪就收网 ⇒ 未就绪块的推理凭空消失。故：部分覆盖一律不认领。
-  {
-    const NL = String.fromCharCode(10)
-    const blockA = '甲'.repeat(80)
-    const blockB = '乙'.repeat(80)
-
-    // ① 部分就绪 ⇒ 不认领、不消费
-    const s2 = sid + '-partial'
-    pushLateMemory(s2, blockA, entA, '块A看板')
-    ok('20.19 ★★ 多块只就绪一块 ⇒ 拒绝认领（防丢内容）',
-       takeLateMemory(s2, blockA + NL + blockB) === null)
-    ok('20.20 ★ 拒绝后**不消费**，结果仍保留待下轮', lateMemorySize(s2) === 1)
-
-    // ② 全部就绪 ⇒ 认领，且按块序合并
-    pushLateMemory(s2, blockB, entB, '块B看板')
-    const full = takeLateMemory(s2, blockA + NL + blockB)
-    ok('20.21 ★★ 全部就绪 ⇒ 认领成功', !!full, JSON.stringify(full && full.count))
-    ok('20.22 ★ 按块序合并（A 在 B 前，不按完成序）',
-       !!full && full.board === '块A看板' + NL + NL + '块B看板', JSON.stringify(full && full.board))
-    ok('20.23 ★ 认领后全部消费（绝不重复收网）', lateMemorySize(s2) === 0)
-
-    // ③ 顺序颠倒也必须按原文位置合并（蒸馏是并发的，完成序不可信）
-    const s2r = sid + '-rev'
-    pushLateMemory(s2r, blockB, entB, '块B看板')   // 先完成的是 B
-    pushLateMemory(s2r, blockA, entA, '块A看板')   // 后完成的是 A
-    const rev = takeLateMemory(s2r, blockA + NL + blockB)
-    ok('20.24 ★★ 完成序颠倒仍按源块序合并',
-       !!rev && rev.board === '块A看板' + NL + NL + '块B看板', JSON.stringify(rev && rev.board))
-
-    // ④ 短文本：逐字仍可匹配，但不参与容错（防误配）
-    const s3 = sid + '-short'
-    pushLateMemory(s3, 'short text here', entA, '短看板')
-    ok('20.25 ★ 短文本不参与容错匹配（防误配）', takeLateMemory(s3, 'short text here plus more') === null)
-    ok('20.26 短文本逐字仍可匹配', (takeLateMemory(s3, 'short text here') || {}).board === '短看板')
-
-    // ⑤ 多条候选（不同轮次出现相同文本）⇒ 拼接不等于原文 ⇒ 自动 no-op
-    const s4 = sid + '-amb'
-    const base = '丙'.repeat(100)
-    pushLateMemory(s4, base, entA, '候选1')
-    pushLateMemory(s4, base + '丁'.repeat(100), entB, '候选2')
-    const amb = takeLateMemory(s4, base + '丁'.repeat(100))
-    ok('20.27 ★ 逐字命中优先（长的那条）', amb && amb.board === '候选2', JSON.stringify(amb && amb.board))
-
-    // ⑥ 嵌在别段中间 ⇒ 段对齐排除
-    const s5 = sid + '-mid'
-    const frag = '戊'.repeat(100)
-    pushLateMemory(s5, frag, entA, '本该不匹配')
-    ok('20.28 ★ 嵌在别段中间不匹配（段对齐排除巧合）',
-       takeLateMemory(s5, '前缀' + frag + '后缀') === null)
-    ok('20.29 段首对齐但**部分**覆盖仍拒绝',
-       takeLateMemory(s5, frag + NL + '后段') === null)
-    ok('20.30 完全覆盖才认领',
-       (takeLateMemory(s5, frag) || {}).board === '本该不匹配')
-  }
-}
-
-// ──【21】方案二端到端：出生放行 → 暂存 → 下轮收网 ─────────────────────────
-//   这是整个方案二的**唯一验收点**：不验它，前面所有单测都只是零件。
-//   链路：birthStart/birthFinish 放行原文（task.passedThrough）
-//         → distill 稍后成功 ⇒ pushLateMemory（按 raw 索引）
-//         → 下一轮 pre-step：runPreStepEmit 用 awaitDistilled 取回
-//         → 官方 user/message + surfaceOp replace 收网。
-console.log('')
-console.log('【21】birth 下轮收网：端到端')
-{
-  const NL = String.fromCharCode(10)
-  const mkUser = (seq, text) => ({ seq, type: 'user/message', data: { role: 'user', content: [{ type: 'text', text }] } })
-  const mkA = (seq, reasoning) => ({ seq, type: 'assistant/message', data: { message: { role: 'assistant', content: [{ type: 'reasoning', text: reasoning }] } } })
-  // 与生产同口径：多块用 '\n' 拼接（这正是容错匹配要对付的形状）
-  const rawOfImpl = (ev) => ev && ev.data && ev.data.message
-    ? ev.data.message.content.filter((b) => b.type === 'reasoning').map((b) => String(b.text || '')).join(NL) : null
-  const mkSession = (events) => {
-    const map = new Map(events.map((e) => [e.seq, e]))
-    const calls = []
-    return {
-      id: 'sess-claim',
-      surface: { nodes: events.map((e) => e.seq) },
-      eventAt: (s) => map.get(s),
-      requestContext: () => ({ contextWindow: 262144 }),
-      append(type, data, meta) { calls.push({ type, data, meta }); return { seq: 9000 + calls.length } },
-      __calls: calls,
-    }
-  }
-  const mkCtx = () => ({ get: (k) => (k === 'tokenMeter' ? { measure: () => ({ usedTokens: Math.floor(262144 * 0.10) }) } : null) })
-
-  // A1 是「上一轮放行原文」的那一块：长到足以越过门槛
-  const rawA1 = '甲'.repeat(900)
-  // 表面：U1 / A1 / U2 / A2(活跃尾部) —— keepTail=1 ⇒ A1 已滑出尾部，可收网
-  const buildEvents = () => [mkUser(1, '第一问'), mkA(2, rawA1), mkUser(4, '第二问'), mkA(5, '活跃尾部')]
-
-  // ── 反例：没有暂存结果 ⇒ 必须【不发】 ──
-  {
-    const s = mkSession(buildEvents())
-    const r = await runPreStepEmit({
-      session: s, ctx: mkCtx(), cfg: { dryRun: false, keepTail: 1 },
-      rawOf: (e) => rawOfImpl(e), toolTextOf: () => null,
-      awaitDistilled: async (raw) => { const h = takeLateMemory('sess-claim', raw); return h ? { ok: true, text: h.board } : null },
-    })
-    ok('21.1 ★ 无暂存结果 ⇒ 不发（保持原文，绝不误动表面）', r.emitted === false && s.__calls.length === 0, JSON.stringify(r))
-  }
-
-  // ── 正例：有暂存结果 ⇒ 必须收网 ──
-  {
-    const sid = 'sess-claim'
-    pushLateMemory(sid, rawA1, [{ id: 'k1' }], '【收网看板】这是迟到编译出来的语义摘要')
-    const s = mkSession(buildEvents())
-    const r = await runPreStepEmit({
-      session: s, ctx: mkCtx(), cfg: { dryRun: false, keepTail: 1 },
-      rawOf: (e) => rawOfImpl(e), toolTextOf: () => null,
-      awaitDistilled: async (raw) => { const h = takeLateMemory(sid, raw); return h ? { ok: true, text: h.board } : null },
-    })
-    ok('21.2 ★★ 有暂存结果 ⇒ 收网成功（方案二的核心承诺）', r.emitted === true, JSON.stringify(r))
-    const u = s.__calls.find((c) => c.type === 'user/message')
-    ok('21.3 用的是官方 user/message 替换者（不是 assistant/message）', !!u && u.type === 'user/message')
-    ok('21.4 surfaceOp 是 replace 且区间完整', !!u && u.meta && u.meta.surfaceOp && u.meta.surfaceOp.op === 'replace'
-       && Number.isInteger(u.meta.surfaceOp.startSeq) && Number.isInteger(u.meta.surfaceOp.endSeq))
-    ok('21.5 ★ 被遮蔽的 A1(seq=2) 在 sourceEventSeqs 里（可溯源）',
-       !!u && u.meta.sourceEventSeqs.includes(2), JSON.stringify(u && u.meta.sourceEventSeqs))
-    ok('21.6 ★ 活跃尾部 A2(seq=5) 绝不被遮蔽（不许把当轮回答换掉）',
-       !!u && !u.meta.sourceEventSeqs.includes(5))
-    ok('21.7 看板正文确实进了消息（不是空壳）',
-       !!u && JSON.stringify(u.data).indexOf('收网看板') >= 0)
-    ok('21.8 ★ 收网后暂存被消费（同一结论绝不重复收网）', lateMemorySize(sid) === 0)
-  }
-
-  // ── 收网只发生一次：再跑一次必须不发 ──
-  {
-    const s = mkSession(buildEvents())
-    const r = await runPreStepEmit({
-      session: s, ctx: mkCtx(), cfg: { dryRun: false, keepTail: 1 },
-      rawOf: (e) => rawOfImpl(e), toolTextOf: () => null,
-      awaitDistilled: async (raw) => { const h = takeLateMemory('sess-claim', raw); return h ? { ok: true, text: h.board } : null },
-    })
-    ok('21.9 ★ 暂存消费后不再重复收网（幂等）', r.emitted === false && s.__calls.length === 0)
-  }
-}
-
-console.log('')
-console.log('【22】编译输入止血：覆盖水位与成对校验')
-await test22()
-// ══════════════════════════════════════════════════════════════════════════
-// 22. 证据截面冻结（adaptEvidence 返回冻结对象；过滤只能构造新数组）
-//   v11.8：cover.json 覆盖水位（markCovered / coverWatermarkOf / coverSnapshotOk）已无生产调用方，
-//   随代码一并删除（22.1–22.11）；覆盖判据现由结构化快照 coverage.coveredSeqs 精确成员判定承担。
-// ══════════════════════════════════════════════════════════════════════════
-async function test22() {
-  // ── 冻结对象回归（核心 bug：adaptEvidence 返回冻结对象）──
-  {
-    const a = adaptEvidence({ events: [], inFlightIds: new Set(), cutSeq: null })
-    ok('22.12 ★★ adaptEvidence 返回冻结对象（过滤绝不能改它）', Object.isFrozen(a) === true)
-    let threw = false
-    try { a.tools = [] } catch { threw = true }
-    ok('22.13 ★★ 证明改冻结字段必抛错 ⇒ 生产代码必须构造新数组而非赋值', threw === true)
-  }
-}
-
 console.log('\n【23】v11.6 成本模型与门槛（2026-09-23，docs/analysis/AUDIT-V11.5.md §一）')
 {
   // 默认值锁定
@@ -732,18 +505,17 @@ console.log('\n【23】v11.6 成本模型与门槛（2026-09-23，docs/analysis/
   ok('23.10 每轮增量未标定时**不**用水位（避免抖动），回落 fallback', birthEconomics(5000, { usedTokens: 1, contextWindow: 128000, source: 'meter' }, {}).rSource === 'fallback')
   eq('23.11 B 非正 ⇒ null（绝不抛）', birthEconomics(0, null, {}), null)
   // 缺陷 D：timeoutMs / finishWaitMs 关系校验
-  const c1 = normalizeConfig({ mode: 'birth', birthDeferredClaim: false, birth: { finishWaitMs: 12000 }, timeoutMs: 8000 })
+  const c1 = normalizeConfig({ mode: 'birth', birth: { finishWaitMs: 12000 }, timeoutMs: 8000 })
   eq('23.12 ★ timeoutMs < finishWaitMs+宽限(1500)+2000 ⇒ 抬到 15500', c1.timeoutMs, 15500)
   ok('23.13 抬高必留痕 configAdjusted.timeoutMs', c1.configAdjusted && c1.configAdjusted.timeoutMs && c1.configAdjusted.timeoutMs.from === 8000, c1.configAdjusted)
-  const c2 = normalizeConfig({ mode: 'birth', birthDeferredClaim: false, birth: { finishWaitMs: 12000 }, timeoutMs: 20000 })
+  const c2 = normalizeConfig({ mode: 'birth', birth: { finishWaitMs: 12000 }, timeoutMs: 20000 })
   ok('23.14 已满足（线上 20000）⇒ 零变化、无 configAdjusted', c2.timeoutMs === 20000 && !c2.configAdjusted)
-  const c3 = normalizeConfig({ mode: 'birth', birthDeferredClaim: true, birth: { finishWaitMs: 12000 }, timeoutMs: 8000 })
-  ok('23.15 deferredClaim 开着（ready-only，不等 finishWait）⇒ 不改 timeoutMs', c3.timeoutMs === 8000 && !c3.configAdjusted)
-  eq('23.15a v11.8 缺省 deferredClaim=false ⇒ 缺省配置同样受抬高保护', normalizeConfig({ mode: 'birth', birth: { finishWaitMs: 12000 }, timeoutMs: 8000 }).timeoutMs, 15500)
-  ok('23.16 非 birth 模式不改 timeoutMs', normalizeConfig({ mode: 'checkpoint', birthDeferredClaim: false, birth: { finishWaitMs: 12000 }, timeoutMs: 8000 }).timeoutMs === 8000)
+  eq('23.15a 缺省配置同样受抬高保护', normalizeConfig({ mode: 'birth', birth: { finishWaitMs: 12000 }, timeoutMs: 8000 }).timeoutMs, 15500)
+  ok('23.15b v12.1：birthDeferredClaim:true 已退役 ⇒ 同样抬高（不再存在 ready-only 路径）', normalizeConfig({ mode: 'birth', birthDeferredClaim: true, birth: { finishWaitMs: 12000 }, timeoutMs: 8000 }).timeoutMs === 15500)
+  ok('23.16 非 birth 模式不改 timeoutMs', normalizeConfig({ mode: 'off', birth: { finishWaitMs: 12000 }, timeoutMs: 8000 }).timeoutMs === 8000)
   // v11.8：finish 最多等 finishWaitMs + finishHeadersGraceMs ⇒ 宽限必须计入抬高目标
-  eq('23.17 ★ 宽限 5000 ⇒ 抬到 12000+5000+2000=19000', normalizeConfig({ mode: 'birth', birthDeferredClaim: false, birth: { finishWaitMs: 12000, finishHeadersGraceMs: 5000 }, timeoutMs: 14000 }).timeoutMs, 19000)
-  eq('23.18 宽限关（0）⇒ 仍按 finishWaitMs+2000', normalizeConfig({ mode: 'birth', birthDeferredClaim: false, birth: { finishWaitMs: 12000, finishHeadersGraceMs: 0 }, timeoutMs: 8000 }).timeoutMs, 14000)
+  eq('23.17 ★ 宽限 5000 ⇒ 抬到 12000+5000+2000=19000', normalizeConfig({ mode: 'birth', birth: { finishWaitMs: 12000, finishHeadersGraceMs: 5000 }, timeoutMs: 14000 }).timeoutMs, 19000)
+  eq('23.18 宽限关（0）⇒ 仍按 finishWaitMs+2000', normalizeConfig({ mode: 'birth', birth: { finishWaitMs: 12000, finishHeadersGraceMs: 0 }, timeoutMs: 8000 }).timeoutMs, 14000)
 }
 
 console.log('\n【24】阶段 0 bug 回归（2026-09-24 大清扫）')
@@ -770,8 +542,8 @@ console.log('\n【24】阶段 0 bug 回归（2026-09-24 大清扫）')
   ok('24.13a ★ 嵌套容器里拼错的键同样进 unknownOptions', ['birth.finishWait', 'distill.timeout'].every((k) => u5.unknownOptions.includes(k)) && !u5.unknownOptions.includes('birth.finishWaitMs'), u5.unknownOptions)
 
   // ④ DEP_ID 必须覆盖全部 import 的本地模块（BOOT 上岗自证）
-  ok('24.14 ★ DEP_ID 含 exact-flights.js（曾漏）', typeof DEP_ID === 'string' && DEP_ID.includes('exact-flights.js'))
-  for (const dep of ['emitter.js', 'evidence-ledger.js', 'consumption.js', 'state-memory.js', 'snapshot-store.js']) {
+  ok('24.14 ★ DEP_ID 是字符串', typeof DEP_ID === 'string')
+  for (const dep of ['birth.js', 'distill.js', 'prompts.js', 'fidelity.js', 'transport.js']) {
     ok('24.15 DEP_ID 含 ' + dep, DEP_ID.includes(dep))
   }
   // v11.8：DEP_ID 改为自动枚举 src/ ⇒ 新增模块不可能再漏登记

@@ -7,7 +7,7 @@
 //   D. provider：行内注释 / 引号键名 / 引号值（此前：注释进 baseURL ⇒ 请求路径变成 /v1%20%20）
 //   E. provider：凭据正则不得跨行（此前：\s* 跨过换行，把下一行的键名当钥匙）
 //   F. （v12.0 删除：随 compress-x1 退役，原 hardIdentifiers 线性化回归钉见 cfba57b）
-//   G. distill：在途共享 identity 不再以明文钥匙 + 全文 prompt 作 Map 键
+//   G.（v12.1 删除：在途共享 flights 随 memory 模式一并移除）
 //   H. trace：makeTraceWriter 序列化失败（statsOf 抛 / BigInt）只丢这一条，不再向调用方抛
 //   I. 阶段 0 观测（DECISION-2026-09-27 §5）：below-floor 留痕 birth-below-floor；tools/phase0-report.mjs 纯函数
 import fs from 'node:fs'
@@ -34,7 +34,7 @@ const mkSrc = (blockText = BIG, endBlock) => (async function* () {
   yield { type: 'block-end', index: 1, block: { type: 'text', text: 'hi' } }
   yield { type: 'finish', reason: { kind: 'stop' } }
 })()
-const baseCfg = { enabled: true, mode: 'birth', dryRun: false, birthMinChars: 100, birthFinishWaitMs: 300, finishHeadersGraceMs: 0, stateCompress: true, compileMode: 'compress' }
+const baseCfg = { enabled: true, mode: 'birth', dryRun: false, birthMinChars: 100, birthFinishWaitMs: 300, finishHeadersGraceMs: 0 }
 const baseDeps = { cfg: baseCfg, sessionId: 's1', archive: async () => 'art://abcdefghijklmnopqrstuv', distill: async () => ({ text: 'summary' }) }
 const invariantHolds = (out) => {
   // 与 dsh-llm invariant.js:53 同判据：finish 之前每个 block-start 都有 block-end；finish 最后
@@ -128,17 +128,6 @@ const invariantHolds = (out) => {
   const rd = (k) => I.readApiKey({ credentialsPath: c2, credentialRef: k })
   ok('E2 裸值 / 双引号含 # / 单引号 / 行内注释', rd('A') === 'plain-key' && rd('B') === 'quoted # key' && rd('C') === 'single' && rd('E') === 'spaced', [rd('A'), rd('B'), rd('C'), rd('E')].join('|'))
   ok('E3 行首锚定仍然生效（MY_A 不得命中 A）', rd('A') === 'plain-key')
-}
-
-// ═══ G. 在途共享 identity 不含明文 ═══════════════════════════════════════
-{
-  const seen = []
-  const flights = { run: (identity, execute) => { seen.push(identity); return Promise.reject(new Error('stop-here')) } }
-  const credentialsPath = path.join(home, 'g.yaml'); fs.writeFileSync(credentialsPath, 'K: sk-SECRET-VALUE\n')
-  const cfg = { ...I.DEFAULTS, model: 'm', followHostModel: false, followHostProvider: false, baseUrl: 'http://127.0.0.1:9', credentialRef: 'K', credentialsPath, keepAlive: false }
-  await I.generateDistillation('原文 PROMPT-BODY', cfg, undefined, undefined, { flights, scope: ['s', 'main', 1] }).catch(() => {})
-  ok('G1 identity 是 64 位十六进制摘要', seen.length === 1 && /^[a-f0-9]{64}$/.test(seen[0]), seen[0])
-  ok('G2 identity 不含钥匙与原文', seen.length === 1 && !seen[0].includes('sk-SECRET-VALUE') && !seen[0].includes('PROMPT-BODY'))
 }
 
 // ═══ H. makeTraceWriter 自身不得抛（序列化失败只丢这一条）═══════════════

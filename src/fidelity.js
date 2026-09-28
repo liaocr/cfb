@@ -2,6 +2,9 @@
 //
 // 用途：birthFinish 用 fidelity() 统计压缩稿对原文「逐字标识符」的召回率（只记录，进 trace）；
 //       tools/analyze-efficiency.mjs 离线复算同一指标。
+//       v12.1：inventedIdentifiers() —— 压缩稿里出现、原文里没有的标识符（路径 / URL / 反引号代码 / camelCase /
+//       snake_case / file.ext）。birthFinish 据此拒绝替换（birthIdentifierGate，缺省开）。
+//       来历：v4 理论的不变量 I2「标识符必须有出处」（docs/theory 第五卷），从参考实现 value.js 吸收进生产路径。
 //
 // ⚠ 召回率是**必要条件**度量：它测不出「结论被升级 / 推理链断裂」，不是质量证明
 //   （见 docs/analysis/AUDIT-V11.5.md §六）。削减率更不是保真度指标。
@@ -73,4 +76,48 @@ export function fidelity(src, out, allowedRanges = []) {
       lostSample: lost.slice(0, 6),
     },
   }
+}
+
+// ── v12.1 发明标识符检测（I2：标识符必须有出处）─────────────────────────────
+// 只取「高精度」类别：路径（带扩展名或 ≥2 段）、URL、反引号代码、camelCase、snake_case、file.ext。
+// 刻意不取：数字（摘要可合法计数/换算）、中文词、kebab-case（易与普通英文复合词撞车）。
+// 宁可漏报（漏报 = 与 v12.0 行为相同），不可误报（误报 = 白扔一次压缩，但仍安全：原文放行）。
+const RE_GATE_PATH = /(?:\b[A-Za-z]:[\\/]|(?<![\w.])\.{0,2}\/)?[\w.-]+(?:[\\/][\w.-]+)+/g
+const RE_GATE_IDENT = /\b(?:[a-z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*|[a-zA-Z_][A-Za-z0-9]*_[A-Za-z0-9_]+|[A-Za-z][A-Za-z0-9_-]*\.(?:js|mjs|cjs|ts|tsx|jsx|json|ya?ml|toml|md|py|go|rs|java|c|h|cpp|sh|ps1|log|txt|lock|css|html))\b/g
+function gateTokens(text) {
+  const s = String(text || '')
+  const out = new Set()
+  const add = (t) => { t = t.replace(/^[`'"(]+|[`'"),.:;]+$/g, ''); if (t.length >= 3) out.add(t) }
+  let m
+  RE_SCHEME.lastIndex = 0
+  while ((m = RE_SCHEME.exec(s)) !== null) add(m[0])
+  const bt = /`([^`\n]{2,80})`/g
+  while ((m = bt.exec(s)) !== null) add(m[1])
+  RE_GATE_PATH.lastIndex = 0
+  while ((m = RE_GATE_PATH.exec(s)) !== null) {
+    const t = m[0]
+    // 路径需像路径：带扩展名，或至少 2 个分隔符，或以 / ./ ../ 盘符开头（排除 A/B、v2/v3、和/或 这类写法）
+    const seps = (t.match(/[\\/]/g) || []).length
+    if (seps >= 2 || /\.[A-Za-z0-9]{1,6}$/.test(t) || /^(?:[A-Za-z]:[\\/]|\.{0,2}\/)/.test(t)) add(t)
+  }
+  RE_GATE_IDENT.lastIndex = 0
+  while ((m = RE_GATE_IDENT.exec(s)) !== null) add(m[0])
+  return out
+}
+
+/**
+ * 压缩稿里出现、原文里找不到的标识符。原文比对用「逐字包含」：摘要只截取路径尾段（如 conf.yaml）不算发明。
+ * @returns string[]（最多 8 个样本；空数组 = 没有发明）
+ */
+export function inventedIdentifiers(src, out) {
+  const hay = String(src || '')
+  const res = []
+  for (const t of gateTokens(out)) {
+    if (hay.includes(t)) continue
+    // 反斜杠 / 正斜杠互换视为同一路径（Windows 原文、POSIX 摘要）
+    if (hay.includes(t.replace(/\\/g, '/')) || hay.includes(t.replace(/\//g, '\\'))) continue
+    res.push(t)
+    if (res.length >= 8) break
+  }
+  return res
 }

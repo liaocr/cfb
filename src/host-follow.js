@@ -4,7 +4,7 @@
 // 机制：`llm/stream` 的 options 带 `model` / `provider`（= 本次对话调用用的模型）。
 //
 // v11.11 之前：看到新模型就**改写共享的 cfg.model / cfg.followProvider**。birth 路径在同一个同步调用里
-//   立刻复制了一份（streamCfg），所以不受影响；但 checkpoint 的 early-fire、预热等后来才读 cfg 的地方，
+//   立刻复制了一份（streamCfg），所以不受影响；但预热等后来才读 cfg 的地方（v12.1 前还有 checkpoint 的 early-fire），
 //   会读到**别的调用**写进去的值（两个会话 / 子 agent / 标题生成交错时）。
 // v11.11：共享 cfg 永不改写。每次 llm/stream 用 `callConfig(options)` 派生**本次调用专属**的配置。
 //

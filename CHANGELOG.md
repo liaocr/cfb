@@ -2,7 +2,50 @@
 
 > 最新在上。每条的验证数字、开关与待办都是**当时**的记录，按原样保留、不回写；现状以最新条目和 README 为准。
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
-> 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改。
+> 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
+
+---
+
+## v12.1.0（2026-09-28）单一路径：birth + compress（缺省 v3），删除 checkpoint / 迟到认领 / memory 模式 / legacy v1 提示词 / value.js 原型
+
+先问「为什么留着」：有真实优点的先并入主路径再删，确定无用的直接删。被删文件可用 `git show <v12.0.0 提交>:<路径>` 取回；逐项理由见 `docs/README.md` §5。
+
+### ⚠ 缺省行为变化（只在 `dryRun:false` 时可见）
+- **缺省编译从 legacy（v1「三栏结算单」蒸馏）改为 compress-v3**。v12.0 的缺省是 `stateMemory:false, stateCompress:false` ⇒ legacy；
+  v4a 评审批评的恰是这份 v1 提示词。现在 compress 是唯一编译模式，`compressPrompt` 缺省 `'v3'`（v3 提示词正文不变）。
+- **新增发明标识符闸**（`birthIdentifierGate`，缺省开，嵌套写法 `birth.identifierGate`）：摘要里出现原文没有的路径 / URL /
+  反引号代码 / camelCase / snake_case / `file.ext` ⇒ 原文放行（`why: 'invented-identifier'`，trace 带 `invented` 样本）。
+  来源：`value.js` 不变量 I2。理由：压缩稿会被主模型当作自己推过的事实读回，编造的标识符是定向误导，比「少压一块」贵得多。
+  判定顺序：空候选 → 发明标识符 → token 闸 → 净省。
+- **放弃即取消无例外**：任何原文放行路径（含释放原文）都取消在飞的提纯（T18a）；v12.0 在迟到认领打开时会留着它。
+- 预热只在 `mode === 'birth'` 时进行。
+
+### 删除
+- checkpoint 模式：`src/checkpoint.js`、`emitter.js`、`balanced-span.js`、`headroom.js`、`imperative.js`。水位读数并入 `birth.readPressure`；
+  祈使句检测**不并入**（v3 规则 5 已禁止写指令，事后拦截会误伤引用原文的句子）。
+- 迟到认领：`src/birth-claim.js`、`late-memory.js`（已知缺陷 B 未修，且与「放弃即取消」冲突）。
+- memory 模式 / 状态记忆：`src/state-memory.js`、`evidence.js`、`evidence-ledger.js`、`evidence-input.js`、`evidence-storage.js`、
+  `snapshot-store.js`、`fs-lock.js`、`exact-flights.js`、`consumption.js`（约 3,200 行；插件从此不写 trace 以外的任何状态文件）。
+- legacy v1 提示词与 legacy 编译分支；`distill.js` 的 flightId / 在途共享；`trace.settledTraceData` 的 evidence* / deterministicRevision / flightId / sharedFlight 字段。
+- `src/value.js`、`tools/value-demo.mjs`（源码完整留存于 `docs/theory/CFB-THEORY-COMPLETE.md` 附录 B）。
+- `tools/benchmark-index.mjs`、`tools/replay.mjs`、`tools/analyze-consumption.mjs`（trace 行解析搬进 `analyze-efficiency.mjs`）。
+- 15 个只测已删模块的套件：balanced-span、checkpoint-hooks、emitter、headroom、imperative、late-identity、memory-quality、
+  snapshot-invariants、state-memory、evidence-sharing、grounding、hybrid、coverage-provenance、optimization、efficiency。
+- src 8,990 → 约 3,100 行；测试 1365 → 517 例（减少的几乎全是随模块删除的套件）。
+
+### 旧配置兼容（不抛、不静默）
+- `mode: 'checkpoint'` ⇒ 退役模式，按 `'off'` 处理（BOOT 的 `retiredMode` 可见）。
+- `stateMemory: true` ⇒ `configAdjusted.stateMemory = { from: 'memory', to: 'compress' }`，且与 `stateCompress`、`birthDeferredClaim`、`emitter*` 等一起进 `retiredOptions`。
+- `compressPrompt: 'v1' | 'x1' | 未知值` ⇒ 回落 `'v3'`，`configAdjusted.compressPrompt` 留痕。
+
+### 测试
+- 新增 `test/compress.selftest.mjs`（25 例）：v2/v3 提示词与版本号裁决、`retryDelayMs` 退避、4MiB 上限、传输终止闸、promptVersion 贯通、
+  `inputAmplificationRatio` 命名、发明标识符闸（判据 + birthFinish 端到端 + 开关 + analyze-efficiency 分布）、onboard 漂移检测 —— 均从被删套件回收。
+- concurrency §2、robustness、core【17】从 checkpoint / memory 路径改写为 birth / generateDistillation 路径。
+- `node verify.mjs`：517 pass / 0 fail / 1 skip，13 个套件。
+
+### 已知缺陷（记录，不在本版处理）
+- 工具结果（tool result）不经过 birth，是上下文膨胀的另一大头；插件侧无法改写已出站内容，需要宿主协议（C0–C3，见理论全集第六卷）。见 README「已知缺陷」。
 
 ---
 

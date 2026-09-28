@@ -2,7 +2,7 @@
 //
 // 旧实现两处共享可变状态：
 //   ① followHostModel 看到新模型就改写共享 cfg.model / cfg.followProvider；
-//      checkpoint 的 early-fire 在**流被消费时**才读 cfg ⇒ A 流开、B 流开、A 被消费 ⇒ A 的提前调用用了 B 的模型。
+//      在**流被消费时**才读 cfg 的路径 ⇒ A 流开、B 流开、A 被消费 ⇒ A 的副模型调用用了 B 的模型。
 //   ② 全局 birthSessionId：pre-step 写、llm/stream 读 ⇒ A.pre → B.pre → A.stream 把 A 的块登记成 B。
 // 本套件全部走**真实钩子入口 + 本机 HTTP**，零外网。
 import assert from 'node:assert/strict'
@@ -98,15 +98,16 @@ try {
     assert.equal(h.callConfig({ provider: 'host' }).followProvider, 'mine')
   })
 
-  // ═══ §2 钩子级：checkpoint early-fire 用「自己那次调用」的模型 ═══════════════
-  await test('§2 A 流开 → B 流开（换模型）→ 消费 A ⇒ A 的提前调用用 m-A（v11.10 会用 m-B）', async () => {
+  // ═══ §2 钩子级：birth 的副模型调用用「自己那次调用」的模型 ═══════════════════
+  await test('§2 A 流开 → B 流开（换模型）→ 消费 A ⇒ A 的压缩调用用 m-A（v11.10 会用 m-B）', async () => {
     await withServer(async ({ baseUrl, requests }) => {
-      const hooks = applyPlugin({ mode: 'checkpoint', earlyFire: true, minRawChars: 100, model: '', followHostModel: true, baseUrl,
-        traceFile: path.join(home, 'cp-model.log') })
+      const store = { putText: async (text) => ({ handle: 'art_' + text.length }) }
+      const hooks = applyPlugin({ mode: 'birth', birthMinChars: 100, birthTokenGate: false, birthMinSavedChars: 0, model: '', followHostModel: true, baseUrl,
+        traceFile: path.join(home, 'birth-model.log') }, (k) => (k === 'cmbStore' ? store : null))
       const a = hooks.get('llm/stream')({ model: 'm-A', messages: [] }, () => reasoningStream())
       const b = hooks.get('llm/stream')({ model: 'm-B', messages: [] }, () => reasoningStream('另一段推理。'.repeat(60)))
       await drain(a)
-      assert.ok(await until(() => requests.length >= 1), '提前调用应已发出')
+      assert.ok(await until(() => requests.length >= 1), '压缩调用应已发出')
       assert.equal(requests[0].model, 'm-A')
       await drain(b)
       assert.ok(await until(() => requests.length >= 2))
@@ -159,7 +160,7 @@ try {
     const writes = []
     const store = { async putText(text, opts) { writes.push(opts.sessionId); return { handle: 'art://' + 'x'.repeat(22) } }, async readRangeByHandle() { return { lines: ['x'], atEof: true } } }
     const hooks = applyPlugin({ mode: 'birth', model: 'm', followHostModel: false, baseUrl, birthMinChars: 100, birthFinishWaitMs: 300,
-      finishHeadersGraceMs: 0, birthDeferredClaim: false, traceFile, ...over }, (name) => (name === 'cmbStore' ? store : null))
+      finishHeadersGraceMs: 0, traceFile, ...over }, (name) => (name === 'cmbStore' ? store : null))
     const pre = hooks.get('agent/pre-step')
     await pre({ agent: { session: session('A') } }, async () => ({}))
     await pre({ agent: { session: session('B') } }, async () => ({}))

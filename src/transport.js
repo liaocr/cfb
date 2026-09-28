@@ -302,7 +302,7 @@ export function makePrewarmer(cfg, trace) {
   //   不再读被改写的共享 cfg。连接池（getAgent）与节流状态仍按插件实例共享。
   return function prewarm(why, callCfg) {
     const ep0 = callCfg && typeof callCfg === 'object' ? callCfg : cfg
-    if (!cfg.prewarm || (cfg.mode !== 'distill' && cfg.mode !== 'checkpoint' && cfg.mode !== 'birth')) return
+    if (!cfg.prewarm || cfg.mode !== 'birth') return
     // ★ 2026-09-21：一旦实测到非 2xx（会吃掉连接池），永久停用预热 —— 失败安全。
     if (prewarmDisabled) return
     if (inflight) return

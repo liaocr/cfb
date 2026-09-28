@@ -3,7 +3,8 @@
 //   provenanceOf       最终请求里每条消息的来源画像（看板 / 人类 user / 工具结果），只观测
 //   mapMessagesToSeqs  出站消息 → 源事件 seq 的映射；数量对不上时整批不写（错位比缺失更糟）
 //   textOfContent / reasoningTextOf  content 双兼容取文本 / 取 reasoning 块文本
-import { LEDGER_OPEN } from './emitter.js'
+// 旧版 checkpoint 看板的开标记（v12.1 已不再发射；保留识别，便于读含旧看板的历史会话）
+const LEDGER_OPEN = '<cot-ledger>'
 
 /**
  * ★★ 2026-09-21 消息溯源（外部审计 P0-3）★★

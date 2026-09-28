@@ -1,6 +1,8 @@
 # 可改写思维链下，如何让主模型表现更好 —— 调研与方案（2026-09-25）
 
 > **v12.0 状态（2026-09-28）**：历史调研。§10 描述的 compress-x1 抽取式实现与 `tools/acon-optimize.mjs` 已在 v12.0 删除（可从 `cfba57b` 取回）；调研部分已被 [`../theory/CFB-THEORY-COMPLETE.md`](../theory/CFB-THEORY-COMPLETE.md) 吸收与超越。
+>
+> **v12.1 状态**：文中提到的 checkpoint / memory / legacy v1 提示词已删除；现行唯一路径为 birth + compress（缺省 v3）。
 
 > 性质：**调研 + 设计提案，无代码改动**。只讨论「提升主模型的任务表现」（更专注、更有底气、想得更全、少走错路），
 > 不讨论省 token（那部分见 [`ECONOMICS-V11.11.md`](ECONOMICS-V11.11.md)）。

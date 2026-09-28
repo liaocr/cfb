@@ -1,6 +1,6 @@
 // dsh-cot-form-b / handle-probe.js —— 句柄读回探针（v11.11 从 plugin.js 抽出，逐字搬移）
 //
-// birth 的内存预推句柄验证与 checkpoint 发射前抽样验证共用同一个探针。
+// birth 的内存预推句柄验证（v12.1 前 checkpoint 发射前抽样验证也用它）。
 /**
  * ★★ P0-2（2026-09-24）句柄读回探针 ★★
  *

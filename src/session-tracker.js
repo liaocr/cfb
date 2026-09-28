@@ -2,7 +2,7 @@
 //
 // 问题：宿主的 llm/stream 不带会话；会话只在 agent/pre-step 里看得到。旧实现用一个全局
 //   `birthSessionId`：pre-step 写、llm/stream 读。两个会话交错（A.pre → B.pre → A.stream）时，
-//   A 的流会被登记成 B —— CAS 归档挂错会话，memory 模式还会把 B 的证据喂给 A 的摘要（跨会话泄漏）。
+//   A 的流会被登记成 B —— CAS 归档挂错会话（v12.1 前 memory 模式还会把 B 的证据喂给 A 的摘要，即跨会话泄漏）。
 //
 // 根治需要宿主在 llm/stream 里带会话（宿主 API 未确认，不猜）。这里做的是**可证伪的检测 + 保守处置**：
 //   - 维护一个「已 pre-step、尚未开流」的窗口；同会话新的 pre-step 覆盖旧项（会话内步骤串行）。

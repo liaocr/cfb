@@ -1,24 +1,13 @@
 // dsh-cot-form-b / distill.js —— 副模型调用：一次请求的完整生命周期
 //
-//   generateDistillation  端点/钥匙解析 → 关思考重试降级 → 对冲 → 传输 trace；三种编译模式共用
+//   generateDistillation  端点/钥匙解析 → 关思考重试降级 → 对冲 → 传输 trace
 //   hedgedDistill         对冲请求（hedgeAfterMs，缺省关）：主请求迟迟没有 200 响应头时再发一份，先回头者胜
-//   generateStateMemory   memory 模式：证据信封 → 判断稿 → 记忆条目（仍是一次模型调用）
+//   makeBirthCompiler     birth 的压缩器工厂（v12.1 起只剩 compress 一种编译模式）
 //   distillOnce / distillOnceStream  非流式 / SSE 两种传输形态，同输入同输出形状
 import crypto from 'node:crypto'
-import { prepareJudgmentPrompt } from './evidence-ledger.js'
-import { compileModeOf } from './config.js'
 import { scriptCounts } from './tokens.js'
-import {
-  buildDistillPrompt, compressPromptVersion, compressTargets, buildCompressPromptV3, buildCompressPrompt,
-  splitCompressPrompt,
-} from './prompts.js'
+import { compressPromptVersion, compressPromptFor, splitCompressPrompt } from './prompts.js'
 import { endpointUrl, resolveProviderEndpoint, readApiKeyRef, readApiKey } from './provider.js'
-import {
-  buildStateCompilePrompt as buildStateCompilePromptSafe, parseStateCompile, createMemoryProjection,
-  mergeByEvidence, MODEL_MEMORY_PREAMBLE, renderIncrement, renderCheckpoint, buildProblemUnits,
-  MEMORY_POLICY_VERSION, SCHEMA_VERSION, COMPILER_VERSION, RENDERER_VERSION, memoryStats,
-  renderProblemUnits,
-} from './state-memory.js'
 import { settledTraceData } from './trace.js'
 import {
   requestStream, extractFromJsonBody, requestOnce, detectResponseProtocol, collectSseFrames,
@@ -266,77 +255,6 @@ async function distillOnce(key, prompt, cfg, thinkingOff, ep, signal, inputChars
 
 // 返回 { text, meta }：meta 里带本次调用的连接复用证据 + 实际用的模型
 /**
- * ★★ 2026-09-21 任务状态编译（有证据支撑的任务状态记忆）★★
- *
- * 与 generateDistillation **共用同一条传输/重试/超时/取消机制**：
- * 仍是**一次**模型调用，不加串行调用链。
- * 生产 birth 默认为确定性记录 + 两栏判断；无 frame 的导出调用保留旧六栏兼容。
- *
- * 输出仍受原有铁律约束：模型完整成功 AND CAS 成功 AND 输出可接受 AND 净省达标，
- * 否则原文放行（判定在 birthFinish，不在本函数）。
- */
-export async function generateStateMemory(env, cfg, signal, runtime = {}) {
-  const hybrid = !!env?.deterministicFrame
-  const prepared = hybrid ? (runtime.preparedJudgment?.env === env ? runtime.preparedJudgment : prepareJudgmentPrompt(env)) : null
-  const prompt = prepared ? prepared.prompt : buildStateCompilePromptSafe(env)
-  let r
-  try { r = await generateDistillation(env && env.cot, cfg, signal, prompt, { ...runtime, promptVersion: prepared?.version }) }
-  catch (e) {
-    e.meta = { ...e.meta, promptBuildMs: prepared?.buildMs ?? null, promptBuildCount: prepared ? 1 : null,
-      promptVersion: prepared?.version ?? null, staticPrefixChars: prepared?.staticPrefixChars ?? null }
-    throw e
-  }
-  const renderStarted = performance.now()
-  const parsed = parseStateCompile(r && r.text)
-  if (hybrid && (!parsed.labeled || !parsed.found.length || parsed.extra.length || parsed.found.some(k => k !== 'judgment' && k !== 'gap'))) {
-    const error = new Error('invalid judgment-only response'); error.meta = { ...r?.meta, parseRenderMs: performance.now() - renderStarted, promptVersion: prepared?.version }; throw error
-  }
-  const mp = createMemoryProjection({ namespace: 'compile-' + crypto.randomUUID() })
-  const blockIndex = env && env.host && env.host.blockIndex != null ? env.host.blockIndex : null
-  mp.ingest(parsed, { at: env && env.at != null ? env.at : Date.now(), origin: 'model', evidence: 'inferred', blockIndex })
-  // ★ 证据驱动归并：时间顺序只决定处理顺序，证据关系决定能否替代
-  const entries = mergeByEvidence(mp.all())
-  // birth 用**本轮增量**（完整状态由 checkpoint 承载），避免每块复述所有历史约束
-  const renderOpts = { preamble: MODEL_MEMORY_PREAMBLE }
-  const born = renderIncrement(entries, blockIndex, renderOpts) + (hybrid && env.deterministicFrame.indexPath ? '\n〔确定性证据索引（工具事件不等于任务完成）：' + env.deterministicFrame.indexPath + '〕' : '')
-  const board = renderCheckpoint(entries, renderOpts)
-  // ★ 问题单元：把同一问题的信息连起来（只归拢已有材料，不新增事实）
-  const unitInfo = cfg.stateProblemUnits === false ? { units: [], orphan: [] } : buildProblemUnits(entries)
-  return {
-    // ⚠ 保持与 generateDistillation 同形状：birthFinish 只认 text/meta
-    text: born,
-    meta: Object.assign({}, (r && r.meta) || {}, {
-      stateMemory: true,
-      promptBuildMs: prepared?.buildMs ?? null, promptBuildCount: prepared ? 1 : null,
-      promptVersion: prepared?.version ?? null, staticPrefixChars: prepared?.staticPrefixChars ?? null,
-      parseRenderMs: performance.now() - renderStarted,
-      compilerMode: hybrid ? 'grounded-judgment-v2' : 'legacy-six-section',
-      deterministicRevision: env?.deterministicFrame?.revision ?? null,
-      evidenceProvided: env?.deterministicFrame?.evidenceInput?.receipts || null,
-      evidenceBodyChars: env?.deterministicFrame?.evidenceInput?.bodyChars ?? null,
-      duplicateBodyCharsAvoided: env?.deterministicFrame?.evidenceInput?.duplicateBodyCharsAvoided ?? null,
-      evidencePolicy: env?.deterministicFrame?.evidenceInput?.policy || null,
-      memoryPolicyVersion: MEMORY_POLICY_VERSION,
-      schemaVersion: SCHEMA_VERSION, compilerVersion: COMPILER_VERSION, rendererVersion: RENDERER_VERSION,
-      parsedSections: parsed.found,
-      parsedExtra: parsed.extra.length,
-      memory: memoryStats(entries),
-      birthChars: born.length,
-      boardChars: board.length,
-      problemUnits: unitInfo.units.length,
-      orphanEntries: unitInfo.orphan.length,
-    }),
-    // 供 checkpoint 路径使用（本函数不自行提交任何东西）
-    checkpointText: hybrid ? born : board,
-    entries,
-    // ★ 供并行块的有序归并使用（按源块顺序，不按完成顺序）
-    parsed,
-    units: unitInfo.units,
-    unitsText: unitInfo.units.length ? renderProblemUnits(unitInfo.units) : null,
-  }
-}
-
-/**
  * ★★ v11.7 对冲请求（hedged request）★★
  *
  * 为什么：蒸馏 TTFB 实测 min 1,382 / p50 3,109 / max 7,857（n=340），connectMs 3~15、reasoning_tokens 0、
@@ -427,16 +345,13 @@ export async function generateDistillation(cot, cfg, signal, promptOverride, run
   let key
   if (ep && ep.apiKeyEnv) key = readApiKeyRef(cfg, ep.apiKeyEnv)
   else key = readApiKey(cfg)
-  // ★ 2026-09-21 任务状态记忆：允许调用方提供自定义提示词（仍是**一次**模型调用）。
-  //   不传就沿用旧的 buildDistillPrompt —— 旧路径完全不变，可随时回滚。
-  const prompt = promptOverride != null ? String(promptOverride) : buildDistillPrompt(cot)
+  // 调用方可给定完整提示词；不给就按配置构造 compress 提示词（v3 缺省 / v2）。
+  const prompt = promptOverride != null ? String(promptOverride) : compressPromptFor(cfg, cot)
   // ★ 2026-09-22 切分：记下**真正要压缩的输入**长度，使放大倍数可核。
-  //   compress 模式：inputChars = 本段 reasoning 的字符数 ⇒ promptChars/inputChars 应 ≈ 1.x
-  //   memory  模式：inputChars 仍是 raw，但真实的证据体量在 evidenceBodyChars，
-  //                两者之差就是 7.5x 放大的来源，必须能被同一张表看出来。
+  //   inputChars = 本段 reasoning 的字符数 ⇒ promptChars/inputChars 应 ≈ 1.x
   const inputChars = typeof cot === 'string' ? cot.length : 0
   const emit = (tag, data) => { try { runtime.trace?.(tag, data) } catch {} }
-  const execute = async (transportSignal, flightId = null) => {
+  const execute = async (transportSignal) => {
     const rounds = Math.max(1, cfg.maxAttempts)
     // 每一轮先带「关掉思考」试，被网关拒（4xx）再裸试一次。
     // 参数拒绝才沿用既有降级路径；实际请求与费用不能凭 4xx 推断。
@@ -450,19 +365,19 @@ export async function generateDistillation(cot, cfg, signal, promptOverride, run
           //   两者【同输入、同输出形状】，只有传输方式不同 ⇒ 可 A/B。
           const fn = cfg.distillStream ? distillOnceStream : distillOnce
           const requestId = crypto.randomUUID()
-          emit('compiler-transport-started', { requestId, flightId, attempt, thinkingOff: modes[i], model: cfg.model, timeoutMs: cfg.timeoutMs,
+          emit('compiler-transport-started', { requestId, attempt, thinkingOff: modes[i], model: cfg.model, timeoutMs: cfg.timeoutMs,
             endpoint: ep ? ep.provider + '|' + ep.api : 'legacy|explicit', maxOutputTokens: cfg.maxOutputTokens,
             stream: !!cfg.distillStream, promptVersion: runtime.promptVersion || null })
           try {
             const r = await hedgedDistill(fn, key, prompt, cfg, modes[i], ep, transportSignal, inputChars, emit, requestId)
             // ★ promptVersion 必须进 meta：birth-distill-settled / compiler-transport-settled 才能区分 v1/v2 做 A/B
-            r.meta = { ...r.meta, requestId, flightId, promptVersion: runtime.promptVersion || r.meta?.promptVersion || null }
-            emit('compiler-transport-settled', { ...settledTraceData(null, r.meta.totalMs, { ok: true, ...r }), requestId, flightId })
+            r.meta = { ...r.meta, requestId, promptVersion: runtime.promptVersion || r.meta?.promptVersion || null }
+            emit('compiler-transport-settled', { ...settledTraceData(null, r.meta.totalMs, { ok: true, ...r }), requestId })
             return r
           } catch (e) {
             e.meta = { promptChars: prompt.length, inputChars, model: cfg.model, maxOutputTokens: cfg.maxOutputTokens,
-              thinkingOff: modes[i], stream: !!cfg.distillStream, ...e.meta, requestId, flightId, promptVersion: runtime.promptVersion || e.meta?.promptVersion || null }
-            emit('compiler-transport-settled', { ...settledTraceData(null, e.meta.totalMs, { ok: false, error: e.message, meta: e.meta }), requestId, flightId })
+              thinkingOff: modes[i], stream: !!cfg.distillStream, ...e.meta, requestId, promptVersion: runtime.promptVersion || e.meta?.promptVersion || null }
+            emit('compiler-transport-settled', { ...settledTraceData(null, e.meta.totalMs, { ok: false, error: e.message, meta: e.meta }), requestId })
             throw e
           }
         } catch (e) {
@@ -479,64 +394,37 @@ export async function generateDistillation(cot, cfg, signal, promptOverride, run
     }
     throw lastErr
   }
-  if (!runtime.flights) return execute(signal)
-  // Exact text, scope, effective endpoint/credential and all transport knobs.
-  // Private ephemeral key; NEVER trace it or export a credential fingerprint.
-  // ★ 2026-09-27 审计：identity 只用于「逐字相同才共享」的相等判定，不需要可逆。此前把明文钥匙 + 整段
-  //   prompt 原样当 Map 键挂在模块级 flights 里（在飞期间常驻堆，heap dump 可见，且 maxBytes 记账因它而存在）。
-  //   改为 SHA-256 摘要：相等语义不变（碰撞概率可忽略），堆里不再多一份钥匙与原文副本。
-  const identity = runtime.scope == null ? null : crypto.createHash('sha256').update(JSON.stringify([runtime.scope,
-    ep?.url || endpointUrl(cfg.baseUrl, 'openai-completions'), ep?.api || 'openai-completions', ep?.provider || null,
-    key, cfg.model, cfg.maxOutputTokens, cfg.timeoutMs, cfg.maxAttempts, cfg.disableThinking,
-    cfg.distillStream, cfg.keepAlive, cfg.keepAliveMsecs]) + '\n' + prompt, 'utf8').digest('hex')
-  return runtime.flights.run(identity, execute, { signal, trace: runtime.trace })
+  return execute(signal)
 }
 
 /**
- * ★ v11.10 birth 编译器工厂：按 compileMode 三选一构造 `deps.distill(input, signal, budget)`。
- *   原先是 plugin.js 里一段内联三元表达式（无法单测）；现在搬到这里，语义逐字不变：
- *     memory   → generateStateMemory(env, cfg, signal, { ...budget, flights })   证据信封 → 判断稿
- *     compress → 按 compressPromptVersion 选提示词 → generateDistillation(raw, …) 本段推理的摘要
- *     legacy   → generateDistillation(raw, cfg, signal)                         旧蒸馏提示词
- *   compress / legacy 只透传 trace（compiler-transport-* / compiler-hedge-*）。
- *   ⚠ 不传 flights：这两种模式没有 scope（证据截面只在 memory 模式存在）⇒ 共享永不命中，
- *     反而会把取消路径的传输 meta（ttfbMs/stage 等）换成合成错误，损失线上诊断数据。
+ * birth 编译器工厂：构造 `deps.distill(raw, signal, budget)`。
+ *   按 compressPromptVersion 选提示词 → generateDistillation(raw, …)：本段推理的摘要。
+ *   只透传 trace（compiler-transport-* / compiler-hedge-*）与响应头信号。
+ *   v12.1：memory（证据信封 → 判断稿）与 legacy（旧蒸馏提示词）两种模式删除。
  * @param cfg 本条流冻结的配置副本（调用方负责拷贝）
- * @param opts { flights } 精确在途共享（仅 memory 模式使用）
  */
-export function makeBirthCompiler(cfg, opts = {}) {
-  const runtimeOf = (budget) => ({ trace: budget && typeof budget.trace === 'function' ? budget.trace : undefined })
-  const withHeaders = (budget) => (budget && typeof budget.onHeaders === 'function' ? { ...cfg, _onHeaders: budget.onHeaders } : cfg)
-  const mode = compileModeOf(cfg)
-  if (mode === 'memory') {
-    return async (env, signal, budget) => generateStateMemory(env, cfg, signal, { ...budget, flights: opts.flights })
-  }
-  if (mode === 'compress') {
-    return async (raw, signal, budget) => {
-      // 提示词选择与版本号必须来自**同一次**裁决，否则 trace 会把 A 的产物记成 B 的版本。
-      const pv = compressPromptVersion(cfg)
-      const prompt = pv === 'compress-v1' ? buildDistillPrompt(raw)
-        : pv.indexOf('compress-v3') === 0
-          ? (() => { const t = compressTargets(cfg); return buildCompressPromptV3(raw, t.min, t.max) })()
-          : buildCompressPrompt(raw)
-      // 响应头信号只活在这次调用的 cfg 副本里，不进 BOOT、不进 trace
-      const c = { ...withHeaders(budget) }
-      // 缓存友好拆分（opt-in）：system=规则前缀、user=原文；字节等价，只改消息形状。v1 不拆（它无 marker）。
-      if (cfg.compressSystemPrompt === true && pv !== 'compress-v1') {
-        const sp = splitCompressPrompt(prompt)
-        if (sp) c._promptMessages = [{ role: 'system', content: sp.system }, { role: 'user', content: sp.user }]
-      }
-      return withCalibration(prompt, generateDistillation(raw, c, signal, prompt, { ...runtimeOf(budget), promptVersion: pv }))
+export function makeBirthCompiler(cfg) {
+  return async (raw, signal, budget) => {
+    // 提示词选择与版本号必须来自**同一次**裁决，否则 trace 会把 A 的产物记成 B 的版本。
+    const pv = compressPromptVersion(cfg)
+    const prompt = compressPromptFor(cfg, raw)
+    // 响应头信号只活在这次调用的 cfg 副本里，不进 BOOT、不进 trace
+    const c = budget && typeof budget.onHeaders === 'function' ? { ...cfg, _onHeaders: budget.onHeaders } : { ...cfg }
+    // 缓存友好拆分（opt-in）：system=规则前缀、user=原文；字节等价，只改消息形状。
+    if (cfg.compressSystemPrompt === true) {
+      const sp = splitCompressPrompt(prompt)
+      if (sp) c._promptMessages = [{ role: 'system', content: sp.system }, { role: 'user', content: sp.user }]
     }
+    const trace = budget && typeof budget.trace === 'function' ? budget.trace : undefined
+    return withCalibration(prompt, generateDistillation(raw, c, signal, prompt, { trace, promptVersion: pv }))
   }
-  return async (raw, signal, budget) => withCalibration(buildDistillPrompt(raw), generateDistillation(raw, withHeaders(budget), signal, undefined, runtimeOf(budget)))
 }
 
 /**
  * v11.11 token 估算校准：在成功结果的 meta 上记下「请求与产物按书写系统的字符数」。
  * 与同一条 settled 里的 providerReportedUsage 放在一起，离线即可回归出真实的每字 token 系数
  * （tools/analyze-trace.mjs → tokenCalibration）。只记数量，不记内容；不影响任何判定。
- * memory 模式的提示词在 generateStateMemory 内部拼装，这里拿不到全文 ⇒ 不记（该模式本就不是缺省）。
  */
 async function withCalibration(prompt, pending) {
   const r = await pending

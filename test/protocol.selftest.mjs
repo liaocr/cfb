@@ -129,9 +129,9 @@ try {
   })
 
   // ═══ §3 token 估算校准链路 ═════════════════════════════════════════════════
-  await test('§3a makeBirthCompiler(compress) 成功结果带 prompt/output 书写系统字符数，且进 settled trace 白名单', async () => {
+  await test('§3a makeBirthCompiler 成功结果带 prompt/output 书写系统字符数，且进 settled trace 白名单', async () => {
     handler = (q, r) => json(r, { choices: [{ message: { content: '【摘要】核验完成 OK' }, finish_reason: 'stop' }], usage: { prompt_tokens: 300, completion_tokens: 12 } })
-    const compile = makeBirthCompiler(cfgOf({ followProvider: 'chat', mode: 'birth', stateCompress: true, compileMode: 'compress', compressPrompt: 'v3' }))
+    const compile = makeBirthCompiler(cfgOf({ followProvider: 'chat', mode: 'birth', compressPrompt: 'v3' }))
     const r = await compile(COT, undefined, {})
     const exp = scriptCounts(r.text)
     assert.equal(r.meta.outputWideChars, exp.wide); assert.equal(r.meta.outputOtherChars, exp.other)
@@ -142,9 +142,9 @@ try {
     assert.deepEqual(row.providerReportedUsage, { prompt_tokens: 300, completion_tokens: 12 })
     assert.equal(JSON.stringify(row).includes('核验完成'), false, '校准字段只有数量，不含内容')
   })
-  await test('§3b legacy 模式同样记录；memory 模式不记（提示词在内部拼装，拿不到全文 —— 不猜）', async () => {
+  await test('§3b v2 提示词同样记录书写系统字符数', async () => {
     handler = (q, r) => json(r, { choices: [{ message: { content: '摘要' }, finish_reason: 'stop' }] })
-    const r = await makeBirthCompiler(cfgOf({ followProvider: 'chat', compileMode: 'legacy' }))(COT, undefined, {})
+    const r = await makeBirthCompiler(cfgOf({ followProvider: 'chat', compressPrompt: 'v2' }))(COT, undefined, {})
     assert.ok(Number.isFinite(r.meta.promptWideChars))
   })
   await test('§3c analyze-trace tokenCalibration：从 settled 行回归出真实系数（含截距），与现行 0.6/0.3 对照', () => {

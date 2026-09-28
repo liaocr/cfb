@@ -8,15 +8,8 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 import {
   birthTransform, birthHoldNew, birthSettle, birthStart, birthFinish,
   deriveArtHandle, requestOnce, requestStream, prewarmTargetUrl, provenanceOf,
-  makeTraceWriter, settledTraceData, mapMessagesToSeqs, generateStateMemory,
-  collectEvidence, evidenceIndex, normalizeEvidenceEvent, assembleEvidence, DEFAULTS,
-  lateMemorySize, takeLateMemory,
+  makeTraceWriter, settledTraceData, mapMessagesToSeqs, DEFAULTS,
 } from '../index.js'
-import {
-  SEC, buildEvidenceEnvelope, buildStateCompilePrompt as buildStateCompilePromptX,
-  parseStateCompile, createMemoryProjection, renderBirth, renderCheckpoint,
-  mergeOrdered, cacheIdentity,
-} from '../src/state-memory.js'
 import os from 'node:os'
 
 let pass = 0, failn = 0, skipn = 0
@@ -482,22 +475,12 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
   const raw = bulkReasoning()
   const entry = { index: 0, text: raw, end: BE(0, { type: 'reasoning', text: raw }) }
 
-  // ★★ T18a 语义在 2026-09-22 被【有意改变】，此处同时钉住两条分支 ★★
-  //   旧契约：放弃应用 ⇒ 主动取消在飞提纯（省连接槽）。
-  //   新契约：方案二「下轮收网」需要一个**消费者**——放行后仍在跑的提纯结果，
-  //           下一轮会被收网器认领并提交为历史 checkpoint。
-  //           若仍取消，暂存区永远拿不到迟到成功 ⇒ 收网每轮空转。
-  //   真机证据（04:50:04）：waitedMs=1506 → [birth-distill-cancelled]
-  //                        → [birth-distill-failed] error="cancelled"。
-  //   ⇒ 下轮收网打开（birthDeferredClaim:true）时**不取消**；关闭时回到旧行为。
-  //   ⚠ v11.8：birthDeferredClaim 缺省改为 false（AUDIT §四 ②），且只认显式 true ⇒
-  //     缺省 = 取消在飞提纯（与线上配置一致），T18a-1 必须显式打开。
-
-  // T18a-1：下轮收网打开 ⇒ 放行后**不取消**（提纯继续跑，等待被收网认领）
+  // T18a：放弃应用 ⇒ 取消在飞提纯（省连接槽）。v12.1 起这是唯一契约（下轮收网 / 迟到暂存已删除，
+  //   放行后仍在跑的提纯没有任何消费者 ⇒ 不取消就是白烧）。
   {
     const seen = []
     const deps = {
-      cfg: mkCfg({ birthFinishWaitMs: 120, birthDeferredClaim: true }), trace: noTrace,
+      cfg: mkCfg({ birthFinishWaitMs: 120 }), trace: noTrace,
       archive: async () => 'art://PRE18',
       distill: (r, signal) => new Promise((_res, rej) => {
         seen.push(signal ? 'signal-given' : 'no-signal')
@@ -511,45 +494,7 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
     const r = await birthFinish(task, deps)
     ok('T18a ★ 超时后放行原文', r.why === 'distill-timeout' && r.text === raw, r.why)
     await sleep(20)
-    ok('T18a ★★ 下轮收网打开时不取消在飞提纯（暂存区才有东西可收网）',
-       !seen.includes('aborted'), JSON.stringify(seen))
-    ok('T18a ★ 已标记 passedThrough（后续成功会转入暂存）', task.passedThrough === true)
-  }
-
-  // T18a-2：显式关闭方案二 ⇒ 回到旧契约（取消在飞提纯，省连接槽）
-  {
-    const seen = []
-    const deps = {
-      cfg: mkCfg({ birthFinishWaitMs: 120, birthDeferredClaim: false }), trace: noTrace,
-      archive: async () => 'art://PRE18R',
-      distill: (r, signal) => new Promise((_res, rej) => {
-        seen.push(signal ? 'signal-given' : 'no-signal')
-        if (signal) signal.addEventListener('abort', () => { seen.push('aborted'); rej(Object.assign(new Error('cancelled'), { cancelled: true })) }, { once: true })
-      }),
-    }
-    const task = birthStart(entry, deps)
-    await Promise.resolve(); await Promise.resolve()
-    const r = await birthFinish(task, deps)
-    ok('T18a ★ 关闭方案二仍放行原文', r.why === 'distill-timeout' && r.text === raw, r.why)
-    await sleep(20)
-    ok('T18a ★★ 关闭方案二 ⇒ 恢复取消（旧契约可回滚）', seen.includes('aborted'), JSON.stringify(seen))
-  }
-
-  // T18a-3：v11.8 缺省只认显式 true ⇒ 裸库直调不传该键时与 DEFAULTS（false）一致：取消、不进暂存区
-  {
-    const seen = []
-    const deps = {
-      cfg: mkCfg({ birthFinishWaitMs: 120 }), trace: noTrace, sessionId: () => 'T18a3',
-      archive: async () => 'art://PRE18D',
-      distill: (r, signal) => new Promise((_res, rej) => {
-        if (signal) signal.addEventListener('abort', () => { seen.push('aborted'); rej(Object.assign(new Error('cancelled'), { cancelled: true })) }, { once: true })
-      }),
-    }
-    const task = birthStart(entry, deps)
-    await Promise.resolve(); await Promise.resolve()
-    const r = await birthFinish(task, deps)
-    await sleep(20)
-    ok('T18a ★★ 缺省（不传键）= DEFAULTS.birthDeferredClaim=false：放行后取消在飞提纯', r.why === 'distill-timeout' && seen.includes('aborted'), JSON.stringify({ why: r.why, seen }))
+    ok('T18a ★★ 放行 ⇒ 取消在飞提纯', seen.includes('aborted'), JSON.stringify(seen))
   }
 
   // T18b：提纯【已经落地】⇒ 绝不许取消（那是已经付过的钱）
@@ -619,51 +564,6 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
 }
 
 
-// ── T21 ★★ 方案二生命周期：放行 → 迟到成功 → 进入暂存区 ──────────────────
-//   这是 P0 修复（放行后不再取消在飞提纯）的**直接证据**。
-//   真机反例（2026-09-22T04:50:04）：放行时 abort ⇒ distill-failed(cancelled)
-//   ⇒ 暂存区恒空 ⇒ 收网每轮空转（birth-claim-idle）。
-{
-  const sid = 'birth-lifecycle-' + Date.now() + '-' + Math.random().toString(36).slice(2)
-  const raw = bulkReasoning()
-  const entry = { index: 0, text: raw, end: BE(0, { type: 'reasoning', text: raw }) }
-  const deps = {
-    cfg: mkCfg({ birthFinishWaitMs: 100, birthDeferredClaim: true }), trace: noTrace,
-    sessionId: sid,
-    archive: async () => 'art://PRE21',
-    // 提纯 300ms 后才成功 —— 远超 100ms 预算（模拟真机 5~7s 的真工期）
-    distill: async () => {
-      await sleep(300)
-      return { ok: true, entries: [{ id: 'e1' }], checkpointText: '迟到看板', text: '迟到看板', meta: { toCompleteMs: 300 } }
-    },
-  }
-  const task = birthStart(entry, deps)
-  const r = await birthFinish(task, deps)
-  ok('T21.1 预算内未完成 ⇒ 放行原文', r.why === 'distill-timeout' && r.text === raw, r.why)
-  ok('T21.2 ★ 已标记 passedThrough（放行原文）', task.passedThrough === true)
-  ok('T21.3 放行那一刻暂存区还是空的', lateMemorySize(sid) === 0, String(lateMemorySize(sid)))
-  await sleep(600)
-  ok('T21.4 ★★ 迟到成功后自动进入暂存区（P0 修复兑现）',
-     lateMemorySize(sid) === 1, String(lateMemorySize(sid)))
-  ok('T21.5 ★ 取出来正是迟到看板', (takeLateMemory(sid, raw) || {}).board === '迟到看板')
-  ok('T21.6 取出后清空（绝不重复收网）', lateMemorySize(sid) === 0)
-
-  // 反向：关闭方案二 ⇒ 提纯被取消 ⇒ 暂存区必须为空（旧行为可回滚）
-  const sid2 = sid + '-off'
-  const deps2 = {
-    cfg: mkCfg({ birthFinishWaitMs: 100, birthDeferredClaim: false }), trace: noTrace,
-    sessionId: sid2,
-    archive: async () => 'art://PRE21B',
-    distill: (r2, signal) => new Promise((_res, rej) => {
-      if (signal) signal.addEventListener('abort', () => rej(Object.assign(new Error('cancelled'), { cancelled: true })), { once: true })
-    }),
-  }
-  const task2 = birthStart(entry, deps2)
-  await birthFinish(task2, deps2)
-  await sleep(400)
-  ok('T21.7 ★★ 关闭方案二 ⇒ 提纯被取消 ⇒ 暂存区为空（旧行为可回滚）',
-     lateMemorySize(sid2) === 0, String(lateMemorySize(sid2)))
-}
 // ── T20 ★ 流式 SSE 解析（2026-09-21 观测型迁移）─────────────────────────────
 //   真实端点验证见 deploy/probe/_probe-stream-phases.mjs；这里钉死【解析边界】，
 //   全部离线：起一个本地 http server 喂手工构造的字节流。
@@ -844,195 +744,7 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
   ok('T25 ★ tool-result 的 head 取嵌套文本（不再恒为空）', tr.items[0].head === 'doc corrected', JSON.stringify(tr.items[0].head))
 }
 
-// ── T26 ★ 任务状态记忆 · 端到端接入（2026-09-21）────────────────────────────
-{
-  ok('T26 ★ DEFAULTS.stateMemory === false（必须显式打开，旧路径不变）', DEFAULTS.stateMemory === false, String(DEFAULTS.stateMemory))
-
-  // ① 证据信封：本轮工具调用是 pending，历史工具已返回
-  const env = buildEvidenceEnvelope({
-    cot: 'CHAIN_OF_THOUGHT_MARKER：打算先跑测试确认，然后再改配置。',
-    userAsks: [{ text: '把大块超时降下来，不要牺牲压缩质量', seq: 100 }],
-    tools: [
-      { id: 'tc1', name: 'read_file', result: '文件内容…', seq: 98 },
-      { id: 'tc2', name: 'run_tests', args: { cmd: 'pnpm test' } },      // 无 result ⇒ pending
-    ],
-    host: { step: 12, archived: false },
-  })
-  const prompt = buildStateCompilePromptX(env)
-  ok('T26 ★ 证据信封把「本轮调用」标为 pending（时间截面）',
-     env.counts.pending === 1 && env.counts.results === 1, JSON.stringify(env.counts))
-  ok('T26 ★ 提示词里 pending 工具被禁止写成已完成',
-     prompt.includes('[run_tests] 调用已提出·**结果未返回**'), 'ok')
-  ok('T26 ★ 提示词带上用户原话与宿主状态',
-     prompt.includes('不要牺牲压缩质量') && prompt.includes('step = 12'), 'ok')
-  ok('T26 ★ 原 reasoning 完整进入提示词（不截断）', prompt.includes('CHAIN_OF_THOUGHT_MARKER'), 'ok')
-
-  // ② 模拟成功的六栏产物，走真实解析 → 记忆 → 渲染
-  const modelOut = [
-    SEC.goal + '\n用户要求降低大块蒸馏超时，同时不牺牲压缩质量。',
-    SEC.state + '\n流式蒸馏已启用；预热已关闭；新构建已部署但运行进程是否加载尚未确认。',
-    SEC.judgment + '\n已溯源的无文本 user 实为 tool/result（依据：原事件类型为 tool/result）。',
-    SEC.gap + '\n大块（≥5000 字符）样本尚未取得，超时是否改善尚未确定。',
-  ].join('\n')
-  const parsed = parseStateCompile(modelOut)
-  ok('T26 ★ 六栏解析出四栏', parsed.found.length === 4, JSON.stringify(parsed.found))
-
-  const mp = createMemoryProjection()
-  mp.ingest(parsed, { at: 1, origin: 'model', evidence: 'observed' })
-  const born = renderBirth(mp.all())
-  const board = renderCheckpoint(mp.all())
-  ok('T26 ★ birth 局部记忆不含目标栏（不在每块重复整份目标）',
-     !born.includes(SEC.goal) && born.includes('大块（≥5000 字符）样本尚未取得'), born.slice(0, 60))
-  ok('T26 ★ checkpoint 整体看板含目标栏', board.includes(SEC.goal), board.slice(0, 40))
-  ok('T26 ★ 缺口栏在两种输出里都保留（全篇中心）',
-     born.includes('尚未确定') && board.includes('尚未确定'), 'ok')
-
-  // ③ 修正链：旧判断撤回后可追溯，旧条目仍在
-  const oldJ = mp.all().find((x) => x.category === 'judgment')
-  const nu = mp.correct(oldJ.id, { category: 'judgment', content: '「空 user」判断已撤回：实为 tool/result。', at: 2 })
-  ok('T26 ★ 修正后旧条目仍在（追加式，不抹掉过去）', mp.all().some((x) => x.id === oldJ.id), 'ok')
-  ok('T26 ★ 修正痕迹在可见文本里', renderCheckpoint(mp.all()).includes('已被后续记录修正'), 'ok')
-  ok('T26 ★ 新判断带 supersedes 链接', nu.supersedes === oldJ.id, String(nu.supersedes))
-}
-
-// ── T27 ★ generateStateMemory 失败安全（不依赖真端点）────────────────────────
-{
-  const env = buildEvidenceEnvelope({ cot: 'X', host: {} })
-  let threw = null
-  try { await generateStateMemory(env, { model: '', maxAttempts: 1, stateMemory: true }) }
-  catch (e) { threw = e }
-  ok('T27 ★ 无模型时抛错而不是返回半成品（由 birthFinish 兜底走原文）', !!threw, String(threw && threw.message))
-}
-
-// ── T28 ★ 证据采集：来源按【原事件类型】判定（2026-09-21）────────────────────
-{
-  // 造一个假 session：surface.nodes 是 seq 列表，eventAt(seq) 返回事件
-  const ev = {
-    1: { type: 'assistant/message', data: { message: { role: 'assistant', content: [
-      { type: 'text', text: '想一下' }, { type: 'tool-call', id: 'tc1', name: 'read_file', args: { p: 'x' } }] } } },
-    // ★ 关键：tool/result 出站 role 是 user，但**事件类型**是 tool/result
-    2: { type: 'tool/result', data: { message: { role: 'user', content: [
-      { type: 'tool-result', toolCallId: 'tc1', content: [{ type: 'text', text: '文件内容' }], isError: false }] } } },
-    // ⚠ 3 号带宿主来源元数据（真实用户）；4 号是 ledger。两者事件类型相同 —— 这正是陷阱。
-    3: { type: 'user/message', data: { role: 'user', origin: 'user', content: [{ type: 'text', text: '真实用户要求' }] } },
-    4: { type: 'user/message', data: { role: 'user', content: [{ type: 'text', text: '<cot-ledger>看板</cot-ledger>' }] } },
-    5: { type: 'assistant/message', data: { message: { role: 'assistant', content: [
-      { type: 'tool-call', id: 'tc2', name: 'run_tests', args: { cmd: 'pnpm test' } }] } } },
-  }
-  const fake = { surface: { nodes: [1, 2, 3, 4, 5] }, eventAt: (s) => ev[s] || null }
-  const c = collectEvidence(fake, { limit: 50 })
-  ok('T28 ★ tool/result 不被当成用户发言（role=user 的陷阱）',
-     c.events.filter((e) => e.source === 'human').length === 1, JSON.stringify(c.events.map(e => e.source)))
-  ok('T28 ★ ledger 看板被识别为 generated-memory 而非 human',
-     c.events.some((e) => e.source === 'generated-memory'), JSON.stringify(c.events.map(e => e.source)))
-  ok('T28 ★ 工具调用被采集（tc1/tc2）',
-     c.events.some((e) => e.toolCalls && e.toolCalls.length), 'ok')
-  ok('T28 ★ 无终局的调用进 inFlight（tc2），有终局的不进（tc1）',
-     c.inFlightIds.has('tc2') && !c.inFlightIds.has('tc1'), JSON.stringify([...c.inFlightIds]))
-  ok('T28 ★ 工具结果正文被取出（嵌套 content）',
-     c.events.some((e) => e.type === 'tool/result' && e.text === '文件内容'), 'ok')
-  ok('T28 ★ 无 session 时不炸，返回空证据',
-     collectEvidence(null).events.length === 0 && collectEvidence(undefined).events.length === 0, 'ok')
-  ok('T28 ★ limit 生效（只看最后 N 个节点）', collectEvidence(fake, { limit: 2 }).events.length === 2,
-     String(collectEvidence(fake, { limit: 2 }).events.length))
-
-  // 端到端：采集 → 适配 → 信封 → 提示词
-  const env2 = buildEvidenceEnvelope({
-    cot: 'COT', userAsks: [{ text: '真实用户要求' }], tools: [],
-    runtimeFacts: [], priorMemory: [],
-  })
-  ok('T28 ★ 信封 counts 带 terminal 口径', env2.counts.terminal !== undefined, JSON.stringify(env2.counts))
-}
-
-// ── T29 ★ 并行块有序归并（不被「谁先返回」决定新旧）──────────────────────────
-{
-  const mk = (t) => SEC.state + '\n' + t
-  // 故意让完成顺序与源顺序相反
-  const merged = mergeOrdered([
-    { sourceIndex: 2, ok: true, parsed: parseStateCompile(mk('块2')), at: 1 },
-    { sourceIndex: 0, ok: true, parsed: parseStateCompile(mk('块0')), at: 2 },
-    { sourceIndex: 1, ok: true, parsed: parseStateCompile(mk('块1')), at: 3 },
-  ])
-  ok('T29 ★ 归并顺序 = 源块顺序（0,1,2）',
-     JSON.stringify(merged.order) === JSON.stringify([0, 1, 2]), JSON.stringify(merged.order))
-  ok('T29 ★ 较早块的内容排在前面', merged.entries[0].content === '块0', JSON.stringify(merged.entries.map((e) => e.content)))
-  ok('T29 ★ 每条的 blockIndex 可追溯', JSON.stringify(merged.entries.map((e) => e.blockIndex)) === JSON.stringify([0, 1, 2]),
-     JSON.stringify(merged.entries.map((e) => e.blockIndex)))
-}
-
-// ── T30 ★ 缓存身份：影响结论的内容才进入 ────────────────────────────────────
-{
-  const base = { cot: '需要确认测试结果。' }
-  const pend = buildEvidenceEnvelope({ cot: base.cot, tools: [{ id: 'c1', name: 't' }] })
-  const pass = buildEvidenceEnvelope({ cot: base.cot, tools: [{ id: 'c1', name: 't', result: 'PASS' }] })
-  ok('T30 ★ 同一 reasoning + 不同工具终局 ⇒ 不同身份（不得共用摘要）',
-     cacheIdentity(pend) !== cacheIdentity(pass), 'ok')
-  ok('T30 ★ 采集时间不影响身份', cacheIdentity(buildEvidenceEnvelope({ cot: 'X', at: 1 })) === cacheIdentity(buildEvidenceEnvelope({ cot: 'X', at: 9 })), 'ok')
-}
-
-// ── T31 ★★ 索引路径与回退路径必须得到**完全相同**的证据（2026-09-21 收敛）★
-{
-  const ev = {
-    1: { type: 'assistant/message', data: { message: { role: 'assistant', content: [
-      { type: 'tool-call', id: 'tc1', name: 'read_file', args: { p: 'x' } }] } } },
-    2: { type: 'tool/result', data: { message: { role: 'user', content: [
-      { type: 'tool-result', toolCallId: 'tc1', content: [{ type: 'text', text: '文件内容' }] }] } } },
-    3: { type: 'user/message', data: { role: 'user', origin: 'user', content: [{ type: 'text', text: '真实要求' }] } },
-    4: { type: 'user/message', data: { role: 'user', content: [{ type: 'text', text: '<cot-ledger>看板</cot-ledger>' }] } },
-  }
-  const mkSession = () => ({ surface: { nodes: [1, 2, 3, 4] }, eventAt: (s) => ev[s] || null })
-  const s1 = mkSession()
-  const indexed = collectEvidence(s1, { limit: 50 })
-  // 回退路径：用一个**不带** evidenceIndex 缓存的 session（模拟索引不可用）
-  const s2 = mkSession()
-  const fb = []
-  for (const seq of [1, 2, 3, 4]) {
-    const e = normalizeEvidenceEvent(s2.eventAt(seq), seq)
-    if (e) fb.push(e)
-  }
-  const fallback = assembleEvidence(fb)
-  const iParts = assembleEvidence(indexed.events)
-  ok('T31 ★★ 索引路径与回退路径得到相同证据（唯一解释出口）',
-     JSON.stringify(iParts.userAsks) === JSON.stringify(fallback.userAsks) &&
-     JSON.stringify(iParts.tools) === JSON.stringify(fallback.tools) &&
-     JSON.stringify(iParts.unknownUserEvents) === JSON.stringify(fallback.unknownUserEvents) &&
-     JSON.stringify(iParts.priorMemory) === JSON.stringify(fallback.priorMemory),
-     JSON.stringify({ idx: iParts.userAsks.length, fb: fallback.userAsks.length }))
-  ok('T31 ★ 索引只缓存、不改变解释：同一 session 二次调用结果一致', (() => {
-     const a = collectEvidence(s1, { limit: 50 })
-     const b = collectEvidence(s1, { limit: 50 })
-     return JSON.stringify(a.events) === JSON.stringify(b.events) && a.events.length === b.events.length
-  })(), 'ok')
-  ok('T31 ★ surface 视图身份含首尾节点（替换后节点数相同也能识别）', (() => {
-     const s = mkSession()
-     evidenceIndex(s)
-     // 替换：节点数不变，但首尾不同
-     const ev2 = Object.assign({}, ev, { 1: { type: 'user/message', data: { role: 'user', origin: 'user', content: [{ type: 'text', text: '替换后的内容' }] } } })
-     const s2b = { surface: { nodes: [9, 2, 3, 4] }, eventAt: (x) => ev2[x] || null }
-     evidenceIndex(s2b)
-     const c = collectEvidence(s2b, { limit: 50 })
-     return c.events.length > 0
-  })(), 'ok')
-}
-// ── T32 ★ 来源权限：创建路径优先，正文不提升 ──────────────────────────────
-{
-  const ev = {
-    1: { type: 'user/message', data: { role: 'user', origin: 'user', content: [{ type: 'text', text: '<cot-ledger>用户自己粘贴的看板</cot-ledger>' }] } },
-    2: { type: 'user/message', data: { role: 'user', content: [{ type: 'text', text: 'Current runtime context.' }] } },
-    3: { type: 'user/message', data: { role: 'user', content: [{ type: 'text', text: '无来源的普通发言' }] } },
-  }
-  const s = { surface: { nodes: [1, 2, 3] }, eventAt: (x) => ev[x] || null }
-  const c = collectEvidence(s, { limit: 50 })
-  ok('T32 ★ 创建路径确认的人类输入不被正文标头误降级',
-     c.userAsks.some((x) => x.text.includes('用户自己粘贴')), JSON.stringify(c.userAsks.map(x => x.text)))
-  ok('T32 ★ runtime 抬头被识别为 runtime-context（不进 userAsks）',
-     !c.userAsks.some((x) => x.text.includes('runtime context')), 'ok')
-  // ★ 真机修正（2026-09-21）：DSH 不提供来源元数据（append 只写 surfaceOp），
-  //   故"无标头的 user/message"按**结构位置**推定为 inbox 输入 = 真实用户要求。
-  //   （ledger 与 runtime 各有固定标头已被排除；tool/result 是另一种事件类型。）
-  ok('T32 ★ 无标头的 user/message 按结构位置推定为真实用户要求（否则 userAsks 恒为 0）',
-     c.userAsks.some((x) => x.text.includes('无来源的普通发言')), JSON.stringify(c.userAsks.map(x => x.text)))
-}
+// ── T26–T32（v12.1 删除）：任务状态记忆 / 证据采集 / 有序归并 / 缓存身份 / 索引回退 / 来源权限，随 memory 模式一并移除（见 CHANGELOG v12.1）
 
 // ═══ T33 v11.6：免费窗口探针 / 空白候选断言 / 保真观测 / 成本模型字段 ═══
 {

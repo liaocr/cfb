@@ -281,7 +281,7 @@ Get-Content "$HOME\.dsh\storages\cot-form-b\trace.log" | Select-String "birth-be
 - 不要把 `dryRun: false` 和一个**真实的**门槛（比如 3100）一起打开——那是阶段 2 的事，前面还有阶段 1 的闸门。
 - 不要改 `src\` 下任何文件；不要跑 `node deploy\onboard.mjs --apply`（那是修老式路径注册用的）。
 - 不要删 `trace.log`。它就是我们要的数据。
-- 不要同时开 `stateMemory` / `checkpoint` / `birthDeferredClaim` —— 已冻结。
+- `stateMemory` / `checkpoint` / `birthDeferredClaim` 在 v12.1 已删除；配置里写了也只会进 BOOT 的 `retiredOptions` / `configAdjusted`，不生效。
 
 ## 遇到问题速查
 

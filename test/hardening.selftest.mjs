@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 // v11.10 全面优化的回归钉子：
 //   §1 取消泄漏（flush / 硬停 / 无 finish / 消费者提前退出）      §2 配置（漏登记键、退役键、显式化旋钮）
-//   §3 token 估算与 token 闸门 / token 门槛                       §4 残留锁接管（fs-lock.js，三处锁）
+//   §3 token 估算与 token 闸门 / token 门槛                       §4（v12.1 删除：fs-lock.js 随快照/证据账本移除）
 //   §5 trace 轮转与正文片段开关                                  §6 provider / 凭据解析缓存
 //   §7 makeBirthCompiler（编译器工厂，真实本机 HTTP）
 // 全部本机执行，零外网、零 API 调用。
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
@@ -15,11 +14,8 @@ import * as I from '../index.js'
 import { birthTransform, birthSettle } from '../src/birth.js'
 import { normalizeConfig, DEFAULTS } from '../src/config.js'
 import { makeBirthCompiler } from '../src/distill.js'
-import { prepareEvidenceLedger, ledgerDirectory } from '../src/evidence-ledger.js'
-import { openLockExclusive, isStaleLock, parseLockOwner, lockStats } from '../src/fs-lock.js'
 import { provenanceOf } from '../src/messages.js'
 import { readProviderSpec, readApiKey, clearProviderCache } from '../src/provider.js'
-import { commitSnapshot, snapshotPath } from '../src/snapshot-store.js'
 import { estimateTokens, wideShare } from '../src/tokens.js'
 import { makeTraceWriter } from '../src/trace.js'
 
@@ -30,7 +26,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-hardening-'))
 
 // ═══ §1 取消泄漏 ═══════════════════════════════════════════════════════════════
 // 副模型 5 秒才回；收网预算 150ms。断言：放弃应用的每一条路径都掐掉在飞请求。
-function birthRig({ finishKind = 'stop', consumerBreak = false, sourceThrows = false, deferred = false } = {}) {
+function birthRig({ finishKind = 'stop', consumerBreak = false, sourceThrows = false } = {}) {
   const seen = { aborted: false, traces: [] }
   const raw = 'x'.repeat(4000)
   async function* src() {
@@ -42,7 +38,7 @@ function birthRig({ finishKind = 'stop', consumerBreak = false, sourceThrows = f
     if (finishKind) yield { type: 'finish', reason: { kind: finishKind } }
   }
   const deps = {
-    cfg: { mode: 'birth', dryRun: false, birthMinChars: 100, birthFinishWaitMs: 150, finishHeadersGraceMs: 0, stateCompress: true, compileMode: 'compress', birthDeferredClaim: deferred },
+    cfg: { mode: 'birth', dryRun: false, birthMinChars: 100, birthFinishWaitMs: 150, finishHeadersGraceMs: 0 },
     sessionId: 's1', archive: async () => 'art://fixture-handle-000000',
     trace: (tag, data) => seen.traces.push({ tag, data }),
     distill: (_raw, signal) => new Promise((res, rej) => {
@@ -90,15 +86,6 @@ await test('§1e 消费者提前退出（用户取消）⇒ 取消 + birth-consu
   assert.ok(r.seen.traces.some((t) => t.tag === 'birth-consumer-return'))
   assert.ok(r.seen.traces.some((t) => t.tag === 'birth-distill-cancelled' && t.data.why === 'consumer-return'))
 })
-await test('§1f flush 路径尊重 birthDeferredClaim:true（结果留给下一轮，不取消）', async () => {
-  const r = birthRig({ finishKind: 'error', deferred: true }); await r.run()
-  assert.equal(r.seen.aborted, false)
-})
-await test('§1g 消费者提前退出时即使 deferredClaim:true 也取消（块从未出站，不可能被认领）', async () => {
-  const r = birthRig({ consumerBreak: true, deferred: true }); await r.run()
-  assert.equal(r.seen.aborted, true)
-})
-
 // ═══ §2 配置 ═══════════════════════════════════════════════════════════════════
 await test('§2a birth.probeTimeoutMs 不再被误报为 unknownOptions，且生效', () => {
   const c = normalizeConfig({ birth: { probeTimeoutMs: 321 } })
@@ -118,13 +105,12 @@ await test('§2c 新 token 键：嵌套别名 birth.minTokens/tokenGate/minSaved
   assert.deepEqual(c.unknownOptions, [])
 })
 await test('§2d 显式化的内部旋钮：值与各调用点原回落值逐字相同（行为零变化）', () => {
-  const want = { keepTail: 1, pluginName: 'cot-form-b', emitterProducer: 'cot-checkpoint', maxInlineToolResultChars: 2000,
-    staticMinRawChars: null, birthCancelOnGiveUp: true, birthDiskWaitMs: 400, econCacheDiscount: 0.02, econTemplateChars: 460,
+  const want = { birthCancelOnGiveUp: true, birthDiskWaitMs: 400, econCacheDiscount: 0.02, econTemplateChars: 460,
     econR: 60, econCharsPerTurn: null, birthMinTokens: null, birthTokenGate: true, birthMinSavedTokens: 0, tracePreviewChars: 48 }
   for (const [k, v] of Object.entries(want)) assert.equal(DEFAULTS[k], v, k)
   assert.ok(DEFAULTS.traceMaxBytes > 0)
-  // staticMinRawChars 必须保持「非有限数」—— 有限数会静态接管动态门槛
-  assert.equal(Number.isFinite(DEFAULTS.staticMinRawChars), false)
+  // v12.1：checkpoint 专属旋钮随模式退役
+  for (const k of ['keepTail', 'pluginName', 'emitterProducer', 'maxInlineToolResultChars', 'staticMinRawChars']) assert.equal(k in DEFAULTS, false, k)
 })
 await test('§2e 真正拼错的键照旧报 unknownOptions（白名单收紧后不回归）', () => {
   const c = normalizeConfig({ finishWaitMs: 1, birth: { finishWait: 2 } })
@@ -143,7 +129,7 @@ await test('§3a estimateTokens：英文 0.3/字、中文 0.6/字（DeepSeek 官
 const gateRig = (summary, extraCfg = {}) => {
   const traces = []
   return birthSettle({ index: 0, text: 'The quick brown fox jumps over the lazy dog. '.repeat(90) }, {
-    cfg: { mode: 'birth', dryRun: false, birthMinChars: 100, birthFinishWaitMs: 500, stateCompress: true, compileMode: 'compress', ...extraCfg },
+    cfg: { mode: 'birth', dryRun: false, birthMinChars: 100, birthFinishWaitMs: 500, ...extraCfg },
     sessionId: 's1', archive: async () => 'art://fixture-handle-000000', trace: (tag, data) => traces.push({ tag, data }),
     distill: async () => ({ text: summary }),
   }).then((r) => ({ r, traces }))
@@ -175,56 +161,6 @@ await test('§3f birthMinTokens（opt-in）按 token 接管字符门槛', async 
   assert.equal(a.r.why, 'below-floor')
   const b = await gateRig('摘要', { birthMinTokens: 1000, birthMinChars: 99999 })
   assert.equal(b.r.why, 'condensed')
-})
-
-// ═══ §4 残留锁接管 ═════════════════════════════════════════════════════════════
-const deadPid = (() => { const r = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }); return Number(r.stdout) })()
-const lockDir = path.join(tmp, 'locks'); fs.mkdirSync(lockDir)
-await test('§4a 持锁进程已死（同机、pid ESRCH）⇒ 接管，并写入新持有者', () => {
-  const lock = path.join(lockDir, 'a.lock')
-  fs.writeFileSync(lock, deadPid + '@' + os.hostname() + '@1')
-  assert.equal(isStaleLock(fs.readFileSync(lock, 'utf8')), true)
-  const before = lockStats().staleRecovered
-  const fd = openLockExclusive(lock); fs.closeSync(fd)
-  assert.equal(lockStats().staleRecovered, before + 1)
-  assert.equal(parseLockOwner(fs.readFileSync(lock, 'utf8')).pid, process.pid)
-  fs.unlinkSync(lock)
-  assert.deepEqual(fs.readdirSync(lockDir), [])   // 不留 .stale-* 垃圾
-})
-for (const [label, content] of [
-  ['持锁进程活着（本进程的父进程）', () => process.ppid + '@' + os.hostname() + '@1'],
-  ['本进程自己持有', () => process.pid + '@' + os.hostname() + '@1'],
-  ['别的机器（共享目录无法判活）', () => deadPid + '@some-other-host@1'],
-  ['旧格式 pid@ts（无主机名）', () => deadPid + '@1'],
-  ['空文件（v11.9 的 evidence 锁）', () => ''],
-]) {
-  await test('§4b 不接管：' + label + ' ⇒ EEXIST（fail-closed 不变）', () => {
-    const lock = path.join(lockDir, 'b.lock')
-    fs.writeFileSync(lock, content())
-    assert.throws(() => openLockExclusive(lock), (e) => e.code === 'EEXIST')
-    fs.unlinkSync(lock)
-  })
-}
-await test('§4c snapshot-store：崩溃残留锁不再永久阻塞 commitSnapshot', () => {
-  const sid = 'sess-lock', f = snapshotPath(sid, 'main')
-  fs.mkdirSync(path.dirname(f), { recursive: true })
-  fs.writeFileSync(f + '.lock', process.ppid + '@' + os.hostname() + '@1')   // 活锁 ⇒ 仍然拒绝
-  const busy = commitSnapshot({ sessionId: sid, branchId: 'main', entries: [{ id: 'e1', category: 'state', content: '甲', source: 'model' }], coveredSeqs: [1], sourceCutSeq: 1, at: 1 })
-  assert.equal(busy.ok, false, JSON.stringify(busy))
-  fs.writeFileSync(f + '.lock', deadPid + '@' + os.hostname() + '@1')       // 死锁 ⇒ 接管后成功
-  const c = commitSnapshot({ sessionId: sid, branchId: 'main', entries: [{ id: 'e1', category: 'state', content: '甲', source: 'model' }], coveredSeqs: [1], sourceCutSeq: 1, at: 1 })
-  assert.equal(c.ok, true, JSON.stringify(c))
-  assert.equal(fs.existsSync(f + '.lock'), false)
-})
-await test('§4d evidence-ledger：死锁接管，活锁仍 evidence-index-busy', () => {
-  const input = { sessionId: 'sess-ev', branchId: 'main', tools: [], cutSeq: 0 }
-  const dir = ledgerDirectory('sess-ev', 'main'); fs.mkdirSync(dir, { recursive: true })
-  const lock = path.join(dir, 'index.lock')
-  fs.writeFileSync(lock, process.ppid + '@' + os.hostname() + '@1')
-  assert.throws(() => prepareEvidenceLedger(input), /evidence-index-busy/)
-  fs.writeFileSync(lock, deadPid + '@' + os.hostname() + '@1')
-  prepareEvidenceLedger(input)
-  assert.equal(fs.existsSync(lock), false)
 })
 
 // ═══ §5 trace 轮转与正文片段开关 ═══════════════════════════════════════════════
@@ -316,7 +252,7 @@ const base = normalizeConfig({ model: 'fixture', baseUrl: 'http://127.0.0.1:' + 
   followHostModel: false, followHostProvider: false, keepAlive: false, disableThinking: false, dryRun: false })
 const COT = '【原推理】'.repeat(50)
 await test('§7a compress + v3 ⇒ 绝对长度提示词，promptVersion 带参数', async () => {
-  const cfg = normalizeConfig({ ...base, stateCompress: true, compressPrompt: 'v3' })
+  const cfg = normalizeConfig({ ...base, compressPrompt: 'v3' })
   let headers = 0
   const r = await makeBirthCompiler(cfg)(COT, undefined, { onHeaders: () => headers++ })
   const content = lastBody.messages[0].content
@@ -326,22 +262,25 @@ await test('§7a compress + v3 ⇒ 绝对长度提示词，promptVersion 带参�
   assert.equal(headers, 1)
 })
 await test('§7b compress + compressSystemPrompt ⇒ system/user 拆分，字节等价', async () => {
-  const cfg = normalizeConfig({ ...base, stateCompress: true, compressPrompt: 'v2', compressSystemPrompt: true })
+  const cfg = normalizeConfig({ ...base, compressPrompt: 'v2', compressSystemPrompt: true })
   const r = await makeBirthCompiler(cfg)(COT, undefined, {})
   assert.equal(lastBody.messages.length, 2)
   assert.equal(lastBody.messages[0].role, 'system')
   assert.equal(lastBody.messages[0].content + '\n\n' + lastBody.messages[1].content, I.buildCompressPrompt(COT))
   assert.equal(r.meta.promptVersion, 'compress-v2:sys')
 })
-await test('§7c compress + v1 ⇒ 旧蒸馏提示词、不拆分', async () => {
-  const cfg = normalizeConfig({ ...base, stateCompress: true, compressPrompt: 'v1', compressSystemPrompt: true })
-  await makeBirthCompiler(cfg)(COT, undefined, {})
-  assert.equal(lastBody.messages.length, 1)
-  assert.equal(lastBody.messages[0].content, I.buildDistillPrompt(COT))
+await test('§7c v12.1：compressPrompt v1 已退役 ⇒ 按 v3 走（system 拆分照常）', async () => {
+  const cfg = normalizeConfig({ ...base, compressPrompt: 'v1', compressSystemPrompt: true })
+  const r = await makeBirthCompiler(cfg)(COT, undefined, {})
+  assert.equal(lastBody.messages.length, 2)
+  assert.equal(lastBody.messages[0].content + '\n\n' + lastBody.messages[1].content, I.buildCompressPromptV3(COT, 250, 450))
+  assert.equal(r.meta.promptVersion, 'compress-v3:250-450:sys')
 })
-await test('§7d legacy ⇒ 旧蒸馏提示词', async () => {
-  await makeBirthCompiler(base)(COT, undefined, {})
-  assert.equal(lastBody.messages[0].content, I.buildDistillPrompt(COT))
+await test('§7d 缺省配置 ⇒ v3（compress 是唯一编译模式）', async () => {
+  const r = await makeBirthCompiler(base)(COT, undefined, {})
+  assert.equal(lastBody.messages.length, 1)
+  assert.equal(lastBody.messages[0].content, I.buildCompressPromptV3(COT, 250, 450))
+  assert.equal(r.meta.promptVersion, 'compress-v3:250-450')
 })
 
 // ═══ §9 llm-stream 溯源不再随会话长度平方增长 ════════════════════════════════

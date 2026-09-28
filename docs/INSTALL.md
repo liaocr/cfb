@@ -72,7 +72,7 @@ profile 侧（`~/.dsh/profiles/web/package.json`）：
 显式 config  >  $DSH_HOME（空 / 纯空白 = 未设）  >  ~/.dsh
 ```
 
-插件的 trace、快照、证据账本都在 `$DSH_HOME/storages/cot-form-b/` 下。
+插件的 trace 在 `$DSH_HOME/storages/cot-form-b/` 下（v12.1 起插件不再写其他状态文件）。
 
 ## 改完源码，怎么让它生效（**必读**）
 
@@ -102,7 +102,7 @@ cd <checkout>; node deploy\onboard.mjs      # [2b] 部署漂移必须「与源�
 | `duplicate loader entry id: cot-form-b` | 两层都用了 `insert` | 见「形态铁律」 |
 | `Cannot find package '@dsh-external/dsh-cot-form-b'` | 包没装进 profile | 检查 profile 的 `dependencies`，重装 |
 | 插件静默不生效 | 未列入 `dsh.profile.bundles` | `npm run onboard` 看报告 |
-| BOOT 里 `mode: 'off'` | 配置写了退役模式（`retiredMode`）或拼错（`invalidMode`） | 改成 `birth` / `checkpoint` |
+| BOOT 里 `mode: 'off'` | 配置写了退役模式（`retiredMode`）或拼错（`invalidMode`） | 改成 `birth`（v12.1 起 `checkpoint` 也是退役模式） |
 | trace 只有 `birth-dry-run-stream`，从不压缩 | `dryRun` 缺省为 `true` | 金丝雀观察无误后在 profile 显式 `dryRun: false` |
 | **改了源码、重启了，行为却没变** | pnpm 不刷新 `file:` 依赖的副本 | 见「改完源码，怎么让它生效」；`onboard` 会报退出码 4 |
 | `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` | 某个 git 依赖需要 build script | `pnpm install --ignore-scripts` |

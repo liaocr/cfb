@@ -13,9 +13,13 @@
 > | 第五卷 | `OPEN-PROBLEMS-AND-V4-SPEC.md` | 六个开放问题的推进 × v4 编译器规格 |
 > | 第六卷 | `VACCINE-MEMORY-AND-HOST-PROTOCOL.md` | 跨会话疫苗记忆 × 宿主压缩对接协议 |
 > | 附录 A | （对话中的评审） | v4a / v4b 评审结论与经济学修正 |
-> | 附录 B | `src/value.js`、`tools/value-demo.mjs` | v4 参考实现源码 |
+> | 附录 B | `src/value.js`、`tools/value-demo.mjs`（**v12.1 起已从仓库删除**，源码只存于本附录） | v4 参考实现源码 |
 >
 > 各卷原文中的“上一篇”“前文”指**上一卷**；正文里出现的 `XXX.md` 卷文件名一律指本合订本中对应的卷（见上表）；各卷的引用编号 [n](url) 在卷内独立编号，链接本身即出处。
+> **v12.1 状态说明**：仓库已收敛为单一路径（birth + compress，缺省 v3）。正文中提到的 checkpoint 模式、memory 模式 / `state-memory.js`、迟到认领、legacy v1 提示词、`src/value.js` 均已删除（可从 git `cfba57b` / v12.0 提交取回）；
+> 这些段落按写作时的事实保留，作为理论推导的上下文，**不再描述现行代码**。value.js 里唯一被吸收进主路径的是不变量 I2 的判定部分：
+> 「摘要里的标识符必须逐字出现在原文」，现为 `fidelity.inventedIdentifiers` + birth 的 `invented-identifier` 放行（`birthIdentifierGate`，缺省开）。
+>
 > 理论是逐卷推进的，**后卷会修订前卷**。原文保持不动，修订关系统一记录在下面的“概念演进与修订对照表”里——读到前卷某个结论时，请先查这张表确认它是否已被后卷修订。
 
 ---
@@ -1721,7 +1725,7 @@ cfb 手里有主模型**刚写的原始推理块**，所以它天然掌握主模
 
 ### S7. 参考实现
 
-`src/value.js`：零依赖 ESM，与现有模块风格一致，**尚未接入** birth.js。实现了 S1 中的 ③④⑤⑥⑦（观测量、打分、选取、渲染、控制器）和 ② 的不变量 I1–I4、I7。①（副模型调用）沿用 birth.js 现有的传输层，只需把提示词换成 S4。
+`src/value.js`（v12.1 起已删除，源码见附录 B；I2 判定已并入主路径）：零依赖 ESM，与现有模块风格一致，**未接入** birth.js。实现了 S1 中的 ③④⑤⑥⑦（观测量、打分、选取、渲染、控制器）和 ② 的不变量 I1–I4、I7。①（副模型调用）沿用 birth.js 现有的传输层，只需把提示词换成 S4。
 
 ---
 
@@ -2084,7 +2088,9 @@ cfb          reduce(opsStore, contextState, budgetTokens) → text // 纯函数�
 
 # 附录 B　v4 参考实现源码
 
-> 零依赖 ESM，与仓库现有模块风格一致；**尚未接入 birth.js**。运行 `node tools/value-demo.mjs` 可复现第五卷附录中的算例输出。
+> **v12.1 起这两个文件已从仓库删除**，本附录是它们唯一的留存（亦可 `git show <v12.0 提交>:src/value.js` 取回）。
+> 删除原因：纯函数原型、从未接入 birth，主路径不依赖它；其中唯一可独立生效的部分（I2：标识符必须有出处）已并入 `fidelity.inventedIdentifiers`。
+> 如需复现第五卷算例：把 B.1 存为 `src/value.js`、B.2 存为 `tools/value-demo.mjs`，运行 `node tools/value-demo.mjs`。
 
 ## B.1 `src/value.js`
 

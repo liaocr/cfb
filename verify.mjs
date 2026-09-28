@@ -42,12 +42,10 @@ const cpuCount = typeof os.availableParallelism === 'function' ? os.availablePar
 const JOBS = args.includes('--serial') ? 1 : (Number.isInteger(jobsArg) && jobsArg > 0 ? jobsArg : Math.max(6, cpuCount))
 const filters = args.filter((a, i) => !a.startsWith('-') && !(jIdx >= 0 && i === jIdx + 1))
 
-// 运行顺序：纯函数层 → 核心 → birth → 持久化/证据 → 集成与观测
+// 运行顺序：纯函数层 → 核心 / 编译 → birth → 集成与观测
 const ORDER = [
-  'balanced-span', 'headroom', 'imperative', 'emitter', 'state-memory', 'provider-endpoint',
-  'core', 'birth', 'optimization', 'memory-quality', 'snapshot-invariants', 'robustness',
-  'late-identity', 'hybrid', 'grounding', 'evidence-sharing', 'efficiency', 'coverage-provenance', 'hedge',
-  'checkpoint-hooks', 'hook-wiring', 'hardening', 'concurrency', 'protocol', 'branches',
+  'provider-endpoint', 'core', 'compress', 'birth', 'robustness', 'hedge',
+  'hook-wiring', 'hardening', 'concurrency', 'protocol', 'branches',
   'audit-2026-09-27', 'v12',
 ]
 
@@ -103,7 +101,7 @@ function runSuite(name) {
 // 并发池：按 ORDER 依次领取；结果按 ORDER 下标回填 ⇒ 打印顺序与串行版相同
 const wallStart = Date.now()
 // 调度顺序：已知的慢套件先起跑（墙钟 ≈ 最慢套件本身，而不是「最慢套件 + 它前面排队的时间」）
-const SLOW_FIRST = ['hybrid', 'hedge', 'core', 'birth']
+const SLOW_FIRST = ['hedge', 'core', 'birth']
 const queue = selected.map((name, i) => ({ name, i }))
   .sort((a, b) => ((SLOW_FIRST.indexOf(a.name) + 1 || 99) - (SLOW_FIRST.indexOf(b.name) + 1 || 99)) || a.i - b.i)
 const rows = new Array(selected.length)
