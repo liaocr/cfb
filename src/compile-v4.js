@@ -57,7 +57,7 @@ function supersedesText(o, supIds) {
 }
 const PROBE_RE = /下一步工具调用|工具调用[:：]|复现|查看|检查|确认|定位|grep|read_file|sed -n|taskset|\b(?:inspect|check|reproduce|look at)\b/i
 const FIXWORD_RE = /改为|改成|替换|修改|改用|回滚|删掉|加上|增加|设为|拉大|修复[:：]|\b(?:change|replace|set|revert|rename)\b/i
-const CAP = { text: 300, anchor: 120, alt: 200, why: 200, then: 200, trigger: 160, supersedes: 160, src: 60, key: 60 }
+const CAP = { at: 200, text: 300, anchor: 120, alt: 200, why: 200, then: 200, trigger: 160, supersedes: 160, src: 60, key: 60 }
 const str = (x, n) => (typeof x === 'string' ? x : x == null ? '' : typeof x === 'number' ? String(x) : '').trim().slice(0, n)
 const norm = (s) => String(s || '').normalize('NFKC').replace(/\s+/g, ' ').trim()
 const stripEnd = (s) => String(s || '').replace(/[\s。．.;；,，:：!！]+$/u, '')
@@ -142,6 +142,7 @@ export function normalizeOp(o, i) {
     text: isIf && cond && then ? str(cond + ' ⇒ ' + then, CAP.text) : text0, anchor: str(o.anchor, CAP.anchor), key: str(o.key, CAP.key),
     src: str(o.src, CAP.src), alt: str(o.alt, CAP.alt), why: str(o.why, CAP.why),
     trigger: isIf ? cond : str(o.trigger, CAP.trigger), supersedes: supersedesText(o, supIds), deps, retracts,
+    at: k === 'READY' ? str(o.at ?? o.old ?? o.locus, CAP.at).replace(/^`+|`+$/g, '') : '',
   }
 }
 
@@ -164,6 +165,24 @@ const outsideQuotes = (s) => String(s || '').replace(/`[^`]*`|"[^"]*"|“[^”]*
  *   另：schema（k 合法、text 非空）、同文去重
  * @returns {{ kept, rejected: {id,k,rule,sample?}[], converted: {id,from,to}[], fatal: string|null, total }}
  */
+/**
+ * READY 位置锚点的代码保底（S8-R2′）：原文里用反引号 / 独立代码行引用过、且含该改法标识符的最后一段，逐字取出。
+ * 只抽取、不生成；找不到返回空串。
+ */
+export function locusFromRaw(raw, text) {
+  const ids = (String(text || '').match(/[A-Za-z_$][\w$]*(?:\.[\w$]+)*/g) || []).filter((x) => x.length >= 4 && /[A-Z_.$]|[a-z][A-Z]/.test(x) || /^[a-z]+[A-Z]/.test(x))
+  if (!ids.length) return ''
+  const spans = []
+  for (const m of String(raw || '').matchAll(/`([^`\n]{8,200})`/g)) spans.push(m[1])
+  for (const line of String(raw || '').split('\n')) { const t = line.trim(); if (t.length >= 12 && t.length <= 200 && /[=(){};]/.test(t) && /^(?:const|let|var|if|return|export|function|[\w$.]+\s*[:=(])/.test(t)) spans.push(t) }
+  for (let i = spans.length - 1; i >= 0; i--) {
+    const sp = spans[i]
+    if (!/[=(){};:]/.test(sp)) continue
+    if (ids.some((id) => sp.includes(id))) return sp
+  }
+  return ''
+}
+
 export function validateOps(rawOps, raw) {
   const src = String(raw || '')
   const hay = norm(src)
@@ -193,6 +212,9 @@ export function validateOps(rawOps, raw) {
     if (seen.has(sig)) { reject('dup'); continue }
     seen.add(sig)
     op.src = op.src.replace(/^tool:\s*/i, '')
+    // 理论 S8-R2′：READY 的位置锚点必须是原文逐字子串；对不上就丢掉锚点（条目保留）
+    if (op.at && !hay.includes(norm(op.at))) op.at = ''
+    if (op.k === 'READY' && !op.at) op.at = locusFromRaw(src, op.text)
     kept.push(op)
   }
   // 增量编译：后段条目可以显式推翻前段条目（retracts）。被推翻的条目移除（不计入硬拒绝）。
@@ -208,10 +230,15 @@ export function validateOps(rawOps, raw) {
   const keyed = (op) => op.key && op.k !== 'REFUTED' && op.k !== 'SHELVED'
   const lastByKey = new Map()
   for (const op of kept) if (keyed(op)) lastByKey.set(op.key, op)
+  // 支撑不是取代（ops9 真机：副模型给 FACT→COMPUTED→COMPUTED 整条推理链都标 key=root-cause，I7 删掉了 3/4）：
+  // 胜者（传递地）deps 依赖它、或它是工具观测而胜者不是 ⇒ 它是胜者的依据，保留
+  const byId = new Map(kept.map((o) => [o.id, o]))
+  const dependsOn = (w, id, seen = new Set()) => (w.deps || []).some((d) => d === id || (!seen.has(d) && seen.add(d) && byId.has(d) && dependsOn(byId.get(d), id, seen)))
   const final = []
   for (const op of kept) {
     if (keyed(op) && lastByKey.get(op.key) !== op) {
       const winner = lastByKey.get(op.key)
+      if (dependsOn(winner, op.id) || (op.ev === 'tool' && op.k === 'FACT' && winner.k !== 'FACT')) { final.push(op); continue }
       // 固定键（root-cause / fix / next）是「细化」不是「改值」：挂「取代 旧结论」会暗示旧的错了（v12.3 真机：旧根因只是粗一点的同一判断）
       if (!REFINE_KEYS.has(op.key) && !winner.supersedes && op.text.length <= 60 && norm(op.text) !== norm(winner.text)) winner.supersedes = op.text
       rejected.push({ id: op.id, k: op.k, rule: 'I7' })
@@ -283,8 +310,8 @@ const T = {
       : zj('暂缓', x) + ((why || trig) ? '（' + [why, trig ? zj('若', trig, '再回来') : ''].filter(Boolean).join('；') + '）' : ''),
     plan: '接下来要：', open: '还要确认：',
     rule: (c, t) => '判读：' + zj(zj('若', cond(c)) + '，就', t),
-    ready: (t, trig) => '我准备的改法：' + t + (trig ? '（' + zj('前提：', cond(trig)) + '）' : ''),
-    tailReady: (t, trig) => trig ? zj(zj('若', cond(trig)) + '，就', t) + '。' : '我准备的改法：' + t + '。',
+    ready: (t, trig, at) => '我准备的改法：' + t + (at ? '（改动位置：`' + at + '`）' : '') + (trig ? '（' + zj('前提：', cond(trig)) + '）' : ''),
+    tailReady: (t, trig, at) => (trig ? zj(zj('若', cond(trig)) + '，就', t) : '我准备的改法：' + t) + (at ? '，改的就是 `' + at + '` 这一行' : '') + '。',
     tailRule: (c, t) => zj(zj('若', cond(c)) + '，就', t) + '。',
     tailIncumbent: (t) => '所以我现在采用：' + t + '。', tailJudged: (t) => '所以我目前判断：' + t + '。', tailFact: (t) => '已确认：' + t + '。',
     // 未决在尾段写成陈述而不是问句：推理末尾的疑问句会把下一步推向「继续取证」（turn 20 效果评测）
@@ -299,8 +326,8 @@ const T = {
       : 'Set aside ' + x + ((why || trig) ? ' (' + [why, trig ? 'revisit if ' + trig : ''].filter(Boolean).join('; ') + ')' : ''),
     plan: 'Next: ', open: 'Still to confirm: ',
     rule: (c, t) => 'Reading: if ' + cond(c) + ', then ' + t,
-    ready: (t, trig) => 'Prepared change: ' + t + (trig ? ' (if ' + cond(trig) + ')' : ''),
-    tailReady: (t, trig) => trig ? 'If ' + cond(trig) + ', then ' + t + '.' : 'Prepared change: ' + t + '.',
+    ready: (t, trig, at) => 'Prepared change: ' + t + (at ? ' (at `' + at + '`)' : '') + (trig ? ' (if ' + cond(trig) + ')' : ''),
+    tailReady: (t, trig, at) => (trig ? 'If ' + cond(trig) + ', then ' + t : 'Prepared change: ' + t) + (at ? ' — the line is `' + at + '`' : '') + '.',
     tailRule: (c, t) => 'If ' + cond(c) + ', then ' + t + '.',
     tailIncumbent: (t) => 'So I am going with: ' + t + '.', tailJudged: (t) => 'So my current judgment is: ' + t + '.', tailFact: (t) => 'Confirmed: ' + t + '.',
     tailOpen: (t) => 'Still to confirm: ' + t + '.',
@@ -328,7 +355,7 @@ export function renderLine(op, lang = 'zh') {
     case 'SHELVED': return '- ' + L.shelved(stripEnd(op.alt), t, stripEnd(op.why), stripEnd(op.trigger))
     case 'PLAN': return '- ' + L.plan + t
     case 'OPEN': return '- ' + L.open + stripQ(op.text)
-    case 'READY': return '- ' + (op.auto ? t : L.ready(t, stripEnd(op.trigger)))
+    case 'READY': return '- ' + (op.auto ? t : L.ready(t, stripEnd(op.trigger), op.at))
     case 'IF': return '- ' + (op.trigger && op.then ? L.rule(stripEnd(op.trigger), stripEnd(op.then)) : t)
     // 代码补的条目是原文逐字句（本身就是第一人称的思考），不加前缀
     default: return '- ' + t
@@ -363,7 +390,7 @@ export function renderOps(chosen, opts = {}) {
     // 尾段以已备好的改法收束（最后一条）：观察一旦证实前提，下一步就是它
     const rds = ordered.filter((x) => x.k === 'READY')
     const rd = (rds.some((x) => !x.auto) ? rds.filter((x) => !x.auto) : rds).slice(-1)[0]
-    if (rd) tail.push(rd.auto ? stripEnd(rd.text) + (lang === 'en' ? '.' : '。') : L.tailReady(stripEnd(rd.text), stripEnd(rd.trigger)))
+    if (rd) tail.push(rd.auto ? stripEnd(rd.text) + (lang === 'en' ? '.' : '。') : L.tailReady(stripEnd(rd.text), stripEnd(rd.trigger), rd.at))
   }
   const sep = lang === 'en' ? ' ' : ''
   return lines.join('\n') + (tail.length ? '\n\n' + tail.join(sep) : '')

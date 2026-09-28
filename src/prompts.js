@@ -26,7 +26,7 @@ export function compressPromptVersion(cfg) {
   const sys = cfg && cfg.compressSystemPrompt === true ? ':sys' : ''
   if (v === 'v2') return 'compress-v2' + sys
   // v4 把渲染预算与尾段开关写进版本号（它们改变产物；提示词本身不随参数变化）
-  if (v === 'v4') return 'compress-v4-ops8:' + v4Budget(cfg) + (cfg && cfg.compressV4Tail === false ? ':notail' : '') +
+  if (v === 'v4') return 'compress-v4-ops9:' + v4Budget(cfg) + (cfg && cfg.compressV4Tail === false ? ':notail' : '') +
     (v4Incremental(cfg) ? ':inc' + v4SegmentChars(cfg) : '') + sys
   // v3 把目标长度写进版本号 ⇒ trace / BOOT / A-B 分桶自动带上参数，无需另记字段。
   const t = compressTargets(cfg)
@@ -173,7 +173,7 @@ const V4_HEAD = (
     '描述程序行为的机理条件句（\"若 A 先执行，则 B 失败\"）不是 IF，标 COMPUTED；问句不是 IF；' +
     'FACT 观察到的事实；COMPUTED 推理或计算得出的结论；INCUMBENT 当前采用的方案或结论；' +
     'REFUTED 被工具观测证伪而放弃的路；SHELVED 没有观测证据、只是暂时搁置的路；OPEN 仍未解决的问题；PLAN 当时打算做的下一步（查看、验证类动作）；' +
-    'READY 原文已经想好的具体改法（改哪个文件、改成什么、执行什么修复），即使只是候选、或要等某个检查结果才采用——写 trigger=采用它的前提（原文"如果……"的部分），无前提省略。\n' +
+    'READY 原文已经想好的具体改法（改哪个文件、改成什么、执行什么修复），即使只是候选、或要等某个检查结果才采用——写 trigger=采用它的前提（原文"如果……"的部分），无前提省略；写 at=原文逐字引用过的、要改动的那一行代码（原文没引用过就省略，不许自己写）。\n' +
     '- ev（依据）：tool（工具输出、命令结果、文件内容等外部观测）/ derived（推理得出）/ guess（猜测）。没有工具观测就不是 tool。\n' +
     '- kind2（这句在推理中的作用）：pivot（"等等 / 换个思路 / 这说明"类转折）/ plan / hypothesize / localize（缩小范围）/ ' +
     'inspect（查看）/ compute / verify（复核已知结论）/ restate（复述工具输出）/ answer。\n' +

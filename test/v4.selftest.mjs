@@ -60,10 +60,10 @@ try {
   })
   await test('§1c 版本号：v4 携带预算与尾段开关；缺省仍为 v3；compressPromptFor 分派一致', () => {
     assert.equal(I.DEFAULTS.compressPrompt, 'v3')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4' }), 'compress-v4-ops8:800:inc1200')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressTargetMax: 1000, compressV4SegmentChars: 800 }), 'compress-v4-ops8:1000:inc800')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Incremental: false }), 'compress-v4-ops8:800')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4BudgetChars: 520, compressV4Tail: false, compressV4Incremental: false, compressSystemPrompt: true }), 'compress-v4-ops8:520:notail:sys')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4' }), 'compress-v4-ops9:800:inc1200')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressTargetMax: 1000, compressV4SegmentChars: 800 }), 'compress-v4-ops9:1000:inc800')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Incremental: false }), 'compress-v4-ops9:800')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4BudgetChars: 520, compressV4Tail: false, compressV4Incremental: false, compressSystemPrompt: true }), 'compress-v4-ops9:520:notail:sys')
     assert.equal(I.v4Incremental({ compressPrompt: 'v4' }), true); assert.equal(I.v4Incremental({ compressPrompt: 'v3' }), false)
     assert.equal(I.compressPromptFor({ compressPrompt: 'v4' }, 'COT'), I.buildCompressPromptV4('COT'))
     assert.equal(I.v4Budget({}), 800); assert.equal(I.v4Budget({ compressV4BudgetChars: -1 }), 800); assert.equal(I.v4Budget({ compressV4BudgetChars: 700 }), 700)
@@ -250,6 +250,39 @@ try {
     assert.ok(r.ok, JSON.stringify(r)); assert.equal(r.stats.lang, 'zh')
     assert.deepEqual(I.condHints('先看看。\n若 grep 显示 verify.mjs 没有设置，则根因明确。\n好的。'), ['若 grep 显示 verify.mjs 没有设置，则根因明确。'])
   })
+  await test('§5l READY 位置锚点（S8-R2′）：at 是原文子串才保留、渲染进行式与尾段；编造的 at 丢弃；缺省时从原文反引号逐字抽取；探查型 READY 降为 PLAN', () => {
+    const raw = '看到测试里 `const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })` 绕过了隔离。\n' + '填充句子。'.repeat(200)
+    const base = [{ id: 'o1', k: 'COMPUTED', ev: 'derived', text: '测试绕过了临时 DSH_HOME', anchor: '绕过了隔离' }]
+    const mk = (at) => I.compileV4(JSON.stringify({ ops: [...base, { id: 'o2', k: 'READY', ev: 'derived', text: '把 CFB_REAL_DSH_HOME 改为 DSH_HOME', anchor: '绕过了隔离', ...(at ? { at } : {}) }] }), raw, {})
+    const good = mk('const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })')
+    assert.ok(good.ok, JSON.stringify(good))
+    assert.ok(good.text.includes('改动位置：`const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })`'), good.text)
+    assert.ok(/改的就是 `const w = makeTraceWriter[^`]*` 这一行。$/.test(good.text), good.text)
+    const fake = mk('const w = makeTraceWriter({ home: FAKE })')
+    assert.ok(fake.text.includes('改动位置：`const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })`'), '编造的 at 丢弃后由原文保底：' + fake.text)
+    assert.ok(!fake.text.includes('FAKE'))
+    const auto = mk('')
+    assert.ok(auto.text.includes('`const w = makeTraceWriter'), auto.text)
+    assert.equal(I.locusFromRaw('只有中文没有代码', '改为 DSH_HOME'), '')
+    const probe = I.normalizeOp({ id: 'p', k: 'READY', ev: 'derived', text: '下一步工具调用：taskset 循环复现', anchor: 'x' }, 0)
+    assert.equal(probe.k, 'PLAN')
+    assert.equal(I.normalizeOp({ id: 'p', k: 'READY', ev: 'derived', text: '把 hedgeAfterMs 改为 3000', anchor: 'x' }, 0).k, 'READY')
+  })
+
+  await test('§5m I7 支撑不是取代：同 key 的推理链（后者 deps 依赖前者）全保留；工具观测不被推断取代；真正的改值仍只留最后一个', () => {
+    const raw = 'trace 显示 v3.1。lastModel 是模块级变量。observe 只读 options.model。配置先是 /a 后来发现是 /b。' + '填充句子。'.repeat(200)
+    const ops = [
+      { id: 'o1', k: 'FACT', ev: 'tool', text: 'trace 显示 v3.1', anchor: 'trace 显示 v3.1', key: 'root-cause', src: 'trace' },
+      { id: 'o2', k: 'COMPUTED', ev: 'derived', text: 'lastModel 是模块级变量', anchor: 'lastModel 是模块级变量', key: 'root-cause', deps: ['o1'] },
+      { id: 'o3', k: 'COMPUTED', ev: 'derived', text: 'observe 只读 options.model', anchor: 'observe 只读 options.model', key: 'root-cause', deps: ['o2'] },
+      { id: 'o4', k: 'COMPUTED', ev: 'derived', text: '配置路径是 /a', anchor: '配置先是 /a', key: 'config.path' },
+      { id: 'o5', k: 'COMPUTED', ev: 'derived', text: '配置路径是 /b', anchor: '后来发现是 /b', key: 'config.path' },
+    ]
+    const v = I.validateOps(ops, raw)
+    const ids = v.kept.map((o) => o.id)
+    assert.deepEqual(ids, ['o1', 'o2', 'o3', 'o5'], JSON.stringify(v.rejected))
+  })
+
   await test('§5k 代码保底：副模型一条 IF / READY 都没标 ⇒ 原文判读 / 改法句逐字补上；已标过 ⇒ 不补；否定 / 犹豫句与超长句不补；可关', () => {
     const raw = '先看日志。\n若 grep 显示 verify.mjs 没有设置，则根因明确。\n下一步修复：在 verify.mjs 的 env 中加 `CFB_REAL_DSH_HOME: tmp`。\n' +
       '可以考虑修复权限：`sudo chown -R u:u /home/u/.dsh` 但不应修改真实 home。\n' + '填充句子。'.repeat(200)
@@ -328,7 +361,7 @@ try {
         assert.ok(lastBody.messages[0].content.includes(LONG) && lastBody.messages[0].content.endsWith(I.V4_TAIL))
         assert.equal(lastBody.max_tokens, 1600)
         assert.ok(r.text.includes('已排除权限问题') && !r.text.includes('{'))
-        assert.equal(r.meta.promptVersion, 'compress-v4-ops8:800:inc1200')
+        assert.equal(r.meta.promptVersion, 'compress-v4-ops9:800:inc1200')
         assert.equal(r.meta.v4.selected, 7)
         const t = traces.find(([x]) => x === 'compiler-v4-compiled')
         assert.ok(t && t[1].ok === true && t[1].valid === 8 && typeof t[1].compileMs === 'number', JSON.stringify(t))
@@ -355,7 +388,7 @@ try {
         reply = '权限不是问题，是路径错配。'
         const traces = []
         await assert.rejects(I.makeBirthCompiler(cfg)(LONG, undefined, { trace: (t, d) => traces.push([t, d]) }), (e) => {
-          assert.equal(e.message, 'v4-unparseable'); assert.equal(e.meta.v4.reason, 'v4-unparseable'); assert.equal(e.meta.promptVersion, 'compress-v4-ops8:800:inc1200'); return true
+          assert.equal(e.message, 'v4-unparseable'); assert.equal(e.meta.v4.reason, 'v4-unparseable'); assert.equal(e.meta.promptVersion, 'compress-v4-ops9:800:inc1200'); return true
         })
         assert.ok(traces.some(([x, d]) => x === 'compiler-v4-compiled' && d.ok === false))
       })
@@ -606,7 +639,7 @@ try {
     assert.equal(I.v4Incremental({ compressPrompt: 'v4', birthFinishWaitMs: 8000, compressV4Incremental: true }), true)
     assert.equal(I.v4Incremental({ compressPrompt: 'v4', compressV4Incremental: false }), false)
     assert.equal(I.v4Incremental(I.normalizeConfig({ compressPrompt: 'v4', birthFinishWaitMs: 8000 })), false, 'normalizeConfig 后缺省 auto 生效')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', birthFinishWaitMs: 8000 }), 'compress-v4-ops8:800')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', birthFinishWaitMs: 8000 }), 'compress-v4-ops9:800')
   })
   await test('§9p 在飞段数上限：突发到达时最多放出 3 段，其余等空位 / 并入尾段', async () => {
     const pend = []

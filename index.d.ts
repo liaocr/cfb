@@ -298,6 +298,7 @@ export declare function renderLang(raw: string): 'zh' | 'en'
 export declare function compileV4(output: string, raw: string, cfg?: CotFormBConfig, budget?: number | null):
   { ok: true; text: string; stats: V4Stats } | { ok: false; reason: string; stats: V4Stats }
 /** 已解析条目 ⇒ 出生文本；rawSuffix ⇒ 不出尾段、逐字接原文尾巴；rawPrefix ⇒ 原文空洞放最前；segmented ⇒ 状态后写者胜 */
+export declare function locusFromRaw(raw: string, text: string): string
 export declare function compileOpsV4(rawOps: unknown[], raw: string, cfg?: CotFormBConfig, budget?: number | null, stats?: V4Stats, opts?: { rawSuffix?: string; rawPrefix?: string; segmented?: boolean }):
   { ok: true; text: string; stats: V4Stats } | { ok: false; reason: string; stats: V4Stats }
 /** 拒绝占比（dup / I7 / retracted 不计入） */
