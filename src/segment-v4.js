@@ -54,6 +54,8 @@ export function findFirstCut(text, from, to) {
  */
 export function createSegmenter({ cfg = {}, compileSegment, trace = () => {}, index = null } = {}) {
   const segChars = typeof cfg.compressV4SegmentChars === 'number' && cfg.compressV4SegmentChars >= 200 ? cfg.compressV4SegmentChars : 1200
+  // 首段减半：短块（3–4k 字、几秒写完）也能尽早开编（v12.3 真机：短块只来得及编 1 段）
+  const firstChars = typeof cfg.compressV4FirstSegmentChars === 'number' && cfg.compressV4FirstSegmentChars >= 200 ? Math.min(cfg.compressV4FirstSegmentChars, segChars) : Math.max(200, Math.round(segChars / 2))
   const maxRatio = typeof cfg.compressV4MaxRejectRatio === 'number' ? cfg.compressV4MaxRejectRatio : 0.5
   const segments = []   // { n, start, end, text, status: 'pending'|'ok'|'failed', ops, kept, reason, abort, promise, firedAt, ms }
   let cut = 0
@@ -102,12 +104,14 @@ export function createSegmenter({ cfg = {}, compileSegment, trace = () => {}, in
   const feed = (text) => {
     if (cancelled || finished) return
     const s = String(text || '')
-    while (s.length - cut >= segChars) {
-      const lo = cut + Math.floor(segChars * 0.6)
-      const target = cut + segChars
+    for (;;) {
+      const size = segments.length === 0 ? firstChars : segChars
+      if (s.length - cut < size) return
+      const lo = cut + Math.floor(size * 0.6)
+      const target = cut + size
       let at = findCut(s, cut, lo, target + 1)
-      if (at < 0) at = findFirstCut(s, target, Math.min(s.length, cut + Math.floor(segChars * 1.5)))
-      if (at < 0) { if (s.length - cut >= segChars * 1.5) at = target; else return }
+      if (at < 0) at = findFirstCut(s, target, Math.min(s.length, cut + Math.floor(size * 1.5)))
+      if (at < 0) { if (s.length - cut >= size * 1.5) at = target; else return }
       if (at <= cut) return
       fire(s, cut, at)
       cut = at

@@ -453,8 +453,11 @@ export function makeV4SegmentCompiler(cfg) {
     // 非尾段不在关键路径上（思考还在流）⇒ 单独的长超时；尾段才受 timeoutMs 管。输出上限按段收紧（条目数有上限）。
     const segTimeout = Number.isFinite(cfg.compressV4SegmentTimeoutMs) && cfg.compressV4SegmentTimeoutMs > 0 ? cfg.compressV4SegmentTimeoutMs : 30000
     const segMax = Number.isFinite(cfg.compressV4SegmentMaxOutputTokens) && cfg.compressV4SegmentMaxOutputTokens > 0 ? cfg.compressV4SegmentMaxOutputTokens : 1200
+    const tail = !!(extra && extra.tail)
     const c = { ...cfg, maxOutputTokens: segMax,
-      timeoutMs: extra && extra.tail ? cfg.timeoutMs : Math.max(Number(cfg.timeoutMs) || 0, segTimeout) }
+      timeoutMs: tail ? cfg.timeoutMs : Math.max(Number(cfg.timeoutMs) || 0, segTimeout),
+      // 尾段走流式：非流式要等全部生成完才回响应头 ⇒ birthFinish 的响应头宽限（finishHeadersGraceMs）永远触发不了（v12.3 真机）
+      ...(tail && cfg.compressV4TailStream === true ? { distillStream: true } : {}) }
     if (extra && typeof extra.onHeaders === 'function') c._onHeaders = extra.onHeaders
     if (cfg.compressSystemPrompt === true) {
       const sp = splitCompressPrompt(prompt)

@@ -57,6 +57,10 @@ export interface CotFormBConfig {
   compressV4SegmentTimeoutMs?: number
   /** 仅 v4 增量：每段副模型输出上限（缺省 1200） */
   compressV4SegmentMaxOutputTokens?: number
+  /** 仅 v4 增量：首段目标长度（null ⇒ 段长一半） */
+  compressV4FirstSegmentChars?: number | null
+  /** 仅 v4 增量：尾段走流式（响应头宽限才能生效；多等最多 finishHeadersGraceMs），缺省 false */
+  compressV4TailStream?: boolean
   /** v11.7（opt-in，缺省 false）：把 v2/v3 压缩提示词的固定规则前缀放进 system 消息、原文放 user 消息（字节等价），让 DeepSeek Context Caching 命中规则前缀；打开后 promptVersion 追加 ':sys' */
   compressSystemPrompt?: boolean
   birthCancelOnGiveUp?: boolean

@@ -196,6 +196,11 @@ export const DEFAULTS = {
   compressV4SegmentChars: 1200,
   // v12.3 真机：非尾段不在关键路径上 ⇒ 单独的长超时（尾段仍受 timeoutMs）；分段输出上限（提示词限每千字 ≤6 条）
   compressV4SegmentTimeoutMs: 30000,
+  // 首段目标长度（null ⇒ 段长的一半）
+  compressV4FirstSegmentChars: null,
+  // 尾段走流式 ⇒ 响应头宽限（finishHeadersGraceMs）才会生效。真机（中转 v4.1-flash）：流式首字节 ≈2 s、尾段 3.2–3.7 s，
+  // 宽限后窗口 3 s 仍差一点 ⇒ 2/2 长块多等 1.5 s、尾巴都没编进来 ⇒ 缺省关；上游更快时再开
+  compressV4TailStream: false,
   compressV4SegmentMaxOutputTokens: 1200,
   // ★ v11.7 缓存友好拆分（opt-in）：把压缩提示词的**固定规则前缀**放进 system 消息、原文放 user 消息。
   //   DeepSeek Context Caching 按「缓存前缀单元」整段匹配（官方 kv_cache 文档 Example 1：system+user 形状），

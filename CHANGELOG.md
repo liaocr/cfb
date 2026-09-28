@@ -46,9 +46,16 @@
 - 第 3 轮：3/3 替换，长块 0.17 / 0.22，短块 0.47；finish 多扣 ≈ 1.5 s（窗口本身）。
 - `supersedes` 写成条目 id ⇒ 按 retracts 处理（`supersedesIds`），不再把内部 id 漏进出生文本。
 - `tools/v4-live.mjs`：base URL 已以 `/v1` 结尾（中转站）时不再叠加。
+- 第 4–5 轮（同一份录音）：
+  - 提示词 `compress-v4-ops3`：会反复修正的结论用固定键（root-cause / fix / next，I7 跨段后写者胜）；细化此前结论也要 retracts；同一件事不既标判断又标 OPEN；
+    「此前已标注」带 key。eacces 已编译部分 ≈20 行 → 8 行。字面相似度去重经真实数据校准后放弃（真重复 0.3–0.4，不同内容可达 0.65）。
+  - 死路（REFUTED / SHELVED）不参与 I7；固定键不挂「取代 旧结论」（模型写的也不渲染）；键名形态 supersedes 丢弃；全局形态引用不再加前缀。
+  - 首段减半（`compressV4FirstSegmentChars`，null ⇒ 段长一半）：短块 0.47 → 0.40。
+  - 尾段流式（`compressV4TailStream`，让响应头宽限生效）：实测多等 1.5 s 换不来尾巴 ⇒ 缺省关。
+  - `tools/v4-live.mjs` 捕获每段副模型结果；`--recompile` 零 API 调用复用捕获结果重编译（只改编译 / 渲染时免费看效果）。
 
 ### 验证
-- `node verify.mjs`：560 通过 / 0 失败 / 1 跳过（15 套件）；`tsc --strict index.d.ts` 通过；`manifest --check` 通过。
+- `node verify.mjs`：565 通过 / 0 失败 / 1 跳过（15 套件）；`tsc --strict index.d.ts` 通过；`manifest --check` 通过。
 - 真机：见上（3 条录音、三轮）；压缩后主模型下一轮的表现**未测**（cf-eval）。
 
 ---

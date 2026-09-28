@@ -35,6 +35,15 @@ const GROUP = { FACT: 0, COMPUTED: 0, INCUMBENT: 1, REFUTED: 2, SHELVED: 2, PLAN
 // 副模型常把 supersedes 写成条目 id（「s3.o11」）而不是旧值 —— 语义就是 retracts；原样渲染会把内部 id 漏进出生文本（v12.3 真机）
 const ID_LIST_RE = /^\s*(?:s\d+\.)?o\d+(?:\s*[,，、]\s*(?:s\d+\.)?o\d+)*\s*$/
 export function supersedesIds(v) { return typeof v === 'string' && ID_LIST_RE.test(v) ? v.split(/[,，、]/).map((x) => x.trim()).filter(Boolean) : null }
+const REFINE_KEYS = new Set(['root-cause', 'fix', 'next'])
+// 「错了」走 REFUTED（疫苗），「细化」静默替换 ⇒ 固定键条目不渲染 supersedes；id 形态已转 retracts；键名形态（timing-margin）不是旧值
+function supersedesText(o, supIds) {
+  if (supIds) return ''
+  const key = str(o.key ?? '', 60)
+  const v = str(o.supersedes, 160)
+  if (REFINE_KEYS.has(key) || /^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)+$/.test(v) || REFINE_KEYS.has(v)) return ''
+  return v
+}
 const CAP = { text: 300, anchor: 120, alt: 200, why: 200, trigger: 160, supersedes: 160, src: 60, key: 60 }
 const str = (x, n) => (typeof x === 'string' ? x : x == null ? '' : typeof x === 'number' ? String(x) : '').trim().slice(0, n)
 const norm = (s) => String(s || '').normalize('NFKC').replace(/\s+/g, ' ').trim()
@@ -108,7 +117,7 @@ export function normalizeOp(o, i) {
     kind2: V4_KIND2.includes(kind2) ? kind2 : null,
     text: str(o.text, CAP.text), anchor: str(o.anchor, CAP.anchor), key: str(o.key, CAP.key),
     src: str(o.src, CAP.src), alt: str(o.alt, CAP.alt), why: str(o.why, CAP.why),
-    trigger: str(o.trigger, CAP.trigger), supersedes: supIds ? '' : str(o.supersedes, CAP.supersedes), deps, retracts,
+    trigger: str(o.trigger, CAP.trigger), supersedes: supersedesText(o, supIds), deps, retracts,
   }
 }
 
@@ -171,13 +180,16 @@ export function validateOps(rawOps, raw) {
     }
   }
   // I7：同 key 保留最后一个；被取代者若很短且新值没写 supersedes，就把旧值挂上去（「取代 X」）
+  // 死路（REFUTED / SHELVED）不参与：key=root-cause 的旧根因被证伪后仍是疫苗，不能被新根因「取代」掉
+  const keyed = (op) => op.key && op.k !== 'REFUTED' && op.k !== 'SHELVED'
   const lastByKey = new Map()
-  for (const op of kept) if (op.key) lastByKey.set(op.key, op)
+  for (const op of kept) if (keyed(op)) lastByKey.set(op.key, op)
   const final = []
   for (const op of kept) {
-    if (op.key && lastByKey.get(op.key) !== op) {
+    if (keyed(op) && lastByKey.get(op.key) !== op) {
       const winner = lastByKey.get(op.key)
-      if (!winner.supersedes && op.text.length <= 60 && norm(op.text) !== norm(winner.text)) winner.supersedes = op.text
+      // 固定键（root-cause / fix / next）是「细化」不是「改值」：挂「取代 旧结论」会暗示旧的错了（v12.3 真机：旧根因只是粗一点的同一判断）
+      if (!REFINE_KEYS.has(op.key) && !winner.supersedes && op.text.length <= 60 && norm(op.text) !== norm(winner.text)) winner.supersedes = op.text
       rejected.push({ id: op.id, k: op.k, rule: 'I7' })
       continue
     }
@@ -403,11 +415,14 @@ export function freshenState(kept, stats = {}) {
 export function mergeSegmentOps(segments) {
   const out = []
   for (const seg of segments) {
-    const local = new Set((seg.ops || []).map((o, i) => str(o && o.id, 20) || 'o' + (i + 1)))
-    const g = (id) => (local.has(id) ? 's' + seg.n + '.' + id : id)
+    // 已是全局形态（sN.xxx）的引用一律指向前段、绝不再加前缀；副模型给自己的条目起了 sN.xxx 形态的 id ⇒ 本段内改名（v12.3 真机：出现过 s5.s4.o1）
+    const GLOBAL = /^s\d+\./
+    const ownId = (o, i) => { const id = str(o && o.id, 20); return !id || GLOBAL.test(id) ? 'x' + (i + 1) : id }
+    const local = new Set((seg.ops || []).map((o, i) => ownId(o, i)))
+    const g = (id) => (!GLOBAL.test(id) && local.has(id) ? 's' + seg.n + '.' + id : id)
     ;(seg.ops || []).forEach((o, i) => {
       if (!o || typeof o !== 'object') return
-      const id = str(o.id, 20) || 'o' + (i + 1)
+      const id = ownId(o, i)
       const fix = (x) => (Array.isArray(x) ? x : typeof x === 'string' && x ? [x] : []).map((d) => g(str(d, 24)))
       const sup = supersedesIds(o.supersedes)
       const rt = sup ? [...(Array.isArray(o.retracts) ? o.retracts : typeof o.retracts === 'string' && o.retracts ? [o.retracts] : []), ...sup] : o.retracts
@@ -419,6 +434,6 @@ export function mergeSegmentOps(segments) {
 
 /** 给下一段提示词用的「此前已标注」行：只列通过校验的条目，最近的优先，至多 max 条。 */
 export function priorLines(kept, max = 30) {
-  return kept.slice(-max).map((o) => o.id + ' [' + o.k + '] ' + stripEnd(o.text).slice(0, 120))
+  return kept.slice(-max).map((o) => o.id + ' [' + o.k + (o.key ? ' key=' + o.key : '') + '] ' + stripEnd(o.text).slice(0, 120))
 }
 

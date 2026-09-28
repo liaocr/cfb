@@ -13,6 +13,7 @@
 // 用法：
 //   DEEPSEEK_API_KEY=sk-... node tools/v4-live.mjs --out live-out                 # 录制 + 三种模式
 //   node tools/v4-live.mjs --replay live-out/recordings.json --modes v4inc --out live-out2
+//   node tools/v4-live.mjs --recompile live-out2/report.json --out re1     # 零调用：复用捕获的分段结果重编译（改了编译/渲染时用）
 //   选项：--model deepseek-chat  --base-url https://api.deepseek.com  --modes v3,v4,v4inc
 //         --tasks tasks.json（[{id, system?, user}]）  --only id1,id2  --cfg '{"birthFinishWaitMs":1500}'
 //         --concurrency 3（录制并发）  --replay-concurrency 1（回放并发，缺省 1 = 与正常使用一致）  --api-key-env DEEPSEEK_API_KEY
@@ -123,7 +124,7 @@ run 5: FAIL  §4 同上 got 1698
 
 export function parseArgs(argv) {
   const o = { model: 'deepseek-chat', baseUrl: 'https://api.deepseek.com', modes: ['v3', 'v4', 'v4inc'], apiKeyEnv: 'DEEPSEEK_API_KEY',
-    out: 'v4-live-out', concurrency: 3, replayConcurrency: 1, cfg: {}, only: null, tasks: null, replay: null, maxTokens: 8192 }
+    out: 'v4-live-out', concurrency: 3, replayConcurrency: 1, cfg: {}, only: null, tasks: null, replay: null, maxTokens: 8192, recompile: null, scale: 0.1 }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i], v = () => argv[++i]
     if (a === '--model') o.model = v()
@@ -138,6 +139,8 @@ export function parseArgs(argv) {
     else if (a === '--tasks') o.tasks = v()
     else if (a === '--replay') o.replay = v()
     else if (a === '--max-tokens') o.maxTokens = Number(v())
+    else if (a === '--recompile') o.recompile = v()
+    else if (a === '--scale') o.scale = Number(v())
     else throw new Error('unknown arg ' + a)
   }
   for (const m of o.modes) if (!['v3', 'v4', 'v4inc'].includes(m)) throw new Error('unknown mode ' + m)
@@ -178,9 +181,9 @@ async function record(task, o, key) {
 }
 
 // ── ② 回放成宿主 chunk 流（原时序）──────────────────────────────────────────
-async function* replay(rec, marks) {
+async function* replay(rec, marks, scale = 1) {
   const t0 = Date.now(); marks.t0 = t0
-  const wait = async (t) => { const d = t - (Date.now() - t0); if (d > 0) await new Promise((r) => setTimeout(r, d)) }
+  const wait = async (t) => { const d = t * scale - (Date.now() - t0); if (d > 0) await new Promise((r) => setTimeout(r, d)) }
   let phase = 'none', reasoning = '', content = ''
   for (const e of rec.events) {
     await wait(e.t)
@@ -207,22 +210,30 @@ export function modeConfig(mode, base) {
   return { ...base, compressPrompt: 'v4', compressV4Incremental: true }
 }
 
-async function runMode(rec, mode, o, credPath) {
+/**
+ * 回放一条录音跑一种模式。
+ * @param sim 离线重编译：{ capture: [{segText, ops, ms, error}], scale }——分段结果取自上次真机捕获（按段文本匹配、按原耗时 × scale 落定），零调用
+ */
+async function runMode(rec, mode, o, credPath, sim = null) {
+  const scale = sim ? sim.scale : 1
+  const scaled = sim ? { birthFinishWaitMs: Math.round((o.cfg.birthFinishWaitMs ?? 1500) * scale), finishHeadersGraceMs: Math.round((o.cfg.finishHeadersGraceMs ?? 1500) * scale), birthArchiveTimeoutMs: 60000 } : {}
   const cfg = normalizeConfig(modeConfig(mode, {
     mode: 'birth', dryRun: false, model: o.model, baseUrl: o.baseUrl, credentialsPath: credPath, credentialRef: 'LIVE_KEY',
-    followHostProvider: false, followHostModel: false, trace: false, ...o.cfg,
+    followHostProvider: false, followHostModel: false, trace: false, ...o.cfg, ...scaled,
   }))
+  const capture = []
+  const t0 = Date.now()
   const traces = []
   const trace = (tag, data) => traces.push({ at: Date.now(), tag, data })
   const marks = {}
   const deps = {
     cfg, trace, sessionId: 'live-' + rec.id, archive: async () => 'art://live-' + rec.id,
     distill: makeBirthCompiler(cfg),
-    segmenter: v4Incremental(cfg) ? ((cs) => (index) => createSegmenter({ cfg, compileSegment: cs, trace, index }))(makeV4SegmentCompiler(cfg)) : null,
+    segmenter: v4Incremental(cfg) ? ((cs) => (index) => createSegmenter({ cfg, compileSegment: cs, trace, index }))(sim ? simCompiler(sim) : capturing(makeV4SegmentCompiler(cfg), capture, t0)) : null,
     v4Budget: v4Budget(cfg),
   }
   let out = null, finishEmittedAt = null
-  for await (const c of birthTransform(replay(rec, marks), deps)) {
+  for await (const c of birthTransform(replay(rec, marks, scale), deps)) {
     if (c.type === 'block-end' && c.index === 0) out = c.block.text
     if (c.type === 'finish') finishEmittedAt = Date.now()
   }
@@ -247,8 +258,34 @@ async function runMode(rec, mode, o, credPath) {
     traceTags: traces.reduce((m, t) => { m[t.tag] = (m[t.tag] || 0) + 1; return m }, {}),
     segmentErrors: pick('v4-segment-error').concat(pick('birth-partial-error')).map((d) => d.error).slice(0, 4),
     text: out,
+    capture: sim ? undefined : capture,
+    simulated: sim ? { scale, missing: sim.missing.length } : undefined,
     timeline: traces.map((t) => ({ ms: t.at - (marks.t0 || t.at), tag: t.tag, ...(t.tag.startsWith('v4-') || t.tag.startsWith('birth-') ? t.data : {}) })),
   }
+}
+
+// 真机分段调用的捕获：段文本 / 前段条目 / 副模型解析后的条目 / 耗时 / 错误 —— 供 --recompile 零成本复用
+function capturing(cs, capture, t0) {
+  return async (segText, prior, signal, extra = {}) => {
+    const at = Date.now()
+    const rec = { segText, prior, tail: !!extra.tail, firedMs: at - t0, ms: null, ops: null, error: null }
+    capture.push(rec)
+    try { const r = await cs(segText, prior, signal, extra); rec.ops = r.ops; rec.ms = Date.now() - at; return r }
+    catch (e) { rec.error = String((e && e.message) || e); rec.ms = Date.now() - at; throw e }
+  }
+}
+// 离线：按段文本取捕获结果，按原耗时 × scale 落定；原来就失败 / 被取消的段照样失败；切段变了（找不到）⇒ 记 missing 并失败
+function simCompiler(sim) {
+  const byText = new Map()
+  for (const c of sim.capture) if (!byText.has(c.segText) || c.ops) byText.set(c.segText, c)
+  return (segText, prior, signal) => new Promise((resolve, reject) => {
+    const c = byText.get(segText)
+    if (!c) { sim.missing.push(segText.length); return reject(new Error('sim-missing-segment')) }
+    // 被取消的段没有真实耗时：按「永远来不及」处理
+    const ms = c.ops ? c.ms : (c.error && /cancel/i.test(c.error) ? 1e9 : (c.ms || 0))
+    const t = setTimeout(() => (c.ops ? resolve({ ops: c.ops }) : reject(new Error(c.error || 'failed'))), Math.min(ms * sim.scale, 2 ** 31 - 1))
+    if (signal) signal.addEventListener('abort', () => { clearTimeout(t); reject(new Error('cancelled')) }, { once: true })
+  })
 }
 
 const pct = (xs, q) => { const a = xs.filter((x) => Number.isFinite(x)).sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(q * a.length))] : null }
@@ -288,8 +325,34 @@ async function pool(items, n, fn) {
   return out
 }
 
+/**
+ * --recompile <上次真机的 report.json>：零 API 调用。录音（同目录 recordings.json 或 --replay 指定）按原时序 × scale 回放，
+ * 分段结果取自上次捕获 ⇒ 只改了编译 / 合并 / 选取 / 渲染时，可以免费看新代码的产物。切段逻辑变了会记 missing。
+ * 限制：不模拟响应头宽限（尾段通常赶不上窗口，影响小）。
+ */
+async function recompile(o) {
+  const prev = JSON.parse(fs.readFileSync(o.recompile, 'utf8'))
+  const recPath = o.replay || path.join(path.dirname(o.recompile), 'recordings.json')
+  const recs = JSON.parse(fs.readFileSync(recPath, 'utf8'))
+  fs.mkdirSync(o.out, { recursive: true })
+  const rows = []
+  for (const r of prev.rows.filter((x) => x.mode === 'v4inc' && Array.isArray(x.capture))) {
+    const rec = recs.find((x) => x.id === r.id)
+    if (!rec || (o.only && !o.only.includes(r.id))) continue
+    const sim = { capture: r.capture, scale: o.scale, missing: [] }
+    const row = await runMode(rec, 'v4inc', { ...o, cfg: { ...(prev.cfg || {}), ...o.cfg } }, '/nonexistent', sim)
+    console.log(`  ${row.id}: ${row.why} ${row.rawChars}→${row.outChars}（上次 ${r.outChars}）missing=${sim.missing.length}`)
+    rows.push(row)
+  }
+  const sum = summarize(rows)
+  fs.writeFileSync(path.join(o.out, 'report.json'), JSON.stringify({ recompiledFrom: o.recompile, scale: o.scale, summary: sum, rows }, null, 2))
+  fs.writeFileSync(path.join(o.out, 'report.md'), markdown({ ...o, model: 'recompile(' + o.recompile + ')' }, recs.filter((x) => rows.some((r) => r.id === x.id)), rows, sum))
+  console.log(`报告：${path.join(o.out, 'report.md')}`)
+}
+
 export async function main(argv) {
   const o = parseArgs(argv)
+  if (o.recompile) return recompile(o)
   const key = process.env[o.apiKeyEnv]
   if (!key) throw new Error('环境变量 ' + o.apiKeyEnv + ' 为空（钥匙只从环境变量读）')
   fs.mkdirSync(o.out, { recursive: true })

@@ -113,7 +113,7 @@ function startMock() {
       const by = Object.fromEntries(rep.rows.map((x) => [x.mode, x]))
       assert.equal(by.v4.why, 'distill-timeout', JSON.stringify(by.v4))
       assert.equal(by.v4inc.why, 'condensed', JSON.stringify({ ...by.v4inc, text: undefined }))
-      assert.equal(by.v4inc.promptVersion, 'compress-v4-ops2:450:inc500')
+      assert.equal(by.v4inc.promptVersion, 'compress-v4-ops3:450:inc500')
       assert.ok(by.v4inc.segments && by.v4inc.segments.n >= 4 && by.v4inc.segments.ok === by.v4inc.segments.n)
       assert.ok(by.v4inc.text.includes('stepFn') && by.v4inc.outChars < by.v4inc.rawChars * 0.5, by.v4inc.text)
       assert.ok(by.v4inc.finishHoldMs < 500, 'hold=' + by.v4inc.finishHoldMs)
@@ -133,9 +133,21 @@ function startMock() {
       const e = await run([path.join(ROOT, 'tools/v4-live.mjs')], { ...process.env, DEEPSEEK_API_KEY: '' })
       assert.notEqual(e.status, 0); assert.ok(/DEEPSEEK_API_KEY/.test(e.stderr))
     })
+    await test('§5 --recompile：零调用复用捕获的分段结果；产物与真机一致', async () => {
+      const before = { main: mock.seen.main, side: mock.seen.side }
+      const rep = JSON.parse(fs.readFileSync(path.join(out, 'report.json'), 'utf8'))
+      const live = rep.rows.find((x) => x.mode === 'v4inc')
+      assert.ok(Array.isArray(live.capture) && live.capture.length >= 4 && live.capture.every((c) => c.segText && (c.ops || c.error)))
+      const r = await run([path.join(ROOT, 'tools/v4-live.mjs'), '--recompile', path.join(out, 'report.json'), '--scale', '0.5', '--out', out + '-3'],
+        { ...process.env, DEEPSEEK_API_KEY: '' })
+      assert.equal(r.status, 0, r.stdout + r.stderr)
+      assert.deepEqual({ main: mock.seen.main, side: mock.seen.side }, before, '重编译不得发任何请求')
+      const re = JSON.parse(fs.readFileSync(path.join(out + '-3', 'report.json'), 'utf8')).rows[0]
+      assert.equal(re.why, live.why); assert.equal(re.text, live.text); assert.equal(re.simulated.missing, 0)
+    })
   } finally {
     if (process.env.V4LIVE_DEBUG) console.log(fs.readFileSync(path.join(out, 'report.json'), 'utf8'))
-    mock.srv.close(); fs.rmSync(out, { recursive: true, force: true }); fs.rmSync(out + '-2', { recursive: true, force: true })
+    mock.srv.close(); fs.rmSync(out, { recursive: true, force: true }); fs.rmSync(out + '-2', { recursive: true, force: true }); fs.rmSync(out + '-3', { recursive: true, force: true })
   }
   console.log(`\nPASS=${pass} FAIL=${fail}`)
   process.exit(fail ? 1 : 0)

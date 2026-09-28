@@ -26,7 +26,7 @@ export function compressPromptVersion(cfg) {
   const sys = cfg && cfg.compressSystemPrompt === true ? ':sys' : ''
   if (v === 'v2') return 'compress-v2' + sys
   // v4 把渲染预算与尾段开关写进版本号（它们改变产物；提示词本身不随参数变化）
-  if (v === 'v4') return 'compress-v4-ops2:' + v4Budget(cfg) + (cfg && cfg.compressV4Tail === false ? ':notail' : '') +
+  if (v === 'v4') return 'compress-v4-ops3:' + v4Budget(cfg) + (cfg && cfg.compressV4Tail === false ? ':notail' : '') +
     (v4Incremental(cfg) ? ':inc' + v4SegmentChars(cfg) : '') + sys
   // v3 把目标长度写进版本号 ⇒ trace / BOOT / A-B 分桶自动带上参数，无需另记字段。
   const t = compressTargets(cfg)
@@ -165,7 +165,8 @@ const V4_HEAD = (
     'inspect（查看）/ compute / verify（复核已知结论）/ restate（复述工具输出）/ answer。\n' +
     '- text：这一条的内容，一句话，用原文的语言；只写结论本身，删掉"让我想想 / 好像 / 再看看"之类的过程措辞。\n' +
     '- anchor：从原文逐字复制的 5–20 字短片段，标明这条出自哪里，必须一字不差。\n' +
-    '- key：这条若是在给某个量定值（配置路径、版本、根因等），写一个简短键名；同一个键只保留最新的值。\n' +
+    '- key：这条若是在给某个量定值（配置路径、版本等），写一个简短键名；同一个键只保留最新的值。' +
+    '会被反复修正的结论一律用固定键：根因 key=root-cause，修复方向 key=fix，下一步打算 key=next。\n' +
     '- src：ev=tool 时写来源（原文里出现过的工具名或文件名），否则省略。\n' +
     '- REFUTED 与 SHELVED 必须写 alt（放弃它之后转向的方案；没有明确方案时写仍在考虑的方向）和 why（放弃的理由）；SHELVED 另写 trigger（出现什么情况值得回来）。\n' +
     '- supersedes：这条取代了先前的哪个值（原文里的旧值）。\n' +
@@ -173,12 +174,12 @@ const V4_HEAD = (
     '规则：\n' +
     '1. 路径、文件名、命令、变量名、数字、错误信息逐字照抄，不许意译。\n' +
     '2. 只标注原文实际出现的内容；不新增事实，不给建议，不评价。\n' +
-    '3. 原文仍在犹豫或存疑的，标 OPEN、SHELVED 或 ev=guess，不得升级为已确定。\n' +
+    '3. 原文仍在犹豫或存疑的，标 OPEN、SHELVED 或 ev=guess，不得升级为已确定。同一件事不要既标成判断又标成 OPEN：已有倾向但未证实的，只标一条 ev=guess。\n' +
     '4. 被放弃的路一定要标出来（REFUTED 或 SHELVED）：它们防止同一条死路再走一遍。\n' +
     '5. 同一内容只标一次；逐字复读工具输出、复核已知结论的句子不要标（程序本来就会丢弃）。\n' +
     '6. 不使用"你 / 您"，不写祈使句。\n' +
     '7. 若给出了【此前已标注】（同一段推理前面部分的标注结果），只标注【本段】里的新内容，不要重复；' +
-    '本段推翻或取代了此前某条时，在新条目里写 retracts（被推翻条目的 id 列表）；anchor 仍须摘自【本段】。\n' +
+    '本段推翻、取代或细化了此前某条（对同一问题的更新判断）时，在新条目里写 retracts（被取代条目的 id 列表），此前带 key 的沿用同一个 key；anchor 仍须摘自【本段】。\n' +
     '8. 宁少勿多：只标会影响下一步判断的条目，每 1000 字原文至多 6 条；text 不超过 40 字。\n\n'
 )
 

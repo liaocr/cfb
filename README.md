@@ -116,7 +116,8 @@ block-end 时只剩最后一段在飞。到点仍没落定 ⇒ **已编译的连
 trace：`v4-segment-fired/settled`、`v4-segments-cancelled`。`compressV4Incremental: false` 回到整块编译。
 
 **真机测试**：`DEEPSEEK_API_KEY=… node tools/v4-live.mjs --out live-out`（录制 6 个 Agent 调试回合的真实推理流，
-按原时序回放进生产管线，对比 v3 / v4 整块 / v4 增量；`--replay live-out/recordings.json` 复用录音）。
+按原时序回放进生产管线，对比 v3 / v4 整块 / v4 增量；`--replay live-out/recordings.json` 复用录音；
+`--recompile live-out/report.json` 零调用复用捕获的副模型结果重编译）。
 
 ---
 
@@ -151,6 +152,8 @@ trace：`v4-segment-fired/settled`、`v4-segments-cancelled`。`compressV4Increm
 | `compressV4SegmentChars` | `1200` | 仅 v4 增量：目标段长（字符，0.6–1.5 倍浮动） |
 | `compressV4SegmentTimeoutMs` | `30000` | 仅 v4 增量：非尾段请求超时（不在关键路径上）；尾段仍用 `timeoutMs` |
 | `compressV4SegmentMaxOutputTokens` | `1200` | 仅 v4 增量：每段副模型输出上限 |
+| `compressV4FirstSegmentChars` | `null` | 仅 v4 增量：首段目标长度（null ⇒ 段长一半，短块更早开编） |
+| `compressV4TailStream` | `false` | 仅 v4 增量：尾段走流式，使响应头宽限生效（多等最多 `finishHeadersGraceMs`）；真机实测不划算，缺省关 |
 | `birth.identifierGate` | `true` | **v12.1**：摘要里出现原文没有的路径 / URL / 反引号代码 / camelCase / snake_case / `file.ext` ⇒ 原文放行（`why=invented-identifier`，trace 带样本）。`false` 关闭（A/B 对照腿） |
 | `birth.minChars` | `3100` | 短于此长度不压缩（成本模型反解：R=60、d=0.02、B′≈450 ⇒ 保本原长 2,747，保守取整且不下调） |
 | `birth.minTokens` | `null` | **v11.10 opt-in**：正数 ⇒ 按 token 估算判定、完全接管 `minChars`（3100 字符对英文 ≈ 930 token、对中文 ≈ 1,860 token，同一门槛随语言差 2 倍） |

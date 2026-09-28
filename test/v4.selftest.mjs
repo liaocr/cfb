@@ -60,10 +60,10 @@ try {
   })
   await test('§1c 版本号：v4 携带预算与尾段开关；缺省仍为 v3；compressPromptFor 分派一致', () => {
     assert.equal(I.DEFAULTS.compressPrompt, 'v3')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4' }), 'compress-v4-ops2:450:inc1200')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressTargetMax: 600, compressV4SegmentChars: 800 }), 'compress-v4-ops2:600:inc800')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Incremental: false }), 'compress-v4-ops2:450')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4BudgetChars: 520, compressV4Tail: false, compressV4Incremental: false, compressSystemPrompt: true }), 'compress-v4-ops2:520:notail:sys')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4' }), 'compress-v4-ops3:450:inc1200')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressTargetMax: 600, compressV4SegmentChars: 800 }), 'compress-v4-ops3:600:inc800')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Incremental: false }), 'compress-v4-ops3:450')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4BudgetChars: 520, compressV4Tail: false, compressV4Incremental: false, compressSystemPrompt: true }), 'compress-v4-ops3:520:notail:sys')
     assert.equal(I.v4Incremental({ compressPrompt: 'v4' }), true); assert.equal(I.v4Incremental({ compressPrompt: 'v3' }), false)
     assert.equal(I.compressPromptFor({ compressPrompt: 'v4' }, 'COT'), I.buildCompressPromptV4('COT'))
     assert.equal(I.v4Budget({}), 450); assert.equal(I.v4Budget({ compressV4BudgetChars: -1 }), 450); assert.equal(I.v4Budget({ compressV4BudgetChars: 700 }), 700)
@@ -253,17 +253,26 @@ try {
         assert.ok(lastBody.messages[0].content.endsWith(LONG))
         assert.equal(lastBody.max_tokens, 1600)
         assert.ok(r.text.includes('已排除权限问题') && !r.text.includes('{'))
-        assert.equal(r.meta.promptVersion, 'compress-v4-ops2:450:inc1200')
+        assert.equal(r.meta.promptVersion, 'compress-v4-ops3:450:inc1200')
         assert.equal(r.meta.v4.selected, 7)
         const t = traces.find(([x]) => x === 'compiler-v4-compiled')
         assert.ok(t && t[1].ok === true && t[1].valid === 8 && typeof t[1].compileMs === 'number', JSON.stringify(t))
         assert.equal(I.settledTraceData(0, 1, { ok: true, text: r.text, meta: r.meta }).v4.selected, 7, 'v4 统计进 settled 白名单')
       })
+      await test('§7e makeV4SegmentCompiler：尾段流式可开（缺省关）、非尾段非流式；每段输出上限 1200', async () => {
+        reply = OPS_JSON
+        await I.makeV4SegmentCompiler(cfg)(RAW, [], undefined, { tail: false })
+        assert.ok(!lastBody.stream); assert.equal(lastBody.max_tokens, 1200)
+        await I.makeV4SegmentCompiler(cfg)(RAW, [], undefined, { tail: true })
+        assert.ok(!lastBody.stream, '缺省关（真机：多等 1.5 s 换不来尾巴）')
+        await I.makeV4SegmentCompiler({ ...cfg, compressV4TailStream: true })(RAW, [], undefined, { tail: true })
+        assert.equal(lastBody.stream, true)
+      })
       await test('§7b 副模型给散文（不守格式）⇒ 抛错，meta 带 v4.reason；trace 留痕', async () => {
         reply = '权限不是问题，是路径错配。'
         const traces = []
         await assert.rejects(I.makeBirthCompiler(cfg)(LONG, undefined, { trace: (t, d) => traces.push([t, d]) }), (e) => {
-          assert.equal(e.message, 'v4-unparseable'); assert.equal(e.meta.v4.reason, 'v4-unparseable'); assert.equal(e.meta.promptVersion, 'compress-v4-ops2:450:inc1200'); return true
+          assert.equal(e.message, 'v4-unparseable'); assert.equal(e.meta.v4.reason, 'v4-unparseable'); assert.equal(e.meta.promptVersion, 'compress-v4-ops3:450:inc1200'); return true
         })
         assert.ok(traces.some(([x, d]) => x === 'compiler-v4-compiled' && d.ok === false))
       })
@@ -472,6 +481,41 @@ try {
     const n = I.normalizeOp({ id: 'o3', k: 'INCUMBENT', text: 'x', supersedes: 'o1, o2' }, 0)
     assert.deepEqual(n.retracts, ['o1', 'o2']); assert.equal(n.supersedes, '')
     assert.equal(I.normalizeOp({ k: 'INCUMBENT', text: 'x', supersedes: '旧路径 /etc/a' }, 0).supersedes, '旧路径 /etc/a')
+  })
+  await test('§9l 固定键跨段后写者胜（key=root-cause）；死路不参与 I7；此前已标注带 key', () => {
+    const raw = '一开始以为是权限问题，试了 chmod 777 仍然失败。后来怀疑是缓存。最后确认根因是路径错配。'
+    const merged = I.mergeSegmentOps([
+      { n: 1, ops: [{ id: 'o1', k: 'COMPUTED', text: '根因是权限问题', key: 'root-cause', anchor: '一开始以为是权限问题' },
+                    { id: 'o2', k: 'REFUTED', ev: 'tool', text: '权限问题', key: 'root-cause', alt: '查缓存', why: 'chmod 777 仍然失败', anchor: '试了 chmod 777' }] },
+      { n: 2, ops: [{ id: 'o1', k: 'COMPUTED', text: '根因可能是缓存', key: 'root-cause', anchor: '后来怀疑是缓存' }] },
+      { n: 3, ops: [{ id: 'o1', k: 'INCUMBENT', text: '根因是路径错配', key: 'root-cause', anchor: '最后确认根因是路径错配' }] }])
+    const v = I.validateOps(merged, raw)
+    assert.deepEqual(v.kept.map((o) => o.id), ['s1.o2', 's3.o1'])
+    assert.equal(v.rejected.filter((r) => r.rule === 'I7').length, 2)
+    assert.ok(I.priorLines(v.kept)[1].startsWith('s3.o1 [INCUMBENT key=root-cause]'))
+  })
+  await test('§9m 合并：全局形态的引用不再加前缀；自起 sN.xxx 形态的 id 改名；固定键不挂「取代」', () => {
+    const m = I.mergeSegmentOps([{ n: 5, ops: [{ id: 's4.o1', k: 'COMPUTED', text: 'A', retracts: ['s4.o1'] }, { id: 'o2', k: 'FACT', text: 'B', deps: ['o2x', 's3.o1'] }] }])
+    assert.equal(m[0].id, 's5.x1'); assert.deepEqual(m[0].retracts, ['s4.o1'])
+    assert.deepEqual(m[1].deps, ['o2x', 's3.o1'])
+    const raw = '先认为根因是缓存。后来确认根因是缓存键里没带版本号。配置在 /etc/a 后来改到 /etc/b。'
+    const v = I.validateOps([{ id: 'a', k: 'COMPUTED', text: '根因是缓存', key: 'root-cause', anchor: '先认为根因是缓存' },
+      { id: 'b', k: 'INCUMBENT', text: '根因是缓存键里没带版本号', key: 'root-cause', anchor: '后来确认根因' },
+      { id: 'c', k: 'FACT', text: '配置在 /etc/a', key: 'conf', anchor: '配置在 /etc/a' },
+      { id: 'd', k: 'FACT', text: '配置在 /etc/b', key: 'conf', anchor: '后来改到 /etc/b' }], raw)
+    assert.equal(v.kept.find((o) => o.id === 'b').supersedes, '', '固定键：细化不挂取代')
+    assert.equal(I.normalizeOp({ k: 'INCUMBENT', text: 'x', key: 'root-cause', supersedes: '根因是时序竞态' }, 0).supersedes, '', '固定键：模型自己写的取代也不渲染')
+    assert.equal(I.normalizeOp({ k: 'COMPUTED', text: 'x', supersedes: 'timing-margin' }, 0).supersedes, '', '键名形态不是旧值')
+    assert.equal(v.kept.find((o) => o.id === 'd').supersedes, '配置在 /etc/a', '改值键：照旧挂取代')
+  })
+  await test('§9n 首段减半：首段按一半段长切，之后按全段长', () => {
+    const fired = []
+    const sg = I.createSegmenter({ cfg: { compressPrompt: 'v4', compressV4SegmentChars: 400 }, compileSegment: async (t) => { fired.push(t.length); return { ops: [] } } })
+    const para = '这是一句话。'.repeat(20) + '\n\n'   // 122 字一段
+    sg.feed(para.repeat(12))
+    assert.ok(sg.segments[0].text.length <= 300 && sg.segments[0].text.length >= 120, 'first=' + sg.segments[0].text.length)
+    assert.ok(sg.segments[1].text.length > 300, 'second=' + sg.segments[1].text.length)
+    sg.cancel('test')
   })
   await test('§9i makeV4SegmentCompiler：分段提示词（带此前已标注）、promptVersion 加 :seg、解析失败抛错', async () => {
     const p = I.buildCompressPromptV4Segment('SEG', ['s1.o1 [FACT] a'])
