@@ -89,6 +89,7 @@ function startMock() {
 ;(async () => {
   await test('§1 参数解析 / 模式配置', () => {
     const o = parseArgs(['--modes', 'v4inc,v3', '--cfg', '{"birthFinishWaitMs":900}', '--only', 'a,b'])
+    assert.equal(o.replayConcurrency, 1)
     assert.deepEqual(o.modes, ['v4inc', 'v3']); assert.equal(o.cfg.birthFinishWaitMs, 900); assert.deepEqual(o.only, ['a', 'b'])
     assert.throws(() => parseArgs(['--modes', 'v5']), /unknown mode/)
     assert.equal(modeConfig('v4', {}).compressV4Incremental, false)

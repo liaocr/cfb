@@ -31,7 +31,7 @@
 - 配置：`compressV4Incremental`（缺省 true，仅 v4 生效）、`compressV4SegmentChars`（1200）。
 - trace：`v4-segment-fired` / `v4-segment-settled` / `v4-segments-cancelled` / `v4-segment-error`。
 - **`tools/v4-live.mjs`：真机测试**。录制真实 DeepSeek 主模型（thinking enabled）的推理流（逐 delta 记时刻），
-  按原时序回放进**生产代码** birthTransform，副模型走生产代码（同一模型关思考），v3 / v4 整块 / v4 增量同一录音对比；
+  按原时序**逐条**回放进**生产代码** birthTransform（缺省并发 1，与正常使用一致），副模型走生产代码（同一模型关思考），v3 / v4 整块 / v4 增量同一录音对比；
   输出 `report.md`（汇总、逐块、产物全文）/ `report.json`（含每块 trace 时间线）/ `recordings.json`（`--replay` 复用）。钥匙只从环境变量读。
 - 测试：`test/v4.selftest.mjs` §9（9 例：切点、分段 + retracts、到点部分结果、中间段失败不跳段、取消、分段校验、birthTransform 端到端三种结局）；
   新套件 `test/v4-live.selftest.mjs`（本地假 DeepSeek：录制 → 三模式回放，v4 整块超时 / 增量替换成功、钥匙不落盘、--replay）。

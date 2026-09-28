@@ -15,7 +15,7 @@
 //   node tools/v4-live.mjs --replay live-out/recordings.json --modes v4inc --out live-out2
 //   选项：--model deepseek-chat  --base-url https://api.deepseek.com  --modes v3,v4,v4inc
 //         --tasks tasks.json（[{id, system?, user}]）  --only id1,id2  --cfg '{"birthFinishWaitMs":1500}'
-//         --concurrency 3（录制并发）  --api-key-env DEEPSEEK_API_KEY
+//         --concurrency 3（录制并发）  --replay-concurrency 1（回放并发，缺省 1 = 与正常使用一致）  --api-key-env DEEPSEEK_API_KEY
 // 钥匙只从环境变量读，写进 0600 临时凭据文件供生产代码读取，结束即删；不进报告、不进 trace。
 import fs from 'node:fs'
 import os from 'node:os'
@@ -122,7 +122,7 @@ run 5: FAIL  §4 同上 got 1698
 
 export function parseArgs(argv) {
   const o = { model: 'deepseek-chat', baseUrl: 'https://api.deepseek.com', modes: ['v3', 'v4', 'v4inc'], apiKeyEnv: 'DEEPSEEK_API_KEY',
-    out: 'v4-live-out', concurrency: 3, cfg: {}, only: null, tasks: null, replay: null, maxTokens: 8192 }
+    out: 'v4-live-out', concurrency: 3, replayConcurrency: 1, cfg: {}, only: null, tasks: null, replay: null, maxTokens: 8192 }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i], v = () => argv[++i]
     if (a === '--model') o.model = v()
@@ -131,6 +131,7 @@ export function parseArgs(argv) {
     else if (a === '--api-key-env') o.apiKeyEnv = v()
     else if (a === '--out') o.out = v()
     else if (a === '--concurrency') o.concurrency = Math.max(1, Number(v()) || 1)
+    else if (a === '--replay-concurrency') o.replayConcurrency = Math.max(1, Number(v()) || 1)
     else if (a === '--cfg') o.cfg = JSON.parse(v())
     else if (a === '--only') o.only = v().split(',')
     else if (a === '--tasks') o.tasks = v()
@@ -311,8 +312,9 @@ export async function main(argv) {
     if (o.only) recs = recs.filter((r) => o.only.includes(r.id))
     const rows = []
     for (const mode of o.modes) {
-      console.log(`回放模式 ${mode}（${recs.length} 条，按原时序并行）…`)
-      const rs = await Promise.all(recs.map((r) => runMode(r, mode, o, credPath).catch((e) => ({ id: r.id, mode, why: 'harness-error', error: String(e && e.message || e) }))))
+      // 缺省逐条回放（= 正常使用时同一时刻只有一个会话在压缩）；并行会让副模型请求挤在一起、被限流，延迟数字偏悲观
+      console.log(`回放模式 ${mode}（${recs.length} 条，并发 ${o.replayConcurrency}，按原时序）…`)
+      const rs = await pool(recs, o.replayConcurrency, (r) => runMode(r, mode, o, credPath).catch((e) => ({ id: r.id, mode, why: 'harness-error', error: String(e && e.message || e) })))
       for (const r of rs) console.log(`  ${r.id}: ${r.why} ${r.rawChars ?? ''}→${r.outChars ?? ''} hold=${r.finishHoldMs ?? ''}ms`)
       rows.push(...rs)
     }
