@@ -6,6 +6,42 @@
 
 ---
 
+## v12.2.0（2026-09-28）compress-v4-ops：理论第五卷的 v4 编译器落成生产代码（opt-in，**缺省行为零变化**）
+
+`compressPrompt: 'v4'` 打开。副模型**不再写出生文本**，只把推理拆成带类型的原子条目（JSON ops）；
+校验、取舍、顺序、措辞、人称、否定形式全部由代码决定（新增 `src/compile-v4.js`，纯函数）。
+
+### 新增
+- `src/prompts.js`：`buildCompressPromptV4`（S4 提示词：七类条目、依据、作用、**原文逐字锚点**、证伪必须带替代与理由、搁置带回来条件）；
+  `v4Budget`；`compressPromptVersion` 出 `compress-v4-ops:<预算>[:notail][:sys]`。与 v2/v3 同一末尾标记 ⇒ `compressSystemPrompt` 照样可用。
+- `src/compile-v4.js`：
+  - `parseOps` 容错解析（围栏 / 前后废话 / 裸数组 / JSON Lines；JSON Lines 先于括号截取，避免把 deps 当成最外层数组）；
+  - `validateOps` 硬不变量：I1 锚点逐字（NFKC + 空白归一）、I2 标识符有出处（复用 `inventedIdentifiers`；src 编造只删 src）、
+    I3 证伪必须带替代（配对准入）、I4 无观测的否定降为 SHELVED、I5 工具来源不得写「我决定 / I should」、I7 同 key 留最新并挂 supersedes、
+    I8 无第二人称（引号内原文引用除外）、schema、去重；INCUMBENT / COMPUTED 编造 ⇒ 整块回退；
+  - `selectOps`：INCUMBENT / REFUTED / OPEN 必留；复述工具输出（restate）与复核已知结论（verify）剔除（被依赖时保留）；其余价值/字符贪心装预算；依赖闭包（深度 2）；
+  - `renderOps`：证据定粘性、替代先行 + 否定就近（被放弃的 X 只出现一次、在括号里）、计划写过去时、分组顺序（状态 → 当前方案 → 排除/搁置 → 计划 → 未决）、
+    尾段（关键结论 + 至多两个未决问句）、中英模板随原文、中英交界补空格；
+  - `compileV4`：整块回退原因 `v4-empty-output` / `v4-unparseable` / `v4-no-valid-ops` / `v4-critical-I2` / `v4-reject-ratio` / `v4-empty-render`。
+- `makeBirthCompiler`：v4 时输出上限取 `max(maxOutputTokens, compressV4MaxOutputTokens)`，编译失败抛错 ⇒ birth 原文放行。
+- 配置：`compressV4BudgetChars`（null ⇒ 跟随 `compressTargetMax`）、`compressV4MaxOutputTokens`（1600）、`compressV4Tail`（true）、`compressV4MaxRejectRatio`（0.5）。
+- trace：新事件 `compiler-v4-compiled`；`settledTraceData` 白名单与 `birth-distill-failed` 增加 `v4` 统计。
+- `tools/cf-eval.mjs`：`v4` 变体（与线上同一路径；编译失败 = 原文，`ok:false` 留痕）。
+- `test/v4.selftest.mjs`（28 例），verify ORDER 登记于 compress 之后。
+
+### 与理论规格的差异（登记在 `compile-v4.js` 文件头）
+- λ 控制器（S1 ⑦）与自监督标签（⑧）需要跨轮传感器，插件当前拿不到 ⇒ 静态价值 × 固定预算代替；
+- 渲染按组（组内原文顺序）而非纯贪心顺序：保留因果可读性，未决问题放在最靠近下一步生成的位置；
+- 层 A 的 `art://` 分支级指针未做。
+
+### 已知风险
+- v4 的副模型输出（JSON + 锚点）比 v3 散文长，`birthFinishWaitMs` 缺省 1500 下 `distill-timeout` 会变多（原文放行，安全）。看 `compiler-transport-settled.totalMs` 再定。
+
+### 验证
+- `node verify.mjs`：545 pass / 0 fail / 1 skip，14 个套件；`manifest --check` 与 `tsc --strict` 通过。
+
+---
+
 ## v12.1.0（2026-09-28）单一路径：birth + compress（缺省 v3），删除 checkpoint / 迟到认领 / memory 模式 / legacy v1 提示词 / value.js 原型
 
 先问「为什么留着」：有真实优点的先并入主路径再删，确定无用的直接删。被删文件可用 `git show <v12.0.0 提交>:<路径>` 取回；逐项理由见 `docs/README.md` §5。

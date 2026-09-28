@@ -1,4 +1,4 @@
-# 架构（v12.1，开发者视角）
+# 架构（v12.2，开发者视角）
 
 > 面向改代码的人：模块怎么分、数据怎么流、哪些不变式不能碰、加东西该改哪里。
 > 使用与配置见根目录 [`README.md`](../README.md)；设计沿革见 [`CHANGELOG.md`](../CHANGELOG.md)；v12.0 之前的文件可从 git `cfba57b` 取回。
@@ -25,6 +25,7 @@ plugin.js ───────────────────────�
   │    └─ trace.js          settled 字段白名单
   ├─ distill.js ───────── 副模型调用（重试降级 / 对冲 / 传输 trace）+ makeBirthCompiler（compress-only）
   │    ├─ prompts.js ─ config.js
+  │    ├─ compile-v4.js     v12.2 compress-v4-ops 确定性编译器（parse → validate → select → render）→ fidelity.js, tokens.js
   │    └─ transport.js ─ provider.js ─ config.js
   └─ messages.js         出站消息溯源（只观测）
 ```
@@ -65,6 +66,23 @@ birthTransform(inner, deps)
 `deps.distill` 由 `distill.js` 的 `makeBirthCompiler(streamCfg)` 构造：按 `compressPromptFor(cfg, raw)` 选提示词
 （缺省 v3；只有显式 `compressPrompt: 'v2'` 走 v2），`compressSystemPrompt` 打开时拆成 system + user（字节等价），
 再调 `generateDistillation`。`promptVersion` 由 `compressPromptVersion` 唯一裁决，BOOT / 每次编译 / trace 共用。
+
+`compressPrompt: 'v4'`（v12.2）时同一个闭包多走一步：
+
+```
+generateDistillation(raw, { maxOutputTokens: max(cfg, compressV4MaxOutputTokens) }, …, buildCompressPromptV4(raw))
+  → 副模型输出 JSON ops
+compileV4(output, raw, cfg, v4Budget(cfg))                       （src/compile-v4.js，纯函数、同步）
+  parseOps     容错解析（围栏 / 前后废话 / 裸数组 / JSON Lines）
+  validateOps  I1 锚点逐字 · I2 标识符有出处 · I3 证伪带替代 · I4 无观测否定→搁置 · I5 工具来源不写「我决定」
+               · I7 同 key 留最新 · I8 无第二人称 · schema / 去重；INCUMBENT/COMPUTED 编造 ⇒ fatal
+  selectOps    必留（INCUMBENT / REFUTED / OPEN）→ 剔除 restate / verify 冗余 → 价值/字符贪心装预算 → 依赖闭包
+  renderOps    证据定粘性 · 替代先行 + 否定就近 · 过去时计划 · 分组顺序 · 尾段（结论 + 未决问句）· 语言跟随原文
+  → ok ⇒ { text: 渲染稿, meta.v4 }；否则抛 Error(reason)，meta.v4 带统计 ⇒ birth 原文放行（distill-failed）
+trace: compiler-v4-compiled（每次）；birth-distill-settled / birth-distill-failed 的 v4 字段
+```
+
+与理论规格的差异登记在 `compile-v4.js` 文件头：λ 控制器（需要跨轮传感器）以固定预算代替；渲染按组而非纯贪心顺序。
 
 ### 2.2 副模型调用（`distill.js`）
 
@@ -114,6 +132,7 @@ CAS（原文归档）是宿主注入的 `cmbStore` 服务（`ctx.get('cmbStore')
 | 加一个配置键 | `config.js` 的 `DEFAULTS`（写清来历）；若允许嵌套写法，加进 `NESTED_*_KEYS`；`index.d.ts`；`core.selftest.mjs` §10 |
 | 退役一个配置键 | 从 `DEFAULTS` 删除，加进 `RETIRED_OPTIONS`（配置里出现时进 `retiredOptions` 并被删除，BOOT 可见）；`v12.selftest.mjs` 加兼容用例 |
 | 给 `birth-distill-settled` / `compiler-transport-settled` 加字段 | `trace.js` 的 `settledTraceData` 白名单（只写进 meta 不会落盘，出过真实事故） |
+| 改 v4 的判定 / 渲染 | `compile-v4.js`（纯函数，全部可单测）；新拒绝规则走 `validateOps` 的 `reject(rule)`，统计自动进 `stats.rejected`；改模板要同步 `v4.selftest.mjs` §5 |
 | 改提示词 | `prompts.js`；版本号必须从 `compressPromptVersion` 同一次裁决里取；v3 与 v2 的保真规则 1~6 必须逐字共享（`compress.selftest.mjs` §1b 钉住） |
 | 加一道放行判定 | `birth.js` 的 `birthFinish`，走 `pass(why, handle, extra)`（自动取消在飞提纯、落 `birth-passthrough`）；`analyze-efficiency` 的 `outcomes` 会自动按 `why` 分桶 |
 | 加一个模块 | 放进 `src/` 即可；`DEP_ID` 自动枚举，BOOT 会带上它 |
@@ -133,6 +152,7 @@ CAS（原文归档）是宿主注入的 `cmbStore` 服务（`ctx.get('cmbStore')
 | provider-endpoint | 端点解析 |
 | core | 默认值、配置归一化、传输层、副模型调用、宿主模型跟随（birth 全链路，本机 HTTP 收包验证）、成本模型、回归钉子 |
 | compress | **v12.1 主线**：v2/v3 提示词与版本号裁决（v3 缺省）、退避、4MiB 上限、终止闸、promptVersion 贯通、**发明标识符闸**（判据 + birthFinish 端到端 + 开关 + analyze-efficiency 分布）、onboard 漂移检测 |
+| v4 | **v12.2 compress-v4-ops**：提示词 / 版本号 / 配置、容错解析、每条硬不变量、选取（必留 / 冗余 / 预算 / 闭包）、渲染（替代先行、证据定粘性、分组、尾段、中英）、整块回退的每条原因、本机 HTTP → makeBirthCompiler → birth 全链路（成功替换 / 失败原文放行）、cf-eval v4 变体 |
 | birth | birth 主路径（含真实 dsh-llm 不变式校验，找不到宿主安装时用替身并 WARN）、放弃即取消、句柄可归因（T34） |
 | robustness | 退役开关不生效、pre-step 不被拖垮、trace 审计器、taskId 贯通、传输层错误形态、句柄读回探针契约 |
 | hedge | 对冲与响应头宽限（本机 HTTP 可控延迟） |

@@ -34,12 +34,21 @@ export interface CotFormBConfig {
    * compress 提示词版本（v12.1 起 compress 是唯一编译模式）：'v3'（缺省）= 保真规则 + 绝对长度目标；
    * 'v2' = 同一套保真规则 + 相对长度目标（20%~35%）。'x1'（v12.0）与 'v1' legacy 蒸馏（v12.1）已退役，
    * 出现时按 'v3' 处理并记入 configAdjusted。
+   * 'v4'（v12.2，opt-in）= compress-v4-ops：副模型只输出结构化标注（JSON ops），出生文本由 compile-v4.js 用代码写出。
    */
-  compressPrompt?: 'v2' | 'v3'
+  compressPrompt?: 'v2' | 'v3' | 'v4'
   /** 仅 v3 生效：绝对长度目标下限（字符，缺省 250） */
   compressTargetMin?: number
-  /** 仅 v3 生效：绝对长度目标上限（字符，缺省 450） */
+  /** 仅 v3 生效：绝对长度目标上限（字符，缺省 450）；v4 未设 compressV4BudgetChars 时也用它作渲染预算 */
   compressTargetMax?: number
+  /** 仅 v4：渲染预算（字符）。null ⇒ 跟随 compressTargetMax。当前方案 / 证伪路 / 未决问题为必留，不受预算限制 */
+  compressV4BudgetChars?: number | null
+  /** 仅 v4：副模型输出上限（缺省 1600）；实际取 max(maxOutputTokens, 本项) */
+  compressV4MaxOutputTokens?: number
+  /** 仅 v4：尾段（结论 + 未决问句），缺省 true */
+  compressV4Tail?: boolean
+  /** 仅 v4：硬不变量拒绝占比超过它 ⇒ 整块原文（缺省 0.5） */
+  compressV4MaxRejectRatio?: number
   /** v11.7（opt-in，缺省 false）：把 v2/v3 压缩提示词的固定规则前缀放进 system 消息、原文放 user 消息（字节等价），让 DeepSeek Context Caching 命中规则前缀；打开后 promptVersion 追加 ':sys' */
   compressSystemPrompt?: boolean
   birthCancelOnGiveUp?: boolean
@@ -213,6 +222,44 @@ export declare function compressTargets(cfg: CotFormBConfig | null | undefined):
 export declare function buildCompressPrompt(cot: string): string
 /** compress-v3：v2 的保真规则 + 绝对长度目标 */
 export declare function buildCompressPromptV3(cot: string, minChars?: number, maxChars?: number): string
+/** compress-v4-ops：副模型只做结构化标注（JSON ops）的提示词 */
+export declare function buildCompressPromptV4(cot: string): string
+/** v4 渲染预算（字符）：compressV4BudgetChars，未设则 compressTargetMax */
+export declare function v4Budget(cfg: CotFormBConfig | null | undefined): number
+
+// ── compress-v4-ops 编译器（src/compile-v4.js，纯函数） ──
+export type V4Kind = 'FACT' | 'COMPUTED' | 'INCUMBENT' | 'REFUTED' | 'SHELVED' | 'OPEN' | 'PLAN'
+export type V4Ev = 'tool' | 'derived' | 'guess'
+export type V4Kind2 = 'pivot' | 'plan' | 'hypothesize' | 'localize' | 'inspect' | 'compute' | 'verify' | 'restate' | 'answer'
+export declare const V4_KINDS: V4Kind[]
+export declare const V4_EVS: V4Ev[]
+export declare const V4_KIND2: V4Kind2[]
+/** 归一化后的条目（idx = 在副模型输出中的原始位置） */
+export interface V4Op {
+  id: string; idx: number; k: V4Kind | string; ev: V4Ev; kind2: V4Kind2 | null
+  text: string; anchor: string; key: string; src: string; alt: string; why: string; trigger: string; supersedes: string; deps: string[]
+}
+export interface V4Stats {
+  outputChars: number; ops?: number; valid?: number; rejected?: Record<string, number>; converted?: number
+  inventedSample?: string[]; selected?: number; kinds?: Record<string, number>
+  dropped?: { restate: number; verify: number; budget: number }; lang?: 'zh' | 'en'; budget?: number; chars?: number
+}
+/** 容错解析副模型输出（{ops:[…]} / 裸数组 / 围栏 / 前后废话 / JSON Lines） */
+export declare function parseOps(output: string): { ops: Record<string, unknown>[] } | { error: string }
+export declare function normalizeOp(o: Record<string, unknown>, i: number): V4Op
+/** 硬不变量 I1–I5、I7、I8；fatal 非空 ⇒ 整块回退原文 */
+export declare function validateOps(ops: unknown[], raw: string): {
+  kept: V4Op[]; rejected: { id: string; k: string; rule: string; sample?: string[] }[]
+  converted: { id: string; from: string; to: string }[]; fatal: string | null; total: number
+}
+export declare function scoreOp(op: V4Op, depCount?: number): number
+export declare function selectOps(ops: V4Op[], opts?: { budget?: number; lang?: 'zh' | 'en' }): { chosen: V4Op[]; dropped: { restate: number; verify: number; budget: number } }
+export declare function renderLine(op: V4Op, lang?: 'zh' | 'en'): string
+export declare function renderOps(chosen: V4Op[], opts?: { lang?: 'zh' | 'en'; tail?: boolean }): string
+export declare function renderLang(raw: string): 'zh' | 'en'
+/** 副模型输出 + 原文 ⇒ 出生文本；失败返回 ok:false（调用方原文放行） */
+export declare function compileV4(output: string, raw: string, cfg?: CotFormBConfig, budget?: number | null):
+  { ok: true; text: string; stats: V4Stats } | { ok: false; reason: string; stats: V4Stats }
 
 /** content 双兼容：纯字符串 或 [{type:'text',text}] 块数组 */
 export declare function textOfContent(content: unknown): string

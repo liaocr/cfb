@@ -318,6 +318,7 @@ export function birthStart(entry, deps = {}) {
           status: em.status, cancelled: em.cancelled, stream: em.stream === true ? true : undefined,
           toFirstEventMs: em.toFirstEventMs, toFirstContentMs: em.toFirstContentMs,
           contentSpanMs: em.contentSpanMs, eventCount: em.eventCount,
+          v4: em.v4,
         } : {}))
       return { ok: false, error: String((e && e.message) || e), meta: em }
     })

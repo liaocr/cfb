@@ -103,6 +103,8 @@ export function settledTraceData(index, ms, s) {
       eventCount: m.eventCount, badFrame: m.badFrame, outputChars: m.outputChars,
       toFirstEventMs: m.toFirstEventMs, toFirstContentMs: m.toFirstContentMs,
       contentSpanMs: m.contentSpanMs, toCompleteMs: m.toCompleteMs,
+      // v12.2 compress-v4-ops 的编译统计（条目数、各不变量拒绝数、选取与丢弃、渲染语言、预算、失败原因）
+      v4: m.v4,
     } : {}),
   }
 }

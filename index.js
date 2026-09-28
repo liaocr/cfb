@@ -27,9 +27,13 @@ export { createSessionTracker } from './src/session-tracker.js'
 // ── 副模型调用 ───────────────────────────────────────────────────────────────
 export { generateDistillation, hedgedDistill, makeBirthCompiler } from './src/distill.js'
 export {
-  buildCompressPrompt, buildCompressPromptV3, splitCompressPrompt,
-  compressPromptVersion, compressPromptFor, compressTargets,
+  buildCompressPrompt, buildCompressPromptV3, buildCompressPromptV4, splitCompressPrompt,
+  compressPromptVersion, compressPromptFor, compressTargets, v4Budget,
 } from './src/prompts.js'
+export {
+  compileV4, parseOps, normalizeOp, validateOps, selectOps, renderOps, renderLine, renderLang, scoreOp,
+  V4_KINDS, V4_EVS, V4_KIND2,
+} from './src/compile-v4.js'
 export {
   requestOnce, requestStream, prewarmTargetUrl, retryDelayMs,
   detectResponseProtocol, assembleSseFrames, collectSseFrames, extractFromJsonBody,

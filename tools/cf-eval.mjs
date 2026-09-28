@@ -2,7 +2,7 @@
 // tools/cf-eval.mjs —— 反事实续写评测（counterfactual continuation eval）
 //
 // 问的不是「摘要像不像原文」，而是：**把历史里的推理块换成压缩稿之后，主模型的下一步还对不对？**
-// 同一段会话前缀，分别用 raw / compress-v3 两种推理块（v12.0 起 x1 抽取式已退役）去续写，逐样本判分：
+// 同一段会话前缀，分别用 raw / compress-v3 / compress-v4-ops 推理块（x1 抽取式已退役）去续写，逐样本判分：
 //   next      下一步动作命中参考动作（任一即可）
 //   avoid     重走了已被否定的路径（越低越好）
 //   violate   违反了约束（越低越好）
@@ -20,7 +20,7 @@
 // 用法：
 //   node tools/cf-eval.mjs --fixtures tools/cf-fixtures --base-url https://api.deepseek.com \
 //        --api-key-env DEEPSEEK_API_KEY --model deepseek-reasoner --compressor-model deepseek-chat \
-//        --variants raw,v3 --samples 3 --out cf-report.json
+//        --variants raw,v3,v4 --samples 3 --out cf-report.json
 //   其它：--min-chars 800 --concurrency 4 --max-tokens 4096
 //         --temperature 0.7 --extra-body '{"thinking":{"type":"enabled"}}' --compressor-extra-body '{...}'
 //         --compress-only（只压缩并打印，不调主模型） --target-min 250 --target-max 450
@@ -42,9 +42,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { buildCompressPromptV3 } from '../src/prompts.js'
+import { buildCompressPromptV3, buildCompressPromptV4 } from '../src/prompts.js'
+import { compileV4 } from '../src/compile-v4.js'
 
-/** 变体名解析。v12.0 起只有 raw / v3（x1 抽取式随路线否决退役，带修饰符的变体一律报错）。 */
+/** 变体名解析：raw / v3 / v4（v12.2 compress-v4-ops）。x1 抽取式已退役，带修饰符的变体一律报错。 */
 export function parseVariant(variant) {
   const [base, mods = ''] = String(variant).split(':')
   if (mods) throw new Error('unknown variant modifier ' + mods + ' in ' + variant)
@@ -138,6 +139,13 @@ export async function compressBlock(variant, raw, ctx) {
   if (pv.base === 'v3') {
     const r = await compressor(body(buildCompressPromptV3(raw, opts.targetMin, opts.targetMax)))
     return { text: String(r.message.content || '').trim(), usage: r.usage, ok: true }
+  }
+  if (pv.base === 'v4') {
+    // 与线上同一条路径：副模型出 ops → compileV4 渲染；编译失败 = 线上原文放行 ⇒ 这里也用原文（ok:false 留痕）
+    const r = await compressor(body(buildCompressPromptV4(raw)))
+    const out = compileV4(String(r.message.content || ''), raw, { compressTargetMax: opts.targetMax }, opts.targetMax)
+    return out.ok ? { text: out.text, usage: r.usage, ok: true, stats: out.stats }
+      : { text: raw, usage: r.usage, ok: false, error: out.reason, stats: out.stats }
   }
   throw new Error('unknown variant ' + variant)
 }

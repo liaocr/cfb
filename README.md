@@ -1,6 +1,6 @@
 # dsh-cot-form-b — reasoning 块「出生即压缩」
 
-> **当前实现：v12.1（2026-09-28，单一路径：birth + compress。checkpoint / 迟到认领 / memory 模式 / legacy v1 提示词已删除）** · 自测：`npm test` 全绿（固定 1 项 SKIP，逐版数字见 CHANGELOG） · 真实产品验收：**未验收**
+> **当前实现：v12.2（2026-09-28，单一路径：birth + compress；新增 opt-in 的 compress-v4-ops 认知编译器）** · 自测：`npm test` 全绿（固定 1 项 SKIP，逐版数字见 CHANGELOG） · 真实产品验收：**未验收**
 > CI：`.github/workflows/ci.yml` 在 Node 20 / 22 上跑完整性清单 + 全部自测 + 类型契约。
 > 版本沿革见 [`CHANGELOG.md`](CHANGELOG.md)；开发者视角的模块与数据流见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
@@ -55,7 +55,8 @@ dsh-cot-form-b/
 │   ├── config.js         DEFAULTS + normalizeConfig（退役/未知键留痕）
 │   ├── birth.js          ★ 出生即压缩：birthTransform / birthStart / birthFinish / 成本模型 / 水位读数
 │   ├── distill.js        副模型调用：重试降级、对冲、传输 trace；makeBirthCompiler（compress-only）
-│   ├── prompts.js        提示词（compress-v3 缺省 / compress-v2）与版本号
+│   ├── prompts.js        提示词（compress-v3 缺省 / compress-v2 / compress-v4-ops）与版本号
+│   ├── compile-v4.js     v12.2：v4 确定性编译器（解析 → 不变量校验 → 选取 → 渲染）
 │   ├── transport.js      HTTP 传输（keep-alive、4MB 上限、SSE/JSON 按实际协议解析）
 │   ├── provider.js       端点与凭据解析（跟随宿主 provider，解析不出来不猜）
 │   ├── messages.js       出站消息溯源（只观测）
@@ -66,7 +67,7 @@ dsh-cot-form-b/
 ├── test/                 *.selftest.mjs 套件（verify.mjs 自动发现）+ fixtures/（真机原文错误样本）
 ├── .github/workflows/    CI：完整性清单 + 全部自测 + 类型契约（Node 20 / 22）
 ├── tools/                离线分析：analyze-trace / analyze-efficiency
-│                         cf-eval（反事实续写评测，raw vs v3）+ cf-fixtures/
+│                         cf-eval（反事实续写评测，raw / v3 / v4）+ cf-fixtures/
 │                         2026-09-27：phase0-report（决议阶段 0 的六个数字 N1–N6，一条命令出判定）
 ├── deploy/onboard.mjs    部署体检（注册形态、部署漂移；跨机器、无硬编码路径）
 └── docs/                 现行文档 + theory/（完整理论）+ analysis/（历史审计与调研）；索引见 docs/README.md
@@ -88,6 +89,25 @@ dsh-cot-form-b/
 编译只有一种：**compress** —— 副模型只看这段 reasoning，输出它的摘要（提示词见 `compressPrompt`）。
 v12.1 前的 `memory`（证据账本 + 快照 → 两栏判断稿）与 `legacy`（三态蒸馏）编译模式已删除；
 `stateMemory` / `stateCompress` 成为退役键（`stateMemory: true` 另在 `configAdjusted` 写明现在跑的是 compress）。
+
+### compress-v4-ops（v12.2，`compressPrompt: 'v4'` 打开）
+
+v3 是「请副模型写一份更短的摘要」。v4 把理论（[`docs/theory/CFB-THEORY-COMPLETE.md`](docs/theory/CFB-THEORY-COMPLETE.md) 第五卷 S1–S5）
+落成代码：**副模型不写出生文本，只把推理拆成带类型的原子条目（JSON）；出生文本由 `src/compile-v4.js` 确定性地写出。**
+
+| 阶段 | 做什么 | 为什么让主模型更好 |
+|---|---|---|
+| 标注（副模型） | 七类条目：FACT / COMPUTED / INCUMBENT（当前方案）/ REFUTED（被观测证伪）/ SHELVED（无证据搁置）/ OPEN / PLAN；每条带依据（tool/derived/guess）、作用（pivot/verify/restate…）、**原文逐字锚点** | 过程（转弯打折、左右互搏）不再有位置：只剩状态 |
+| 校验（代码） | I1 锚点必须逐字在原文；I2 标识符必须有出处；I3 证伪必须带替代方案；I4 无观测的否定降为「搁置」；I5 工具来源不得写成「我决定」；I7 同一量只留最新值；I8 无第二人称。关键结论编造 / 拒绝率过高 ⇒ 整块原文 | 编造被机械检出，而不是靠提示词劝说；「以为证伪了其实只是没试」不会被写成定论 |
+| 选取（代码） | 当前方案 / 证伪路 / 未决问题**必留**；复述工具输出、复核已知结论直接剔除；其余按价值/字符在预算内贪心；依赖闭包 | 死路以「疫苗」形式保留，防止重走；冗余不再稀释注意力 |
+| 渲染（代码） | 证据定粘性（tool → 陈述带来源；derived → 「目前判断」；guess → 「未验证的猜测」）；**替代先行、否定就近**（「查路径配置（已排除权限问题：chmod 777 后仍 EACCES）」）；计划写过去时；分组：状态 → 当前方案 → 排除/搁置 → 计划 → 未决；尾段重复关键结论并以未决问句收尾；语言跟随原文 | 否定不单独出现（避免越强调越违反）；确定程度不被抬高；最该想的问题离下一步生成最近 |
+
+失败语义与 v3 相同：任何一步不成立 ⇒ 这块原文放行；渲染稿仍要过发明标识符闸、token 闸与净省判定。
+trace：`compiler-v4-compiled`（每次编译的条目数、各不变量拒绝数、选取/丢弃、语言、预算、失败原因）；
+`birth-distill-settled` / `birth-distill-failed` 带同一份 `v4` 统计。离线对照：`tools/cf-eval.mjs --variants raw,v3,v4`。
+
+⚠ v4 的副模型输出是 JSON（带锚点），比 v3 的散文长，生成更久：`birthFinishWaitMs`（缺省 1500）偏紧时会多出 `distill-timeout`（原文放行，安全但白压）。
+看 trace 里 `compiler-transport-settled.totalMs` 的分布再决定是否放宽。
 
 ---
 
@@ -113,7 +133,11 @@ v12.1 前的 `memory`（证据账本 + 快照 → 两栏判断稿）与 `legacy`
 | 键 | 缺省 | 说明 |
 |---|---|---|
 | `mode` / `dryRun` | `'birth'` / `true` | 见上 |
-| `compressPrompt` | `'v3'` | `v3` 绝对长度（`compressTargetMin/Max` = 250/450）· `v2` 相对长度（20%~35%）。两者保真规则逐字相同。`x1`（v12.0）/ `v1`（v12.1）已退役，旧配置自动回落 `v3` 并记 `configAdjusted` |
+| `compressPrompt` | `'v3'` | `v3` 绝对长度（`compressTargetMin/Max` = 250/450）· `v2` 相对长度（20%~35%）· **`v4`（v12.2）认知编译器，见上节**。两者保真规则逐字相同。`x1`（v12.0）/ `v1`（v12.1）已退役，旧配置自动回落 `v3` 并记 `configAdjusted` |
+| `compressV4BudgetChars` | `null` | 仅 v4：渲染预算（字符），`null` 跟随 `compressTargetMax`。当前方案 / 证伪路 / 未决问题必留，不受预算限制 |
+| `compressV4MaxOutputTokens` | `1600` | 仅 v4：副模型输出上限（只抬不降：取 `max(maxOutputTokens, 本项)`） |
+| `compressV4Tail` | `true` | 仅 v4：尾段（关键结论 + 未决问句） |
+| `compressV4MaxRejectRatio` | `0.5` | 仅 v4：硬不变量拒绝占比超过它 ⇒ 整块原文 |
 | `birth.identifierGate` | `true` | **v12.1**：摘要里出现原文没有的路径 / URL / 反引号代码 / camelCase / snake_case / `file.ext` ⇒ 原文放行（`why=invented-identifier`，trace 带样本）。`false` 关闭（A/B 对照腿） |
 | `birth.minChars` | `3100` | 短于此长度不压缩（成本模型反解：R=60、d=0.02、B′≈450 ⇒ 保本原长 2,747，保守取整且不下调） |
 | `birth.minTokens` | `null` | **v11.10 opt-in**：正数 ⇒ 按 token 估算判定、完全接管 `minChars`（3100 字符对英文 ≈ 930 token、对中文 ≈ 1,860 token，同一门槛随语言差 2 倍） |
@@ -178,6 +202,7 @@ v12.1 前的 `memory`（证据账本 + 快照 → 两栏判断稿）与 `legacy`
 | `dryRun: true` | 只观测：零副模型调用、零改写 |
 | `mode: 'off'` | 整体停用 |
 | `enabled: false` | 总开关关闭 |
+| `compressPrompt: 'v3'` | 从 v4 回到散文摘要（缺省） |
 | `compressPrompt: 'v2'` | 回到相对长度目标 |
 | `birth: { identifierGate: false }` | 关闭发明标识符闸 |
 | `distill: { hedgeAfterMs: 0 }` | 关闭对冲（缺省即关） |
@@ -237,7 +262,8 @@ trace 写在 `$DSH_HOME/storages/cot-form-b/trace.log`，一行一条：`[ISO时
 ## 当前状态（诚实版）
 
 **已完成、自测覆盖**：birth 压缩主路径与四条硬约束；compress-v3（缺省）；成本模型门槛（3100）与恒定输出上限（850）；
-**v12.1 发明标识符闸**（摘要编造路径 / 代码标识符 ⇒ 原文放行）；评估态零副作用；
+**v12.1 发明标识符闸**（摘要编造路径 / 代码标识符 ⇒ 原文放行）；
+**v12.2 compress-v4-ops**（副模型标注 → 代码校验 / 选取 / 渲染，opt-in；本机端到端覆盖，真机未跑）；评估态零副作用；
 句柄读回验证（birth 内存预推句柄须先验证，无证据则原文放行）；
 对冲、响应头宽限、缓存友好拆分（均可关）；配置自检；测试隔离。
 

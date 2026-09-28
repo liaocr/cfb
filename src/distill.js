@@ -6,7 +6,8 @@
 //   distillOnce / distillOnceStream  非流式 / SSE 两种传输形态，同输入同输出形状
 import crypto from 'node:crypto'
 import { scriptCounts } from './tokens.js'
-import { compressPromptVersion, compressPromptFor, splitCompressPrompt } from './prompts.js'
+import { compressPromptVersion, compressPromptFor, splitCompressPrompt, v4Budget } from './prompts.js'
+import { compileV4 } from './compile-v4.js'
 import { endpointUrl, resolveProviderEndpoint, readApiKeyRef, readApiKey } from './provider.js'
 import { settledTraceData } from './trace.js'
 import {
@@ -400,6 +401,7 @@ export async function generateDistillation(cot, cfg, signal, promptOverride, run
 /**
  * birth 编译器工厂：构造 `deps.distill(raw, signal, budget)`。
  *   按 compressPromptVersion 选提示词 → generateDistillation(raw, …)：本段推理的摘要。
+ *   v12.2 compressPrompt:'v4'：同一次调用拿到 JSON ops → compileV4 确定性渲染（失败抛错 ⇒ 原文放行）。
  *   只透传 trace（compiler-transport-* / compiler-hedge-*）与响应头信号。
  *   v12.1：memory（证据信封 → 判断稿）与 legacy（旧蒸馏提示词）两种模式删除。
  * @param cfg 本条流冻结的配置副本（调用方负责拷贝）
@@ -417,7 +419,23 @@ export function makeBirthCompiler(cfg) {
       if (sp) c._promptMessages = [{ role: 'system', content: sp.system }, { role: 'user', content: sp.user }]
     }
     const trace = budget && typeof budget.trace === 'function' ? budget.trace : undefined
-    return withCalibration(prompt, generateDistillation(raw, c, signal, prompt, { trace, promptVersion: pv }))
+    if (cfg.compressPrompt !== 'v4') return withCalibration(prompt, generateDistillation(raw, c, signal, prompt, { trace, promptVersion: pv }))
+    // ★ v12.2 compress-v4-ops：副模型只出结构化标注（JSON ops），出生文本由 compile-v4.js 用代码写出。
+    //   ops 带锚点与字段名，比散文长 ⇒ 输出上限单独给（compressV4MaxOutputTokens，只抬不降）；截断照旧由终止闸拒绝。
+    //   编译失败（解析不了 / 锚点对不上 / 关键条目编造 / 拒绝率过高）⇒ 抛错 ⇒ birth 原文放行（distill-failed，trace 带 v4 统计）。
+    const v4Max = Number.isFinite(cfg.compressV4MaxOutputTokens) && cfg.compressV4MaxOutputTokens > 0 ? cfg.compressV4MaxOutputTokens : 1600
+    c.maxOutputTokens = Math.max(Number(cfg.maxOutputTokens) || 0, v4Max)
+    const r = await withCalibration(prompt, generateDistillation(raw, c, signal, prompt, { trace, promptVersion: pv }))
+    const t0 = performance.now()
+    const out = compileV4(r.text, raw, cfg, v4Budget(cfg))
+    const v4 = { ...out.stats, compileMs: Number((performance.now() - t0).toFixed(2)), ...(out.ok ? {} : { reason: out.reason }) }
+    try { trace?.('compiler-v4-compiled', { ok: out.ok, requestId: r.meta && r.meta.requestId, ...v4 }) } catch {}
+    if (!out.ok) {
+      const e = new Error(out.reason)
+      e.meta = { ...(r.meta || {}), v4 }
+      throw e
+    }
+    return { text: out.text, meta: { ...(r.meta || {}), v4 } }
   }
 }
 

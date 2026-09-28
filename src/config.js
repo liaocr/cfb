@@ -170,12 +170,24 @@ export const DEFAULTS = {
   //        而 v2 稳定贴住输入的 30%。二者在 <1,500 输入时输出几乎同长（v2 甚至更短：344 vs 403）
   //        ⇒ **保真规则本身不花长度**，长度差异 100% 来自目标口径。v3 即「v2 的规则 + v1 的口径」。
   //   'v2' 中性压缩 —— 同一套保真规则 + **百分比**长度目标（20%~35%），输出随输入线性增长
+  //   'v4'（v12.2，opt-in）compress-v4-ops —— 副模型只做结构化标注（JSON ops），出生文本由代码按理论写出；见下方 compressV4* 与 src/compile-v4.js
   //   ⛔ v12.1 退役 'v1'（legacy 三态蒸馏）：出现时回落 'v3'，BOOT 的 configAdjusted 可见。
   compressPrompt: 'v3',
   // v3 专用的绝对长度目标（字符）。只影响 v3；v2 不看这两项。
   //   为什么用绝对值：百分比对小输入是灾难（900 字符按 20% 压到 180 必然丢信息），绝对值不会。
   compressTargetMin: 250,
   compressTargetMax: 450,
+  // ★ v12.2 compress-v4-ops（compressPrompt: 'v4'，opt-in）：副模型只输出结构化标注，出生文本由代码写出
+  //   （src/compile-v4.js；理论第五卷 S1–S5）。以下四项只影响 v4：
+  //   compressV4BudgetChars    渲染预算（字符）；非必留条目按性价比装到这里为止。null ⇒ 跟随 compressTargetMax
+  //                            （当前方案 / 证伪路 / 未决问题为必留，不受预算限制 —— 与 v3 第 8 条「保真优先于长度」同一原则）
+  //   compressV4MaxOutputTokens  副模型输出上限（ops 带锚点，比散文长）；只抬不降：取 max(maxOutputTokens, 本项)
+  //   compressV4Tail           尾段（最重要的结论 + 未决问句，放在最靠近下一步生成的位置）；false 只留行式层
+  //   compressV4MaxRejectRatio 硬不变量拒绝占比超过它 ⇒ 整块原文（副模型在这块上不可信时不拼残缺状态）
+  compressV4BudgetChars: null,
+  compressV4MaxOutputTokens: 1600,
+  compressV4Tail: true,
+  compressV4MaxRejectRatio: 0.5,
   // ★ v11.7 缓存友好拆分（opt-in）：把压缩提示词的**固定规则前缀**放进 system 消息、原文放 user 消息。
   //   DeepSeek Context Caching 按「缓存前缀单元」整段匹配（官方 kv_cache 文档 Example 1：system+user 形状），
   //   现状 461 字符规则与原文挤在同一条 user 消息里 ⇒ 实测 prompt_cache_hit_tokens 恒为 0。
@@ -291,8 +303,8 @@ export function normalizeConfig(config = {}) {
   else if (!MODES.includes(c.mode)) { c.invalidMode = c.mode; c.mode = 'off' }
   c.retiredOptions = RETIRED_OPTIONS.filter(k => Object.hasOwn(config || {}, k))
   // v12.0 / v12.1：compressPrompt 'x1'（抽取式）与 'v1'（legacy 蒸馏）已退役；其它不认识的值同样回落缺省 'v3'。BOOT 的 configAdjusted 可见
-  if (c.compressPrompt !== 'v2' && c.compressPrompt !== 'v3') {
-    const why = c.compressPrompt === 'x1' ? 'compress-x1 retired in v12.0' : c.compressPrompt === 'v1' ? 'compress-v1 (legacy distill) retired in v12.1' : "must be 'v2' or 'v3'"
+  if (c.compressPrompt !== 'v2' && c.compressPrompt !== 'v3' && c.compressPrompt !== 'v4') {
+    const why = c.compressPrompt === 'x1' ? 'compress-x1 retired in v12.0' : c.compressPrompt === 'v1' ? 'compress-v1 (legacy distill) retired in v12.1' : "must be 'v2', 'v3' or 'v4'"
     c.configAdjusted = Object.assign({}, c.configAdjusted, { compressPrompt: { from: c.compressPrompt, to: 'v3', why } })
     c.compressPrompt = 'v3'
   }
