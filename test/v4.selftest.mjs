@@ -60,9 +60,11 @@ try {
   })
   await test('§1c 版本号：v4 携带预算与尾段开关；缺省仍为 v3；compressPromptFor 分派一致', () => {
     assert.equal(I.DEFAULTS.compressPrompt, 'v3')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4' }), 'compress-v4-ops:450')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressTargetMax: 600 }), 'compress-v4-ops:600')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4BudgetChars: 520, compressV4Tail: false, compressSystemPrompt: true }), 'compress-v4-ops:520:notail:sys')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4' }), 'compress-v4-ops:450:inc1200')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressTargetMax: 600, compressV4SegmentChars: 800 }), 'compress-v4-ops:600:inc800')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Incremental: false }), 'compress-v4-ops:450')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4BudgetChars: 520, compressV4Tail: false, compressV4Incremental: false, compressSystemPrompt: true }), 'compress-v4-ops:520:notail:sys')
+    assert.equal(I.v4Incremental({ compressPrompt: 'v4' }), true); assert.equal(I.v4Incremental({ compressPrompt: 'v3' }), false)
     assert.equal(I.compressPromptFor({ compressPrompt: 'v4' }, 'COT'), I.buildCompressPromptV4('COT'))
     assert.equal(I.v4Budget({}), 450); assert.equal(I.v4Budget({ compressV4BudgetChars: -1 }), 450); assert.equal(I.v4Budget({ compressV4BudgetChars: 700 }), 700)
   })
@@ -251,7 +253,7 @@ try {
         assert.ok(lastBody.messages[0].content.endsWith(LONG))
         assert.equal(lastBody.max_tokens, 1600)
         assert.ok(r.text.includes('已排除权限问题') && !r.text.includes('{'))
-        assert.equal(r.meta.promptVersion, 'compress-v4-ops:450')
+        assert.equal(r.meta.promptVersion, 'compress-v4-ops:450:inc1200')
         assert.equal(r.meta.v4.selected, 7)
         const t = traces.find(([x]) => x === 'compiler-v4-compiled')
         assert.ok(t && t[1].ok === true && t[1].valid === 8 && typeof t[1].compileMs === 'number', JSON.stringify(t))
@@ -261,7 +263,7 @@ try {
         reply = '权限不是问题，是路径错配。'
         const traces = []
         await assert.rejects(I.makeBirthCompiler(cfg)(LONG, undefined, { trace: (t, d) => traces.push([t, d]) }), (e) => {
-          assert.equal(e.message, 'v4-unparseable'); assert.equal(e.meta.v4.reason, 'v4-unparseable'); assert.equal(e.meta.promptVersion, 'compress-v4-ops:450'); return true
+          assert.equal(e.message, 'v4-unparseable'); assert.equal(e.meta.v4.reason, 'v4-unparseable'); assert.equal(e.meta.promptVersion, 'compress-v4-ops:450:inc1200'); return true
         })
         assert.ok(traces.some(([x, d]) => x === 'compiler-v4-compiled' && d.ok === false))
       })
@@ -293,6 +295,160 @@ try {
       })
     } finally { await new Promise((r) => server.close(r)) }
   }
+
+  // ═══ §9 流式增量编译（segment-v4.js + birthTransform）═════════════════════
+  // 构造一段多段推理：每段有自己的锚点句
+  const SEGS = [
+    '第一段：服务启动报 EACCES。试了 chmod 777 /srv/app/conf.yaml，重启后仍然 EACCES，所以不是权限问题。' + '补充观察。'.repeat(20) + '\n\n',
+    '第二段：strace 显示 open("/srv/app/conf.yaml") 失败，read_file 读的是 /etc/app/conf.yaml，这说明是路径错配。' + '继续核对。'.repeat(20) + '\n\n',
+    '第三段：检查 loadConfig，发现 APP_CONF 指向旧路径。还没确认 /srv/app/conf.yaml 是不是 symlink。' + '最后的想法。'.repeat(20),
+  ]
+  const FULL = SEGS.join('')
+  // 按段文本给出条目（模拟副模型）；第二段推翻第一段的一条（retracts）
+  const opsFor = (segText) => {
+    if (segText.includes('第一段')) return [
+      { id: 'o1', k: 'REFUTED', ev: 'tool', text: '权限问题', alt: '查路径配置', why: 'chmod 777 后仍 EACCES', anchor: '试了 chmod 777' },
+      { id: 'o2', k: 'INCUMBENT', ev: 'derived', text: '先排查权限之外的原因', anchor: '所以不是权限问题' }]
+    if (segText.includes('第二段')) return [
+      { id: 'o1', k: 'COMPUTED', ev: 'derived', text: '根因是路径错配', anchor: '这说明是路径错配', retracts: ['s1.o2'] },
+      { id: 'o2', k: 'FACT', ev: 'tool', text: 'read_file 读的是 /etc/app/conf.yaml', anchor: 'read_file 读的是' }]
+    if (segText.includes('第三段')) return [
+      { id: 'o1', k: 'INCUMBENT', ev: 'derived', text: 'APP_CONF 指向旧路径', anchor: '发现 APP_CONF' },
+      { id: 'o2', k: 'OPEN', ev: 'derived', text: '/srv/app/conf.yaml 是不是 symlink', anchor: '是不是 symlink' }]
+    return []
+  }
+  const mkCompile = (delayFor = () => 0, calls = []) => async (segText, prior, signal) => {
+    calls.push({ segText, prior })
+    const ms = delayFor(segText)
+    await new Promise((res, rej) => {
+      const t = setTimeout(res, ms)
+      if (signal) signal.addEventListener('abort', () => { clearTimeout(t); rej(Object.assign(new Error('cancelled'), { cancelled: true })) }, { once: true })
+    })
+    return { ops: opsFor(segText), meta: {} }
+  }
+  const segCfg = { compressPrompt: 'v4', compressV4SegmentChars: 200 }
+  await test('§9a findCut：优先空行，其次换行，再次句末；最小位置之前不切', () => {
+    assert.equal(I.findCut('aaa\n\nbbb\nccc。ddd', 0, 0, 100), 5)
+    assert.equal(I.findCut('aaaa\nbbb。cc', 0, 0, 100), 5)
+    assert.equal(I.findCut('aaaa。bbb', 0, 0, 100), 5)
+    assert.equal(I.findCut('aaaa。bbb', 0, 6, 100), -1)
+  })
+  await test('§9b 分段：边写边切（段落边界）；后段提示词带前段已通过校验的条目；全部成功 ⇒ 完整编译（retracts 生效、有尾段）', async () => {
+    const calls = []
+    const sg = I.createSegmenter({ cfg: segCfg, compileSegment: mkCompile(() => 0, calls) })
+    let acc = ''
+    for (const part of SEGS) {
+      for (let i = 0; i < part.length; i += 40) { acc += part.slice(i, i + 40); sg.feed(acc); await new Promise((r) => setTimeout(r, 3)) }
+    }
+    assert.equal(sg.segments.length, 2, '前两段在 block-end 之前已起飞')
+    assert.ok(calls[1].prior.some((l) => l.startsWith('s1.o1 [REFUTED]')), JSON.stringify(calls[1].prior))
+    const r = await sg.finish(FULL)
+    assert.equal(sg.segments.length, 3)
+    assert.ok(r.meta.v4.incremental && !r.meta.v4.partial)
+    assert.ok(!r.text.includes('先排查权限之外的原因'), '被第二段 retracts 的条目不得出现')
+    assert.ok(r.text.includes('- 查路径配置（已排除权限问题') && r.text.includes('还没弄清的是'), r.text)
+  })
+  await test('§9c 收网到点：已编译前缀 + 原文尾巴逐字（不出尾段）；无已编译前缀 ⇒ null', async () => {
+    const sg = I.createSegmenter({ cfg: segCfg, compileSegment: mkCompile((t) => (t.includes('第三段') ? 5000 : 0)) })
+    sg.feed(SEGS[0] + SEGS[1] + SEGS[2].slice(0, 40))
+    await new Promise((r) => setTimeout(r, 20))
+    const pending = sg.finish(FULL).catch(() => null)
+    await new Promise((r) => setTimeout(r, 20))
+    const p = sg.partial(FULL)
+    assert.ok(p && p.partial, JSON.stringify(p))
+    assert.ok(p.text.endsWith(SEGS[2]), '尾巴必须是原文逐字')
+    assert.ok(p.text.includes('已排除权限问题') && !p.text.includes('所以现在'), p.text)
+    assert.equal(p.stats.compiledSegments, 2); assert.equal(p.stats.rawSuffixChars, SEGS[2].length)
+    sg.cancel('test'); await pending
+    const sg2 = I.createSegmenter({ cfg: segCfg, compileSegment: mkCompile(() => 5000) })
+    sg2.feed(FULL); assert.equal(sg2.partial(FULL), null); sg2.cancel('test')
+  })
+  await test('§9d 中间段失败 ⇒ 从失败段起全部原文（不跳段）；全部失败 ⇒ 抛错；cancel 掐掉在飞请求', async () => {
+    const bad = async (segText) => { if (segText.includes('第二段')) throw new Error('boom'); return { ops: opsFor(segText) } }
+    const sg = I.createSegmenter({ cfg: segCfg, compileSegment: bad })
+    sg.feed(SEGS[0] + SEGS[1] + SEGS[2].slice(0, 5))
+    const r = await sg.finish(FULL)
+    assert.ok(r.meta.v4.partial); assert.ok(r.text.endsWith(SEGS[1] + SEGS[2]), '失败段之后（含第三段）一律原文')
+    assert.ok(!r.text.includes('根因是路径错配'), '失败段之后的成功段不得跳着用')
+    const none = I.createSegmenter({ cfg: segCfg, compileSegment: async () => { throw new Error('x') } })
+    await assert.rejects(none.finish(FULL), /v4-no-compiled-segment/)
+    let aborted = 0
+    const slow = I.createSegmenter({ cfg: segCfg, compileSegment: (t, p, signal) => new Promise((_, rej) => {
+      if (signal.aborted) { aborted++; return rej(new Error('cancelled')) }
+      signal.addEventListener('abort', () => { aborted++; rej(new Error('cancelled')) })
+    }) })
+    slow.feed(FULL)
+    await new Promise((r) => setTimeout(r, 5))
+    slow.cancel('test')
+    await new Promise((r) => setTimeout(r, 5))
+    assert.equal(aborted, slow.segments.length); assert.ok(aborted >= 2)
+  })
+  await test('§9e 分段编译：锚点不在本段 / 关键条目编造 ⇒ 该段失败', async () => {
+    const sg = I.createSegmenter({ cfg: segCfg, compileSegment: async (t) => ({ ops: t.includes('第一段')
+      ? [{ k: 'INCUMBENT', ev: 'derived', text: '改 fakeLoader.js', anchor: '试了 chmod 777' }] : opsFor(t) }) })
+    sg.feed(SEGS[0] + SEGS[1].slice(0, 5))
+    await assert.rejects(sg.finish(SEGS[0] + SEGS[1]), /v4-no-compiled-segment/)
+    assert.equal(sg.segments[0].reason, 'v4-critical-I2')
+  })
+  // birthTransform 端到端：真实流式时序（delta 间隔），分段编译器注入
+  const BS = (index, blockType) => ({ type: 'block-start', index, blockType })
+  const BD = (index, text) => ({ type: 'reasoning-delta', index, text })
+  const BE = (index, text) => ({ type: 'block-end', index, block: { type: 'reasoning', text } })
+  const stream = async function* (text, gapMs = 1) {
+    yield BS(0, 'reasoning')
+    for (let i = 0; i < text.length; i += 60) { yield BD(0, text.slice(i, i + 60)); await new Promise((r) => setTimeout(r, gapMs)) }
+    yield BE(0, text)
+    yield BS(1, 'text'); yield { type: 'text-delta', index: 1, text: 'ok' }; yield { type: 'block-end', index: 1, block: { type: 'text', text: 'ok' } }
+    yield { type: 'finish', reason: { kind: 'end' } }
+  }
+  const runStream = async (compileSegment, cfgOver = {}) => {
+    const traces = []
+    const cfg = { mode: 'birth', dryRun: false, birthMinChars: 300, birthArchive: true, birthArchiveTimeoutMs: 3000, birthFinishWaitMs: 300, finishHeadersGraceMs: 0,
+      birthMinSavedChars: 20, birthTokenGate: false, compressPrompt: 'v4', compressV4SegmentChars: 200, ...cfgOver }
+    const deps = { cfg, trace: (t, d) => traces.push([t, d]), sessionId: 's-inc', archive: async () => 'art://inc',
+      distill: async () => { throw new Error('整块编译不应被调用') },
+      segmenter: (index) => I.createSegmenter({ cfg, compileSegment, trace: (t, d) => traces.push([t, d]), index }) }
+    const out = []
+    for await (const c of I.birthTransform(stream(FULL), deps)) out.push(c)
+    const end = out.find((c) => c.type === 'block-end' && c.index === 0)
+    return { text: end.block.text, traces }
+  }
+  await test('§9f birthTransform：尾段来不及 ⇒ condensed-partial（前缀渲染 + 原文尾巴），尾段请求被取消', async () => {
+    let tailAborted = false
+    const cs = async (segText, prior, signal) => {
+      if (segText.includes('第三段')) {
+        await new Promise((res, rej) => { const t = setTimeout(res, 5000); signal.addEventListener('abort', () => { clearTimeout(t); tailAborted = true; rej(new Error('cancelled')) }) })
+      }
+      return { ops: opsFor(segText) }
+    }
+    const { text, traces } = await runStream(cs)
+    const cond = traces.find(([t]) => t === 'birth-condensed')
+    assert.ok(cond && cond[1].why === 'condensed-partial', JSON.stringify(traces.filter(([t]) => /birth-(pass|cond)/.test(t))))
+    assert.ok(text.endsWith(SEGS[2]) && text.includes('已排除权限问题'), text)
+    assert.ok(traces.filter(([t]) => t === 'v4-segment-fired').length >= 3)
+    await new Promise((r) => setTimeout(r, 10))
+    assert.ok(tailAborted, '用了部分结果后，尾段请求必须取消')
+  })
+  await test('§9g birthTransform：各段都及时 ⇒ condensed（完整编译，无原文尾巴）', async () => {
+    const { text, traces } = await runStream(async (segText) => ({ ops: opsFor(segText) }))
+    assert.ok(traces.some(([t, d]) => t === 'birth-condensed' && d.why === 'condensed'))
+    assert.ok(!text.includes('最后的想法') && text.includes('还没弄清的是'), text)
+  })
+  await test('§9h birthTransform：块低于门槛 ⇒ 已起飞的分段全部取消，原文放行', async () => {
+    let aborted = 0
+    const cs = (t, p, signal) => new Promise((_, rej) => signal.addEventListener('abort', () => { aborted++; rej(new Error('cancelled')) }))
+    const { text, traces } = await runStream(cs, { birthMinChars: 100000 })
+    assert.equal(text, FULL)
+    await new Promise((r) => setTimeout(r, 5))
+    assert.ok(aborted >= 2, 'aborted=' + aborted)
+    assert.ok(traces.some(([t, d]) => t === 'v4-segments-cancelled' && d.why === 'below-floor'))
+  })
+  await test('§9i makeV4SegmentCompiler：分段提示词（带此前已标注）、promptVersion 加 :seg、解析失败抛错', async () => {
+    const p = I.buildCompressPromptV4Segment('SEG', ['s1.o1 [FACT] a'])
+    assert.ok(p.startsWith(I.buildCompressPromptV4('').slice(0, -('【上一轮思维链】\n'.length))), '规则前缀与整块 v4 逐字相同（缓存前缀稳定）')
+    assert.ok(p.endsWith('【此前已标注】\ns1.o1 [FACT] a\n\n【本段】\nSEG'))
+    assert.equal(I.buildCompressPromptV4Segment('SEG', []), I.buildCompressPromptV4('SEG'))
+  })
 
   // ═══ §8 cf-eval ═══════════════════════════════════════════════════════════
   await test('§8 cf-eval v4 变体：与线上同一路径（成功 = 渲染稿；失败 = 原文 + ok:false）', async () => {

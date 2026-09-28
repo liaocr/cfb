@@ -49,6 +49,10 @@ export interface CotFormBConfig {
   compressV4Tail?: boolean
   /** 仅 v4：硬不变量拒绝占比超过它 ⇒ 整块原文（缺省 0.5） */
   compressV4MaxRejectRatio?: number
+  /** 仅 v4（v12.3）：流式增量编译 —— 思考还在写时按段起飞副模型调用，收网只等最后一段；来不及 ⇒ 已编译前缀 + 原文尾巴。缺省 true */
+  compressV4Incremental?: boolean
+  /** 仅 v4 增量：目标段长（字符，缺省 1200；在段落 / 行 / 句末处切，0.6–1.5 倍浮动） */
+  compressV4SegmentChars?: number
   /** v11.7（opt-in，缺省 false）：把 v2/v3 压缩提示词的固定规则前缀放进 system 消息、原文放 user 消息（字节等价），让 DeepSeek Context Caching 命中规则前缀；打开后 promptVersion 追加 ':sys' */
   compressSystemPrompt?: boolean
   birthCancelOnGiveUp?: boolean
@@ -226,6 +230,12 @@ export declare function buildCompressPromptV3(cot: string, minChars?: number, ma
 export declare function buildCompressPromptV4(cot: string): string
 /** v4 渲染预算（字符）：compressV4BudgetChars，未设则 compressTargetMax */
 export declare function v4Budget(cfg: CotFormBConfig | null | undefined): number
+/** v4 流式增量编译是否开启（compressPrompt==='v4' 且 compressV4Incremental!==false） */
+export declare function v4Incremental(cfg: CotFormBConfig | null | undefined): boolean
+/** 增量目标段长（字符） */
+export declare function v4SegmentChars(cfg: CotFormBConfig | null | undefined): number
+/** 分段提示词：规则前缀与整块 v4 逐字相同；priorLines 为空时与 buildCompressPromptV4(seg) 完全相同 */
+export declare function buildCompressPromptV4Segment(seg: string, priorLines?: string[]): string
 
 // ── compress-v4-ops 编译器（src/compile-v4.js，纯函数） ──
 export type V4Kind = 'FACT' | 'COMPUTED' | 'INCUMBENT' | 'REFUTED' | 'SHELVED' | 'OPEN' | 'PLAN'
@@ -238,11 +248,15 @@ export declare const V4_KIND2: V4Kind2[]
 export interface V4Op {
   id: string; idx: number; k: V4Kind | string; ev: V4Ev; kind2: V4Kind2 | null
   text: string; anchor: string; key: string; src: string; alt: string; why: string; trigger: string; supersedes: string; deps: string[]
+  /** v12.3：本条推翻的此前条目 id（可跨段，如 's1.o2'）；被推翻的条目在合并时移除 */
+  retracts?: string[]
 }
 export interface V4Stats {
   outputChars: number; ops?: number; valid?: number; rejected?: Record<string, number>; converted?: number
   inventedSample?: string[]; selected?: number; kinds?: Record<string, number>
   dropped?: { restate: number; verify: number; budget: number }; lang?: 'zh' | 'en'; budget?: number; chars?: number
+  /** v12.3 增量：原文尾巴字符数 / 已编译段数 / 总段数 / 是否部分结果 */
+  rawSuffixChars?: number; compiledSegments?: number; segments?: number; incremental?: boolean; partial?: boolean
 }
 /** 容错解析副模型输出（{ops:[…]} / 裸数组 / 围栏 / 前后废话 / JSON Lines） */
 export declare function parseOps(output: string): { ops: Record<string, unknown>[] } | { error: string }
@@ -260,6 +274,39 @@ export declare function renderLang(raw: string): 'zh' | 'en'
 /** 副模型输出 + 原文 ⇒ 出生文本；失败返回 ok:false（调用方原文放行） */
 export declare function compileV4(output: string, raw: string, cfg?: CotFormBConfig, budget?: number | null):
   { ok: true; text: string; stats: V4Stats } | { ok: false; reason: string; stats: V4Stats }
+/** 已解析条目 ⇒ 出生文本；opts.rawSuffix 非空 ⇒ 不出尾段，渲染后逐字接上原文尾巴 */
+export declare function compileOpsV4(rawOps: unknown[], raw: string, cfg?: CotFormBConfig, budget?: number | null, stats?: V4Stats, opts?: { rawSuffix?: string }):
+  { ok: true; text: string; stats: V4Stats } | { ok: false; reason: string; stats: V4Stats }
+/** 拒绝占比（dup / I7 / retracted 不计入） */
+export declare function v4RejectRatioOf(v: { rejected: { rule: string }[]; total: number }): number
+/** 多段条目合并：id 加 's{n}.' 前缀，段内 deps / retracts 同步加前缀，跨段引用原样保留 */
+export declare function mergeSegmentOps(segs: { n: number; ops: unknown[] }[]): Record<string, unknown>[]
+/** 给后段提示词的「此前已标注」行（最多 max 条，取最近的） */
+export declare function priorLines(kept: V4Op[], max?: number): string[]
+
+// ── v12.3 流式增量编译（src/segment-v4.js） ──
+/** text[minAt, to) 内最后一个切点（空行 > 换行 > 句末）；没有 ⇒ -1 */
+export declare function findCut(text: string, from: number, minAt: number, to: number): number
+/** text[from, to) 内第一个切点（换行或句末之后）；没有 ⇒ -1 */
+export declare function findFirstCut(text: string, from: number, to: number): number
+export interface V4SegmentState {
+  n: number; start: number; end: number; text: string; status: 'pending' | 'ok' | 'failed'
+  ops: Record<string, unknown>[] | null; kept: V4Op[]; reason: string | null; ms: number | null
+}
+export type V4SegmentCompile = (segText: string, priorLines: string[], signal: AbortSignal,
+  opts: { onHeaders?: (info: { status: number; ttfbMs: number }) => void; trace?: (tag: string, data: object) => void }) => Promise<{ ops: unknown[]; meta?: Record<string, unknown> }>
+export interface V4Segmenter {
+  /** 每个 reasoning-delta 调用一次，传当前累积全文 */
+  feed(text: string): void
+  /** block-end：送出最后一段，等全部段落定，合并；有失败段 ⇒ 连续成功前缀 + 原文尾巴；一段都没成 ⇒ reject */
+  finish(raw: string, signal?: AbortSignal, opts?: { onHeaders?: (info: { status: number; ttfbMs: number }) => void; v4Budget?: number }): Promise<{ text: string; meta: Record<string, unknown> }>
+  /** 同步取「已编译前缀 + 原文尾巴」；没有可用前缀 ⇒ null */
+  partial(raw: string, budget?: number): { text: string; partial: boolean; stats: V4Stats } | null
+  /** 取消全部在飞的段 */
+  cancel(why?: string): void
+  readonly segments: V4SegmentState[]
+}
+export declare function createSegmenter(opts: { cfg: CotFormBConfig; compileSegment: V4SegmentCompile; trace?: (tag: string, data: object) => void; index?: number }): V4Segmenter
 
 /** content 双兼容：纯字符串 或 [{type:'text',text}] 块数组 */
 export declare function textOfContent(content: unknown): string
@@ -341,6 +388,8 @@ export declare function wideShare(text: string): number
 export declare function makeBirthCompiler(
   cfg: CotFormBConfig,
 ): (input: unknown, signal?: AbortSignal, budget?: { onHeaders?: (info: { status: number; ttfbMs: number }) => void; trace?: (tag: string, data: object) => void; [k: string]: unknown }) => Promise<{ text: string; meta: Record<string, unknown> }>
+/** v12.3 分段编译器工厂：同一模型关思考，promptVersion 加 ':seg' */
+export declare function makeV4SegmentCompiler(cfg: CotFormBConfig): V4SegmentCompile
 /** 取消一个 birth 任务仍在飞的提纯（已落地的结果绝不取消）。返回是否真的取消了。 */
 export declare function birthCancelFlying(task: unknown, cfg?: CotFormBConfig, trace?: (tag: string, data: object) => void, why?: string): boolean
 /** 此刻物理水位（tokenMeter 优先，其次 surfaceChars/4 估算），供 birth-econ 观测。 */

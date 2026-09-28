@@ -95,14 +95,16 @@ export function normalizeOp(o, i) {
   const k = str(o.k ?? o.kind ?? o.type, 20).toUpperCase()
   const ev = str(o.ev ?? o.evidence, 20).toLowerCase()
   const kind2 = str(o.kind2 ?? o.role, 20).toLowerCase()
-  const deps = Array.isArray(o.deps) ? o.deps.map((d) => str(d, 20)).filter(Boolean).slice(0, 8) : []
+  const ids = (x) => (Array.isArray(x) ? x : typeof x === 'string' && x ? [x] : []).map((d) => str(d, 24)).filter(Boolean).slice(0, 8)
+  const deps = ids(o.deps)
+  const retracts = ids(o.retracts)
   return {
     id: str(o.id, 20) || 'o' + (i + 1), idx: i, k,
     ev: V4_EVS.includes(ev) ? ev : 'derived',
     kind2: V4_KIND2.includes(kind2) ? kind2 : null,
     text: str(o.text, CAP.text), anchor: str(o.anchor, CAP.anchor), key: str(o.key, CAP.key),
     src: str(o.src, CAP.src), alt: str(o.alt, CAP.alt), why: str(o.why, CAP.why),
-    trigger: str(o.trigger, CAP.trigger), supersedes: str(o.supersedes, CAP.supersedes), deps,
+    trigger: str(o.trigger, CAP.trigger), supersedes: str(o.supersedes, CAP.supersedes), deps, retracts,
   }
 }
 
@@ -155,6 +157,14 @@ export function validateOps(rawOps, raw) {
     seen.add(sig)
     op.src = op.src.replace(/^tool:\s*/i, '')
     kept.push(op)
+  }
+  // 增量编译：后段条目可以显式推翻前段条目（retracts）。被推翻的条目移除（不计入硬拒绝）。
+  const retracted = new Set()
+  for (const op of kept) for (const r of op.retracts) retracted.add(r)
+  if (retracted.size) {
+    for (let i = kept.length - 1; i >= 0; i--) {
+      if (retracted.has(kept[i].id)) { rejected.push({ id: kept[i].id, k: kept[i].k, rule: 'retracted' }); kept.splice(i, 1) }
+    }
   }
   // I7：同 key 保留最后一个；被取代者若很短且新值没写 supersedes，就把旧值挂上去（「取代 X」）
   const lastByKey = new Map()
@@ -309,7 +319,22 @@ export function compileV4(output, raw, cfg = {}, budget = null) {
   const stats = { outputChars: String(output || '').length }
   const parsed = parseOps(output)
   if (parsed.error) return { ok: false, reason: 'v4-' + parsed.error, stats }
-  const v = validateOps(parsed.ops, raw)
+  return compileOpsV4(parsed.ops, raw, cfg, budget, stats)
+}
+
+/** 硬拒绝占比阈值（schema / I1–I8；去重、I7、retracted 不算「不可信」）。 */
+export function v4RejectRatioOf(v) {
+  const hard = v.rejected.filter((r) => r.rule !== 'dup' && r.rule !== 'I7' && r.rule !== 'retracted').length
+  return v.total ? hard / v.total : 0
+}
+const maxRejectRatio = (cfg) => (typeof cfg.compressV4MaxRejectRatio === 'number' && cfg.compressV4MaxRejectRatio >= 0 && cfg.compressV4MaxRejectRatio <= 1 ? cfg.compressV4MaxRejectRatio : 0.5)
+
+/**
+ * 从已解析的条目编译（整块与增量共用）。
+ * @param opts.rawSuffix 增量编译的「原文尾巴」：尚未编译完的最新一段推理，逐字接在渲染稿后面（此时不出尾段）
+ */
+export function compileOpsV4(rawOps, raw, cfg = {}, budget = null, stats = {}, opts = {}) {
+  const v = validateOps(rawOps, raw)
   const byRule = {}
   for (const r of v.rejected) byRule[r.rule] = (byRule[r.rule] || 0) + 1
   Object.assign(stats, { ops: v.total, valid: v.kept.length, rejected: byRule, converted: v.converted.length })
@@ -318,18 +343,47 @@ export function compileV4(output, raw, cfg = {}, budget = null) {
   if (v.fatal) return { ok: false, reason: 'v4-' + v.fatal, stats }
   if (!v.kept.length) return { ok: false, reason: 'v4-no-valid-ops', stats }
   // 副模型在这块上整体不可信（锚点对不上、编造多）⇒ 整块原文，而不是拼一份残缺的状态
-  const hard = v.rejected.filter((r) => r.rule !== 'dup' && r.rule !== 'I7').length
-  const maxRatio = typeof cfg.compressV4MaxRejectRatio === 'number' && cfg.compressV4MaxRejectRatio >= 0 && cfg.compressV4MaxRejectRatio <= 1 ? cfg.compressV4MaxRejectRatio : 0.5
-  if (v.total >= 2 && hard / v.total > maxRatio) return { ok: false, reason: 'v4-reject-ratio', stats }
+  if (v.total >= 2 && v4RejectRatioOf(v) > maxRejectRatio(cfg)) return { ok: false, reason: 'v4-reject-ratio', stats }
   const lang = renderLang(raw)
   const b = Number.isFinite(budget) && budget > 0 ? budget
     : (typeof cfg.compressV4BudgetChars === 'number' && cfg.compressV4BudgetChars > 0 ? cfg.compressV4BudgetChars
       : (typeof cfg.compressTargetMax === 'number' && cfg.compressTargetMax > 0 ? cfg.compressTargetMax : 450))
   const sel = selectOps(v.kept, { budget: b, lang })
-  const text = renderOps(sel.chosen, { lang, tail: cfg.compressV4Tail !== false })
+  const suffix = typeof opts.rawSuffix === 'string' ? opts.rawSuffix : ''
+  // 有原文尾巴时不出尾段：尾巴本身就是最新的推理，「所以现在…」会比它旧
+  const body = renderOps(sel.chosen, { lang, tail: !suffix && cfg.compressV4Tail !== false })
+  const text = suffix.trim() ? body + '\n\n' + suffix.replace(/^\s+/, '') : body
   const kinds = {}
   for (const o of sel.chosen) kinds[o.k] = (kinds[o.k] || 0) + 1
   Object.assign(stats, { selected: sel.chosen.length, kinds, dropped: sel.dropped, lang, budget: b, chars: text.length })
+  if (suffix) stats.rawSuffixChars = suffix.length
   if (!text.trim()) return { ok: false, reason: 'v4-empty-render', stats }
   return { ok: true, text, stats }
 }
+
+// ── 增量编译的辅助（src/segment-v4.js 使用）───────────────────────────────
+/**
+ * 合并各段的条目：id 加段前缀（s{n}.{id}）使全局唯一；段内 deps / retracts 同样加前缀，
+ * 指向前段的全局 id（副模型从【此前已标注】里抄来的）原样保留。
+ * @param segments [{ n, ops }]（按段序）
+ */
+export function mergeSegmentOps(segments) {
+  const out = []
+  for (const seg of segments) {
+    const local = new Set((seg.ops || []).map((o, i) => str(o && o.id, 20) || 'o' + (i + 1)))
+    const g = (id) => (local.has(id) ? 's' + seg.n + '.' + id : id)
+    ;(seg.ops || []).forEach((o, i) => {
+      if (!o || typeof o !== 'object') return
+      const id = str(o.id, 20) || 'o' + (i + 1)
+      const fix = (x) => (Array.isArray(x) ? x : typeof x === 'string' && x ? [x] : []).map((d) => g(str(d, 24)))
+      out.push({ ...o, id: 's' + seg.n + '.' + id, deps: fix(o.deps), retracts: fix(o.retracts) })
+    })
+  }
+  return out
+}
+
+/** 给下一段提示词用的「此前已标注」行：只列通过校验的条目，最近的优先，至多 max 条。 */
+export function priorLines(kept, max = 30) {
+  return kept.slice(-max).map((o) => o.id + ' [' + o.k + '] ' + stripEnd(o.text).slice(0, 120))
+}
+

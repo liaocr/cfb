@@ -26,7 +26,8 @@ export function compressPromptVersion(cfg) {
   const sys = cfg && cfg.compressSystemPrompt === true ? ':sys' : ''
   if (v === 'v2') return 'compress-v2' + sys
   // v4 把渲染预算与尾段开关写进版本号（它们改变产物；提示词本身不随参数变化）
-  if (v === 'v4') return 'compress-v4-ops:' + v4Budget(cfg) + (cfg && cfg.compressV4Tail === false ? ':notail' : '') + sys
+  if (v === 'v4') return 'compress-v4-ops:' + v4Budget(cfg) + (cfg && cfg.compressV4Tail === false ? ':notail' : '') +
+    (v4Incremental(cfg) ? ':inc' + v4SegmentChars(cfg) : '') + sys
   // v3 把目标长度写进版本号 ⇒ trace / BOOT / A-B 分桶自动带上参数，无需另记字段。
   const t = compressTargets(cfg)
   return 'compress-v3:' + t.min + '-' + t.max + sys
@@ -46,6 +47,14 @@ export function v4Budget(cfg) {
   const x = cfg && cfg.compressV4BudgetChars
   if (typeof x === 'number' && Number.isFinite(x) && x > 0) return Math.round(x)
   return compressTargets(cfg).max
+}
+
+/** v4 流式增量编译是否打开（缺省开；只对 v4 有意义）。 */
+export function v4Incremental(cfg) { return !!cfg && cfg.compressPrompt === 'v4' && cfg.compressV4Incremental !== false }
+/** v4 增量编译的分段目标长度（字符）。 */
+export function v4SegmentChars(cfg) {
+  const x = cfg && cfg.compressV4SegmentChars
+  return typeof x === 'number' && Number.isFinite(x) && x >= 200 ? Math.round(x) : 1200
 }
 
 /** v3 的绝对长度目标（字符）。越界/非数一律回落缺省，绝不抛错。 */
@@ -142,8 +151,7 @@ export function buildCompressPromptV3(cot, minChars, maxChars) {
  *   副模型的文风与长度偏好无法再影响结果；每条都必须带原文逐字锚点，编造可被机械检出。
  *   末尾标记与 v2/v3 相同 ⇒ splitCompressPrompt（compressSystemPrompt）照样可用。
  */
-export function buildCompressPromptV4(cot) {
-  return (
+const V4_HEAD = (
     '你是推理解析器。把下面这段 Agent 上一轮的思维链拆成原子条目，只输出一个 JSON 对象。' +
     '不要解释，不要 markdown 代码围栏。你不写摘要，只做标注；最终文本由程序按你的标注生成。\n\n' +
     '输出格式：\n' +
@@ -168,9 +176,24 @@ export function buildCompressPromptV4(cot) {
     '3. 原文仍在犹豫或存疑的，标 OPEN、SHELVED 或 ev=guess，不得升级为已确定。\n' +
     '4. 被放弃的路一定要标出来（REFUTED 或 SHELVED）：它们防止同一条死路再走一遍。\n' +
     '5. 同一内容只标一次；逐字复读工具输出的句子标 kind2=restate。\n' +
-    '6. 不使用"你 / 您"，不写祈使句。\n\n' +
-    '【上一轮思维链】\n' +
-    cot
-  )
+    '6. 不使用"你 / 您"，不写祈使句。\n' +
+    '7. 若给出了【此前已标注】（同一段推理前面部分的标注结果），只标注【本段】里的新内容，不要重复；' +
+    '本段推翻或取代了此前某条时，在新条目里写 retracts（被推翻条目的 id 列表）；anchor 仍须摘自【本段】。\n\n'
+)
+
+export function buildCompressPromptV4(cot) {
+  return V4_HEAD + '【上一轮思维链】\n' + cot
+}
+
+/**
+ * v12.2 增量编译的分段提示词：规则前缀与整块 v4 **逐字相同**（缓存前缀稳定），
+ * 此前片段已编译出的条目放在 user 段里（它每段都变，放进 system 会打碎缓存）。
+ * @param seg   本段推理原文
+ * @param prior 此前片段的条目摘要行（'s1.o3 [INCUMBENT] …'），可空
+ */
+export function buildCompressPromptV4Segment(seg, prior = []) {
+  const lines = Array.isArray(prior) ? prior.filter((x) => typeof x === 'string' && x) : []
+  if (!lines.length) return V4_HEAD + '【上一轮思维链】\n' + seg
+  return V4_HEAD + '【上一轮思维链】\n【此前已标注】\n' + lines.join('\n') + '\n\n【本段】\n' + seg
 }
 

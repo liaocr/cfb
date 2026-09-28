@@ -10,7 +10,9 @@ import fs from 'node:fs'
 import { birthTransform, deriveArtHandle, readPressure } from './birth.js'
 import { bootRecord } from './boot-record.js'
 import { normalizeConfig } from './config.js'
-import { makeBirthCompiler } from './distill.js'
+import { makeBirthCompiler, makeV4SegmentCompiler } from './distill.js'
+import { v4Incremental, v4Budget } from './prompts.js'
+import { createSegmenter } from './segment-v4.js'
 import { mkHandleProbe } from './handle-probe.js'
 import { createHostFollower } from './host-follow.js'
 import { streamProvenanceRecord } from './messages.js'
@@ -136,8 +138,13 @@ export function apply(ctx, config = {}) {
             return null
           }
         },
-        // 唯一压缩器 = 宿主模型按 compress 提示词（v3 / v2）压缩本段 reasoning（100% 跟随宿主 provider/model）
+        // 唯一压缩器 = 宿主模型按 compress 提示词（v3 / v2 / v4）压缩本段 reasoning（100% 跟随宿主 provider/model）
         distill: makeBirthCompiler(streamCfg),
+        // v12.2 v4 流式增量编译：思考过程中分段标注；block-end 只剩最后一段（src/segment-v4.js）
+        segmenter: v4Incremental(streamCfg)
+          ? (() => { const cs = makeV4SegmentCompiler(streamCfg); return (index) => createSegmenter({ cfg: streamCfg, compileSegment: cs, trace, index }) })()
+          : null,
+        v4Budget: v4Budget(streamCfg),
         // ★ 优化1：句柄内存秒算（与 store.deriveHandle 同一公式，纯函数）
         deriveHandle: (sessionId, text) => deriveArtHandle(sessionId, text),
         // ★ 优化2：思考一开始就捂热连接（HEAD，零 token）

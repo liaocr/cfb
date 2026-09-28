@@ -1,4 +1,4 @@
-# 架构（v12.2，开发者视角）
+# 架构（v12.3，开发者视角）
 
 > 面向改代码的人：模块怎么分、数据怎么流、哪些不变式不能碰、加东西该改哪里。
 > 使用与配置见根目录 [`README.md`](../README.md)；设计沿革见 [`CHANGELOG.md`](../CHANGELOG.md)；v12.0 之前的文件可从 git `cfba57b` 取回。
@@ -26,6 +26,7 @@ plugin.js ───────────────────────�
   ├─ distill.js ───────── 副模型调用（重试降级 / 对冲 / 传输 trace）+ makeBirthCompiler（compress-only）
   │    ├─ prompts.js ─ config.js
   │    ├─ compile-v4.js     v12.2 compress-v4-ops 确定性编译器（parse → validate → select → render）→ fidelity.js, tokens.js
+  │    ├─ segment-v4.js     v12.3 v4 流式增量编译（分段器）→ compile-v4.js, prompts.js
   │    └─ transport.js ─ provider.js ─ config.js
   └─ messages.js         出站消息溯源（只观测）
 ```
@@ -57,7 +58,7 @@ birthTransform(inner, deps)
   finish                 → birthFinish(task, deps)   ← 押后到最后
                               等 min(finishWaitMs, 真工期)；到点但已收到 200 响应头 ⇒ 再宽限 finishHeadersGraceMs（一次）
                               判定顺序：归档 → 压缩成功 → 非空白 → 无发明标识符 → 净省字符 → token 不增
-                              结局：condensed | below-floor/dry-run/… | archive-failed(-early)/archive-timeout |
+                              结局：condensed | condensed-partial（v4 增量）| below-floor/dry-run/… | archive-failed(-early)/archive-timeout |
                                     distill-failed(-early)/distill-timeout | empty-candidate | invented-identifier |
                                     no-gain | no-token-gain
                               任何放行 ⇒ birthCancelFlying 取消仍在飞的提纯
@@ -83,6 +84,26 @@ trace: compiler-v4-compiled（每次）；birth-distill-settled / birth-distill-
 ```
 
 与理论规格的差异登记在 `compile-v4.js` 文件头：λ 控制器（需要跨轮传感器）以固定预算代替；渲染按组而非纯贪心顺序。
+
+#### 2.1.1 v4 流式增量编译（v12.3，`segment-v4.js`；`compressV4Incremental` 缺省开）
+
+```
+reasoning-delta  → h.seg ??= deps.segmenter(index)；h.seg.feed(累积全文)
+                     攒够 segChars ⇒ 在 [0.6,1.0]×segChars 找最后一个边界（空行 > 换行 > 句末），
+                     否则 (1.0,1.5]× 找第一个，否则硬切 ⇒ fire(段)：
+                       prior = 已 ok 段的 kept 条目（priorLines，≤30 行；不等待在飞的段）
+                       compileSegment(段, prior, signal) = makeV4SegmentCompiler：buildCompressPromptV4Segment → generateDistillation → parseOps
+                       本段 validateOps（锚点必须在本段）⇒ ok / failed(reason)
+block-end        → birthStart(entry{seg})：distill = seg.finish（送出尾段，等全部落定）；task.partial = seg.partial
+                     低于门槛 / 停用 / 归档关 / 无 store ⇒ seg.cancel
+seg.finish       → 连续 ok 前缀 P（遇到第一个 failed 停止）
+                     P = 全部 ⇒ mergeSegmentOps → compileOpsV4（全文校验、retracts 生效、选取、渲染、尾段）
+                     P ⊂ 全部 ⇒ compileOpsV4(…, { rawSuffix: 原文[P 末尾:] })  —— 不出尾段，逐字接原文
+                     P = ∅   ⇒ throw v4-no-compiled-segment（原文放行）
+finish 到点      → dist === null 且 task.partial() 非空 ⇒ 同一组闸 ⇒ condensed-partial；birthCancelFlying('partial-used')
+```
+
+不变式：原文尾巴逐字；失败段之后不跳段；在飞段在任何放行 / 中断 / 提前退出路径上都被取消（`dropSeg` / `dropHeldSegs`）。
 
 ### 2.2 副模型调用（`distill.js`）
 
@@ -152,7 +173,8 @@ CAS（原文归档）是宿主注入的 `cmbStore` 服务（`ctx.get('cmbStore')
 | provider-endpoint | 端点解析 |
 | core | 默认值、配置归一化、传输层、副模型调用、宿主模型跟随（birth 全链路，本机 HTTP 收包验证）、成本模型、回归钉子 |
 | compress | **v12.1 主线**：v2/v3 提示词与版本号裁决（v3 缺省）、退避、4MiB 上限、终止闸、promptVersion 贯通、**发明标识符闸**（判据 + birthFinish 端到端 + 开关 + analyze-efficiency 分布）、onboard 漂移检测 |
-| v4 | **v12.2 compress-v4-ops**：提示词 / 版本号 / 配置、容错解析、每条硬不变量、选取（必留 / 冗余 / 预算 / 闭包）、渲染（替代先行、证据定粘性、分组、尾段、中英）、整块回退的每条原因、本机 HTTP → makeBirthCompiler → birth 全链路（成功替换 / 失败原文放行）、cf-eval v4 变体 |
+| v4-live | **v12.3** `tools/v4-live.mjs` 离线端到端：本地假 DeepSeek（主模型流 + 副模型），录制 → 三模式回放（v4 整块超时 / v4 增量替换成功）、钥匙不落盘、`--replay` |
+| v4 | **v12.2 compress-v4-ops** + **v12.3 §9 流式增量**（切点、分段合并 / retracts、到点部分结果、失败不跳段、取消、birthTransform 端到端）：提示词 / 版本号 / 配置、容错解析、每条硬不变量、选取（必留 / 冗余 / 预算 / 闭包）、渲染（替代先行、证据定粘性、分组、尾段、中英）、整块回退的每条原因、本机 HTTP → makeBirthCompiler → birth 全链路（成功替换 / 失败原文放行）、cf-eval v4 变体 |
 | birth | birth 主路径（含真实 dsh-llm 不变式校验，找不到宿主安装时用替身并 WARN）、放弃即取消、句柄可归因（T34） |
 | robustness | 退役开关不生效、pre-step 不被拖垮、trace 审计器、taskId 贯通、传输层错误形态、句柄读回探针契约 |
 | hedge | 对冲与响应头宽限（本机 HTTP 可控延迟） |

@@ -6,6 +6,45 @@
 
 ---
 
+## v12.3.0（2026-09-28）v4 流式增量编译：解决 v4 的 `distill-timeout`
+
+**问题**：v4 的副模型输出是带锚点的 JSON，比 v3 散文长 2–3 倍；整块等到 `block-end` 才起飞，
+收网窗口（`birthFinishWaitMs` 1500 + 响应头宽限 1500）装不下 ⇒ 长块大量 `distill-timeout`，白压。
+
+**解法**：不等思考写完。思考**还在流**的时候，每攒够一段（缺省 1200 字，在空行 / 换行 / 句末处切）就起飞一次副模型调用，
+只标注这一段；`block-end` 时只剩最后一小段在飞。收网到点仍没落定 ⇒ 用**已编译的连续前缀 + 原文尾巴（逐字）**替换，
+而不是整块原文放行。等待时间从「整块生成时长」降到「最后一段生成时长」，且到点也不再白压。
+
+### 新增
+- `src/segment-v4.js`：`createSegmenter`（feed / finish / partial / cancel）、`findCut` / `findFirstCut`。
+  - 切点：[0.6, 1.0] 倍段长内最后一个边界，否则 (1.0, 1.5] 倍内第一个，否则按段长硬切；一次 feed 可切多段。
+  - 每段单独校验（锚点必须在本段原文、I2 编造 fatal、拒绝占比）；失败段之后一律原文（**不跳段**，保持时序）。
+  - 后段提示词带「此前已标注」（只取当下已落定的前段，**绝不等待前段** —— 等待会把延迟串起来）。
+- `src/prompts.js`：`buildCompressPromptV4Segment`（规则前缀与整块 v4 逐字相同 ⇒ 缓存前缀稳定；无前段条目时与整块提示词完全相同）；
+  规则 7：`retracts` 可推翻此前条目。`v4Incremental` / `v4SegmentChars`；版本号加 `:inc<段长>`。
+- `src/compile-v4.js`：`compileOpsV4`（`rawSuffix` ⇒ 不出尾段、逐字接原文尾巴）、`mergeSegmentOps`（id 加 `s<n>.` 前缀，段内引用同步改写，跨段引用保留）、
+  `priorLines`、`v4RejectRatioOf`（dup / I7 / retracted 不计入拒绝占比）；`retracts` 在合并时移除被推翻条目（规则 `retracted`）。
+- `src/distill.js`：`makeV4SegmentCompiler`（同一模型关思考；`promptVersion` 加 `:seg`）。
+- `src/birth.js`：reasoning-delta 时喂分段器；`birthStart` 用 `seg.finish` 代替整块编译并挂 `task.partial`；
+  `birthFinish` 到点 ⇒ 先试 `task.partial()`，过同样的闸（非空白 / 发明标识符 / 净省 / token），成功结局 **`condensed-partial`**，并取消仍在飞的段；
+  低于门槛 / 停用 / 归档关 / 无 store / 流中断 / 消费方提前退出 ⇒ 全部在飞段取消。`birth-condensed` 增加 `distillMs` / `promptVersion` / `v4`。
+- 配置：`compressV4Incremental`（缺省 true，仅 v4 生效）、`compressV4SegmentChars`（1200）。
+- trace：`v4-segment-fired` / `v4-segment-settled` / `v4-segments-cancelled` / `v4-segment-error`。
+- **`tools/v4-live.mjs`：真机测试**。录制真实 DeepSeek 主模型（thinking enabled）的推理流（逐 delta 记时刻），
+  按原时序回放进**生产代码** birthTransform，副模型走生产代码（同一模型关思考），v3 / v4 整块 / v4 增量同一录音对比；
+  输出 `report.md`（汇总、逐块、产物全文）/ `report.json`（含每块 trace 时间线）/ `recordings.json`（`--replay` 复用）。钥匙只从环境变量读。
+- 测试：`test/v4.selftest.mjs` §9（9 例：切点、分段 + retracts、到点部分结果、中间段失败不跳段、取消、分段校验、birthTransform 端到端三种结局）；
+  新套件 `test/v4-live.selftest.mjs`（本地假 DeepSeek：录制 → 三模式回放，v4 整块超时 / 增量替换成功、钥匙不落盘、--replay）。
+
+### 修复
+- v4 超时的本质问题（见上）。
+
+### 验证
+- `node verify.mjs`：558 通过 / 0 失败 / 1 跳过（15 套件）；`tsc --strict index.d.ts` 通过；`manifest --check` 通过。
+- 真机：**待跑**（`DEEPSEEK_API_KEY=… node tools/v4-live.mjs`）。
+
+---
+
 ## v12.2.0（2026-09-28）compress-v4-ops：理论第五卷的 v4 编译器落成生产代码（opt-in，**缺省行为零变化**）
 
 `compressPrompt: 'v4'` 打开。副模型**不再写出生文本**，只把推理拆成带类型的原子条目（JSON ops）；

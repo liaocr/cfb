@@ -242,13 +242,16 @@ export function birthStart(entry, deps = {}) {
     if (!task.shortReason) task.shortReason = why
     if (shortResolve) { const r = shortResolve; shortResolve = null; r(why) }
   }
-  if (cfg.enabled === false || cfg.mode === 'off' || cfg.dryRun === true) { task.belowFloor = true; task.why = cfg.dryRun ? 'dry-run' : 'disabled'; return task }
+  // v12.2 v4 增量编译：block-end 之前已经起飞的分段编译器。任何不压缩的出口都必须掐掉它。
+  const seg = entry.seg && typeof entry.seg.finish === 'function' ? entry.seg : null
+  const dropSeg = (why) => { if (seg) { try { seg.cancel(why) } catch { /* ignore */ } } }
+  if (cfg.enabled === false || cfg.mode === 'off' || cfg.dryRun === true) { dropSeg('disabled'); task.belowFloor = true; task.why = cfg.dryRun ? 'dry-run' : 'disabled'; return task }
   // ★ v11.10 与语言无关的门槛（opt-in）：birthMinTokens 为正数时按 token 估算判定、完全接管字符门槛。
   //   缺省 null ⇒ 行为与 v11.9 逐字一致（仍按 birthMinChars 判）。
   const minTokens = Number.isFinite(cfg.birthMinTokens) && cfg.birthMinTokens > 0 ? cfg.birthMinTokens : null
   const tooShort = minTokens != null ? estimateTokens(raw) < minTokens : raw.length < floor
-  if (!raw.trim() || tooShort) { task.belowFloor = true; task.why = 'below-floor'; return task }
-  if (cfg.birthArchive === false) { task.belowFloor = true; task.why = 'archive-off'; return task }
+  if (!raw.trim() || tooShort) { dropSeg('below-floor'); task.belowFloor = true; task.why = 'below-floor'; return task }
+  if (cfg.birthArchive === false) { dropSeg('archive-off'); task.belowFloor = true; task.why = 'archive-off'; return task }
   // ★ 2026-09-23 v11.6 成本模型字段（**只记录，不参与判定**；见 docs/analysis/AUDIT-V11.5.md §一）。
   //   目的：为「按剩余窗口动态门槛」积累标定数据（R_est 的每轮增量尚未标定，直接接管会抖动）。
   try {
@@ -256,7 +259,7 @@ export function birthStart(entry, deps = {}) {
     if (econ) { econ.rawTokensEst = estimateTokens(raw); task.econ = econ; trace('birth-econ', { index: entry.index, ...econ }) }
   } catch { /* 观测失败绝不影响主流 */ }
   const archive = deps.archive
-  if (typeof archive !== 'function') { task.belowFloor = true; task.why = 'no-store'; return task }
+  if (typeof archive !== 'function') { dropSeg('no-store'); task.belowFloor = true; task.why = 'no-store'; return task }
 
   // ★ 2026-09-21：本任务的取消开关（外部审计 P0-2）。放弃应用时用它掐掉在飞的提纯。
   try {
@@ -290,7 +293,11 @@ export function birthStart(entry, deps = {}) {
     })
 
   // ③ 并发起飞：提纯（100% 跟随宿主模型/provider；端点/钥匙由注入的 distill 决定，本模块不碰）
-  const distill = deps.distill
+  // v12.2：有分段编译器 ⇒ 压缩 = 把最后一段送出并合并各段（task.partial 供收网到点时取「已编译前缀 + 原文尾巴」）
+  const distill = seg
+    ? (text, signal, b) => seg.finish(text, signal, { onHeaders: b && b.onHeaders, v4Budget: deps.v4Budget })
+    : deps.distill
+  if (seg) { task.seg = seg; task.partial = () => seg.partial(raw, deps.v4Budget) }
   const dsignal = task.abort ? task.abort.signal : undefined
   // ★ v11.7 响应头信号：蒸馏一收到响应头就 resolve（排队结束、正在生成）。供 birthFinish 收尾宽限使用。
   let headersResolve = null
@@ -324,6 +331,7 @@ export function birthStart(entry, deps = {}) {
     })
     .then((s) => {
       task.distillState = s
+      task.distillMs = task.firedAt ? Date.now() - task.firedAt : null
       // 提纯终局失败 ⇒ 必定原文放行 ⇒ 没有理由再等（归档仍在后台继续）
       if (!s.ok) noteShort('distill-failed-early')
       return s
@@ -438,9 +446,15 @@ export async function birthFinish(task, deps = {}) {
   // 铁律③：拿不到句柄（或写盘未落地）⇒ 绝不替换原文
   if (!handle) return pass(task.shortReason || (disk === null ? 'archive-timeout' : 'archive-failed'), null)
 
+  // v12.2 v4 增量编译：整块没在收网窗口内完成 ⇒ 取「已编译前缀 + 原文尾巴」，照样走下面全部闸门
+  let partial = null
+  if (dist === null && typeof task.partial === 'function') {
+    try { partial = task.partial() } catch (e) { partial = null; trace('birth-partial-error', { index: task.index, error: String((e && e.message) || e) }) }
+    if (partial && !(partial.text && partial.partial)) partial = null
+  }
   // 零 rules：只有宿主模型提纯成功且净省够本才替换
-  if (dist && dist.ok) {
-    let candidate = dist.text
+  if ((dist && dist.ok) || partial) {
+    let candidate = partial ? partial.text : dist.text
     // ★ 2026-09-23 v11.6 硬断言：替换结果绝不能为空白。
     //   DeepSeek 带 tools 的请求要求每条历史 assistant 都携带 reasoning_content；API 只查字段存在，
     //   但空白内容会让模型失去该轮思维链（H8 事故同形）。空白 ⇒ 原文放行。
@@ -476,7 +490,15 @@ export async function birthFinish(task, deps = {}) {
       return pass('no-token-gain', handle, { netSaved, minSaved, ...tokens, minSavedTokens })
     }
     if (netSaved >= minSaved) {
-      trace('birth-condensed', { index: task.index, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, minSaved, ...tokens, handle, waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0, fidelity: fid, econ: task.econ || null })
+      if (partial) {
+        // 已决定用部分结果 ⇒ 仍在飞的分段（尾段）不再有用
+        birthCancelFlying(task, cfg, trace, 'partial-used')
+        trace('birth-condensed', { index: task.index, why: 'condensed-partial', rawChars: raw.length, outChars: candidate.length, netSaved, minSaved, ...tokens, handle,
+          waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0, fidelity: fid, econ: task.econ || null, v4: partial.stats })
+        return { chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed-partial', rawChars: raw.length, outChars: candidate.length, netSaved, netSavedTokensEst, handle }
+      }
+      trace('birth-condensed', { index: task.index, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, minSaved, ...tokens, handle, waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0, fidelity: fid, econ: task.econ || null,
+        distillMs: task.distillMs ?? null, promptVersion: dist.meta?.promptVersion || null, v4: dist.meta?.v4 || null })
       return { chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, netSavedTokensEst, handle }
     }
     return pass('no-gain', handle, { netSaved, minSaved, ...tokens })
@@ -521,6 +543,8 @@ export function birthTransform(inner, deps = {}) {
 
     // 立即降级放行（abort/异常路径，绝不等待）：无条件给出【原文逐字】（句柄不进上下文）
     // ★ v11.10：降级放行 = 放弃应用 ⇒ 同样掐掉仍在飞的提纯（此前这里不取消，请求白跑到 timeoutMs）。
+    // v12.2：还没 block-end 的块若已起了分段编译，任何提前结束都要掐掉
+    const dropHeldSegs = (why) => { for (const h of held.values()) if (h && h.seg) { try { h.seg.cancel(why) } catch { /* ignore */ } h.seg = null } }
     const flushTask = function* (task, why) {
       const cancelled = birthCancelFlying(task, cfg, trace, why)
       try { trace('birth-flush', { index: task.index, why, rawChars: task.raw.length, cancelled, taskId: task.taskId || null }) } catch { /* ignore */ }
@@ -548,7 +572,15 @@ export function birthTransform(inner, deps = {}) {
           if (t === 'reasoning-delta') {
             const h = held.get(chunk.index)
             // live：delta 实时透传（GUI 不卡顿），同时累积原文供 block-end 结算
-            if (h) { h.text += (chunk.text || ''); yield chunk; continue }
+            if (h) {
+              h.text += (chunk.text || '')
+              // v12.2 v4 增量编译：主模型还在思考时就开始分段标注（切段判断 O(1)；失败绝不影响主流）
+              if (typeof deps.segmenter === 'function') {
+                try { if (!h.seg) h.seg = deps.segmenter(chunk.index); if (h.seg) h.seg.feed(h.text) }
+                catch (e) { h.seg = null; try { trace('v4-segment-error', { index: chunk.index, error: String((e && e.message) || e) }) } catch { /* ignore */ } }
+              }
+              yield chunk; continue
+            }
             yield chunk
             continue
           }
@@ -632,6 +664,7 @@ export function birthTransform(inner, deps = {}) {
               pending.length = 0
             }
             // 源流没给 block-end 的块：绝不补造（源流没关就不许我们关）
+            dropHeldSegs('finish-unclosed')
             held.clear()
             yield chunk
             continue
@@ -645,12 +678,14 @@ export function birthTransform(inner, deps = {}) {
       const flushWhy = sourceError ? 'source-error' : 'no-finish'
       for (const task of pending.sort((a, b) => a.index - b.index)) for (const c of flushTask(task, flushWhy)) yield c
       pending.length = 0
+      dropHeldSegs(flushWhy)
       held.clear()
       drained = true
       if (sourceError) throw sourceError
     } finally {
       // ★ v11.10 消费者提前退出（用户取消 / 宿主 break / return()）：生成器不会再走到上面的收尾，
       //   pending 里的提纯会一直跑到 timeoutMs。本块从未出站 ⇒ 迟到结果不可能被认领 ⇒ 一律取消。
+      if (!drained) dropHeldSegs('consumer-return')
       if (!drained && pending.length) {
         for (const task of pending) birthCancelFlying(task, cfg, trace, 'consumer-return')
         try { trace('birth-consumer-return', { pending: pending.length }) } catch { /* ignore */ }

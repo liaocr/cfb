@@ -25,15 +25,16 @@ export { createHostFollower } from './src/host-follow.js'
 export { createSessionTracker } from './src/session-tracker.js'
 
 // ── 副模型调用 ───────────────────────────────────────────────────────────────
-export { generateDistillation, hedgedDistill, makeBirthCompiler } from './src/distill.js'
+export { generateDistillation, hedgedDistill, makeBirthCompiler, makeV4SegmentCompiler } from './src/distill.js'
 export {
   buildCompressPrompt, buildCompressPromptV3, buildCompressPromptV4, splitCompressPrompt,
-  compressPromptVersion, compressPromptFor, compressTargets, v4Budget,
+  compressPromptVersion, compressPromptFor, compressTargets, v4Budget, v4Incremental, v4SegmentChars, buildCompressPromptV4Segment,
 } from './src/prompts.js'
 export {
-  compileV4, parseOps, normalizeOp, validateOps, selectOps, renderOps, renderLine, renderLang, scoreOp,
-  V4_KINDS, V4_EVS, V4_KIND2,
+  compileV4, compileOpsV4, parseOps, normalizeOp, validateOps, selectOps, renderOps, renderLine, renderLang, scoreOp,
+  mergeSegmentOps, priorLines, v4RejectRatioOf, V4_KINDS, V4_EVS, V4_KIND2,
 } from './src/compile-v4.js'
+export { createSegmenter, findCut, findFirstCut } from './src/segment-v4.js'
 export {
   requestOnce, requestStream, prewarmTargetUrl, retryDelayMs,
   detectResponseProtocol, assembleSseFrames, collectSseFrames, extractFromJsonBody,

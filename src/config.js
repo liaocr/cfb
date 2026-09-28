@@ -188,6 +188,12 @@ export const DEFAULTS = {
   compressV4MaxOutputTokens: 1600,
   compressV4Tail: true,
   compressV4MaxRejectRatio: 0.5,
+  // ★ v12.2 v4 流式增量编译（缺省开，只对 v4 生效）：主模型还在思考时，每攒够 compressV4SegmentChars 字符
+  //   就在段落 / 句子边界切一段送去标注；block-end 时只剩最后一小段。收网到点仍没标完 ⇒
+  //   「已编译前缀的渲染稿 + 未编译部分的原文逐字」（why=condensed-partial），而不是整块原文放行。
+  //   false ⇒ 回到 block-end 才整块编译（src/segment-v4.js 文件头有完整说明）。
+  compressV4Incremental: true,
+  compressV4SegmentChars: 1200,
   // ★ v11.7 缓存友好拆分（opt-in）：把压缩提示词的**固定规则前缀**放进 system 消息、原文放 user 消息。
   //   DeepSeek Context Caching 按「缓存前缀单元」整段匹配（官方 kv_cache 文档 Example 1：system+user 形状），
   //   现状 461 字符规则与原文挤在同一条 user 消息里 ⇒ 实测 prompt_cache_hit_tokens 恒为 0。

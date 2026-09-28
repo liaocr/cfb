@@ -6,8 +6,8 @@
 //   distillOnce / distillOnceStream  非流式 / SSE 两种传输形态，同输入同输出形状
 import crypto from 'node:crypto'
 import { scriptCounts } from './tokens.js'
-import { compressPromptVersion, compressPromptFor, splitCompressPrompt, v4Budget } from './prompts.js'
-import { compileV4 } from './compile-v4.js'
+import { compressPromptVersion, compressPromptFor, splitCompressPrompt, v4Budget, buildCompressPromptV4Segment } from './prompts.js'
+import { compileV4, parseOps } from './compile-v4.js'
 import { endpointUrl, resolveProviderEndpoint, readApiKeyRef, readApiKey } from './provider.js'
 import { settledTraceData } from './trace.js'
 import {
@@ -436,6 +436,31 @@ export function makeBirthCompiler(cfg) {
       throw e
     }
     return { text: out.text, meta: { ...(r.meta || {}), v4 } }
+  }
+}
+
+/**
+ * ★ v12.2 v4 流式增量编译的分段标注器：构造 `compileSegment(segText, prior, signal, { onHeaders, trace })`。
+ *   与 makeBirthCompiler(v4) 同一条传输（重试 / 对冲 / 终止闸 / trace），只返回解析出的 ops（校验与合并在 segment-v4.js）。
+ *   解析失败 ⇒ 抛错 ⇒ 该段算失败（后面的部分以原文逐字出现）。
+ * @param cfg 本条流冻结的配置副本
+ */
+export function makeV4SegmentCompiler(cfg) {
+  const pv = compressPromptVersion(cfg) + ':seg'
+  const v4Max = Number.isFinite(cfg.compressV4MaxOutputTokens) && cfg.compressV4MaxOutputTokens > 0 ? cfg.compressV4MaxOutputTokens : 1600
+  return async (segText, prior, signal, extra = {}) => {
+    const prompt = buildCompressPromptV4Segment(segText, prior)
+    const c = { ...cfg, maxOutputTokens: Math.max(Number(cfg.maxOutputTokens) || 0, v4Max) }
+    if (extra && typeof extra.onHeaders === 'function') c._onHeaders = extra.onHeaders
+    if (cfg.compressSystemPrompt === true) {
+      const sp = splitCompressPrompt(prompt)
+      if (sp) c._promptMessages = [{ role: 'system', content: sp.system }, { role: 'user', content: sp.user }]
+    }
+    const trace = extra && typeof extra.trace === 'function' ? extra.trace : undefined
+    const r = await withCalibration(prompt, generateDistillation(segText, c, signal, prompt, { trace, promptVersion: pv }))
+    const parsed = parseOps(r.text)
+    if (parsed.error) { const e = new Error('v4-' + parsed.error); e.meta = r.meta; throw e }
+    return { ops: parsed.ops, meta: r.meta }
   }
 }
 

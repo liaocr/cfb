@@ -1,6 +1,6 @@
 # dsh-cot-form-b — reasoning 块「出生即压缩」
 
-> **当前实现：v12.2（2026-09-28，单一路径：birth + compress；新增 opt-in 的 compress-v4-ops 认知编译器）** · 自测：`npm test` 全绿（固定 1 项 SKIP，逐版数字见 CHANGELOG） · 真实产品验收：**未验收**
+> **当前实现：v12.3（2026-09-28，单一路径：birth + compress；opt-in 的 compress-v4-ops 认知编译器 + 流式增量编译）** · 自测：`npm test` 全绿（固定 1 项 SKIP，逐版数字见 CHANGELOG） · 真实产品验收：**未验收**
 > CI：`.github/workflows/ci.yml` 在 Node 20 / 22 上跑完整性清单 + 全部自测 + 类型契约。
 > 版本沿革见 [`CHANGELOG.md`](CHANGELOG.md)；开发者视角的模块与数据流见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
@@ -57,6 +57,7 @@ dsh-cot-form-b/
 │   ├── distill.js        副模型调用：重试降级、对冲、传输 trace；makeBirthCompiler（compress-only）
 │   ├── prompts.js        提示词（compress-v3 缺省 / compress-v2 / compress-v4-ops）与版本号
 │   ├── compile-v4.js     v12.2：v4 确定性编译器（解析 → 不变量校验 → 选取 → 渲染）
+│   ├── segment-v4.js     v12.3：v4 流式增量编译（边写边分段起飞，收网只等最后一段）
 │   ├── transport.js      HTTP 传输（keep-alive、4MB 上限、SSE/JSON 按实际协议解析）
 │   ├── provider.js       端点与凭据解析（跟随宿主 provider，解析不出来不猜）
 │   ├── messages.js       出站消息溯源（只观测）
@@ -68,6 +69,7 @@ dsh-cot-form-b/
 ├── .github/workflows/    CI：完整性清单 + 全部自测 + 类型契约（Node 20 / 22）
 ├── tools/                离线分析：analyze-trace / analyze-efficiency
 │                         cf-eval（反事实续写评测，raw / v3 / v4）+ cf-fixtures/
+│                         v4-live（真机：录制 DeepSeek 推理流 → 按原时序回放进生产管线，v3 / v4 / v4 增量对比）
 │                         2026-09-27：phase0-report（决议阶段 0 的六个数字 N1–N6，一条命令出判定）
 ├── deploy/onboard.mjs    部署体检（注册形态、部署漂移；跨机器、无硬编码路径）
 └── docs/                 现行文档 + theory/（完整理论）+ analysis/（历史审计与调研）；索引见 docs/README.md
@@ -106,8 +108,14 @@ v3 是「请副模型写一份更短的摘要」。v4 把理论（[`docs/theory/
 trace：`compiler-v4-compiled`（每次编译的条目数、各不变量拒绝数、选取/丢弃、语言、预算、失败原因）；
 `birth-distill-settled` / `birth-distill-failed` 带同一份 `v4` 统计。离线对照：`tools/cf-eval.mjs --variants raw,v3,v4`。
 
-⚠ v4 的副模型输出是 JSON（带锚点），比 v3 的散文长，生成更久：`birthFinishWaitMs`（缺省 1500）偏紧时会多出 `distill-timeout`（原文放行，安全但白压）。
-看 trace 里 `compiler-transport-settled.totalMs` 的分布再决定是否放宽。
+**流式增量编译（v12.3，v4 缺省开）**：v4 的输出是 JSON（带锚点），比 v3 散文长 2–3 倍，整块等到 block-end 才起飞会装不下收网窗口。
+所以思考还在流时，每攒够 `compressV4SegmentChars`（1200）字就在段落 / 行 / 句末处切一段、立即起飞副模型调用；
+block-end 时只剩最后一段在飞。到点仍没落定 ⇒ **已编译的连续前缀 + 原文尾巴（逐字）**，结局 `condensed-partial`。
+某段失败 ⇒ 从该段起一律原文（不跳段）。后段提示词带前段已通过校验的条目，可用 `retracts` 推翻前段结论。
+trace：`v4-segment-fired/settled`、`v4-segments-cancelled`。`compressV4Incremental: false` 回到整块编译。
+
+**真机测试**：`DEEPSEEK_API_KEY=… node tools/v4-live.mjs --out live-out`（录制 6 个 Agent 调试回合的真实推理流，
+按原时序回放进生产管线，对比 v3 / v4 整块 / v4 增量；`--replay live-out/recordings.json` 复用录音）。
 
 ---
 
@@ -138,6 +146,8 @@ trace：`compiler-v4-compiled`（每次编译的条目数、各不变量拒绝�
 | `compressV4MaxOutputTokens` | `1600` | 仅 v4：副模型输出上限（只抬不降：取 `max(maxOutputTokens, 本项)`） |
 | `compressV4Tail` | `true` | 仅 v4：尾段（关键结论 + 未决问句） |
 | `compressV4MaxRejectRatio` | `0.5` | 仅 v4：硬不变量拒绝占比超过它 ⇒ 整块原文 |
+| `compressV4Incremental` | `true` | 仅 v4（v12.3）：流式增量编译；`false` ⇒ 整块编译 |
+| `compressV4SegmentChars` | `1200` | 仅 v4 增量：目标段长（字符，0.6–1.5 倍浮动） |
 | `birth.identifierGate` | `true` | **v12.1**：摘要里出现原文没有的路径 / URL / 反引号代码 / camelCase / snake_case / `file.ext` ⇒ 原文放行（`why=invented-identifier`，trace 带样本）。`false` 关闭（A/B 对照腿） |
 | `birth.minChars` | `3100` | 短于此长度不压缩（成本模型反解：R=60、d=0.02、B′≈450 ⇒ 保本原长 2,747，保守取整且不下调） |
 | `birth.minTokens` | `null` | **v11.10 opt-in**：正数 ⇒ 按 token 估算判定、完全接管 `minChars`（3100 字符对英文 ≈ 930 token、对中文 ≈ 1,860 token，同一门槛随语言差 2 倍） |
@@ -203,6 +213,7 @@ trace：`compiler-v4-compiled`（每次编译的条目数、各不变量拒绝�
 | `mode: 'off'` | 整体停用 |
 | `enabled: false` | 总开关关闭 |
 | `compressPrompt: 'v3'` | 从 v4 回到散文摘要（缺省） |
+| `compressV4Incremental: false` | v4 回到整块编译（不分段） |
 | `compressPrompt: 'v2'` | 回到相对长度目标 |
 | `birth: { identifierGate: false }` | 关闭发明标识符闸 |
 | `distill: { hedgeAfterMs: 0 }` | 关闭对冲（缺省即关） |
@@ -263,7 +274,8 @@ trace 写在 `$DSH_HOME/storages/cot-form-b/trace.log`，一行一条：`[ISO时
 
 **已完成、自测覆盖**：birth 压缩主路径与四条硬约束；compress-v3（缺省）；成本模型门槛（3100）与恒定输出上限（850）；
 **v12.1 发明标识符闸**（摘要编造路径 / 代码标识符 ⇒ 原文放行）；
-**v12.2 compress-v4-ops**（副模型标注 → 代码校验 / 选取 / 渲染，opt-in；本机端到端覆盖，真机未跑）；评估态零副作用；
+**v12.2 compress-v4-ops**（副模型标注 → 代码校验 / 选取 / 渲染，opt-in；本机端到端覆盖，真机未跑）；
+**v12.3 v4 流式增量编译**（边写边分段、到点取部分结果；本机端到端覆盖；真机工具 `tools/v4-live.mjs` 已就绪，待跑）；评估态零副作用；
 句柄读回验证（birth 内存预推句柄须先验证，无证据则原文放行）；
 对冲、响应头宽限、缓存友好拆分（均可关）；配置自检；测试隔离。
 
