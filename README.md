@@ -99,25 +99,33 @@ v3 是「请副模型写一份更短的摘要」。v4 把理论（[`docs/theory/
 
 | 阶段 | 做什么 | 为什么让主模型更好 |
 |---|---|---|
-| 标注（副模型） | 七类条目：FACT / COMPUTED / INCUMBENT（当前方案）/ REFUTED（被观测证伪）/ SHELVED（无证据搁置）/ OPEN / PLAN；每条带依据（tool/derived/guess）、作用（pivot/verify/restate…）、**原文逐字锚点** | 过程（转弯打折、左右互搏）不再有位置：只剩状态 |
+| 标注（副模型） | 八类条目：FACT / COMPUTED / INCUMBENT（当前方案）/ REFUTED（被观测证伪）/ SHELVED（无证据搁置）/ OPEN / PLAN / **READY（原文已想好的具体改法 + 采用前提，v12.4）**；每条带依据（tool/derived/guess）、作用（pivot/verify/restate…）、**原文逐字锚点** | 过程（转弯打折、左右互搏）不再有位置：只剩状态 |
 | 校验（代码） | I1 锚点必须逐字在原文；I2 标识符必须有出处；I3 证伪必须带替代方案；I4 无观测的否定降为「搁置」；I5 工具来源不得写成「我决定」；I7 同一量只留最新值；I8 无第二人称。关键结论编造 / 拒绝率过高 ⇒ 整块原文 | 编造被机械检出，而不是靠提示词劝说；「以为证伪了其实只是没试」不会被写成定论 |
-| 选取（代码） | 当前方案 / 证伪路 / 未决问题**必留**；复述工具输出、复核已知结论直接剔除；其余按价值/字符在预算内贪心；依赖闭包 | 死路以「疫苗」形式保留，防止重走；冗余不再稀释注意力 |
-| 渲染（代码） | 证据定粘性（tool → 陈述带来源；derived → 「目前判断」；guess → 「未验证的猜测」）；**替代先行、否定就近**（「查路径配置（已排除权限问题：chmod 777 后仍 EACCES）」）；计划写过去时；分组：状态 → 当前方案 → 排除/搁置 → 计划 → 未决；尾段重复关键结论并以未决问句收尾；语言跟随原文 | 否定不单独出现（避免越强调越违反）；确定程度不被抬高；最该想的问题离下一步生成最近 |
+| 选取（代码） | 当前方案 / 证伪路 / 未决问题 / 最后 2 条 READY **必留**；复述工具输出、复核已知结论直接剔除；其余按价值/字符在预算内贪心；依赖闭包 | 死路以「疫苗」形式保留，防止重走；冗余不再稀释注意力 |
+| 渲染（代码） | 证据定粘性（tool → 陈述带来源；derived → 「目前判断」；guess → 「未验证的猜测」）；**替代先行、否定就近**（「查路径配置（已排除权限问题：chmod 777 后仍 EACCES）」）；计划写过去时；分组：状态 → 当前方案 → 排除/搁置 → 计划 → 未决 → 已备好的改法；尾段 = 关键结论 + 待确认（陈述句）+「若 <前提>，就 <改法>」收束；语言跟随原文 | 否定不单独出现（避免越强调越违反）；确定程度不被抬高；观察一旦证实前提，下一步就是现成的改法（v12.4 效果评测：末尾问句会把主模型推向继续取证） |
 
 失败语义与 v3 相同：任何一步不成立 ⇒ 这块原文放行；渲染稿仍要过发明标识符闸、token 闸与净省判定。
 trace：`compiler-v4-compiled`（每次编译的条目数、各不变量拒绝数、选取/丢弃、语言、预算、失败原因）；
 `birth-distill-settled` / `birth-distill-failed` 带同一份 `v4` 统计。离线对照：`tools/cf-eval.mjs --variants raw,v3,v4`。
 
-**流式增量编译（v12.3，v4 缺省开）**：v4 的输出是 JSON（带锚点），比 v3 散文长 2–3 倍，整块等到 block-end 才起飞会装不下收网窗口。
+**整块 / 增量自动选择（v12.4）**：`compressV4Incremental: 'auto'`（缺省）⇒ 收网窗口 `birthFinishWaitMs` ≥ 5000 走整块，否则增量。
+真机 8 s 窗口：整块 5/5 完整替换（压到 5–9%，多扣 ≈3 s，一次调用、全局视野去重更好、输入 token 少一个数量级）；
+增量在同一窗口反而有掉队段（偶发 13 s+）。1.5 s 窗口下整块 0/5、增量 5/5。增量模式另有非尾段对冲（`compressV4SegmentHedgeMs` 7000）与在飞上限（`compressV4MaxInFlight` 3）。
+
+**流式增量编译（v12.3）**：v4 的输出是 JSON（带锚点），比 v3 散文长 2–3 倍，整块等到 block-end 才起飞会装不下收网窗口。
 所以思考还在流时，每攒够 `compressV4SegmentChars`（1200）字就在段落 / 行 / 句末处切一段、立即起飞副模型调用；
 block-end 时只剩最后一段在飞。到点仍没落定 ⇒ **已编译的连续前缀 + 原文尾巴（逐字）**，结局 `condensed-partial`。
 某段失败 ⇒ 该段原文放在渲染稿前面，其余段照用。后段提示词带前段已通过校验的条目，可用 `retracts` 推翻前段结论；
 合并时状态后写者胜（只有最新的当前方案 / 未决算数，死路永远保留）。真机记录：[`docs/analysis/V4-LIVE-2026-09-28.md`](docs/analysis/V4-LIVE-2026-09-28.md)。
-trace：`v4-segment-fired/settled`、`v4-segments-cancelled`。`compressV4Incremental: false` 回到整块编译。
+trace：`v4-segment-fired/settled`、`v4-segments-cancelled`。`compressV4Incremental: false / true` 强制整块 / 增量。
 
 **真机测试**：`DEEPSEEK_API_KEY=… node tools/v4-live.mjs --out live-out`（录制 6 个 Agent 调试回合的真实推理流，
 按原时序回放进生产管线，对比 v3 / v4 整块 / v4 增量；`--replay live-out/recordings.json` 复用录音；
 `--recompile live-out/report.json` 零调用复用捕获的副模型结果重编译）。
+
+**效果评测**（v12.4）：`node tools/effect-eval.mjs --recordings … --report v4=report.json …` —— 带 tools 的真实请求形态，
+把上一轮 `reasoning_content` 换成各变体，给一条后续工具结果，看主模型下一步（盲评 + 规则），并逐次核验中转通道确实把思考送进了模型。
+结果与方法：[`docs/analysis/EFFECT-EVAL-2026-09-28.md`](docs/analysis/EFFECT-EVAL-2026-09-28.md)。
 
 ---
 
@@ -146,9 +154,11 @@ trace：`v4-segment-fired/settled`、`v4-segments-cancelled`。`compressV4Increm
 | `compressPrompt` | `'v3'` | `v3` 绝对长度（`compressTargetMin/Max` = 250/450）· `v2` 相对长度（20%~35%）· **`v4`（v12.2）认知编译器，见上节**。两者保真规则逐字相同。`x1`（v12.0）/ `v1`（v12.1）已退役，旧配置自动回落 `v3` 并记 `configAdjusted` |
 | `compressV4BudgetChars` | `null` | 仅 v4：渲染预算（字符），`null` 跟随 `compressTargetMax`。当前方案 / 证伪路 / 未决问题必留，不受预算限制 |
 | `compressV4MaxOutputTokens` | `1600` | 仅 v4：副模型输出上限（只抬不降：取 `max(maxOutputTokens, 本项)`） |
-| `compressV4Tail` | `true` | 仅 v4：尾段（关键结论 + 未决问句） |
+| `compressV4Tail` | `true` | 仅 v4：尾段（关键结论 + 待确认 + 已备好的改法） |
 | `compressV4MaxRejectRatio` | `0.5` | 仅 v4：硬不变量拒绝占比超过它 ⇒ 整块原文 |
-| `compressV4Incremental` | `true` | 仅 v4（v12.3）：流式增量编译；`false` ⇒ 整块编译 |
+| `compressV4Incremental` | `'auto'` | 仅 v4：`'auto'` ⇒ `birthFinishWaitMs` ≥ 5000 整块、否则流式增量；`true` / `false` 强制 |
+| `compressV4SegmentHedgeMs` | `7000` | 仅 v4 增量：非尾段超过这么久没结果 ⇒ 对冲一份（0 关） |
+| `compressV4MaxInFlight` | `3` | 仅 v4 增量：同时在飞的段数上限（突发到达时不一次放一串请求） |
 | `compressV4SegmentChars` | `1200` | 仅 v4 增量：目标段长（字符，0.6–1.5 倍浮动） |
 | `compressV4SegmentTimeoutMs` | `30000` | 仅 v4 增量：非尾段请求超时（不在关键路径上）；尾段仍用 `timeoutMs` |
 | `compressV4SegmentMaxOutputTokens` | `1200` | 仅 v4 增量：每段副模型输出上限 |
@@ -299,7 +309,10 @@ token 闸门；trace 轮转；provider/凭据解析按文件身份缓存；编�
   （它们来自宿主、不经过 `llm/stream`）。v12.1 删除的 checkpoint 路径曾尝试在 pre-step 里用看板替换它们，
   代价是整段 replace 与非用户发言的 user 消息。正路是宿主协议层的上下文编辑（服务端清理旧工具结果、留占位符），
   见 [`docs/theory/CFB-THEORY-COMPLETE.md`](docs/theory/CFB-THEORY-COMPLETE.md) 的宿主能力等级 C0–C3 —— 需要宿主支持，不在本插件内做；
-- 真实产品验收（完整会话、任务质量 A/B、真实 token 账单）**未做**。本地回归不能替代。
+- **效果（v12.4 首次实测，样本小）**：主模型下一步质量（盲评 0–10）raw 5.8 > v4r 4.6 > v3r 4.2 > 无思考 3.7。
+  压缩稿目前**还不如原文**：原文里「已想好的改法」让主模型在观察证实后直接下手，旧 v3/v4 把它当推测删光（v3 更是几乎复述了可见的回答）。
+  v12.4 加 READY 后，抽到改法的任务从 2.5 → 7.3；剩余差距主要是 READY 召回不足。详见 [`docs/analysis/EFFECT-EVAL-2026-09-28.md`](docs/analysis/EFFECT-EVAL-2026-09-28.md)。
+- 真实产品验收（完整会话、真实 token 账单）**未做**。
 
 ---
 

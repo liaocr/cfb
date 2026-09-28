@@ -50,7 +50,11 @@ export interface CotFormBConfig {
   /** 仅 v4：硬不变量拒绝占比超过它 ⇒ 整块原文（缺省 0.5） */
   compressV4MaxRejectRatio?: number
   /** 仅 v4（v12.3）：流式增量编译 —— 思考还在写时按段起飞副模型调用，收网只等最后一段；来不及 ⇒ 已编译前缀 + 原文尾巴。缺省 true */
-  compressV4Incremental?: boolean
+  compressV4Incremental?: boolean | 'auto'
+  /** 仅 v4 增量：非尾段超过这么久没结果就对冲一份（缺省 7000；0 关） */
+  compressV4SegmentHedgeMs?: number
+  /** 仅 v4 增量：同时在飞的段数上限（缺省 3） */
+  compressV4MaxInFlight?: number
   /** 仅 v4 增量：目标段长（字符，缺省 1200；在段落 / 行 / 句末处切，0.6–1.5 倍浮动） */
   compressV4SegmentChars?: number
   /** 仅 v4 增量：非尾段的请求超时（缺省 30000；尾段仍用 timeoutMs） */
@@ -236,9 +240,11 @@ export declare function buildCompressPrompt(cot: string): string
 export declare function buildCompressPromptV3(cot: string, minChars?: number, maxChars?: number): string
 /** compress-v4-ops：副模型只做结构化标注（JSON ops）的提示词 */
 export declare function buildCompressPromptV4(cot: string): string
+/** v4 提示词在内容之后的重申段（防副模型替 Agent 答题） */
+export declare const V4_TAIL: string
 /** v4 渲染预算（字符）：compressV4BudgetChars，未设则 compressTargetMax */
 export declare function v4Budget(cfg: CotFormBConfig | null | undefined): number
-/** v4 流式增量编译是否开启（compressPrompt==='v4' 且 compressV4Incremental!==false） */
+/** v4 流式增量编译是否开启：true / false 强制；'auto'（缺省）= 收网窗口 birthFinishWaitMs < 5000 时增量，否则整块 */
 export declare function v4Incremental(cfg: CotFormBConfig | null | undefined): boolean
 /** 增量目标段长（字符） */
 export declare function v4SegmentChars(cfg: CotFormBConfig | null | undefined): number
@@ -246,7 +252,7 @@ export declare function v4SegmentChars(cfg: CotFormBConfig | null | undefined): 
 export declare function buildCompressPromptV4Segment(seg: string, priorLines?: string[]): string
 
 // ── compress-v4-ops 编译器（src/compile-v4.js，纯函数） ──
-export type V4Kind = 'FACT' | 'COMPUTED' | 'INCUMBENT' | 'REFUTED' | 'SHELVED' | 'OPEN' | 'PLAN'
+export type V4Kind = 'FACT' | 'COMPUTED' | 'INCUMBENT' | 'REFUTED' | 'SHELVED' | 'OPEN' | 'PLAN' | 'READY'
 export type V4Ev = 'tool' | 'derived' | 'guess'
 export type V4Kind2 = 'pivot' | 'plan' | 'hypothesize' | 'localize' | 'inspect' | 'compute' | 'verify' | 'restate' | 'answer'
 export declare const V4_KINDS: V4Kind[]

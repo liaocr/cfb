@@ -20,17 +20,21 @@
 import { inventedIdentifiers } from './fidelity.js'
 import { wideShare } from './tokens.js'
 
-export const V4_KINDS = ['FACT', 'COMPUTED', 'INCUMBENT', 'REFUTED', 'SHELVED', 'OPEN', 'PLAN']
+export const V4_KINDS = ['FACT', 'COMPUTED', 'INCUMBENT', 'REFUTED', 'SHELVED', 'OPEN', 'PLAN', 'READY']
 export const V4_EVS = ['tool', 'derived', 'guess']
 export const V4_KIND2 = ['pivot', 'plan', 'hypothesize', 'localize', 'inspect', 'compute', 'verify', 'restate', 'answer']
 
 // 必留：当前方案、证伪路（疫苗）、未决问题 —— 丢了它们，主模型会重走死路或把未决当已决（保真优先于长度）
 const MUST_KEEP = new Set(['INCUMBENT', 'REFUTED', 'OPEN'])
+// READY（已备好的改法）：原文里想好的具体改动 + 采用前提。turn 20 效果评测：原文保留它时主模型在观察证实前提后直接下手改
+// （eacces 9.5 分），v3/v4 把它当「推测」删光后一律回头重读文件（≈2 分，比完全没有思考还差）。最后 READY_KEEP 条必留。
+const READY_KEEP = 2
 // 静态价值（理论 v(i;λ) 在无跨轮传感器时的退化形式；只用于非必留条目之间的取舍）
-const BASE = { INCUMBENT: 1.0, COMPUTED: 0.9, OPEN: 0.85, REFUTED: 0.8, SHELVED: 0.6, FACT: 0.6, PLAN: 0.35 }
+const BASE = { INCUMBENT: 1.0, READY: 0.95, COMPUTED: 0.9, OPEN: 0.85, REFUTED: 0.8, SHELVED: 0.6, FACT: 0.6, PLAN: 0.35 }
 const K2W = { pivot: 1.25, localize: 1.1, compute: 1.1, hypothesize: 1.0, answer: 0.9, plan: 0.8, inspect: 0.7, verify: 0.3, restate: 0.15 }
 const EVW = { tool: 1.0, derived: 0.95, guess: 0.7 }
-const GROUP = { FACT: 0, COMPUTED: 0, INCUMBENT: 1, REFUTED: 2, SHELVED: 2, PLAN: 3, OPEN: 4 }
+// 已备好的改法排最后（离下一步生成最近）；未决排在它前面
+const GROUP = { FACT: 0, COMPUTED: 0, INCUMBENT: 1, REFUTED: 2, SHELVED: 2, PLAN: 3, OPEN: 4, READY: 5 }
 
 // 副模型常把 supersedes 写成条目 id（「s3.o11」）而不是旧值 —— 语义就是 retracts；原样渲染会把内部 id 漏进出生文本（v12.3 真机）
 const ID_LIST_RE = /^\s*(?:s\d+\.)?o\d+(?:\s*[,，、]\s*(?:s\d+\.)?o\d+)*\s*$/
@@ -224,8 +228,10 @@ export function selectOps(ops, opts = {}) {
     if (depth > 2) return
     for (const d of o.deps) { const x = byId.get(d); if (x && !chosen.has(x.id)) { take(x); closure(x, depth + 1) } }
   }
-  for (const o of ops) if (MUST_KEEP.has(o.k)) take(o)
-  for (const o of ops) if (MUST_KEEP.has(o.k)) closure(o)
+  const readyKeep = new Set(ops.filter((o) => o.k === 'READY').slice(-READY_KEEP).map((o) => o.id))
+  const must = (o) => MUST_KEEP.has(o.k) || readyKeep.has(o.id)
+  for (const o of ops) if (must(o)) take(o)
+  for (const o of ops) if (must(o)) closure(o)
   const pool = []
   for (const o of ops) {
     if (chosen.has(o.id)) continue
@@ -255,8 +261,11 @@ const T = {
       ? alt + '（' + zj('暂缓', x) + (why ? '：' + why : '') + (trig ? '；' + zj('若', trig, '再回来') : '') + '）'
       : zj('暂缓', x) + ((why || trig) ? '（' + [why, trig ? zj('若', trig, '再回来') : ''].filter(Boolean).join('；') + '）' : ''),
     plan: '当时计划：', open: '未决：',
+    ready: (t, trig) => '已备好的改法：' + t + (trig ? '（' + zj('前提：', trig) + '）' : ''),
+    tailReady: (t, trig) => trig ? zj('若', trig) + '，就' + t + '。' : '准备好的改法：' + t + '。',
     tailIncumbent: (t) => '所以现在采用的是：' + t + '。', tailJudged: (t) => '所以目前判断：' + t + '。', tailFact: (t) => '已确认：' + t + '。',
-    tailOpen: (t) => '还没弄清的是：' + t + '？',
+    // 未决在尾段写成陈述而不是问句：推理末尾的疑问句会把下一步推向「继续取证」（turn 20 效果评测）
+    tailOpen: (t) => '待确认：' + t + '。',
   },
   en: {
     src: (s, sup) => (s || sup) ? ' (' + [s ? 'source ' + s : '', sup ? 'replaces ' + sup : ''].filter(Boolean).join('; ') + ')' : '',
@@ -266,8 +275,10 @@ const T = {
       ? alt + ' (set aside ' + x + (why ? ': ' + why : '') + (trig ? '; revisit if ' + trig : '') + ')'
       : 'Set aside ' + x + ((why || trig) ? ' (' + [why, trig ? 'revisit if ' + trig : ''].filter(Boolean).join('; ') + ')' : ''),
     plan: 'Plan at the time: ', open: 'Open: ',
+    ready: (t, trig) => 'Prepared change: ' + t + (trig ? ' (if ' + trig + ')' : ''),
+    tailReady: (t, trig) => trig ? 'If ' + trig + ', then ' + t + '.' : 'Prepared change: ' + t + '.',
     tailIncumbent: (t) => 'So the current approach is: ' + t + '.', tailJudged: (t) => 'So far the judgment is: ' + t + '.', tailFact: (t) => 'Confirmed: ' + t + '.',
-    tailOpen: (t) => 'Still unclear: ' + t + '?',
+    tailOpen: (t) => 'To confirm: ' + t + '.',
   },
 }
 
@@ -292,6 +303,7 @@ export function renderLine(op, lang = 'zh') {
     case 'SHELVED': return '- ' + L.shelved(stripEnd(op.alt), t, stripEnd(op.why), stripEnd(op.trigger))
     case 'PLAN': return '- ' + L.plan + t
     case 'OPEN': return '- ' + L.open + stripQ(op.text)
+    case 'READY': return '- ' + L.ready(t, stripEnd(op.trigger))
     default: return '- ' + t
   }
 }
@@ -315,6 +327,9 @@ export function renderOps(chosen, opts = {}) {
       tail.push(concl.k === 'INCUMBENT' ? L.tailIncumbent(t) : concl.ev === 'tool' && concl.k === 'FACT' ? L.tailFact(t) : L.tailJudged(t))
     }
     for (const o of ordered.filter((x) => x.k === 'OPEN').slice(-2)) tail.push(L.tailOpen(stripQ(o.text)))
+    // 尾段以已备好的改法收束（最后一条）：观察一旦证实前提，下一步就是它
+    const rd = ordered.filter((x) => x.k === 'READY').slice(-1)[0]
+    if (rd) tail.push(L.tailReady(stripEnd(rd.text), stripEnd(rd.trigger)))
   }
   const sep = lang === 'en' ? ' ' : ''
   return lines.join('\n') + (tail.length ? '\n\n' + tail.join(sep) : '')

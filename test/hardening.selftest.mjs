@@ -258,7 +258,7 @@ await test('§7a compress + v3 ⇒ 绝对长度提示词，promptVersion 带参�
   const content = lastBody.messages[0].content
   assert.match(content, /目标长度 250~450 字符/)
   assert.ok(content.endsWith(COT))
-  assert.equal(r.meta.promptVersion, 'compress-v3:250-450')
+  assert.equal(r.meta.promptVersion, 'compress-v3r:250-450')
   assert.equal(headers, 1)
 })
 await test('§7b compress + compressSystemPrompt ⇒ system/user 拆分，字节等价', async () => {
@@ -274,13 +274,13 @@ await test('§7c v12.1：compressPrompt v1 已退役 ⇒ 按 v3 走（system 拆
   const r = await makeBirthCompiler(cfg)(COT, undefined, {})
   assert.equal(lastBody.messages.length, 2)
   assert.equal(lastBody.messages[0].content + '\n\n' + lastBody.messages[1].content, I.buildCompressPromptV3(COT, 250, 450))
-  assert.equal(r.meta.promptVersion, 'compress-v3:250-450:sys')
+  assert.equal(r.meta.promptVersion, 'compress-v3r:250-450:sys')
 })
 await test('§7d 缺省配置 ⇒ v3（compress 是唯一编译模式）', async () => {
   const r = await makeBirthCompiler(base)(COT, undefined, {})
   assert.equal(lastBody.messages.length, 1)
   assert.equal(lastBody.messages[0].content, I.buildCompressPromptV3(COT, 250, 450))
-  assert.equal(r.meta.promptVersion, 'compress-v3:250-450')
+  assert.equal(r.meta.promptVersion, 'compress-v3r:250-450')
 })
 
 // ═══ §9 llm-stream 溯源不再随会话长度平方增长 ════════════════════════════════

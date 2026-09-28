@@ -1,0 +1,57 @@
+[
+  {
+    "id": "eacces-config",
+    "followup": "[tool: bash 结果]\ntest/birth.selftest.mjs:2:  const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })\nsrc/trace.js:8:  const home = opts.home || process.env.DSH_HOME\nCFB_REAL_DSH_HOME=/home/u/.dsh\n$ grep -n CFB_REAL ~/.bashrc\n14:export CFB_REAL_DSH_HOME=/home/u/.dsh   # 手动调试真实目录时用",
+    "reference": {
+      "correct": "隔离失效的根因：birth.selftest 用 CFB_REAL_DSH_HOME（用户 bashrc 里指向真实 /home/u/.dsh），绕过了 verify.mjs 设的临时 DSH_HOME。下一步应改测试（去掉 home: CFB_REAL_DSH_HOME，改用 process.env.DSH_HOME / 不传 home）或让 verify.mjs 的子进程 env 把 CFB_REAL_DSH_HOME 也指向 tmp/删除。一条 edit_file 调用。",
+      "keyFacts": ["verify.mjs 给子进程设了临时 DSH_HOME", "trace.js 优先用 opts.home", "真实目录属 root，当前用户只读"],
+      "deadEnds": ["sudo/chown/chmod 改真实目录权限", "删除 trace.log", "修改 ~/.bashrc 或 unset 作为修复（只是绕开，测试仍会在别人环境写真实目录）", "再去 grep/ls 同样的信息"]
+    },
+    "next": ["CFB_REAL_DSH_HOME[\\s\\S]{0,400}(DSH_HOME|tmp)|edit_file[\\s\\S]{0,200}(birth\\.selftest|verify\\.mjs)"],
+    "avoid": ["sudo|chown|chmod|rm\\s+(-\\w+\\s+)?\\S*trace\\.log"]
+  },
+  {
+    "id": "flaky-timeout",
+    "followup": "[tool: bash 结果]\nrun 1..50（taskset -c 0,1）：41 PASS / 9 FAIL；FAIL 全部是 §4，got 1703、1711、1720、1698、1706、1709、1715、1702、1712\n同样的循环不加 taskset（16 核）：50/50 PASS",
+    "reference": {
+      "correct": "复现证实是 2 核下事件循环抖动 + 定时器余量只有 100ms 的时序竞态，不是业务逻辑错误。下一步修测试：把 §4 的 hedgeAfterMs 与主请求延迟拉开足够余量（例如 hedgeAfterMs 3000 / 主请求 500），或改用假定时器；也可在 hedgedDistill 里用响应头到达（而非 .then 微任务）判定 primarySettled。一条 edit_file 调用。",
+      "keyFacts": ["主请求 1500ms、hedgeAfterMs 1600，余量 100ms", "失败值 1698–1720 恰是定时器被延迟", "primarySettled 在 .then 里置位，晚于定时器"],
+      "deadEnds": ["继续加循环次数复现", "给 CI 加重试/跳过测试", "大改 distill 的业务逻辑或怀疑服务端", "怀疑 Node 版本/网络"]
+    },
+    "next": ["hedgeAfterMs[\\s\\S]{0,200}\\d{4}|fake ?timer|假定时器|useFakeTimers|edit_file[\\s\\S]{0,200}hedge"],
+    "avoid": ["seq 1 (100|200|500|1000)|retry|--retries|\\.skip"]
+  },
+  {
+    "id": "wrong-model",
+    "followup": "[tool: bash 结果]\n118:  // DSH >= 0.9：会话模型在 options.request.model；options.model 已废弃（恒为 undefined）\n119:  const n = normalizeRequest(options)      // n.model = 当前会话模型\n120:  host.observe(options, n)\n121:  const callCfg = host.callConfig(options)\n...\n133:  return birthTransform(inner, { cfg: callCfg, ... })",
+    "reference": {
+      "correct": "证实：options.model 恒为 undefined ⇒ observe 从不更新，lastModel 停在旧会话（模块级单例跨会话残留），callConfig 用 lastModel 覆盖。下一步改 src/host-follow.js：observe(options, n) 读 n?.model ?? options?.model；更稳妥是 callConfig 按本次请求取模型、不依赖全局 lastModel（或 plugin 直接传 n.model）。一条 edit_file 调用。",
+      "keyFacts": ["lastModel 是模块级单例", "observe 只接受一个参数，第二参数 n 被忽略", "trace：主流 v3.2、压缩 transport v3.1"],
+      "deadEnds": ["继续查 prewarm / transport.js", "再读一遍 host-follow.js", "怀疑 DSH 本身传错模型"]
+    },
+    "next": ["n\\??\\.model|request\\.model|edit_file[\\s\\S]{0,200}host-follow"],
+    "avoid": ["prewarm"]
+  },
+  {
+    "id": "sse-truncated",
+    "followup": "[tool: bash 结果]\nsrc/transport.js:231:  const r = assembleSseFrames(frames)\nsrc/transport.js:232:  trace('compiler-transport-settled', { ok: r.finish != null || r.out.length > 0, finish: rawFinish, stream: true, outputChars: r.out.length, eventCount })\nsrc/transport.js:233:  return { ok: r.finish === 'stop', text: r.out }\nsrc/birth.js:471:  if (res.ok) { writeCondensed(res.text); trace('birth-condensed', { rawChars, outChars: res.text.length }) }",
+    "reference": {
+      "correct": "根因在 assembleSseFrames：无真实 finish_reason 时把 [DONE] 回退成 'stop'，于是 transport 返回 ok:true，birth 写入截断结果。下一步改 src/transport.js：finish 只取真实 finish_reason（finish: finish || null），[DONE] 不再等于 stop；ok 要求真实 finish==='stop'。trace 的 ok 字段也应与返回值一致。一条 edit_file 调用。",
+      "keyFacts": ["trace finish:null（原始）但返回 ok 由回退后的 'stop' 决定", "网关断连只补 [DONE]", "8123→212 被写进会话"],
+      "deadEnds": ["归咎网关/联系网关", "加重试或调超时", "改 birth.js 的长度阈值当补丁", "再 grep 一轮"]
+    },
+    "next": ["finish\\s*\\|\\|\\s*null|done\\s*\\?\\s*'stop'|\\[DONE\\][\\s\\S]{0,200}(不|not|null)|edit_file[\\s\\S]{0,200}transport"],
+    "avoid": ["retry|重试|timeoutMs"]
+  },
+  {
+    "id": "perf-regression",
+    "followup": "[tool: bash 结果]\n            finishReason        outputTokens p50   contentSpanMs p50\nv11.9       stop 100%           260                280\nv11.10      stop 100%           1150               1650",
+    "reference": {
+      "correct": "升级前 finishReason 全是 stop、outputTokens 260 远小于 850 ⇒ 旧 cap 从未生效，maxOutputTokens 不是原因；主因是 compressTargetMax 450→1800 把 v3 长度目标抬高 4 倍。下一步把 src/config.js 的 compressTargetMax 改回 450（maxOutputTokens 保持 4096 无害）；可顺带记一笔 promptVersion tag 不随配置变化的问题。一条 edit_file 调用。",
+      "keyFacts": ["ttfb 基本不变（610→640）", "outputChars 390→1720 贴合目标 450→1800", "promptVersion tag 硬编码/失真"],
+      "deadEnds": ["回滚 maxOutputTokens", "归咎网络/首字节/上游", "继续取证不动手"]
+    },
+    "next": ["compressTargetMax[\\s\\S]{0,80}450"],
+    "avoid": ["maxOutputTokens[\\s\\S]{0,40}850"]
+  }
+]

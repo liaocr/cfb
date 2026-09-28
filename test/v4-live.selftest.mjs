@@ -31,7 +31,8 @@ function sideReply(prompt) {
   const m = prompt.lastIndexOf('【本段】\n')
   const full = prompt.lastIndexOf('【上一轮思维链】\n')
   if ((m >= 0 || full >= 0) && prompt.includes('INCUMBENT')) {  // v4（条目协议）；v3 也用同一标记，靠协议词区分
-    const body = m >= 0 ? prompt.slice(m + 5) : prompt.slice(full + 9)
+    const body0 = m >= 0 ? prompt.slice(m + 5) : prompt.slice(full + 9)
+    const body = body0.split('\n\n【标注要求重申】')[0]
     const lines = []
     let n = 0
     for (const para of body.split('\n\n')) {
@@ -113,7 +114,7 @@ function startMock() {
       const by = Object.fromEntries(rep.rows.map((x) => [x.mode, x]))
       assert.equal(by.v4.why, 'distill-timeout', JSON.stringify(by.v4))
       assert.equal(by.v4inc.why, 'condensed', JSON.stringify({ ...by.v4inc, text: undefined }))
-      assert.equal(by.v4inc.promptVersion, 'compress-v4-ops3:450:inc500')
+      assert.equal(by.v4inc.promptVersion, 'compress-v4-ops5:450:inc500')
       assert.ok(by.v4inc.segments && by.v4inc.segments.n >= 4 && by.v4inc.segments.ok === by.v4inc.segments.n)
       assert.ok(by.v4inc.text.includes('stepFn') && by.v4inc.outChars < by.v4inc.rawChars * 0.5, by.v4inc.text)
       assert.ok(by.v4inc.finishHoldMs < 500, 'hold=' + by.v4inc.finishHoldMs)

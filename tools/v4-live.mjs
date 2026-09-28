@@ -102,7 +102,7 @@ run 5: FAIL  §4 同上 got 1698
   ttfbMs p50: 610 / 640
   contentSpanMs p50: 280 / 1650
   outputChars p50: 390 / 1720
-  promptVersion: compress-v3:250-450 / compress-v3:250-450
+  promptVersion: compress-v3r:250-450 / compress-v3r:250-450
 [tool: bash] git diff v11.9..v11.10 -- src/config.js
   -  maxOutputTokens: 850,
   +  maxOutputTokens: 4096,

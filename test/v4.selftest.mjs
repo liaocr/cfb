@@ -51,19 +51,19 @@ try {
     assert.ok(p.includes('alt') && p.includes('why') && p.includes('trigger'))
     assert.ok(p.includes('逐字照抄') && p.includes('不得升级为已确定'))
     assert.ok(p.includes('不写摘要'))
-    assert.ok(p.endsWith('【上一轮思维链】\nCOT'))
+    assert.ok(p.endsWith('【上一轮思维链】\nCOT' + I.V4_TAIL), '内容之后重申要求（防替 Agent 答题）')
   })
   await test('§1b splitCompressPrompt 对 v4 同样字节等价（compressSystemPrompt 可用）', () => {
     const p = I.buildCompressPromptV4('原文 X')
     const sp = I.splitCompressPrompt(p)
-    assert.ok(sp); assert.equal(sp.system + '\n\n' + sp.user, p); assert.ok(sp.user.endsWith('原文 X'))
+    assert.ok(sp); assert.equal(sp.system + '\n\n' + sp.user, p); assert.ok(sp.user.endsWith('原文 X' + I.V4_TAIL))
   })
   await test('§1c 版本号：v4 携带预算与尾段开关；缺省仍为 v3；compressPromptFor 分派一致', () => {
     assert.equal(I.DEFAULTS.compressPrompt, 'v3')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4' }), 'compress-v4-ops3:450:inc1200')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressTargetMax: 600, compressV4SegmentChars: 800 }), 'compress-v4-ops3:600:inc800')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Incremental: false }), 'compress-v4-ops3:450')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4BudgetChars: 520, compressV4Tail: false, compressV4Incremental: false, compressSystemPrompt: true }), 'compress-v4-ops3:520:notail:sys')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4' }), 'compress-v4-ops5:450:inc1200')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressTargetMax: 600, compressV4SegmentChars: 800 }), 'compress-v4-ops5:600:inc800')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Incremental: false }), 'compress-v4-ops5:450')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4BudgetChars: 520, compressV4Tail: false, compressV4Incremental: false, compressSystemPrompt: true }), 'compress-v4-ops5:520:notail:sys')
     assert.equal(I.v4Incremental({ compressPrompt: 'v4' }), true); assert.equal(I.v4Incremental({ compressPrompt: 'v3' }), false)
     assert.equal(I.compressPromptFor({ compressPrompt: 'v4' }, 'COT'), I.buildCompressPromptV4('COT'))
     assert.equal(I.v4Budget({}), 450); assert.equal(I.v4Budget({ compressV4BudgetChars: -1 }), 450); assert.equal(I.v4Budget({ compressV4BudgetChars: 700 }), 700)
@@ -186,13 +186,30 @@ try {
     assert.equal(I.renderLine({ k: 'FACT', ev: 'guess', text: '可能是缓存', src: '', supersedes: '' }), '- 未验证的猜测：可能是缓存')
     assert.equal(I.renderLine({ k: 'INCUMBENT', ev: 'guess', text: '先用 A', supersedes: '' }), '- 当前方案（未验证）：先用 A')
   })
-  await test('§5c 分组顺序：状态 → 当前方案 → 排除/搁置 → 计划 → 未决；尾段 = 结论 + 未决问句（在最后）', () => {
+  await test('§5c 分组顺序：状态 → 当前方案 → 排除/搁置 → 计划 → 未决；尾段 = 结论 + 未决（陈述句）', () => {
     const lines = text.split('\n\n')[0].split('\n')
     const pos = (s) => lines.findIndex((l) => l.includes(s))
     assert.ok(pos('来源 strace') < pos('当前方案') && pos('当前方案') < pos('已排除') && pos('已排除') < pos('当时计划') && pos('当时计划') < pos('未决'))
     const tail = text.split('\n\n')[1]
-    assert.equal(tail, '所以现在采用的是：APP_CONF 环境变量指向旧路径，需改为 /srv/app/conf.yaml。还没弄清的是：/srv/app/conf.yaml 是不是 symlink？')
+    assert.equal(tail, '所以现在采用的是：APP_CONF 环境变量指向旧路径，需改为 /srv/app/conf.yaml。待确认：/srv/app/conf.yaml 是不是 symlink。')
     assert.ok(!I.renderOps(all, { lang: 'zh', tail: false }).includes('\n\n'))
+  })
+  await test('§5f READY：已备好的改法排最后、带前提；尾段以它收束（若…就…）；最后 2 条必留，超预算也不丢', () => {
+    const ops = [
+      { id: 'a', k: 'COMPUTED', ev: 'derived', text: '根因是 CFB_REAL_DSH_HOME 绕过临时 DSH_HOME', anchor: 'x', deps: [], retracts: [], idx: 0 },
+      { id: 'b', k: 'OPEN', ev: 'derived', text: 'verify.mjs 里有没有设置 CFB_REAL_DSH_HOME？', anchor: 'x', deps: [], retracts: [], idx: 1 },
+      { id: 'c', k: 'READY', ev: 'derived', text: '在 verify.mjs 的 env 里加 CFB_REAL_DSH_HOME: tmp', trigger: 'verify.mjs 没有设置该变量', anchor: 'x', deps: [], retracts: [], idx: 2 },
+    ]
+    const out = I.renderOps(ops, { lang: 'zh' })
+    const [body, tail] = out.split('\n\n')
+    assert.ok(body.split('\n').pop().startsWith('- 已备好的改法：在 verify.mjs 的 env 里加 CFB_REAL_DSH_HOME: tmp（前提：verify.mjs 没有设置该变量）'), body)
+    assert.ok(tail.endsWith('若 verify.mjs 没有设置该变量，就在 verify.mjs 的 env 里加 CFB_REAL_DSH_HOME: tmp。'), tail)
+    assert.ok(!/？/.test(tail), '尾段不以问句收束')
+    const many = [...ops, ...Array.from({ length: 12 }, (_, i) => ({ id: 'f' + i, k: 'FACT', ev: 'tool', text: '事实'.repeat(15) + i, anchor: 'x', src: 't', deps: [], retracts: [], idx: 10 + i }))]
+    const sel = I.selectOps(many, { budget: 120 }).chosen
+    assert.ok(sel.some((o) => o.id === 'c'), 'READY 必留')
+    assert.ok(I.V4_KINDS.includes('READY'))
+    assert.equal(I.renderLine({ k: 'READY', text: 'revert compressTargetMax to 450', trigger: '' }, 'en'), '- Prepared change: revert compressTargetMax to 450')
   })
   await test('§5d 产物不含第二人称与「我决定」；中文模板在中英交界处补空格', () => {
     assert.ok(!/[你您]|我决定|我应该/.test(text))
@@ -207,7 +224,7 @@ try {
     ] }), rawEn, {})
     assert.ok(r.ok, r.reason)
     assert.ok(r.text.includes('- check the config path (ruled out permissions: chmod 777 did not help)'), r.text)
-    assert.ok(r.text.includes('Still unclear: is /srv/app/conf.yaml a symlink?'), r.text)
+    assert.ok(r.text.includes('To confirm: is /srv/app/conf.yaml a symlink.'), r.text)
   })
 
   // ═══ §6 compileV4 ═════════════════════════════════════════════════════════
@@ -231,12 +248,16 @@ try {
 
   // ═══ §7 端到端 ═════════════════════════════════════════════════════════════
   {
-    let reply = OPS_JSON, lastBody = null
+    let reply = OPS_JSON, lastBody = null, delayFirst = 0, hits = 0
     const server = http.createServer((req, res) => {
       let b = ''; req.on('data', (c) => { b += c }); req.on('end', () => {
         lastBody = JSON.parse(b)
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ choices: [{ message: { content: reply }, finish_reason: 'stop' }] }))
+        const d = hits++ === 0 ? delayFirst : 0
+        setTimeout(() => {
+          if (res.destroyed) return
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ choices: [{ message: { content: reply }, finish_reason: 'stop' }] }))
+        }, d)
       })
     })
     await new Promise((r) => server.listen(0, '127.0.0.1', r))
@@ -250,10 +271,10 @@ try {
         const traces = []
         const r = await I.makeBirthCompiler(cfg)(LONG, undefined, { trace: (t, d) => traces.push([t, d]) })
         assert.ok(lastBody.messages[0].content.startsWith('你是推理解析器'))
-        assert.ok(lastBody.messages[0].content.endsWith(LONG))
+        assert.ok(lastBody.messages[0].content.endsWith(LONG + I.V4_TAIL))
         assert.equal(lastBody.max_tokens, 1600)
         assert.ok(r.text.includes('已排除权限问题') && !r.text.includes('{'))
-        assert.equal(r.meta.promptVersion, 'compress-v4-ops3:450:inc1200')
+        assert.equal(r.meta.promptVersion, 'compress-v4-ops5:450:inc1200')
         assert.equal(r.meta.v4.selected, 7)
         const t = traces.find(([x]) => x === 'compiler-v4-compiled')
         assert.ok(t && t[1].ok === true && t[1].valid === 8 && typeof t[1].compileMs === 'number', JSON.stringify(t))
@@ -268,11 +289,19 @@ try {
         await I.makeV4SegmentCompiler({ ...cfg, compressV4TailStream: true })(RAW, [], undefined, { tail: true })
         assert.equal(lastBody.stream, true)
       })
+      await test('§7f makeV4SegmentCompiler：非尾段超时未回 ⇒ 对冲一份（先回者胜）；尾段不对冲', async () => {
+        reply = OPS_JSON; delayFirst = 600; hits = 0
+        const r = await I.makeV4SegmentCompiler({ ...cfg, compressV4SegmentHedgeMs: 150 })(RAW, [], undefined, { tail: false })
+        assert.ok(r.ops.length > 0); assert.equal(hits, 2, '主请求 600ms 未回 ⇒ 150ms 后对冲')
+        delayFirst = 600; hits = 0
+        await I.makeV4SegmentCompiler({ ...cfg, compressV4SegmentHedgeMs: 150 })(RAW, [], undefined, { tail: true })
+        assert.equal(hits, 1, '尾段不对冲'); delayFirst = 0
+      })
       await test('§7b 副模型给散文（不守格式）⇒ 抛错，meta 带 v4.reason；trace 留痕', async () => {
         reply = '权限不是问题，是路径错配。'
         const traces = []
         await assert.rejects(I.makeBirthCompiler(cfg)(LONG, undefined, { trace: (t, d) => traces.push([t, d]) }), (e) => {
-          assert.equal(e.message, 'v4-unparseable'); assert.equal(e.meta.v4.reason, 'v4-unparseable'); assert.equal(e.meta.promptVersion, 'compress-v4-ops3:450:inc1200'); return true
+          assert.equal(e.message, 'v4-unparseable'); assert.equal(e.meta.v4.reason, 'v4-unparseable'); assert.equal(e.meta.promptVersion, 'compress-v4-ops5:450:inc1200'); return true
         })
         assert.ok(traces.some(([x, d]) => x === 'compiler-v4-compiled' && d.ok === false))
       })
@@ -355,7 +384,7 @@ try {
     assert.equal(sg.segments.length, 3)
     assert.ok(r.meta.v4.incremental && !r.meta.v4.partial)
     assert.ok(!r.text.includes('先排查权限之外的原因'), '被第二段 retracts 的条目不得出现')
-    assert.ok(r.text.includes('- 查路径配置（已排除权限问题') && r.text.includes('还没弄清的是'), r.text)
+    assert.ok(r.text.includes('- 查路径配置（已排除权限问题') && r.text.includes('待确认：'), r.text)
   })
   await test('§9c 收网到点：已编译前缀 + 原文尾巴逐字（不出尾段）；无已编译前缀 ⇒ null', async () => {
     const sg = I.createSegmenter({ cfg: segCfg, compileSegment: mkCompile((t) => (t.includes('第三段') ? 5000 : 0)) })
@@ -449,7 +478,7 @@ try {
   await test('§9g birthTransform：各段都及时 ⇒ condensed（完整编译，无原文尾巴）', async () => {
     const { text, traces } = await runStream(async (segText) => ({ ops: opsFor(segText) }))
     assert.ok(traces.some(([t, d]) => t === 'birth-condensed' && d.why === 'condensed'))
-    assert.ok(!text.includes('最后的想法') && text.includes('还没弄清的是'), text)
+    assert.ok(!text.includes('最后的想法') && text.includes('待确认：'), text)
   })
   await test('§9h birthTransform：块低于门槛 ⇒ 已起飞的分段全部取消，原文放行', async () => {
     let aborted = 0
@@ -517,10 +546,29 @@ try {
     assert.ok(sg.segments[1].text.length > 300, 'second=' + sg.segments[1].text.length)
     sg.cancel('test')
   })
+  await test('§9o auto：窗口 ≥5 s 走整块、<5 s 走增量；true/false 强制；非 v4 永远 false', () => {
+    assert.equal(I.v4Incremental({ compressPrompt: 'v4' }), true, '缺省窗口 1500 ⇒ 增量')
+    assert.equal(I.v4Incremental({ compressPrompt: 'v4', birthFinishWaitMs: 8000 }), false)
+    assert.equal(I.v4Incremental({ compressPrompt: 'v4', birthFinishWaitMs: 8000, compressV4Incremental: true }), true)
+    assert.equal(I.v4Incremental({ compressPrompt: 'v4', compressV4Incremental: false }), false)
+    assert.equal(I.v4Incremental(I.normalizeConfig({ compressPrompt: 'v4', birthFinishWaitMs: 8000 })), false, 'normalizeConfig 后缺省 auto 生效')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', birthFinishWaitMs: 8000 }), 'compress-v4-ops5:450')
+  })
+  await test('§9p 在飞段数上限：突发到达时最多放出 3 段，其余等空位 / 并入尾段', async () => {
+    const pend = []
+    const sg = I.createSegmenter({ cfg: { compressPrompt: 'v4', compressV4SegmentChars: 200 }, compileSegment: () => new Promise((res) => pend.push(res)) })
+    const text = ('这是一句话。'.repeat(12) + '\n\n').repeat(20)
+    sg.feed(text)
+    assert.equal(sg.segments.length, 3)
+    await new Promise((r) => setTimeout(r, 5)); pend[0]({ ops: [] }); await new Promise((r) => setTimeout(r, 5))
+    sg.feed(text)
+    assert.equal(sg.segments.length, 4, '空出一个位置 ⇒ 再放一段')
+    sg.cancel('test')
+  })
   await test('§9i makeV4SegmentCompiler：分段提示词（带此前已标注）、promptVersion 加 :seg、解析失败抛错', async () => {
     const p = I.buildCompressPromptV4Segment('SEG', ['s1.o1 [FACT] a'])
-    assert.ok(p.startsWith(I.buildCompressPromptV4('').slice(0, -('【上一轮思维链】\n'.length))), '规则前缀与整块 v4 逐字相同（缓存前缀稳定）')
-    assert.ok(p.endsWith('【此前已标注】\ns1.o1 [FACT] a\n\n【本段】\nSEG'))
+    assert.ok(p.startsWith(I.buildCompressPromptV4('').slice(0, -('【上一轮思维链】\n'.length + I.V4_TAIL.length))), '规则前缀与整块 v4 逐字相同（缓存前缀稳定）')
+    assert.ok(p.endsWith('【此前已标注】\ns1.o1 [FACT] a\n\n【本段】\nSEG' + I.V4_TAIL))
     assert.equal(I.buildCompressPromptV4Segment('SEG', []), I.buildCompressPromptV4('SEG'))
   })
 

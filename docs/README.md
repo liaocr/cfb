@@ -31,6 +31,8 @@ v12.2 把理论第五卷的 v4 规格落成生产代码：`compressPrompt: 'v4'`
 | [`analysis/DECISION-2026-09-27.md`](analysis/DECISION-2026-09-27.md) | **x1 主干部分已作废**；阶段 0 观测部分仍有效 |
 | [`analysis/RESEARCH-COT-SHAPING.md`](analysis/RESEARCH-COT-SHAPING.md) | 前三轮文献调研（§10 的 x1 实现已删） |
 | [`analysis/RESEARCH-PERFORMANCE.md`](analysis/RESEARCH-PERFORMANCE.md) | 第四轮调研；P5/P6 观测与评测仍在用 |
+| [`analysis/V4-LIVE-2026-09-28.md`](analysis/V4-LIVE-2026-09-28.md) | v4 真机记录（第 1–6 轮：超时、增量、8 s 窗口、防劫持） |
+| [`analysis/EFFECT-EVAL-2026-09-28.md`](analysis/EFFECT-EVAL-2026-09-28.md) | **效果评测**：压缩稿 vs 原文 vs 无思考，主模型下一步质量；READY 的来历 |
 
 ## 4. v12.0 删除清单（均可从 `cfba57b` 取回）
 

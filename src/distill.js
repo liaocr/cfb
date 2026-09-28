@@ -456,6 +456,8 @@ export function makeV4SegmentCompiler(cfg) {
     const tail = !!(extra && extra.tail)
     const c = { ...cfg, maxOutputTokens: segMax,
       timeoutMs: tail ? cfg.timeoutMs : Math.max(Number(cfg.timeoutMs) || 0, segTimeout),
+      // 非尾段对冲（非流式要到生成完才有响应头 ⇒ 等于「这么久没结果就再发一份」）；尾段不对冲（窗口内来不及收益）
+      ...(!tail && !(Number(cfg.hedgeAfterMs) > 0) && Number(cfg.compressV4SegmentHedgeMs ?? 7000) > 0 ? { hedgeAfterMs: Number(cfg.compressV4SegmentHedgeMs ?? 7000), maxAttempts: 1 } : {}),
       // 尾段走流式：非流式要等全部生成完才回响应头 ⇒ birthFinish 的响应头宽限（finishHeadersGraceMs）永远触发不了（v12.3 真机）
       ...(tail && cfg.compressV4TailStream === true ? { distillStream: true } : {}) }
     if (extra && typeof extra.onHeaders === 'function') c._onHeaders = extra.onHeaders

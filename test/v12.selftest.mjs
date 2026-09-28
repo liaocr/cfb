@@ -16,7 +16,7 @@ const ok = (name, cond, note) => { if (cond) pass++; else { fail++; console.log(
   ok('extractive* 键进 retiredOptions', c.retiredOptions.includes('extractiveTailChars') && c.retiredOptions.includes('extractiveGuideline'))
   ok('extractive* 键从生效配置删除', !('extractiveTailChars' in c) && !('extractiveGuideline' in c))
   ok('extractive* 键不误报为 unknownOptions', !(c.unknownOptions || []).some((k) => k.startsWith('extractive')), JSON.stringify(c.unknownOptions))
-  ok('promptVersion 为 compress-v3', compressPromptVersion(c) === 'compress-v3:250-450', compressPromptVersion(c))
+  ok('promptVersion 为 compress-v3', compressPromptVersion(c) === 'compress-v3r:250-450', compressPromptVersion(c))
   const d = normalizeConfig({})
   ok('缺省配置不含 extractive* 键', !Object.keys(d).some((k) => k.startsWith('extractive')))
 }
@@ -58,7 +58,7 @@ const ok = (name, cond, note) => { if (cond) pass++; else { fail++; console.log(
 // ── ⑤ BOOT：单一路径 ────────────────────────────────────────────────────
 {
   const b = bootRecord(normalizeConfig({}), { selfId: 's', deps: 'd' })
-  ok('BOOT compilerMode = compress-v3', b.compilerMode === 'compress-v3:250-450', b.compilerMode)
+  ok('BOOT compilerMode = compress-v3', b.compilerMode === 'compress-v3r:250-450', b.compilerMode)
   ok('BOOT 无 memory / checkpoint 字段', !('stateMemory' in b) && !('compileMode' in b) && !('keepTail' in b) && !('earlyFire' in b))
   ok('BOOT 报告 identifierGate', b.birth && b.birth.identifierGate === true, JSON.stringify(b.birth))
   ok('DEFAULTS 不含退役键', !['stateMemory', 'stateCompress', 'birthDeferredClaim', 'earlyFire', 'keepTail', 'minRawChars'].some((k) => k in DEFAULTS))

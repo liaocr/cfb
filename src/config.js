@@ -192,10 +192,13 @@ export const DEFAULTS = {
   //   就在段落 / 句子边界切一段送去标注；block-end 时只剩最后一小段。收网到点仍没标完 ⇒
   //   「已编译前缀的渲染稿 + 未编译部分的原文逐字」（why=condensed-partial），而不是整块原文放行。
   //   false ⇒ 回到 block-end 才整块编译（src/segment-v4.js 文件头有完整说明）。
-  compressV4Incremental: true,
+  compressV4Incremental: 'auto',
   compressV4SegmentChars: 1200,
   // v12.3 真机：非尾段不在关键路径上 ⇒ 单独的长超时（尾段仍受 timeoutMs）；分段输出上限（提示词限每千字 ≤6 条）
   compressV4SegmentTimeoutMs: 30000,
+  // 真机：偶发掉队段 13 s+（中转抖动）⇒ 非尾段 7 s 没回就对冲一份（复用 hedgedDistill）；同时在飞段数上限（突发到达时不一次放 11 个请求）
+  compressV4SegmentHedgeMs: 7000,
+  compressV4MaxInFlight: 3,
   // 首段目标长度（null ⇒ 段长的一半）
   compressV4FirstSegmentChars: null,
   // 尾段走流式 ⇒ 响应头宽限（finishHeadersGraceMs）才会生效。真机（中转 v4.1-flash）：流式首字节 ≈2 s、尾段 3.2–3.7 s，

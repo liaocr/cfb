@@ -54,6 +54,7 @@ export function findFirstCut(text, from, to) {
  */
 export function createSegmenter({ cfg = {}, compileSegment, trace = () => {}, index = null } = {}) {
   const segChars = typeof cfg.compressV4SegmentChars === 'number' && cfg.compressV4SegmentChars >= 200 ? cfg.compressV4SegmentChars : 1200
+  const maxInFlight = Number.isFinite(cfg.compressV4MaxInFlight) && cfg.compressV4MaxInFlight >= 1 ? cfg.compressV4MaxInFlight : 3
   // 首段减半：短块（3–4k 字、几秒写完）也能尽早开编（v12.3 真机：短块只来得及编 1 段）
   const firstChars = typeof cfg.compressV4FirstSegmentChars === 'number' && cfg.compressV4FirstSegmentChars >= 200 ? Math.min(cfg.compressV4FirstSegmentChars, segChars) : Math.max(200, Math.round(segChars / 2))
   const maxRatio = typeof cfg.compressV4MaxRejectRatio === 'number' ? cfg.compressV4MaxRejectRatio : 0.5
@@ -105,6 +106,8 @@ export function createSegmenter({ cfg = {}, compileSegment, trace = () => {}, in
     if (cancelled || finished) return
     const s = String(text || '')
     for (;;) {
+      // 在飞段数到上限 ⇒ 先不切（文字继续累积，之后的段更大 / 并入尾段）；突发到达时不一次放出一串请求去撞限流
+      if (segments.filter((x) => x.status === 'pending').length >= maxInFlight) return
       const size = segments.length === 0 ? firstChars : segChars
       if (s.length - cut < size) return
       const lo = cut + Math.floor(size * 0.6)

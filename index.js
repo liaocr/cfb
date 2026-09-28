@@ -28,7 +28,7 @@ export { createSessionTracker } from './src/session-tracker.js'
 export { generateDistillation, hedgedDistill, makeBirthCompiler, makeV4SegmentCompiler } from './src/distill.js'
 export {
   buildCompressPrompt, buildCompressPromptV3, buildCompressPromptV4, splitCompressPrompt,
-  compressPromptVersion, compressPromptFor, compressTargets, v4Budget, v4Incremental, v4SegmentChars, buildCompressPromptV4Segment,
+  compressPromptVersion, compressPromptFor, compressTargets, V4_TAIL, v4Budget, v4Incremental, v4SegmentChars, buildCompressPromptV4Segment,
 } from './src/prompts.js'
 export {
   compileV4, compileOpsV4, parseOps, normalizeOp, validateOps, selectOps, renderOps, renderLine, renderLang, scoreOp,

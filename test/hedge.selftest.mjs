@@ -129,7 +129,7 @@ await test('★ compress 模式经 apply()：对冲/传输 trace 落盘，birth-
   assert.ok(text.includes('[compiler-hedge-settled]'))
   const settled = text.split('\n').find((l) => l.includes('[birth-distill-settled]'))
   assert.ok(settled && settled.includes('"hedged":"hedge"') && settled.includes('"hedgeAfterMs":200'), settled)
-  assert.ok(settled.includes('"promptVersion":"compress-v3:250-450"'), 'promptVersion 仍须贯通')
+  assert.ok(settled.includes('"promptVersion":"compress-v3r:250-450"'), 'promptVersion 仍须贯通')
   await until(() => closedEarly >= 1 || completed >= 2)   // 等慢的那份收尾，免得串到下一条测试
 })
 
@@ -220,10 +220,10 @@ await test('splitCompressPrompt：v2/v3 拆分字节等价；无 marker 返回 n
 })
 
 await test('compressPromptVersion：开关打开时版本号追加 :sys；v1 已退役 ⇒ 按 v3', async () => {
-  assert.equal(I.compressPromptVersion({ compressPrompt: 'v3', compressSystemPrompt: true }), 'compress-v3:250-450:sys')
+  assert.equal(I.compressPromptVersion({ compressPrompt: 'v3', compressSystemPrompt: true }), 'compress-v3r:250-450:sys')
   assert.equal(I.compressPromptVersion({ compressPrompt: 'v2', compressSystemPrompt: true }), 'compress-v2:sys')
-  assert.equal(I.compressPromptVersion({ compressPrompt: 'v1', compressSystemPrompt: true }), 'compress-v3:250-450:sys')
-  assert.equal(I.compressPromptVersion({ compressPrompt: 'v3' }), 'compress-v3:250-450')
+  assert.equal(I.compressPromptVersion({ compressPrompt: 'v1', compressSystemPrompt: true }), 'compress-v3r:250-450:sys')
+  assert.equal(I.compressPromptVersion({ compressPrompt: 'v3' }), 'compress-v3r:250-450')
   assert.equal(I.DEFAULTS.compressSystemPrompt, false)
 })
 
