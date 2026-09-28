@@ -161,12 +161,15 @@ export function makeChat({ baseUrl, apiKey, timeoutMs = 240000 }) {
       return { message: (j.choices && j.choices[0] && j.choices[0].message) || {}, finish: j.choices && j.choices[0] && j.choices[0].finish_reason, usage: j.usage || null, ms: Date.now() - t0 }
     } finally { clearTimeout(t) }
   }
-  // 只对连接层错误重试（中转偶发换 IP / 连不上）；HTTP 错误不重试
+  // 连接层错误与中转 5xx 重试（中转偶发换 IP / 502）
   return async (body) => {
     for (let k = 0; ; k++) {
       try { return await once(body) } catch (e) {
-        if (k >= 2 || /^HTTP /.test(String(e && e.message))) throw e
-        await new Promise((r) => setTimeout(r, 8000))
+        const msg = String(e && e.message)
+        const http5 = /^HTTP 5\d\d/.test(msg)
+        // 连接层错误重试 2 次；中转 5xx（502/503/504）退避重试 6 次（15 s 起，约 3 分钟）；其余 HTTP 错误不重试
+        if ((/^HTTP /.test(msg) && !http5) || k >= (http5 ? 6 : 2)) throw e
+        await new Promise((r) => setTimeout(r, http5 ? 15000 + 5000 * k : 8000))
       }
     }
   }
