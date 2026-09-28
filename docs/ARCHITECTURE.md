@@ -96,14 +96,14 @@ reasoning-delta  → h.seg ??= deps.segmenter(index)；h.seg.feed(累积全文)
                        本段 validateOps（锚点必须在本段）⇒ ok / failed(reason)
 block-end        → birthStart(entry{seg})：distill = seg.finish（送出尾段，等全部落定）；task.partial = seg.partial
                      低于门槛 / 停用 / 归档关 / 无 store ⇒ seg.cancel
-seg.finish       → 连续 ok 前缀 P（遇到第一个 failed 停止）
-                     P = 全部 ⇒ mergeSegmentOps → compileOpsV4（全文校验、retracts 生效、选取、渲染、尾段）
-                     P ⊂ 全部 ⇒ compileOpsV4(…, { rawSuffix: 原文[P 末尾:] })  —— 不出尾段，逐字接原文
-                     P = ∅   ⇒ throw v4-no-compiled-segment（原文放行）
+seg.finish       → L = 最后一个 ok 段；L 之前没编成的段 = 原文空洞（逐字放渲染稿前面）；L 之后 = 原文尾巴
+                     compileOpsV4(ok 段条目, raw, …, { rawPrefix, rawSuffix, segmented: true })
+                       全文校验（retracts / id 形态的 supersedes 生效）→ freshenState（状态后写者胜）→ 选取 → 渲染（有尾巴则不出尾段）
+                     没有 ok 段 ⇒ throw v4-no-compiled-segment（原文放行）
 finish 到点      → dist === null 且 task.partial() 非空 ⇒ 同一组闸 ⇒ condensed-partial；birthCancelFlying('partial-used')
 ```
 
-不变式：原文尾巴逐字；失败段之后不跳段；在飞段在任何放行 / 中断 / 提前退出路径上都被取消（`dropSeg` / `dropHeldSegs`）。
+不变式：原文尾巴 / 空洞逐字；最新状态总在最后（空洞放前、尾巴放后）；在飞段在任何放行 / 中断 / 提前退出路径上都被取消（`dropSeg` / `dropHeldSegs`）。
 
 ### 2.2 副模型调用（`distill.js`）
 

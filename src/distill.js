@@ -447,10 +447,14 @@ export function makeBirthCompiler(cfg) {
  */
 export function makeV4SegmentCompiler(cfg) {
   const pv = compressPromptVersion(cfg) + ':seg'
-  const v4Max = Number.isFinite(cfg.compressV4MaxOutputTokens) && cfg.compressV4MaxOutputTokens > 0 ? cfg.compressV4MaxOutputTokens : 1600
   return async (segText, prior, signal, extra = {}) => {
     const prompt = buildCompressPromptV4Segment(segText, prior)
-    const c = { ...cfg, maxOutputTokens: Math.max(Number(cfg.maxOutputTokens) || 0, v4Max) }
+    // v12.3 真机（中转 deepseek-v4.1-flash）：1000 字一段要 4–8 s，常撞 8 s 请求超时。
+    // 非尾段不在关键路径上（思考还在流）⇒ 单独的长超时；尾段才受 timeoutMs 管。输出上限按段收紧（条目数有上限）。
+    const segTimeout = Number.isFinite(cfg.compressV4SegmentTimeoutMs) && cfg.compressV4SegmentTimeoutMs > 0 ? cfg.compressV4SegmentTimeoutMs : 30000
+    const segMax = Number.isFinite(cfg.compressV4SegmentMaxOutputTokens) && cfg.compressV4SegmentMaxOutputTokens > 0 ? cfg.compressV4SegmentMaxOutputTokens : 1200
+    const c = { ...cfg, maxOutputTokens: segMax,
+      timeoutMs: extra && extra.tail ? cfg.timeoutMs : Math.max(Number(cfg.timeoutMs) || 0, segTimeout) }
     if (extra && typeof extra.onHeaders === 'function') c._onHeaders = extra.onHeaders
     if (cfg.compressSystemPrompt === true) {
       const sp = splitCompressPrompt(prompt)

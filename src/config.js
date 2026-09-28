@@ -194,6 +194,9 @@ export const DEFAULTS = {
   //   false ⇒ 回到 block-end 才整块编译（src/segment-v4.js 文件头有完整说明）。
   compressV4Incremental: true,
   compressV4SegmentChars: 1200,
+  // v12.3 真机：非尾段不在关键路径上 ⇒ 单独的长超时（尾段仍受 timeoutMs）；分段输出上限（提示词限每千字 ≤6 条）
+  compressV4SegmentTimeoutMs: 30000,
+  compressV4SegmentMaxOutputTokens: 1200,
   // ★ v11.7 缓存友好拆分（opt-in）：把压缩提示词的**固定规则前缀**放进 system 消息、原文放 user 消息。
   //   DeepSeek Context Caching 按「缓存前缀单元」整段匹配（官方 kv_cache 文档 Example 1：system+user 形状），
   //   现状 461 字符规则与原文挤在同一条 user 消息里 ⇒ 实测 prompt_cache_hit_tokens 恒为 0。

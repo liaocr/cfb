@@ -26,6 +26,7 @@ import { birthTransform } from '../src/birth.js'
 import { makeBirthCompiler, makeV4SegmentCompiler } from '../src/distill.js'
 import { createSegmenter } from '../src/segment-v4.js'
 import { v4Budget, v4Incremental } from '../src/prompts.js'
+import { endpointUrl } from '../src/provider.js'
 
 // ── 内置任务：真实形态的 Agent 调试回合（带工具输出），足以诱发 3,000+ 字的思考 ─────────────
 export const TASKS = [
@@ -145,7 +146,7 @@ export function parseArgs(argv) {
 
 // ── ① 录制：主模型流式思考，逐 delta 记时刻 ─────────────────────────────────
 async function record(task, o, key) {
-  const url = o.baseUrl.replace(/\/+$/, '') + '/v1/chat/completions'
+  const url = endpointUrl(o.baseUrl, 'openai-completions')  // 与副模型同一规则：base 已以 /v1 结尾（中转站常见）就不再叠加
   const body = { model: o.model, stream: true, max_tokens: o.maxTokens, thinking: { type: 'enabled' },
     messages: [...(task.system ? [{ role: 'system', content: task.system }] : []), { role: 'user', content: task.user }] }
   const t0 = Date.now()

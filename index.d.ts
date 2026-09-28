@@ -53,6 +53,10 @@ export interface CotFormBConfig {
   compressV4Incremental?: boolean
   /** 仅 v4 增量：目标段长（字符，缺省 1200；在段落 / 行 / 句末处切，0.6–1.5 倍浮动） */
   compressV4SegmentChars?: number
+  /** 仅 v4 增量：非尾段的请求超时（缺省 30000；尾段仍用 timeoutMs） */
+  compressV4SegmentTimeoutMs?: number
+  /** 仅 v4 增量：每段副模型输出上限（缺省 1200） */
+  compressV4SegmentMaxOutputTokens?: number
   /** v11.7（opt-in，缺省 false）：把 v2/v3 压缩提示词的固定规则前缀放进 system 消息、原文放 user 消息（字节等价），让 DeepSeek Context Caching 命中规则前缀；打开后 promptVersion 追加 ':sys' */
   compressSystemPrompt?: boolean
   birthCancelOnGiveUp?: boolean
@@ -257,6 +261,7 @@ export interface V4Stats {
   dropped?: { restate: number; verify: number; budget: number }; lang?: 'zh' | 'en'; budget?: number; chars?: number
   /** v12.3 增量：原文尾巴字符数 / 已编译段数 / 总段数 / 是否部分结果 */
   rawSuffixChars?: number; compiledSegments?: number; segments?: number; incremental?: boolean; partial?: boolean
+  rawGapChars?: number; gapSegments?: number; stale?: { demotedIncumbent: number; droppedOpen: number }
 }
 /** 容错解析副模型输出（{ops:[…]} / 裸数组 / 围栏 / 前后废话 / JSON Lines） */
 export declare function parseOps(output: string): { ops: Record<string, unknown>[] } | { error: string }
@@ -274,13 +279,17 @@ export declare function renderLang(raw: string): 'zh' | 'en'
 /** 副模型输出 + 原文 ⇒ 出生文本；失败返回 ok:false（调用方原文放行） */
 export declare function compileV4(output: string, raw: string, cfg?: CotFormBConfig, budget?: number | null):
   { ok: true; text: string; stats: V4Stats } | { ok: false; reason: string; stats: V4Stats }
-/** 已解析条目 ⇒ 出生文本；opts.rawSuffix 非空 ⇒ 不出尾段，渲染后逐字接上原文尾巴 */
-export declare function compileOpsV4(rawOps: unknown[], raw: string, cfg?: CotFormBConfig, budget?: number | null, stats?: V4Stats, opts?: { rawSuffix?: string }):
+/** 已解析条目 ⇒ 出生文本；rawSuffix ⇒ 不出尾段、逐字接原文尾巴；rawPrefix ⇒ 原文空洞放最前；segmented ⇒ 状态后写者胜 */
+export declare function compileOpsV4(rawOps: unknown[], raw: string, cfg?: CotFormBConfig, budget?: number | null, stats?: V4Stats, opts?: { rawSuffix?: string; rawPrefix?: string; segmented?: boolean }):
   { ok: true; text: string; stats: V4Stats } | { ok: false; reason: string; stats: V4Stats }
 /** 拒绝占比（dup / I7 / retracted 不计入） */
 export declare function v4RejectRatioOf(v: { rejected: { rule: string }[]; total: number }): number
 /** 多段条目合并：id 加 's{n}.' 前缀，段内 deps / retracts 同步加前缀，跨段引用原样保留 */
 export declare function mergeSegmentOps(segs: { n: number; ops: unknown[] }[]): Record<string, unknown>[]
+/** supersedes 是条目 id 列表（'s3.o11' / 'o1, o2'）⇒ 返回 id 数组（按 retracts 处理）；否则 null */
+export declare function supersedesIds(v: unknown): string[] | null
+/** 状态后写者胜：只有最后一个含 INCUMBENT / OPEN 的段的这两类算当前；更早的 INCUMBENT 降为 COMPUTED、OPEN 丢弃（被依赖的除外） */
+export declare function freshenState(kept: V4Op[], stats?: V4Stats): V4Op[]
 /** 给后段提示词的「此前已标注」行（最多 max 条，取最近的） */
 export declare function priorLines(kept: V4Op[], max?: number): string[]
 
@@ -294,7 +303,7 @@ export interface V4SegmentState {
   ops: Record<string, unknown>[] | null; kept: V4Op[]; reason: string | null; ms: number | null
 }
 export type V4SegmentCompile = (segText: string, priorLines: string[], signal: AbortSignal,
-  opts: { onHeaders?: (info: { status: number; ttfbMs: number }) => void; trace?: (tag: string, data: object) => void }) => Promise<{ ops: unknown[]; meta?: Record<string, unknown> }>
+  opts: { onHeaders?: (info: { status: number; ttfbMs: number }) => void; trace?: (tag: string, data: object) => void; tail?: boolean }) => Promise<{ ops: unknown[]; meta?: Record<string, unknown> }>
 export interface V4Segmenter {
   /** 每个 reasoning-delta 调用一次，传当前累积全文 */
   feed(text: string): void

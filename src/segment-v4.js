@@ -77,7 +77,7 @@ export function createSegmenter({ cfg = {}, compileSegment, trace = () => {}, in
     segments.push(seg)
     emit('v4-segment-fired', { n, start, end, chars: segText.length, priorOps: prior.length, tail: !!extra.tail })
     seg.promise = Promise.resolve()
-      .then(() => compileSegment(segText, prior, abort.signal, { onHeaders: extra.onHeaders, trace }))
+      .then(() => compileSegment(segText, prior, abort.signal, { onHeaders: extra.onHeaders, trace, tail: !!extra.tail }))
       .then((r) => {
         const ops = (r && Array.isArray(r.ops)) ? r.ops : []
         const local = mergeSegmentOps([{ n, ops }])
@@ -114,19 +114,23 @@ export function createSegmenter({ cfg = {}, compileSegment, trace = () => {}, in
     }
   }
 
-  /** 由已编译前缀 + 原文尾巴组装结果；前缀为空 ⇒ null。 */
+  /** 组装：[中间没编成的段 = 原文空洞，放前面] + 渲染稿（全部已编译段）+ [最后一个已编译段之后 = 原文尾巴]；
+   *  一段都没编成 ⇒ null。v12.3 真机：旧规则「遇到失败段就停」让一个中间超时把后面全部变成原文（压缩率只剩 11%）。 */
   const assemble = (raw, budget) => {
-    const prefix = okPrefix()
-    if (!prefix.length) return null
-    const prefixEnd = prefix[prefix.length - 1].end
-    const suffix = raw.slice(prefixEnd)
+    let last = -1
+    segments.forEach((s, i) => { if (s.status === 'ok') last = i })
+    if (last < 0) return null
+    const upto = segments.slice(0, last + 1)
+    const okSegs = upto.filter((s) => s.status === 'ok')
+    const gaps = upto.filter((s) => s.status !== 'ok')
+    const suffix = raw.slice(segments[last].end)
     // 各段的 ops 在 fire 时已经过 mergeSegmentOps（id 全局唯一、段内引用已加前缀），直接按段序拼接
-    const merged = prefix.flatMap((x) => x.ops)
-    const stats = { segments: segments.length, compiledSegments: prefix.length, failedSegments: segments.filter((s) => s.status === 'failed').length,
-      pendingSegments: segments.filter((s) => s.status === 'pending').length }
-    const out = compileOpsV4(merged, raw, cfg, budget, stats, { rawSuffix: suffix })
+    const merged = okSegs.flatMap((x) => x.ops)
+    const stats = { segments: segments.length, compiledSegments: okSegs.length, gapSegments: gaps.length,
+      failedSegments: segments.filter((s) => s.status === 'failed').length, pendingSegments: segments.filter((s) => s.status === 'pending').length }
+    const out = compileOpsV4(merged, raw, cfg, budget, stats, { rawSuffix: suffix, rawPrefix: gaps.map((g) => g.text.trim()).join('\n\n'), segmented: true })
     if (!out.ok) return { ok: false, reason: out.reason, stats: out.stats }
-    return { ok: true, text: out.text, stats: out.stats, partial: suffix.length > 0 }
+    return { ok: true, text: out.text, stats: out.stats, partial: suffix.length > 0 || gaps.length > 0 }
   }
 
   return {

@@ -36,12 +36,20 @@
 - 测试：`test/v4.selftest.mjs` §9（9 例：切点、分段 + retracts、到点部分结果、中间段失败不跳段、取消、分段校验、birthTransform 端到端三种结局）；
   新套件 `test/v4-live.selftest.mjs`（本地假 DeepSeek：录制 → 三模式回放，v4 整块超时 / 增量替换成功、钥匙不落盘、--replay）。
 
-### 修复
-- v4 超时的本质问题（见上）。
+### 真机测试后的修正（`docs/analysis/V4-LIVE-2026-09-28.md`，deepseek-v4.1-flash，3 条真实推理流）
+- 第 1 轮：v3 1/3、v4 整块 **0/3**、v4 增量 3/3 但产物/原文 0.79–0.95（几乎全是原文）。据 trace 修三处：
+  - 非尾段不在关键路径 ⇒ 独立长超时 `compressV4SegmentTimeoutMs`（30000；尾段仍受 `timeoutMs`）；每段输出上限 `compressV4SegmentMaxOutputTokens`（1200）。
+  - 提示词规则 5 / 8：复读工具输出、复核已知结论不要标；每千字至多 6 条；text ≤ 40 字（段耗时 p50 从 8 s+ 降到 3.4 s）。版本号 `compress-v4-ops2`。
+  - 中间段失败不再截断：失败段原文就地放在渲染稿前面（原文空洞），后面成功的段照用。
+- 第 2 轮发现左右互搏残留（各段的当前方案 / 未决合并后全部必留）⇒ `freshenState`：状态后写者胜
+  （只有最后一个含 INCUMBENT / OPEN 的段算当前；更早的 INCUMBENT 降为 COMPUTED、OPEN 丢弃，被依赖者除外；REFUTED 不动）。
+- 第 3 轮：3/3 替换，长块 0.17 / 0.22，短块 0.47；finish 多扣 ≈ 1.5 s（窗口本身）。
+- `supersedes` 写成条目 id ⇒ 按 retracts 处理（`supersedesIds`），不再把内部 id 漏进出生文本。
+- `tools/v4-live.mjs`：base URL 已以 `/v1` 结尾（中转站）时不再叠加。
 
 ### 验证
-- `node verify.mjs`：558 通过 / 0 失败 / 1 跳过（15 套件）；`tsc --strict index.d.ts` 通过；`manifest --check` 通过。
-- 真机：**待跑**（`DEEPSEEK_API_KEY=… node tools/v4-live.mjs`）。
+- `node verify.mjs`：560 通过 / 0 失败 / 1 跳过（15 套件）；`tsc --strict index.d.ts` 通过；`manifest --check` 通过。
+- 真机：见上（3 条录音、三轮）；压缩后主模型下一轮的表现**未测**（cf-eval）。
 
 ---
 

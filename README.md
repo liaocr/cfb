@@ -111,7 +111,8 @@ trace：`compiler-v4-compiled`（每次编译的条目数、各不变量拒绝�
 **流式增量编译（v12.3，v4 缺省开）**：v4 的输出是 JSON（带锚点），比 v3 散文长 2–3 倍，整块等到 block-end 才起飞会装不下收网窗口。
 所以思考还在流时，每攒够 `compressV4SegmentChars`（1200）字就在段落 / 行 / 句末处切一段、立即起飞副模型调用；
 block-end 时只剩最后一段在飞。到点仍没落定 ⇒ **已编译的连续前缀 + 原文尾巴（逐字）**，结局 `condensed-partial`。
-某段失败 ⇒ 从该段起一律原文（不跳段）。后段提示词带前段已通过校验的条目，可用 `retracts` 推翻前段结论。
+某段失败 ⇒ 该段原文放在渲染稿前面，其余段照用。后段提示词带前段已通过校验的条目，可用 `retracts` 推翻前段结论；
+合并时状态后写者胜（只有最新的当前方案 / 未决算数，死路永远保留）。真机记录：[`docs/analysis/V4-LIVE-2026-09-28.md`](docs/analysis/V4-LIVE-2026-09-28.md)。
 trace：`v4-segment-fired/settled`、`v4-segments-cancelled`。`compressV4Incremental: false` 回到整块编译。
 
 **真机测试**：`DEEPSEEK_API_KEY=… node tools/v4-live.mjs --out live-out`（录制 6 个 Agent 调试回合的真实推理流，
@@ -148,6 +149,8 @@ trace：`v4-segment-fired/settled`、`v4-segments-cancelled`。`compressV4Increm
 | `compressV4MaxRejectRatio` | `0.5` | 仅 v4：硬不变量拒绝占比超过它 ⇒ 整块原文 |
 | `compressV4Incremental` | `true` | 仅 v4（v12.3）：流式增量编译；`false` ⇒ 整块编译 |
 | `compressV4SegmentChars` | `1200` | 仅 v4 增量：目标段长（字符，0.6–1.5 倍浮动） |
+| `compressV4SegmentTimeoutMs` | `30000` | 仅 v4 增量：非尾段请求超时（不在关键路径上）；尾段仍用 `timeoutMs` |
+| `compressV4SegmentMaxOutputTokens` | `1200` | 仅 v4 增量：每段副模型输出上限 |
 | `birth.identifierGate` | `true` | **v12.1**：摘要里出现原文没有的路径 / URL / 反引号代码 / camelCase / snake_case / `file.ext` ⇒ 原文放行（`why=invented-identifier`，trace 带样本）。`false` 关闭（A/B 对照腿） |
 | `birth.minChars` | `3100` | 短于此长度不压缩（成本模型反解：R=60、d=0.02、B′≈450 ⇒ 保本原长 2,747，保守取整且不下调） |
 | `birth.minTokens` | `null` | **v11.10 opt-in**：正数 ⇒ 按 token 估算判定、完全接管 `minChars`（3100 字符对英文 ≈ 930 token、对中文 ≈ 1,860 token，同一门槛随语言差 2 倍） |
@@ -275,7 +278,7 @@ trace 写在 `$DSH_HOME/storages/cot-form-b/trace.log`，一行一条：`[ISO时
 **已完成、自测覆盖**：birth 压缩主路径与四条硬约束；compress-v3（缺省）；成本模型门槛（3100）与恒定输出上限（850）；
 **v12.1 发明标识符闸**（摘要编造路径 / 代码标识符 ⇒ 原文放行）；
 **v12.2 compress-v4-ops**（副模型标注 → 代码校验 / 选取 / 渲染，opt-in；本机端到端覆盖，真机未跑）；
-**v12.3 v4 流式增量编译**（边写边分段、到点取部分结果；本机端到端覆盖；真机工具 `tools/v4-live.mjs` 已就绪，待跑）；评估态零副作用；
+**v12.3 v4 流式增量编译**（边写边分段、到点取部分结果；真机 3 条推理流：v4 整块 0/3 → 增量 3/3，长块压到 17–22%）；评估态零副作用；
 句柄读回验证（birth 内存预推句柄须先验证，无证据则原文放行）；
 对冲、响应头宽限、缓存友好拆分（均可关）；配置自检；测试隔离。
 

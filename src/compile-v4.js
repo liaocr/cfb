@@ -32,6 +32,9 @@ const K2W = { pivot: 1.25, localize: 1.1, compute: 1.1, hypothesize: 1.0, answer
 const EVW = { tool: 1.0, derived: 0.95, guess: 0.7 }
 const GROUP = { FACT: 0, COMPUTED: 0, INCUMBENT: 1, REFUTED: 2, SHELVED: 2, PLAN: 3, OPEN: 4 }
 
+// 副模型常把 supersedes 写成条目 id（「s3.o11」）而不是旧值 —— 语义就是 retracts；原样渲染会把内部 id 漏进出生文本（v12.3 真机）
+const ID_LIST_RE = /^\s*(?:s\d+\.)?o\d+(?:\s*[,，、]\s*(?:s\d+\.)?o\d+)*\s*$/
+export function supersedesIds(v) { return typeof v === 'string' && ID_LIST_RE.test(v) ? v.split(/[,，、]/).map((x) => x.trim()).filter(Boolean) : null }
 const CAP = { text: 300, anchor: 120, alt: 200, why: 200, trigger: 160, supersedes: 160, src: 60, key: 60 }
 const str = (x, n) => (typeof x === 'string' ? x : x == null ? '' : typeof x === 'number' ? String(x) : '').trim().slice(0, n)
 const norm = (s) => String(s || '').normalize('NFKC').replace(/\s+/g, ' ').trim()
@@ -97,14 +100,15 @@ export function normalizeOp(o, i) {
   const kind2 = str(o.kind2 ?? o.role, 20).toLowerCase()
   const ids = (x) => (Array.isArray(x) ? x : typeof x === 'string' && x ? [x] : []).map((d) => str(d, 24)).filter(Boolean).slice(0, 8)
   const deps = ids(o.deps)
-  const retracts = ids(o.retracts)
+  const supIds = supersedesIds(o.supersedes)
+  const retracts = [...new Set([...ids(o.retracts), ...(supIds || []).map((d) => str(d, 24))])].slice(0, 8)
   return {
     id: str(o.id, 20) || 'o' + (i + 1), idx: i, k,
     ev: V4_EVS.includes(ev) ? ev : 'derived',
     kind2: V4_KIND2.includes(kind2) ? kind2 : null,
     text: str(o.text, CAP.text), anchor: str(o.anchor, CAP.anchor), key: str(o.key, CAP.key),
     src: str(o.src, CAP.src), alt: str(o.alt, CAP.alt), why: str(o.why, CAP.why),
-    trigger: str(o.trigger, CAP.trigger), supersedes: str(o.supersedes, CAP.supersedes), deps, retracts,
+    trigger: str(o.trigger, CAP.trigger), supersedes: supIds ? '' : str(o.supersedes, CAP.supersedes), deps, retracts,
   }
 }
 
@@ -332,6 +336,8 @@ const maxRejectRatio = (cfg) => (typeof cfg.compressV4MaxRejectRatio === 'number
 /**
  * 从已解析的条目编译（整块与增量共用）。
  * @param opts.rawSuffix 增量编译的「原文尾巴」：尚未编译完的最新一段推理，逐字接在渲染稿后面（此时不出尾段）
+ * @param opts.rawPrefix 增量编译的「原文空洞」：中间编译失败 / 没赶上的段，逐字放在渲染稿**前面**
+ *   （它们比渲染稿里后段的结论旧；放前面 ⇒ 最新状态仍在最后，不会被旧原文盖过）
  */
 export function compileOpsV4(rawOps, raw, cfg = {}, budget = null, stats = {}, opts = {}) {
   const v = validateOps(rawOps, raw)
@@ -348,20 +354,47 @@ export function compileOpsV4(rawOps, raw, cfg = {}, budget = null, stats = {}, o
   const b = Number.isFinite(budget) && budget > 0 ? budget
     : (typeof cfg.compressV4BudgetChars === 'number' && cfg.compressV4BudgetChars > 0 ? cfg.compressV4BudgetChars
       : (typeof cfg.compressTargetMax === 'number' && cfg.compressTargetMax > 0 ? cfg.compressTargetMax : 450))
-  const sel = selectOps(v.kept, { budget: b, lang })
+  const kept = opts.segmented ? freshenState(v.kept, stats) : v.kept
+  const sel = selectOps(kept, { budget: b, lang })
   const suffix = typeof opts.rawSuffix === 'string' ? opts.rawSuffix : ''
   // 有原文尾巴时不出尾段：尾巴本身就是最新的推理，「所以现在…」会比它旧
   const body = renderOps(sel.chosen, { lang, tail: !suffix && cfg.compressV4Tail !== false })
-  const text = suffix.trim() ? body + '\n\n' + suffix.replace(/^\s+/, '') : body
+  const gap = typeof opts.rawPrefix === 'string' ? opts.rawPrefix.trim() : ''
+  const withGap = gap ? gap + '\n\n' + body : body
+  const text = suffix.trim() ? withGap + '\n\n' + suffix.replace(/^\s+/, '') : withGap
   const kinds = {}
   for (const o of sel.chosen) kinds[o.k] = (kinds[o.k] || 0) + 1
   Object.assign(stats, { selected: sel.chosen.length, kinds, dropped: sel.dropped, lang, budget: b, chars: text.length })
   if (suffix) stats.rawSuffixChars = suffix.length
+  if (gap) stats.rawGapChars = gap.length
   if (!text.trim()) return { ok: false, reason: 'v4-empty-render', stats }
   return { ok: true, text, stats }
 }
 
 // ── 增量编译的辅助（src/segment-v4.js 使用）───────────────────────────────
+const segOf = (id) => { const m = /^s(\d+)\./.exec(id || ''); return m ? Number(m[1]) : 0 }
+/**
+ * 状态「后写者胜」（v12.3 真机发现）：各段各自标 INCUMBENT / OPEN，合并后全是必留 ⇒ 前段的旧判断、
+ * 后来已解决的疑问一起堆进出生文本 —— 正是要消除的「左右互搏」残留。
+ *   INCUMBENT：只有「最后一个含 INCUMBENT 的段」的算当前方案；更早的降为 COMPUTED（按价值竞争预算，不再必留）。
+ *   OPEN：只有「最后一个含 OPEN 的段」的算未决；更早的丢弃（后来要么解决了、要么被重新提出），被依赖的除外。
+ *   REFUTED 不动：死路是疫苗，任何时候都必留。
+ */
+export function freshenState(kept, stats = {}) {
+  const lastWith = (k) => kept.reduce((m, o) => (o.k === k ? Math.max(m, segOf(o.id)) : m), 0)
+  const li = lastWith('INCUMBENT'), lo = lastWith('OPEN')
+  const needed = new Set(kept.flatMap((o) => o.deps || []))
+  let demoted = 0, droppedOpen = 0
+  const out = []
+  for (const o of kept) {
+    if (o.k === 'INCUMBENT' && segOf(o.id) < li) { out.push({ ...o, k: 'COMPUTED' }); demoted++; continue }
+    if (o.k === 'OPEN' && segOf(o.id) < lo && !needed.has(o.id)) { droppedOpen++; continue }
+    out.push(o)
+  }
+  if (demoted || droppedOpen) stats.stale = { demotedIncumbent: demoted, droppedOpen }
+  return out
+}
+
 /**
  * 合并各段的条目：id 加段前缀（s{n}.{id}）使全局唯一；段内 deps / retracts 同样加前缀，
  * 指向前段的全局 id（副模型从【此前已标注】里抄来的）原样保留。
@@ -376,7 +409,9 @@ export function mergeSegmentOps(segments) {
       if (!o || typeof o !== 'object') return
       const id = str(o.id, 20) || 'o' + (i + 1)
       const fix = (x) => (Array.isArray(x) ? x : typeof x === 'string' && x ? [x] : []).map((d) => g(str(d, 24)))
-      out.push({ ...o, id: 's' + seg.n + '.' + id, deps: fix(o.deps), retracts: fix(o.retracts) })
+      const sup = supersedesIds(o.supersedes)
+      const rt = sup ? [...(Array.isArray(o.retracts) ? o.retracts : typeof o.retracts === 'string' && o.retracts ? [o.retracts] : []), ...sup] : o.retracts
+      out.push({ ...o, id: 's' + seg.n + '.' + id, deps: fix(o.deps), retracts: fix(rt), ...(sup ? { supersedes: '' } : {}) })
     })
   }
   return out

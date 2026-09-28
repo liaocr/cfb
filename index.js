@@ -32,7 +32,7 @@ export {
 } from './src/prompts.js'
 export {
   compileV4, compileOpsV4, parseOps, normalizeOp, validateOps, selectOps, renderOps, renderLine, renderLang, scoreOp,
-  mergeSegmentOps, priorLines, v4RejectRatioOf, V4_KINDS, V4_EVS, V4_KIND2,
+  mergeSegmentOps, priorLines, freshenState, supersedesIds, v4RejectRatioOf, V4_KINDS, V4_EVS, V4_KIND2,
 } from './src/compile-v4.js'
 export { createSegmenter, findCut, findFirstCut } from './src/segment-v4.js'
 export {

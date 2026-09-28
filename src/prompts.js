@@ -26,7 +26,7 @@ export function compressPromptVersion(cfg) {
   const sys = cfg && cfg.compressSystemPrompt === true ? ':sys' : ''
   if (v === 'v2') return 'compress-v2' + sys
   // v4 把渲染预算与尾段开关写进版本号（它们改变产物；提示词本身不随参数变化）
-  if (v === 'v4') return 'compress-v4-ops:' + v4Budget(cfg) + (cfg && cfg.compressV4Tail === false ? ':notail' : '') +
+  if (v === 'v4') return 'compress-v4-ops2:' + v4Budget(cfg) + (cfg && cfg.compressV4Tail === false ? ':notail' : '') +
     (v4Incremental(cfg) ? ':inc' + v4SegmentChars(cfg) : '') + sys
   // v3 把目标长度写进版本号 ⇒ trace / BOOT / A-B 分桶自动带上参数，无需另记字段。
   const t = compressTargets(cfg)
@@ -175,10 +175,11 @@ const V4_HEAD = (
     '2. 只标注原文实际出现的内容；不新增事实，不给建议，不评价。\n' +
     '3. 原文仍在犹豫或存疑的，标 OPEN、SHELVED 或 ev=guess，不得升级为已确定。\n' +
     '4. 被放弃的路一定要标出来（REFUTED 或 SHELVED）：它们防止同一条死路再走一遍。\n' +
-    '5. 同一内容只标一次；逐字复读工具输出的句子标 kind2=restate。\n' +
+    '5. 同一内容只标一次；逐字复读工具输出、复核已知结论的句子不要标（程序本来就会丢弃）。\n' +
     '6. 不使用"你 / 您"，不写祈使句。\n' +
     '7. 若给出了【此前已标注】（同一段推理前面部分的标注结果），只标注【本段】里的新内容，不要重复；' +
-    '本段推翻或取代了此前某条时，在新条目里写 retracts（被推翻条目的 id 列表）；anchor 仍须摘自【本段】。\n\n'
+    '本段推翻或取代了此前某条时，在新条目里写 retracts（被推翻条目的 id 列表）；anchor 仍须摘自【本段】。\n' +
+    '8. 宁少勿多：只标会影响下一步判断的条目，每 1000 字原文至多 6 条；text 不超过 40 字。\n\n'
 )
 
 export function buildCompressPromptV4(cot) {

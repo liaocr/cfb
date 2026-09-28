@@ -60,10 +60,10 @@ try {
   })
   await test('§1c 版本号：v4 携带预算与尾段开关；缺省仍为 v3；compressPromptFor 分派一致', () => {
     assert.equal(I.DEFAULTS.compressPrompt, 'v3')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4' }), 'compress-v4-ops:450:inc1200')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressTargetMax: 600, compressV4SegmentChars: 800 }), 'compress-v4-ops:600:inc800')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Incremental: false }), 'compress-v4-ops:450')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4BudgetChars: 520, compressV4Tail: false, compressV4Incremental: false, compressSystemPrompt: true }), 'compress-v4-ops:520:notail:sys')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4' }), 'compress-v4-ops2:450:inc1200')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressTargetMax: 600, compressV4SegmentChars: 800 }), 'compress-v4-ops2:600:inc800')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Incremental: false }), 'compress-v4-ops2:450')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4BudgetChars: 520, compressV4Tail: false, compressV4Incremental: false, compressSystemPrompt: true }), 'compress-v4-ops2:520:notail:sys')
     assert.equal(I.v4Incremental({ compressPrompt: 'v4' }), true); assert.equal(I.v4Incremental({ compressPrompt: 'v3' }), false)
     assert.equal(I.compressPromptFor({ compressPrompt: 'v4' }, 'COT'), I.buildCompressPromptV4('COT'))
     assert.equal(I.v4Budget({}), 450); assert.equal(I.v4Budget({ compressV4BudgetChars: -1 }), 450); assert.equal(I.v4Budget({ compressV4BudgetChars: 700 }), 700)
@@ -253,7 +253,7 @@ try {
         assert.ok(lastBody.messages[0].content.endsWith(LONG))
         assert.equal(lastBody.max_tokens, 1600)
         assert.ok(r.text.includes('已排除权限问题') && !r.text.includes('{'))
-        assert.equal(r.meta.promptVersion, 'compress-v4-ops:450:inc1200')
+        assert.equal(r.meta.promptVersion, 'compress-v4-ops2:450:inc1200')
         assert.equal(r.meta.v4.selected, 7)
         const t = traces.find(([x]) => x === 'compiler-v4-compiled')
         assert.ok(t && t[1].ok === true && t[1].valid === 8 && typeof t[1].compileMs === 'number', JSON.stringify(t))
@@ -263,7 +263,7 @@ try {
         reply = '权限不是问题，是路径错配。'
         const traces = []
         await assert.rejects(I.makeBirthCompiler(cfg)(LONG, undefined, { trace: (t, d) => traces.push([t, d]) }), (e) => {
-          assert.equal(e.message, 'v4-unparseable'); assert.equal(e.meta.v4.reason, 'v4-unparseable'); assert.equal(e.meta.promptVersion, 'compress-v4-ops:450:inc1200'); return true
+          assert.equal(e.message, 'v4-unparseable'); assert.equal(e.meta.v4.reason, 'v4-unparseable'); assert.equal(e.meta.promptVersion, 'compress-v4-ops2:450:inc1200'); return true
         })
         assert.ok(traces.some(([x, d]) => x === 'compiler-v4-compiled' && d.ok === false))
       })
@@ -363,13 +363,21 @@ try {
     const sg2 = I.createSegmenter({ cfg: segCfg, compileSegment: mkCompile(() => 5000) })
     sg2.feed(FULL); assert.equal(sg2.partial(FULL), null); sg2.cancel('test')
   })
-  await test('§9d 中间段失败 ⇒ 从失败段起全部原文（不跳段）；全部失败 ⇒ 抛错；cancel 掐掉在飞请求', async () => {
+  await test('§9d 中间段失败 ⇒ 该段原文放在渲染稿前面（原文空洞），后面成功的段照用；全部失败 ⇒ 抛错；cancel 掐掉在飞请求', async () => {
     const bad = async (segText) => { if (segText.includes('第二段')) throw new Error('boom'); return { ops: opsFor(segText) } }
     const sg = I.createSegmenter({ cfg: segCfg, compileSegment: bad })
-    sg.feed(SEGS[0] + SEGS[1] + SEGS[2].slice(0, 5))
+    sg.feed(SEGS[0] + SEGS[1] + SEGS[2].slice(0, 40))
+    assert.equal(sg.segments.length, 2)
     const r = await sg.finish(FULL)
-    assert.ok(r.meta.v4.partial); assert.ok(r.text.endsWith(SEGS[1] + SEGS[2]), '失败段之后（含第三段）一律原文')
-    assert.ok(!r.text.includes('根因是路径错配'), '失败段之后的成功段不得跳着用')
+    assert.ok(r.meta.v4.partial); assert.equal(r.meta.v4.gapSegments, 1); assert.equal(r.meta.v4.compiledSegments, 2)
+    assert.ok(r.text.startsWith(SEGS[1].trim()), '失败段原文在最前（比后段结论旧）')
+    assert.ok(r.text.includes('APP_CONF 指向旧路径') && r.text.includes('已排除权限问题'), '失败段前后的成功段都要用上')
+    assert.ok(!r.text.includes('最后的想法'), '最后一段已编译 ⇒ 没有原文尾巴')
+    // 失败的是最后一段 ⇒ 原文尾巴（旧行为保留）
+    const sg2 = I.createSegmenter({ cfg: segCfg, compileSegment: async (t) => { if (t.includes('第三段')) throw new Error('x'); return { ops: opsFor(t) } } })
+    sg2.feed(SEGS[0] + SEGS[1] + SEGS[2].slice(0, 40))
+    const r2 = await sg2.finish(FULL)
+    assert.ok(r2.text.endsWith(SEGS[2]) && r2.meta.v4.gapSegments === 0)
     const none = I.createSegmenter({ cfg: segCfg, compileSegment: async () => { throw new Error('x') } })
     await assert.rejects(none.finish(FULL), /v4-no-compiled-segment/)
     let aborted = 0
@@ -442,6 +450,28 @@ try {
     await new Promise((r) => setTimeout(r, 5))
     assert.ok(aborted >= 2, 'aborted=' + aborted)
     assert.ok(traces.some(([t, d]) => t === 'v4-segments-cancelled' && d.why === 'below-floor'))
+  })
+  await test('§9j 状态后写者胜：旧段的当前方案降级、旧段的未决丢弃（被依赖的保留）、证伪不动', () => {
+    const mk = (id, k, extra = {}) => ({ id, idx: 0, k, ev: 'derived', kind2: null, text: id, anchor: '', key: '', src: '', alt: 'x', why: 'y', trigger: '', supersedes: '', deps: [], ...extra })
+    const st = {}
+    const out = I.freshenState([mk('s1.o1', 'INCUMBENT'), mk('s1.o2', 'OPEN'), mk('s1.o3', 'OPEN'), mk('s1.o4', 'REFUTED'),
+      mk('s2.o1', 'FACT', { deps: ['s1.o3'] }), mk('s3.o1', 'INCUMBENT'), mk('s3.o2', 'OPEN')], st)
+    const k = Object.fromEntries(out.map((o) => [o.id, o.k]))
+    assert.equal(k['s1.o1'], 'COMPUTED'); assert.equal(k['s3.o1'], 'INCUMBENT')
+    assert.ok(!('s1.o2' in k)); assert.equal(k['s1.o3'], 'OPEN', '被依赖的旧未决保留')
+    assert.equal(k['s1.o4'], 'REFUTED'); assert.equal(k['s3.o2'], 'OPEN')
+    assert.deepEqual(st.stale, { demotedIncumbent: 1, droppedOpen: 1 })
+    // 最后一段没有 INCUMBENT ⇒ 取最后一个有的段
+    const out2 = I.freshenState([mk('s1.o1', 'INCUMBENT'), mk('s2.o1', 'INCUMBENT'), mk('s3.o1', 'FACT')])
+    assert.deepEqual(out2.map((o) => o.k), ['COMPUTED', 'INCUMBENT', 'FACT'])
+  })
+  await test('§9k supersedes 写成条目 id ⇒ 当 retracts 处理，不渲染内部 id', () => {
+    const m = I.mergeSegmentOps([{ n: 1, ops: [{ id: 'o1', k: 'COMPUTED', text: 'A' }] }, { n: 2, ops: [{ id: 'o1', k: 'INCUMBENT', text: 'B', supersedes: 's1.o1' }, { id: 'o2', k: 'FACT', text: 'C', supersedes: 'o1' }] }])
+    assert.deepEqual(m[1].retracts, ['s1.o1']); assert.equal(m[1].supersedes, '')
+    assert.deepEqual(m[2].retracts, ['s2.o1'])
+    const n = I.normalizeOp({ id: 'o3', k: 'INCUMBENT', text: 'x', supersedes: 'o1, o2' }, 0)
+    assert.deepEqual(n.retracts, ['o1', 'o2']); assert.equal(n.supersedes, '')
+    assert.equal(I.normalizeOp({ k: 'INCUMBENT', text: 'x', supersedes: '旧路径 /etc/a' }, 0).supersedes, '旧路径 /etc/a')
   })
   await test('§9i makeV4SegmentCompiler：分段提示词（带此前已标注）、promptVersion 加 :seg、解析失败抛错', async () => {
     const p = I.buildCompressPromptV4Segment('SEG', ['s1.o1 [FACT] a'])
