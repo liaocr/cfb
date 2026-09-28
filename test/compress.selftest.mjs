@@ -43,12 +43,12 @@ try {
   })
   await test('§1c 版本号唯一裁决：缺省 v3、只有显式 v2 走 v2、退役值一律 v3；携带目标以便分桶', () => {
     assert.equal(I.DEFAULTS.compressPrompt, 'v3')
-    assert.equal(I.compressPromptVersion({}), 'compress-v3r:250-450')
+    assert.equal(I.compressPromptVersion({}), 'compress-v3h:250-450')
     assert.equal(I.compressPromptVersion({ compressPrompt: 'v2' }), 'compress-v2')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v1' }), 'compress-v3r:250-450')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'x1' }), 'compress-v3r:250-450')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v3', compressTargetMin: 300, compressTargetMax: 600 }), 'compress-v3r:300-600')
-    assert.equal(I.compressPromptVersion({ compressSystemPrompt: true }), 'compress-v3r:250-450:sys')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v1' }), 'compress-v3h:250-450')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'x1' }), 'compress-v3h:250-450')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v3', compressTargetMin: 300, compressTargetMax: 600 }), 'compress-v3h:300-600')
+    assert.equal(I.compressPromptVersion({ compressSystemPrompt: true }), 'compress-v3h:250-450:sys')
   })
   await test('§1d compressPromptFor 与版本号一致', () => {
     assert.equal(I.compressPromptFor({}, 'COT'), I.buildCompressPromptV3('COT', 250, 450))
@@ -123,7 +123,7 @@ try {
 
   // ═══ §3 trace ═════════════════════════════════════════════════════════════
   await test('§3a promptVersion 贯通 settled 行；inputAmplificationRatio 命名准确、compressRatio 仅作兼容别名', () => {
-    assert.equal(I.settledTraceData(0, 1, { ok: true, text: 'x', meta: { promptVersion: 'compress-v3r:250-450' } }).promptVersion, 'compress-v3r:250-450')
+    assert.equal(I.settledTraceData(0, 1, { ok: true, text: 'x', meta: { promptVersion: 'compress-v3h:250-450' } }).promptVersion, 'compress-v3h:250-450')
     const d = I.settledTraceData(0, 1, { ok: true, text: 'x', meta: { inputChars: 100, promptChars: 150, promptVersion: 'compress-v2' } })
     assert.equal(d.inputAmplificationRatio, 1.5); assert.equal(d.compressRatio, 1.5); assert.equal(d.promptVersion, 'compress-v2')
   })
@@ -191,13 +191,13 @@ try {
       p + '[birth-condensed] {"taskId":"a"}',
       p + '[birth-passthrough] {"why":"invented-identifier","invented":["/opt/x/y.z"]}',
       p + '[birth-passthrough] {"why":"distill-timeout"}',
-      p + '[birth-distill-settled] {"taskId":"a","ok":true,"chars":300,"promptVersion":"compress-v3r:250-450"}',
+      p + '[birth-distill-settled] {"taskId":"a","ok":true,"chars":300,"promptVersion":"compress-v3h:250-450"}',
     ].join('\n')
     const b = analyzeEfficiency(trace).boots[0]
     assert.equal(b.outcomes.condensed, 1)
     assert.deepEqual(b.outcomes.passthrough, { 'invented-identifier': 1, 'distill-timeout': 1 })
     assert.deepEqual(b.outcomes.inventedSamples, [['/opt/x/y.z']])
-    assert.equal(b.outcomes.promptVersions['compress-v3r:250-450'].ok, 1)
+    assert.equal(b.outcomes.promptVersions['compress-v3h:250-450'].ok, 1)
     assert.equal('claimFunnel' in b, false)
   })
 

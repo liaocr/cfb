@@ -49,6 +49,13 @@ const specs = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/effect-specs.jso
     assert.deepEqual(E.parseJudge('好的 {"overall":7,"deadEnd":false} 完'), { overall: 7, deadEnd: false })
     assert.equal(E.parseJudge('{"overall":7,'), null)
   })
+  await test('§5b 截断的盲评 JSON 逐字段捞回；actScore：edit_file ⇒ 直接改，再命中 next ⇒ 改对', () => {
+    assert.deepEqual(E.parseJudge('{"correct":9,"deadEnd":false,"facts":9,"focus":9,"overall":9,"note":"正确定位到'), { correct: 9, facts: 9, focus: 9, overall: 9, deadEnd: false, note: '(截断)' })
+    const s = specs.find((x) => x.id === 'perf-regression')
+    assert.deepEqual(E.actScore(s, '[tool_call edit_file] {"old_text":"compressTargetMax: 1800","new_text":"compressTargetMax: 450"}'), { edit: 1, editRight: 1 })
+    assert.deepEqual(E.actScore(s, '[tool_call edit_file] {"old_text":"maxOutputTokens: 4096"}'), { edit: 1, editRight: 0 })
+    assert.deepEqual(E.actScore(s, '[tool_call read_file] {"path":"src/config.js"}'), { edit: 0, editRight: 0 })
+  })
   await test('§6 summarize：按变体汇总、与 raw 同任务配对差；错误行单列', () => {
     const r = (task, variant, overall) => ({ task, variant, sample: 0, judge: { overall, correct: overall, facts: 5, focus: 5, deadEnd: false }, rule: { next: 1, avoid: 1 }, reasoningChars: 100, ctxReasoningChars: 10, usage: { prompt_tokens: 1000 } })
     const { markdown, byVar } = E.summarize([r('a', 'raw', 4), r('a', 'v4', 7), r('b', 'raw', 6), r('b', 'v4', 5), { task: 'b', variant: 'v4', sample: 1, error: 'x' }], ['raw', 'empty', 'v4'])

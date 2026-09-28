@@ -109,11 +109,16 @@ function gateTokens(text) {
  * 压缩稿里出现、原文里找不到的标识符。原文比对用「逐字包含」：摘要只截取路径尾段（如 conf.yaml）不算发明。
  * @returns string[]（最多 8 个样本；空数组 = 没有发明）
  */
+// 引号 / 空白差异不算发明（v12.4 真机误伤：原文日志 "rawChars":8123，摘要写成 `rawChars:8123`）
+const squash = (s) => String(s).replace(/["'`\s]+/g, '')
 export function inventedIdentifiers(src, out) {
   const hay = String(src || '')
+  let sq = null
   const res = []
   for (const t of gateTokens(out)) {
     if (hay.includes(t)) continue
+    const st = squash(t)
+    if (st.length >= 3 && (sq ??= squash(hay)).includes(st)) continue
     // 反斜杠 / 正斜杠互换视为同一路径（Windows 原文、POSIX 摘要）
     if (hay.includes(t.replace(/\\/g, '/')) || hay.includes(t.replace(/\//g, '\\'))) continue
     res.push(t)

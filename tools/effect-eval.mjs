@@ -122,9 +122,21 @@ ${text.slice(0, 6000)}
 }
 
 export function parseJudge(s) {
-  const m = String(s || '').match(/\{[\s\S]*\}/)
-  if (!m) return null
-  try { return JSON.parse(m[0]) } catch { return null }
+  const txt = String(s || '')
+  const m = txt.match(/\{[\s\S]*\}/)
+  if (m) { try { return JSON.parse(m[0]) } catch {} }
+  // 截断的 JSON（note 没写完）：分数字段都在前面，逐个捞
+  const num = (k) => { const x = new RegExp('"' + k + '"\\s*:\\s*(\\d+(?:\\.\\d+)?)').exec(txt); return x ? Number(x[1]) : undefined }
+  const j = { correct: num('correct'), facts: num('facts'), focus: num('focus'), overall: num('overall') }
+  if (j.overall == null || j.correct == null) return null
+  const de = /"deadEnd"\s*:\s*(true|false)/.exec(txt)
+  return { ...j, deadEnd: de ? de[1] === 'true' : false, note: '(截断)' }
+}
+
+/** 客观指标（不经盲评）：直接改（有 edit_file 调用）/ 改对（有 edit_file 且命中规则 next） */
+export function actScore(spec, text) {
+  const edit = /\[tool_call edit_file\]/.test(text) ? 1 : 0
+  return { edit, editRight: edit && ruleScore(spec, text).next ? 1 : 0 }
 }
 
 export const claudeShaped = (u) => !!u && Object.keys(u).some((k) => k.startsWith('claude'))
@@ -168,7 +180,9 @@ async function pool(items, n, fn) {
 const mean = (xs) => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN
 const f1 = (x) => Number.isFinite(x) ? x.toFixed(1) : '—'
 
-export function summarize(results, variantOrder) {
+let SPEC_BY_ID = {}
+export function summarize(results, variantOrder, specs = []) {
+  if (specs.length) SPEC_BY_ID = Object.fromEntries(specs.map((s) => [s.id, s]))
   const ok = results.filter((r) => !r.error && r.judge)
   const vars = variantOrder.filter((v) => ok.some((r) => r.variant === v))
   const tasks = [...new Set(ok.map((r) => r.task))]
@@ -184,14 +198,16 @@ export function summarize(results, variantOrder) {
     reasoning: mean(rs.map((r) => r.reasoningChars)),
     prompt: mean(rs.map((r) => (r.usage && r.usage.prompt_tokens) || 0)),
     ctxChars: mean(rs.map((r) => r.ctxReasoningChars)),
+    edit: mean(rs.map((r) => (r.act || actScore(SPEC_BY_ID[r.task] || { next: [] }, r.response || '')).edit)),
+    editRight: mean(rs.map((r) => (r.act || actScore(SPEC_BY_ID[r.task] || { next: [] }, r.response || '')).editRight)),
   })
   const L = []
-  L.push('| 变体 | n | 上下文思考字数 | 综合 | 下一步正确 | 事实 | 专注 | 死路率 | 规则命中 | 规则避坑 | 本轮思考字数 | prompt tokens |')
-  L.push('|---|---|---|---|---|---|---|---|---|---|---|---|')
+  L.push('| 变体 | n | 上下文思考字数 | 综合 | 下一步正确 | 事实 | 专注 | 死路率 | 直接改 | 改对 | 规则命中 | 本轮思考字数 | prompt tokens |')
+  L.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|')
   const byVar = {}
   for (const v of vars) {
     const a = agg(ok.filter((r) => r.variant === v)); byVar[v] = a
-    L.push(`| ${v} | ${a.n} | ${Math.round(a.ctxChars)} | ${f1(a.overall)} | ${f1(a.correct)} | ${f1(a.facts)} | ${f1(a.focus)} | ${(a.deadEnd * 100).toFixed(0)}% | ${(a.next * 100).toFixed(0)}% | ${(a.avoid * 100).toFixed(0)}% | ${Math.round(a.reasoning)} | ${Math.round(a.prompt)} |`)
+    L.push(`| ${v} | ${a.n} | ${Math.round(a.ctxChars)} | ${f1(a.overall)} | ${f1(a.correct)} | ${f1(a.facts)} | ${f1(a.focus)} | ${(a.deadEnd * 100).toFixed(0)}% | ${(a.edit * 100).toFixed(0)}% | ${(a.editRight * 100).toFixed(0)}% | ${(a.next * 100).toFixed(0)}% | ${Math.round(a.reasoning)} | ${Math.round(a.prompt)} |`)
   }
   L.push('', '逐任务「综合」分（均值，括号内 = 本轮思考字数）：', '', '| 任务 | ' + vars.join(' | ') + ' |', '|---|' + vars.map(() => '---').join('|') + '|')
   for (const t of tasks) {
@@ -249,12 +265,12 @@ async function main(argv) {
           r = await chat({ model: o.model, messages: buildMessages(j.task, j.content, j.reasoning, j.spec.followup), tools: TOOLS, thinking: { type: 'enabled' }, max_tokens: o.maxTokens, stream: false })
           if (sawReasoning(r.usage, j.variant, j.reasoning.length, base[j.spec.id])) break
           rec.rejected.push(claudeShaped(r.usage) ? 'claude-shape' : 'prompt=' + (r.usage && r.usage.prompt_tokens))
-          if (k >= 4) throw new Error('通道始终未送入思考：' + rec.rejected.join(','))
+          if (k >= 7) throw new Error('通道始终未送入思考：' + rec.rejected.join(','))
         }
         if (j.variant === 'empty') base[j.spec.id] = Math.max(base[j.spec.id] || 0, Number(r.usage.prompt_tokens))
         const text = responseText(r.message)
-        Object.assign(rec, { finish: r.finish, usage: r.usage, ms: r.ms, reasoningChars: (r.message.reasoning_content || '').length, response: text, rule: ruleScore(j.spec, text) })
-        const jr = await chat({ model: o.model, messages: [{ role: 'user', content: judgePrompt(j.task, j.spec, text) }], thinking: { type: 'disabled' }, temperature: 0, max_tokens: 600, stream: false })
+        Object.assign(rec, { finish: r.finish, usage: r.usage, ms: r.ms, reasoningChars: (r.message.reasoning_content || '').length, response: text, rule: ruleScore(j.spec, text), act: actScore(j.spec, text) })
+        const jr = await chat({ model: o.model, messages: [{ role: 'user', content: judgePrompt(j.task, j.spec, text) }], thinking: { type: 'disabled' }, temperature: 0, max_tokens: 1500, stream: false })
         rec.judge = parseJudge(jr.message.content)
         if (!rec.judge) rec.error = 'judge-unparseable: ' + String(jr.message.content).slice(0, 120)
       } catch (e) { rec.error = String(e && e.message || e) }
@@ -266,7 +282,7 @@ async function main(argv) {
   }
   const all = fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
   const last = new Map(); for (const r of all) { const k = `${r.task}|${r.variant}|${r.sample}`; if (!last.has(k) || !r.error) last.set(k, r) }
-  const { markdown } = summarize([...last.values()], order)
+  const { markdown } = summarize([...last.values()], order, specs)
   fs.writeFileSync(path.join(o.out, 'summary.md'), markdown + '\n')
   console.log('\n' + markdown)
 }

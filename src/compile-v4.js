@@ -31,7 +31,7 @@ const MUST_KEEP = new Set(['INCUMBENT', 'REFUTED', 'OPEN'])
 const READY_KEEP = 2
 // 静态价值（理论 v(i;λ) 在无跨轮传感器时的退化形式；只用于非必留条目之间的取舍）
 const BASE = { INCUMBENT: 1.0, READY: 0.95, COMPUTED: 0.9, OPEN: 0.85, REFUTED: 0.8, SHELVED: 0.6, FACT: 0.6, PLAN: 0.35 }
-const K2W = { pivot: 1.25, localize: 1.1, compute: 1.1, hypothesize: 1.0, answer: 0.9, plan: 0.8, inspect: 0.7, verify: 0.3, restate: 0.15 }
+const K2W = { pivot: 1.25, localize: 1.1, compute: 1.1, hypothesize: 1.0, answer: 0.4, plan: 0.8, inspect: 0.7, verify: 0.3, restate: 0.15 }
 const EVW = { tool: 1.0, derived: 0.95, guess: 0.7 }
 // 已备好的改法排最后（离下一步生成最近）；未决排在它前面
 const GROUP = { FACT: 0, COMPUTED: 0, INCUMBENT: 1, REFUTED: 2, SHELVED: 2, PLAN: 3, OPEN: 4, READY: 5 }

@@ -60,10 +60,10 @@ try {
   })
   await test('§1c 版本号：v4 携带预算与尾段开关；缺省仍为 v3；compressPromptFor 分派一致', () => {
     assert.equal(I.DEFAULTS.compressPrompt, 'v3')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4' }), 'compress-v4-ops5:450:inc1200')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressTargetMax: 600, compressV4SegmentChars: 800 }), 'compress-v4-ops5:600:inc800')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Incremental: false }), 'compress-v4-ops5:450')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4BudgetChars: 520, compressV4Tail: false, compressV4Incremental: false, compressSystemPrompt: true }), 'compress-v4-ops5:520:notail:sys')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4' }), 'compress-v4-ops6:450:inc1200')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressTargetMax: 600, compressV4SegmentChars: 800 }), 'compress-v4-ops6:600:inc800')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Incremental: false }), 'compress-v4-ops6:450')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4BudgetChars: 520, compressV4Tail: false, compressV4Incremental: false, compressSystemPrompt: true }), 'compress-v4-ops6:520:notail:sys')
     assert.equal(I.v4Incremental({ compressPrompt: 'v4' }), true); assert.equal(I.v4Incremental({ compressPrompt: 'v3' }), false)
     assert.equal(I.compressPromptFor({ compressPrompt: 'v4' }, 'COT'), I.buildCompressPromptV4('COT'))
     assert.equal(I.v4Budget({}), 450); assert.equal(I.v4Budget({ compressV4BudgetChars: -1 }), 450); assert.equal(I.v4Budget({ compressV4BudgetChars: 700 }), 700)
@@ -211,6 +211,21 @@ try {
     assert.ok(I.V4_KINDS.includes('READY'))
     assert.equal(I.renderLine({ k: 'READY', text: 'revert compressTargetMax to 450', trigger: '' }, 'en'), '- Prepared change: revert compressTargetMax to 450')
   })
+  await test('§5g 改法线索：只摘「改法措辞 + 具体对象」的原文句（逐字、取最后 4 条）；附在原文后、V4_TAIL 前；v3 同样附；无线索时提示词不变', () => {
+    const raw = '先看日志。\n可能是权限问题。\n下一步修复：在 verify.mjs 的 env 中加 `CFB_REAL_DSH_HOME: tmp`。\n我们应该改一改。\n'
+    assert.deepEqual(I.fixHints(raw), ['下一步修复：在 verify.mjs 的 env 中加 `CFB_REAL_DSH_HOME: tmp`。'])
+    const p = I.buildCompressPromptV4(raw)
+    assert.ok(p.includes(raw + '\n\n【改法线索】') && p.endsWith('- 下一步修复：在 verify.mjs 的 env 中加 `CFB_REAL_DSH_HOME: tmp`。' + I.V4_TAIL))
+    assert.ok(I.buildCompressPromptV3(raw, 250, 450).includes('【原文中的改法句】'))
+    assert.equal(I.buildCompressPromptV4('只是在想。'), I.buildCompressPromptV4('只是在想。').split('【改法线索】')[0])
+    assert.ok(!I.buildCompressPromptV4('只是在想。').includes('【改法线索】'))
+    const many = Array.from({ length: 6 }, (_, i) => '改为 `x' + i + '` 试试。').join('\n')
+    assert.deepEqual(I.fixHints(many), ['改为 `x2` 试试。', '改为 `x3` 试试。', '改为 `x4` 试试。', '改为 `x5` 试试。'])
+  })
+  await test('§5h 发明标识符闸：引号 / 空白差异不算发明（"rawChars":8123 ≈ `rawChars:8123`），真编造仍拦', () => {
+    assert.deepEqual(I.inventedIdentifiers('[birth-condensed] {"rawChars":8123,"outChars":212}', 'trace 里 `rawChars:8123`'), [])
+    assert.ok(I.inventedIdentifiers('{"rawChars":8123}', '改 `src/made_up.js`').includes('src/made_up.js'))
+  })
   await test('§5d 产物不含第二人称与「我决定」；中文模板在中英交界处补空格', () => {
     assert.ok(!/[你您]|我决定|我应该/.test(text))
     assert.equal(I.renderLine({ k: 'SHELVED', ev: 'derived', text: '查网络', alt: '', why: '', trigger: 'ECONNREFUSED 出现', supersedes: '' }), '- 暂缓查网络（若 ECONNREFUSED 出现再回来）')
@@ -271,10 +286,10 @@ try {
         const traces = []
         const r = await I.makeBirthCompiler(cfg)(LONG, undefined, { trace: (t, d) => traces.push([t, d]) })
         assert.ok(lastBody.messages[0].content.startsWith('你是推理解析器'))
-        assert.ok(lastBody.messages[0].content.endsWith(LONG + I.V4_TAIL))
+        assert.ok(lastBody.messages[0].content.includes(LONG) && lastBody.messages[0].content.endsWith(I.V4_TAIL))
         assert.equal(lastBody.max_tokens, 1600)
         assert.ok(r.text.includes('已排除权限问题') && !r.text.includes('{'))
-        assert.equal(r.meta.promptVersion, 'compress-v4-ops5:450:inc1200')
+        assert.equal(r.meta.promptVersion, 'compress-v4-ops6:450:inc1200')
         assert.equal(r.meta.v4.selected, 7)
         const t = traces.find(([x]) => x === 'compiler-v4-compiled')
         assert.ok(t && t[1].ok === true && t[1].valid === 8 && typeof t[1].compileMs === 'number', JSON.stringify(t))
@@ -301,7 +316,7 @@ try {
         reply = '权限不是问题，是路径错配。'
         const traces = []
         await assert.rejects(I.makeBirthCompiler(cfg)(LONG, undefined, { trace: (t, d) => traces.push([t, d]) }), (e) => {
-          assert.equal(e.message, 'v4-unparseable'); assert.equal(e.meta.v4.reason, 'v4-unparseable'); assert.equal(e.meta.promptVersion, 'compress-v4-ops5:450:inc1200'); return true
+          assert.equal(e.message, 'v4-unparseable'); assert.equal(e.meta.v4.reason, 'v4-unparseable'); assert.equal(e.meta.promptVersion, 'compress-v4-ops6:450:inc1200'); return true
         })
         assert.ok(traces.some(([x, d]) => x === 'compiler-v4-compiled' && d.ok === false))
       })
@@ -552,7 +567,7 @@ try {
     assert.equal(I.v4Incremental({ compressPrompt: 'v4', birthFinishWaitMs: 8000, compressV4Incremental: true }), true)
     assert.equal(I.v4Incremental({ compressPrompt: 'v4', compressV4Incremental: false }), false)
     assert.equal(I.v4Incremental(I.normalizeConfig({ compressPrompt: 'v4', birthFinishWaitMs: 8000 })), false, 'normalizeConfig 后缺省 auto 生效')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', birthFinishWaitMs: 8000 }), 'compress-v4-ops5:450')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', birthFinishWaitMs: 8000 }), 'compress-v4-ops6:450')
   })
   await test('§9p 在飞段数上限：突发到达时最多放出 3 段，其余等空位 / 并入尾段', async () => {
     const pend = []

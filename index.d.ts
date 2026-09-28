@@ -240,6 +240,8 @@ export declare function buildCompressPrompt(cot: string): string
 export declare function buildCompressPromptV3(cot: string, minChars?: number, maxChars?: number): string
 /** compress-v4-ops：副模型只做结构化标注（JSON ops）的提示词 */
 export declare function buildCompressPromptV4(cot: string): string
+/** v12.4：从原文摘出「改法措辞 + 具体对象」的句子（逐字，最后 max 条），附在压缩提示词里供副模型核对 */
+export declare function fixHints(text: string, max?: number): string[]
 /** v4 提示词在内容之后的重申段（防副模型替 Agent 答题） */
 export declare const V4_TAIL: string
 /** v4 渲染预算（字符）：compressV4BudgetChars，未设则 compressTargetMax */
