@@ -1,12 +1,12 @@
 // ★★ 2026-09-27 外部审计回归钉（audit/fixes-2026-09-27）★★
 //
-// 每一条都对应一个**先复现、后修复**的缺陷（复现脚本见审计报告 docs/AUDIT-2026-09-27.md）：
+// 每一条都对应一个**先复现、后修复**的缺陷（复现脚本见审计报告 docs/analysis/AUDIT-2026-09-27.md）：
 //   A. birth：收网 / 起火抛内部异常 ⇒ 原文放行（此前：block-end 被吞 / 主流被打断，违反不变式③与宿主 invariant.js:53）
 //   B. birth：原样放行必须是**原对象**放行（此前：放行也重建 block-end，用 delta 累积值覆盖宿主 block.text）
 //   C. provider：providers: 段必须锚定在 llm-pi-ai: 之下（此前：取文件里第一个 providers:，端点/钥匙名可能解析到别的插件的表）
 //   D. provider：行内注释 / 引号键名 / 引号值（此前：注释进 baseURL ⇒ 请求路径变成 /v1%20%20）
 //   E. provider：凭据正则不得跨行（此前：\s* 跨过换行，把下一行的键名当钥匙）
-//   F. extractive：hardIdentifiers 路径正则线性化（此前：单个 64K token 同步阻塞 ≈3s）
+//   F. （v12.0 删除：随 compress-x1 退役，原 hardIdentifiers 线性化回归钉见 cfba57b）
 //   G. distill：在途共享 identity 不再以明文钥匙 + 全文 prompt 作 Map 键
 //   H. trace：makeTraceWriter 序列化失败（statsOf 抛 / BigInt）只丢这一条，不再向调用方抛
 //   I. 阶段 0 观测（DECISION-2026-09-27 §5）：below-floor 留痕 birth-below-floor；tools/phase0-report.mjs 纯函数
@@ -128,17 +128,6 @@ const invariantHolds = (out) => {
   const rd = (k) => I.readApiKey({ credentialsPath: c2, credentialRef: k })
   ok('E2 裸值 / 双引号含 # / 单引号 / 行内注释', rd('A') === 'plain-key' && rd('B') === 'quoted # key' && rd('C') === 'single' && rd('E') === 'spaced', [rd('A'), rd('B'), rd('C'), rd('E')].join('|'))
   ok('E3 行首锚定仍然生效（MY_A 不得命中 A）', rd('A') === 'plain-key')
-}
-
-// ═══ F. hardIdentifiers 线性 ══════════════════════════════════════════════
-{
-  const t0 = performance.now()
-  I.hardIdentifiers('a'.repeat(64_000))
-  const ms = performance.now() - t0
-  ok('F1 64K 单 token ⇒ hardIdentifiers < 100ms（修复前 ≈3000ms）', ms < 100, ms.toFixed(0) + 'ms')
-  const ids = I.hardIdentifiers('看 src/birth.js:186 和 ./deploy/onboard.mjs 以及 /usr/local/bin/node 与 https://h/p/q')
-  ok('F2 路径语义不变', ids.has('src/birth.js') && ids.has('./deploy/onboard.mjs') && ids.has('/usr/local/bin/node') && ids.has('https://h/p/q'), [...ids].join('|'))
-  ok('F3 URL 内部不再产生伪路径子串', ![...ids].includes('/h/p/q'))
 }
 
 // ═══ G. 在途共享 identity 不含明文 ═══════════════════════════════════════

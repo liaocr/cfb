@@ -167,8 +167,8 @@ export function sparseLengths(lengths) {
 }
 
 /**
- * v11.13（docs/RESEARCH-PERFORMANCE.md P5）：句柄回取观测 —— 只数，不记内容，绝不改任何消息。
- *   handles   = 出站 reasoning 里出现的不同 art:// 句柄数（x1 句柄行 / v3 句柄，都算）
+ * v11.13（docs/analysis/RESEARCH-PERFORMANCE.md P5）：句柄回取观测 —— 只数，不记内容，绝不改任何消息。
+ *   handles   = 出站 reasoning 里出现的不同 art:// 句柄数（v3 句柄）
  *   handleLines = reasoning 含 art:// 的 assistant 消息数
  *   toolCalls = 参数里含 art:// 的工具调用条数（m.tool_calls[] 或 type 形如 tool-call / tool_use 的内容块）
  *   retrieved = 既出现在 reasoning、又出现在某次工具调用参数里的不同句柄数（= 模型真的回取过的句柄）

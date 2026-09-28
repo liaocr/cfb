@@ -1,5 +1,7 @@
 # 提升主模型表现：第四轮多角度调研与排序方案（v11.12.1，仅文档）
 
+> **v12.0 状态（2026-09-28）**：历史调研。§3「实现状态」中的 x1 r2 代码（P1–P4）已随 compress-x1 在 v12.0 删除；P5（`artRefs` 观测）与 P6（`cf-eval` 的 loop / recheck / bootstrap）保留。理论后续见 [`../theory/CFB-THEORY-COMPLETE.md`](../theory/CFB-THEORY-COMPLETE.md)。
+
 > 主线：cfb 能改写的只有「主模型每段 reasoning 出生时变成什么文本」（外加副模型、CAS 句柄、pre-step 钩子）。
 > 本文回答：**在这个杠杆上，怎样让主模型下一步做得更好**，而不只是更省钱。
 > 与 [`RESEARCH-COT-SHAPING.md`](RESEARCH-COT-SHAPING.md)（前三轮、S1–S9、§10 x1 实现）不重复；本轮新增 30+ 篇来源，从 7 个角度检索。

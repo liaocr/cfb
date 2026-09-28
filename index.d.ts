@@ -40,36 +40,14 @@ export interface CotFormBConfig {
    */
   stateMemory?: boolean
   stateCompress?: boolean
-  /** compress 提示词版本：'v2' 中性压缩（缺省，相对长度目标）；'v1' 与 legacy 蒸馏逐字相同（回滚/对照）；'v3' = v2 的保真规则 + 绝对长度目标；'x1'（v11.12）= 抽取式：副模型只回句子编号/标签/状态，正文本地逐字拼装 */
-  compressPrompt?: 'v1' | 'v2' | 'v3' | 'x1'
+  /** compress 提示词版本：'v2' 中性压缩（缺省，相对长度目标）；'v1' 与 legacy 蒸馏逐字相同（回滚/对照）；'v3' = v2 的保真规则 + 绝对长度目标（v12.0 起 'x1' 抽取式已退役，出现时按 'v2' 处理并记入 configAdjusted） */
+  compressPrompt?: 'v1' | 'v2' | 'v3'
   /** 仅 v3 生效：绝对长度目标下限（字符，缺省 250） */
   compressTargetMin?: number
   /** 仅 v3 生效：绝对长度目标上限（字符，缺省 450） */
   compressTargetMax?: number
   /** v11.7（opt-in，缺省 false）：把 v2/v3 压缩提示词的固定规则前缀放进 system 消息、原文放 user 消息（字节等价），让 DeepSeek Context Caching 命中规则前缀；打开后 promptVersion 追加 ':sys' */
   compressSystemPrompt?: boolean
-  /** v11.12 仅 x1：逐字保留的尾巴长度（字符，缺省 400） */
-  extractiveTailChars?: number
-  /** v11.12 仅 x1：拼装稿/原文 超过该比例按失败处理（缺省 0.7） */
-  extractiveMaxKeepRatio?: number
-  /** v11.12 仅 x1：逐字标识符缺失时最多补回的句子数（缺省 6） */
-  extractiveRepairMax?: number
-  /** v11.12 仅 x1：是否为标签核对冻结近期工具结果（缺省 true；false ⇒ 所有「证实」降级） */
-  extractiveEvidence?: boolean
-  /** v11.12 仅 x1：冻结的最近工具结果条数（缺省 12） */
-  extractiveEvidenceLimit?: number
-  /** v11.12 仅 x1：句柄已验证时首行写原文句柄（缺省 true） */
-  extractiveHandleLine?: boolean
-  /** v11.12 仅 x1：可进化的补充准则（tools/acon-optimize.mjs 产物；缺省 ''） */
-  extractiveGuideline?: string
-  /** v11.13 仅 x1（r2）：死分支折叠——被否定/自我推翻的支线只留假设句 + 否定理由句（缺省 true） */
-  extractiveFoldBranches?: boolean
-  /** v11.13 仅 x1（r2）：含报错/失败且指向具体对象的句子补回（缺省 true） */
-  extractiveKeepFailures?: boolean
-  /** v11.13 仅 x1（r2）：按块类型的目标长度写进提示词（缺省 true） */
-  extractiveKindTargets?: boolean
-  /** v11.13 仅 x1（r2）：状态行去重（缺省 true） */
-  extractiveStateDedupe?: boolean
   /** pre-step 整段 replace 时随看板带走的旧看板正文/可见回答/工具调用参数的内联总预算（字符，缺省 3000）；超出归档为句柄 */
   maxCarryChars?: number
   /** emit 仅在预计节省至少该字符数时替换（缺省 100） */
@@ -113,14 +91,14 @@ export interface CotFormBConfig {
   stateProblemUnits?: boolean
   distillStream?: boolean
   /**
-   * 下轮收网（Deferred Claim，实验）。v11.8 缺省 false（docs/AUDIT-V11.5.md §四 建议 ②）：
+   * 下轮收网（Deferred Claim，实验）。v11.8 缺省 false（docs/analysis/AUDIT-V11.5.md §四 建议 ②）：
    * 关闭时 finish 处限时等待（birthFinishWaitMs + finishHeadersGraceMs）后原文放行；
    * 打开时 finish 只取已就绪结果，未就绪的进暂存区、下一轮 pre-step 认领。BOOT 的 birth.experimental 标记。
    */
   birthDeferredClaim?: boolean
   /** finish 处收网等待上限（ms，缺省 1500）。birth + deferredClaim 关时 timeoutMs 至少会被抬到 本值 + finishHeadersGraceMs + 2000 */
   birthFinishWaitMs?: number
-  /** v11.6 默认 3100（R=60 自洽保本原长 2,747，保守取整且不下调；见 docs/AUDIT-V11.5.md §一）。 */
+  /** v11.6 默认 3100（R=60 自洽保本原长 2,747，保守取整且不下调；见 docs/analysis/AUDIT-V11.5.md §一）。 */
   birthMinChars?: number
   /** v11.6 成本模型观测参数（只影响 birth-econ trace，不参与判定）。 */
   econCacheDiscount?: number
@@ -286,47 +264,6 @@ export declare function buildCompressPrompt(cot: string): string
 /** compress-v3：v2 的保真规则 + 绝对长度目标 */
 export declare function buildCompressPromptV3(cot: string, minChars?: number, maxChars?: number): string
 
-// ── v11.12 抽取式压缩（compress-x1）────────────────────────────────────────
-export interface ExtractiveSentence { i: number; start: number; end: number; text: string }
-export interface ExtractiveEvidence {
-  tools: Array<{ seq: number | string; name: string | null; text: string; isError: boolean; exitCode: number | null }>
-  asks: Array<{ seq: number | string; text: string }>
-}
-export interface ExtractiveSelection {
-  kind: 'explore' | 'closed' | 'exec'
-  plan: number[]
-  keep: number[]
-  tags: Array<{ i: number; s: 'verified' | 'refuted' | 'unverified'; seq: number | string | null; quote: string }>
-  /** v11.13（r2）：已放下的支线；缺省视为空数组 */
-  branches?: Array<{ from: number; to: number; head: number; why: number | null; s: 'refuted' | 'abandoned' | 'parked'; seq: number | string | null; quote: string }>
-  state: Array<{ k: string; v: string }>
-  dropped: number
-}
-export interface ExtractiveStats {
-  kind: string; sentences: number; kept: number; forced: number; repaired: number; tailSentences: number
-  tagsVerified: number; tagsRefuted: number; tagsUnverified: number; tagsDowngraded: number
-  stateKept: number; stateDropped: number; lang: string
-  identifierRecall?: number | null; outChars?: number; ratio?: number | null; dropped?: number
-  /** v11.13（r2） */
-  branchesFolded?: number; branchesParked?: number; branchesRejected?: number; foldedSentences?: number; foldRepaired?: number
-  failuresKept?: number; stateDeduped?: number; target?: number; overTarget?: boolean | null
-}
-export declare const EXTRACTIVE_VERSION: string
-export declare const EXTRACTIVE_REVISION: number
-export declare const EXTRACTIVE_KIND_TARGETS: Readonly<{ closed: number; exec: number; explore: number }>
-export declare function extractiveFeatures(cfg: CotFormBConfig | null | undefined): { fold: boolean; keepFailures: boolean; kindTargets: boolean; stateDedupe: boolean }
-export declare const EXTRACTIVE_BASE_RULES: string[]
-export declare function segmentSentences(raw: string): ExtractiveSentence[]
-export declare function hardIdentifiers(text: string): { has(v: string): boolean; readonly size: number; forEach(cb: (v: string) => void): void }
-export declare function tailStartIndex(sentences: ExtractiveSentence[], tailChars?: number): number
-export declare function extractiveEvidence(events: unknown[], opts?: { limit?: number }): ExtractiveEvidence
-export declare function buildExtractivePrompt(sentences: ExtractiveSentence[], ctx?: { evidence?: ExtractiveEvidence | null; guideline?: string; tailFrom?: number; fold?: boolean; kindTargets?: boolean }): string
-export declare function parseExtractiveOutput(text: string, n: number): ExtractiveSelection | null
-export declare function assembleExtractive(raw: string, sentences: ExtractiveSentence[], sel: ExtractiveSelection, opts?: { evidence?: ExtractiveEvidence | null; tailChars?: number; repairMax?: number; lang?: 'zh' | 'en'; fold?: boolean; keepFailures?: boolean; stateDedupe?: boolean }): { text: string; stats: ExtractiveStats }
-export declare function extractiveHandleLine(handle: string, raw: string): string
-export declare function extractivePromptVersion(cfg: CotFormBConfig | null | undefined): string
-export declare function prepareExtractive(raw: string, cfg?: CotFormBConfig, evidence?: ExtractiveEvidence | null): { sentences: ExtractiveSentence[]; tailFrom: number; prompt: string }
-export declare function finalizeExtractive(raw: string, prepared: { sentences: ExtractiveSentence[]; tailFrom: number; prompt: string }, modelText: string, cfg?: CotFormBConfig, evidence?: ExtractiveEvidence | null): { text: string; stats: ExtractiveStats }
 /** 诊断：为何该原文认领不了 */
 export declare function explainLateMiss(sessionId: string, fullRaw: string, opts?: { branchId?: string | null }): 'empty' | 'no-candidate' | 'ambiguous' | 'partial-coverage' | 'ok'
 /** 混合认领（opt-in，见 lateClaimPartial） */
@@ -397,7 +334,7 @@ export declare function generateDistillation(
 /** Cordis 插件入口 */
 export declare function apply(ctx: unknown, config?: CotFormBConfig): void
 
-/** v11.6 成本模型（纯函数，只用于观测与自测）。见 docs/AUDIT-V11.5.md §一。 */
+/** v11.6 成本模型（纯函数，只用于观测与自测）。见 docs/analysis/AUDIT-V11.5.md §一。 */
 /** v11.7：把 v2/v3 压缩提示词拆成 { system, user }，满足 system + '\n\n' + user === prompt；无 marker 返回 null */
 export declare function splitCompressPrompt(prompt: string): { system: string; user: string } | null
 export declare function birthEconomics(

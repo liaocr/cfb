@@ -47,8 +47,8 @@ const ORDER = [
   'balanced-span', 'headroom', 'imperative', 'emitter', 'state-memory', 'provider-endpoint',
   'core', 'birth', 'optimization', 'memory-quality', 'snapshot-invariants', 'robustness',
   'late-identity', 'hybrid', 'grounding', 'evidence-sharing', 'efficiency', 'coverage-provenance', 'hedge',
-  'checkpoint-hooks', 'hook-wiring', 'hardening', 'extractive', 'concurrency', 'protocol', 'branches',
-  'audit-2026-09-27',
+  'checkpoint-hooks', 'hook-wiring', 'hardening', 'concurrency', 'protocol', 'branches',
+  'audit-2026-09-27', 'v12',
 ]
 
 const found = fs.readdirSync(TEST_DIR).filter((f) => f.endsWith(SUFFIX)).map((f) => f.slice(0, -SUFFIX.length))

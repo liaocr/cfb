@@ -51,7 +51,7 @@ export const DEFAULTS = {
   //   铁律③：先归档后压缩。归档失败 ⇒ 原样透传（原始 CoT 绝不允许因压缩而丢失）。
   birthArchive: true,
   //   低于此长度不值得归档+压缩（CAS 写盘是 async，块太小会白付 I/O 又压不动）
-  // ★★ 2026-09-23 v11.6：500 → 3100（成本模型反解，见 docs/AUDIT-V11.5.md §一）★★
+  // ★★ 2026-09-23 v11.6：500 → 3100（成本模型反解，见 docs/analysis/AUDIT-V11.5.md §一）★★
   //   净收益 = (R−1)·d·(B−B′) − T − 5·B′   d=0.02（缓存命中价/全价，官方价目）
   //   v3 把 B′ 钉在 ≈450、T≈460（v3 前缀实测）、R=60（2026-09-24 用户拍板；原值 55 为生产实测压缩间隔）：
   //     自洽保本原长 B = 2,747 ⇒ 仍保守取 3,100（门槛不下调：实测 token/账单未到手前不放松闸门）。
@@ -82,7 +82,7 @@ export const DEFAULTS = {
   // ★★ 方案二「下轮收网」（Deferred Claim，实验）★★
   //   打开后：没赶上 finishWaitMs 的结果进暂存区，在下一轮 pre-step 用官方
   //   user/message + surfaceOp replace 收网（finish 处只取已就绪结果，不等待）。
-  //   ⚠ v11.8 缺省改为 false（docs/AUDIT-V11.5.md §四 建议 ②，与线上配置一致）：
+  //   ⚠ v11.8 缺省改为 false（docs/analysis/AUDIT-V11.5.md §四 建议 ②，与线上配置一致）：
   //     当轮阻塞的最坏情况是确定的（等满 finishWaitMs 后原文放行）；late-claim 的最坏情况是
   //     部分认领 / 歧义匹配（缺陷 B）/ 重启丢失，且替换已出站块的缓存代价至今无定论。
   //     打开时 BOOT 的 birth.experimental=true。
@@ -216,31 +216,6 @@ export const DEFAULTS = {
   //   缺省关闭：v3 是在「全部放 user」的形状下实测的，system/user 拆分是否影响输出需 A/B；
   //   打开后 promptVersion 追加 ':sys'，trace 自动分桶。
   compressSystemPrompt: false,
-  // ★ v11.12 compress-x1 抽取式（compressPrompt:'x1' 才生效；缺省 'v2' ⇒ 以下各项零影响）。
-  //   副模型只回 JSON 选择（句子编号 / 证实·否定标签 / 状态变量），正文由 src/extractive.js 从原文逐字拼装。
-  //   设计与论文依据：docs/RESEARCH-COT-SHAPING.md §10。
-  //   逐字保留的尾巴长度（字符）：续写最依赖最近上下文（Markovian Thinker）。
-  extractiveTailChars: 400,
-  //   拼装稿 / 原文 超过该比例 ⇒ 视为未压缩，按失败处理（原文放行）。
-  extractiveMaxKeepRatio: 0.7,
-  //   逐字标识符缺失时最多补回几句（防止「修复」把整段又补回来）。
-  extractiveRepairMax: 6,
-  //   为标签核对冻结的最近工具结果条数；0 或 extractiveEvidence:false ⇒ 不采集（所有「证实」降级为未验证）。
-  extractiveEvidence: true,
-  extractiveEvidenceLimit: 12,
-  //   句柄已验证时在拼装稿首行写「原文 art://… · 删去的句子可按句柄取回」。
-  extractiveHandleLine: true,
-  //   可进化的补充准则（tools/acon-optimize.mjs 的产物）；追加在缺省规则之后。非空时 promptVersion 带 ':g<指纹>'。
-  extractiveGuideline: '',
-  //   ★ v11.13 r2 特性（仅 x1；缺省全开；关掉任一项 promptVersion 带后缀，trace 自动分桶）。依据 docs/RESEARCH-PERFORMANCE.md P1–P4。
-  //   死分支折叠：被否定/自我推翻的支线只留「假设句 + 否定理由句」，内部删掉；未证伪就放下的标 ⟨搁置⟩。
-  extractiveFoldBranches: true,
-  //   失败信号保留：含报错/失败且指向具体对象的句子补回（至多 min(4, 10% 句数)）。
-  extractiveKeepFailures: true,
-  //   按块类型的目标长度写进提示词（closed 25% / exec 30% / explore 50%；只是提示，硬上限仍是 extractiveMaxKeepRatio）。
-  extractiveKindTargets: true,
-  //   状态行去重：值已在保留句/尾巴里逐字出现就不再重复（用户原话约束除外）。
-  extractiveStateDedupe: true,
   // pre-step 整段 replace 时，随看板带走的旧看板正文/可见回答/工具调用参数的内联总预算（字符）；超出归档为句柄
   maxCarryChars: 3000,
   // 只在估算至少节省 100 字符且 5% 时才替换；不满足就保留原始 surface，避免"压缩"后反增。
@@ -319,7 +294,7 @@ export const DEFAULTS = {
   birthCancelOnGiveUp: true,
   // finishWaitMs ≤ 0（真零等待）时只等写盘落地的护栏
   birthDiskWaitMs: 400,
-  // 成本模型（只记录，不参与判定；见 birth.js birthEconomics 与 docs/AUDIT-V11.5.md §一）
+  // 成本模型（只记录，不参与判定；见 birth.js birthEconomics 与 docs/analysis/AUDIT-V11.5.md §一）
   econCacheDiscount: 0.02,
   econTemplateChars: 460,
   econR: 60,
@@ -351,7 +326,11 @@ const RETIRED_NESTED_BIRTH = ['handleInText']
 const RETIRED_OPTIONS = ['stateEvidenceViews', 'stateEvidenceBodyBudget', 'stateSnapshotMirror', 'stateCompileQueue',
   'hurdleRounds', 'templateChars', 'maxVerbatimChars', 'skeletonizeArgs', 'skeletonMinChars', 'skeletonKeepHead', 'skeletonKeepTail',
   'rulesEnabled', 'rulesFoldRuns', 'rulesDropDuplicateLines', 'rulesMinSavedChars', 'rulesRequireArchive', 'rules',
-  'birthHandleInText']
+  'birthHandleInText',
+  // v12.0 随 compress-x1（抽取式）一并退役：实测句子保留率 80–92%，路线否决。代码可从 cfba57b 取回。
+  'extractiveTailChars', 'extractiveMaxKeepRatio', 'extractiveRepairMax', 'extractiveEvidence', 'extractiveEvidenceLimit',
+  'extractiveHandleLine', 'extractiveGuideline', 'extractiveFoldBranches', 'extractiveKeepFailures', 'extractiveKindTargets',
+  'extractiveStateDedupe']
 const RETIRED_NESTED_DISTILL = ['hurdleRounds', 'templateChars', 'maxVerbatimChars']
 const RETIRED_MODES = ['distill', 'rules']
 const MODES = ['birth', 'checkpoint', 'off']
@@ -389,6 +368,11 @@ export function normalizeConfig(config = {}) {
   if (RETIRED_MODES.includes(c.mode)) { c.retiredMode = c.mode; c.mode = 'off' }
   else if (!MODES.includes(c.mode)) { c.invalidMode = c.mode; c.mode = 'off' }
   c.retiredOptions = RETIRED_OPTIONS.filter(k => Object.hasOwn(config || {}, k))
+  // v12.0：compressPrompt 'x1' 已退役 ⇒ 回到缺省 'v2'，BOOT 的 configAdjusted 可见
+  if (c.compressPrompt === 'x1') {
+    c.configAdjusted = Object.assign({}, c.configAdjusted, { compressPrompt: { from: 'x1', to: 'v2', why: 'compress-x1 retired in v12.0' } })
+    c.compressPrompt = 'v2'
+  }
   if (d && typeof d === 'object') for (const k of RETIRED_NESTED_DISTILL) if (Object.hasOwn(d, k)) c.retiredOptions.push('distill.' + k)
   if (b && typeof b === 'object') for (const k of RETIRED_NESTED_BIRTH) if (Object.hasOwn(b, k)) c.retiredOptions.push('birth.' + k)
   for (const k of c.retiredOptions) delete c[k]

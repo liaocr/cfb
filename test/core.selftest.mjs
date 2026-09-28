@@ -714,7 +714,7 @@ async function test22() {
   }
 }
 
-console.log('\n【23】v11.6 成本模型与门槛（2026-09-23，docs/AUDIT-V11.5.md §一）')
+console.log('\n【23】v11.6 成本模型与门槛（2026-09-23，docs/analysis/AUDIT-V11.5.md §一）')
 {
   // 默认值锁定
   eq('23.1 ★ birthMinChars = 3100（R=60 自洽保本原长 2,747，保守取整且不下调）', DEFAULTS.birthMinChars, 3100)

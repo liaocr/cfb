@@ -582,24 +582,4 @@ export function materializeSnapshot(sessionId, branchId, snapshot) {
   finally { releaseLock(f) }
 }
 
-/** 从任意 JSON 文本尝试解析出结构化快照（离线审计用；不做兼容性放宽）。 */
-export function parseSnapshotJson(text, opts = {}) {
-  try {
-    const v = validateSnapshot(JSON.parse(String(text || '')), opts)
-    return v.ok ? v.snapshot : null
-  } catch { return null }
-}
-
-/** 诊断：快照存储目录现状（离线审计 / trace 用）。 */
-export function snapshotStoreInfo() {
-  try {
-    const d = snapshotsDir()
-    if (!d) return { dir: null, files: 0, bytes: 0 }
-    const files = fs.readdirSync(d).filter((x) => x.endsWith('.json'))
-    let bytes = 0
-    for (const x of files) { try { bytes += fs.statSync(path.join(d, x)).size } catch {} }
-    return { dir: d, files: files.length, bytes }
-  } catch { return { dir: null, files: 0, bytes: 0 } }
-}
-
 export { SCHEMA_VERSION, COMPILER_VERSION, RENDERER_VERSION }

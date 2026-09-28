@@ -2,29 +2,28 @@
 // tools/cf-eval.mjs —— 反事实续写评测（counterfactual continuation eval）
 //
 // 问的不是「摘要像不像原文」，而是：**把历史里的推理块换成压缩稿之后，主模型的下一步还对不对？**
-// 同一段会话前缀，分别用 raw / compress-v3 / compress-x1 三种推理块去续写，逐样本判分：
+// 同一段会话前缀，分别用 raw / compress-v3 两种推理块（v12.0 起 x1 抽取式已退役）去续写，逐样本判分：
 //   next      下一步动作命中参考动作（任一即可）
 //   avoid     重走了已被否定的路径（越低越好）
 //   violate   违反了约束（越低越好）
 //   success = next && !avoid && !violate
 // 另记 promptTokens（上下文实付）、completionTokens / reasoningChars（续写是否因信息缺失而变长）。
-// v11.13（docs/RESEARCH-PERFORMANCE.md P6）：
+// v11.13（docs/analysis/RESEARCH-PERFORMANCE.md P6）：
 //   loop      续写**原样重发**了前缀里一次**失败过**的工具调用（重走已知失败 = 无效循环，Complexity Trap 2508.21433）
 //   recheck   续写原样重发了前缀里一次**成功过**的调用（重新取回已知信息 = 压缩丢了模型还要的东西）
 //   deltaVsRaw  按 fixture 配对的 bootstrap（固定种子，缺省 B=2000）95% 区间：variant − raw 的 success / loop / recheck。
 //             区间跨 0 = 没有证据说明有差别；fixture 少于 2 个不给区间。
-//   消融变体：x1:nofold+nofail+notargets+nodedupe（任意组合）= 关掉对应的 r2 特性，与 x1 并列跑即可看每项的贡献。
 //
 // ⚠ 这是**离线评测**：会真实调用你给的端点（主模型 + 压缩模型），费用自负。插件线上行为不受影响。
-// ⚠ 压缩提示词与拼装代码直接复用 src/（prompts.js / extractive.js）⇒ 评的就是线上那一套。
+// ⚠ 压缩提示词与拼装代码直接复用 src/prompts.js⇒ 评的就是线上那一套。
 //
 // 用法：
 //   node tools/cf-eval.mjs --fixtures tools/cf-fixtures --base-url https://api.deepseek.com \
 //        --api-key-env DEEPSEEK_API_KEY --model deepseek-reasoner --compressor-model deepseek-chat \
-//        --variants raw,v3,x1 --samples 3 --out cf-report.json
-//   其它：--guideline-file g.txt（x1 补充准则） --min-chars 800 --concurrency 4 --max-tokens 4096
+//        --variants raw,v3 --samples 3 --out cf-report.json
+//   其它：--min-chars 800 --concurrency 4 --max-tokens 4096
 //         --temperature 0.7 --extra-body '{"thinking":{"type":"enabled"}}' --compressor-extra-body '{...}'
-//         --compress-only（只压缩并打印，不调主模型） --target-min 250 --target-max 450 --tail-chars 400 --max-keep-ratio 0.7
+//         --compress-only（只压缩并打印，不调主模型） --target-min 250 --target-max 450
 //         --seed 1 --bootstrap 2000（配对 bootstrap 的种子与重采样次数）
 //         --reasoning-field reasoning_content|think-tag（历史推理怎么回传：DeepSeek 思考模式 + tools 要求
 //           每条历史 assistant 带 reasoning_content；不收该字段的端点用 think-tag 把推理以 <think> 前缀放进 content）
@@ -44,26 +43,18 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { buildCompressPromptV3 } from '../src/prompts.js'
-import { prepareExtractive, finalizeExtractive } from '../src/extractive.js'
 
-// x1 消融修饰符 → 配置开关（与 src/config.js 的 r2 开关一一对应）
-export const X1_MODIFIERS = Object.freeze({ nofold: 'extractiveFoldBranches', nofail: 'extractiveKeepFailures',
-  notargets: 'extractiveKindTargets', nodedupe: 'extractiveStateDedupe' })
-/** 'x1:nofold+nodedupe' → { base:'x1', cfg:{ extractiveFoldBranches:false, extractiveStateDedupe:false } }；未知修饰符直接抛错。 */
+/** 变体名解析。v12.0 起只有 raw / v3（x1 抽取式随路线否决退役，带修饰符的变体一律报错）。 */
 export function parseVariant(variant) {
   const [base, mods = ''] = String(variant).split(':')
-  const cfg = {}
-  for (const m of mods.split('+').map((x) => x.trim()).filter(Boolean)) {
-    if (base !== 'x1' || !X1_MODIFIERS[m]) throw new Error('unknown variant modifier ' + m + ' in ' + variant)
-    cfg[X1_MODIFIERS[m]] = false
-  }
-  return { base, cfg }
+  if (mods) throw new Error('unknown variant modifier ' + mods + ' in ' + variant)
+  return { base, cfg: {} }
 }
 
 // ── 参数 ───────────────────────────────────────────────────────────────────
 export function parseArgs(argv) {
-  const o = { variants: ['raw', 'v3', 'x1'], seed: 1, bootstrap: 2000, samples: 3, minChars: 800, concurrency: 4, maxTokens: 4096,
-    temperature: null, targetMin: 250, targetMax: 450, tailChars: 400, compressOnly: false, apiKeyEnv: 'DEEPSEEK_API_KEY' }
+  const o = { variants: ['raw', 'v3'], seed: 1, bootstrap: 2000, samples: 3, minChars: 800, concurrency: 4, maxTokens: 4096,
+    temperature: null, targetMin: 250, targetMax: 450, compressOnly: false, apiKeyEnv: 'DEEPSEEK_API_KEY' }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i], v = () => argv[++i]
     if (a === '--fixtures') o.fixtures = v()
@@ -80,12 +71,8 @@ export function parseArgs(argv) {
     else if (a === '--temperature') o.temperature = Number(v())
     else if (a === '--extra-body') o.extraBody = JSON.parse(v())
     else if (a === '--compressor-extra-body') o.compressorExtraBody = JSON.parse(v())
-    else if (a === '--guideline-file') o.guideline = fs.readFileSync(v(), 'utf8')
-    else if (a === '--guideline') o.guideline = v()
     else if (a === '--target-min') o.targetMin = Number(v())
     else if (a === '--target-max') o.targetMax = Number(v())
-    else if (a === '--tail-chars') o.tailChars = Number(v())
-    else if (a === '--max-keep-ratio') o.maxKeepRatio = Number(v())
     else if (a === '--compress-only') o.compressOnly = true
     else if (a === '--reasoning-field') o.reasoningField = v()
     else if (a === '--seed') o.seed = Number(v())
@@ -123,19 +110,6 @@ export function loadFixtures(p) {
   return files.map((f) => { const j = JSON.parse(fs.readFileSync(f, 'utf8')); j.id = j.id || path.basename(f, '.json'); return j })
 }
 
-/** 会话前缀 → x1 用的证据（seq = 消息下标；只取 idx 之前的消息 = 时间截面）。 */
-export function evidenceFromMessages(messages, before) {
-  const names = new Map()
-  const tools = [], asks = []
-  for (let i = 0; i < Math.min(before, messages.length); i++) {
-    const m = messages[i]
-    if (!m) continue
-    if (m.role === 'assistant' && Array.isArray(m.tool_calls)) for (const tc of m.tool_calls) names.set(tc.id, tc.function && tc.function.name)
-    else if (m.role === 'tool') tools.push({ seq: i, name: names.get(m.tool_call_id) || null, text: contentText(m.content), isError: toolResultIsError(m), exitCode: null })
-    else if (m.role === 'user' && contentText(m.content).trim()) asks.push({ seq: i, text: contentText(m.content) })
-  }
-  return { tools: tools.slice(-12), asks: asks.slice(-2) }
-}
 /**
  * 工具结果是否失败：fixture 显式给 is_error / isError 优先；否则看内容。
  * 启发式只认「行首报错前缀」或具体的失败形态，避免把正文里偶然出现的 error 一词当成失败。
@@ -158,24 +132,12 @@ export function compressTargetsOf(fx, minChars) {
 
 // ── 压缩（与线上同一套提示词 / 拼装）────────────────────────────────────────
 export async function compressBlock(variant, raw, ctx) {
-  const { compressor, opts, evidence } = ctx
+  const { compressor, opts } = ctx
   const body = (content) => ({ model: opts.compressorModel || opts.model, messages: [{ role: 'user', content }], max_tokens: 2000, ...(opts.compressorExtraBody || {}) })
   const pv = parseVariant(variant)
   if (pv.base === 'v3') {
     const r = await compressor(body(buildCompressPromptV3(raw, opts.targetMin, opts.targetMax)))
     return { text: String(r.message.content || '').trim(), usage: r.usage, ok: true }
-  }
-  if (pv.base === 'x1') {
-    const cfg = { extractiveTailChars: opts.tailChars, extractiveGuideline: opts.guideline || '', extractiveMaxKeepRatio: opts.maxKeepRatio ?? 0.7, ...pv.cfg }
-    const prep = prepareExtractive(raw, cfg, evidence)
-    const r = await compressor(body(prep.prompt))
-    try {
-      const fin = finalizeExtractive(raw, prep, String(r.message.content || ''), cfg, evidence)
-      return { text: fin.text, usage: r.usage, ok: true, stats: fin.stats }
-    } catch (e) {
-      // 与线上一致：拼装失败 ⇒ 原文放行（记为 fallback，不算压缩成功）
-      return { text: raw, usage: r.usage, ok: false, error: e.code || String(e.message || e) }
-    }
   }
   throw new Error('unknown variant ' + variant)
 }
@@ -187,8 +149,7 @@ export async function buildVariantMessages(fx, variant, ctx) {
   if (variant === 'raw') return { messages: msgs, blocks }
   for (const i of compressTargetsOf(fx, ctx.opts.minChars)) {
     const raw = msgs[i].reasoning_content
-    const evidence = evidenceFromMessages(fx.messages, i)
-    const r = await compressBlock(variant, raw, { ...ctx, evidence })
+    const r = await compressBlock(variant, raw, ctx)
     msgs[i].reasoning_content = r.text
     blocks.push({ index: i, rawChars: raw.length, outChars: r.text.length, ok: r.ok, error: r.error || null, stats: r.stats || null, text: r.text, raw })
   }
@@ -291,14 +252,14 @@ async function pool(items, n, fn) {
 }
 
 /** 压缩稿缓存键：只有影响压缩结果的参数进键（raw/v3 不看准则）。 */
-export const cacheKey = (id, variant, opts) => [id, variant, String(variant).split(':')[0] === 'x1' ? (opts.guideline || '') : '', opts.tailChars, opts.maxKeepRatio ?? '', opts.targetMin, opts.targetMax].join('|')
+export const cacheKey = (id, variant, opts) => [id, variant, opts.targetMin, opts.targetMax].join('|')
 
 const mean = (xs) => { const v = xs.filter((x) => typeof x === 'number' && Number.isFinite(x)); return v.length ? +(v.reduce((a, b) => a + b, 0) / v.length).toFixed(4) : null }
 
 /**
  * 跑一轮评测。可被 acon-optimize.mjs 复用。
  * @param opts parseArgs 的结果（或同形对象）
- * @param deps { chat, compressor, fixtures, cache? } cache：Map，键 fixtureId|variant|guideline ⇒ 复用压缩稿
+ * @param deps { chat, compressor, fixtures, cache? } cache：Map，键 fixtureId|variant|targets ⇒ 复用压缩稿
  */
 export async function runEval(opts, deps) {
   const fixtures = deps.fixtures
@@ -419,7 +380,7 @@ async function main() {
   const report = await runEval(opts, { chat, compressor, fixtures, cache: new Map() })
   printSummary(report.summary)
   const out = { tool: 'cf-eval', at: new Date().toISOString(), model: opts.model, compressorModel: opts.compressorModel || opts.model,
-    variants: opts.variants, samples: opts.samples, guideline: opts.guideline || '', ...report }
+    variants: opts.variants, samples: opts.samples, ...report }
   if (opts.out) { fs.writeFileSync(opts.out, JSON.stringify(out, null, 2)); console.log('report → ' + opts.out) }
   if (opts.compressOnly) for (const r of report.perFixture) for (const [v, x] of Object.entries(r.variants)) for (const b of x.blocks) console.log('\n=== ' + r.id + ' · ' + v + ' · msg#' + b.index + ' ' + b.rawChars + '→' + b.outChars + (b.ok ? '' : ' (fallback: ' + b.error + ')') + ' ===\n' + b.text)
 }

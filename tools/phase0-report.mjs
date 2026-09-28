@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// tools/phase0-report.mjs —— 决议阶段 0 的六个数字（docs/DECISION-2026-09-27.md §5）
+// tools/phase0-report.mjs —— 决议阶段 0 的六个数字（docs/analysis/DECISION-2026-09-27.md §5）
 //
 //   node tools/phase0-report.mjs <trace.log> [trace.log.1 ...] [--json]
 //
@@ -64,7 +64,7 @@ export async function readTraces(files) {
         case 'birth-window-probe': g.probes.push(obj); break
         case 'birth-dry-run-stream': g.dryRunStreams++; break
         case 'birth-start-error': case 'birth-settle-error': case 'birth-flush': case 'llm-stream-error':
-        case 'birth-no-async-iter': case 'birth-session-ambiguous': case 'extractive-rejected': case 'birth-distill-failed':
+        case 'birth-no-async-iter': case 'birth-session-ambiguous': case 'birth-distill-failed':
           { const k = tag + (obj.why ? ':' + obj.why : '') + (obj.code ? ':' + obj.code : ''); g.health[k] = (g.health[k] || 0) + 1; break }
         default: break
       }

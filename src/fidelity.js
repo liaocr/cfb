@@ -4,7 +4,7 @@
 //       tools/analyze-efficiency.mjs 离线复算同一指标。
 //
 // ⚠ 召回率是**必要条件**度量：它测不出「结论被升级 / 推理链断裂」，不是质量证明
-//   （见 docs/AUDIT-V11.5.md §六）。削减率更不是保真度指标。
+//   （见 docs/analysis/AUDIT-V11.5.md §六）。削减率更不是保真度指标。
 //
 // 历史：本文件曾是纯规则压缩器 compressByRules（字面去重 + 同构空环折叠）。
 //   v11.8 随 'rules' / 'distill' 模式退役一并移除（写回路径协议上永久非法，见 src/config.js 的 DEFAULTS.mode）；
@@ -36,11 +36,6 @@ export function protectedTokens(text) {
     }
   }
   return set
-}
-
-/** 这一行是否含受保护 token（折叠护栏用）。 */
-export function hasProtected(text) {
-  return protectedTokens(text).size > 0
 }
 
 const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

@@ -39,25 +39,8 @@ const freshCp = () => ({
   measuredSurfaceTokenDelta: [], usedTokens: [], lensMax: 0, buckets: [0, 0, 0, 0],
 })
 
-// v11.13：x1 拼装结局（按 promptVersion 分桶 ⇒ r1/r2、各消融开关、各准则可直接对比）与句柄回取观测（P5）。
-const freshX1 = () => ({ byVersion: Object.create(null) })
-const freshX1Bucket = () => ({ assembled: 0, rejected: Object.create(null), ratio: [], overTarget: 0,
-  branchesFolded: 0, branchesParked: 0, branchesRejected: 0, foldedSentences: 0, foldRepaired: 0,
-  failuresKept: 0, stateDeduped: 0, tagsVerified: 0, tagsDowngraded: 0, repaired: 0, byKind: Object.create(null) })
+// v11.13：句柄回取观测（P5）。（x1 拼装结局统计随 compress-x1 在 v12.0 退役）
 const freshArt = () => ({ records: 0, withHandles: 0, handlesMax: 0, retrievedMax: 0, toolCallsMax: 0, handleLinesMax: 0 })
-export function addX1(x1, tag, obj) {
-  if (tag !== 'extractive-assembled' && tag !== 'extractive-rejected') return
-  const v = typeof obj.promptVersion === 'string' && obj.promptVersion ? obj.promptVersion : 'unknown'
-  const b = x1.byVersion[v] || (x1.byVersion[v] = freshX1Bucket())
-  if (tag === 'extractive-rejected') { const c = obj.code || 'error'; b.rejected[c] = (b.rejected[c] || 0) + 1; return }
-  b.assembled++
-  if (Number.isFinite(obj.ratio)) b.ratio.push(obj.ratio)
-  if (obj.overTarget === true) b.overTarget++
-  if (typeof obj.kind === 'string') b.byKind[obj.kind] = (b.byKind[obj.kind] || 0) + 1
-  for (const k of ['branchesFolded', 'branchesParked', 'branchesRejected', 'foldedSentences', 'foldRepaired', 'failuresKept', 'stateDeduped', 'tagsVerified', 'tagsDowngraded', 'repaired']) {
-    if (Number.isFinite(obj[k])) b[k] += obj[k]
-  }
-}
 export function addArt(art, tag, obj) {
   if (tag !== 'llm-stream' || !obj.artRefs || typeof obj.artRefs !== 'object') return
   const a = obj.artRefs
@@ -79,7 +62,7 @@ export function createTraceAudit() {
     // v11.10：轮转后 trace.js 续写的 BOOT 副本 —— 同一次启动的延续，不是一次重启
     rotatedCopy: boot.rotatedCopy === true,
   } : null, events: Object.create(null), settled: { ok: 0, failed: 0, unknown: 0 },
-    reasons: Object.create(null), promptChars: [], durationMs: [], coverObserved: 0, cp: freshCp(), bt: freshBirth(), x1: freshX1(), art: freshArt(),
+    reasons: Object.create(null), promptChars: [], durationMs: [], coverObserved: 0, cp: freshCp(), bt: freshBirth(), art: freshArt(),
     graceMs: boot ? (boot.finishHeadersGraceMs ?? null) : null })
   function add(line) {
     const m = /^\[(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z)\] \[([A-Za-z0-9_-]+)\] (\{.*\})$/.exec(line)
@@ -102,7 +85,6 @@ export function createTraceAudit() {
     }
     addToolResultPath(current.cp, tag, obj)
     addBirth(current.bt, tag, obj)
-    addX1(current.x1, tag, obj)
     addArt(current.art, tag, obj)
   }
 
@@ -336,18 +318,9 @@ export function createTraceAudit() {
   return { add, result: () => ({ ignored, malformed, rotations, quantile: 'nearest-rank',
     warning: 'Per-BOOT samples only. Missing fields remain unknown; no causal or task-success claims.',
     toolResultPath: toolResultPath(groups),
-    groups: groups.map(g => ({ ...g, cp: undefined, bt: undefined, x1: undefined, art: undefined, graceMs: undefined, birth: birthSummary(g), tokenCalibration: calibrationSummary(g),
-      extractive: x1Summary(g.x1), handleRetrieval: artSummary(g.art),
+    groups: groups.map(g => ({ ...g, cp: undefined, bt: undefined, art: undefined, graceMs: undefined, birth: birthSummary(g), tokenCalibration: calibrationSummary(g),
+      handleRetrieval: artSummary(g.art),
       promptChars: stats(g.promptChars), durationMs: stats(g.durationMs) })) }) }
-  function x1Summary(x1) {
-    const out = {}
-    for (const [v, b] of Object.entries(x1.byVersion)) {
-      const rejected = Object.values(b.rejected).reduce((a, c) => a + c, 0)
-      out[v] = { ...b, ratio: stats(b.ratio), fallbackRate: b.assembled + rejected ? +(rejected / (b.assembled + rejected)).toFixed(3) : null,
-        overTargetRate: b.assembled ? +(b.overTarget / b.assembled).toFixed(3) : null }
-    }
-    return Object.keys(out).length ? out : null
-  }
   function artSummary(a) {
     if (!a.records) return null
     return { ...a, retrievalRate: a.handlesMax ? +(a.retrievedMax / a.handlesMax).toFixed(3) : null,

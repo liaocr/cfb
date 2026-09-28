@@ -1,28 +1,40 @@
-# 文档索引
+# 文档索引（v12.0）
 
-## 现行
+v12.0 是一次「干净的开始」：删掉已否决路线的代码与历史归档，文档按用途分三层。
+**被删的东西都在 git 里**：`git show cfba57b:<路径>` 看单个文件，`git checkout cfba57b -- docs/archive` 整目录取回。
+
+## 1. 现行（使用 / 部署 / 改代码 / 操作）
 
 | 文件 | 读者 | 内容 |
 |---|---|---|
 | [`../README.md`](../README.md) | 使用者 | 做什么、快速开始、模式与配置、回滚开关、观测、当前状态 |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | 改代码的人 | 模块地图、钩子与数据流、持久化位置、不变式、「改哪里」 |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | 改代码的人 | 模块地图、钩子与数据流、持久化位置、不变式、「改哪里」、测试布局 |
 | [`INSTALL.md`](INSTALL.md) | 部署的人 | 注册机制、两层 patch 形态铁律、改完源码如何生效、排错 |
-| [`AUDIT-V11.5.md`](AUDIT-V11.5.md) | 做取舍的人 | 成本模型与收益判据（`birthMinChars` 3100 的来历）、缺陷 A–G、仍未落实的建议。行号指 `1134ed7` 的旧 `index.js` |
-| [`ECONOMICS-V11.11.md`](ECONOMICS-V11.11.md) | 做取舍的人 | 按 Harness 官方默认参数重算的成本模型、单块收益天花板 `0.5·r`、五条压缩路线的裁决（含被推翻的跨轮批量）。**结论上取代 AUDIT-V11.5 的成本模型部分**，行号指 `669296b` |
-| [`RESEARCH-COT-SHAPING.md`](RESEARCH-COT-SHAPING.md) | 做取舍的人 | 可改写思维链下如何提升主模型表现：文献调研（24 篇）、双声道原则、S1–S9 方案、反模式、反事实续写评估法、路线图；§10 为 v11.12 的落地实现（compress-x1 抽取式、`tools/cf-eval.mjs`、`tools/acon-optimize.mjs`，均缺省关闭/离线） |
-| [`DECISION-2026-09-27.md`](DECISION-2026-09-27.md) | 做取舍的人 | **路线锁定决议**：唯一主干（birth · x1 · 解耦副模型 · 大块起步）、冻结清单、三阶段门禁与「数字 → 动作」决策表、预先承诺的熔断与可证伪条款。**关闭** ECONOMICS / RESEARCH-* 之间的路线之争；此后改路线必须带新测量数据 |
-| [`RUNBOOK-PHASE0.md`](RUNBOOK-PHASE0.md) | 操作的人（零基础） | 决议阶段 0 的逐步操作手册：套补丁 → 重装副本/体检/重启 → 0a 纯观测 → 0b 包装态 → 交报告；每步附「应该看到什么 / 没看到怎么办」与一行回滚 |
-| [`AUDIT-2026-09-27.md`](AUDIT-2026-09-27.md) | 改代码的人 | 外部审计：F1–F11 缺陷（provider 表锚定、birth 内部异常吞块/断流、O(n²) 正则…）、复现路径、修复与回归钉（`test/audit-2026-09-27.selftest.mjs`）、已排除假设、设计级建议 |
-| [`RESEARCH-PERFORMANCE.md`](RESEARCH-PERFORMANCE.md) | 做取舍的人 | 第四轮调研（30+ 篇、7 个角度）：以「提升主模型表现」为主线；「去噪收益 − 离策略代价」原则、死分支折叠、状态去重、取回率闭环、P1–P7 排序方案与待验证假设；§3「实现状态」记 v11.13 已落地的 P1–P6 代码部分（x1 r2，缺省关）与差异 |
-| [`../CHANGELOG.md`](../CHANGELOG.md) | 所有人 | 版本沿革（最新在上） |
+| [`RUNBOOK-PHASE0.md`](RUNBOOK-PHASE0.md) | 操作的人（零基础） | 阶段 0 纯观测的逐步操作手册（与 x1 无关，仍有效） |
+| [`../CHANGELOG.md`](../CHANGELOG.md) | 所有人 | 版本沿革（最新在上；旧条目按当时事实保留） |
 
-## 历史（留在顶层的原因）
+## 2. 理论（下一步做什么的依据）
 
-| 文件 | 说明 |
+| 文件 | 内容 |
 |---|---|
-| [`CORRECTNESS-V11.md`](CORRECTNESS-V11.md) | v11 正确性修正报告。属于版本详报，但 `archive/COMPRESS-MEMORY-SPLIT.md` 以相对路径链接它，而 archive 只追加不回写，故保留在此 |
+| [`theory/CFB-THEORY-COMPLETE.md`](theory/CFB-THEORY-COMPLETE.md) | 完整理论（原六卷合订 + 附录）：认知编译器与 T1–T7、优化方向全景、交互与前沿、价值函数 v(i;λ) 与 λ 控制器、未决问题与 v4 规格、疫苗记忆与宿主协议（C0–C3）；附录 A 为 v4a/v4b 评审，附录 B 为参考实现源码。参考实现本体：[`../src/value.js`](../src/value.js)、[`../tools/value-demo.mjs`](../tools/value-demo.mjs)，自测 `test/v12.selftest.mjs` |
 
-## 归档
+## 3. 分析（历史审计与调研，每篇开头有「v12.0 状态」说明）
 
-[`archive/`](archive/README.md)：各版本详报（第一批 … v10）、设计稿、对外简报、作废状态卡，以及 `optimization-evidence*/` 原始证据目录。
-规则：**只追加、不回写、不删除**。其中描述的开关、行号、套件计数都是当时的事实，不代表现状。
+| 文件 | 现在还有什么用 |
+|---|---|
+| [`analysis/AUDIT-V11.5.md`](analysis/AUDIT-V11.5.md) | `birthMinChars` 3100 的来历（§一）、迟到认领缺陷 B（§四）；源码注释引用 |
+| [`analysis/ECONOMICS-V11.11.md`](analysis/ECONOMICS-V11.11.md) | 现行成本模型（「别亏本」约束）；取代 AUDIT-V11.5 的成本部分 |
+| [`analysis/AUDIT-2026-09-27.md`](analysis/AUDIT-2026-09-27.md) | F1–F11 缺陷与回归钉（F7 随 x1 删除） |
+| [`analysis/DECISION-2026-09-27.md`](analysis/DECISION-2026-09-27.md) | **x1 主干部分已作废**；阶段 0 观测部分仍有效 |
+| [`analysis/RESEARCH-COT-SHAPING.md`](analysis/RESEARCH-COT-SHAPING.md) | 前三轮文献调研（§10 的 x1 实现已删） |
+| [`analysis/RESEARCH-PERFORMANCE.md`](analysis/RESEARCH-PERFORMANCE.md) | 第四轮调研；P5/P6 观测与评测仍在用 |
+
+## 4. v12.0 删除清单（均可从 `cfba57b` 取回）
+
+| 路径 | 为什么删 |
+|---|---|
+| `src/extractive.js`、`test/extractive.selftest.mjs`、`tools/acon-optimize.mjs` | compress-x1 抽取式路线：实测句子保留率 80–92%，路线否决；缺省本就关闭。旧配置里的 `extractive*` 键进 `retiredOptions`，`compressPrompt: 'x1'` 自动回落 `v2`（BOOT 的 `configAdjusted` 可见） |
+| `docs/archive/`（55 个文件） | v1–v10 版本详报、设计稿、简报、作废状态卡、原始证据；描述的开关与行号均已不是现状，现行代码与文档不依赖它们 |
+| `docs/CORRECTNESS-V11.md` | 留在顶层只因 archive 里有文件链接它；archive 删除后理由消失；CHANGELOG v11 条目保留一句摘要，详版用 git 取回 |
+| `fidelity.hasProtected`、`snapshot-store.parseSnapshotJson` / `snapshotStoreInfo` | 死代码：导出但全仓库无调用 |

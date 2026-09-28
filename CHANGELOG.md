@@ -1,13 +1,48 @@
 # Changelog — dsh-cot-form-b
 
 > 最新在上。每条的验证数字、开关与待办都是**当时**的记录，按原样保留、不回写；现状以最新条目和 README 为准。
-> 详版报告在 `docs/` 或 `docs/archive/`（索引见 [`docs/README.md`](docs/README.md)）。
+> 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
+> 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改。
+
+---
+
+## v12.0.0（2026-09-28）干净的开始：删除已否决的 compress-x1 路线与历史归档（**缺省配置下线上行为零变化**）
+
+只删「确定无用」的东西；被删的全部可用 `git show cfba57b:<路径>` 取回。
+
+### 删除
+- **compress-x1 抽取式整条路线**：`src/extractive.js`、`test/extractive.selftest.mjs`（48 例）、`tools/acon-optimize.mjs`，
+  以及 birth / distill / prompts / config / index.js / index.d.ts / cf-eval / analyze-trace / phase0-report 里的 x1 分支与 `extractive*` 选项。
+  理由：实测句子保留率 80–92%，路线否决；缺省本就关闭。
+- 死代码：`fidelity.hasProtected`、`snapshot-store.parseSnapshotJson`、`snapshot-store.snapshotStoreInfo`（导出但全仓库无调用）。
+- `docs/archive/`（55 个文件，v1–v10 详报/设计稿/简报/证据）与 `docs/CORRECTNESS-V11.md`：描述的都是已不存在的开关与行号，现行代码与文档不依赖。
+
+### 旧配置兼容（不抛、不静默）
+- `compressPrompt: 'x1'` ⇒ 自动回落 `'v2'`，BOOT 的 `configAdjusted.compressPrompt = { from: 'x1', to: 'v2', why }`。
+- 11 个 `extractive*` 键登记进 `RETIRED_OPTIONS` ⇒ 出现在 `retiredOptions`，不误报为 `unknownOptions`。
+- `tools/cf-eval.mjs`：变体只剩 `raw` / `v3`（缺省 `raw,v3`）；带修饰符的变体、`--guideline*` / `--tail-chars` / `--max-keep-ratio` 已移除。
+
+### 整理
+- 文档三层：`docs/`（现行：ARCHITECTURE / INSTALL / RUNBOOK-PHASE0）· `docs/theory/CFB-THEORY-COMPLETE.md`（完整理论，原六卷合订，单卷文件不再单独保留）·
+  `docs/analysis/`（AUDIT-V11.5 / AUDIT-2026-09-27 / ECONOMICS-V11.11 / DECISION-2026-09-27 / RESEARCH-COT-SHAPING / RESEARCH-PERFORMANCE，
+  每篇开头加「v12.0 状态」说明有效范围；**DECISION 的 x1 主干部分作废，阶段 0 观测部分仍有效**）。
+- 源码注释、测试、工具、README、本文件里的文档路径机械更新为新位置；`docs/README.md` 重写为索引 + 删除清单。
+- 新增 `src/value.js`（v4 编译器参考实现，纯函数，**未接入 birth**）与 `tools/value-demo.mjs`；修正 `recencyCompiledShare`
+  为逐 token 指数衰减的积分权重（原实现让远处大块被高估）。
+- 新套件 `test/v12.selftest.mjs`（28 例）：x1 退役兼容 + value.js 不变量。
+
+### 刻意保留（不是「确定无用」）
+checkpoint 模式、迟到认领（`birthDeferredClaim` / late-memory，含未修的缺陷 B）、memory 模式与 state-memory、legacy v1 提示词（回滚开关）、
+`tools/benchmark-index.mjs`（完整 clone 下仍可跑）。它们缺省关闭或只在回滚时用到，但仍有测试覆盖、仍是可用路径。
+
+### 验证
+`npm test` 1365 通过 / 0 失败 / 1 跳过，27/27 套件（删 extractive 48 例与审计 F 组 3 例，增 v12 28 例：1388 − 51 + 28）；`npm run manifest:check` 0 漂移。
 
 ---
 
 ## v11.13.0（2026-09-26）x1 r2：死分支折叠 / 失败信号保留 / 按块类型目标长度 / 状态行去重 + 句柄回取观测 + cf-eval 过程指标（**x1 仍缺省关闭，线上零变化**）
 
-落地 [`docs/RESEARCH-PERFORMANCE.md`](docs/RESEARCH-PERFORMANCE.md) §3 的 P1–P6 代码部分（与原方案的差异见该节「实现状态」表）。
+落地 [`docs/analysis/RESEARCH-PERFORMANCE.md`](docs/analysis/RESEARCH-PERFORMANCE.md) §3 的 P1–P6 代码部分（与原方案的差异见该节「实现状态」表）。
 
 ### x1（`src/extractive.js`，只在 `compressPrompt: 'x1'` 下生效）
 - **P1 死分支折叠**：副模型可回 `branches: [{from,to,head,why,s,seq,quote}]`。`refuted`（工具证据逐字命中）⇒ head 标 `⟨已否定·seqN⟩`；
@@ -43,7 +78,7 @@
 
 ## v11.12.1（2026-09-26）提升主模型表现的第四轮调研（**仅文档，代码与缺省值零变化**）
 
-- 新增 [`docs/RESEARCH-PERFORMANCE.md`](docs/RESEARCH-PERFORMANCE.md)：从「推理保留 / 离策略代价 / 去噪 / 历史中的错误 / 想太多想太少 / 状态与复述 / 可逆性」7 个角度调研 30+ 篇来源。
+- 新增 [`docs/analysis/RESEARCH-PERFORMANCE.md`](docs/analysis/RESEARCH-PERFORMANCE.md)：从「推理保留 / 离策略代价 / 去噪 / 历史中的错误 / 想太多想太少 / 状态与复述 / 可逆性」7 个角度调研 30+ 篇来源。
 - 核心判断：表现 = 去噪收益 − 离策略代价 ⇒ 逐字抽取（x1）在表现上应优于改写式摘要（v3），待 `cf-eval` 验证（H1）。
 - 排序方案：P1 死分支折叠（`refuted` / `abandoned` / `parked`）· P2 失败信号强制保留 · P3 按块类型自适应保留比例 · P4 状态行去重 ·
   P5 句柄取回率闭环 · P6 cf-eval 过程指标（loopRate / rederiveRate / 配对 bootstrap）· P7 勘误写法。均**未实现**。
@@ -53,7 +88,7 @@
 
 ## v11.12.0（2026-09-25）抽取式压缩 compress-x1 + 反事实续写评测 + 准则自进化回路（**缺省关闭，线上零变化**）
 
-设计与论文依据见 [`docs/RESEARCH-COT-SHAPING.md`](docs/RESEARCH-COT-SHAPING.md) §10。
+设计与论文依据见 [`docs/analysis/RESEARCH-COT-SHAPING.md`](docs/analysis/RESEARCH-COT-SHAPING.md) §10。
 
 ### 新增
 - **`src/extractive.js` — `compressPrompt: 'x1'`（抽取式）**：副模型不写摘要，只回 JSON 选择（句子编号 / `verified|refuted|unverified` 标签 / 状态变量 / 块类型），
@@ -83,7 +118,7 @@
 
 ## v11.11.2（2026-09-25）可改写思维链的表现提升调研（**仅文档，无代码改动**）
 
-新增 [`docs/RESEARCH-COT-SHAPING.md`](docs/RESEARCH-COT-SHAPING.md)，并登记进 `docs/README.md` 索引。
+新增 [`docs/analysis/RESEARCH-COT-SHAPING.md`](docs/analysis/RESEARCH-COT-SHAPING.md)，并登记进 `docs/README.md` 索引。
 问题：cfb 能在出生时改写 reasoning，而且宿主压缩被推迟、信息留存更久——这时怎样改写，才能让主模型更专注、更有底气、想得更全？
 
 ### 主要结论
@@ -104,7 +139,7 @@
 
 ## v11.11.1（2026-09-25）压缩经济性审计与路线决议（**仅文档，无代码改动**）
 
-新增 [`docs/ECONOMICS-V11.11.md`](docs/ECONOMICS-V11.11.md)，并登记进 `docs/README.md` 索引。
+新增 [`docs/analysis/ECONOMICS-V11.11.md`](docs/analysis/ECONOMICS-V11.11.md)，并登记进 `docs/README.md` 索引。
 **结论上取代 `AUDIT-V11.5.md` 的成本模型部分**；后者按「只追加不回写」保留原文，更正写在 §6.1。
 
 **验证**：`npm test` 1308 通过 / 0 失败 / 1 跳过（25/25 套件），与 v11.11 基线一致。
@@ -383,7 +418,7 @@ robustness 7（句柄探针契约）。
 | 非法 `mode` | 回落 `'distill'` | 按 `'off'` 处理并记 `invalidMode` | — |
 | `timeoutMs` 自动抬高 | `≥ finishWaitMs + 2000` | `≥ finishWaitMs + finishHeadersGraceMs + 2000`（宽限也会被请求超时杀掉） | 显式给足 `timeoutMs` |
 
-`birthDeferredClaim` 改为 `false` 依据 `docs/AUDIT-V11.5.md` §四 建议②（与线上配置一致；late-claim 的缺陷 B 在关闭时休眠）。
+`birthDeferredClaim` 改为 `false` 依据 `docs/analysis/AUDIT-V11.5.md` §四 建议②（与线上配置一致；late-claim 的缺陷 B 在关闭时休眠）。
 
 ### 退役与删除
 
@@ -460,7 +495,7 @@ TTFB 3 秒的三条正面处置，全部**可关、缺省保守**。
 
 ## v11.6（2026-09-23）成本模型落地第一批
 
-依据 `docs/AUDIT-V11.5.md`：
+依据 `docs/analysis/AUDIT-V11.5.md`：
 
 - `birth.minChars` 500→**3100**（`净收益=(R−1)·d·(B−B′)−T−5B′`，d=0.02、R=55、B′≈450 反解保本原长 2,959）；
 - `maxOutputTokens` 1200→**850 恒定**（不随输入放大，否则与「ρ 越小净收益恒增」反向）；
@@ -475,7 +510,7 @@ TTFB 3 秒的三条正面处置，全部**可关、缺省保守**。
 ## v11.5（2026-09-23）compress-v3 与审计
 
 compress-v3 = v2 的保真规则 + v1 的绝对长度目标（`compressTargetMin/Max`，缺省 250/450）。
-同日发布审计 [`docs/AUDIT-V11.5.md`](docs/AUDIT-V11.5.md)：收益判据按缓存记账口径重写、按真实工况（95% 冗余）重算门槛反解表。
+同日发布审计 [`docs/analysis/AUDIT-V11.5.md`](docs/analysis/AUDIT-V11.5.md)：收益判据按缓存记账口径重写、按真实工况（95% 冗余）重算门槛反解表。
 
 ## v11.4（2026-09-23）
 
@@ -500,63 +535,63 @@ carry 预算与去嵌套；retarget 的看板单例守卫；认领漏斗与 miss
 ## v11（2026-09-23）正确性修正
 
 整段 replace 的覆盖完整性、迟到候选反查、来源对象解析、compress 迟到通路；传输层上限与退避；契约漂移。
-见 [`docs/CORRECTNESS-V11.md`](docs/CORRECTNESS-V11.md)。
+详版 `docs/CORRECTNESS-V11.md` 已在 v12.0 删除，`git show cfba57b:docs/CORRECTNESS-V11.md` 取回。
 
 ## v10：压缩与状态记忆开关切分
 
 这两件事原本焊在 `stateMemory` 一个开关上：触发粒度是「每段 reasoning」，输入范围却是「整个 60 节点证据窗口」
 ⇒ 每编译 5,371 字符的推理要重发 23,800 字符的窗口证据，实测放大 **7.5x**（工具正文占 58.7%），27 次副编译 0 次替换成功。
 现在拆成两个独立开关，裁决只在 `resolveCompileMode()` 一处：`stateCompress` 只压本段 reasoning，**不采集任何证据**（实测 ratio 1.16~2.0）；
-`stateMemory` 保留证据账本 + 快照 + 两栏判断。见 [`docs/archive/COMPRESS-MEMORY-SPLIT.md`](docs/archive/COMPRESS-MEMORY-SPLIT.md)。
+`stateMemory` 保留证据账本 + 快照 + 两栏判断。见 `docs/archive/COMPRESS-MEMORY-SPLIT.md`（v12.0 已删，git `cfba57b`）。
 当时遗留的 compress 迟到问题已在 v11 接通；压缩率/费用收益仍须按真实 token 用量与任务质量评估。
 
 ## v9：减少无效编译，改善判断交接
 
 默认路径精确共享相同在途请求；归档终局失败只取消对应消费者；提示词统计与发送复用一次构造。
 判断保留适用条件、修正原因及待核对旧记忆；新增分阶段时延、请求级缓存用量和人工决策审核入口。
-见 [`docs/archive/COMPILER-EFFICIENCY-V9.md`](docs/archive/COMPILER-EFFICIENCY-V9.md)。无新增开关或等待预算；真实产品收益仍未验收。
+见 `docs/archive/COMPILER-EFFICIENCY-V9.md`（v12.0 已删，git `cfba57b`）。无新增开关或等待预算；真实产品收益仍未验收。
 
 ## v8：保留证据，减少同请求内的重复展示与准备
 
 相同采集正文按原可见区间取并集，调用身份、状态与完整性仍逐事件保留。批内复用正文 hash 与文件校验；生产和重放共用证据准备入口。
-见 [`docs/archive/EVIDENCE-SHARING-V8.md`](docs/archive/EVIDENCE-SHARING-V8.md)。真实产品指标仍未验收，无新增开关或等待预算。
+见 `docs/archive/EVIDENCE-SHARING-V8.md`（v12.0 已删，git `cfba57b`）。真实产品指标仍未验收，无新增开关或等待预算。
 
 ## v7：恢复有依据的判断编译，验证结果真正被消费
 
 工具正文重新进入默认副编译请求，包含正常结果；不因已落盘而省略核对材料。
 新增有上限的证据存储、满额后的内存证据回退、认领消费漏斗；四个旧生产开关退役。
-见 [`docs/archive/GROUNDED-COMPILER-V7.md`](docs/archive/GROUNDED-COMPILER-V7.md)。
+见 `docs/archive/GROUNDED-COMPILER-V7.md`（v12.0 已删，git `cfba57b`）。
 **不承诺未经真实重放证明的性能／压缩率不下降。v6“工具正文跨轮零重发”的取舍已撤回。**
 
 ## v6：确定性证据记录＋两栏判断编译
 
 用户现有 `birth + stateMemory:true` 路径直接切换，无新开关。工具原文先落盘，失败不再触发旧正文全量重发；finish 只采用已就绪结果，不主动等副模型。
-方案、代价与重放方法见 [`docs/archive/HYBRID-COMPILER.md`](docs/archive/HYBRID-COMPILER.md)。
+方案、代价与重放方法见 `docs/archive/HYBRID-COMPILER.md`（v12.0 已删，git `cfba57b`）。
 **真实产品指标尚未验收**：完整会话、主模型探索标注和运行凭据未提供。本地回归不能替代这些指标。
 
 ## v5：迟到认领加固
 
-见 [`docs/archive/LATE-CLAIM-HARDENING.md`](docs/archive/LATE-CLAIM-HARDENING.md)。
+见 `docs/archive/LATE-CLAIM-HARDENING.md`（v12.0 已删，git `cfba57b`）。
 当批验证：1088 通过、0 失败、1 跳过，13 套件。新增分支隔离、歧义拒绝、发射前复检及缓存体量限制。
 
 ## v4：统一优化版
 
-范围回执、编译输入工作集、后台 CAS 镜像／恢复与故障门禁已接线。见 [`docs/archive/OPTIMIZATION-INTEGRATED.md`](docs/archive/OPTIMIZATION-INTEGRATED.md)。
+范围回执、编译输入工作集、后台 CAS 镜像／恢复与故障门禁已接线。见 `docs/archive/OPTIMIZATION-INTEGRATED.md`（v12.0 已删，git `cfba57b`）。
 当批验证：1073 通过、0 失败、1 跳过，12 套件。新策略 `stateEvidenceViews` / `stateSnapshotMirror` 默认关闭；配置、代价和真机验收边界见报告。
 历史报告中“CAS 尚未接通”等描述仅适用于当时版本；不代表 v4 源码状态。
 
 ## 第三批：安全覆盖修复＋增量编译通道实验
 
-见 [`docs/archive/OPTIMIZATION-PHASE3.md`](docs/archive/OPTIMIZATION-PHASE3.md)。当批验证：1032 通过、0 失败、1 跳过，11 套件。
+见 `docs/archive/OPTIMIZATION-PHASE3.md`（v12.0 已删，git `cfba57b`）。当批验证：1032 通过、0 失败、1 跳过，11 套件。
 新实验 `stateCompileQueue` 默认关闭；policy 3 不再把截断工具结果整条标成已覆盖。policy 1/2 升级保留正文、重新积累覆盖，短期输入可能增加。
 
 ## 第二批：记忆可信度与执行隔离
 
-见 [`docs/archive/OPTIMIZATION-PHASE2.md`](docs/archive/OPTIMIZATION-PHASE2.md)。当批验证：1003 通过、0 失败、1 跳过，10 套件。
+见 `docs/archive/OPTIMIZATION-PHASE2.md`（v12.0 已删，git `cfba57b`）。当批验证：1003 通过、0 失败、1 跳过，10 套件。
 旧快照正文保留；旧覆盖集合需要通过新编译重新建立，迁移初期输入可能增加。
 
 ## 第一批优化（2026-09-22）
 
-当时的变更、验证与待办见 [`docs/archive/OPTIMIZATION-REPORT.md`](docs/archive/OPTIMIZATION-REPORT.md)。
+当时的变更、验证与待办见 `docs/archive/OPTIMIZATION-REPORT.md`（v12.0 已删，git `cfba57b`）。
 本轮不改等待预算、模型、输出上限或 surface 替换协议；未部署到真实网关。
 第一批时快照只有本地原子文件存储；v4 已另行接通可选 CAS 镜像及后台恢复。现有下文的历史设计说明不应被当成这些能力已经上线的证明。

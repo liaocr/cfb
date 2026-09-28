@@ -2,7 +2,7 @@
 //
 // 没赶上 finish 收网的压缩结果在这里暂存（进程内、按 会话+分支 隔离、容量与 TTL 有界），
 // 下一轮 pre-step 由 plugin.js 认领：要求【全覆盖】—— 本消息每个推理块都有就绪结果且逐字拼回原文；
-// 先 peek，只有发射成功才 acknowledge。已知缺陷 B（多块匹配）见 docs/AUDIT-V11.5.md §四。
+// 先 peek，只有发射成功才 acknowledge。已知缺陷 B（多块匹配）见 docs/analysis/AUDIT-V11.5.md §四。
 import { normalizeBranchId } from './snapshot-store.js'
 import { renderCheckpoint } from './state-memory.js'
 

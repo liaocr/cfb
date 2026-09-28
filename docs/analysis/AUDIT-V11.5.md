@@ -1,5 +1,7 @@
 # dsh-cot-form-b v11.5 审计（2026-09-23）
 
+> **v12.0 状态（2026-09-28）**：历史审计，成本模型部分已被 `ECONOMICS-V11.11.md` 取代；仍保留是因为源码注释引用其 §一（`birthMinChars` 3100 的来历）与 §四（迟到认领缺陷 B）。文中引用的 `docs/archive/*` 已在 v12.0 删除，可用 `git show cfba57b:docs/archive/<文件>` 取回。
+
 > 依据：`main@1134ed7` 源码 + 用户提供的真机 trace 汇总。仓库不含 trace.log，未能运行 analyze-efficiency.mjs。
 > 行号均为 `1134ed7` 的 `index.js`。「已证实」= 可指到代码行或你给的 trace 数字；「推测」= 需要真机验证。
 

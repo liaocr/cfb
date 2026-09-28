@@ -1,7 +1,7 @@
-# 架构（v11.11，开发者视角）
+# 架构（v12.0，开发者视角）
 
 > 面向改代码的人：模块怎么分、数据怎么流、哪些不变式不能碰、加东西该改哪里。
-> 使用与配置见根目录 [`README.md`](../README.md)；设计沿革见 [`CHANGELOG.md`](../CHANGELOG.md) 与 [`archive/`](archive/README.md)。
+> 使用与配置见根目录 [`README.md`](../README.md)；设计沿革见 [`CHANGELOG.md`](../CHANGELOG.md)；v12.0 之前的历史报告可从 git `cfba57b` 取回。
 
 ## 1. 模块地图
 
@@ -34,6 +34,7 @@ plugin.js ───────────────────────�
   ├─ consumption.js      认领消费计量
   └─ exact-flights.js    相同在途请求精确共享（memory 模式）
 state-memory.js          纯函数底座（信封 / 编译提示词 / 解析 / 投影 / 渲染 / 来源判定），被多数模块引用
+value.js                 v12.0 新增：v4 编译器参考实现（观测量 → v(i;λ) → 选取 → 渲染 → λ 控制器），纯函数，**尚未接入 birth**
 ```
 
 规模：最大的是 `state-memory.js`（约 1757 行，纯函数）、`birth.js`（约 859 行）。
@@ -81,7 +82,7 @@ birthTransform(inner, deps)
 | 编译模式 | distill 闭包 | runtime（传输观测） |
 |---|---|---|
 | `memory` | `generateStateMemory(env, cfg, signal, { ...budget, flights })` | trace + scope + 精确在途共享 |
-| `compress` | 按 `compressPromptVersion` 选提示词 → `generateDistillation(raw, cfg, signal, prompt, …)`；`compress-x1*`（v11.13 起为 `compress-x1r2[:-fold…]`，按前缀路由）走 `compileExtractive`：`prepareExtractive` → 副模型回 JSON 选择 → `finalizeExtractive` 本地逐字拼装（失败即抛 ⇒ 原文放行） | 只透传 trace（无 scope，共享永不命中；不改取消语义）；x1 另收 `budget.extractiveEvidence`（block-end 冻结，流归属不可证时为 null） |
+| `compress` | 按 `compressPromptVersion` 选提示词（v1 / v2 / v3，v12.0 起 x1 已退役）→ `generateDistillation(raw, cfg, signal, prompt, …)` | 只透传 trace（无 scope，共享永不命中；不改取消语义） |
 | `legacy` | `generateDistillation(raw, cfg, signal)`（旧蒸馏提示词） | 只透传 trace |
 
 ### 2.2 副模型调用（`distill.js`）
@@ -170,3 +171,5 @@ CAS（原文归档）不在这里：它是宿主注入的 `cmbStore` 服务（`c
 | protocol | v11.11：OpenAI Responses 端点（非流式 / 流式 / 协议错配 / 完成判据 / 降级重试）、token 估算校准链路 |
 | branches | v11.11：跨窗口结构性证据、索引失败回退、覆盖判据四形态、预热（节流 / 停用 / 调用级 provider）、消费计量 |
 | hardening | v11.10：取消泄漏四条路径、配置登记/退役/显式化、token 估算与闸门、死锁接管（三处锁）、trace 轮转、provider 缓存、编译器工厂（真实 HTTP）、analyze-trace 的 birth 等待依据 |
+| audit-2026-09-27 | 外部审计 F1–F11 的回归钉（F7 随 x1 退役删除） |
+| v12 | v12.0：compress-x1 退役后的配置兼容（旧键进 retiredOptions、`x1` 回落 v2）；`value.js` 的理论不变量（I1–I4、替代先行、次模选取、AIMD 控制器、s_w、自监督标签） |

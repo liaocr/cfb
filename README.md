@@ -1,6 +1,6 @@
 # dsh-cot-form-b — reasoning 块「出生即压缩」
 
-> **当前实现：v11.11（2026-09-24）** · 自测：`npm test` 全绿（固定 1 项 SKIP，逐版数字见 CHANGELOG） · 真实产品验收：**未验收**
+> **当前实现：v12.0（2026-09-28，清理版：删除已否决的 compress-x1 路线与历史归档）** · 自测：`npm test` 全绿（固定 1 项 SKIP，逐版数字见 CHANGELOG） · 真实产品验收：**未验收**
 > CI：`.github/workflows/ci.yml` 在 Node 20 / 22 上跑完整性清单 + 全部自测 + 类型契约。
 > 版本沿革见 [`CHANGELOG.md`](CHANGELOG.md)；开发者视角的模块与数据流见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
@@ -58,7 +58,6 @@ dsh-cot-form-b/
 │   ├── birth.js          ★ 出生即压缩：birthTransform / birthStart / birthFinish / 成本模型
 │   ├── distill.js        副模型调用：重试降级、对冲、传输 trace；memory 模式的状态编译
 │   ├── prompts.js        提示词（legacy / compress-v2 / compress-v3）与版本号
-│   ├── extractive.js     v11.12 compress-x1 抽取式：切句 / 选择解析 / 逐字拼装与硬校验；v11.13 r2 死分支折叠等（缺省关）
 │   ├── transport.js      HTTP 传输（keep-alive、4MB 上限、SSE/JSON 按实际协议解析）
 │   ├── provider.js       端点与凭据解析（跟随宿主 provider，解析不出来不猜）
 │   ├── late-memory.js    迟到结果暂存区（Deferred Claim，实验）
@@ -72,15 +71,16 @@ dsh-cot-form-b/
 │   ├── snapshot-store.js 结构化状态快照持久化（原子写、归并、精确覆盖集合）
 │   ├── evidence-ledger.js / evidence-input.js / evidence-storage.js   确定性证据账本（memory 模式）
 │   ├── emitter.js / balanced-span.js / headroom.js / imperative.js   pre-step 看板发射器（迟到认领 / checkpoint）
-│   └── exact-flights.js / consumption.js   精确在途请求共享 / 认领消费计量
+│   ├── exact-flights.js / consumption.js   精确在途请求共享 / 认领消费计量
+│   └── value.js          v12.0：v4 编译器参考实现（价值函数 v(i;λ) / 次模选取 / 替代先行渲染 / λ 控制器），纯函数，**未接入 birth**
 │
 ├── test/                 *.selftest.mjs 套件（verify.mjs 自动发现）+ fixtures/（真机原文错误样本）
 ├── .github/workflows/    CI：完整性清单 + 全部自测 + 类型契约（Node 20 / 22）
 ├── tools/                离线分析：analyze-trace / analyze-efficiency / analyze-consumption / replay / benchmark-index
-│                         v11.12：cf-eval（反事实续写评测）/ acon-optimize（抽取准则自进化）/ cf-fixtures/
+│                         cf-eval（反事实续写评测，raw vs v3）+ cf-fixtures/ · value-demo（value.js 演示）
 │                         2026-09-27：phase0-report（决议阶段 0 的六个数字 N1–N6，一条命令出判定）
 ├── deploy/onboard.mjs    部署体检（注册形态、部署漂移；跨机器、无硬编码路径）
-└── docs/                 现行文档；docs/archive/ = 历史报告与证据（只进不出）
+└── docs/                 现行文档 + theory/（完整理论）+ analysis/（历史审计与调研）；索引见 docs/README.md
 ```
 
 ---
@@ -113,7 +113,7 @@ birth 模式内部再按编译模式三选一（唯一裁决点 `resolveCompileM
 写在 profile 的 `cordis.patch.yml` 里（`- id: cot-form-b` + `config:`）。⚠ patch 的 `config` 是**整体替换**、不是深合并。
 嵌套写法 `distill: {...}` / `birth: {...}` 与扁平键等价，嵌套优先。
 
-**起步示例**（压缩模式；数值依据见 [`docs/AUDIT-V11.5.md`](docs/AUDIT-V11.5.md)）：
+**起步示例**（压缩模式；数值依据见 [`docs/analysis/AUDIT-V11.5.md`](docs/analysis/AUDIT-V11.5.md)）：
 
 ```yaml
 - id: cot-form-b
@@ -133,8 +133,7 @@ birth 模式内部再按编译模式三选一（唯一裁决点 `resolveCompileM
 |---|---|---|
 | `mode` / `dryRun` | `'birth'` / `true` | 见上 |
 | `stateCompress` / `stateMemory` | `false` / `false` | 编译模式 |
-| `compressPrompt` | `'v2'` | `v1` 旧蒸馏 · `v2` 相对长度 · `v3` 绝对长度（`compressTargetMin/Max` = 250/450）· **`x1` 抽取式**（v11.12，见下行） |
-| `extractive*` | 见 `DEFAULTS` | **v11.12，仅 `compressPrompt: x1`**：副模型只回句子编号、证实/否定标签和状态变量，正文由本地从原文逐字拼装；「证实」必须有逐字证据，否则降级；句柄已验证时首行写原文句柄。`extractiveTailChars` 400 · `extractiveMaxKeepRatio` 0.7 · `extractiveRepairMax` 6 · `extractiveEvidence` true · `extractiveEvidenceLimit` 12 · `extractiveHandleLine` true · `extractiveGuideline` ''（`tools/acon-optimize.mjs` 的产物）。v11.13 r2 开关（缺省全 true）：`extractiveFoldBranches` 死分支折叠 · `extractiveKeepFailures` 失败信号保留 · `extractiveKindTargets` 按块类型目标长度 · `extractiveStateDedupe` 状态行去重（promptVersion `compress-x1r2`）。详见 `docs/RESEARCH-COT-SHAPING.md` §10、`docs/RESEARCH-PERFORMANCE.md` §3 |
+| `compressPrompt` | `'v2'` | `v1` 旧蒸馏 · `v2` 相对长度 · `v3` 绝对长度（`compressTargetMin/Max` = 250/450）（v12.0：`x1` 已退役，旧配置自动回落 `v2`，`extractive*` 键进 `retiredOptions`） |
 | `birth.minChars` | `3100` | 短于此长度不压缩（成本模型反解：R=60、d=0.02、B′≈450 ⇒ 保本原长 2,747，保守取整且不下调） |
 | `birth.minTokens` | `null` | **v11.10 opt-in**：正数 ⇒ 按 token 估算判定、完全接管 `minChars`（3100 字符对英文 ≈ 930 token、对中文 ≈ 1,860 token，同一门槛随语言差 2 倍） |
 | `birth.tokenGate` / `birth.minSavedTokens` | `true` / `0` | **v11.10**：字符净省达标但估算 token 不降 ⇒ 原文放行（`why=no-token-gain`；典型是英文原文 → 中文摘要）。`minSavedTokens` 0 按 1 计 |
@@ -224,7 +223,7 @@ compress 模式不采集证据、不写快照；以下只在 memory 模式生效
 | `mode: 'off'` | 整体停用 |
 | `enabled: false` | 总开关关闭 |
 | `stateCompress: false`（且 `stateMemory: false`） | 回到 legacy 蒸馏提示词 |
-| `compressPrompt: 'v2'` / `'v1'` | 回到相对长度目标 / 旧蒸馏提示词（x1 抽取式同样一键回滚） |
+| `compressPrompt: 'v2'` / `'v1'` | 回到相对长度目标 / 旧蒸馏提示词 |
 | `distill: { hedgeAfterMs: 0 }` | 关闭对冲（缺省即关） |
 | `birth: { finishHeadersGraceMs: 0 }` | 关闭响应头宽限 |
 | `birthDeferredClaim: false` | 关闭下轮认领（缺省即关） |
@@ -320,7 +319,7 @@ token 闸门；崩溃残留锁的保守接管；trace 轮转；provider/凭据�
 提前到「第一个非 reasoning 块」起火（`birth-window-probe`）—— 等真实 trace 标定。
 
 **已知缺陷 / 未完成**：
-- **缺陷 B**（迟到认领的多块匹配）未修：`birthDeferredClaim` 缺省关闭时休眠；打开前请读 [`docs/AUDIT-V11.5.md`](docs/AUDIT-V11.5.md) §四；
+- **缺陷 B**（迟到认领的多块匹配）未修：`birthDeferredClaim` 缺省关闭时休眠；打开前请读 [`docs/analysis/AUDIT-V11.5.md`](docs/analysis/AUDIT-V11.5.md) §四；
 - **冷启动未解决**：快照只在本机文件里；`recoverSnapshot`（从 CAS 恢复）、`markSnapshotApplied`（宿主已应用标记）、
   `createEvidenceArchiver` 代码在但**未接线**；
 - 真实产品验收（完整会话、任务质量 A/B、真实 token 账单）**未做**。本地回归不能替代。
@@ -331,11 +330,14 @@ token 闸门；崩溃残留锁的保守接管；trace 轮转；provider/凭据�
 
 | 文件 | 内容 |
 |---|---|
-| [`docs/README.md`](docs/README.md) | 文档索引（现行 / 历史） |
+| [`docs/README.md`](docs/README.md) | 文档索引（现行 / 理论 / 分析）+ v12.0 删除清单与取回方法 |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 模块地图、数据流、不变式、改哪里 |
 | [`docs/INSTALL.md`](docs/INSTALL.md) | 安装、注册形态、改完源码如何生效、排错 |
-| [`docs/AUDIT-V11.5.md`](docs/AUDIT-V11.5.md) | 成本模型与收益判据审计（门槛反解表；仍有未落实的建议） |
-| [`docs/archive/`](docs/archive/README.md) | 各版本详报、设计稿、简报、原始证据（只进不出） |
+| [`docs/RUNBOOK-PHASE0.md`](docs/RUNBOOK-PHASE0.md) | 阶段 0 纯观测操作手册 |
+| [`docs/theory/CFB-THEORY-COMPLETE.md`](docs/theory/CFB-THEORY-COMPLETE.md) | 完整理论：认知编译器、价值函数、v4 规格、疫苗记忆、宿主协议 |
+| [`docs/analysis/`](docs/README.md) | 历史审计与调研（成本模型、F1–F11、四轮文献调研）；每篇开头标了 v12.0 下的有效范围 |
+
+v12.0 删除的文件（x1 代码、`docs/archive/` 等）都可从 git 取回：`git show cfba57b:<路径>`。
 
 ---
 
