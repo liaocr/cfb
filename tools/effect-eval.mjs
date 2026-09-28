@@ -48,6 +48,7 @@ export function parseArgs(argv) {
     else if (a === '--max-tokens') o.maxTokens = Number(v())
     else if (a === '--only') o.only = v().split(',')
     else if (a === '--variants') o.variants = v().split(',')
+    else if (a === '--require-fp') o.requireFp = true
     else if (a === '--out') o.out = v()
     else if (a === '--summarize') o.summarizeOnly = true
     else throw new Error('未知参数 ' + a)
@@ -141,9 +142,13 @@ export function actScore(spec, text) {
 
 export const claudeShaped = (u) => !!u && Object.keys(u).some((k) => k.startsWith('claude'))
 /** 这次主调用是否真的把变体思考送进了模型 */
-export function sawReasoning(usage, variant, chars, base) {
+// 2026-09-28 探测：同一输入在不同后端 prompt_tokens 差 300–450（系统注入不同），「基线 + 0.3×字数」会误杀短变体。
+// system_fingerprint = fp_dspure_app_v1 的后端已实测拼接历史思考（1 字 → 776，1000 字 → 1375）⇒ 直接认定有效。
+export const TRUSTED_FP = new Set(['fp_dspure_app_v1'])
+export function sawReasoning(usage, variant, chars, base, fp) {
   if (!usage || claudeShaped(usage)) return false
   if (variant === 'empty' || !chars) return true
+  if (fp && TRUSTED_FP.has(fp)) return true
   if (!Number.isFinite(base)) return true
   return Number(usage.prompt_tokens) >= base + 0.3 * chars
 }
@@ -158,7 +163,7 @@ export function makeChat({ baseUrl, apiKey, timeoutMs = 240000 }) {
       const text = await res.text()
       if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + text.slice(0, 300))
       const j = JSON.parse(text)
-      return { message: (j.choices && j.choices[0] && j.choices[0].message) || {}, finish: j.choices && j.choices[0] && j.choices[0].finish_reason, usage: j.usage || null, ms: Date.now() - t0 }
+      return { message: (j.choices && j.choices[0] && j.choices[0].message) || {}, finish: j.choices && j.choices[0] && j.choices[0].finish_reason, usage: j.usage || null, fp: j.system_fingerprint || null, ms: Date.now() - t0 }
     } finally { clearTimeout(t) }
   }
   // 连接层错误与中转 5xx 重试（中转偶发换 IP / 502）
@@ -266,13 +271,13 @@ async function main(argv) {
         let r
         for (let k = 0; ; k++) {
           r = await chat({ model: o.model, messages: buildMessages(j.task, j.content, j.reasoning, j.spec.followup), tools: TOOLS, thinking: { type: 'enabled' }, max_tokens: o.maxTokens, stream: false })
-          if (sawReasoning(r.usage, j.variant, j.reasoning.length, base[j.spec.id])) break
-          rec.rejected.push(claudeShaped(r.usage) ? 'claude-shape' : 'prompt=' + (r.usage && r.usage.prompt_tokens))
+          if (o.requireFp ? (!claudeShaped(r.usage) && TRUSTED_FP.has(r.fp)) : sawReasoning(r.usage, j.variant, j.reasoning.length, base[j.spec.id], r.fp)) break   // --require-fp：所有变体（含 raw、empty）都钉在同一个已验证后端，避免跨后端混杂
+          rec.rejected.push(claudeShaped(r.usage) ? 'claude-shape' : 'prompt=' + (r.usage && r.usage.prompt_tokens) + (r.fp ? '@' + r.fp : ''))
           if (k >= 7) throw new Error('通道始终未送入思考：' + rec.rejected.join(','))
         }
         if (j.variant === 'empty') base[j.spec.id] = Math.max(base[j.spec.id] || 0, Number(r.usage.prompt_tokens))
         const text = responseText(r.message)
-        Object.assign(rec, { finish: r.finish, usage: r.usage, ms: r.ms, reasoningChars: (r.message.reasoning_content || '').length, response: text, rule: ruleScore(j.spec, text), act: actScore(j.spec, text) })
+        Object.assign(rec, { fp: r.fp, finish: r.finish, usage: r.usage, ms: r.ms, reasoningChars: (r.message.reasoning_content || '').length, response: text, rule: ruleScore(j.spec, text), act: actScore(j.spec, text) })
         const jr = await chat({ model: o.model, messages: [{ role: 'user', content: judgePrompt(j.task, j.spec, text) }], thinking: { type: 'disabled' }, temperature: 0, max_tokens: 1500, stream: false })
         rec.judge = parseJudge(jr.message.content)
         if (!rec.judge) rec.error = 'judge-unparseable: ' + String(jr.message.content).slice(0, 120)

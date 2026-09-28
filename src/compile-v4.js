@@ -55,11 +55,16 @@ function supersedesText(o, supIds) {
   if (REFINE_KEYS.has(key) || /^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)+$/.test(v) || REFINE_KEYS.has(v)) return ''
   return v
 }
+const PROBE_RE = /下一步工具调用|工具调用[:：]|复现|查看|检查|确认|定位|grep|read_file|sed -n|taskset|\b(?:inspect|check|reproduce|look at)\b/i
+const FIXWORD_RE = /改为|改成|替换|修改|改用|回滚|删掉|加上|增加|设为|拉大|修复[:：]|\b(?:change|replace|set|revert|rename)\b/i
 const CAP = { text: 300, anchor: 120, alt: 200, why: 200, then: 200, trigger: 160, supersedes: 160, src: 60, key: 60 }
 const str = (x, n) => (typeof x === 'string' ? x : x == null ? '' : typeof x === 'number' ? String(x) : '').trim().slice(0, n)
 const norm = (s) => String(s || '').normalize('NFKC').replace(/\s+/g, ' ').trim()
 const stripEnd = (s) => String(s || '').replace(/[\s。．.;；,，:：!！]+$/u, '')
 const stripQ = (s) => stripEnd(s).replace(/[?？]+$/u, '')
+// 条件句去掉副模型自带的引导词，避免「若若 / 若如果 / if if」（v12.5 真机 ops7d）
+const cond = (s) => stripEnd(s).replace(/^(?:若是|若|如果|假如|假设|要是|if\s|when\s)\s*/iu, '')
+const isQ = (s) => /[?？]\s*$/u.test(String(s || ''))
 // 中文模板的拼接：只在「中文 ↔ ASCII 字母数字」交界处补空格（「已排除权限问题」「若 ECONNREFUSED 再回来」）
 const ASCII_EDGE = /[A-Za-z0-9_`/.\-]/
 const zj = (...parts) => parts.filter((x) => x !== '' && x != null).reduce((acc, p) => {
@@ -115,7 +120,7 @@ export function parseOps(output) {
 
 /** 字段归一化：别名、大小写、长度上限；不做任何判定。 */
 export function normalizeOp(o, i) {
-  const k = str(o.k ?? o.kind ?? o.type, 20).toUpperCase()
+  let k = str(o.k ?? o.kind ?? o.type, 20).toUpperCase()
   const ev = str(o.ev ?? o.evidence, 20).toLowerCase()
   const kind2 = str(o.kind2 ?? o.role, 20).toLowerCase()
   const ids = (x) => (Array.isArray(x) ? x : typeof x === 'string' && x ? [x] : []).map((d) => str(d, 24)).filter(Boolean).slice(0, 8)
@@ -127,6 +132,9 @@ export function normalizeOp(o, i) {
   const cond = isIf ? str(o.cond ?? o.trigger ?? o.if, CAP.trigger) : ''
   const then = isIf ? str(o.then, CAP.then) : ''
   const text0 = str(o.text, CAP.text)
+  // READY 必须是「改」而不是「查」：副模型常把即将执行的探查调用（复现 / 查看 / grep）标成 READY（ops8 真机），
+  // 渲染成「我准备的改法：下一步工具调用：…复现」会把探查冒充成修复 ⇒ 降为 PLAN
+  if (k === 'READY' && PROBE_RE.test(text0) && !FIXWORD_RE.test(text0)) k = 'PLAN'
   return {
     id: str(o.id, 20) || 'o' + (i + 1), idx: i, k, then,
     ev: V4_EVS.includes(ev) ? ev : 'derived',
@@ -274,10 +282,10 @@ const T = {
       ? alt + '（' + zj('暂缓', x) + (why ? '：' + why : '') + (trig ? '；' + zj('若', trig, '再回来') : '') + '）'
       : zj('暂缓', x) + ((why || trig) ? '（' + [why, trig ? zj('若', trig, '再回来') : ''].filter(Boolean).join('；') + '）' : ''),
     plan: '接下来要：', open: '还要确认：',
-    rule: (c, t) => '判读：' + zj(zj('若', c) + '，就', t),
-    ready: (t, trig) => '我准备的改法：' + t + (trig ? '（' + zj('前提：', trig) + '）' : ''),
-    tailReady: (t, trig) => trig ? zj(zj('若', trig) + '，就', t) + '。' : '我准备的改法：' + t + '。',
-    tailRule: (c, t) => zj(zj('若', c) + '，就', t) + '。',
+    rule: (c, t) => '判读：' + zj(zj('若', cond(c)) + '，就', t),
+    ready: (t, trig) => '我准备的改法：' + t + (trig ? '（' + zj('前提：', cond(trig)) + '）' : ''),
+    tailReady: (t, trig) => trig ? zj(zj('若', cond(trig)) + '，就', t) + '。' : '我准备的改法：' + t + '。',
+    tailRule: (c, t) => zj(zj('若', cond(c)) + '，就', t) + '。',
     tailIncumbent: (t) => '所以我现在采用：' + t + '。', tailJudged: (t) => '所以我目前判断：' + t + '。', tailFact: (t) => '已确认：' + t + '。',
     // 未决在尾段写成陈述而不是问句：推理末尾的疑问句会把下一步推向「继续取证」（turn 20 效果评测）
     tailOpen: (t) => '还要确认：' + t + '。',
@@ -290,10 +298,10 @@ const T = {
       ? alt + ' (set aside ' + x + (why ? ': ' + why : '') + (trig ? '; revisit if ' + trig : '') + ')'
       : 'Set aside ' + x + ((why || trig) ? ' (' + [why, trig ? 'revisit if ' + trig : ''].filter(Boolean).join('; ') + ')' : ''),
     plan: 'Next: ', open: 'Still to confirm: ',
-    rule: (c, t) => 'Reading: if ' + c + ', then ' + t,
-    ready: (t, trig) => 'Prepared change: ' + t + (trig ? ' (if ' + trig + ')' : ''),
-    tailReady: (t, trig) => trig ? 'If ' + trig + ', then ' + t + '.' : 'Prepared change: ' + t + '.',
-    tailRule: (c, t) => 'If ' + c + ', then ' + t + '.',
+    rule: (c, t) => 'Reading: if ' + cond(c) + ', then ' + t,
+    ready: (t, trig) => 'Prepared change: ' + t + (trig ? ' (if ' + cond(trig) + ')' : ''),
+    tailReady: (t, trig) => trig ? 'If ' + cond(trig) + ', then ' + t + '.' : 'Prepared change: ' + t + '.',
+    tailRule: (c, t) => 'If ' + cond(c) + ', then ' + t + '.',
     tailIncumbent: (t) => 'So I am going with: ' + t + '.', tailJudged: (t) => 'So my current judgment is: ' + t + '.', tailFact: (t) => 'Confirmed: ' + t + '.',
     tailOpen: (t) => 'Still to confirm: ' + t + '.',
   },
@@ -347,7 +355,9 @@ export function renderOps(chosen, opts = {}) {
     }
     // 有判读表时不再重复未决问题：判读本身就是「这个问题的各种答案意味着什么」，末尾停在问题上会把下一步推向重新推理
     const ifs = ordered.filter((x) => x.k === 'IF')
-    const rules = (ifs.some((x) => !x.auto) ? ifs.filter((x) => !x.auto) : ifs).slice(-3)
+    // 理论 S8-R3：块尾不放问句 ⇒ 没拆出 trigger/then、原文又是问句的判读不进尾段
+    const ifs2 = ifs.filter((x) => (x.trigger && x.then) || !isQ(x.text))
+    const rules = (ifs2.some((x) => !x.auto) ? ifs2.filter((x) => !x.auto) : ifs2).slice(-3)
     if (!rules.length) for (const o of ordered.filter((x) => x.k === 'OPEN').slice(-2)) tail.push(L.tailOpen(stripQ(o.text)))
     for (const o of rules) tail.push(o.trigger && o.then ? L.tailRule(stripEnd(o.trigger), stripEnd(o.then)) : stripEnd(o.text) + (lang === 'en' ? '.' : '。'))
     // 尾段以已备好的改法收束（最后一条）：观察一旦证实前提，下一步就是它

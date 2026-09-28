@@ -26,7 +26,7 @@ export function compressPromptVersion(cfg) {
   const sys = cfg && cfg.compressSystemPrompt === true ? ':sys' : ''
   if (v === 'v2') return 'compress-v2' + sys
   // v4 把渲染预算与尾段开关写进版本号（它们改变产物；提示词本身不随参数变化）
-  if (v === 'v4') return 'compress-v4-ops7:' + v4Budget(cfg) + (cfg && cfg.compressV4Tail === false ? ':notail' : '') +
+  if (v === 'v4') return 'compress-v4-ops8:' + v4Budget(cfg) + (cfg && cfg.compressV4Tail === false ? ':notail' : '') +
     (v4Incremental(cfg) ? ':inc' + v4SegmentChars(cfg) : '') + sys
   // v3 把目标长度写进版本号 ⇒ trace / BOOT / A-B 分桶自动带上参数，无需另记字段。
   const t = compressTargets(cfg)
@@ -169,8 +169,8 @@ const V4_HEAD = (
     '{"ops":[{"id":"o1","k":"FACT","ev":"tool","kind2":"localize","text":"…","anchor":"…","key":"…","src":"…","alt":"…","why":"…","trigger":"…","supersedes":"…","deps":["o0"]}]}\n' +
     '必填：id、k、ev、text、anchor。其余字段只在适用时给出，不适用就省略。\n\n' +
     '字段：\n' +
-    '- k（九选一）：IF 原文对某个检查 / 观察结果的预先判读（"若结果是 A 就说明 / 就做 B"），写 cond=结果 A、then=结论或动作，原文给了几个分支就标几条；'+
-    '针对即将执行的那条工具调用的判读最重要，一条都不许漏；' +
+    '- k（九选一）：IF 原文对**待回观察**（思维链末尾准备执行的那条工具调用 / 检查将返回的结果）的预先判读：cond=这次调用可能返回的一种结果（\"若复现了\"\"若 n 里有 model\"），then=原文据此得出的结论或要做的动作（\"再修\"\"就改 X\"）；原文给了几个分支就标几条，一条都不许漏；' +
+    '描述程序行为的机理条件句（\"若 A 先执行，则 B 失败\"）不是 IF，标 COMPUTED；问句不是 IF；' +
     'FACT 观察到的事实；COMPUTED 推理或计算得出的结论；INCUMBENT 当前采用的方案或结论；' +
     'REFUTED 被工具观测证伪而放弃的路；SHELVED 没有观测证据、只是暂时搁置的路；OPEN 仍未解决的问题；PLAN 当时打算做的下一步（查看、验证类动作）；' +
     'READY 原文已经想好的具体改法（改哪个文件、改成什么、执行什么修复），即使只是候选、或要等某个检查结果才采用——写 trigger=采用它的前提（原文"如果……"的部分），无前提省略。\n' +
@@ -197,7 +197,8 @@ const V4_HEAD = (
     '8. 宁少勿多：只标会影响下一步判断的条目，每 1000 字原文至多 6 条；text 不超过 40 字。\n' +
     '9. 原文想过的具体改法不要当成猜测删掉：标 READY（至多 2 条，取原文最后倾向的；text 里写清文件与改法，标识符逐字）。' +
     '原文已否定的改法标 REFUTED，不标 READY。READY 只能来自原文，不许自己想改法。\n' +
-    '10. 原文已经为某个问题写出各种结果的含义时，标 IF（每个分支一条），不要只标 OPEN 问题而丢掉答案表。\n' +
+    '10. 原文已经为待回观察写出各种结果的含义时，标 IF（每个分支一条），不要只标 OPEN 问题而丢掉答案表。' +
+    '原文提出了假设 H 和针对 H 的改法 F、而这次调用正是在检验 H 时，标 IF：cond=调用结果证实 H，then=F（两部分都来自原文，anchor 取 F 所在处）。\n' +
     '11. 思维链末尾起草的最终回答（准备对用户说的分析、准备执行的那一条工具调用、格式斟酌）不要标注：主模型随后会原样输出它。' +
     '只标回答里不会出现的东西：被放弃的路及理由、前提与条件、已想好的改法、未决问题。\n\n'
 )
@@ -218,7 +219,7 @@ export function buildCompressPromptV4(cot) {
  */
 const FIX_RE = /(修复|修正|改成|改为|改用|改回|回滚|应改|应该改|替换为|换成|加上|加入|去掉|删掉|去除|拉开|放宽|\bfix\b|\brevert\b|\breplace\b|change [^.]{0,40} to)/i
 const CONCRETE_RE = /`[^`]+`|[\w.-]+\.(?:js|mjs|ts|json|ya?ml|py|go|rs|sh)\b|\b[a-z]+[A-Z]\w*|\b\w+_\w+|\d{2,}|\/[\w.-]+\//
-const COND_RE = /(如果|若|假如|要是|\bif\b)[^。\n]{0,120}(则|就|说明|那么|意味|=>|→|⇒|主因|排除|\bthen\b|means)/i
+const COND_RE = /(如果|若|假如|要是|\bif\b)[^。\n]{0,120}(则|就|说明|那么|意味|再|才|=>|→|⇒|主因|排除|\bthen\b|means)/i
 /** v12.5 判读线索：原文里「若结果 A ⇒ 结论/动作」的句子（逐字，最后 max 条） */
 export function condHints(text, max = 4) {
   const sents = String(text || '').split(/(?<=[。！？!?；;])|\n+/).map((s) => s.trim()).filter(Boolean)
@@ -226,7 +227,7 @@ export function condHints(text, max = 4) {
   const seen = new Set()
   for (let i = sents.length - 1; i >= 0 && out.length < max; i--) {
     const s = sents[i]
-    if (s.length < 8 || !COND_RE.test(s)) continue
+    if (s.length < 8 || !COND_RE.test(s) || /[?？]\s*$/.test(s)) continue   // 问句不是判读（理论 S8-R1′）
     const t = s.length > 180 ? s.slice(0, 180) : s
     const k = t.replace(/\s+/g, '')
     if (seen.has(k)) continue
