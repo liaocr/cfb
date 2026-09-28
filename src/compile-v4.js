@@ -20,6 +20,7 @@
 import { inventedIdentifiers } from './fidelity.js'
 import { wideShare } from './tokens.js'
 import { condHints, fixHints } from './prompts.js'
+import { DEFAULTS } from './config.js'
 
 export const V4_KINDS = ['FACT', 'COMPUTED', 'INCUMBENT', 'REFUTED', 'SHELVED', 'OPEN', 'PLAN', 'READY', 'IF']
 export const V4_EVS = ['tool', 'derived', 'guess']
@@ -178,9 +179,23 @@ export function locusFromRaw(raw, text) {
   for (let i = spans.length - 1; i >= 0; i--) {
     const sp = spans[i]
     if (!/[=(){};:]/.test(sp)) continue
+    if (/^\s*\[tool|^\s*(?:sed|grep|rg|cat|ls|node|npm|npx|bash|git|taskset|curl|cd|echo)\b/.test(sp)) continue   // 命令不是代码位置
     if (ids.some((id) => sp.includes(id))) return sp
   }
   return ''
+}
+
+/** S8-R2″：从判读（IF）与结论（INCUMBENT / COMPUTED）取原文逐字代码行；去掉 READY 已带的；至多 max 行 */
+export function actionLoci(raw, chosen, max = 2) {
+  const have = new Set(chosen.filter((o) => o.k === 'READY' && o.at).map((o) => norm(o.at)))
+  const out = []
+  const src = chosen.filter((o) => o.k === 'IF').concat(chosen.filter((o) => o.k === 'INCUMBENT' || o.k === 'COMPUTED').reverse())
+  for (const o of src) {
+    if (out.length >= max) break
+    const at = locusFromRaw(raw, [o.trigger, o.then, o.text].filter(Boolean).join(' '))
+    if (at && !have.has(norm(at))) { have.add(norm(at)); out.push(at) }
+  }
+  return out
 }
 
 export function validateOps(rawOps, raw) {
@@ -366,11 +381,67 @@ export function renderLine(op, lang = 'zh') {
  * 整块渲染：行式层按组（状态 → 当前方案 → 排除/搁置 → 计划 → 未决），组内保持原文顺序；
  * 尾段（可关）：最重要的一条结论 + 至多两个未决问句（双编码：关键结论在末尾再出现一次，离下一步生成最近）。
  */
+/**
+ * 理论 S8-R4′：层 A 用连贯的第一人称推理散文（模型原生思考语域），不用项目符号 / 「标签：」。
+ * 条目、取舍、顺序、逐字规则与行式完全相同，只换体裁。
+ */
+const endZh = (s) => /[。！？!?…]$/u.test(s) ? s : s + '。'
+function proseSentence(op, lang) {
+  const t = stripEnd(op.text)
+  if (lang === 'en') {
+    switch (op.k) {
+      case 'FACT': return op.ev === 'tool' || !op.ev ? t + (op.src ? ' (' + op.src + ').' : '.') : 'I think ' + t + '.'
+      case 'COMPUTED': return (op.ev === 'guess' ? 'My guess, not verified yet: ' : 'I think ') + t + '.'
+      case 'INCUMBENT': return (op.ev === 'guess' ? 'I lean towards ' : 'I am going with ') + t + '.'
+      case 'REFUTED': return 'I already ruled out ' + t + (op.why ? ', because ' + stripEnd(op.why) : '') + (op.alt ? ', so instead ' + stripEnd(op.alt) : '') + '.'
+      case 'SHELVED': return 'I set aside ' + t + (op.why ? ' (' + stripEnd(op.why) + ')' : '') + (op.trigger ? ' unless ' + cond(op.trigger) : '') + (op.alt ? '; for now ' + stripEnd(op.alt) : '') + '.'
+      case 'PLAN': return 'Next I want to ' + t + '.'
+      case 'OPEN': return 'What I have not confirmed yet: ' + stripQ(op.text) + '.'
+      case 'IF': return op.trigger && op.then ? 'If ' + cond(op.trigger) + ', then ' + stripEnd(op.then) + '.' : t + '.'
+      case 'READY': return op.auto ? t + '.' : 'The change I have ready: ' + t + (op.at ? ' — the line is `' + op.at + '`' : '') + (op.trigger ? ', once ' + cond(op.trigger) : '') + '.'
+      default: return t + '.'
+    }
+  }
+  switch (op.k) {
+    case 'FACT': return op.ev === 'tool' || !op.ev ? endZh(t + (op.src ? '（' + op.src + '）' : '')) : endZh(zj('我判断', t))
+    case 'COMPUTED': return endZh(op.ev === 'guess' ? zj('我猜', t) + '，还没验证' : zj('我判断', t))
+    case 'INCUMBENT': return endZh(zj(op.ev === 'guess' ? '我倾向于' : '我现在采用的是', t))
+    case 'REFUTED': return endZh(zj('已经排除', t) + (op.why ? '，因为' + stripEnd(op.why) : '') + (op.alt ? '，所以改走' + stripEnd(op.alt) : ''))
+    case 'SHELVED': return endZh(zj('先不考虑', t) + (op.why ? '（' + stripEnd(op.why) + '）' : '') + (op.trigger ? '，除非' + cond(op.trigger) : '') + (op.alt ? '；现在的方向是' + stripEnd(op.alt) : ''))
+    case 'PLAN': return endZh(zj('接下来我要', t.replace(/^(?:下一步(?:工具调用)?[:：]?\s*)/u, '')))
+    case 'OPEN': return endZh(zj('还没确认的是', stripQ(op.text)))
+    case 'IF': return endZh(op.trigger && op.then ? zj(zj('如果', cond(op.trigger)) + '，就', stripEnd(op.then)) : t)
+    case 'READY': return op.auto ? endZh(t) : endZh(zj('我准备的改法是', t) + (op.at ? '，改的就是 `' + op.at + '` 这一行' : '') + (op.trigger ? '——前提是' + cond(op.trigger) : ''))
+    default: return endZh(t)
+  }
+}
+const PROSE_PARA = { FACT: 0, COMPUTED: 0, INCUMBENT: 0, REFUTED: 1, SHELVED: 1, PLAN: 2, OPEN: 2, IF: 3, READY: 3 }
+// 段落：状态（含看过的代码）→ 死路 → 计划 / 未决 → 「所以」结论 → 判读 / 已备改法（收尾，S8-R3）。散文里不再另出重复的尾段。
+export function renderProse(ordered, lang, loci = [], concl = '') {
+  const paras = [[], [], [], [], []]
+  for (const o of ordered) { const g = PROSE_PARA[o.k] ?? 0; paras[g === 3 ? 4 : g].push(proseSentence(o, lang)) }
+  for (const at of loci) paras[0].push(lang === 'en' ? 'The relevant code I looked at is `' + at + '`.' : '我看过的相关代码是 `' + at + '`。')
+  if (concl) paras[3].push(concl)
+  const sep = lang === 'en' ? ' ' : ''
+  return paras.filter((p) => p.length).map((p) => p.join(sep)).join('\n\n')
+}
+
 export function renderOps(chosen, opts = {}) {
   const lang = opts.lang === 'en' ? 'en' : 'zh'
   const L = T[lang]
   const ordered = chosen.slice().sort((a, b) => (GROUP[a.k] - GROUP[b.k]) || (a.idx - b.idx))
+  if (opts.prose) {
+    let conclS = ''
+    if (opts.tail !== false) {
+      const inc = ordered.filter((o) => o.k === 'INCUMBENT' && o.ev !== 'guess')
+      const c = inc.length ? inc[inc.length - 1]
+        : ordered.filter((o) => (o.k === 'COMPUTED' || (o.k === 'FACT' && o.kind2 === 'pivot')) && o.ev !== 'guess').sort((a, b) => scoreOp(b) - scoreOp(a) || b.idx - a.idx)[0]
+      if (c) conclS = lang === 'en' ? 'So ' + stripEnd(c.text) + '.' : endZh(zj('所以', stripEnd(c.text)))
+    }
+    return renderProse(ordered, lang, opts.loci || [], conclS)
+  }
   const lines = ordered.map((o) => renderLine(o, lang))
+  if (!opts.prose) for (const at of (opts.loci || [])) lines.push('- ' + (lang === 'en' ? 'Relevant code I looked at: `' : '我看过的相关代码：`') + at + '`')
   const tail = []
   if (opts.tail !== false) {
     const inc = ordered.filter((o) => o.k === 'INCUMBENT' && o.ev !== 'guess')
@@ -478,7 +549,10 @@ export function compileOpsV4(rawOps, raw, cfg = {}, budget = null, stats = {}, o
   const sel = selectOps(kept, { budget: b, lang })
   const suffix = typeof opts.rawSuffix === 'string' ? opts.rawSuffix : ''
   // 有原文尾巴时不出尾段：尾巴本身就是最新的推理，「所以现在…」会比它旧
-  const body = renderOps(sel.chosen, { lang, tail: !suffix && cfg.compressV4Tail !== false })
+  // 理论 S8-R2″：动作接口逐字性 —— 判读 / 结论所指的原文逐字代码行（至多 2 行）必留，READY 已带的不重复
+  const loci = cfg.compressV4Loci === false ? [] : actionLoci(raw, sel.chosen)
+  if (loci.length) stats.loci = loci.length
+  const body = renderOps(sel.chosen, { lang, tail: !suffix && cfg.compressV4Tail !== false, loci, prose: (cfg.compressV4Prose ?? DEFAULTS.compressV4Prose) !== false })
   const gap = typeof opts.rawPrefix === 'string' ? opts.rawPrefix.trim() : ''
   const withGap = gap ? gap + '\n\n' + body : body
   const text = suffix.trim() ? withGap + '\n\n' + suffix.replace(/^\s+/, '') : withGap

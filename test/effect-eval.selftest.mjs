@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url'
 import * as E from '../tools/effect-eval.mjs'
 import { TASKS } from '../tools/v4-live.mjs'
 import { recompile } from '../tools/compile-direct.mjs'
+import { DEFAULTS as DEFAULTS_ } from '../index.js'
+// 本套件的渲染断言针对行式层（S5 层 A 旧体裁，compressV4Prose:false 仍支持）；散文体见 §5n
+DEFAULTS_.compressV4Prose = false
 
 let pass = 0, fail = 0
 const test = async (name, fn) => { try { await fn(); pass++; console.log('PASS ' + name) } catch (e) { fail++; console.log('FAIL ' + name + '\n' + (e && e.stack || e)) } }

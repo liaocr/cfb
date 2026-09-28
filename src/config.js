@@ -201,6 +201,10 @@ export const DEFAULTS = {
   compressV4MaxInFlight: 3,
   // v12.5：副模型漏标判读 / 改法时，由代码把原文句子逐字补成 IF / READY（只做保底）
   compressV4AutoHints: true,
+  // v12.5（理论 S8-R2″）：判读 / 结论所指的原文逐字代码行（≤2 行）必留（「我看过的相关代码」）；false 关闭
+  compressV4Loci: true,
+  // v12.5（理论 S8-R4′）：层 A 用第一人称推理散文（原生思考语域）代替行式条目；it5 同后端 n=20 实测胜出（综合 5.8 vs 原文 5.0、死路 20% vs 40%）⇒ 缺省开
+  compressV4Prose: true,
   // 仅工具用：把副模型原始输出带回 meta.sideOutput（tools/compile-direct.mjs --recompile 零调用重编译）
   captureSideOutput: false,
   // 首段目标长度（null ⇒ 段长的一半）

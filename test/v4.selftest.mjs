@@ -15,6 +15,8 @@ import os from 'node:os'
 import path from 'node:path'
 import * as I from '../index.js'
 import { compressBlock, parseVariant } from '../tools/cf-eval.mjs'
+// 本套件的渲染断言针对行式层（S5 层 A 旧体裁，compressV4Prose:false 仍支持）；散文体见 §5n
+I.DEFAULTS.compressV4Prose = false
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-v4-'))
 const oldHome = process.env.DSH_HOME
@@ -281,6 +283,24 @@ try {
     const v = I.validateOps(ops, raw)
     const ids = v.kept.map((o) => o.id)
     assert.deepEqual(ids, ['o1', 'o2', 'o3', 'o5'], JSON.stringify(v.rejected))
+  })
+
+  await test('§5n 散文体（S8-R4′，缺省）：无项目符号 / 标签；第一人称；「所以」结论在判读之前；以判读 / 已备改法收尾；逐字锚点保留', () => {
+    const raw = '看到测试里 `const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })` 绕过了隔离。如果 grep 没找到设置，就改测试。' + '填充句子。'.repeat(200)
+    const ops = [
+      { id: 'o1', k: 'FACT', ev: 'tool', text: 'birth.selftest 用 CFB_REAL_DSH_HOME', anchor: '绕过了隔离', src: 'test/birth.selftest.mjs' },
+      { id: 'o2', k: 'INCUMBENT', ev: 'derived', text: '测试绕过了临时 DSH_HOME', anchor: '绕过了隔离' },
+      { id: 'o3', k: 'IF', ev: 'derived', cond: 'grep 没找到设置', then: '改测试', anchor: '就改测试' },
+      { id: 'o4', k: 'READY', ev: 'derived', text: '把 CFB_REAL_DSH_HOME 改为 DSH_HOME', anchor: '绕过了隔离' },
+    ]
+    const r = I.compileV4(JSON.stringify({ ops }), raw, { compressV4Prose: true })
+    assert.ok(r.ok, JSON.stringify(r))
+    assert.ok(!/^- /m.test(r.text) && !/我目前判断：|判读：/.test(r.text), r.text)
+    assert.ok(r.text.includes('我现在采用的是测试绕过了临时 DSH_HOME'), r.text)
+    assert.ok(r.text.indexOf('所以') < r.text.indexOf('如果 grep 没找到设置，就改测试'), r.text)
+    assert.ok(/改的就是 `const w = makeTraceWriter[^`]*` 这一行。$/.test(r.text), r.text)
+    const old = I.compileV4(JSON.stringify({ ops }), raw, { compressV4Prose: false })
+    assert.ok(/^- /m.test(old.text), '行式仍可选')
   })
 
   await test('§5k 代码保底：副模型一条 IF / READY 都没标 ⇒ 原文判读 / 改法句逐字补上；已标过 ⇒ 不补；否定 / 犹豫句与超长句不补；可关', () => {

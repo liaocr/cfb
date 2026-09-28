@@ -57,6 +57,8 @@ export interface CotFormBConfig {
   compressV4MaxInFlight?: number
   /** 仅 v4（v12.5）：副模型漏标判读 / 改法时由代码把原文句子逐字补成 IF / READY（缺省 true） */
   compressV4AutoHints?: boolean
+  compressV4Loci?: boolean
+  compressV4Prose?: boolean
   /** 仅工具用：meta.sideOutput 带回副模型原始输出（缺省 false） */
   captureSideOutput?: boolean
   /** 仅 v4 增量：目标段长（字符，缺省 1200；在段落 / 行 / 句末处切，0.6–1.5 倍浮动） */
