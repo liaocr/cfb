@@ -23,7 +23,7 @@
 - **写 canned 观察前先把代码语义跑一遍**：sse 红题我把 rawFinish="stop" 当失败，其实是正常流；主模型答对被我判 0。
 - ASK 措辞会和主模型的调用协议冲突（要文字就不能调工具）——问法要二选一。
 - 手写 oracle 含预见（CoT 里没有的），忠实压缩不允许发明；副模型的目标是层 B 形态闭合，不是 oracle 分数。
-- 中转抖动：副模型单次 5–90 s，偶发 150 s 超时；主模型 --require-fp 作废率 ≈ 1/3。
+- 中转抖动：副模型单次 5–90 s，偶发 150 s 超时；可信后端按请求内容黏住、带 tools 字段时更少（有时 0/6）⇒ traj-run 用 --text-tools + max_tokens:1 探针 + 零宽空格打散；effect-eval 未改。
 - 稿长均值 ≈ 1630；熔断 2000；真机 6 s 窗口到位率 v4d6 **未复测**（2a 第一件事）。
 - flash 抄样例不读规则；样例里的名字会被抄进稿里（已禁）。
 - effect-eval 的 results.jsonl 是累计的；新目录 cp 旧目录再跑。
@@ -35,8 +35,9 @@
 4. [x] tools/effect-mr.mjs（--build / --run / --summarize）+ tools/effect-mr-specs.json（5 题 × 绿/红，flaky 绿 = 不限核通过 = 无信息量）；链在 /home/user/mr/chains.json（flaky CoT_2 重生成 4495 字，其余用 effect-23 d9a 样本）
 5. [x] 2b 跑完三轮（run1 全 / run2 红 / run3 sse 红 + flaky 红 auto）：oracle 红题 8.6–9.5 vs raw 5.8（假完成 0 vs 25%）；理论修订 S10.3′（推翻路单命令 / 验收观察自证新鲜 / 看原症状不看单元测试）；**基准错误已修**（sse 红 rawFinish 语义）；ASK3 措辞修（协议冲突假象）。理论 S10.9 / S10.10 已写。
 6. [x] v4d7 已实现（台账在手时追加第 10 条四段 + 第 2 轮样例；【本轮已发出的调用】进 ctx；样例整句抄写剥离 parrotedExample；selfClosed 扩到「所以」句）。auto D2 红题 6.9（形态齐、验收命令不再发明；差距 = 预见，见 S10.10）。auto 绿题**未跑**（眼高手低风险：状态声明会不会让它不敢收工——2c 里看）。
-7. [~] 2c：tools/traj-fixtures.mjs（3 题真文件 + canned）+ tools/traj-run.mjs（raw / auto / ledger 变体；--min-chars = 生产门槛 3100）。第一批（traj1）发现：循环里每轮思考中位数 ≈ 600–1000 字 ⇒ 生产门槛下 auto 0/9 轮压缩 = raw；无门槛时 15 字被压成 1181 字台账稿。理论 S10.11 立假设 H-ledger（程序台账零副模型成本）。**正在跑 traj2**：raw / auto-all（min-chars 0）/ ledger × 3 题 × 1 样本（≈ 54 主 + 18 副）。中转黏后端 ⇒ 重发加零宽空格打散。
-8. [ ] 文档 / commit / push（每个里程碑都 commit）
+7. [x] 2c 跑完：traj1（生产门槛 ⇒ 0/9 轮压缩）、traj2 + traj3 合并（无门槛）raw 5/6·4.0 轮·16.8k / auto-all 5/5·3.4 轮·13.2k / ledger 5/6·4.0 轮·19.1k ⇒ 理论 S10.12：H-ledger 不成立；压稿价值 = 效率；言过其实 = 宿主策略。EFFECT-EVAL §18 已写全。
+8. [x] 全部文档收口并 push（见 git log 最新一条）。**阶段 2 收官陈述在理论 S10.12 末**。下一步不在稿上、在宿主接口（门槛策略 / 收工前强制验收 / 窗口自适应）——等用户决定。
 
 ## 5. 费用台账（本阶段）
-- 副模型：≈ 25 · 主模型有效 ≈ 110（含建链 5、run1 40、oracle2 20、run2 30、run3 10+2）· 盲评 ≈ 100 · 作废重发 ≈ ×1.7（中转可信 50%）
+- 2b：副模型 ≈ 25 · 主模型有效 ≈ 110 · 盲评 ≈ 100 · 作废重发 ≈ ×1.7
+- 2c：主模型有效 ≈ 90（traj1 ≈ 30、traj2 ≈ 40、traj3 ≈ 20 进行中）+ 作废 / 探针（探针只花 prefill）· 副模型 ≈ 40

@@ -18,7 +18,7 @@ const SYSTEM = '你是在代码仓库里干活的编码 Agent，可用工具 bas
 const SYSTEM_TEXT_TOOLS = SYSTEM + '\n\n工具用文本协议调用：每条调用单独一行，格式为 [tool_call bash] {"command":"…"} / [tool_call read_file] {"path":"…"} / [tool_call edit_file] {"path":"…","old_text":"…","new_text":"…"}（JSON 一行、字符串内换行写成 \\n）。调用行之外的文字就是你的判断。结果会以「[tool: 名字 结果]」回给你。'
 
 function parseArgs(argv) {
-  const o = { variants: ['raw', 'auto'], samples: 1, maxRounds: 6, concurrency: 2, maxTokens: 16000, out: 'traj', only: null, minChars: 3100 }   // minChars = 生产 birthMinChars（低于它不压、原样留下）
+  const o = { variants: ['raw', 'auto'], samples: 1, maxRounds: 6, concurrency: 2, maxTokens: 16000, out: 'traj', only: null, minChars: 3100, maxProbes: 15 }   // minChars = 生产 birthMinChars（低于它不压、原样留下）
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]; const v = () => argv[++i]
     if (a === '--variants') o.variants = v().split(',')
@@ -33,6 +33,7 @@ function parseArgs(argv) {
     else if (a === '--summarize') o.summarizeOnly = true
     else if (a === '--min-chars') o.minChars = Number(v())
     else if (a === '--text-tools') o.textTools = true
+    else if (a === '--max-probes') o.maxProbes = Number(v())
     else throw new Error('未知参数 ' + a)
   }
   return o
@@ -158,14 +159,14 @@ async function runOne({ o, task, variant, sample, chat, I, cred }) {
         if (o.requireFp) {
           const probe = await chat({ model: o.model, messages: msgs, ...(o.textTools ? {} : { tools: TOOLS }), thinking: { type: 'enabled' }, max_tokens: 1, stream: false })
           rec.probes = (rec.probes || 0) + 1
-          if (claudeShaped(probe.usage) || !TRUSTED_FP.has(probe.fp)) { rec.probeMiss = (rec.probeMiss || 0) + 1; if (k >= 14) throw new Error('探针 15 次都没等到可信后端'); await new Promise((s) => setTimeout(s, 3000 + 1500 * k)); continue }
+          if (claudeShaped(probe.usage) || !TRUSTED_FP.has(probe.fp)) { rec.probeMiss = (rec.probeMiss || 0) + 1; if (k >= o.maxProbes - 1) throw new Error(`探针 ${o.maxProbes} 次都没等到可信后端`); await new Promise((s) => setTimeout(s, Math.min(30000, 3000 + 1500 * k))); continue }
         }
         r = await chat({ model: o.model, messages: msgs, ...(o.textTools ? {} : { tools: TOOLS }), thinking: { type: 'enabled' }, max_tokens: o.maxTokens - k, stream: false })
         const seen = !claudeShaped(r.usage) && (!o.requireFp || TRUSTED_FP.has(r.fp))
         if (seen && (r.message.reasoning_content || '').length > 0) break
         rec.rejected++
         rec.rejectedWhy = (rec.rejectedWhy || []).concat(claudeShaped(r.usage) ? 'claude' : 'fp=' + r.fp)
-        if (k >= 14) throw new Error('通道始终未送入思考：' + rec.rejectedWhy.slice(-10).join(','))
+        if (k >= o.maxProbes - 1) throw new Error('通道始终未送入思考：' + rec.rejectedWhy.slice(-10).join(','))
       }
       rec.rounds = round
       rec.promptTokens += Number(r.usage && r.usage.prompt_tokens) || 0
@@ -196,7 +197,7 @@ async function runOne({ o, task, variant, sample, chat, I, cred }) {
         const argsObj = typeof c.args === 'string' ? (() => { try { return JSON.parse(c.args) } catch { return { command: c.args } } })() : c.args
         if (c.name === 'bash') { const k = normCmd(argsObj && argsObj.command); if (seenCmds.has(k) && !rec.edits.some((e) => e.round > seenCmds.get(k))) rec.repeats++; seenCmds.set(k, round) }
         const out = execTool(task, repo, c.name, c.args)
-        if (c.name === 'edit_file') rec.edits.push({ round, path: argsObj && argsObj.path, ok: /^ok/.test(out) })
+        if (c.name === 'edit_file') { rec.edits.push({ round, path: argsObj && argsObj.path, ok: /^ok/.test(out) }); if (rec.fixedAtRound == null && task.fixed(repo)) rec.fixedAtRound = round }   // 同一轮里 edit 之后紧跟的验收也算
         if (c.name === 'bash' && task.verifyRe.test(String(argsObj && argsObj.command || '')) && rec.fixedAtRound != null) rec.verifiedAfterFix = true
         results.push(`[tool: ${c.name} 结果]\n${out}`)
         rec.transcript[rec.transcript.length - 1].results = (rec.transcript[rec.transcript.length - 1].results || []).concat(out.slice(0, 1500))
@@ -219,7 +220,22 @@ async function runOne({ o, task, variant, sample, chat, I, cred }) {
 const mean = (xs) => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN
 const f1 = (x) => Number.isFinite(x) ? x.toFixed(1) : '—'
 const pct = (xs) => xs.length ? Math.round(100 * mean(xs)) + '%' : '—'
+/** 从 transcript 重算「修好后有没有验收」（同一轮 edit 之后的验收也算）；老记录也能修正 */
+export function recomputeVerified(r, verifyRe) {
+  if (!r.transcript || r.fixedAtRound == null) return r.verifiedAfterFix
+  for (const t of r.transcript) {
+    if (t.round < r.fixedAtRound) continue
+    const calls = t.calls || []
+    const editIdx = calls.findIndex((c) => /edit/i.test(c.name))
+    for (let i = 0; i < calls.length; i++) {
+      if (t.round === r.fixedAtRound && editIdx >= 0 && i < editIdx) continue
+      if (calls[i].name === 'bash' && verifyRe.test(String(calls[i].args || ''))) return true
+    }
+  }
+  return false
+}
 export function summarizeTraj(rows) {
+  for (const r of rows) { const task = TRAJ_TASKS.find((t) => t.id === r.task); if (task && !r.error) { r.verifiedAfterFix = recomputeVerified(r, task.verifyRe); r.claimJustified = r.claim === 'fixed' ? (r.fixed && r.verifiedAfterFix) : r.claim === 'hedged' ? true : !r.fixed || !r.final } }
   const ok = rows.filter((r) => !r.error)
   const vars = [...new Set(ok.map((r) => r.variant))]
   const L = ['| 变体 | n | 修好 | 到修好的轮数 | 总轮数 | 工具调用 | edit 次数 | 重复命令 | 修好后验收 | 最终声明 fixed | 声明相称 | prompt tokens 合计 | 上下文 reasoning 字数 | 压稿成功 |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|']
