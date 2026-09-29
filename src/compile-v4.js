@@ -514,6 +514,38 @@ export function compileV4(output, raw, cfg = {}, budget = null) {
   return compileOpsV4(parsed.ops, raw, cfg, budget, stats)
 }
 
+/**
+ * ★ v12.6 compress-v4-direct 程序门（理论 S8-R6）：副模型直写散文，代码只做能机械判定的事。
+ *   锚点硬校验：`…` 片段必须是原文（或任务观察）里一字不差的子串；不是就剥掉反引号（不许假称逐字）。
+ *   判读 / 语域 / 出处只统计不熔断（样例 + 尾段重申已把漏判率压低；熔断 = 原文放行，先测漏率再收紧）。
+ *   熔断只有两种：空输出、超长（compressV4DirectMaxChars，缺省 1300）。
+ * @returns {{ ok: true, text, stats } | { ok: false, reason, stats }}
+ */
+export function compileV4Direct(side, raw, cfg = {}) {
+  let text = String(side == null ? '' : side).trim()
+  const stats = { outputChars: text.length }
+  const fence = text.match(/^```[a-zA-Z0-9_-]*\n([\s\S]*?)\n```$/)
+  if (fence) { text = fence[1].trim(); stats.unfenced = true }
+  if (!text) return { ok: false, reason: 'v4d-empty', stats }
+  const hay = norm(raw + '\n' + (cfg.compressCtx || ''))
+  let invented = 0
+  text = text.replace(/`([^`\n]{1,220})`/g, (all, span) => {
+    const n = norm(span)
+    if (n && hay.includes(n)) return all
+    invented++
+    return span
+  })
+  stats.inventedSpans = invented
+  stats.chars = text.length
+  const tail = text.slice(Math.floor(text.length * 0.55))
+  stats.closeLoop = /如果[^。？\n]{1,90}[，,]?\s*(?:那么|就|则)/.test(tail) || /\bif\b[^.\n]{1,90}[,，]?\s*(?:then|,)/i.test(tail)
+  stats.provenance = /逐字/.test(text)
+  stats.register = /看起来|所以|下一步工具调用/.test(text)
+  const maxChars = Number.isFinite(cfg.compressV4DirectMaxChars) && cfg.compressV4DirectMaxChars > 0 ? cfg.compressV4DirectMaxChars : 1300
+  if (text.length > maxChars) return { ok: false, reason: 'v4d-too-long', stats }
+  return { ok: true, text, stats }
+}
+
 /** 硬拒绝占比阈值（schema / I1–I8；去重、I7、retracted 不算「不可信」）。 */
 export function v4RejectRatioOf(v) {
   const hard = v.rejected.filter((r) => r.rule !== 'dup' && r.rule !== 'I7' && r.rule !== 'retracted').length

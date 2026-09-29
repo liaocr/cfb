@@ -691,6 +691,43 @@ try {
     const bad = await compressBlock('v4', RAW, { compressor, opts })
     assert.equal(bad.ok, false); assert.equal(bad.text, RAW); assert.equal(bad.error, 'v4-unparseable')
   })
+  // ---- §5o compress-v4-direct（v12.6，oracle C 形态固化）：直写散文 + 程序门 ----
+  await test('5o1 buildCompressPromptV4Direct：风格样例 / ctx / 尾段重申', () => {
+    const p = I.buildCompressPromptV4Direct('RAW原文', '任务观察ctx')
+    assert.ok(p.startsWith('你是思维链压缩器'), p.slice(0, 40))
+    assert.ok(p.includes('【风格样例】') && p.includes('所以下一步工具调用是'), '样例演示收尾形态')
+    assert.ok(p.includes('【当前任务与观察】\n任务观察ctx'))
+    assert.ok(p.endsWith(I.V4D_TAIL), '尾段重申')
+    assert.ok(!I.buildCompressPromptV4Direct('RAW').includes('【当前任务与观察】'), '无 ctx 不带块')
+  })
+  await test('5o2 compressPromptVersion/For：v4d 分流', () => {
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x' }), 'compress-v4d1:ctx')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d1:noctx')
+    const p = I.compressPromptFor({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'T' }, 'COT')
+    assert.ok(p.includes('【上一轮思维链】\nCOT') && p.includes('【当前任务与观察】\nT'))
+  })
+  await test('5o3 compileV4Direct：锚点逐字硬校验（编造剥反引号）', () => {
+    const raw = 'read_file 显示 const port = 8123 // 旧端口，我准备改 loadConfig()。'
+    const good = '看起来端口错了。read_file（逐字）：\n`const port = 8123 // 旧端口`\n所以下一步工具调用是 read_file src/config.js。如果解析是 5432，那么改 `loadConfig()`。'
+    const r = I.compileV4Direct(good, raw, {})
+    assert.equal(r.ok, true); assert.equal(r.stats.inventedSpans, 0); assert.ok(r.text.includes('`const port = 8123 // 旧端口`'))
+    assert.equal(r.stats.closeLoop, true); assert.equal(r.stats.provenance, true); assert.equal(r.stats.register, true)
+    const bad = I.compileV4Direct('结论是 `fakeIdentifier42` 的问题，所以修它。如果没用，那么回头。', raw, {})
+    assert.equal(bad.ok, true); assert.equal(bad.stats.inventedSpans, 1)
+    assert.ok(!bad.text.includes('`fakeIdentifier42`'), '编造标识符被剥掉反引号')
+    assert.ok(bad.text.includes('fakeIdentifier42'), '内容保留，只是不再假称逐字')
+  })
+  await test('5o4 compileV4Direct：围栏 / 空 / 超长熔断 / 观察也算原文', () => {
+    const r = I.compileV4Direct('```\n看起来 x=1。所以下一步工具调用是 grep。如果找到，那么改。\n```', 'x=1 在日志里', {})
+    assert.equal(r.ok, true); assert.equal(r.stats.unfenced, true)
+    assert.equal(I.compileV4Direct('  ', 'raw', {}).ok, false)
+    assert.equal(I.compileV4Direct('  ', 'raw', {}).reason, 'v4d-empty')
+    const long = I.compileV4Direct('看起来。'.repeat(400), 'raw', {})
+    assert.equal(long.ok, false); assert.equal(long.reason, 'v4d-too-long')
+    const viaObs = I.compileV4Direct('（逐字）`git diff 里的 compressTargetMax: 1800,`。所以下一步是改回。如果仍慢，那么再查。', '上一轮推理没引这行',
+      { compressCtx: 'git diff 里的 compressTargetMax: 1800,' })
+    assert.equal(viaObs.stats.inventedSpans, 0, '任务观察里的逐字片段不算编造')
+  })
 } finally {
   if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome
 }

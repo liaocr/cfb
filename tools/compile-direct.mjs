@@ -8,6 +8,7 @@
 // 副模型 = 主模型关思考，每次调用都花钱 ⇒ 改了 compile-v4 / 渲染后一律先 --recompile，不要重新压
 // 输出 { rows: [{ id, mode, why:'condensed'|'error', text, rawChars, outChars, ms, promptVersion, kinds }] }（effect-eval --report 可直接读）
 import fs from 'node:fs'
+import { TASKS } from './v4-live.mjs'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -25,6 +26,7 @@ export function parseArgs(argv) {
     else if (a === '--timeout') o.timeoutMs = Number(v())
     else if (a === '--out') o.out = v()
     else if (a === '--recompile') o.recompile = v()
+    else if (a === '--no-tasks') o.noTasks = true
     else throw new Error('未知参数 ' + a)
   }
   if (!o.recordings || !o.out) throw new Error('需要 --recordings 与 --out')
@@ -40,8 +42,12 @@ export async function recompile(direct, recs, cfg = {}) {
     const rec = recs.find((x) => x.id === r.id)
     if (!rec) return r
     const raw = rec.events.filter((e) => e.k === 'r').map((e) => e.s).join('')
-    const out = I.compileV4(r.side, raw, c, I.v4Budget(c))
-    return out.ok ? { ...r, why: 'condensed', text: out.text, outChars: out.text.length, kinds: out.stats.kinds, recompiled: true }
+    // v4d 行：散文直写，重编译 = 重跑程序门（锚点逐字校验），零调用
+    const isV4d = String(r.promptVersion || '').startsWith('compress-v4d')
+    const out = isV4d
+      ? I.compileV4Direct(r.side, raw, { ...c, compressCtx: (TASKS.find((t) => t.id === r.id) || {}).user || '' })
+      : I.compileV4(r.side, raw, c, I.v4Budget(c))
+    return out.ok ? { ...r, why: 'condensed', text: out.text, outChars: out.text.length, kinds: out.stats.kinds, gate: out.stats, recompiled: true }
       : { ...r, why: 'error', error: out.reason, text: undefined, recompiled: true }
   })
 }
@@ -65,7 +71,9 @@ async function main(argv) {
   try {
     await Promise.all(recs.flatMap((rec) => o.modes.map(async (mode) => {
       const raw = rec.events.filter((e) => e.k === 'r').map((e) => e.s).join('')
-      const cfg = I.normalizeConfig({ ...o.cfg, compressPrompt: mode === 'v3' ? 'v3' : 'v4', compressV4Incremental: false, model: o.model, baseUrl: o.baseUrl,
+      const cfg = I.normalizeConfig({ ...o.cfg, compressPrompt: mode === 'v3' ? 'v3' : 'v4', compressV4Incremental: false,
+        // 直写模式给副模型任务 / 观察上下文（oracle 同口径：任务原文 + 思维链；--no-tasks 关）
+        compressCtx: o.noTasks ? '' : (TASKS.find((t) => t.id === rec.id) || {}).user || '', model: o.model, baseUrl: o.baseUrl,
         credentialsPath: cred, credentialRef: 'K', followHostProvider: false, followHostModel: false, trace: false, timeoutMs: o.timeoutMs, captureSideOutput: true })
       const t0 = Date.now()
       try {

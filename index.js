@@ -27,11 +27,11 @@ export { createSessionTracker } from './src/session-tracker.js'
 // ── 副模型调用 ───────────────────────────────────────────────────────────────
 export { generateDistillation, hedgedDistill, makeBirthCompiler, makeV4SegmentCompiler } from './src/distill.js'
 export {
-  buildCompressPrompt, buildCompressPromptV3, buildCompressPromptV4, splitCompressPrompt, fixHints, condHints,
+  buildCompressPrompt, buildCompressPromptV3, buildCompressPromptV4, buildCompressPromptV4Direct, V4D_TAIL, splitCompressPrompt, fixHints, condHints,
   compressPromptVersion, compressPromptFor, compressTargets, V4_TAIL, v4Budget, v4Incremental, v4SegmentChars, buildCompressPromptV4Segment,
 } from './src/prompts.js'
 export {
-  compileV4, compileOpsV4, locusFromRaw, actionLoci, renderProse, parseOps, normalizeOp, validateOps, selectOps, renderOps, renderLine, renderLang, scoreOp,
+  compileV4, compileV4Direct, compileOpsV4, locusFromRaw, actionLoci, renderProse, parseOps, normalizeOp, validateOps, selectOps, renderOps, renderLine, renderLang, scoreOp,
   mergeSegmentOps, priorLines, freshenState, supersedesIds, v4RejectRatioOf, V4_KINDS, V4_EVS, V4_KIND2,
 } from './src/compile-v4.js'
 export { createSegmenter, findCut, findFirstCut } from './src/segment-v4.js'

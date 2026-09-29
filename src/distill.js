@@ -7,7 +7,7 @@
 import crypto from 'node:crypto'
 import { scriptCounts } from './tokens.js'
 import { compressPromptVersion, compressPromptFor, splitCompressPrompt, v4Budget, buildCompressPromptV4Segment } from './prompts.js'
-import { compileV4, parseOps } from './compile-v4.js'
+import { compileV4, compileV4Direct, parseOps } from './compile-v4.js'
 import { endpointUrl, resolveProviderEndpoint, readApiKeyRef, readApiKey } from './provider.js'
 import { settledTraceData } from './trace.js'
 import {
@@ -427,7 +427,7 @@ export function makeBirthCompiler(cfg) {
     c.maxOutputTokens = Math.max(Number(cfg.maxOutputTokens) || 0, v4Max)
     const r = await withCalibration(prompt, generateDistillation(raw, c, signal, prompt, { trace, promptVersion: pv }))
     const t0 = performance.now()
-    const out = compileV4(r.text, raw, cfg, v4Budget(cfg))
+    const out = cfg.compressV4Direct === true ? compileV4Direct(r.text, raw, cfg) : compileV4(r.text, raw, cfg, v4Budget(cfg))
     const v4 = { ...out.stats, compileMs: Number((performance.now() - t0).toFixed(2)), ...(out.ok ? {} : { reason: out.reason }) }
     try { trace?.('compiler-v4-compiled', { ok: out.ok, requestId: r.meta && r.meta.requestId, ...v4 }) } catch {}
     if (!out.ok) {
