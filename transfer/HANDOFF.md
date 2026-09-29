@@ -100,6 +100,8 @@ node tools/compile-direct.mjs --base-url $DEEPSEEK_BASE_URL --model $DEEPSEEK_MO
   （v4-live 现在会把任务原文当 compressCtx，与生产 buildCompressCtx 同口径；看每行 `hold=` 与 why 分布）。
 - R7 已同样用到 ops 路（生产 v4 缺省）：`transfer/direct-ops9u.json` = ops9p 零成本重编译（flaky 尾段多了「改法是增大时间差…；逐字原文是 `hedgeAfterMs: 1600`」）。
   第 C 轮（在 A/B 之后，仍是 raw + 1 变体）：`--report v4u:v4=/home/user/direct-ops9u.json --variants raw,v4u`，与 v4t（5.8 / flaky 2.5）比。
+  注意混杂：direct-ops9p.json 里存的 v4t 文本是 v12.5 渲染器的产物，v4u = 同一批 side 输出 + v12.6 原生语域模板 + R7 绑定；
+  要单独归因 R7，再零成本出一份 `--cfg '{"compressV4DirectBind":false}'` 的重编译作对照（只在 v4u 赢了、需要归因时做）。
 - sse 的失败形态是「分支没覆盖观察的实际取值 + 改法跨两处」（EFFECT-EVAL §13），是 R7 之后的下一个规格缺口（判读覆盖），未做。
 - 推送：本会话受平台约束只能推 `arena/01a0eba2-cfb` 分支（已推）；回 main 需要有权限的一方 fast-forward 合并（`git push … arena/01a0eba2-cfb:main`），不要 force。
 
