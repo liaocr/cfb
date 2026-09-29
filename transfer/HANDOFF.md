@@ -17,7 +17,7 @@ cp transfer/recordings.json /home/user/live-all/recordings.json
 cp transfer/direct-*.json /home/user/
 cp transfer/oracle/* /home/user/oracle/
 cp -r transfer/effect-* /home/user/
-cd /home/user/cfb && node verify.mjs   # 应 606 通过 / 0 失败 / 1 跳过（v12.7.0）
+cd /home/user/cfb && node verify.mjs   # 应 607 通过 / 0 失败 / 1 跳过（v12.7.0）
 ```
 
 ## 铁规矩（用户明说的，别问、别违反）
@@ -87,6 +87,10 @@ node tools/compile-direct.mjs --base-url $DEEPSEEK_BASE_URL --model $DEEPSEEK_MO
 # 两轮任一 综合 ≥ 6.4 且 flaky ≥ 7 ⇒ src/config.js 把 compressV4Direct 转正（缺省 true），CHANGELOG 记数字；否则按归因流程继续。
 ```
 - 改门规则只 `--recompile`（`direct-og-src.json` 是 5 条 side 输出的合集，可反复重编译）；改提示词才重压。
+- 归因用 `node tools/effect-pairs.mjs --results /home/user/effect-17 --variants raw,oG --report oG=/home/user/direct-og.json`（零调用）：
+  成对列出压坏 / 压好的样本 + 压缩稿收尾 + 动作类别分布（看 reread-known 率，oracle C 是 20%，raw 35%）。
+- 外部佐证已写进理论 S8 末「外部佐证与定位」（DeepSeek 官方：带 tools 时所有前轮 reasoning_content 都拼进上下文；JetBrains Complexity Trap；ACON）。
+  以后遇到新问题先查文档 / 论文再动手（用户明确要求）。
 - 同会话补的生产前提：`compressCtx` 自动构造（plugin `compressCtxFor` → `messages.js buildCompressCtx`），v4 时把本回合任务 + 工具结果带给压缩器；
   评测工具本来就注入 TASKS，所以对评测数字没影响，对真机上线是必需的（否则观察里的行被当编造剥掉、分支没落点）。
 - 同会话修的生产 bug：birth.js 的发明标识符闸只对着原文查，R5 可用句里的 `edit_file` / `old_text` 会让整份稿被 `invented-identifier` 放行

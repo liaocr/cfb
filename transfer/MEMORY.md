@@ -75,3 +75,7 @@
   改 split 配对；历史 138 份稿 135 过闸（3 份真编造）。oG 五份 accept=ok。verify 604/0/1。
 - 续：R7 用到 ops 路——validateOps 认 ctx 出处、无 at 的 READY 用 bindLocus 绑、autoHint 去项目符号、FIX_RE +拉大/增大/调大/调小；
   ops9p 重编译 → direct-ops9u.json（flaky 尾段闭合到 `hedgeAfterMs: 1600`）。compile-direct 的 ops 行也带 ctx。verify 606/0/1。
+- 续（用户提醒要查外部资料）：沙盒网络 = 出口白名单（github/api.github/npm/pypi 可达；其它域名 TLS 握手被切，含 deepseek/a6api/example.com），
+  web_search/fetch_page 工具在沙盒外可用。检索并写进理论 S8「外部佐证与定位」：DeepSeek Thinking Mode 官方（带 tools ⇒ 所有前轮 reasoning_content 拼进上下文）；
+  JetBrains Complexity Trap（观察遮蔽≈摘要，摘要使轨迹 +15%）；morph「re-reading loop」/「exact-match penalty」；ACON（成对失败分析修订压缩指南）。
+  新工具 tools/effect-pairs.mjs（成对归因 + 动作类别分布：raw 回头 read 35%、v4t 50%、oE 60%、oC 20%）。verify 607/0/1。

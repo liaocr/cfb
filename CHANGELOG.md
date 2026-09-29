@@ -55,11 +55,15 @@ oracle 与自动稿的「下一步」**都是复现**，差别全部在判读分
   3.6–10.9 s / 块（direct-od/oe/of.json 的 `ms`），而缺省收网窗口 1500 ms ⇒ 几乎必然 passthrough。现在打开直写时 `birthFinishWaitMs`
   只抬不降到 `compressV4DirectMinWaitMs`（6000；0 = 不抬），BOOT `configAdjusted` 留痕，`timeoutMs` 随之抬。这是打开直写的真实代价：
   评测分数是离线编译得到的，上线前必须用 `tools/v4-live.mjs`（带时序回放）量命中率，别只看评测分。
+- `tools/effect-pairs.mjs`（新，零调用）：逐样本归因助手——同一任务上「原文成功 / 压缩稿失败」成对列出（含压缩稿收尾），并按变体给出
+  **动作类别分布**（edit / reread-known 再读已看过的文件 / probe / none）。effect-16 全集：raw 回头 read 35%、v4t 50%、oE 60%、oC 20%——
+  没有落点的压缩会把「再读一遍」率推到原文之上（与 JetBrains《The Complexity Trap》里「LLM 摘要使轨迹变长 15%」是同一现象的单步版）。
+  方法上与 ACON（arXiv 2510.00615）的「成对轨迹失败分析 → 修订压缩指南」同构；理论合订本 S8 末新增「外部佐证与定位」。
 - `tools/v4-live.mjs`：回放时把任务原文当 `compressCtx`（与生产 `buildCompressCtx` / compile-direct 同口径），直写的时序回放才有落点可核真；
   用法头加直写命令。
 - `index.js` 导出 `bindFixBranches / bindLocus / strongTokens / isFixBranch / usableLocus / buildCompressCtx / compressCtxFor`；
   `index.d.ts` 补 `compressV4Direct*` / `compressCtx*`。
-- 自测 606 / 0 / 1（新增 v4 §5p 六条、§5q 四条、§5r 两条；compress §4b3；compress §4b2 / §4c2；hook-wiring §6 端到端：工具结果 → compressCtx → 提示词 → 核真 → 绑定 → 出生文本）。
+- 自测 607 / 0 / 1（新增 v4 §5p 六条、§5q 四条、§5r 两条；compress §4b3；effect-eval §8；compress §4b2 / §4c2；hook-wiring §6 端到端：工具结果 → compressCtx → 提示词 → 核真 → 绑定 → 出生文本）。
 
 ### 状态（诚实记录）
 - **未实测**：本会话沙盒只放行 GitHub / npm / pypi，`api.a6api.com` 与 `api.deepseek.com` 的 TLS 握手被切断，付费编译与评测都跑不了。

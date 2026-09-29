@@ -244,6 +244,19 @@ v3 / v4 都把这句当「推测」删了，主模型一律 `read_file verify.mj
 （assembleSseFrames 的回退 + 调用方的 ok），主模型选择先看上下文。⇒ 闭合与绑定是必要条件，不是充分条件：分支的 trigger 还得**覆盖观察的实际取值**，
 且改法最好单落点。sse 暂不作目标（原文 2.3 / oracle 1.0），但这是 R7 之后的下一个规格缺口（判读覆盖），先记着。
 
+**动作类别分布（`tools/effect-pairs.mjs`，effect-16 全集；reread-known = 再读任务里已给过内容的文件）**：
+
+| 变体 | n | edit | reread-known | probe |
+|---|---|---|---|---|
+| raw | 20 | 50% | 35% | 15% |
+| v4t | 20 | 50% | 50% | 0% |
+| oC | 10 | 70% | 20% | 10% |
+| oE | 10 | 40% | 60% | 0% |
+| oF | 6 | 50% | 50% | 0% |
+
+「回头 read」率是最贴近专注力的客观量：没有落点的压缩（v4t / oE / oF）把它推到原文之上，oracle C 压到 20%。这与 JetBrains
+《The Complexity Trap》（arXiv 2508.21433）报告的「LLM 摘要使轨迹变长约 15%」是同一现象的单步版本；下一步评测应加「到解决为止的步数」。
+
 **生产前提补齐**：`compressCtx` 此前只有评测工具注入，生产恒为空；v12.7 由 plugin 自动从出站消息构造（`buildCompressCtx`），程序门统计 `ctxChars`。
 
 **待跑**（本会话沙盒外网被切：`api.a6api.com` / `api.deepseek.com` TLS 握手失败，只放行 GitHub / npm / pypi）：
