@@ -19,7 +19,7 @@
 //   · I6（已编译文本永不作为副模型输入）是结构保证：birth 只把 reasoning 原文交给副模型。
 import { inventedIdentifiers, NEW_TEXT_LEAD_RE } from './fidelity.js'
 import { wideShare } from './tokens.js'
-import { condHints, fixHints } from './prompts.js'
+import { condHints, fixHints, exampleSentences } from './prompts.js'
 import { DEFAULTS } from './config.js'
 
 export const V4_KINDS = ['FACT', 'COMPUTED', 'INCUMBENT', 'REFUTED', 'SHELVED', 'OPEN', 'PLAN', 'READY', 'IF']
@@ -530,6 +530,7 @@ export function compileV4(output, raw, cfg = {}, budget = null) {
  *   整份稿被丢、原文（3000–9000 字）放行，比一份 1457 字的稿坏得多。熔断的职责是拦「跑飞」（照抄原文 ≥3000），1600 仍拦得住。
  * @returns {{ ok: true, text, stats } | { ok: false, reason, stats }}
  */
+const EXAMPLE_MARK_RE = /pool\.js|net\.yaml|10\.0\.0\.5|\bdial\b|cfg\.port|8123|5432|ping-db|nc -zv|connected|连接池|超时是连不上|三次重试|主机不通|旧端口|端口/
 export function compileV4Direct(side, raw, cfg = {}) {
   let text = String(side == null ? '' : side).trim()
   const stats = { outputChars: text.length }
@@ -539,6 +540,13 @@ export function compileV4Direct(side, raw, cfg = {}) {
   const hay = norm(raw + '\n' + (cfg.compressCtx || ''))
   let invented = 0, newText = 0
   const rawHay = raw + '\n' + (cfg.compressCtx || '')
+  // v12.9.0：样例整句抄写（d9a flaky：「调大超时试过没用，不选：超时是连不上的结果不是原因。」原样出现在与端口毫无关系的任务里）——
+  //   原文 / 观察里没有这句就剥掉；否则它会被当成事实，多轮台账还会把它当「已排除」跨轮传播
+  //   只剥带样例专有内容的句子（端口 / 连接池 / pool.js …）；逃生句、状态声明这类模板句本来就该照抄
+  for (const sent of exampleSentences()) {
+    if (!EXAMPLE_MARK_RE.test(sent)) continue
+    if (text.includes(sent) && !hay.includes(norm(sent))) { text = text.split(sent).join(''); stats.parrotedExample = (stats.parrotedExample || 0) + 1 }
+  }
   text = text.replace(/`([^`\n]{1,220})`/g, (all, span, at) => {
     const n = norm(span)
     if (n && hay.includes(n)) return all
@@ -854,7 +862,7 @@ export function bindFixBranches(text, raw, ctx, stats = {}) {   // raw 暂未用
   const by = []
   // v12.8.9：副模型自己写出了「old_text 是 `…`」的分支 ⇒ 它会写三元组，其余分支缺可用句多半是「不要改 X」「回退到了默认」这类描述被 isFixBranch 误判
   //   （d7a eacces：把 env 行绑进了「此时不要改 verify.mjs」；d5c perf：把 - 行旧值绑进了取证分支）⇒ 有自闭合三元组时不再做重叠 / 文件兜底绑定
-  const selfClosed = branches.some((b) => AFFORD_RE.test(b))
+  const selfClosed = branches.some((b) => AFFORD_RE.test(b)) || /old_text 是 `/.test(src)   // v12.9.0：三元组写在「所以下一步」句里（多轮稿常见）也算自闭合
   for (const b of branches) {
     const thenAt = b.search(BRANCH_THEN_RE)
     const thenPart = thenAt >= 0 ? b.slice(thenAt) : b

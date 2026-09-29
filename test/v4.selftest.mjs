@@ -702,8 +702,8 @@ try {
     assert.ok(!I.buildCompressPromptV4Direct('RAW').includes('【当前任务与观察】'), '无 ctx 不带块')
   })
   await test('5o2 compressPromptVersion/For：v4d 分流', () => {
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x' }), 'compress-v4d6:ctx')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d6:noctx')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x' }), 'compress-v4d7:ctx')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d7:noctx')
     const p = I.compressPromptFor({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'T' }, 'COT')
     assert.ok(p.includes('【上一轮思维链】\nCOT') && p.includes('【当前任务与观察】\nT'))
   })
@@ -935,7 +935,7 @@ try {
     const withHint = I.buildCompressPromptV4Direct('原文说：下一步修复：在 verify.mjs 的 env 中加 `CFB_REAL_DSH_HOME: tmp`。', 'CTX')
     assert.ok(withHint.includes('【原文里的改法句】（程序逐字摘出，按原文先后；越靠后越接近原文最后的结论') && !withHint.includes('READY'), '直写用自己的改法句块，不带 ops 标签')
     assert.ok(I.buildCompressPromptV4('原文说：下一步修复：在 verify.mjs 的 env 中加 `CFB_REAL_DSH_HOME: tmp`。').includes('【改法线索】'), 'ops 提示词的块不变')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d6:noctx')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d7:noctx')
   })
   await test('5t6 no-op 三元组（v12.8.9）：new_text 与 old_text 相同 ⇒ 删 new_text 子句、留 old_text + 意图；不同则不动', () => {
     const raw = 'read_file src/host-follow.js 里 observe(options) { if (options && options.model) lastModel = options.model } 这一行；plugin 传 (options, n)'
@@ -1015,6 +1015,26 @@ try {
     assert.equal(I.buildCompressCtx(msgs.slice(0, 2)), '你是编码 Agent。CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次。', '没有前几轮 ⇒ 无台账、行为同 v12.8')
     assert.ok(!I.inHandLinesBlock('hedgeAfterMs 1600 3000', ctx).includes('已改'), '台账行不会被当成在手的文件行')
   })
+  await test('5u2 compress-v4d7 多轮块（v12.9.0，S10.3′）：ctx 含【台账】才追加第 10 条四段规则 + 第 2 轮样例 + 多轮重申；第一轮提示词逐字同 v4d6；promptVersion 标 :mr', () => {
+    const single = I.buildCompressPromptV4Direct('RAW', '任务\n\n[tool: bash 结果]\nok')
+    const multi = I.buildCompressPromptV4Direct('RAW', '任务\n\n【台账】（程序摘出）\n- 第 1 轮已定：改 x\n\n[tool: bash 结果]\nok')
+    assert.ok(!single.includes('10. ★ 前面有【台账】') && !single.includes('【多轮重申】'), '第一轮不带多轮块')
+    assert.ok(multi.includes('10. ★ 前面有【台账】时') && multi.includes('①延续') && multi.includes('③验收预注册') && multi.includes('④状态声明') && multi.includes('第一步只有一条') && multi.includes('下一条只写一条'), '四段规则')
+    assert.ok(multi.includes('【第 2 轮样例】') && multi.includes('验收是本轮一起发出的 bash `node scripts/ping-db.mjs`') && multi.includes('现在能说的：改动已定、未落地') && multi.includes('验收命令只能是【本轮已发出的调用】里那条'), '第 2 轮样例 + 验收命令来源约束')
+    assert.ok(multi.indexOf('10. ★') < multi.indexOf('【风格样例】') && multi.indexOf('【多轮重申】') < multi.indexOf('【要求重申】'), '位置：规则在样例前、多轮重申在要求重申前')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x【台账】y' }), 'compress-v4d7:mr')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x' }), 'compress-v4d7:ctx')
+  })
+  await test('5u3 样例整句抄写剥离（v12.9.0）：稿里出现样例的整句、而原文 / 观察里没有 ⇒ 剥掉并计 parrotedExample；原文里真有的句子不动', () => {
+    const ex = I.exampleSentences()
+    assert.ok(ex.some((x) => x.startsWith('调大超时试过没用')) && ex.some((x) => x.startsWith('把 dial 换成连接池重试')) && ex.length >= 8, JSON.stringify(ex.slice(0, 5)))
+    const raw = '看起来是时序竞态，hedgeAfterMs 1600 与 1500 只差 100ms。'
+    const draft = '看起来是时序竞态。调大超时试过没用，不选：超时是连不上的结果不是原因。把 dial 换成连接池重试要动三处、那段代码没读过，不选。改法只落一个：改 `hedgeAfterMs 1600` 这一行。所以下一步工具调用是 bash 复现。如果 FAIL，那么假设坐实：改它。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。'
+    const r = I.compileV4Direct(draft, raw, {})
+    assert.ok(r.ok && r.stats.parrotedExample === 2 && !r.text.includes('连接池') && !r.text.includes('调大超时') && r.text.includes('改法只落一个') && r.text.includes('如果输出跟这两种都不像，先别改'), '只剥带样例专有内容的句子，逃生句保留：' + JSON.stringify(r))
+    const r2 = I.compileV4Direct(draft, raw + ' 调大超时试过没用，不选：超时是连不上的结果不是原因。', {})
+    assert.ok(r2.ok && r2.stats.parrotedExample === 1 && r2.text.includes('调大超时试过没用'), '原文里真有的句子不剥')
+  })
   // ---- §5q v12.7 compressCtx 自动构造（理论 S8-R5/R7 的生产前提：压缩器要看到 Agent 看到的观察）----
   await test('5q1 buildCompressCtx：最后一条人类 user + 本回合工具结果（pi-ai 块形与 OpenAI 形都认），格式同 TASKS', () => {
     const msgs = [
@@ -1056,7 +1076,7 @@ try {
     const base = { compressPrompt: 'v4' }
     assert.equal(I.compressCtxFor(base, { messages: [] }), base, '空 ctx ⇒ 原对象')
     assert.equal(I.compressCtxFor(base, { get messages() { throw new Error('boom') } }), base, '异常 ⇒ 原配置')
-    assert.equal(I.compressPromptVersion(I.compressCtxFor({ compressPrompt: 'v4', compressV4Direct: true }, { messages: msgs })), 'compress-v4d6:ctx')
+    assert.equal(I.compressPromptVersion(I.compressCtxFor({ compressPrompt: 'v4', compressV4Direct: true }, { messages: msgs })), 'compress-v4d7:ctx')
     const src = fs.readFileSync(new URL('../src/plugin.js', import.meta.url), 'utf8')
     assert.ok(/const streamCfg = compressCtxFor\(callCfg, options\)/.test(src), 'plugin.js birth 分支用 compressCtxFor 派生 streamCfg')
   })

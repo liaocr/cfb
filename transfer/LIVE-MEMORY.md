@@ -20,6 +20,9 @@
 - 钱：每轮 2 样本；主模型每次调用前先算清次数写在这里。
 
 ## 3. 已知的坑
+- **写 canned 观察前先把代码语义跑一遍**：sse 红题我把 rawFinish="stop" 当失败，其实是正常流；主模型答对被我判 0。
+- ASK 措辞会和主模型的调用协议冲突（要文字就不能调工具）——问法要二选一。
+- 手写 oracle 含预见（CoT 里没有的），忠实压缩不允许发明；副模型的目标是层 B 形态闭合，不是 oracle 分数。
 - 中转抖动：副模型单次 5–90 s，偶发 150 s 超时；主模型 --require-fp 作废率 ≈ 1/3。
 - 稿长均值 ≈ 1630；熔断 2000；真机 6 s 窗口到位率 v4d6 **未复测**（2a 第一件事）。
 - flash 抄样例不读规则；样例里的名字会被抄进稿里（已禁）。
@@ -30,10 +33,10 @@
 2. [x] 理论 S10 写入（CFB-THEORY-COMPLETE.md「### S10」，含预注册预测 P1–P4）
 3. [x] 台账：src/messages.js buildLedger / ledgerBlock，进 buildCompressCtx（user 之后、工具结果之前）；自测 5u1
 4. [x] tools/effect-mr.mjs（--build / --run / --summarize）+ tools/effect-mr-specs.json（5 题 × 绿/红，flaky 绿 = 不限核通过 = 无信息量）；链在 /home/user/mr/chains.json（flaky CoT_2 重生成 4495 字，其余用 effect-23 d9a 样本）
-5. [ ] 手写 oracle D2 已写 /home/user/mr/oracle-d2.json（1039–1274 字）→ **正在跑** raw vs oracle（40 主调用 + 40 盲评）→ 归因
-6. [ ] v4d7（多轮提示词：台账 + 延续 / 验收预注册 / 状态声明的规则与样例）→ 自动 D2 → 跑 auto（20 主调用）→ 归因 → 迭代一次
-7. [ ] 2c 假仓库轨迹（3 题 × 2 × 2 ≈ 72 主调用 + 36 副调用）
+5. [x] 2b 跑完三轮（run1 全 / run2 红 / run3 sse 红 + flaky 红 auto）：oracle 红题 8.6–9.5 vs raw 5.8（假完成 0 vs 25%）；理论修订 S10.3′（推翻路单命令 / 验收观察自证新鲜 / 看原症状不看单元测试）；**基准错误已修**（sse 红 rawFinish 语义）；ASK3 措辞修（协议冲突假象）。理论 S10.9 / S10.10 已写。
+6. [x] v4d7 已实现（台账在手时追加第 10 条四段 + 第 2 轮样例；【本轮已发出的调用】进 ctx；样例整句抄写剥离 parrotedExample；selfClosed 扩到「所以」句）。auto D2 红题 6.9（形态齐、验收命令不再发明；差距 = 预见，见 S10.10）。auto 绿题**未跑**（眼高手低风险：状态声明会不会让它不敢收工——2c 里看）。
+7. [ ] 2c 假仓库轨迹：先 3 题 × 2 变体 × 1 样本（≈ 30 主 + 15 副），有信号再加样本。harness = tools/traj-run.mjs（待写）
 8. [ ] 文档 / commit / push（每个里程碑都 commit）
 
 ## 5. 费用台账（本阶段）
-- 副模型：12（两次 v4-live 回放）· 主模型：5（建链，flaky 重生成，4 次落到不可信后端）· 盲评：0
+- 副模型：≈ 25 · 主模型有效 ≈ 110（含建链 5、run1 40、oracle2 20、run2 30、run3 10+2）· 盲评 ≈ 100 · 作废重发 ≈ ×1.7（中转可信 50%）

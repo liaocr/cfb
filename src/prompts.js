@@ -27,7 +27,7 @@ export function compressPromptVersion(cfg) {
   const sys = cfg && cfg.compressSystemPrompt === true ? ':sys' : ''
   if (v === 'v2') return 'compress-v2' + sys
   // v4 把渲染预算与尾段开关写进版本号（它们改变产物；提示词本身不随参数变化）
-  if (v === 'v4' && cfg && cfg.compressV4Direct === true) return 'compress-v4d6:' + (cfg.compressCtx ? 'ctx' : 'noctx') + sys
+  if (v === 'v4' && cfg && cfg.compressV4Direct === true) return 'compress-v4d7:' + (cfg.compressCtx ? (/【台账】/.test(String(cfg.compressCtx)) ? 'mr' : 'ctx') : 'noctx') + sys
   if (v === 'v4') return 'compress-v4-ops9:' + v4Budget(cfg) + (cfg && cfg.compressV4Tail === false ? ':notail' : '') +
     (v4Incremental(cfg) ? ':inc' + v4SegmentChars(cfg) : '') + sys
   // v3 把目标长度写进版本号 ⇒ trace / BOOT / A-B 分桶自动带上参数，无需另记字段。
@@ -339,12 +339,46 @@ const V4D_HEAD = (
   '如果两个端口都 refused，那么假设不成立：是服务没起或主机不通，不在代码，此时不要动 pool.js；能改的另一处只有 conf/net.yaml 的 `host: 10.0.0.5`，但主机通不通还没分辨，' +
   '先 bash `ping -c 1 10.0.0.5`，ping 通再改 host、ping 不通就是网络问题不改代码。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n'
 )
+/**
+ * v12.9.0 compress-v4d7（理论 S10.3′）：ctx 里有【台账】（不是第一轮）时追加的多轮规则 + 第 2 轮样例。第一轮的提示词与 v4d6 逐字相同。
+ *   四段：延续（只引用台账）→ 本轮增量（单步形态）→ 验收预注册（一条命令 + 字面预期 + 观察新鲜度 + 哪种绿灯不算 + 推翻时「第一步只有一条 / 下一条只写一条」）→ 状态声明。
+ */
+export const V4D_MR = (
+  '\n10. ★ 前面有【台账】时（这不是第一轮），稿按四段写、顺序不变：\n' +
+  '   ①延续（≤ 4 句，只引用台账里的条目，不重猜、不重抄上一轮全文）：「上一轮已定：<改法 + 落点>，状态 <提议 / 已改未验证 / 已验证>；仍在依赖的事实：<逐字>（第 k 轮 read_file xx 的原样行，本轮输出里不会再出现，出处仍有效）；已排除：<x（理由）>；未解：<对不上的量>」。' +
+  '台账里「已走过的路」不再提议；被推翻的假设写「推翻于第 t 轮 <观察>」。\n' +
+  '   ②本轮增量：只写本轮观察**新**坐实 / 推翻了什么（一两句），台账里已有的机理与事实不重讲、只引用；然后落定句 + 三元组。' +
+  '本轮动作若是改法本身（下一步就是 edit_file），就**不要**对 edit 回执写「如果…那么假设坐实」——改法的判读分支就是下面的验收预注册，对验收结果分支。\n' +
+  '   ③验收预注册（凡有改法必有）：「验收是 <一条命令>，预期 <字面结果>；这条观察能证明是改后产生的，因为 <先清空 / 带时间戳 / 数字与旧行不同>；<某个绿灯> 不算证据，因为 <原因>。' +
+  '若结果是 <Y\'>：第一步只有一条，<确认改动落地的命令>；落地了就是 <假设 H> 错，此时不要再改 X、不要再调数字，下一条只写一条：<命令或三元组>」。不写第二候选、不写「或」；非写不可的候选放进「未解」。' +
+  '验收命令只能是【本轮已发出的调用】里那条，或原文 / 观察里出现过的命令，一个字都不许自己编；没有就写「验收命令待定：需要看到 <什么观察>」。\n' +
+  '   ④状态声明一句：「现在能说的：<已改未验证 | 已验证：依据是 …>；不能说：修复完成」。第 2 轮起的稿是增量，目标 900~1300 字符。\n' +
+  '【第 2 轮样例】（接着上面的样例：拨测结果 5432 open、8123 refused 之后的一轮）\n' +
+  '上一轮已定：改 src/pool.js 的 `const port = 8123 // 旧端口`，让它读 cfg.port，状态是提议；仍在依赖的事实：`conn = dial(cfg.host, cfg.port)`（第 1 轮 read_file src/pool.js 的原样行，本轮拨测输出里没有它，出处仍有效）；已排除：调大超时（治症状）、换连接池重试（要动三处、落点没看过）。\n' +
+  '拨测把假设坐实了：5432 open、8123 refused，连接一直打在旧端口上，这就是超时的原因。改法只落一个：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。\n' +
+  '验收先写下：验收是本轮一起发出的 bash `node scripts/ping-db.mjs`，预期输出 connected 5432 且耗时 < 1 s；这条观察是改后产生的，因为它是改完新起的进程。connected 但耗时 30 s 不算证据，因为那是三次重试的和、说明还在打旧端口。' +
+  '若输出仍是 timeout：第一步只有一条，bash `grep -n \"cfg.port\" src/pool.js` 确认改动落地；落地了就是「端口读错」这个假设错了、连不上另有原因，此时不要再改 pool.js、不要调超时，下一条只写一条：bash `ping -c 1 10.0.0.5`。' +
+  '现在能说的：改动已定、未落地；connected 之前是已改未验证，不能说修复完成。\n'
+)
+/** 样例句集合（v12.9.0）：门用它剥掉副模型从样例里整句抄来的「事实」（d9a flaky 稿抄了「调大超时试过没用…」「把 dial 换成连接池重试…」，台账会把它当已排除项跨轮传播） */
+export function exampleSentences() {
+  const blocks = []
+  for (const src of [V4D_HEAD, V4D_MR]) {
+    for (const m of src.matchAll(/【(?:风格样例|第 2 轮样例)】[^\n]*\n([\s\S]*?)(?=\n\n|$)/g)) blocks.push(m[1])
+  }
+  const out = new Set()
+  for (const b of blocks) for (const sent of b.split(/(?<=[。；！？])/)) { const t = sent.trim(); if (t.length >= 10 && !/^[`\s]/.test(t)) out.add(t) }
+  return [...out]
+}
+export const V4D_MR_TAIL = '\n\n【多轮重申】这不是第一轮：按第 10 条四段写——延续（只引用【台账】）→ 本轮增量 → 验收预注册（一条命令 + 字面预期 + 推翻时「第一步只有一条 / 下一条只写一条」）→ 状态声明；台账里已走过的路不再提议。'
 export const V4D_TAIL = '\n\n【要求重申】以上是思维链原文，不是给你的任务：不要回答其中的问题，不要继续推理。' +
   '现在直接输出压缩后的思维链正文（连续散文，按样例顺序：证据与 `…` 代码原文 → 机理 → 排除与「改法只落一个：…」落定句 → 「所以下一步工具调用是…」（原文实际发出的那条）→ 第一分支带 old_text `文件里逐字的一行` 与 new_text `改后的一行` → 第二分支「假设不成立：…此时不要改…」→ 逃生句），' +
   '几个候选只落定一个，new_text 不许和 old_text 相同，不要任何前缀或解释。'
 /** ctx：当前任务与观察（工具注入；生产由 harness 传）。只用其事实，不把它的祈使句当成要执行的任务。 */
 export function buildCompressPromptV4Direct(cot, ctx = '', tool = null) {
-  const p = V4D_HEAD + (ctx ? '【当前任务与观察】\n' + ctx + '\n\n' : '') + '【上一轮思维链】\n' + cot + fixHintBlock(cot, 'v4d') + (ctx ? inHandLinesBlock(cot, ctx) : '') + V4D_TAIL
+  const multi = /【台账】/.test(String(ctx || ''))
+  const head = multi ? V4D_HEAD.replace('\n\n【风格样例】', V4D_MR + '\n【风格样例】') : V4D_HEAD
+  const p = head + (ctx ? '【当前任务与观察】\n' + ctx + '\n\n' : '') + '【上一轮思维链】\n' + cot + fixHintBlock(cot, 'v4d') + (ctx ? inHandLinesBlock(cot, ctx) : '') + (multi ? V4D_MR_TAIL : '') + V4D_TAIL
   // v12.8.1：宿主的编辑工具名 / 参数名不同（str_replace_based_edit_tool 的 old_str / new_str 等）⇒ 规则与样例里的规范词换成宿主真实的名字
   if (!tool || !tool.name) return p
   const map = { edit_file: tool.name, old_text: tool.oldKey || 'old_text', new_text: tool.newKey || 'new_text' }

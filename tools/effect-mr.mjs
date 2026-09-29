@@ -17,7 +17,9 @@ import { TASKS } from './v4-live.mjs'
 import { SYSTEM, ASK, TOOLS, makeChat, responseText, parseJudge, TRUSTED_FP, claudeShaped } from './effect-eval.mjs'
 
 const HERE = path.dirname(new URL(import.meta.url).pathname)
-export const ASK3 = '\n\n根据这两个结果，给出你的判断：问题是否已经解决、依据是什么、现在能下什么结论；如果还需要动作，给出下一条工具调用；如果不需要，说明为什么可以收工。'
+// v12.9.0 措辞修订：run1 里主模型把「判断 + 工具调用」读成与它的输出协议冲突（调用工具时只能输出 JSON），于是为了能写文字而宣布「无需动作、可以收工」
+//   （sse 红题两例假完成的思考原话都在纠结这个）。改成两种模式二选一，消掉这个假象。
+export const ASK3 = '\n\n根据这两个结果决定下一步。二选一：还需要动作，就直接发出下一条工具调用（不用写判断）；不需要任何动作，就用文字说明问题是否已解决、依据是什么、为什么可以收工。'
 
 function parseArgs(argv) {
   const o = { samples: 2, concurrency: 3, maxTokens: 16000, out: 'mr', specs: path.join(HERE, 'effect-mr-specs.json'), d1: {}, d2: {}, variants: null, only: null }
