@@ -403,15 +403,17 @@ function proseSentence(op, lang) {
     }
   }
   switch (op.k) {
-    case 'FACT': return op.ev === 'tool' || !op.ev ? endZh(t + (op.src ? '（' + op.src + '）' : '')) : endZh(zj('我判断', t))
-    case 'COMPUTED': return endZh(op.ev === 'guess' ? zj('我猜', t) + '，还没验证' : zj('我判断', t))
-    case 'INCUMBENT': return endZh(zj(op.ev === 'guess' ? '我倾向于' : '我现在采用的是', t))
+    // oracle 第 3 轮（S8-R4″）：DeepSeek 原生思考语域 ——「看起来 / 所以 / 下一步工具调用是 / 如果…那么…」，不用「我判断」
+    case 'FACT': return op.ev === 'tool' || !op.ev ? endZh(t + (op.src ? '（' + op.src + '）' : '')) : endZh(zj('看起来', t))
+    case 'COMPUTED': return endZh(op.ev === 'guess' ? zj('可能', t) + '，还没验证' : zj('看起来', t))
+    case 'INCUMBENT': return endZh(zj(op.ev === 'guess' ? '倾向于' : '目前的结论是', t))
     case 'REFUTED': return endZh(zj('已经排除', t) + (op.why ? '，因为' + stripEnd(op.why) : '') + (op.alt ? '，所以改走' + stripEnd(op.alt) : ''))
     case 'SHELVED': return endZh(zj('先不考虑', t) + (op.why ? '（' + stripEnd(op.why) + '）' : '') + (op.trigger ? '，除非' + cond(op.trigger) : '') + (op.alt ? '；现在的方向是' + stripEnd(op.alt) : ''))
-    case 'PLAN': return endZh(zj('接下来我要', t.replace(/^(?:下一步(?:工具调用)?[:：]?\s*)/u, '')))
+    case 'PLAN': return endZh(zj('下一步工具调用是', t.replace(/^(?:下一步(?:工具调用)?[:：]?\s*)/u, '')))
     case 'OPEN': return endZh(zj('还没确认的是', stripQ(op.text)))
-    case 'IF': return endZh(op.trigger && op.then ? zj(zj('如果', cond(op.trigger)) + '，就', stripEnd(op.then)) : t)
-    case 'READY': return op.auto ? endZh(t) : endZh(zj('我准备的改法是', t) + (op.at ? '，改的就是 `' + op.at + '` 这一行' : '') + (op.trigger ? '——前提是' + cond(op.trigger) : ''))
+    case 'IF': return endZh(op.trigger && op.then ? zj(zj('如果', cond(op.trigger)) + '，那么', stripEnd(op.then)) : t)
+    // S8-R5：锚点带出处与逐字性声明（oracle 第 2 轮：节选代码行缺出处 ⇒ 主模型先 read_file 全文）
+    case 'READY': return op.auto ? endZh(t) : endZh((op.trigger ? zj(zj('如果', cond(op.trigger)) + '，那么需要改', t) : zj('需要改的是', t)) + (op.at ? '；这一行的逐字原文是 `' + op.at + '`，可以直接当 edit_file 的 old_text' : ''))
     default: return endZh(t)
   }
 }
@@ -420,7 +422,7 @@ const PROSE_PARA = { FACT: 0, COMPUTED: 0, INCUMBENT: 0, REFUTED: 1, SHELVED: 1,
 export function renderProse(ordered, lang, loci = [], concl = '') {
   const paras = [[], [], [], [], []]
   for (const o of ordered) { const g = PROSE_PARA[o.k] ?? 0; paras[g === 3 ? 4 : g].push(proseSentence(o, lang)) }
-  for (const at of loci) paras[0].push(lang === 'en' ? 'The relevant code I looked at is `' + at + '`.' : '我看过的相关代码是 `' + at + '`。')
+  for (const at of loci) paras[0].push(lang === 'en' ? 'The exact code seen earlier (verbatim, usable as edit_file old_text): `' + at + '`.' : '前面看到的原文（逐字，可以直接当 edit_file 的 old_text）：`' + at + '`。')
   if (concl) paras[3].push(concl)
   const sep = lang === 'en' ? ' ' : ''
   return paras.filter((p) => p.length).map((p) => p.join(sep)).join('\n\n')

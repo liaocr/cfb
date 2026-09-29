@@ -1,0 +1,55 @@
+import sys; sys.path.insert(0, '/home/user/oracle'); from mk import build
+# oracle-C：与 B 内容相同，语域换成 DeepSeek 原生思考（「我们需要 / 看起来 / 所以 / 下一步工具调用 / 如果…那么…」）。
+T = {}
+T['wrong-model'] = '''
+我们需要找出为什么压缩用的是上一次会话的模型。先看代码，read_file src/host-follow.js 返回的原文是：
+let lastModel = null
+observe(options) { if (options && options.model) lastModel = options.model }
+callConfig(options) { return { ...cfg, model: lastModel || cfg.model } }
+plugin.js 里是 host.observe(options, n)，然后 const callCfg = host.callConfig(options)，再把 callCfg 传给 birthTransform。
+
+trace 显示 llm-stream n12、n13 都是 deepseek-v3.2，但中间的 compiler-transport-started 是 deepseek-v3.1，正好是上一次会话的模型。
+
+看起来 lastModel 是模块级变量，跨会话保留。observe 只在 options.model 存在时更新，而 plugin 传了两个参数 (options, n)，observe 只接受 options，第二参数 n 被忽略。如果当前模型不在 options.model 上，lastModel 就一直是上一次会话的值，callConfig 用 lastModel || cfg.model 把它覆盖进压缩配置。调用顺序是先 observe 再 callConfig，没问题。prewarm 用的是原始 cfg，解释不了上一次会话的模型，所以不是它。
+
+下一步工具调用是看 plugin.js 里 options 和 n 怎么构造。如果当前模型在 n 里、options.model 为空，那么根因就确定了，需要改的就是 observe(options) { if (options && options.model) lastModel = options.model } 这一行，让它读到当前会话的模型。这一行上面已经有 read_file 的逐字原文，可以直接当 edit_file 的 old_text。如果 options.model 本来就有当前模型，那么再查 observe 和 callConfig 之间有没有别处改写 lastModel。
+'''
+T['eacces-config'] = '''
+我们需要分析 EACCES：open '/home/u/.dsh/storages/cot-form-b/trace.log'。ls 显示文件和目录都属 root（-rw-r--r-- / drwxr-xr-x），id 是 uid=1000(u)，所以只能读，不能写也不能删。
+
+但测试本来不应该写真实 home。verify.mjs 里是 const env = { ...process.env, DSH_HOME: tmp }，每个套件应该在临时 DSH_HOME 里跑。而 test/birth.selftest.mjs 第 1-12 行（read_file 原文）是：
+const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })
+它不看 DSH_HOME，用的是 CFB_REAL_DSH_HOME，所以绕过了隔离，写到了 /home/u/.dsh。看起来根因是隔离变量没对齐，root 属主只是让问题暴露出来。用 chown 或 sudo 修权限不对，那是在改真实 home，不是修测试。
+
+下一步工具调用是 grep CFB_REAL_DSH_HOME 的引用，并看它有没有被设置。如果 verify.mjs 里完全没有这个变量，那么测试就是从父进程继承了真实路径，需要改：把测试那一行改成 makeTraceWriter({ home: process.env.DSH_HOME })，或者在 verify.mjs 的 env 里加 CFB_REAL_DSH_HOME: tmp。改测试更干净，因为隔离约定本来就是 DSH_HOME。那一行上面已经有逐字原文，可以直接当 edit_file 的 old_text。
+'''
+T['flaky-timeout'] = '''
+我们需要找出 CI 偶发失败的原因。§4 里主请求 1500ms 后回 200，hedgeAfterMs: 1600，断言 hedgeStartedAt 为 null，只有 100ms 余量。hedgedDistill 的原文（read_file）是：
+const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)
+primary.then(() => { primarySettled = true })
+CI 失败时 got 1712、1698，比 1600 晚一百多毫秒；CI nproc=2，本地 16。
+
+看起来是时序竞态，不是业务逻辑错。2 核 CI 上事件循环被拖慢，server 的 1500ms 回调和对冲的 1600ms 定时器积压到同一轮 timers 阶段，先执行 server 回调发出 200，再执行对冲定时器；而主请求的 HTTP 响应要到后面的 poll 阶段才 resolve，primary.then 还没把 primarySettled 置为 true，所以对冲启动了。清除 timer 或改 primary.finally 都解决不了同一轮 timers 里定时器先执行，所以不走这条。修复方向是拉大主请求延迟和 hedgeAfterMs 之间的余量，或者改用 fake timers，让测试不依赖真实定时器精度。
+
+下一步工具调用是 taskset -c 0,1 限到 2 核循环跑 test/hedge.selftest.mjs。如果失败复现、失败值也在 1700 左右，那么时序竞态就确定了，下一步直接改测试 §4 的 hedgeAfterMs: 1600（read_file 原文就是这几个字，可以直接当 edit_file 的 old_text），不用再继续复现。如果 2 核下 50 次都不失败，那么再考虑别的负载来源。
+'''
+T['sse-truncated'] = '''
+我们需要找出为什么截断的压缩结果被当成成功。trace 里 compiler-transport-settled 是 ok:true、finish:null、stream:true、outputChars:212、eventCount:9；birth-condensed 是 rawChars 8123 → outChars 212。只有 212 字、没有 finish_reason，却写进了会话。
+
+assembleSseFrames 的关键两行（read_file src/transport.js 原文）：
+if (f === '[DONE]') { done = true; continue }
+return { out, finish: finish || (done ? 'stop' : null) }
+finish 只在收到 finish_reason 时才赋值；没有 finish_reason 时，只要收到 [DONE] 就回退成 'stop'。网关文档说部分上游在连接被代理切断时只补发 data: [DONE]。所以被切断的流会得到 stop，截断被当成正常结束。
+
+有一点没对上：trace 里 finish 是 null，而按这段代码 done=true 时应该返回 'stop'。可能 settle 记录的是原始 finish_reason，也可能 ok 的判定根本不看 finish（比如只看 out 非空）。不管哪种，bug 都是没有真实 finish_reason 也算成功。修复方向是区分 finish_reason 缺失和收到 [DONE]：只有 [DONE] 没有 finish_reason 时返回 incomplete，不再回退成 stop；调用方的 ok 要求有真实 finish_reason。
+
+下一步工具调用是 grep compiler-transport-settled 和 assembleSseFrames 的调用处。如果 ok 只由 out 长度或 done 决定，那么直接改那一处判定，同时改 return { out, finish: finish || (done ? 'stop' : null) } 这一行的回退（上面已有逐字原文，可以直接当 edit_file 的 old_text）。
+'''
+T['perf-regression'] = '''
+我们需要分析为什么收网等待从 900ms 涨到 2400ms。总等待涨 1500ms；contentSpanMs p50 从 280 到 1650，涨 1370ms，占九成；ttfbMs 610 → 640 只多 30ms。吞吐 390/280≈1.39 和 1720/1650≈1.04 chars/ms 是同一量级，所以不是每个 token 变慢，而是生成的量变多了：outputChars 390 → 1720，约 4.4 倍。
+
+config diff 有两处：maxOutputTokens 850 → 4096，compressTargetMax 450 → 1800。输出长度正好贴着 compressTargetMax：390≈450，1720≈1800，比例 4.4 对 4.0。README 说 compressTargetMax 只影响 v3 的长度目标，而这里走的正是 compress-v3h。maxOutputTokens 只是上限，不会让输出变长，除非升级前 850 一直在截断。promptVersion 升级前后都是 compress-v3h:250-450，没跟着配置变，看起来是硬编码的标签，不能用来证明配置没生效。所以主因更可能是 compressTargetMax 450 → 1800，maxOutputTokens 是陪跑。
+
+下一步工具调用是看升级前后的 finishReason 和 outputTokens。如果升级前是 stop（没碰到 850 上限），那么 maxOutputTokens 无罪，直接把 src/config.js 里的 compressTargetMax: 1800 改回 450（git diff 里的原文就是 compressTargetMax: 1800,，可以直接当 edit_file 的 old_text）。如果升级前大量是 length，那么说明 850 在截断，是 maxOutputTokens 放开导致变长，另外处理。
+'''
+build('C', T)
