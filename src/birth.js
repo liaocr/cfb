@@ -455,21 +455,10 @@ export async function birthFinish(task, deps = {}) {
   // 零 rules：只有宿主模型提纯成功且净省够本才替换
   if ((dist && dist.ok) || partial) {
     let candidate = partial ? partial.text : dist.text
-    // ★ 2026-09-23 v11.6 硬断言：替换结果绝不能为空白。
-    //   DeepSeek 带 tools 的请求要求每条历史 assistant 都携带 reasoning_content；API 只查字段存在，
-    //   但空白内容会让模型失去该轮思维链（H8 事故同形）。空白 ⇒ 原文放行。
-    if (!String(candidate).trim()) return pass('empty-candidate', handle)
-    // ★ v12.1 发明标识符闸（缺省开，birthIdentifierGate:false 关闭）：摘要里出现原文没有的路径 / 代码 / 标识符
-    //   ⇒ 原文放行。压缩稿会被主模型当成「自己想过的事实」读回，一个编造的路径或函数名就是一次定向误导；
-    //   原文放行是已知安全态。来源：v4 理论不变量 I2（docs/theory 第五卷），判据见 fidelity.inventedIdentifiers。
-    if (cfg.birthIdentifierGate !== false) {
-      let invented = []
-      // v12.7：出处 = 原文 + 本回合观察（compressCtx）；模板的工具接口词不算发明（fidelity.GATE_ALLOW）
-      try { invented = inventedIdentifiers(raw, candidate, { extra: cfg.compressCtx || '' }) } catch { invented = [] }
-      if (invented.length) return pass('invented-identifier', handle, { invented })
-    }
-    const netSaved = raw.length - candidate.length
-    const minSaved = cfg.birthMinSavedChars == null ? 50 : cfg.birthMinSavedChars
+    // v12.7：闸门判定抽成纯函数 birthAccept（工具 compile-direct 同一份判定 ⇒ 评测稿在真机会不会被放行，离线就能看到）
+    const acc = birthAccept(raw, candidate, cfg)
+    if (!acc.ok) return pass(acc.why, handle, acc.info)
+    const { netSaved, minSaved, tokens, netSavedTokensEst } = acc
     // ★ 2026-09-23 v11.6 保真观测（**只记录，不拦截**）：逐字标识符召回率。
     //   受保护 token 集为空 ⇒ unmeasurable（不能算 pass，单独统计）。门槛待离线分布 + 白付成本模型后再定。
     let fid = null
@@ -479,32 +468,47 @@ export async function birthFinish(task, deps = {}) {
         ? { identifierRecall: null, protectedTokens: 0, lostTokens: 0, unmeasurable: true }
         : { identifierRecall: f.stats.tokenRecall, protectedTokens: f.stats.protectedTokens, lostTokens: f.stats.lostTokens, lostSample: f.stats.lostSample, unmeasurable: false }
     } catch { fid = null }
-    // ★ v11.10 token 闸门（缺省开）：字符净省达标但**估算 token 不降**时不替换。
-    //   典型：英文原文 → 中文摘要。中文每字符 token 约是英文的 2 倍，字符变少不代表上下文变小。
-    //   只会拒绝「本来就不该发生」的替换（最坏 = 原文放行 = 宿主原生行为）；birthTokenGate:false 关闭。
-    const rawTokensEst = estimateTokens(raw)
-    const outTokensEst = estimateTokens(candidate)
-    const netSavedTokensEst = rawTokensEst - outTokensEst
-    const minSavedTokens = Number.isFinite(cfg.birthMinSavedTokens) && cfg.birthMinSavedTokens > 0 ? cfg.birthMinSavedTokens : 1
-    const tokens = { rawTokensEst, outTokensEst, netSavedTokensEst, unit: 'estimate-not-tokenizer' }
-    if (netSaved >= minSaved && cfg.birthTokenGate !== false && netSavedTokensEst < minSavedTokens) {
-      return pass('no-token-gain', handle, { netSaved, minSaved, ...tokens, minSavedTokens })
+    if (partial) {
+      // 已决定用部分结果 ⇒ 仍在飞的分段（尾段）不再有用
+      birthCancelFlying(task, cfg, trace, 'partial-used')
+      trace('birth-condensed', { index: task.index, why: 'condensed-partial', rawChars: raw.length, outChars: candidate.length, netSaved, minSaved, ...tokens, handle,
+        waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0, fidelity: fid, econ: task.econ || null, v4: partial.stats })
+      return { chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed-partial', rawChars: raw.length, outChars: candidate.length, netSaved, netSavedTokensEst, handle }
     }
-    if (netSaved >= minSaved) {
-      if (partial) {
-        // 已决定用部分结果 ⇒ 仍在飞的分段（尾段）不再有用
-        birthCancelFlying(task, cfg, trace, 'partial-used')
-        trace('birth-condensed', { index: task.index, why: 'condensed-partial', rawChars: raw.length, outChars: candidate.length, netSaved, minSaved, ...tokens, handle,
-          waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0, fidelity: fid, econ: task.econ || null, v4: partial.stats })
-        return { chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed-partial', rawChars: raw.length, outChars: candidate.length, netSaved, netSavedTokensEst, handle }
-      }
-      trace('birth-condensed', { index: task.index, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, minSaved, ...tokens, handle, waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0, fidelity: fid, econ: task.econ || null,
-        distillMs: task.distillMs ?? null, promptVersion: dist.meta?.promptVersion || null, v4: dist.meta?.v4 || null })
-      return { chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, netSavedTokensEst, handle }
-    }
-    return pass('no-gain', handle, { netSaved, minSaved, ...tokens })
+    trace('birth-condensed', { index: task.index, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, minSaved, ...tokens, handle, waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0, fidelity: fid, econ: task.econ || null,
+      distillMs: task.distillMs ?? null, promptVersion: dist.meta?.promptVersion || null, v4: dist.meta?.v4 || null })
+    return { chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, netSavedTokensEst, handle }
   }
   return pass(dist === null ? 'distill-timeout' : 'distill-failed', handle, { error: (dist && dist.error) || null })
+}
+
+/**
+ * v12.7：候选替换稿的闸门判定（纯函数；birthFinish 与 tools/compile-direct 共用）。
+ *   empty-candidate    空白（DeepSeek 带 tools 的请求要求历史 assistant 带 reasoning_content，空白 = 丢失该轮思维链，H8 事故同形）
+ *   invented-identifier v12.1 发明标识符闸（I2）：出处 = 原文 + 本回合观察（cfg.compressCtx）；模板工具接口词不算（fidelity.GATE_ALLOW）
+ *   no-token-gain      v11.10：字符净省达标但估算 token 不降（英文原文 → 中文摘要）
+ *   no-gain            净省不足 birthMinSavedChars（缺省 50）
+ * @returns {{ ok:boolean, why?:string, info?:object, netSaved:number, minSaved:number, tokens:object, netSavedTokensEst:number }}
+ */
+export function birthAccept(raw, candidate, cfg = {}) {
+  const r = String(raw || ''), c = String(candidate == null ? '' : candidate)
+  const netSaved = r.length - c.length
+  const minSaved = cfg.birthMinSavedChars == null ? 50 : cfg.birthMinSavedChars
+  const rawTokensEst = estimateTokens(r), outTokensEst = estimateTokens(c), netSavedTokensEst = rawTokensEst - outTokensEst
+  const tokens = { rawTokensEst, outTokensEst, netSavedTokensEst, unit: 'estimate-not-tokenizer' }
+  const base = { netSaved, minSaved, tokens, netSavedTokensEst }
+  if (!c.trim()) return { ok: false, why: 'empty-candidate', info: undefined, ...base }
+  if (cfg.birthIdentifierGate !== false) {
+    let invented = []
+    try { invented = inventedIdentifiers(r, c, { extra: cfg.compressCtx || '' }) } catch { invented = [] }
+    if (invented.length) return { ok: false, why: 'invented-identifier', info: { invented }, ...base }
+  }
+  const minSavedTokens = Number.isFinite(cfg.birthMinSavedTokens) && cfg.birthMinSavedTokens > 0 ? cfg.birthMinSavedTokens : 1
+  if (netSaved >= minSaved && cfg.birthTokenGate !== false && netSavedTokensEst < minSavedTokens) {
+    return { ok: false, why: 'no-token-gain', info: { netSaved, minSaved, ...tokens, minSavedTokens }, ...base }
+  }
+  if (netSaved < minSaved) return { ok: false, why: 'no-gain', info: { netSaved, minSaved, ...tokens }, ...base }
+  return { ok: true, ...base }
 }
 /**
  * 单次结算便捷入口（供单测/直调）：起火 + 立即收网。

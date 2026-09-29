@@ -17,7 +17,7 @@ cp transfer/recordings.json /home/user/live-all/recordings.json
 cp transfer/direct-*.json /home/user/
 cp transfer/oracle/* /home/user/oracle/
 cp -r transfer/effect-* /home/user/
-cd /home/user/cfb && node verify.mjs   # 应 603 通过 / 0 失败 / 1 跳过（v12.7.0）
+cd /home/user/cfb && node verify.mjs   # 应 604 通过 / 0 失败 / 1 跳过（v12.7.0）
 ```
 
 ## 铁规矩（用户明说的，别问、别违反）
@@ -91,7 +91,8 @@ node tools/compile-direct.mjs --base-url $DEEPSEEK_BASE_URL --model $DEEPSEEK_MO
   评测工具本来就注入 TASKS，所以对评测数字没影响，对真机上线是必需的（否则观察里的行被当编造剥掉、分支没落点）。
 - 同会话修的生产 bug：birth.js 的发明标识符闸只对着原文查，R5 可用句里的 `edit_file` / `old_text` 会让整份稿被 `invented-identifier` 放行
   （v12.5 起就有，评测绕过 birth.js 所以没暴露；hook-wiring §6 端到端测试抓到）。现在模板接口词豁免、出处含 compressCtx。
-  ⇒ 真机上线前务必看 trace 的 `birth-passthrough.why` 分布，别只看评测分。
+  ⇒ 真机上线前务必看 trace 的 `birth-passthrough.why` 分布，别只看评测分。同类第二个：反引号配对（长片段让正则把散文当代码）——已改 split 配对。
+  现在 `compile-direct` 每行打印 `accept=ok|why`（birth.js 同一份 `birthAccept`），编译时就能看到真机会不会放行；oG 五份现在全 ok。
 - 直写上线的真实代价（同会话发现并接好线）：直写不走增量分段（此前分段器会接管、直写提示词在生产里跑不到），整块编译 3.6–10.9 s / 块，
   收网窗口现在随 compressV4Direct 自动抬到 6000（`compressV4DirectMinWaitMs`）。评测分是离线编译的；转正前用 `tools/v4-live.mjs`
   （时序回放）量命中率与等待，perf 任务里那种「收网等待涨了」正是这个代价。

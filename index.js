@@ -18,7 +18,7 @@ export { DEFAULTS, normalizeConfig, dshHome, dshHomePath } from './src/config.js
 
 // ── 出生即压缩（birth）───────────────────────────────────────────────────────
 export {
-  birthTransform, birthStart, birthFinish, birthSettle, birthHoldNew, deriveArtHandle, birthEconomics, birthCancelFlying, readPressure,
+  birthTransform, birthStart, birthFinish, birthSettle, birthHoldNew, birthAccept, deriveArtHandle, birthEconomics, birthCancelFlying, readPressure,
 } from './src/birth.js'
 export { estimateTokens, wideShare, scriptCounts } from './src/tokens.js'
 export { createHostFollower } from './src/host-follow.js'

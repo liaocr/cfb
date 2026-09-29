@@ -91,8 +91,10 @@ function gateTokens(text) {
   let m
   RE_SCHEME.lastIndex = 0
   while ((m = RE_SCHEME.exec(s)) !== null) add(m[0])
-  const bt = /`([^`\n]{2,80})`/g
-  while ((m = bt.exec(s)) !== null) add(m[1])
+  // v12.7：反引号按顺序配对（split），不再用「≤80 字的 `…`」正则——长片段（R2″ 落点行、直写稿里 80–220 字的逐字行）会让正则
+  //   把上一个片段的闭合反引号和下一个片段的开头配成一对，把中间的散文当成「代码」报发明（compile-direct accept 抓到）。
+  const parts = s.split('`')
+  for (let i = 1; i < parts.length; i += 2) { const seg = parts[i]; if (seg.length >= 2 && seg.length <= 300 && !seg.includes('\n')) add(seg) }
   RE_GATE_PATH.lastIndex = 0
   while ((m = RE_GATE_PATH.exec(s)) !== null) {
     const t = m[0]

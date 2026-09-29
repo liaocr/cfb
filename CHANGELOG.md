@@ -38,6 +38,12 @@ oracle 与自动稿的「下一步」**都是复现**，差别全部在判读分
   每一份带可用句 / 落点行的稿在真机上都会被 `invented-identifier` 原文放行（评测走 compile-direct 绕过了 birth.js，所以从没暴露）。
   现在：模板的工具接口词（`fidelity.GATE_ALLOW`：edit_file / old_text / new_text / read_file）不算发明；出处 = 原文 + `compressCtx`
   （观察里有、原文没复述的行不是发明，S8-R5/R7 本来就要求落点来自观察）。没有观察时照旧严格。
+- **发明标识符闸的第二个误杀：反引号配对**。`gateTokens` 用「≤80 字的 `…`」正则取代码片段，长片段（R2″ 落点行可到 200 字、直写稿逐字行到 220 字）
+  匹配不上时，正则把上一个片段的闭合反引号和下一个片段的开头配成一对，中间的**散文**被当成代码报发明——oG 的 eacces / flaky / sse 三份稿
+  在真机都会被这样放行。改为按反引号顺序配对（split），围栏不产生垃圾 token。修后历史全部 138 份 condensed 稿（direct-*.json + oracle）
+  135 份过闸，剩下 3 份是 ops5/ops6 的真编造（应拒）。
+- **闸门判定抽成纯函数 `birthAccept(raw, candidate, cfg)`**（birth.js 与 `tools/compile-direct.mjs` 共用）：compile-direct 每行输出
+  `accept=ok | why`，评测稿在真机会不会被原文放行离线就能看到——「评测绕过 birth.js」这一类 bug 以后在编译时就暴露。
 - **直写的生产接线**（同样是 hook-wiring §6 暴露的）：① `v4Incremental()` 在 `compressV4Direct` 下恒为 false——此前增量分段器会接管
   block（`compressV4Incremental:'auto'`），直写提示词在生产里永远跑不到；② 直写是整块编译、没有增量路可藏延迟，真机 flash 经中转
   3.6–10.9 s / 块（direct-od/oe/of.json 的 `ms`），而缺省收网窗口 1500 ms ⇒ 几乎必然 passthrough。现在打开直写时 `birthFinishWaitMs`
@@ -45,7 +51,7 @@ oracle 与自动稿的「下一步」**都是复现**，差别全部在判读分
   评测分数是离线编译得到的，上线前必须用 `tools/v4-live.mjs`（带时序回放）量命中率，别只看评测分。
 - `index.js` 导出 `bindFixBranches / bindLocus / strongTokens / isFixBranch / usableLocus / buildCompressCtx / compressCtxFor`；
   `index.d.ts` 补 `compressV4Direct*` / `compressCtx*`。
-- 自测 603 / 0 / 1（新增 v4 §5p 六条、§5q 四条；compress §4b2 / §4c2；hook-wiring §6 端到端：工具结果 → compressCtx → 提示词 → 核真 → 绑定 → 出生文本）。
+- 自测 604 / 0 / 1（新增 v4 §5p 六条、§5q 四条；compress §4b3；compress §4b2 / §4c2；hook-wiring §6 端到端：工具结果 → compressCtx → 提示词 → 核真 → 绑定 → 出生文本）。
 
 ### 状态（诚实记录）
 - **未实测**：本会话沙盒只放行 GitHub / npm / pypi，`api.a6api.com` 与 `api.deepseek.com` 的 TLS 握手被切断，付费编译与评测都跑不了。
