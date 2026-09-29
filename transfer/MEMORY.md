@@ -69,3 +69,5 @@
 - 续：写 hook-wiring §6 端到端（真实 apply()：tool-result → compressCtx → 提示词 → 核真 → 绑定）时抓到**生产 bug**：birth.js 发明标识符闸只对原文查，
   `edit_file`/`old_text`（R5 可用句自带）被当发明 ⇒ 整份稿 invented-identifier 放行；v12.5 起潜伏，评测绕过 birth.js 从没暴露。
   修：fidelity.GATE_ALLOW 豁免模板接口词；inventedIdentifiers(src,out,{extra: compressCtx})；birth.js 传 compressCtx。compress §4b2/§4c2。verify 602/0/1。
+- 续：直写生产接线——v4Incremental 在 compressV4Direct 下恒 false（否则分段器接管、直写永远不跑）；收网窗口自动抬到 compressV4DirectMinWaitMs 6000
+  （真机 3.6–10.9 s/块 vs 缺省 1500）。转正前必须用 v4-live 量真实命中率。verify 603/0/1。

@@ -17,7 +17,7 @@ cp transfer/recordings.json /home/user/live-all/recordings.json
 cp transfer/direct-*.json /home/user/
 cp transfer/oracle/* /home/user/oracle/
 cp -r transfer/effect-* /home/user/
-cd /home/user/cfb && node verify.mjs   # 应 602 通过 / 0 失败 / 1 跳过（v12.7.0）
+cd /home/user/cfb && node verify.mjs   # 应 603 通过 / 0 失败 / 1 跳过（v12.7.0）
 ```
 
 ## 铁规矩（用户明说的，别问、别违反）
@@ -92,6 +92,9 @@ node tools/compile-direct.mjs --base-url $DEEPSEEK_BASE_URL --model $DEEPSEEK_MO
 - 同会话修的生产 bug：birth.js 的发明标识符闸只对着原文查，R5 可用句里的 `edit_file` / `old_text` 会让整份稿被 `invented-identifier` 放行
   （v12.5 起就有，评测绕过 birth.js 所以没暴露；hook-wiring §6 端到端测试抓到）。现在模板接口词豁免、出处含 compressCtx。
   ⇒ 真机上线前务必看 trace 的 `birth-passthrough.why` 分布，别只看评测分。
+- 直写上线的真实代价（同会话发现并接好线）：直写不走增量分段（此前分段器会接管、直写提示词在生产里跑不到），整块编译 3.6–10.9 s / 块，
+  收网窗口现在随 compressV4Direct 自动抬到 6000（`compressV4DirectMinWaitMs`）。评测分是离线编译的；转正前用 `tools/v4-live.mjs`
+  （时序回放）量命中率与等待，perf 任务里那种「收网等待涨了」正是这个代价。
 - 后备候选（未做）：R7 用到 ops 路（v4t）——ops9p 的 flaky 分支是「…再修」且没有 READY-fix，需要从原文改法候选合成 READY 并用 bindLocus 绑落点；
   sse 的失败形态是「分支没覆盖观察的实际取值 + 改法跨两处」（EFFECT-EVAL §13），是 R7 之后的下一个规格缺口（判读覆盖）。
 - 推送：本会话受平台约束只能推 `arena/01a0eba2-cfb` 分支（已推）；回 main 需要有权限的一方 fast-forward 合并（`git push … arena/01a0eba2-cfb:main`），不要 force。

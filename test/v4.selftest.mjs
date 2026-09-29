@@ -850,6 +850,18 @@ try {
     const src = fs.readFileSync(new URL('../src/plugin.js', import.meta.url), 'utf8')
     assert.ok(/const streamCfg = compressCtxFor\(callCfg, options\)/.test(src), 'plugin.js birth 分支用 compressCtxFor 派生 streamCfg')
   })
+  await test('5q4 直写的生产接线：不走增量分段；收网窗口抬到 compressV4DirectMinWaitMs（BOOT 留痕）；timeoutMs 跟着抬', () => {
+    assert.equal(I.v4Incremental({ compressPrompt: 'v4', compressV4Direct: true, compressV4Incremental: true, birthFinishWaitMs: 1500 }), false, '直写整块编译，分段器不得接管')
+    assert.equal(I.v4Incremental({ compressPrompt: 'v4', compressV4Incremental: true, birthFinishWaitMs: 1500 }), true)
+    const c = I.normalizeConfig({ mode: 'birth', compressPrompt: 'v4', compressV4Direct: true })
+    assert.equal(c.birthFinishWaitMs, 6000); assert.equal(c.configAdjusted.birthFinishWaitMs.from, 1500)
+    assert.ok(c.timeoutMs >= 6000 + 1500 + 2000, 'timeoutMs 随窗口抬：' + c.timeoutMs)
+    const keep = I.normalizeConfig({ mode: 'birth', compressPrompt: 'v4', compressV4Direct: true, birthFinishWaitMs: 9000 })
+    assert.equal(keep.birthFinishWaitMs, 9000); assert.ok(!keep.configAdjusted || !keep.configAdjusted.birthFinishWaitMs, '已满足 ⇒ 不动')
+    const off = I.normalizeConfig({ mode: 'birth', compressPrompt: 'v4', compressV4Direct: true, compressV4DirectMinWaitMs: 0 })
+    assert.equal(off.birthFinishWaitMs, 1500, '0 = 不抬')
+    assert.equal(I.normalizeConfig({ mode: 'birth', compressPrompt: 'v4' }).birthFinishWaitMs, 1500, '不开直写零变化')
+  })
 } finally {
   if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome
 }

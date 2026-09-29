@@ -65,6 +65,8 @@ export interface CotFormBConfig {
   compressV4DirectBind?: boolean
   /** 仅 v4 直写：超过此长度熔断为原文放行（缺省 1300） */
   compressV4DirectMaxChars?: number
+  /** 仅 v4 直写：整块编译 ⇒ 收网窗口 birthFinishWaitMs 只抬不降到此下限（缺省 6000；0 = 不抬），BOOT configAdjusted 留痕 */
+  compressV4DirectMinWaitMs?: number
   /** 仅 v4 直写：当前任务 / 观察上下文（工具注入；生产缺省由 plugin 自动构造，见 compressCtxAuto） */
   compressCtx?: string
   /** v12.7：v4 时自动从出站消息构造 compressCtx（最后一条人类 user + 本回合工具结果）；缺省 true */

@@ -58,6 +58,8 @@ export function v4Budget(cfg) {
  */
 export function v4Incremental(cfg) {
   if (!cfg || cfg.compressPrompt !== 'v4') return false
+  // v12.7：直写（compressV4Direct）是整块散文，没有分段标注可合并 ⇒ 不走增量；否则分段器会接管、直写提示词永远不会跑
+  if (cfg.compressV4Direct === true) return false
   const v = cfg.compressV4Incremental
   if (v === true || v === false) return v
   const w = cfg.birthFinishWaitMs == null ? 1500 : Number(cfg.birthFinishWaitMs)

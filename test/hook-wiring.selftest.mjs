@@ -190,7 +190,7 @@ try {
       const baseUrl = 'http://127.0.0.1:' + server.address().port
       const traceFile = path.join(home, 't-ctx.log')
       const hooks = applyPlugin({
-        baseUrl, traceFile, over: { compressPrompt: 'v4', compressV4Direct: true, compressV4Incremental: false, prewarm: false, birthFinishWaitMs: 3000, birth: { finishWaitMs: 3000 } },
+        baseUrl, traceFile, over: { compressPrompt: 'v4', compressV4Direct: true, prewarm: false },   // 直写 ⇒ v4Incremental 自动为 false、收网窗口自动抬到 6000（normalizeConfig）
         ctxGet: (k) => (k === 'cmbStore' ? { putText: async () => ({ handle: 'art://ctx' }) } : null),
       })
       await hooks.get('agent/pre-step')({ agent: { session: SESSION([]) } }, async () => ({}))
@@ -221,6 +221,9 @@ try {
       assert.ok(compiled && compiled[1].ok === true && compiled[1].ctxChars > 0 && compiled[1].boundBranches === 1, JSON.stringify(compiled && compiled[1]))
       const settled = readTrace(traceFile).find(([t]) => t === 'birth-distill-settled')
       assert.ok(settled && /compress-v4d2:ctx/.test(settled[1].promptVersion), 'promptVersion 标 :ctx（生产 trace 可见观察到位）：' + JSON.stringify(settled && settled[1].promptVersion))
+      assert.ok(!readTrace(traceFile).some(([t]) => /^v4-segment/.test(t)), '直写不走增量分段')
+      const boot = readTrace(traceFile).find(([t]) => t === 'BOOT')
+      assert.ok(boot && JSON.stringify(boot[1]).includes('compressV4DirectMinWaitMs'), 'BOOT 可见收网窗口被抬（configAdjusted）：' + JSON.stringify(boot && boot[1]).slice(0, 300))
     } finally { server.closeAllConnections(); await new Promise((r) => server.close(r)) }
   })
 } finally {

@@ -231,6 +231,8 @@ trace：`v4-segment-fired/settled`、`v4-segments-cancelled`。`compressV4Increm
 | `compressPrompt: 'v3'` | 从 v4 回到散文摘要（缺省） |
 | `compressV4Direct: true` | 启用 v4 直写散文（oracle C 形态固化；缺省关，见 CHANGELOG v12.6.0 / v12.7.0） |
 | `compressV4DirectBind: false` | 关闭直写稿判读分支的落点绑定（理论 S8-R7；缺省开，见 CHANGELOG v12.7.0） |
+| `compressV4DirectMinWaitMs: 0` | 打开直写时不再自动把收网窗口抬到 6000（直写是整块编译，真机 3.6–10.9 s / 块；不抬 ⇒ 几乎必然原文放行） |
+| `compressCtxAuto: false` | 不再自动把本回合任务 + 工具结果作为压缩上下文（逐字核真 / 落点绑定会退化为只看推理原文） |
 | `compressV4Incremental: false` | v4 回到整块编译（不分段） |
 | `compressPrompt: 'v2'` | 回到相对长度目标 |
 | `birth: { identifierGate: false }` | 关闭发明标识符闸 |
