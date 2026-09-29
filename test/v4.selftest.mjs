@@ -862,6 +862,39 @@ try {
     assert.equal(off.birthFinishWaitMs, 1500, '0 = 不抬')
     assert.equal(I.normalizeConfig({ mode: 'birth', compressPrompt: 'v4' }).birthFinishWaitMs, 1500, '不开直写零变化')
   })
+  // ---- §5r S8-R7 用到 ops 路（生产 v4 缺省）：无落点的 READY 按观察绑落点；自动改法条目去项目符号并带落点渲染 ----
+  await test('5r1 ops 路：副模型没标改法 ⇒ 代码从原文补 READY（去掉「- 」），并从 compressCtx 绑到 `hedgeAfterMs: 1600`', () => {
+    const raw = 'CI 失败 got 1712。100ms 余量太小。修复方向：\n- 增大时间差，例如主请求 1000ms，hedgeAfterMs 2000ms，或主请求 1500，hedge 3000。\n- 测试中使用 fake timers。\n' +
+      '如果失败复现，再修。' + '填充句子。'.repeat(150)
+    const ops = [
+      { id: 'o1', k: 'FACT', ev: 'tool', text: 'CI 失败 got 1712', anchor: 'got 1712', src: 'ci' },
+      { id: 'o2', k: 'COMPUTED', ev: 'derived', text: '100ms 余量被 2 核调度抖动吃掉', anchor: '100ms 余量太小' },
+      { id: 'o3', k: 'IF', ev: 'derived', cond: 'taskset 循环复现失败', then: '说明是调度抖动，再修', anchor: '如果失败复现，再修' },
+    ]
+    const r = I.compileV4(JSON.stringify({ ops }), raw, { compressV4Prose: true, compressCtx: CTX })
+    assert.ok(r.ok, JSON.stringify(r))
+    assert.equal(r.stats.autoHints, 1); assert.equal(r.stats.boundReady, 1)
+    assert.ok(r.text.includes('改法是增大时间差，例如主请求 1000ms，hedgeAfterMs 2000ms，或主请求 1500，hedge 3000；这一行的逐字原文是 `hedgeAfterMs: 1600`，可以直接当 edit_file 的 old_text，不用再读文件'), r.text)
+    assert.ok(!r.text.includes('- 增大'), '项目符号去掉')
+    const off = I.compileV4(JSON.stringify({ ops }), raw, { compressV4Prose: true, compressCtx: CTX, compressV4DirectBind: false })
+    assert.equal(off.stats.boundReady, undefined); assert.ok(!off.text.includes('`hedgeAfterMs: 1600`'))
+    const noCtx = I.compileV4(JSON.stringify({ ops }), raw, { compressV4Prose: true })
+    assert.equal(noCtx.stats.boundReady, undefined, '原文里没有引过那一行、也没有观察 ⇒ 不绑（不发明）')
+  })
+  await test('5r2 ops 路：副模型标了 READY 但没给 at ⇒ 同样按观察绑；已有 at 不动', () => {
+    const raw = '看到 `const env = { ...process.env, DSH_HOME: tmp }`。改法想好了。' + '填充。'.repeat(200)
+    const ops = [
+      { id: 'o1', k: 'INCUMBENT', ev: 'derived', text: '隔离变量没对齐', anchor: '改法想好了' },
+      { id: 'o2', k: 'READY', ev: 'derived', text: '在 verify.mjs 的 env 里加 CFB_REAL_DSH_HOME: tmp', anchor: '改法想好了' },
+    ]
+    const ctx = '[tool: read_file] verify.mjs (节选)\n  const env = { ...process.env, DSH_HOME: tmp }\n[tool: read_file] test/birth.selftest.mjs\n  const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })'
+    assert.equal(I.compileV4(JSON.stringify({ ops }), raw, { compressV4Prose: true }).stats.rejected.I2, 1, '没有观察 ⇒ CFB_REAL_DSH_HOME 只在条目里出现，按 I2 拒（原行为）')
+    const r = I.compileV4(JSON.stringify({ ops }), raw, { compressV4Prose: true, compressCtx: ctx })
+    assert.ok(!r.stats.rejected.I2, '观察里有的标识符不是发明：' + JSON.stringify(r.stats))
+    assert.ok(r.text.includes('这一行的逐字原文是 `const env = { ...process.env, DSH_HOME: tmp }`'), r.text)
+    const withAt = I.compileV4(JSON.stringify({ ops: [ops[0], { ...ops[1], at: 'const env = { ...process.env, DSH_HOME: tmp }' }] }), raw, { compressV4Prose: true, compressCtx: ctx })
+    assert.equal(withAt.stats.boundReady, undefined, '已有 at ⇒ 不算本次绑定')
+  })
 } finally {
   if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome
 }

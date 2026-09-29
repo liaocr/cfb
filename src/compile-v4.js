@@ -198,9 +198,12 @@ export function actionLoci(raw, chosen, max = 2) {
   return out
 }
 
-export function validateOps(rawOps, raw) {
+export function validateOps(rawOps, raw, ctx = '') {
   const src = String(raw || '')
   const hay = norm(src)
+  // v12.7：标识符出处 = 原文 + 本回合观察（cfg.compressCtx）——观察里有、原文没复述的标识符不是发明（S8-R5/R7）；锚点仍只认原文
+  const srcAll = ctx ? src + '\n' + String(ctx) : src
+  const hayAll = ctx ? norm(srcAll) : hay
   const kept = [], rejected = [], converted = []
   let fatal = null
   const ops = (Array.isArray(rawOps) ? rawOps : []).map(normalizeOp)
@@ -210,13 +213,13 @@ export function validateOps(rawOps, raw) {
     if (!V4_KINDS.includes(op.k) || !op.text) { reject('schema'); continue }
     const a = norm(op.anchor)
     if (a.length < 2 || !hay.includes(a)) { reject('I1'); continue }
-    const inv = inventedIdentifiers(src, [op.text, op.alt, op.why, op.trigger, op.then, op.supersedes].filter(Boolean).join('\n'))
+    const inv = inventedIdentifiers(srcAll, [op.text, op.alt, op.why, op.trigger, op.then, op.supersedes].filter(Boolean).join('\n'))
     if (inv.length) {
       reject('I2', inv.slice(0, 3))
       if (op.k === 'INCUMBENT' || op.k === 'COMPUTED') fatal = fatal || 'critical-I2'
       continue
     }
-    if (op.src && inventedIdentifiers(src, op.src).length) op.src = ''
+    if (op.src && inventedIdentifiers(srcAll, op.src).length) op.src = ''
     if (/^tool:?/i.test(op.src) || op.ev === 'tool') {
       if (RE_DECIDE.test(op.text)) { reject('I5'); continue }
     }
@@ -227,8 +230,8 @@ export function validateOps(rawOps, raw) {
     if (seen.has(sig)) { reject('dup'); continue }
     seen.add(sig)
     op.src = op.src.replace(/^tool:\s*/i, '')
-    // 理论 S8-R2′：READY 的位置锚点必须是原文逐字子串；对不上就丢掉锚点（条目保留）
-    if (op.at && !hay.includes(norm(op.at))) op.at = ''
+    // 理论 S8-R2′：READY 的位置锚点必须是原文 / 观察的逐字子串；对不上就丢掉锚点（条目保留）
+    if (op.at && !hayAll.includes(norm(op.at))) op.at = ''
     if (op.k === 'READY' && !op.at) op.at = locusFromRaw(src, op.text)
     kept.push(op)
   }
@@ -398,7 +401,7 @@ function proseSentence(op, lang) {
       case 'PLAN': return 'Next I want to ' + t + '.'
       case 'OPEN': return 'What I have not confirmed yet: ' + stripQ(op.text) + '.'
       case 'IF': return op.trigger && op.then ? 'If ' + cond(op.trigger) + ', then ' + stripEnd(op.then) + '.' : t + '.'
-      case 'READY': return op.auto ? t + '.' : 'The change I have ready: ' + t + (op.at ? ' — the line is `' + op.at + '`' : '') + (op.trigger ? ', once ' + cond(op.trigger) : '') + '.'
+      case 'READY': return op.auto ? (op.at ? 'The fix: ' + t + ' — the line is `' + op.at + '`, usable as edit_file old_text.' : t + '.') : 'The change I have ready: ' + t + (op.at ? ' — the line is `' + op.at + '`' : '') + (op.trigger ? ', once ' + cond(op.trigger) : '') + '.'
       default: return t + '.'
     }
   }
@@ -413,7 +416,9 @@ function proseSentence(op, lang) {
     case 'OPEN': return endZh(zj('还没确认的是', stripQ(op.text)))
     case 'IF': return endZh(op.trigger && op.then ? zj(zj('如果', cond(op.trigger)) + '，那么', stripEnd(op.then)) : t)
     // S8-R5：锚点带出处与逐字性声明（oracle 第 2 轮：节选代码行缺出处 ⇒ 主模型先 read_file 全文）
-    case 'READY': return op.auto ? endZh(t) : endZh((op.trigger ? zj(zj('如果', cond(op.trigger)) + '，那么需要改', t) : zj('需要改的是', t)) + (op.at ? '；这一行的逐字原文是 `' + op.at + '`，可以直接当 edit_file 的 old_text' : ''))
+    case 'READY': return op.auto
+      ? endZh(op.at ? zj('改法是', t) + '；这一行的逐字原文是 `' + op.at + '`，可以直接当 edit_file 的 old_text，不用再读文件' : t)
+      : endZh((op.trigger ? zj(zj('如果', cond(op.trigger)) + '，那么需要改', t) : zj('需要改的是', t)) + (op.at ? '；这一行的逐字原文是 `' + op.at + '`，可以直接当 edit_file 的 old_text' : ''))
     default: return endZh(t)
   }
 }
@@ -489,7 +494,8 @@ export function autoHintOps(raw, kept, suffix = '') {
   // 带否定 / 犹豫措辞的不补（ops7b 实测：「可以考虑 sudo chown…但不应修改真实 home」被补成改法并排在尾段最后）；超长句不补也不截断
   const has = (k) => kept.some((o) => o.k === k)
   const NEG = /不应|不要|别再|不行|不确定|没用|行不通|不能|可能没|\bnot\b|\bdon't\b|\bshouldn't\b/i
-  const add = (k, h, i) => {
+  const add = (k, h0, i) => {
+    const h = h0.replace(/^(?:[-*•]|\d+[.)]|[（(]\d+[）)])\s*/, '')   // v12.7：原文列表项去掉项目符号（仍是原文子串）
     if (has(k) || h.length > 150 || NEG.test(h) || covered(h) || (suffix && suffix.includes(h))) return
     out.push({ id: 'h' + k[0].toLowerCase() + (i + 1), idx: 10000 + out.length, k, ev: 'derived', kind2: null, text: stripEnd(h), anchor: h.slice(0, 40),
       key: '', src: '', alt: '', why: '', then: '', trigger: '', supersedes: '', deps: [], retracts: [], auto: true })
@@ -793,7 +799,7 @@ const maxRejectRatio = (cfg) => (typeof cfg.compressV4MaxRejectRatio === 'number
  *   （它们比渲染稿里后段的结论旧；放前面 ⇒ 最新状态仍在最后，不会被旧原文盖过）
  */
 export function compileOpsV4(rawOps, raw, cfg = {}, budget = null, stats = {}, opts = {}) {
-  const v = validateOps(rawOps, raw)
+  const v = validateOps(rawOps, raw, cfg.compressCtx || '')
   const byRule = {}
   for (const r of v.rejected) byRule[r.rule] = (byRule[r.rule] || 0) + 1
   Object.assign(stats, { ops: v.total, valid: v.kept.length, rejected: byRule, converted: v.converted.length })
@@ -813,6 +819,17 @@ export function compileOpsV4(rawOps, raw, cfg = {}, budget = null, stats = {}, o
   const auto = cfg.compressV4AutoHints === false ? [] : autoHintOps(raw, kept0, typeof opts.rawSuffix === 'string' ? opts.rawSuffix : '')
   const kept = auto.length ? [...kept0, ...auto] : kept0
   if (auto.length) stats.autoHints = auto.length
+  // 理论 S8-R7（ops 路）：没有落点的改法条目，按标识符 / 文件名重叠从原文引文与本回合观察（compressCtx）里绑一个逐字落点
+  //   （validateOps 里的 locusFromRaw 只看原文；观察里的行——如测试节选的 `hedgeAfterMs: 1600`——此前绑不上）
+  if (cfg.compressV4DirectBind !== false) {
+    let cands = null
+    for (const op of kept) {
+      if (op.k !== 'READY' || op.at) continue
+      if (!cands) cands = locusCandidates(raw, cfg.compressCtx || '')
+      const hit = bindLocus(op.text, cands, raw)
+      if (hit) { op.at = hit.span; stats.boundReady = (stats.boundReady || 0) + 1 }
+    }
+  }
   const sel = selectOps(kept, { budget: b, lang })
   const suffix = typeof opts.rawSuffix === 'string' ? opts.rawSuffix : ''
   // 有原文尾巴时不出尾段：尾巴本身就是最新的推理，「所以现在…」会比它旧

@@ -27,6 +27,12 @@ oracle 与自动稿的「下一步」**都是复现**，差别全部在判读分
   落点在手优先、最小改动次之；不写 A 或 B）；规则 3「下一步工具调用是 X」= 原文实际发出的那条（回溯一致：压缩稿位于可见回答之前，
   改写它会与已发出的调用矛盾），**撤回 v4d1 的下一步仲裁与证据充分性标准**（effect-16 没有一次胜利来自它）；样例改为「先拨测再改」
   的两分支形态且每个分支闭合、示范候选落定（v4d1 样例的分支是开放的「另查 DNS」，flash 照抄成了开放分支）。
+- **R7 同样用到 ops 路（生产 v4 缺省的 ops→散文）**：① `validateOps(rawOps, raw, ctx)`：标识符出处 = 原文 + 观察（I2 与 READY.at 的核真都认
+  compressCtx；锚点仍只认原文）；② 没有落点的 READY（含代码补的改法条目）按 `bindLocus` 从原文引文与观察里绑一个逐字落点（`stats.boundReady`），
+  自动改法条目带落点渲染为「改法是 …；这一行的逐字原文是 `…`，可以直接当 edit_file 的 old_text，不用再读文件」；③ `fixHints` 的改法词补
+  拉大 / 增大 / 调大 / 调小（flaky 原文「增大时间差，例如 hedgeAfterMs 2000ms」此前漏抓 ⇒ 没有 READY 可补），列表项去项目符号。
+  零成本重编译 ops9p（`transfer/direct-ops9u.json`，待评 `v4u`）：flaky 尾段从「…再修。」变为「…再修。改法是增大时间差，例如主请求 1000ms，
+  hedgeAfterMs 2000ms…；这一行的逐字原文是 `hedgeAfterMs: 1600`…」；其余 4 题不变或只多一处落点。
 - **compressCtx 自动构造**（`compressCtxAuto`，缺省开；`compressCtxMaxChars` 8000）：R5 / R7 的生产前提——逐字锚点与落点来自工具观察，
   压缩器必须能对着观察核真。评测一直有 ctx（compile-direct 注入任务原文），生产此前恒为空 ⇒ 观察里的代码行会被程序门当编造剥掉、
   分支无落点可绑。`messages.js buildCompressCtx(messages)`：最后一条人类 user + 本回合全部工具调用与结果（pi-ai 块形 `toolCall` / `tool-result`
@@ -53,7 +59,7 @@ oracle 与自动稿的「下一步」**都是复现**，差别全部在判读分
   用法头加直写命令。
 - `index.js` 导出 `bindFixBranches / bindLocus / strongTokens / isFixBranch / usableLocus / buildCompressCtx / compressCtxFor`；
   `index.d.ts` 补 `compressV4Direct*` / `compressCtx*`。
-- 自测 604 / 0 / 1（新增 v4 §5p 六条、§5q 四条；compress §4b3；compress §4b2 / §4c2；hook-wiring §6 端到端：工具结果 → compressCtx → 提示词 → 核真 → 绑定 → 出生文本）。
+- 自测 606 / 0 / 1（新增 v4 §5p 六条、§5q 四条、§5r 两条；compress §4b3；compress §4b2 / §4c2；hook-wiring §6 端到端：工具结果 → compressCtx → 提示词 → 核真 → 绑定 → 出生文本）。
 
 ### 状态（诚实记录）
 - **未实测**：本会话沙盒只放行 GitHub / npm / pypi，`api.a6api.com` 与 `api.deepseek.com` 的 TLS 握手被切断，付费编译与评测都跑不了。

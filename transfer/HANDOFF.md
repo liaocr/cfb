@@ -17,7 +17,7 @@ cp transfer/recordings.json /home/user/live-all/recordings.json
 cp transfer/direct-*.json /home/user/
 cp transfer/oracle/* /home/user/oracle/
 cp -r transfer/effect-* /home/user/
-cd /home/user/cfb && node verify.mjs   # 应 604 通过 / 0 失败 / 1 跳过（v12.7.0）
+cd /home/user/cfb && node verify.mjs   # 应 606 通过 / 0 失败 / 1 跳过（v12.7.0）
 ```
 
 ## 铁规矩（用户明说的，别问、别违反）
@@ -98,13 +98,14 @@ node tools/compile-direct.mjs --base-url $DEEPSEEK_BASE_URL --model $DEEPSEEK_MO
   注意窗口不是每次都付：编译与主模型生成可见回答**并行**，只有可见回答结束时还没编好才等（hold）。评测分是离线编译的，转正前量真实 hold：
   `node tools/v4-live.mjs --replay /home/user/live-all/recordings.json --modes v4 --cfg '{"compressV4Direct":true,"distillStream":true}' --base-url $DEEPSEEK_BASE_URL --model $DEEPSEEK_MODEL --out /home/user/live-direct`
   （v4-live 现在会把任务原文当 compressCtx，与生产 buildCompressCtx 同口径；看每行 `hold=` 与 why 分布）。
-- 后备候选（未做）：R7 用到 ops 路（v4t）——ops9p 的 flaky 分支是「…再修」且没有 READY-fix，需要从原文改法候选合成 READY 并用 bindLocus 绑落点；
-  sse 的失败形态是「分支没覆盖观察的实际取值 + 改法跨两处」（EFFECT-EVAL §13），是 R7 之后的下一个规格缺口（判读覆盖）。
+- R7 已同样用到 ops 路（生产 v4 缺省）：`transfer/direct-ops9u.json` = ops9p 零成本重编译（flaky 尾段多了「改法是增大时间差…；逐字原文是 `hedgeAfterMs: 1600`」）。
+  第 C 轮（在 A/B 之后，仍是 raw + 1 变体）：`--report v4u:v4=/home/user/direct-ops9u.json --variants raw,v4u`，与 v4t（5.8 / flaky 2.5）比。
+- sse 的失败形态是「分支没覆盖观察的实际取值 + 改法跨两处」（EFFECT-EVAL §13），是 R7 之后的下一个规格缺口（判读覆盖），未做。
 - 推送：本会话受平台约束只能推 `arena/01a0eba2-cfb` 分支（已推）；回 main 需要有权限的一方 fast-forward 合并（`git push … arena/01a0eba2-cfb:main`），不要 force。
 
 ## transfer/ 文件地图（都是 GitHub 主分支上没有的）
 - `MEMORY.md` 上一会话记忆；（密钥不在库里，用户口头提供）`recordings.json` 6 条真机录音（5 评测题 + session-mixup）
-- `direct-*.json` 各轮编译产物（ops5…9p、od/oe/of；带 `side` 字段的可 `--recompile`）；`direct-og-src.json`（oF/oE 五条 side 合集）→ `direct-og.json`（R7 门重编译，待评）
+- `direct-*.json` 各轮编译产物（ops5…9p、od/oe/of；带 `side` 字段的可 `--recompile`）；`direct-og-src.json`（oF/oE 五条 side 合集）→ `direct-og.json`（R7 门重编译，待评 oG）；`direct-ops9u.json`（ops9p + R7 ops 路，待评 v4u）
 - `oracle/A.json B.json C.json` 手写稿行文件（源码在 `docs/analysis/oracle/*.py`）
 - `effect-6 … effect-16` 评测结果目录（effect-16 是累计全集，含 raw/v4q…v4t/oA…oF 全部行，可复用）
 - 临时物：以后删掉 `transfer/` 回 main 时记得 `node manifest.mjs` 重生成清单。

@@ -220,7 +220,7 @@ export function buildCompressPromptV4(cot) {
  * 效果评测：原文里已想好的改法是主模型下一轮能直接动手的关键，但副模型 5 个任务只标出 1 个（召回不足）。
  * 线索只是原文逐字摘句（不增加事实），由副模型判断采用（READY）/ 已否定（REFUTED）/ 泛泛一提（忽略）。
  */
-const FIX_RE = /(修复|修正|改成|改为|改用|改回|回滚|应改|应该改|替换为|换成|加上|加入|去掉|删掉|去除|拉开|放宽|\bfix\b|\brevert\b|\breplace\b|change [^.]{0,40} to)/i
+const FIX_RE = /(修复|修正|改成|改为|改用|改回|回滚|应改|应该改|替换为|换成|加上|加入|去掉|删掉|去除|拉开|拉大|增大|调大|调小|放宽|\bfix\b|\brevert\b|\breplace\b|change [^.]{0,40} to)/i   // v12.7：+拉大 / 增大 / 调大 / 调小（flaky 原文「增大时间差，例如 hedgeAfterMs 2000ms」此前漏抓）
 const CONCRETE_RE = /`[^`]+`|[\w.-]+\.(?:js|mjs|ts|json|ya?ml|py|go|rs|sh)\b|\b[a-z]+[A-Z]\w*|\b\w+_\w+|\d{2,}|\/[\w.-]+\//
 const COND_RE = /(如果|若|假如|要是|\bif\b)[^。\n]{0,120}(则|就|说明|那么|意味|再|才|=>|→|⇒|主因|排除|\bthen\b|means)/i
 /** v12.5 判读线索：原文里「若结果 A ⇒ 结论/动作」的句子（逐字，最后 max 条） */

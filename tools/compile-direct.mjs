@@ -45,9 +45,10 @@ export async function recompile(direct, recs, cfg = {}) {
     // v4d 行：散文直写，重编译 = 重跑程序门（锚点逐字校验），零调用
     const isV4d = String(r.promptVersion || '').startsWith('compress-v4d')
     const ctx = (TASKS.find((t) => t.id === r.id) || {}).user || ''
+    // ops 行同样带 ctx（v12.7：生产由 plugin 自动构造 compressCtx，ops 路的落点绑定也用它）
     const out = isV4d
       ? I.compileV4Direct(r.side, raw, { ...c, compressCtx: ctx })
-      : I.compileV4(r.side, raw, c, I.v4Budget(c))
+      : I.compileV4(r.side, raw, { ...c, compressCtx: ctx }, I.v4Budget(c))
     // v12.7：生产闸门（birth.js birthAccept：空白 / 发明标识符 / token 不降 / 净省不足）离线同判 ⇒ 评测稿在真机会不会被原文放行，这里就能看到
     const accept = out.ok ? acceptOf(I, raw, out.text, { ...c, compressCtx: ctx }) : undefined
     return out.ok ? { ...r, why: 'condensed', text: out.text, outChars: out.text.length, kinds: out.stats.kinds, gate: out.stats, accept, recompiled: true }

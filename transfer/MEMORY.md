@@ -73,3 +73,5 @@
   （真机 3.6–10.9 s/块 vs 缺省 1500）。转正前必须用 v4-live 量真实命中率。verify 603/0/1。
 - 续：compile-direct 加 accept 列（birthAccept 纯函数抽出）⇒ 发现第二个真机误杀：gateTokens 的 `…`≤80 正则在长片段下把散文配成代码（oG 3/5 会被放行）。
   改 split 配对；历史 138 份稿 135 过闸（3 份真编造）。oG 五份 accept=ok。verify 604/0/1。
+- 续：R7 用到 ops 路——validateOps 认 ctx 出处、无 at 的 READY 用 bindLocus 绑、autoHint 去项目符号、FIX_RE +拉大/增大/调大/调小；
+  ops9p 重编译 → direct-ops9u.json（flaky 尾段闭合到 `hedgeAfterMs: 1600`）。compile-direct 的 ops 行也带 ctx。verify 606/0/1。
