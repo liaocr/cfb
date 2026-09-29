@@ -992,6 +992,29 @@ try {
     assert.ok(!I.buildCompressPromptV4Direct('与观察毫无重叠的原文', ctx).includes(H), '原文没讨论过的行不进清单（无重叠 ⇒ 空块）')
     assert.equal(I.inHandLinesBlock(cot, ''), '')
   })
+  await test('5u1 多轮台账 buildLedger / ledgerBlock（v12.9.0，理论 S10.2）：落定 / 排除 / 验收 / 未解从前几轮稿里逐字摘；已改 + 其后验收；已走过的路带结果首行 + 失败行；纯文本「[tool: …]」回灌也算工具结果；台账进 compressCtx 且在工具结果之前', () => {
+    const msgs = [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: '你是编码 Agent。CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次。' },
+      { role: 'assistant', reasoning_content: '看起来是时序竞态。清除 timer 不选：定时器先于 settle 触发。改法只落一个：改 test/hedge.selftest.mjs 的 `hedgeAfterMs: 1600` 这一行，让余量拉大。如果出现 FAIL，那么假设坐实：edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（原样行），new_text 是 `hedgeAfterMs: 3000`。验收是再跑 50 次循环，预期全 PASS；本地全 PASS 不算证据，因为本地从不失败。got 1712 与 1600 对不上，不改变落点。', content: '先复现。\n[tool: bash] taskset -c 0,1 bash -lc \'for i in $(seq 1 50); do node test/hedge.selftest.mjs || break; done\'' },
+      { role: 'user', content: '[tool: bash 结果]\nrun 1 PASS\nrun 2 FAIL §4 got 1712' },
+      { role: 'assistant', reasoning_content: '坐实了。', content: '[tool_call edit_file] {"path":"test/hedge.selftest.mjs","old_text":"hedgeAfterMs: 1600","new_text":"hedgeAfterMs: 3000"}\n[tool_call bash] {"command":"npm test"}' },
+      { role: 'user', content: [{ type: 'tool-result', toolCallId: 'e1', content: [{ type: 'text', text: 'ok（已写入）' }] }, { type: 'tool-result', toolCallId: 'b1', content: [{ type: 'text', text: 'PASS 12 / FAIL 0' }] }] },
+    ]
+    const L = I.buildLedger(msgs)
+    assert.equal(L.rounds, 2)
+    assert.equal(L.decided.length, 1); assert.ok(/改法只落一个：改 test\/hedge/.test(L.decided[0].text))
+    assert.equal(L.excluded.length, 1); assert.equal(L.accept.length, 1); assert.equal(L.open.length, 1)
+    assert.equal(L.edits.length, 1, '稿里的三元组被第 2 轮真实 edit 覆盖，不再算提议：' + JSON.stringify(L.edits))
+    assert.equal(L.edits[0].file, 'test/hedge.selftest.mjs'); assert.equal(L.edits[0].result, 'ok（已写入）'); assert.equal(L.edits[0].verifiedBy.args, 'npm test'); assert.equal(L.edits[0].verifiedBy.result, 'PASS 12 / FAIL 0')
+    assert.equal(L.calls.length, 2); assert.equal(L.calls[0].result, 'run 1 PASS … run 2 FAIL §4 got 1712', '结果首行 + 第一条失败行')
+    const b = I.ledgerBlock(msgs)
+    assert.ok(b.startsWith('【台账】') && b.includes('第 2 轮已改：edit_file test/hedge.selftest.mjs') && b.includes('已走过的路：第 1 轮 bash') && b.includes('上一轮写下的验收'), b)
+    const ctx = I.buildCompressCtx(msgs)
+    assert.ok(ctx.startsWith('你是编码 Agent') && ctx.indexOf('【台账】') > 0 && ctx.indexOf('【台账】') < ctx.indexOf('[tool: '), '台账在 user 之后、工具结果之前：' + ctx.slice(0, 200))
+    assert.equal(I.buildCompressCtx(msgs.slice(0, 2)), '你是编码 Agent。CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次。', '没有前几轮 ⇒ 无台账、行为同 v12.8')
+    assert.ok(!I.inHandLinesBlock('hedgeAfterMs 1600 3000', ctx).includes('已改'), '台账行不会被当成在手的文件行')
+  })
   // ---- §5q v12.7 compressCtx 自动构造（理论 S8-R5/R7 的生产前提：压缩器要看到 Agent 看到的观察）----
   await test('5q1 buildCompressCtx：最后一条人类 user + 本回合工具结果（pi-ai 块形与 OpenAI 形都认），格式同 TASKS', () => {
     const msgs = [

@@ -42,7 +42,7 @@ export {
 export { readApiKey, readProviderSpec, endpointUrl, resolveProviderEndpoint } from './src/provider.js'
 
 // ── 消息工具与保真度 ─────────────────────────────────────────────────────────
-export { provenanceOf, mapMessagesToSeqs, textOfContent, reasoningTextOf, artRefsOf, buildCompressCtx, editToolOf } from './src/messages.js'
+export { provenanceOf, mapMessagesToSeqs, textOfContent, reasoningTextOf, artRefsOf, buildCompressCtx, buildLedger, ledgerBlock, editToolOf } from './src/messages.js'
 export { fidelity, protectedTokens, inventedIdentifiers } from './src/fidelity.js'
 
 // ── 观测 ─────────────────────────────────────────────────────────────────────
