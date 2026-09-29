@@ -464,7 +464,8 @@ export async function birthFinish(task, deps = {}) {
     //   原文放行是已知安全态。来源：v4 理论不变量 I2（docs/theory 第五卷），判据见 fidelity.inventedIdentifiers。
     if (cfg.birthIdentifierGate !== false) {
       let invented = []
-      try { invented = inventedIdentifiers(raw, candidate) } catch { invented = [] }
+      // v12.7：出处 = 原文 + 本回合观察（compressCtx）；模板的工具接口词不算发明（fidelity.GATE_ALLOW）
+      try { invented = inventedIdentifiers(raw, candidate, { extra: cfg.compressCtx || '' }) } catch { invented = [] }
       if (invented.length) return pass('invented-identifier', handle, { invented })
     }
     const netSaved = raw.length - candidate.length

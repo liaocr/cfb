@@ -170,6 +170,59 @@ try {
       assert.ok(readTrace(traceFile).some(([t]) => t === 'birth-dry-run-stream'))
     })
   })
+
+  // ══ 6. v12.7 compressCtx 自动构造经真实 llm/stream 钩子贯通（理论 S8-R5/R7 的生产前提）════════
+  //   出站消息里的工具结果 ⇒ 压缩提示词带【当前任务与观察】⇒ 只在观察里出现的 `…` 片段被程序门核真（不被当编造剥掉）⇒ 分支绑到它。
+  await test('6. birth + v4 直写：工具结果进 compressCtx；观察里的逐字片段核真；分支落点绑定；trace 带 ctxChars', async () => {
+    const bodies = []
+    const draft = '看起来余量只有 100ms。所以下一步工具调用是 bash 复现。如果失败复现，那么改测试把 `hedgeAfterMs: 1600` 拉大；如果始终不复现，那么去查 CI 负载。'
+    const server = http.createServer((req, res) => {
+      let b = ''
+      req.on('data', (c) => { b += c })
+      req.on('end', () => {
+        bodies.push(b)
+        res.writeHead(200, { 'content-type': 'text/event-stream' })
+        res.end('data: ' + JSON.stringify({ choices: [{ delta: { content: draft }, finish_reason: 'stop' }] }) + '\n\ndata: [DONE]\n\n')
+      })
+    })
+    await new Promise((r) => server.listen(0, '127.0.0.1', r))
+    try {
+      const baseUrl = 'http://127.0.0.1:' + server.address().port
+      const traceFile = path.join(home, 't-ctx.log')
+      const hooks = applyPlugin({
+        baseUrl, traceFile, over: { compressPrompt: 'v4', compressV4Direct: true, compressV4Incremental: false, prewarm: false, birthFinishWaitMs: 3000, birth: { finishWaitMs: 3000 } },
+        ctxGet: (k) => (k === 'cmbStore' ? { putText: async () => ({ handle: 'art://ctx' }) } : null),
+      })
+      await hooks.get('agent/pre-step')({ agent: { session: SESSION([]) } }, async () => ({}))
+      // 推理原文**没有**复述 hedgeAfterMs: 1600 —— 这一行只在工具结果里
+      const raw = '我们需要找出 CI 偶发失败的原因。' + '两个定时器只差 100ms，2 核 CI 上事件循环抖动就能吃掉。'.repeat(12) + '下一步先限到 2 核循环复现。'
+      const messages = [
+        { role: 'user', content: '你是编码 Agent。CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次。' },
+        { role: 'assistant', content: [{ type: 'toolCall', id: 'c1', name: 'read_file', arguments: { path: 'test/hedge.selftest.mjs' } }] },
+        { role: 'user', content: [{ type: 'tool-result', toolCallId: 'c1', content: [{ type: 'text', text: 'server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600\nassert.equal(meta.hedgeStartedAt, null)' }] }] },
+      ]
+      const chunks = [
+        { type: 'block-start', index: 0, blockType: 'reasoning' },
+        { type: 'reasoning-delta', index: 0, text: raw },
+        { type: 'block-end', index: 0, block: { type: 'reasoning', text: raw } },
+        { type: 'finish', reason: { kind: 'end' } },
+      ]
+      const out = []
+      for await (const c of hooks.get('llm/stream')({ model: 'fixture', messages }, () => (async function* () { for (const c of chunks) yield c })())) out.push(c)
+      assert.equal(bodies.length, 1, '一次副模型调用')
+      const prompt = JSON.parse(bodies[0]).messages.map((m) => m.content).join('\n')
+      assert.ok(prompt.includes('【当前任务与观察】'), '提示词带观察块')
+      assert.ok(prompt.includes('[tool: read_file] path=test/hedge.selftest.mjs\nserver 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600'), prompt.slice(-600))
+      const be = out.find((c) => c.type === 'block-end')
+      assert.ok(be && be.block.text !== raw, '压缩生效（不是原文放行）')
+      assert.ok(be.block.text.includes('`hedgeAfterMs: 1600`'), '只在观察里出现的片段仍算逐字（不被剥反引号）：' + be.block.text)
+      assert.ok(be.block.text.includes('拉大——落点 `hedgeAfterMs: 1600` 的逐字原文已给出，可以直接当 edit_file 的 old_text'), 'R7 分支绑定：' + be.block.text)
+      const compiled = readTrace(traceFile).find(([t]) => t === 'compiler-v4-compiled')
+      assert.ok(compiled && compiled[1].ok === true && compiled[1].ctxChars > 0 && compiled[1].boundBranches === 1, JSON.stringify(compiled && compiled[1]))
+      const settled = readTrace(traceFile).find(([t]) => t === 'birth-distill-settled')
+      assert.ok(settled && /compress-v4d2:ctx/.test(settled[1].promptVersion), 'promptVersion 标 :ctx（生产 trace 可见观察到位）：' + JSON.stringify(settled && settled[1].promptVersion))
+    } finally { server.closeAllConnections(); await new Promise((r) => server.close(r)) }
+  })
 } finally {
   if (previous == null) delete process.env.DSH_HOME; else process.env.DSH_HOME = previous
   fs.rmSync(home, { recursive: true, force: true })

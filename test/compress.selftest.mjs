@@ -174,6 +174,19 @@ try {
     const pt = traces.find(([t]) => t === 'birth-passthrough')
     assert.ok(pt && pt[1].why === 'invented-identifier' && pt[1].invented.includes('/opt/fake/conf.yaml') && pt[1].invented.includes('parseSettings'), JSON.stringify(pt))
   })
+  await test('§4b2 v12.7：模板的工具接口词（edit_file / old_text）不算发明；观察（opts.extra = compressCtx）里的行不算发明', () => {
+    assert.deepEqual(inventedIdentifiers(RAW, '`APP_CONF` 这一行的逐字原文已给出，可以直接当 edit_file 的 old_text，不用 read_file。'), [])
+    assert.deepEqual(inventedIdentifiers(RAW, '落点 `hedgeAfterMs: 1600` 的逐字原文已给出'), ['hedgeAfterMs: 1600', 'hedgeAfterMs'], '没有观察时照旧报')
+    assert.deepEqual(inventedIdentifiers(RAW, '落点 `hedgeAfterMs: 1600` 的逐字原文已给出', { extra: '[tool: read_file] test/hedge.selftest.mjs\nserver 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600' }), [])
+  })
+  await test('§4c2 birthFinish：compressCtx 里的行 + 可用句 ⇒ condensed（此前被 invented-identifier 误放行）', async () => {
+    const ctx = '[tool: read_file] test/hedge.selftest.mjs\nserver 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600'
+    const draft = '进程读 /srv/app/conf.yaml：路径错配。如果复现，那么改 `hedgeAfterMs: 1600`——这一行的逐字原文已给出，可以直接当 edit_file 的 old_text。'
+    const { r } = await runFinish(draft, { compressCtx: ctx })
+    assert.equal(r.why, 'condensed', JSON.stringify(r))
+    const { r: r2 } = await runFinish(draft)
+    assert.equal(r2.why, 'invented-identifier', '没有观察 ⇒ 仍当编造')
+  })
   await test('§4d birthFinish：忠实摘要 ⇒ 照常 condensed', async () => {
     const { r } = await runFinish('进程读 /srv/app/conf.yaml 而 read_file 读 /etc/app/conf.yaml：路径错配，非权限。根因 `APP_CONF` 指向旧路径（loadConfig / config_loader.py）。')
     assert.equal(r.why, 'condensed')

@@ -33,9 +33,14 @@ oracle 与自动稿的「下一步」**都是复现**，差别全部在判读分
   与 OpenAI `tool_calls` / `role:tool` 都认；形状不认识不猜），格式同 `tools/v4-live.mjs` 的 TASKS；每条结果头 2/3 + 尾 1/3 截到 3000，
   超总预算先丢最旧。`plugin.js compressCtxFor(callCfg, options)` 在 llm/stream 时派生 streamCfg（只在 v4、未显式给 compressCtx 时；异常 ⇒ 原配置）。
   `compileV4Direct` 统计 `ctxChars`；promptVersion 的 `:ctx / :noctx` 后缀在生产 trace 里可见。
+- **修生产 bug：发明标识符闸误杀 R5 可用句与观察里的落点**（hook-wiring §6 端到端抓到）。`birth.js` 的 I2 闸只对着原文查，
+  而 v12.5 起渲染 / 程序门写的「可以直接当 edit_file 的 old_text」本身含 snake_case 词 `edit_file` / `old_text` ⇒ 原文没提过这两个词的
+  每一份带可用句 / 落点行的稿在真机上都会被 `invented-identifier` 原文放行（评测走 compile-direct 绕过了 birth.js，所以从没暴露）。
+  现在：模板的工具接口词（`fidelity.GATE_ALLOW`：edit_file / old_text / new_text / read_file）不算发明；出处 = 原文 + `compressCtx`
+  （观察里有、原文没复述的行不是发明，S8-R5/R7 本来就要求落点来自观察）。没有观察时照旧严格。
 - `index.js` 导出 `bindFixBranches / bindLocus / strongTokens / isFixBranch / usableLocus / buildCompressCtx / compressCtxFor`；
   `index.d.ts` 补 `compressV4Direct*` / `compressCtx*`。
-- 自测 599 / 0 / 1（新增 §5p 六条、§5q 三条）。
+- 自测 602 / 0 / 1（新增 v4 §5p 六条、§5q 三条；compress §4b2 / §4c2；hook-wiring §6 端到端：工具结果 → compressCtx → 提示词 → 核真 → 绑定 → 出生文本）。
 
 ### 状态（诚实记录）
 - **未实测**：本会话沙盒只放行 GitHub / npm / pypi，`api.a6api.com` 与 `api.deepseek.com` 的 TLS 握手被切断，付费编译与评测都跑不了。

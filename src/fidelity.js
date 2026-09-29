@@ -111,11 +111,21 @@ function gateTokens(text) {
  */
 // 引号 / 空白差异不算发明（v12.4 真机误伤：原文日志 "rawChars":8123，摘要写成 `rawChars:8123`）
 const squash = (s) => String(s).replace(/["'`\s]+/g, '')
-export function inventedIdentifiers(src, out) {
-  const hay = String(src || '')
+// v12.7：渲染模板 / 程序门自己的工具接口词（R5 可用句「可以直接当 edit_file 的 old_text」）不是对世界的断言，不算发明。
+//   此前只对着原文查 ⇒ 原文没提过 edit_file 的每一份带可用句的稿都被当编造放行（hook-wiring §6 抓到）。
+const GATE_ALLOW = new Set(['edit_file', 'old_text', 'new_text', 'read_file'])
+/**
+ * @param src   原文（思维链）
+ * @param out   压缩稿
+ * @param opts.extra  额外的合法出处：本回合的任务与工具观察（cfg.compressCtx）。逐字锚点 / 落点本来就该来自观察（S8-R5/R7），
+ *               观察里有、原文没复述的行不是发明。
+ */
+export function inventedIdentifiers(src, out, opts = {}) {
+  const hay = String(src || '') + (opts && opts.extra ? '\n' + String(opts.extra) : '')
   let sq = null
   const res = []
   for (const t of gateTokens(out)) {
+    if (GATE_ALLOW.has(t)) continue
     if (hay.includes(t)) continue
     const st = squash(t)
     if (st.length >= 3 && (sq ??= squash(hay)).includes(st)) continue

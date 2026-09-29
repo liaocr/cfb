@@ -66,3 +66,6 @@
 - 续：补生产前提 `compressCtx` 自动构造（messages.js buildCompressCtx + plugin compressCtxFor；cfg compressCtxAuto/compressCtxMaxChars；§5q 三条；verify 599/0/1）。
   sse 逐样本：全部稿（含 oracle）都 `sed -n '200,245p' src/transport.js`——工具结果里 `ok: r.finish === 'stop'` 没被任何分支覆盖 + 改法跨两处 ⇒ 记为 R7 之后的缺口「判读覆盖」。
   ops 路的 R7（合成 READY + bindLocus）作后备候选未做。
+- 续：写 hook-wiring §6 端到端（真实 apply()：tool-result → compressCtx → 提示词 → 核真 → 绑定）时抓到**生产 bug**：birth.js 发明标识符闸只对原文查，
+  `edit_file`/`old_text`（R5 可用句自带）被当发明 ⇒ 整份稿 invented-identifier 放行；v12.5 起潜伏，评测绕过 birth.js 从没暴露。
+  修：fidelity.GATE_ALLOW 豁免模板接口词；inventedIdentifiers(src,out,{extra: compressCtx})；birth.js 传 compressCtx。compress §4b2/§4c2。verify 602/0/1。
