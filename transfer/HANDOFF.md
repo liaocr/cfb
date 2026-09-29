@@ -89,6 +89,9 @@ node tools/compile-direct.mjs --base-url $DEEPSEEK_BASE_URL --model $DEEPSEEK_MO
 - 改门规则只 `--recompile`（`direct-og-src.json` 是 5 条 side 输出的合集，可反复重编译）；改提示词才重压。
 - 归因用 `node tools/effect-pairs.mjs --results /home/user/effect-17 --variants raw,oG --report oG=/home/user/direct-og.json`（零调用）：
   成对列出压坏 / 压好的样本 + 压缩稿收尾 + 动作类别分布（看 reread-known 率，oracle C 是 20%，raw 35%）。
+- 战略提醒（来自检索，未做）：JetBrains《Complexity Trap》说 agent 上下文里 token 大头是**旧工具输出**，把它们换成占位符（观察遮蔽）
+  就能省一半成本且不伤解题率——那是 DSH 侧的「上下文编辑」，与 cfb 压缩推理正交（AUDIT-V11.5 早判为独立项目）。cfb 的价值主张要按
+  「判断力 / 专注力」讲（回头 read 率、轨迹步数），不要跟观察遮蔽比省钱。
 - 外部佐证已写进理论 S8 末「外部佐证与定位」（DeepSeek 官方：带 tools 时所有前轮 reasoning_content 都拼进上下文；JetBrains Complexity Trap；ACON）。
   以后遇到新问题先查文档 / 论文再动手（用户明确要求）。
 - 同会话补的生产前提：`compressCtx` 自动构造（plugin `compressCtxFor` → `messages.js buildCompressCtx`），v4 时把本回合任务 + 工具结果带给压缩器；

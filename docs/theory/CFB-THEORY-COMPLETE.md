@@ -1902,6 +1902,9 @@ v3/v4 都不复述最终回答。
    reasoning_content 都应传回 API 并被拼进上下文」，漏传返回 400；不带 tools 时传回也被忽略
    （https://api-docs.deepseek.com/guides/thinking_mode/）。这就是 S1 的前提：agent 模式下上一轮思维链不是「已消费的草稿」，
    而是主模型下一步的输入，且每一轮都留在那里——压缩的收益按会话长度累积，压坏的代价也是。
+   对照 Anthropic：extended thinking 的 thinking 块在工具循环内必须**原样**（带签名）传回、前轮的由 API 自动忽略且不计上下文
+   （https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-extended-thinking.html ）——那里既改不了也不累积。
+   所以本项目的杠杆只在「明文传回、允许改写、跨轮累积」的契约下存在，DeepSeek 正是这种契约；换 provider 前先查这一条。
 2. **「回头 read」不是本项目的特例，是摘要式压缩的通病。** JetBrains《The Complexity Trap》（arXiv 2508.21433，SWE-bench Verified ×5 模型）：
    简单的观察遮蔽（把旧工具输出换成占位符、**保留完整的推理 / 动作骨架**）在成本上减半、解题率持平或略胜 LLM 摘要；LLM 摘要造成
    **轨迹变长约 15%**（agent 多走步）。轨迹变长就是我们在单步上量到的「改之前再取证一轮」。他们的两种策略都**不动推理本身**；

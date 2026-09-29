@@ -59,6 +59,7 @@ oracle 与自动稿的「下一步」**都是复现**，差别全部在判读分
   **动作类别分布**（edit / reread-known 再读已看过的文件 / probe / none）。effect-16 全集：raw 回头 read 35%、v4t 50%、oE 60%、oC 20%——
   没有落点的压缩会把「再读一遍」率推到原文之上（与 JetBrains《The Complexity Trap》里「LLM 摘要使轨迹变长 15%」是同一现象的单步版）。
   方法上与 ACON（arXiv 2510.00615）的「成对轨迹失败分析 → 修订压缩指南」同构；理论合订本 S8 末新增「外部佐证与定位」。
+- `tools/effect-eval.mjs` 汇总表新增「回头read」列（同一判定）。
 - `tools/v4-live.mjs`：回放时把任务原文当 `compressCtx`（与生产 `buildCompressCtx` / compile-direct 同口径），直写的时序回放才有落点可核真；
   用法头加直写命令。
 - `index.js` 导出 `bindFixBranches / bindLocus / strongTokens / isFixBranch / usableLocus / buildCompressCtx / compressCtxFor`；
