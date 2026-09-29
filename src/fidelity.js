@@ -142,7 +142,12 @@ export function inventedIdentifiers(src, out, opts = {}) {
   const hay = String(src || '') + (opts && opts.extra ? '\n' + String(opts.extra) : '')
   let sq = null
   // R8b：new_text 段整段豁免（它本来就不在原文里），改查段内标识符——把段内 token 加进待查集合
-  const newSpans = new Set(newTextSpans(out))
+  const newSpans = new Set()
+  for (const sp of newTextSpans(out)) {
+    newSpans.add(sp)
+    const clean = sp.replace(/^[`'"(]+|[`'"),.:;]+$/g, '')
+    if (clean) newSpans.add(clean)
+  }
   const inner = new Set()
   for (const sp of newSpans) for (const t of gateTokens(sp)) if (t !== sp) inner.add(t)
   const res = []

@@ -615,6 +615,8 @@ export function isFixBranch(thenPart) {
     if (/(?:不能|不要|不可|切勿|不应)[^，。；]{0,12}(?:去|就|直接)?$/.test(leadContext)) continue
     // 3. 「设成了什么值 / 被设为」等反问状态描述不是改动动作
     if (/^(?:设为|设成|设小|设大)/.test(m[0]) && /(?:什么|哪|如何|怎样)/.test(thenPart.slice(m.index, m.index + 16))) continue
+    // 4. 「按第一条分支改…」「按上述改法」等引用前文分支的条件描述不是本分支的改法动作
+    if (/(?:按|依照|依据|参照)[^，。；：:]{0,12}(?:分支|条|上述|前面)[^，。；：:]{0,6}$/.test(leadContext)) continue
     // 「需要改用 docker 再复现」：去掉「需要 / 应该 / 直接」这类前导后看动词本身是不是弱改法词
     const lead = /^(?:需要|应该|应|该|就|直接|去)/.exec(m[0])
     const verbAt = m.index + (lead ? lead[0].length : 0)
