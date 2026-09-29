@@ -28,7 +28,11 @@ function walk(dir, base) {
     const abs = path.join(dir, e.name)
     const rel = base ? base + '/' + e.name : e.name
     if (e.isDirectory()) out.push(...walk(abs, rel))
-    else if (!SELF.has(rel)) out.push(rel)
+    else if (!SELF.has(rel)) {
+      // 与 .gitignore 保持一致：忽略 *.log、*.bak 等运行痕迹与临时备份，避免本地生成的日志进入清单导致 CI 检出缺失
+      if (/\.(?:log|bak)(?:-[^/]+)?$/.test(e.name)) continue
+      out.push(rel)
+    }
   }
   return out
 }
