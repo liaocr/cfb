@@ -64,7 +64,7 @@ export function tailSegments(text) {
 const AFFORD_RE = /old_text|逐字原文已给出|可以直接当|可直接当/
 const PROV_RE = /原样|逐字原文|逐字|read_file 里|不带行首缩进|不带缩进|唯一/
 const NOMORE_RE = /不用再|不再复现|不再读|就够了|不用先读|不需要再|不必再/
-const REJECT_RE = /不选|排除|搁置|不走|不是它|无罪|陪跑|先不|不动它|不采|放弃/
+const REJECT_RE = /不选|排除|搁置|不走|不是它|无罪|陪跑|先不|不动它|不采|放弃|否了|否定/
 const CONCRETE_RE = /bash|grep|docker|read_file|sed|taskset|analyze-trace|npm|node|stress|看[^，。]{0,14}(?:日志|代码|定义|来源|使用点|文件|那一行|赋值)|[\w./-]+\.(?:m?js|json|ya?ml|py)|此时不要|此时别|不要动|不动 |不要改|不改/
 const PROBE_ONLY_RE = /^(?:再取证|那时再取证|再看看|另查|再查)[。；]?$/
 const ALIGN_RE = /可见回答|上一轮回答|上一轮的回答|回答里说|回答里写|刚才说要确认|说要确认的/

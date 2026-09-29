@@ -610,9 +610,11 @@ export function isFixBranch(thenPart) {
   for (const m of thenPart.matchAll(re)) {
     // 1. 前面有明确否定（「此时不要改」「不用再改」「不能盲目改」）
     if (NEG_BEFORE_RE.test(thenPart.slice(Math.max(0, m.index - 6), m.index))) continue
-    // 2. 「不能凭…去改」「不要凭…去改」：否定前置的假设排除
+    // 2. 「不能凭…去改」「不要凭…去改」「我自己否了」：否定前置或后置的假设排除
     const leadContext = thenPart.slice(Math.max(0, m.index - 16), m.index)
     if (/(?:不能|不要|不可|切勿|不应)[^，。；]{0,12}(?:去|就|直接)?$/.test(leadContext)) continue
+    const trailContext = thenPart.slice(m.index, Math.min(thenPart.length, m.index + 32))
+    if (/(?:这条候选|这种方案|这种改法|这路)[^，。；]{0,12}(?:否了|放弃|排除|不采|不走|不选)/.test(trailContext)) continue
     // 3. 「设成了什么值 / 被设为」等反问状态描述不是改动动作
     if (/^(?:设为|设成|设小|设大)/.test(m[0]) && /(?:什么|哪|如何|怎样)/.test(thenPart.slice(m.index, m.index + 16))) continue
     // 4. 「按第一条分支改…」「按上述改法」等引用前文分支的条件描述不是本分支的改法动作
