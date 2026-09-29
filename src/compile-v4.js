@@ -541,6 +541,7 @@ export function compileV4Direct(side, raw, cfg = {}) {
   stats.closeLoop = /如果[^。？\n]{1,90}[，,]?\s*(?:那么|就|则)/.test(tail) || /\bif\b[^.\n]{1,90}[,，]?\s*(?:then|,)/i.test(tail)
   stats.provenance = /逐字/.test(text)
   stats.register = /看起来|所以|下一步工具调用/.test(text)
+  if (cfg.compressCtx) stats.ctxChars = String(cfg.compressCtx).length   // 观察上下文到位与否（生产由 plugin 自动构造）
   const maxChars = Number.isFinite(cfg.compressV4DirectMaxChars) && cfg.compressV4DirectMaxChars > 0 ? cfg.compressV4DirectMaxChars : 1300
   if (text.length > maxChars) return { ok: false, reason: 'v4d-too-long', stats }
   // 理论 S8-R7：判读分支的动作闭合与落点绑定（可用句写进分支句内、绑定到具体逐字落点）

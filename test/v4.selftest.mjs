@@ -805,6 +805,51 @@ try {
     assert.ok(!p.includes('证据是否充分按这个标准判'), 'v4d1 的下一步仲裁已撤回')
     assert.ok(I.V4D_TAIL.includes('逐字落点'))
   })
+  // ---- §5q v12.7 compressCtx 自动构造（理论 S8-R5/R7 的生产前提：压缩器要看到 Agent 看到的观察）----
+  await test('5q1 buildCompressCtx：最后一条人类 user + 本回合工具结果（pi-ai 块形与 OpenAI 形都认），格式同 TASKS', () => {
+    const msgs = [
+      { role: 'system', content: 'sys' }, { role: 'user', content: '旧任务' }, { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+      { role: 'user', content: [{ type: 'tool-result', toolCallId: 'c0', content: [{ type: 'text', text: '上一回合的结果' }] }] },
+      { role: 'user', content: '你是编码 Agent。CI 里 test/hedge.selftest.mjs 大约每5次失败1次。' },
+      { role: 'assistant', content: [{ type: 'text', text: '先看' }, { type: 'toolCall', id: 'c1', name: 'read_file', arguments: { path: 'test/hedge.selftest.mjs' } }] },
+      { role: 'user', content: [{ type: 'tool-result', toolCallId: 'c1', content: [{ type: 'text', text: 'server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600\nassert.equal(meta.hedgeStartedAt, null)' }] }] },
+      { role: 'assistant', tool_calls: [{ id: 'c2', function: { name: 'bash', arguments: '{"command":"nproc"}' } }] },
+      { role: 'tool', tool_call_id: 'c2', content: '2' },
+    ]
+    const ctx = I.buildCompressCtx(msgs)
+    assert.ok(ctx.startsWith('你是编码 Agent。CI 里'), ctx.slice(0, 40))
+    assert.ok(!ctx.includes('旧任务') && !ctx.includes('上一回合的结果'), '只取当前回合')
+    assert.ok(ctx.includes('[tool: read_file] path=test/hedge.selftest.mjs\nserver 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600'), ctx)
+    assert.ok(ctx.includes('[tool: bash] command=nproc\n2'), ctx)
+    // 这份 ctx 就能让程序门核真观察里的行、并给分支绑落点
+    const r = I.compileV4Direct('看起来余量只有 100ms。所以下一步工具调用是 bash 复现。如果失败复现，那么改测试把 `hedgeAfterMs: 1600` 拉大。', '原文没复述这一行', { compressCtx: ctx })
+    assert.equal(r.stats.inventedSpans, 0); assert.equal(r.stats.ctxChars, ctx.length); assert.deepEqual(r.stats.boundBy, ['span'])
+  })
+  await test('5q2 buildCompressCtx：预算（每条结果头 2/3 + 尾 1/3；超总预算先丢最旧）、空输入、形状不认识不猜', () => {
+    const big = (n, ch) => ch.repeat(n)
+    const msgs = [{ role: 'user', content: big(50, 'x') },
+      { role: 'user', content: [{ type: 'tool-result', toolCallId: 'a', content: [{ type: 'text', text: big(100, 'a') }] }] },
+      { role: 'user', content: [{ type: 'tool-result', toolCallId: 'b', content: [{ type: 'text', text: big(100, 'b') }] }] }]
+    const ctx = I.buildCompressCtx(msgs, { maxChars: 120, userChars: 30, perResultChars: 40 })
+    assert.ok(ctx.length <= 120, String(ctx.length))
+    assert.ok(ctx.startsWith(big(20, 'x') + '\n…\n' + big(9, 'x')), ctx)
+    assert.ok(!ctx.includes('aaaa') && ctx.includes('[tool: ?]\nbbbb'), '丢最旧、留最新；没有调用侧信息时工具名写 ?（不猜）')
+    assert.equal(I.buildCompressCtx([]), ''); assert.equal(I.buildCompressCtx(null), ''); assert.equal(I.buildCompressCtx([{ role: 'system', content: 'x' }]), '')
+    assert.equal(I.buildCompressCtx([{ role: 'user', content: [{ type: 'image', data: '...' }] }]), '', '没有文本的 user 不算人类任务')
+  })
+  await test('5q3 compressCtxFor：只在 v4 且未显式给 compressCtx 时自动构造；异常 ⇒ 原配置；plugin 的 birth 分支已接线', () => {
+    const msgs = [{ role: 'user', content: '任务' }, { role: 'tool', tool_call_id: 'z', content: 'r' }]
+    assert.equal(I.compressCtxFor({ compressPrompt: 'v4' }, { messages: msgs }).compressCtx, '任务\n\n[tool: ?]\nr')
+    assert.equal(I.compressCtxFor({ compressPrompt: 'v3' }, { messages: msgs }).compressCtx, undefined)
+    assert.equal(I.compressCtxFor({ compressPrompt: 'v4', compressCtxAuto: false }, { messages: msgs }).compressCtx, undefined)
+    assert.equal(I.compressCtxFor({ compressPrompt: 'v4', compressCtx: 'X' }, { messages: msgs }).compressCtx, 'X')
+    const base = { compressPrompt: 'v4' }
+    assert.equal(I.compressCtxFor(base, { messages: [] }), base, '空 ctx ⇒ 原对象')
+    assert.equal(I.compressCtxFor(base, { get messages() { throw new Error('boom') } }), base, '异常 ⇒ 原配置')
+    assert.equal(I.compressPromptVersion(I.compressCtxFor({ compressPrompt: 'v4', compressV4Direct: true }, { messages: msgs })), 'compress-v4d2:ctx')
+    const src = fs.readFileSync(new URL('../src/plugin.js', import.meta.url), 'utf8')
+    assert.ok(/const streamCfg = compressCtxFor\(callCfg, options\)/.test(src), 'plugin.js birth 分支用 compressCtxFor 派生 streamCfg')
+  })
 } finally {
   if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome
 }

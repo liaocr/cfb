@@ -17,7 +17,7 @@ cp transfer/recordings.json /home/user/live-all/recordings.json
 cp transfer/direct-*.json /home/user/
 cp transfer/oracle/* /home/user/oracle/
 cp -r transfer/effect-* /home/user/
-cd /home/user/cfb && node verify.mjs   # 应 596 通过 / 0 失败 / 1 跳过（v12.7.0）
+cd /home/user/cfb && node verify.mjs   # 应 599 通过 / 0 失败 / 1 跳过（v12.7.0）
 ```
 
 ## 铁规矩（用户明说的，别问、别违反）
@@ -65,7 +65,7 @@ oD 4.8 → oE 5.5（**wrong-model 10.0**）→ oF 6.0(3 任务，**perf 10.0**)�
   「下一步工具调用是 X」必须是可见回答里那条（回溯一致），R6 的「下一步仲裁」撤回。
 - **已落地（v12.7.0，未实测）**：程序门 `bindFixBranches`（`compressV4DirectBind`，缺省开）：分支切分 → 改法判定（含否定 / 换复现手段排除）→
   落点绑定（标识符 / 数字 / 文件名重叠；命令、日志、路径、diff `-` 行、import 行不作落点；「补 `X`」的 X 不是落点）→ 可用句写进分支句内。
-  提示词 `compress-v4d2`（分支闭合 + 候选落定 + 回溯一致 + 闭合样例）。自测 596/0/1（§5p）。
+  提示词 `compress-v4d2`（分支闭合 + 候选落定 + 回溯一致 + 闭合样例）；`compressCtx` 自动构造（生产前提）。自测 599/0/1（§5p、§5q）。
   零成本重编译既有稿：flaky 6/6 绑到 `hedgeAfterMs: 1600`，perf 绑 `+  compressTargetMax: 1800,`，eacces 绑 env 行 / 测试行，oracle 稿已有可用句的分支不动。
 - **本会话沙盒外网被切**（只放行 GitHub / npm / pypi；`api.a6api.com`、`api.deepseek.com` TLS 握手直接断），付费编译与评测一次都没跑成。
   下面两轮是接手者的第一件事（换一个能出网的环境）。
@@ -87,6 +87,10 @@ node tools/compile-direct.mjs --base-url $DEEPSEEK_BASE_URL --model $DEEPSEEK_MO
 # 两轮任一 综合 ≥ 6.4 且 flaky ≥ 7 ⇒ src/config.js 把 compressV4Direct 转正（缺省 true），CHANGELOG 记数字；否则按归因流程继续。
 ```
 - 改门规则只 `--recompile`（`direct-og-src.json` 是 5 条 side 输出的合集，可反复重编译）；改提示词才重压。
+- 同会话补的生产前提：`compressCtx` 自动构造（plugin `compressCtxFor` → `messages.js buildCompressCtx`），v4 时把本回合任务 + 工具结果带给压缩器；
+  评测工具本来就注入 TASKS，所以对评测数字没影响，对真机上线是必需的（否则观察里的行被当编造剥掉、分支没落点）。
+- 后备候选（未做）：R7 用到 ops 路（v4t）——ops9p 的 flaky 分支是「…再修」且没有 READY-fix，需要从原文改法候选合成 READY 并用 bindLocus 绑落点；
+  sse 的失败形态是「分支没覆盖观察的实际取值 + 改法跨两处」（EFFECT-EVAL §13），是 R7 之后的下一个规格缺口（判读覆盖）。
 - 推送：本会话受平台约束只能推 `arena/01a0eba2-cfb` 分支（已推）；回 main 需要有权限的一方 fast-forward 合并（`git push … arena/01a0eba2-cfb:main`），不要 force。
 
 ## transfer/ 文件地图（都是 GitHub 主分支上没有的）

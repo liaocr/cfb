@@ -63,3 +63,6 @@
 - **沙盒外网被切**：curl api.a6api.com / api.deepseek.com / example.com 全部 SSL_ERROR_SYSCALL（github/npm/pypi 200）⇒ 付费编译、评测一次都没跑。
   第 A 轮（oG，零成本稿）与第 B 轮（v4d2 重压 → oH）命令写在 HANDOFF「下一步」。预测：oG flaky ≥ 7；否则回到 R6 判断力假设。
 - 推送：平台只允许 `arena/01a0eba2-cfb`；回 main 需另一方 fast-forward。
+- 续：补生产前提 `compressCtx` 自动构造（messages.js buildCompressCtx + plugin compressCtxFor；cfg compressCtxAuto/compressCtxMaxChars；§5q 三条；verify 599/0/1）。
+  sse 逐样本：全部稿（含 oracle）都 `sed -n '200,245p' src/transport.js`——工具结果里 `ok: r.finish === 'stop'` 没被任何分支覆盖 + 改法跨两处 ⇒ 记为 R7 之后的缺口「判读覆盖」。
+  ops 路的 R7（合成 READY + bindLocus）作后备候选未做。

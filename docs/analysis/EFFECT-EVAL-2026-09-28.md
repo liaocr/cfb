@@ -239,6 +239,13 @@ v3 / v4 都把这句当「推测」删了，主模型一律 `read_file verify.mj
 | oE | sse | `f === '[DONE]'`（调用方不在手，只能绑到相关行） | overlap / span |
 | oracle A/B/C | 全部 | 已有可用句的分支不动；缺的绑到与参考一致的行（sse → `return { out, finish: finish \|\| (done ? 'stop' : null) }`） | had / overlap |
 
+**顺带记录 sse 的失败形态**（所有稿、含 oracle，本轮全部 `sed -n '200,245p' src/transport.js`）：工具结果给出了 `src/transport.js:233:  return { ok: r.finish === 'stop', text: r.out }`
+——ok 其实依赖 finish，而每份稿的分支都在赌「ok 只看 done / out 长度」或「[DONE] 没进 done」，没有一个分支覆盖到这个观察；加上改法跨两处
+（assembleSseFrames 的回退 + 调用方的 ok），主模型选择先看上下文。⇒ 闭合与绑定是必要条件，不是充分条件：分支的 trigger 还得**覆盖观察的实际取值**，
+且改法最好单落点。sse 暂不作目标（原文 2.3 / oracle 1.0），但这是 R7 之后的下一个规格缺口（判读覆盖），先记着。
+
+**生产前提补齐**：`compressCtx` 此前只有评测工具注入，生产恒为空；v12.7 由 plugin 自动从出站消息构造（`buildCompressCtx`），程序门统计 `ctxChars`。
+
 **待跑**（本会话沙盒外网被切：`api.a6api.com` / `api.deepseek.com` TLS 握手失败，只放行 GitHub / npm / pypi）：
 - 第 A 轮（零成本稿）：`oG` = `/home/user/direct-og.json`（oF 的 eacces/flaky/perf + oE 的 wrong-model/sse 的 side 输出 + R7 门），
   raw 复用 effect-16（`cp -r effect-16 effect-17`），`--variants raw,oG --samples 2 --require-fp`。

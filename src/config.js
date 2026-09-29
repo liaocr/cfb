@@ -210,8 +210,12 @@ export const DEFAULTS = {
   compressV4Direct: false,
   // v12.7（理论 S8-R7）：直写稿尾段判读分支的闭合与落点绑定（含改法的分支必须带已核真的逐字落点 + 分支内可用句；缺则按标识符重叠绑定）；false 关闭
   compressV4DirectBind: true,
-  // 直写模式的当前任务 / 观察上下文（工具注入；生产由 harness 传，空 = 只看思维链原文）
+  // 直写模式的当前任务 / 观察上下文（工具注入；生产由 plugin 在 llm/stream 时从出站消息自动构造，见 compressCtxAuto；空 = 只看思维链原文）
   compressCtx: '',
+  // v12.7（理论 S8-R5/R7 的生产前提）：v4 时自动从出站消息构造 compressCtx（最后一条人类 user + 本回合全部工具结果；
+  //   messages.js buildCompressCtx）。显式给了 compressCtx 时不覆盖；false 关闭
+  compressCtxAuto: true,
+  compressCtxMaxChars: 8000,
   // 仅工具用：把副模型原始输出带回 meta.sideOutput（tools/compile-direct.mjs --recompile 零调用重编译）
   captureSideOutput: false,
   // 首段目标长度（null ⇒ 段长的一半）

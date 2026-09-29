@@ -11,7 +11,7 @@
 // ⚠ 口径纪律：本模块只做「字符数」判定。字符数不是钱；trace 里的字符数不得当作费用节省。
 
 // ── 插件入口 ─────────────────────────────────────────────────────────────────
-export { name, inject, apply, DEP_ID } from './src/plugin.js'
+export { name, inject, apply, DEP_ID, compressCtxFor } from './src/plugin.js'
 
 // ── 配置 ─────────────────────────────────────────────────────────────────────
 export { DEFAULTS, normalizeConfig, dshHome, dshHomePath } from './src/config.js'
@@ -42,7 +42,7 @@ export {
 export { readApiKey, readProviderSpec, endpointUrl, resolveProviderEndpoint } from './src/provider.js'
 
 // ── 消息工具与保真度 ─────────────────────────────────────────────────────────
-export { provenanceOf, mapMessagesToSeqs, textOfContent, reasoningTextOf, artRefsOf } from './src/messages.js'
+export { provenanceOf, mapMessagesToSeqs, textOfContent, reasoningTextOf, artRefsOf, buildCompressCtx } from './src/messages.js'
 export { fidelity, protectedTokens, inventedIdentifiers } from './src/fidelity.js'
 
 // ── 观测 ─────────────────────────────────────────────────────────────────────

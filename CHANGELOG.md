@@ -27,8 +27,15 @@ oracle 与自动稿的「下一步」**都是复现**，差别全部在判读分
   落点在手优先、最小改动次之；不写 A 或 B）；规则 3「下一步工具调用是 X」= 原文实际发出的那条（回溯一致：压缩稿位于可见回答之前，
   改写它会与已发出的调用矛盾），**撤回 v4d1 的下一步仲裁与证据充分性标准**（effect-16 没有一次胜利来自它）；样例改为「先拨测再改」
   的两分支形态且每个分支闭合、示范候选落定（v4d1 样例的分支是开放的「另查 DNS」，flash 照抄成了开放分支）。
-- `index.js` 导出 `bindFixBranches / bindLocus / strongTokens / isFixBranch / usableLocus`；`index.d.ts` 补 `compressV4Direct*` / `compressCtx`。
-- 自测 596 / 0 / 1（新增 §5p 六条）。
+- **compressCtx 自动构造**（`compressCtxAuto`，缺省开；`compressCtxMaxChars` 8000）：R5 / R7 的生产前提——逐字锚点与落点来自工具观察，
+  压缩器必须能对着观察核真。评测一直有 ctx（compile-direct 注入任务原文），生产此前恒为空 ⇒ 观察里的代码行会被程序门当编造剥掉、
+  分支无落点可绑。`messages.js buildCompressCtx(messages)`：最后一条人类 user + 本回合全部工具调用与结果（pi-ai 块形 `toolCall` / `tool-result`
+  与 OpenAI `tool_calls` / `role:tool` 都认；形状不认识不猜），格式同 `tools/v4-live.mjs` 的 TASKS；每条结果头 2/3 + 尾 1/3 截到 3000，
+  超总预算先丢最旧。`plugin.js compressCtxFor(callCfg, options)` 在 llm/stream 时派生 streamCfg（只在 v4、未显式给 compressCtx 时；异常 ⇒ 原配置）。
+  `compileV4Direct` 统计 `ctxChars`；promptVersion 的 `:ctx / :noctx` 后缀在生产 trace 里可见。
+- `index.js` 导出 `bindFixBranches / bindLocus / strongTokens / isFixBranch / usableLocus / buildCompressCtx / compressCtxFor`；
+  `index.d.ts` 补 `compressV4Direct*` / `compressCtx*`。
+- 自测 599 / 0 / 1（新增 §5p 六条、§5q 三条）。
 
 ### 状态（诚实记录）
 - **未实测**：本会话沙盒只放行 GitHub / npm / pypi，`api.a6api.com` 与 `api.deepseek.com` 的 TLS 握手被切断，付费编译与评测都跑不了。

@@ -15,7 +15,7 @@ import { v4Incremental, v4Budget } from './prompts.js'
 import { createSegmenter } from './segment-v4.js'
 import { mkHandleProbe } from './handle-probe.js'
 import { createHostFollower } from './host-follow.js'
-import { streamProvenanceRecord } from './messages.js'
+import { streamProvenanceRecord, buildCompressCtx } from './messages.js'
 import { createSessionTracker } from './session-tracker.js'
 import { makeTraceWriter } from './trace.js'
 import { makePrewarmer } from './transport.js'
@@ -46,6 +46,15 @@ export const DEP_ID = (() => {
     .concat(files.map((f) => stamp(new URL('./' + f, import.meta.url), f)))
     .join(' ')
 })()
+
+/** v12.7：v4 压缩时把本回合的任务与工具观察带给压缩器（逐字核真 / 落点绑定的依据）；显式 compressCtx 不覆盖；任何异常 ⇒ 原配置 */
+export function compressCtxFor(callCfg, options) {
+  if (!callCfg || callCfg.compressPrompt !== 'v4' || callCfg.compressCtxAuto === false || callCfg.compressCtx) return callCfg
+  try {
+    const ctx = buildCompressCtx(options && options.messages, { maxChars: callCfg.compressCtxMaxChars })
+    return ctx ? { ...callCfg, compressCtx: ctx } : callCfg
+  } catch { return callCfg }
+}
 
 export const name = 'cot-form-b'
 export const inject = []
@@ -113,7 +122,8 @@ export function apply(ctx, config = {}) {
       const streamSession = owner.session
       const streamSessionId = owner.sessionId
       // v11.11：本次调用专属配置（模型 / provider 跟随这次调用；共享 cfg 永不改写）
-      const streamCfg = callCfg
+      // v12.7：压缩器的「当前任务与观察」上下文（理论 S8-R5/R7 的生产前提）——只读构造，失败 ⇒ 空 = 旧行为
+      const streamCfg = compressCtxFor(callCfg, options)
       return birthTransform(inner, {
         cfg: streamCfg,
         trace,

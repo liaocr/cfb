@@ -65,8 +65,12 @@ export interface CotFormBConfig {
   compressV4DirectBind?: boolean
   /** 仅 v4 直写：超过此长度熔断为原文放行（缺省 1300） */
   compressV4DirectMaxChars?: number
-  /** 仅 v4 直写：当前任务 / 观察上下文（工具注入；生产由 harness 传） */
+  /** 仅 v4 直写：当前任务 / 观察上下文（工具注入；生产缺省由 plugin 自动构造，见 compressCtxAuto） */
   compressCtx?: string
+  /** v12.7：v4 时自动从出站消息构造 compressCtx（最后一条人类 user + 本回合工具结果）；缺省 true */
+  compressCtxAuto?: boolean
+  /** 自动 compressCtx 的总预算（字符，缺省 8000） */
+  compressCtxMaxChars?: number
   /** 仅工具用：meta.sideOutput 带回副模型原始输出（缺省 false） */
   captureSideOutput?: boolean
   /** 仅 v4 增量：目标段长（字符，缺省 1200；在段落 / 行 / 句末处切，0.6–1.5 倍浮动） */
