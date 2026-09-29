@@ -59,6 +59,22 @@ export interface CotFormBConfig {
   compressV4AutoHints?: boolean
   compressV4Loci?: boolean
   compressV4Prose?: boolean
+  /** 仅 v4（v12.6，理论 S8-R6）：副模型直写原生语域散文（oracle C 形态），不经 ops→模板；缺省 false */
+  compressV4Direct?: boolean
+  /** 仅 v4 直写（v12.7，理论 S8-R7）：尾段判读分支的闭合与落点绑定（改法分支必须带已核真的逐字落点 + 分支内可用句）；缺省 true */
+  compressV4DirectBind?: boolean
+  /** 仅 v4 直写：超过此长度熔断为原文放行（缺省 1600；v12.7.1 起，R7 闭合分支比开放分支长 200–500 字） */
+  compressV4DirectMaxChars?: number
+  /** 仅 v4 直写：整块编译 ⇒ 收网窗口 birthFinishWaitMs 只抬不降到此下限（缺省 6000；0 = 不抬），BOOT configAdjusted 留痕 */
+  compressV4DirectMinWaitMs?: number
+  /** 仅 v4 直写：当前任务 / 观察上下文（工具注入；生产缺省由 plugin 自动构造，见 compressCtxAuto） */
+  compressCtx?: string
+  /** v12.7：v4 时自动从出站消息构造 compressCtx（最后一条人类 user + 本回合工具结果）；缺省 true */
+  compressCtxAuto?: boolean
+  /** 仅 v4 直写：宿主的编辑工具名与参数名（缺省由 plugin 从出站 tools 认出） */
+  compressEditTool?: { name: string, oldKey?: string, newKey?: string } | null
+  /** 自动 compressCtx 的总预算（字符，缺省 8000） */
+  compressCtxMaxChars?: number
   /** 仅工具用：meta.sideOutput 带回副模型原始输出（缺省 false） */
   captureSideOutput?: boolean
   /** 仅 v4 增量：目标段长（字符，缺省 1200；在段落 / 行 / 句末处切，0.6–1.5 倍浮动） */

@@ -44,20 +44,25 @@ export async function recompile(direct, recs, cfg = {}) {
     const raw = rec.events.filter((e) => e.k === 'r').map((e) => e.s).join('')
     // v4d 行：散文直写，重编译 = 重跑程序门（锚点逐字校验），零调用
     const isV4d = String(r.promptVersion || '').startsWith('compress-v4d')
+    const ctx = (TASKS.find((t) => t.id === r.id) || {}).user || ''
+    // ops 行同样带 ctx（v12.7：生产由 plugin 自动构造 compressCtx，ops 路的落点绑定也用它）
     const out = isV4d
-      ? I.compileV4Direct(r.side, raw, { ...c, compressCtx: (TASKS.find((t) => t.id === r.id) || {}).user || '' })
-      : I.compileV4(r.side, raw, c, I.v4Budget(c))
-    return out.ok ? { ...r, why: 'condensed', text: out.text, outChars: out.text.length, kinds: out.stats.kinds, gate: out.stats, recompiled: true }
+      ? I.compileV4Direct(r.side, raw, { ...c, compressCtx: ctx })
+      : I.compileV4(r.side, raw, { ...c, compressCtx: ctx }, I.v4Budget(c))
+    // v12.7：生产闸门（birth.js birthAccept：空白 / 发明标识符 / token 不降 / 净省不足）离线同判 ⇒ 评测稿在真机会不会被原文放行，这里就能看到
+    const accept = out.ok ? acceptOf(I, raw, out.text, { ...c, compressCtx: ctx }) : undefined
+    return out.ok ? { ...r, why: 'condensed', error: undefined, text: out.text, outChars: out.text.length, kinds: out.stats.kinds, gate: out.stats, accept, recompiled: true }
       : { ...r, why: 'error', error: out.reason, text: undefined, recompiled: true }
   })
 }
+const acceptOf = (I, raw, text, cfg) => { const a = I.birthAccept(raw, text, cfg); return a.ok ? 'ok' : a.why + (a.info && a.info.invented ? ':' + a.info.invented.slice(0, 3).join('|') : '') }
 
 async function main(argv) {
   const o = parseArgs(argv)
   if (o.recompile) {
     const rows = await recompile(JSON.parse(fs.readFileSync(o.recompile, 'utf8')), JSON.parse(fs.readFileSync(o.recordings, 'utf8')), o.cfg)
     fs.writeFileSync(o.out, JSON.stringify({ rows }, null, 1))
-    for (const r of rows) console.log(`${r.id} ${r.mode} ${r.why} ${r.outChars ?? ''} ${r.kinds ? JSON.stringify(r.kinds) : ''} ${r.error || ''}`)
+    for (const r of rows) console.log(`${r.id} ${r.mode} ${r.why} ${r.outChars ?? ''} ${r.kinds ? JSON.stringify(r.kinds) : ''} ${r.accept ? 'accept=' + r.accept : ''} ${r.gate && r.gate.boundBy ? 'bound=' + r.gate.boundBy.join(',') : ''} ${r.error || ''}`)
     return
   }
   const key = process.env.DEEPSEEK_API_KEY
@@ -79,12 +84,14 @@ async function main(argv) {
       try {
         const g = await I.makeBirthCompiler(cfg)(raw)
         rows.push({ id: rec.id, mode, why: 'condensed', rawChars: raw.length, outChars: g.text.length, ms: Date.now() - t0,
-          promptVersion: g.meta && g.meta.promptVersion, kinds: g.meta && g.meta.v4 && g.meta.v4.kinds, text: g.text, side: g.meta && g.meta.sideOutput })
-      } catch (e) { rows.push({ id: rec.id, mode, why: 'error', error: String(e && e.message || e).slice(0, 200), ms: Date.now() - t0, side: e && e.meta && e.meta.sideOutput }) }
+          promptVersion: g.meta && g.meta.promptVersion, kinds: g.meta && g.meta.v4 && g.meta.v4.kinds, gate: g.meta && g.meta.v4, accept: acceptOf(I, raw, g.text, cfg), text: g.text, side: g.meta && g.meta.sideOutput })
+      } catch (e) { rows.push({ id: rec.id, mode, why: 'error', error: String(e && e.message || e).slice(0, 200), ms: Date.now() - t0,
+        // v12.7.1：错误行也记 promptVersion——否则 --recompile 认不出这是直写稿（isV4d），会把散文 side 当 ops 喂给 compileV4
+        promptVersion: I.compressPromptVersion(cfg), side: e && e.meta && e.meta.sideOutput }) }
     })))
   } finally { fs.rmSync(d, { recursive: true, force: true }) }
   fs.writeFileSync(o.out, JSON.stringify({ rows }, null, 1))
-  for (const r of rows) console.log(`${r.id} ${r.mode} ${r.why} ${r.rawChars ?? ''}→${r.outChars ?? ''} ${r.ms}ms ${r.kinds ? JSON.stringify(r.kinds) : ''} ${r.error || ''}`)
+  for (const r of rows) console.log(`${r.id} ${r.mode} ${r.why} ${r.rawChars ?? ''}→${r.outChars ?? ''} ${r.ms}ms ${r.kinds ? JSON.stringify(r.kinds) : ''} ${r.accept ? 'accept=' + r.accept : ''} ${r.gate && r.gate.boundBy ? 'bound=' + r.gate.boundBy.join(',') : ''} ${r.error || ''}`)
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {

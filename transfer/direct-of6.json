@@ -1,0 +1,12 @@
+{
+ "rows": [
+  {
+   "id": "sse-truncated",
+   "mode": "v4",
+   "why": "error",
+   "error": "v4d-too-long",
+   "ms": 4223,
+   "side": "需要找出为什么截断被当成成功。trace 里 `{\"ok\":true,\"finish\":null,\"stream\":true,\"outputChars\":212,\"eventCount\":9}` 与 `{\"rawChars\":8123,\"outChars\":212}` 并排：212 远小于 8123，eventCount 只有 9，finish 却是 null 而 ok 为 true。read_file src/transport.js 的 assembleSseFrames 节选（逐字）：\n`if (f === '[DONE]') { done = true; continue }`\n`const j = JSON.parse(f); out += j.choices?.[0]?.delta?.content || ''`\n`if (j.choices?.[0]?.finish_reason) finish = j.choices[0].finish_reason`\n`return { out, finish: finish || (done ? 'stop' : null) }`\n网关文档：部分上游在连接被代理切断时只补发 data: [DONE]。看起来关键就在这行 return：只要 done 为真，finish 缺省就补成 'stop'，把「上游没给 finish_reason」伪装成正常收尾；而 trace 里 finish 仍为 null，说明 settle 记录的可能是原始 finish_reason 而非这个组装结果，也就是 ok 判定根本不看 finish，只看了流正常结束——两条路径都指向「截断被判成功」。所以如果 SSE 帧中 finish_reason 为 null 或缺失、且 [DONE] 到达，就返回 stop；如果 done true 则返回 stop。修法方向有：区分 finish_reason 缺失与 [DONE]，把仅 [DONE] 当 incomplete/unknown。调大超时那条已排除，这是结束判定问题不是时长问题；[DONE] 是否已被剥掉 data: 前缀这条先搁置，得先看调用方才能定。\n所以下一步工具调用是 bash 检索 settle 与组装函数的调用链，确认 ok 在哪里被赋值、写会话的条件是什么：`grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled|assembleSseFrames|birth-condensed\" src`。如果搜到 settle 处 ok 只由流结束推导、与 finish 无关，那么改法就落在该判定行：把 finish 为 null 视为 incomplete 并置 ok:false、不写会话。如果搜到调用方本来就把 assembleSseFrames 返回的 'stop' 当完整成功，那么改法落在 `return { out, finish: finish || (done ? 'stop' : null) }` 这一行，去掉 done 兜底、保留 null 让上层拒绝写会话。"
+  }
+ ]
+}

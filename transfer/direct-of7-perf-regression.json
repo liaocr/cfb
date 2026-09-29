@@ -1,0 +1,15 @@
+{
+ "rows": [
+  {
+   "id": "perf-regression",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 11322,
+   "outChars": 1149,
+   "ms": 4474,
+   "promptVersion": "compress-v4d1:ctx",
+   "text": "升级后 ttfbMs p50 只从 610 涨到 640，而 contentSpanMs p50 从 280 涨到 1650、outputChars p50 从 390 涨到 1720。等待增量约 1500ms 里约 1370ms 落在 content span 上，看起来是纯解码量问题，不是单 token 变慢：吞吐 390/280≈1.39 chars/ms 对 1720/1650≈1.04 chars/ms，量级一致。git diff v11.9..v11.10 -- src/config.js（逐字）：\n\n`-  maxOutputTokens: 850,`\n`+  maxOutputTokens: 4096,`\n`-  compressTargetMax: 450,`\n`+  compressTargetMax: 1800,`\n\n390≈旧 450、1720≈新 1800，比值 4.0 对 4.4，所以数组上像是 compressTargetMax 把目标长度抬了 4 倍、输出跟着涨。但 promptVersion 前后都还是 compress-v3:250-450，与 config 里的新值对不上，说明这个 tag 要么是硬编码、要么没从 config 取值，不能当成\"配置没生效\"的证据。README 回滚开关表：compressTargetMax 只影响 v3 的长度目标——若 birth 路径根本不读它，则长度变化只能来自 maxOutputTokens 抬高后解除了 850 的截断，这是另一条路，我还没排除。加锁/超时方向已排除：ttfb 只 +30ms，prefill 没变。\n\n所以下一步工具调用是 bash，取 trace 的 finishReason 与 outputTokens，按 birth 分步对比升级前后：analyze-trace --compare v11.9 v11.10 --steps birth --fields finishReason,outputTokens,ttfbMs,contentSpanMs。如果升级前 finishReason=length，那么 850 确实是绑定上限、主因是 maxOutputTokens，改法是把 maxOutputTokens 回落或给 birth 单独设小值；如果升级前 finishReason=stop，那么上限从未绑定、主因是长度目标 compressTargetMax，改法是在 src/config.js 把它改回 450——`+  compressTargetMax: 1800,` 的逐字原文已给出，可以直接当 edit_file 的 old_text，不用再读文件。",
+   "side": "升级后 ttfbMs p50 只从 610 涨到 640，而 contentSpanMs p50 从 280 涨到 1650、outputChars p50 从 390 涨到 1720。等待增量约 1500ms 里约 1370ms 落在 content span 上，看起来是纯解码量问题，不是单 token 变慢：吞吐 390/280≈1.39 chars/ms 对 1720/1650≈1.04 chars/ms，量级一致。git diff v11.9..v11.10 -- src/config.js（逐字）：\n\n`-  maxOutputTokens: 850,`\n`+  maxOutputTokens: 4096,`\n`-  compressTargetMax: 450,`\n`+  compressTargetMax: 1800,`\n\n390≈旧 450、1720≈新 1800，比值 4.0 对 4.4，所以数组上像是 compressTargetMax 把目标长度抬了 4 倍、输出跟着涨。但 promptVersion 前后都还是 compress-v3:250-450，与 config 里的新值对不上，说明这个 tag 要么是硬编码、要么没从 config 取值，不能当成\"配置没生效\"的证据。README 回滚开关表：compressTargetMax 只影响 v3 的长度目标——若 birth 路径根本不读它，则长度变化只能来自 maxOutputTokens 抬高后解除了 850 的截断，这是另一条路，我还没排除。加锁/超时方向已排除：ttfb 只 +30ms，prefill 没变。\n\n所以下一步工具调用是 bash，取 trace 的 finishReason 与 outputTokens，按 birth 分步对比升级前后：`analyze-trace --compare v11.9 v11.10 --steps birth --fields finishReason,outputTokens,ttfbMs,contentSpanMs`。如果升级前 finishReason=length，那么 850 确实是绑定上限、主因是 maxOutputTokens，改法是把 maxOutputTokens 回落或给 birth 单独设小值；如果升级前 finishReason=stop，那么上限从未绑定、主因是长度目标 compressTargetMax，改法是在 src/config.js 把它改回 450——`+  compressTargetMax: 1800,` 的逐字原文已给出，可以直接当 edit_file 的 old_text，不用再读文件。"
+  }
+ ]
+}

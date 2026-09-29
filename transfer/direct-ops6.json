@@ -1,0 +1,133 @@
+{
+ "rows": [
+  {
+   "id": "flaky-timeout",
+   "mode": "v3",
+   "why": "condensed",
+   "rawChars": 9053,
+   "outChars": 594,
+   "ms": 3715,
+   "promptVersion": "compress-v3h:250-450",
+   "text": "最可能原因：CI 仅 2 核，事件循环在 1500~1600ms 窗口被阻塞，server 的 1500ms 定时器与 hedge 的 1600ms 定时器积压到同一 timers 阶段。Node 先执行 server 1500ms 回调发出响应，随后仍在该 timers 阶段执行 hedge 1600ms 回调；此时 HTTP 响应尚未进入 poll 阶段，primary.then 微任务未执行，primarySettled 仍为 false，于是 startHedge 启动，出现 hedgeStartedAt=1712/1698。本地 16 核时 100ms 余量足够，主请求在 1600ms 前 settle，所以从不失败。未确定项：是否 server 与 client 同进程、HTTP 栈调度细节；已排除项：不是 hedgedDistill 逻辑必然错误，而是时序竞态。可考虑修复：在 primary.finally 中设置，或在定时器触发时检查 primary 是否已 settled，而不是布尔变量；但需先复现验证。\n\n[tool: bash] `taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`"
+  },
+  {
+   "id": "eacces-config",
+   "mode": "v3",
+   "why": "condensed",
+   "rawChars": 10074,
+   "outChars": 594,
+   "ms": 3970,
+   "promptVersion": "compress-v3h:250-450",
+   "text": "分析：测试尝试写入真实 DSH_HOME 下的 /home/u/.dsh/storages/cot-form-b/trace.log，该文件 root:root -rw-r--r-- 88213，父目录 root:root drwxr-xr-x，当前 uid=1000(u) 不可写，故 EACCES。verify.mjs 仅构造 env = { ...process.env, DSH_HOME: tmp }，而 test/birth.selftest.mjs 使用 process.env.CFB_REAL_DSH_HOME，隔离变量未对齐，疑似绕过临时 DSH_HOME。改法尚未确定：一种是在 verify.mjs 的 env 中加 CFB_REAL_DSH_HOME: tmp，一种是改 birth.selftest.mjs 用 DSH_HOME。已排除直接 sudo chown -R u:u /home/u/.dsh/storages/cot-form-b（用户可能没 sudo，且不应修改真实 home）。下一步先确认该变量来源：\n\n[tool: bash] grep -R \"CFB_REAL_DSH_HOME\" -n verify.mjs test src; echo \"CFB_REAL_DSH_HOME=${CFB_REAL_DSH_HOME:-<unset>}\""
+  },
+  {
+   "id": "flaky-timeout",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 9053,
+   "outChars": 556,
+   "ms": 4072,
+   "promptVersion": "compress-v4-ops6:450",
+   "kinds": {
+    "FACT": 3,
+    "COMPUTED": 1,
+    "INCUMBENT": 1
+   },
+   "text": "- test/hedge.selftest.mjs §4：主请求 1500ms 后回 200，hedgeAfterMs: 1600，断言 meta.hedgeStartedAt 为 null（来源 test/hedge.selftest.mjs）\n- CI 中 hedgeStartedAt=1712/1698，说明 hedge 约 1700ms 启动（来源 CI）\n- 源码 hedgedDistill 用 setTimeout 在 cfg.hedgeAfterMs 后检查 !primarySettled 再 startHedge，primary.then 设置 primarySettled = true（来源 hedgedDistill）\n- 目前判断：CI 2 核高负载下，1500ms 与 1600ms 两个 setTimeout 积压到同一 timers 阶段，hedge 定时器回调先于主请求 HTTP 响应在 poll 阶段 resolve 并执行 primary.then 微任务\n- 当前方案：最可能原因是时序竞态：100ms 余量在 CI 事件循环抖动下被吃掉，不是逻辑必然错误\n\n所以现在采用的是：最可能原因是时序竞态：100ms 余量在 CI 事件循环抖动下被吃掉，不是逻辑必然错误。"
+  },
+  {
+   "id": "eacces-config",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 10074,
+   "outChars": 400,
+   "ms": 4643,
+   "promptVersion": "compress-v4-ops6:450",
+   "kinds": {
+    "FACT": 1,
+    "COMPUTED": 1,
+    "READY": 1,
+    "SHELVED": 1
+   },
+   "text": "- 错误路径为 /home/u/.dsh/storages/cot-form-b/trace.log（来源 npm test）\n- 目前判断：verify.mjs 用 DSH_HOME=tmp 隔离，但测试用 CFB_REAL_DSH_HOME，绕过隔离写入真实 home\n- 修复测试隔离变量（暂缓用 sudo chown 改 /home/u/.dsh/storages/cot-form-b 属主：用户可能没 sudo，且不应修改真实 home；若确认无法修改测试隔离逻辑时再回来）\n- 已备好的改法：把 birth.selftest.mjs 改用 DSH_HOME\n\n所以目前判断：verify.mjs 用 DSH_HOME=tmp 隔离，但测试用 CFB_REAL_DSH_HOME，绕过隔离写入真实 home。准备好的改法：把 birth.selftest.mjs 改用 DSH_HOME。"
+  },
+  {
+   "id": "wrong-model",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 3414,
+   "outChars": 572,
+   "ms": 6439,
+   "promptVersion": "compress-v4-ops6:450",
+   "kinds": {
+    "FACT": 1,
+    "COMPUTED": 1,
+    "OPEN": 1,
+    "PLAN": 1
+   },
+   "text": "- trace 显示 [llm-stream] n12 model deepseek-v3.2，[compiler-transport-started] model deepseek-v3.1，[llm-stream] n13 model deepseek-v3.2（来源 trace）\n- 目前判断：host-follow 的 lastModel 是模块级单例，跨会话保留；observe 未拿到当前模型时 callConfig 会用上次会话模型\n- 当时计划：查看 plugin.js 中 host.observe(options, n) 附近，确认 options 和 n 的来源与字段\n- 未决：plugin 调用 host.observe(options, n)，但 observe 只取 options.model，当前模型可能在 n 中或 options 未含 model\n\n所以目前判断：host-follow 的 lastModel 是模块级单例，跨会话保留；observe 未拿到当前模型时 callConfig 会用上次会话模型。待确认：plugin 调用 host.observe(options, n)，但 observe 只取 options.model，当前模型可能在 n 中或 options 未含 model。"
+  },
+  {
+   "id": "wrong-model",
+   "mode": "v3",
+   "why": "condensed",
+   "rawChars": 3414,
+   "outChars": 842,
+   "ms": 6746,
+   "promptVersion": "compress-v3h:250-450",
+   "text": "已确定：需分析压缩插件为何使用上一次会话模型，并给出下一步一条工具调用。\n\n已确定代码事实：src/host-follow.js 中 `lastModel` 为模块级变量，`observe(options)` 仅在 `options.model` 存在时更新，`callConfig(options)` 返回 `{ ...cfg, model: lastModel || cfg.model }`；plugin.js 中调用顺序为 `host.observe(options, n)` 后 `host.callConfig(options)`，并 `return birthTransform(inner, { cfg: callCfg, ... })`。trace 逐字为 `[llm-stream] n12 model deepseek-v3.2`、`[compiler-transport-started] model deepseek-v3.1`、`[llm-stream] n13 model deepseek-v3.2`。\n\n确定的根因假设（尚未验证）：`lastModel` 跨会话保留；`observe` 只读第一个参数的 model，第二参数 n 被忽略；若 plugin 传入的 options 不含 model 而 n 含当前模型，则 lastModel 保留上次会话值，callConfig 用它覆盖 cfg.model，导致压缩 transport 显示 v3.1。已考虑但未采用的方案：怀疑 prewarm 走原始 cfg（transport.js 的 `makePrewarmer(cfg, trace)`、`fetch(prewarmTargetUrl(cfg))`）——未采用为根因，因需先确认 observe 传参。\n\n下一步工具调用：`grep -n -C 8 \"host.observe\\|callConfig\" src/plugin.js`。"
+  },
+  {
+   "id": "sse-truncated",
+   "mode": "v3",
+   "why": "condensed",
+   "rawChars": 5424,
+   "outChars": 454,
+   "ms": 6938,
+   "promptVersion": "compress-v3h:250-450",
+   "text": "线上截断被当成功，疑似 `assembleSseFrames` 仅凭 `[DONE]` 推断 `finish='stop'`，而网关在代理切断时可能只补 `data: [DONE]`、无 `finish_reason`；但 trace 显示 `finish:null` 仍 `ok:true`，说明调用方判定 `ok` 时可能不要求真实 `finish_reason`，或 `[DONE]` 未被该函数识别。`rawChars:8123` 到 `outChars:212`、`eventCount:9` 也符合中途断流。尚未确定 `ok:true` 与写会话的具体条件；已考虑但未采用直接改 `assembleSseFrames`，因为需先确认调用链。下一步工具调用：\n[tool: bash] grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled|assembleSseFrames|birth-condensed\" src"
+  },
+  {
+   "id": "sse-truncated",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 5424,
+   "outChars": 714,
+   "ms": 9928,
+   "promptVersion": "compress-v4-ops6:450",
+   "kinds": {
+    "FACT": 1,
+    "COMPUTED": 1,
+    "OPEN": 2,
+    "READY": 1
+   },
+   "text": "- assembleSseFrames 中 [DONE] 设置 done，finish_reason 才设置 finish，返回 finish || (done ? 'stop' : null)（来源 src/transport.js）\n- 目前判断：仅凭 [DONE] 推断 stop 会把被代理切断的无 finish_reason 截断流当成功\n- 未决：trace 的 finish:null 与 assembleSseFrames 返回 stop 矛盾，需确认 settle 是否记录原始 finish_reason 或 done 未触发\n- 未决：需确认 ok 判定和写会话条件是否只看 ok:true、不要求 finish_reason\n- 已备好的改法：区分 finish_reason 缺失与 [DONE]：仅 [DONE] 当 incomplete/unknown，除非有 finish_reason 或内容完整标志\n\n所以目前判断：仅凭 [DONE] 推断 stop 会把被代理切断的无 finish_reason 截断流当成功。待确认：trace 的 finish:null 与 assembleSseFrames 返回 stop 矛盾，需确认 settle 是否记录原始 finish_reason 或 done 未触发。待确认：需确认 ok 判定和写会话条件是否只看 ok:true、不要求 finish_reason。准备好的改法：区分 finish_reason 缺失与 [DONE]：仅 [DONE] 当 incomplete/unknown，除非有 finish_reason 或内容完整标志。"
+  },
+  {
+   "id": "perf-regression",
+   "mode": "v3",
+   "why": "condensed",
+   "rawChars": 11322,
+   "outChars": 1089,
+   "ms": 10895,
+   "promptVersion": "compress-v3h:250-450",
+   "text": "分析：v11.9→v11.10，birth 收网平均等待 900ms→2400ms。证据：ttfbMs p50 610→640（基本未变，+30ms）；contentSpanMs p50 280→1650（5.9 倍）；outputChars p50 390→1720（4.4 倍）；promptVersion 未变，仍为 compress-v3:250-450；maxOutputTokens 850→4096；compressTargetMax 450→1800。README 称 compressTargetMax 只影响 v3 的长度目标。\n\n等待增量约 1500ms，其中 contentSpan 增量约 1370ms，即约九成来自解码阶段；ttfb 仅 +30ms 说明 prefill 基本未变。所以这不是单 token 变慢：pre 为 390/280≈1.39 chars/ms，post 为 1720/1650≈1.04 chars/ms，同量级。问题在生成量。\n\n两个候选原因尚未确定：\n- H-A：maxOutputTokens 850→4096 只是上限，本身不强制变长；但若改动前输出被 850 截断，抬高上限会放开生成长度。\n- H-B：compressTargetMax 450→1800 抬高长度目标；post 的 outputChars 1720 与 1800 接近，pre 的 390 与 450 接近，比值 4.4/4.0 与目标比值 4.0 相符。\n\n倾向 H-B，因为数值对应更紧；但 promptVersion 仍报 compress-v3:250-450，若该 tag 由 config 生成则本应变为 250-1800，故该 tag 可能是硬编码或过期，不能作为\"改动未生效\"的证据，这一矛盾待验证。若 tag 实际未反映运行时 config，则 H-A 更可能。\n\n已考虑但未采用：把等待增加归因于单 token 解码变慢（吞吐量级一致，排除）。\n\n下一步一条工具调用（用于判别 H-A/H-B）：检查改动前 birth 的输出是否被 850 上限截断——若 finishReason=length 则 H-A 成立，若为 stop 则上限未约束、H-B 成立：\n\n```bash\nanalyze-trace --compare v11.9 v11.10 --steps birth --fields finishReason,outputTokens,ttfbMs,contentSpanMs,outputChars\n```"
+  },
+  {
+   "id": "perf-regression",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 11322,
+   "outChars": 669,
+   "ms": 11302,
+   "promptVersion": "compress-v4-ops6:450",
+   "kinds": {
+    "FACT": 2,
+    "INCUMBENT": 1,
+    "COMPUTED": 1,
+    "OPEN": 2
+   },
+   "text": "- 升级前后观测：ttfbMs p50 610→640，contentSpanMs p50 280→1650，outputChars p50 390→1720 (source trace)\n- 配置由 maxOutputTokens 850 改为 4096，compressTargetMax 450 改为 1800 (source config)\n- Current judgment: outputChars 1720 接近新目标 1800、原 390 接近旧目标 450，压缩步骤实际按新目标产出\n- Current approach: 解码吞吐 1.39→1.04 chars/ms 量级一致，属输出量变多而非单 token 变慢\n- Open: 原因二选一未定：maxOutputTokens 上限抬高解除截断，或 compressTargetMax 抬高使产出变长\n- Open: 需查升级前 birth 输出的 finishReason 是 length 还是 stop 以区分两个假设\n\nSo the current approach is: 解码吞吐 1.39→1.04 chars/ms 量级一致，属输出量变多而非单 token 变慢. To confirm: 原因二选一未定：maxOutputTokens 上限抬高解除截断，或 compressTargetMax 抬高使产出变长. To confirm: 需查升级前 birth 输出的 finishReason 是 length 还是 stop 以区分两个假设."
+  }
+ ]
+}

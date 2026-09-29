@@ -1,0 +1,11 @@
+{
+ "rows": [
+  {
+   "id": "sse-truncated",
+   "mode": "v4",
+   "why": "condensed",
+   "text": "我们需要找出为什么截断的压缩结果被当成成功。trace 里 compiler-transport-settled 是 ok:true、finish:null、stream:true、outputChars:212、eventCount:9；birth-condensed 是 rawChars 8123 → outChars 212。只有 212 字、没有 finish_reason，却写进了会话。\n\nassembleSseFrames 的关键两行（read_file src/transport.js 原文，逐字）：\n`if (f === '[DONE]') { done = true; continue }`\n`return { out, finish: finish || (done ? 'stop' : null) }`\nfinish 只在收到 finish_reason 时才赋值；没有 finish_reason 时，只要收到 [DONE] 就回退成 'stop'。网关文档说部分上游在连接被代理切断时只补发 data: [DONE]。所以被切断的流会拿到 stop，截断被当成正常结束——这就是 bug 本体：不管调用方怎么判 ok，都不该由 [DONE] 造出一个 stop。\n\n有一点没对上：trace 里 finish 是 null，而按这段代码 done=true 时应返回 'stop'。可能 settle 记录的是上游原始的 finish_reason（那自然是 null），也可能 ok 的判定根本不看 finish。这只影响「要不要顺带改调用方」，不影响这一行必须改。调大 outputChars 阈值、改超时都是治症状，不选。\n\n所以下一步工具调用是 bash grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled|assembleSseFrames|birth-condensed\" src，看调用方的 ok 是怎么算的。如果调用方的 ok 依赖 assembleSseFrames 返回的 finish（不管是 === 'stop' 还是 != null），那么只改这一处就够：edit_file src/transport.js，old_text 是 `return { out, finish: finish || (done ? 'stop' : null) }`（read_file 原文，逐字，不带行首缩进也能匹配），new_text 是 `return { out, finish: finish || null, done }`——没有真实 finish_reason 就不再冒充 stop，[DONE] 只作 done 标记。如果调用方的 ok 完全不看 finish、只看 out 非空或流正常结束，那么除了这一行，还要把调用方的 ok 改成要求 finish === 'stop'，那一处的落点等 grep 出来再定。",
+   "outChars": 1281
+  }
+ ]
+}

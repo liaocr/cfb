@@ -23,6 +23,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { TASKS } from './v4-live.mjs'
+import { classifyAction } from './effect-pairs.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 
@@ -60,13 +61,15 @@ export function parseArgs(argv) {
 export function buildVariants(recordings, reports, specs) {
   const out = {}
   for (const s of specs) {
-    const rec = recordings.find((r) => r.id === s.id)
+    // v12.8.1：spec.base —— 反驳题（同一任务、同一份稿，只换工具结果与参考答案）复用基题的录音与稿
+    const baseId = s.base || s.id
+    const rec = recordings.find((r) => r.id === baseId)
     if (!rec) continue
     const raw = rec.events.filter((e) => e.k === 'r').map((e) => e.s).join('')
     const content = rec.events.filter((e) => e.k === 'c').map((e) => e.s).join('')
     const v = { raw, empty: '' }
     for (const { name, rows } of reports) {
-      const row = rows.find((r) => r.id === s.id && r.mode === (name.includes(':') ? name.split(':')[1] : name))
+      const row = rows.find((r) => r.id === baseId && r.mode === (name.includes(':') ? name.split(':')[1] : name))
       if (row && /^condensed/.test(row.why || '') && typeof row.text === 'string' && row.text.trim()) v[name.split(':')[0]] = row.text
     }
     out[s.id] = { content, variants: v }
@@ -208,14 +211,18 @@ export function summarize(results, variantOrder, specs = []) {
     ctxChars: mean(rs.map((r) => r.ctxReasoningChars)),
     edit: mean(rs.map((r) => (r.act || actScore(SPEC_BY_ID[r.task] || { next: [] }, r.response || '')).edit)),
     editRight: mean(rs.map((r) => (r.act || actScore(SPEC_BY_ID[r.task] || { next: [] }, r.response || '')).editRight)),
+    // v12.8.1 伤害列：错改 = 动手了但不是参考的改法（反驳题里照稿硬改就落在这里）；纸面「直接改%」不许把它盖掉
+    editWrong: mean(rs.map((r) => { const a = r.act || actScore(SPEC_BY_ID[r.task] || { next: [] }, r.response || ''); return a.edit && !a.editRight ? 1 : 0 })),
+    // v12.7：回头 read 率 = 再读任务里已给过内容的文件（JetBrains《Complexity Trap》「摘要使轨迹变长」的单步版；tools/effect-pairs.mjs 同一判定）
+    reread: mean(rs.map((r) => { const t = TASKS.find((x) => x.id === r.task); return classifyAction(t ? t.user : '', r.response || '') === 'reread-known' ? 1 : 0 })),
   })
   const L = []
-  L.push('| 变体 | n | 上下文思考字数 | 综合 | 下一步正确 | 事实 | 专注 | 死路率 | 直接改 | 改对 | 规则命中 | 本轮思考字数 | prompt tokens |')
-  L.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|')
+  L.push('| 变体 | n | 上下文思考字数 | 综合 | 下一步正确 | 事实 | 专注 | 死路率 | 直接改 | 改对 | 错改 | 回头read | 规则命中 | 本轮思考字数 | prompt tokens |')
+  L.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|')
   const byVar = {}
   for (const v of vars) {
     const a = agg(ok.filter((r) => r.variant === v)); byVar[v] = a
-    L.push(`| ${v} | ${a.n} | ${Math.round(a.ctxChars)} | ${f1(a.overall)} | ${f1(a.correct)} | ${f1(a.facts)} | ${f1(a.focus)} | ${(a.deadEnd * 100).toFixed(0)}% | ${(a.edit * 100).toFixed(0)}% | ${(a.editRight * 100).toFixed(0)}% | ${(a.next * 100).toFixed(0)}% | ${Math.round(a.reasoning)} | ${Math.round(a.prompt)} |`)
+    L.push(`| ${v} | ${a.n} | ${Math.round(a.ctxChars)} | ${f1(a.overall)} | ${f1(a.correct)} | ${f1(a.facts)} | ${f1(a.focus)} | ${(a.deadEnd * 100).toFixed(0)}% | ${(a.edit * 100).toFixed(0)}% | ${(a.editRight * 100).toFixed(0)}% | ${(a.editWrong * 100).toFixed(0)}% | ${(a.reread * 100).toFixed(0)}% | ${(a.next * 100).toFixed(0)}% | ${Math.round(a.reasoning)} | ${Math.round(a.prompt)} |`)
   }
   L.push('', '逐任务「综合」分（均值，括号内 = 本轮思考字数）：', '', '| 任务 | ' + vars.join(' | ') + ' |', '|---|' + vars.map(() => '---').join('|') + '|')
   for (const t of tasks) {
@@ -248,6 +255,9 @@ async function main(argv) {
   const resPath = path.join(o.out, 'results.jsonl')
   const done = fs.existsSync(resPath) ? fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []
   const have = new Set(done.filter((r) => !r.error).map((r) => `${r.task}|${r.variant}|${r.sample}`))
+  // v12.7.1：主调用成功、只是盲评没解析出来的行（judge-unparseable）只补盲评，不重发主调用（主调用带思考，是大头）
+  const rejudge = new Map()
+  for (const r of done) if (r.error && /^judge-unparseable/.test(r.error) && r.response && !have.has(`${r.task}|${r.variant}|${r.sample}`)) rejudge.set(`${r.task}|${r.variant}|${r.sample}`, r)
 
   if (!o.summarizeOnly) {
     const apiKey = process.env.DEEPSEEK_API_KEY
@@ -255,32 +265,43 @@ async function main(argv) {
     const chat = makeChat({ baseUrl: o.baseUrl, apiKey })
     const jobs = []
     for (const s of specs) {
-      const t = TASKS.find((x) => x.id === s.id); const tv = table[s.id]
+      const t = TASKS.find((x) => x.id === (s.base || s.id)); const tv = table[s.id]
       if (!t || !tv) continue
       for (const v of order) {
         if (!(v in tv.variants)) continue
-        for (let k = 0; k < o.samples; k++) if (!have.has(`${s.id}|${v}|${k}`)) jobs.push({ spec: s, task: t, content: tv.content, variant: v, reasoning: tv.variants[v], sample: k })
+        for (let k = 0; k < o.samples; k++) if (!have.has(`${s.id}|${v}|${k}`)) jobs.push({ spec: s, task: t, content: tv.content, variant: v, reasoning: tv.variants[v], sample: k, prior: rejudge.get(`${s.id}|${v}|${k}`) })
       }
     }
     console.log(`主调用 ${jobs.length} 次（+ 同数盲评），并发 ${o.concurrency}`)
     const base = {}
     for (const r of done) if (!r.error && r.variant === 'empty' && r.usage && !claudeShaped(r.usage)) base[r.task] = Math.max(base[r.task] || 0, Number(r.usage.prompt_tokens))
     const run = async (j) => {
-      const rec = { task: j.spec.id, variant: j.variant, sample: j.sample, ctxReasoningChars: j.reasoning.length, rejected: [] }
+      const rec = j.prior ? { ...j.prior, error: undefined, rejudged: true } : { task: j.spec.id, variant: j.variant, sample: j.sample, ctxReasoningChars: j.reasoning.length, rejected: [] }
       try {
-        let r
-        for (let k = 0; ; k++) {
-          r = await chat({ model: o.model, messages: buildMessages(j.task, j.content, j.reasoning, j.spec.followup), tools: TOOLS, thinking: { type: 'enabled' }, max_tokens: o.maxTokens, stream: false })
-          if (o.requireFp ? (!claudeShaped(r.usage) && TRUSTED_FP.has(r.fp)) : sawReasoning(r.usage, j.variant, j.reasoning.length, base[j.spec.id], r.fp)) break   // --require-fp：所有变体（含 raw、empty）都钉在同一个已验证后端，避免跨后端混杂
-          rec.rejected.push(claudeShaped(r.usage) ? 'claude-shape' : 'prompt=' + (r.usage && r.usage.prompt_tokens) + (r.fp ? '@' + r.fp : ''))
-          if (k >= 7) throw new Error('通道始终未送入思考：' + rec.rejected.join(','))
+        let text = rec.response
+        if (!j.prior) {
+          let r
+          for (let k = 0; ; k++) {
+            r = await chat({ model: o.model, messages: buildMessages(j.task, j.content, j.reasoning, j.spec.followup), tools: TOOLS, thinking: { type: 'enabled' }, max_tokens: o.maxTokens, stream: false })
+            const seen = o.requireFp ? (!claudeShaped(r.usage) && TRUSTED_FP.has(r.fp)) : sawReasoning(r.usage, j.variant, j.reasoning.length, base[j.spec.id], r.fp)   // --require-fp：所有变体（含 raw、empty）都钉在同一个已验证后端，避免跨后端混杂
+            // v12.7.1：thinking 显式开着却一字未想 ⇒ 这条通道这次没跑思考（effect-18 perf/oH#1：0 字、直接 read README），与「没送入变体」同等作废
+            const thought = (r.message.reasoning_content || '').length > 0
+            if (seen && thought) break
+            rec.rejected.push(!thought && seen ? 'no-thinking' : claudeShaped(r.usage) ? 'claude-shape' : 'prompt=' + (r.usage && r.usage.prompt_tokens) + (r.fp ? '@' + r.fp : ''))
+            if (k >= 7) throw new Error('通道始终未送入思考：' + rec.rejected.join(','))
+          }
+          if (j.variant === 'empty') base[j.spec.id] = Math.max(base[j.spec.id] || 0, Number(r.usage.prompt_tokens))
+          text = responseText(r.message)
+          // v12.7.1：主模型本轮思考原文也落盘（头 6000 字）——归因时要看「短思考 ⇒ 回头 read」的样本到底在想什么，只有字数不够
+          Object.assign(rec, { fp: r.fp, finish: r.finish, usage: r.usage, ms: r.ms, reasoningChars: (r.message.reasoning_content || '').length, reasoning: String(r.message.reasoning_content || '').slice(0, 6000), response: text, rule: ruleScore(j.spec, text), act: actScore(j.spec, text) })
         }
-        if (j.variant === 'empty') base[j.spec.id] = Math.max(base[j.spec.id] || 0, Number(r.usage.prompt_tokens))
-        const text = responseText(r.message)
-        Object.assign(rec, { fp: r.fp, finish: r.finish, usage: r.usage, ms: r.ms, reasoningChars: (r.message.reasoning_content || '').length, response: text, rule: ruleScore(j.spec, text), act: actScore(j.spec, text) })
-        const jr = await chat({ model: o.model, messages: [{ role: 'user', content: judgePrompt(j.task, j.spec, text) }], thinking: { type: 'disabled' }, temperature: 0, max_tokens: 1500, stream: false })
-        rec.judge = parseJudge(jr.message.content)
-        if (!rec.judge) rec.error = 'judge-unparseable: ' + String(jr.message.content).slice(0, 120)
+        // 盲评：解析不出（空内容 / 截断）再试 2 次，仍不行才记错（下次运行只补盲评）
+        for (let k = 0; k < 3 && !rec.judge; k++) {
+          const jr = await chat({ model: o.model, messages: [{ role: 'user', content: judgePrompt(j.task, j.spec, text) }], thinking: { type: 'disabled' }, temperature: 0, max_tokens: 1500, stream: false })
+          rec.judge = parseJudge(jr.message.content)
+          if (!rec.judge) rec.error = 'judge-unparseable: ' + String(jr.message.content).slice(0, 120)
+        }
+        if (rec.judge) rec.error = undefined
       } catch (e) { rec.error = String(e && e.message || e) }
       fs.appendFileSync(resPath, JSON.stringify(rec) + '\n')
       console.log(`  ${rec.task} / ${rec.variant} #${rec.sample}: ${rec.error ? 'ERR ' + rec.error.slice(0, 80) : `overall ${rec.judge.overall} correct ${rec.judge.correct} deadEnd ${rec.judge.deadEnd} · 思考 ${rec.reasoningChars} 字 · prompt ${rec.usage && rec.usage.prompt_tokens}${rec.rejected.length ? ' · 作废重发 ' + rec.rejected.length : ''}`}`)

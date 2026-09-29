@@ -208,3 +208,139 @@ v3 / v4 都把这句当「推测」删了，主模型一律 `read_file verify.mj
 
 *oF 仅 3 任务；wrong-model/sse 沿用 oE。归因链与已知边界见 CHANGELOG v12.6.0 与理论 S8-R6。
 中转运维：非流式偶发 60s socket hang up（flaky 长输出必撞），`distillStream:true` 稳。
+
+## 13. 逐样本归因 → 理论 S8-R7（2026-09-29，接手会话）：分支闭合与落点绑定
+
+对 effect-16 逐样本对读（`results.jsonl` 的 response / judge.note），把「稿子的分支怎么写」和「主模型下一步做了什么」摆在一起：
+
+| 任务 | 稿 | 分支里的动作项 | 主模型下一步 | 分 |
+|---|---|---|---|---|
+| flaky | oC | 「下一步直接改测试 §4 的 hedgeAfterMs: 1600（read_file 原文就是这几个字，可以直接当 old_text），不用再继续复现」 | `edit_file` old_text=`hedgeAfterMs: 1600`（2/2） | 8.5 |
+| flaky | oE/oF | 「把 hedgeAfterMs 与主请求延迟拉开或改用 fake timers 即可」+ 末尾游离一句「上面逐字引出的代码行可以直接当 old_text」 | `read_file test/hedge.selftest.mjs`（4/4） | 1.5–2.0 |
+| perf | oF | 「改法是在 src/config.js 把它改回 450——`+  compressTargetMax: 1800,` 的逐字原文已给出，可以直接当 old_text，不用再读文件」 | `edit_file`（2/2） | 10.0 |
+| perf | oE | 同一内容，可用句是末尾游离的通用句 | 1/2 直接改 | 6.0 |
+| eacces | oC | 「改测试更干净……那一行上面已经有逐字原文，可以直接当 old_text」（两个候选中落定一个） | `edit_file`（2/2） | 9.0 |
+| eacces | oF | 两个分支各给一个方向，通用可用句游离在末尾 | 1/2 直接改 | 6.0 |
+
+**结论**：v12.6 把 flaky 归为「副模型不肯落定 ⇒ 复现排下一步」偏了。oracle 的下一步同样是复现（`taskset` 循环）；胜负全在
+判读分支的动作项是否**闭合并绑定落点**。评测消息结构 = [system, 任务, assistant{可见回答（含已发出的调用）, reasoning=变体}, 工具结果]，
+所以压缩稿的「下一步工具调用是 X」必须就是可见回答里那条调用（回溯一致），R6 的「下一步仲裁」本来就与可见回答矛盾，
+且 effect-16 里没有一次胜利来自它。理论条文见 `docs/theory/CFB-THEORY-COMPLETE.md` S8-R7。
+
+**实现**（v12.7.0）：程序门 `bindFixBranches`（可机械做的部分：分支切分、改法判定、落点绑定、可用句写进分支句内）+ 提示词 `compress-v4d2`
+（分支闭合、候选落定、回溯一致、样例闭合）。零成本重编译既有副模型输出（`--recompile`）：
+
+| 稿源 | 任务 | 绑定落点 | 方式 |
+|---|---|---|---|
+| oF/oE/oD/of4/of7/of8 | flaky | `hedgeAfterMs: 1600`（从中文节选行收窄） | overlap |
+| oF/oE | eacces | `const env = { ...process.env, DSH_HOME: tmp }` / `const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })` | overlap / file |
+| oF/oE | perf | `+  maxOutputTokens: 4096,` / `+  compressTargetMax: 1800,`（`-` 行排除） | overlap / had |
+| oE | wrong-model | `observe(options) { … }` / `callConfig(options) { … }` | overlap |
+| oE | sse | `f === '[DONE]'`（调用方不在手，只能绑到相关行） | overlap / span |
+| oracle A/B/C | 全部 | 已有可用句的分支不动；缺的绑到与参考一致的行（sse → `return { out, finish: finish \|\| (done ? 'stop' : null) }`） | had / overlap |
+
+**顺带记录 sse 的失败形态**（所有稿、含 oracle，本轮全部 `sed -n '200,245p' src/transport.js`）：工具结果给出了 `src/transport.js:233:  return { ok: r.finish === 'stop', text: r.out }`
+——ok 其实依赖 finish，而每份稿的分支都在赌「ok 只看 done / out 长度」或「[DONE] 没进 done」，没有一个分支覆盖到这个观察；加上改法跨两处
+（assembleSseFrames 的回退 + 调用方的 ok），主模型选择先看上下文。⇒ 闭合与绑定是必要条件，不是充分条件：分支的 trigger 还得**覆盖观察的实际取值**，
+且改法最好单落点。sse 暂不作目标（原文 2.3 / oracle 1.0），但这是 R7 之后的下一个规格缺口（判读覆盖），先记着。
+
+**动作类别分布（`tools/effect-pairs.mjs`，effect-16 全集；reread-known = 再读任务里已给过内容的文件）**：
+
+| 变体 | n | edit | reread-known | probe |
+|---|---|---|---|---|
+| raw | 20 | 50% | 35% | 15% |
+| v4t | 20 | 50% | 50% | 0% |
+| oC | 10 | 70% | 20% | 10% |
+| oE | 10 | 40% | 60% | 0% |
+| oF | 6 | 50% | 50% | 0% |
+
+「回头 read」率是最贴近专注力的客观量：没有落点的压缩（v4t / oE / oF）把它推到原文之上，oracle C 压到 20%。这与 JetBrains
+《The Complexity Trap》（arXiv 2508.21433）报告的「LLM 摘要使轨迹变长约 15%」是同一现象的单步版本；下一步评测应加「到解决为止的步数」。
+
+**生产前提补齐**：`compressCtx` 此前只有评测工具注入，生产恒为空；v12.7 由 plugin 自动从出站消息构造（`buildCompressCtx`），程序门统计 `ctxChars`。
+
+**待跑**（本会话沙盒外网被切：`api.a6api.com` / `api.deepseek.com` TLS 握手失败，只放行 GitHub / npm / pypi）：
+- 第 A 轮（零成本稿）：`oG` = `/home/user/direct-og.json`（oF 的 eacces/flaky/perf + oE 的 wrong-model/sse 的 side 输出 + R7 门），
+  raw 复用 effect-16（`cp -r effect-16 effect-17`），`--variants raw,oG --samples 2 --require-fp`。
+  预测：flaky ≥ 7（主模型直接 edit `hedgeAfterMs: 1600`）、perf / eacces 不降。若 flaky 仍回头 read ⇒ 绑定不是症结，回到 R6 判断力假设。
+- 第 B 轮（提示词 v4d2，5 次副模型调用）：`--cfg '{"compressV4Direct":true,"distillStream":true}' --out /home/user/direct-oh.json`，再评 `oH`。
+  看点：副模型是否自己写出闭合分支（`boundBy` 全是 `had`）、析取率（`disjunctiveFix`）是否归零、长度是否仍在 1300 内。
+- 两轮任一 ≥ oC 的 6.4 且 flaky 破 7 ⇒ `compressV4Direct` 转正（缺省开）。
+
+## 14. 第三会话（2026-09-29）：A 轮 oG、B 轮 oH 实测；主模型思考原文落盘；oracle I 把三道输题全部打到 8.5–9.0
+
+同后端 `--require-fp`，raw 复用 n=20；每格 n=2（oracle I 的 wrong-model n=3）。结果目录 effect-17（A）、effect-18（A+B）、effect-19（+oracle I）。
+
+### 14.1 A / B 轮：R7 的可证伪预测成立
+
+| 变体 | n | 综合 | 直接改 | 回头read | 死路 | eacces | flaky | wrong-model | sse | perf |
+|---|---|---|---|---|---|---|---|---|---|---|
+| raw | 20 | 5.0 | 50% | 35% | 40% | 7.3 | 2.8 | 9.0 | 2.3 | 3.8 |
+| oC（oracle 上界，旧） | 10 | 6.4 | 70% | 20% | 20% | 9.0 | 8.5 | 5.5 | 1.0 | 8.0 |
+| oG（oF/oE 侧输出 + R7 门） | 10 | 5.7 | 60% | 40% | 30% | 6.5 | **7.0** | 5.5 | 4.5 | 5.0 |
+| oH（v4d2 重压 + R7 门） | 10 | 5.8 | 70% | 30% | 20% | 8.5 | **8.5** | 2.0 | 4.5 | 5.5 |
+
+- flaky：oG 2/2、oH 2/2 直接 `edit_file old_text="hedgeAfterMs: 1600"`（v12.6 的 oD/oE/oF 0/6）。R7 第 6 条预测成立，R6 的「判断力边界」不必回。
+- 两轮都没过 6.4：oG 的失败样本 3/4 是短思考（299 / 527 / 691 字）后回头 read；oH 输在 wrong-model（副模型把落点落在 plugin.js 的调用点 `host.observe(options, n)`，
+  改成 `host.observe(n)` 被盲评判为改错文件）与 perf（见 14.2）。
+- 运维：v4d2 首压 perf 1457 / sse 1382 字撞 1300 熔断（R7 闭合分支天然更长）⇒ 熔断改 1600 后零成本重编译；eacces 一次 90 s 超时，重跑 4.5 s。
+  中转在 B 轮中段变差：新指纹 `fp_5a4b7738a7d3` 的 prompt_tokens 922（丢思考，不可信），两条样本 8 次都没落到可信后端；一条样本思考 0 字（通道没跑思考）。
+
+### 14.2 方法推进：主模型本轮思考原文落盘 ⇒ 归因读原话
+
+`effect-eval` 从本轮起把主模型的 `reasoning_content`（头 6000 字）存进 results；0 字思考视同未送入变体作废重发；盲评解析失败只补盲评不重发主调用。
+三处失败的原话（完整表在理论 S8-R8）：
+
+- perf/oH#0：「之前的推理说逐字原文是 `+  compressTargetMax: 1800,`，但实际文件里可能没有加号。最好先用 read_file 确认」⇒ **观察逐字 ≠ 文件逐字**（R8a）。
+- wrong-model/oH#0（126 字）：「Need to see normalizeRequest to confirm n.model.」⇒ trigger 写成待证假设，主模型就去证它（R9）。
+- wrong-model 全部压缩稿 10/24 直接改 vs raw 4/4：失败样本 77–557 字后 `read_file src/host-follow.js`——改法是逻辑改动，稿只给了 old_text 和方向，
+  没给 new_text，主模型去拿设计材料（R8b）。
+
+### 14.3 oracle I（只写三道输题，正文沿用 C，改判读收尾；预测先写后跑）
+
+| 任务 | raw | oG | oH | **oI** | 直接改 |
+|---|---|---|---|---|---|
+| wrong-model | 9.0 | 5.5 | 2.0 | **9.0** | 3/3（三次都原样用了稿里的 new_text） |
+| perf-regression | 3.8 | 5.0 | 5.5 | **9.0** | 2/2 |
+| sse-truncated | 2.3 | 4.5 | 4.5 | **8.5** | 2/2 |
+| 三题合计 | 5.0 | 5.0 | 4.0 | **8.9** | 7/7，回头 read 0%，死路 0% |
+
+主模型的自检句每次都被稿里已完成的核对接住：「should we maybe read file to ensure exact whitespace? The prior read_file output includes lines.」、
+「注意 diff 中是 `+ …`，文件里可能缩进两个空格。old_text 只用 "compressTargetMax: 1800," 可匹配。不需要先读」、「或许需要先读文件确认？但已有原文」。
+稿源 `docs/analysis/oracle/I.py`（→ `/home/user/oracle/I.json`）。五题形态上界估计 ≈ 8.7（oI 三题 + oH 的 eacces / flaky 8.5），旧上界 oC 6.4。
+
+### 14.4 落地（v12.8.0，未付费实测；用户要求先停副模型评测）
+程序门：`fileVerbatim`（diff `+` / grep 行号剥成文件逐字 + 说明句；副模型自己引的 `+ …` 也改写；`-` 行当 old_text 只统计）；new_text 段按标识符级核真
+（`newTextSpans`，birth 闸同口径）；`hedgedTrigger` 统计。提示词 `compress-v4d3`（三元组闭合 / 文件逐字 / 判读覆盖 / 定义处优先）。
+零成本重编译 oG/oH 侧输出 → `direct-og2.json` / `direct-oh2.json`（perf 的 `+` 落点已改写），待下一次付费评测。
+
+## 15. 消融、反驳题、五题 oracle 补全（2026-09-29 晚；同后端 `--require-fp`，混合池可信后端占 50%）
+
+### 15.1 原生 vs 现在（读数汇总，不含本节新增的反驳题）
+| | raw（原生） | v4t（v12.5 自动稿） | oH（v12.7 自动稿最好） | **oI（手写形态）** |
+|---|---|---|---|---|
+| 综合 | 5.0 (n=20) | 5.8 (n=20) | 5.8 (n=10) | **8.9** (n=11) |
+| 下一步正确 | 5.0 | 6.0 | 5.9 | **9.2** |
+| 死路 | 40% | 20% | 20% | **0%** |
+| 改对 / 错改 | 50% / 0% | 50% / 0% | 60% / 10% | **100% / 0%** |
+| 回头读已知文件 | 35% | 50% | 30% | **0%** |
+| 主模型思考 <1000 字占比 | 15% | 45% | 30% | 27% |
+| 上下文思考字数 / prompt tokens | 7857 / 4428 | 742 / 1728 | 1346 / 1961 | 1348 / 1969 |
+
+逐题：eacces 7.3→9.5，flaky 2.8→8.5，wrong-model 9.0→9.0，sse 2.3→8.5，perf 3.8→9.0。
+
+### 15.2 单因子消融（预测先写；详见理论 S8-R10）
+noNew 3/3、noClose 3/3、noPre 2/2（思考翻倍）、noNote 1/2。⇒ new_text 与"不再查"句都不是单独必要；冗余闭合是稳健性来源；中介是主模型思考长度。
+思考 <1000 字格：自动稿 8/29 直接改、oI 族 3/4。
+
+### 15.3 反驳题（Goodhart 防线；specs 里 `*~refute`，`base` 指向基题）
+| 反驳题 | 观察改成 | raw | oI | oI 动作 |
+|---|---|---|---|---|
+| perf~refute | 升级前 finishReason=length 100%、outputTokens=850 | 5.0 | **9.5** | 2/2 改 `maxOutputTokens: 4096,`→850，不碰 compressTargetMax |
+| wrong-model~refute | options.model 正常、n 无 model、`compilerCache ??= makeBirthCompiler(callCfg)` | 6.0 | 6.5 | 2/2 grep makeBirthCompiler，不碰 observe（一条 195 字思考也没硬改） |
+| flaky~refute | taskset 2 核 50/50 PASS | 4.0（一条去 grep CI 配置，1 分） | 7.0 | docker --cpus=2 / 加负载复现，不改 hedgeAfterMs |
+
+oI 6/6 错改 0；评测表新增「错改」列。8 题 17 样本：oI 8.5 / 错改 0 / 回头 read 0；raw 26 样本 5.0。
+
+### 15.4 本阶段目标（用户校准：调高，不为零点几分反复测）与退役条件
+自动稿：基题 ≥ 8.0、反驳错改 0 且 ≥ raw、死路 ≤ 10%、回头 read ≤ 10%、flaky ≥ 7、真机到位 ≥ 80%。提示词最多两轮付费迭代。达标或两轮用尽后本基准退役，进入多轮可执行基准（理论 S9）。

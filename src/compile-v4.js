@@ -17,7 +17,7 @@
 //   · 渲染按「状态 → 当前方案 → 排除/搁置 → 计划 → 未决」分组、组内保持原文顺序，而不是纯贪心顺序：
 //     分组保留因果可读性，未决问题放在最后（最靠近下一步生成的位置）；
 //   · I6（已编译文本永不作为副模型输入）是结构保证：birth 只把 reasoning 原文交给副模型。
-import { inventedIdentifiers } from './fidelity.js'
+import { inventedIdentifiers, NEW_TEXT_LEAD_RE } from './fidelity.js'
 import { wideShare } from './tokens.js'
 import { condHints, fixHints } from './prompts.js'
 import { DEFAULTS } from './config.js'
@@ -198,9 +198,12 @@ export function actionLoci(raw, chosen, max = 2) {
   return out
 }
 
-export function validateOps(rawOps, raw) {
+export function validateOps(rawOps, raw, ctx = '') {
   const src = String(raw || '')
   const hay = norm(src)
+  // v12.7：标识符出处 = 原文 + 本回合观察（cfg.compressCtx）——观察里有、原文没复述的标识符不是发明（S8-R5/R7）；锚点仍只认原文
+  const srcAll = ctx ? src + '\n' + String(ctx) : src
+  const hayAll = ctx ? norm(srcAll) : hay
   const kept = [], rejected = [], converted = []
   let fatal = null
   const ops = (Array.isArray(rawOps) ? rawOps : []).map(normalizeOp)
@@ -210,13 +213,13 @@ export function validateOps(rawOps, raw) {
     if (!V4_KINDS.includes(op.k) || !op.text) { reject('schema'); continue }
     const a = norm(op.anchor)
     if (a.length < 2 || !hay.includes(a)) { reject('I1'); continue }
-    const inv = inventedIdentifiers(src, [op.text, op.alt, op.why, op.trigger, op.then, op.supersedes].filter(Boolean).join('\n'))
+    const inv = inventedIdentifiers(srcAll, [op.text, op.alt, op.why, op.trigger, op.then, op.supersedes].filter(Boolean).join('\n'))
     if (inv.length) {
       reject('I2', inv.slice(0, 3))
       if (op.k === 'INCUMBENT' || op.k === 'COMPUTED') fatal = fatal || 'critical-I2'
       continue
     }
-    if (op.src && inventedIdentifiers(src, op.src).length) op.src = ''
+    if (op.src && inventedIdentifiers(srcAll, op.src).length) op.src = ''
     if (/^tool:?/i.test(op.src) || op.ev === 'tool') {
       if (RE_DECIDE.test(op.text)) { reject('I5'); continue }
     }
@@ -227,8 +230,8 @@ export function validateOps(rawOps, raw) {
     if (seen.has(sig)) { reject('dup'); continue }
     seen.add(sig)
     op.src = op.src.replace(/^tool:\s*/i, '')
-    // 理论 S8-R2′：READY 的位置锚点必须是原文逐字子串；对不上就丢掉锚点（条目保留）
-    if (op.at && !hay.includes(norm(op.at))) op.at = ''
+    // 理论 S8-R2′：READY 的位置锚点必须是原文 / 观察的逐字子串；对不上就丢掉锚点（条目保留）
+    if (op.at && !hayAll.includes(norm(op.at))) op.at = ''
     if (op.k === 'READY' && !op.at) op.at = locusFromRaw(src, op.text)
     kept.push(op)
   }
@@ -398,7 +401,7 @@ function proseSentence(op, lang) {
       case 'PLAN': return 'Next I want to ' + t + '.'
       case 'OPEN': return 'What I have not confirmed yet: ' + stripQ(op.text) + '.'
       case 'IF': return op.trigger && op.then ? 'If ' + cond(op.trigger) + ', then ' + stripEnd(op.then) + '.' : t + '.'
-      case 'READY': return op.auto ? t + '.' : 'The change I have ready: ' + t + (op.at ? ' — the line is `' + op.at + '`' : '') + (op.trigger ? ', once ' + cond(op.trigger) : '') + '.'
+      case 'READY': return op.auto ? (op.at ? 'The fix: ' + t + ' — the line is `' + op.at + '`, usable as edit_file old_text.' : t + '.') : 'The change I have ready: ' + t + (op.at ? ' — the line is `' + op.at + '`' : '') + (op.trigger ? ', once ' + cond(op.trigger) : '') + '.'
       default: return t + '.'
     }
   }
@@ -413,7 +416,9 @@ function proseSentence(op, lang) {
     case 'OPEN': return endZh(zj('还没确认的是', stripQ(op.text)))
     case 'IF': return endZh(op.trigger && op.then ? zj(zj('如果', cond(op.trigger)) + '，那么', stripEnd(op.then)) : t)
     // S8-R5：锚点带出处与逐字性声明（oracle 第 2 轮：节选代码行缺出处 ⇒ 主模型先 read_file 全文）
-    case 'READY': return op.auto ? endZh(t) : endZh((op.trigger ? zj(zj('如果', cond(op.trigger)) + '，那么需要改', t) : zj('需要改的是', t)) + (op.at ? '；这一行的逐字原文是 `' + op.at + '`，可以直接当 edit_file 的 old_text' : ''))
+    case 'READY': return op.auto
+      ? endZh(op.at ? zj('改法是', t) + '；这一行的逐字原文是 `' + op.at + '`，可以直接当 edit_file 的 old_text，不用再读文件' : t)
+      : endZh((op.trigger ? zj(zj('如果', cond(op.trigger)) + '，那么需要改', t) : zj('需要改的是', t)) + (op.at ? '；这一行的逐字原文是 `' + op.at + '`，可以直接当 edit_file 的 old_text' : ''))
     default: return endZh(t)
   }
 }
@@ -489,7 +494,8 @@ export function autoHintOps(raw, kept, suffix = '') {
   // 带否定 / 犹豫措辞的不补（ops7b 实测：「可以考虑 sudo chown…但不应修改真实 home」被补成改法并排在尾段最后）；超长句不补也不截断
   const has = (k) => kept.some((o) => o.k === k)
   const NEG = /不应|不要|别再|不行|不确定|没用|行不通|不能|可能没|\bnot\b|\bdon't\b|\bshouldn't\b/i
-  const add = (k, h, i) => {
+  const add = (k, h0, i) => {
+    const h = h0.replace(/^(?:[-*•]|\d+[.)]|[（(]\d+[）)])\s*/, '')   // v12.7：原文列表项去掉项目符号（仍是原文子串）
     if (has(k) || h.length > 150 || NEG.test(h) || covered(h) || (suffix && suffix.includes(h))) return
     out.push({ id: 'h' + k[0].toLowerCase() + (i + 1), idx: 10000 + out.length, k, ev: 'derived', kind2: null, text: stripEnd(h), anchor: h.slice(0, 40),
       key: '', src: '', alt: '', why: '', then: '', trigger: '', supersedes: '', deps: [], retracts: [], auto: true })
@@ -518,7 +524,10 @@ export function compileV4(output, raw, cfg = {}, budget = null) {
  * ★ v12.6 compress-v4-direct 程序门（理论 S8-R6）：副模型直写散文，代码只做能机械判定的事。
  *   锚点硬校验：`…` 片段必须是原文（或任务观察）里一字不差的子串；不是就剥掉反引号（不许假称逐字）。
  *   判读 / 语域 / 出处只统计不熔断（样例 + 尾段重申已把漏判率压低；熔断 = 原文放行，先测漏率再收紧）。
- *   熔断只有两种：空输出、超长（compressV4DirectMaxChars，缺省 1300）。
+ *   熔断只有两种：空输出、超长（compressV4DirectMaxChars，缺省 1800）。
+ *   v12.7.1：1300 → 1600。1300 是按 v4d1 开放分支的稿定的（oD/oE/oF 侧输出 920–1247）；R7 要求每个改法分支闭合
+ *   （`逐字落点` ≤200 字 + 可用句 ≈70 字 + 改成什么），两个分支就比开放形态多 200–500 字，v4d2 首压 5 份里 2 份（1382 / 1457）撞熔断 ⇒
+ *   整份稿被丢、原文（3000–9000 字）放行，比一份 1457 字的稿坏得多。熔断的职责是拦「跑飞」（照抄原文 ≥3000），1600 仍拦得住。
  * @returns {{ ok: true, text, stats } | { ok: false, reason, stats }}
  */
 export function compileV4Direct(side, raw, cfg = {}) {
@@ -528,23 +537,31 @@ export function compileV4Direct(side, raw, cfg = {}) {
   if (fence) { text = fence[1].trim(); stats.unfenced = true }
   if (!text) return { ok: false, reason: 'v4d-empty', stats }
   const hay = norm(raw + '\n' + (cfg.compressCtx || ''))
-  let invented = 0
-  text = text.replace(/`([^`\n]{1,220})`/g, (all, span) => {
+  let invented = 0, newText = 0
+  const rawHay = raw + '\n' + (cfg.compressCtx || '')
+  text = text.replace(/`([^`\n]{1,220})`/g, (all, span, at) => {
     const n = norm(span)
     if (n && hay.includes(n)) return all
+    // 理论 S8-R8b：「new_text 是 `…` / 改成 `…`」引导的段是要写入的新文本，不是引用；按标识符级核真（段内标识符全部来自原文 / 观察即可）
+    if (NEW_TEXT_LEAD_RE.test(text.slice(Math.max(0, at - 12), at)) && !inventedIdentifiers(rawHay, span).length) { newText++; return all }
     invented++
     return span
   })
   stats.inventedSpans = invented
+  if (newText) stats.newTextSpans = newText
   stats.chars = text.length
   const tail = text.slice(Math.floor(text.length * 0.55))
   stats.closeLoop = /如果[^。？\n]{1,90}[，,]?\s*(?:那么|就|则)/.test(tail) || /\bif\b[^.\n]{1,90}[,，]?\s*(?:then|,)/i.test(tail)
   stats.provenance = /逐字/.test(text)
   stats.register = /看起来|所以|下一步工具调用/.test(text)
-  const maxChars = Number.isFinite(cfg.compressV4DirectMaxChars) && cfg.compressV4DirectMaxChars > 0 ? cfg.compressV4DirectMaxChars : 1300
+  if (cfg.compressCtx) stats.ctxChars = String(cfg.compressCtx).length   // 观察上下文到位与否（生产由 plugin 自动构造）
+  const maxChars = Number.isFinite(cfg.compressV4DirectMaxChars) && cfg.compressV4DirectMaxChars > 0 ? cfg.compressV4DirectMaxChars : 1800
   if (text.length > maxChars) return { ok: false, reason: 'v4d-too-long', stats }
+  // 理论 S8-R7：判读分支的动作闭合与落点绑定（可用句写进分支句内、绑定到具体逐字落点）
+  if (cfg.compressV4DirectBind !== false) text = bindFixBranches(text, raw, cfg.compressCtx || '', stats)
   // R5 直改可用句（条件补句，effect-14 归因：缺了这句 ⇒ 主模型改前再取证一轮）：
   // 尾段已落到具体改法、有已核真的逐字代码行、却没写「可以直接当 old_text」⇒ 补一句真话（锚点已被门核真）。
+  // v12.7 起只作保底：R7 的分支绑定没绑上任何分支时才补这句游离的通用句（effect-16：游离句不起作用，绑定句起作用）。
   const fixTail = /(改法是|需要改|改成|改为|改回|删掉|删去|加上|回滚|换成|修复落在|改测试|改配置|改这里|改\s+[\w./-]{2,})/.test(tail)
   const afford = /old_text|逐字原文已给出|可以直接当/.test(text)
   if (fixTail && !afford) {
@@ -554,7 +571,299 @@ export function compileV4Direct(side, raw, cfg = {}) {
       stats.repairedAffordance = true
     }
   }
+  if (cfg.compressEditTool) { text = adaptEditTool(text, cfg.compressEditTool); stats.editTool = cfg.compressEditTool.name }
   return { ok: true, text, stats }
+}
+
+/**
+ * v12.8.1（不同宿主）：稿与门内部一律用本仓库的规范词 edit_file / old_text / new_text；最后一步换成宿主真实的工具名与参数名
+ *（cfg.compressEditTool = { name, oldKey, newKey }，生产由 plugin 从出站 tools 认出）。只换整词，不碰反引号里的代码。
+ */
+export function adaptEditTool(text, tool) {
+  if (!tool || !tool.name) return text
+  const map = { edit_file: tool.name, old_text: tool.oldKey || 'old_text', new_text: tool.newKey || 'new_text' }
+  const parts = String(text).split('`')
+  for (let i = 0; i < parts.length; i += 2) parts[i] = parts[i].replace(/\b(edit_file|old_text|new_text)\b/g, (w) => map[w])
+  return parts.join('`')
+}
+
+// ── S8-R7 判读分支的动作闭合与落点绑定 ───────────────────────────────────────
+// effect-16 逐样本：分支里写了「改哪一行（逐字）+ 可直接当 old_text + 不再取证」的稿，主模型直接 edit_file（flaky oC 8.5、perf oF 10.0）；
+// 只写方向（「拉开余量或改用 fake timers」）+ 末尾游离一句通用可用句的稿，主模型一律回头 read_file（flaky oE/oF 1.5–2.0）。
+// 程序能机械做的：找出尾段的判读分支；含改法措辞的分支必须含一个已核真的 `…` 片段；没有就按标识符 / 数字 / 文件名重叠，
+// 从已核真片段与任务观察里的代码行中绑定一个落点；把可用句写进该分支句内。析取（A 或 B）只统计，不改写（落定由提示词负责）。
+const BRANCH_FIX_RE = /(改法|改成|改为|改回|改掉|改用|改测试|改配置|改这|改那|改源|改代码|改文件|改回去|改[^，。；]{0,12}(?:那一行|这一行|一行)|改\s+[\w./-]{2,}|(?:加|补|删|改)\s*`|修复|修掉|修改|修测试|删掉|删去|删除|加上|补上|补一|回滚|回落|回退|降回|降到|调回|换成|替换|拉开|拉大|放宽|调大|调小|设为|设成|设小|设大|edit_file|把[^，。；]{1,60}(?:改|删|加|换|拉|调|回落|回退|设)|直接改|就改|去改|需要改|应改|该改)/
+// 弱改法词（换工具 / 换方案也会这么说）：then 里同时有取证措辞时不算改法（「改用 docker 再复现」是换复现手段）
+const WEAK_FIX_RE = /^(?:改用|改为|换成|替换|加上|加|补上|补一|拉开|拉大|放宽|调大|调小|设为|设成|设小|设大)/
+const PROBE_THEN_RE = /复现|再查|另查|去查|排查|再看|先看|查看|确认|检查|grep|read_file|再跑|重跑|再压|再测/
+const BRANCH_HEAD_RE = /(?:^|[，,；;：:—\s])(?:如果|若是|若|要是|假如)/
+const BRANCH_THEN_RE = /(那么|就|则|⇒|→|=>)/
+const DISJ_RE = /(或者|或是|或|还是|\bor\b)/
+// 改法措辞前面紧跟否定 ⇒ 这不是改法分支（「而不是改 src/distill.js」「不用再改」）
+const NEG_BEFORE_RE = /(不是|不要|不用|不必|不该|不应|不再|不去|无需|别|而非|非)\s*$/
+// 反引号片段前面是「补 / 加 / 改成 / 换成」⇒ 片段是要写入的新文本，不是落点
+const NEW_TEXT_BEFORE_RE = /(补上|补一句|补|加上|加入|加|改成|改为|换成|替换为|替换成|设为|设成|写成|变成|改写为|改写成)\s*$/
+/** 分支的 then 部分是否落到改法（含否定排除） */
+export function isFixBranch(thenPart) {
+  const re = new RegExp(BRANCH_FIX_RE.source, 'g')
+  const probe = PROBE_THEN_RE.test(thenPart)
+  for (const m of thenPart.matchAll(re)) {
+    // 1. 前面有明确否定（「此时不要改」「不用再改」「不能盲目改」）
+    if (NEG_BEFORE_RE.test(thenPart.slice(Math.max(0, m.index - 6), m.index))) continue
+    // 2. 「不能凭…去改」「不要凭…去改」「我自己否了」：否定前置或后置的假设排除
+    const leadContext = thenPart.slice(Math.max(0, m.index - 16), m.index)
+    if (/(?:不能|不要|不可|切勿|不应)[^，。；]{0,12}(?:去|就|直接)?$/.test(leadContext)) continue
+    const trailContext = thenPart.slice(m.index, Math.min(thenPart.length, m.index + 32))
+    if (/(?:这条候选|这种方案|这种改法|这路)[^，。；]{0,12}(?:否了|放弃|排除|不采|不走|不选)/.test(trailContext)) continue
+    // 3. 「设成了什么值 / 被设为」等反问状态描述不是改动动作
+    if (/^(?:设为|设成|设小|设大)/.test(m[0]) && /(?:什么|哪|如何|怎样)/.test(thenPart.slice(m.index, m.index + 16))) continue
+    // 4. 「按第一条分支改…」「按上述改法」等引用前文分支的条件描述不是本分支的改法动作
+    if (/(?:按|依照|依据|参照)[^，。；：:]{0,12}(?:分支|条|上述|前面)[^，。；：:]{0,6}$/.test(leadContext)) continue
+    // 「需要改用 docker 再复现」：去掉「需要 / 应该 / 直接」这类前导后看动词本身是不是弱改法词
+    const lead = /^(?:需要|应该|应|该|就|直接|去)/.exec(m[0])
+    const verbAt = m.index + (lead ? lead[0].length : 0)
+    if (probe && WEAK_FIX_RE.test(thenPart.slice(verbAt, verbAt + 8))) continue
+    return true
+  }
+  return false
+}
+const TOKEN_STOP = new Set(['the', 'and', 'for', 'not', 'null', 'true', 'false', 'undefined', 'edit_file', 'read_file', 'old_text', 'new_text',
+  'bash', 'grep', 'tool', 'file', 'run', 'git', 'diff', 'npm', 'node', 'src', 'test', 'tests', 'lib', 'const', 'let', 'var', 'return', 'function',
+  'import', 'export', 'from', 'this', 'that', 'with', 'into', 'then', 'else', 'when', 'ms', 'log', 'error', 'ok', 'json', 'yaml', 'yml', 'sh', 'js', 'mjs', 'ts'])
+/** 分支 / 片段里的强 token：标识符（含点号、连字符形态及其各段）与 ≥3 位数字 */
+export function strongTokens(s) {
+  const out = new Set()
+  for (const m of String(s || '').matchAll(/[A-Za-z_$][\w$]*(?:[.\-][A-Za-z_$][\w$]*)*/g)) {
+    const t = m[0]
+    if (t.length >= 3 && !TOKEN_STOP.has(t.toLowerCase())) out.add(t)
+    for (const p of t.split(/[.\-]/)) if (p.length >= 3 && !TOKEN_STOP.has(p.toLowerCase())) out.add(p)
+  }
+  for (const m of String(s || '').matchAll(/(?<![\w.])\d{3,}(?![\w])/g)) out.add(m[0])
+  return out
+}
+/** 任务观察（ctx）拆成工具块：[{ label, lines }]，label = 「[tool: xxx] 后面的那段」 */
+function ctxBlocks(ctx) {
+  const blocks = []
+  let cur = { label: '', lines: [] }
+  for (const line of String(ctx || '').split('\n')) {
+    const h = /^\s*\[tool:\s*([^\]]+)\]\s*(.*)$/.exec(line)
+    if (h) { if (cur.lines.length || cur.label) blocks.push(cur); cur = { label: (h[1] + ' ' + h[2]).trim(), lines: [] }; continue }
+    const t = line.trim()
+    if (t) cur.lines.push(t)
+  }
+  if (cur.lines.length || cur.label) blocks.push(cur)
+  return blocks
+}
+/** 分支里点名的文件：路径 / 文件名（basename）；「测试」映射到 test 目录 */
+function fileHints(branch) {
+  const out = new Set()
+  for (const m of String(branch || '').matchAll(/[\w./-]*[\w-]+\.(?:m?js|c?js|ts|tsx|jsx|json|ya?ml|py|go|rs|sh|md|toml|ini|env)\b/g)) {
+    out.add(m[0].split('/').pop())
+  }
+  // 不带扩展名的点号文件名（「改 birth.selftest 这一行」）：与工具块标签比对
+  for (const m of String(branch || '').matchAll(/(?<![\w.])[a-z][\w-]*(?:\.[a-z][\w-]*)+(?![\w.])/g)) if (!/\.(?:then|catch|env|model|js|mjs)$/.test(m[0])) out.add(m[0])
+  // 「测试」只在点名要改的是测试（改测试 / 测试文件 / 测试里那一行）时才算文件线索；「传给测试进程」不算
+  if (/改测试|测试文件|测试用例|测试里|测试的那|测试那一行|测试这一行|selftest|\btest file/i.test(branch)) out.add('test/')
+  return out
+}
+function labelMatches(label, hints) {
+  if (!label) return false
+  for (const h of hints) {
+    if (h === 'test/') { if (/(^|[\s/])test\//.test(label) || /\.selftest\./.test(label)) return true; continue }
+    if (label.includes(h)) return true
+  }
+  return false
+}
+/** 候选落点：文中已核真的 `…` 片段 + 任务观察里含标识符的代码 / 配置行；带来源标签 */
+function locusCandidates(text, ctx) {
+  const blocks = ctxBlocks(ctx)
+  const labelOf = (span) => { const n = norm(span); for (const b of blocks) if (b.lines.some((l) => norm(l).includes(n))) return b.label; return '' }
+  const seen = new Set()
+  const out = []
+  for (const m of String(text || '').matchAll(/`([^`\n]{1,220})`/g)) {
+    const span = m[1].trim()
+    if (!span || seen.has(span)) continue
+    seen.add(span)
+    if (usableLocus(span)) out.push({ span, label: labelOf(span), inText: true })
+  }
+  for (const b of blocks) {
+    for (const l0 of b.lines) {
+      // 理论 S8-R8a：落点的逐字性是相对文件的——git diff 的 `+` 与 grep / sed -n 的 `文件:行号:` 是观察格式，不是文件内容，先剥掉
+      const { span: l, via } = fileVerbatim(l0)
+      if (seen.has(l) || !usableLocus(l)) continue
+      // 只要代码 / 配置形态的行（有标识符且带符号），不要工具输出里的散文
+      if (!/[=:(){}\[\];'"`<>\/]/.test(l)) continue
+      seen.add(l); out.push({ span: l, label: b.label, inText: false, via })
+    }
+  }
+  return out
+}
+/**
+ * 观察里的一行 → 文件里逐字的样子。diff 增加行 `+  x: 1,` → `x: 1,`（via 'diff'）；grep -n / sed -n 的 `src/a.js:233:  return …` 或
+ * `233:  return …` → `return …`（via 'grep'）；其余原样（via ''）。diff 删除行不在此处理（usableLocus 一律拒绝）。
+ * effect-18 perf/oH#0 主模型原话：「之前的推理说逐字原文是 `+  compressTargetMax: 1800,`，但实际文件里可能没有加号。最好先用 read_file 确认」。
+ */
+export function fileVerbatim(line) {
+  const t = String(line || '')
+  let m
+  if ((m = /^\+(?!\+)\s*(\S.*)$/.exec(t))) return { span: m[1].trim(), via: 'diff' }
+  if ((m = /^(?:[\w./\\-]+\.[A-Za-z0-9]{1,6}:)?\d{1,6}[:-]\s*(\S.*)$/.exec(t)) && !/^\d+[:-]\s*\d/.test(t)) return { span: m[1].trim(), via: 'grep' }
+  return { span: t.trim(), via: '' }
+}
+// 能当 old_text 的片段：像一行代码 / 配置（有空格或结构符号），不是光秃标识符或路径（`CFB_REAL_DSH_HOME`、`/home/u/.dsh`）、
+// 不是 git diff 删除行（`-  x: 850,`）、不是 shell 命令（`grep -R … src`）、不是日志 / 断言输出行（`FAIL test/… Error: EACCES…`）
+const CMD_RE = /^(?:grep|rg|bash|sh|zsh|node|npm|npx|yarn|pnpm|taskset|docker|git|sed|awk|cat|ls|echo|curl|wget|find|for\s|while\s|stress|analyze-trace|python3?|pip|make|cd|export|source|kill|ps|top|nproc|seq|sudo|chmod|chown|rm)\b|\|\|\s*break|\s-lc\s|\$\(seq/
+const LOG_RE = /^(?:FAIL|PASS|OK|Error|[A-Z]\w*Error|npm ERR|\[|\$|>|#|✓|✗|at\s|expected\s|got\s|run\s*\d)|\b(?:passed|failed)\b/
+export function usableLocus(sp) {
+  const t = String(sp || '').trim()
+  return t.length >= 6 && t.length <= 220 && /\s|[=:(){}\[\];'"<>]/.test(t) && !/^[\w$.\/~\-]+$/.test(t) && !/^-\s/.test(t) &&
+    !CMD_RE.test(t) && !LOG_RE.test(t) && strongTokens(t).size > 0
+}
+const reEsc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** 片段里的「键: 值 / 键 = 值」小段；含 token t（作键或作值）的第一段 */
+const valueSegOf = (span, t) => {
+  const word = new RegExp('(?:^|[^\\w$])' + reEsc(t) + '(?![\\w$])')
+  for (const m of String(span).matchAll(/[A-Za-z_$][\w$.]*\s*[:=]\s*[^,;，；\s]+/g)) if (word.test(m[0])) return m[0]
+  return null
+}
+/**
+ * 给分支挑落点（理论 S8-R7 规则 3 的机械形式）：标识符 / 数字重叠 ×10（在手优先），分支点名的文件 +15（点名压过单个标识符重叠），
+ * 值行（ident: literal / ident = literal，改一个值优于改逻辑）+4，代码形态 +2，文中已引 +1，未引的文件行按与全稿的重叠排序，长度只作平局裁决。
+ * 选中的行若混着中文（工具节选把散文和代码写在一行），收窄到 `ident: value` 这一小段（仍是逐字子串）。
+ */
+export function bindLocus(branch, candidates, wholeText = '') {
+  const toks = strongTokens(branch)
+  const hints = fileHints(branch)
+  const all = wholeText ? strongTokens(wholeText) : null
+  let best = null
+  for (const c of candidates) {
+    const ct = strongTokens(c.span)
+    const hit = [...toks].filter((t) => ct.has(t))
+    const fileHit = labelMatches(c.label, hints)
+    if (!hit.length && !fileHit) continue
+    const valueTok = hit.find((t) => valueSegOf(c.span, t))
+    // 值行：重叠 token 是键（`hedgeAfterMs: 1600` 之于 hedgeAfterMs）+4；只是值（之于 1600、`data: [DONE]` 之于 DONE）+2
+    const asKey = valueTok && new RegExp('(?:^|[^\\w$])' + reEsc(valueTok) + '\\s*[:=]').test(c.span)
+    // 只靠文件点名命中的行，用「与全稿的标识符重叠」在文件内部排序（讨论过的那一行，而不是 import 行）
+    const ctxHit = all && !c.inText ? Math.min(6, [...ct].filter((t) => all.has(t)).length) : 0
+    let score = hit.length * 10 + (fileHit ? 15 : 0) + (valueTok ? (asKey ? 4 : 2) : 0) + (/[=(){};]|,\s*$/.test(c.span) ? 2 : 0) + (c.inText ? 1 : 0) +
+      (/^read_file\b/.test(c.label) ? 2 : 0) + ctxHit * 0.5 - c.span.length / 200   // 文件内容里的行天然是落点；bash 输出里的行（diff / grep -n）次之
+    if (/^(?:import\s|export\s|from\s|\/\/|\/\*|#|\*)/.test(c.span)) score -= 5   // import / 注释行不是改动落点
+    if (!best || score > best.score) best = { ...c, score, overlap: hit.length, fileHit, valueTok }
+  }
+  if (best && best.valueTok && /[\u4e00-\u9fff]/.test(best.span)) {
+    const seg = valueSegOf(best.span, best.valueTok)
+    if (seg) best = { ...best, span: seg, narrowed: true }
+  }
+  return best
+}
+/** 分支自己引的落点：第一个可用的 `…`（≥6 字、不是光秃标识符、前面不是「补 / 加 / 改成」这类新文本引导词） */
+function ownLocus(part) {
+  for (const m of String(part || '').matchAll(/`([^`\n]{1,220})`/g)) {
+    const raw = m[1].trim()
+    const { span, via } = fileVerbatim(raw)   // R8a：副模型自己引了 diff 的 `+ …` 行 ⇒ 落点写成文件里的样子
+    if (!usableLocus(span)) continue
+    if (NEW_TEXT_BEFORE_RE.test(part.slice(Math.max(0, m.index - 6), m.index))) continue
+    return { span, via, quoted: raw }
+  }
+  return null
+}
+/** R8a：分支里所有 `+ …` / `file:NN: …` 形的引文改写成文件里的样子，并在第一处后面加一句说明；`- …` 行被当 old_text 只统计（它是旧值，不在文件里） */
+function normalizeQuotedLoci(branch, stats = {}) {
+  let out = branch, noted = false
+  for (const m of String(branch || '').matchAll(/`([^`\n]{1,220})`/g)) {
+    const raw = m[1].trim()
+    if (/^-\s/.test(raw) && /old_text/.test(branch)) { stats.minusLineAsOldText = (stats.minusLineAsOldText || 0) + 1; continue }
+    const { span, via } = fileVerbatim(raw)
+    if (!via || span === raw || !usableLocus(span)) continue
+    const note = noted ? '' : via === 'diff' ? '（git diff 里行首的加号是 diff 标记，文件里没有它，old_text 不要带加号和行首缩进）' : '（grep 输出里的文件名和行号是前缀，不是文件内容，old_text 不要带它们）'
+    out = out.split('`' + raw + '`').join('`' + span + '`' + note)
+    noted = true
+    stats.fileVerbatimFixed = (stats.fileVerbatimFixed || 0) + 1
+  }
+  return out
+}
+/**
+ * 把可用句写进分支句内：在分支的结尾标点之前插入。
+ * R8a：落点若来自 diff / grep 输出，可用句要说明「加号 / 行号是观察格式，文件里这一行是 `…`」——对文件为真的担保才接得住主模型的自检；
+ * 一句假担保（把 `+  x,` 说成逐字原文）会让整份稿的担保作废（effect-18 perf/oH#0）。
+ */
+function withAffordance(branch, hit) {
+  const span = typeof hit === 'string' ? hit : hit.span
+  const via = typeof hit === 'string' ? '' : hit.via
+  const named = span.length <= 120 ? '`' + span + '`' : '上面那一行'
+  const src = via === 'diff' ? '（git diff 里行首的加号是 diff 标记，文件里没有它，old_text 不要带加号和行首缩进）'
+    : via === 'grep' ? '（grep 输出里的文件名和行号是前缀，不是文件内容，old_text 不要带它们）' : ''
+  const clause = via ? '——文件里这一行是 ' + named + src + '，可以直接当 edit_file 的 old_text，不用先读文件确认'
+    : '——落点 ' + named + ' 的逐字原文已给出，可以直接当 edit_file 的 old_text，看到结果后不用再读文件'
+  const m = /([。；;！!]+\s*)$/u.exec(branch)
+  return m ? branch.slice(0, m.index) + clause + m[1] : branch + clause + '。'
+}
+/**
+ * 尾段判读分支的闭合与绑定（导出供工具 / 自测用）。返回新文本；统计写进 stats：
+ *   branches（判读分支数）fixBranches（含改法措辞）boundBranches（已绑定 / 本次绑定）boundBy（'span'|'overlap'|'file' 列表）
+ *   unboundFix（找不到落点的改法分支）disjunctiveFix（析取的改法分支）
+ */
+export function bindFixBranches(text, raw, ctx, stats = {}) {   // raw 暂未用：候选只取已核真片段与任务观察（原文里未引的行不算「在手」）
+  const src = String(text || '')
+  // 只看尾段（后 60%）的判读分支，但按整句切，不在句中截断（否则「如|果」被切开就找不到分支）
+  const start = Math.floor(src.length * 0.4)
+  const sents = []
+  let off = 0
+  for (const piece of src.split(/(?<=[。；;！!？?])|(?<=\n)/)) {
+    const t = piece.trim()
+    if (t && off + piece.length > start) sents.push(t)   // 跨过 40% 线的整句也算尾段
+    off += piece.length
+  }
+  const isBranch = (s) => BRANCH_HEAD_RE.test(s) && BRANCH_THEN_RE.test(s) && s.length >= 8
+  const branches = sents.filter(isBranch)
+  if (!branches.length) return text
+  const AFFORD_RE = /old_text|逐字原文已给出|可以直接当/
+  let cands = null
+  let out = src
+  let fixN = 0, bound = 0, unbound = 0, disj = 0
+  const by = []
+  for (const b of branches) {
+    const thenAt = b.search(BRANCH_THEN_RE)
+    const thenPart = thenAt >= 0 ? b.slice(thenAt) : b
+    if (!isFixBranch(thenPart)) continue
+    fixN++
+    if (DISJ_RE.test(thenPart)) disj++
+    // 分支句里、或紧接的下一句（oracle 稿的写法：「…这一行。这一行上面已有逐字原文，可以直接当 old_text。」）已有可用句 ⇒ 不动
+    const next = sents[sents.indexOf(b) + 1]
+    if (AFFORD_RE.test(b) || (next && !isBranch(next) && AFFORD_RE.test(next))) {
+      bound++; by.push('had')
+      // R8a 仍要过：副模型自己写的可用句若指着 diff 的 `+ …` / grep 的 `file:NN: …`，把引文改写成文件里的样子并说明（假担保会让整份稿的担保作废）
+      const fixed = normalizeQuotedLoci(b, stats)
+      if (fixed !== b) { const idx = out.lastIndexOf(b); if (idx >= 0) out = out.slice(0, idx) + fixed + out.slice(idx + b.length) }
+      continue
+    }
+    let nb = null
+    const own = ownLocus(thenPart) || ownLocus(b)
+    if (own) {
+      // R8a：分支里引的是 diff 的 `+ …` / grep 的 `file:NN: …` ⇒ 先把引文本身改写成文件里的样子，再接可用句
+      const b2 = own.via && own.quoted !== own.span ? b.split('`' + own.quoted + '`').join('`' + own.span + '`') : b
+      if (own.via && own.quoted !== own.span) stats.fileVerbatimFixed = (stats.fileVerbatimFixed || 0) + 1
+      nb = withAffordance(b2, own); by.push('span')
+    } else {
+      if (!cands) cands = locusCandidates(src, ctx)
+      const hit = bindLocus(thenPart, cands, src) || bindLocus(b, cands, src)
+      if (hit) { nb = withAffordance(b, hit); by.push(hit.overlap ? 'overlap' : 'file') }
+    }
+    // R9 判读覆盖（只统计）：trigger 里带「例如 / 比如 / 可能 / 也许」的是仍待证明的假设，不是输出里会字面出现的特征
+    if (/(?:如果|若是|若|要是|假如)[^，。；]{0,60}(?:例如|比如|可能|也许|大概|或许)/.test(b)) stats.hedgedTrigger = (stats.hedgedTrigger || 0) + 1
+    if (!nb) { unbound++; continue }
+    const idx = out.lastIndexOf(b)
+    if (idx < 0) { unbound++; continue }
+    out = out.slice(0, idx) + nb + out.slice(idx + b.length)
+    bound++
+  }
+  stats.branches = branches.length
+  if (fixN) stats.fixBranches = fixN
+  if (bound) { stats.boundBranches = bound; stats.boundBy = by }
+  if (unbound) stats.unboundFix = unbound
+  if (disj) stats.disjunctiveFix = disj
+  return out
 }
 
 /** 硬拒绝占比阈值（schema / I1–I8；去重、I7、retracted 不算「不可信」）。 */
@@ -571,7 +880,7 @@ const maxRejectRatio = (cfg) => (typeof cfg.compressV4MaxRejectRatio === 'number
  *   （它们比渲染稿里后段的结论旧；放前面 ⇒ 最新状态仍在最后，不会被旧原文盖过）
  */
 export function compileOpsV4(rawOps, raw, cfg = {}, budget = null, stats = {}, opts = {}) {
-  const v = validateOps(rawOps, raw)
+  const v = validateOps(rawOps, raw, cfg.compressCtx || '')
   const byRule = {}
   for (const r of v.rejected) byRule[r.rule] = (byRule[r.rule] || 0) + 1
   Object.assign(stats, { ops: v.total, valid: v.kept.length, rejected: byRule, converted: v.converted.length })
@@ -591,6 +900,17 @@ export function compileOpsV4(rawOps, raw, cfg = {}, budget = null, stats = {}, o
   const auto = cfg.compressV4AutoHints === false ? [] : autoHintOps(raw, kept0, typeof opts.rawSuffix === 'string' ? opts.rawSuffix : '')
   const kept = auto.length ? [...kept0, ...auto] : kept0
   if (auto.length) stats.autoHints = auto.length
+  // 理论 S8-R7（ops 路）：没有落点的改法条目，按标识符 / 文件名重叠从原文引文与本回合观察（compressCtx）里绑一个逐字落点
+  //   （validateOps 里的 locusFromRaw 只看原文；观察里的行——如测试节选的 `hedgeAfterMs: 1600`——此前绑不上）
+  if (cfg.compressV4DirectBind !== false) {
+    let cands = null
+    for (const op of kept) {
+      if (op.k !== 'READY' || op.at) continue
+      if (!cands) cands = locusCandidates(raw, cfg.compressCtx || '')
+      const hit = bindLocus(op.text, cands, raw)
+      if (hit) { op.at = hit.span; stats.boundReady = (stats.boundReady || 0) + 1 }
+    }
+  }
   const sel = selectOps(kept, { budget: b, lang })
   const suffix = typeof opts.rawSuffix === 'string' ? opts.rawSuffix : ''
   // 有原文尾巴时不出尾段：尾巴本身就是最新的推理，「所以现在…」会比它旧
@@ -607,6 +927,7 @@ export function compileOpsV4(rawOps, raw, cfg = {}, budget = null, stats = {}, o
   if (suffix) stats.rawSuffixChars = suffix.length
   if (gap) stats.rawGapChars = gap.length
   if (!text.trim()) return { ok: false, reason: 'v4-empty-render', stats }
+  if (cfg.compressEditTool) { text = adaptEditTool(text, cfg.compressEditTool); stats.editTool = cfg.compressEditTool.name }
   return { ok: true, text, stats }
 }
 

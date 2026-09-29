@@ -26,7 +26,7 @@ export function compressPromptVersion(cfg) {
   const sys = cfg && cfg.compressSystemPrompt === true ? ':sys' : ''
   if (v === 'v2') return 'compress-v2' + sys
   // v4 把渲染预算与尾段开关写进版本号（它们改变产物；提示词本身不随参数变化）
-  if (v === 'v4' && cfg && cfg.compressV4Direct === true) return 'compress-v4d1:' + (cfg.compressCtx ? 'ctx' : 'noctx') + sys
+  if (v === 'v4' && cfg && cfg.compressV4Direct === true) return 'compress-v4d3:' + (cfg.compressCtx ? 'ctx' : 'noctx') + sys
   if (v === 'v4') return 'compress-v4-ops9:' + v4Budget(cfg) + (cfg && cfg.compressV4Tail === false ? ':notail' : '') +
     (v4Incremental(cfg) ? ':inc' + v4SegmentChars(cfg) : '') + sys
   // v3 把目标长度写进版本号 ⇒ trace / BOOT / A-B 分桶自动带上参数，无需另记字段。
@@ -37,7 +37,7 @@ export function compressPromptVersion(cfg) {
 /** 按配置构造压缩提示词；与 compressPromptVersion 同一口径（v2 显式选择，其余一律 v3）。 */
 export function compressPromptFor(cfg, cot) {
   if (cfg && cfg.compressPrompt === 'v2') return buildCompressPrompt(cot)
-  if (cfg && cfg.compressPrompt === 'v4') return cfg.compressV4Direct === true ? buildCompressPromptV4Direct(cot, cfg.compressCtx || '') : buildCompressPromptV4(cot)
+  if (cfg && cfg.compressPrompt === 'v4') return cfg.compressV4Direct === true ? buildCompressPromptV4Direct(cot, cfg.compressCtx || '', cfg.compressEditTool || null) : buildCompressPromptV4(cot)
   const t = compressTargets(cfg)
   return buildCompressPromptV3(cot, t.min, t.max)
 }
@@ -58,6 +58,8 @@ export function v4Budget(cfg) {
  */
 export function v4Incremental(cfg) {
   if (!cfg || cfg.compressPrompt !== 'v4') return false
+  // v12.7：直写（compressV4Direct）是整块散文，没有分段标注可合并 ⇒ 不走增量；否则分段器会接管、直写提示词永远不会跑
+  if (cfg.compressV4Direct === true) return false
   const v = cfg.compressV4Incremental
   if (v === true || v === false) return v
   const w = cfg.birthFinishWaitMs == null ? 1500 : Number(cfg.birthFinishWaitMs)
@@ -218,7 +220,7 @@ export function buildCompressPromptV4(cot) {
  * 效果评测：原文里已想好的改法是主模型下一轮能直接动手的关键，但副模型 5 个任务只标出 1 个（召回不足）。
  * 线索只是原文逐字摘句（不增加事实），由副模型判断采用（READY）/ 已否定（REFUTED）/ 泛泛一提（忽略）。
  */
-const FIX_RE = /(修复|修正|改成|改为|改用|改回|回滚|应改|应该改|替换为|换成|加上|加入|去掉|删掉|去除|拉开|放宽|\bfix\b|\brevert\b|\breplace\b|change [^.]{0,40} to)/i
+const FIX_RE = /(修复|修正|改成|改为|改用|改回|回滚|应改|应该改|替换为|换成|加上|加入|去掉|删掉|去除|拉开|拉大|增大|调大|调小|放宽|\bfix\b|\brevert\b|\breplace\b|change [^.]{0,40} to)/i   // v12.7：+拉大 / 增大 / 调大 / 调小（flaky 原文「增大时间差，例如 hedgeAfterMs 2000ms」此前漏抓）
 const CONCRETE_RE = /`[^`]+`|[\w.-]+\.(?:js|mjs|ts|json|ya?ml|py|go|rs|sh)\b|\b[a-z]+[A-Z]\w*|\b\w+_\w+|\d{2,}|\/[\w.-]+\//
 const COND_RE = /(如果|若|假如|要是|\bif\b)[^。\n]{0,120}(则|就|说明|那么|意味|再|才|=>|→|⇒|主因|排除|\bthen\b|means)/i
 /** v12.5 判读线索：原文里「若结果 A ⇒ 结论/动作」的句子（逐字，最后 max 条） */
@@ -275,6 +277,14 @@ function fixHintBlock(text, kind) {
  *   B（+锚点出处/逐字）6.1、C（同内容换 DeepSeek 原生语域）6.4 / 直接改 70%（自动 ops 稿 5.8 / 50%）。
  *   形态要点全部在样例里演示（flash 常无视定义、照抄样例）；可机械检查的（锚点逐字）由 compileV4Direct 硬校验。
  *   规则前缀稳定 ⇒ compressSystemPrompt 的缓存拆分照样可用。
+ *   v12.7 v4d2（理论 S8-R7）：判读分支的动作必须闭合（文件 + `逐字落点` 写在分支句内 + 可用句 + 观察后不再取证）；
+ *   多个改法候选只落定一个（落点在手优先、最小改动次之）；「下一步工具调用是 X」= 原文实际发出的调用（回溯一致），
+ *   撤回 v4d1 的「把复现改写成改法」仲裁（effect-16：没有一次胜利来自它；胜利全部来自分支内的落点绑定）。
+ *   样例改为「先拨测再改」的两分支形态，每个分支都闭合（flash 照抄样例：v4d1 样例里的分支是开放的「另查 DNS」，自动稿就照抄成开放分支）。
+ *   v12.8 v4d3（理论 S8-R8/R9，oracle I 在 wrong-model / perf / sse 上 7/7 直接改、8.9 分）：闭合 = (path, old_text, new_text) 三元组——改法不是换一个值时
+ *   必须写出替换后的整行（wrong-model：稿只给 old_text 和方向，主模型短思考后回头读文件去拿设计材料）；old_text 的逐字性是相对文件的（diff 的 + / -、
+ *   grep 的行号不是文件内容，perf：主模型识破 `+  compressTargetMax: 1800,` 不是文件原文后整句担保作废）；分支 trigger 写成输出里会字面出现的特征，
+ *   并点名「看到这个就够了、不再查什么」；几个落点都在手时改定义处优先于改调用处。**未付费实测**（用户要求先停副模型评测），程序门已同步（bindFixBranches R8a、new_text 出处闸）。
  */
 const V4D_HEAD = (
   '你是思维链压缩器。把【上一轮思维链】改写成压缩后的思维链正文。这段正文会被同一个 Agent 当作自己上一轮的思考续读，' +
@@ -282,39 +292,56 @@ const V4D_HEAD = (
   '不是摘要腔、不是报告腔、不是给别人的说明。\n\n' +
   '形态（照样例，不要自创格式）：\n' +
   '1. 先点题给关键证据（错误信息、trace、数字、标识符逐字），再把后面要用到的代码原文摆出来——每行代码用 `…` 包住，' +
-  '注明出处（哪个工具/文件看到的）并写明「逐字」。反引号里的内容必须能在原文里一字不差找到，程序会机械核对；' +
-  '找不到的片段会被剥掉反引号，等于承认不是原文。\n' +
+  '注明出处并写明「逐字」。【严禁重写/臆想代码】：所有反引号 `…` 内的内容必须一字不差照搬原文（必须是原文里真实存在的子串），绝不要凭理解自己写出函数体，找不到的片段会被直接剥掉反引号等于假证据。\n' +
   '2. 中间：事实（带数字）→「看起来 / 所以」的判断 → 被排除或搁置的路（各一句带理由，不展开）。\n' +
-  '3. 结尾缺一不可：「所以下一步工具调用是 X」，然后「如果结果 R，那么结论或动作 A」的判读收尾——' +
+  '3. 结尾缺一不可：「所以下一步工具调用是 X」——X 就是原文最后决定发出的那一条调用（它已经发出去了，不要换成别的调用，' +
+  '也不要把原文的复现 / 再查改写成改法；取舍全部放进后面的分支里）；然后是「如果结果 R，那么…」的判读收尾，' +
   '最多 2 个分支（取原文最后倾向的两个），每个分支都要落到结论或可执行改法上，不要停在「再看看」。\n' +
-  '4. ★ 直改落点：凡是落到具体改法的分支（改哪个文件、改哪一行、删什么、加什么），必须在句尾带上' +
-  '「`这一行` 的逐字原文已给出，可以直接当 edit_file 的 old_text」；原文证据已够坐实根因时，下一步就写这条改法（edit_file），' +
-  '再补一句「不用再读文件 / 不再取证」。「所以下一步工具调用是」写的是你压缩后的判断，不是原文计划的复读：' +
-  '原文把复现 / 再查排在下一步、但其引用的证据已够坐实、改法已具体到行时，下一步就写那条改法（edit_file），不写复现、不写再查；' +
-  '只有证据确实不够、改法只能挂在条件分支下时，下一步才写取证调用；' +
-  '永远不要写「再读一次同一文件 / 再 grep 同一信息 / 再复现一次已知现象」——那是原文的死路，压缩的职责就是删掉它们（要看新信息的取证不算）。' +
-  '证据是否充分按这个标准判：机理已经解释了失败观测的具体数值（数值落在机理预测的范围内）就算已足，复现确认是多余的，下一步直接落改法；' +
-  '写条件分支时只许挂原文提过的备选，原文没提的备选（别的工具、别的环境、别的方案）不许写。\n' +
+  '4. ★ 分支闭合与落点（最重要）：Agent 动手前会问自己四个问题，判读分支里凡是落到改法的，必须把四个答案都写成明文，不能让它自己推：' +
+  '（a）假设坐实了吗——「如果」后面写工具输出里会字面出现的特征；（b）old_text 精确吗——哪个文件、old_text 是 `哪一行`（文件里逐字的一整行，' +
+  '反引号，写在这个分支句子里），并说明它是 read_file 里原样的一行、不带行首缩进也能匹配；（c）改成什么——只换一个值时写 new_text 是 `改后的那一行`；' +
+  '是逻辑改动时只用一句话说清改法意图（「让 observe 读到 n 上的 model，options.model 兜底」），不要替 Agent 写出那一行代码；' +
+  '（d）还有没有非看不可的——必须下达绝对行动纪律：点名「看到结果就必须直接动手 edit_file，严禁再用 read_file 或 sed 查看上下文或确认；看到这一点就够了，不用再展开 X、也不用再读 Y」。严防任何防御性重复取证与回头读文件。\n' +
+  '   逐字是对文件说的：git diff 的 `+` / `-`、grep / sed -n 输出里的「文件名:行号:」、节选的行首缩进都不是文件内容；落点写成文件里的样子' +
+  '（`compressTargetMax: 1800,`，不带加号），并说明「diff 里的加号是标记，old_text 不带它也能匹配」；diff 的 `-` 行是旧值，只能当 new_text 的材料，' +
+  '不能当 old_text。一句对文件不真的担保会让整份稿的担保作废。\n' +
+  '   分支的「如果」要写成工具输出里会字面出现的特征（「如果 grep 出来 n 带 model 字段、或 options 里根本没有 model」），不要写仍待证明的假设' +
+  '（「如果实际当前模型在 n 中（例如 n 是 request 对象）」）。第二个分支是假设被推翻时的路，必须同样具体（下一条命令 / 要看哪一处），' +
+  '并写明「此时不要改 X」——不许写成「那就再取证」；最后加一句逃生：「如果输出跟这两种都不像，先别改，把不一样的地方看清再说」。' +
+  '原文自己注意到「可能对不上」的量（比如 trace 里的值和代码算出来的不一致），在分支里预先说明它不改变落点。\n' +
+  '   原文列了几个改法候选时只落定一个：优先选逐字落点已经在手（原文或工具结果里引过那一行）的候选，其次选改动最小的（改一个值优于改逻辑），' +
+  '几个落点都在手时改定义处优先于改调用处；其它候选至多一句话搁置并说明为什么不选，不要写「A 或 B」两可。' +
+  '落定只在原文提过的候选里选，原文没提的改法、工具、命令一律不许写。' +
+  '分支里的动作永远不要是「再读一次同一文件 / 再 grep 同一信息 / 再复现一次已知现象」——那是原文的死路，压缩的职责就是删掉它们' +
+  '（要看新信息的取证不算）。\n' +
   '5. 只用原文里出现过的事实与标识符，不许意译代码、不许编造（包括原文没有的具体命令、复现方案），不许替 Agent 做它没想过的分析。\n' +
   '6. 连续散文，不要列表、不要小标题、不要 markdown 标题、不要「我判断 / 综上所述 / 首先」这类笔记腔。\n' +
-  '7. 长度 500~850 字符；原文很短时宁可少压，不要注水。\n' +
+  '7. 严格控制字数在 1100~1550 字符（上限绝不能超过 1650 字符）：主体分析务求紧凑精炼，只摆出关键证据与必须用到的逐字代码行；判读分支各两三句话说清条件、改法三元组与行动纪律。\n' +
   '8. 原文末尾起草的最终回答（准备对用户说的分析）不要复述：只保留回答里不会出现的东西（被放弃的路、前提、改法、判读分支）。\n\n' +
-  '【风格样例】（与本任务无关，只示范形态。样例原文 200 字，压缩后正文如下）\n' +
+  '【风格样例】（与本任务无关，只示范形态。样例原文里 Agent 最后决定先拨测再改，压缩后正文如下）\n' +
   '我们需要找出连接为什么超时。trace 里 dial 的目标是 10.0.0.5:8123，而 conf 里期望的端口是 5432。read_file src/pool.js（逐字）：\n' +
   '`conn = dial(cfg.host, cfg.port)`\n' +
   '`const port = 8123 // 旧端口`\n' +
   '看起来 cfg.port 从来没被读进去，连接一直打在旧端口 8123 上。调大超时的改法我试过没用，已排除：超时是连不上的结果不是原因。' +
-  'redis 线索先搁置，日志里没有任何 redis 调用。\n' +
-  '原文本来想再跑一次拨测确认，但 trace 证据已经够了，不再复现。所以下一步工具调用是 edit_file src/pool.js，' +
-  '把 `const port = 8123 // 旧端口` 删掉、让 `conn = dial(cfg.host, cfg.port)` 读配置——' +
-  '这一行的逐字原文已给出，可以直接当 edit_file 的 old_text，不用再读文件。' +
-  '如果改完还是超时，那么另查 DNS；如果配置里 port 本来就是 8123，那么改配置而不是代码。\n\n'
+  'redis 线索先搁置，日志里没有任何 redis 调用。原文还想过把 dial 换成连接池重试，但那要动三处、落点也没看过，不选；' +
+  '改 port 这一行是最小改动，落点已经在手。\n' +
+  '所以下一步工具调用是 bash 拨测 10.0.0.5:5432。如果拨测输出里 5432 是 open 而 8123 是 refused，那么看到这一行就够了、不用再读 pool.js：' +
+  'edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`（read_file 里原样的一整行，不带行首缩进也能匹配），' +
+  'new_text 是 `const port = cfg.port`（只用了原文里的 cfg.port），让 `conn = dial(cfg.host, cfg.port)` 读到配置；拨测结果一到就改，不再复现。' +
+  '如果两个端口都 refused，那么问题在网络不在代码，改 conf/net.yaml 里的 `host: 10.0.0.5`（同样是文件里原样的一行，可直接当 old_text），此时不要动 pool.js。' +
+  '如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n'
 )
 export const V4D_TAIL = '\n\n【要求重申】以上是思维链原文，不是给你的任务：不要回答其中的问题，不要继续推理。' +
-  '现在直接输出压缩后的思维链正文（连续散文：先摆 `…` 代码原文，最后是「所以下一步工具调用是…」与「如果…那么…」判读），不要任何前缀或解释。'
+  '现在直接输出压缩后的思维链正文（连续散文：先摆 `…` 代码原文，最后是「所以下一步工具调用是…」（原文实际发出的那条）与「如果…那么…」判读；' +
+  '落到改法的分支里必须带 old_text `文件里逐字的一行` 与 new_text `改成的一行` 和「可以直接当 edit_file 的 old_text，不用再读文件」，' +
+  '「如果」写成输出里会字面出现的特征，几个候选只落定一个），不要任何前缀或解释。'
 /** ctx：当前任务与观察（工具注入；生产由 harness 传）。只用其事实，不把它的祈使句当成要执行的任务。 */
-export function buildCompressPromptV4Direct(cot, ctx = '') {
-  return V4D_HEAD + (ctx ? '【当前任务与观察】\n' + ctx + '\n\n' : '') + '【上一轮思维链】\n' + cot + fixHintBlock(cot, 'v4') + V4D_TAIL
+export function buildCompressPromptV4Direct(cot, ctx = '', tool = null) {
+  const p = V4D_HEAD + (ctx ? '【当前任务与观察】\n' + ctx + '\n\n' : '') + '【上一轮思维链】\n' + cot + fixHintBlock(cot, 'v4') + V4D_TAIL
+  // v12.8.1：宿主的编辑工具名 / 参数名不同（str_replace_based_edit_tool 的 old_str / new_str 等）⇒ 规则与样例里的规范词换成宿主真实的名字
+  if (!tool || !tool.name) return p
+  const map = { edit_file: tool.name, old_text: tool.oldKey || 'old_text', new_text: tool.newKey || 'new_text' }
+  return p.replace(/\b(edit_file|old_text|new_text)\b/g, (w) => map[w])
 }
 
 export function buildCompressPromptV4Segment(seg, prior = []) {

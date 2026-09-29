@@ -6,6 +6,143 @@
 
 ---
 
+## v12.8.2（2026-09-29）主模型深度实测闭环：15 项形态 Lint 量化表 + 严禁二度取证纪律；基题 100% 直接改对（全改对，零错改）
+
+**核心进展**
+1. **形态标准量化（draft-lint 15 条规范）**：
+   - 将手写稿成功的关键机制量化为可机械判定的 15 项指标（`tools/draft-lint.mjs`）：逐字锚点真实性（L1）、尾段双分支闭合（L2）、自带落点无需修补（L3）、出处担保句（L4）、文件逐字格式干净（L5）、改法段内明示「无需再查」（L6）、单改法不两可（L7）、触发词无含糊（L8）、备选分支具象非空泛（L9）、边界逃生句（L10）、有效排除历史（L11）、无析取冲突（L12）、长度受控（L13）、原生推理语域（L14）、对齐上一轮指引（L15）。
+   - 跨 53 稿·题对标证明：L4/L6/L10/L14 等指标直接贡献 +20pp ~ +27pp 的直接改对率提升。
+2. **消灭死循环取证（消除「再 grep/sed 一轮」死路）**：
+   - 深入归因 sse-truncated 等任务中的 2 分样本：发现模型在拿到 grep 结果后，若稿件未斩钉截铁定论，模型会因「求稳」心理再发起 `sed` 查看上下文。
+   - 改进分支定论原则：明确「看到该证据行即坐实，严禁再用 sed / read_file 查看上下文」；实测 `sse-truncated` 样本 100% 立即直接发起 `edit_file`，彻底消灭回头 read 与二次取证死路。
+3. **主模型最终收敛成绩（oM 变体）**：
+   - 5 道基题：`eacces-config` (9.5)、`flaky-timeout` (8.5)、`wrong-model` (9.0)、`perf-regression` (9.0)、`sse-truncated` (7.0~8.0)。
+   - **基题直接改对率 100%（改对 5/5，错改 0%，回头读 0%）**。
+   - 3 道反驳题：面对相反工具证据，100% 走备选分支，错改率 0%，表现显著优于 raw（raw 会走死路或无进展 grep）。
+
+## v12.8.1（2026-09-29 晚）消融 + 反驳题 → 理论 S8-R10 / S9 终局目标；宿主编辑工具名自适应；通道体检工具；评测「错改」列
+
+**实测（同后端，主模型侧，共 26 次主调用）**
+- 五题 oracle I 补全：**8.9**（n=11，改对 100%、回头 read 0%、死路 0%；raw 5.0）。逐题 eacces 9.5 / flaky 8.5 / wrong-model 9.0 / sse 8.5 / perf 9.0。
+- 单因子消融：noNew 3/3、noClose 3/3、noPre 2/2（思考翻倍）、noNote 1/2 ⇒ **R8b 的 new_text 不是必要项**（预测被证伪）；稳健性来自冗余闭合；中介是主模型思考长度（<1000 字格：自动稿 28% 直接改，oI 形态 75%）。
+- **反驳题**（`*~refute`：同任务同稿，观察改成假设被推翻）：oI **6/6 走第二分支、错改 0**（perf~refute 9.5 / wrong-model~refute 6.5 / flaky~refute 7.0；raw 5.0 / 6.0 / 4.0）。形态不以过度承诺换分。
+- 通道：某渠道只认 `reasoning_effort`、指纹为空且**丢掉上一轮 reasoning_content**（1 字 vs 1000 字 prompt_tokens 372 = 372）——那种通道上 CFB 对模型不可见；换回后为混合池（可信后端 50%）。
+
+### 理论
+- **S8-R10**：主模型动手前的固定清单（假设坐实 / old_text 精确 / 改成什么 / 还有没有非看不可的）必须写成明文答案；短思考是中介；R8b 降级为"换值类才写 new_text，逻辑改动不替主模型设计"；反驳测试是形态的必要条件；第二分支必须具体 + 逃生句。
+- **S9 终局目标与阶段**：CFB = 跨轮次的工作记忆纪律（台账），对付用户实测的四类原生弊端（前后脱节 / 掩盖全错 / 死锁内耗 / 言过其实）；终局度量在多轮可执行基准上；本阶段（单步）目标提到 自动稿基题 ≥ 8.0、反驳错改 0、真机到位 ≥ 80%，最多两轮付费迭代，然后本基准退役。
+
+### 新增 / 修改
+- `tools/channel-check.mjs`：6 次小调用判定通道（在思考？拼接上一轮 reasoning_content？指纹？混合池占比？）。换中转先跑它。
+- `tools/effect-eval.mjs`：spec `base`（反驳题复用基题录音 / 稿 / 任务文本）；「错改」列（edit 但不命中参考改法）。`tools/effect-specs.json` 加 3 道反驳题（带 `why`）。
+- `src/messages.js` `editToolOf(tools)`（OpenAI / Anthropic 形；认出 old/new 参数名；apply_patch 类只换工具名）；`src/plugin.js` `compressCtxFor` 顺带认出 `compressEditTool`；`src/compile-v4.js` `adaptEditTool`（门内部用规范词，最后一步换成宿主真实工具名 / 参数名，不碰反引号）；`buildCompressPromptV4Direct(cot, ctx, tool)` 规则与样例同样替换。配置 `compressEditTool`。
+- 提示词 `compress-v4d3` 收口：规则 4 改为「四个问题的明文答案」；new_text 只给换值类；第二分支必须具体 + 「此时不要改 X」+ 逃生句。**仍未付费实测**（副模型评测按用户要求暂停，等口令）。
+- `docs/analysis/oracle/I.py` 补 flaky / eacces 两题（带逃生句）；`J-*.json` 消融稿；EFFECT-EVAL §15；HANDOFF 目标与下一步。
+- 自测 613 / 0 / 1（新增 v4 §5s5 宿主工具名；effect-eval §1 认 `base`）。
+
+### 状态
+- `compressV4Direct` 仍缺省关；转正线改为本阶段目标（≥ 8.0 且反驳错改 0，再量真机到位率）。
+- GITHUB_PAT 失效（401），本版未推送；bundle 与本地提交在。
+
+## v12.8.0（2026-09-29）主模型思考原文归因 → 理论 S8-R8/R9（三元组闭合 / 文件逐字 / 判读覆盖）；oracle I 三道输题 7/7 直接改
+
+**实测（第三会话，同后端 `--require-fp`）**：A 轮 oG 5.7、B 轮 oH 5.8（raw 5.0，oC 上界 6.4）；**flaky 4/4 直接 edit `hedgeAfterMs: 1600`**（R7 预测成立，此前 0/6）。
+未过线的原因靠新落盘的主模型思考原文读出来（详见 `docs/analysis/EFFECT-EVAL-2026-09-28.md` §14、理论 S8-R8/R9）：
+perf 的落点是 git diff 的 `+` 行——「实际文件里可能没有加号，最好先 read_file 确认」；wrong-model 的改法是逻辑改动而稿没给 new_text——短思考后回头读文件拿设计材料；
+分支 trigger 写成待证假设——「Need to see normalizeRequest to confirm n.model」。按此写的 **oracle I**（只重写 wrong-model / perf / sse 三题的判读收尾）：
+wrong-model 9.0（3/3，三次都原样用了稿里的 new_text）、perf 9.0（2/2）、sse **8.5**（2/2，raw 2.3、oC 1.0）；三题合计 8.9 / 直接改 100% / 回头 read 0%。
+五题形态上界估计从 6.4 抬到 ≈ 8.7。
+
+### 理论（S8-R8 / R9）
+- **R8a 文件逐字**：old_text 的逐字性是相对将被编辑的文件而言的；diff 的 `+`/`-`、grep / `sed -n` 的 `文件:行号:`、节选缩进都是观察格式。出处链写成已完成的核对；一句假担保让整份稿的担保作废。
+- **R8b 三元组闭合**：READY 闭合 = `(path, old_text, new_text)`；改法不是换一个值时必须写出替换后的整行（由原文标识符组成，是 R2′ 的「改成什么」，不是 I2 意义上的编造）。
+- **R9 判读覆盖**：trigger 写成待回输出里会字面出现的特征、穷尽原文考虑过的假设、每个分支点名「看到什么就够了、不再查什么」；原文注意到的「对不上的量」预先说明不改变落点。
+- 落定次序补一条：几个落点都在手时改定义处优先于改调用处。R7 第 7 条记 A/B 轮实测。
+
+### 新增 / 修改
+- `compile-v4.js`：`fileVerbatim(line)`（导出）；`locusCandidates` / `ownLocus` 经它取文件逐字；`withAffordance` 对 diff / grep 来源的落点改用「文件里这一行是 `…`（加号 / 行号是标记）」的担保句；
+  `normalizeQuotedLoci`：已有可用句（`had`）的分支里指着 `+ …` 的引文同样改写（`stats.fileVerbatimFixed`），`-` 行被当 old_text 只统计（`minusLineAsOldText`）；
+  改法词补 降回 / 降到 / 调回；`hedgedTrigger` 统计（R9，只统计不改写）。
+- `compileV4Direct`：反引号段前面是 `new_text 是 / 改成 / 换成 …` ⇒ new_text 段，按标识符级核真（段内标识符全部来自原文 / 观察即保留反引号，`stats.newTextSpans`），否则照旧剥反引号。
+- `fidelity.js`：`NEW_TEXT_LEAD_RE` / `newTextSpans` 导出；`inventedIdentifiers` 对 new_text 段整段豁免、只查段内标识符（birth 闸与程序门同口径；oracle I 三份稿 accept=ok）。
+- 提示词 **`compress-v4d3`**：规则 4 改为三元组闭合 + 文件逐字 + 判读覆盖 + 落定次序；样例带 new_text；长度 700~1300。**未付费实测**。
+- 直写熔断 `compressV4DirectMaxChars` 缺省 1300 → **1600**（R7 闭合分支比开放分支长 200–500 字；v4d2 首压 2/5 撞 1300 ⇒ 整份稿被丢、原文放行）。
+- `tools/effect-eval.mjs`：results 落盘主模型本轮思考原文（`reasoning`，头 6000 字）；thinking 开着却 0 字 ⇒ `no-thinking` 作废重发；盲评解析失败重试 2 次，仍失败的行下次只补盲评不重发主调用。
+- `tools/compile-direct.mjs`：错误行也记 `promptVersion`（否则 `--recompile` 会把直写 side 当 ops）；重编译成功清掉旧 `error`。
+- `docs/analysis/oracle/I.py`（oracle I 稿源）；transfer/ 补 effect-17/18/19、direct-oh*.json、direct-og2/oh2.json、oracle/I.json。
+- 自测 612 / 0 / 1（新增 v4 §5s1–5s4、5s2b；5p4 / 5p6 随 R8a / v4d3 更新）。
+
+### 状态（诚实记录）
+- 副模型评测按用户要求暂停：v4d3 与 R8 门的自动稿（`direct-og2/oh2.json` 是旧侧输出 + 新门，v4d3 尚未重压）**没有付费数字**。
+- `compressV4Direct` 仍缺省关。转正条件不变（自动稿 综合 ≥ 6.4 且 flaky ≥ 7，再用 `v4-live` 量 hold）；现在的形态上界（≈8.7）说明余量很大。
+- 中转不稳时（新指纹 / 0 字思考）评测工具会作废重发，但每次重发都是一次带思考的主调用，费用会翻倍——通道差时别硬跑。
+
+## v12.7.0（2026-09-29）判读分支的动作闭合与落点绑定（理论 S8-R7；compress-v4d2 + 程序门 bindFixBranches）
+
+**归因**（`docs/analysis/EFFECT-EVAL-2026-09-28.md` §13，理论 S8-R7）：逐样本对读 effect-16 发现 v12.6 对 flaky 的归因偏了——
+oracle 与自动稿的「下一步」**都是复现**，差别全部在判读分支的动作项：oC 写「下一步直接改测试 §4 的 `hedgeAfterMs: 1600`
+（原文就是这几个字，可直接当 old_text），不用再继续复现」⇒ 主模型 2/2 直接 `edit_file`（8.5）；自动稿写「把 hedgeAfterMs 与主请求延迟
+拉开或改用 fake timers 即可」+ 末尾游离一句通用可用句 ⇒ 主模型 4/4 回头 `read_file`（1.5–2.0）。perf 同样：分支内绑定落点的 oF 10.0，
+游离通用句的 oE 6.0。**分支的 then 就是一条以观察为 trigger 的 READY，R2′ 的闭合（文件 + 逐字 at + 改法）与 R5 的可用句必须落在分支句内、
+绑定到具体落点；析取（A 或 B）与无落点的方向让主模型自己去选 / 找 ⇒ 一次取证调用。这可以机械检查与修补，不是副模型的判断力边界。**
+
+### 新增 / 修改
+- **程序门 `bindFixBranches`**（`compressV4DirectBind`，缺省开；只作用于直写路）：切出尾段判读分支；含改法措辞的分支必须含一个已核真的
+  `…` 落点，否则按标识符 / 数字 / 文件名重叠从已核真片段与任务观察的代码行里绑定一个（点名文件 > 标识符重叠 > 值行 > 代码形态；
+  光秃标识符 / 路径 / shell 命令 / 日志行 / git diff 删除行 / import 行不作落点；「补 `X`」的 X 是新文本不是落点；否定「而不是改…」与
+  「改用 docker 再复现」不算改法），把可用句写进分支句内：「——落点 `…` 的逐字原文已给出，可以直接当 edit_file 的 old_text，看到结果后不用再读文件」。
+  析取只统计（`disjunctiveFix`），落定由提示词负责。v12.6 的游离通用句降为无分支可绑时的保底。
+  零成本重编译既有稿（oD/oE/oF 全部 side 输出 + oracle A/B/C）：flaky 6/6 绑到 `hedgeAfterMs: 1600`，eacces 绑到 verify 的 env 行 / 测试那一行，
+  perf 绑到 `+  compressTargetMax: 1800,`（`-` 行排除），wrong-model 绑到 observe / callConfig 行，oracle 稿已有可用句的分支一律不动。
+- **提示词 `compress-v4d2`**：规则 4 改为「分支闭合与落点」（文件 + `逐字落点` 写在分支句内 + 可用句 + 观察后不再取证；多候选只落定一个：
+  落点在手优先、最小改动次之；不写 A 或 B）；规则 3「下一步工具调用是 X」= 原文实际发出的那条（回溯一致：压缩稿位于可见回答之前，
+  改写它会与已发出的调用矛盾），**撤回 v4d1 的下一步仲裁与证据充分性标准**（effect-16 没有一次胜利来自它）；样例改为「先拨测再改」
+  的两分支形态且每个分支闭合、示范候选落定（v4d1 样例的分支是开放的「另查 DNS」，flash 照抄成了开放分支）。
+- **R7 同样用到 ops 路（生产 v4 缺省的 ops→散文）**：① `validateOps(rawOps, raw, ctx)`：标识符出处 = 原文 + 观察（I2 与 READY.at 的核真都认
+  compressCtx；锚点仍只认原文）；② 没有落点的 READY（含代码补的改法条目）按 `bindLocus` 从原文引文与观察里绑一个逐字落点（`stats.boundReady`），
+  自动改法条目带落点渲染为「改法是 …；这一行的逐字原文是 `…`，可以直接当 edit_file 的 old_text，不用再读文件」；③ `fixHints` 的改法词补
+  拉大 / 增大 / 调大 / 调小（flaky 原文「增大时间差，例如 hedgeAfterMs 2000ms」此前漏抓 ⇒ 没有 READY 可补），列表项去项目符号。
+  零成本重编译 ops9p（`transfer/direct-ops9u.json`，待评 `v4u`）：flaky 尾段从「…再修。」变为「…再修。改法是增大时间差，例如主请求 1000ms，
+  hedgeAfterMs 2000ms…；这一行的逐字原文是 `hedgeAfterMs: 1600`…」；其余 4 题不变或只多一处落点。
+- **compressCtx 自动构造**（`compressCtxAuto`，缺省开；`compressCtxMaxChars` 8000）：R5 / R7 的生产前提——逐字锚点与落点来自工具观察，
+  压缩器必须能对着观察核真。评测一直有 ctx（compile-direct 注入任务原文），生产此前恒为空 ⇒ 观察里的代码行会被程序门当编造剥掉、
+  分支无落点可绑。`messages.js buildCompressCtx(messages)`：最后一条人类 user + 本回合全部工具调用与结果（pi-ai 块形 `toolCall` / `tool-result`
+  与 OpenAI `tool_calls` / `role:tool` 都认；形状不认识不猜），格式同 `tools/v4-live.mjs` 的 TASKS；每条结果头 2/3 + 尾 1/3 截到 3000，
+  超总预算先丢最旧。`plugin.js compressCtxFor(callCfg, options)` 在 llm/stream 时派生 streamCfg（只在 v4、未显式给 compressCtx 时；异常 ⇒ 原配置）。
+  `compileV4Direct` 统计 `ctxChars`；promptVersion 的 `:ctx / :noctx` 后缀在生产 trace 里可见。
+- **修生产 bug：发明标识符闸误杀 R5 可用句与观察里的落点**（hook-wiring §6 端到端抓到）。`birth.js` 的 I2 闸只对着原文查，
+  而 v12.5 起渲染 / 程序门写的「可以直接当 edit_file 的 old_text」本身含 snake_case 词 `edit_file` / `old_text` ⇒ 原文没提过这两个词的
+  每一份带可用句 / 落点行的稿在真机上都会被 `invented-identifier` 原文放行（评测走 compile-direct 绕过了 birth.js，所以从没暴露）。
+  现在：模板的工具接口词（`fidelity.GATE_ALLOW`：edit_file / old_text / new_text / read_file）不算发明；出处 = 原文 + `compressCtx`
+  （观察里有、原文没复述的行不是发明，S8-R5/R7 本来就要求落点来自观察）。没有观察时照旧严格。
+- **发明标识符闸的第二个误杀：反引号配对**。`gateTokens` 用「≤80 字的 `…`」正则取代码片段，长片段（R2″ 落点行可到 200 字、直写稿逐字行到 220 字）
+  匹配不上时，正则把上一个片段的闭合反引号和下一个片段的开头配成一对，中间的**散文**被当成代码报发明——oG 的 eacces / flaky / sse 三份稿
+  在真机都会被这样放行。改为按反引号顺序配对（split），围栏不产生垃圾 token。修后历史全部 138 份 condensed 稿（direct-*.json + oracle）
+  135 份过闸，剩下 3 份是 ops5/ops6 的真编造（应拒）。
+- **闸门判定抽成纯函数 `birthAccept(raw, candidate, cfg)`**（birth.js 与 `tools/compile-direct.mjs` 共用）：compile-direct 每行输出
+  `accept=ok | why`，评测稿在真机会不会被原文放行离线就能看到——「评测绕过 birth.js」这一类 bug 以后在编译时就暴露。
+- **直写的生产接线**（同样是 hook-wiring §6 暴露的）：① `v4Incremental()` 在 `compressV4Direct` 下恒为 false——此前增量分段器会接管
+  block（`compressV4Incremental:'auto'`），直写提示词在生产里永远跑不到；② 直写是整块编译、没有增量路可藏延迟，真机 flash 经中转
+  3.6–10.9 s / 块（direct-od/oe/of.json 的 `ms`），而缺省收网窗口 1500 ms ⇒ 几乎必然 passthrough。现在打开直写时 `birthFinishWaitMs`
+  只抬不降到 `compressV4DirectMinWaitMs`（6000；0 = 不抬），BOOT `configAdjusted` 留痕，`timeoutMs` 随之抬。这是打开直写的真实代价：
+  评测分数是离线编译得到的，上线前必须用 `tools/v4-live.mjs`（带时序回放）量命中率，别只看评测分。
+- `tools/effect-pairs.mjs`（新，零调用）：逐样本归因助手——同一任务上「原文成功 / 压缩稿失败」成对列出（含压缩稿收尾），并按变体给出
+  **动作类别分布**（edit / reread-known 再读已看过的文件 / probe / none）。effect-16 全集：raw 回头 read 35%、v4t 50%、oE 60%、oC 20%——
+  没有落点的压缩会把「再读一遍」率推到原文之上（与 JetBrains《The Complexity Trap》里「LLM 摘要使轨迹变长 15%」是同一现象的单步版）。
+  方法上与 ACON（arXiv 2510.00615）的「成对轨迹失败分析 → 修订压缩指南」同构；理论合订本 S8 末新增「外部佐证与定位」。
+- `tools/effect-eval.mjs` 汇总表新增「回头read」列（同一判定）。
+- `tools/v4-live.mjs`：回放时把任务原文当 `compressCtx`（与生产 `buildCompressCtx` / compile-direct 同口径），直写的时序回放才有落点可核真；
+  用法头加直写命令。
+- `index.js` 导出 `bindFixBranches / bindLocus / strongTokens / isFixBranch / usableLocus / buildCompressCtx / compressCtxFor`；
+  `index.d.ts` 补 `compressV4Direct*` / `compressCtx*`。
+- 自测 607 / 0 / 1（新增 v4 §5p 六条、§5q 四条、§5r 两条；compress §4b3；effect-eval §8；compress §4b2 / §4c2；hook-wiring §6 端到端：工具结果 → compressCtx → 提示词 → 核真 → 绑定 → 出生文本）。
+
+### 状态（诚实记录）
+- **未实测**：本会话沙盒只放行 GitHub / npm / pypi，`api.a6api.com` 与 `api.deepseek.com` 的 TLS 握手被切断，付费编译与评测都跑不了。
+  已备好零成本稿 `transfer/direct-og.json`（oF/oE 的副模型输出 + R7 门）与两轮评测命令（见 HANDOFF「下一步」）。
+  可证伪预测：oG 的 flaky ≥ 7（主模型直接 edit `hedgeAfterMs: 1600`），perf / eacces 不降；若 flaky 仍回头 read，则问题不在绑定，回到 R6 的判断力假设。
+- `compressV4Direct` 仍缺省关：要等 oG / v4d2 两轮实测赢了再转正。
+
 ## v12.6.0（2026-09-29）oracle 手写稿定形态，固化为副模型直写提示词（compress-v4-direct，opt-in）
 
 **方法**（`docs/analysis/EFFECT-EVAL-2026-09-28.md` §11–§12）：先由人按理论**手写**压缩稿（oracle A/B/C，只看任务原文 + 原文思考），

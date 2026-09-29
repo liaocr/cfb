@@ -1,0 +1,15 @@
+{
+ "rows": [
+  {
+   "id": "flaky-timeout",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 9053,
+   "outChars": 1254,
+   "ms": 4872,
+   "promptVersion": "compress-v4d1:ctx",
+   "text": "run 2 的报错是 `expected hedgeStartedAt=null, got 1712`，run 5 是 `got 1698`；nproc (CI) 是 2，本地是 16。read_file test/hedge.selftest.mjs §4（逐字）：`assert.equal(meta.hedgeStartedAt, null)`，说明主请求 1500ms 后回 200、hedgeAfterMs 1600，对冲本不该启动。read_file src/distill.js hedgedDistill（逐字）：`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)` 与 `primary.then(() => { primarySettled = true })`。\n\n所以 1712 - 1600 = 112ms，1698 - 1600 = 98ms，对冲定时器比设定晚了约 100ms 才跑，说明事件循环被拖住了。看起来关键不是 `primarySettled` 逻辑写错，而是 1500 与 1600 只差 100ms 太紧：CI 2 核下事件循环阻塞，server 的 1500 定时器和对冲的 1600 定时器积压到同一个 timers 阶段，先执行 server 回调发出响应，再执行对冲回调，而主请求的响应要在 poll 阶段才 resolve、`primary.then` 微任务更晚才把 `primarySettled` 置 true，于是 hedge 抢先启动。如果失败复现，说明是调度抖动/时序边界。本地 16 核空载、100ms 余量够，所以从不失败。清 timer 这条路被排除：此时 primary 还没 settle，清不掉。在 timer 里查 `primary` 是否 settled 也搁置：标志靠微任务更新，同一 timers 阶段照样读到 false。`primary.finally` 也只是同一类时序假设。改法上可拉大余量或改用注入时钟，但先复现坐实。\n\n所以下一步工具调用是 bash 限核循环复现：`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`，把事件循环压到 CI 的 2 核条件上撞出失败。\n\n如果失败复现，那么结论就是调度抖动/时序边界，改测试把 1500 与 1600 的余量拉大（或注入 fake timers），不必动 distill 的 `primarySettled` 逻辑；如果本地没有 `taskset`，那么改用等效限核方式跑同一循环再判定。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。",
+   "side": "run 2 的报错是 `expected hedgeStartedAt=null, got 1712`，run 5 是 `got 1698`；nproc (CI) 是 2，本地是 16。read_file test/hedge.selftest.mjs §4（逐字）：`assert.equal(meta.hedgeStartedAt, null)`，说明主请求 1500ms 后回 200、hedgeAfterMs 1600，对冲本不该启动。read_file src/distill.js hedgedDistill（逐字）：`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)` 与 `primary.then(() => { primarySettled = true })`。\n\n所以 1712 - 1600 = 112ms，1698 - 1600 = 98ms，对冲定时器比设定晚了约 100ms 才跑，说明事件循环被拖住了。看起来关键不是 `primarySettled` 逻辑写错，而是 1500 与 1600 只差 100ms 太紧：CI 2 核下事件循环阻塞，server 的 1500 定时器和对冲的 1600 定时器积压到同一个 timers 阶段，先执行 server 回调发出响应，再执行对冲回调，而主请求的响应要在 poll 阶段才 resolve、`primary.then` 微任务更晚才把 `primarySettled` 置 true，于是 hedge 抢先启动。如果失败复现，说明是调度抖动/时序边界。本地 16 核空载、100ms 余量够，所以从不失败。清 timer 这条路被排除：此时 primary 还没 settle，清不掉。在 timer 里查 `primary` 是否 settled 也搁置：标志靠微任务更新，同一 timers 阶段照样读到 false。`primary.finally` 也只是同一类时序假设。改法上可拉大余量或改用注入时钟，但先复现坐实。\n\n所以下一步工具调用是 bash 限核循环复现：`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`，把事件循环压到 CI 的 2 核条件上撞出失败。\n\n如果失败复现，那么结论就是调度抖动/时序边界，改测试把 1500 与 1600 的余量拉大（或注入 fake timers），不必动 distill 的 `primarySettled` 逻辑；如果本地没有 `taskset`，那么改用等效限核方式跑同一循环再判定。"
+  }
+ ]
+}

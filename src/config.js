@@ -208,8 +208,18 @@ export const DEFAULTS = {
   // v12.6（理论 S8-R6，oracle C 形态固化）：副模型直写原生语域散文，不经 ops→模板；锚点逐字由 compileV4Direct 硬校验。
   //   oracle 三轮同后端实测：C 形态 6.4 / 直接改 70%（自动 ops 稿 5.8 / 50%）⇒ 缺省关（先实测固化稿，赢了再转正）
   compressV4Direct: false,
-  // 直写模式的当前任务 / 观察上下文（工具注入；生产由 harness 传，空 = 只看思维链原文）
+  // v12.7：直写是整块编译（不走增量分段），收网窗口只抬不降到这个下限（真机 flash 3.6–10.9 s / 块）；0 = 不抬
+  compressV4DirectMinWaitMs: 6000,
+  // v12.7（理论 S8-R7）：直写稿尾段判读分支的闭合与落点绑定（含改法的分支必须带已核真的逐字落点 + 分支内可用句；缺则按标识符重叠绑定）；false 关闭
+  compressV4DirectBind: true,
+  // 直写模式的当前任务 / 观察上下文（工具注入；生产由 plugin 在 llm/stream 时从出站消息自动构造，见 compressCtxAuto；空 = 只看思维链原文）
   compressCtx: '',
+  // v12.7（理论 S8-R5/R7 的生产前提）：v4 时自动从出站消息构造 compressCtx（最后一条人类 user + 本回合全部工具结果；
+  //   messages.js buildCompressCtx）。显式给了 compressCtx 时不覆盖；false 关闭
+  compressCtxAuto: true,
+  // v12.8.1：宿主的编辑工具 { name, oldKey, newKey }（稿里的可用句要说宿主真实的工具名；缺省由 plugin 从出站 tools 认出，认不出保留 edit_file / old_text / new_text）
+  compressEditTool: null,
+  compressCtxMaxChars: 8000,
   // 仅工具用：把副模型原始输出带回 meta.sideOutput（tools/compile-direct.mjs --recompile 零调用重编译）
   captureSideOutput: false,
   // 首段目标长度（null ⇒ 段长的一半）
@@ -370,6 +380,16 @@ export function normalizeConfig(config = {}) {
   //   v11.7 起 finish 最多等 finishWaitMs + finishHeadersGraceMs，宽限也必须算进去，
   //   否则 grace 调大后请求会先被 timeoutMs 杀掉（宽限形同虚设）。
   //   已满足的配置（如线上 20000 ≥ 12000+1500+2000）零变化。
+  // v12.7：直写（compressV4Direct）是整块编译，没有增量路可藏延迟——真机 flash 经中转 3.6–10.9 s / 块（direct-od/oe/of.json 的 ms），
+  //   而缺省收网窗口 1500 ms ⇒ 几乎必然 passthrough（评测走 compile-direct 不受窗口限制，所以没暴露）。
+  //   打开直写 = 接受这份等待：窗口只抬不降到 compressV4DirectMinWaitMs（6000），BOOT 留痕；不想等就别开直写。
+  if (c.mode === 'birth' && c.compressPrompt === 'v4' && c.compressV4Direct === true) {
+    const floor = Number(c.compressV4DirectMinWaitMs)
+    if (Number.isFinite(floor) && floor > 0 && Number(c.birthFinishWaitMs) < floor) {
+      c.configAdjusted = Object.assign({}, c.configAdjusted, { birthFinishWaitMs: { from: c.birthFinishWaitMs, to: floor, why: 'compressV4Direct 整块编译需要收网窗口 ≥ compressV4DirectMinWaitMs' } })
+      c.birthFinishWaitMs = floor
+    }
+  }
   if (c.mode === 'birth') {
     const grace = Number(c.finishHeadersGraceMs)
     const need = Number(c.birthFinishWaitMs) + (Number.isFinite(grace) && grace > 0 ? grace : 0) + 2000

@@ -1,0 +1,131 @@
+{
+ "rows": [
+  {
+   "id": "flaky-timeout",
+   "mode": "v3",
+   "why": "condensed",
+   "rawChars": 9053,
+   "outChars": 557,
+   "ms": 4203,
+   "promptVersion": "compress-v3r:250-450",
+   "text": "分析：最可能是 CI 2 核导致事件循环在 1500–1600ms 窗口被阻塞，两个 setTimeout 积压到同一 timers 阶段。Node 先在 timers 阶段执行 server 的 1500ms 回调发送 200 响应，紧接着执行客户端的 1600ms hedge 定时器回调，而主请求的 HTTP 响应要到后续 poll 阶段才 resolve、`primary.then` 微任务才把 `primarySettled` 置 true，此时定时器已检查到 `!primarySettled` 并 `startHedge()`。got 1712/1698 比 1600 晚约 100ms 正说明定时器被延迟后成批触发。本地 16 核调度及时，100ms 余量够用；CI 上余量被抖动手吃掉。属于对真实定时器过于敏感的时序竞态，非必然逻辑错误。未采用方案：直接清除 timer 无法解决同阶段先触发。下一步一条工具调用：限制 2 CPU 循环复现。\n\n[tool: bash] `taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`"
+  },
+  {
+   "id": "flaky-timeout",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 9053,
+   "outChars": 562,
+   "ms": 4245,
+   "promptVersion": "compress-v4-ops5:450",
+   "kinds": {
+    "FACT": 2,
+    "COMPUTED": 2,
+    "INCUMBENT": 1
+   },
+   "text": "- §4 中主请求 1500ms 后回 200，hedgeAfterMs 为 1600，断言 meta.hedgeStartedAt 为 null（来源 test/hedge.selftest.mjs）\n- hedgedDistill 用 setTimeout 在 cfg.hedgeAfterMs 后检查 !primarySettled 再 startHedge，primary.then 里设置 primarySettled=true（来源 hedgedDistill）\n- 目前判断：hedgeAfterMs 1600 与主请求延迟 1500 只差 100ms，CI 上事件循环调度抖动可能超过 100ms\n- 目前判断：CI 2 核负载下 1500ms 与 1600ms 定时器可能积压到同一 timers 阶段，先执行 server 1500 回调再执行 hedge 1600 回调，而 HTTP 响应到 poll 阶段才 resolve，primary.then 微任务尚未设置 primarySettled\n- 当前方案：最可能原因是时序竞态，测试依赖真实定时器且 100ms 余量太小，不是逻辑必然错误\n\n所以现在采用的是：最可能原因是时序竞态，测试依赖真实定时器且 100ms 余量太小，不是逻辑必然错误。"
+  },
+  {
+   "id": "eacces-config",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 10074,
+   "outChars": 524,
+   "ms": 4255,
+   "promptVersion": "compress-v4-ops5:450",
+   "kinds": {
+    "FACT": 1,
+    "COMPUTED": 1,
+    "PLAN": 1,
+    "READY": 1
+   },
+   "text": "- verify.mjs 传 env = { ...process.env, DSH_HOME: tmp }，birth.selftest.mjs 却用 process.env.CFB_REAL_DSH_HOME（来源 verify.mjs）\n- 目前判断：verify.mjs 未设 CFB_REAL_DSH_HOME 或该变量指向原始 /home/u/.dsh，测试绕过临时 DSH_HOME 隔离写入真实 trace.log\n- 当时计划：检查 verify.mjs 与 test、src 中 CFB_REAL_DSH_HOME 的引用及环境变量是否设置\n- 已备好的改法：在 verify.mjs 的 env 中加入 CFB_REAL_DSH_HOME: tmp，与 DSH_HOME 一起指向临时目录\n\n所以目前判断：verify.mjs 未设 CFB_REAL_DSH_HOME 或该变量指向原始 /home/u/.dsh，测试绕过临时 DSH_HOME 隔离写入真实 trace.log。准备好的改法：在 verify.mjs 的 env 中加入 CFB_REAL_DSH_HOME: tmp，与 DSH_HOME 一起指向临时目录。"
+  },
+  {
+   "id": "sse-truncated",
+   "mode": "v3",
+   "why": "condensed",
+   "rawChars": 5424,
+   "outChars": 640,
+   "ms": 7045,
+   "promptVersion": "compress-v3r:250-450",
+   "text": "原因分析：`assembleSseFrames` 只在收到 `finish_reason` 时设置 `finish`，否则靠 `done` 推断 `stop`；网关文档指出上游被代理切断时可能只补发 `data: [DONE]`，而 `[DONE]` 并不能证明内容完整。trace 中 `finish:null`、`ok:true`、`outputChars:212`、`eventCount:9`，与 `rawChars:8123` 相比异常短，符合中断后仅以 `[DONE]`/流结束被判定为成功。但 `trace` 的 `finish:null` 与函数返回 `finish || (done ? 'stop' : null)` 存在矛盾，尚未确定是 `[DONE]` 未被识别（如帧仍带 `data: ` 前缀）、`finish` 在 `compiler-transport-settled` 处被记录为原始值，还是 `ok` 判定完全不看 `finish`，需查调用方确认写会话条件。未采用方案：直接改 `assembleSseFrames` 返回 `stop` 的判断，因未确认调用链前可能改错位置。\n\n下一步一条工具调用：\n\n[tool: bash] grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled|assembleSseFrames|birth-condensed\" src"
+  },
+  {
+   "id": "wrong-model",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 3414,
+   "outChars": 341,
+   "ms": 7156,
+   "promptVersion": "compress-v4-ops5:450",
+   "kinds": {
+    "FACT": 1,
+    "OPEN": 1,
+    "PLAN": 1
+   },
+   "text": "- plugin.js 中先 host.observe(options, n)，再 host.callConfig(options)，然后 birthTransform(inner, { cfg: callCfg, ... })（来源 plugin.js）\n- 当时计划：查看 plugin.js 中 host.observe 与 callConfig 附近，确认 options 和 n 的真实字段\n- 未决：当前会话模型可能在第二参数 n 中，而 host-follow 的 observe 只读取 options.model，忽略 n\n\n待确认：当前会话模型可能在第二参数 n 中，而 host-follow 的 observe 只读取 options.model，忽略 n。"
+  },
+  {
+   "id": "wrong-model",
+   "mode": "v3",
+   "why": "condensed",
+   "rawChars": 3414,
+   "outChars": 905,
+   "ms": 7494,
+   "promptVersion": "compress-v3r:250-450",
+   "text": "已确定：Agent 是编码 Agent，需分析用户报告\"插件压缩用的模型不是当前会话模型，而是上一次会话模型\"的原因，并给出下一步一条工具调用。\n\n已确定代码事实：src/host-follow.js 中 lastModel 为模块级变量，observe(options) 仅在 options.model 存在时更新 lastModel；callConfig(options) 返回 { ...cfg, model: lastModel || cfg.model }。plugin.js 中调用顺序为 host.observe(options, n) 后再 host.callConfig(options)，最终返回 birthTransform(inner, { cfg: callCfg, ... })。\n\n已确定 trace 证据：n12 与 n13 的 [llm-stream] 均为 deepseek-v3.2，中间的 [compiler-transport-started] 为 deepseek-v3.1。\n\n待验证的根因假设（尚未确定）：lastModel 为模块级单例，跨会话保留；host-follow 的 observe 签名只取第一参数 options.model，第二参数 n 被忽略，若当前模型实际位于 n 或 options 未含 model，则 lastModel 不会被更新，callConfig 便以旧会话值覆盖 cfg.model。另一未确定点：prewarm 可能使用原始 cfg 而非 callCfg，transport.js 的 makePrewarmer(cfg, trace) 返回 fetch(prewarmTargetUrl(cfg))，需确认 compiler-transport-started 是否即压缩路径的 prewarm。\n\n下一步一条工具调用（选定方案）：bash grep -n -C 8 \"host.observe\\|callConfig\" src/plugin.js，以确认 observe 调用处 options 与 n 的真实字段。"
+  },
+  {
+   "id": "sse-truncated",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 5424,
+   "outChars": 622,
+   "ms": 11071,
+   "promptVersion": "compress-v4-ops5:450",
+   "kinds": {
+    "FACT": 4,
+    "COMPUTED": 1,
+    "OPEN": 1
+   },
+   "text": "- trace 显示 compiler-transport-settled ok:true finish:null stream:true outputChars:212 eventCount:9（来源 trace）\n- assembleSseFrames 仅在收到 finish_reason 时设置 finish，否则 finish 保持 null（来源 read_file src/transport.js）\n- assembleSseFrames 返回 finish || (done ? 'stop' : null)（来源 read_file src/transport.js）\n- 网关文档：部分上游在连接被代理切断时只补发 data: [DONE]（来源网关文档）\n- 目前判断：[DONE] 无 finish_reason 时被 fallback 成 finish='stop'，截断被当成功写入会话\n- 未决：trace finish:null 与返回 stop 矛盾，可能 done 未置位或 settle 另记 finish_reason\n\n所以目前判断：[DONE] 无 finish_reason 时被 fallback 成 finish='stop'，截断被当成功写入会话。待确认：trace finish:null 与返回 stop 矛盾，可能 done 未置位或 settle 另记 finish_reason。"
+  },
+  {
+   "id": "perf-regression",
+   "mode": "v3",
+   "why": "condensed",
+   "rawChars": 11322,
+   "outChars": 1242,
+   "ms": 11769,
+   "promptVersion": "compress-v3r:250-450",
+   "text": "## 结论\n\nv11.9 → v11.10 的「收网」等待从 900ms 升到 2400ms，**主因是解码量（输出 token 数）膨胀，不是单 token 变慢，也不是 TTFB 恶化**：\n\n- ttfbMs p50：610 → 640（+30ms，基本没动 → prefill/输入侧没问题）\n- contentSpanMs p50：280 → 1650（≈5.9x，+1370ms）\n- 等待增量 2400−900 = 1500ms，其中约 91% 来自 contentSpan\n- 吞吐：前 390/280 ≈ 1.39 chars/ms，后 1720/1650 ≈ 1.04 chars/ms，同一量级 → 是「生成得多」而非「生成得慢」\n\n## 关于病因的两个候选，尚未收敛\n\n**H-A：maxOutputTokens 850 → 4096 解除了截断**\n850 只是上限、不强制变长；但若 v11.9 时输出确实被 850 截断（finishReason=length），抬高上限会让它跑到自然结束而变长。待验证。\n\n**H-B：compressTargetMax 450 → 1800 抬高了长度目标（数值匹配更好）**\noutputChars p50 390 ≈ 旧目标 450，1720 ≈ 新目标 1800，比值 4.4 ≈ 4.0，与目标比值 4.0 吻合。README 称该参数只影响 v3 的长度目标。\n\n**卡点：promptVersion 仍是 `compress-v3:250-450`，改动前后不变。**\n若该 tag 由配置拼出，它本应变成 250-1800；不变意味着两种可能：tag 是硬编码/陈旧仪表（则 H-B 成立，长度确实吃到了新目标），或这条路径根本没读到新配置（则 H-B 不成立，H-A 上位）。**不能拿 promptVersion 当「配置未生效」的证据**，它本身可疑。\n\n## 下一步（一条工具调用）\n\n用 finishReason 分流 H-A / H-B：\n\n```bash\nanalyze-trace --compare v11.9 v11.10 --span birth --fields finishReason,outputTokens,promptTokens,ttfbMs,contentSpanMs\n```\n\n判读：v11.9 的 birth 若为 `finishReason=length` → H-A（maxOutputTokens 是主因）；若为 `stop` → 850 从未触顶，H-A 出局，长度目标侧（compressTargetMax 及压缩产物进入收网 prompt 的路径）是主因；顺带核对 promptTokens 是否同步变大（若 promptTokens 也涨，说明压缩产物变长直接灌进了 prefill，但 ttfb 只 +30ms 说明这条链路的输入增量可忽略）。"
+  },
+  {
+   "id": "perf-regression",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 11322,
+   "outChars": 583,
+   "ms": 12821,
+   "promptVersion": "compress-v4-ops5:450",
+   "kinds": {
+    "FACT": 5,
+    "COMPUTED": 1,
+    "INCUMBENT": 1,
+    "OPEN": 1
+   },
+   "text": "- ttfbMs p50:610→640，仅+30ms (source trace)\n- contentSpanMs p50:280→1650，增大5.9x (source trace)\n- promptVersion未变：compress-v3:250-450 (source trace)\n- compressTargetMax 450→1800 (source config)\n- README称 compressTargetMax 只影响 v3 的长度目标 (source README)\n- Current judgment: ttfb基本不变，说明prefill未变，变长来自解码阶段\n- Current approach: 主因是compressTargetMax 450→1800使压缩产物变长，收网输出随之膨胀约4.4x\n- Open: promptVersion仍显示compress-v3:250-450，可能是版本标签陈旧，也可能是配置未生效\n\nSo the current approach is: 主因是compressTargetMax 450→1800使压缩产物变长，收网输出随之膨胀约4.4x. To confirm: promptVersion仍显示compress-v3:250-450，可能是版本标签陈旧，也可能是配置未生效."
+  },
+  {
+   "id": "eacces-config",
+   "mode": "v3",
+   "why": "condensed",
+   "rawChars": 10074,
+   "outChars": 313,
+   "ms": 22099,
+   "promptVersion": "compress-v3r:250-450",
+   "text": "原因：测试试图写入真实 `/home/u/.dsh/storages/cot-form-b/trace.log`，但该文件及父目录属 root，当前用户 u 无写权限。verify.mjs 虽构造临时 `DSH_HOME`，但 birth.selftest.mjs 使用 `CFB_REAL_DSH_HOME`，隔离变量未对齐/未传递，导致绕过临时目录写入真实 home。\n下一步调用：\n[tool: bash] grep -R \"CFB_REAL_DSH_HOME\" -n verify.mjs test src; echo \"CFB_REAL_DSH_HOME=${CFB_REAL_DSH_HOME:-<unset>}\""
+  }
+ ]
+}

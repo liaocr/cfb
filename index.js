@@ -11,14 +11,14 @@
 // ⚠ 口径纪律：本模块只做「字符数」判定。字符数不是钱；trace 里的字符数不得当作费用节省。
 
 // ── 插件入口 ─────────────────────────────────────────────────────────────────
-export { name, inject, apply, DEP_ID } from './src/plugin.js'
+export { name, inject, apply, DEP_ID, compressCtxFor } from './src/plugin.js'
 
 // ── 配置 ─────────────────────────────────────────────────────────────────────
 export { DEFAULTS, normalizeConfig, dshHome, dshHomePath } from './src/config.js'
 
 // ── 出生即压缩（birth）───────────────────────────────────────────────────────
 export {
-  birthTransform, birthStart, birthFinish, birthSettle, birthHoldNew, deriveArtHandle, birthEconomics, birthCancelFlying, readPressure,
+  birthTransform, birthStart, birthFinish, birthSettle, birthHoldNew, birthAccept, deriveArtHandle, birthEconomics, birthCancelFlying, readPressure,
 } from './src/birth.js'
 export { estimateTokens, wideShare, scriptCounts } from './src/tokens.js'
 export { createHostFollower } from './src/host-follow.js'
@@ -31,7 +31,7 @@ export {
   compressPromptVersion, compressPromptFor, compressTargets, V4_TAIL, v4Budget, v4Incremental, v4SegmentChars, buildCompressPromptV4Segment,
 } from './src/prompts.js'
 export {
-  compileV4, compileV4Direct, compileOpsV4, locusFromRaw, actionLoci, renderProse, parseOps, normalizeOp, validateOps, selectOps, renderOps, renderLine, renderLang, scoreOp,
+  compileV4, compileV4Direct, bindFixBranches, bindLocus, strongTokens, isFixBranch, usableLocus, fileVerbatim, adaptEditTool, compileOpsV4, locusFromRaw, actionLoci, renderProse, parseOps, normalizeOp, validateOps, selectOps, renderOps, renderLine, renderLang, scoreOp,
   mergeSegmentOps, priorLines, freshenState, supersedesIds, v4RejectRatioOf, V4_KINDS, V4_EVS, V4_KIND2,
 } from './src/compile-v4.js'
 export { createSegmenter, findCut, findFirstCut } from './src/segment-v4.js'
@@ -42,7 +42,7 @@ export {
 export { readApiKey, readProviderSpec, endpointUrl, resolveProviderEndpoint } from './src/provider.js'
 
 // ── 消息工具与保真度 ─────────────────────────────────────────────────────────
-export { provenanceOf, mapMessagesToSeqs, textOfContent, reasoningTextOf, artRefsOf } from './src/messages.js'
+export { provenanceOf, mapMessagesToSeqs, textOfContent, reasoningTextOf, artRefsOf, buildCompressCtx, editToolOf } from './src/messages.js'
 export { fidelity, protectedTokens, inventedIdentifiers } from './src/fidelity.js'
 
 // ── 观测 ─────────────────────────────────────────────────────────────────────

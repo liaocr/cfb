@@ -1,0 +1,57 @@
+{
+ "rows": [
+  {
+   "id": "flaky-timeout",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 9053,
+   "outChars": 701,
+   "ms": 3453,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "FACT": 1,
+    "COMPUTED": 1,
+    "PLAN": 1,
+    "READY": 1,
+    "IF": 2
+   },
+   "text": "- 源码 hedgedDistill 中 timer 回调检查 !primarySettled 再 startHedge，primary.then 设置 primarySettled = true（来源 hedgedDistill）\n- 我目前判断：最可能原因：2 核 CI 事件循环延迟使 1500 与 1600 定时器积压，timers 阶段先发响应再触发 hedge，而主请求 promise 在 poll 阶段才 resolve\n- 接下来要：下一步：限制 2 CPU 循环运行该测试复现失败\n- 如果 `primary` 是 fetch 或 axios，`then` 在响应体完全读取后？\n- 但若主请求的 I/O 回调在定时器回调之后才被处理，则失败\n- 我准备的改法：修复方向：在 primary.finally 中设置 primarySettled，或在定时器触发时检查 primary 是否已 settled，而不是布尔变量（前提：验证根因后）\n\n所以我目前判断：最可能原因：2 核 CI 事件循环延迟使 1500 与 1600 定时器积压，timers 阶段先发响应再触发 hedge，而主请求 promise 在 poll 阶段才 resolve。如果 `primary` 是 fetch 或 axios，`then` 在响应体完全读取后？。但若主请求的 I/O 回调在定时器回调之后才被处理，则失败。若验证根因后，就修复方向：在 primary.finally 中设置 primarySettled，或在定时器触发时检查 primary 是否已 settled，而不是布尔变量。"
+  },
+  {
+   "id": "wrong-model",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 3414,
+   "outChars": 433,
+   "ms": 4437,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "INCUMBENT": 2,
+    "IF": 1,
+    "PLAN": 1
+   },
+   "text": "- 我现在采用：根因：host-follow 的 lastModel 是模块级单例、跨会话保留，observe 未拿到当前模型，callConfig 用上次会话的 lastModel 覆盖 cfg.model\n- 我现在采用：lastModel 保留上一会话值，导致压缩 transport 启动时模型显示 deepseek-v3.1\n- 接下来要：下一步确认 plugin 中 observe 调用处 options/n 的真实字段\n- 判读：若实际当前模型在 n 中（例如 n 是 request 对象或包含 model），就 observe 没有读取，导致 lastModel 没更新\n\n所以我现在采用：lastModel 保留上一会话值，导致压缩 transport 启动时模型显示 deepseek-v3.1。若实际当前模型在 n 中（例如 n 是 request 对象或包含 model），就 observe 没有读取，导致 lastModel 没更新。"
+  },
+  {
+   "id": "eacces-config",
+   "mode": "v4",
+   "why": "error",
+   "error": "timeout 120000ms",
+   "ms": 146528
+  },
+  {
+   "id": "sse-truncated",
+   "mode": "v4",
+   "why": "error",
+   "error": "timeout 120000ms",
+   "ms": 146489
+  },
+  {
+   "id": "perf-regression",
+   "mode": "v4",
+   "why": "error",
+   "error": "timeout 120000ms",
+   "ms": 146489
+  }
+ ]
+}

@@ -19,7 +19,8 @@ const specs = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/effect-specs.jso
   await test('§1 specs：每条都对应 v4-live 的内置任务；正则可编译；参考答案本身命中 next、不触 avoid', () => {
     assert.ok(specs.length >= 5)
     for (const s of specs) {
-      assert.ok(TASKS.some((t) => t.id === s.id), s.id)
+      assert.ok(TASKS.some((t) => t.id === (s.base || s.id)), s.id)   // v12.8.1：反驳题用 base 指向内置任务
+      if (s.base) assert.ok(/~refute$/.test(s.id) && s.why, '反驳题命名 ~refute 且写明为什么：' + s.id)
       for (const p of [...s.next, ...s.avoid]) new RegExp(p, 'i')
       assert.deepEqual(E.ruleScore(s, s.reference.correct), { next: 1, avoid: 1 }, s.id)
       assert.ok(s.followup && s.reference.keyFacts.length && s.reference.deadEnds.length)
@@ -75,6 +76,25 @@ const specs = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/effect-specs.jso
     assert.equal(rows[0].why, 'condensed'); assert.ok(rows[0].recompiled && rows[0].text.includes('我目前判断：测试绕过了临时 DSH_HOME'))
     assert.ok(rows[0].text.includes('若 grep 显示 verify.mjs 没有设置，则根因明确'), '保底判读句')
     assert.deepEqual(rows[1], { id: 't1', mode: 'v3', text: 'v3 稿' })
+  })
+  await test('§8 effect-pairs：动作类别（edit / reread-known / probe / none）与成对归因报告（零调用）', async () => {
+    const P = await import('../tools/effect-pairs.mjs')
+    const task = TASKS.find((t) => t.id === 'flaky-timeout').user
+    assert.ok(P.seenFiles(task).has('test/hedge.selftest.mjs') && P.seenFiles(task).has('src/distill.js'), [...P.seenFiles(task)].join(','))
+    assert.equal(P.classifyAction(task, '[tool_call edit_file] {"path":"test/hedge.selftest.mjs","old_text":"hedgeAfterMs: 1600","new_text":"hedgeAfterMs: 3000"}'), 'edit')
+    assert.equal(P.classifyAction(task, '[tool_call read_file] {"path":"test/hedge.selftest.mjs"}'), 'reread-known', '再读任务里已给过内容的文件 = 回头 read')
+    assert.equal(P.classifyAction(task, '[tool_call bash] {"command":"sed -n \'200,245p\' src/distill.js"}'), 'reread-known')
+    assert.equal(P.classifyAction(task, '[tool_call bash] {"command":"taskset -c 0,1 node test/hedge.selftest.mjs"}'), 'probe', '跑测试是新取证，不是回头 read')
+    assert.equal(P.classifyAction(task, '[tool_call read_file] {"path":"src/other.js"}'), 'probe')
+    assert.equal(P.classifyAction(task, '只有判断没有调用'), 'none')
+    const rows = [
+      { task: 'flaky-timeout', variant: 'raw', sample: 0, judge: { overall: 9, note: 'ok' }, response: '[tool_call edit_file] {"path":"test/hedge.selftest.mjs"}' },
+      { task: 'flaky-timeout', variant: 'raw', sample: 1, judge: { overall: 2, note: 'x' }, response: '[tool_call read_file] {"path":"src/distill.js"}' },
+      { task: 'flaky-timeout', variant: 'oX', sample: 0, judge: { overall: 2, note: '回头' }, response: '[tool_call read_file] {"path":"test/hedge.selftest.mjs"}' },
+    ]
+    const md = P.pairsReport(rows, { drafts: { oX: { 'flaky-timeout': '前文。所以下一步工具调用是 bash 复现。如果失败复现，那么再修。' } } })
+    assert.ok(md.includes('- **oX** Δ=-3.5') && md.includes('压坏 1 例') && md.includes('oX 稿收尾：所以下一步工具调用是 bash 复现'), md)
+    assert.ok(md.includes('| oX | 1 | 0% | 100% | 0% | 0% |'), '动作类别分布表')
   })
   console.log(`\nPASS=${pass} FAIL=${fail}`)
   process.exit(fail ? 1 : 0)

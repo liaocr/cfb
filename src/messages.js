@@ -136,7 +136,119 @@ export function textOfContent(content) {
     .join('\n')
 }
 
+
+/**
+ * v12.7（理论 S8-R5 / R7 的生产前提）：从出站消息构造压缩器的「当前任务与观察」上下文（cfg.compressCtx）。
+ *   逐字锚点与改动落点来自**工具观察**，压缩器必须能对着观察核真；评测一直有 ctx（tools/compile-direct 注入任务原文），
+ *   生产此前恒为空 ⇒ 只有推理里复述过的片段才算逐字，观察里的代码行会被程序门当编造剥掉、分支也没有落点可绑。
+ * 取**当前回合**：最后一条人类 user（非 tool-result）之后的全部工具调用与结果。格式与 tools/v4-live.mjs 的 TASKS 一致：
+ *   <人类 user 原文>\n\n[tool: name] <参数摘要>\n<结果文本>\n…
+ * 只读，不改任何消息；形状不认识就跳过（不猜）。预算：maxChars（缺省 8000）；每条结果 perResultChars（缺省 3000，超过取头 2/3 + 尾 1/3）；
+ * 人类 user 原文最多 userChars（缺省 2000）；超总预算先丢最旧的结果。没有人类 user 也没有结果 ⇒ ''。
+ */
+const RE_TOOL_RESULT_TYPE = /tool[-_]?result/i
+const isToolResultBlock = (b) => !!b && typeof b === 'object' && typeof b.type === 'string' && RE_TOOL_RESULT_TYPE.test(b.type)
+const nestedText = (c) => {
+  if (typeof c === 'string') return c
+  if (!Array.isArray(c)) return ''
+  return c.map((x) => (typeof x === 'string' ? x : x && typeof x.text === 'string' ? x.text : '')).filter(Boolean).join('\n')
+}
+const clip = (t, max) => {
+  if (t.length <= max) return t
+  const head = Math.floor(max * 2 / 3), tail = Math.max(0, max - head - 1)
+  return t.slice(0, head) + '\n…\n' + (tail ? t.slice(-tail) : '')
+}
+const argsSummary = (a, max = 200) => {
+  let v = a
+  if (typeof v === 'string') { try { v = JSON.parse(v) } catch { return v.slice(0, max) } }
+  if (v && typeof v === 'object') {
+    const parts = []
+    for (const [k, x] of Object.entries(v)) if (typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean') parts.push(k + '=' + String(x).replace(/\s+/g, ' ').trim())
+    return parts.join(' ').slice(0, max)
+  }
+  return v == null ? '' : String(v).slice(0, max)
+}
+export function buildCompressCtx(messages, opts = {}) {
+  const arr = Array.isArray(messages) ? messages : []
+  const maxChars = Number.isFinite(opts.maxChars) && opts.maxChars > 0 ? Math.floor(opts.maxChars) : 8000
+  const perResultChars = Number.isFinite(opts.perResultChars) && opts.perResultChars > 0 ? Math.floor(opts.perResultChars) : 3000
+  const userChars = Number.isFinite(opts.userChars) && opts.userChars > 0 ? Math.floor(opts.userChars) : 2000
+  const isToolResultMsg = (m) => !!m && (m.role === 'tool' || (m.role === 'user' && Array.isArray(m.content) && m.content.some(isToolResultBlock)))
+  // 最后一条人类 user：role user、不是工具结果、有正文
+  let ui = -1
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const m = arr[i]
+    if (m && m.role === 'user' && !isToolResultMsg(m) && textOfContent(m.content).trim()) { ui = i; break }
+  }
+  const user = ui >= 0 ? textOfContent(arr[ui].content).trim() : ''
+  const calls = new Map()   // toolCallId → { name, args }
+  const results = []
+  for (let i = ui + 1; i < arr.length; i++) {
+    const m = arr[i]
+    if (!m || typeof m !== 'object') continue
+    if (m.role === 'assistant') {
+      if (Array.isArray(m.tool_calls)) for (const c of m.tool_calls) if (c && c.id != null) calls.set(String(c.id), { name: (c.function && c.function.name) || c.name || '', args: (c.function && c.function.arguments) ?? c.arguments ?? c.input })
+      if (Array.isArray(m.content)) for (const b of m.content) if (b && typeof b.type === 'string' && RE_TOOL_CALL_TYPE.test(b.type) && b.id != null) calls.set(String(b.id), { name: b.name || b.toolName || (b.function && b.function.name) || '', args: b.arguments ?? b.input ?? b.args ?? (b.function && b.function.arguments) })
+      continue
+    }
+    if (m.role === 'tool') {
+      const id = m.tool_call_id != null ? String(m.tool_call_id) : ''
+      results.push({ id, name: m.name || '', text: textOfContent(m.content) })
+      continue
+    }
+    if (m.role === 'user' && Array.isArray(m.content)) {
+      for (const b of m.content) {
+        if (!isToolResultBlock(b)) continue
+        const id = b.toolCallId ?? b.tool_call_id ?? b.tool_use_id ?? b.id
+        const text = nestedText(b.content) || (typeof b.text === 'string' ? b.text : '') || (typeof b.result === 'string' ? b.result : '') || (typeof b.output === 'string' ? b.output : '')
+        results.push({ id: id != null ? String(id) : '', name: b.name || b.toolName || '', text: String(text || '') })
+      }
+    }
+  }
+  const entries = results.map((r) => {
+    const c = r.id ? calls.get(r.id) : null
+    const name = (c && c.name) || r.name || '?'
+    const head = '[tool: ' + name + ']' + (c && c.args != null ? ' ' + argsSummary(c.args) : '')
+    return head.trimEnd() + '\n' + clip(String(r.text || '').trim(), perResultChars)
+  })
+  const userPart = clip(user, userChars)
+  if (!userPart && !entries.length) return ''
+  // 超总预算：先丢最旧的结果（最近的观察才是当前分支要绑的落点）
+  const size = (parts) => parts.reduce((n, p) => n + p.length + 2, userPart.length)
+  while (entries.length && size(entries) > maxChars) entries.shift()
+  const out = [userPart, ...entries].filter(Boolean).join('\n\n')
+  return out.length > maxChars ? out.slice(0, maxChars) : out
+}
+
 // ── 消息工具 ────────────────────────────────────────────────────────────────
+/**
+ * v12.8.1（不同宿主）：从出站请求的 tools 里认出「编辑文件」工具及其参数名，让稿里的可用句说宿主真实的工具名
+ *（`edit_file` / `old_text` 是本仓库评测里的名字；Claude Code 是 str_replace_based_edit_tool 的 old_str/new_str，Codex 是 apply_patch……
+ *  稿里写错名字，主模型就得自己换算，短思考时就回头 read）。认不出 ⇒ null（保留缺省词）。
+ * 兼容 OpenAI 形（{type:'function',function:{name,parameters}}）与 Anthropic 形（{name,input_schema}）。
+ * @returns {{ name: string, oldKey: string, newKey: string } | null}
+ */
+const OLD_KEYS = ['old_text', 'old_string', 'oldText', 'oldString', 'old_str', 'oldStr', 'search', 'target_text', 'original']
+const NEW_KEYS = ['new_text', 'new_string', 'newText', 'newString', 'new_str', 'newStr', 'replace', 'replacement', 'replacement_text']
+export function editToolOf(tools) {
+  if (!Array.isArray(tools)) return null
+  let fallback = null
+  for (const t of tools) {
+    if (!t || typeof t !== 'object') continue
+    const fn = t.function && typeof t.function === 'object' ? t.function : t
+    const name = String(fn.name || '')
+    if (!name) continue
+    const schema = fn.parameters || fn.input_schema || fn.inputSchema || null
+    const props = schema && schema.properties && typeof schema.properties === 'object' ? Object.keys(schema.properties) : []
+    const oldKey = OLD_KEYS.find((k) => props.includes(k))
+    const newKey = NEW_KEYS.find((k) => props.includes(k))
+    if (oldKey && newKey) return { name, oldKey, newKey }
+    // 名字像编辑工具但参数认不全（如 apply_patch 只有 input）：记为兜底，只换工具名
+    if (!fallback && /(?:^|[_-])(?:edit|replace|patch)|str_replace|apply_diff/i.test(name) && !/read|list|search|grep/i.test(name)) fallback = { name, oldKey: 'old_text', newKey: 'new_text' }
+  }
+  return fallback
+}
+
 export function reasoningTextOf(message) {
   if (!message || !Array.isArray(message.content)) return ''
   return message.content.filter((b) => b && b.type === 'reasoning').map((b) => String(b.text || '')).join('\n')

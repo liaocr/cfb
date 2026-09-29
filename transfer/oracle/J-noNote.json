@@ -1,0 +1,11 @@
+{
+ "rows": [
+  {
+   "id": "perf-regression",
+   "mode": "v4",
+   "why": "condensed",
+   "text": "我们需要分析为什么收网等待从 900ms 涨到 2400ms。总等待涨 1500ms；contentSpanMs p50 从 280 到 1650，涨 1370ms，占九成；ttfbMs 610 → 640 只多 30ms。吞吐 390/280≈1.39 和 1720/1650≈1.04 chars/ms 是同一量级，所以不是每个 token 变慢，而是生成的量变多了：outputChars 390 → 1720，约 4.4 倍。\n\nconfig diff 有两处：maxOutputTokens 850 → 4096，compressTargetMax 450 → 1800。输出长度正好贴着 compressTargetMax：390≈450，1720≈1800，比例 4.4 对 4.0。README 说 compressTargetMax 只影响 v3 的长度目标，而这里走的正是 compress-v3h。maxOutputTokens 只是上限，不会让输出变长，除非升级前 850 一直在截断。promptVersion 升级前后都是 compress-v3h:250-450，没跟着配置变，看起来是硬编码的标签，不能用来证明配置没生效。所以主因更可能是 compressTargetMax 450 → 1800，maxOutputTokens 是陪跑。\n\n所以下一步工具调用是 bash analyze-trace --compare v11.9 v11.10 --steps birth --fields finishReason,outputTokens,contentSpanMs，看升级前的生成是被 850 截断还是自然停下。如果升级前 finishReason 是 stop、outputTokens 明显低于 850，那么 850 从来没绑住，maxOutputTokens 无罪、不用回滚，主因就是 compressTargetMax 450 → 1800，看到这一行结果就直接 edit_file src/config.js：old_text 是 `compressTargetMax: 1800,`，new_text 是 `compressTargetMax: 450,`。如果升级前 finishReason 大量是 length、outputTokens 贴着 850，那么是 maxOutputTokens 放开解除了截断，主因在它，改回 850 或给 birth 单独设小值，compressTargetMax 不动。promptVersion 的 tag 不随配置变，顺手记一笔，不在这一步改。",
+   "outChars": 1120
+  }
+ ]
+}

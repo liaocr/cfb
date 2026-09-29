@@ -1,0 +1,15 @@
+{
+ "rows": [
+  {
+   "id": "sse-truncated",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 5424,
+   "outChars": 1155,
+   "ms": 10201,
+   "promptVersion": "compress-v4d1:ctx",
+   "text": "trace 里 `[compiler-transport-settled] {\"ok\":true,\"finish\":null,\"stream\":true,\"outputChars\":212,\"eventCount\":9}` 和 `[birth-condensed] {\"rawChars\":8123,\"outChars\":212}` 摆在一起：raw 8123 只出 212，finish 是 null，ok 却是 true。read_file src/transport.js 的 assembleSseFrames 节选（逐字）：\n`for (const f of frames) {`\n`if (f === '[DONE]') { done = true; continue }`\n`const j = JSON.parse(f); out += j.choices?.[0]?.delta?.content || ''`\n`if (j.choices?.[0]?.finish_reason) finish = j.choices[0].finish_reason`\n`return { out, finish: finish || (done ? 'stop' : null) }`\n网关文档又说连接被代理切断时只补 `data: [DONE]`。看起来问题就在这条 fallback：如果 SSE 帧中 finish_reason 为 null 或缺失，且 [DONE] 到达，就返回 stop；如果 done true 则返回 stop，调用方把 stop 或 ok:true 当完整成功写会话。但 trace 的 finish 是 null 而不是 stop，说明 [DONE] 可能没进 done，或 settle 记的不是组装返回值——这层还没坐实。把它当纯粹超时处理已排除：跟超时无关。内容长度阈值线索先搁置，没证据。所以下一步工具调用是 bash：`grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled|assembleSseFrames|birth-condensed\" src`，定位 settle 处 ok 与 finish 的赋值以及写会话条件。如果 settle 的 ok 不校验 finish、只认 done 或流正常结束，那么修复落在调用方，把仅 [DONE] 当 incomplete/unknown 而不写会话；如果 grep 显示 [DONE] 帧实际带 `data: ` 前缀而 `f === '[DONE]'` 永不命中，那么改 assembleSseFrames 的帧剥离判断。",
+   "side": "trace 里 `[compiler-transport-settled] {\"ok\":true,\"finish\":null,\"stream\":true,\"outputChars\":212,\"eventCount\":9}` 和 `[birth-condensed] {\"rawChars\":8123,\"outChars\":212}` 摆在一起：raw 8123 只出 212，finish 是 null，ok 却是 true。read_file src/transport.js 的 assembleSseFrames 节选（逐字）：\n`for (const f of frames) {`\n`if (f === '[DONE]') { done = true; continue }`\n`const j = JSON.parse(f); out += j.choices?.[0]?.delta?.content || ''`\n`if (j.choices?.[0]?.finish_reason) finish = j.choices[0].finish_reason`\n`return { out, finish: finish || (done ? 'stop' : null) }`\n网关文档又说连接被代理切断时只补 `data: [DONE]`。看起来问题就在这条 fallback：如果 SSE 帧中 finish_reason 为 null 或缺失，且 [DONE] 到达，就返回 stop；如果 done true 则返回 stop，调用方把 stop 或 ok:true 当完整成功写会话。但 trace 的 finish 是 null 而不是 stop，说明 [DONE] 可能没进 done，或 settle 记的不是组装返回值——这层还没坐实。把它当纯粹超时处理已排除：跟超时无关。内容长度阈值线索先搁置，没证据。所以下一步工具调用是 bash：`grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled|assembleSseFrames|birth-condensed\" src`，定位 settle 处 ok 与 finish 的赋值以及写会话条件。如果 settle 的 ok 不校验 finish、只认 done 或流正常结束，那么修复落在调用方，把仅 [DONE] 当 incomplete/unknown 而不写会话；如果 grep 显示 [DONE] 帧实际带 `data: ` 前缀而 `f === '[DONE]'` 永不命中，那么改 assembleSseFrames 的帧剥离判断。"
+  }
+ ]
+}
