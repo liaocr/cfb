@@ -14,6 +14,8 @@ import { claimOf } from './effect-mr.mjs'
 import { TRAJ_TASKS, materialize } from './traj-fixtures.mjs'
 
 const SYSTEM = '你是在代码仓库里干活的编码 Agent，可用工具 bash / read_file / edit_file（仓库根目录）。每一轮：先给一句简短判断，再发出下一步需要的工具调用；一次可以发多个独立调用。认为任务已经完成时不要再调用工具，用文字说明改了什么、依据是什么。'
+// --text-tools：不带 tools 字段（中转把带 tools 的请求路由到不可信后端时用），改用文本协议发调用；三种变体同一协议，比较仍成立
+const SYSTEM_TEXT_TOOLS = SYSTEM + '\n\n工具用文本协议调用：每条调用单独一行，格式为 [tool_call bash] {"command":"…"} / [tool_call read_file] {"path":"…"} / [tool_call edit_file] {"path":"…","old_text":"…","new_text":"…"}（JSON 一行、字符串内换行写成 \\n）。调用行之外的文字就是你的判断。结果会以「[tool: 名字 结果]」回给你。'
 
 function parseArgs(argv) {
   const o = { variants: ['raw', 'auto'], samples: 1, maxRounds: 6, concurrency: 2, maxTokens: 16000, out: 'traj', only: null, minChars: 3100 }   // minChars = 生产 birthMinChars（低于它不压、原样留下）
@@ -30,6 +32,7 @@ function parseArgs(argv) {
     else if (a === '--out') o.out = v()
     else if (a === '--summarize') o.summarizeOnly = true
     else if (a === '--min-chars') o.minChars = Number(v())
+    else if (a === '--text-tools') o.textTools = true
     else throw new Error('未知参数 ' + a)
   }
   return o
@@ -106,18 +109,43 @@ function execTool(task, repo, name, args) {
   if (name === 'bash') return runBash(task, repo, String(a.command || ''))
   return `未知工具 ${name}`
 }
+const normCmd = (s) => String(s || '').replace(/\s+/g, ' ').trim()
+/** 从「[tool_call name] {…}」文本里抠出调用：从 { 起做括号配对（尊重字符串与转义），容忍尾随的 ] 或多行 JSON */
+export function parseTextCalls(text) {
+  const out = []; const src = String(text || '')
+  const re = /\[tool_call\s+([\w-]+)\]/g; let m
+  while ((m = re.exec(src)) !== null) {
+    const start = src.indexOf('{', m.index + m[0].length); if (start < 0) continue
+    let depth = 0, inStr = false, esc = false, end = -1
+    for (let i = start; i < src.length; i++) {
+      const ch = src[i]
+      if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue }
+      if (ch === '"') inStr = true
+      else if (ch === '{') depth++
+      else if (ch === '}') { depth--; if (depth === 0) { end = i; break } }
+    }
+    if (end < 0) continue
+    const raw = src.slice(start, end + 1)
+    let args = raw
+    try { args = JSON.parse(raw) } catch { try { args = JSON.parse(raw.replace(/\r?\n/g, '\\n')) } catch {} }
+    out.push({ name: m[1], args })
+    re.lastIndex = end + 1
+  }
+  return out
+}
 export function callsOfMessage(m) {
   const out = []
   if (Array.isArray(m.tool_calls)) for (const c of m.tool_calls) out.push({ name: c.function && c.function.name, args: c.function && c.function.arguments })
-  if (!out.length) for (const x of String(m.content || '').matchAll(/\[tool_call\s+([\w-]+)\]\s*(\{[\s\S]*?\})(?=\s*(?:\[tool_call|\n|$))/g)) out.push({ name: x[1], args: x[2] })
-  return out
+  out.push(...parseTextCalls(m.content))   // 两个来源都收，再去重（中转可能只把一部分文本调用解析成 tool_calls）
+  // 中转有时把文本里的调用同时也解析成 tool_calls、或正文重复 ⇒ 按 (name, args) 去重，保序
+  const seen = new Set()
+  return out.filter((c) => { const k = c.name + '|' + normCmd(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)); if (seen.has(k)) return false; seen.add(k); return true })
 }
-const normCmd = (s) => String(s || '').replace(/\s+/g, ' ').trim()
 
 async function runOne({ o, task, variant, sample, chat, I, cred }) {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'traj-'))
   materialize(task, repo)
-  const messages = [{ role: 'system', content: SYSTEM }, { role: 'user', content: task.prompt }]
+  const messages = [{ role: 'system', content: o.textTools ? SYSTEM_TEXT_TOOLS : SYSTEM }, { role: 'user', content: task.prompt }]
   const rec = { task: task.id, variant, sample, rounds: 0, calls: 0, edits: [], repeats: 0, fixedAtRound: null, verifiedAfterFix: false, promptTokens: 0, compile: [], transcript: [], rejected: 0 }
   const seenCmds = new Map()
   try {
@@ -128,11 +156,11 @@ async function runOne({ o, task, variant, sample, chat, I, cred }) {
         //   每次重试在末条 user 末尾加 k 个零宽空格打散黏性，并退避几秒让路由轮转
         const msgs = k === 0 ? messages : messages.map((m, i) => i === messages.length - 1 && m.role === 'user' ? { ...m, content: m.content + '\u200b'.repeat(k) } : m)
         if (o.requireFp) {
-          const probe = await chat({ model: o.model, messages: msgs, tools: TOOLS, thinking: { type: 'enabled' }, max_tokens: 1, stream: false })
+          const probe = await chat({ model: o.model, messages: msgs, ...(o.textTools ? {} : { tools: TOOLS }), thinking: { type: 'enabled' }, max_tokens: 1, stream: false })
           rec.probes = (rec.probes || 0) + 1
           if (claudeShaped(probe.usage) || !TRUSTED_FP.has(probe.fp)) { rec.probeMiss = (rec.probeMiss || 0) + 1; if (k >= 14) throw new Error('探针 15 次都没等到可信后端'); await new Promise((s) => setTimeout(s, 3000 + 1500 * k)); continue }
         }
-        r = await chat({ model: o.model, messages: msgs, tools: TOOLS, thinking: { type: 'enabled' }, max_tokens: o.maxTokens - k, stream: false })
+        r = await chat({ model: o.model, messages: msgs, ...(o.textTools ? {} : { tools: TOOLS }), thinking: { type: 'enabled' }, max_tokens: o.maxTokens - k, stream: false })
         const seen = !claudeShaped(r.usage) && (!o.requireFp || TRUSTED_FP.has(r.fp))
         if (seen && (r.message.reasoning_content || '').length > 0) break
         rec.rejected++
