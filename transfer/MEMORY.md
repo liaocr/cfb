@@ -79,3 +79,5 @@
   web_search/fetch_page 工具在沙盒外可用。检索并写进理论 S8「外部佐证与定位」：DeepSeek Thinking Mode 官方（带 tools ⇒ 所有前轮 reasoning_content 拼进上下文）；
   JetBrains Complexity Trap（观察遮蔽≈摘要，摘要使轨迹 +15%）；morph「re-reading loop」/「exact-match penalty」；ACON（成对失败分析修订压缩指南）。
   新工具 tools/effect-pairs.mjs（成对归因 + 动作类别分布：raw 回头 read 35%、v4t 50%、oE 60%、oC 20%）。verify 607/0/1。
+- 迁移前终态（5812ec6）：本会话 11 个提交全部在 arena/01a0eba2-cfb；main 可 fast-forward。未跑任何付费步骤。待办 = A/B/C 三轮 + v4-live hold。
+  网络诊断结论：出口白名单（github/api.github/npm/pypi 通；其余域 TLS 被切；DNS/TCP 正常 ⇒ 透明代理按 SNI 放行）。

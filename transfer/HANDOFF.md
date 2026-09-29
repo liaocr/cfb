@@ -1,6 +1,20 @@
-# 接手手册（新会话零记忆开工，2026-09-29 交接）
+# 接手手册（新会话零记忆开工，2026-09-29 第二次交接）
 
 你是接手者。项目 = 本仓库 `dsh-cot-form-b`（cfb）：给 DeepSeek 宿主（DSH）做思维链压缩，目标是**主模型更好**（判断力/专注力），不是省钱、不是"不掉分"。用**中文**回复。
+
+## 0. 迁移速查（第二次迁移的原因：上一个沙盒只放行 GitHub / npm / PyPI，任何 LLM API 都调不出去）
+1. **先测网，再做任何事**（上一会话就是栽在这里）：
+   ```bash
+   curl -sS -m 10 -o /dev/null -w '%{http_code}\n' https://api.a6api.com/v1/models -H "Authorization: Bearer $DEEPSEEK_API_KEY"
+   # 200/401 都算通；000 + SSL_ERROR_SYSCALL = 出口白名单，换环境或让用户放行 api.a6api.com，别在这个环境里硬等
+   ```
+2. **代码在哪**：全部工作在分支 `arena/01a0eba2-cfb`（HEAD `5812ec6`，线性历史：main `e6589b3` → transfer `a3ae126` → 本会话 11 个提交）。
+   `main` 落后 11 个提交、**可 fast-forward**：`git push https://x-access-token:$GITHUB_PAT@github.com/liaocr/cfb.git arena/01a0eba2-cfb:main`（不要 force）。
+   新环境若从 main 起步，先 `git fetch origin arena/01a0eba2-cfb && git merge --ff-only FETCH_HEAD`。
+3. **密钥**用户口头给 4 个值（见「环境恢复」），写到 /home/user/.secrets/keys.env（0600），永远不进仓库。
+4. 环境恢复 → `node verify.mjs` 应 **607 / 0 / 1** → 按「下一步」跑 A（oG）、B（v4d2 重压 → oH）、C（v4u）三轮，每轮 raw + 1 变体，每轮结束用 `tools/effect-pairs.mjs` 归因。
+5. 决策规则：任一变体 综合 ≥ 6.4（oracle 上界）且 flaky ≥ 7 ⇒ 转正（`compressV4Direct` 缺省 true 或 ops 路照旧 + R7），并用 `v4-live` 量真实 hold 后再宣布；否则按 R7 第 6 条的可证伪点归因，回到理论。
+6. 用户新要求：**遇到问题先查文档 / 论文再动手**（已开的头在理论 S8 末「外部佐证与定位」）。
 
 ## 必读顺序（都在本仓库）
 1. 本文件
