@@ -8,8 +8,8 @@
    curl -sS -m 10 -o /dev/null -w '%{http_code}\n' https://api.a6api.com/v1/models -H "Authorization: Bearer $DEEPSEEK_API_KEY"
    # 200/401 都算通；000 + SSL_ERROR_SYSCALL = 出口白名单，换环境或让用户放行 api.a6api.com，别在这个环境里硬等
    ```
-2. **代码在哪**：全部工作在分支 `arena/01a0eba2-cfb`（HEAD `5812ec6`，线性历史：main `e6589b3` → transfer `a3ae126` → 本会话 11 个提交）。
-   `main` 落后 11 个提交、**可 fast-forward**：`git push https://x-access-token:$GITHUB_PAT@github.com/liaocr/cfb.git arena/01a0eba2-cfb:main`（不要 force）。
+2. **代码在哪**：全部工作在分支 `arena/01a0eba2-cfb`（以远端最新为准，2026-09-29 为 `260489c`；线性历史：main `e6589b3` → transfer `a3ae126` → 本会话提交）。
+   `main` 落后一截、**可 fast-forward**：`git push https://x-access-token:$GITHUB_PAT@github.com/liaocr/cfb.git arena/01a0eba2-cfb:main`（不要 force）。
    新环境若从 main 起步，先 `git fetch origin arena/01a0eba2-cfb && git merge --ff-only FETCH_HEAD`。
 3. **密钥**用户口头给 4 个值（见「环境恢复」），写到 /home/user/.secrets/keys.env（0600），永远不进仓库。
 4. 环境恢复 → `node verify.mjs` 应 **607 / 0 / 1** → 按「下一步」跑 A（oG）、B（v4d2 重压 → oH）、C（v4u）三轮，每轮 raw + 1 变体，每轮结束用 `tools/effect-pairs.mjs` 归因。
