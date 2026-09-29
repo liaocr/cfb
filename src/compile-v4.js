@@ -524,7 +524,7 @@ export function compileV4(output, raw, cfg = {}, budget = null) {
  * ★ v12.6 compress-v4-direct 程序门（理论 S8-R6）：副模型直写散文，代码只做能机械判定的事。
  *   锚点硬校验：`…` 片段必须是原文（或任务观察）里一字不差的子串；不是就剥掉反引号（不许假称逐字）。
  *   判读 / 语域 / 出处只统计不熔断（样例 + 尾段重申已把漏判率压低；熔断 = 原文放行，先测漏率再收紧）。
- *   熔断只有两种：空输出、超长（compressV4DirectMaxChars，缺省 1600）。
+ *   熔断只有两种：空输出、超长（compressV4DirectMaxChars，缺省 1800）。
  *   v12.7.1：1300 → 1600。1300 是按 v4d1 开放分支的稿定的（oD/oE/oF 侧输出 920–1247）；R7 要求每个改法分支闭合
  *   （`逐字落点` ≤200 字 + 可用句 ≈70 字 + 改成什么），两个分支就比开放形态多 200–500 字，v4d2 首压 5 份里 2 份（1382 / 1457）撞熔断 ⇒
  *   整份稿被丢、原文（3000–9000 字）放行，比一份 1457 字的稿坏得多。熔断的职责是拦「跑飞」（照抄原文 ≥3000），1600 仍拦得住。
@@ -555,7 +555,7 @@ export function compileV4Direct(side, raw, cfg = {}) {
   stats.provenance = /逐字/.test(text)
   stats.register = /看起来|所以|下一步工具调用/.test(text)
   if (cfg.compressCtx) stats.ctxChars = String(cfg.compressCtx).length   // 观察上下文到位与否（生产由 plugin 自动构造）
-  const maxChars = Number.isFinite(cfg.compressV4DirectMaxChars) && cfg.compressV4DirectMaxChars > 0 ? cfg.compressV4DirectMaxChars : 1600
+  const maxChars = Number.isFinite(cfg.compressV4DirectMaxChars) && cfg.compressV4DirectMaxChars > 0 ? cfg.compressV4DirectMaxChars : 1800
   if (text.length > maxChars) return { ok: false, reason: 'v4d-too-long', stats }
   // 理论 S8-R7：判读分支的动作闭合与落点绑定（可用句写进分支句内、绑定到具体逐字落点）
   if (cfg.compressV4DirectBind !== false) text = bindFixBranches(text, raw, cfg.compressCtx || '', stats)

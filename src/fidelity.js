@@ -98,6 +98,8 @@ function gateTokens(text) {
   RE_GATE_PATH.lastIndex = 0
   while ((m = RE_GATE_PATH.exec(s)) !== null) {
     const t = m[0]
+    // 排除纯数字比例 / 计算式（如 4.4/4.0、100/50）
+    if (/^[\d.]+[\\/][\d.]+$/.test(t)) continue
     // 路径需像路径：带扩展名，或至少 2 个分隔符，或以 / ./ ../ 盘符开头（排除 A/B、v2/v3、和/或 这类写法）
     const seps = (t.match(/[\\/]/g) || []).length
     if (seps >= 2 || /\.[A-Za-z0-9]{1,6}$/.test(t) || /^(?:[A-Za-z]:[\\/]|\.{0,2}\/)/.test(t)) add(t)
@@ -115,7 +117,7 @@ function gateTokens(text) {
 const squash = (s) => String(s).replace(/["'`\s]+/g, '')
 // v12.7：渲染模板 / 程序门自己的工具接口词（R5 可用句「可以直接当 edit_file 的 old_text」）不是对世界的断言，不算发明。
 //   此前只对着原文查 ⇒ 原文没提过 edit_file 的每一份带可用句的稿都被当编造放行（hook-wiring §6 抓到）。
-const GATE_ALLOW = new Set(['edit_file', 'old_text', 'new_text', 'read_file'])
+const GATE_ALLOW = new Set(['edit_file', 'old_text', 'new_text', 'read_file', 'NODE_OPTIONS', 'PATH', 'HOME', 'USER', 'SHELL'])
 /**
  * v12.8（理论 S8-R8b）：反引号片段前面是「new_text 是 / 改成 / 换成 / 替换为 …」⇒ 这段是要**写入**的新文本，不是对原文的引用。
  * 它天然不是原文子串（否则就不叫改动），按整段查一定报发明；正确的出处判定是**标识符级**：段内的标识符 / 路径必须全部来自原文或观察。
