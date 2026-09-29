@@ -717,6 +717,18 @@ try {
     assert.ok(!bad.text.includes('`fakeIdentifier42`'), '编造标识符被剥掉反引号')
     assert.ok(bad.text.includes('fakeIdentifier42'), '内容保留，只是不再假称逐字')
   })
+  await test('5o4a compileV4Direct：R5 直改可用句条件补句', () => {
+    const raw = 'read_file 显示 const port = 8123 // 旧端口。改法想好了：删掉它。'
+    const need = '看起来端口错了。read_file（逐字）：\n`const port = 8123 // 旧端口`\n所以下一步工具调用是 bash grep port。如果确认，那么需要改 src/pool.js 删掉这一行。'
+    const r = I.compileV4Direct(need, raw, {})
+    assert.equal(r.stats.repairedAffordance, true)
+    assert.ok(r.text.endsWith('上面逐字引出的代码行可以直接当 edit_file 的 old_text。'), r.text)
+    const has = '改法是删掉。这一行的逐字原文已给出，可以直接当 edit_file 的 old_text。'
+    const r2 = I.compileV4Direct('`const port = 8123 // 旧端口` 是元凶。' + has, raw, {})
+    assert.ok(!r2.stats.repairedAffordance, '已有可用句不重复补')
+    const noFix = I.compileV4Direct('`const port = 8123 // 旧端口` 很可疑。所以下一步工具调用是 grep。如果找到，那么再定。', raw, {})
+    assert.ok(!noFix.stats.repairedAffordance, '尾段没落到具体改法不补')
+  })
   await test('5o4 compileV4Direct：围栏 / 空 / 超长熔断 / 观察也算原文', () => {
     const r = I.compileV4Direct('```\n看起来 x=1。所以下一步工具调用是 grep。如果找到，那么改。\n```', 'x=1 在日志里', {})
     assert.equal(r.ok, true); assert.equal(r.stats.unfenced, true)

@@ -543,6 +543,17 @@ export function compileV4Direct(side, raw, cfg = {}) {
   stats.register = /看起来|所以|下一步工具调用/.test(text)
   const maxChars = Number.isFinite(cfg.compressV4DirectMaxChars) && cfg.compressV4DirectMaxChars > 0 ? cfg.compressV4DirectMaxChars : 1300
   if (text.length > maxChars) return { ok: false, reason: 'v4d-too-long', stats }
+  // R5 直改可用句（条件补句，effect-14 归因：缺了这句 ⇒ 主模型改前再取证一轮）：
+  // 尾段已落到具体改法、有已核真的逐字代码行、却没写「可以直接当 old_text」⇒ 补一句真话（锚点已被门核真）。
+  const fixTail = /(改法是|需要改|改成|改为|改回|删掉|删去|加上|回滚|换成|修复落在|改测试|改配置|改这里|改\s+[\w./-]{2,})/.test(tail)
+  const afford = /old_text|逐字原文已给出|可以直接当/.test(text)
+  if (fixTail && !afford) {
+    const verifiedAny = /`[^`\n]{1,220}`/.test(text)
+    if (verifiedAny) {
+      text = text.replace(/\s*$/u, '') + ' 上面逐字引出的代码行可以直接当 edit_file 的 old_text。'
+      stats.repairedAffordance = true
+    }
+  }
   return { ok: true, text, stats }
 }
 
