@@ -1,0 +1,92 @@
+{
+ "rows": [
+  {
+   "id": "wrong-model",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 3414,
+   "outChars": 565,
+   "ms": 3558,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "FACT": 3,
+    "IF": 1,
+    "PLAN": 1
+   },
+   "text": "- host-follow.js 中 lastModel 为模块级变量，observe 只在 options.model 存在时更新，callConfig 返回 lastModel || cfg.model（来源 src/host-follow.js）\n- plugin.js 调用 host.observe(options, n) 后取 host.callConfig(options) 并传入 birthTransform 的 cfg（来源 src/plugin.js）\n- trace 中 llm-stream n12、n13 为 deepseek-v3.2，而 compiler-transport-started 为 deepseek-v3.1（来源 trace）\n- 接下来要：查看 plugin.js 中 options 与 n 的构造，确认 host.observe 处的真实字段\n- 判读：若当前模型实际位于 n 参数（如 request 对象内含 model），就 observe 没有读取 model，lastModel 未更新，保留上一会话值\n\n若当前模型实际位于 n 参数（如 request 对象内含 model），就 observe 没有读取 model，lastModel 未更新，保留上一会话值。",
+   "side": "{\"ops\":[{\"id\":\"o1\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"host-follow.js 中 lastModel 为模块级变量，observe 只在 options.model 存在时更新，callConfig 返回 lastModel || cfg.model\",\"anchor\":\"let lastModel = null\",\"src\":\"src/host-follow.js\"},{\"id\":\"o2\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"plugin.js 调用 host.observe(options, n) 后取 host.callConfig(options) 并传入 birthTransform 的 cfg\",\"anchor\":\"host.observe(options, n)\",\"src\":\"src/plugin.js\"},{\"id\":\"o3\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"localize\",\"text\":\"trace 中 llm-stream n12、n13 为 deepseek-v3.2，而 compiler-transport-started 为 deepseek-v3.1\",\"anchor\":\"[compiler-transport-started] model deepseek-v3.1\",\"src\":\"trace\"},{\"id\":\"o4\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"hypothesize\",\"text\":\"lastModel 跨会话保留，配置被上一次会话模型污染，compiler-transport 启动显示 v3.1\",\"anchor\":\"callConfig 返回 lastModel || cfg.model\",\"key\":\"root-cause\",\"deps\":[\"o1\",\"o2\",\"o3\"]},{\"id\":\"o5\",\"k\":\"IF\",\"ev\":\"guess\",\"kind2\":\"hypothesize\",\"text\":\"若当前模型实际在 n 中，则 observe 未读取，lastModel 不更新\",\"anchor\":\"如果实际当前模型在 n 中\",\"cond\":\"当前模型实际位于 n 参数（如 request 对象内含 model）\",\"then\":\"observe 没有读取 model，lastModel 未更新，保留上一会话值\",\"key\":\"root-cause\",\"deps\":[\"o1\",\"o2\"]},{\"id\":\"o6\",\"k\":\"PLAN\",\"ev\":\"guess\",\"kind2\":\"inspect\",\"text\":\"查看 plugin.js 中 options 与 n 的构造，确认 host.observe 处的真实字段\",\"anchor\":\"查看 plugin.js 中 options/n 如何构造\",\"key\":\"next\",\"deps\":[\"o5\"]}]}"
+  },
+  {
+   "id": "sse-truncated",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 5424,
+   "outChars": 978,
+   "ms": 4287,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "FACT": 4,
+    "IF": 2,
+    "COMPUTED": 1,
+    "PLAN": 1,
+    "READY": 1
+   },
+   "text": "- compiler-transport-settled 记录 ok:true、finish:null、stream:true、outputChars:212、eventCount:9（来源 compiler-transport-settled）\n- birth-condensed 记录 rawChars:8123、outChars:212（来源 birth-condensed）\n- assembleSseFrames 仅在 finish_reason 存在时设置 finish，否则用 done 回退 stop（来源 src/transport.js）\n- 网关文档说明部分上游在连接被代理切断时只补发 data: [DONE]（来源网关文档）\n- 我目前判断：核心 bug 是 [DONE] 无 finish_reason 时仍被当成 stop\n- 接下来要：查找 assembleSseFrames 调用处及 ok、finish、写会话条件\n- 判读：若 finish_reason 为 null 或缺失且 [DONE] 到达，就返回 stop\n- 判读：若 assembleSseFrames 接收的 frames 没有剥离 data: 前缀，就 f === '[DONE]' 判断失败，done 不置 true，返回 finish null\n- 然后后续修复：区分 `finish_reason` 缺失与 `[DONE]`，把仅 `[DONE]` 当 `incomplete`/`unknown`，除非有 finish_reason 或内容完整标志\n\n所以我目前判断：核心 bug 是 [DONE] 无 finish_reason 时仍被当成 stop。若 finish_reason 为 null 或缺失且 [DONE] 到达，就返回 stop。若 assembleSseFrames 接收的 frames 没有剥离 data: 前缀，就 f === '[DONE]' 判断失败，done 不置 true，返回 finish null。然后后续修复：区分 `finish_reason` 缺失与 `[DONE]`，把仅 `[DONE]` 当 `incomplete`/`unknown`，除非有 finish_reason 或内容完整标志。",
+   "side": "{\"ops\":[{\"id\":\"o1\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"localize\",\"text\":\"compiler-transport-settled 记录 ok:true、finish:null、stream:true、outputChars:212、eventCount:9\",\"anchor\":\"[compiler-transport-settled] {\\\"ok\\\":true,\\\"finish\\\":null\",\"src\":\"compiler-transport-settled\",\"key\":\"trace-settled\"},{\"id\":\"o2\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"localize\",\"text\":\"birth-condensed 记录 rawChars:8123、outChars:212\",\"anchor\":\"[birth-condensed] {\\\"rawChars\\\":8123,\\\"outChars\\\":212}\",\"src\":\"birth-condensed\",\"key\":\"trace-condensed\"},{\"id\":\"o3\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"assembleSseFrames 仅在 finish_reason 存在时设置 finish，否则用 done 回退 stop\",\"anchor\":\"finish: finish || (done ? 'stop' : null)\",\"src\":\"src/transport.js\"},{\"id\":\"o4\",\"k\":\"IF\",\"ev\":\"derived\",\"kind2\":\"hypothesize\",\"text\":\"SSE 帧中 finish_reason 为 null 或缺失且 [DONE] 到达，则返回 stop\",\"anchor\":\"且 [DONE] 到达，就返回 stop\",\"cond\":\"finish_reason 为 null 或缺失且 [DONE] 到达\",\"then\":\"返回 stop\",\"key\":\"finish-fallback\"},{\"id\":\"o5\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"localize\",\"text\":\"网关文档说明部分上游在连接被代理切断时只补发 data: [DONE]\",\"anchor\":\"只补发 data: [DONE]\",\"src\":\"网关文档\",\"key\":\"gateway-doc\"},{\"id\":\"o6\",\"k\":\"IF\",\"ev\":\"derived\",\"kind2\":\"hypothesize\",\"text\":\"若 [DONE] 因 data: 前缀未被识别，则 done 不置 true，返回 finish null\",\"anchor\":\"则 `f === '[DONE]'` 判断失败\",\"cond\":\"assembleSseFrames 接收的 frames 没有剥离 data: 前缀\",\"then\":\"f === '[DONE]' 判断失败，done 不置 true，返回 finish null\",\"deps\":[\"o3\"]},{\"id\":\"o7\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"pivot\",\"text\":\"核心 bug 是 [DONE] 无 finish_reason 时仍被当成 stop\",\"anchor\":\"核心 bug 在 assembleSseFrames 将 [DONE] 无 finish_reason 视为 stop\",\"deps\":[\"o3\",\"o5\"]},{\"id\":\"o8\",\"k\":\"PLAN\",\"ev\":\"derived\",\"kind2\":\"inspect\",\"text\":\"查找 assembleSseFrames 调用处及 ok、finish、写会话条件\",\"anchor\":\"需要确认写会话的条件\",\"key\":\"next\",\"deps\":[\"o1\",\"o7\"]}]}"
+  },
+  {
+   "id": "eacces-config",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 10074,
+   "outChars": 612,
+   "ms": 4563,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "FACT": 1,
+    "COMPUTED": 2,
+    "READY": 1,
+    "PLAN": 1,
+    "IF": 2
+   },
+   "text": "- trace.log 及父目录 cot-form-b 属 root，当前用户 u 无写权限（来源 ls -la）\n- 我目前判断：EACCES 由 trace.log 属 root 且权限 644、目录 755 导致\n- 我目前判断：verify.mjs 用 DSH_HOME 隔离，测试却用 CFB_REAL_DSH_HOME 绕过隔离\n- 接下来要：grep 定位 CFB_REAL_DSH_HOME 的引用并检查环境变量是否设置\n- 如果未设置，则说明 makeTraceWriter 可能 fallback\n- 如果 verify.mjs 中完全没有该变量，那么测试文件从父进程继承，可能是 /home/u/.dsh\n- 我准备的改法：改测试用 DSH_HOME 而非 CFB_REAL_DSH_HOME（前提：若 birth.selftest 应改用 DSH_HOME）\n\n所以我目前判断：verify.mjs 用 DSH_HOME 隔离，测试却用 CFB_REAL_DSH_HOME 绕过隔离。如果未设置，则说明 makeTraceWriter 可能 fallback。如果 verify.mjs 中完全没有该变量，那么测试文件从父进程继承，可能是 /home/u/.dsh。若若 birth.selftest 应改用 DSH_HOME，就改测试用 DSH_HOME 而非 CFB_REAL_DSH_HOME。",
+   "side": "{\"ops\":[{\"id\":\"o1\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"localize\",\"text\":\"trace.log 及父目录 cot-form-b 属 root，当前用户 u 无写权限\",\"anchor\":\"root:root drwxr-xr-x\",\"src\":\"ls -la\",\"key\":\"root-cause\",\"why\":\"目录 755、文件 644 且属 root，非 root 不能写/删\"},{\"id\":\"o2\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"localize\",\"text\":\"EACCES 由 trace.log 属 root 且权限 644、目录 755 导致\",\"anchor\":\"EACCES: permission denied\",\"deps\":[\"o1\"]},{\"id\":\"o3\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"pivot\",\"text\":\"verify.mjs 用 DSH_HOME 隔离，测试却用 CFB_REAL_DSH_HOME 绕过隔离\",\"anchor\":\"CFB_REAL_DSH_HOME\",\"deps\":[\"o2\"]},{\"id\":\"o4\",\"k\":\"READY\",\"ev\":\"derived\",\"kind2\":\"answer\",\"text\":\"在 verify.mjs 的 env 中加 CFB_REAL_DSH_HOME: tmp\",\"anchor\":\"CFB_REAL_DSH_HOME: tmp\",\"key\":\"fix\",\"trigger\":\"若 verify.mjs 未设置 CFB_REAL_DSH_HOME\"},{\"id\":\"o5\",\"k\":\"READY\",\"ev\":\"derived\",\"kind2\":\"answer\",\"text\":\"改测试用 DSH_HOME 而非 CFB_REAL_DSH_HOME\",\"anchor\":\"应改用 DSH_HOME\",\"key\":\"fix\",\"trigger\":\"若 birth.selftest 应改用 DSH_HOME\"},{\"id\":\"o6\",\"k\":\"PLAN\",\"ev\":\"tool\",\"kind2\":\"inspect\",\"text\":\"grep 定位 CFB_REAL_DSH_HOME 的引用并检查环境变量是否设置\",\"anchor\":\"grep -R \\\"CFB_REAL_DSH_HOME\\\"\",\"key\":\"next\",\"src\":\"grep\",\"deps\":[\"o3\"]}]}"
+  },
+  {
+   "id": "flaky-timeout",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 9053,
+   "outChars": 744,
+   "ms": 6947,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "FACT": 2,
+    "COMPUTED": 1,
+    "PLAN": 1,
+    "READY": 1,
+    "IF": 2
+   },
+   "text": "- 我目前判断：测试期望主请求1500ms后回200，hedgeAfterMs=1600，hedgeStartedAt应为null\n- 我目前判断：源码用setTimeout检查primarySettled，primary.then设置primarySettled=true\n- 我目前判断：CI的2核负载可能让1500和1600定时器积压到同一timers阶段，先执行server 1500回调再执行hedge 1600回调，主请求响应在poll阶段才resolve，导致primarySettled仍为false\n- 接下来要：下一步用taskset限制2核并循环运行test/hedge.selftest.mjs复现CI时序抖动\n- 如果 `primary` 是 fetch 或 axios，`then` 在响应体完全读取后？\n- 但若主请求的 I/O 回调在定时器回调之后才被处理，则失败\n- 可以考虑修复：在 `primary.finally` 中设置，或在定时器触发时检查 `primary` 是否已 settled，而不是布尔变量\n\n所以我目前判断：CI的2核负载可能让1500和1600定时器积压到同一timers阶段，先执行server 1500回调再执行hedge 1600回调，主请求响应在poll阶段才resolve，导致primarySettled仍为false。如果 `primary` 是 fetch 或 axios，`then` 在响应体完全读取后？。但若主请求的 I/O 回调在定时器回调之后才被处理，则失败。可以考虑修复：在 `primary.finally` 中设置，或在定时器触发时检查 `primary` 是否已 settled，而不是布尔变量。",
+   "side": "{\"ops\":[{\"id\":\"o1\",\"k\":\"FACT\",\"ev\":\"derived\",\"kind2\":\"localize\",\"text\":\"测试期望主请求1500ms后回200，hedgeAfterMs=1600，hedgeStartedAt应为null。\",\"anchor\":\"assert.equal(meta.hedgeStartedAt, null)\",\"key\":\"test-hedge\",\"deps\":[]},{\"id\":\"o2\",\"k\":\"FACT\",\"ev\":\"derived\",\"kind2\":\"inspect\",\"text\":\"源码用setTimeout检查primarySettled，primary.then设置primarySettled=true。\",\"anchor\":\"if (!primarySettled) startHedge()\",\"src\":\"hedgedDistill\",\"key\":\"source-race\",\"deps\":[]},{\"id\":\"o3\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"hypothesize\",\"text\":\"CI的2核负载可能让1500和1600定时器积压到同一timers阶段，先执行server 1500回调再执行hedge 1600回调，主请求响应在poll阶段才resolve，导致primarySettled仍为false。\",\"anchor\":\"got hedgeStartedAt=1712/1698\",\"key\":\"root-cause\",\"deps\":[\"o1\",\"o2\"]},{\"id\":\"o4\",\"k\":\"OPEN\",\"ev\":\"guess\",\"kind2\":\"hypothesize\",\"text\":\"主请求完成回调是否在1712时仍未执行，还是then微任务未执行，需要验证。\",\"anchor\":\"说明在定时器回调执行时\",\"key\":\"next\",\"deps\":[\"o3\"]},{\"id\":\"o5\",\"k\":\"PLAN\",\"ev\":\"derived\",\"kind2\":\"plan\",\"text\":\"下一步用taskset限制2核并循环运行test/hedge.selftest.mjs复现CI时序抖动。\",\"anchor\":\"taskset -c 0,1\",\"key\":\"next\",\"deps\":[\"o3\"]}]}"
+  },
+  {
+   "id": "perf-regression",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 11322,
+   "outChars": 1023,
+   "ms": 10230,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "FACT": 5,
+    "COMPUTED": 3,
+    "OPEN": 3,
+    "IF": 2,
+    "READY": 1
+   },
+   "text": "- ttfbMs p50 由 610 升至 640，仅增 30ms（来源 trace）\n- contentSpanMs p50 由 280 增至 1650，约 5.9 倍（来源 trace）\n- outputChars p50 由 390 增至 1720，约 4.4 倍（来源 trace）\n- maxOutputTokens 850 →4096，compressTargetMax 450 →1800（来源 config）\n- promptVersion 前后均为 compress-v3:250-450（来源 trace）\n- 我目前判断：解码吞吐 1.39 →1.04 chars/ms，量级一致，属产出量增大而非单 token 变慢\n- 我目前判断：输出长度贴合新目标：390≈450，1720≈1800，比例 4.0 与 4.4 相符\n- 我目前判断：promptVersion 的 250-450 内嵌旧目标，版本标签陈旧或硬编码，不可作为配置未生效的证据\n- 还要确认：需分辨旧运行输出是否被 850 token 上限截断\n- 还要确认：需确认 birth 路径是否真的读取 compressTargetMax，以及版本标签从何处生成\n- 还要确认：长压缩提示只推高 prefill（TTFB），而 TTFB 未变，故输出膨胀不能只由输入变长解释\n- 判读：若旧运行 finishReason=length，就 maxOutputTokens 抬升是主因\n- 判读：若旧运行 finishReason=stop，就 compressTargetMax 是主因，maxOutputTokens 无罪\n- 我准备的改法：将 compressTargetMax 回滚为 450 并重新测量（A/B 对照）（前提：若 finishReason 未显示旧运行被截断）\n\n所以我目前判断：输出长度贴合新目标：390≈450，1720≈1800，比例 4.0 与 4.4 相符。若旧运行 finishReason=length，就 maxOutputTokens 抬升是主因。若旧运行 finishReason=stop，就 compressTargetMax 是主因，maxOutputTokens 无罪。若若 finishReason 未显示旧运行被截断，就将 compressTargetMax 回滚为 450 并重新测量（A/B 对照）。",
+   "side": "{\"ops\":[{\"id\":\"o1\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"ttfbMs p50 由 610 升至 640，仅增 30ms\",\"anchor\":\"ttfbMs p50:610 →640\",\"key\":\"ttfb-p50\",\"src\":\"trace\"},{\"id\":\"o2\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"contentSpanMs p50 由 280 增至 1650，约 5.9 倍\",\"anchor\":\"contentSpanMs p50:280 →1650\",\"key\":\"content-span-p50\",\"src\":\"trace\"},{\"id\":\"o3\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"outputChars p50 由 390 增至 1720，约 4.4 倍\",\"anchor\":\"outputChars p50:390 →1720\",\"key\":\"output-chars-p50\",\"src\":\"trace\"},{\"id\":\"o4\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"inspect\",\"text\":\"maxOutputTokens 850 →4096，compressTargetMax 450 →1800\",\"anchor\":\"maxOutputTokens850 →4096\",\"key\":\"max-output-tokens\",\"src\":\"config\"},{\"id\":\"o5\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"inspect\",\"text\":\"promptVersion 前后均为 compress-v3:250-450\",\"anchor\":\"compress-v3:250-450\",\"key\":\"prompt-version\",\"src\":\"trace\"},{\"id\":\"o6\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"compute\",\"text\":\"等待增量约 1500ms 中 contentSpan 占约 1370ms，瓶颈是解码而非 TTFB\",\"anchor\":\"not TTFB\",\"deps\":[\"o1\",\"o2\"]},{\"id\":\"o7\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"compute\",\"text\":\"解码吞吐 1.39 →1.04 chars/ms，量级一致，属产出量增大而非单 token 变慢\",\"anchor\":\"roughly same order\",\"deps\":[\"o2\",\"o3\"]},{\"id\":\"o8\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"compute\",\"text\":\"输出长度贴合新目标：390≈450，1720≈1800，比例 4.0 与 4.4 相符\",\"anchor\":\"≈1800\",\"deps\":[\"o3\",\"o4\"]},{\"id\":\"o9\",\"k\":\"SHELVED\",\"ev\":\"derived\",\"kind2\":\"hypothesize\",\"text\":\"maxOutputTokens 850→4096 只是上限，抬高不强制变长，故非直接原因\",\"anchor\":\"it's just a cap\",\"alt\":\"compressTargetMax 450→1800 抬高了压缩产物长度目标\",\"why\":\"抬高上限本身不产生更长输出\",\"trigger\":\"若发现旧运行输出被 850 截断（finishReason=length）\"},{\"id\":\"o10\",\"k\":\"GUESS\",\"ev\":\"guess\",\"kind2\":\"hypothesize\",\"text\":\"compressTargetMax 450→1800 使压缩产物变长，收网输出随之膨胀约 4.4x\",\"anchor\":\"compressTargetMax DID take effect\",\"key\":\"root-cause\",\"deps\":[\"o3\",\"o4\",\"o8\"]},{\"id\":\"o11\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"verify\",\"text\":\"promptVersion 的 250-450 内嵌旧目标，版本标签陈旧或硬编码，不可作为配置未生效的证据\",\"anchor\":\"the version tag is stale\",\"key\":\"prompt-version-stale\",\"deps\":[\"o5\",\"o8\"]},{\"id\":\"o12\",\"k\":\"OPEN\",\"ev\":\"derived\",\"kind2\":\"localize\",\"text\":\"需分辨旧运行输出是否被 850 token 上限截断\",\"anchor\":\"truncated at850 tokens cap\",\"key\":\"truncation\",\"deps\":[\"o3\",\"o4\"]},{\"id\":\"o13\",\"k\":\"OPEN\",\"ev\":\"derived\",\"kind2\":\"localize\",\"text\":\"需确认 birth 路径是否真的读取 compressTargetMax，以及版本标签从何处生成\",\"anchor\":\"grep the code for\",\"key\":\"code-path\",\"deps\":[\"o5\"]},{\"id\":\"o14\",\"k\":\"IF\",\"ev\":\"derived\",\"kind2\":\"verify\",\"text\":\"若旧运行 finishReason=length，则截断解除是输出变长的主因\",\"anchor\":\"finishReason=length\",\"cond\":\"旧运行 finishReason=length\",\"then\":\"maxOutputTokens 抬升是主因\",\"deps\":[\"o12\"]},{\"id\":\"o15\",\"k\":\"IF\",\"ev\":\"derived\",\"kind2\":\"verify\",\"text\":\"若旧运行自然结束（stop），则上限从未生效，长度目标才是主因\",\"anchor\":\"stop →长度目标\",\"cond\":\"旧运行 finishReason=stop\",\"then\":\"compressTargetMax 是主因，maxOutputTokens 无罪\",\"deps\":[\"o12\"]},{\"id\":\"o16\",\"k\":\"OPEN\",\"ev\":\"derived\",\"kind2\":\"localize\",\"text\":\"长压缩提示只推高 prefill（TTFB），而 TTFB 未变，故输出膨胀不能只由输入变长解释\",\"anchor\":\"So longer input alone\",\"deps\":[\"o1\",\"o3\",\"o11\"]},{\"id\":\"o17\",\"k\":\"READY\",\"ev\":\"derived\",\"kind2\":\"plan\",\"text\":\"将 compressTargetMax 回滚为 450 并重新测量（A/B 对照）\",\"anchor\":\"compressTargetMax to450\",\"trigger\":\"若 finishReason 未显示旧运行被截断\",\"deps\":[\"o10\",\"o12\"]}]}"
+  }
+ ]
+}

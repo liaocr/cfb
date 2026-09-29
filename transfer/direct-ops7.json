@@ -1,0 +1,82 @@
+{
+ "rows": [
+  {
+   "id": "wrong-model",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 3414,
+   "outChars": 596,
+   "ms": 3933,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "FACT": 3,
+    "COMPUTED": 1,
+    "IF": 1
+   },
+   "text": "- host-follow.js 的 lastModel 是模块级变量，observe 仅在 options.model 存在时更新，callConfig 返回 lastModel || cfg.model（来源 src/host-follow.js）\n- plugin.js 中先调用 host.observe(options, n) 再调用 host.callConfig(options)（来源 src/plugin.js）\n- trace 中当前会话 llm-stream 为 deepseek-v3.2，而 compiler-transport-started 为 deepseek-v3.1（来源 trace）\n- 我目前判断：lastModel 跨会话保留，observe 未取到当前模型时 callConfig 用上次会话模型覆盖 cfg.model\n- 判读：若当前模型在 n 中（如 n 是 request 对象或包含 model），就 observe 没有读取，lastModel 没更新\n\n所以我目前判断：lastModel 跨会话保留，observe 未取到当前模型时 callConfig 用上次会话模型覆盖 cfg.model。若当前模型在 n 中（如 n 是 request 对象或包含 model），就 observe 没有读取，lastModel 没更新。"
+  },
+  {
+   "id": "eacces-config",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 10074,
+   "outChars": 484,
+   "ms": 4335,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "FACT": 2,
+    "COMPUTED": 1,
+    "PLAN": 1
+   },
+   "text": "- echo $DSH_HOME 为 /home/u/.dsh (source echo $DSH_HOME)\n- verify.mjs 构造 env = { ...process.env, DSH_HOME: tmp }，但节选未显示设置 CFB_REAL_DSH_HOME (source verify.mjs)\n- My current judgment: birth.selftest.mjs 使用 process.env.CFB_REAL_DSH_HOME，可能绕过 verify.mjs 的临时 DSH_HOME，写入真实 /home/u/.dsh\n- Next: 检查 CFB_REAL_DSH_HOME 在代码和环境中的设置，确认 verify.mjs 是否漏设或测试是否应改用 DSH_HOME\n\nSo my current judgment is: birth.selftest.mjs 使用 process.env.CFB_REAL_DSH_HOME，可能绕过 verify.mjs 的临时 DSH_HOME，写入真实 /home/u/.dsh."
+  },
+  {
+   "id": "sse-truncated",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 5424,
+   "outChars": 912,
+   "ms": 4477,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "FACT": 3,
+    "IF": 3,
+    "OPEN": 1,
+    "READY": 1
+   },
+   "text": "- trace 显示 ok:true、finish:null、outputChars:212、rawChars:8123、outChars:212、eventCount:9（来源 compiler-transport-settled）\n- assembleSseFrames 仅在 finish_reason 存在时设置 finish，否则以 done 兜底返回 stop（来源 src/transport.js）\n- 网关文档：部分上游在连接被代理切断时只补发 data: [DONE]（来源网关文档）\n- 还要确认：trace 中 finish:null 与代码应返回 'stop' 矛盾，需确认 finish 是否在别处被覆盖\n- 判读：若 finish_reason 为 null 或缺失且 [DONE] 到达，就返回 stop\n- 判读：若 done true，就返回 stop\n- 判读：若 assembleSseFrames 接收的 frames 没有剥离 data，就 f === '[DONE]' 判断失败，JSON.parse('data: [DONE]') 会抛错\n- 我准备的改法：修复方向：区分 finish_reason 缺失与 [DONE]，仅 [DONE] 按 incomplete/unknown 处理，除非有 finish_reason 或内容完整标志（前提：区分 finish_reason 缺失与 [DONE]）\n\n若 finish_reason 为 null 或缺失且 [DONE] 到达，就返回 stop。若 done true，就返回 stop。若 assembleSseFrames 接收的 frames 没有剥离 data，就 f === '[DONE]' 判断失败，JSON.parse('data: [DONE]') 会抛错。若区分 finish_reason 缺失与 [DONE]，就修复方向：区分 finish_reason 缺失与 [DONE]，仅 [DONE] 按 incomplete/unknown 处理，除非有 finish_reason 或内容完整标志。"
+  },
+  {
+   "id": "flaky-timeout",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 9053,
+   "outChars": 562,
+   "ms": 5512,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "FACT": 1,
+    "COMPUTED": 1,
+    "SHELVED": 1,
+    "READY": 1
+   },
+   "text": "- 我目前判断：CI 失败时 hedgeStartedAt=1712/1698，对冲定时器 hedgeAfterMs=1600 被延迟约 100ms 后才触发\n- 我目前判断：事件循环延迟使 1500 与 1600 两个 setTimeout 积压到同一 timers 阶段，先执行 server 1500 回调再执行 hedge 1600 回调，主请求响应要到 poll 阶段才 resolve\n- 增大时间差或使用 fake timers（暂缓清除定时器不能解决定时器先于 primary settle 触发的问题：定时器先触发的根因是事件循环积压，清除只覆盖 primary 已 settle 的分支）\n- 我准备的改法：测试中使用 fake timers 或注入时钟，或拉大主请求与 hedgeAfterMs 的时间差（前提：需要修复测试不稳定时）\n\n所以我目前判断：事件循环延迟使 1500 与 1600 两个 setTimeout 积压到同一 timers 阶段，先执行 server 1500 回调再执行 hedge 1600 回调，主请求响应要到 poll 阶段才 resolve。若需要修复测试不稳定时，就测试中使用 fake timers 或注入时钟，或拉大主请求与 hedgeAfterMs 的时间差。"
+  },
+  {
+   "id": "perf-regression",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 11322,
+   "outChars": 573,
+   "ms": 8567,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "FACT": 4,
+    "COMPUTED": 2,
+    "OPEN": 1,
+    "PLAN": 1
+   },
+   "text": "- contentSpanMs p50 由 280 变为 1650，增长 5.9 倍（来源 trace）\n- outputChars p50 由 390 变为 1720，增长 4.4 倍（来源 trace）\n- promptVersion 前后均为 compress-v3:250-450（来源 trace）\n- maxOutputTokens 由 850 改为 4096，compressTargetMax 由 450 改为 1800（来源 README）\n- 我目前判断：解码吞吐 1.39 → 1.04 chars/ms，量级一致，是输出量变大而非单 token 变慢\n- 我目前判断：promptVersion 标签未随配置变化，可能由常量生成，不能作为配置未生效的证据\n- 接下来要：用 analyze-trace 对比 v11.9 与 v11.10 的 birth 步骤 finishReason 与 outputTokens\n- 还要确认：升级前输出可能被 850 token 上限截断，抬高上限后放开长度，此路尚未证实\n\n所以我目前判断：解码吞吐 1.39 → 1.04 chars/ms，量级一致，是输出量变大而非单 token 变慢。还要确认：升级前输出可能被 850 token 上限截断，抬高上限后放开长度，此路尚未证实。"
+  }
+ ]
+}
