@@ -369,7 +369,8 @@ try {
     })
     await new Promise((r) => server.listen(0, '127.0.0.1', r))
     const cred = path.join(home, 'credentials.yaml'); fs.writeFileSync(cred, 'TEST_KEY: local-only\n')
-    const cfg = I.normalizeConfig({ model: 'local-test', baseUrl: 'http://127.0.0.1:' + server.address().port, compressPrompt: 'v4',
+    // v12.8.8：compressV4Direct 缺省 true；§7 测的是 ops 路 ⇒ 显式关直写
+    const cfg = I.normalizeConfig({ model: 'local-test', baseUrl: 'http://127.0.0.1:' + server.address().port, compressPrompt: 'v4', compressV4Direct: false,
       credentialsPath: cred, credentialRef: 'TEST_KEY', maxAttempts: 1, timeoutMs: 3000, keepAlive: false, followHostProvider: false, followHostModel: false })
     const LONG = (RAW + '\n').repeat(4)
     try {
@@ -904,6 +905,17 @@ try {
     assert.equal(I.compileV4Direct(body.slice(0, 1801) + '。', 'raw', {}).reason, 'v4d-too-long')
     assert.equal(I.compileV4Direct(body.slice(0, 1790), 'raw', { compressV4DirectMaxChars: 1500 }).reason, 'v4d-too-long')
   })
+  await test('5t5 分句不切反引号内（v12.8.8，v4d4 sse 稿真机撞上）：`done ? \'stop\' : null` 里的 ? 不是句号；可用句接在分支句尾而不是插进代码段；birthAccept 放行', () => {
+    assert.deepEqual(I.splitSentencesTickAware('甲。乙 `a ? b : c; d` 丙？丁'), ['甲。', '乙 `a ? b : c; d` 丙？', '丁'])
+    const ctxS = '[tool: read_file] src/transport.js\n  return { out, finish: finish || (done ? \'stop\' : null) }'
+    const t = '看起来 ok 只看了 finish。所以下一步工具调用是 bash grep。如果 grep 出来 ok 已经依赖 finish，但返回处被覆盖成 `\'stop\'`，那么改 src/transport.js 里 `  return { out, finish: finish || (done ? \'stop\' : null) }` 这一行，new_text 是 `  return { out, finish: finish || null }`，此时不要改调用方。如果输出跟这两种都不像，先别改。'
+    const r = I.compileV4Direct(t, 'raw 里引过 return { out, finish: finish || (done ? \'stop\' : null) }', { compressCtx: ctxS })
+    assert.equal(r.stats.fixBranches, 1); assert.deepEqual(r.stats.boundBy, ['span'])
+    assert.ok(r.text.includes('(done ? \'stop\' : null) }` 这一行，new_text 是'), '代码段完整：' + r.text)
+    assert.ok(r.text.includes('此时不要改调用方——落点 `return { out, finish: finish || (done ? \'stop\' : null) }` 的逐字原文已给出'), '可用句在分支句尾：' + r.text)
+    assert.ok(!r.text.includes('?——落点'), '不再插进代码段中间')
+    assert.deepEqual(I.inventedIdentifiers('raw 里引过 return { out, finish: finish || (done ? \'stop\' : null) }', r.text, { extra: ctxS }), [], '发明标识符闸放行（真机此前报 invented-identifier）')
+  })
   await test('5t4 提示词 v4d4（v12.8.3/6/7 的三处改动 + 版本号）：绝对行动纪律、严禁臆想函数体、长度 1100~1550 / 上限 1650；promptVersion 换成 compress-v4d4', () => {
     const p = I.buildCompressPromptV4Direct('RAW', 'CTX')
     assert.ok(p.includes('必须下达绝对行动纪律') && p.includes('严禁再用 read_file 或 sed 查看上下文或确认'), '(d) 问 = 绝对行动纪律（v12.8.6）')
@@ -967,9 +979,11 @@ try {
     assert.equal(keep.birthFinishWaitMs, 9000); assert.ok(!keep.configAdjusted || !keep.configAdjusted.birthFinishWaitMs, '已满足 ⇒ 不动')
     const off = I.normalizeConfig({ mode: 'birth', compressPrompt: 'v4', compressV4Direct: true, compressV4DirectMinWaitMs: 0 })
     assert.equal(off.birthFinishWaitMs, 1500, '0 = 不抬')
-    assert.equal(I.normalizeConfig({ mode: 'birth', compressPrompt: 'v4' }).birthFinishWaitMs, 1500, '不开直写零变化')
+    assert.equal(I.normalizeConfig({ mode: 'birth', compressPrompt: 'v4', compressV4Direct: false }).birthFinishWaitMs, 1500, '关直写零变化')
+    assert.equal(I.DEFAULTS.compressV4Direct, true, 'v12.8.8 转正：直写为 v4 缺省（v3 仍是全局缺省 compressPrompt）'); assert.equal(I.DEFAULTS.compressPrompt, 'v3')
+    assert.equal(I.normalizeConfig({ mode: 'birth' }).birthFinishWaitMs, 1500, '全局缺省 v3 ⇒ 窗口不动（缺省配置线上零变化）')
   })
-  // ---- §5r S8-R7 用到 ops 路（生产 v4 缺省）：无落点的 READY 按观察绑落点；自动改法条目去项目符号并带落点渲染 ----
+  // ---- §5r S8-R7 用到 ops 路（v12.8.8 前的生产 v4 缺省；现为 compressV4Direct:false 的路）：无落点的 READY 按观察绑落点；自动改法条目去项目符号并带落点渲染 ----
   await test('5r1 ops 路：副模型没标改法 ⇒ 代码从原文补 READY（去掉「- 」），并从 compressCtx 绑到 `hedgeAfterMs: 1600`', () => {
     const raw = 'CI 失败 got 1712。100ms 余量太小。修复方向：\n- 增大时间差，例如主请求 1000ms，hedgeAfterMs 2000ms，或主请求 1500，hedge 3000。\n- 测试中使用 fake timers。\n' +
       '如果失败复现，再修。' + '填充句子。'.repeat(150)

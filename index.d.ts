@@ -59,7 +59,7 @@ export interface CotFormBConfig {
   compressV4AutoHints?: boolean
   compressV4Loci?: boolean
   compressV4Prose?: boolean
-  /** 仅 v4（v12.6，理论 S8-R6）：副模型直写原生语域散文（oracle C 形态），不经 ops→模板；缺省 false */
+  /** 仅 v4（v12.6，理论 S8-R6）：副模型直写原生语域散文（oracle C 形态），不经 ops→模板；缺省 true（v12.8.8 转正；false = 回到 ops→散文路） */
   compressV4Direct?: boolean
   /** 仅 v4 直写（v12.7，理论 S8-R7）：尾段判读分支的闭合与落点绑定（改法分支必须带已核真的逐字落点 + 分支内可用句）；缺省 true */
   compressV4DirectBind?: boolean

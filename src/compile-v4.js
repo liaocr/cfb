@@ -800,6 +800,22 @@ function withAffordance(branch, hit) {
   return m ? branch.slice(0, m.index) + clause + m[1] : branch + clause + '。'
 }
 /**
+ * 分句：在 。；;！!？? 与换行之后切，但**反引号内不切**——逐字代码行里的 `?` / `;`（`done ? 'stop' : null`、`a; b`）不是句号。
+ * v12.8.8 修：此前按裸标点切，sse 的 v4d4 稿在 `(done ?` 处被切开，`'stop'` 被当落点、可用句插进了代码段中间 ⇒ 反引号段变成假引文，
+ * birthAccept 报 invented-identifier，整份稿在真机被原文放行（compile-direct 一次就撞上）。导出供 draft-lint / 自测复用。
+ */
+export function splitSentencesTickAware(text) {
+  const out = []
+  let cur = '', inTick = false
+  for (const ch of String(text || '')) {
+    cur += ch
+    if (ch === '`') { inTick = !inTick; continue }
+    if (!inTick && /[。；;！!？?\n]/.test(ch)) { out.push(cur); cur = '' }
+  }
+  if (cur) out.push(cur)
+  return out
+}
+/**
  * 尾段判读分支的闭合与绑定（导出供工具 / 自测用）。返回新文本；统计写进 stats：
  *   branches（判读分支数）fixBranches（含改法措辞）boundBranches（已绑定 / 本次绑定）boundBy（'span'|'overlap'|'file' 列表）
  *   unboundFix（找不到落点的改法分支）disjunctiveFix（析取的改法分支）
@@ -810,7 +826,7 @@ export function bindFixBranches(text, raw, ctx, stats = {}) {   // raw 暂未用
   const start = Math.floor(src.length * 0.4)
   const sents = []
   let off = 0
-  for (const piece of src.split(/(?<=[。；;！!？?])|(?<=\n)/)) {
+  for (const piece of splitSentencesTickAware(src)) {
     const t = piece.trim()
     if (t && off + piece.length > start) sents.push(t)   // 跨过 40% 线的整句也算尾段
     off += piece.length

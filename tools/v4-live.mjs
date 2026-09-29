@@ -14,8 +14,8 @@
 //   DEEPSEEK_API_KEY=sk-... node tools/v4-live.mjs --out live-out                 # 录制 + 三种模式
 //   node tools/v4-live.mjs --replay live-out/recordings.json --modes v4inc --out live-out2
 //   node tools/v4-live.mjs --recompile live-out2/report.json --out re1     # 零调用：复用捕获的分段结果重编译（改了编译/渲染时用）
-//   直写（v12.7）：--modes v4 --cfg '{"compressV4Direct":true,"distillStream":true}'（收网窗口自动抬到 compressV4DirectMinWaitMs；看 hold= 多等了多久）
-//   选项：--model deepseek-chat  --base-url https://api.deepseek.com  --modes v3,v4,v4inc
+//   直写（v12.7；v12.8.8 起为 v4 缺省）：--modes v4 --cfg '{"distillStream":true}'（收网窗口自动抬到 compressV4DirectMinWaitMs；看 hold= 多等了多久）
+//   选项：--model deepseek-chat  --base-url https://api.deepseek.com  --modes v3,v4,v4ops,v4inc（v4 = 直写 = 生产 v4 缺省；v4ops / v4inc = ops 整块 / 增量）
 //         --tasks tasks.json（[{id, system?, user}]）  --only id1,id2  --cfg '{"birthFinishWaitMs":1500}'
 //         --concurrency 3（录制并发）  --replay-concurrency 1（回放并发，缺省 1 = 与正常使用一致）  --api-key-env DEEPSEEK_API_KEY
 // 钥匙只从环境变量读，写进 0600 临时凭据文件供生产代码读取，结束即删；不进报告、不进 trace。
@@ -144,7 +144,7 @@ export function parseArgs(argv) {
     else if (a === '--scale') o.scale = Number(v())
     else throw new Error('unknown arg ' + a)
   }
-  for (const m of o.modes) if (!['v3', 'v4', 'v4inc'].includes(m)) throw new Error('unknown mode ' + m)
+  for (const m of o.modes) if (!['v3', 'v4', 'v4ops', 'v4inc'].includes(m)) throw new Error('unknown mode ' + m)
   return o
 }
 
@@ -207,8 +207,10 @@ async function* replay(rec, marks, scale = 1) {
 
 export function modeConfig(mode, base) {
   if (mode === 'v3') return { ...base, compressPrompt: 'v3' }
+  // v12.8.8：compressV4Direct 缺省 true ⇒ `v4` = 生产 v4 缺省（直写整块）；ops 路改名 `v4ops`（整块）/ `v4inc`（增量，直写没有增量路 ⇒ 必须关直写）
   if (mode === 'v4') return { ...base, compressPrompt: 'v4', compressV4Incremental: false }
-  return { ...base, compressPrompt: 'v4', compressV4Incremental: true }
+  if (mode === 'v4ops') return { ...base, compressPrompt: 'v4', compressV4Direct: false, compressV4Incremental: false }
+  return { ...base, compressPrompt: 'v4', compressV4Direct: false, compressV4Incremental: true }
 }
 
 /**

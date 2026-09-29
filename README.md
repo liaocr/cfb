@@ -92,7 +92,14 @@ dsh-cot-form-b/
 v12.1 前的 `memory`（证据账本 + 快照 → 两栏判断稿）与 `legacy`（三态蒸馏）编译模式已删除；
 `stateMemory` / `stateCompress` 成为退役键（`stateMemory: true` 另在 `configAdjusted` 写明现在跑的是 compress）。
 
-### compress-v4-ops（v12.2，`compressPrompt: 'v4'` 打开）
+### compress-v4（`compressPrompt: 'v4'` 打开；v12.8.8 起缺省走**直写** `compressV4Direct:true`）
+
+> **v12.8.8 现状**：`compressPrompt:'v4'` 时缺省是 **v4 直写**（`compress-v4d4` 提示词：副模型直接写主模型语域的散文，程序门 `compileV4Direct` 只做机械核真——
+> 反引号逐字校验、判读分支闭合与落点绑定、new_text 出处、宿主工具名替换）。下面描述的 ops→模板路（`compressV4Direct:false`）仍完整保留，是直写之前的 v4。
+> 转正依据（`transfer/effect-20`，同后端 `--require-fp`，8 题 × 2）：自动稿基题 8.5 / 反驳题 6.5（原文 5.0 / 5.0），错改 0、死路 0%、回头 read 6%；
+> 真机到位率 4/5 = 80%，代价是 finish 多扣 p50 ≈ 6 s（`compressV4DirectMinWaitMs`）。样本仍小（每题 2），数字在门槛边上——见 CHANGELOG v12.8.8 的「诚实记录」。
+
+#### compress-v4-ops（v12.2；`compressV4Direct:false` 时的 v4）
 
 v3 是「请副模型写一份更短的摘要」。v4 把理论（[`docs/theory/CFB-THEORY-COMPLETE.md`](docs/theory/CFB-THEORY-COMPLETE.md) 第五卷 S1–S5）
 落成代码：**副模型不写出生文本，只把推理拆成带类型的原子条目（JSON）；出生文本由 `src/compile-v4.js` 确定性地写出。**
@@ -229,7 +236,7 @@ trace：`v4-segment-fired/settled`、`v4-segments-cancelled`。`compressV4Increm
 | `mode: 'off'` | 整体停用 |
 | `enabled: false` | 总开关关闭 |
 | `compressPrompt: 'v3'` | 从 v4 回到散文摘要（缺省） |
-| `compressV4Direct: true` | 启用 v4 直写散文（oracle C 形态固化；缺省关，见 CHANGELOG v12.6.0 / v12.7.0） |
+| `compressV4Direct: false` | 从 v4 直写散文（v12.8.8 起 v4 的缺省；effect-20 基题 8.5 / 反驳错改 0 / 到位率 80%，见 CHANGELOG v12.8.8）回到 ops→散文路。直写 = 整块编译，收网窗口自动抬到 `compressV4DirectMinWaitMs`（6000），真机 finish 多扣 p50 ≈ 6 s |
 | `compressV4DirectBind: false` | 关闭直写稿判读分支的落点绑定（理论 S8-R7；缺省开，见 CHANGELOG v12.7.0）。v12.8 起同一开关还管 R8a 的文件逐字改写（diff `+` / grep 行号剥掉再作 old_text） |
 | `compressV4DirectMaxChars: 1300` | 直写稿超长熔断（缺省 1800；v12.7.1 起 1600、v12.8.6 起 1800——闭合分支稿 1700–1850 字撞 1600 会整份丢掉换原文放行；熔断的职责只是拦「跑飞」照抄原文） |
 | `compressV4DirectMinWaitMs: 0` | 打开直写时不再自动把收网窗口抬到 6000（直写是整块编译，真机 3.6–10.9 s / 块；不抬 ⇒ 几乎必然原文放行） |

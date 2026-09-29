@@ -206,8 +206,11 @@ export const DEFAULTS = {
   // v12.5（理论 S8-R4′）：层 A 用第一人称推理散文（原生思考语域）代替行式条目；it5 同后端 n=20 实测胜出（综合 5.8 vs 原文 5.0、死路 20% vs 40%）⇒ 缺省开
   compressV4Prose: true,
   // v12.6（理论 S8-R6，oracle C 形态固化）：副模型直写原生语域散文，不经 ops→模板；锚点逐字由 compileV4Direct 硬校验。
-  //   oracle 三轮同后端实测：C 形态 6.4 / 直接改 70%（自动 ops 稿 5.8 / 50%）⇒ 缺省关（先实测固化稿，赢了再转正）
-  compressV4Direct: false,
+  //   oracle 三轮同后端实测：C 形态 6.4 / 直接改 70%（自动 ops 稿 5.8 / 50%）⇒ 当时缺省关（先实测固化稿，赢了再转正）。
+  //   v12.8.8 转正（effect-20，v4d4 自动稿 8 题 × 2，同后端 --require-fp）：基题 8.5 / 反驳 6.5（raw 5.0 / 5.0）、错改 0、死路 0%、回头 read 6%、
+  //   flaky 9.0；v4-live 直写到位率 4/5 = 80%，finish 多扣 p50 6.0 s / max 7.1 s。达到 S9 阶段 1 全部门槛（n=2/题，均在门槛边上）⇒ v4 之内缺省直写。
+  //   注意：全局缺省仍是 compressPrompt 'v3'（缺省配置线上零变化）；只影响显式选 v4 的部署。回退：compressV4Direct:false（ops 路原样保留）。
+  compressV4Direct: true,
   // v12.7：直写是整块编译（不走增量分段），收网窗口只抬不降到这个下限（真机 flash 3.6–10.9 s / 块）；0 = 不抬
   compressV4DirectMinWaitMs: 6000,
   // v12.7（理论 S8-R7）：直写稿尾段判读分支的闭合与落点绑定（含改法的分支必须带已核真的逐字落点 + 分支内可用句；缺则按标识符重叠绑定）；false 关闭

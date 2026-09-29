@@ -125,3 +125,18 @@
      - 实测 `eacces-config` 评测提升：**2.0 分 → 9.0 分（100% 直接改对，0% 二次取证）**。
      - 实测 `sse-truncated` 评测提升：**100% 直接改对（0% 二次取证）**。
   5. 验证与提交：`node manifest.mjs` && `node verify.mjs` 613 通过；提交并推送远端。
+
+## 2026-09-29 第四会话（接手；Arena 沙盒；用户不在，自主）
+- 接手审计：`798f291` 只提交了 HANDOFF-V12.8.md 的哈希没提交文件（manifest 缺失 1、分支 CI 红）；v12.8.3–12.8.7 零自测零 CHANGELOG、promptVersion 未换；
+  v12.8.2–12.8.6 的全部实测产物没入库（新沙盒不可复核）；draft-lint 形态分不区分好稿坏稿（oH 12–13 分却 0/2）；`tools/_dbg.mjs` 入库；文档熔断 1600 过期；
+  **用户给的 API key 粘贴了两遍（102 字 = 51 × 2 ⇒ 401），取前半即通**。
+- 修复（零成本，`9a763ee`）：重写 HANDOFF-V12.8.md；§5t1–5t4 自测；CHANGELOG 补记五条；`compress-v4d3` → `compress-v4d4`；删 _dbg；docs 对齐；merge main（可 ff）。
+- 通道：混合池，fp_dspure_app_v1 33%（作废重发 ×3）。
+- **v4d4 首次成套实测**（预测先写：综合 < 8.0、反驳错改 > 0 ⇒ **证伪**）：编译 5 次副调用（首压 sse accept=invented-identifier ⇒ 门 bug：分句切在反引号内 `(done ?`，修 `splitSentencesTickAware` §5t5）；
+  effect-20：**d4 7.8 vs raw 5.0；基题 8.5（eacces 6.0 / flaky 9.0 / wrong-model 9.0 / sse 8.5 / perf 10.0）；反驳 6.5（9.5 / 6.0 / 4.0，逐题 ≥ raw）；错改 0、死路 0%、回头 read 6%**。
+  真机 v4-live 直写：到位 4/5 = 80%，hold p50 6.0 s（11 k 字 perf 超时）。
+- 归因：纪律句没吞反驳路（主模型当坐实分支的指令）；wrong-model 主模型否决稿的调用处落点改了定义处（冗余闭合再证）；eacces #1 明知逐字在手仍先 grep（本轮输出没带回那一行 ⇒ 上一轮担保信任不够）；
+  flaky~refute #1 重读（第二分支「查 CI 或加固定时钟」零命令 + 析取）；3/5 稿超 1650 字（字数指令无效）。
+- **转正**：`compressV4Direct` 缺省 true（只影响显式 v4；全局缺省仍 v3）；v4-live 模式 v3/v4(直写)/v4ops/v4inc；README/d.ts/config 同步；理论 S9 阶段 1 收官段；EFFECT-EVAL §16。verify 618/0/1。
+- **本基准退役**。下一步 = 阶段 2（多轮台账基准），规格里带上：第二分支命令级、落点跨轮携带（担保时效）、长度靠门不靠提示词。副模型 / 主模型评测**不再为本基准付费**。
+- 费用：副调用 11 + 主调用 ≈ 54（16 有效）+ 盲评 16。
