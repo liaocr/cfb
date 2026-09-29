@@ -46,7 +46,7 @@ CFB（dsh-cot-form-b）：给 DeepSeek 宿主做**思维链压缩**——上一�
 |---|---|---|
 | 1 | `798f291` 只提交了 HANDOFF-V12.8.md 的哈希，文件没提交 ⇒ 分支 manifest 缺失 1、CI 红 | 本文件重写；manifest 重生成 |
 | 2 | v12.8.3–12.8.7 改了五处判定逻辑：**零自测、零 CHANGELOG**；提示词三次改动 `promptVersion` 未换 | §5t1–5t4 四条自测（617/0/1）；CHANGELOG 补记五条；版本号 → `compress-v4d4` |
-| 3 | v12.8.2–12.8.6 的全部实测产物（oM、effect-sub-eval-round1、v4d3 重压稿）**没入库**，新沙盒里不可复核 | 数字降级为传闻；本会话重测一次并入库 |
+| 3 | v12.8.2–12.8.6 的实测产物当时**没入库**；用户随后抢救入库（`4ece275`：oracle/M、effect-21、effect-sub-eval、direct-subv4d3-live3）。抢救数据显示首轮 v4d3 稿 **5.1 / 错改 14% / perf~refute 0.0（2/2 错改）**；纪律注入后那批稿的主模型评测仍无产物 | 写进 CHANGELOG v12.8.8 审计 3；effect-20 是第一份全 8 题、0 错改的自动稿评测 |
 | 4 | `draft-lint` 形态分不区分好稿坏稿：oH 12–13 分（wrong-model 0/2）vs oI 11–14 分；oI perf 7 分却 2/2 | 形态分只作写稿时的检查表，不作达标依据 |
 | 5 | `tools/_dbg.mjs` 调试脚本入库；index.d.ts / README 熔断缺省写 1600（代码 1800）；长度约束三处不一致；API key 粘贴两遍 | 删 / 改 / 对齐 L13 上限 1650 / 修 keys.env |
 

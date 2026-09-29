@@ -405,3 +405,13 @@ wrong-model 基 ≤ 6（改调用处不命中参考）、**wrong-model~refute �
 **决定**：S9 阶段 1 的门槛（基题 ≥ 8.0、反驳错改 0 且 ≥ raw、死路 ≤ 10%、回头 read ≤ 10%、flaky ≥ 7、到位率 ≥ 80%）在本次样本上**全部达到**，但每一项都在门槛边上、n=2/题 ⇒
 按既定规则转正 `compressV4Direct` 缺省 true（只影响显式选 `compressPrompt:'v4'` 的部署；全局缺省仍 v3），**本基准退役**，不再为它付费迭代。
 残留缺口（带进阶段 2 的规格，不在本基准上修）：① 第二分支必须是命令级（归因 3）；② 上一轮担保 vs 本轮观察的信任差（归因 2）；③ 长度只能靠门不能靠提示词（归因 4）。
+
+**补：抢救回来的上一会话数据（`4ece275`，与本节对照）**
+
+| 数据 | 内容 | 与本节的关系 |
+|---|---|---|
+| `effect-sub-eval/`（14 有效样本，全部 fp_dspure_app_v1，无 raw） | v4d3 首轮副模型稿：综合 5.1、错改 14%、死路 14%、回头 read 14%；eacces 2.0 / flaky 4.5 / wrong-model 8.5 / sse 5.5 / perf 9.5；**perf~refute 0.0（2/2 把 `compressTargetMax: 1800,` 改成 450）**、wrong-model~refute 6.0、flaky~refute 5.0 | 这是「绝对行动纪律」注入**之前**的稿；本节担心的反驳错改在那一轮真的发生了。首轮稿文件未入库（ctxReasoningChars 与 direct-subv4d3-live3 全部不同） |
+| `direct-subv4d3-live3(.json/-recompiled)` | 纪律注入后的 v4d3 重压稿（1268–1534 字，flaky 首压 accept=invented-identifier:NODE_OPTIONS，GATE_ALLOW 放行后重编译 ok）；draft-lint 12–14 | **没有对应的主模型评测数据**；「eacces 2.0 → 9.0、sse 100%」无产物 |
+| `effect-21/` | oM 只测 sse 一题 n=2（8 / 6，2/2 直接改），raw 一条有效（2） | 「oM 全集 100%」的其余四题 = oracle I 的 effect-19 结果（flaky / eacces 与 I 逐字相同，wrong-model / perf 小改） |
+
+对照本节：d4（v4d4）在同样 8 题上 7.8 / 错改 0 / perf~refute 9.5。差异来源无法单独归因到提示词（每版只压了一份稿，稿是随机的）；能确定的只是：**仓库里第一份覆盖全部 8 题、含反驳题、0 错改的自动稿评测是 effect-20**。

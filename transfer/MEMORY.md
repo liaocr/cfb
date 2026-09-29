@@ -140,3 +140,5 @@
 - **转正**：`compressV4Direct` 缺省 true（只影响显式 v4；全局缺省仍 v3）；v4-live 模式 v3/v4(直写)/v4ops/v4inc；README/d.ts/config 同步；理论 S9 阶段 1 收官段；EFFECT-EVAL §16。verify 618/0/1。
 - **本基准退役**。下一步 = 阶段 2（多轮台账基准），规格里带上：第二分支命令级、落点跨轮携带（担保时效）、长度靠门不靠提示词。副模型 / 主模型评测**不再为本基准付费**。
 - 费用：副调用 11 + 主调用 ≈ 54（16 有效）+ 盲评 16。
+- 续：用户抢救入库 `4ece275`（oracle/M + mk.py、effect-21、effect-sub-eval、direct-subv4d3-live3*）。核对：effect-sub-eval = 纪律注入前的首轮 v4d3 稿 → **5.1 / 错改 14% / perf~refute 0.0（2/2 错改）**（首轮稿文件仍丢失）；
+  direct-subv4d3-live3 = 纪律注入后的稿，**无主模型评测数据**；effect-21 = oM 只有 sse n=2。⇒ 「eacces 2.0→9.0 / sse 100% / oM 全集 100%」仍无完整产物；effect-20（d4）是第一份全 8 题 0 错改的自动稿评测。已写入 CHANGELOG 审计 3 / EFFECT-EVAL §16 补 / HANDOFF §4。

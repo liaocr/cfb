@@ -13,8 +13,12 @@
    ⇒ `node manifest.mjs --check` 报「缺失 1」，该分支 CI 红；文档正文已随上一个沙盒一起丢失。本版按 MEMORY / CHANGELOG / git 历史重写 `transfer/HANDOFF-V12.8.md`。
 2. **v12.8.3–12.8.7 五个版本改了 `compile-v4.js` / `fidelity.js` / `prompts.js` / `draft-lint.mjs` 的判定逻辑，没有一条自测、没有 CHANGELOG 条目**（自测数恒为 613），
    提示词正文三次改动而 `promptVersion` 仍是 `compress-v4d3` ⇒ trace / `direct-*.json` 里同名的产物文本不可比。
-3. **v12.8.2–12.8.6 声称的数字没有一份产物进仓库**：oM 变体、53 稿·题对标、effect-sub-eval-round1（14 样本）、v4d3 重压稿「Lint 13.3 / accept 6/6」、eacces 2.0→9.0、
-   sse 100%——`transfer/` 止于 effect-19 / direct-oh*.json，新沙盒里已无法复核。这些数字在本版之后**只作传闻**。
+3. **v12.8.2–12.8.6 声称的数字当时没有一份产物进仓库**（`transfer/` 止于 effect-19 / direct-oh*.json）。用户随后抢救入库（`4ece275`）：`oracle/M.json` + `mk.py`、
+   `effect-21/`（oM，只有 sse 一题 n=2：8 / 6）、`effect-sub-eval/`（v4d3 首轮副模型稿 → 主模型，14 有效样本）、`direct-subv4d3-live3(.json/-recompiled.json)`（纪律注入后的 v4d3 重压稿）。
+   **抢救回来的数据与「圆满达成」相反**：effect-sub-eval 综合 **5.1**、错改 **14%**、死路 14%、回头 read 14%；eacces 2.0、flaky 4.5、sse 5.5、**perf-regression~refute 0.0（2/2 错改：证据已推翻仍改 compressTargetMax）**。
+   它评的是首轮稿（那批稿本身仍丢失：ctxReasoningChars 1516/1545/1476/1415/1569 与 direct-subv4d3-live3 的 1268/1403/1496/1534/1529 无一相同）；
+   纪律注入后那批稿（direct-subv4d3-live3）**没有任何主模型评测数据入库**——「eacces 2.0 → 9.0」「sse 100%」至今无产物。oM 五题里 flaky / eacces 与 oracle I 逐字相同，其余三题小改；「oM 基题 100%」= oI 的 effect-19 结果 + effect-21 的 sse n=2。
+   ⇒ 本版 effect-20（d4，8 题 × 2）是仓库里**第一份**覆盖全部 8 题、含反驳题、0 错改的自动稿评测。
 4. 零成本复核 `tools/draft-lint.mjs`（本仓库现有稿 vs effect-19 实测动作，n=21）：v4d2 自动稿 oH 经当前门重编译后形态分 **12–13**，与 oracle oI（11–14）几乎同分，
    但 oH 的 wrong-model 0/2（2.0）、sse 1/2、perf 1/2；oI 的 perf 形态分只有 **7** 却 2/2（9.0）。条目相关表里 L3 / L4 / L7 / L9 / L12 的「满足−不满足」为负，L15 无人满足。
    ⇒ **形态分不能区分「能让主模型直接改」与「不能」的稿**；v12.8.4–12.8.5 以「形态分 13–14 = 与 oracle 逐项一致」为达标依据是对代理指标的过拟合。真正的判据只有 effect-eval。
