@@ -608,7 +608,13 @@ export function isFixBranch(thenPart) {
   const re = new RegExp(BRANCH_FIX_RE.source, 'g')
   const probe = PROBE_THEN_RE.test(thenPart)
   for (const m of thenPart.matchAll(re)) {
+    // 1. 前面有明确否定（「此时不要改」「不用再改」「不能盲目改」）
     if (NEG_BEFORE_RE.test(thenPart.slice(Math.max(0, m.index - 6), m.index))) continue
+    // 2. 「不能凭…去改」「不要凭…去改」：否定前置的假设排除
+    const leadContext = thenPart.slice(Math.max(0, m.index - 16), m.index)
+    if (/(?:不能|不要|不可|切勿|不应)[^，。；]{0,12}(?:去|就|直接)?$/.test(leadContext)) continue
+    // 3. 「设成了什么值 / 被设为」等反问状态描述不是改动动作
+    if (/^(?:设为|设成|设小|设大)/.test(m[0]) && /(?:什么|哪|如何|怎样)/.test(thenPart.slice(m.index, m.index + 16))) continue
     // 「需要改用 docker 再复现」：去掉「需要 / 应该 / 直接」这类前导后看动词本身是不是弱改法词
     const lead = /^(?:需要|应该|应|该|就|直接|去)/.exec(m[0])
     const verbAt = m.index + (lead ? lead[0].length : 0)
