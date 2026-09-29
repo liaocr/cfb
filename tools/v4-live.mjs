@@ -14,6 +14,7 @@
 //   DEEPSEEK_API_KEY=sk-... node tools/v4-live.mjs --out live-out                 # 录制 + 三种模式
 //   node tools/v4-live.mjs --replay live-out/recordings.json --modes v4inc --out live-out2
 //   node tools/v4-live.mjs --recompile live-out2/report.json --out re1     # 零调用：复用捕获的分段结果重编译（改了编译/渲染时用）
+//   直写（v12.7）：--modes v4 --cfg '{"compressV4Direct":true,"distillStream":true}'（收网窗口自动抬到 compressV4DirectMinWaitMs；看 hold= 多等了多久）
 //   选项：--model deepseek-chat  --base-url https://api.deepseek.com  --modes v3,v4,v4inc
 //         --tasks tasks.json（[{id, system?, user}]）  --only id1,id2  --cfg '{"birthFinishWaitMs":1500}'
 //         --concurrency 3（录制并发）  --replay-concurrency 1（回放并发，缺省 1 = 与正常使用一致）  --api-key-env DEEPSEEK_API_KEY
@@ -217,9 +218,11 @@ export function modeConfig(mode, base) {
 async function runMode(rec, mode, o, credPath, sim = null) {
   const scale = sim ? sim.scale : 1
   const scaled = sim ? { birthFinishWaitMs: Math.round((o.cfg.birthFinishWaitMs ?? 1500) * scale), finishHeadersGraceMs: Math.round((o.cfg.finishHeadersGraceMs ?? 1500) * scale), birthArchiveTimeoutMs: 60000 } : {}
+  // v12.7：生产里 plugin 会把本回合任务 + 工具结果构造成 compressCtx（buildCompressCtx）；回放没有出站消息，用任务原文顶上（与 compile-direct 同口径）
+  const task = (o.taskList || TASKS).find((t) => t.id === rec.id)
   const cfg = normalizeConfig(modeConfig(mode, {
     mode: 'birth', dryRun: false, model: o.model, baseUrl: o.baseUrl, credentialsPath: credPath, credentialRef: 'LIVE_KEY',
-    followHostProvider: false, followHostModel: false, trace: false, ...o.cfg, ...scaled,
+    followHostProvider: false, followHostModel: false, trace: false, compressCtx: (task && task.user) || '', ...o.cfg, ...scaled,
   }))
   const capture = []
   const t0 = Date.now()
@@ -362,9 +365,11 @@ export async function main(argv) {
   process.env.DSH_HOME = credDir
   try {
     let recs
+    if (o.tasks) { try { o.taskList = JSON.parse(fs.readFileSync(o.tasks, 'utf8')) } catch { /* 回放时没有 tasks 文件也行 */ } }
     if (o.replay) recs = JSON.parse(fs.readFileSync(o.replay, 'utf8'))
     else {
       let tasks = o.tasks ? JSON.parse(fs.readFileSync(o.tasks, 'utf8')) : TASKS
+      o.taskList = tasks
       if (o.only) tasks = tasks.filter((t) => o.only.includes(t.id))
       console.log(`录制 ${tasks.length} 条主模型推理（并发 ${o.concurrency}）…`)
       recs = (await pool(tasks, o.concurrency, async (t) => {

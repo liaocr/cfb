@@ -49,6 +49,8 @@ oracle 与自动稿的「下一步」**都是复现**，差别全部在判读分
   3.6–10.9 s / 块（direct-od/oe/of.json 的 `ms`），而缺省收网窗口 1500 ms ⇒ 几乎必然 passthrough。现在打开直写时 `birthFinishWaitMs`
   只抬不降到 `compressV4DirectMinWaitMs`（6000；0 = 不抬），BOOT `configAdjusted` 留痕，`timeoutMs` 随之抬。这是打开直写的真实代价：
   评测分数是离线编译得到的，上线前必须用 `tools/v4-live.mjs`（带时序回放）量命中率，别只看评测分。
+- `tools/v4-live.mjs`：回放时把任务原文当 `compressCtx`（与生产 `buildCompressCtx` / compile-direct 同口径），直写的时序回放才有落点可核真；
+  用法头加直写命令。
 - `index.js` 导出 `bindFixBranches / bindLocus / strongTokens / isFixBranch / usableLocus / buildCompressCtx / compressCtxFor`；
   `index.d.ts` 补 `compressV4Direct*` / `compressCtx*`。
 - 自测 604 / 0 / 1（新增 v4 §5p 六条、§5q 四条；compress §4b3；compress §4b2 / §4c2；hook-wiring §6 端到端：工具结果 → compressCtx → 提示词 → 核真 → 绑定 → 出生文本）。
