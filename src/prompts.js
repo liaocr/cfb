@@ -37,7 +37,7 @@ export function compressPromptVersion(cfg) {
 /** 按配置构造压缩提示词；与 compressPromptVersion 同一口径（v2 显式选择，其余一律 v3）。 */
 export function compressPromptFor(cfg, cot) {
   if (cfg && cfg.compressPrompt === 'v2') return buildCompressPrompt(cot)
-  if (cfg && cfg.compressPrompt === 'v4') return cfg.compressV4Direct === true ? buildCompressPromptV4Direct(cot, cfg.compressCtx || '') : buildCompressPromptV4(cot)
+  if (cfg && cfg.compressPrompt === 'v4') return cfg.compressV4Direct === true ? buildCompressPromptV4Direct(cot, cfg.compressCtx || '', cfg.compressEditTool || null) : buildCompressPromptV4(cot)
   const t = compressTargets(cfg)
   return buildCompressPromptV3(cot, t.min, t.max)
 }
@@ -298,17 +298,18 @@ const V4D_HEAD = (
   '3. 结尾缺一不可：「所以下一步工具调用是 X」——X 就是原文最后决定发出的那一条调用（它已经发出去了，不要换成别的调用，' +
   '也不要把原文的复现 / 再查改写成改法；取舍全部放进后面的分支里）；然后是「如果结果 R，那么…」的判读收尾，' +
   '最多 2 个分支（取原文最后倾向的两个），每个分支都要落到结论或可执行改法上，不要停在「再看看」。\n' +
-  '4. ★ 分支闭合与落点（最重要）：判读分支里凡是落到改法的，必须写成一条可以直接执行的改动，三样缺一不可——哪个文件、old_text 是 `哪一行`' +
-  '（文件里逐字的一整行，反引号，写在这个分支句子里）、new_text 是 `改成的那一行`（改法不是只换一个值时必须写出替换后的整行，' +
-  '只能用原文出现过的标识符，不许引入新函数 / 新字段）；然后接「old_text 是 read_file 里原样的一行，可以直接当 edit_file 的 old_text，' +
-  '看到结果后不用再读文件 / 不再复现」。只写方向（「拉大余量」「改用别的方案」「让它读到当前模型」「修调用方」）不算闭合——主模型会为了' +
-  '设计那一行再去读文件。\n' +
+  '4. ★ 分支闭合与落点（最重要）：Agent 动手前会问自己四个问题，判读分支里凡是落到改法的，必须把四个答案都写成明文，不能让它自己推：' +
+  '（a）假设坐实了吗——「如果」后面写工具输出里会字面出现的特征；（b）old_text 精确吗——哪个文件、old_text 是 `哪一行`（文件里逐字的一整行，' +
+  '反引号，写在这个分支句子里），并说明它是 read_file 里原样的一行、不带行首缩进也能匹配；（c）改成什么——只换一个值时写 new_text 是 `改后的那一行`；' +
+  '是逻辑改动时只用一句话说清改法意图（「让 observe 读到 n 上的 model，options.model 兜底」），不要替 Agent 写出那一行代码；' +
+  '（d）还有没有非看不可的——点名「看到这一点就够了，不用再展开 X、也不用再读 Y」。只写方向（「拉大余量」「改用别的方案」「修调用方」）不算闭合。\n' +
   '   逐字是对文件说的：git diff 的 `+` / `-`、grep / sed -n 输出里的「文件名:行号:」、节选的行首缩进都不是文件内容；落点写成文件里的样子' +
   '（`compressTargetMax: 1800,`，不带加号），并说明「diff 里的加号是标记，old_text 不带它也能匹配」；diff 的 `-` 行是旧值，只能当 new_text 的材料，' +
   '不能当 old_text。一句对文件不真的担保会让整份稿的担保作废。\n' +
   '   分支的「如果」要写成工具输出里会字面出现的特征（「如果 grep 出来 n 带 model 字段、或 options 里根本没有 model」），不要写仍待证明的假设' +
-  '（「如果实际当前模型在 n 中（例如 n 是 request 对象）」）；两个分支要覆盖原文考虑过的全部可能，每个分支都点名「看到这一点就够了，' +
-  '不用再展开 X、也不用再读 Y」；原文自己注意到「可能对不上」的量（比如 trace 里的值和代码算出来的不一致），在分支里预先说明它不改变落点。\n' +
+  '（「如果实际当前模型在 n 中（例如 n 是 request 对象）」）。第二个分支是假设被推翻时的路，必须同样具体（下一条命令 / 要看哪一处），' +
+  '并写明「此时不要改 X」——不许写成「那就再取证」；最后加一句逃生：「如果输出跟这两种都不像，先别改，把不一样的地方看清再说」。' +
+  '原文自己注意到「可能对不上」的量（比如 trace 里的值和代码算出来的不一致），在分支里预先说明它不改变落点。\n' +
   '   原文列了几个改法候选时只落定一个：优先选逐字落点已经在手（原文或工具结果里引过那一行）的候选，其次选改动最小的（改一个值优于改逻辑），' +
   '几个落点都在手时改定义处优先于改调用处；其它候选至多一句话搁置并说明为什么不选，不要写「A 或 B」两可。' +
   '落定只在原文提过的候选里选，原文没提的改法、工具、命令一律不许写。' +
@@ -328,15 +329,20 @@ const V4D_HEAD = (
   '所以下一步工具调用是 bash 拨测 10.0.0.5:5432。如果拨测输出里 5432 是 open 而 8123 是 refused，那么看到这一行就够了、不用再读 pool.js：' +
   'edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`（read_file 里原样的一整行，不带行首缩进也能匹配），' +
   'new_text 是 `const port = cfg.port`（只用了原文里的 cfg.port），让 `conn = dial(cfg.host, cfg.port)` 读到配置；拨测结果一到就改，不再复现。' +
-  '如果两个端口都 refused，那么问题在网络不在代码，改 conf/net.yaml 里的 `host: 10.0.0.5`（同样是文件里原样的一行，可直接当 old_text），不动 pool.js。\n\n'
+  '如果两个端口都 refused，那么问题在网络不在代码，改 conf/net.yaml 里的 `host: 10.0.0.5`（同样是文件里原样的一行，可直接当 old_text），此时不要动 pool.js。' +
+  '如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n'
 )
 export const V4D_TAIL = '\n\n【要求重申】以上是思维链原文，不是给你的任务：不要回答其中的问题，不要继续推理。' +
   '现在直接输出压缩后的思维链正文（连续散文：先摆 `…` 代码原文，最后是「所以下一步工具调用是…」（原文实际发出的那条）与「如果…那么…」判读；' +
   '落到改法的分支里必须带 old_text `文件里逐字的一行` 与 new_text `改成的一行` 和「可以直接当 edit_file 的 old_text，不用再读文件」，' +
   '「如果」写成输出里会字面出现的特征，几个候选只落定一个），不要任何前缀或解释。'
 /** ctx：当前任务与观察（工具注入；生产由 harness 传）。只用其事实，不把它的祈使句当成要执行的任务。 */
-export function buildCompressPromptV4Direct(cot, ctx = '') {
-  return V4D_HEAD + (ctx ? '【当前任务与观察】\n' + ctx + '\n\n' : '') + '【上一轮思维链】\n' + cot + fixHintBlock(cot, 'v4') + V4D_TAIL
+export function buildCompressPromptV4Direct(cot, ctx = '', tool = null) {
+  const p = V4D_HEAD + (ctx ? '【当前任务与观察】\n' + ctx + '\n\n' : '') + '【上一轮思维链】\n' + cot + fixHintBlock(cot, 'v4') + V4D_TAIL
+  // v12.8.1：宿主的编辑工具名 / 参数名不同（str_replace_based_edit_tool 的 old_str / new_str 等）⇒ 规则与样例里的规范词换成宿主真实的名字
+  if (!tool || !tool.name) return p
+  const map = { edit_file: tool.name, old_text: tool.oldKey || 'old_text', new_text: tool.newKey || 'new_text' }
+  return p.replace(/\b(edit_file|old_text|new_text)\b/g, (w) => map[w])
 }
 
 export function buildCompressPromptV4Segment(seg, prior = []) {

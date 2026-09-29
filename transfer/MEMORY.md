@@ -95,3 +95,10 @@
 - **用户指令**：副模型先别测；主模型没突破前，自己写稿测主模型，最小成本，先查资料再动手。外部资料本轮：Thought Anchors（arXiv 2506.19143：plan / 回溯 / 自检句是注意焦点）、
   Overthinking（arXiv 2502.08235：LRM 在 agent 里偏内部推理而少环境交互——我们的失败是反向：多一次取证）。
 - 下一步：oracle 补全五题（4 次主调用）→ 单因子消融（≤6 次）→ 才回副模型 v4d3。
+
+## 2026-09-29 晚（同一会话续）
+- 用户换渠道 → channel-check 发现该渠道不认 thinking、指纹空、**丢 reasoning_content**（372=372）⇒ 不可用；换回后混合池可信 50%。
+- 消融（10 次主调用）：noNew 3/3、noClose 3/3、noPre 2/2（思考翻倍）、noNote 1/2 ⇒ R8b 证伪；R10 明文清单 + 短思考中介。
+- 反驳题（12 次）+ 五题补全（4 次）：oI 五题 8.9；反驳 6/6 错改 0（perf~refute 9.5 / wrong-model~refute 6.5 / flaky~refute 7.0；raw 5.0/6.0/4.0）。
+- 用户校准：终局目标不是分数（四类原生弊端：前后脱节 / 掩盖全错 / 死锁内耗 / 言过其实）；本阶段目标调高到自动稿 ≥ 8.0 + 反驳错改 0；不为小分反复测；副模型评测等口令。
+- 零成本落地 v12.8.1：宿主工具名自适应（editToolOf / adaptEditTool / compressEditTool）、v4d3 收口（四问明文、new_text 只换值类、第二分支具体 + 逃生句）、评测 base/错改列、channel-check。verify 613/0/1。PAT 仍失效。

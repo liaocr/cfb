@@ -15,7 +15,7 @@ import { v4Incremental, v4Budget } from './prompts.js'
 import { createSegmenter } from './segment-v4.js'
 import { mkHandleProbe } from './handle-probe.js'
 import { createHostFollower } from './host-follow.js'
-import { streamProvenanceRecord, buildCompressCtx } from './messages.js'
+import { streamProvenanceRecord, buildCompressCtx, editToolOf } from './messages.js'
 import { createSessionTracker } from './session-tracker.js'
 import { makeTraceWriter } from './trace.js'
 import { makePrewarmer } from './transport.js'
@@ -49,10 +49,19 @@ export const DEP_ID = (() => {
 
 /** v12.7：v4 压缩时把本回合的任务与工具观察带给压缩器（逐字核真 / 落点绑定的依据）；显式 compressCtx 不覆盖；任何异常 ⇒ 原配置 */
 export function compressCtxFor(callCfg, options) {
-  if (!callCfg || callCfg.compressPrompt !== 'v4' || callCfg.compressCtxAuto === false || callCfg.compressCtx) return callCfg
+  if (!callCfg || callCfg.compressPrompt !== 'v4' || callCfg.compressCtxAuto === false) return callCfg
   try {
-    const ctx = buildCompressCtx(options && options.messages, { maxChars: callCfg.compressCtxMaxChars })
-    return ctx ? { ...callCfg, compressCtx: ctx } : callCfg
+    let out = callCfg
+    if (!callCfg.compressCtx) {
+      const ctx = buildCompressCtx(options && options.messages, { maxChars: callCfg.compressCtxMaxChars })
+      if (ctx) out = { ...out, compressCtx: ctx }
+    }
+    // v12.8.1：宿主的编辑工具名 / 参数名（稿里的可用句要说宿主真实的名字；显式配置优先）
+    if (!callCfg.compressEditTool) {
+      const tool = editToolOf(options && options.tools)
+      if (tool) out = { ...out, compressEditTool: tool }
+    }
+    return out
   } catch { return callCfg }
 }
 

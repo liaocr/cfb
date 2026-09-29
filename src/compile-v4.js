@@ -571,7 +571,20 @@ export function compileV4Direct(side, raw, cfg = {}) {
       stats.repairedAffordance = true
     }
   }
+  if (cfg.compressEditTool) { text = adaptEditTool(text, cfg.compressEditTool); stats.editTool = cfg.compressEditTool.name }
   return { ok: true, text, stats }
+}
+
+/**
+ * v12.8.1（不同宿主）：稿与门内部一律用本仓库的规范词 edit_file / old_text / new_text；最后一步换成宿主真实的工具名与参数名
+ *（cfg.compressEditTool = { name, oldKey, newKey }，生产由 plugin 从出站 tools 认出）。只换整词，不碰反引号里的代码。
+ */
+export function adaptEditTool(text, tool) {
+  if (!tool || !tool.name) return text
+  const map = { edit_file: tool.name, old_text: tool.oldKey || 'old_text', new_text: tool.newKey || 'new_text' }
+  const parts = String(text).split('`')
+  for (let i = 0; i < parts.length; i += 2) parts[i] = parts[i].replace(/\b(edit_file|old_text|new_text)\b/g, (w) => map[w])
+  return parts.join('`')
 }
 
 // ── S8-R7 判读分支的动作闭合与落点绑定 ───────────────────────────────────────
@@ -904,6 +917,7 @@ export function compileOpsV4(rawOps, raw, cfg = {}, budget = null, stats = {}, o
   if (suffix) stats.rawSuffixChars = suffix.length
   if (gap) stats.rawGapChars = gap.length
   if (!text.trim()) return { ok: false, reason: 'v4-empty-render', stats }
+  if (cfg.compressEditTool) { text = adaptEditTool(text, cfg.compressEditTool); stats.editTool = cfg.compressEditTool.name }
   return { ok: true, text, stats }
 }
 

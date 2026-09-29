@@ -61,13 +61,15 @@ export function parseArgs(argv) {
 export function buildVariants(recordings, reports, specs) {
   const out = {}
   for (const s of specs) {
-    const rec = recordings.find((r) => r.id === s.id)
+    // v12.8.1：spec.base —— 反驳题（同一任务、同一份稿，只换工具结果与参考答案）复用基题的录音与稿
+    const baseId = s.base || s.id
+    const rec = recordings.find((r) => r.id === baseId)
     if (!rec) continue
     const raw = rec.events.filter((e) => e.k === 'r').map((e) => e.s).join('')
     const content = rec.events.filter((e) => e.k === 'c').map((e) => e.s).join('')
     const v = { raw, empty: '' }
     for (const { name, rows } of reports) {
-      const row = rows.find((r) => r.id === s.id && r.mode === (name.includes(':') ? name.split(':')[1] : name))
+      const row = rows.find((r) => r.id === baseId && r.mode === (name.includes(':') ? name.split(':')[1] : name))
       if (row && /^condensed/.test(row.why || '') && typeof row.text === 'string' && row.text.trim()) v[name.split(':')[0]] = row.text
     }
     out[s.id] = { content, variants: v }
@@ -209,16 +211,18 @@ export function summarize(results, variantOrder, specs = []) {
     ctxChars: mean(rs.map((r) => r.ctxReasoningChars)),
     edit: mean(rs.map((r) => (r.act || actScore(SPEC_BY_ID[r.task] || { next: [] }, r.response || '')).edit)),
     editRight: mean(rs.map((r) => (r.act || actScore(SPEC_BY_ID[r.task] || { next: [] }, r.response || '')).editRight)),
+    // v12.8.1 伤害列：错改 = 动手了但不是参考的改法（反驳题里照稿硬改就落在这里）；纸面「直接改%」不许把它盖掉
+    editWrong: mean(rs.map((r) => { const a = r.act || actScore(SPEC_BY_ID[r.task] || { next: [] }, r.response || ''); return a.edit && !a.editRight ? 1 : 0 })),
     // v12.7：回头 read 率 = 再读任务里已给过内容的文件（JetBrains《Complexity Trap》「摘要使轨迹变长」的单步版；tools/effect-pairs.mjs 同一判定）
     reread: mean(rs.map((r) => { const t = TASKS.find((x) => x.id === r.task); return classifyAction(t ? t.user : '', r.response || '') === 'reread-known' ? 1 : 0 })),
   })
   const L = []
-  L.push('| 变体 | n | 上下文思考字数 | 综合 | 下一步正确 | 事实 | 专注 | 死路率 | 直接改 | 改对 | 回头read | 规则命中 | 本轮思考字数 | prompt tokens |')
-  L.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|')
+  L.push('| 变体 | n | 上下文思考字数 | 综合 | 下一步正确 | 事实 | 专注 | 死路率 | 直接改 | 改对 | 错改 | 回头read | 规则命中 | 本轮思考字数 | prompt tokens |')
+  L.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|')
   const byVar = {}
   for (const v of vars) {
     const a = agg(ok.filter((r) => r.variant === v)); byVar[v] = a
-    L.push(`| ${v} | ${a.n} | ${Math.round(a.ctxChars)} | ${f1(a.overall)} | ${f1(a.correct)} | ${f1(a.facts)} | ${f1(a.focus)} | ${(a.deadEnd * 100).toFixed(0)}% | ${(a.edit * 100).toFixed(0)}% | ${(a.editRight * 100).toFixed(0)}% | ${(a.reread * 100).toFixed(0)}% | ${(a.next * 100).toFixed(0)}% | ${Math.round(a.reasoning)} | ${Math.round(a.prompt)} |`)
+    L.push(`| ${v} | ${a.n} | ${Math.round(a.ctxChars)} | ${f1(a.overall)} | ${f1(a.correct)} | ${f1(a.facts)} | ${f1(a.focus)} | ${(a.deadEnd * 100).toFixed(0)}% | ${(a.edit * 100).toFixed(0)}% | ${(a.editRight * 100).toFixed(0)}% | ${(a.editWrong * 100).toFixed(0)}% | ${(a.reread * 100).toFixed(0)}% | ${(a.next * 100).toFixed(0)}% | ${Math.round(a.reasoning)} | ${Math.round(a.prompt)} |`)
   }
   L.push('', '逐任务「综合」分（均值，括号内 = 本轮思考字数）：', '', '| 任务 | ' + vars.join(' | ') + ' |', '|---|' + vars.map(() => '---').join('|') + '|')
   for (const t of tasks) {
@@ -261,7 +265,7 @@ async function main(argv) {
     const chat = makeChat({ baseUrl: o.baseUrl, apiKey })
     const jobs = []
     for (const s of specs) {
-      const t = TASKS.find((x) => x.id === s.id); const tv = table[s.id]
+      const t = TASKS.find((x) => x.id === (s.base || s.id)); const tv = table[s.id]
       if (!t || !tv) continue
       for (const v of order) {
         if (!(v in tv.variants)) continue

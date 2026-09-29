@@ -71,6 +71,8 @@ export interface CotFormBConfig {
   compressCtx?: string
   /** v12.7：v4 时自动从出站消息构造 compressCtx（最后一条人类 user + 本回合工具结果）；缺省 true */
   compressCtxAuto?: boolean
+  /** 仅 v4 直写：宿主的编辑工具名与参数名（缺省由 plugin 从出站 tools 认出） */
+  compressEditTool?: { name: string, oldKey?: string, newKey?: string } | null
   /** 自动 compressCtx 的总预算（字符，缺省 8000） */
   compressCtxMaxChars?: number
   /** 仅工具用：meta.sideOutput 带回副模型原始输出（缺省 false） */

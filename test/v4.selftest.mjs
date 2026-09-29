@@ -819,6 +819,24 @@ try {
     const minus = I.compileV4Direct('所以下一步工具调用是 bash。如果是 length，那么把 `+  maxOutputTokens: 4096,` 降回一档（`-  maxOutputTokens: 850,` 是旧值逐字原文，可直接当 edit_file 的 old_text）。', 'raw', { compressCtx: diffCtx })
     assert.equal(minus.stats.minusLineAsOldText, 1); assert.ok(minus.text.includes('`maxOutputTokens: 4096,`（git diff'), minus.text)
   })
+  await test('5s5 不同宿主：editToolOf 认出编辑工具与参数名（OpenAI / Anthropic 形）；adaptEditTool 只换整词、不碰反引号；compileV4Direct 末尾替换', () => {
+    const { editToolOf } = I
+    const oa = [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object', properties: { path: {} } } } },
+      { type: 'function', function: { name: 'edit_file', parameters: { type: 'object', properties: { path: {}, old_text: {}, new_text: {} } } } }]
+    assert.deepEqual(editToolOf(oa), { name: 'edit_file', oldKey: 'old_text', newKey: 'new_text' })
+    const an = [{ name: 'str_replace_based_edit_tool', input_schema: { type: 'object', properties: { command: {}, path: {}, old_str: {}, new_str: {} } } }]
+    assert.deepEqual(editToolOf(an), { name: 'str_replace_based_edit_tool', oldKey: 'old_str', newKey: 'new_str' })
+    assert.deepEqual(editToolOf([{ type: 'function', function: { name: 'apply_patch', parameters: { type: 'object', properties: { input: {} } } } }]), { name: 'apply_patch', oldKey: 'old_text', newKey: 'new_text' }, '认不全参数时只换工具名')
+    assert.equal(editToolOf([{ type: 'function', function: { name: 'bash', parameters: { type: 'object', properties: { command: {} } } } }]), null)
+    assert.equal(editToolOf(null), null)
+    const t = '可以直接当 edit_file 的 old_text，new_text 是 `x`；代码里的 `edit_file(old_text)` 不动。'
+    assert.equal(I.adaptEditTool(t, { name: 'str_replace_based_edit_tool', oldKey: 'old_str', newKey: 'new_str' }), '可以直接当 str_replace_based_edit_tool 的 old_str，new_str 是 `x`；代码里的 `edit_file(old_text)` 不动。')
+    const r = I.compileV4Direct('看起来是余量问题。所以下一步工具调用是 bash 复现。如果失败复现，那么改测试 §4 的 `hedgeAfterMs: 1600`，改法是把余量拉大。', RAW7, { compressCtx: CTX, compressEditTool: { name: 'str_replace_based_edit_tool', oldKey: 'old_str', newKey: 'new_str' } })
+    assert.ok(r.text.includes('可以直接当 str_replace_based_edit_tool 的 old_str') && !/\bedit_file\b/.test(r.text), r.text)
+    assert.equal(r.stats.editTool, 'str_replace_based_edit_tool')
+    const ctxTool = I.compressCtxFor({ compressPrompt: 'v4', compressV4Direct: true }, { messages: [{ role: 'user', content: '修一下' }], tools: an })
+    assert.deepEqual(ctxTool.compressEditTool, { name: 'str_replace_based_edit_tool', oldKey: 'old_str', newKey: 'new_str' }, 'plugin 从出站 tools 认出')
+  })
   await test('5s3 R8b new_text 段：整段不是原文子串也不算发明，只查段内标识符；标识符不在原文 / 观察 ⇒ 仍算发明', () => {
     const raw = 'read_file src/host-follow.js：observe(options) { if (options && options.model) lastModel = options.model } 只读 options.model，n 被忽略。'
     const ok = I.compileV4Direct('所以下一步工具调用是 bash grep。如果 n 带 model，那么 edit_file src/host-follow.js，old_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`，new_text 是 `observe(options, n) { const m = (n && n.model) || (options && options.model); if (m) lastModel = m }`，不用再读文件。', raw, {})
@@ -850,7 +868,11 @@ try {
   await test('5p6 v4d3 提示词：样例分支闭合（三元组 + 可用句 + 不再复现）、文件逐字、判读覆盖、候选落定、下一步 = 原文实际发出的调用', () => {
     const p = I.buildCompressPromptV4Direct('RAW', 'CTX')
     assert.ok(p.includes('old_text 是 `const port = 8123 // 旧端口`') && p.includes('new_text 是 `const port = cfg.port`') && p.includes('拨测结果一到就改，不再复现'), '样例分支闭合（v4d3：三元组）')
-    assert.ok(p.includes('三样缺一不可') && p.includes('逐字是对文件说的') && p.includes('工具输出里会字面出现的特征') && p.includes('改定义处优先于改调用处'), 'v4d3 规则：三元组 / 文件逐字 / 判读覆盖 / 落定次序')
+    assert.ok(p.includes('四个问题') && p.includes('逐字是对文件说的') && p.includes('工具输出里会字面出现的特征') && p.includes('改定义处优先于改调用处'), 'v4d3 规则：明文清单 / 文件逐字 / 判读覆盖 / 落定次序')
+    assert.ok(p.includes('不要替 Agent 写出那一行代码') && p.includes('不许写成「那就再取证」') && p.includes('如果输出跟这两种都不像，先别改'), 'v12.8.1：new_text 只给换值类 / 第二分支具体 / 逃生句')
+    // 宿主工具名替换：规则与样例里的规范词换成宿主的；反引号里的代码不动
+    const claude = I.buildCompressPromptV4Direct('RAW', 'CTX', { name: 'str_replace_based_edit_tool', oldKey: 'old_str', newKey: 'new_str' })
+    assert.ok(claude.includes('可以直接当 str_replace_based_edit_tool 的 old_str') && claude.includes('new_str 是 `const port = cfg.port`') && !/\bedit_file\b/.test(claude), '宿主工具名进提示词')
     assert.ok(p.includes('只落定一个') && p.includes('不要写「A 或 B」两可'), '候选落定规则')
     assert.ok(p.includes('X 就是原文最后决定发出的那一条调用'), '回溯一致')
     assert.ok(!p.includes('证据是否充分按这个标准判'), 'v4d1 的下一步仲裁已撤回')

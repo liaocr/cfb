@@ -221,6 +221,34 @@ export function buildCompressCtx(messages, opts = {}) {
 }
 
 // ── 消息工具 ────────────────────────────────────────────────────────────────
+/**
+ * v12.8.1（不同宿主）：从出站请求的 tools 里认出「编辑文件」工具及其参数名，让稿里的可用句说宿主真实的工具名
+ *（`edit_file` / `old_text` 是本仓库评测里的名字；Claude Code 是 str_replace_based_edit_tool 的 old_str/new_str，Codex 是 apply_patch……
+ *  稿里写错名字，主模型就得自己换算，短思考时就回头 read）。认不出 ⇒ null（保留缺省词）。
+ * 兼容 OpenAI 形（{type:'function',function:{name,parameters}}）与 Anthropic 形（{name,input_schema}）。
+ * @returns {{ name: string, oldKey: string, newKey: string } | null}
+ */
+const OLD_KEYS = ['old_text', 'old_string', 'oldText', 'oldString', 'old_str', 'oldStr', 'search', 'target_text', 'original']
+const NEW_KEYS = ['new_text', 'new_string', 'newText', 'newString', 'new_str', 'newStr', 'replace', 'replacement', 'replacement_text']
+export function editToolOf(tools) {
+  if (!Array.isArray(tools)) return null
+  let fallback = null
+  for (const t of tools) {
+    if (!t || typeof t !== 'object') continue
+    const fn = t.function && typeof t.function === 'object' ? t.function : t
+    const name = String(fn.name || '')
+    if (!name) continue
+    const schema = fn.parameters || fn.input_schema || fn.inputSchema || null
+    const props = schema && schema.properties && typeof schema.properties === 'object' ? Object.keys(schema.properties) : []
+    const oldKey = OLD_KEYS.find((k) => props.includes(k))
+    const newKey = NEW_KEYS.find((k) => props.includes(k))
+    if (oldKey && newKey) return { name, oldKey, newKey }
+    // 名字像编辑工具但参数认不全（如 apply_patch 只有 input）：记为兜底，只换工具名
+    if (!fallback && /(?:^|[_-])(?:edit|replace|patch)|str_replace|apply_diff/i.test(name) && !/read|list|search|grep/i.test(name)) fallback = { name, oldKey: 'old_text', newKey: 'new_text' }
+  }
+  return fallback
+}
+
 export function reasoningTextOf(message) {
   if (!message || !Array.isArray(message.content)) return ''
   return message.content.filter((b) => b && b.type === 'reasoning').map((b) => String(b.text || '')).join('\n')

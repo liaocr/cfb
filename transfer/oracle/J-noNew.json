@@ -1,0 +1,11 @@
+{
+ "rows": [
+  {
+   "id": "wrong-model",
+   "mode": "v4",
+   "why": "condensed",
+   "text": "我们需要找出为什么压缩用的是上一次会话的模型。先看代码，read_file src/host-follow.js 返回的原文（逐字）是：\n`let lastModel = null`\n`observe(options) { if (options && options.model) lastModel = options.model }`\n`callConfig(options) { return { ...cfg, model: lastModel || cfg.model } }`\nplugin.js 里是 `host.observe(options, n)`，然后 `const callCfg = host.callConfig(options)`，再把 callCfg 传给 birthTransform。\n\ntrace 显示 llm-stream n12、n13 都是 deepseek-v3.2，但中间的 compiler-transport-started 是 deepseek-v3.1，正好是上一次会话的模型。\n\n看起来 lastModel 是模块级变量，跨会话保留。observe 只在 options.model 存在时更新，而 plugin 传了两个参数 (options, n)，observe 的签名只接受 options，第二参数 n 被忽略。如果当前会话的模型不在 options.model 上而在 n 上，lastModel 就一直是上一次会话的值，callConfig 再用 lastModel || cfg.model 把它覆盖进压缩配置——这就是 compiler-transport-started 显示旧模型的原因。调用顺序是先 observe 再 callConfig，顺序没问题；prewarm 用的是原始 cfg，解释不了「上一次会话的模型」，不是它。\n\n所以下一步工具调用是 bash grep -n -C 10 \"host.observe\\|callConfig\" src/plugin.js，看 options 和 n 是怎么构造的、model 落在哪个字段。如果输出显示当前模型在 n 上（n 带 model 字段，或 options 里根本没有 model），那么根因坐实，看到这一点就够了，不用再展开 n 是怎么算出来的，也不用再读 host-follow.js：直接 edit_file src/host-follow.js，old_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`（read_file 输出里原样复制的这一整行，不带行首缩进也能匹配），让 observe 读到 n 上的当前模型，options.model 仍作兜底，callConfig 和 plugin.js 一行都不用动。改 plugin.js 的调用点或改 callConfig 都不选：前者会丢掉 options，后者要改两处才能不依赖 lastModel。如果输出显示 options.model 就是当前模型，那么问题不在 observe 的参数，得查 observe 和 callConfig 之间还有谁改写了 lastModel，那时再取证。",
+   "outChars": 1412
+  }
+ ]
+}

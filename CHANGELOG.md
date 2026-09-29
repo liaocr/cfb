@@ -6,6 +6,30 @@
 
 ---
 
+## v12.8.1（2026-09-29 晚）消融 + 反驳题 → 理论 S8-R10 / S9 终局目标；宿主编辑工具名自适应；通道体检工具；评测「错改」列
+
+**实测（同后端，主模型侧，共 26 次主调用）**
+- 五题 oracle I 补全：**8.9**（n=11，改对 100%、回头 read 0%、死路 0%；raw 5.0）。逐题 eacces 9.5 / flaky 8.5 / wrong-model 9.0 / sse 8.5 / perf 9.0。
+- 单因子消融：noNew 3/3、noClose 3/3、noPre 2/2（思考翻倍）、noNote 1/2 ⇒ **R8b 的 new_text 不是必要项**（预测被证伪）；稳健性来自冗余闭合；中介是主模型思考长度（<1000 字格：自动稿 28% 直接改，oI 形态 75%）。
+- **反驳题**（`*~refute`：同任务同稿，观察改成假设被推翻）：oI **6/6 走第二分支、错改 0**（perf~refute 9.5 / wrong-model~refute 6.5 / flaky~refute 7.0；raw 5.0 / 6.0 / 4.0）。形态不以过度承诺换分。
+- 通道：某渠道只认 `reasoning_effort`、指纹为空且**丢掉上一轮 reasoning_content**（1 字 vs 1000 字 prompt_tokens 372 = 372）——那种通道上 CFB 对模型不可见；换回后为混合池（可信后端 50%）。
+
+### 理论
+- **S8-R10**：主模型动手前的固定清单（假设坐实 / old_text 精确 / 改成什么 / 还有没有非看不可的）必须写成明文答案；短思考是中介；R8b 降级为"换值类才写 new_text，逻辑改动不替主模型设计"；反驳测试是形态的必要条件；第二分支必须具体 + 逃生句。
+- **S9 终局目标与阶段**：CFB = 跨轮次的工作记忆纪律（台账），对付用户实测的四类原生弊端（前后脱节 / 掩盖全错 / 死锁内耗 / 言过其实）；终局度量在多轮可执行基准上；本阶段（单步）目标提到 自动稿基题 ≥ 8.0、反驳错改 0、真机到位 ≥ 80%，最多两轮付费迭代，然后本基准退役。
+
+### 新增 / 修改
+- `tools/channel-check.mjs`：6 次小调用判定通道（在思考？拼接上一轮 reasoning_content？指纹？混合池占比？）。换中转先跑它。
+- `tools/effect-eval.mjs`：spec `base`（反驳题复用基题录音 / 稿 / 任务文本）；「错改」列（edit 但不命中参考改法）。`tools/effect-specs.json` 加 3 道反驳题（带 `why`）。
+- `src/messages.js` `editToolOf(tools)`（OpenAI / Anthropic 形；认出 old/new 参数名；apply_patch 类只换工具名）；`src/plugin.js` `compressCtxFor` 顺带认出 `compressEditTool`；`src/compile-v4.js` `adaptEditTool`（门内部用规范词，最后一步换成宿主真实工具名 / 参数名，不碰反引号）；`buildCompressPromptV4Direct(cot, ctx, tool)` 规则与样例同样替换。配置 `compressEditTool`。
+- 提示词 `compress-v4d3` 收口：规则 4 改为「四个问题的明文答案」；new_text 只给换值类；第二分支必须具体 + 「此时不要改 X」+ 逃生句。**仍未付费实测**（副模型评测按用户要求暂停，等口令）。
+- `docs/analysis/oracle/I.py` 补 flaky / eacces 两题（带逃生句）；`J-*.json` 消融稿；EFFECT-EVAL §15；HANDOFF 目标与下一步。
+- 自测 613 / 0 / 1（新增 v4 §5s5 宿主工具名；effect-eval §1 认 `base`）。
+
+### 状态
+- `compressV4Direct` 仍缺省关；转正线改为本阶段目标（≥ 8.0 且反驳错改 0，再量真机到位率）。
+- GITHUB_PAT 失效（401），本版未推送；bundle 与本地提交在。
+
 ## v12.8.0（2026-09-29）主模型思考原文归因 → 理论 S8-R8/R9（三元组闭合 / 文件逐字 / 判读覆盖）；oracle I 三道输题 7/7 直接改
 
 **实测（第三会话，同后端 `--require-fp`）**：A 轮 oG 5.7、B 轮 oH 5.8（raw 5.0，oC 上界 6.4）；**flaky 4/4 直接 edit `hedgeAfterMs: 1600`**（R7 预测成立，此前 0/6）。

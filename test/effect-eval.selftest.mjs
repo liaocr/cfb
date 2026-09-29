@@ -19,7 +19,8 @@ const specs = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/effect-specs.jso
   await test('§1 specs：每条都对应 v4-live 的内置任务；正则可编译；参考答案本身命中 next、不触 avoid', () => {
     assert.ok(specs.length >= 5)
     for (const s of specs) {
-      assert.ok(TASKS.some((t) => t.id === s.id), s.id)
+      assert.ok(TASKS.some((t) => t.id === (s.base || s.id)), s.id)   // v12.8.1：反驳题用 base 指向内置任务
+      if (s.base) assert.ok(/~refute$/.test(s.id) && s.why, '反驳题命名 ~refute 且写明为什么：' + s.id)
       for (const p of [...s.next, ...s.avoid]) new RegExp(p, 'i')
       assert.deepEqual(E.ruleScore(s, s.reference.correct), { next: 1, avoid: 1 }, s.id)
       assert.ok(s.followup && s.reference.keyFacts.length && s.reference.deadEnds.length)

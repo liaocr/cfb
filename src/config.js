@@ -217,6 +217,8 @@ export const DEFAULTS = {
   // v12.7（理论 S8-R5/R7 的生产前提）：v4 时自动从出站消息构造 compressCtx（最后一条人类 user + 本回合全部工具结果；
   //   messages.js buildCompressCtx）。显式给了 compressCtx 时不覆盖；false 关闭
   compressCtxAuto: true,
+  // v12.8.1：宿主的编辑工具 { name, oldKey, newKey }（稿里的可用句要说宿主真实的工具名；缺省由 plugin 从出站 tools 认出，认不出保留 edit_file / old_text / new_text）
+  compressEditTool: null,
   compressCtxMaxChars: 8000,
   // 仅工具用：把副模型原始输出带回 meta.sideOutput（tools/compile-direct.mjs --recompile 零调用重编译）
   captureSideOutput: false,

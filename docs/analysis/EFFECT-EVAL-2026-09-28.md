@@ -313,3 +313,34 @@ v3 / v4 都把这句当「推测」删了，主模型一律 `read_file verify.mj
 程序门：`fileVerbatim`（diff `+` / grep 行号剥成文件逐字 + 说明句；副模型自己引的 `+ …` 也改写；`-` 行当 old_text 只统计）；new_text 段按标识符级核真
 （`newTextSpans`，birth 闸同口径）；`hedgedTrigger` 统计。提示词 `compress-v4d3`（三元组闭合 / 文件逐字 / 判读覆盖 / 定义处优先）。
 零成本重编译 oG/oH 侧输出 → `direct-og2.json` / `direct-oh2.json`（perf 的 `+` 落点已改写），待下一次付费评测。
+
+## 15. 消融、反驳题、五题 oracle 补全（2026-09-29 晚；同后端 `--require-fp`，混合池可信后端占 50%）
+
+### 15.1 原生 vs 现在（读数汇总，不含本节新增的反驳题）
+| | raw（原生） | v4t（v12.5 自动稿） | oH（v12.7 自动稿最好） | **oI（手写形态）** |
+|---|---|---|---|---|
+| 综合 | 5.0 (n=20) | 5.8 (n=20) | 5.8 (n=10) | **8.9** (n=11) |
+| 下一步正确 | 5.0 | 6.0 | 5.9 | **9.2** |
+| 死路 | 40% | 20% | 20% | **0%** |
+| 改对 / 错改 | 50% / 0% | 50% / 0% | 60% / 10% | **100% / 0%** |
+| 回头读已知文件 | 35% | 50% | 30% | **0%** |
+| 主模型思考 <1000 字占比 | 15% | 45% | 30% | 27% |
+| 上下文思考字数 / prompt tokens | 7857 / 4428 | 742 / 1728 | 1346 / 1961 | 1348 / 1969 |
+
+逐题：eacces 7.3→9.5，flaky 2.8→8.5，wrong-model 9.0→9.0，sse 2.3→8.5，perf 3.8→9.0。
+
+### 15.2 单因子消融（预测先写；详见理论 S8-R10）
+noNew 3/3、noClose 3/3、noPre 2/2（思考翻倍）、noNote 1/2。⇒ new_text 与"不再查"句都不是单独必要；冗余闭合是稳健性来源；中介是主模型思考长度。
+思考 <1000 字格：自动稿 8/29 直接改、oI 族 3/4。
+
+### 15.3 反驳题（Goodhart 防线；specs 里 `*~refute`，`base` 指向基题）
+| 反驳题 | 观察改成 | raw | oI | oI 动作 |
+|---|---|---|---|---|
+| perf~refute | 升级前 finishReason=length 100%、outputTokens=850 | 5.0 | **9.5** | 2/2 改 `maxOutputTokens: 4096,`→850，不碰 compressTargetMax |
+| wrong-model~refute | options.model 正常、n 无 model、`compilerCache ??= makeBirthCompiler(callCfg)` | 6.0 | 6.5 | 2/2 grep makeBirthCompiler，不碰 observe（一条 195 字思考也没硬改） |
+| flaky~refute | taskset 2 核 50/50 PASS | 4.0（一条去 grep CI 配置，1 分） | 7.0 | docker --cpus=2 / 加负载复现，不改 hedgeAfterMs |
+
+oI 6/6 错改 0；评测表新增「错改」列。8 题 17 样本：oI 8.5 / 错改 0 / 回头 read 0；raw 26 样本 5.0。
+
+### 15.4 本阶段目标（用户校准：调高，不为零点几分反复测）与退役条件
+自动稿：基题 ≥ 8.0、反驳错改 0 且 ≥ raw、死路 ≤ 10%、回头 read ≤ 10%、flaky ≥ 7、真机到位 ≥ 80%。提示词最多两轮付费迭代。达标或两轮用尽后本基准退役，进入多轮可执行基准（理论 S9）。

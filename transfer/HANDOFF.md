@@ -2,7 +2,15 @@
 
 你是接手者。项目 = 本仓库 `dsh-cot-form-b`（cfb）：给 DeepSeek 宿主（DSH）做思维链压缩，目标是**主模型更好**（判断力/专注力），不是省钱、不是"不掉分"。用**中文**回复。
 
-## -1. 第三会话终态（2026-09-29，先读这一段；下面 §0–§末 是上一会话写的，数字以本段和 CHANGELOG v12.8.0 为准）
+## -2. 终局目标与本阶段目标（2026-09-29 晚，用户校准；先读这一段）
+- **终局**（理论 S9）：CFB = 编码 Agent 跨轮次的工作记忆纪律（台账：证据 / 假设状态 / 排除 / 承诺的下一步与判读 / 验收标准），在多轮可执行任务上消灭原生思维链的四类弊端
+  （前后脱节 / 掩盖全错 / 死锁内耗 / 言过其实），并在任何宿主 / 模型 / 中转下可用。终局度量在 ≥30 道多轮任务上看完成率、步数、一致性、假完成、循环。
+- **本阶段（单步）目标**：自动稿基题 **≥ 8.0**（oracle 8.9）、反驳题错改 0 且 ≥ raw、死路 ≤ 10%、回头 read ≤ 10%、flaky ≥ 7、真机到位 ≥ 80%、换宿主工具名 / 换中转不失效。
+  提示词最多两轮付费迭代，不为零点几分反复测；然后本基准退役，进阶段 2（多轮基准）。
+- **副模型评测暂停，等用户口令再开始。** 开始时：`channel-check` → v4d3 重压（5 次副调用）→ 8 题 × 2 样本（≈16 次主调用，混合池 ×2）→ 看 `gate` 里 newTextSpans / fileVerbatimFixed / hedgedTrigger / editTool → 归因先读 `reasoning` 字段。
+- 现状：形态上界 oI 8.9 / 反驳错改 0（effect-19）；自动稿 5.8（oH）。v12.8.1 已把形态写进 v4d3 与程序门（未付费实测）。verify 613 / 0 / 1。PAT 失效未推送。
+
+## -1. 第三会话终态（2026-09-29，下面 §0–§末 是上一会话写的，数字以 §-2 和 CHANGELOG v12.8.1 为准）
 - 网络通、环境恢复完、A/B 轮跑完：**oG 5.7、oH 5.8**（raw 5.0，oC 6.4）；**flaky 4/4 直接 edit**（R7 预测成立）。都没过 6.4。
 - 归因靠新落盘的主模型思考原文（`results.jsonl` 的 `reasoning` 字段）：perf 输在 diff `+` 行被当逐字（主模型识破）；wrong-model 输在没给 new_text
   （逻辑改动 ⇒ 短思考后回头读文件拿设计材料）；trigger 写成待证假设。⇒ 理论 **S8-R8（三元组闭合 / 文件逐字）、R9（判读覆盖）**。
@@ -31,7 +39,7 @@
    `main` 落后一截、**可 fast-forward**：`git push https://x-access-token:$GITHUB_PAT@github.com/liaocr/cfb.git arena/01a0eba2-cfb:main`（不要 force）。
    新环境若从 main 起步，先 `git fetch origin arena/01a0eba2-cfb && git merge --ff-only FETCH_HEAD`。
 3. **密钥**用户口头给 4 个值（见「环境恢复」），写到 /home/user/.secrets/keys.env（0600），永远不进仓库。
-4. 环境恢复 → `node verify.mjs` 应 **612 / 0 / 1**（v12.8.0；上一会话是 607） → 按「下一步」跑 A（oG）、B（v4d2 重压 → oH）、C（v4u）三轮，每轮 raw + 1 变体，每轮结束用 `tools/effect-pairs.mjs` 归因。
+4. 环境恢复 → `node verify.mjs` 应 **613 / 0 / 1**（v12.8.1） → 按「下一步」跑 A（oG）、B（v4d2 重压 → oH）、C（v4u）三轮，每轮 raw + 1 变体，每轮结束用 `tools/effect-pairs.mjs` 归因。
 5. 决策规则：任一变体 综合 ≥ 6.4（oracle 上界）且 flaky ≥ 7 ⇒ 转正（`compressV4Direct` 缺省 true 或 ops 路照旧 + R7），并用 `v4-live` 量真实 hold 后再宣布；否则按 R7 第 6 条的可证伪点归因，回到理论。
 6. 用户新要求：**遇到问题先查文档 / 论文再动手**（已开的头在理论 S8 末「外部佐证与定位」）。
 
@@ -50,7 +58,7 @@ cp transfer/recordings.json /home/user/live-all/recordings.json
 cp transfer/direct-*.json /home/user/
 cp transfer/oracle/* /home/user/oracle/
 cp -r transfer/effect-* /home/user/
-cd /home/user/cfb && node verify.mjs   # 应 612 通过 / 0 失败 / 1 跳过（v12.8.0）
+cd /home/user/cfb && node verify.mjs   # 应 613 通过 / 0 失败 / 1 跳过（v12.8.1）
 ```
 
 ## 铁规矩（用户明说的，别问、别违反）
