@@ -45,3 +45,21 @@
 - 第4–8轮（固化 C 形态 → compress-v4-direct，f091996/c2d1fea 等）：oD 4.8→oE 5.5（**wrong-model 10.0** 首超原文）→oF 6.0/3任务（**perf 10.0**）；oracle 上界 oC 6.4。flaky 2.0–2.5 不过（oracle 8.5）：副模型不肯在两个改法候选间落定 ⇒ 把复现排下一步（第8稿承认证据充分仍如此）＝判断力边界，候选出路=改法机械落定规则 / 代码写死「下一步=改法」句。effect-14/15/16，direct-od/oe/of.json。文档 CHANGELOG v12.6.0、理论 S8-R6、EFFECT-EVAL §12。
 - compressV4Direct 仍缺省关（完整 5 任务上 oE 5.5 vs v4t 5.8 未全面胜出）；转正条件：flaky 落定机制 + 全集复测。
 - 中转坑：非流式偶发 60s socket hang up（长输出必撞）；compile-direct 用 distillStream:true 稳。
+
+## 2026-09-29 第二会话（接手；Arena 沙盒，分支 arena/01a0eba2-cfb）
+- 环境恢复照 HANDOFF 做完，verify 590/0/1；密钥写 /home/user/.secrets/keys.env（0600）。
+- **归因（零成本，读 effect-16 逐样本）**：flaky 的 oC 与 oE/oF「下一步」都是 taskset 复现；差别只在分支动作项：oC 分支句内有
+  「改测试 §4 的 hedgeAfterMs: 1600（可直接当 old_text）不用再继续复现」⇒ 主模型 2/2 edit_file old_text=hedgeAfterMs: 1600；
+  oE/oF 分支「拉开或改用 fake timers 即可」+ 末尾游离通用可用句 ⇒ 4/4 read_file test/hedge.selftest.mjs。perf oF（分支内绑定）10.0 vs oE（游离句）6.0；
+  eacces oC（落定一个候选 + 那一行可用句）9.0 vs oF 6.0。⇒ R6「副模型不肯落定＝判断力边界」偏了：是形态规格缺口（分支 then 未被要求 R2′ 闭合、R5 可用句游离）。
+  评测消息 = [system, 任务, assistant{可见回答含已发出调用, reasoning=变体}, 工具结果] ⇒「下一步工具调用是 X」必须 = 可见回答那条；R6 的下一步仲裁与之矛盾且没赢过一次 ⇒ 撤回。
+- **理论 S8-R7** 写入（分支闭合 / 落点绑定 / 机械落定 / 回溯一致 / 程序门 / 可证伪预测）。
+- **实现 v12.7.0**：`bindFixBranches`（compile-v4.js；cfg compressV4DirectBind 缺省开）+ 提示词 compress-v4d2（样例改为两分支闭合 + 候选落定）+ §5p 六条自测；verify 596/0/1。
+  迭代中修掉的门坑：40% 尾段切在句中（改为整句 + 跨线句算尾段）；光秃标识符 / 路径 / 命令 / 日志 / diff `-` 行 / import 行不作落点；「补 `X`」的 X 是新文本；
+  「而不是改 …」否定；「需要改用 docker 再复现」= 换复现手段不算改法；文中已引的行不再吃「与全稿重叠」加分（自我强化）；值行按「token 作键 +4 / 作值 +2」；
+  分支的下一句已有可用句也算 had（oracle 稿写法）。
+- 零成本重编译（direct-og-src.json → direct-og.json）：flaky 6/6 绑 `hedgeAfterMs: 1600`；eacces env 行 / 测试行；perf `+  compressTargetMax: 1800,`；wrong-model observe/callConfig；
+  sse `f === '[DONE]'`（调用方不在手）；oracle A/B/C 已有可用句的分支不动，缺的绑到与参考一致的行（sse → return 行）。
+- **沙盒外网被切**：curl api.a6api.com / api.deepseek.com / example.com 全部 SSL_ERROR_SYSCALL（github/npm/pypi 200）⇒ 付费编译、评测一次都没跑。
+  第 A 轮（oG，零成本稿）与第 B 轮（v4d2 重压 → oH）命令写在 HANDOFF「下一步」。预测：oG flaky ≥ 7；否则回到 R6 判断力假设。
+- 推送：平台只允许 `arena/01a0eba2-cfb`；回 main 需另一方 fast-forward。

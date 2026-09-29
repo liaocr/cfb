@@ -208,3 +208,41 @@ v3 / v4 都把这句当「推测」删了，主模型一律 `read_file verify.mj
 
 *oF 仅 3 任务；wrong-model/sse 沿用 oE。归因链与已知边界见 CHANGELOG v12.6.0 与理论 S8-R6。
 中转运维：非流式偶发 60s socket hang up（flaky 长输出必撞），`distillStream:true` 稳。
+
+## 13. 逐样本归因 → 理论 S8-R7（2026-09-29，接手会话）：分支闭合与落点绑定
+
+对 effect-16 逐样本对读（`results.jsonl` 的 response / judge.note），把「稿子的分支怎么写」和「主模型下一步做了什么」摆在一起：
+
+| 任务 | 稿 | 分支里的动作项 | 主模型下一步 | 分 |
+|---|---|---|---|---|
+| flaky | oC | 「下一步直接改测试 §4 的 hedgeAfterMs: 1600（read_file 原文就是这几个字，可以直接当 old_text），不用再继续复现」 | `edit_file` old_text=`hedgeAfterMs: 1600`（2/2） | 8.5 |
+| flaky | oE/oF | 「把 hedgeAfterMs 与主请求延迟拉开或改用 fake timers 即可」+ 末尾游离一句「上面逐字引出的代码行可以直接当 old_text」 | `read_file test/hedge.selftest.mjs`（4/4） | 1.5–2.0 |
+| perf | oF | 「改法是在 src/config.js 把它改回 450——`+  compressTargetMax: 1800,` 的逐字原文已给出，可以直接当 old_text，不用再读文件」 | `edit_file`（2/2） | 10.0 |
+| perf | oE | 同一内容，可用句是末尾游离的通用句 | 1/2 直接改 | 6.0 |
+| eacces | oC | 「改测试更干净……那一行上面已经有逐字原文，可以直接当 old_text」（两个候选中落定一个） | `edit_file`（2/2） | 9.0 |
+| eacces | oF | 两个分支各给一个方向，通用可用句游离在末尾 | 1/2 直接改 | 6.0 |
+
+**结论**：v12.6 把 flaky 归为「副模型不肯落定 ⇒ 复现排下一步」偏了。oracle 的下一步同样是复现（`taskset` 循环）；胜负全在
+判读分支的动作项是否**闭合并绑定落点**。评测消息结构 = [system, 任务, assistant{可见回答（含已发出的调用）, reasoning=变体}, 工具结果]，
+所以压缩稿的「下一步工具调用是 X」必须就是可见回答里那条调用（回溯一致），R6 的「下一步仲裁」本来就与可见回答矛盾，
+且 effect-16 里没有一次胜利来自它。理论条文见 `docs/theory/CFB-THEORY-COMPLETE.md` S8-R7。
+
+**实现**（v12.7.0）：程序门 `bindFixBranches`（可机械做的部分：分支切分、改法判定、落点绑定、可用句写进分支句内）+ 提示词 `compress-v4d2`
+（分支闭合、候选落定、回溯一致、样例闭合）。零成本重编译既有副模型输出（`--recompile`）：
+
+| 稿源 | 任务 | 绑定落点 | 方式 |
+|---|---|---|---|
+| oF/oE/oD/of4/of7/of8 | flaky | `hedgeAfterMs: 1600`（从中文节选行收窄） | overlap |
+| oF/oE | eacces | `const env = { ...process.env, DSH_HOME: tmp }` / `const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })` | overlap / file |
+| oF/oE | perf | `+  maxOutputTokens: 4096,` / `+  compressTargetMax: 1800,`（`-` 行排除） | overlap / had |
+| oE | wrong-model | `observe(options) { … }` / `callConfig(options) { … }` | overlap |
+| oE | sse | `f === '[DONE]'`（调用方不在手，只能绑到相关行） | overlap / span |
+| oracle A/B/C | 全部 | 已有可用句的分支不动；缺的绑到与参考一致的行（sse → `return { out, finish: finish \|\| (done ? 'stop' : null) }`） | had / overlap |
+
+**待跑**（本会话沙盒外网被切：`api.a6api.com` / `api.deepseek.com` TLS 握手失败，只放行 GitHub / npm / pypi）：
+- 第 A 轮（零成本稿）：`oG` = `/home/user/direct-og.json`（oF 的 eacces/flaky/perf + oE 的 wrong-model/sse 的 side 输出 + R7 门），
+  raw 复用 effect-16（`cp -r effect-16 effect-17`），`--variants raw,oG --samples 2 --require-fp`。
+  预测：flaky ≥ 7（主模型直接 edit `hedgeAfterMs: 1600`）、perf / eacces 不降。若 flaky 仍回头 read ⇒ 绑定不是症结，回到 R6 判断力假设。
+- 第 B 轮（提示词 v4d2，5 次副模型调用）：`--cfg '{"compressV4Direct":true,"distillStream":true}' --out /home/user/direct-oh.json`，再评 `oH`。
+  看点：副模型是否自己写出闭合分支（`boundBy` 全是 `had`）、析取率（`disjunctiveFix`）是否归零、长度是否仍在 1300 内。
+- 两轮任一 ≥ oC 的 6.4 且 flaky 破 7 ⇒ `compressV4Direct` 转正（缺省开）。

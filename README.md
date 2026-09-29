@@ -229,7 +229,8 @@ trace：`v4-segment-fired/settled`、`v4-segments-cancelled`。`compressV4Increm
 | `mode: 'off'` | 整体停用 |
 | `enabled: false` | 总开关关闭 |
 | `compressPrompt: 'v3'` | 从 v4 回到散文摘要（缺省） |
-| `compressV4Direct: true` | 启用 v4 直写散文（oracle C 形态固化；缺省关，见 CHANGELOG v12.6.0） |
+| `compressV4Direct: true` | 启用 v4 直写散文（oracle C 形态固化；缺省关，见 CHANGELOG v12.6.0 / v12.7.0） |
+| `compressV4DirectBind: false` | 关闭直写稿判读分支的落点绑定（理论 S8-R7；缺省开，见 CHANGELOG v12.7.0） |
 | `compressV4Incremental: false` | v4 回到整块编译（不分段） |
 | `compressPrompt: 'v2'` | 回到相对长度目标 |
 | `birth: { identifierGate: false }` | 关闭发明标识符闸 |

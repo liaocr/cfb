@@ -701,8 +701,8 @@ try {
     assert.ok(!I.buildCompressPromptV4Direct('RAW').includes('【当前任务与观察】'), '无 ctx 不带块')
   })
   await test('5o2 compressPromptVersion/For：v4d 分流', () => {
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x' }), 'compress-v4d1:ctx')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d1:noctx')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x' }), 'compress-v4d2:ctx')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d2:noctx')
     const p = I.compressPromptFor({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'T' }, 'COT')
     assert.ok(p.includes('【上一轮思维链】\nCOT') && p.includes('【当前任务与观察】\nT'))
   })
@@ -739,6 +739,71 @@ try {
     const viaObs = I.compileV4Direct('（逐字）`git diff 里的 compressTargetMax: 1800,`。所以下一步是改回。如果仍慢，那么再查。', '上一轮推理没引这行',
       { compressCtx: 'git diff 里的 compressTargetMax: 1800,' })
     assert.equal(viaObs.stats.inventedSpans, 0, '任务观察里的逐字片段不算编造')
+  })
+  // ---- §5p S8-R7 判读分支的动作闭合与落点绑定（v12.7）----
+  const CTX = '[tool: read_file] test/hedge.selftest.mjs §4\n  server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600\n  assert.equal(meta.hedgeStartedAt, null)\n' +
+    '[tool: read_file] src/distill.js hedgedDistill 节选\n  const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)\n  primary.then(() => { primarySettled = true })\n' +
+    '[tool: bash] git diff\n  -  compressTargetMax: 450,\n  +  compressTargetMax: 1800,\n[tool: bash] nproc (CI) → 2'
+  const RAW7 = '原文里引过 const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs) 这一行，改法是拉大余量或 fake timers。'
+  await test('5p1 分支自带逐字落点：可用句写进该分支句内（不是游离在末尾）', () => {
+    const t = '看起来是时序竞态。所以下一步工具调用是 bash 复现。如果失败复现，那么改测试 §4 的 `hedgeAfterMs: 1600`，把余量拉大；如果始终不复现，那么去查 CI 负载。'
+    const r = I.compileV4Direct(t, RAW7, { compressCtx: CTX })
+    assert.equal(r.ok, true)
+    assert.equal(r.stats.fixBranches, 1); assert.equal(r.stats.boundBranches, 1); assert.deepEqual(r.stats.boundBy, ['span'])
+    assert.ok(r.text.includes('把余量拉大——落点 `hedgeAfterMs: 1600` 的逐字原文已给出，可以直接当 edit_file 的 old_text，看到结果后不用再读文件；如果始终不复现'), r.text)
+    assert.ok(!r.stats.repairedAffordance, '绑定成功 ⇒ 不再追加游离的通用句')
+    assert.ok(!r.text.endsWith('上面逐字引出的代码行可以直接当 edit_file 的 old_text。'))
+  })
+  await test('5p2 分支无落点：按标识符重叠从任务观察绑定，中文节选行收窄到「键: 值」；析取只统计', () => {
+    const t = '`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)` 是 read_file 逐字。看起来余量只有 100ms。所以下一步工具调用是 bash 复现。' +
+      '如果失败复现，那么把 hedgeAfterMs 与主请求延迟拉开或改用 fake timers 即可；如果始终不复现，那么去查 CI 里是否有并行用例，而不是改 src/distill.js。'
+    const r = I.compileV4Direct(t, RAW7, { compressCtx: CTX })
+    assert.equal(r.stats.fixBranches, 1, '「而不是改 src/distill.js」是否定，不算改法分支')
+    assert.deepEqual(r.stats.boundBy, ['overlap']); assert.equal(r.stats.disjunctiveFix, 1)
+    assert.ok(r.text.includes('改用 fake timers 即可——落点 `hedgeAfterMs: 1600` 的逐字原文已给出'), r.text)
+    assert.ok(!r.text.includes('server 延迟：主请求'), '混着中文的节选行收窄到 hedgeAfterMs: 1600')
+  })
+  await test('5p3 落点候选的排除：命令 / 日志行 / 光秃标识符 / 路径 / diff 删除行；「补 `X`」的 X 是新文本不是落点', () => {
+    assert.equal(I.usableLocus('grep -R "CFB_REAL_DSH_HOME" -n verify.mjs test src'), false)
+    assert.equal(I.usableLocus('FAIL test/birth.selftest.mjs  Error: EACCES'), false)
+    assert.equal(I.usableLocus('run 1: PASS  17 passed  (hedge 3.1s)'), false)
+    assert.equal(I.usableLocus('CFB_REAL_DSH_HOME'), false)
+    assert.equal(I.usableLocus('/home/u/.dsh'), false)
+    assert.equal(I.usableLocus('-  compressTargetMax: 450,'), false)
+    assert.equal(I.usableLocus('+  compressTargetMax: 1800,'), true)
+    assert.equal(I.usableLocus('const env = { ...process.env, DSH_HOME: tmp }'), true)
+    const ctx = '[tool: read_file] verify.mjs (节选)\n  const env = { ...process.env, DSH_HOME: tmp }\n[tool: bash] grep\n  grep -R "CFB_REAL_DSH_HOME" -n verify.mjs test src'
+    const t = '看起来隔离没对齐。所以下一步工具调用是 bash grep。如果 grep 显示 verify.mjs 没设置该变量，那么就在 verify.mjs 的 env 里补 `CFB_REAL_DSH_HOME: tmp`。'
+    const r = I.compileV4Direct(t, 'raw 里写过 CFB_REAL_DSH_HOME: tmp', { compressCtx: ctx })
+    assert.deepEqual(r.stats.boundBy, ['overlap'])
+    assert.ok(r.text.includes('补 `CFB_REAL_DSH_HOME: tmp`——落点 `const env = { ...process.env, DSH_HOME: tmp }` 的逐字原文已给出'), r.text)
+  })
+  await test('5p4 点名文件压过单个标识符重叠；改法词 + 取证措辞（改用 docker 再复现）不算改法；diff 改回 ⇒ 绑 + 行', () => {
+    const ctx = '[tool: read_file] verify.mjs (节选)\n  const env = { ...process.env, DSH_HOME: tmp }\n[tool: read_file] test/birth.selftest.mjs 第 1-12 行\n  import { makeTraceWriter } from \'../src/trace.js\'\n  const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })'
+    const t = 'CFB_REAL_DSH_HOME 绕过了隔离。所以下一步工具调用是 bash grep。如果输出显示已设为 tmp 却仍写真实路径，那么改 birth.selftest 这一行用 DSH_HOME。'
+    const r = I.compileV4Direct(t, 'raw', { compressCtx: ctx })
+    assert.ok(r.text.includes('用 DSH_HOME——落点 `const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })`'), r.text)
+    const probe = I.compileV4Direct('所以下一步工具调用是 bash 复现。如果 50 次全 PASS，那么需要改用 `docker run --cpus=2` 再压事件循环复现。', 'raw', { compressCtx: CTX })
+    assert.ok(!probe.stats.fixBranches, '换复现手段不是改法')
+    const diff = I.compileV4Direct('所以下一步工具调用是 bash 看 finishReason。如果升级前是 stop，那么主因是 compressTargetMax，把它回退到 450 再测。', 'raw', { compressCtx: CTX })
+    assert.ok(diff.text.includes('——落点 `+  compressTargetMax: 1800,`'), diff.text)
+  })
+  await test('5p5 已有可用句的分支不动；compressV4DirectBind:false 回到 v12.6 行为', () => {
+    const had = '所以下一步工具调用是 bash 复现。如果失败复现，那么改 `hedgeAfterMs: 1600`——这一行的逐字原文已给出，可以直接当 edit_file 的 old_text，不用再读文件。'
+    const r = I.compileV4Direct(had, RAW7, { compressCtx: CTX })
+    assert.deepEqual(r.stats.boundBy, ['had']); assert.ok(!r.text.includes('——落点'))
+    const t = '看起来是时序竞态，余量只有 100ms。所以下一步工具调用是 bash 复现。如果失败复现，那么改测试 §4 的 `hedgeAfterMs: 1600`，改法是把余量拉大。'
+    const off = I.compileV4Direct(t, RAW7, { compressCtx: CTX, compressV4DirectBind: false })
+    assert.equal(off.stats.boundBranches, undefined); assert.equal(off.stats.repairedAffordance, true)
+    assert.ok(off.text.endsWith('上面逐字引出的代码行可以直接当 edit_file 的 old_text。'))
+  })
+  await test('5p6 v4d2 提示词：样例分支闭合（落点 + 可用句 + 不再复现）、候选落定、下一步 = 原文实际发出的调用', () => {
+    const p = I.buildCompressPromptV4Direct('RAW', 'CTX')
+    assert.ok(p.includes('把 `const port = 8123 // 旧端口` 删掉') && p.includes('可以直接当 edit_file 的 old_text，拨测结果一到就改，不用再读文件、不再复现'), '样例分支闭合')
+    assert.ok(p.includes('只落定一个') && p.includes('不要写「A 或 B」两可'), '候选落定规则')
+    assert.ok(p.includes('X 就是原文最后决定发出的那一条调用'), '回溯一致')
+    assert.ok(!p.includes('证据是否充分按这个标准判'), 'v4d1 的下一步仲裁已撤回')
+    assert.ok(I.V4D_TAIL.includes('逐字落点'))
   })
 } finally {
   if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome

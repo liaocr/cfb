@@ -208,6 +208,8 @@ export const DEFAULTS = {
   // v12.6（理论 S8-R6，oracle C 形态固化）：副模型直写原生语域散文，不经 ops→模板；锚点逐字由 compileV4Direct 硬校验。
   //   oracle 三轮同后端实测：C 形态 6.4 / 直接改 70%（自动 ops 稿 5.8 / 50%）⇒ 缺省关（先实测固化稿，赢了再转正）
   compressV4Direct: false,
+  // v12.7（理论 S8-R7）：直写稿尾段判读分支的闭合与落点绑定（含改法的分支必须带已核真的逐字落点 + 分支内可用句；缺则按标识符重叠绑定）；false 关闭
+  compressV4DirectBind: true,
   // 直写模式的当前任务 / 观察上下文（工具注入；生产由 harness 传，空 = 只看思维链原文）
   compressCtx: '',
   // 仅工具用：把副模型原始输出带回 meta.sideOutput（tools/compile-direct.mjs --recompile 零调用重编译）

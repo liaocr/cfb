@@ -6,6 +6,36 @@
 
 ---
 
+## v12.7.0（2026-09-29）判读分支的动作闭合与落点绑定（理论 S8-R7；compress-v4d2 + 程序门 bindFixBranches）
+
+**归因**（`docs/analysis/EFFECT-EVAL-2026-09-28.md` §13，理论 S8-R7）：逐样本对读 effect-16 发现 v12.6 对 flaky 的归因偏了——
+oracle 与自动稿的「下一步」**都是复现**，差别全部在判读分支的动作项：oC 写「下一步直接改测试 §4 的 `hedgeAfterMs: 1600`
+（原文就是这几个字，可直接当 old_text），不用再继续复现」⇒ 主模型 2/2 直接 `edit_file`（8.5）；自动稿写「把 hedgeAfterMs 与主请求延迟
+拉开或改用 fake timers 即可」+ 末尾游离一句通用可用句 ⇒ 主模型 4/4 回头 `read_file`（1.5–2.0）。perf 同样：分支内绑定落点的 oF 10.0，
+游离通用句的 oE 6.0。**分支的 then 就是一条以观察为 trigger 的 READY，R2′ 的闭合（文件 + 逐字 at + 改法）与 R5 的可用句必须落在分支句内、
+绑定到具体落点；析取（A 或 B）与无落点的方向让主模型自己去选 / 找 ⇒ 一次取证调用。这可以机械检查与修补，不是副模型的判断力边界。**
+
+### 新增 / 修改
+- **程序门 `bindFixBranches`**（`compressV4DirectBind`，缺省开；只作用于直写路）：切出尾段判读分支；含改法措辞的分支必须含一个已核真的
+  `…` 落点，否则按标识符 / 数字 / 文件名重叠从已核真片段与任务观察的代码行里绑定一个（点名文件 > 标识符重叠 > 值行 > 代码形态；
+  光秃标识符 / 路径 / shell 命令 / 日志行 / git diff 删除行 / import 行不作落点；「补 `X`」的 X 是新文本不是落点；否定「而不是改…」与
+  「改用 docker 再复现」不算改法），把可用句写进分支句内：「——落点 `…` 的逐字原文已给出，可以直接当 edit_file 的 old_text，看到结果后不用再读文件」。
+  析取只统计（`disjunctiveFix`），落定由提示词负责。v12.6 的游离通用句降为无分支可绑时的保底。
+  零成本重编译既有稿（oD/oE/oF 全部 side 输出 + oracle A/B/C）：flaky 6/6 绑到 `hedgeAfterMs: 1600`，eacces 绑到 verify 的 env 行 / 测试那一行，
+  perf 绑到 `+  compressTargetMax: 1800,`（`-` 行排除），wrong-model 绑到 observe / callConfig 行，oracle 稿已有可用句的分支一律不动。
+- **提示词 `compress-v4d2`**：规则 4 改为「分支闭合与落点」（文件 + `逐字落点` 写在分支句内 + 可用句 + 观察后不再取证；多候选只落定一个：
+  落点在手优先、最小改动次之；不写 A 或 B）；规则 3「下一步工具调用是 X」= 原文实际发出的那条（回溯一致：压缩稿位于可见回答之前，
+  改写它会与已发出的调用矛盾），**撤回 v4d1 的下一步仲裁与证据充分性标准**（effect-16 没有一次胜利来自它）；样例改为「先拨测再改」
+  的两分支形态且每个分支闭合、示范候选落定（v4d1 样例的分支是开放的「另查 DNS」，flash 照抄成了开放分支）。
+- `index.js` 导出 `bindFixBranches / bindLocus / strongTokens / isFixBranch / usableLocus`；`index.d.ts` 补 `compressV4Direct*` / `compressCtx`。
+- 自测 596 / 0 / 1（新增 §5p 六条）。
+
+### 状态（诚实记录）
+- **未实测**：本会话沙盒只放行 GitHub / npm / pypi，`api.a6api.com` 与 `api.deepseek.com` 的 TLS 握手被切断，付费编译与评测都跑不了。
+  已备好零成本稿 `transfer/direct-og.json`（oF/oE 的副模型输出 + R7 门）与两轮评测命令（见 HANDOFF「下一步」）。
+  可证伪预测：oG 的 flaky ≥ 7（主模型直接 edit `hedgeAfterMs: 1600`），perf / eacces 不降；若 flaky 仍回头 read，则问题不在绑定，回到 R6 的判断力假设。
+- `compressV4Direct` 仍缺省关：要等 oG / v4d2 两轮实测赢了再转正。
+
 ## v12.6.0（2026-09-29）oracle 手写稿定形态，固化为副模型直写提示词（compress-v4-direct，opt-in）
 
 **方法**（`docs/analysis/EFFECT-EVAL-2026-09-28.md` §11–§12）：先由人按理论**手写**压缩稿（oracle A/B/C，只看任务原文 + 原文思考），

@@ -6,7 +6,7 @@
 1. 本文件
 2. `transfer/MEMORY.md`（上一会话的实时记忆，含全部迭代日志）
 3. `docs/analysis/EFFECT-EVAL-2026-09-28.md` §11–§12（oracle 实验 + 自动稿三轮）
-4. `CHANGELOG.md` v12.6.0；`docs/theory/CFB-THEORY-COMPLETE.md` 第二部分 S8（R1…R6）
+4. `CHANGELOG.md` v12.7.0 / v12.6.0；`docs/theory/CFB-THEORY-COMPLETE.md` 第二部分 S8（R1…R7，R7 是本次的归因与规则）；EFFECT-EVAL §13
 
 ## 环境恢复（把测试数据放回工具期望的路径）
 ```bash
@@ -17,7 +17,7 @@ cp transfer/recordings.json /home/user/live-all/recordings.json
 cp transfer/direct-*.json /home/user/
 cp transfer/oracle/* /home/user/oracle/
 cp -r transfer/effect-* /home/user/
-cd /home/user/cfb && node verify.mjs   # 应 590 通过 / 0 失败 / 1 跳过
+cd /home/user/cfb && node verify.mjs   # 应 596 通过 / 0 失败 / 1 跳过（v12.7.0）
 ```
 
 ## 铁规矩（用户明说的，别问、别违反）
@@ -55,18 +55,43 @@ node tools/effect-eval.mjs --base-url $DEEPSEEK_BASE_URL --model $DEEPSEEK_MODEL
   --samples 2 --concurrency 3 --require-fp --out /home/user/effect-17
 ```
 
-## 现状（截至交接）
+## 现状（截至 2026-09-29 第二次交接；上一次交接的现状保留在 MEMORY.md）
 同后端 n=10/组（原文 n=20）：raw 5.0｜v4t(ops 散文) 5.8｜oracle 上界 oC 6.4/直接改 70%｜
-oD 4.8 → oE 5.5（**wrong-model 10.0** 首超原文 9.0）→ oF 6.0(3 任务，**perf 10.0**)。
-- 已落地：`compress-v4-direct`（opt-in，cfg `compressV4Direct`）：副模型直写 DeepSeek 原生语域散文；
-  提示词 `buildCompressPromptV4Direct`（样例驱动 + R5 直改落点 + 下一步仲裁 + 证据充分性标准）；
-  程序门 `compileV4Direct`（锚点逐字硬校验、编造剥反引号、直改可用句条件补句、超长熔断）。
-- **当前卡点**：flaky-timeout 只有 2.0–2.5（oracle 8.5）——副模型不肯在两个改法候选间落定，把"复现"排下一步（第 8 稿已承认证据充分仍如此）＝判断力边界。
-- **下一步**（理论 S8-R6 已写）：①改法候选机械落定规则（取原文最后倾向/最小改动）或代码从 fixHints 写死"下一步=改法"句；②flaky 破了之后全 5 任务复测；③赢了才把 `compressV4Direct` 转正（现缺省关，完整 5 任务 5.5 vs 5.8 未全面胜出）。
+oD 4.8 → oE 5.5（**wrong-model 10.0**）→ oF 6.0(3 任务，**perf 10.0**)；flaky 自动稿 2.0–2.5 vs oracle 8.5。
+- **本次归因（理论 S8-R7，CHANGELOG v12.7.0，EFFECT-EVAL §13）**：逐样本对读 effect-16——oracle 与自动稿的「下一步」都是复现，
+  差别全在判读分支的动作项：oC 在分支句里写了「改测试 §4 的 `hedgeAfterMs: 1600`（原文就是这几个字，可直接当 old_text），不用再继续复现」
+  ⇒ 主模型 2/2 直接 edit；自动稿写「拉开或改用 fake timers」+ 末尾游离的通用可用句 ⇒ 4/4 回头 read。perf 也是同一规律（oF 分支内绑定 10.0，oE 游离句 6.0）。
+  这不是判断力边界，是形态规格缺口：**分支的 then 是 READY，必须闭合（文件 + 逐字落点 + 改法）并把可用句绑在落点上、写进分支句内**；
+  「下一步工具调用是 X」必须是可见回答里那条（回溯一致），R6 的「下一步仲裁」撤回。
+- **已落地（v12.7.0，未实测）**：程序门 `bindFixBranches`（`compressV4DirectBind`，缺省开）：分支切分 → 改法判定（含否定 / 换复现手段排除）→
+  落点绑定（标识符 / 数字 / 文件名重叠；命令、日志、路径、diff `-` 行、import 行不作落点；「补 `X`」的 X 不是落点）→ 可用句写进分支句内。
+  提示词 `compress-v4d2`（分支闭合 + 候选落定 + 回溯一致 + 闭合样例）。自测 596/0/1（§5p）。
+  零成本重编译既有稿：flaky 6/6 绑到 `hedgeAfterMs: 1600`，perf 绑 `+  compressTargetMax: 1800,`，eacces 绑 env 行 / 测试行，oracle 稿已有可用句的分支不动。
+- **本会话沙盒外网被切**（只放行 GitHub / npm / pypi；`api.a6api.com`、`api.deepseek.com` TLS 握手直接断），付费编译与评测一次都没跑成。
+  下面两轮是接手者的第一件事（换一个能出网的环境）。
+
+## 下一步（按顺序；每轮只测 raw + 1 个变体）
+```bash
+source /home/user/.secrets/keys.env
+# 第 A 轮（零成本稿已备好：transfer/direct-og.json = oF 的 eacces/flaky/perf + oE 的 wrong-model/sse 的副模型输出 + R7 门）
+rm -rf /home/user/effect-17 && cp -r /home/user/effect-16 /home/user/effect-17   # 复用 raw n=20
+node tools/effect-eval.mjs --base-url $DEEPSEEK_BASE_URL --model $DEEPSEEK_MODEL \
+  --recordings /home/user/live-all/recordings.json --report oG:v4=/home/user/direct-og.json \
+  --variants raw,oG --samples 2 --concurrency 3 --require-fp --out /home/user/effect-17
+#   预测：flaky ≥ 7（主模型直接 edit_file old_text=hedgeAfterMs: 1600），perf/eacces 不降。
+#   若 flaky 仍回头 read ⇒ 绑定不是症结，回到 R6 判断力假设（理论 S8-R7 第 6 条写了这个可证伪点）。
+# 第 B 轮（提示词 v4d2 才需要重压，5 次副模型调用）
+node tools/compile-direct.mjs --base-url $DEEPSEEK_BASE_URL --model $DEEPSEEK_MODEL --modes v4 \
+  --cfg '{"compressV4Direct":true,"distillStream":true}' --recordings /home/user/live-all/recordings.json --out /home/user/direct-oh.json
+#   先看 gate 统计：boundBy 是否全是 had（副模型自己闭合了）、disjunctiveFix 是否为 0、outChars ≤ 1300；再评 oH（同上命令换 --report oH:v4=... --variants raw,oH）。
+# 两轮任一 综合 ≥ 6.4 且 flaky ≥ 7 ⇒ src/config.js 把 compressV4Direct 转正（缺省 true），CHANGELOG 记数字；否则按归因流程继续。
+```
+- 改门规则只 `--recompile`（`direct-og-src.json` 是 5 条 side 输出的合集，可反复重编译）；改提示词才重压。
+- 推送：本会话受平台约束只能推 `arena/01a0eba2-cfb` 分支（已推）；回 main 需要有权限的一方 fast-forward 合并（`git push … arena/01a0eba2-cfb:main`），不要 force。
 
 ## transfer/ 文件地图（都是 GitHub 主分支上没有的）
 - `MEMORY.md` 上一会话记忆；（密钥不在库里，用户口头提供）`recordings.json` 6 条真机录音（5 评测题 + session-mixup）
-- `direct-*.json` 各轮编译产物（ops5…9p、od/oe/of；带 `side` 字段的可 `--recompile`）
+- `direct-*.json` 各轮编译产物（ops5…9p、od/oe/of；带 `side` 字段的可 `--recompile`）；`direct-og-src.json`（oF/oE 五条 side 合集）→ `direct-og.json`（R7 门重编译，待评）
 - `oracle/A.json B.json C.json` 手写稿行文件（源码在 `docs/analysis/oracle/*.py`）
 - `effect-6 … effect-16` 评测结果目录（effect-16 是累计全集，含 raw/v4q…v4t/oA…oF 全部行，可复用）
 - 临时物：以后删掉 `transfer/` 回 main 时记得 `node manifest.mjs` 重生成清单。

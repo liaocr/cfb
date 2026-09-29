@@ -543,8 +543,11 @@ export function compileV4Direct(side, raw, cfg = {}) {
   stats.register = /看起来|所以|下一步工具调用/.test(text)
   const maxChars = Number.isFinite(cfg.compressV4DirectMaxChars) && cfg.compressV4DirectMaxChars > 0 ? cfg.compressV4DirectMaxChars : 1300
   if (text.length > maxChars) return { ok: false, reason: 'v4d-too-long', stats }
+  // 理论 S8-R7：判读分支的动作闭合与落点绑定（可用句写进分支句内、绑定到具体逐字落点）
+  if (cfg.compressV4DirectBind !== false) text = bindFixBranches(text, raw, cfg.compressCtx || '', stats)
   // R5 直改可用句（条件补句，effect-14 归因：缺了这句 ⇒ 主模型改前再取证一轮）：
   // 尾段已落到具体改法、有已核真的逐字代码行、却没写「可以直接当 old_text」⇒ 补一句真话（锚点已被门核真）。
+  // v12.7 起只作保底：R7 的分支绑定没绑上任何分支时才补这句游离的通用句（effect-16：游离句不起作用，绑定句起作用）。
   const fixTail = /(改法是|需要改|改成|改为|改回|删掉|删去|加上|回滚|换成|修复落在|改测试|改配置|改这里|改\s+[\w./-]{2,})/.test(tail)
   const afford = /old_text|逐字原文已给出|可以直接当/.test(text)
   if (fixTail && !afford) {
@@ -555,6 +558,224 @@ export function compileV4Direct(side, raw, cfg = {}) {
     }
   }
   return { ok: true, text, stats }
+}
+
+// ── S8-R7 判读分支的动作闭合与落点绑定 ───────────────────────────────────────
+// effect-16 逐样本：分支里写了「改哪一行（逐字）+ 可直接当 old_text + 不再取证」的稿，主模型直接 edit_file（flaky oC 8.5、perf oF 10.0）；
+// 只写方向（「拉开余量或改用 fake timers」）+ 末尾游离一句通用可用句的稿，主模型一律回头 read_file（flaky oE/oF 1.5–2.0）。
+// 程序能机械做的：找出尾段的判读分支；含改法措辞的分支必须含一个已核真的 `…` 片段；没有就按标识符 / 数字 / 文件名重叠，
+// 从已核真片段与任务观察里的代码行中绑定一个落点；把可用句写进该分支句内。析取（A 或 B）只统计，不改写（落定由提示词负责）。
+const BRANCH_FIX_RE = /(改法|改成|改为|改回|改掉|改用|改测试|改配置|改这|改那|改源|改代码|改文件|改回去|改[^，。；]{0,12}(?:那一行|这一行|一行)|改\s+[\w./-]{2,}|(?:加|补|删|改)\s*`|修复|修掉|修改|修测试|删掉|删去|删除|加上|补上|补一|回滚|回落|回退|换成|替换|拉开|拉大|放宽|调大|调小|设为|设成|设小|设大|edit_file|把[^，。；]{1,60}(?:改|删|加|换|拉|调|回落|回退|设)|直接改|就改|去改|需要改|应改|该改)/
+// 弱改法词（换工具 / 换方案也会这么说）：then 里同时有取证措辞时不算改法（「改用 docker 再复现」是换复现手段）
+const WEAK_FIX_RE = /^(?:改用|换成|替换|加上|加|补上|补一|拉开|拉大|放宽|调大|调小|设为|设成|设小|设大)/
+const PROBE_THEN_RE = /复现|再查|另查|去查|排查|再看|先看|查看|确认|检查|grep|read_file|再跑|重跑|再压|再测/
+const BRANCH_HEAD_RE = /(?:^|[，,；;：:—\s])(?:如果|若是|若|要是|假如)/
+const BRANCH_THEN_RE = /(那么|就|则|⇒|→|=>)/
+const DISJ_RE = /(或者|或是|或|还是|\bor\b)/
+// 改法措辞前面紧跟否定 ⇒ 这不是改法分支（「而不是改 src/distill.js」「不用再改」）
+const NEG_BEFORE_RE = /(不是|不要|不用|不必|不该|不应|不再|不去|无需|别|而非|非)\s*$/
+// 反引号片段前面是「补 / 加 / 改成 / 换成」⇒ 片段是要写入的新文本，不是落点
+const NEW_TEXT_BEFORE_RE = /(补上|补一句|补|加上|加入|加|改成|改为|换成|替换为|替换成|设为|设成|写成|变成|改写为|改写成)\s*$/
+/** 分支的 then 部分是否落到改法（含否定排除） */
+export function isFixBranch(thenPart) {
+  const re = new RegExp(BRANCH_FIX_RE.source, 'g')
+  const probe = PROBE_THEN_RE.test(thenPart)
+  for (const m of thenPart.matchAll(re)) {
+    if (NEG_BEFORE_RE.test(thenPart.slice(Math.max(0, m.index - 6), m.index))) continue
+    // 「需要改用 docker 再复现」：去掉「需要 / 应该 / 直接」这类前导后看动词本身是不是弱改法词
+    const lead = /^(?:需要|应该|应|该|就|直接|去)/.exec(m[0])
+    const verbAt = m.index + (lead ? lead[0].length : 0)
+    if (probe && WEAK_FIX_RE.test(thenPart.slice(verbAt, verbAt + 8))) continue
+    return true
+  }
+  return false
+}
+const TOKEN_STOP = new Set(['the', 'and', 'for', 'not', 'null', 'true', 'false', 'undefined', 'edit_file', 'read_file', 'old_text', 'new_text',
+  'bash', 'grep', 'tool', 'file', 'run', 'git', 'diff', 'npm', 'node', 'src', 'test', 'tests', 'lib', 'const', 'let', 'var', 'return', 'function',
+  'import', 'export', 'from', 'this', 'that', 'with', 'into', 'then', 'else', 'when', 'ms', 'log', 'error', 'ok', 'json', 'yaml', 'yml', 'sh', 'js', 'mjs', 'ts'])
+/** 分支 / 片段里的强 token：标识符（含点号、连字符形态及其各段）与 ≥3 位数字 */
+export function strongTokens(s) {
+  const out = new Set()
+  for (const m of String(s || '').matchAll(/[A-Za-z_$][\w$]*(?:[.\-][A-Za-z_$][\w$]*)*/g)) {
+    const t = m[0]
+    if (t.length >= 3 && !TOKEN_STOP.has(t.toLowerCase())) out.add(t)
+    for (const p of t.split(/[.\-]/)) if (p.length >= 3 && !TOKEN_STOP.has(p.toLowerCase())) out.add(p)
+  }
+  for (const m of String(s || '').matchAll(/(?<![\w.])\d{3,}(?![\w])/g)) out.add(m[0])
+  return out
+}
+/** 任务观察（ctx）拆成工具块：[{ label, lines }]，label = 「[tool: xxx] 后面的那段」 */
+function ctxBlocks(ctx) {
+  const blocks = []
+  let cur = { label: '', lines: [] }
+  for (const line of String(ctx || '').split('\n')) {
+    const h = /^\s*\[tool:\s*([^\]]+)\]\s*(.*)$/.exec(line)
+    if (h) { if (cur.lines.length || cur.label) blocks.push(cur); cur = { label: (h[1] + ' ' + h[2]).trim(), lines: [] }; continue }
+    const t = line.trim()
+    if (t) cur.lines.push(t)
+  }
+  if (cur.lines.length || cur.label) blocks.push(cur)
+  return blocks
+}
+/** 分支里点名的文件：路径 / 文件名（basename）；「测试」映射到 test 目录 */
+function fileHints(branch) {
+  const out = new Set()
+  for (const m of String(branch || '').matchAll(/[\w./-]*[\w-]+\.(?:m?js|c?js|ts|tsx|jsx|json|ya?ml|py|go|rs|sh|md|toml|ini|env)\b/g)) {
+    out.add(m[0].split('/').pop())
+  }
+  // 不带扩展名的点号文件名（「改 birth.selftest 这一行」）：与工具块标签比对
+  for (const m of String(branch || '').matchAll(/(?<![\w.])[a-z][\w-]*(?:\.[a-z][\w-]*)+(?![\w.])/g)) if (!/\.(?:then|catch|env|model|js|mjs)$/.test(m[0])) out.add(m[0])
+  // 「测试」只在点名要改的是测试（改测试 / 测试文件 / 测试里那一行）时才算文件线索；「传给测试进程」不算
+  if (/改测试|测试文件|测试用例|测试里|测试的那|测试那一行|测试这一行|selftest|\btest file/i.test(branch)) out.add('test/')
+  return out
+}
+function labelMatches(label, hints) {
+  if (!label) return false
+  for (const h of hints) {
+    if (h === 'test/') { if (/(^|[\s/])test\//.test(label) || /\.selftest\./.test(label)) return true; continue }
+    if (label.includes(h)) return true
+  }
+  return false
+}
+/** 候选落点：文中已核真的 `…` 片段 + 任务观察里含标识符的代码 / 配置行；带来源标签 */
+function locusCandidates(text, ctx) {
+  const blocks = ctxBlocks(ctx)
+  const labelOf = (span) => { const n = norm(span); for (const b of blocks) if (b.lines.some((l) => norm(l).includes(n))) return b.label; return '' }
+  const seen = new Set()
+  const out = []
+  for (const m of String(text || '').matchAll(/`([^`\n]{1,220})`/g)) {
+    const span = m[1].trim()
+    if (!span || seen.has(span)) continue
+    seen.add(span)
+    if (usableLocus(span)) out.push({ span, label: labelOf(span), inText: true })
+  }
+  for (const b of blocks) {
+    for (const l of b.lines) {
+      if (seen.has(l) || !usableLocus(l)) continue
+      // 只要代码 / 配置形态的行（有标识符且带符号），不要工具输出里的散文
+      if (!/[=:(){}\[\];'"`<>\/]/.test(l)) continue
+      seen.add(l); out.push({ span: l, label: b.label, inText: false })
+    }
+  }
+  return out
+}
+// 能当 old_text 的片段：像一行代码 / 配置（有空格或结构符号），不是光秃标识符或路径（`CFB_REAL_DSH_HOME`、`/home/u/.dsh`）、
+// 不是 git diff 删除行（`-  x: 850,`）、不是 shell 命令（`grep -R … src`）、不是日志 / 断言输出行（`FAIL test/… Error: EACCES…`）
+const CMD_RE = /^(?:grep|rg|bash|sh|zsh|node|npm|npx|yarn|pnpm|taskset|docker|git|sed|awk|cat|ls|echo|curl|wget|find|for\s|while\s|stress|analyze-trace|python3?|pip|make|cd|export|source|kill|ps|top|nproc|seq|sudo|chmod|chown|rm)\b|\|\|\s*break|\s-lc\s|\$\(seq/
+const LOG_RE = /^(?:FAIL|PASS|OK|Error|[A-Z]\w*Error|npm ERR|\[|\$|>|#|✓|✗|at\s|expected\s|got\s|run\s*\d)|\b(?:passed|failed)\b/
+export function usableLocus(sp) {
+  const t = String(sp || '').trim()
+  return t.length >= 6 && t.length <= 220 && /\s|[=:(){}\[\];'"<>]/.test(t) && !/^[\w$.\/~\-]+$/.test(t) && !/^-\s/.test(t) &&
+    !CMD_RE.test(t) && !LOG_RE.test(t) && strongTokens(t).size > 0
+}
+const reEsc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** 片段里的「键: 值 / 键 = 值」小段；含 token t（作键或作值）的第一段 */
+const valueSegOf = (span, t) => {
+  const word = new RegExp('(?:^|[^\\w$])' + reEsc(t) + '(?![\\w$])')
+  for (const m of String(span).matchAll(/[A-Za-z_$][\w$.]*\s*[:=]\s*[^,;，；\s]+/g)) if (word.test(m[0])) return m[0]
+  return null
+}
+/**
+ * 给分支挑落点（理论 S8-R7 规则 3 的机械形式）：标识符 / 数字重叠 ×10（在手优先），分支点名的文件 +15（点名压过单个标识符重叠），
+ * 值行（ident: literal / ident = literal，改一个值优于改逻辑）+4，代码形态 +2，文中已引 +1，未引的文件行按与全稿的重叠排序，长度只作平局裁决。
+ * 选中的行若混着中文（工具节选把散文和代码写在一行），收窄到 `ident: value` 这一小段（仍是逐字子串）。
+ */
+export function bindLocus(branch, candidates, wholeText = '') {
+  const toks = strongTokens(branch)
+  const hints = fileHints(branch)
+  const all = wholeText ? strongTokens(wholeText) : null
+  let best = null
+  for (const c of candidates) {
+    const ct = strongTokens(c.span)
+    const hit = [...toks].filter((t) => ct.has(t))
+    const fileHit = labelMatches(c.label, hints)
+    if (!hit.length && !fileHit) continue
+    const valueTok = hit.find((t) => valueSegOf(c.span, t))
+    // 值行：重叠 token 是键（`hedgeAfterMs: 1600` 之于 hedgeAfterMs）+4；只是值（之于 1600、`data: [DONE]` 之于 DONE）+2
+    const asKey = valueTok && new RegExp('(?:^|[^\\w$])' + reEsc(valueTok) + '\\s*[:=]').test(c.span)
+    // 只靠文件点名命中的行，用「与全稿的标识符重叠」在文件内部排序（讨论过的那一行，而不是 import 行）
+    const ctxHit = all && !c.inText ? Math.min(6, [...ct].filter((t) => all.has(t)).length) : 0
+    let score = hit.length * 10 + (fileHit ? 15 : 0) + (valueTok ? (asKey ? 4 : 2) : 0) + (/[=(){};]|,\s*$/.test(c.span) ? 2 : 0) + (c.inText ? 1 : 0) +
+      (/^read_file\b/.test(c.label) ? 2 : 0) + ctxHit * 0.5 - c.span.length / 200   // 文件内容里的行天然是落点；bash 输出里的行（diff / grep -n）次之
+    if (/^(?:import\s|export\s|from\s|\/\/|\/\*|#|\*)/.test(c.span)) score -= 5   // import / 注释行不是改动落点
+    if (!best || score > best.score) best = { ...c, score, overlap: hit.length, fileHit, valueTok }
+  }
+  if (best && best.valueTok && /[\u4e00-\u9fff]/.test(best.span)) {
+    const seg = valueSegOf(best.span, best.valueTok)
+    if (seg) best = { ...best, span: seg, narrowed: true }
+  }
+  return best
+}
+/** 分支自己引的落点：第一个可用的 `…`（≥6 字、不是光秃标识符、前面不是「补 / 加 / 改成」这类新文本引导词） */
+function ownLocus(part) {
+  for (const m of String(part || '').matchAll(/`([^`\n]{1,220})`/g)) {
+    const span = m[1].trim()
+    if (!usableLocus(span)) continue
+    if (NEW_TEXT_BEFORE_RE.test(part.slice(Math.max(0, m.index - 6), m.index))) continue
+    return span
+  }
+  return null
+}
+/** 把可用句写进分支句内：在分支的结尾标点之前插入 */
+function withAffordance(branch, span) {
+  const named = span.length <= 120 ? '`' + span + '`' : '上面那一行'
+  const clause = '——落点 ' + named + ' 的逐字原文已给出，可以直接当 edit_file 的 old_text，看到结果后不用再读文件'
+  const m = /([。；;！!]+\s*)$/u.exec(branch)
+  return m ? branch.slice(0, m.index) + clause + m[1] : branch + clause + '。'
+}
+/**
+ * 尾段判读分支的闭合与绑定（导出供工具 / 自测用）。返回新文本；统计写进 stats：
+ *   branches（判读分支数）fixBranches（含改法措辞）boundBranches（已绑定 / 本次绑定）boundBy（'span'|'overlap'|'file' 列表）
+ *   unboundFix（找不到落点的改法分支）disjunctiveFix（析取的改法分支）
+ */
+export function bindFixBranches(text, raw, ctx, stats = {}) {   // raw 暂未用：候选只取已核真片段与任务观察（原文里未引的行不算「在手」）
+  const src = String(text || '')
+  // 只看尾段（后 60%）的判读分支，但按整句切，不在句中截断（否则「如|果」被切开就找不到分支）
+  const start = Math.floor(src.length * 0.4)
+  const sents = []
+  let off = 0
+  for (const piece of src.split(/(?<=[。；;！!？?])|(?<=\n)/)) {
+    const t = piece.trim()
+    if (t && off + piece.length > start) sents.push(t)   // 跨过 40% 线的整句也算尾段
+    off += piece.length
+  }
+  const isBranch = (s) => BRANCH_HEAD_RE.test(s) && BRANCH_THEN_RE.test(s) && s.length >= 8
+  const branches = sents.filter(isBranch)
+  if (!branches.length) return text
+  const AFFORD_RE = /old_text|逐字原文已给出|可以直接当/
+  let cands = null
+  let out = src
+  let fixN = 0, bound = 0, unbound = 0, disj = 0
+  const by = []
+  for (const b of branches) {
+    const thenAt = b.search(BRANCH_THEN_RE)
+    const thenPart = thenAt >= 0 ? b.slice(thenAt) : b
+    if (!isFixBranch(thenPart)) continue
+    fixN++
+    if (DISJ_RE.test(thenPart)) disj++
+    // 分支句里、或紧接的下一句（oracle 稿的写法：「…这一行。这一行上面已有逐字原文，可以直接当 old_text。」）已有可用句 ⇒ 不动
+    const next = sents[sents.indexOf(b) + 1]
+    if (AFFORD_RE.test(b) || (next && !isBranch(next) && AFFORD_RE.test(next))) { bound++; by.push('had'); continue }
+    let nb = null
+    const own = ownLocus(thenPart) || ownLocus(b)
+    if (own) { nb = withAffordance(b, own); by.push('span') }
+    else {
+      if (!cands) cands = locusCandidates(src, ctx)
+      const hit = bindLocus(thenPart, cands, src) || bindLocus(b, cands, src)
+      if (hit) { nb = withAffordance(b, hit.span); by.push(hit.overlap ? 'overlap' : 'file') }
+    }
+    if (!nb) { unbound++; continue }
+    const idx = out.lastIndexOf(b)
+    if (idx < 0) { unbound++; continue }
+    out = out.slice(0, idx) + nb + out.slice(idx + b.length)
+    bound++
+  }
+  stats.branches = branches.length
+  if (fixN) stats.fixBranches = fixN
+  if (bound) { stats.boundBranches = bound; stats.boundBy = by }
+  if (unbound) stats.unboundFix = unbound
+  if (disj) stats.disjunctiveFix = disj
+  return out
 }
 
 /** 硬拒绝占比阈值（schema / I1–I8；去重、I7、retracted 不算「不可信」）。 */
