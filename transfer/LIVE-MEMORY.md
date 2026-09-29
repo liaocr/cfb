@@ -35,7 +35,7 @@
 4. [x] tools/effect-mr.mjs（--build / --run / --summarize）+ tools/effect-mr-specs.json（5 题 × 绿/红，flaky 绿 = 不限核通过 = 无信息量）；链在 /home/user/mr/chains.json（flaky CoT_2 重生成 4495 字，其余用 effect-23 d9a 样本）
 5. [x] 2b 跑完三轮（run1 全 / run2 红 / run3 sse 红 + flaky 红 auto）：oracle 红题 8.6–9.5 vs raw 5.8（假完成 0 vs 25%）；理论修订 S10.3′（推翻路单命令 / 验收观察自证新鲜 / 看原症状不看单元测试）；**基准错误已修**（sse 红 rawFinish 语义）；ASK3 措辞修（协议冲突假象）。理论 S10.9 / S10.10 已写。
 6. [x] v4d7 已实现（台账在手时追加第 10 条四段 + 第 2 轮样例；【本轮已发出的调用】进 ctx；样例整句抄写剥离 parrotedExample；selfClosed 扩到「所以」句）。auto D2 红题 6.9（形态齐、验收命令不再发明；差距 = 预见，见 S10.10）。auto 绿题**未跑**（眼高手低风险：状态声明会不会让它不敢收工——2c 里看）。
-7. [ ] 2c 假仓库轨迹：先 3 题 × 2 变体 × 1 样本（≈ 30 主 + 15 副），有信号再加样本。harness = tools/traj-run.mjs（待写）
+7. [~] 2c：tools/traj-fixtures.mjs（3 题真文件 + canned）+ tools/traj-run.mjs（raw / auto / ledger 变体；--min-chars = 生产门槛 3100）。第一批（traj1）发现：循环里每轮思考中位数 ≈ 600–1000 字 ⇒ 生产门槛下 auto 0/9 轮压缩 = raw；无门槛时 15 字被压成 1181 字台账稿。理论 S10.11 立假设 H-ledger（程序台账零副模型成本）。**正在跑 traj2**：raw / auto-all（min-chars 0）/ ledger × 3 题 × 1 样本（≈ 54 主 + 18 副）。中转黏后端 ⇒ 重发加零宽空格打散。
 8. [ ] 文档 / commit / push（每个里程碑都 commit）
 
 ## 5. 费用台账（本阶段）

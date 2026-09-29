@@ -232,7 +232,9 @@ async function run(o) {
       try {
         let r
         for (let k = 0; ; k++) {
-          r = await chat({ model: o.model, messages: buildMessagesMR(j.chain, j.r1, j.r2, j.spec.obs[j.obs].followup), tools: TOOLS, thinking: { type: 'enabled' }, max_tokens: o.maxTokens, stream: false })
+          const base = buildMessagesMR(j.chain, j.r1, j.r2, j.spec.obs[j.obs].followup)
+          const msgs = k === 0 ? base : base.map((m, i) => i === base.length - 1 ? { ...m, content: m.content + '\u200b'.repeat(k) } : m)   // 打散中转的后端黏性
+          r = await chat({ model: o.model, messages: msgs, tools: TOOLS, thinking: { type: 'enabled' }, max_tokens: o.maxTokens - k, stream: false })
           const seen = !claudeShaped(r.usage) && (!o.requireFp || TRUSTED_FP.has(r.fp))
           const thought = (r.message.reasoning_content || '').length > 0
           if (seen && thought) break
