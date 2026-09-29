@@ -26,7 +26,7 @@ export function compressPromptVersion(cfg) {
   const sys = cfg && cfg.compressSystemPrompt === true ? ':sys' : ''
   if (v === 'v2') return 'compress-v2' + sys
   // v4 把渲染预算与尾段开关写进版本号（它们改变产物；提示词本身不随参数变化）
-  if (v === 'v4' && cfg && cfg.compressV4Direct === true) return 'compress-v4d3:' + (cfg.compressCtx ? 'ctx' : 'noctx') + sys
+  if (v === 'v4' && cfg && cfg.compressV4Direct === true) return 'compress-v4d4:' + (cfg.compressCtx ? 'ctx' : 'noctx') + sys
   if (v === 'v4') return 'compress-v4-ops9:' + v4Budget(cfg) + (cfg && cfg.compressV4Tail === false ? ':notail' : '') +
     (v4Incremental(cfg) ? ':inc' + v4SegmentChars(cfg) : '') + sys
   // v3 把目标长度写进版本号 ⇒ trace / BOOT / A-B 分桶自动带上参数，无需另记字段。
@@ -284,7 +284,10 @@ function fixHintBlock(text, kind) {
  *   v12.8 v4d3（理论 S8-R8/R9，oracle I 在 wrong-model / perf / sse 上 7/7 直接改、8.9 分）：闭合 = (path, old_text, new_text) 三元组——改法不是换一个值时
  *   必须写出替换后的整行（wrong-model：稿只给 old_text 和方向，主模型短思考后回头读文件去拿设计材料）；old_text 的逐字性是相对文件的（diff 的 + / -、
  *   grep 的行号不是文件内容，perf：主模型识破 `+  compressTargetMax: 1800,` 不是文件原文后整句担保作废）；分支 trigger 写成输出里会字面出现的特征，
- *   并点名「看到这个就够了、不再查什么」；几个落点都在手时改定义处优先于改调用处。**未付费实测**（用户要求先停副模型评测），程序门已同步（bindFixBranches R8a、new_text 出处闸）。
+ *   并点名「看到这个就够了、不再查什么」；几个落点都在手时改定义处优先于改调用处。程序门已同步（bindFixBranches R8a、new_text 出处闸）。
+ *   v12.8.3–12.8.7 在 v4d3 文本上连改三处但没有换版本号（长度区间 700–1300 → 1000–1400 → 1100–1550；(d) 问升级为「绝对行动纪律」：看到结果直接 edit_file、
+ *   严禁再 read_file / sed 确认；第 1 条加「严禁重写 / 臆想函数体」）⇒ v12.8.8 起版本号记为 **compress-v4d4**，之前记着 v4d3 的产物文本不可比。
+ *   v4d4 = 当前正文；首次成套付费实测见 CHANGELOG v12.8.8 / EFFECT-EVAL §16。
  */
 const V4D_HEAD = (
   '你是思维链压缩器。把【上一轮思维链】改写成压缩后的思维链正文。这段正文会被同一个 Agent 当作自己上一轮的思考续读，' +

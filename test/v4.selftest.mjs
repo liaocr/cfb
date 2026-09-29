@@ -701,8 +701,8 @@ try {
     assert.ok(!I.buildCompressPromptV4Direct('RAW').includes('【当前任务与观察】'), '无 ctx 不带块')
   })
   await test('5o2 compressPromptVersion/For：v4d 分流', () => {
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x' }), 'compress-v4d3:ctx')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d3:noctx')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x' }), 'compress-v4d4:ctx')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d4:noctx')
     const p = I.compressPromptFor({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'T' }, 'COT')
     assert.ok(p.includes('【上一轮思维链】\nCOT') && p.includes('【当前任务与观察】\nT'))
   })
@@ -878,6 +878,40 @@ try {
     assert.ok(!p.includes('证据是否充分按这个标准判'), 'v4d1 的下一步仲裁已撤回')
     assert.ok(I.V4D_TAIL.includes('文件里逐字的一行') && I.V4D_TAIL.includes('new_text'))
   })
+  // ---- §5t v12.8.3–12.8.7 的门 / 闸 / 提示词改动（当时未补自测，v12.8.8 补齐）----
+  await test('5t1 isFixBranch：「改为 + 取证动词」是取证分支（v12.8.3）；后置反选「这条候选我自己否了」与「按第一条分支改」不算本分支改法（v12.8.5）', () => {
+    assert.equal(I.isFixBranch('那么改为在 grep 结果里看 rawFinish 是不是 length，再决定'), false, '「改为在 grep 结果里看」= 换取证手段')
+    assert.equal(I.isFixBranch('那么改为 `hedgeAfterMs: 3000`，不用再读文件'), true, '「改为 `值`」仍是改法')
+    assert.equal(I.isFixBranch('那么改 transport.js 这条候选我自己否了，因为调用方不在手'), false, '后置反选')
+    assert.equal(I.isFixBranch('那么按第一条分支改即可，此时不要动 config.js'), false, '引用前文分支不是本分支动作')
+    assert.equal(I.isFixBranch('那么直接改 `hedgeAfterMs: 1600` 为 3000'), true, '阳性对照')
+    // 端到端：取证分支不再被绑落点（v12.8.3 之前 sse 稿的「改为在 grep 结果里看」被当改法，插入可用句把稿撑到 1968 字）
+    const ctxG = '[tool: bash] grep -n finish src/transport.js\n  src/transport.js:233:  return { ok: r.finish === \'stop\', text: r.out }'
+    const r = I.compileV4Direct('所以下一步工具调用是 bash grep。如果输出里只有 233 行这一处，那么改为在 grep 结果里看 rawFinish 是不是 length，再决定；如果还有别处，那么先别改。', 'raw 提过 rawFinish 与 r.finish', { compressCtx: ctxG })
+    assert.equal(r.stats.fixBranches, undefined, '没有改法分支 ⇒ 不绑定：' + JSON.stringify(r.stats))
+    assert.ok(!r.text.includes('——落点'), r.text)
+  })
+  await test('5t2 发明标识符闸（v12.8.4 / 12.8.6）：纯数字比值不是路径；标准环境变量名不算发明；new_text 段尾带标点仍整段豁免；假环境变量照报', () => {
+    const raw = 'read_file src/host-follow.js：observe(options) { if (options && options.model) lastModel = options.model } 只读 options.model。'
+    assert.deepEqual(I.inventedIdentifiers(raw, '耗时 4.4/4.0 秒，100/50 的比值'), [])
+    assert.deepEqual(I.inventedIdentifiers(raw, '把 NODE_OPTIONS 与 PATH 一起传下去'), [])
+    assert.deepEqual(I.inventedIdentifiers(raw, '把 MY_FAKE_ENV_VAR 传下去'), ['MY_FAKE_ENV_VAR'])
+    assert.deepEqual(I.inventedIdentifiers(raw, 'new_text 是 `observe(options, n) { const m = (n && n.model) || (options && options.model); if (m) lastModel = m }`，不用再读文件。'), [], '段尾「`，」不破坏 new_text 段识别')
+  })
+  await test('5t3 直写熔断缺省 1800（v12.8.6）；配置可覆盖', () => {
+    const body = '所以下一步工具调用是 bash 复现。' + '看起来是时序竞态。'.repeat(220)
+    assert.equal(I.compileV4Direct(body.slice(0, 1790), 'raw', {}).ok, true)
+    assert.equal(I.compileV4Direct(body.slice(0, 1801) + '。', 'raw', {}).reason, 'v4d-too-long')
+    assert.equal(I.compileV4Direct(body.slice(0, 1790), 'raw', { compressV4DirectMaxChars: 1500 }).reason, 'v4d-too-long')
+  })
+  await test('5t4 提示词 v4d4（v12.8.3/6/7 的三处改动 + 版本号）：绝对行动纪律、严禁臆想函数体、长度 1100~1550 / 上限 1650；promptVersion 换成 compress-v4d4', () => {
+    const p = I.buildCompressPromptV4Direct('RAW', 'CTX')
+    assert.ok(p.includes('必须下达绝对行动纪律') && p.includes('严禁再用 read_file 或 sed 查看上下文或确认'), '(d) 问 = 绝对行动纪律（v12.8.6）')
+    assert.ok(p.includes('【严禁重写/臆想代码】') && p.includes('绝不要凭理解自己写出函数体'), '第 1 条：逐字刚性（v12.8.7）')
+    assert.ok(p.includes('1100~1550 字符') && p.includes('上限绝不能超过 1650 字符'), '长度硬约束（v12.8.6）')
+    assert.ok(p.includes('此时不要改 X') && p.includes('如果输出跟这两种都不像，先别改'), '第二分支具体 + 逃生句仍在（绝对纪律只对坐实分支，不吞掉反驳路）')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d4:noctx')
+  })
   // ---- §5q v12.7 compressCtx 自动构造（理论 S8-R5/R7 的生产前提：压缩器要看到 Agent 看到的观察）----
   await test('5q1 buildCompressCtx：最后一条人类 user + 本回合工具结果（pi-ai 块形与 OpenAI 形都认），格式同 TASKS', () => {
     const msgs = [
@@ -919,7 +953,7 @@ try {
     const base = { compressPrompt: 'v4' }
     assert.equal(I.compressCtxFor(base, { messages: [] }), base, '空 ctx ⇒ 原对象')
     assert.equal(I.compressCtxFor(base, { get messages() { throw new Error('boom') } }), base, '异常 ⇒ 原配置')
-    assert.equal(I.compressPromptVersion(I.compressCtxFor({ compressPrompt: 'v4', compressV4Direct: true }, { messages: msgs })), 'compress-v4d3:ctx')
+    assert.equal(I.compressPromptVersion(I.compressCtxFor({ compressPrompt: 'v4', compressV4Direct: true }, { messages: msgs })), 'compress-v4d4:ctx')
     const src = fs.readFileSync(new URL('../src/plugin.js', import.meta.url), 'utf8')
     assert.ok(/const streamCfg = compressCtxFor\(callCfg, options\)/.test(src), 'plugin.js birth 分支用 compressCtxFor 派生 streamCfg')
   })

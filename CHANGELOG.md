@@ -6,6 +6,50 @@
 
 ---
 
+## v12.8.8（2026-09-29，第四会话接手）审计与修复：补回漏提交的交接手册、补 v12.8.3–12.8.7 的自测与 CHANGELOG、提示词版本号 v4d4；v4d4 首次成套付费实测（见下）
+
+**接手时的审计发现（按严重度）**
+1. **分支 `arena/01a0eba2-cfb` 处于坏状态**：末次提交 `798f291`「固化 HANDOFF-V12.8.md」只把该文件的哈希写进了 `MANIFEST.sha256`，文件本身从未 `git add`
+   ⇒ `node manifest.mjs --check` 报「缺失 1」，该分支 CI 红；文档正文已随上一个沙盒一起丢失。本版按 MEMORY / CHANGELOG / git 历史重写 `transfer/HANDOFF-V12.8.md`。
+2. **v12.8.3–12.8.7 五个版本改了 `compile-v4.js` / `fidelity.js` / `prompts.js` / `draft-lint.mjs` 的判定逻辑，没有一条自测、没有 CHANGELOG 条目**（自测数恒为 613），
+   提示词正文三次改动而 `promptVersion` 仍是 `compress-v4d3` ⇒ trace / `direct-*.json` 里同名的产物文本不可比。
+3. **v12.8.2–12.8.6 声称的数字没有一份产物进仓库**：oM 变体、53 稿·题对标、effect-sub-eval-round1（14 样本）、v4d3 重压稿「Lint 13.3 / accept 6/6」、eacces 2.0→9.0、
+   sse 100%——`transfer/` 止于 effect-19 / direct-oh*.json，新沙盒里已无法复核。这些数字在本版之后**只作传闻**。
+4. 零成本复核 `tools/draft-lint.mjs`（本仓库现有稿 vs effect-19 实测动作，n=21）：v4d2 自动稿 oH 经当前门重编译后形态分 **12–13**，与 oracle oI（11–14）几乎同分，
+   但 oH 的 wrong-model 0/2（2.0）、sse 1/2、perf 1/2；oI 的 perf 形态分只有 **7** 却 2/2（9.0）。条目相关表里 L3 / L4 / L7 / L9 / L12 的「满足−不满足」为负，L15 无人满足。
+   ⇒ **形态分不能区分「能让主模型直接改」与「不能」的稿**；v12.8.4–12.8.5 以「形态分 13–14 = 与 oracle 逐项一致」为达标依据是对代理指标的过拟合。真正的判据只有 effect-eval。
+5. 杂项：`tools/_dbg.mjs`（写死 /home/user 绝对路径的调试脚本）随 v12.8.2 进了仓库；`index.d.ts` / README 仍写熔断缺省 1600（代码已 1800）；
+   长度约束三处不一致（提示词 1100–1550 / 上限 1650、draft-lint L13 900–1600、熔断 1800）；密钥文件里的 API key 被粘贴了两遍（102 字 = 51 字 ×2，401）。
+
+**修复（零成本）**
+- `transfer/HANDOFF-V12.8.md` 重写（含上述审计、本阶段目标、操作协议、下一步）；`git merge main`（main 只多一个合并提交，树相同）使分支可 fast-forward 回 main。
+- `test/v4.selftest.mjs` §5t1–5t4：isFixBranch 三条排除（改为 + 取证 / 后置反选 / 引用前文分支）+ 端到端不绑定；发明标识符闸的比值 / 环境变量 / new_text 尾标点；
+  熔断缺省 1800 与覆盖；v4d4 提示词三处改动与版本号。自测 **617 / 0 / 1**。
+- `promptVersion`：`compress-v4d3` → **`compress-v4d4`**（正文自 v12.8.3 起已变，见 prompts.js 头注释）；`index.d.ts` / README 熔断缺省改 1800；draft-lint L13 上限对齐提示词硬上限 1650；删 `tools/_dbg.mjs`。
+- 下方 v12.8.3–12.8.7 五条为**补记**（从 git diff 与 MEMORY.md 重建，当时未写）。
+
+## v12.8.7（2026-09-29，补记）提示词第 1 条加「严禁重写 / 臆想代码」
+- `src/prompts.js` V4D_HEAD 第 1 条：反引号内容必须是原文真实存在的子串，「绝不要凭理解自己写出函数体」。起因：副模型直写时按理解改写函数体，程序门剥掉反引号后整段变成假证据。
+- 无自测、无产物入库；`promptVersion` 未换（v12.8.8 起记 v4d4）。
+
+## v12.8.6（2026-09-29，补记）主模型「绝对行动纪律」+ 熔断 1800 + 闸门放行比值与环境变量
+- MEMORY 记录：首轮 v4d3 副模型稿供主模型实测（「effect-sub-eval-round1」14 样本，**未入库**）perf 9.5 / wrong-model 8.5，eacces **2.0**——grep 结果出来后主模型防御性 `read_file verify.mjs`。
+- `src/prompts.js`：(d) 问由「点名看到这一点就够了」升级为「必须下达绝对行动纪律：看到结果就必须直接动手 edit_file，严禁再用 read_file 或 sed 查看上下文或确认」；长度区间 1000–1400 → 1100–1550（上限 1650）。
+- `src/compile-v4.js`：直写熔断缺省 1600 → **1800**。`src/fidelity.js`：`RE_GATE_PATH` 排除纯数字比值（`4.4/4.0`）；`GATE_ALLOW` 加 NODE_OPTIONS / PATH / HOME / USER / SHELL。
+- MEMORY 声称复测 eacces 2.0 → 9.0、sse 100% 直接改（样本数未记、产物未入库）。**反驳题在纪律注入后没有复测**——这是 v12.8.8 实测要先回答的问题（绝对纪律会不会吞掉第二分支 ⇒ 错改）。
+
+## v12.8.5（2026-09-29，补记）isFixBranch 排除后置反选与引用前文分支；draft-lint 排除词加「否了 / 否定」
+- `src/compile-v4.js` `isFixBranch`：「…这条候选我自己否了 / 这种改法排除」（改法词之后 32 字内的反选）与「按第一条分支改…」（引用前文）不算本分支的改法动作 ⇒ 不再给取证 / 引用分支绑落点。
+- `tools/draft-lint.mjs` `REJECT_RE` 加 否了 / 否定（L11 排除候选识别）。声称「副模型直压全任务形态分 13–14、与手工 oracle 逐项一致」（产物未入库；且见 v12.8.8 审计第 4 条）。
+
+## v12.8.4（2026-09-29，补记）new_text 段尾标点容错；比值不算路径的前置
+- `src/fidelity.js` `inventedIdentifiers`：new_text 段同时登记去掉首尾 `` ` ' " ( ) , . : ; `` 的净文本，`new_text 是 `…`，` 这种尾随标点不再让整段失去豁免。
+- `src/compile-v4.js` 两行注释。声称 accept 6/6 ok、Lint 均分 13.3（产物未入库）。
+
+## v12.8.3（2026-09-29，补记）WEAK_FIX_RE 加「改为」；长度约束收紧到 1000–1400
+- 起因（MEMORY）：sse 稿 1842 字、perf 稿 1717 字撞当时的 1600 熔断；sse 分支里「改为在 grep 结果里看」被 `isFixBranch` 当改法 ⇒ 绑落点插入可用句把稿撑到 1968 字并破坏片段。
+- `src/compile-v4.js`：`WEAK_FIX_RE` 加「改为」（后接取证动词时判为取证分支）。`src/prompts.js` 第 7 条：700–1300 → 「严格控制字数在 1000~1400（上限 1500）」。
+
 ## v12.8.2（2026-09-29）主模型深度实测闭环：15 项形态 Lint 量化表 + 严禁二度取证纪律；基题 100% 直接改对（全改对，零错改）
 
 **核心进展**

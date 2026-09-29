@@ -7,7 +7,7 @@
 //   L4 落点出处句（原样/逐字/不带缩进）  L5 文件逐字（无 diff +/-、行号前缀当落点）  L6 「不再查什么」句在改法段内
 //   L7 改法只落一个（同一段内无 A 或 B） L8 trigger 无含糊词                 L9 非改法段具体（命令/文件/此时不要改），不是光「再取证」
 //   L10 逃生句                          L11 被排除候选 ≥2 且带理由           L12 全稿无两可改法
-//   L13 长度 900–1600                    L14 原生语域（推理词 + 无列表标题）   L15 对齐可见回答（上一轮回答里说要确认的 = 这次调用）
+//   L13 长度 900–1650                    L14 原生语域（推理词 + 无列表标题）   L15 对齐可见回答（上一轮回答里说要确认的 = 这次调用）
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -92,7 +92,7 @@ export function lintDraft(I, text, raw, ctx) {
   items.L10 = /都不像|先别改|先别动/.test(text) ? 1 : 0
   items.L11 = splitSentences(text).filter((s) => REJECT_RE.test(s)).length >= 2 ? 1 : 0
   items.L12 = !(st.disjunctiveFix > 0) ? 1 : 0
-  items.L13 = text.length >= 900 && text.length <= 1600 ? 1 : 0
+  items.L13 = text.length >= 900 && text.length <= 1650 ? 1 : 0   // 上限 = v4d4 提示词的硬上限 1650（熔断 1800 只拦跑飞）
   items.L14 = /看起来|所以|下一步工具调用|我们需要/.test(text) && !/^\s*(?:[-*•]|\d+[.、]|#)/m.test(text) ? 1 : 0
   items.L15 = ALIGN_RE.test(text) ? 1 : 0
   const score = Object.values(items).reduce((a, b) => a + b, 0)
