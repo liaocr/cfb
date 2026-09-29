@@ -1891,6 +1891,61 @@ trigger 的 READY，价值 = P(trigger) × C_re。then 若是（a）几个改法
    与观察里取落点，代码补的改法条目同样带落点渲染），出处判定（I2）同样把观察算进去。
 6. **可证伪预测**：flaky 的自动稿只要分支绑定到 `hedgeAfterMs: 1600` 那一行，主模型应像 oC 一样直接 `edit_file`（≥ 7）；
    perf / eacces 不降；若绑定后 flaky 仍回头 read，则问题在别处（如下一步与可见回答的措辞冲突），回到 R6 的判断力假设。
+7. **实测（2026-09-29 第三会话，effect-17/18，同后端 n=2/格）**：预测成立。oG（R7 门零成本重编译）flaky **7.0**、oH（v4d2 重压）flaky **8.5**，
+   4/4 直接 `edit_file old_text="hedgeAfterMs: 1600"`；此前 oD/oE/oF 是 0/6。全集：oG 5.7 / 直接改 60% / 回头 read 40%，oH 5.8 / 70% / 30%
+   （raw 5.0 / 50% / 35%；oC 上界 6.4 / 70% / 20%）。绑定是 flaky 的症结，R6 的判断力假设不必回。剩余差距在 wrong-model（oH 2.0）、perf、sse，见 R8/R9。
+
+**R8 动作接口三元组的闭合与「文件逐字」；R9 判读覆盖（2026-09-29 第三会话；主模型本轮思考原文落盘后的逐样本归因）**
+
+方法上的推进：`effect-eval` 从这一轮起把主模型**本轮思考原文**也存进 results（此前只有字数）。归因不再靠猜「短思考为什么回头 read」，
+而是读主模型自己写下的犹豫。三处失败，主模型的原话与归因：
+
+| 任务 | 稿 | 主模型本轮思考里的原话 | 下一步 | 归因 |
+|---|---|---|---|---|
+| perf | oH#0 | 「之前的推理说逐字原文是 `+  compressTargetMax: 1800,`，但实际文件里可能没有加号。最好先用 read_file 确认」 | grep config.js（2 分） | 落点来自 git diff 的 `+` 行：**观察逐字 ≠ 文件逐字**。稿里「可直接当 old_text」对这一行是假话，主模型识破后整句担保失效 |
+| perf | oH#1 | 「历史推理建议 old_text 直接用 diff 的 `+ …`——这不准确……用不带缩进的核心片段能匹配，风险较低」 | edit（9 分） | 同一疑虑，这次自己付掉了 |
+| wrong-model | oH#0 | 「Need to see normalizeRequest to confirm n.model.」（全部思考 126 字） | grep（2 分） | 分支 trigger 写成「如果实际当前模型在 n 中（例如 n 是 request 对象或包含 model）」——一个仍待确认的假设，主模型就去确认它 |
+| wrong-model | 全部压缩稿 | （raw 4/4 直接改 observe 定义；压缩稿合计 10/24，失败样本思考 77–557 字后 `read_file src/host-follow.js`） | 回头读要改的文件 | 改法是**逻辑改动**，稿只给了 old_text 和方向（「让它读到当前模型」），没给 new_text；主模型接受结论后要去拿设计材料 |
+| sse | oH#0 | 「trace 里 finish 是 null 而 ok 是 true……需要看 rawFinish 定义」 | sed transport.js | 观察里冒出稿没覆盖的新量（settle 记的 finish 另有来源），没有分支告诉它「这不影响改哪一行」 |
+
+代回 Pol / C_re（S8 修订 1、R2′）：`C_re(READY) = 重新设计改法 + 重新拿到落点逐字文本`。R7 付掉了「拿落点」，但三个残项没付：
+
+- **R8a 文件逐字**：old_text 的逐字性是相对**将被编辑的文件**而言的，不是相对观察文本。`git diff` 的 `+`/`-` 前缀、grep / `cat -n` /
+  `sed -n` 的 `行号:` 前缀、读取节选时的统一缩进，都是**观察格式**，不是文件内容。稿里说「逐字原文可直接当 old_text」必须对文件为真；
+  来自 diff / grep 的行要剥掉标记再作落点，并把出处链写成**已完成的核对**（「diff 的加号是标记，文件里这一行是 `…`，old_text 不带加号也能匹配」）。
+  主模型的自检句（Thought Anchors：self-checking 句是 receiver head 的注意焦点）会被稿里已完成的核对句接住；一句假担保则反过来让全部担保作废。
+- **R8b 三元组闭合**：READY 的闭合是 `(path, old_text, new_text)` 三元组。R2′ 写的「改成什么」在换值类改法里是平凡的（1600 → 3000），
+  但在**逻辑改动**里就是设计工作：wrong-model 要把 `observe(options)` 改成读 `n.model`，怎么写这一行本身有几种选择。稿不写出替换后的整行，
+  主模型就要自己设计，而设计需要看上下文 ⇒ `read_file src/host-follow.js`。这解释了为什么 wrong-model 是唯一 raw 稳赢的题：raw 里主模型
+  重新推一遍时顺手把设计做了（3700 字），压缩稿把结论给了、把设计省了，短思考（77–557 字）直接去取材料。
+  new_text 由原文的标识符组成、实现原文说过的改法，属于 R2′ 的「改成什么」，不是 I2 意义上的编造；但它天然不是原文子串 ⇒ 出处闸要给
+  new_text 一个单独的出口（标识符全部来自原文 / 观察即可），否则 birth.js 会把整份稿当发明放行。
+- **R9 判读覆盖**：分支的 trigger 必须写成**待回输出里会字面出现的特征**（「如果 grep 出来 n 带 model 字段、或 options 里根本没有 model」），
+  不是仍待证明的假设（「如果实际当前模型在 n 中」）；分支要穷尽原文考虑过的假设，并且每个分支点名**看到什么就够了、不再查什么**
+  （「看到这一点就够了，不用再展开 n 是怎么算出来的，也不用再读 host-follow.js」）。观察里可能冒出的新量，只要原文考虑过（sse 的
+  「settle 记的可能是原始 finish_reason」），就在分支里预先说明它不改变落点。这是 R7 第 2 条「分支内仲裁」的推广：仲裁的对象不只是「不再复现」，
+  而是主模型在动手前会做的每一个核对。
+- **落定的次序**（补 R7 第 3 条）：几个落点都在手时，改**定义处**优先于改**调用处**（oH wrong-model 把 `host.observe(options, n)` 改成
+  `host.observe(n)`，盲评判为改错文件：调用处改动会改变契约、丢掉 options；定义处一处改完）。
+
+可证伪预测（oracle I：只重写 wrong-model / perf / sse 三题的判读收尾，正文沿用 C；先写预测再跑）：
+wrong-model ≥ 2/3 直接改 host-follow.js 的 observe 行（压缩稿历史 42%，raw 100%）；perf 2/2 直接改 `compressTargetMax: 1800,`；
+sse ≥ 1/2 直接改 `return { out, finish: … }` 行（raw 0/4，历史稿 0/2 居多）。若 wrong-model 仍 ≤ 1/3 且失败样本仍回头读 host-follow.js，
+则 R8b 不成立，问题回到 R4″ 的归属 / 深度（压缩稿本身让主模型不肯深想）。
+
+**实测（effect-19，同后端 `--require-fp`，预测先写后跑）：三条预测全部成立，而且没有一个样本回头 read。**
+
+| 任务 | raw | 此前最好的压缩稿 | oracle I | 直接改 | 主模型本轮思考里的原话 |
+|---|---|---|---|---|---|
+| wrong-model | 9.0 | oE 10.0（n=2）/ 全部压缩稿 42% | **9.0** | **3/3**，三次都原样用了稿里的 new_text | 「But should we maybe read file to ensure exact whitespace? The prior read_file output includes lines. We can use edit_file with old_text exactly that string.」 |
+| perf | 3.8 | oF 10.0（n=2）/ oG 5.0 / oH 5.5 | **9.0** | **2/2** | 「注意 diff 中是 `+  compressTargetMax: 1800,`，文件里可能缩进两个空格。old_text 只用 "compressTargetMax: 1800," 可匹配。……不需要先读。」 |
+| sse | 2.3 | oG/oH 4.5（历史 0/2 居多；oC 1.0） | **8.5** | **2/2** | 「trace 中 settle 的 finish 是 rawFinish（可能原始 null）……所以根因是 assembleSseFrames 的 `finish \|\| (done ? 'stop' : null)`。……或许需要先读文件确认？但已有原文。」 |
+
+三题合计 8.9 / 直接改 100% / 回头 read 0% / 死路 0%（raw 同三题 5.0）；加上 oH 已过线的 eacces 8.5、flaky 8.5，五题的形态上界从 oC 的 6.4 抬到 ≈ 8.7
+（后两题沿用自动稿，不是同一份 oracle，只作上界估计）。机理上最有说服力的是 wrong-model：稿里给出的 new_text 被三次**一字不改**地当作 edit_file 参数——
+C_re 里的设计成本确实被稿付掉了；sse 则说明 R9 的「预先说明对不上的量不改变落点」能把主模型从「先看上下文」拉回来。
+主模型自检句的形态也印证 Thought Anchors 的观察：每个成功样本都有一句「要不要先读文件确认？——已有原文 / 稿说了不带加号也能匹配」，
+稿里已完成的核对句正好接住它。
 
 **实现对应**（v12.5，`compress-v4-ops7`）：IF/READY 类与必留；块尾顺序为 结论 → 判读 → 已备动作；第一人称模板；预算下限 800；
 代码保底 `autoHintOps`（副模型对某类一条都没标时才补；否定/犹豫句与超长句不补）；模板语言跟随条目内容；

@@ -17,7 +17,7 @@
 //   · 渲染按「状态 → 当前方案 → 排除/搁置 → 计划 → 未决」分组、组内保持原文顺序，而不是纯贪心顺序：
 //     分组保留因果可读性，未决问题放在最后（最靠近下一步生成的位置）；
 //   · I6（已编译文本永不作为副模型输入）是结构保证：birth 只把 reasoning 原文交给副模型。
-import { inventedIdentifiers } from './fidelity.js'
+import { inventedIdentifiers, NEW_TEXT_LEAD_RE } from './fidelity.js'
 import { wideShare } from './tokens.js'
 import { condHints, fixHints } from './prompts.js'
 import { DEFAULTS } from './config.js'
@@ -524,7 +524,10 @@ export function compileV4(output, raw, cfg = {}, budget = null) {
  * ★ v12.6 compress-v4-direct 程序门（理论 S8-R6）：副模型直写散文，代码只做能机械判定的事。
  *   锚点硬校验：`…` 片段必须是原文（或任务观察）里一字不差的子串；不是就剥掉反引号（不许假称逐字）。
  *   判读 / 语域 / 出处只统计不熔断（样例 + 尾段重申已把漏判率压低；熔断 = 原文放行，先测漏率再收紧）。
- *   熔断只有两种：空输出、超长（compressV4DirectMaxChars，缺省 1300）。
+ *   熔断只有两种：空输出、超长（compressV4DirectMaxChars，缺省 1600）。
+ *   v12.7.1：1300 → 1600。1300 是按 v4d1 开放分支的稿定的（oD/oE/oF 侧输出 920–1247）；R7 要求每个改法分支闭合
+ *   （`逐字落点` ≤200 字 + 可用句 ≈70 字 + 改成什么），两个分支就比开放形态多 200–500 字，v4d2 首压 5 份里 2 份（1382 / 1457）撞熔断 ⇒
+ *   整份稿被丢、原文（3000–9000 字）放行，比一份 1457 字的稿坏得多。熔断的职责是拦「跑飞」（照抄原文 ≥3000），1600 仍拦得住。
  * @returns {{ ok: true, text, stats } | { ok: false, reason, stats }}
  */
 export function compileV4Direct(side, raw, cfg = {}) {
@@ -534,21 +537,25 @@ export function compileV4Direct(side, raw, cfg = {}) {
   if (fence) { text = fence[1].trim(); stats.unfenced = true }
   if (!text) return { ok: false, reason: 'v4d-empty', stats }
   const hay = norm(raw + '\n' + (cfg.compressCtx || ''))
-  let invented = 0
-  text = text.replace(/`([^`\n]{1,220})`/g, (all, span) => {
+  let invented = 0, newText = 0
+  const rawHay = raw + '\n' + (cfg.compressCtx || '')
+  text = text.replace(/`([^`\n]{1,220})`/g, (all, span, at) => {
     const n = norm(span)
     if (n && hay.includes(n)) return all
+    // 理论 S8-R8b：「new_text 是 `…` / 改成 `…`」引导的段是要写入的新文本，不是引用；按标识符级核真（段内标识符全部来自原文 / 观察即可）
+    if (NEW_TEXT_LEAD_RE.test(text.slice(Math.max(0, at - 12), at)) && !inventedIdentifiers(rawHay, span).length) { newText++; return all }
     invented++
     return span
   })
   stats.inventedSpans = invented
+  if (newText) stats.newTextSpans = newText
   stats.chars = text.length
   const tail = text.slice(Math.floor(text.length * 0.55))
   stats.closeLoop = /如果[^。？\n]{1,90}[，,]?\s*(?:那么|就|则)/.test(tail) || /\bif\b[^.\n]{1,90}[,，]?\s*(?:then|,)/i.test(tail)
   stats.provenance = /逐字/.test(text)
   stats.register = /看起来|所以|下一步工具调用/.test(text)
   if (cfg.compressCtx) stats.ctxChars = String(cfg.compressCtx).length   // 观察上下文到位与否（生产由 plugin 自动构造）
-  const maxChars = Number.isFinite(cfg.compressV4DirectMaxChars) && cfg.compressV4DirectMaxChars > 0 ? cfg.compressV4DirectMaxChars : 1300
+  const maxChars = Number.isFinite(cfg.compressV4DirectMaxChars) && cfg.compressV4DirectMaxChars > 0 ? cfg.compressV4DirectMaxChars : 1600
   if (text.length > maxChars) return { ok: false, reason: 'v4d-too-long', stats }
   // 理论 S8-R7：判读分支的动作闭合与落点绑定（可用句写进分支句内、绑定到具体逐字落点）
   if (cfg.compressV4DirectBind !== false) text = bindFixBranches(text, raw, cfg.compressCtx || '', stats)
@@ -572,7 +579,7 @@ export function compileV4Direct(side, raw, cfg = {}) {
 // 只写方向（「拉开余量或改用 fake timers」）+ 末尾游离一句通用可用句的稿，主模型一律回头 read_file（flaky oE/oF 1.5–2.0）。
 // 程序能机械做的：找出尾段的判读分支；含改法措辞的分支必须含一个已核真的 `…` 片段；没有就按标识符 / 数字 / 文件名重叠，
 // 从已核真片段与任务观察里的代码行中绑定一个落点；把可用句写进该分支句内。析取（A 或 B）只统计，不改写（落定由提示词负责）。
-const BRANCH_FIX_RE = /(改法|改成|改为|改回|改掉|改用|改测试|改配置|改这|改那|改源|改代码|改文件|改回去|改[^，。；]{0,12}(?:那一行|这一行|一行)|改\s+[\w./-]{2,}|(?:加|补|删|改)\s*`|修复|修掉|修改|修测试|删掉|删去|删除|加上|补上|补一|回滚|回落|回退|换成|替换|拉开|拉大|放宽|调大|调小|设为|设成|设小|设大|edit_file|把[^，。；]{1,60}(?:改|删|加|换|拉|调|回落|回退|设)|直接改|就改|去改|需要改|应改|该改)/
+const BRANCH_FIX_RE = /(改法|改成|改为|改回|改掉|改用|改测试|改配置|改这|改那|改源|改代码|改文件|改回去|改[^，。；]{0,12}(?:那一行|这一行|一行)|改\s+[\w./-]{2,}|(?:加|补|删|改)\s*`|修复|修掉|修改|修测试|删掉|删去|删除|加上|补上|补一|回滚|回落|回退|降回|降到|调回|换成|替换|拉开|拉大|放宽|调大|调小|设为|设成|设小|设大|edit_file|把[^，。；]{1,60}(?:改|删|加|换|拉|调|回落|回退|设)|直接改|就改|去改|需要改|应改|该改)/
 // 弱改法词（换工具 / 换方案也会这么说）：then 里同时有取证措辞时不算改法（「改用 docker 再复现」是换复现手段）
 const WEAK_FIX_RE = /^(?:改用|换成|替换|加上|加|补上|补一|拉开|拉大|放宽|调大|调小|设为|设成|设小|设大)/
 const PROBE_THEN_RE = /复现|再查|另查|去查|排查|再看|先看|查看|确认|检查|grep|read_file|再跑|重跑|再压|再测/
@@ -657,14 +664,28 @@ function locusCandidates(text, ctx) {
     if (usableLocus(span)) out.push({ span, label: labelOf(span), inText: true })
   }
   for (const b of blocks) {
-    for (const l of b.lines) {
+    for (const l0 of b.lines) {
+      // 理论 S8-R8a：落点的逐字性是相对文件的——git diff 的 `+` 与 grep / sed -n 的 `文件:行号:` 是观察格式，不是文件内容，先剥掉
+      const { span: l, via } = fileVerbatim(l0)
       if (seen.has(l) || !usableLocus(l)) continue
       // 只要代码 / 配置形态的行（有标识符且带符号），不要工具输出里的散文
       if (!/[=:(){}\[\];'"`<>\/]/.test(l)) continue
-      seen.add(l); out.push({ span: l, label: b.label, inText: false })
+      seen.add(l); out.push({ span: l, label: b.label, inText: false, via })
     }
   }
   return out
+}
+/**
+ * 观察里的一行 → 文件里逐字的样子。diff 增加行 `+  x: 1,` → `x: 1,`（via 'diff'）；grep -n / sed -n 的 `src/a.js:233:  return …` 或
+ * `233:  return …` → `return …`（via 'grep'）；其余原样（via ''）。diff 删除行不在此处理（usableLocus 一律拒绝）。
+ * effect-18 perf/oH#0 主模型原话：「之前的推理说逐字原文是 `+  compressTargetMax: 1800,`，但实际文件里可能没有加号。最好先用 read_file 确认」。
+ */
+export function fileVerbatim(line) {
+  const t = String(line || '')
+  let m
+  if ((m = /^\+(?!\+)\s*(\S.*)$/.exec(t))) return { span: m[1].trim(), via: 'diff' }
+  if ((m = /^(?:[\w./\\-]+\.[A-Za-z0-9]{1,6}:)?\d{1,6}[:-]\s*(\S.*)$/.exec(t)) && !/^\d+[:-]\s*\d/.test(t)) return { span: m[1].trim(), via: 'grep' }
+  return { span: t.trim(), via: '' }
 }
 // 能当 old_text 的片段：像一行代码 / 配置（有空格或结构符号），不是光秃标识符或路径（`CFB_REAL_DSH_HOME`、`/home/u/.dsh`）、
 // 不是 git diff 删除行（`-  x: 850,`）、不是 shell 命令（`grep -R … src`）、不是日志 / 断言输出行（`FAIL test/… Error: EACCES…`）
@@ -716,17 +737,42 @@ export function bindLocus(branch, candidates, wholeText = '') {
 /** 分支自己引的落点：第一个可用的 `…`（≥6 字、不是光秃标识符、前面不是「补 / 加 / 改成」这类新文本引导词） */
 function ownLocus(part) {
   for (const m of String(part || '').matchAll(/`([^`\n]{1,220})`/g)) {
-    const span = m[1].trim()
+    const raw = m[1].trim()
+    const { span, via } = fileVerbatim(raw)   // R8a：副模型自己引了 diff 的 `+ …` 行 ⇒ 落点写成文件里的样子
     if (!usableLocus(span)) continue
     if (NEW_TEXT_BEFORE_RE.test(part.slice(Math.max(0, m.index - 6), m.index))) continue
-    return span
+    return { span, via, quoted: raw }
   }
   return null
 }
-/** 把可用句写进分支句内：在分支的结尾标点之前插入 */
-function withAffordance(branch, span) {
+/** R8a：分支里所有 `+ …` / `file:NN: …` 形的引文改写成文件里的样子，并在第一处后面加一句说明；`- …` 行被当 old_text 只统计（它是旧值，不在文件里） */
+function normalizeQuotedLoci(branch, stats = {}) {
+  let out = branch, noted = false
+  for (const m of String(branch || '').matchAll(/`([^`\n]{1,220})`/g)) {
+    const raw = m[1].trim()
+    if (/^-\s/.test(raw) && /old_text/.test(branch)) { stats.minusLineAsOldText = (stats.minusLineAsOldText || 0) + 1; continue }
+    const { span, via } = fileVerbatim(raw)
+    if (!via || span === raw || !usableLocus(span)) continue
+    const note = noted ? '' : via === 'diff' ? '（git diff 里行首的加号是 diff 标记，文件里没有它，old_text 不要带加号和行首缩进）' : '（grep 输出里的文件名和行号是前缀，不是文件内容，old_text 不要带它们）'
+    out = out.split('`' + raw + '`').join('`' + span + '`' + note)
+    noted = true
+    stats.fileVerbatimFixed = (stats.fileVerbatimFixed || 0) + 1
+  }
+  return out
+}
+/**
+ * 把可用句写进分支句内：在分支的结尾标点之前插入。
+ * R8a：落点若来自 diff / grep 输出，可用句要说明「加号 / 行号是观察格式，文件里这一行是 `…`」——对文件为真的担保才接得住主模型的自检；
+ * 一句假担保（把 `+  x,` 说成逐字原文）会让整份稿的担保作废（effect-18 perf/oH#0）。
+ */
+function withAffordance(branch, hit) {
+  const span = typeof hit === 'string' ? hit : hit.span
+  const via = typeof hit === 'string' ? '' : hit.via
   const named = span.length <= 120 ? '`' + span + '`' : '上面那一行'
-  const clause = '——落点 ' + named + ' 的逐字原文已给出，可以直接当 edit_file 的 old_text，看到结果后不用再读文件'
+  const src = via === 'diff' ? '（git diff 里行首的加号是 diff 标记，文件里没有它，old_text 不要带加号和行首缩进）'
+    : via === 'grep' ? '（grep 输出里的文件名和行号是前缀，不是文件内容，old_text 不要带它们）' : ''
+  const clause = via ? '——文件里这一行是 ' + named + src + '，可以直接当 edit_file 的 old_text，不用先读文件确认'
+    : '——落点 ' + named + ' 的逐字原文已给出，可以直接当 edit_file 的 old_text，看到结果后不用再读文件'
   const m = /([。；;！!]+\s*)$/u.exec(branch)
   return m ? branch.slice(0, m.index) + clause + m[1] : branch + clause + '。'
 }
@@ -762,15 +808,27 @@ export function bindFixBranches(text, raw, ctx, stats = {}) {   // raw 暂未用
     if (DISJ_RE.test(thenPart)) disj++
     // 分支句里、或紧接的下一句（oracle 稿的写法：「…这一行。这一行上面已有逐字原文，可以直接当 old_text。」）已有可用句 ⇒ 不动
     const next = sents[sents.indexOf(b) + 1]
-    if (AFFORD_RE.test(b) || (next && !isBranch(next) && AFFORD_RE.test(next))) { bound++; by.push('had'); continue }
+    if (AFFORD_RE.test(b) || (next && !isBranch(next) && AFFORD_RE.test(next))) {
+      bound++; by.push('had')
+      // R8a 仍要过：副模型自己写的可用句若指着 diff 的 `+ …` / grep 的 `file:NN: …`，把引文改写成文件里的样子并说明（假担保会让整份稿的担保作废）
+      const fixed = normalizeQuotedLoci(b, stats)
+      if (fixed !== b) { const idx = out.lastIndexOf(b); if (idx >= 0) out = out.slice(0, idx) + fixed + out.slice(idx + b.length) }
+      continue
+    }
     let nb = null
     const own = ownLocus(thenPart) || ownLocus(b)
-    if (own) { nb = withAffordance(b, own); by.push('span') }
-    else {
+    if (own) {
+      // R8a：分支里引的是 diff 的 `+ …` / grep 的 `file:NN: …` ⇒ 先把引文本身改写成文件里的样子，再接可用句
+      const b2 = own.via && own.quoted !== own.span ? b.split('`' + own.quoted + '`').join('`' + own.span + '`') : b
+      if (own.via && own.quoted !== own.span) stats.fileVerbatimFixed = (stats.fileVerbatimFixed || 0) + 1
+      nb = withAffordance(b2, own); by.push('span')
+    } else {
       if (!cands) cands = locusCandidates(src, ctx)
       const hit = bindLocus(thenPart, cands, src) || bindLocus(b, cands, src)
-      if (hit) { nb = withAffordance(b, hit.span); by.push(hit.overlap ? 'overlap' : 'file') }
+      if (hit) { nb = withAffordance(b, hit); by.push(hit.overlap ? 'overlap' : 'file') }
     }
+    // R9 判读覆盖（只统计）：trigger 里带「例如 / 比如 / 可能 / 也许」的是仍待证明的假设，不是输出里会字面出现的特征
+    if (/(?:如果|若是|若|要是|假如)[^，。；]{0,60}(?:例如|比如|可能|也许|大概|或许)/.test(b)) stats.hedgedTrigger = (stats.hedgedTrigger || 0) + 1
     if (!nb) { unbound++; continue }
     const idx = out.lastIndexOf(b)
     if (idx < 0) { unbound++; continue }

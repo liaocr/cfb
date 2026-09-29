@@ -117,6 +117,22 @@ const squash = (s) => String(s).replace(/["'`\s]+/g, '')
 //   此前只对着原文查 ⇒ 原文没提过 edit_file 的每一份带可用句的稿都被当编造放行（hook-wiring §6 抓到）。
 const GATE_ALLOW = new Set(['edit_file', 'old_text', 'new_text', 'read_file'])
 /**
+ * v12.8（理论 S8-R8b）：反引号片段前面是「new_text 是 / 改成 / 换成 / 替换为 …」⇒ 这段是要**写入**的新文本，不是对原文的引用。
+ * 它天然不是原文子串（否则就不叫改动），按整段查一定报发明；正确的出处判定是**标识符级**：段内的标识符 / 路径必须全部来自原文或观察。
+ * oracle I（effect-19）：wrong-model 的 new_text `observe(options, n) { const m = (n && n.model) || … }` 让主模型 3/3 直接 edit——这类稿不能再被整份放行。
+ */
+export const NEW_TEXT_LEAD_RE = /(?:new_text\s*(?:是|为|=|：|:)|补上|补一句|补|加上|加入|加|改成|改为|换成|替换为|替换成|设为|设成|写成|变成|改写为|改写成|替换成为|改回)\s*$/
+/** 文本里按 new_text 引导词标出的反引号段（去重） */
+export function newTextSpans(text) {
+  const parts = String(text || '').split('`')
+  const out = []
+  for (let i = 1; i < parts.length; i += 2) {
+    const seg = parts[i]
+    if (seg.length >= 2 && seg.length <= 300 && !seg.includes('\n') && NEW_TEXT_LEAD_RE.test(parts[i - 1].slice(-12))) out.push(seg)
+  }
+  return out
+}
+/**
  * @param src   原文（思维链）
  * @param out   压缩稿
  * @param opts.extra  额外的合法出处：本回合的任务与工具观察（cfg.compressCtx）。逐字锚点 / 落点本来就该来自观察（S8-R5/R7），
@@ -125,8 +141,12 @@ const GATE_ALLOW = new Set(['edit_file', 'old_text', 'new_text', 'read_file'])
 export function inventedIdentifiers(src, out, opts = {}) {
   const hay = String(src || '') + (opts && opts.extra ? '\n' + String(opts.extra) : '')
   let sq = null
+  // R8b：new_text 段整段豁免（它本来就不在原文里），改查段内标识符——把段内 token 加进待查集合
+  const newSpans = new Set(newTextSpans(out))
+  const inner = new Set()
+  for (const sp of newSpans) for (const t of gateTokens(sp)) if (t !== sp) inner.add(t)
   const res = []
-  for (const t of gateTokens(out)) {
+  for (const t of [...gateTokens(out)].filter((t) => !newSpans.has(t)).concat([...inner])) {
     if (GATE_ALLOW.has(t)) continue
     if (hay.includes(t)) continue
     const st = squash(t)

@@ -251,6 +251,9 @@ async function main(argv) {
   const resPath = path.join(o.out, 'results.jsonl')
   const done = fs.existsSync(resPath) ? fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []
   const have = new Set(done.filter((r) => !r.error).map((r) => `${r.task}|${r.variant}|${r.sample}`))
+  // v12.7.1：主调用成功、只是盲评没解析出来的行（judge-unparseable）只补盲评，不重发主调用（主调用带思考，是大头）
+  const rejudge = new Map()
+  for (const r of done) if (r.error && /^judge-unparseable/.test(r.error) && r.response && !have.has(`${r.task}|${r.variant}|${r.sample}`)) rejudge.set(`${r.task}|${r.variant}|${r.sample}`, r)
 
   if (!o.summarizeOnly) {
     const apiKey = process.env.DEEPSEEK_API_KEY
@@ -262,28 +265,39 @@ async function main(argv) {
       if (!t || !tv) continue
       for (const v of order) {
         if (!(v in tv.variants)) continue
-        for (let k = 0; k < o.samples; k++) if (!have.has(`${s.id}|${v}|${k}`)) jobs.push({ spec: s, task: t, content: tv.content, variant: v, reasoning: tv.variants[v], sample: k })
+        for (let k = 0; k < o.samples; k++) if (!have.has(`${s.id}|${v}|${k}`)) jobs.push({ spec: s, task: t, content: tv.content, variant: v, reasoning: tv.variants[v], sample: k, prior: rejudge.get(`${s.id}|${v}|${k}`) })
       }
     }
     console.log(`主调用 ${jobs.length} 次（+ 同数盲评），并发 ${o.concurrency}`)
     const base = {}
     for (const r of done) if (!r.error && r.variant === 'empty' && r.usage && !claudeShaped(r.usage)) base[r.task] = Math.max(base[r.task] || 0, Number(r.usage.prompt_tokens))
     const run = async (j) => {
-      const rec = { task: j.spec.id, variant: j.variant, sample: j.sample, ctxReasoningChars: j.reasoning.length, rejected: [] }
+      const rec = j.prior ? { ...j.prior, error: undefined, rejudged: true } : { task: j.spec.id, variant: j.variant, sample: j.sample, ctxReasoningChars: j.reasoning.length, rejected: [] }
       try {
-        let r
-        for (let k = 0; ; k++) {
-          r = await chat({ model: o.model, messages: buildMessages(j.task, j.content, j.reasoning, j.spec.followup), tools: TOOLS, thinking: { type: 'enabled' }, max_tokens: o.maxTokens, stream: false })
-          if (o.requireFp ? (!claudeShaped(r.usage) && TRUSTED_FP.has(r.fp)) : sawReasoning(r.usage, j.variant, j.reasoning.length, base[j.spec.id], r.fp)) break   // --require-fp：所有变体（含 raw、empty）都钉在同一个已验证后端，避免跨后端混杂
-          rec.rejected.push(claudeShaped(r.usage) ? 'claude-shape' : 'prompt=' + (r.usage && r.usage.prompt_tokens) + (r.fp ? '@' + r.fp : ''))
-          if (k >= 7) throw new Error('通道始终未送入思考：' + rec.rejected.join(','))
+        let text = rec.response
+        if (!j.prior) {
+          let r
+          for (let k = 0; ; k++) {
+            r = await chat({ model: o.model, messages: buildMessages(j.task, j.content, j.reasoning, j.spec.followup), tools: TOOLS, thinking: { type: 'enabled' }, max_tokens: o.maxTokens, stream: false })
+            const seen = o.requireFp ? (!claudeShaped(r.usage) && TRUSTED_FP.has(r.fp)) : sawReasoning(r.usage, j.variant, j.reasoning.length, base[j.spec.id], r.fp)   // --require-fp：所有变体（含 raw、empty）都钉在同一个已验证后端，避免跨后端混杂
+            // v12.7.1：thinking 显式开着却一字未想 ⇒ 这条通道这次没跑思考（effect-18 perf/oH#1：0 字、直接 read README），与「没送入变体」同等作废
+            const thought = (r.message.reasoning_content || '').length > 0
+            if (seen && thought) break
+            rec.rejected.push(!thought && seen ? 'no-thinking' : claudeShaped(r.usage) ? 'claude-shape' : 'prompt=' + (r.usage && r.usage.prompt_tokens) + (r.fp ? '@' + r.fp : ''))
+            if (k >= 7) throw new Error('通道始终未送入思考：' + rec.rejected.join(','))
+          }
+          if (j.variant === 'empty') base[j.spec.id] = Math.max(base[j.spec.id] || 0, Number(r.usage.prompt_tokens))
+          text = responseText(r.message)
+          // v12.7.1：主模型本轮思考原文也落盘（头 6000 字）——归因时要看「短思考 ⇒ 回头 read」的样本到底在想什么，只有字数不够
+          Object.assign(rec, { fp: r.fp, finish: r.finish, usage: r.usage, ms: r.ms, reasoningChars: (r.message.reasoning_content || '').length, reasoning: String(r.message.reasoning_content || '').slice(0, 6000), response: text, rule: ruleScore(j.spec, text), act: actScore(j.spec, text) })
         }
-        if (j.variant === 'empty') base[j.spec.id] = Math.max(base[j.spec.id] || 0, Number(r.usage.prompt_tokens))
-        const text = responseText(r.message)
-        Object.assign(rec, { fp: r.fp, finish: r.finish, usage: r.usage, ms: r.ms, reasoningChars: (r.message.reasoning_content || '').length, response: text, rule: ruleScore(j.spec, text), act: actScore(j.spec, text) })
-        const jr = await chat({ model: o.model, messages: [{ role: 'user', content: judgePrompt(j.task, j.spec, text) }], thinking: { type: 'disabled' }, temperature: 0, max_tokens: 1500, stream: false })
-        rec.judge = parseJudge(jr.message.content)
-        if (!rec.judge) rec.error = 'judge-unparseable: ' + String(jr.message.content).slice(0, 120)
+        // 盲评：解析不出（空内容 / 截断）再试 2 次，仍不行才记错（下次运行只补盲评）
+        for (let k = 0; k < 3 && !rec.judge; k++) {
+          const jr = await chat({ model: o.model, messages: [{ role: 'user', content: judgePrompt(j.task, j.spec, text) }], thinking: { type: 'disabled' }, temperature: 0, max_tokens: 1500, stream: false })
+          rec.judge = parseJudge(jr.message.content)
+          if (!rec.judge) rec.error = 'judge-unparseable: ' + String(jr.message.content).slice(0, 120)
+        }
+        if (rec.judge) rec.error = undefined
       } catch (e) { rec.error = String(e && e.message || e) }
       fs.appendFileSync(resPath, JSON.stringify(rec) + '\n')
       console.log(`  ${rec.task} / ${rec.variant} #${rec.sample}: ${rec.error ? 'ERR ' + rec.error.slice(0, 80) : `overall ${rec.judge.overall} correct ${rec.judge.correct} deadEnd ${rec.judge.deadEnd} · 思考 ${rec.reasoningChars} 字 · prompt ${rec.usage && rec.usage.prompt_tokens}${rec.rejected.length ? ' · 作废重发 ' + rec.rejected.length : ''}`}`)

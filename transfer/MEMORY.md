@@ -81,3 +81,17 @@
   新工具 tools/effect-pairs.mjs（成对归因 + 动作类别分布：raw 回头 read 35%、v4t 50%、oE 60%、oC 20%）。verify 607/0/1。
 - 迁移前终态（5812ec6）：本会话 11 个提交全部在 arena/01a0eba2-cfb；main 可 fast-forward。未跑任何付费步骤。待办 = A/B/C 三轮 + v4-live hold。
   网络诊断结论：出口白名单（github/api.github/npm/pypi 通；其余域 TLS 被切；DNS/TCP 正常 ⇒ 透明代理按 SNI 放行）。
+
+## 2026-09-29 第三会话（接手；网络通）
+- 环境：clone 分支 → keys.env（0600）→ 数据放回 → verify 607。curl 首次超时一次（重试 200），不是白名单。
+- **A 轮 oG**：5.7 / 直接改 60% / 回头 read 40%；flaky 7.0（2/2 edit `hedgeAfterMs: 1600`）⇒ R7 成立。失败 3/4 是短思考（299/527/691 字）。
+- **B 轮 oH**（v4d2 重压 6 次副调用：perf/sse 撞 1300 熔断 → 熔断改 1600 零成本重编译；eacces 超时重跑）：5.8 / 70% / 30%；flaky 8.5、eacces 8.5、wrong-model 2.0。
+  中转变差：新指纹 fp_5a4b7738a7d3（922 tokens，丢思考，不可信）、0 字思考样本。
+- **工具**：effect-eval 落盘主模型 reasoning（头 6000 字）、no-thinking 作废重发、盲评失败只补盲评；compile-direct 错误行记 promptVersion。
+- **归因（读主模型原话）**：perf「diff 行实际文件里可能没有加号，先 read_file 确认」；wrong-model「Need to see normalizeRequest to confirm n.model」+ 全部压缩稿 10/24 vs raw 4/4
+  （逻辑改动没给 new_text ⇒ 回头读文件拿设计材料）；sse 观察里冒出稿没覆盖的 rawFinish。⇒ 理论 S8-R8a 文件逐字 / R8b 三元组 / R9 判读覆盖 / 定义处优先。
+- **oracle I**（I.py，三题，预测先写）：wrong-model 9.0（3/3，new_text 被原样采用）、perf 9.0（2/2）、sse 8.5（2/2）；三题 8.9 / 100% / 0% 回头 read。
+- **落地 v12.8.0**（未付费实测）：fileVerbatim + normalizeQuotedLoci（R8a）、new_text 出处闸（R8b，birth 与程序门同口径）、hedgedTrigger 统计、compress-v4d3、熔断 1600。verify 612/0/1。
+- **用户指令**：副模型先别测；主模型没突破前，自己写稿测主模型，最小成本，先查资料再动手。外部资料本轮：Thought Anchors（arXiv 2506.19143：plan / 回溯 / 自检句是注意焦点）、
+  Overthinking（arXiv 2502.08235：LRM 在 agent 里偏内部推理而少环境交互——我们的失败是反向：多一次取证）。
+- 下一步：oracle 补全五题（4 次主调用）→ 单因子消融（≤6 次）→ 才回副模型 v4d3。

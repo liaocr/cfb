@@ -63,7 +63,7 @@ export interface CotFormBConfig {
   compressV4Direct?: boolean
   /** 仅 v4 直写（v12.7，理论 S8-R7）：尾段判读分支的闭合与落点绑定（改法分支必须带已核真的逐字落点 + 分支内可用句）；缺省 true */
   compressV4DirectBind?: boolean
-  /** 仅 v4 直写：超过此长度熔断为原文放行（缺省 1300） */
+  /** 仅 v4 直写：超过此长度熔断为原文放行（缺省 1600；v12.7.1 起，R7 闭合分支比开放分支长 200–500 字） */
   compressV4DirectMaxChars?: number
   /** 仅 v4 直写：整块编译 ⇒ 收网窗口 birthFinishWaitMs 只抬不降到此下限（缺省 6000；0 = 不抬），BOOT configAdjusted 留痕 */
   compressV4DirectMinWaitMs?: number

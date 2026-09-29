@@ -51,7 +51,7 @@ export async function recompile(direct, recs, cfg = {}) {
       : I.compileV4(r.side, raw, { ...c, compressCtx: ctx }, I.v4Budget(c))
     // v12.7：生产闸门（birth.js birthAccept：空白 / 发明标识符 / token 不降 / 净省不足）离线同判 ⇒ 评测稿在真机会不会被原文放行，这里就能看到
     const accept = out.ok ? acceptOf(I, raw, out.text, { ...c, compressCtx: ctx }) : undefined
-    return out.ok ? { ...r, why: 'condensed', text: out.text, outChars: out.text.length, kinds: out.stats.kinds, gate: out.stats, accept, recompiled: true }
+    return out.ok ? { ...r, why: 'condensed', error: undefined, text: out.text, outChars: out.text.length, kinds: out.stats.kinds, gate: out.stats, accept, recompiled: true }
       : { ...r, why: 'error', error: out.reason, text: undefined, recompiled: true }
   })
 }
@@ -85,7 +85,9 @@ async function main(argv) {
         const g = await I.makeBirthCompiler(cfg)(raw)
         rows.push({ id: rec.id, mode, why: 'condensed', rawChars: raw.length, outChars: g.text.length, ms: Date.now() - t0,
           promptVersion: g.meta && g.meta.promptVersion, kinds: g.meta && g.meta.v4 && g.meta.v4.kinds, gate: g.meta && g.meta.v4, accept: acceptOf(I, raw, g.text, cfg), text: g.text, side: g.meta && g.meta.sideOutput })
-      } catch (e) { rows.push({ id: rec.id, mode, why: 'error', error: String(e && e.message || e).slice(0, 200), ms: Date.now() - t0, side: e && e.meta && e.meta.sideOutput }) }
+      } catch (e) { rows.push({ id: rec.id, mode, why: 'error', error: String(e && e.message || e).slice(0, 200), ms: Date.now() - t0,
+        // v12.7.1：错误行也记 promptVersion——否则 --recompile 认不出这是直写稿（isV4d），会把散文 side 当 ops 喂给 compileV4
+        promptVersion: I.compressPromptVersion(cfg), side: e && e.meta && e.meta.sideOutput }) }
     })))
   } finally { fs.rmSync(d, { recursive: true, force: true }) }
   fs.writeFileSync(o.out, JSON.stringify({ rows }, null, 1))

@@ -2,7 +2,26 @@
 
 你是接手者。项目 = 本仓库 `dsh-cot-form-b`（cfb）：给 DeepSeek 宿主（DSH）做思维链压缩，目标是**主模型更好**（判断力/专注力），不是省钱、不是"不掉分"。用**中文**回复。
 
-## 0. 迁移速查（第二次迁移的原因：上一个沙盒只放行 GitHub / npm / PyPI，任何 LLM API 都调不出去）
+## -1. 第三会话终态（2026-09-29，先读这一段；下面 §0–§末 是上一会话写的，数字以本段和 CHANGELOG v12.8.0 为准）
+- 网络通、环境恢复完、A/B 轮跑完：**oG 5.7、oH 5.8**（raw 5.0，oC 6.4）；**flaky 4/4 直接 edit**（R7 预测成立）。都没过 6.4。
+- 归因靠新落盘的主模型思考原文（`results.jsonl` 的 `reasoning` 字段）：perf 输在 diff `+` 行被当逐字（主模型识破）；wrong-model 输在没给 new_text
+  （逻辑改动 ⇒ 短思考后回头读文件拿设计材料）；trigger 写成待证假设。⇒ 理论 **S8-R8（三元组闭合 / 文件逐字）、R9（判读覆盖）**。
+- **oracle I**（`docs/analysis/oracle/I.py`，只写 wrong-model / perf / sse）：**9.0 / 9.0 / 8.5，7/7 直接改，回头 read 0**。五题形态上界 ≈ 8.7（oI 三题 + oH 两题）。
+- 已落地未付费实测：提示词 `compress-v4d3`、程序门 R8a（`fileVerbatim`）/ R8b（new_text 出处闸）、熔断 1600、effect-eval 三处改进。verify **612 / 0 / 1**。
+- **用户指令（2026-09-29 晚）：副模型评测先停**，主模型没突破前不要再压；下一步仍是主模型侧：把 oracle I 的形态再往前推（见 §「下一步」新版）。
+- 数据：effect-17（A）、effect-18（A+B，含 reasoning 字段）、effect-19（+oI）；`direct-oh.json`（v4d2 首压 + 1600 熔断重编译）、`direct-oh-src.json`（含 side）、
+  `direct-og2.json` / `direct-oh2.json`（旧侧输出 + R8 门，未评）；`oracle/I.json`。全部在 transfer/。
+- 中转注意：B 轮中段出现新指纹 `fp_5a4b7738a7d3`（prompt_tokens 922，丢思考，**不要**加进 TRUSTED_FP）、0 字思考的样本（工具现在自动作废重发）。通道差时每次重发都是带思考的主调用，别硬跑。
+
+### 下一步（新版，按用户 2026-09-29 晚的方向：主模型优先、最小成本）
+1. **oracle 补全五题**（4 次主调用）：按 R8/R9 给 eacces / flaky 也写 oracle I 收尾（`I.py` 加两题），凑成同一份五题 oracle，得到真正的形态上界（预期 ≥ 8.5）。
+2. **形态的消融（每次 1 题 × 2 样本，≤ 6 次主调用）**：wrong-model 上去掉 new_text（其余不变）看是否掉回 42%；perf 上去掉「加号是 diff 标记」那句；
+   sse 上去掉「trace 的 null 不改变落点」那句。每次只动一个因子，写进 EFFECT-EVAL §15。这是把 R8a/R8b/R9 从「三条一起赢」拆成各自的证据。
+3. 主模型稳了再回副模型：`compress-v4d3` 重压一次（5 次副调用）→ 评 raw + 1 变体（10 次主调用）；看 `gate` 里 `newTextSpans`、`fileVerbatimFixed`、`hedgedTrigger`。
+   转正条件不变：综合 ≥ 6.4 且 flaky ≥ 7 ⇒ `compressV4Direct` 缺省 true，再 `v4-live` 量 hold。
+4. 归因永远先读 `reasoning` 字段：`node -e` 打印失败样本的 `reasoning`（或 `tools/effect-pairs.mjs`），不要只看分数。
+
+（第二次迁移的原因：上一个沙盒只放行 GitHub / npm / PyPI，任何 LLM API 都调不出去）
 1. **先测网，再做任何事**（上一会话就是栽在这里）：
    ```bash
    curl -sS -m 10 -o /dev/null -w '%{http_code}\n' https://api.a6api.com/v1/models -H "Authorization: Bearer $DEEPSEEK_API_KEY"
@@ -12,7 +31,7 @@
    `main` 落后一截、**可 fast-forward**：`git push https://x-access-token:$GITHUB_PAT@github.com/liaocr/cfb.git arena/01a0eba2-cfb:main`（不要 force）。
    新环境若从 main 起步，先 `git fetch origin arena/01a0eba2-cfb && git merge --ff-only FETCH_HEAD`。
 3. **密钥**用户口头给 4 个值（见「环境恢复」），写到 /home/user/.secrets/keys.env（0600），永远不进仓库。
-4. 环境恢复 → `node verify.mjs` 应 **607 / 0 / 1** → 按「下一步」跑 A（oG）、B（v4d2 重压 → oH）、C（v4u）三轮，每轮 raw + 1 变体，每轮结束用 `tools/effect-pairs.mjs` 归因。
+4. 环境恢复 → `node verify.mjs` 应 **612 / 0 / 1**（v12.8.0；上一会话是 607） → 按「下一步」跑 A（oG）、B（v4d2 重压 → oH）、C（v4u）三轮，每轮 raw + 1 变体，每轮结束用 `tools/effect-pairs.mjs` 归因。
 5. 决策规则：任一变体 综合 ≥ 6.4（oracle 上界）且 flaky ≥ 7 ⇒ 转正（`compressV4Direct` 缺省 true 或 ops 路照旧 + R7），并用 `v4-live` 量真实 hold 后再宣布；否则按 R7 第 6 条的可证伪点归因，回到理论。
 6. 用户新要求：**遇到问题先查文档 / 论文再动手**（已开的头在理论 S8 末「外部佐证与定位」）。
 
@@ -31,7 +50,7 @@ cp transfer/recordings.json /home/user/live-all/recordings.json
 cp transfer/direct-*.json /home/user/
 cp transfer/oracle/* /home/user/oracle/
 cp -r transfer/effect-* /home/user/
-cd /home/user/cfb && node verify.mjs   # 应 607 通过 / 0 失败 / 1 跳过（v12.7.0）
+cd /home/user/cfb && node verify.mjs   # 应 612 通过 / 0 失败 / 1 跳过（v12.8.0）
 ```
 
 ## 铁规矩（用户明说的，别问、别违反）

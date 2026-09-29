@@ -6,6 +6,39 @@
 
 ---
 
+## v12.8.0（2026-09-29）主模型思考原文归因 → 理论 S8-R8/R9（三元组闭合 / 文件逐字 / 判读覆盖）；oracle I 三道输题 7/7 直接改
+
+**实测（第三会话，同后端 `--require-fp`）**：A 轮 oG 5.7、B 轮 oH 5.8（raw 5.0，oC 上界 6.4）；**flaky 4/4 直接 edit `hedgeAfterMs: 1600`**（R7 预测成立，此前 0/6）。
+未过线的原因靠新落盘的主模型思考原文读出来（详见 `docs/analysis/EFFECT-EVAL-2026-09-28.md` §14、理论 S8-R8/R9）：
+perf 的落点是 git diff 的 `+` 行——「实际文件里可能没有加号，最好先 read_file 确认」；wrong-model 的改法是逻辑改动而稿没给 new_text——短思考后回头读文件拿设计材料；
+分支 trigger 写成待证假设——「Need to see normalizeRequest to confirm n.model」。按此写的 **oracle I**（只重写 wrong-model / perf / sse 三题的判读收尾）：
+wrong-model 9.0（3/3，三次都原样用了稿里的 new_text）、perf 9.0（2/2）、sse **8.5**（2/2，raw 2.3、oC 1.0）；三题合计 8.9 / 直接改 100% / 回头 read 0%。
+五题形态上界估计从 6.4 抬到 ≈ 8.7。
+
+### 理论（S8-R8 / R9）
+- **R8a 文件逐字**：old_text 的逐字性是相对将被编辑的文件而言的；diff 的 `+`/`-`、grep / `sed -n` 的 `文件:行号:`、节选缩进都是观察格式。出处链写成已完成的核对；一句假担保让整份稿的担保作废。
+- **R8b 三元组闭合**：READY 闭合 = `(path, old_text, new_text)`；改法不是换一个值时必须写出替换后的整行（由原文标识符组成，是 R2′ 的「改成什么」，不是 I2 意义上的编造）。
+- **R9 判读覆盖**：trigger 写成待回输出里会字面出现的特征、穷尽原文考虑过的假设、每个分支点名「看到什么就够了、不再查什么」；原文注意到的「对不上的量」预先说明不改变落点。
+- 落定次序补一条：几个落点都在手时改定义处优先于改调用处。R7 第 7 条记 A/B 轮实测。
+
+### 新增 / 修改
+- `compile-v4.js`：`fileVerbatim(line)`（导出）；`locusCandidates` / `ownLocus` 经它取文件逐字；`withAffordance` 对 diff / grep 来源的落点改用「文件里这一行是 `…`（加号 / 行号是标记）」的担保句；
+  `normalizeQuotedLoci`：已有可用句（`had`）的分支里指着 `+ …` 的引文同样改写（`stats.fileVerbatimFixed`），`-` 行被当 old_text 只统计（`minusLineAsOldText`）；
+  改法词补 降回 / 降到 / 调回；`hedgedTrigger` 统计（R9，只统计不改写）。
+- `compileV4Direct`：反引号段前面是 `new_text 是 / 改成 / 换成 …` ⇒ new_text 段，按标识符级核真（段内标识符全部来自原文 / 观察即保留反引号，`stats.newTextSpans`），否则照旧剥反引号。
+- `fidelity.js`：`NEW_TEXT_LEAD_RE` / `newTextSpans` 导出；`inventedIdentifiers` 对 new_text 段整段豁免、只查段内标识符（birth 闸与程序门同口径；oracle I 三份稿 accept=ok）。
+- 提示词 **`compress-v4d3`**：规则 4 改为三元组闭合 + 文件逐字 + 判读覆盖 + 落定次序；样例带 new_text；长度 700~1300。**未付费实测**。
+- 直写熔断 `compressV4DirectMaxChars` 缺省 1300 → **1600**（R7 闭合分支比开放分支长 200–500 字；v4d2 首压 2/5 撞 1300 ⇒ 整份稿被丢、原文放行）。
+- `tools/effect-eval.mjs`：results 落盘主模型本轮思考原文（`reasoning`，头 6000 字）；thinking 开着却 0 字 ⇒ `no-thinking` 作废重发；盲评解析失败重试 2 次，仍失败的行下次只补盲评不重发主调用。
+- `tools/compile-direct.mjs`：错误行也记 `promptVersion`（否则 `--recompile` 会把直写 side 当 ops）；重编译成功清掉旧 `error`。
+- `docs/analysis/oracle/I.py`（oracle I 稿源）；transfer/ 补 effect-17/18/19、direct-oh*.json、direct-og2/oh2.json、oracle/I.json。
+- 自测 612 / 0 / 1（新增 v4 §5s1–5s4、5s2b；5p4 / 5p6 随 R8a / v4d3 更新）。
+
+### 状态（诚实记录）
+- 副模型评测按用户要求暂停：v4d3 与 R8 门的自动稿（`direct-og2/oh2.json` 是旧侧输出 + 新门，v4d3 尚未重压）**没有付费数字**。
+- `compressV4Direct` 仍缺省关。转正条件不变（自动稿 综合 ≥ 6.4 且 flaky ≥ 7，再用 `v4-live` 量 hold）；现在的形态上界（≈8.7）说明余量很大。
+- 中转不稳时（新指纹 / 0 字思考）评测工具会作废重发，但每次重发都是一次带思考的主调用，费用会翻倍——通道差时别硬跑。
+
 ## v12.7.0（2026-09-29）判读分支的动作闭合与落点绑定（理论 S8-R7；compress-v4d2 + 程序门 bindFixBranches）
 
 **归因**（`docs/analysis/EFFECT-EVAL-2026-09-28.md` §13，理论 S8-R7）：逐样本对读 effect-16 发现 v12.6 对 flaky 的归因偏了——

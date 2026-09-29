@@ -701,8 +701,8 @@ try {
     assert.ok(!I.buildCompressPromptV4Direct('RAW').includes('【当前任务与观察】'), '无 ctx 不带块')
   })
   await test('5o2 compressPromptVersion/For：v4d 分流', () => {
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x' }), 'compress-v4d2:ctx')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d2:noctx')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x' }), 'compress-v4d3:ctx')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d3:noctx')
     const p = I.compressPromptFor({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'T' }, 'COT')
     assert.ok(p.includes('【上一轮思维链】\nCOT') && p.includes('【当前任务与观察】\nT'))
   })
@@ -734,8 +734,10 @@ try {
     assert.equal(r.ok, true); assert.equal(r.stats.unfenced, true)
     assert.equal(I.compileV4Direct('  ', 'raw', {}).ok, false)
     assert.equal(I.compileV4Direct('  ', 'raw', {}).reason, 'v4d-empty')
-    const long = I.compileV4Direct('看起来。'.repeat(400), 'raw', {})
+    const long = I.compileV4Direct('看起来。'.repeat(500), 'raw', {})
     assert.equal(long.ok, false); assert.equal(long.reason, 'v4d-too-long')
+    assert.equal(I.compileV4Direct('看起来。'.repeat(370), 'raw', {}).ok, true, 'v12.7.1：1480 字的闭合分支稿不熔断（缺省 1600）')
+    assert.equal(I.compileV4Direct('看起来。'.repeat(370), 'raw', { compressV4DirectMaxChars: 1300 }).reason, 'v4d-too-long', '显式给 1300 仍按 1300 熔断')
     const viaObs = I.compileV4Direct('（逐字）`git diff 里的 compressTargetMax: 1800,`。所以下一步是改回。如果仍慢，那么再查。', '上一轮推理没引这行',
       { compressCtx: 'git diff 里的 compressTargetMax: 1800,' })
     assert.equal(viaObs.stats.inventedSpans, 0, '任务观察里的逐字片段不算编造')
@@ -786,7 +788,55 @@ try {
     const probe = I.compileV4Direct('所以下一步工具调用是 bash 复现。如果 50 次全 PASS，那么需要改用 `docker run --cpus=2` 再压事件循环复现。', 'raw', { compressCtx: CTX })
     assert.ok(!probe.stats.fixBranches, '换复现手段不是改法')
     const diff = I.compileV4Direct('所以下一步工具调用是 bash 看 finishReason。如果升级前是 stop，那么主因是 compressTargetMax，把它回退到 450 再测。', 'raw', { compressCtx: CTX })
-    assert.ok(diff.text.includes('——落点 `+  compressTargetMax: 1800,`'), diff.text)
+    // v12.8（R8a）：diff 的 + 行作落点时剥掉加号，可用句说明加号是 diff 标记
+    assert.ok(diff.text.includes('——文件里这一行是 `compressTargetMax: 1800,`（git diff 里行首的加号是 diff 标记'), diff.text)
+    assert.ok(!diff.text.includes('`+  compressTargetMax'), '不再把 + 行原样当 old_text')
+  })
+  await test('5s1 R8a fileVerbatim：diff + 行 / grep 行号前缀 / sed -n 前缀剥成文件逐字；- 行与普通行不动', () => {
+    assert.deepEqual(I.fileVerbatim('+  compressTargetMax: 1800,'), { span: 'compressTargetMax: 1800,', via: 'diff' })
+    assert.deepEqual(I.fileVerbatim('src/transport.js:233:  return { ok: r.finish === \'stop\', text: r.out }'), { span: 'return { ok: r.finish === \'stop\', text: r.out }', via: 'grep' })
+    assert.deepEqual(I.fileVerbatim('118:  // DSH >= 0.9'), { span: '// DSH >= 0.9', via: 'grep' })
+    assert.deepEqual(I.fileVerbatim('  const env = { ...process.env, DSH_HOME: tmp }'), { span: 'const env = { ...process.env, DSH_HOME: tmp }', via: '' })
+    assert.equal(I.fileVerbatim('-  maxOutputTokens: 850,').via, '', 'diff 删除行不是「文件里的样子」（usableLocus 另拒）')
+    assert.equal(I.fileVerbatim('1500 和 1600 只差 100ms').via, '', '数字开头的散文不是 grep 前缀')
+    assert.equal(I.fileVerbatim('++ b/src/config.js').via, '', 'diff 文件头不是增加行')
+  })
+  await test('5s2 R8a 副模型自己引了 `+ …` 作落点 ⇒ 引文改写成文件里的样子 + 说明；grep 行号落点同理', () => {
+    const t = '所以下一步工具调用是 bash 看 finishReason。如果升级前是 stop，那么改 src/config.js 把 `+  compressTargetMax: 1800,` 改回 450。'
+    const r = I.compileV4Direct(t, 'raw', { compressCtx: CTX })
+    assert.ok(r.text.includes('把 `compressTargetMax: 1800,` 改回 450——文件里这一行是 `compressTargetMax: 1800,`（git diff 里行首的加号是 diff 标记，文件里没有它，old_text 不要带加号和行首缩进），可以直接当 edit_file 的 old_text，不用先读文件确认'), r.text)
+    assert.equal(r.stats.fileVerbatimFixed, 1); assert.deepEqual(r.stats.boundBy, ['span'])
+    const ctx = '[tool: bash] grep -n ok src/transport.js\n  src/transport.js:233:  return { ok: r.finish === \'stop\', text: r.out }'
+    const g = I.compileV4Direct('所以下一步工具调用是 bash grep。如果 ok 只看 finish，那么改 transport.js 的 ok 判定那一行。', 'raw', { compressCtx: ctx })
+    assert.ok(g.text.includes('——文件里这一行是 `return { ok: r.finish === \'stop\', text: r.out }`（grep 输出里的文件名和行号是前缀'), g.text)
+  })
+  await test('5s2b R8a 已有可用句（had）的分支里指着 `+ …` 的引文同样改写；`- …` 被当 old_text 只统计', () => {
+    const t = '所以下一步工具调用是 bash 看 finishReason。如果升级前是 stop，那么在 src/config.js 把它改回 450——`+  compressTargetMax: 1800,` 的逐字原文已给出，可以直接当 edit_file 的 old_text，不用再读文件。'
+    const r = I.compileV4Direct(t, 'raw', { compressCtx: CTX })
+    assert.deepEqual(r.stats.boundBy, ['had']); assert.equal(r.stats.fileVerbatimFixed, 1)
+    assert.ok(r.text.includes('把它改回 450——`compressTargetMax: 1800,`（git diff 里行首的加号是 diff 标记，文件里没有它，old_text 不要带加号和行首缩进） 的逐字原文已给出'), r.text)
+    const diffCtx = '[tool: bash] git diff v11.9..v11.10 -- src/config.js\n  -  maxOutputTokens: 850,\n  +  maxOutputTokens: 4096,\n  -  compressTargetMax: 450,\n  +  compressTargetMax: 1800,'
+    const minus = I.compileV4Direct('所以下一步工具调用是 bash。如果是 length，那么把 `+  maxOutputTokens: 4096,` 降回一档（`-  maxOutputTokens: 850,` 是旧值逐字原文，可直接当 edit_file 的 old_text）。', 'raw', { compressCtx: diffCtx })
+    assert.equal(minus.stats.minusLineAsOldText, 1); assert.ok(minus.text.includes('`maxOutputTokens: 4096,`（git diff'), minus.text)
+  })
+  await test('5s3 R8b new_text 段：整段不是原文子串也不算发明，只查段内标识符；标识符不在原文 / 观察 ⇒ 仍算发明', () => {
+    const raw = 'read_file src/host-follow.js：observe(options) { if (options && options.model) lastModel = options.model } 只读 options.model，n 被忽略。'
+    const ok = I.compileV4Direct('所以下一步工具调用是 bash grep。如果 n 带 model，那么 edit_file src/host-follow.js，old_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`，new_text 是 `observe(options, n) { const m = (n && n.model) || (options && options.model); if (m) lastModel = m }`，不用再读文件。', raw, {})
+    assert.equal(ok.stats.inventedSpans, 0); assert.equal(ok.stats.newTextSpans, 1)
+    assert.ok(ok.text.includes('new_text 是 `observe(options, n)'), '反引号保留')
+    assert.deepEqual(I.inventedIdentifiers(raw, ok.text), [], 'birth 闸同样放行')
+    const bad = I.compileV4Direct('如果 n 带 model，那么改成 `observe(options, n) { lastModel = pickModel(n) }`。', raw, {})
+    assert.equal(bad.stats.inventedSpans, 1, 'pickModel 不在原文 ⇒ 发明')
+    assert.ok(I.inventedIdentifiers(raw, '改成 `observe(options, n) { lastModel = pickModel(n) }`').includes('pickModel'))
+    // 不带引导词的非逐字段照旧剥反引号
+    const plain = I.compileV4Direct('这一行 `observe(options, n) { lastModel = n.model }` 很关键。', raw, {})
+    assert.equal(plain.stats.inventedSpans, 1); assert.ok(!plain.text.includes('`observe(options, n)'))
+  })
+  await test('5s4 R9 统计：trigger 带「例如 / 可能」记 hedgedTrigger，不改写', () => {
+    const r = I.compileV4Direct('所以下一步工具调用是 bash grep。如果实际当前模型在 n 中（例如 n 是 request 对象），那么改 `hedgeAfterMs: 1600` 那一行。', RAW7, { compressCtx: CTX })
+    assert.equal(r.stats.hedgedTrigger, 1)
+    const r2 = I.compileV4Direct('所以下一步工具调用是 bash grep。如果输出显示 n 带 model 字段，那么改 `hedgeAfterMs: 1600` 那一行。', RAW7, { compressCtx: CTX })
+    assert.equal(r2.stats.hedgedTrigger, undefined)
   })
   await test('5p5 已有可用句的分支不动；compressV4DirectBind:false 回到 v12.6 行为', () => {
     const had = '所以下一步工具调用是 bash 复现。如果失败复现，那么改 `hedgeAfterMs: 1600`——这一行的逐字原文已给出，可以直接当 edit_file 的 old_text，不用再读文件。'
@@ -797,13 +847,14 @@ try {
     assert.equal(off.stats.boundBranches, undefined); assert.equal(off.stats.repairedAffordance, true)
     assert.ok(off.text.endsWith('上面逐字引出的代码行可以直接当 edit_file 的 old_text。'))
   })
-  await test('5p6 v4d2 提示词：样例分支闭合（落点 + 可用句 + 不再复现）、候选落定、下一步 = 原文实际发出的调用', () => {
+  await test('5p6 v4d3 提示词：样例分支闭合（三元组 + 可用句 + 不再复现）、文件逐字、判读覆盖、候选落定、下一步 = 原文实际发出的调用', () => {
     const p = I.buildCompressPromptV4Direct('RAW', 'CTX')
-    assert.ok(p.includes('把 `const port = 8123 // 旧端口` 删掉') && p.includes('可以直接当 edit_file 的 old_text，拨测结果一到就改，不用再读文件、不再复现'), '样例分支闭合')
+    assert.ok(p.includes('old_text 是 `const port = 8123 // 旧端口`') && p.includes('new_text 是 `const port = cfg.port`') && p.includes('拨测结果一到就改，不再复现'), '样例分支闭合（v4d3：三元组）')
+    assert.ok(p.includes('三样缺一不可') && p.includes('逐字是对文件说的') && p.includes('工具输出里会字面出现的特征') && p.includes('改定义处优先于改调用处'), 'v4d3 规则：三元组 / 文件逐字 / 判读覆盖 / 落定次序')
     assert.ok(p.includes('只落定一个') && p.includes('不要写「A 或 B」两可'), '候选落定规则')
     assert.ok(p.includes('X 就是原文最后决定发出的那一条调用'), '回溯一致')
     assert.ok(!p.includes('证据是否充分按这个标准判'), 'v4d1 的下一步仲裁已撤回')
-    assert.ok(I.V4D_TAIL.includes('逐字落点'))
+    assert.ok(I.V4D_TAIL.includes('文件里逐字的一行') && I.V4D_TAIL.includes('new_text'))
   })
   // ---- §5q v12.7 compressCtx 自动构造（理论 S8-R5/R7 的生产前提：压缩器要看到 Agent 看到的观察）----
   await test('5q1 buildCompressCtx：最后一条人类 user + 本回合工具结果（pi-ai 块形与 OpenAI 形都认），格式同 TASKS', () => {
@@ -846,7 +897,7 @@ try {
     const base = { compressPrompt: 'v4' }
     assert.equal(I.compressCtxFor(base, { messages: [] }), base, '空 ctx ⇒ 原对象')
     assert.equal(I.compressCtxFor(base, { get messages() { throw new Error('boom') } }), base, '异常 ⇒ 原配置')
-    assert.equal(I.compressPromptVersion(I.compressCtxFor({ compressPrompt: 'v4', compressV4Direct: true }, { messages: msgs })), 'compress-v4d2:ctx')
+    assert.equal(I.compressPromptVersion(I.compressCtxFor({ compressPrompt: 'v4', compressV4Direct: true }, { messages: msgs })), 'compress-v4d3:ctx')
     const src = fs.readFileSync(new URL('../src/plugin.js', import.meta.url), 'utf8')
     assert.ok(/const streamCfg = compressCtxFor\(callCfg, options\)/.test(src), 'plugin.js birth 分支用 compressCtxFor 派生 streamCfg')
   })

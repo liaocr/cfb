@@ -266,3 +266,50 @@ v3 / v4 都把这句当「推测」删了，主模型一律 `read_file verify.mj
 - 第 B 轮（提示词 v4d2，5 次副模型调用）：`--cfg '{"compressV4Direct":true,"distillStream":true}' --out /home/user/direct-oh.json`，再评 `oH`。
   看点：副模型是否自己写出闭合分支（`boundBy` 全是 `had`）、析取率（`disjunctiveFix`）是否归零、长度是否仍在 1300 内。
 - 两轮任一 ≥ oC 的 6.4 且 flaky 破 7 ⇒ `compressV4Direct` 转正（缺省开）。
+
+## 14. 第三会话（2026-09-29）：A 轮 oG、B 轮 oH 实测；主模型思考原文落盘；oracle I 把三道输题全部打到 8.5–9.0
+
+同后端 `--require-fp`，raw 复用 n=20；每格 n=2（oracle I 的 wrong-model n=3）。结果目录 effect-17（A）、effect-18（A+B）、effect-19（+oracle I）。
+
+### 14.1 A / B 轮：R7 的可证伪预测成立
+
+| 变体 | n | 综合 | 直接改 | 回头read | 死路 | eacces | flaky | wrong-model | sse | perf |
+|---|---|---|---|---|---|---|---|---|---|---|
+| raw | 20 | 5.0 | 50% | 35% | 40% | 7.3 | 2.8 | 9.0 | 2.3 | 3.8 |
+| oC（oracle 上界，旧） | 10 | 6.4 | 70% | 20% | 20% | 9.0 | 8.5 | 5.5 | 1.0 | 8.0 |
+| oG（oF/oE 侧输出 + R7 门） | 10 | 5.7 | 60% | 40% | 30% | 6.5 | **7.0** | 5.5 | 4.5 | 5.0 |
+| oH（v4d2 重压 + R7 门） | 10 | 5.8 | 70% | 30% | 20% | 8.5 | **8.5** | 2.0 | 4.5 | 5.5 |
+
+- flaky：oG 2/2、oH 2/2 直接 `edit_file old_text="hedgeAfterMs: 1600"`（v12.6 的 oD/oE/oF 0/6）。R7 第 6 条预测成立，R6 的「判断力边界」不必回。
+- 两轮都没过 6.4：oG 的失败样本 3/4 是短思考（299 / 527 / 691 字）后回头 read；oH 输在 wrong-model（副模型把落点落在 plugin.js 的调用点 `host.observe(options, n)`，
+  改成 `host.observe(n)` 被盲评判为改错文件）与 perf（见 14.2）。
+- 运维：v4d2 首压 perf 1457 / sse 1382 字撞 1300 熔断（R7 闭合分支天然更长）⇒ 熔断改 1600 后零成本重编译；eacces 一次 90 s 超时，重跑 4.5 s。
+  中转在 B 轮中段变差：新指纹 `fp_5a4b7738a7d3` 的 prompt_tokens 922（丢思考，不可信），两条样本 8 次都没落到可信后端；一条样本思考 0 字（通道没跑思考）。
+
+### 14.2 方法推进：主模型本轮思考原文落盘 ⇒ 归因读原话
+
+`effect-eval` 从本轮起把主模型的 `reasoning_content`（头 6000 字）存进 results；0 字思考视同未送入变体作废重发；盲评解析失败只补盲评不重发主调用。
+三处失败的原话（完整表在理论 S8-R8）：
+
+- perf/oH#0：「之前的推理说逐字原文是 `+  compressTargetMax: 1800,`，但实际文件里可能没有加号。最好先用 read_file 确认」⇒ **观察逐字 ≠ 文件逐字**（R8a）。
+- wrong-model/oH#0（126 字）：「Need to see normalizeRequest to confirm n.model.」⇒ trigger 写成待证假设，主模型就去证它（R9）。
+- wrong-model 全部压缩稿 10/24 直接改 vs raw 4/4：失败样本 77–557 字后 `read_file src/host-follow.js`——改法是逻辑改动，稿只给了 old_text 和方向，
+  没给 new_text，主模型去拿设计材料（R8b）。
+
+### 14.3 oracle I（只写三道输题，正文沿用 C，改判读收尾；预测先写后跑）
+
+| 任务 | raw | oG | oH | **oI** | 直接改 |
+|---|---|---|---|---|---|
+| wrong-model | 9.0 | 5.5 | 2.0 | **9.0** | 3/3（三次都原样用了稿里的 new_text） |
+| perf-regression | 3.8 | 5.0 | 5.5 | **9.0** | 2/2 |
+| sse-truncated | 2.3 | 4.5 | 4.5 | **8.5** | 2/2 |
+| 三题合计 | 5.0 | 5.0 | 4.0 | **8.9** | 7/7，回头 read 0%，死路 0% |
+
+主模型的自检句每次都被稿里已完成的核对接住：「should we maybe read file to ensure exact whitespace? The prior read_file output includes lines.」、
+「注意 diff 中是 `+ …`，文件里可能缩进两个空格。old_text 只用 "compressTargetMax: 1800," 可匹配。不需要先读」、「或许需要先读文件确认？但已有原文」。
+稿源 `docs/analysis/oracle/I.py`（→ `/home/user/oracle/I.json`）。五题形态上界估计 ≈ 8.7（oI 三题 + oH 的 eacces / flaky 8.5），旧上界 oC 6.4。
+
+### 14.4 落地（v12.8.0，未付费实测；用户要求先停副模型评测）
+程序门：`fileVerbatim`（diff `+` / grep 行号剥成文件逐字 + 说明句；副模型自己引的 `+ …` 也改写；`-` 行当 old_text 只统计）；new_text 段按标识符级核真
+（`newTextSpans`，birth 闸同口径）；`hedgedTrigger` 统计。提示词 `compress-v4d3`（三元组闭合 / 文件逐字 / 判读覆盖 / 定义处优先）。
+零成本重编译 oG/oH 侧输出 → `direct-og2.json` / `direct-oh2.json`（perf 的 `+` 落点已改写），待下一次付费评测。
