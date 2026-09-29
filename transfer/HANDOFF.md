@@ -50,6 +50,10 @@ cd /home/user/cfb && node verify.mjs   # 应 607 通过 / 0 失败 / 1 跳过（
 - 分数两极分布（直接 edit ≈9–10 / 回头 read ≈2）；每题 2 样本 SE≈1 分，Δ<1.5 不可判。
 - 非流式副调用偶发 60s socket hang up（长输出必撞）⇒ compile-direct 用 `distillStream:true` 稳。
 - thinking 必须显式开；Claude 形通道会丢历史 reasoning；502 波动；`--require-fp` 过滤混杂后端。
+- `--require-fp` 只认 `tools/effect-eval.mjs` 里 `TRUSTED_FP = {'fp_dspure_app_v1'}`。若所有主调用都报「通道始终未送入思考」，看 rejected 里的 `@fp`：
+  是个新指纹、且同一任务的 prompt_tokens 明显高于无思考基线（说明确实拼接了历史思考），就把它加进 TRUSTED_FP 再跑；否则是中转换了会丢思考的通道，别硬测。
+- 2026-09-29 已从 GitHub 新克隆验证过：零依赖（无 node_modules，Node 22）、verify 607、按「环境恢复」放回数据后 `--recompile` 能一字不差重现 `direct-og.json`、
+  `effect-pairs` / `effect-eval --summarize` 可跑、A 轮命令能走到发请求（主调用 10 次 = 只补 oG）。唯一没验证的是网络与密钥。
 
 ## 工具命令模板（tools/ 都在仓库里）
 ```bash
