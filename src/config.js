@@ -210,6 +210,7 @@ export const DEFAULTS = {
   //   v12.8.8 转正（effect-20，v4d4 自动稿 8 题 × 2，同后端 --require-fp）：基题 8.5 / 反驳 6.5（raw 5.0 / 5.0）、错改 0、死路 0%、回头 read 6%、
   //   flaky 9.0；v4-live 直写到位率 4/5 = 80%，finish 多扣 p50 6.0 s / max 7.1 s。达到 S9 阶段 1 全部门槛（n=2/题，均在门槛边上）⇒ v4 之内缺省直写。
   //   注意：全局缺省仍是 compressPrompt 'v3'（缺省配置线上零变化）；只影响显式选 v4 的部署。回退：compressV4Direct:false（ops 路原样保留）。
+  //   v12.8.9 提示词 compress-v4d6（在手代码行清单 + 落定句 + new_text 必写，理论 S8-R11）：两份独立自动稿 8.5 / 8.6，死路 / 错改 / 回头 read 全 0（effect-23）。
   compressV4Direct: true,
   // v12.7：直写是整块编译（不走增量分段），收网窗口只抬不降到这个下限（真机 flash 3.6–10.9 s / 块）；0 = 不抬
   compressV4DirectMinWaitMs: 6000,

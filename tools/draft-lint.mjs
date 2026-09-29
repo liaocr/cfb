@@ -7,7 +7,9 @@
 //   L4 落点出处句（原样/逐字/不带缩进）  L5 文件逐字（无 diff +/-、行号前缀当落点）  L6 「不再查什么」句在改法段内
 //   L7 改法只落一个（同一段内无 A 或 B） L8 trigger 无含糊词                 L9 非改法段具体（命令/文件/此时不要改），不是光「再取证」
 //   L10 逃生句                          L11 被排除候选 ≥2 且带理由           L12 全稿无两可改法
-//   L13 长度 900–1650                    L14 原生语域（推理词 + 无列表标题）   L15 对齐可见回答（上一轮回答里说要确认的 = 这次调用）
+//   L13 长度 900–1800                    L14 原生语域（推理词 + 无列表标题）   L15 对齐可见回答（上一轮回答里说要确认的 = 这次调用）
+//   L16 出处时效（v12.8.9，R11a）：改法段写明落点行出自上一轮哪个工具 / 这次输出里会不会再出现它
+//   v12.8.9 起 L9 收紧（S9 收官结论 iii / R11c）：非改法段必须含一条可发出的命令（工具名 + 参数或反引号命令）或文件 + 位置；光「此时不要改」「查 CI」不算；两个方向用「或」连且零命令 ⇒ 不算
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -67,9 +69,12 @@ const NOMORE_RE = /不用再|不再复现|不再读|就够了|不用先读|不�
 const REJECT_RE = /不选|排除|搁置|不走|不是它|无罪|陪跑|先不|不动它|不采|放弃|否了|否定/
 const CONCRETE_RE = /bash|grep|docker|read_file|sed|taskset|analyze-trace|npm|node|stress|看[^，。]{0,14}(?:日志|代码|定义|来源|使用点|文件|那一行|赋值)|[\w./-]+\.(?:m?js|json|ya?ml|py)|此时不要|此时别|不要动|不动 |不要改|不改/
 const PROBE_ONLY_RE = /^(?:再取证|那时再取证|再看看|另查|再查)[。；]?$/
+// 命令级（v12.8.9）：反引号里的命令，或工具名 + 参数（bash `…` / read_file xx / grep -n … / sed -n … / docker … / taskset …）
+const CMD_LEVEL_RE = /`(?:bash|sh|grep|rg|sed|awk|cat|ls|node|npm|npx|git|docker|taskset|nproc|ssh|nc|curl|ps|top|stress|analyze-trace|python3?|for\s|while\s)[^`]{2,}`|(?:\bbash\b|\bread_file\b|\bgrep\b|\bsed -n\b|\bdocker\b|\btaskset\b|\banalyze-trace\b|\bgit (?:diff|log|show|grep)\b|\bnode\b|\bnpm\b)\s+[`\-\w"'./]{2,}/
+const TIMELY_RE = /出自上一轮|出处是上一轮|上一轮(?:的)?(?:read_file|grep|git diff|工具输出|观察|原样行)|不会再出现|不会出现在|不含它|会带出这一行|会再出现|照用/
 const ALIGN_RE = /可见回答|上一轮回答|上一轮的回答|回答里说|回答里写|刚才说要确认|说要确认的/
 
-/** 15 条形态条目；返回 { items, score, segments, fixSegments, chars } */
+/** 16 条形态条目（v12.8.9 前 15 条；旧稿在 L16 上自然为 0）；返回 { items, score, segments, fixSegments, chars } */
 export function lintDraft(I, text, raw, ctx) {
   const r = I.compileV4Direct(text, raw, { compressCtx: ctx })
   const st = r.ok ? r.stats : {}
@@ -87,18 +92,27 @@ export function lintDraft(I, text, raw, ctx) {
   items.L6 = fix.some((s) => NOMORE_RE.test(s.text)) ? 1 : 0
   items.L7 = fix.length >= 1 && fix.every((s) => !/(?:改法|改成|改回|回落|设为)[^。；]{0,40}(?:或者|或是|或)\s*(?:给|改|把|换|用)/.test(s.head)) ? 1 : 0
   items.L8 = !(st.hedgedTrigger > 0) ? 1 : 0
-  const concrete = (s) => { const then = s.text.replace(/^.*?(?:那么|就|则)/, ''); return CONCRETE_RE.test(then) && !PROBE_ONLY_RE.test(then.trim()) }
+  const concrete = (s) => {
+    const then = s.text.replace(/^.*?(?:那么|就|则)/, '')
+    if (PROBE_ONLY_RE.test(then.trim())) return false
+    if (I.isFixBranch(then)) return CONCRETE_RE.test(then)   // 第二分支也是改法：与 L3 同标准（三元组由 L3 管）
+    const cmd = CMD_LEVEL_RE.test(then)
+    const filePos = /[\w./-]+\.(?:m?js|json|ya?ml|py|ts)\s*(?:里|的|第|:)\s*(?:`[^`]{4,}`|第?\s*\d+\s*[-–~]?\s*\d*\s*行|[^，。；]{0,12}(?:那一行|这一行|一段|节选|定义|赋值|调用))/.test(then)
+    const disjNoCmd = /(?:或者|或是|或)\s*(?:直接|去|改|加|给|换)/.test(then) && !cmd
+    return (cmd || filePos) && !disjNoCmd
+  }
   items.L9 = segs.length >= 2 && (other.length ? other.every(concrete) : fix.slice(1).every(concrete)) ? 1 : 0
   items.L10 = /都不像|先别改|先别动/.test(text) ? 1 : 0
   items.L11 = splitSentences(text).filter((s) => REJECT_RE.test(s)).length >= 2 ? 1 : 0
   items.L12 = !(st.disjunctiveFix > 0) ? 1 : 0
-  items.L13 = text.length >= 900 && text.length <= 1650 ? 1 : 0   // 上限 = v4d4 提示词的硬上限 1650（熔断 1800 只拦跑飞）
+  items.L13 = text.length >= 900 && text.length <= 1800 ? 1 : 0   // 上限 = v4d5 提示词的硬上限 1800（熔断 2000 只拦跑飞）
   items.L14 = /看起来|所以|下一步工具调用|我们需要/.test(text) && !/^\s*(?:[-*•]|\d+[.、]|#)/m.test(text) ? 1 : 0
   items.L15 = ALIGN_RE.test(text) ? 1 : 0
+  items.L16 = fix.length >= 1 && fix.some((s) => TIMELY_RE.test(s.text)) ? 1 : 0   // R11a 出处时效
   const score = Object.values(items).reduce((a, b) => a + b, 0)
   return { items, score, segments: segs.length, fixSegments: fix.length, chars: String(text).length }
 }
-export const LINT_KEYS = Array.from({ length: 15 }, (_, i) => 'L' + (i + 1))
+export const LINT_KEYS = Array.from({ length: 16 }, (_, i) => 'L' + (i + 1))
 
 export function loadResults(dir) {
   const p = path.join(dir, 'results.jsonl')

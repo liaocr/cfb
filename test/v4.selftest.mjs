@@ -702,8 +702,8 @@ try {
     assert.ok(!I.buildCompressPromptV4Direct('RAW').includes('【当前任务与观察】'), '无 ctx 不带块')
   })
   await test('5o2 compressPromptVersion/For：v4d 分流', () => {
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x' }), 'compress-v4d4:ctx')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d4:noctx')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x' }), 'compress-v4d6:ctx')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d6:noctx')
     const p = I.compressPromptFor({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'T' }, 'COT')
     assert.ok(p.includes('【上一轮思维链】\nCOT') && p.includes('【当前任务与观察】\nT'))
   })
@@ -735,7 +735,7 @@ try {
     assert.equal(r.ok, true); assert.equal(r.stats.unfenced, true)
     assert.equal(I.compileV4Direct('  ', 'raw', {}).ok, false)
     assert.equal(I.compileV4Direct('  ', 'raw', {}).reason, 'v4d-empty')
-    const long = I.compileV4Direct('看起来。'.repeat(500), 'raw', {})
+    const long = I.compileV4Direct('看起来。'.repeat(700), 'raw', {})
     assert.equal(long.ok, false); assert.equal(long.reason, 'v4d-too-long')
     assert.equal(I.compileV4Direct('看起来。'.repeat(370), 'raw', {}).ok, true, 'v12.7.1：1480 字的闭合分支稿不熔断（缺省 1600）')
     assert.equal(I.compileV4Direct('看起来。'.repeat(370), 'raw', { compressV4DirectMaxChars: 1300 }).reason, 'v4d-too-long', '显式给 1300 仍按 1300 熔断')
@@ -866,16 +866,16 @@ try {
     assert.equal(off.stats.boundBranches, undefined); assert.equal(off.stats.repairedAffordance, true)
     assert.ok(off.text.endsWith('上面逐字引出的代码行可以直接当 edit_file 的 old_text。'))
   })
-  await test('5p6 v4d3 提示词：样例分支闭合（三元组 + 可用句 + 不再复现）、文件逐字、判读覆盖、候选落定、下一步 = 原文实际发出的调用', () => {
+  await test('5p6 v4d3→v4d5 提示词：样例分支闭合（三元组 + 出处/时效句 + 不再读）、文件逐字、判读覆盖、候选落定、下一步 = 原文实际发出的调用', () => {
     const p = I.buildCompressPromptV4Direct('RAW', 'CTX')
-    assert.ok(p.includes('old_text 是 `const port = 8123 // 旧端口`') && p.includes('new_text 是 `const port = cfg.port`') && p.includes('拨测结果一到就改，不再复现'), '样例分支闭合（v4d3：三元组）')
-    assert.ok(p.includes('四个问题') && p.includes('逐字是对文件说的') && p.includes('工具输出里会字面出现的特征') && p.includes('改定义处优先于改调用处'), 'v4d3 规则：明文清单 / 文件逐字 / 判读覆盖 / 落定次序')
-    assert.ok(p.includes('不要替 Agent 写出那一行代码') && p.includes('不许写成「那就再取证」') && p.includes('如果输出跟这两种都不像，先别改'), 'v12.8.1：new_text 只给换值类 / 第二分支具体 / 逃生句')
+    assert.ok(p.includes('old_text 是 `const port = 8123 // 旧端口`') && p.includes('new_text 是 `const port = cfg.port`') && p.includes('不用再读 pool.js、也不用再核 net.yaml 的端口'), '样例分支闭合（三元组 + 具体的不再看什么）')
+    assert.ok(p.includes('五个答案') && p.includes('逐字是对文件说的') && p.includes('会字面出现') && p.includes('改定义行优先于改调用行'), '规则：明文清单 / 文件逐字 / 判读覆盖 / 落定次序')
+    assert.ok(p.includes('new_text 由原文里出现过的标识符拼成一整行') && p.includes('不写「再看看 / 再取证」') && p.includes('如果输出跟这两种都不像，先别改'), 'new_text 必写（R8b 恢复）/ 第二分支具体 / 逃生句')
     // 宿主工具名替换：规则与样例里的规范词换成宿主的；反引号里的代码不动
     const claude = I.buildCompressPromptV4Direct('RAW', 'CTX', { name: 'str_replace_based_edit_tool', oldKey: 'old_str', newKey: 'new_str' })
-    assert.ok(claude.includes('可以直接当 str_replace_based_edit_tool 的 old_str') && claude.includes('new_str 是 `const port = cfg.port`') && !/\bedit_file\b/.test(claude), '宿主工具名进提示词')
-    assert.ok(p.includes('只落定一个') && p.includes('不要写「A 或 B」两可'), '候选落定规则')
-    assert.ok(p.includes('X 就是原文最后决定发出的那一条调用'), '回溯一致')
+    assert.ok(claude.includes('str_replace_based_edit_tool src/pool.js，old_str 是 `const port = 8123 // 旧端口`') && claude.includes('new_str 是 `const port = cfg.port`') && !/\bedit_file\b/.test(claude) && !/\bold_text\b/.test(claude), '宿主工具名进提示词')
+    assert.ok(p.includes('改法只落一个') && p.includes('不写「A 或 B」两个方向'), '候选落定规则')
+    assert.ok(p.includes('X 就是原文最后实际发出的那一条调用'), '回溯一致')
     assert.ok(!p.includes('证据是否充分按这个标准判'), 'v4d1 的下一步仲裁已撤回')
     assert.ok(I.V4D_TAIL.includes('文件里逐字的一行') && I.V4D_TAIL.includes('new_text'))
   })
@@ -899,10 +899,10 @@ try {
     assert.deepEqual(I.inventedIdentifiers(raw, '把 MY_FAKE_ENV_VAR 传下去'), ['MY_FAKE_ENV_VAR'])
     assert.deepEqual(I.inventedIdentifiers(raw, 'new_text 是 `observe(options, n) { const m = (n && n.model) || (options && options.model); if (m) lastModel = m }`，不用再读文件。'), [], '段尾「`，」不破坏 new_text 段识别')
   })
-  await test('5t3 直写熔断缺省 1800（v12.8.6）；配置可覆盖', () => {
-    const body = '所以下一步工具调用是 bash 复现。' + '看起来是时序竞态。'.repeat(220)
-    assert.equal(I.compileV4Direct(body.slice(0, 1790), 'raw', {}).ok, true)
-    assert.equal(I.compileV4Direct(body.slice(0, 1801) + '。', 'raw', {}).reason, 'v4d-too-long')
+  await test('5t3 直写熔断缺省 2000（v12.8.6 起 1800，v12.8.9 起 2000：v4d5 完整稿 1600–1950 字，2/10 撞 1800）；配置可覆盖', () => {
+    const body = '所以下一步工具调用是 bash 复现。' + '看起来是时序竞态。'.repeat(240)
+    assert.equal(I.compileV4Direct(body.slice(0, 1990), 'raw', {}).ok, true)
+    assert.equal(I.compileV4Direct(body.slice(0, 2001) + '。', 'raw', {}).reason, 'v4d-too-long')
     assert.equal(I.compileV4Direct(body.slice(0, 1790), 'raw', { compressV4DirectMaxChars: 1500 }).reason, 'v4d-too-long')
   })
   await test('5t5 分句不切反引号内（v12.8.8，v4d4 sse 稿真机撞上）：`done ? \'stop\' : null` 里的 ? 不是句号；可用句接在分支句尾而不是插进代码段；birthAccept 放行', () => {
@@ -916,13 +916,81 @@ try {
     assert.ok(!r.text.includes('?——落点'), '不再插进代码段中间')
     assert.deepEqual(I.inventedIdentifiers('raw 里引过 return { out, finish: finish || (done ? \'stop\' : null) }', r.text, { extra: ctxS }), [], '发明标识符闸放行（真机此前报 invented-identifier）')
   })
-  await test('5t4 提示词 v4d4（v12.8.3/6/7 的三处改动 + 版本号）：绝对行动纪律、严禁臆想函数体、长度 1100~1550 / 上限 1650；promptVersion 换成 compress-v4d4', () => {
+  await test('5t4 提示词 v4d6（v12.8.9，理论 S8-R11）：五问 + 落定句 + 最后结论为准 + 在手清单选行 + 值行优先 + new_text 必写 + 出处时效 + 第二分支配对；promptVersion = compress-v4d6', () => {
     const p = I.buildCompressPromptV4Direct('RAW', 'CTX')
-    assert.ok(p.includes('必须下达绝对行动纪律') && p.includes('严禁再用 read_file 或 sed 查看上下文或确认'), '(d) 问 = 绝对行动纪律（v12.8.6）')
-    assert.ok(p.includes('【严禁重写/臆想代码】') && p.includes('绝不要凭理解自己写出函数体'), '第 1 条：逐字刚性（v12.8.7）')
-    assert.ok(p.includes('1100~1550 字符') && p.includes('上限绝不能超过 1650 字符'), '长度硬约束（v12.8.6）')
-    assert.ok(p.includes('此时不要改 X') && p.includes('如果输出跟这两种都不像，先别改'), '第二分支具体 + 逃生句仍在（绝对纪律只对坐实分支，不吞掉反驳路）')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d4:noctx')
+    assert.ok(p.includes('①假设坐实了吗 ②old_text 精确吗 ③改成什么 ④还有没有非看不可的 ⑤假设被推翻了走哪条'), 'R10/R11：五问清单')
+    assert.ok(p.includes('只等一条结果就动手的人写的') && p.includes('改法只落一个：改 文件 的 `那一行`') && p.includes('改法只落一个：改 src/pool.js 的 `const port = 8123 // 旧端口` 这一行'), '落定句：规则 + 样例（oracle I 的写法）')
+    assert.ok(p.includes('以原文**最后**的结论段（根因 + 修复方向）为准') && p.includes('产生错误值 / 定义那个数值的那一行'), '最后结论为准 / 产生错误值的那一行（d6 sse 落到 [DONE] 行、flaky 落到 clearTimeout 的归因）')
+    assert.ok(p.includes('落点从【在手的代码行】里选') && p.includes('有值行（ident: 数值）能修就选值行'), '从程序给的清单里选，值行优先')
+    assert.ok(p.includes('new_text 由原文里出现过的标识符拼成一整行') && p.includes('new_text 绝不能和 old_text 相同'), 'R8b 恢复：new_text 必写（oracle 逐份都写；R10.3 只写意图让副模型不敢落定）')
+    assert.ok(p.includes('这次输出里有没有它') && p.includes('拨测输出里没有它，照用'), 'R11a 出处时效：规则 + 样例')
+    assert.ok(p.includes('那么假设坐实，看到这一点就够了') && p.includes('那么假设不成立：<原文里考虑过的另一个解释>') && p.includes('如果两个端口都 refused，那么假设不成立'), '两个分支的配对形态')
+    assert.ok(p.includes('原文对这种情形也有在手的改法（比如 diff 里的另一行）就写成第二个三元组'), '第二分支：有在手改法就三元组，否则最具体的取证（d5 把 perf 第二个三元组降成取证的归因）')
+    assert.ok(!p.includes('必须下达绝对行动纪律') && p.includes('不写「严禁再确认」这类口号'), '口号 → 具体')
+    assert.ok(p.includes('命令、复现方案一个都不许写，哪怕只是说它不可行'), '命令名也算发明')
+    assert.ok(p.includes('1000~1400 字符，绝不超过 1600') && p.includes('永远不删落定句、三元组与触发特征'), '长度 + 删减次序')
+    assert.ok(p.includes('行号是 grep 前缀，文件里这一行是 `host: 10.0.0.5`'), '样例演示 grep 前缀剥离（R8a）')
+    assert.ok(/old_text 是 `const port = 8123 \/\/ 旧端口`/.test(p) && /new_text 是 `const port = cfg\.port`/.test(p), '三元组样例用规范词')
+    assert.ok(p.includes('【原文里的改法句】') === false, '无改法句的 RAW 不加块')
+    const withHint = I.buildCompressPromptV4Direct('原文说：下一步修复：在 verify.mjs 的 env 中加 `CFB_REAL_DSH_HOME: tmp`。', 'CTX')
+    assert.ok(withHint.includes('【原文里的改法句】（程序逐字摘出，按原文先后；越靠后越接近原文最后的结论') && !withHint.includes('READY'), '直写用自己的改法句块，不带 ops 标签')
+    assert.ok(I.buildCompressPromptV4('原文说：下一步修复：在 verify.mjs 的 env 中加 `CFB_REAL_DSH_HOME: tmp`。').includes('【改法线索】'), 'ops 提示词的块不变')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d6:noctx')
+  })
+  await test('5t6 no-op 三元组（v12.8.9）：new_text 与 old_text 相同 ⇒ 删 new_text 子句、留 old_text + 意图；不同则不动', () => {
+    const raw = 'read_file src/host-follow.js 里 observe(options) { if (options && options.model) lastModel = options.model } 这一行；plugin 传 (options, n)'
+    const same = '所以下一步工具调用是 bash grep -n observe src/plugin.js。如果输出里 n 带 model 字段，那么假设坐实：edit_file src/host-follow.js，old_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`（出处是上一轮 read_file，这次 grep 输出里不会再出现它，照用即可），new_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`，让 observe 从 n 上取 model、options.model 兜底；看到 n 带 model 就改，不用再读 plugin.js。'
+    const r = I.compileV4Direct(same, raw, {})
+    assert.ok(r.ok, JSON.stringify(r))
+    assert.equal(r.stats.noopNewText, 1)
+    assert.ok(!/new_text 是 `observe/.test(r.text) && /new_text 按下面说的意图改/.test(r.text) && /old_text 是 `observe\(options\)/.test(r.text) && /让 observe 从 n 上取 model/.test(r.text), r.text)
+    const diff = same.replace('new_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`', 'new_text 是 `observe(options, n) { const m = (n && n.model) || (options && options.model); if (m) lastModel = m }`')
+    const r2 = I.compileV4Direct(diff, raw, {})
+    assert.ok(r2.ok && !r2.stats.noopNewText && /new_text 是 `observe\(options, n\)/.test(r2.text), '不同的 new_text 原样保留：' + r2.text)
+  })
+  await test('5t7 diff「-」行不当落点候选（v12.8.9）：稿把旧值行写成文件形，门不再把它绑给分支；「+」行照绑', () => {
+    const ctx = '[tool: bash] git diff v11.9..v11.10 -- src/config.js\n-  maxOutputTokens: 850,\n+  maxOutputTokens: 4096,\n-  compressTargetMax: 450,\n+  compressTargetMax: 1800,'
+    const raw = 'diff 显示旧值 850 / 450，新值 4096 / 1800。'
+    const draft = 'git diff 逐字：`maxOutputTokens: 850,` 变成 `maxOutputTokens: 4096,`。所以下一步工具调用是 bash analyze-trace --fields finishReason。' +
+      '如果升级前 finishReason 是 stop，那么假设坐实：改回长度目标，edit_file src/config.js，old_text 是 `compressTargetMax: 1800,`，new_text 是 `compressTargetMax: 450,`，看到 stop 就改。' +
+      '如果升级前是 length，那么假设不成立：此时不要动 compressTargetMax，把上限改回 850，看清截断分布再定。如果输出跟这两种都不像，先别改。'
+    const r = I.compileV4Direct(draft, raw, { compressCtx: ctx })
+    assert.ok(r.ok, JSON.stringify(r))
+    assert.ok(!/落点 `maxOutputTokens: 850,`/.test(r.text), '旧值行不被绑成落点：' + r.text)
+    assert.ok(r.stats.bindSkippedSelfClosed >= 1 && !/落点 `/.test(r.text), '稿里已有自闭合三元组 ⇒ 其余分支不做兜底绑定（不会把 - 行或无关行绑上）：' + r.text)
+    // 没有自闭合三元组的稿仍走兜底绑定，此时 - 行候选被跳过
+    const bare = 'git diff 逐字：`maxOutputTokens: 850,` 变成 `maxOutputTokens: 4096,`。所以下一步工具调用是 bash analyze-trace。如果升级前是 length，那么把上限改回 850，看清截断分布再定。如果输出跟这两种都不像，先别改。'
+    const r2 = I.compileV4Direct(bare, raw, { compressCtx: ctx })
+    assert.ok(r2.ok && r2.stats.minusLineCandidateSkipped >= 1 && !/落点 `maxOutputTokens: 850,`/.test(r2.text), '兜底绑定不取 - 行：' + JSON.stringify(r2.stats) + r2.text)
+  })
+  await test('5t8 【在手的代码行】（v12.8.9，R11 / 卷四 A1）：只取文件内容类工具块、剥 diff 加号与 grep 行号、排除 - 行与日志、散文里的值段单列；进直写提示词', () => {
+    const ctx = '你是编码 Agent。CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次。\n' +
+      '[tool: read_file] test/hedge.selftest.mjs §4\nserver 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600\nassert.equal(meta.hedgeStartedAt, null)\n' +
+      '[tool: read_file] src/distill.js hedgedDistill 节选\nconst timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)\nprimary.then(() => { primarySettled = true })\n' +
+      '[tool: bash] git diff -- src/config.js\n-  maxOutputTokens: 850,\n+  maxOutputTokens: 4096,\n' +
+      '[tool: bash] grep -n "prewarm" src/transport.js\nsrc/transport.js:12:  const url = prewarmTargetUrl(cfg)\n' +
+      '[tool: bash] nproc\n2\n[tool: bash] ls -la\n-rw-r--r-- 1 root root 88213 trace.log\n[tool: bash] id\nuid=1000(u) gid=1000(u)'
+    const cot = '看起来 hedgeAfterMs 1600 与 1500 只差 100ms；primarySettled 在 primary.then 才置 true；maxOutputTokens 抬到 4096；prewarmTargetUrl 无关'
+    const rows = I.inHandLines(cot, ctx)
+    const spans = rows.map((r) => r.span)
+    assert.ok(spans.includes('hedgeAfterMs: 1600'), '散文行里的值段单列：' + JSON.stringify(spans))
+    assert.ok(rows.find((r) => r.span === 'hedgeAfterMs: 1600').valueLine && rows.find((r) => r.span === 'hedgeAfterMs: 1600').segment)
+    assert.ok(spans.includes('maxOutputTokens: 4096,') && rows.find((r) => r.span === 'maxOutputTokens: 4096,').via === 'diff', 'diff + 行剥加号')
+    assert.ok(!spans.some((x) => /850/.test(x)), 'diff - 行不进清单')
+    assert.ok(spans.includes('const url = prewarmTargetUrl(cfg)') && rows.find((r) => r.span === 'const url = prewarmTargetUrl(cfg)').via === 'grep', 'grep 行剥「文件:行号:」')
+    assert.ok(!spans.some((x) => /root|uid=|^2$/.test(x)), 'ls / id / nproc 输出不是文件行')
+    assert.ok(!spans.some((x) => /你是编码/.test(x)), '任务陈述不是文件行')
+    const block = I.inHandLinesBlock(cot, ctx)
+    assert.ok(block.startsWith('\n\n【在手的代码行】') && block.includes('值段') && block.includes('`hedgeAfterMs: 1600`'), block)
+    assert.ok(block.includes('定义行：`const timer = setTimeout') && I.lineKind('host.observe(options, n)') === '调用行' && I.lineKind("return { out, finish: finish || (done ? 'stop' : null) }") === '返回行' && I.lineKind('observe(options) { if (options && options.model) lastModel = options.model }') === '定义行', '行类别标签')
+    const two = I.inHandLinesBlock('maxOutputTokens 与 compressTargetMax 两个都在 diff 里', '[tool: bash] git diff -- src/config.js\n+  maxOutputTokens: 4096,\n+  compressTargetMax: 1800,')
+    assert.ok(two.includes('2 个值行在手') && two.includes('第二分支写成它的三元组'), '同一处两个值行 ⇒ 第二分支三元组提示：' + two)
+    const p = I.buildCompressPromptV4Direct(cot, ctx)
+    const H = '【在手的代码行】（程序从本轮工具结果里逐字摘出'
+    assert.ok(p.includes(H) && p.indexOf(H) > p.indexOf('【上一轮思维链】') && p.indexOf(H) < p.indexOf('【要求重申】'), '清单放在原文之后、重申之前')
+    assert.ok(!I.buildCompressPromptV4Direct(cot, '').includes(H), '无 ctx 时不加')
+    assert.ok(!I.buildCompressPromptV4Direct('与观察毫无重叠的原文', ctx).includes(H), '原文没讨论过的行不进清单（无重叠 ⇒ 空块）')
+    assert.equal(I.inHandLinesBlock(cot, ''), '')
   })
   // ---- §5q v12.7 compressCtx 自动构造（理论 S8-R5/R7 的生产前提：压缩器要看到 Agent 看到的观察）----
   await test('5q1 buildCompressCtx：最后一条人类 user + 本回合工具结果（pi-ai 块形与 OpenAI 形都认），格式同 TASKS', () => {
@@ -965,7 +1033,7 @@ try {
     const base = { compressPrompt: 'v4' }
     assert.equal(I.compressCtxFor(base, { messages: [] }), base, '空 ctx ⇒ 原对象')
     assert.equal(I.compressCtxFor(base, { get messages() { throw new Error('boom') } }), base, '异常 ⇒ 原配置')
-    assert.equal(I.compressPromptVersion(I.compressCtxFor({ compressPrompt: 'v4', compressV4Direct: true }, { messages: msgs })), 'compress-v4d4:ctx')
+    assert.equal(I.compressPromptVersion(I.compressCtxFor({ compressPrompt: 'v4', compressV4Direct: true }, { messages: msgs })), 'compress-v4d6:ctx')
     const src = fs.readFileSync(new URL('../src/plugin.js', import.meta.url), 'utf8')
     assert.ok(/const streamCfg = compressCtxFor\(callCfg, options\)/.test(src), 'plugin.js birth 分支用 compressCtxFor 派生 streamCfg')
   })

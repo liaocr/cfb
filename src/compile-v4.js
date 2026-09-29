@@ -524,7 +524,7 @@ export function compileV4(output, raw, cfg = {}, budget = null) {
  * ★ v12.6 compress-v4-direct 程序门（理论 S8-R6）：副模型直写散文，代码只做能机械判定的事。
  *   锚点硬校验：`…` 片段必须是原文（或任务观察）里一字不差的子串；不是就剥掉反引号（不许假称逐字）。
  *   判读 / 语域 / 出处只统计不熔断（样例 + 尾段重申已把漏判率压低；熔断 = 原文放行，先测漏率再收紧）。
- *   熔断只有两种：空输出、超长（compressV4DirectMaxChars，缺省 1800）。
+ *   熔断只有两种：空输出、超长（compressV4DirectMaxChars，缺省 2000；v12.8.9 起 1800→2000：v4d5 完整闭合稿 1600–1950 字，2/10 撞 1800 整份丢掉换原文）。
  *   v12.7.1：1300 → 1600。1300 是按 v4d1 开放分支的稿定的（oD/oE/oF 侧输出 920–1247）；R7 要求每个改法分支闭合
  *   （`逐字落点` ≤200 字 + 可用句 ≈70 字 + 改成什么），两个分支就比开放形态多 200–500 字，v4d2 首压 5 份里 2 份（1382 / 1457）撞熔断 ⇒
  *   整份稿被丢、原文（3000–9000 字）放行，比一份 1457 字的稿坏得多。熔断的职责是拦「跑飞」（照抄原文 ≥3000），1600 仍拦得住。
@@ -555,7 +555,7 @@ export function compileV4Direct(side, raw, cfg = {}) {
   stats.provenance = /逐字/.test(text)
   stats.register = /看起来|所以|下一步工具调用/.test(text)
   if (cfg.compressCtx) stats.ctxChars = String(cfg.compressCtx).length   // 观察上下文到位与否（生产由 plugin 自动构造）
-  const maxChars = Number.isFinite(cfg.compressV4DirectMaxChars) && cfg.compressV4DirectMaxChars > 0 ? cfg.compressV4DirectMaxChars : 1800
+  const maxChars = Number.isFinite(cfg.compressV4DirectMaxChars) && cfg.compressV4DirectMaxChars > 0 ? cfg.compressV4DirectMaxChars : 2000
   if (text.length > maxChars) return { ok: false, reason: 'v4d-too-long', stats }
   // 理论 S8-R7：判读分支的动作闭合与落点绑定（可用句写进分支句内、绑定到具体逐字落点）
   if (cfg.compressV4DirectBind !== false) text = bindFixBranches(text, raw, cfg.compressCtx || '', stats)
@@ -571,6 +571,13 @@ export function compileV4Direct(side, raw, cfg = {}) {
       stats.repairedAffordance = true
     }
   }
+  // v12.8.9：no-op 三元组——副模型把 old_text 原样抄成 new_text（d5 首压 wrong-model：逻辑改动被尾部「必须带 new_text」逼出一个等于 old_text 的 new_text）。
+  //   主模型照抄就是一次空编辑；删掉 new_text 子句、留下 old_text 与改法意图句（R10.3：逻辑改动由有思考的一方设计）。
+  text = text.replace(/old_text 是 `([^`\n]{1,220})`((?:（[^）]*）)?[，,、；;\s]*)new_text 是 `([^`\n]{1,220})`[，,、；;]?/g, (all, a, mid, b) => {
+    if (norm(a) !== norm(b)) return all
+    stats.noopNewText = (stats.noopNewText || 0) + 1
+    return 'old_text 是 `' + a + '`' + mid.replace(/[，,、；;\s]*$/, '') + '，new_text 按下面说的意图改（副模型没给出那一行，由你来写）；'
+  })
   if (cfg.compressEditTool) { text = adaptEditTool(text, cfg.compressEditTool); stats.editTool = cfg.compressEditTool.name }
   return { ok: true, text, stats }
 }
@@ -675,16 +682,22 @@ function labelMatches(label, hints) {
   return false
 }
 /** 候选落点：文中已核真的 `…` 片段 + 任务观察里含标识符的代码 / 配置行；带来源标签 */
-function locusCandidates(text, ctx) {
+function locusCandidates(text, ctx, raw = '', stats = {}) {
   const blocks = ctxBlocks(ctx)
   const labelOf = (span) => { const n = norm(span); for (const b of blocks) if (b.lines.some((l) => norm(l).includes(n))) return b.label; return '' }
+  // v12.8.9：只以 git diff「-」行身份出现在原文 / 观察里的片段是旧值，不在当前文件里，不能当 old_text 候选
+  //   （d5c perf：稿按 R8a 把 `-  maxOutputTokens: 850,` 写成文件形 `maxOutputTokens: 850,`，门把它绑成落点 ⇒ 主模型 sed 把两个值一起回滚）
+  const hayLines = (String(raw || '') + '\n' + String(ctx || '')).split('\n')
+  const minusOnly = (span) => { const n = norm(span); let hit = 0, minus = 0; for (const l of hayLines) { if (!norm(l).includes(n)) continue; hit++; if (/^\s*-(?!-)\s/.test(l)) minus++ } return hit > 0 && minus === hit }
   const seen = new Set()
   const out = []
   for (const m of String(text || '').matchAll(/`([^`\n]{1,220})`/g)) {
     const span = m[1].trim()
     if (!span || seen.has(span)) continue
     seen.add(span)
-    if (usableLocus(span)) out.push({ span, label: labelOf(span), inText: true })
+    if (!usableLocus(span)) continue
+    if (minusOnly(span)) { stats.minusLineCandidateSkipped = (stats.minusLineCandidateSkipped || 0) + 1; continue }
+    out.push({ span, label: labelOf(span), inText: true })
   }
   for (const b of blocks) {
     for (const l0 of b.lines) {
@@ -839,6 +852,9 @@ export function bindFixBranches(text, raw, ctx, stats = {}) {   // raw 暂未用
   let out = src
   let fixN = 0, bound = 0, unbound = 0, disj = 0
   const by = []
+  // v12.8.9：副模型自己写出了「old_text 是 `…`」的分支 ⇒ 它会写三元组，其余分支缺可用句多半是「不要改 X」「回退到了默认」这类描述被 isFixBranch 误判
+  //   （d7a eacces：把 env 行绑进了「此时不要改 verify.mjs」；d5c perf：把 - 行旧值绑进了取证分支）⇒ 有自闭合三元组时不再做重叠 / 文件兜底绑定
+  const selfClosed = branches.some((b) => AFFORD_RE.test(b))
   for (const b of branches) {
     const thenAt = b.search(BRANCH_THEN_RE)
     const thenPart = thenAt >= 0 ? b.slice(thenAt) : b
@@ -861,8 +877,10 @@ export function bindFixBranches(text, raw, ctx, stats = {}) {   // raw 暂未用
       const b2 = own.via && own.quoted !== own.span ? b.split('`' + own.quoted + '`').join('`' + own.span + '`') : b
       if (own.via && own.quoted !== own.span) stats.fileVerbatimFixed = (stats.fileVerbatimFixed || 0) + 1
       nb = withAffordance(b2, own); by.push('span')
+    } else if (selfClosed) {
+      stats.bindSkippedSelfClosed = (stats.bindSkippedSelfClosed || 0) + 1
     } else {
-      if (!cands) cands = locusCandidates(src, ctx)
+      if (!cands) cands = locusCandidates(src, ctx, raw, stats)
       const hit = bindLocus(thenPart, cands, src) || bindLocus(b, cands, src)
       if (hit) { nb = withAffordance(b, hit); by.push(hit.overlap ? 'overlap' : 'file') }
     }
@@ -880,6 +898,75 @@ export function bindFixBranches(text, raw, ctx, stats = {}) {   // raw 暂未用
   if (unbound) stats.unboundFix = unbound
   if (disj) stats.disjunctiveFix = disj
   return out
+}
+
+/**
+ * v12.8.9（理论 S8-R11 / 卷四 A1「代码算它能算的，副模型只做它才能做的」）：把「在手的代码行」在**压缩之前**算出来交给副模型。
+ *   R7 的落点绑定原本在门里事后补救；d5/d6 逐稿归因发现关思考的副模型在 10k 字原文里**选错行**（sse 三次落在提到 [DONE] 的 if 行而不是
+ *   造出 'stop' 的 return 行；flaky 落在 distill.js 的逻辑行而不是测试里的值行）——选择题比回忆题好做，所以把候选行列表直接放进提示词。
+ *   候选 = 本轮工具结果（ctx）里代码 / 配置形态的行，剥掉 diff 加号与 grep 行号（R8a），排除 diff 的 - 行（旧值），按与原文尾段的标识符重叠排序；
+ *   值行（ident: literal）标出来（R7 规则 3：改一个值优于改逻辑）。
+ * @returns {Array<{ span, label, via, valueLine, overlap }>}
+ */
+export function inHandLines(cot, ctx, max = 8) {
+  const blocks = ctxBlocks(ctx)
+  const src = String(cot || '')
+  const tailToks = strongTokens(src.slice(Math.floor(src.length * 0.6)))
+  const allToks = strongTokens(src)
+  const seen = new Set()
+  const out = []
+  // 只看会带出**文件内容**的工具块：read_file / cat / git diff / grep -n / sed -n；ls / id / nproc / analyze-trace 的输出是日志不是文件行
+  const fileTool = (label) => /^(?:read_file|cat|head|tail)\b/.test(label) || /\b(?:git diff|git show|grep|rg|sed -n)\b/.test(label)
+  const VALUE_SEG_RE = /[A-Za-z_$][\w$.]*\s*[:=]\s*(?:['"`][^'"`]*['"`]|-?\d[\w.]*|true|false|null)\s*,?/g
+  for (const b of blocks) {
+    if (!fileTool(b.label || '')) continue
+    for (const l0 of b.lines) {
+      if (/^\s*-(?!-)\s/.test(l0)) continue                       // diff 删除行：旧值，不是文件里的行
+      const { span, via } = fileVerbatim(l0)
+      if (!span || seen.has(span) || !usableLocus(span)) continue
+      if (!/[=:(){}\[\];'"`<>\/]/.test(span)) continue
+      if (/^(?:import\s|export\s|from\s|\/\/|\/\*|#|\*)/.test(span)) continue
+      const toks = strongTokens(span)
+      const overlap = [...toks].filter((t) => tailToks.has(t)).length * 2 + [...toks].filter((t) => allToks.has(t)).length
+      if (!overlap) continue
+      const whole = /^[A-Za-z_$][\w$.]*\s*[:=]\s*(?:['"`][^'"`]*['"`]|-?\d[\w.]*|true|false|null)\s*[,;]?$/.test(span)
+      // 散文里夹着的值段（测试节选「server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600」）：单独列出值段——它是文件里的逐字子串，可直接当 old_text
+      if (!whole && /[\u4e00-\u9fff]/.test(span)) {
+        for (const m of span.matchAll(VALUE_SEG_RE)) {
+          const seg = m[0].replace(/,$/, '').trim()
+          if (seg.length < 6 || seen.has(seg) || !strongTokens(seg).size) continue
+          const segToks = strongTokens(seg)
+          if (![...segToks].some((t) => allToks.has(t))) continue
+          seen.add(seg); out.push({ span: seg, label: b.label, via, valueLine: true, overlap: overlap + 1, segment: true })
+        }
+        continue
+      }
+      seen.add(span)
+      out.push({ span, label: b.label, via, valueLine: whole, overlap, kind: whole ? '值行' : lineKind(span) })
+    }
+  }
+  out.sort((a, c) => (c.overlap + (c.valueLine ? 1 : 0)) - (a.overlap + (a.valueLine ? 1 : 0)) || a.span.length - c.span.length)
+  return out.slice(0, max)
+}
+/** 行的粗分类（给副模型的选择提示，R7 规则 3「定义处优先于调用处」的机械形式）：定义行 / 调用行 / 返回行 / 逻辑行 */
+export function lineKind(span) {
+  const t = String(span || '').trim()
+  if (/^(?:export\s+)?(?:async\s+)?function\b|^[A-Za-z_$][\w$]*\s*\([^)]*\)\s*\{|^(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=/.test(t)) return '定义行'
+  if (/^return\b/.test(t)) return '返回行'
+  if (/^(?:await\s+)?[A-Za-z_$][\w$.]*\([^;]*\)\s*;?$/.test(t)) return '调用行'
+  return '逻辑行'
+}
+/** 【在手的代码行】提示词块（无候选时返回空串） */
+export function inHandLinesBlock(cot, ctx, max = 8) {
+  const rows = inHandLines(cot, ctx, max)
+  if (!rows.length) return ''
+  const srcNote = (via) => via === 'diff' ? '（git diff 的 + 行，已去掉加号，这就是文件里的样子）' : via === 'grep' ? '（grep / sed 输出，已去掉「文件名:行号:」）' : ''
+  const kindOf = (r) => r.segment ? '值段（该行里逐字的一小段，可直接当 old_text）' : r.kind || (r.valueLine ? '值行' : '逻辑行')
+  const values = rows.filter((r) => r.valueLine)
+  const multi = values.length >= 2 && new Set(values.map((r) => r.label)).size < values.length
+    ? '\n（同一处工具结果里有 ' + values.length + ' 个值行在手：落定句只选其中一个；假设被推翻时通常就改另一个——第二分支写成它的三元组并注明不动第一个，不要写成取证）' : ''
+  return '\n\n【在手的代码行】（程序从本轮工具结果里逐字摘出；old_text 只能从这里选、一字不改；值行优先于逻辑行，定义行优先于调用行，谁定义约定谁改、不逐个改使用者；不在这里的行不能当落点）\n' +
+    rows.map((r) => `- ${r.label || '工具结果'}${srcNote(r.via)} · ${kindOf(r)}：\`${r.span}\``).join('\n') + multi
 }
 
 /** 硬拒绝占比阈值（schema / I1–I8；去重、I7、retracted 不算「不可信」）。 */

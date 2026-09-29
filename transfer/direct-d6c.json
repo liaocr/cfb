@@ -1,0 +1,150 @@
+{
+ "rows": [
+  {
+   "id": "wrong-model",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 3414,
+   "outChars": 1748,
+   "ms": 4931,
+   "promptVersion": "compress-v4d6:ctx",
+   "gate": {
+    "outputChars": 1752,
+    "inventedSpans": 2,
+    "newTextSpans": 1,
+    "chars": 1748,
+    "closeLoop": true,
+    "provenance": true,
+    "register": true,
+    "ctxChars": 799,
+    "branches": 2,
+    "fixBranches": 1,
+    "boundBranches": 1,
+    "boundBy": [
+     "had"
+    ],
+    "compileMs": 5.39
+   },
+   "accept": "ok",
+   "text": "我们需要找出压缩为什么用上一次会话的模型。trace 里当前会话两条 `[llm-stream]` 都是 `\"n\":12,\"model\":\"deepseek-v3.2\"` 和 `\"n\":13,\"model\":\"deepseek-v3.2\"`，中间夹着 `[compiler-transport-started] {\"model\":\"deepseek-v3.1\"}`。read_file src/host-follow.js（逐字）：\n`let lastModel = null`\n`observe(options) { if (options && options.model) lastModel = options.model }`\n`callConfig(options) { return { ...cfg, model: lastModel || cfg.model } }`\nplugin.js 里是 `host.observe(options, n)` 紧跟着 `const callCfg = host.callConfig(options)`。看起来 observe 只从第一个参数里取 model，第二个参数 n 被整个忽略，而 plugin 恰恰是把 n 传进去；lastModel 是模块级变量、跨会话保留，这一会话的 observe 没写进去，lastModel 还是上一次会话的值，callConfig 就用它覆盖了 cfg.model，这就是压缩 transport 起在 v3.1 的原因。trace 中 v3.2 是外层会话的 llm-stream，v3.1 只出现在 compiler-transport-started 一条，两者不是同一个量、也不矛盾，不改变落点。调大日志或给 lastModel 加重置都不是改法：一个是只让现象可读，一个要动状态生命周期里没看过的多处。改法只落一个：改 src/host-follow.js 的 `observe(options) { if (options && options.model) lastModel = options.model }` 这一行，让它从第二个参数取 model，落点已经在手。\n所以下一步工具调用是 bash grep -n -C 10 \"observe\\|callConfig\" src/plugin.js。如果输出里 `host.observe(options, n)` 附近的 options 字面不含 model、而 n 是带 model 的请求对象，那么假设坐实，看到这一点就够了，不用再读 transport.js、也不用再核 prewarm 那条 grep：直接 edit_file src/host-follow.js，old_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`（上一轮 read_file src/host-follow.js 的原样行，grep 输出里没有它，照用；不带行首缩进也能匹配），new_text 是 `observe(options, n) { if (n && n.model) lastModel = n.model }`。如果输出里那条调用处第一个参数就带 model 字段，那么假设不成立：observe 本来就能更新 lastModel，问题在 callConfig 于 observe 之前被调或者 prewarm 走的是原始 cfg，此时不要动 host-follow.js；另一条在手的材料是 read_file src/plugin.js 里 `return birthTransform(inner, { cfg: callCfg, ... })` 这一行，先用 bash grep -n -C 6 \"makePrewarmer\" src/plugin.js 看 prewarm 拿到的是 callCfg 还是 cfg，分辨压缩走的是哪条配置。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+   "side": "我们需要找出压缩为什么用上一次会话的模型。trace 里当前会话两条 `[llm-stream]` 都是 `\"n\":12,\"model\":\"deepseek-v3.2\"` 和 `\"n\":13,\"model\":\"deepseek-v3.2\"`，中间夹着 `[compiler-transport-started] {\"model\":\"deepseek-v3.1\"}`。read_file src/host-follow.js（逐字）：\n`let lastModel = null`\n`observe(options) { if (options && options.model) lastModel = options.model }`\n`callConfig(options) { return { ...cfg, model: lastModel || cfg.model } }`\nplugin.js 里是 `host.observe(options, n)` 紧跟着 `const callCfg = host.callConfig(options)`。看起来 observe 只从第一个参数里取 model，第二个参数 n 被整个忽略，而 plugin 恰恰是把 n 传进去；lastModel 是模块级变量、跨会话保留，这一会话的 observe 没写进去，lastModel 还是上一次会话的值，callConfig 就用它覆盖了 cfg.model，这就是压缩 transport 起在 v3.1 的原因。trace 中 v3.2 是外层会话的 llm-stream，v3.1 只出现在 compiler-transport-started 一条，两者不是同一个量、也不矛盾，不改变落点。调大日志或给 lastModel 加重置都不是改法：一个是只让现象可读，一个要动状态生命周期里没看过的多处。改法只落一个：改 src/host-follow.js 的 `observe(options) { if (options && options.model) lastModel = options.model }` 这一行，让它从第二个参数取 model，落点已经在手。\n所以下一步工具调用是 bash `grep -n -C 10 \"observe\\|callConfig\" src/plugin.js`。如果输出里 `host.observe(options, n)` 附近的 options 字面不含 model、而 n 是带 model 的请求对象，那么假设坐实，看到这一点就够了，不用再读 transport.js、也不用再核 prewarm 那条 grep：直接 edit_file src/host-follow.js，old_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`（上一轮 read_file src/host-follow.js 的原样行，grep 输出里没有它，照用；不带行首缩进也能匹配），new_text 是 `observe(options, n) { if (n && n.model) lastModel = n.model }`。如果输出里那条调用处第一个参数就带 model 字段，那么假设不成立：observe 本来就能更新 lastModel，问题在 callConfig 于 observe 之前被调或者 prewarm 走的是原始 cfg，此时不要动 host-follow.js；另一条在手的材料是 read_file src/plugin.js 里 `return birthTransform(inner, { cfg: callCfg, ... })` 这一行，先用 bash `grep -n -C 6 \"makePrewarmer\" src/plugin.js` 看 prewarm 拿到的是 callCfg 还是 cfg，分辨压缩走的是哪条配置。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
+  },
+  {
+   "id": "sse-truncated",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 5424,
+   "outChars": 1739,
+   "ms": 5630,
+   "promptVersion": "compress-v4d6:ctx",
+   "gate": {
+    "outputChars": 1745,
+    "inventedSpans": 3,
+    "newTextSpans": 1,
+    "chars": 1739,
+    "closeLoop": true,
+    "provenance": true,
+    "register": true,
+    "ctxChars": 630,
+    "branches": 3,
+    "fixBranches": 1,
+    "boundBranches": 1,
+    "boundBy": [
+     "had"
+    ],
+    "compileMs": 1.4
+   },
+   "accept": "ok",
+   "text": "我们需要解释压缩结果被截断却写成成功的原因。trace 里 `[compiler-transport-settled] {\"ok\":true,\"finish\":null,\"stream\":true,\"outputChars\":212,\"eventCount\":9}` 与 `[birth-condensed] {\"rawChars\":8123,\"outChars\":212}`：ok 为 true、finish 为 null、eventCount 只有 9，而压缩前后从 8123 掉到 212 字符，这就是一次被切断的流。read_file src/transport.js assembleSseFrames（逐字）：\n`if (f === '[DONE]') { done = true; continue }`\n`if (j.choices?.[0]?.finish_reason) finish = j.choices[0].finish_reason`\n`return { out, finish: finish || (done ? 'stop' : null) }`\n看起来 finish 只在出现 finish_reason 时才被写入，其余全靠 `[DONE]` 兜底成 `stop`，这就是截断被当成功的原因：网关文档说部分上游在连接被代理切断时只补发 `data: [DONE]`，不含 finish_reason，代码把它当成正常收尾；而 trace 里 finish 是 null，说明这次连 `[DONE]` 都没匹配上（若是 `done=true`，返回应是 'stop'），落点仍在同一个判定里，这个对不上的量不改变落点。把 `[DONE]` 当 incomplete/unknown 是一处逻辑改动、涉及 finish 与 ok 两处判定，且 ok 由谁计算没看过，不选；先看 settle 之前不改 assembleSseFrames。改法只落一个：改 src/transport.js 的 `if (f === '[DONE]') { done = true; continue }` 这一行，让它把 `[DONE]` 只标记收尾、不再无条件充当 `stop`。所以下一步工具调用是 bash `grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled|assembleSseFrames|birth-condensed\" src`。如果输出里 compiler-transport-settled 的 ok 是由 finish 或 `[DONE]` 直接算出来的（比如 grep 出来 ok: true 紧挨着 finish === 'stop' 或 `done`），那么假设坐实，看到这一点就够了，不用再读 transport.js、也不用再展开压缩链路：直接 edit_file src/transport.js，old_text 是 `if (f === '[DONE]') { done = true; continue }`（上一轮 read_file 的原样行，这次 grep 输出里没有它——grep 的「文件名:行号:」只是标记，不带也能匹配），new_text 是 `if (f === '[DONE]') { done = true }`。如果输出里 settle 的 ok 和 finish 无关、ok 另有来源（比如只看 HTTP 状态或流是否结束），那么假设不成立：截断被写会话发生在 ok 判定那一层而不是这里，此时不要改 transport.js；能在手分辨的只有调用处，看 grep 命中的 settle 附近 `outputChars` 与 `rawChars` 是否被用来判完整性——若没有用它，就 bash grep -RIn --exclude-dir=node_modules \"outputChars\" src 把用 212/8123 这两个数的判定找出来。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+   "side": "我们需要解释压缩结果被截断却写成成功的原因。trace 里 `[compiler-transport-settled] {\"ok\":true,\"finish\":null,\"stream\":true,\"outputChars\":212,\"eventCount\":9}` 与 `[birth-condensed] {\"rawChars\":8123,\"outChars\":212}`：ok 为 true、finish 为 null、eventCount 只有 9，而压缩前后从 8123 掉到 212 字符，这就是一次被切断的流。read_file src/transport.js assembleSseFrames（逐字）：\n`if (f === '[DONE]') { done = true; continue }`\n`if (j.choices?.[0]?.finish_reason) finish = j.choices[0].finish_reason`\n`return { out, finish: finish || (done ? 'stop' : null) }`\n看起来 finish 只在出现 finish_reason 时才被写入，其余全靠 `[DONE]` 兜底成 `stop`，这就是截断被当成功的原因：网关文档说部分上游在连接被代理切断时只补发 `data: [DONE]`，不含 finish_reason，代码把它当成正常收尾；而 trace 里 finish 是 null，说明这次连 `[DONE]` 都没匹配上（若是 `done=true`，返回应是 'stop'），落点仍在同一个判定里，这个对不上的量不改变落点。把 `[DONE]` 当 incomplete/unknown 是一处逻辑改动、涉及 finish 与 ok 两处判定，且 ok 由谁计算没看过，不选；先看 settle 之前不改 assembleSseFrames。改法只落一个：改 src/transport.js 的 `if (f === '[DONE]') { done = true; continue }` 这一行，让它把 `[DONE]` 只标记收尾、不再无条件充当 `stop`。所以下一步工具调用是 bash `grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled|assembleSseFrames|birth-condensed\" src`。如果输出里 compiler-transport-settled 的 ok 是由 finish 或 `[DONE]` 直接算出来的（比如 grep 出来 `ok: true` 紧挨着 `finish === 'stop'` 或 `done`），那么假设坐实，看到这一点就够了，不用再读 transport.js、也不用再展开压缩链路：直接 edit_file src/transport.js，old_text 是 `if (f === '[DONE]') { done = true; continue }`（上一轮 read_file 的原样行，这次 grep 输出里没有它——grep 的「文件名:行号:」只是标记，不带也能匹配），new_text 是 `if (f === '[DONE]') { done = true }`。如果输出里 settle 的 ok 和 finish 无关、ok 另有来源（比如只看 HTTP 状态或流是否结束），那么假设不成立：截断被写会话发生在 ok 判定那一层而不是这里，此时不要改 transport.js；能在手分辨的只有调用处，看 grep 命中的 settle 附近 `outputChars` 与 `rawChars` 是否被用来判完整性——若没有用它，就 bash `grep -RIn --exclude-dir=node_modules \"outputChars\" src` 把用 212/8123 这两个数的判定找出来。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
+  },
+  {
+   "id": "eacces-config",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 10074,
+   "outChars": 1849,
+   "ms": 12473,
+   "promptVersion": "compress-v4d6:ctx",
+   "gate": {
+    "outputChars": 1853,
+    "inventedSpans": 2,
+    "newTextSpans": 1,
+    "chars": 1849,
+    "closeLoop": true,
+    "provenance": true,
+    "register": true,
+    "ctxChars": 762,
+    "branches": 2,
+    "fixBranches": 1,
+    "boundBranches": 1,
+    "boundBy": [
+     "had"
+    ],
+    "compileMs": 3
+   },
+   "accept": "ok",
+   "text": "我们需要先坐实 `CFB_REAL_DSH_HOME` 是谁设的。npm test 里 `node verify.mjs` 报 `FAIL test/birth.selftest.mjs  Error: EACCES: permission denied, open '/home/u/.dsh/storages/cot-form-b/trace.log'`；`ls -la /home/u/.dsh/storages/cot-form-b/` 是 `drwxr-xr-x 2 root root`、-rw-r--r-- 1 root root 88213 trace.log，当前 `id` 是 `uid=1000(u)`，所以写不进去是权限事实。verify.mjs 节选里写的是 `const env = { ...process.env, DSH_HOME: tmp }`（read_file verify.mjs，逐字），test/birth.selftest.mjs 第 1-12 行又写 `const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })`（read_file test/birth.selftest.mjs，逐字），落点就在这两行的变量名错位上。\n\n看起来 verify.mjs 只把子进程的 `DSH_HOME` 指向临时目录，却没有同步设置 `CFB_REAL_DSH_HOME`；测试文件却拿 `CFB_REAL_DSH_HOME` 去构造 trace writer，于是要么该变量继承父 shell 的真实 `/home/u/.dsh`，要么在 verify.mjs 某处被指回真实 home，最终绕过临时隔离写到 root 拥有的真实 `trace.log`，这就是 EACCES 的原因。`echo $DSH_HOME` 是 `/home/u/.dsh`，和错误路径一致，说明真实 home 确实被碰了；文件属主和权限只是结果，不是要先改的落点。\n\n排除：直接 `chown`/`rm` 真实 storages 目录是治症状，而且当前 u 对 root 目录没有写权限，不选；改 `makeTraceWriter` 内部 fallback 要动 src/trace.js，但那段没读过，不选；调大权限或换运行用户也不选，因为测试隔离本身已经断了。改法只落一个：改 verify.mjs 里 `const env = { ...process.env, DSH_HOME: tmp }` 这一行，让子进程同时带上 `CFB_REAL_DSH_HOME: tmp`，落点已经在手。不过原文还没确认 verify.mjs 是否在别处设置该变量，所以先取证。\n\n所以下一步工具调用是 bash `grep -R \"CFB_REAL_DSH_HOME\" -n verify.mjs test src; echo \"CFB_REAL_DSH_HOME=${CFB_REAL_DSH_HOME:-<unset>}\"`。如果输出里 verify.mjs 没有 `CFB_REAL_DSH_HOME`、只有 test/birth.selftest.mjs 引用它，那么假设坐实，看到这一点就够了，不用再读 trace.js、也不用再跑 npm test：直接 edit_file verify.mjs，old_text 是 `  const env = { ...process.env, DSH_HOME: tmp }`（上一轮 read_file verify.mjs 的原样行，带行首两个空格，这次输出里没有它，照用；不带行首缩进也能匹配），new_text 是 `  const env = { ...process.env, DSH_HOME: tmp, CFB_REAL_DSH_HOME: tmp }`。如果输出显示 verify.mjs 已经设了 `CFB_REAL_DSH_HOME` 但仍指向真实 home，那么假设不成立：隔离不是漏设而是被显式指回真实目录，此时不要改 verify.mjs 的 env 行；先 bash grep -n \"CFB_REAL_DSH_HOME\" verify.mjs 把那一处原样带回来再决定。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+   "side": "我们需要先坐实 `CFB_REAL_DSH_HOME` 是谁设的。npm test 里 `node verify.mjs` 报 `FAIL test/birth.selftest.mjs  Error: EACCES: permission denied, open '/home/u/.dsh/storages/cot-form-b/trace.log'`；`ls -la /home/u/.dsh/storages/cot-form-b/` 是 `drwxr-xr-x 2 root root`、`-rw-r--r-- 1 root root 88213 trace.log`，当前 `id` 是 `uid=1000(u)`，所以写不进去是权限事实。verify.mjs 节选里写的是 `const env = { ...process.env, DSH_HOME: tmp }`（read_file verify.mjs，逐字），test/birth.selftest.mjs 第 1-12 行又写 `const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })`（read_file test/birth.selftest.mjs，逐字），落点就在这两行的变量名错位上。\n\n看起来 verify.mjs 只把子进程的 `DSH_HOME` 指向临时目录，却没有同步设置 `CFB_REAL_DSH_HOME`；测试文件却拿 `CFB_REAL_DSH_HOME` 去构造 trace writer，于是要么该变量继承父 shell 的真实 `/home/u/.dsh`，要么在 verify.mjs 某处被指回真实 home，最终绕过临时隔离写到 root 拥有的真实 `trace.log`，这就是 EACCES 的原因。`echo $DSH_HOME` 是 `/home/u/.dsh`，和错误路径一致，说明真实 home 确实被碰了；文件属主和权限只是结果，不是要先改的落点。\n\n排除：直接 `chown`/`rm` 真实 storages 目录是治症状，而且当前 u 对 root 目录没有写权限，不选；改 `makeTraceWriter` 内部 fallback 要动 src/trace.js，但那段没读过，不选；调大权限或换运行用户也不选，因为测试隔离本身已经断了。改法只落一个：改 verify.mjs 里 `const env = { ...process.env, DSH_HOME: tmp }` 这一行，让子进程同时带上 `CFB_REAL_DSH_HOME: tmp`，落点已经在手。不过原文还没确认 verify.mjs 是否在别处设置该变量，所以先取证。\n\n所以下一步工具调用是 bash `grep -R \"CFB_REAL_DSH_HOME\" -n verify.mjs test src; echo \"CFB_REAL_DSH_HOME=${CFB_REAL_DSH_HOME:-<unset>}\"`。如果输出里 verify.mjs 没有 `CFB_REAL_DSH_HOME`、只有 test/birth.selftest.mjs 引用它，那么假设坐实，看到这一点就够了，不用再读 trace.js、也不用再跑 npm test：直接 edit_file verify.mjs，old_text 是 `  const env = { ...process.env, DSH_HOME: tmp }`（上一轮 read_file verify.mjs 的原样行，带行首两个空格，这次输出里没有它，照用；不带行首缩进也能匹配），new_text 是 `  const env = { ...process.env, DSH_HOME: tmp, CFB_REAL_DSH_HOME: tmp }`。如果输出显示 verify.mjs 已经设了 `CFB_REAL_DSH_HOME` 但仍指向真实 home，那么假设不成立：隔离不是漏设而是被显式指回真实目录，此时不要改 verify.mjs 的 env 行；先 bash `grep -n \"CFB_REAL_DSH_HOME\" verify.mjs` 把那一处原样带回来再决定。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
+  },
+  {
+   "id": "perf-regression",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 11322,
+   "outChars": 1683,
+   "ms": 17135,
+   "promptVersion": "compress-v4d6:ctx",
+   "gate": {
+    "outputChars": 1608,
+    "inventedSpans": 1,
+    "chars": 1606,
+    "closeLoop": true,
+    "provenance": true,
+    "register": true,
+    "ctxChars": 483,
+    "minusLineCandidateSkipped": 2,
+    "branches": 3,
+    "fixBranches": 2,
+    "boundBranches": 2,
+    "boundBy": [
+     "overlap",
+     "had"
+    ],
+    "compileMs": 10.84
+   },
+   "accept": "ok",
+   "text": "我们需要把 900ms→2400ms 的增量归到正确的那一档：ttfbMs p50 610/640 基本没动（+30ms），contentSpanMs p50 280/1650，outputChars p50 390/1720，promptVersion 前后都是 compress-v3h:250-450；git diff v11.9..v11.10 -- src/config.js 的两行（逐字，- 是旧值 + 是新值）：\n`-  maxOutputTokens: 850,`\n`+  maxOutputTokens: 4096,`\n`-  compressTargetMax: 450,`\n`+  compressTargetMax: 1800,`\n加号减号只是 diff 标记，文件里不带它们；README 回滚开关表写明 compressTargetMax 只影响 v3 的长度目标。算一下：390≈旧目标 450、1720≈新目标 1800，比值 4.4 与目标比值 4.0 同量级；解码吞吐 390/280≈1.39 chars/ms 对 1720/1650≈1.04 chars/ms，同一量级。看起来不是单 token 变慢，也不是 prefill 变重（ttfb 只 +30ms），而是纯解码量膨胀，contentSpan 增量 1370ms 吃掉总增量 1500ms 的绝大部分，这就是平均等待从 900ms 涨到 2400ms 的原因；promptVersion 那个 250-450 前后不变，说明这个 tag 不是从 config 现算的（否则该变成 250-1800），它是陈旧仪表，不改变落点。maxOutputTokens 850→4096 只是抬上限、本身不强制变长，排除：若它无辜，改回 850 也是治症状——落点 `maxOutputTokens: 4096,` 的逐字原文已给出，可以直接当 edit_file 的 old_text，看到结果后不用再读文件；压缩步骤整段重构要动多处、代码没看过，排除。改法只落一个：改 src/config.js 的 `+  compressTargetMax: 1800,` 这一行（diff 的 + 行即新值，就是文件里的 `  compressTargetMax: 1800,`），让它回落到 450，落点已在手。\n\n所以下一步工具调用是 bash analyze-trace --compare v11.9 v11.10 --steps birth --fields finishReason,outputTokens,contentSpanMs。如果输出里升级前的 birth 记录 finishReason 是 stop（不是 length）、outputTokens 明显低于 850 而升级后 outputTokens 随输出同步抬高，那么假设坐实，看到这一点就够了，不用再读 src/config.js、也不用再核 README 开关表：直接 edit_file src/config.js，old_text 是 `  compressTargetMax: 1800,`（上一轮 git diff 的 + 行去掉加号，逐字就是文件里那一行，不带行首缩进也能匹配），new_text 是 `  compressTargetMax: 450,`。如果输出里升级前 finishReason 是 length、outputTokens 顶在 850，那么假设不成立：主因是 maxOutputTokens 抬顶后放开了原本被截断的生成，压缩目标只是陪跑，此时不要动 compressTargetMax；改法落另一处，同一次 diff 的另一行：old_text 是 `  maxOutputTokens: 4096,`（diff + 行去加号），new_text 是 `  maxOutputTokens: 850,`。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+   "side": "我们需要把 900ms→2400ms 的增量归到正确的那一档：ttfbMs p50 610/640 基本没动（+30ms），contentSpanMs p50 280/1650，outputChars p50 390/1720，promptVersion 前后都是 compress-v3h:250-450；git diff v11.9..v11.10 -- src/config.js 的两行（逐字，- 是旧值 + 是新值）：\n`-  maxOutputTokens: 850,`\n`+  maxOutputTokens: 4096,`\n`-  compressTargetMax: 450,`\n`+  compressTargetMax: 1800,`\n加号减号只是 diff 标记，文件里不带它们；README 回滚开关表写明 compressTargetMax 只影响 v3 的长度目标。算一下：390≈旧目标 450、1720≈新目标 1800，比值 4.4 与目标比值 4.0 同量级；解码吞吐 390/280≈1.39 chars/ms 对 1720/1650≈1.04 chars/ms，同一量级。看起来不是单 token 变慢，也不是 prefill 变重（ttfb 只 +30ms），而是纯解码量膨胀，contentSpan 增量 1370ms 吃掉总增量 1500ms 的绝大部分，这就是平均等待从 900ms 涨到 2400ms 的原因；promptVersion 那个 250-450 前后不变，说明这个 tag 不是从 config 现算的（否则该变成 250-1800），它是陈旧仪表，不改变落点。maxOutputTokens 850→4096 只是抬上限、本身不强制变长，排除：若它无辜，改回 850 也是治症状；压缩步骤整段重构要动多处、代码没看过，排除。改法只落一个：改 src/config.js 的 `+  compressTargetMax: 1800,` 这一行（diff 的 + 行即新值，就是文件里的 `  compressTargetMax: 1800,`），让它回落到 450，落点已在手。\n\n所以下一步工具调用是 bash `analyze-trace --compare v11.9 v11.10 --steps birth --fields finishReason,outputTokens,contentSpanMs`。如果输出里升级前的 birth 记录 finishReason 是 stop（不是 length）、outputTokens 明显低于 850 而升级后 outputTokens 随输出同步抬高，那么假设坐实，看到这一点就够了，不用再读 src/config.js、也不用再核 README 开关表：直接 edit_file src/config.js，old_text 是 `  compressTargetMax: 1800,`（上一轮 git diff 的 + 行去掉加号，逐字就是文件里那一行，不带行首缩进也能匹配），new_text 是 `  compressTargetMax: 450,`。如果输出里升级前 finishReason 是 length、outputTokens 顶在 850，那么假设不成立：主因是 maxOutputTokens 抬顶后放开了原本被截断的生成，压缩目标只是陪跑，此时不要动 compressTargetMax；改法落另一处，同一次 diff 的另一行：old_text 是 `  maxOutputTokens: 4096,`（diff + 行去加号），new_text 是 `  maxOutputTokens: 850,`。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
+  },
+  {
+   "id": "flaky-timeout",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 9053,
+   "outChars": 1677,
+   "ms": 25134,
+   "promptVersion": "compress-v4d6:ctx",
+   "gate": {
+    "outputChars": 1679,
+    "inventedSpans": 1,
+    "newTextSpans": 1,
+    "chars": 1677,
+    "closeLoop": true,
+    "provenance": true,
+    "register": true,
+    "ctxChars": 649,
+    "branches": 2,
+    "fixBranches": 1,
+    "boundBranches": 1,
+    "boundBy": [
+     "had"
+    ],
+    "compileMs": 1.99
+   },
+   "accept": "ok",
+   "text": "CI 里 test/hedge.selftest.mjs §4 失败时 `expected hedgeStartedAt=null, got 1712` / `got 1698`，PASS 时 `hedge 3.1s`；测试节选写明「主请求 1500ms 后回 200；hedgeAfterMs: 1600」和 `assert.equal(meta.hedgeStartedAt, null)`。src/distill.js 的 hedgedDistill 节选（逐字）：\n`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`\n`primary.then(() => { primarySettled = true })`\nCI nproc 是 2，本地 nproc 是 16。看起来主请求的 1500ms 与对冲的 1600ms 只差 100ms，在 2 核 CI 上事件循环一旦积压，1500 和 1600 两个定时器会落到同一个 timers 阶段：先执行 1500 的 server 回调发响应，紧接着执行 1600 的 hedge 回调，而主请求的 HTTP 响应要到 poll 阶段才 resolve，`primary.then` 的微任务还没把 `primarySettled` 置 true，于是 startHedge 被调用，got 1712/1698 正是定时器被整体延迟后的触发时刻；本地 16 核调度及时，所以从不失败。这个 100ms 余量对负载敏感，是测试时序竞态，不是 hedgedDistill 逻辑必然错。排除：在 `primary.finally` 中设置标志或在 timer 里改查 `primary` 是否已 settled，都还是要依赖同一事件循环顺序，治不了定时器积压；把主请求改成 1000ms、hedgeAfterMs 改成 2000ms 或 3000ms 能拉大余量，但要动测试参数；换 fake timers 要动测试结构，落点没看过。改法只落一个：改 test/hedge.selftest.mjs 的 `hedgeAfterMs: 1600` 这一行，让它与 1500ms 主请求拉开足够余量，落点已经在手。所以下一步工具调用是 bash `taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`。如果输出里出现 `FAIL` 且 `got` 是 1700 左右，那么假设坐实，看到这一点就够了，不用再读 src/distill.js、也不用再核 nproc：直接 edit_file test/hedge.selftest.mjs，old_text 是 `  hedgeAfterMs: 1600`（上一轮 read_file test/hedge.selftest.mjs §4 的原样行，循环输出里没有它，照用；不带行首缩进也能匹配），new_text 是 `  hedgeAfterMs: 3000`。如果输出里 50 次全 PASS，那么假设不成立：本地 2 核仍不足以复现，此时不要改 test/hedge.selftest.mjs；能改的另一处只有 src/distill.js 的 `primary.then(() => { primarySettled = true })`，但 CI 的负载特征还没分辨，先 bash node --trace-event-categories v8,node,node.async_hooks test/hedge.selftest.mjs，看事件循环延迟是否落在 1500–1700ms 窗口。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+   "side": "CI 里 test/hedge.selftest.mjs §4 失败时 `expected hedgeStartedAt=null, got 1712` / `got 1698`，PASS 时 `hedge 3.1s`；测试节选写明「主请求 1500ms 后回 200；hedgeAfterMs: 1600」和 `assert.equal(meta.hedgeStartedAt, null)`。src/distill.js 的 hedgedDistill 节选（逐字）：\n`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`\n`primary.then(() => { primarySettled = true })`\nCI nproc 是 2，本地 nproc 是 16。看起来主请求的 1500ms 与对冲的 1600ms 只差 100ms，在 2 核 CI 上事件循环一旦积压，1500 和 1600 两个定时器会落到同一个 timers 阶段：先执行 1500 的 server 回调发响应，紧接着执行 1600 的 hedge 回调，而主请求的 HTTP 响应要到 poll 阶段才 resolve，`primary.then` 的微任务还没把 `primarySettled` 置 true，于是 startHedge 被调用，got 1712/1698 正是定时器被整体延迟后的触发时刻；本地 16 核调度及时，所以从不失败。这个 100ms 余量对负载敏感，是测试时序竞态，不是 hedgedDistill 逻辑必然错。排除：在 `primary.finally` 中设置标志或在 timer 里改查 `primary` 是否已 settled，都还是要依赖同一事件循环顺序，治不了定时器积压；把主请求改成 1000ms、hedgeAfterMs 改成 2000ms 或 3000ms 能拉大余量，但要动测试参数；换 fake timers 要动测试结构，落点没看过。改法只落一个：改 test/hedge.selftest.mjs 的 `hedgeAfterMs: 1600` 这一行，让它与 1500ms 主请求拉开足够余量，落点已经在手。所以下一步工具调用是 bash `taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`。如果输出里出现 `FAIL` 且 `got` 是 1700 左右，那么假设坐实，看到这一点就够了，不用再读 src/distill.js、也不用再核 nproc：直接 edit_file test/hedge.selftest.mjs，old_text 是 `  hedgeAfterMs: 1600`（上一轮 read_file test/hedge.selftest.mjs §4 的原样行，循环输出里没有它，照用；不带行首缩进也能匹配），new_text 是 `  hedgeAfterMs: 3000`。如果输出里 50 次全 PASS，那么假设不成立：本地 2 核仍不足以复现，此时不要改 test/hedge.selftest.mjs；能改的另一处只有 src/distill.js 的 `primary.then(() => { primarySettled = true })`，但 CI 的负载特征还没分辨，先 bash `node --trace-event-categories v8,node,node.async_hooks test/hedge.selftest.mjs`，看事件循环延迟是否落在 1500–1700ms 窗口。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
+  }
+ ]
+}
