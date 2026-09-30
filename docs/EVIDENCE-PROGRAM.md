@@ -210,3 +210,8 @@ const result = await runtime.runRound(program, { roundId: 'round-1', raw: origin
 底层显式round选项`diagnostics:false`只跳诊断，不跳验收；`stopOnUnknown:true`让诊断首个未知停止。HMAC认证与角色/轮次仍严格；固定顺序不受构造后调用方数组修改影响。取消不回退已经发生的网络等非受管副作用，也不能抢占同步I/O或强制终止不遵守signal的观察回调；宿主必须保护独占资源。详见 [增量优化/回归](analysis/REPAIR-HARDENING-2026-09-30.md)。
 
 `npm run evidence:repair:regression`只跑6个已知开发任务，不再搜索已消费18任务留出。旧report仍保留历史；源码变化会关闭旧搜索入口，不删库规避。最终776/0/1、26套件、manifest294、N1–N7全零；外部API0、费用0。
+
+
+### v13.2 离线到联网交付平面（不改变原证据执行权限）
+
+`createEvidenceStore`新增只读 `authorityId`，为域分离HMAC衍生的公开仓身份，**不是私钥**；仅用于公开预算收据与私有仓/检查点绑定，旧块内容/原文/编译稿不变。离线优先评测工具把现有编译与有界渠道门、预算/完整配对、加密迁移接成同一路径，默认不联网、不接管DSH或原生episode。使用 [联网准备手册](RUNBOOK-ONLINE-READY.md)；新参数不增加任何检查/文件执行权限。真实DSH依赖、模型效果与独立泛化仍分别待验证，不能用本机替身代替。

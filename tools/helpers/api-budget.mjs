@@ -26,7 +26,7 @@ export function quoteJob(body, pricing) {
   if (!Number.isSafeInteger(reservedNano) || reservedNano < 0) throw new Error('api-price-range')
   return Object.freeze({ inputTokens, outputTokens, reservedNano, reservedUsd: reservedNano / NANO })
 }
-export function auditApiPlan(plan) {
+export function auditApiPlan(plan, { allowUnpriced = false } = {}) {
   if (plan?.schema !== 'cfb.bounded-ab/1' || typeof plan.model !== 'string' || !/^[\w./:-]{1,120}$/.test(plan.model) || !Array.isArray(plan.jobs) || !plan.jobs.length || plan.jobs.length > 13) throw new Error('api-plan-schema')
   if (evidenceDigest(plan.limits) !== evidenceDigest(APPROVED_API_LIMITS)) throw new Error('api-approval-changed')
   let endpoint
@@ -37,7 +37,12 @@ export function auditApiPlan(plan) {
   for (const job of plan.jobs) {
     if (typeof job.key !== 'string' || !job.key || keys.has(job.key) || !['probe', 'main'].includes(job.kind) || job.body?.model !== plan.model || !Array.isArray(job.body.messages) || job.body.messages.some((m) => !['system', 'user', 'assistant', 'tool'].includes(m.role) || typeof m.content !== 'string' || m.reasoning_content !== undefined && typeof m.reasoning_content !== 'string')) throw new Error('api-job-schema')
     keys.add(job.key); job.kind === 'probe' ? probe++ : main++
-    const quote = quoteJob(job.body, plan.pricing); quotes[job.key] = quote; totalNano += quote.reservedNano
+    let quote
+    if (allowUnpriced && plan.pricing === null) {
+      if (!Number.isSafeInteger(job.body.max_tokens) || job.body.max_tokens < 1 || job.body.max_tokens > 16000 || job.body.stream !== false || job.body.n !== undefined && job.body.n !== 1) throw new Error('api-output-limit')
+      quote = { inputTokens: inputTokenBound(job.body), outputTokens: job.body.max_tokens, reservedNano: null, reservedUsd: null }
+    } else quote = quoteJob(job.body, plan.pricing)
+    quotes[job.key] = quote; totalNano += quote.reservedNano ?? 0
   }
   if (probe !== 1 || plan.jobs[0].kind !== 'probe' || plan.jobs[0].key !== 'probe' || main !== 12 || typeof plan.canary !== 'string' || !/^CFB_CANARY_[a-f0-9]{32}$/.test(plan.canary)) throw new Error('api-matrix')
   const probeBody = plan.jobs[0].body, carriers = probeBody.messages.filter((m) => m.reasoning_content?.includes(plan.canary))
@@ -49,7 +54,7 @@ export function auditApiPlan(plan) {
     if (pair.some((j) => !j) || evidenceDigest(strip(pair[0].body)) !== evidenceDigest(strip(pair[1].body))) throw new Error('api-matrix-protocol')
   }
   if (totalNano > 2 * NANO) throw new Error('api-budget-plan-exceeds-2usd')
-  return immutableJson({ planDigest: evidenceDigest(plan), maxRequests: 13, maxUsd: 2, main, probe, totalReservedUsd: totalNano / NANO, quotes })
+  return immutableJson({ planDigest: evidenceDigest(plan), maxRequests: 13, maxUsd: 2, main, probe, priced: plan.pricing !== null, totalReservedUsd: plan.pricing === null ? null : totalNano / NANO, quotes })
 }
 function validateToolMessage(message, job) {
   if (!message || typeof message !== 'object' || Array.isArray(message) || message.content !== null && message.content !== undefined && typeof message.content !== 'string') throw new Error('response-message-shape')
@@ -63,10 +68,11 @@ function validateToolMessage(message, job) {
   }
   if (!String(message.content || '').trim() && !calls.length) throw new Error('response-empty')
 }
-function openBudget(plan, directory, receiptPath, { initialize = false } = {}) {
-  const audit = auditApiPlan(plan), file = receiptPath || path.resolve(directory) + '.watermark.json'
+function openBudget(plan, directory, receiptPath, { initialize = false, onStateCommitted = () => {} } = {}) {
+  const file = receiptPath || path.resolve(directory) + '.watermark.json'
   const marker = assertExistingBudget(directory, file), home = apiStoreDirectory(directory)
   if (!initialize && !fs.existsSync(path.join(home, '.head-api-budget.json'))) return null
+  const audit = auditApiPlan(plan)
   const store = createEvidenceStore({ directory, sessionId: API_APPROVAL_SCOPE })
   const read = () => {
     const head = store.readHead('api-budget')
@@ -78,6 +84,8 @@ function openBudget(plan, directory, receiptPath, { initialize = false } = {}) {
   const save = (head, state, initial = false) => {
     const next = store.setHead('api-budget', store.putJson(state, { kind: 'api-budget' }), { expectedRevision: head?.revision || null })
     commitWatermark(store, next, state, file, { initial })
+    const hook = onStateCommitted({ sequence: next.sequence, requestsReserved: state.entries.length })
+    if (hook && typeof hook.then === 'function') throw new Error('api-async-state-hook')
     return next
   }
   const head = store.readHead('api-budget')
@@ -97,10 +105,10 @@ export function inspectApiBudget({ plan, directory, receiptPath }) {
   const budget = openBudget(plan, directory, receiptPath)
   return budget ? Object.freeze({ snapshot: () => budget.read().state, cached: budget.cached, receiptPath: budget.receiptPath, matchesCredential: (value) => typeof value === 'string' && (!budget.read().state.authTag || budget.read().state.authTag === crypto.createHmac('sha256', budget.store.authorityId).update(value).digest('hex')) }) : null
 }
-export function createBudgetedChat({ plan: input, apiKey, directory, receiptPath, fetchImpl = globalThis.fetch, timeoutMs = 240000, maxResponseBytes = 1024 * 1024 }) {
+export function createBudgetedChat({ plan: input, apiKey, directory, receiptPath, fetchImpl = globalThis.fetch, timeoutMs = 240000, maxResponseBytes = 1024 * 1024, onStateCommitted }) {
   const plan = immutableJson(input)
   if (typeof apiKey !== 'string' || !apiKey.trim()) throw new Error('api-key-missing')
-  const budget = openBudget(plan, directory, receiptPath, { initialize: true }), { store, audit, read, save } = budget
+  const budget = openBudget(plan, directory, receiptPath, { initialize: true, onStateCommitted }), { store, audit, read, save } = budget
   const run = async (key, { signal } = {}) => {
     const job = plan.jobs.find((j) => j.key === key); if (!job) throw new Error('api-job-unregistered')
     let dispatched = false
@@ -135,6 +143,7 @@ export function createBudgetedChat({ plan: input, apiKey, directory, receiptPath
     } catch (e) {
       if (dispatched) {
         const { head, state } = read()
+        if (state.entries.find((x) => x.key === key)?.status === 'accepted') throw new Error('api-checkpoint-write-failed')
         const reason = /^(?:channel-[a-z-]+|api-usage-out-of-bound|response-[a-z-]+|request-aborted|request-timeout|request-network-error|HTTP \d{3})$/.test(e.message) ? e.message : 'api-request-failed'
         save(head, { ...state, halted: reason, entries: state.entries.map((x) => x.key === key ? { ...x, status: 'rejected', reason } : x) })
         throw new Error(reason)

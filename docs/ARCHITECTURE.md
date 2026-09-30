@@ -206,3 +206,15 @@ CAS（原文归档）是宿主注入的 `cmbStore` 服务（`ctx.get('cmbStore')
 存储默认由宿主选择 `$DSH_HOME/storages/cot-form-b/evidence/`，运行目录也可用 `.cfb-runtime/`（Git/manifest 忽略）。所有新模块无初始化 IO；只创建宿主仓/适配器时才写盘。HMAC 不是 OS 沙箱；宿主须独占资源并保护独立评价器、私钥与留出集。
 
 新增套件 `evidence-program`（15）、`active-checks`（11）、`effect-archive`（12）、`evidence-runtime`（26）；共 20 套件，verify 700/0/1。协议合成夹具不是主模型泛化评测，唯一跳过仍是原有宿主兄弟包等价探针。
+
+
+## v13.2 离线优先评测平面（不接管默认插件）
+
+- `tools/effect-ready.mjs`：统一prepare/doctor/simulate/run/report/export/import；只有明确live才发请求；`bounded-ab.mjs`为兼容别名。
+- `tools/helpers/eval-plan.mjs`：生产零成本重编译、完整冻结消息/工具/规则、源码指纹、先后平衡、唯一配对；参考不进模型。
+- `api-budget.mjs` + `api-watermark.mjs`：有界13/USD2、严格通道/usage/工具门；私有HMAC+CAS与非ignored公开水位绑定，缺仓/回滚/鉴权变更拒绝重开。不退款/重发未知。
+- `eval-workflow.mjs`：安全公开配置、纯本地体检、信号与缓存续跑、离线报告；真实账单未知不造0。
+- `eval-bundle.mjs` + `eval-files.mjs`：受限文件IO、AES-GCM+scrypt加密迁移、拒绝旧水位与非空覆盖；可选每次预占/回复同步单调备份，失败不伪造provider失败。
+- `eval-simulate.mjs`：真实loopback但固定替身；完整矩阵/断点/丢仓恢复/9故障，外部调用0，不执行shell，不证明LLM质量。
+
+公开小watermark保存于transfer、私有数据在ignored `.cfb-runtime`或显式持久卷；AES包包含本地authority，不能作为明文制品进入Git。源码完整性manifest不代替预算收据，也不包含私有仓。两平面存储故障停止，不自动修补；同权限宿主同时抹去全部副本或服务商违背价格/token限制仍不可由本地代码物理保证。

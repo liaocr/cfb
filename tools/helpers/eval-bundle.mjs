@@ -69,16 +69,47 @@ function decode(encoded, passphrase) {
   if (!names.has('plan.json')) throw new Error('eval-bundle-plan-missing')
   return payload
 }
-export function exportEvaluationBundle({ home, receiptPath, file, passphrase }) {
+export function exportEvaluationBundle({ home, receiptPath, file, passphrase, replace = false }) {
   PASSWORD(passphrase); const root = assertSafePath(home, { directory: true })
   if (path.resolve(file).startsWith(root + path.sep)) throw new Error('eval-bundle-output-inside-state')
-  const plan = readJson(path.join(root, 'plan.json'))
-  auditApiPlan(plan)
-  const marker = readWatermark(receiptPath), budget = inspectApiBudget({ plan, directory: path.join(root, 'ledger'), receiptPath })
-  if (marker && !budget) throw new Error('api-budget-restore-required')
-  const payload = { schema: 'cfb.eval-checkpoint/1', planDigest: evidenceDigest(plan), watermark: marker, files: collect(root) }
-  const encoded = encode(payload, passphrase); writeBytes(file, encoded, { exclusive: true })
-  return { schema: 'cfb.bundle-export/1', encrypted: true, bytes: encoded.length, sha256: hash(encoded), planDigest: payload.planDigest, requestsReserved: marker?.requests || 0 }
+  const output = assertSafePath(file, { createParents: true }), lock = output + '.lock'
+  let lease
+  try { lease = fs.openSync(lock, 'wx', 0o600) } catch (e) { if (e.code === 'EEXIST') throw new Error('eval-checkpoint-busy'); throw e }
+  try {
+    const plan = readJson(path.join(root, 'plan.json'))
+    auditApiPlan(plan, { allowUnpriced: true })
+    const marker = readWatermark(receiptPath), budget = inspectApiBudget({ plan, directory: path.join(root, 'ledger'), receiptPath })
+    if (marker && !budget) throw new Error('api-budget-restore-required')
+    const files = collect(root), after = readWatermark(receiptPath)
+    if (marker?.digest !== after?.digest) throw new Error('eval-checkpoint-changed')
+    if (budget) budget.snapshot()
+    if (marker) {
+      const f = files.find((f) => f.path === 'ledger/' + scopeHex + '/.head-api-budget.json')
+      const h = f && JSON.parse(Buffer.from(f.data, 'base64').toString())
+      if (!h || h.revision !== marker.revision || h.sequence !== marker.sequence) throw new Error('eval-checkpoint-changed')
+    }
+    const payload = { schema: 'cfb.eval-checkpoint/1', planDigest: evidenceDigest(plan), watermark: marker, files }
+    if (replace && fs.existsSync(file)) {
+      const old = decode(readBytes(file, MAX + 8192), passphrase)
+      if (old.planDigest !== payload.planDigest || old.watermark && (!marker || old.watermark.authorityId !== marker.authorityId || old.watermark.sequence > marker.sequence || old.watermark.requests > marker.requests)) throw new Error('eval-bundle-stale-watermark')
+    }
+    const encoded = encode(payload, passphrase)
+    if (marker?.digest !== readWatermark(receiptPath)?.digest) throw new Error('eval-checkpoint-changed')
+    if (budget) budget.snapshot()
+    writeBytes(file, encoded, { exclusive: !replace })
+    return { schema: 'cfb.bundle-export/1', encrypted: true, bytes: encoded.length, sha256: hash(encoded), planDigest: payload.planDigest, requestsReserved: marker?.requests || 0 }
+  } finally { fs.closeSync(lease); fs.unlinkSync(lock) }
+}
+/** 自动备份的只读前置检查，必须在初始化预算/读模型钥匙执行前完成。 */
+export function assertAutoCheckpoint({ home, receiptPath, file, passphrase }) {
+  PASSWORD(passphrase); assertSafePath(file)
+  const root = assertSafePath(home, { directory: true })
+  if (path.resolve(file).startsWith(root + path.sep)) throw new Error('eval-bundle-output-inside-state')
+  if (fs.existsSync(file)) {
+    const old = decode(readBytes(file, MAX + 8192), passphrase), plan = readJson(path.join(root, 'plan.json')), current = readWatermark(receiptPath)
+    if (old.planDigest !== evidenceDigest(plan) || old.watermark && (!current || old.watermark.authorityId !== current.authorityId || old.watermark.sequence > current.sequence || old.watermark.requests > current.requests)) throw new Error('eval-bundle-stale-watermark')
+  }
+  return true
 }
 export function importEvaluationBundle({ home, receiptPath, file, passphrase }) {
   const payload = decode(readBytes(file, MAX + 8192), passphrase), root = assertSafePath(home, { directory: true })
@@ -90,7 +121,7 @@ export function importEvaluationBundle({ home, receiptPath, file, passphrase }) 
   let installed = false
   try {
     for (const f of payload.files) writeBytes(path.join(stage, ...f.path.split('/')), Buffer.from(f.data, 'base64'), { exclusive: true })
-    const plan = readJson(path.join(stage, 'plan.json')); auditApiPlan(plan)
+    const plan = readJson(path.join(stage, 'plan.json')); auditApiPlan(plan, { allowUnpriced: !incoming })
     if (evidenceDigest(plan) !== payload.planDigest) throw new Error('eval-bundle-plan-digest')
     if (incoming) {
       writeJson(stageReceipt, incoming, { exclusive: true })

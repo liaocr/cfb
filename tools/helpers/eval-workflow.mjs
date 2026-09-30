@@ -6,6 +6,7 @@ import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
 import { buildMinimalPlan, sourceDifferences, summarizeMinimal, resultOf } from './eval-plan.mjs'
 import { auditApiPlan, createBudgetedChat, inspectApiBudget, inputTokenBound, APPROVED_API_LIMITS } from './api-budget.mjs'
 import { assertSafePath, readJson, writeJson, hasSecretMaterial } from './eval-files.mjs'
+import { assertAutoCheckpoint, exportEvaluationBundle } from './eval-bundle.mjs'
 import { readWatermark } from './api-watermark.mjs'
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 export const DEFAULT_HOME = path.join(ROOT, '.cfb-runtime/bounded-ab')
@@ -89,7 +90,9 @@ export function doctorEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_REC
     notes: ['预检通过不等于通道/型号已实测；第一次live仍只有冻结的单探针。', '预算基于可信价表与输入估计，不是服务商账单物理锁。', '当前适配器使用Node fetch；不隐式采用代理环境变量，需要宿主提供可用的出站路由。'] })
 }
 export function reportEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RECEIPT } = {}) {
-  const p = paths(home), plan = loadPrepared(home), budget = inspectApiBudget({ plan, directory: p.ledger, receiptPath }), results = []
+  const p = paths(home), plan = loadPrepared(home)
+  auditApiPlan(plan, { allowUnpriced: true })
+  const budget = inspectApiBudget({ plan, directory: p.ledger, receiptPath }), results = []
   if (budget) for (const job of plan.jobs.filter((j) => j.kind === 'main')) { const r = budget.cached(job.key); if (r) results.push(resultOf(plan, job, r)) }
   const state = budget?.snapshot() || null
   return immutableJson({ schema: 'cfb.eval-report/1', ...summarizeMinimal(plan, results), mode: plan.simulation ? 'simulation' : 'live', channelVerified: !!state?.entries.some((e) => e.kind === 'probe' && e.status === 'accepted'),
@@ -97,9 +100,11 @@ export function reportEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_REC
     stopped: state?.halted || (state?.entries.some((e) => e.status === 'pending') ? 'api-unsettled-dispatch' : null), judgeRequests: 0, retries: 0, sourceDigest: plan.sourceDigest, sourceCurrent: sourceDifferences(plan).length === 0 })
 }
 /** 共用执行内核，传输由显式宿主提供；模拟与真实网络共享相同预算/校验/报告。 */
-export async function executePreparedEvaluation({ home, receiptPath, apiKey, fetchImpl = globalThis.fetch, signal, stopAfter = null, onProgress = () => {} }) {
+export async function executePreparedEvaluation({ home, receiptPath, apiKey, fetchImpl = globalThis.fetch, signal, stopAfter = null, checkpointFile = null, passphrase = null, onProgress = () => {} }) {
   const p = paths(home), plan = loadPrepared(home)
-  const budget = createBudgetedChat({ plan, apiKey, directory: p.ledger, receiptPath, fetchImpl, timeoutMs: plan.execution.timeoutMs, maxResponseBytes: plan.execution.maxResponseBytes })
+  if (checkpointFile) assertAutoCheckpoint({ home, receiptPath, file: checkpointFile, passphrase })
+  const onStateCommitted = checkpointFile ? () => exportEvaluationBundle({ home, receiptPath, file: checkpointFile, passphrase, replace: true }) : undefined
+  const budget = createBudgetedChat({ plan, apiKey, directory: p.ledger, receiptPath, fetchImpl, timeoutMs: plan.execution.timeoutMs, maxResponseBytes: plan.execution.maxResponseBytes, onStateCommitted })
   let stopped = null, processed = 0
   try {
     for (const job of plan.jobs) {
@@ -118,10 +123,10 @@ export async function executePreparedEvaluation({ home, receiptPath, apiKey, fet
   writeJson(p.summary, report)
   return immutableJson(report)
 }
-export async function runEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RECEIPT, env = {}, live = false, signal, onProgress, now } = {}) {
+export async function runEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RECEIPT, env = {}, live = false, signal, onProgress, now, checkpointFile = null } = {}) {
   if (!live) throw new Error('explicit-live-required')
   const doctor = doctorEvaluation({ home, receiptPath, env, now })
   if (doctor.status !== 'live-preflight-ready') throw new Error('eval-preflight-blocked')
   const plan = loadPrepared(home)
-  return executePreparedEvaluation({ home, receiptPath, apiKey: env[plan.execution.apiKeyEnv], signal, onProgress })
+  return executePreparedEvaluation({ home, receiptPath, apiKey: env[plan.execution.apiKeyEnv], signal, onProgress, checkpointFile, passphrase: checkpointFile ? env.CFB_STATE_PASSPHRASE : null })
 }

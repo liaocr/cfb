@@ -13,7 +13,7 @@ const PROFILE = { schema: 'cfb.eval-profile/1', model: 'deepseek-v4.1-flash', ba
   pricing: { inputUsdPerMillion: 0.01, outputUsdPerMillion: 0.05, requestFeeUsd: 0, source: 'https://fixture.example.invalid/pricing', verifiedAt: '2026-09-30' } }
 const FIXTURE_KEY = 'offline-fixture-only', PASSWORD = 'offline-checkpoint-fixture-passphrase'
 const COMMANDS = { 'flaky-timeout': 'node --trace-event-categories v8,node,node.async_hooks test/hedge.selftest.mjs', 'wrong-model': 'grep -n -C 5 "callConfig\\|host.observe" src/plugin.js', 'eacces-config': 'sed -n "1,180p" verify.mjs' }
-async function fixtureServer(plan, scenario) {
+async function fixtureServer(plan, scenario, { abortController } = {}) {
   let count = 0
   const timers = new Set()
   const server = http.createServer((req, res) => {
@@ -22,6 +22,7 @@ async function fixtureServer(plan, scenario) {
     req.on('data', (c) => { bytes += c.length; if (bytes > 1024 * 1024) req.destroy(); else parts.push(c) })
     req.on('end', () => {
       count++; const job = plan.jobs[count - 1]
+      if (scenario === 'cancellation' && count === 1) { const t = setTimeout(() => { timers.delete(t); abortController?.abort() }, 20); timers.add(t) }
       if (req.url !== '/v1/chat/completions' || req.headers.authorization !== 'Bearer ' + FIXTURE_KEY || !job) { res.writeHead(400); res.end(); return }
       let body; try { body = JSON.parse(Buffer.concat(parts).toString()) } catch { res.writeHead(400); res.end(); return }
       assert.equal(body.model, plan.model)
@@ -78,8 +79,7 @@ export async function simulateReadyEvaluation() {
     const faults = []
     for (const [scenario, reason] of Object.entries(expected)) {
       const workspace = make(scenario); prepareEvaluation({ ...workspace, profile: PROFILE, simulation: true })
-      const s = await fixtureServer(loadPrepared(workspace.home), scenario), ctl = new AbortController()
-      const t = scenario === 'cancellation' ? setTimeout(() => ctl.abort(), 40) : null
+      const ctl = new AbortController(), s = await fixtureServer(loadPrepared(workspace.home), scenario, { abortController: ctl })
       try {
         const r = await executePreparedEvaluation({ ...workspace, apiKey: FIXTURE_KEY, fetchImpl: s.fetchImpl, signal: ctl.signal })
         assert.equal(r.complete, false); assert.equal(r.stopped, reason)
@@ -89,7 +89,7 @@ export async function simulateReadyEvaluation() {
         const again = await executePreparedEvaluation({ ...workspace, apiKey: FIXTURE_KEY, fetchImpl: s.fetchImpl })
         assert.equal(again.complete, false); assert.equal(s.count(), n)   // 坏渠道/未知不重试也不补样本
         faults.push({ scenario, stopped: r.stopped, loopbackRequests: n, extraRequestsOnResume: 0 })
-      } finally { if (t) clearTimeout(t); await s.close() }
+      } finally { await s.close() }
     }
     return { schema: 'cfb.offline-ready-simulation/1', boundary, externalApiCalls: 0, externalModelCalls: 0, paidCostUsd: 0,
       healthy: { complete: summary.complete, pairedMainResponses: summary.pairedMainResponses, loopbackRequests: 13, checkpointAt: 5, restoredRequests: imported.requestsReserved, repeatRequests: 0, encryptedCheckpointBytes: exported.bytes }, faults,

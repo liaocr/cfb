@@ -350,3 +350,21 @@ v12.0 / v12.1 删除的文件都可从 git 取回：`git show cfba57b:<路径>`�
 有意排除（避免把「某台机器的状态」伪装成「可交付代码」）：`*.bak` 历史备份；绑死本机仓库布局或含硬编码路径的一次性脚本
 （`_roles-ab*.mjs`、`restart-gateway.mjs`、`verify-all.mjs` 等）；会话日志、CAS blob、trace 原文（体量巨大且含真实对话内容）。
 这些留在原开发机的仓库里，需要时再单独取。
+
+
+## 离线准备与联网评测（v13.2，显式工具入口）
+
+外网不可用也可完成完整本机HTTP演练、预算恢复与加密迁移：
+
+```sh
+npm run effect:simulate
+npm run effect:ready -- prepare
+npm run effect:ready -- doctor
+# 联网、实际价表和安全环境钥匙都准备好后才明确live：
+npm run effect:ready -- prepare --profile eval-profile.json
+npm run effect:ready -- run --live --checkpoint /persistent/cfb/current.cfbstate
+```
+
+默认不联网；只有显式live才可能使用原批准的USD2/13请求，零自动重试/评委。公开预算收据与私有HMAC仓绑定，丢仓/回滚不能重新初始化；可用AES256-GCM+scrypt加密导入导出与逐步自动检查点。完整配置、体检、错误处理与两平面保存方法见 [联网上手手册](docs/RUNBOOK-ONLINE-READY.md)，实测/范围见 [架构强化报告](docs/analysis/OFFLINE-READY-2026-09-30.md)。
+
+这不改变旧插件/正文/chunks/提示词，不自动接管生产工具，也不宣称模拟通过等于模型提升。其他provider若不支持历史reasoning协议/可信指纹，明确停止，不猜别名或放松闸门。

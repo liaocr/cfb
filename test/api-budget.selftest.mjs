@@ -97,8 +97,8 @@ try {
     assert.equal(b.snapshot().entries.length, 0); assert.equal(m.requests.length, 0)
   })
   await test('12 timeout 不重试，也不把迟到的绿灯当成功', async () => {
-    const m = mock(async () => { await new Promise((r) => setTimeout(r, 30)); return payload() })
-    const b = createBudgetedChat({ plan: PLAN, apiKey: 'test', directory: temp(), fetchImpl: m.fetchImpl, timeoutMs: 10 })
+    const m = mock(async () => { await new Promise((r) => setTimeout(r, 250)); return payload() })
+    const b = createBudgetedChat({ plan: PLAN, apiKey: 'test', directory: temp(), fetchImpl: m.fetchImpl, timeoutMs: 100 })
     await assert.rejects(b.run('probe'), /request-timeout/)
     assert.equal(m.requests.length, 1); assert.equal(b.snapshot().halted, 'request-timeout'); assert.equal(b.cached('probe'), null)
   })
@@ -186,9 +186,13 @@ try {
     assert.match(s.limitation, /不等于修复完成/)
   })
   await test('27 同步迟到也按墙钟拒绝，不等待 timeout 回调来作废', async () => {
-    const m = mock(() => { const until = Date.now() + 20; while (Date.now() < until) {} return payload() })
-    const chat = makeChat({ baseUrl: PLAN.baseUrl, apiKey: 'test', maxRetries: 0, fetchImpl: m.fetchImpl, timeoutMs: 5 })
-    await assert.rejects(chat(body), /request-timeout/); assert.equal(m.requests.length, 1)
+    const original = Date.now; let clock = 0
+    const m = mock(() => { clock = 20; return payload() })
+    try {
+      Date.now = () => clock
+      const chat = makeChat({ baseUrl: PLAN.baseUrl, apiKey: 'test', maxRetries: 0, fetchImpl: m.fetchImpl, timeoutMs: 5 })
+      await assert.rejects(chat(body), /request-timeout/); assert.equal(m.requests.length, 1)
+    } finally { Date.now = original }
   })
   await test('26 真实 loopback 302 不跟随，不向第二 URL 转发凭据', async () => {
     let first = 0, second = 0

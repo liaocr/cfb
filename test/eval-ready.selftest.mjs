@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import crypto from 'node:crypto'
 import { makeChat } from '../tools/effect-eval.mjs'
 import { createEvidenceStore } from '../src/evidence-store.js'
 import { buildMinimalPlan, summarizeMinimal } from '../tools/bounded-ab.mjs'
@@ -215,6 +214,48 @@ try {
   await test('37 CLI帮助/拒绝明文参数不反射秘密，未触及任何供应商', async () => {
     const output = []; await readyMain(['--help'], { env: { DEEPSEEK_API_KEY: KEY }, output: (v) => output.push(v) })
     assert.ok(!output.join('').includes(KEY)); await assert.rejects(readyMain(['prepare', '--api-key', KEY], { env: {}, output: () => {} }), (e) => e.message === 'eval-option')
+  })
+  await test('39 自动checkpoint在fetch前已有pending，回复后已有accepted；丢仓可直接恢复', async () => {
+    const w = prepared(), file = path.join(w.dir, 'auto.cfbstate')
+    let sawPending = false
+    const m = mock(w.plan, () => {
+      const home = path.join(w.dir, 'pending-copy'), receiptPath = path.join(w.dir, 'pending-copy.json')
+      const restored = importEvaluationBundle({ home, receiptPath, file, passphrase: PASS })
+      assert.equal(restored.requestsReserved, 1)
+      const view = inspectApiBudget({ plan: w.plan, directory: path.join(home, 'ledger'), receiptPath }).snapshot()
+      assert.equal(view.entries[0].status, 'pending'); sawPending = true
+      return payload(w.plan)
+    })
+    const r = await executePreparedEvaluation({ ...w, apiKey: KEY, fetchImpl: m.fetchImpl, checkpointFile: file, passphrase: PASS, stopAfter: 1 })
+    assert.equal(r.requestsReserved, 1); assert.equal(m.count(), 1); assert.equal(sawPending, true)
+    fs.rmSync(w.home, { recursive: true, force: true })
+    importEvaluationBundle({ ...w, file, passphrase: PASS })
+    assert.equal(inspectApiBudget({ plan: w.plan, directory: path.join(w.home, 'ledger'), receiptPath: w.receiptPath }).snapshot().entries[0].status, 'accepted')
+  })
+  await test('40 已认证回复后的备份故障不能降成provider失败或擦掉缓存', async () => {
+    const w = prepared(), m = mock(w.plan)
+    const b = client(w, m, { onStateCommitted: () => { if (readWatermark(w.receiptPath).jobs[0]?.status === 'accepted') throw new Error('fixture-backup-error') } })
+    await assert.rejects(b.run('probe'), /api-checkpoint-write-failed/)
+    assert.equal(m.count(), 1); assert.equal(b.cached('probe').model, w.plan.model); assert.equal(b.snapshot().halted, null)
+  })
+  await test('41 状态hook必须同步落盘，不忽略Promise后抢先发请求', () => {
+    const w = prepared(), m = mock(w.plan)
+    assert.throws(() => client(w, m, { onStateCommitted: async () => {} }), /api-async-state-hook/)
+    assert.equal(m.count(), 0)
+  })
+  await test('42 尚未定价也可report/加密搬迁；不造免费价或初始化预算', () => {
+    const w = prepared({ profile: { ...PROFILE, pricing: null } })
+    const r = reportEvaluation(w); assert.equal(r.validMainResponses, 0); assert.equal(r.requestsReserved, 0); assert.equal(r.actualCostUsd, null)
+    const f = exportBundle(w), home = path.join(w.dir, 'unpriced-copy'), receiptPath = path.join(w.dir, 'copy.json')
+    const imported = importEvaluationBundle({ home, receiptPath, file: f, passphrase: PASS }); assert.equal(imported.requestsReserved, 0)
+    assert.equal(loadPrepared(home).pricing, null); assert.equal(fs.existsSync(receiptPath), false)
+    assert.throws(() => auditApiPlan(loadPrepared(home)), /api-pricing-required/)
+  })
+  await test('43 并发/遗留备份锁不覆盖新包、不自动抢锁，输出文件保持不变', () => {
+    const w = prepared(), file = exportBundle(w), before = fs.readFileSync(file), lock = file + '.lock'
+    fs.writeFileSync(lock, '')
+    assert.throws(() => exportEvaluationBundle({ ...w, file, passphrase: PASS, replace: true }), /eval-checkpoint-busy/)
+    assert.deepEqual(fs.readFileSync(file), before); assert.equal(fs.existsSync(lock), true)
   })
   await test('38 整链本机HTTP：13请求、第5请求断点/丢仓/加密恢复、9故障无重发', async () => {
     const r = await simulateReadyEvaluation(); assert.equal(r.externalApiCalls, 0); assert.equal(r.paidCostUsd, 0)
