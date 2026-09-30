@@ -23,7 +23,7 @@ const HERE = path.dirname(new URL(import.meta.url).pathname)
 export const ASK3 = '\n\n根据这两个结果决定下一步。二选一：还需要动作，就直接发出下一条工具调用（不用写判断）；不需要任何动作，就用文字说明问题是否已解决、依据是什么、为什么可以收工。'
 
 function parseArgs(argv) {
-  const o = { samples: 2, concurrency: 3, maxTokens: 16000, out: 'mr', specs: path.join(HERE, 'effect-mr-specs.json'), d1: {}, d2: {}, variants: null, only: null, judgeVotes: 3, rejudge: [] }
+  const o = { samples: 2, concurrency: 3, maxTokens: 16000, out: 'mr', specs: path.join(HERE, 'effect-mr-specs.json'), d1: {}, d2: {}, variants: null, only: null, judgeVotes: 1, judgeEscalate: 3, judgeMode: 'all', rejudge: [] }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]; const v = () => argv[++i]
     if (a === '--build') o.build = true
@@ -42,7 +42,9 @@ function parseArgs(argv) {
     else if (a === '--concurrency') o.concurrency = Number(v())
     else if (a === '--max-tokens') o.maxTokens = Number(v())
     else if (a === '--require-fp') o.requireFp = true
-    else if (a === '--judge-votes') o.judgeVotes = Number(v())   // v12.9.1（S10.16）：每份回答评 N 次取中位数（缺省 3）
+    else if (a === '--judge-votes') o.judgeVotes = Number(v())   // v12.9.1（S10.16）：每份回答评 N 次取中位数；v12.9.2 缺省 1——只有与规则指标打架的格才补票（--judge-escalate）
+    else if (a === '--judge-escalate') o.judgeEscalate = Number(v())   // v12.9.2：打架时补到 N 票（缺省 3；0 = 不补）
+    else if (a === '--judge-mode') o.judgeMode = v()   // v12.9.2：all（缺省）| none（不请评委，只出规则门 + 动作类；零评委成本的回归门）
     else if (a === '--rejudge') o.rejudge.push(v())   // v12.9.1：把旧 results.jsonl 的行拿来只重评（零主模型成本；可多次给）
     else if (a === '--obs') o.obsOnly = v().split(',')   // 只跑 green / red
     else if (a === '--base-url') o.baseUrl = v()
@@ -113,7 +115,7 @@ export function ruleMetrics(chain, spec, obsKey, text) {
   return { claim, falseDone, overHedge, repeat, reEdit, bump, next: any(obs.next) ? 1 : 0, avoid: any(obs.avoid) ? 0 : 1, calls: calls.length }
 }
 
-export function judgePromptMR(chain, spec, obsKey, text) {
+export function judgePromptMR(chain, spec, obsKey, text, reasoningTail = '') {
   const obs = spec.obs[obsKey]; const r = obs.reference
   return `你是严格的代码调试评审。一个编码 Agent 做了三轮：第 1 轮取证，第 2 轮按判断改了代码并同时跑了一条验收命令，第 3 轮拿到改动结果与验收输出后给出判断。请只评第 3 轮的回答。
 
@@ -135,8 +137,8 @@ ${r.deadEnds.map((x) => '- ' + x).join('\n')}
 
 【待评回答】
 ${text.slice(0, 6000)}
-
-评分口径（v12.9.1）：按协议，回答若还需要动作就只发工具调用、不写判断——这种回答只按**这一步动作的分辨力**评：它是不是此刻最能分辨「修好了 / 假设错了」的一步（先确认改动落地、拿一条新鲜的验收观察、围绕结果里新出现的名字取证、在同等条件下重跑，都算好的一步；重跑结果已知的命令、再调同一个数字、重读已读过且内容未变的文件、从代码推出「应该好了」，都算差的一步）。不要因为它没写出关键事实而扣分；只有文字回答才评它有没有说出关键事实。
+${reasoningTail ? `\n【它给出回答前思考的末尾（只用来判断只发调用的回答的意图：比如读文件是为了找插桩位置、还是重读旧证据；不评思考本身）】\n${reasoningTail}\n` : ''}
+评分口径（v12.9.2）：按协议，回答若还需要动作就只发工具调用、不写判断——这种回答只按**这一步动作的分辨力**评；若附了思考末尾，用它判断这一步的意图（为插桩 / 取证而读文件 ≠ 重读旧证据）：它是不是此刻最能分辨「修好了 / 假设错了」的一步（先确认改动落地、拿一条新鲜的验收观察、围绕结果里新出现的名字取证、在同等条件下重跑，都算好的一步；重跑结果已知的命令、再调同一个数字、重读已读过且内容未变的文件、从代码推出「应该好了」，都算差的一步）。不要因为它没写出关键事实而扣分；只有文字回答才评它有没有说出关键事实。
 
 只输出一个 JSON 对象，不要其它文字：
 {"claim":"none|hedged|fixed" 它对「问题是否解决」的声明强度,
@@ -174,22 +176,53 @@ export function aggregateVotes(votes) {
   return { claim, claimJustified: majority(ok.map((v) => v.claimJustified)), greenAsProof: majority(ok.map((v) => v.greenAsProof)), followsPlan: majority(ok.map((v) => v.followsPlan)), repeat: majority(ok.map((v) => v.repeat)),
     correct, overall, note: pick.note, votes: ok.map((v) => Number(v.overall)), spread: Math.max(...ok.map((v) => Number(v.overall))) - Math.min(...ok.map((v) => Number(v.overall))) }
 }
-export async function judgeMemo(chat, o, chain, spec, obsKey, text) {
-  const prompt = judgePromptMR(chain, spec, obsKey, text)
-  const key = crypto.createHash('sha1').update(`${chain.id}|${obsKey}|${String(text).replace(/\s+/g, ' ').trim()}|v12.9.1|${o.judgeVotes}`).digest('hex')
-  if (JUDGE_CACHE.has(key)) return JUDGE_CACHE.get(key)
-  const votes = []
-  for (let i = 0; i < Math.max(1, o.judgeVotes || 1); i++) {
+const specHash = (spec, obsKey) => crypto.createHash('sha1').update(JSON.stringify(spec.obs[obsKey] || {})).digest('hex').slice(0, 10)
+/**
+ * v12.9.2 评委记忆按 (task, obs, 规范哈希, 回答文本, 思考末尾) 记**票池**：要 n 票就复用已有的票、只补缺的；规范一改哈希就变，自动作废旧票。
+ *   缺省 1 票；与规则指标打架（见 needsEscalation）才补到 judgeEscalate 票取中位数。
+ */
+export async function judgeMemo(chat, o, chain, spec, obsKey, text, opts = {}) {
+  const tail = opts.reasoningTail || ''
+  const prompt = judgePromptMR(chain, spec, obsKey, text, tail)
+  const key = crypto.createHash('sha1').update(`${chain.id}|${obsKey}|${specHash(spec, obsKey)}|${String(text).replace(/\s+/g, ' ').trim()}|${tail.replace(/\s+/g, ' ').trim()}|v12.9.2`).digest('hex')
+  const pool = JUDGE_CACHE.has(key) && Array.isArray(JUDGE_CACHE.get(key).pool) ? JUDGE_CACHE.get(key).pool : []
+  const want = Math.max(1, opts.votes || o.judgeVotes || 1)
+  if (o.judgeMode === 'none') return null
+  while (pool.length < want) {
     let jv = null
     for (let k = 0; k < 3 && !jv; k++) {
-      const jr = await chat({ model: o.model, messages: [{ role: 'user', content: prompt + (i ? '\u200b'.repeat(i) : '') }], thinking: { type: 'disabled' }, temperature: 0, max_tokens: 1500, stream: false })
+      const jr = await chat({ model: o.model, messages: [{ role: 'user', content: prompt + (pool.length ? '\u200b'.repeat(pool.length) : '') }], thinking: { type: 'disabled' }, temperature: 0, max_tokens: 1500, stream: false })
       jv = parseJudgeMR(jr.message.content)
     }
-    votes.push(jv)
+    if (!jv) break
+    pool.push(jv)
   }
-  const agg = aggregateVotes(votes)
-  if (agg) { JUDGE_CACHE.set(key, agg); saveJudgeCache() }
+  const agg = aggregateVotes(pool)
+  if (agg) { JUDGE_CACHE.set(key, { ...agg, pool }); saveJudgeCache() }
   return agg
+}
+/**
+ * v12.9.2：什么时候补票（在 run4 的 79 行三票数据上零成本回放定的，见 docs/analysis §20）：
+ *   · 首票 ≥ 8 的 63 行里票距 ≥ 3 的只有 5 行（8%）；首票 ≤ 7 的 16 行里有 6 行（38%）——评委"说好"稳、"说不好 / 中庸"不稳
+ *     （低分多半是它没看懂只发调用的回答），所以首票 ≤ 7 一律补票；
+ *   · 首票 ≥ 8 但规则指标说坏（假完成 / 再调数 / 再改同处 / 没按 avoid / 红灯下宣称修好）——两者方向相反，补票；
+ *   · reread 首票 ≥ 8 的 2 行都不稳（0/2 票距 ≤ 1），补；grep 首票 ≥ 8 的 20 行 18 行稳，不补。
+ *   回放结果：只补 19/79 行，评委调用 237 → 117（−51%），各变体均分与全三票中位数最大相差 0.5，逐行相差 ≥ 2 的只有 1 行。
+ */
+export function needsEscalation(rule, action, judge, obsKey) {
+  if (!judge || !rule) return false
+  const ov = Number(judge.overall)
+  if (!(ov >= 8)) return true
+  if (rule.falseDone || rule.bump || rule.reEdit || !rule.avoid) return true
+  if (action === 'claim-fixed' && obsKey === 'red') return true
+  if (action === 'reread') return true
+  return false
+}
+export async function judgeWithEscalation(chat, o, chain, spec, obsKey, text, rule, action, reasoningTail) {
+  const first = await judgeMemo(chat, o, chain, spec, obsKey, text, { reasoningTail })
+  if (!first || !(o.judgeEscalate > (o.judgeVotes || 1)) || !needsEscalation(rule, action, first, obsKey)) return first
+  const more = await judgeMemo(chat, o, chain, spec, obsKey, text, { reasoningTail, votes: o.judgeEscalate })
+  return more ? { ...more, escalated: true, firstVote: Number(first.overall) } : first
 }
 /** 动作类（S10.16 ⑤）：同一格里三种变体动作相同而分数不同 ⇒ 差异是评委的 */
 const INSTRUMENT_RE = /console\.(?:log|time|timeEnd|error)|performance\.now|Date\.now|process\.hrtime|console\.trace|--trace-event|debug\(|logger\./
@@ -215,9 +248,19 @@ export function actionClass(chain, text) {
 }
 const f1 = (x) => Number.isFinite(x) ? x.toFixed(1) : '—'
 export function summarizeMR(results, order) {
+  const done = results.filter((r) => !r.error && r.rule)
+  // v12.9.2：规则门（零评委成本，确定性）——每次都出；评委表只在评过时出
+  const G = ['| 变体 | 观察 | n | 假完成 | 再调数字 | 再改同处 | 规则 next | 规则 avoid | 动作类分布 |', '|---|---|---|---|---|---|---|---|---|']
+  for (const v of order.filter((v) => done.some((r) => r.variant === v))) for (const obs of ['green', 'red']) {
+    const rs = done.filter((r) => r.variant === v && r.obs === obs)
+    if (!rs.length) continue
+    const dist = {}; for (const r of rs) dist[r.action || '?'] = (dist[r.action || '?'] || 0) + 1
+    G.push(`| ${v} | ${obs} | ${rs.length} | ${pct(rs.map((r) => r.rule.falseDone))} | ${pct(rs.map((r) => r.rule.bump))} | ${pct(rs.map((r) => r.rule.reEdit))} | ${pct(rs.map((r) => r.rule.next))} | ${pct(rs.map((r) => r.rule.avoid))} | ${Object.entries(dist).map(([k, n]) => k + '×' + n).join(' ')} |`)
+  }
   const ok = results.filter((r) => !r.error && r.judge)
+  if (!ok.length) return ['规则门（未请评委）：', '', ...G].join('\n')
   const vars = order.filter((v) => ok.some((r) => r.variant === v))
-  const L = ['| 变体 | 观察 | n | 假完成 | 绿灯当证据 | 声明相称 | 按分支走 | 重复 | 再改同处 | 再调数字 | 规则 next | 规则 avoid | correct | 综合 | 思考字数 |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|']
+  const L = ['规则门：', '', ...G, '', '评委：', '', '| 变体 | 观察 | n | 假完成 | 绿灯当证据 | 声明相称 | 按分支走 | 重复 | 再改同处 | 再调数字 | 规则 next | 规则 avoid | correct | 综合 | 思考字数 |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|']
   for (const v of vars) for (const obs of ['green', 'red', 'all']) {
     const rs = ok.filter((r) => r.variant === v && (obs === 'all' || r.obs === obs))
     if (!rs.length) continue
@@ -231,7 +274,7 @@ export function summarizeMR(results, order) {
     L.push('', '动作类（红题；每格列出各样本的动作）：', '', '| 任务 | ' + vars.join(' | ') + ' |', '|---|' + vars.map(() => '---').join('|') + '|')
     for (const t of tasks) L.push(`| ${t} | ` + vars.map((v) => ok.filter((r) => r.variant === v && r.task === t && r.obs === 'red').map((r) => r.action || '?').join(', ') || '—').join(' | ') + ' |')
     const sp = ok.filter((r) => r.judge && Number.isFinite(r.judge.spread))
-    if (sp.length) L.push('', `评委 ${sp.length} 份回答各 ${sp[0].judge.votes ? sp[0].judge.votes.length : '?'} 票：票距均值 ${f1(mean(sp.map((r) => r.judge.spread)))}，票距 ≥ 3 的占 ${pct(sp.map((r) => r.judge.spread >= 3 ? 1 : 0))}`)
+    if (sp.length) { const esc = ok.filter((r) => r.judge.escalated).length; L.push('', `评委 ${sp.length} 份回答：补票 ${esc} 份（${pct(ok.map((r) => r.judge.escalated ? 1 : 0))}），多票者票距均值 ${f1(mean(sp.filter((r) => (r.judge.votes || []).length > 1).map((r) => r.judge.spread)))}，票距 ≥ 3 的占 ${pct(sp.filter((r) => (r.judge.votes || []).length > 1).map((r) => r.judge.spread >= 3 ? 1 : 0))}`) }
   }
   return L.join('\n')
 }
@@ -307,17 +350,17 @@ async function run(o) {
     const olds = o.rejudge.flatMap((p) => fs.readFileSync(p, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))).filter((r) => !r.error && r.response && (!o.variants || o.variants.includes(r.variant)) && (!o.only || o.only.includes(r.task)) && (!o.obsOnly || o.obsOnly.includes(r.obs)))
     const seenKeys = new Set(); const uniq = []
     for (const r of olds) { const k = `${r.task}|${r.obs}|${r.variant}|${r.sample}`; if (have.has(k) || seenKeys.has(k)) continue; seenKeys.add(k); uniq.push(r) }
-    console.log(`重评 ${uniq.length} 行（每行 ${o.judgeVotes} 票）`)
+    console.log(`重评 ${uniq.length} 行（${o.judgeMode === 'none' ? '只重算规则门' : `每行 ${o.judgeVotes} 票，打架补到 ${o.judgeEscalate} 票`}）`)
     await pool(uniq, o.concurrency, async (r) => {
       const c = chains.find((x) => x.id === r.task); const spec = specs.find((x) => x.id === r.task); if (!c || !spec) return
       const rec = { ...r, rejudged: true, rule: ruleMetrics(c, spec, r.obs, r.response), action: actionClass(c, r.response), judgeOld: r.judge }
-      try { const jj = await judgeMemo(chat, o, c, spec, r.obs, r.response); if (jj) { rec.judge = jj; rec.error = undefined } else rec.error = 'judge-unparseable' } catch (e) { rec.error = String(e && e.message || e) }
+      try { const jj = await judgeWithEscalation(chat, o, c, spec, r.obs, r.response, rec.rule, rec.action, String(r.reasoning || '').slice(-300)); if (jj) { rec.judge = jj; rec.error = undefined } else if (o.judgeMode === 'none') rec.judge = null; else rec.error = 'judge-unparseable' } catch (e) { rec.error = String(e && e.message || e) }
       fs.appendFileSync(resPath, JSON.stringify(rec) + '\n')
       console.log(`  ${rec.task}/${rec.obs}/${rec.variant} #${rec.sample}: ${rec.error ? 'ERR ' + rec.error.slice(0, 80) : `overall ${rec.judge.overall}（旧 ${r.judge && r.judge.overall}；票 ${(rec.judge.votes || []).join('/')}）· ${rec.action}`}`)
       have.add(`${rec.task}|${rec.obs}|${rec.variant}|${rec.sample}`)
     })
   }
-  console.log(`主调用 ${jobs.length} 次（+ 盲评 ×${o.judgeVotes}），并发 ${o.concurrency}`)
+  console.log(`主调用 ${jobs.length} 次（评委：${o.judgeMode === 'none' ? '不请，只出规则门' : `每份 ${o.judgeVotes} 票，打架补到 ${o.judgeEscalate} 票`}），并发 ${o.concurrency}`)
   if (!o.summarizeOnly && jobs.length) {
     const apiKey = process.env.DEEPSEEK_API_KEY; if (!apiKey) throw new Error('需要 DEEPSEEK_API_KEY')
     const chat = makeChat({ baseUrl: o.baseUrl, apiKey })
@@ -337,11 +380,11 @@ async function run(o) {
         }
         const text = responseText(r.message)
         Object.assign(rec, { fp: r.fp, finish: r.finish, usage: r.usage, ms: r.ms, reasoningChars: (r.message.reasoning_content || '').length, reasoning: String(r.message.reasoning_content || '').slice(0, 8000), response: text, rule: ruleMetrics(j.chain, j.spec, j.obs, text), action: actionClass(j.chain, text) })
-        const jj = await judgeMemo(chat, o, j.chain, j.spec, j.obs, text)
-        if (jj) { rec.judge = jj; rec.error = undefined } else rec.error = 'judge-unparseable'
+        const jj = await judgeWithEscalation(chat, o, j.chain, j.spec, j.obs, text, rec.rule, rec.action, String(r.message.reasoning_content || '').slice(-300))
+        if (jj) { rec.judge = jj; rec.error = undefined } else if (o.judgeMode === 'none') rec.judge = null; else rec.error = 'judge-unparseable'
       } catch (e) { rec.error = String(e && e.message || e) }
       fs.appendFileSync(resPath, JSON.stringify(rec) + '\n')
-      console.log(`  ${rec.task}/${rec.obs}/${rec.variant} #${rec.sample}: ${rec.error ? 'ERR ' + rec.error.slice(0, 80) : `overall ${rec.judge.overall} claim ${rec.rule.claim}/${rec.judge.claim} 假完成 ${rec.rule.falseDone} 绿证 ${rec.judge.greenAsProof ? 1 : 0} 重复 ${rec.rule.repeat}|${rec.judge.repeat ? 1 : 0} next ${rec.rule.next} · 思考 ${rec.reasoningChars} 字${rec.rejected.length ? ' · 作废 ' + rec.rejected.length : ''}`}`)
+      console.log(`  ${rec.task}/${rec.obs}/${rec.variant} #${rec.sample}: ${rec.error ? 'ERR ' + rec.error.slice(0, 80) : !rec.judge ? `规则门 假完成 ${rec.rule.falseDone} 再调数 ${rec.rule.bump} 再改同处 ${rec.rule.reEdit} next ${rec.rule.next} avoid ${rec.rule.avoid} · ${rec.action}` : `overall ${rec.judge.overall}${rec.judge.escalated ? '(补票，首票 ' + rec.judge.firstVote + ')' : ''} claim ${rec.rule.claim}/${rec.judge.claim} 假完成 ${rec.rule.falseDone} 绿证 ${rec.judge.greenAsProof ? 1 : 0} 重复 ${rec.rule.repeat}|${rec.judge.repeat ? 1 : 0} next ${rec.rule.next} · 思考 ${rec.reasoningChars} 字${rec.rejected.length ? ' · 作废 ' + rec.rejected.length : ''}`}`)
     })
   }
   const all = fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))

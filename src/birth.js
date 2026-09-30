@@ -9,7 +9,7 @@ import crypto from 'node:crypto'
 import { fidelity, inventedIdentifiers } from './fidelity.js'
 import { settledTraceData } from './trace.js'
 import { estimateTokens } from './tokens.js'
-import { verifyHints } from './compile-v4.js'   // v12.9.1：I2 闸的出处集合并入程序算出的【验收提示】（S10.14）
+import { turnCallsBlock, spliceProgramParts, programPartsText } from './compile-v4.js'   // v12.9.1：I2 闸的出处集合并入程序算出的【验收提示】（S10.14）；v12.9.2：finish 处按本轮调用拼提示
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ── 出生即提纯（mode: 'birth'）: At-Birth Interception ────────────────────────
@@ -456,8 +456,22 @@ export async function birthFinish(task, deps = {}) {
   // 零 rules：只有宿主模型提纯成功且净省够本才替换
   if ((dist && dist.ok) || partial) {
     let candidate = partial ? partial.text : dist.text
+    // v12.9.2：多轮稿的验收提示只能在 finish 处算（本轮调用此时才齐）：把【本轮已发出的调用】接到 ctx 后拼进稿，闸门也按这份 ctx 判
+    let cfgAcc = cfg
+    if (Array.isArray(task.turnCalls) && task.turnCalls.length && /【台账】/.test(String(cfg.compressCtx || '')) && !/【本轮已发出的调用】/.test(String(cfg.compressCtx || ''))) {
+      try {
+        const block = turnCallsBlock(task.turnCalls)
+        if (block) {
+          const ctx2 = String(cfg.compressCtx) + '\n\n' + block
+          const st = {}
+          const spliced = spliceProgramParts(candidate, ctx2, st)
+          if (spliced !== candidate) { candidate = spliced; trace('birth-hints-spliced', { index: task.index, hints: st.splicedHints || 0, calls: task.turnCalls.length }) }
+          cfgAcc = { ...cfg, compressCtx: ctx2 }
+        }
+      } catch (e) { try { trace('birth-hints-error', { index: task.index, error: String((e && e.message) || e) }) } catch { /* ignore */ } }
+    }
     // v12.7：闸门判定抽成纯函数 birthAccept（工具 compile-direct 同一份判定 ⇒ 评测稿在真机会不会被放行，离线就能看到）
-    const acc = birthAccept(raw, candidate, cfg)
+    const acc = birthAccept(raw, candidate, cfgAcc)
     if (!acc.ok) return pass(acc.why, handle, acc.info)
     const { netSaved, minSaved, tokens, netSavedTokensEst } = acc
     // ★ 2026-09-23 v11.6 保真观测（**只记录，不拦截**）：逐字标识符召回率。
@@ -501,7 +515,7 @@ export function birthAccept(raw, candidate, cfg = {}) {
   if (!c.trim()) return { ok: false, why: 'empty-candidate', info: undefined, ...base }
   if (cfg.birthIdentifierGate !== false) {
     let invented = []
-    try { invented = inventedIdentifiers(r, c, { extra: (cfg.compressCtx || '') + (/【台账】/.test(String(cfg.compressCtx || '')) ? '\n' + verifyHints(cfg.compressCtx).join('\n') : '') }) } catch { invented = [] }
+    try { invented = inventedIdentifiers(r, c, { extra: (cfg.compressCtx || '') + '\n' + programPartsText(cfg.compressCtx || '') }) } catch { invented = [] }   // v12.9.2：程序部件（延续段 / 提示 / 三问）的片段都由 ctx 推出，算出处
     if (invented.length) return { ok: false, why: 'invented-identifier', info: { invented }, ...base }
   }
   const minSavedTokens = Number.isFinite(cfg.birthMinSavedTokens) && cfg.birthMinSavedTokens > 0 ? cfg.birthMinSavedTokens : 1
@@ -542,6 +556,8 @@ export function birthTransform(inner, deps = {}) {
     const streamT0 = Date.now()
     let firstOtherStartAt = null, firstOtherType = null
     const reasoningEndAt = []   // [{index, at}]
+    // v12.9.2：本轮流过的工具调用（reasoning 结束后才出现）——finish 处交给 birthFinish 算验收提示（理论 S10.14 K1–K6 在生产里的唯一入口）
+    const turnCalls = new Map()   // index -> { name, args }
     let sourceError = null
     let prewarmed = false
     // ★ v11.10：流是否已走完自己的收尾（正常结束 / 源流抛错）。false 而进入 finally ⇒ 消费者提前退出。
@@ -572,6 +588,16 @@ export function birthTransform(inner, deps = {}) {
               prewarmed = true
               try { deps.prewarm('birth-reasoning-start') } catch { /* 预热失败绝不影响主流 */ }
             }
+            yield chunk
+            continue
+          }
+          if (t === 'tool-call-delta' || t === 'toolcall-delta') {
+            try {
+              const cur = turnCalls.get(chunk.index) || { name: '', args: '' }
+              if (chunk.name) cur.name = chunk.name
+              cur.args += String(chunk.argumentsDelta ?? chunk.argsDelta ?? chunk.delta ?? '')
+              turnCalls.set(chunk.index, cur)
+            } catch { /* 观测不碰主流 */ }
             yield chunk
             continue
           }
@@ -646,7 +672,8 @@ export function birthTransform(inner, deps = {}) {
                 //   钉成同一个值，保证多块并行收网共用【一个】budget，而不是每块各拿一份。
                 //   （Promise.all 本已并发，这里把它变成显式不变量，防止将来改成串行时静默劣化。）
                 const sharedEnterAt = Date.now()
-                for (const t of pending) t.finishEnterAt = sharedEnterAt
+                const calls = [...turnCalls.values()].filter((c) => c.name)
+                for (const t of pending) { t.finishEnterAt = sharedEnterAt; t.turnCalls = calls }
                 // ★ 2026-09-21 并行块的有序归并（外部评审）：蒸馏是并发的，
                 //   「较早块→蒸馏较晚完成」完全可能。**出站与记忆都必须按源块顺序**，
                 //   绝不能按 promise 完成顺序 —— 那会让旧状态压回新状态。

@@ -52,3 +52,12 @@
 - 剩余（诚实）：稿长 1400–2400；副模型仍会把已排除项写回 fallback（perf 稿的 maxOutputTokens）；只发调用的回答评委看不到意图（flaky #0 票 8/2/1）；n = 2；生产门槛 birthMinChars 3100 / 6 s 窗口没动——那是宿主决定，不是稿的事。
 - 费用：副模型 7 · 主模型 24（含作废 ≈ ×1.5）· 评委 ≈ 300（含重评，记忆命中零成本）。
 
+## 7. 第七会话（2026-09-30）v12.9.2 / compress-v4d9——用户只批了方向 1 / 2 / 4（「1，2，4 你先做了，然后回来汇报」）；方向 3 与付费泛化跑未批
+- 稿层：延续段（`continuationText` → ctx【延续段】）/ 通用验收条款（`verifyHints` 稿口吻）/ 收工三问（`closingQuestions`，漏写才补、有改法在场才补）由程序写并由闸门拼进稿（`spliceProgramParts`）；已排除候选写回后路剥掉（`stripExcludedFallback`）；提示词 V4D_MR → v4d9（不再附【验收提示】块）。理论 S10.19。
+- 生产缺口（重要）：生产 ctx 从没有过【本轮已发出的调用】（ctx 在流开始构造、birth 在 reasoning 结束起火）⇒ K 提示此前只在评测里出现。修：`birthTransform` 累积 tool-call-delta，`birthFinish` 拼提示（T35）。
+- 评委：缺省 1 票 + 条件补票（`needsEscalation`：首票 ≤ 7 / 与规则指标打架 / reread）、`--judge-mode none`、记忆按规范哈希记票池、评委看思考尾。run4 回放 237 → 117（−51%），偏差 ≥ 2 的 1/79。
+- 审计：`node tools/audit-noninferiority.mjs`（零调用）267 份稿 N1–N7 全零；首轮抓到 2 处真 bug（DSH_HOME 重名 ⇒ 落定三元组被删；豁免句边界到分号）。**以后每次改闸门先跑它。**
+- 探针（2 次副模型）：`transfer/mr/auto-d2e-probe*.json` flaky 1141 → 2714、perf 1370 → 2088，形态 9/9；暴露并修了括号否定误判、三问被砍。
+- 费用：副模型 2 · 主模型 0 · 评委 0。
+- 下一步（需用户批）：① run5：v4d9 vs v4d8 主模型对比（≈ 20 主 + ≈ 25 评委）；② 方向 3（程序比差【本轮新出现】、K7–K11）；③ 泛化：3–5 道新红题（先合成 ctx 零成本核形态）。
+

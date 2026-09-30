@@ -176,8 +176,7 @@ async function runOne({ o, task, variant, sample, chat, I, cred }) {
       let stored = reasoning, compileInfo = null
       if (variant === 'auto' && reasoning.length < o.minChars) { compileInfo = { ok: false, belowFloor: true, rawChars: reasoning.length }; rec.compile.push(compileInfo) }
       else if (variant === 'auto') {
-        const callLines = calls.map((c) => { try { const j = typeof c.args === 'string' ? JSON.parse(c.args) : c.args; return c.name + ' ' + (j.command || (j.path ? j.path + (j.old_text ? '（old_text `' + j.old_text + '` → new_text `' + j.new_text + '`）' : '') : JSON.stringify(j))) } catch { return c.name } })
-        const ctx = I.buildCompressCtx(messages) + (callLines.length ? '\n\n【本轮已发出的调用】（这轮回答里已经发出的工具调用；验收命令只能从这里选）\n' + callLines.map((x) => '- ' + x).join('\n') : '')
+        const callsBlock = I.turnCallsBlock(calls); const ctx = I.buildCompressCtx(messages) + (callsBlock ? '\n\n' + callsBlock : '')   // v12.9.2：与 birth.js / compile-mr 同一渲染（turnCallsBlock）
         const cfg = I.normalizeConfig({ compressPrompt: 'v4', compressV4Incremental: false, compressCtx: ctx, model: o.model, baseUrl: o.baseUrl, credentialsPath: cred, credentialRef: 'K', followHostProvider: false, followHostModel: false, trace: false, timeoutMs: 90000 })
         const t0 = Date.now()
         try { const g = await I.makeBirthCompiler(cfg)(reasoning); stored = g.text; compileInfo = { ok: true, ms: Date.now() - t0, rawChars: reasoning.length, outChars: g.text.length, promptVersion: g.meta && g.meta.promptVersion, gate: g.meta && g.meta.v4 } }

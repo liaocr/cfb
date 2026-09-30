@@ -606,8 +606,79 @@ export function compileV4Direct(side, raw, cfg = {}) {
     stats.noopNewText = (stats.noopNewText || 0) + 1
     return 'old_text 是 `' + a + '`' + mid.replace(/[，,、；;\s]*$/, '') + '，new_text 按下面说的意图改（副模型没给出那一行，由你来写）；'
   })
+  // v12.9.2 多轮：① 已排除的候选写回后路（perf 稿把台账里排除的 maxOutputTokens 当「没新东西时走这条」）⇒ 删那一句；
+  //   ② 同一括注重复（「（第 1 轮 read_file … 出处仍有效）」抄两三遍）⇒ 只留第一处；③ 程序部件拼进稿（延续段 + 验收提示）
+  if (/【台账】/.test(String(cfg.compressCtx || ''))) {
+    text = stripExcludedFallback(text, cfg.compressCtx, stats)
+    text = dedupeParentheticals(text, stats)
+    text = spliceProgramParts(text, cfg.compressCtx, stats)
+  }
+  stats.chars = text.length
   if (cfg.compressEditTool) { text = adaptEditTool(text, cfg.compressEditTool); stats.editTool = cfg.compressEditTool.name }
   return { ok: true, text, stats }
+}
+
+// v12.9.2：已排除候选的标识符（台账「- 已排除：…」+ 稿自己的「已排除：…」段）；只收像标识符 / 路径的词（≥ 4 字符，含大小写混合、下划线、点或斜杠）
+const GENERIC_ID_RE = /^(?:edit_file|old_text|new_text|read_file|bash|grep|node|npm|src|test|tests|lib|file|path|true|false|null|this|that|const|return|await|async|function)$/i
+function excludedIdentifiers(text, ctx) {
+  const segs = []
+  for (const m of String(ctx || '').matchAll(/^- 已排除[：:]([^\n]+)/gm)) segs.push(m[1])
+  for (const m of String(text || '').matchAll(/(?:^|[。；\n])\s*已排除[：:]([^。；\n]+)/g)) segs.push(m[1])
+  const ids = new Set()
+  for (const seg of segs) for (const w of seg.matchAll(/[A-Za-z_][\w.\/-]{3,}/g)) {
+    const x = w[0].replace(/[.,;:]+$/, '')
+    if (GENERIC_ID_RE.test(x) || !/[A-Z_.\/]|\d/.test(x) && x.length < 6) continue
+    ids.add(x)
+  }
+  // 选定改法里出现的标识符不算「已排除候选」（auto-d2b eacces：「改测试文件让它用 DSH_HOME 也不选」里的 DSH_HOME 同时是落定行 `DSH_HOME: tmp` 的一部分——
+  //   剥掉含它的提议句会把落定三元组连带删掉）：已定 / 已改 / 提议 / 延续段首句 / 本轮 edit 调用 / 稿里的落定句与第一个三元组，全部豁免
+  const keep = []
+  for (const m of String(ctx || '').matchAll(/^- 第 \d+ 轮(?:已定|已改|提议)[^\n]*/gm)) keep.push(m[0])
+  const cm = String(ctx || '').match(/【延续段】[^\n]*\n([^\n]+)/); if (cm) keep.push(cm[1].split(/(?<=。)/)[0])
+  for (const m of String(ctx || '').matchAll(/^- (?:edit_file|str_replace\w*|apply_patch|edit)\s[^\n]*/gm)) keep.push(m[0])
+  for (const m of String(text || '').matchAll(/(?:改法只落一个|所以下一步工具调用是)[^。；\n]*/g)) keep.push(m[0])   // 到分号止：「…；仍在依赖的事实：`maxOutputTokens: 4096,`」不算改法
+  const first = String(text || '').match(/old_text 是 `[^`]*`[^。]*?new_text 是 `[^`]*`/); if (first) keep.push(first[0])
+  for (const w of keep.join('\n').matchAll(/[A-Za-z_][\w.\/-]{3,}/g)) ids.delete(w[0].replace(/[.,;:]+$/, ''))
+  return ids
+}
+const FALLBACK_ACTION_RE = /edit_file|old_text 是|new_text 是|改\s+[\w./-]+\s+的\s+`|另一个值行|第二个三元组|改回|让它回到/
+const NEG_IN_SENT_RE = /不要|不动|不选|不改|已排除|排除|不再|别动|不能是/
+export function stripExcludedFallback(text, ctx, stats = {}) {
+  const ids = excludedIdentifiers(text, ctx)
+  if (!ids.size) return text
+  // 只看落定句 / 「所以下一步」之后的分支区（推翻路 / 后路），不碰落定句与第一分支之前的正文
+  const startAt = (() => { const i = String(text).search(/所以下一步工具调用是|验收先写下|验收是本轮/); return i < 0 ? 0 : i })()
+  const head = text.slice(0, startAt), tail = text.slice(startAt)
+  const sents = tail.split(/(?<=[。；])/)
+  let removed = 0
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const kept = sents.filter((sent) => {
+    if (!FALLBACK_ACTION_RE.test(sent)) return true
+    if (/^\s*(?:所以下一步工具调用是|上一轮(?:已定|已改|提议)|改法只落一个|仍在依赖的事实|已走过的路)/.test(sent)) return true
+    const words = new Set([...sent.matchAll(/[A-Za-z_][\w.\/-]{3,}/g)].map((w) => w[0].replace(/[.,;:]+$/, '')))
+    // 命中的标识符若是被否定的对象（「不要动 X」「X 不选」）⇒ 这句不是在提议它，保留
+    // 否定必须贴着这个标识符：前 14 字内有否定词、或其后 10 字内（不跨反引号 / 括号——「`maxOutputTokens: 850,`（本轮不动 compressTargetMax）」里的「不动」不是在否定 maxOutputTokens）
+    const hit = [...ids].find((id) => words.has(id) && !new RegExp('(?:' + NEG_IN_SENT_RE.source + ')[^，。；`（()）]{0,14}' + esc(id) + '|' + esc(id) + '[^，。；`（()）]{0,10}(?:不选|不动|不改|已排除)').test(sent))
+    if (!hit) return true
+    removed++
+    stats.excludedFallback = (stats.excludedFallback || []).concat(hit)
+    return false
+  })
+  if (!removed) return text
+  return head + kept.join('').replace(/[：:]\s*(?=如果输出跟这两种都不像)/, '。')
+}
+export function dedupeParentheticals(text, stats = {}) {
+  const seen = new Set()
+  let n = 0
+  const out = String(text).replace(/（[^（）\n]{20,160}）/g, (all) => {
+    if (!/出处仍有效|原样行|不带行首缩进|照用/.test(all)) return all
+    const key = all.replace(/\s+/g, '')
+    if (seen.has(key)) { n++; return '（出处同上）' }
+    seen.add(key)
+    return all
+  })
+  if (n) stats.dedupedParentheticals = n
+  return out
 }
 
 /**
@@ -1022,12 +1093,22 @@ export function verifyHints(ctx) {
   // 引号里的 | ; & 不是管道（grep -E "a|b" ~/.dsh/trace.log）
   const LOG_READ_RE = /\b(?:tail|grep|egrep|cat|sed|awk|head|less)\b(?:"[^"\n]*"|'[^'\n]*'|[^|;&\n"'])*?((?:~\/|\.{1,2}\/|\/)?[\w.\/-]*(?:\.log|\.txt|\.jsonl|\.ndjson|\.out|trace(?:\.[\w]+)?)\b)/g
   const FRESH_RE = /(?::\s*>|\btruncate\b|\brm\b\s+-?\w*\s*[~.\/\w-]*(?:\.log|trace)|--since|\bdate\b|mktemp|\$\$|RUN_ID|\bwc -l\b|\bstat\b|\bls -l\w*\b)/
+  // 追加日志（清空无害）与其他文件（fixture / 输出文件——绝不建议清空，只给「记行数再比」）
+  const isAppendLog = (p) => /(?:^|\/)(?:[\w.-]*log[\w.-]*|trace(?:\.\w+)?|[\w.-]*\.log)$|(?:^|\/)logs?\//i.test(p)
+  const STAT_RE = /--last\b|--since\b|\bp50\b|\bp9[059]\b|percentile|--window\b|\banalyze-|\breport\b|--stats?\b|\bsummary\b|--recent\b/
   for (const cmd of bashes) {
     const paths = new Set()
     for (const mm of cmd.matchAll(LOG_READ_RE)) if (mm[1] && !/^\d/.test(mm[1])) paths.add(mm[1])
     if (paths.size && !FRESH_RE.test(cmd)) {
       const p = [...paths][0]
-      push(`验收命令读的是 ${[...paths].join(' / ')} 里已有的行（tail / grep 一个追加日志），命令里没有先清空、也没有时间戳或本次运行 id ⇒ 这些行不自证是改后产生的：数字与上一轮那行一样就当旧行，既不能证实也不能证伪；那时第一步只有一条：先 \`: > ${p}\` 再跑同一条命令拿新鲜行，不判定、不收工。`)
+      const remedy = isAppendLog(p)
+        ? `先 \`: > ${p}\`（或先 \`wc -l ${p}\` 记下行数、之后只看新增的行）再跑同一条命令拿新鲜行`
+        : `先 \`wc -l ${p}\` 记下行数（这个文件不是追加日志，不要清空它），再跑同一条命令、只看行数之后新增的行`
+      push(`验收命令读的是 ${[...paths].join(' / ')} 里已有的行（tail / grep 一个已有文件），命令里没有先清空、也没有时间戳或本次运行 id ⇒ 这些行不自证是改后产生的：数字与上一轮那行一样就当旧行，既不能证实也不能证伪；那时第一步只有一条：${remedy}，不判定、不收工。`)
+    } else if (STAT_RE.test(cmd) && !FRESH_RE.test(cmd)) {
+      push(`验收命令是对已有记录的统计（窗口 / 分位数）：窗口里若混着改前的记录，数字就不新鲜；数字与上一轮一模一样就当同一批旧记录，既不能证实也不能证伪，那时第一步只有一条：先产生一批改后的新记录再跑同一条，不判定、不收工。`)
+    } else if (!paths.size) {
+      push('验收命令是新起进程的直接输出（不是翻旧日志、不是旧记录的统计），输出即本次结果，新鲜。')
     }
     // 原症状本身就是「测试失败」（CI 里某测试偶发失败 / npm test 报错）时，测试通过就是症状级验收，不提示；原症状是线上 / trace / 用户报告的现象时，单元测试 PASS 才不算
     if (!symptomIsTest && /(?:\bnode\s+test\/|\bnpm\s+(?:test|run\s+test)|\bnpx\s+(?:jest|mocha|vitest|ava)|\bpytest\b|\bgo\s+test\b|\bcargo\s+test\b|selftest|\.test\.\w+|\.spec\.\w+)/.test(cmd)) push('验收命令里有单元测试：PASS 只证明被测函数的行为，不证明原症状消失——症状级验收要看原症状（trace / 线上现象）在原处、同等条件下不再出现；单元测试 PASS 不能当收工依据。')
@@ -1061,20 +1142,130 @@ export function verifyHints(ctx) {
       const arr = [...gs].sort((a, b) => a - b)
       const ds = arr.map((g) => g - v0); const dmin = Math.min(...ds), dmax = Math.max(...ds)
       const dTxt = dmin === dmax ? String(dmin) : dmin + '~' + dmax
-      push(`本轮改法是把数值 ${v0} 改成 ${v1}（\`${o}\` → \`${n}\`）；上一轮失败输出里的数字 ${arr.slice(0, 4).join('、')} = ${v0} + ${dTxt}。预注册里要写：「若验收仍失败且新数字 ≈ ${v1} + ${dTxt}（症状跟着参数走），那么这不是余量 / 阈值问题，${v1} 不是原因只是触发点：不要再调这个数字、不要改等待逻辑、不要回滚；下一条只写一条取证——在同一次失败运行里打印被这个阈值等待的那个事件实际发生的时刻（或值）和阈值触发的时刻，两者并排比先后，拿到先后再决定改哪里；取证之前不动实现」。`)
+      push(`本轮改法是把数值 ${v0} 改成 ${v1}（\`${o}\` → \`${n}\`）；上一轮失败输出里的数字 ${arr.slice(0, 4).join('、')} = ${v0} + ${dTxt}。若验收仍失败且新数字 ≈ ${v1} + ${dTxt}（症状跟着参数走），那么这不是余量 / 阈值问题，${v1} 不是原因只是触发点：不要再调这个数字、不要改等待逻辑、不要回滚；下一条只写一条取证——在同一次失败运行里打印被这个阈值等待的那个事件实际发生的时刻（或值）和阈值触发的时刻，两者并排比先后，拿到先后再决定改哪里；取证之前不动实现。`)
     }
     // K6（S10.14）：改了参数、输出却纹丝不动 ⇒ 这条路径没读到新值；下一条是找消费点，不是试第二候选
     if (key) {
       const where = file ? `${file} 里的 \`${key}\`` : `\`${key}\``
-      push(`本轮改法是把 ${where} 从 ${v0} 改成 ${v1}；预注册里要写：「若验收输出是改后新产生的（不是同一批旧记录）、数字却与上一轮一样（±噪声）、症状原样，那是改动落地却零效应 ⇒ 这条路径没读到新值（没读 \`${key}\`、读的是另一处定义 / 另一份配置、或进程没重载）：第一步只有一条，bash \`grep -n "${key}" ${file || '<改的文件>'}\` 确认改动落地；落地了下一条只写一条：bash \`grep -rn --exclude-dir=node_modules "${key}" .\` 找它的定义与真实消费点；不试第二候选、不再改这个值」。`)
+      push(`本轮改法是把 ${where} 从 ${v0} 改成 ${v1}；若验收输出是改后新产生的（不是同一批旧记录）、数字却与上一轮一样（±噪声）、症状原样，那是改动落地却零效应 ⇒ 这条路径没读到新值（没读 \`${key}\`、读的是另一处定义 / 另一份配置、或进程没重载）：第一步只有一条，bash \`grep -n "${key}" ${file || '<改的文件>'}\` 确认改动落地；落地了下一条只写一条：bash \`grep -rn --exclude-dir=node_modules "${key}" .\` 找它的定义与真实消费点；不试第二候选、不再改这个值。`)
     }
   }
   return hints
 }
+/** 旧接口（v12.9.1 曾把提示块附在提示词末尾让副模型转述；v12.9.2 起提示由程序直接拼进稿，提示词里不再出现） */
 export function verifyHintsBlock(ctx) {
   const h = verifyHints(ctx)
   if (!h.length) return ''
   return '\n\n【验收提示】（程序从本轮已发出的命令与上一轮观察里算出来的，不是猜的；每一条都要照实写进验收预注册，不能丢、不能反着写）\n' + h.map((x) => '- ' + x).join('\n')
+}
+/**
+ * v12.9.2：【本轮已发出的调用】块——从本轮工具调用 [{ name, args }]（args 为对象或 JSON 串）渲染；
+ *   compile-mr / traj-run（评测：A2 正文里的调用）与 birth.js（生产：finish 前流过的 tool-call 块）共用同一格式，verifyHints 才认。
+ */
+export function turnCallsBlock(calls) {
+  const rows = []
+  for (const c of Array.isArray(calls) ? calls : []) {
+    if (!c || !c.name) continue
+    let j = c.args
+    if (typeof j === 'string') { try { j = JSON.parse(j) } catch { j = { command: j } } }
+    if (!j || typeof j !== 'object') j = {}
+    const body = j.command || j.cmd || (j.path ? j.path + (j.old_text || j.old_str || j.old_string ? '（old_text `' + (j.old_text || j.old_str || j.old_string) + '` → new_text `' + (j.new_text || j.new_str || j.new_string || '') + '`）' : '') : JSON.stringify(j))
+    rows.push('- ' + c.name + ' ' + body)
+  }
+  if (!rows.length) return ''
+  return '【本轮已发出的调用】（这轮回答里已经发出的工具调用；验收命令只能从这里选）\n' + rows.join('\n')
+}
+const THREE_Q_RE = /能说修好要三件事|收工三问|三件事都在手/
+/**
+ * v12.9.2：程序部件拼进稿（理论 S10.19「程序写它能写的」）：
+ *   ① 延续段——ctx 里的【延续段】散文原样放在稿开头；副模型若还是写了「上一轮已定…」开头的段落，删掉换成程序版（同源，程序版逐字）
+ *   ② 验收提示——verifyHints(ctx) 的条款插在收工三问之前（没有三问就接在末尾），已在稿里的不重复
+ *   幂等：同一 ctx 多次调用结果不变（生产里 compileV4Direct 先拼延续段，birthFinish 拿到本轮调用后再拼提示）。
+ */
+/**
+ * v12.9.2 收工三问由程序写（S10.19 的推论）：三问的三个格在写稿时刻全部可由本轮调用 + 台账推出——
+ *   落地证据 = 本轮 edit 的回执 + grep 落点（或前几轮台账里的已改回执）；原症状消失 = 看本轮验收命令的输出；新鲜度 = 程序附的条款。
+ *   副模型漏写 ④ 时（长度预算下最先被砍的就是它）由这里补齐；写了就不动。只在 ctx 含【台账】时使用。
+ */
+export function closingQuestions(ctx) {
+  const c = String(ctx || '')
+  const m = c.match(/【本轮已发出的调用】[^\n]*\n([\s\S]*?)(?=\n\n|$)/)
+  const lines = m ? m[1].split('\n').map((l) => l.replace(/^-\s*/, '').trim()).filter(Boolean) : []
+  const edits = lines.filter((l) => /^(?:edit_file|str_replace\w*|apply_patch|edit)\s/.test(l))
+  const bashes = lines.filter((l) => /^bash\s/.test(l)).map((l) => l.replace(/^bash\s+/, ''))
+  let landed = ''
+  if (edits.length) {
+    const e = edits[0]
+    const fm = e.match(/^(?:edit_file|str_replace\w*|apply_patch|edit)\s+([^\s（(]+)/)
+    const file = fm ? fm[1] : null
+    const mm = e.match(/old_text `([^`]*)` → new_text `([^`]*)`/)
+    let needle = null
+    if (mm) {
+      const NUM_RE = /-?\d+(?:\.\d+)?/g
+      const on = mm[1].match(NUM_RE) || [], nn = mm[2].match(NUM_RE) || []
+      const diff = on.length && on.length === nn.length && mm[1].replace(NUM_RE, '#') === mm[2].replace(NUM_RE, '#') ? on.map((x, i) => (x !== nn[i] ? i : -1)).filter((i) => i >= 0) : []
+      if (diff.length === 1) {
+        const before = mm[1].slice(0, mm[1].split(NUM_RE).slice(0, diff[0] + 1).join('#').length)
+        const km = before.match(/([A-Za-z_][\w.-]*)\s*[:=]\s*['"]?\s*$/) || before.match(/--([\w-]+)[=\s]+$/) || before.match(/([A-Za-z_][\w.-]*)[^\w]*$/)
+        needle = km ? km[1] : null
+      }
+      if (!needle) { const ids = [...mm[2].matchAll(/[A-Za-z_][\w.-]{3,}/g)].map((x) => x[0]).filter((x) => !GENERIC_ID_RE.test(x)); needle = ids.sort((a, b) => b.length - a.length)[0] || null }
+    }
+    landed = file && needle ? `缺：edit 回执加 bash \`grep -n "${needle}" ${file}\`` : file ? `缺：edit 回执加重读 ${file} 的落点行` : '缺：edit 回执加重读落点行'
+  } else {
+    const prev = [...c.matchAll(/^- 第 (\d+) 轮已改：edit_file ([^\s，,]*)[^\n]*?（结果：([^\n]*?)）(?=；|$)/gm)].pop()
+    landed = prev ? `有：第 ${prev[1]} 轮 edit_file ${prev[2]} 回执「${prev[3]}」` : '缺：还没有改法落地'
+  }
+  const verify = bashes.find((b) => !/^grep\s+-n\s+"[^"]*"\s+\S+$/.test(b))
+  const gone = verify ? `缺：看${verify.length <= 80 ? `本轮一起发出的 bash \`${verify}\` ` : '本轮一起发出的那条 bash 命令'}的输出，按上面写下的预期与「不算证据的绿灯」判` : '缺：看验收命令的输出，按上面写下的预期判'
+  const now = edits.length ? '已改未验证' : /^- 第 \d+ 轮已改：/m.test(c) ? '已改、验收结果待判' : '还没有改法落地'
+  return `能说修好要三件事都在手：改动落地的证据（${landed}）、原症状在同等条件下消失（${gone}）、这条观察是改后产生的（按上面程序附的新鲜度条款判）；现在能说的：${now}，三件都拿到之前不能说修复完成，拿到就收工、不再取证。`
+}
+/** 程序写进稿里的全部部件（延续段 + 提示 + 三问）拼成一串——闸门的标识符核真把它当「允许出现的出处」（这些片段都由 ctx 推出，不是发明） */
+export function programPartsText(ctx) {
+  const c = String(ctx || '')
+  if (!/【台账】/.test(c)) return ''
+  const cont = (c.match(/【延续段】[^\n]*\n([^\n]+)/) || [])[1] || ''
+  return [cont, ...verifyHints(c), closingQuestions(c)].filter(Boolean).join('\n')
+}
+export function spliceProgramParts(text, ctx, stats = {}) {
+  let t = String(text || '')
+  const c = String(ctx || '')
+  const cm = c.match(/【延续段】[^\n]*\n([^\n]+)/)
+  if (cm && cm[1].trim()) {
+    const cont = cm[1].trim()
+    if (!t.includes(cont)) {
+      // 副模型自己写的延续句（逐句剥，直到第一句不像延续段为止；稿可能没有空行分段）
+      const sents = t.split(/(?<=[。\n])/)
+      let k = 0
+      const CONT_SENT_RE = /^[\s「]*(?:上一轮(?:已定|提议|已改|写下)|仍在依赖的事实|已排除|未解|已走过的路|被推翻的假设|状态[是：:])|出处仍有效|不再重跑复现|台账里/
+      while (k < sents.length && (CONT_SENT_RE.test(sents[k]) || !sents[k].trim())) k++
+      if (k > 0 && k < sents.length) { stats.droppedContinuation = k; t = sents.slice(k).join('') }
+      t = cont + '\n\n' + t.replace(/^\s+/, '')
+      stats.continuation = 1
+    }
+  }
+  const hints = /【本轮已发出的调用】/.test(c) ? verifyHints(c) : []
+  const missing = hints.filter((h) => !t.includes(h.slice(0, 24)))
+  if (missing.length) {
+    const block = missing.join('')
+    const qm = t.match(THREE_Q_RE)
+    if (qm) {
+      // 插在三问所在句的句首（该句前面最近的句号 / 换行处）
+      const at = qm.index
+      const cut = Math.max(t.lastIndexOf('。', at), t.lastIndexOf('\n', at))
+      const pos = cut < 0 ? at : cut + 1
+      t = t.slice(0, pos) + block + t.slice(pos)
+    } else t = t.replace(/\s*$/, '') + block
+    stats.splicedHints = (stats.splicedHints || 0) + missing.length
+  }
+  // 三问只在「有改法在场」时补（本轮有 edit、或台账里已有已定 / 提议 / 已改）：纯取证轮三件全缺是空话，不占字
+  const fixInPlay = /^- (?:edit_file|str_replace\w*|apply_patch|edit)\s/m.test((c.match(/【本轮已发出的调用】[^\n]*\n([\s\S]*?)(?=\n\n|$)/) || ['', ''])[1]) || /^- 第 \d+ 轮(?:已定|已改|提议)/m.test(c)
+  if (/【台账】/.test(c) && fixInPlay && !THREE_Q_RE.test(t)) {
+    t = t.replace(/\s*$/, '') + (/[。！？」`]$/.test(t.trimEnd()) ? '' : '。') + closingQuestions(c)
+    stats.splicedClosing = 1
+  }
+  return t
 }
 
 /** 硬拒绝占比阈值（schema / I1–I8；去重、I7、retracted 不算「不可信」）。 */

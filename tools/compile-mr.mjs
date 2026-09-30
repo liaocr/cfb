@@ -19,6 +19,7 @@ function parseArgs(argv) {
     else if (a === '--model') o.model = v()
     else if (a === '--out') o.out = v()
     else if (a === '--only') o.only = v().split(',')
+    else if (a === '--best-of') o.bestOf = Math.max(1, Number(v()) || 1)   // v12.9.2：压 N 份、按 mrFormCheck 分数（再按短）选一份；评测用，生产不开（多一次副调用 = 多一份延迟）
     else if (a === '--ctx-only') o.ctxOnly = true
     else if (a === '--recompile') o.recompile = v()   // v12.9.1：零成本——拿旧输出文件里的副模型原始输出（side）重过门（改门 / 熔断后不用再压）
     else if (a === '--timeout') o.timeoutMs = Number(v())
@@ -82,8 +83,9 @@ async function main(argv) {
       const d1 = d1rows ? (d1rows.find((r) => r.id === c.id && (!r.why || /^condensed/.test(r.why))) || {}).text : c.a1.raw
       if (!d1) { rows.push({ id: c.id, why: 'error', error: '缺 D1' }); return }
       // 生产里 birth 发生在本轮流结束时，本轮的工具调用已知（S10.3′：验收命令只能取自这里，不许发明）——评测把 A2 的调用列进 ctx
-      const calls = [...String(c.a2.content || '').matchAll(/\[tool_call\s+([\w-]+)\]\s*(\{[\s\S]*?\})(?=\s*(?:\[tool_call|\n|$))/g)].map((m) => { try { const j = JSON.parse(m[2]); return m[1] + ' ' + (j.command || (j.path ? j.path + (j.old_text ? '（old_text `' + j.old_text + '` → new_text `' + j.new_text + '`）' : '') : JSON.stringify(j))) } catch { return m[1] + ' ' + m[2] } })
-      const ctx = I.buildCompressCtx(mrMessages(c, d1)) + (calls.length ? '\n\n【本轮已发出的调用】（这轮回答里已经发出的工具调用；验收命令只能从这里选）\n' + calls.map((x) => '- ' + x).join('\n') : '')
+      const calls = [...String(c.a2.content || '').matchAll(/\[tool_call\s+([\w-]+)\]\s*(\{[\s\S]*?\})(?=\s*(?:\[tool_call|\n|$))/g)].map((m) => ({ name: m[1], args: m[2] }))
+      const callsBlock = I.turnCallsBlock(calls)   // v12.9.2：与 birth.js 同一格式（verifyHints 才认）
+      const ctx = I.buildCompressCtx(mrMessages(c, d1)) + (callsBlock ? '\n\n' + callsBlock : '')
       if (o.ctxOnly) { rows.push({ id: c.id, ctx }); return }
       if (prior) {
         const pr = prior.find((r) => r.id === c.id); const side = pr && pr.side
@@ -91,7 +93,7 @@ async function main(argv) {
         const cfgR = I.normalizeConfig({ compressPrompt: 'v4', compressV4Incremental: false, compressCtx: ctx })
         const g = I.compileV4Direct(side, c.a2.raw, cfgR)
         if (!g.ok) { rows.push({ id: c.id, mode: 'v4', why: 'error', error: g.reason, gate: g.stats, side, ctx, recompiled: true }); return }
-        const inv = I.inventedIdentifiers(c.a2.raw, g.text, { extra: ctx + '\n' + I.verifyHints(ctx).join('\n') })
+        const inv = I.inventedIdentifiers(c.a2.raw, g.text, { extra: ctx + '\n' + I.programPartsText(ctx) })
         rows.push({ id: c.id, mode: 'v4', why: 'condensed', rawChars: c.a2.raw.length, outChars: g.text.length, ms: pr.ms, promptVersion: pr.promptVersion || I.compressPromptVersion(cfgR), gate: g.stats, accept: inv.length ? 'invented-identifier:' + inv.join('|') : 'ok', text: g.text, side, ctx, hints: I.verifyHints(ctx), form: mrFormCheck(g.text, I.verifyHints(ctx)), recompiled: true })
         return
       }
@@ -99,9 +101,16 @@ async function main(argv) {
         credentialsPath: cred, credentialRef: 'K', followHostProvider: false, followHostModel: false, trace: false, timeoutMs: o.timeoutMs, captureSideOutput: true })
       const t0 = Date.now()
       try {
-        const g = await I.makeBirthCompiler(cfg)(c.a2.raw)
-        const inv = I.inventedIdentifiers(c.a2.raw, g.text, { extra: ctx + '\n' + I.verifyHints(ctx).join('\n') })
-        rows.push({ id: c.id, mode: 'v4', why: 'condensed', rawChars: c.a2.raw.length, outChars: g.text.length, ms: Date.now() - t0, promptVersion: g.meta && g.meta.promptVersion, gate: g.meta && g.meta.v4, accept: inv.length ? 'invented-identifier:' + inv.join('|') : 'ok', text: g.text, side: g.meta && g.meta.sideOutput, ctx, hints: I.verifyHints(ctx), form: mrFormCheck(g.text, I.verifyHints(ctx)) })
+        let g = null
+        if ((o.bestOf || 1) > 1) {
+          const cands = await Promise.all(Array.from({ length: o.bestOf }, () => I.makeBirthCompiler(cfg)(c.a2.raw).then((x) => x, (e) => ({ err: e }))))
+          const okc = cands.filter((x) => x && !x.err && x.text)
+          if (!okc.length) throw cands[0].err || new Error('best-of 全部失败')
+          okc.sort((a, b) => (mrFormCheck(b.text, I.verifyHints(ctx)).score - mrFormCheck(a.text, I.verifyHints(ctx)).score) || (a.text.length - b.text.length))
+          g = okc[0]; g.bestOf = { n: cands.length, ok: okc.length, scores: okc.map((x) => mrFormCheck(x.text, I.verifyHints(ctx)).score) }
+        } else g = await I.makeBirthCompiler(cfg)(c.a2.raw)
+        const inv = I.inventedIdentifiers(c.a2.raw, g.text, { extra: ctx + '\n' + I.programPartsText(ctx) })
+        rows.push({ id: c.id, mode: 'v4', why: 'condensed', rawChars: c.a2.raw.length, outChars: g.text.length, ms: Date.now() - t0, promptVersion: g.meta && g.meta.promptVersion, gate: g.meta && g.meta.v4, bestOf: g.bestOf, accept: inv.length ? 'invented-identifier:' + inv.join('|') : 'ok', text: g.text, side: g.meta && g.meta.sideOutput, ctx, hints: I.verifyHints(ctx), form: mrFormCheck(g.text, I.verifyHints(ctx)) })
       } catch (e) { rows.push({ id: c.id, mode: 'v4', why: 'error', error: String(e && e.message || e).slice(0, 200), ms: Date.now() - t0, side: e && e.meta && e.meta.sideOutput, ctx }) }
     }))
   } finally { if (d) fs.rmSync(d, { recursive: true, force: true }) }

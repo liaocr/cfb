@@ -6,6 +6,17 @@
 
 ---
 
+## v12.9.2（2026-09-30，第七会话）多轮稿 compress-v4d9「程序写它能写的」：延续段 / 通用验收条款 / 收工三问由程序写并拼进稿；生产 birth 在 finish 处按本轮 tool-call 拼提示；评委 1 票 + 条件补票（−51%）；非劣性审计工具
+
+**用户批准的范围**：方向 1（评测省钱）、2（稿层）、4（非劣性审计）；方向 3 与付费泛化跑未批。本版付费调用：副模型 2 次，主模型 0，评委 0。
+
+- **稿层（理论 S10.19）**：`src/messages.js` `continuationText` / `continuationBlock`——台账推出的延续段进 ctx（【台账】之后、工具结果之前）；`buildLedger` 新增 `lines`（前几轮稿里逐字引用的代码行 + 出处，new_text 的提议行不算）；未解条目不再双标签。`src/compile-v4.js`：`verifyHints` 改稿口吻（K1 三分支：读旧日志 / 统计窗口 / 新起进程；追加日志才建议清空，其他文件只记行数）、`turnCallsBlock`、`spliceProgramParts`（延续段放稿首 + 剥副模型自己的延续句 + 提示插在收工三问前 + 漏三问时补程序三问）、`closingQuestions`、`stripExcludedFallback`（已排除候选写回后路的句子剥掉；否定要贴着标识符、选定改法里的标识符豁免、延续句 / 落定句永不剥）、`dedupeParentheticals`、`programPartsText`（核真白名单）；`compileV4Direct` 在 ctx 含【台账】时依次启用，单步 / 第 1 轮全部沉默。`src/prompts.js` V4D_MR → v4d9（①程序已写、不要写；③通用条款程序附、不用写也不要写反；第 2 轮样例从②开始、不再演示「新不新」；增量目标 700~1100 字）；提示词不再附【验收提示】块；`compressPromptVersion` → `compress-v4d9:*`。
+- **生产缺口**：插件在流开始时构造 ctx、birth 在 reasoning 结束时起火 ⇒ 生产 ctx 从来没有【本轮已发出的调用】、K 提示从未在生产出现过。`src/birth.js` `birthTransform` 累积 `tool-call-delta`（name / argumentsDelta），`birthFinish` 用 `turnCallsBlock` + `spliceProgramParts` 拼提示，trace `birth-hints-spliced`；核真白名单含程序部件。
+- **评测省钱**：`tools/effect-mr.mjs` `--judge-votes` 缺省 1、`--judge-escalate 3`（`needsEscalation`：首票 ≤ 7、或 ≥ 8 却与规则指标打架 / reread）、`--judge-mode all|none`（none = 零评委的规则门回归表）、评委记忆按 (task, obs, 规范哈希, 回答, 思考尾) 记票池、评委提示词附回答前思考末尾 300 字；`summarizeMR` 先出规则门表。run4 回放 237 → 117 次（−51%），逐行偏差 ≥ 2 的 1/79。`tools/compile-mr.mjs` `--best-of N`（评测用）；`tools/traj-run.mjs` 改用 `turnCallsBlock`。
+- **非劣性审计**：`tools/audit-noninferiority.mjs`——267 份历史稿（48 多轮 + 219 单步）推过新闸门，N1–N7 全零；首轮抓到两处真 bug（已排除标识符与落定行重名 ⇒ 落定三元组被删；豁免句边界）并修。
+- **自测**：v4 5u2（v4d9 提示词）/ 5u4（提示不进提示词）/ 5u7（延续段）/ 5u8（拼稿 / 剥句 / 三问 / 折叠 / 端到端）；birth T35（finish 处按 tool-call 拼提示、与离线逐字一致、阴性对照）；hook-wiring 版本串。verify 636 / 0 / 1；manifest 246。
+- **探针稿**：`transfer/mr/auto-d2e-probe.json`（副模型原稿）/ `auto-d2e-probe-final.json`（拼后）：flaky 1141 → 2714、perf 1370 → 2088 字，形态 9/9。未跑主模型对比（需另批）。
+
 ## v12.9.1（2026-09-30，第六会话）多轮稿 compress-v4d8「层 B+ 可推导的预见」：程序算验收提示（K1–K3、K6）、四段体、收工三问；评委记忆 + 3 票中位数 + 重评；run4 红 8.0 / 绿 9.8
 
 **用户裁定**：多轮没到上限 ⇒ 实现层去修、理论层去搜索补理论；给主模型它自己没有的东西，但「无论什么情况下都是优化」。

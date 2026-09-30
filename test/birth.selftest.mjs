@@ -871,6 +871,43 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
   }
 }
 
+// ═══ T35 v12.9.2：多轮稿的延续段 / 验收提示在 finish 处按本轮 tool-call 拼进稿（生产 ctx 在流开始时构造，没有【本轮已发出的调用】）═══
+{
+  const { verifyHints, spliceProgramParts } = await import('../src/compile-v4.js')
+  const cont = '上一轮已定：改 src/config.js，old_text 是 `compressTargetMax: 1800,`，new_text 是 `compressTargetMax: 450,`（第 1 轮）；状态：提议、未执行。已排除：maxOutputTokens 850（第 1 轮）。'
+  const ctx = '任务：v11.10 起 p95 涨了。\n\n【台账】（程序摘出）\n- 第 1 轮已定：改 src/config.js\n- 已排除：maxOutputTokens 850 不是原因\n\n【延续段】（程序按台账写好的稿首段）\n' + cont + '\n\n[tool: bash 结果]\np95 1412ms'
+  const raw = Array.from({ length: 40 }, (_, i) => `第 ${i} 步：analyze-trace 里 birth 步的 p95 1412ms，compressTargetMax 在 src/config.js，maxOutputTokens 850 已排除，改 compressTargetMax: 1800 为 450 然后跑 analyze-trace --last 30 --steps birth 看 p95。`).join('\n')
+  const draft = '本轮 analyze-trace 坐实 p95 1412ms 全在 birth 步。改法只落一个：edit_file src/config.js，old_text 是 `compressTargetMax: 1800,`，new_text 是 `compressTargetMax: 450,`。所以下一步工具调用是 edit_file。验收先写下：验收是本轮一起发出的 bash `analyze-trace --last 30 --steps birth`，预期 p95 < 900ms。能说修好要三件事都在手：改动落地的证据（缺）、p95 回到 900ms 以下（缺）、这条观察是改后产生的（按程序附的新鲜度条款判）；现在能说的：已改未验证。'
+  const args1 = JSON.stringify({ path: 'src/config.js', old_text: 'compressTargetMax: 1800,', new_text: 'compressTargetMax: 450,' })
+  const args2 = JSON.stringify({ command: 'analyze-trace --last 30 --steps birth' })
+  const src = [BS(0, 'reasoning'), RD(0, raw), BE(0, { type: 'reasoning', text: raw }),
+               BS(1, 'tool-call'), TC(1, 'c1', 'edit_file', args1.slice(0, 20)), TC(1, 'c1', undefined, args1.slice(20)), BE(1, { type: 'tool-call', id: 'c1', name: 'edit_file', arguments: args1 }),
+               BS(2, 'tool-call'), TC(2, 'c2', 'bash', args2), BE(2, { type: 'tool-call', id: 'c2', name: 'bash', arguments: args2 }), FIN('tool-use')]
+  const traces = []
+  const deps = {
+    cfg: mkCfg({ compressCtx: ctx }), trace: (n, d) => traces.push({ n, d }),
+    archive: async () => 'art://ARCH35', sessionId: () => 'sess-test',
+    distill: async () => ({ text: draft }),
+  }
+  const got = await collect(birthTransform(mkStream(src), deps))
+  const be0 = got.filter((c) => c.type === 'block-end' && c.index === 0)[0]
+  const text = be0 && be0.block.text
+  const ctx2 = ctx + '\n\n' + '【本轮已发出的调用】（这轮回答里已经发出的工具调用；验收命令只能从这里选）\n- edit_file src/config.js（old_text `compressTargetMax: 1800,` → new_text `compressTargetMax: 450,`）\n- bash analyze-trace --last 30 --steps birth'
+  const hints = verifyHints(ctx2)
+  ok('T35 ★ 稿被替换且以程序写的延续段开头', !!text && text !== raw && text.startsWith(cont + '\n\n本轮 analyze-trace'), text && text.slice(0, 120))
+  ok('T35 ★ 两条验收提示（统计窗口新鲜度 + K6）按本轮 tool-call 算出并拼在收工三问之前', hints.length === 2 && hints.every((h) => text.includes(h)) && text.indexOf(hints[0]) < text.indexOf('能说修好要三件事都在手'), JSON.stringify(hints.map((h) => h.slice(0, 30))))
+  ok('T35 ★ 与离线拼稿逐字一致（compile-mr / traj-run 同一渲染）', text === spliceProgramParts(draft, ctx2, {}))
+  const sp = traces.find((t) => t.n === 'birth-hints-spliced')
+  ok('T35 ★ trace birth-hints-spliced（hints 2，calls 2）', !!sp && sp.d.hints === 2 && sp.d.calls === 2, JSON.stringify(sp && sp.d))
+  ok('T35 tool-call 块原样透传', got.filter((c) => c.type === 'tool-call-delta').length === 3 && got.some((c) => c.type === 'block-end' && c.index === 2 && c.block.name === 'bash'))
+  ok('T35 真实不变式通过', (await invCheck(src, deps)) === null)
+  // 阴性对照：本轮没有 tool-call ⇒ finish 处不拼提示（替身 distill 绕过了 compileV4Direct，所以延续段也不在——生产里延续段由 compileV4Direct 在压稿时拼，finish 处只补提示）
+  const traces0 = []
+  const got0 = await collect(birthTransform(mkStream([BS(0, 'reasoning'), RD(0, raw), BE(0, { type: 'reasoning', text: raw }), BS(1, 'text'), TD(1, 'x'), BE(1, { type: 'text', text: 'x' }), FIN()]), { ...deps, trace: (n, d) => traces0.push({ n, d }) }))
+  const t0 = got0.filter((c) => c.type === 'block-end' && c.index === 0)[0].block.text
+  ok('T35 阴性：无 tool-call ⇒ 稿 = 蒸馏稿原样（提示拼接只在 finish 处按调用算）', t0 === draft && !traces0.some((t) => t.n === 'birth-hints-spliced'), t0.slice(0, 80))
+}
+
 console.log('')
 console.log('birth.selftest: PASS=' + pass + ' FAIL=' + failn + (skipn ? ' SKIP=' + skipn : '') +
   (invariantLoaded ? '  (结构由真实 dsh-llm 不变式校验' : '  (⚠ 不变式未加载') +
