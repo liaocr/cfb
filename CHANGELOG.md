@@ -6,6 +6,165 @@
 
 ---
 
+## v12.9.2（2026-09-30，第七会话）多轮稿 compress-v4d9「程序写它能写的」：延续段 / 通用验收条款 / 收工三问由程序写并拼进稿；生产 birth 在 finish 处按本轮 tool-call 拼提示；评委 1 票 + 条件补票（−51%）；非劣性审计工具
+
+**用户批准的范围**：方向 1（评测省钱）、2（稿层）、4（非劣性审计）；方向 3 与付费泛化跑未批。本版付费调用：副模型 2 次，主模型 0，评委 0。
+
+- **稿层（理论 S10.19）**：`src/messages.js` `continuationText` / `continuationBlock`——台账推出的延续段进 ctx（【台账】之后、工具结果之前）；`buildLedger` 新增 `lines`（前几轮稿里逐字引用的代码行 + 出处，new_text 的提议行不算）；未解条目不再双标签。`src/compile-v4.js`：`verifyHints` 改稿口吻（K1 三分支：读旧日志 / 统计窗口 / 新起进程；追加日志才建议清空，其他文件只记行数）、`turnCallsBlock`、`spliceProgramParts`（延续段放稿首 + 剥副模型自己的延续句 + 提示插在收工三问前 + 漏三问时补程序三问）、`closingQuestions`、`stripExcludedFallback`（已排除候选写回后路的句子剥掉；否定要贴着标识符、选定改法里的标识符豁免、延续句 / 落定句永不剥）、`dedupeParentheticals`、`programPartsText`（核真白名单）；`compileV4Direct` 在 ctx 含【台账】时依次启用，单步 / 第 1 轮全部沉默。`src/prompts.js` V4D_MR → v4d9（①程序已写、不要写；③通用条款程序附、不用写也不要写反；第 2 轮样例从②开始、不再演示「新不新」；增量目标 700~1100 字）；提示词不再附【验收提示】块；`compressPromptVersion` → `compress-v4d9:*`。
+- **生产缺口**：插件在流开始时构造 ctx、birth 在 reasoning 结束时起火 ⇒ 生产 ctx 从来没有【本轮已发出的调用】、K 提示从未在生产出现过。`src/birth.js` `birthTransform` 累积 `tool-call-delta`（name / argumentsDelta），`birthFinish` 用 `turnCallsBlock` + `spliceProgramParts` 拼提示，trace `birth-hints-spliced`；核真白名单含程序部件。
+- **评测省钱**：`tools/effect-mr.mjs` `--judge-votes` 缺省 1、`--judge-escalate 3`（`needsEscalation`：首票 ≤ 7、或 ≥ 8 却与规则指标打架 / reread）、`--judge-mode all|none`（none = 零评委的规则门回归表）、评委记忆按 (task, obs, 规范哈希, 回答, 思考尾) 记票池、评委提示词附回答前思考末尾 300 字；`summarizeMR` 先出规则门表。run4 回放 237 → 117 次（−51%），逐行偏差 ≥ 2 的 1/79。`tools/compile-mr.mjs` `--best-of N`（评测用）；`tools/traj-run.mjs` 改用 `turnCallsBlock`。
+- **非劣性审计**：`tools/audit-noninferiority.mjs`——267 份历史稿（48 多轮 + 219 单步）推过新闸门，N1–N7 全零；首轮抓到两处真 bug（已排除标识符与落定行重名 ⇒ 落定三元组被删；豁免句边界）并修。
+- **自测**：v4 5u2（v4d9 提示词）/ 5u4（提示不进提示词）/ 5u7（延续段）/ 5u8（拼稿 / 剥句 / 三问 / 折叠 / 端到端）；birth T35（finish 处按 tool-call 拼提示、与离线逐字一致、阴性对照）；hook-wiring 版本串。verify 636 / 0 / 1；manifest 246。
+- **探针稿**：`transfer/mr/auto-d2e-probe.json`（副模型原稿）/ `auto-d2e-probe-final.json`（拼后）：flaky 1141 → 2714、perf 1370 → 2088 字，形态 9/9。未跑主模型对比（需另批）。
+
+## v12.9.1（2026-09-30，第六会话）多轮稿 compress-v4d8「层 B+ 可推导的预见」：程序算验收提示（K1–K3、K6）、四段体、收工三问；评委记忆 + 3 票中位数 + 重评；run4 红 8.0 / 绿 9.8
+
+**用户裁定**：多轮没到上限 ⇒ 实现层去修、理论层去搜索补理论；给主模型它自己没有的东西，但「无论什么情况下都是优化」。
+
+**理论**（`docs/theory/CFB-THEORY-COMPLETE.md` S10.13–S10.18）：归因修正（6.9 vs 8.6 里只有一部分是稿的）；层 B+ = 从 ctx 里**推导**出的观察谓词 + 不含任务事实的通用调试知识，六条 K：K1 验收自证新鲜、K2 条件等价、K3 参数跟随（症状跟着参数走 ⇒ 参数只是触发点 ⇒ 下一条是**取证**事件先后、取证之前不动实现）、K4 新出现者优先、K5 收工三问、K6 零效应 ⇒ 消费点（改了参数输出纹丝不动 ⇒ 参数不在通路上 ⇒ grep 消费点、不试第二候选）；每条的不变性论证（有据 / 条件式 / 支配 / 预算）；S10.16 评测修订；S10.17 预注册；S10.18 实测对账与归因。文献：Zeller 科学调试与因果链、Luo FSE'14 flaky、False-Success 2026、OverclaimBench、MAST、Debugging Decay Index、PreAct。
+
+**实现**：
+- `src/compile-v4.js`：`verifyHints(ctx)` / `verifyHintsBlock(ctx)`——只在 ctx 有【本轮已发出的调用】时，从命令文本与观察里的数**算**出 K1（tail / grep 追加日志且没清空 ⇒ `: > <log>` 再跑）、单元测试不算症状级验收（原症状本身是测试失败时不出）、K2（taskset / --cpus / stress）、K3（三元组只差一个数且观察里有 g ∈ (v0, 2v0]）、K6（三元组只差一个数；键名 = 变动数字前最近的标识符、文件 = 调用行路径）；提示片段并入核真集合（`compileV4Direct` hay、`birth.js` I2 闸）；多轮熔断 2600（ctx 含【台账】），单步仍 2000；样例**片段级**抄写剥离 `parrotedFragment`（「换连接池重试（…）」这类列表项，专名真在原文 / 观察里的不动；`EXAMPLE_MARK_RE` 加 pool.log）。
+- `src/prompts.js`：`V4D_MR` 第 10 条四段体（延续 → 增量 → 验收预注册 → 收工三问）+ 第 2 轮样例；③ 里写两条证伪式（K3 / K6）、推翻路「第一步只有一条 → 比差、新出现者优先 → 没新东西才走预写那条（不能是已排除的候选）」；`V4D_MR_TAIL`；多轮提示末尾附【验收提示】块；版本 `compress-v4d8:`。
+- `tools/effect-mr.mjs` v12.9.1：评委记忆 `judge-cache.json`（同文本同分）、`--judge-votes N`（缺省 3，数值取中位数、布尔取多数）、`--rejudge <results.jsonl>`（零主模型成本重评旧回答）、`--obs`、动作类 `actionClass`（claim-fixed / reread / grep / fresh-rerun / instrument / re-edit-same / edit-other …；「再改同处」只算碰到上一轮那一行，插桩不算）、汇总带 n、动作类表、票距。`tools/compile-mr.mjs`：`mrFormCheck` 形态 9 项、`--recompile`（零成本重过门）。
+- 自测：`test/v4.selftest.mjs` 5u2（v4d8 提示）、5u4（verifyHints K1/K2/K3/K6、抑制条件、提示片段不算发明）、5u5（多轮熔断）、5u6（片段级剥离）；`hook-wiring` 版本串。verify 626 / 0 / 1（16/16）。
+
+**实测**（`transfer/mr/run4/`，新评委 3 票中位数，旧结果全部重评；每格 n = 2）：红题 raw 4.9 / auto v4d7 6.5 / oracle 手写 7.8 / **auto v4d8 8.0**（eacces 8.5 · perf 9.0 · wrong-model 9.0 · sse 8.5 · flaky 5.0；假完成 0/10、再调数字 0）；绿题 raw 9.2 / oracle 9.6 / **auto v4d8 9.8**（假完成 0、过度对冲 0）。两次归因修理论：flaky 红 1.5 → 5.0（K3 措辞：取证之前不动实现）、perf 红 6.5 → 9.0（补 K6）。成本：副模型 7 次、主模型 24 次、评委 ≈ 300 次（含重评）。
+
+**未做 / 已知**：稿长 1400–2400（原目标 ≤ 1500 未达；多轮价值在预注册，不在压缩率）；副模型仍会把已排除项写回 fallback（perf 稿）；只发调用的回答评委看不到意图（flaky #0 票 8/2/1）；n = 2 只看方向；生产门槛（birthMinChars 3100 / 6 s 窗口）未动。
+
+## v12.9.0（2026-09-29 深夜 → 09-30，第五会话末段，阶段 2 开工）多轮台账：理论 S10、程序台账进 compressCtx、compress-v4d7 多轮稿、多轮评测（第 3 轮 / 全轨迹）、真机复测
+
+**用户给的流程**：理论 → 实现 → 出问题先归因（理论 / 实现）→ 修 → 继续；每次测试少一点；留痕不堆垃圾（`transfer/LIVE-MEMORY.md` 是实时记忆，压缩后先读）。
+
+**理论（`docs/theory/CFB-THEORY-COMPLETE.md` S10.1–S10.11）**
+- S10.1 过程模型：四个原生弊端（边写边猜前后脱节 / 技术能跑掩盖全错 / 盲目归因死锁内耗 / 言过其实眼高手低）各对应台账 S_t 的一栏没被表示。
+- S10.2 谁维护什么：代码算 P_t（已走过的路）、C_t（已改及状态）、从前几轮稿里逐字摘落定 / 排除 / 验收 / 未解；副模型只压本轮增量。
+- S10.3′ 第 t 轮稿四段：延续 → 增量 → **验收预注册**（一条命令 + 字面预期 + 观察自证新鲜 + 哪种绿灯不算 + 推翻时「第一步只有一条 / 下一条只写一条」）→ 状态声明。
+- S10.9 / S10.10 实测与修订；S10.11 全轨迹发现（循环里每轮思考中位数 ≈ 600–1000 字 ⇒ 生产门槛 3100 下压缩几乎不触发）与假设 H-ledger（程序台账零副模型成本）。
+
+**实现**
+1. `src/messages.js` `buildLedger` / `ledgerBlock`：从前几轮 assistant 的 reasoning（稿）与工具往来里逐字摘 已定 / 已排除 / 验收 / 未解 / 已改（三元组 + 结果 + 其后验收）/ 已走过的路（命令 → 结果首行 + 首条失败行）；
+   `buildCompressCtx` 自动把【台账】放在 user 之后、工具结果之前（不会被当成在手的文件行）；纯文本回灌的「[tool: …]」也算工具结果；提议被后来的真实 edit 覆盖就不再列。自测 5u1。
+2. `src/prompts.js` **compress-v4d7**：ctx 里有【台账】（不是第一轮）时追加第 10 条四段规则 + 第 2 轮样例 + 多轮重申；第一轮提示词逐字同 v4d6；`promptVersion` 标 `:mr` / `:ctx` / `:noctx`。验收命令只能取自【本轮已发出的调用】或原文，不许发明。
+3. 门：**样例整句抄写剥离**（`parrotedExample`）——v4d6 稿会把样例里「调大超时试过没用…」「把 dial 换成连接池…」整句抄进无关任务，台账会把它当已排除项跨轮传播；只剥带样例专有内容的句子，逃生句等模板句保留。`selfClosed` 判定扩到「所以下一步…old_text 是」句。
+4. 工具：`tools/effect-mr.mjs`（第 3 轮多轮评测：--build 建链 / --run / --summarize；规则指标 假完成 / 重复 / 再改同处 / 再调数字 + 盲评 claim / claimJustified / greenAsProof / followsPlan）、`tools/effect-mr-specs.json`（5 题 × 绿 / 红）、
+   `tools/compile-mr.mjs`（生产同口径压第 2 轮稿：buildCompressCtx 台账 + 本轮已发出的调用）、`tools/traj-fixtures.mjs` + `tools/traj-run.mjs`（假仓库全轨迹：真文件、edit 真改且要求 old_text 唯一、bash 白名单 + canned、复合命令切段；变体 raw / auto / ledger；--min-chars 生产门槛；探针法避开不可信后端）。
+5. 自测 5u1–5u3，`verify.mjs` 624 通过。
+
+**实测**
+- 2a 真机（`transfer/live-d6*-report.md`）：v4d6 在 6 s 窗口 0/5 到位、12 s 3/5（中转今天慢一倍；昨天 4/5）。到位率 = 窗口 × 中转速度，缺省窗口未改（用户决定）。
+- 2b 第 3 轮（`transfer/mr/run1–3`，详见 EFFECT-EVAL §18）：绿题 raw / oracle 都 9+（这个模型在 3 轮设置里不言过其实）；红题 raw 5.8、**手写 oracle 8.6–9.5**（假完成 0%、按分支走 100%）、自动 v4d7 6.9。
+  归因：推翻路必须「一条命令」（列表 ⇒ 主模型 4/4 另起炉灶）；sse 红题基准写错（rawFinish="stop" 是正常流）已修；ASK 措辞与主模型调用协议冲突已修；**手写稿含 CoT 里没有的预见，忠实压缩不许发明 ⇒ 层 A（含预见）≠ 层 B（忠实压缩）**，副模型目标改为层 B 形态闭合。
+- 2c 全轨迹（`transfer/traj1–3`，理论 S10.11–S10.12）：生产门槛 3100 下 0/9 轮触发压缩；无门槛两批合并 raw 修好 5/6 · 4.0 轮 · 16.8 k tokens，auto-all 5/5 · 3.4 轮 · 13.2 k，ledger 5/6 · 4.0 轮 · 19.1 k ⇒ 压稿的多轮价值是效率不是成功率；程序台账单独无效（H-ledger 不成立）；言过其实三变体都有 ⇒ 宿主策略层强制验收。
+
+**费用**：主模型有效 ≈ 110（2b）+ 全轨迹若干（每条 ≤ 6 轮），作废重发 ≈ ×1.7（中转可信池 50–67%，且按内容黏后端）；盲评 ≈ 100；副模型 ≈ 45。
+
+**未解 / 下一步**：生产门槛 `birthMinChars` 3100 让循环里几乎不压 ⇒ 产品形态要决定（程序台账为主 + 长思考轮才压稿）；真机窗口自适应；n 小；假仓库 3 题是自己出的题（Goodhart 风险）。
+
+## v12.8.9（2026-09-29，第五会话）提示词 compress-v4d6「选择题化」：在手代码行清单 + 落定句 + new_text 必写；自动稿两份独立压稿 8.5 / 8.6，进入 oracle 带（理论 S8-R11）
+
+**用户校准**：手写 oracle I 的 8.9 是理论值，目标是副模型自动稿**稳定**达到手写稿水平。第一版「理论完备」的 v4d5 反而回退（6.5 / 7.0 < v4d4 7.8），逐稿归因后重做。
+
+**改动**
+1. `src/prompts.js` **compress-v4d6**（`compressPromptVersion` → `compress-v4d6:ctx|noctx`）：
+   - 规则改写成主模型动手前的五问（坐实 / old_text / new_text / 还要看什么 / 推翻路）+ 「压缩稿是一个已经想清楚、只等一条结果就动手的人写的」；
+   - 正文必须有**落定句**「改法只落一个：改 X 的 `那一行`，让它…」（oracle I 的写法）；以原文**最后**的结论段为准；落点 = 产生错误值 / 定义那个数值的那一行；值行优先、定义行优先、谁定义约定谁改；
+   - **new_text 必写**（单行、原文标识符拼成、不等于 old_text）——撤回 R10.3 对副模型的「逻辑改动只写意图」（它让副模型不敢落定；oracle 每份都写 new_text）；
+   - 第一分支「假设坐实，看到这一点就够了，不用再看 Y、Z」+ 三元组 + 短括号出处 / 时效；第二分支「假设不成立：另一个解释，此时不要改 X」+（在手的第二个三元组 | 原文里最具体的取证）；逃生句；
+   - 样例回到 v4d4 的骨架（落定句 + 两个闭合分支）并演示 grep 前缀剥离、条件形第二分支；点名样例里的名字不能出现在稿里；长度 1000~1400 / 硬 1600（实测均值 ≈ 1630）。
+   - 直写用自己的 `【原文里的改法句】/【原文里的判读句】` 块（不再带 ops 时代的 READY / REFUTED 标签——它把原文早先否掉的候选抬成活候选）。
+2. `src/compile-v4.js` **`inHandLines` / `inHandLinesBlock` / `lineKind`**（新）：从本轮工具结果算出【在手的代码行】放进提示词——只取 read_file / cat / git diff / grep -n / sed -n 块；
+   diff + 行剥加号、− 行排除；grep 前缀剥掉；散文行里的值段单列（`hedgeAfterMs: 1600`）；按与原文尾段的标识符重叠排序 ≤ 8 行；标 值行 / 值段 / 定义行 / 调用行 / 返回行；
+   同一处 ≥ 2 个值行时提示第二分支写另一个的三元组。副模型的选行从回忆题变成 ≤ 8 行的选择题：主落点命中 4/5（v4d4）→ **14/14**（三次独立压稿）。
+3. 门：稿里已有自闭合三元组时不再对其它分支做重叠 / 文件兜底绑定（`bindSkippedSelfClosed`；此前把「回退到了默认 DSH_HOME」这类描述误判成改法、把无关行甚至 diff − 行绑成落点）；
+   diff − 行永不进落点候选（`minusLineCandidateSkipped`）；no-op 三元组（new_text = old_text）删 new_text 子句留意图（`noopNewText`）；熔断缺省 1800 → **2000**（`compressV4DirectMaxChars`）。
+4. `src/fidelity.js`：斜杠并列枚举（`v11.9/v11.10`、每段都在原文里）不当发明路径；带字母扩展名的真路径仍整体核真；真发明（原文没有的 chmod/chown/rm）照拒。
+5. 工具：`tools/closure-check.mjs`（新，基准专用）——零成本量自动稿的结构闭合（主落点 / 三元组 / 落定句 / 门缺陷 / 长度），用便宜的副模型压稿迭代提示词，主模型评测只在最后做；
+   `tools/draft-lint.mjs` L9 收紧为命令级、L13 上限 1800、新增 L16 出处时效。
+6. 自测：5p6 / 5t4 改为 v4d6 断言；新增 5t6（no-op 三元组）、5t7（− 行不当候选 + 自闭合时不兜底）、5t8（在手代码行清单）；`verify.mjs` 621 通过 / 0 失败 / 1 跳过。
+
+**实测**（`transfer/effect-23`，同后端 `--require-fp`，v4d6 两份独立压稿 × 8 题 × 1 样本）：d9a **8.5**、d8a **8.6**（raw 5.0，v4d4 7.8，v4d5 6.5 / 7.0）；
+死路 0%、错改 0%、回头 read 0%；perf~refute 10 / 10、flaky~refute 8 / 9、eacces 10 / 9；同 8 题 oracle I ≈ 8.3。唯一 < 8 的 wrong-model~refute 6 / 6 是忠实压缩的边界（反驳证据原文没见过）。
+
+**v4d5 为什么回退**（写下来防止再犯）：样例第二分支改成命令 ⇒ perf 的第二个三元组被降成取证；「逻辑改动只写意图」⇒ sse 三份稿不落定在手的 return 行；出处时效被泛化成「等这次输出带回那一行」；
+flash 抄样例不读规则，样例既是最强教学也是最强污染源。
+
+**成本**：副模型压稿 ≈ 80 次（便宜）；主模型 32 次有效（v4d5 16 + v4d6 16，都在 effect-23 的累计 results 里）+ 作废重发；盲评 32 次。
+
+**未解 / 下一步**：稿长均值 ≈ 1630（1–2/15 超 1800），中转抖动（单次 5–90 s，两次 150 s 超时）——真机窗口内的到位率是工程问题；n 仍小；再压方差的下一杠杆是并行压两份按门缺陷选一份（未做）。
+
+## v12.8.8（2026-09-29，第四会话接手）审计与修复：补回漏提交的交接手册、补 v12.8.3–12.8.7 的自测与 CHANGELOG、提示词版本号 v4d4；v4d4 首次成套付费实测（见下）
+
+**接手时的审计发现（按严重度）**
+1. **分支 `arena/01a0eba2-cfb` 处于坏状态**：末次提交 `798f291`「固化 HANDOFF-V12.8.md」只把该文件的哈希写进了 `MANIFEST.sha256`，文件本身从未 `git add`
+   ⇒ `node manifest.mjs --check` 报「缺失 1」，该分支 CI 红；文档正文已随上一个沙盒一起丢失。本版按 MEMORY / CHANGELOG / git 历史重写 `transfer/HANDOFF-V12.8.md`。
+2. **v12.8.3–12.8.7 五个版本改了 `compile-v4.js` / `fidelity.js` / `prompts.js` / `draft-lint.mjs` 的判定逻辑，没有一条自测、没有 CHANGELOG 条目**（自测数恒为 613），
+   提示词正文三次改动而 `promptVersion` 仍是 `compress-v4d3` ⇒ trace / `direct-*.json` 里同名的产物文本不可比。
+3. **v12.8.2–12.8.6 声称的数字当时没有一份产物进仓库**（`transfer/` 止于 effect-19 / direct-oh*.json）。用户随后抢救入库（`4ece275`）：`oracle/M.json` + `mk.py`、
+   `effect-21/`（oM，只有 sse 一题 n=2：8 / 6）、`effect-sub-eval/`（v4d3 首轮副模型稿 → 主模型，14 有效样本）、`direct-subv4d3-live3(.json/-recompiled.json)`（纪律注入后的 v4d3 重压稿）。
+   **抢救回来的数据与「圆满达成」相反**：effect-sub-eval 综合 **5.1**、错改 **14%**、死路 14%、回头 read 14%；eacces 2.0、flaky 4.5、sse 5.5、**perf-regression~refute 0.0（2/2 错改：证据已推翻仍改 compressTargetMax）**。
+   它评的是首轮稿（那批稿本身仍丢失：ctxReasoningChars 1516/1545/1476/1415/1569 与 direct-subv4d3-live3 的 1268/1403/1496/1534/1529 无一相同）；
+   纪律注入后那批稿（direct-subv4d3-live3）**没有任何主模型评测数据入库**——「eacces 2.0 → 9.0」「sse 100%」至今无产物。oM 五题里 flaky / eacces 与 oracle I 逐字相同，其余三题小改；「oM 基题 100%」= oI 的 effect-19 结果 + effect-21 的 sse n=2。
+   ⇒ 本版 effect-20（d4，8 题 × 2）是仓库里**第一份**覆盖全部 8 题、含反驳题、0 错改的自动稿评测。
+4. 零成本复核 `tools/draft-lint.mjs`（本仓库现有稿 vs effect-19 实测动作，n=21）：v4d2 自动稿 oH 经当前门重编译后形态分 **12–13**，与 oracle oI（11–14）几乎同分，
+   但 oH 的 wrong-model 0/2（2.0）、sse 1/2、perf 1/2；oI 的 perf 形态分只有 **7** 却 2/2（9.0）。条目相关表里 L3 / L4 / L7 / L9 / L12 的「满足−不满足」为负，L15 无人满足。
+   ⇒ **形态分不能区分「能让主模型直接改」与「不能」的稿**；v12.8.4–12.8.5 以「形态分 13–14 = 与 oracle 逐项一致」为达标依据是对代理指标的过拟合。真正的判据只有 effect-eval。
+5. 杂项：`tools/_dbg.mjs`（写死 /home/user 绝对路径的调试脚本）随 v12.8.2 进了仓库；`index.d.ts` / README 仍写熔断缺省 1600（代码已 1800）；
+   长度约束三处不一致（提示词 1100–1550 / 上限 1650、draft-lint L13 900–1600、熔断 1800）；密钥文件里的 API key 被粘贴了两遍（102 字 = 51 字 ×2，401）。
+
+**修复（零成本）**
+- `transfer/HANDOFF-V12.8.md` 重写（含上述审计、本阶段目标、操作协议、下一步）；`git merge main`（main 只多一个合并提交，树相同）使分支可 fast-forward 回 main。
+- `test/v4.selftest.mjs` §5t1–5t4：isFixBranch 三条排除（改为 + 取证 / 后置反选 / 引用前文分支）+ 端到端不绑定；发明标识符闸的比值 / 环境变量 / new_text 尾标点；
+  熔断缺省 1800 与覆盖；v4d4 提示词三处改动与版本号。自测 **617 / 0 / 1**。
+- `promptVersion`：`compress-v4d3` → **`compress-v4d4`**（正文自 v12.8.3 起已变，见 prompts.js 头注释）；`index.d.ts` / README 熔断缺省改 1800；draft-lint L13 上限对齐提示词硬上限 1650；删 `tools/_dbg.mjs`。
+- 下方 v12.8.3–12.8.7 五条为**补记**（从 git diff 与 MEMORY.md 重建，当时未写）。
+
+**实测（v4d4 首次成套；`transfer/direct-d4.json`（含 side）/ `direct-d4b.json`（修门后重编译）/ `effect-20/` / `live-direct/`；详见 EFFECT-EVAL §16）**
+- 编译 5 次副调用：5/5 accept=ok（修门后）；字数 1434–1777，**3/5 超过提示词自定的 1650 上限**（字数指令对副模型无效，长度只能靠熔断）。
+- **门 bug（真机撞上）**：`bindFixBranches` 按裸标点分句，sse 稿逐字行 `(done ? 'stop' : null)` 在 `?` 处被切开，可用句插进代码段中间 ⇒ 反引号段成假引文 ⇒ `birthAccept` invented-identifier ⇒ 生产会整份原文放行。
+  修：`splitSentencesTickAware`（反引号内不切；导出），§5t5。
+- effect-eval 8 题 × 2（raw n=26 复用 effect-19；混合池 33% ⇒ 作废重发 38 次）：**d4 7.8 vs raw 5.0**；基题 **8.5**（eacces 6.0 / flaky 9.0 / wrong-model 9.0 / sse 8.5 / perf 10.0）；
+  反驳 **6.5**（perf~refute 9.5 / wrong-model~refute 6.0 / flaky~refute 4.0，逐题 ≥ raw）；**错改 0**、死路 0%、回头 read 6%、直接改 69%。配对 Δ +2.8（7/8 ≥ raw，只输 eacces −1.3）。
+- 真机 `v4-live --replay` 直写：到位 4/5 = **80%**（11 k 字的 perf 录音 6 s 内编不完 ⇒ distill-timeout），finish 多扣 p50 6.0 s / max 7.1 s。
+- 先写的预测被证伪：「绝对行动纪律」没有吞掉反驳路（6/6 零错改，主模型把纪律句当坐实分支的指令，证据不符照走第二分支 / 逃生句），wrong-model 上主模型还否决了稿选错的调用处落点、改了同样逐字在手的定义处（R10 冗余闭合再证）。
+  纪律也没有消灭防御性取证：eacces #1 明知「历史已经逐字给了」仍先 grep——本轮探针输出里没有那一行，上一轮的担保信任度不够（阶段 2 的「落点跨轮携带」规则，理论 S9）。
+  flaky~refute #1 重读已看过的文件：第二分支「查 CI 或加固定时钟」零命令 + 析取（R7 析取禁令应扩展到取证分支；draft-lint L9 太松）。
+
+**转正（v12.8.8）**：S9 阶段 1 六项门槛在本次样本上全部达到（每项都在门槛边上，n=2/题）⇒ 按既定规则 `compressV4Direct` 缺省 **true**。
+- 影响面：只有显式 `compressPrompt:'v4'` 的部署（全局缺省仍 `v3`，缺省配置线上零变化）。v4 之下 ops→散文路完整保留：`compressV4Direct:false`。
+- 代价写明：直写整块编译 ⇒ 收网窗口抬到 6000 ms，真机 finish 多扣 p50 ≈ 6 s；超长原文（≥ 11 k 字）会超时原文放行。
+- 工具：`tools/v4-live.mjs` 模式改为 `v3 / v4（直写 = 生产 v4 缺省）/ v4ops / v4inc`；自测 §7（ops 端到端）显式关直写；5q4 断言新缺省与「全局缺省 v3 窗口不动」。README / index.d.ts / config.js 注释同步。
+- **本基准（5 基题 + 3 反驳题）退役**：它已量不到上限之上的东西；剩余缺口（第二分支命令级 / 担保时效 / 长度靠门）作为阶段 2 规格。
+- 自测 **618 / 0 / 1**（§5t1–5t5）；manifest 零漂移。
+
+### 状态（诚实记录）
+- 转正的数字每一项都在门槛边上：基题 8.5 的 95% 区间大约 ±1；到位率 4/5；反驳题只是「不比 raw 差 + 零错改」，绝对分 6.5 说明第二分支仍弱。这是「达到既定门槛就执行既定动作」，不是「已经很好」。
+- 全局缺省是否从 v3 换成 v4 直写，是产品决定（多 6 s 收网 + 每回合一次副调用），本版**不动**，留给用户。
+- 费用：本会话副调用 11 次（编译 5 + 真机 6）、主调用 ≈ 54 次（16 有效 + 38 作废重发）、盲评 16 次；再无其它付费步骤。
+
+## v12.8.7（2026-09-29，补记）提示词第 1 条加「严禁重写 / 臆想代码」
+- `src/prompts.js` V4D_HEAD 第 1 条：反引号内容必须是原文真实存在的子串，「绝不要凭理解自己写出函数体」。起因：副模型直写时按理解改写函数体，程序门剥掉反引号后整段变成假证据。
+- 无自测、无产物入库；`promptVersion` 未换（v12.8.8 起记 v4d4）。
+
+## v12.8.6（2026-09-29，补记）主模型「绝对行动纪律」+ 熔断 1800 + 闸门放行比值与环境变量
+- MEMORY 记录：首轮 v4d3 副模型稿供主模型实测（「effect-sub-eval-round1」14 样本，**未入库**）perf 9.5 / wrong-model 8.5，eacces **2.0**——grep 结果出来后主模型防御性 `read_file verify.mjs`。
+- `src/prompts.js`：(d) 问由「点名看到这一点就够了」升级为「必须下达绝对行动纪律：看到结果就必须直接动手 edit_file，严禁再用 read_file 或 sed 查看上下文或确认」；长度区间 1000–1400 → 1100–1550（上限 1650）。
+- `src/compile-v4.js`：直写熔断缺省 1600 → **1800**。`src/fidelity.js`：`RE_GATE_PATH` 排除纯数字比值（`4.4/4.0`）；`GATE_ALLOW` 加 NODE_OPTIONS / PATH / HOME / USER / SHELL。
+- MEMORY 声称复测 eacces 2.0 → 9.0、sse 100% 直接改（样本数未记、产物未入库）。**反驳题在纪律注入后没有复测**——这是 v12.8.8 实测要先回答的问题（绝对纪律会不会吞掉第二分支 ⇒ 错改）。
+
+## v12.8.5（2026-09-29，补记）isFixBranch 排除后置反选与引用前文分支；draft-lint 排除词加「否了 / 否定」
+- `src/compile-v4.js` `isFixBranch`：「…这条候选我自己否了 / 这种改法排除」（改法词之后 32 字内的反选）与「按第一条分支改…」（引用前文）不算本分支的改法动作 ⇒ 不再给取证 / 引用分支绑落点。
+- `tools/draft-lint.mjs` `REJECT_RE` 加 否了 / 否定（L11 排除候选识别）。声称「副模型直压全任务形态分 13–14、与手工 oracle 逐项一致」（产物未入库；且见 v12.8.8 审计第 4 条）。
+
+## v12.8.4（2026-09-29，补记）new_text 段尾标点容错；比值不算路径的前置
+- `src/fidelity.js` `inventedIdentifiers`：new_text 段同时登记去掉首尾 `` ` ' " ( ) , . : ; `` 的净文本，`new_text 是 `…`，` 这种尾随标点不再让整段失去豁免。
+- `src/compile-v4.js` 两行注释。声称 accept 6/6 ok、Lint 均分 13.3（产物未入库）。
+
+## v12.8.3（2026-09-29，补记）WEAK_FIX_RE 加「改为」；长度约束收紧到 1000–1400
+- 起因（MEMORY）：sse 稿 1842 字、perf 稿 1717 字撞当时的 1600 熔断；sse 分支里「改为在 grep 结果里看」被 `isFixBranch` 当改法 ⇒ 绑落点插入可用句把稿撑到 1968 字并破坏片段。
+- `src/compile-v4.js`：`WEAK_FIX_RE` 加「改为」（后接取证动词时判为取证分支）。`src/prompts.js` 第 7 条：700–1300 → 「严格控制字数在 1000~1400（上限 1500）」。
+
 ## v12.8.2（2026-09-29）主模型深度实测闭环：15 项形态 Lint 量化表 + 严禁二度取证纪律；基题 100% 直接改对（全改对，零错改）
 
 **核心进展**

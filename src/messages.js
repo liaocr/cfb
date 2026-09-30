@@ -173,7 +173,7 @@ export function buildCompressCtx(messages, opts = {}) {
   const maxChars = Number.isFinite(opts.maxChars) && opts.maxChars > 0 ? Math.floor(opts.maxChars) : 8000
   const perResultChars = Number.isFinite(opts.perResultChars) && opts.perResultChars > 0 ? Math.floor(opts.perResultChars) : 3000
   const userChars = Number.isFinite(opts.userChars) && opts.userChars > 0 ? Math.floor(opts.userChars) : 2000
-  const isToolResultMsg = (m) => !!m && (m.role === 'tool' || (m.role === 'user' && Array.isArray(m.content) && m.content.some(isToolResultBlock)))
+  const isToolResultMsg = (m) => !!m && (m.role === 'tool' || (m.role === 'user' && Array.isArray(m.content) && m.content.some(isToolResultBlock)) || (m.role === 'user' && /^\s*\[tool:/.test(textOfContent(m.content))))   // v12.9.0：纯文本回灌的「[tool: …]」也算工具结果
   // 最后一条人类 user：role user、不是工具结果、有正文
   let ui = -1
   for (let i = arr.length - 1; i >= 0; i--) {
@@ -212,12 +212,171 @@ export function buildCompressCtx(messages, opts = {}) {
     return head.trimEnd() + '\n' + clip(String(r.text || '').trim(), perResultChars)
   })
   const userPart = clip(user, userChars)
-  if (!userPart && !entries.length) return ''
+  // v12.9.0：多轮台账（前几轮的稿 + 工具往来）放在 user 之后、本轮工具结果之前——它挂在任务陈述块下，不会被当成「在手的代码行」的文件块
+  const ledger = opts.ledger === false ? '' : ledgerBlock(arr)
+  // v12.9.2：延续段（程序按台账写的稿首段）紧跟台账
+  const cont = opts.ledger === false || opts.continuation === false || !ledger ? '' : continuationBlock(arr)
+  if (!userPart && !entries.length && !ledger) return ''
   // 超总预算：先丢最旧的结果（最近的观察才是当前分支要绑的落点）
-  const size = (parts) => parts.reduce((n, p) => n + p.length + 2, userPart.length)
+  const fixed = userPart.length + (ledger ? ledger.length + 2 : 0) + (cont ? cont.length + 2 : 0)
+  const size = (parts) => parts.reduce((n, p) => n + p.length + 2, fixed)
   while (entries.length && size(entries) > maxChars) entries.shift()
-  const out = [userPart, ...entries].filter(Boolean).join('\n\n')
+  const out = [userPart, ledger, cont, ...entries].filter(Boolean).join('\n\n')
   return out.length > maxChars ? out.slice(0, maxChars) : out
+}
+
+/**
+ * v12.9.0（理论 S10.2 多轮台账）：从**前几轮**的稿（assistant 的 reasoning_content / reasoning 块）与工具往来里逐字摘出台账：
+ *   已定（落定句）/ 已排除 / 验收预注册 / 未解 / 已改（三元组 + 结果 + 其后跑过什么）/ 已走过的路（命令 → 结果首行）。
+ *   代码算它能算的（P_t、C_t 状态），副模型只把本轮增量压进去；固定句式（v4d6）让稿机器可读，这是它的红利。
+ *   只看**最后一条人类 user 之后**的消息（同一个任务）；每条 assistant 算一轮。返回 { rounds, edits, calls, decided, excluded, accept, open }。
+ */
+const LEDGER_DECIDED_RE = /改法只落一个[^。！？\n]*[。！？]?/g
+const LEDGER_ACCEPT_RE = /[^。！？\n]*(?:验收|改完后|预期)[^。！？\n]*[。！？]?/g
+const LEDGER_OPEN_RE = /[^。！？\n]*(?:对不上|未解|不改变落点)[^。！？\n]*[。！？]?/g
+const LEDGER_REJECT_RE = /[^。！？\n]*(?:不选|已排除|排除[:：]|搁置|不动它|不走这条|治症状)[^。！？\n]*[。！？]?/g
+const TRIPLE_RE = /old_text 是 `([^`\n]{1,220})`[^`]{0,160}?new_text 是 `([^`\n]{1,220})`/g
+function draftOf(m) {
+  if (!m) return ''
+  if (typeof m.reasoning_content === 'string' && m.reasoning_content.trim()) return m.reasoning_content
+  if (typeof m.reasoning === 'string' && m.reasoning.trim()) return m.reasoning
+  return reasoningTextOf(m)
+}
+/** assistant 消息里的工具调用：结构化 tool_calls / 块形 / 正文里的「[tool_call name] {json}」「[tool: name] cmd」 */
+function callsOfAssistant(m) {
+  const out = []
+  if (Array.isArray(m.tool_calls)) for (const c of m.tool_calls) out.push({ id: c && c.id != null ? String(c.id) : '', name: (c && c.function && c.function.name) || (c && c.name) || '', args: (c && c.function && c.function.arguments) ?? (c && c.arguments) ?? (c && c.input) })
+  if (Array.isArray(m.content)) for (const b of m.content) if (b && typeof b.type === 'string' && RE_TOOL_CALL_TYPE.test(b.type)) out.push({ id: b.id != null ? String(b.id) : '', name: b.name || b.toolName || (b.function && b.function.name) || '', args: b.arguments ?? b.input ?? b.args ?? (b.function && b.function.arguments) })
+  const text = textOfContent(m.content)
+  for (const x of text.matchAll(/\[tool_call\s+([\w-]+)\]\s*(\{[\s\S]*?\})(?=\s*(?:\[tool_call|\n|$))/g)) out.push({ id: '', name: x[1], args: x[2] })
+  for (const x of text.matchAll(/\[tool:\s*([\w-]+)\]\s*`?([^\n`]+)`?/g)) out.push({ id: '', name: x[1], args: x[2].trim() })
+  return out
+}
+const argsText = (a) => { if (a == null) return ''; if (typeof a === 'string') { try { const j = JSON.parse(a); return argsText(j) } catch { return a } } if (typeof a === 'object') return a.command || a.cmd || a.path || JSON.stringify(a); return String(a) }
+const firstLine = (t, n = 120) => {
+  const lines = String(t || '').trim().split('\n').map((l) => l.trim()).filter(Boolean)
+  const head = lines[0] || ''
+  const bad = lines.slice(1).find((l) => /FAIL|ERR|Error|EACCES|Exception|got \d|expected /.test(l))
+  const cut = (x) => (x.length > n ? x.slice(0, n) + '…' : x)
+  return bad ? cut(head) + ' … ' + cut(bad) : cut(head)
+}
+export function buildLedger(messages) {
+  const arr = Array.isArray(messages) ? messages : []
+  const isToolResultMsg = (m) => !!m && (m.role === 'tool' || (m.role === 'user' && Array.isArray(m.content) && m.content.some(isToolResultBlock)) || (m.role === 'user' && /^\s*\[tool:/.test(textOfContent(m.content))))
+  let ui = -1
+  for (let i = arr.length - 1; i >= 0; i--) { const m = arr[i]; if (m && m.role === 'user' && !isToolResultMsg(m) && textOfContent(m.content).trim()) { ui = i; break } }
+  const L = { rounds: 0, edits: [], calls: [], decided: [], excluded: [], accept: [], open: [], lines: [] }
+  const pick = (text, re, max, seen) => { const out = []; for (const m of String(text || '').matchAll(re)) { const t = m[0].trim(); if (t.length < 8 || t.length > 240 || seen.has(t)) continue; seen.add(t); out.push(t); if (out.length >= max) break } return out }
+  const seen = new Set()
+  let round = 0
+  for (let i = ui + 1; i < arr.length; i++) {
+    const m = arr[i]
+    if (!m || m.role !== 'assistant') continue
+    round++
+    const d = draftOf(m)
+    if (d) {
+      for (const t of pick(d, LEDGER_DECIDED_RE, 1, seen)) L.decided.push({ round, text: t })
+      for (const t of pick(d, LEDGER_REJECT_RE, 3, seen)) L.excluded.push({ round, text: t })
+      for (const t of pick(d, LEDGER_ACCEPT_RE, 2, seen)) L.accept.push({ round, text: t })
+      for (const t of pick(d, LEDGER_OPEN_RE, 2, seen)) L.open.push({ round, text: t })
+      // v12.9.2：前几轮稿里逐字引用的代码行（「仍在依赖的事实」）——延续段由程序写时要用；只收像代码的段，三元组里的行不重复收
+      for (const m2 of d.matchAll(/`([^`\n]{12,200})`/g)) {
+        const t = m2[1].trim()
+        if (!/[(){}=;:]|\.(?:js|mjs|ts|py|json|ya?ml)\b|\//.test(t) || /^https?:/.test(t)) continue
+        // 只收像代码 / 记录的行：不含中文（注释里的中文只许出现在 // 之后）、不以标点开头、不是一条命令
+        if (/[\u3400-\u9fff\uff0c\u3002\uff1a\u300c\u300d]/.test(t.replace(/\/\/.*$/, ''))) continue
+        if (/^[，。：；、,.:;]/.test(t) || /^(?:bash|grep|node|npm|npx|git|tail|cat|sed|ls|cd|curl|docker|taskset|python3?|echo|rm|mkdir|nc|ping)\b/.test(t)) continue
+        if (seen.has('L:' + t)) continue
+        seen.add('L:' + t)
+        const back = d.slice(Math.max(0, m2.index - 160), m2.index)
+        if (/new_text\s*(?:是|为|[:：])?\s*$/.test(back)) continue   // 提议的新行不是观察到的事实
+        const src = back.match(/(read_file\s+[\w./-]+|git diff[^`\n（(：:]{0,60}|grep[^`\n（(：:]{0,40})(?![\s\S]*(?:read_file|git diff|grep))/)
+        L.lines.push({ round, text: t, via: src ? src[1].trim().replace(/[（(]逐字[)）]?[:：]?$/, '').replace(/[:：\s]+$/, '') : '' })
+      }
+    }
+    // 这一轮的调用 + 紧随其后（下一条 assistant 之前）的结果
+    const resTexts = []
+    for (let j = i + 1; j < arr.length && arr[j] && arr[j].role !== 'assistant'; j++) {
+      const r = arr[j]
+      if (r.role === 'tool') resTexts.push(textOfContent(r.content))
+      else if (r.role === 'user' && Array.isArray(r.content)) { for (const b of r.content) if (isToolResultBlock(b)) resTexts.push(nestedText(b.content) || (typeof b.text === 'string' ? b.text : '') || '') }
+      else if (r.role === 'user') { const t = textOfContent(r.content); const parts = t.split(/\n(?=\[tool:)/).map((x) => x.replace(/^\s*\[tool:[^\]]*\]\s*/, '')).filter((x) => x.trim()); resTexts.push(...(parts.length ? parts : [t])) }
+    }
+    const calls = callsOfAssistant(m)
+    const resultFor = (k) => resTexts.length === calls.length ? resTexts[k] : resTexts.join('\n')
+    calls.forEach((c, k) => {
+      const a = argsText(c.args)
+      const res = firstLine(resultFor(k))
+      if (/edit_file|str_replace|apply_patch|write_file|edit/i.test(c.name)) {
+        let file = '', oldText = '', newText = ''
+        try { const j = typeof c.args === 'string' ? JSON.parse(c.args) : c.args; file = j.path || j.file || j.file_path || ''; oldText = j.old_text || j.old_str || j.old_string || ''; newText = j.new_text || j.new_str || j.new_string || '' } catch {}
+        L.edits.push({ round, file, oldText: String(oldText).slice(0, 220), newText: String(newText).slice(0, 220), result: res, verifiedBy: null })
+      } else {
+        L.calls.push({ round, name: c.name, args: a.length > 160 ? a.slice(0, 160) + '…' : a, result: res })
+        for (const e of L.edits) if (e.round <= round && !e.verifiedBy && (e.round < round || calls.indexOf(c) > calls.findIndex((x) => /edit/i.test(x.name)))) e.verifiedBy = { round, args: a.length > 100 ? a.slice(0, 100) + '…' : a, result: res }
+      }
+    })
+    // 稿里写了三元组但这一轮没真的 edit ⇒ 记为「提议」
+    if (d) for (const t of d.matchAll(TRIPLE_RE)) { if (!L.edits.some((e) => e.oldText && t[1].includes(e.oldText.trim()))) L.edits.push({ round, file: '', oldText: t[1], newText: t[2], result: '', proposed: true, verifiedBy: null }); break }
+  }
+  L.rounds = round
+  L.edits = L.edits.filter((e) => !e.proposed || !L.edits.some((x) => !x.proposed && x.oldText && e.oldText.includes(x.oldText.trim())))
+  L.lines = L.lines.filter((l) => !L.edits.some((e) => (e.oldText && (l.text.includes(e.oldText.trim()) || e.oldText.includes(l.text))) || (e.newText && (l.text.includes(e.newText.trim()) || e.newText.includes(l.text)))))
+  L.lines = [...L.lines.filter((l) => l.via), ...L.lines.filter((l) => !l.via)].slice(0, 3)
+  return L
+}
+/**
+ * v12.9.2：延续段由程序写（理论 S10.19）。第 t 轮稿的「上一轮已定 / 状态 / 仍在依赖的事实 / 已排除 / 未解 / 已走过的路」全部可从台账推出，
+ *   此前让副模型抄一遍：多花 300–500 字、还是抄样例排除项（「换连接池重试」）与编状态的来源。程序写 = 逐字、确定、零副模型成本。
+ *   返回一段散文（Agent 本人口吻）；没有前几轮或台账为空时返回空串。
+ */
+export function continuationText(messages) {
+  const L = buildLedger(messages)
+  if (!L.rounds || (!L.decided.length && !L.edits.length && !L.calls.length && !L.excluded.length)) return ''
+  const S = []
+  const dec = L.decided[L.decided.length - 1]
+  const lastEdit = L.edits[L.edits.length - 1]
+  const trip = (e) => `old_text \`${e.oldText}\` → new_text \`${e.newText}\``
+  if (dec) {
+    const body = dec.text.replace(/^改法只落一个[：:]\s*/, '').replace(/[，,]?\s*落点已经在手[。！]?$/, '').replace(/[。！？]$/, '')
+    let status = '还没有改法落地'
+    if (lastEdit && lastEdit.proposed) status = `提议、未执行（${trip(lastEdit)}）`
+    else if (lastEdit) status = `已改（edit_file ${lastEdit.file || ''}，${trip(lastEdit)}，结果 ${lastEdit.result || '未知'}）` + (lastEdit.verifiedBy ? `，其后跑过 \`${lastEdit.verifiedBy.args}\` → 「${lastEdit.verifiedBy.result || '（无输出）'}」，验收结果待判` : '，其后没有跑过任何验收，状态是已改未验证')
+    S.push(`上一轮已定：${body}（第 ${dec.round} 轮）；状态：${status}。`)
+  } else if (lastEdit) {
+    S.push(lastEdit.proposed ? `上一轮提议、未执行：${trip(lastEdit)}。` : `上一轮已改：edit_file ${lastEdit.file || ''}，${trip(lastEdit)}（结果 ${lastEdit.result || '未知'}）` + (lastEdit.verifiedBy ? `，其后跑过 \`${lastEdit.verifiedBy.args}\` → 「${lastEdit.verifiedBy.result || '（无输出）'}」，验收结果待判。` : '，其后没有跑过任何验收，状态是已改未验证。'))
+  }
+  if (L.lines.length) {
+    const byRound = [...new Set(L.lines.map((l) => l.round))].join('、')
+    S.push(`仍在依赖的事实：${L.lines.map((l) => '`' + l.text + '`' + (l.via ? `（${l.via}）` : '')).join('、')}——第 ${byRound} 轮稿里逐字引用的行，本轮输出里不会再出现，出处仍有效。`)
+  }
+  if (L.excluded.length) S.push(`已排除：${L.excluded.map((x) => x.text.replace(/[。！？]$/, '') + `（第 ${x.round} 轮）`).join('；')}。`)
+  if (L.open.length) S.push(`未解：${L.open.map((x) => x.text.replace(/^\s*(?:未解|待解|未定)[：:]\s*/, '').replace(/[。！？]$/, '')).join('；')}。`)
+  if (L.calls.length) S.push(`已走过的路：${L.calls.map((c) => `第 ${c.round} 轮 ${c.name} \`${c.args}\` → 「${c.result || '（无输出）'}」`).join('；')}；这些不再重跑，除非中间改过东西。`)
+  return S.join('')
+}
+/** 【延续段】块（放进 compressCtx 的台账之后；compileV4Direct 会把这段散文原样接在稿的开头） */
+export function continuationBlock(messages) {
+  const t = continuationText(messages)
+  if (!t) return ''
+  return '【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）\n' + t
+}
+/** 【台账】块（放进 compressCtx 的开头、工具结果之前；没有前几轮时返回空串） */
+export function ledgerBlock(messages) {
+  const L = buildLedger(messages)
+  if (!L.rounds || (!L.decided.length && !L.edits.length && !L.calls.length && !L.excluded.length)) return ''
+  const lines = []
+  for (const x of L.decided) lines.push(`- 第 ${x.round} 轮已定：${x.text}`)
+  for (const e of L.edits) {
+    if (e.proposed) { lines.push(`- 第 ${e.round} 轮提议（未执行）：old_text \`${e.oldText}\` → new_text \`${e.newText}\`；状态：提议`); continue }
+    const v = e.verifiedBy ? `；其后跑过 ${e.verifiedBy.args} → 「${e.verifiedBy.result || '（无输出）'}」` : '；其后没有跑过任何验收'
+    lines.push(`- 第 ${e.round} 轮已改：edit_file ${e.file || ''}，old_text \`${e.oldText}\` → new_text \`${e.newText}\`（结果：${e.result || '未知'}）${v}；状态：${e.verifiedBy ? '已改，验收结果待判' : '已改未验证'}`)
+  }
+  if (L.excluded.length) lines.push('- 已排除：' + L.excluded.map((x) => `${x.text}（第 ${x.round} 轮）`).join('；'))
+  if (L.accept.length) lines.push('- 上一轮写下的验收：' + L.accept.map((x) => x.text).join('；'))
+  if (L.open.length) lines.push('- 未解：' + L.open.map((x) => x.text.replace(/^\s*(?:未解|待解|未定)[：:]\s*/, '')).join('；'))
+  if (L.calls.length) lines.push('- 已走过的路：' + L.calls.map((c) => `第 ${c.round} 轮 ${c.name} \`${c.args}\` → 「${c.result || '（无输出）'}」`).join('；'))
+  return '【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）\n' + lines.join('\n')
 }
 
 // ── 消息工具 ────────────────────────────────────────────────────────────────

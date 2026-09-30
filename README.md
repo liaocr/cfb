@@ -92,7 +92,14 @@ dsh-cot-form-b/
 v12.1 前的 `memory`（证据账本 + 快照 → 两栏判断稿）与 `legacy`（三态蒸馏）编译模式已删除；
 `stateMemory` / `stateCompress` 成为退役键（`stateMemory: true` 另在 `configAdjusted` 写明现在跑的是 compress）。
 
-### compress-v4-ops（v12.2，`compressPrompt: 'v4'` 打开）
+### compress-v4（`compressPrompt: 'v4'` 打开；v12.8.8 起缺省走**直写** `compressV4Direct:true`，v12.8.9 提示词 `compress-v4d6`）
+
+> **v12.8.9 现状**：`compressPrompt:'v4'` 时缺省是 **v4 直写**（`compress-v4d6` 提示词：副模型直接写主模型语域的散文；程序把本轮工具结果里的**在手代码行**剥好标记列进提示词，
+> 落点只能从中选；程序门 `compileV4Direct` 做机械核真——反引号逐字校验、判读分支闭合、no-op 三元组、new_text 出处、宿主工具名替换）。下面描述的 ops→模板路（`compressV4Direct:false`）仍完整保留。
+> 实测（`transfer/effect-23`，同后端 `--require-fp`，两份独立自动稿 × 8 题）：综合 8.5 / 8.6（原文 5.0；手写 oracle 同 8 题 ≈ 8.3），死路 / 错改 / 回头 read 全 0——见 CHANGELOG v12.8.9、理论 S8-R11。
+> 真机到位率 4/5 = 80%（v12.8.8 数据），代价是 finish 多扣 p50 ≈ 6 s（`compressV4DirectMinWaitMs`）；稿长均值 ≈ 1630 字、中转抖动是到位率的主要风险。
+
+#### compress-v4-ops（v12.2；`compressV4Direct:false` 时的 v4）
 
 v3 是「请副模型写一份更短的摘要」。v4 把理论（[`docs/theory/CFB-THEORY-COMPLETE.md`](docs/theory/CFB-THEORY-COMPLETE.md) 第五卷 S1–S5）
 落成代码：**副模型不写出生文本，只把推理拆成带类型的原子条目（JSON）；出生文本由 `src/compile-v4.js` 确定性地写出。**
@@ -229,9 +236,9 @@ trace：`v4-segment-fired/settled`、`v4-segments-cancelled`。`compressV4Increm
 | `mode: 'off'` | 整体停用 |
 | `enabled: false` | 总开关关闭 |
 | `compressPrompt: 'v3'` | 从 v4 回到散文摘要（缺省） |
-| `compressV4Direct: true` | 启用 v4 直写散文（oracle C 形态固化；缺省关，见 CHANGELOG v12.6.0 / v12.7.0） |
+| `compressV4Direct: false` | 从 v4 直写散文（v12.8.8 起 v4 的缺省；effect-20 基题 8.5 / 反驳错改 0 / 到位率 80%，见 CHANGELOG v12.8.8）回到 ops→散文路。直写 = 整块编译，收网窗口自动抬到 `compressV4DirectMinWaitMs`（6000），真机 finish 多扣 p50 ≈ 6 s |
 | `compressV4DirectBind: false` | 关闭直写稿判读分支的落点绑定（理论 S8-R7；缺省开，见 CHANGELOG v12.7.0）。v12.8 起同一开关还管 R8a 的文件逐字改写（diff `+` / grep 行号剥掉再作 old_text） |
-| `compressV4DirectMaxChars: 1300` | 直写稿超长熔断（缺省 1600；v12.8 起，R7 闭合分支比开放分支长 200–500 字，1300 会把 40% 的稿整份丢掉换原文放行） |
+| `compressV4DirectMaxChars: 1300` | 直写稿超长熔断（缺省 2000；v12.7.1 起 1600、v12.8.6 起 1800、v12.8.9 起 2000——v4d5 完整闭合稿 1600–1950 字，2/10 撞 1800 被整份丢掉换原文；熔断的职责只是拦「跑飞」照抄原文） |
 | `compressV4DirectMinWaitMs: 0` | 打开直写时不再自动把收网窗口抬到 6000（直写是整块编译，真机 3.6–10.9 s / 块；不抬 ⇒ 几乎必然原文放行） |
 | `compressCtxAuto: false` | 不再自动把本回合任务 + 工具结果作为压缩上下文（逐字核真 / 落点绑定会退化为只看推理原文） |
 | `compressV4Incremental: false` | v4 回到整块编译（不分段） |

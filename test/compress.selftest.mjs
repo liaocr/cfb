@@ -178,6 +178,10 @@ try {
     assert.deepEqual(inventedIdentifiers(RAW, '`APP_CONF` 这一行的逐字原文已给出，可以直接当 edit_file 的 old_text，不用 read_file。'), [])
     assert.deepEqual(inventedIdentifiers(RAW, '落点 `hedgeAfterMs: 1600` 的逐字原文已给出'), ['hedgeAfterMs: 1600', 'hedgeAfterMs'], '没有观察时照旧报')
     assert.deepEqual(inventedIdentifiers(RAW, '落点 `hedgeAfterMs: 1600` 的逐字原文已给出', { extra: '[tool: read_file] test/hedge.selftest.mjs\nserver 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600' }), [])
+    // v12.8.9：斜杠并列的枚举不是路径（d5 稿 eacces「chmod/chown/rm」、perf「v11.9/v11.10」被整份拒绝 ⇒ 生产会原文放行）
+    assert.deepEqual(inventedIdentifiers('原文提过 chmod 和 chown，也提过 rm；版本 v11.9 与 v11.10', '当前用户没有 sudo，chmod/chown/rm 都动不了；v11.9/v11.10 都是 stop'), [], '每段都在原文 ⇒ 枚举放行')
+    assert.deepEqual(inventedIdentifiers('原文提过 chmod 和 rm', '试过 chmod/chattr/rm'), ['chmod/chattr/rm'], '有一段没见过 ⇒ 照报')
+    assert.deepEqual(inventedIdentifiers('目录 src 下有 plugin.js；另有 transport.js 在别处', '改 src/transport.js'), ['src/transport.js'], '带字母扩展名的是路径，仍按整体核真')
   })
   await test('§4b3 v12.7：长反引号片段 + 密集行内代码不再把中间散文当「代码」报发明', () => {
     const long = 'Error: EACCES: permission denied, open \'/home/u/.dsh/storages/cot-form-b/trace.log\''   // 85 字 > 旧正则上限 80

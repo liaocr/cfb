@@ -125,3 +125,34 @@
      - 实测 `eacces-config` 评测提升：**2.0 分 → 9.0 分（100% 直接改对，0% 二次取证）**。
      - 实测 `sse-truncated` 评测提升：**100% 直接改对（0% 二次取证）**。
   5. 验证与提交：`node manifest.mjs` && `node verify.mjs` 613 通过；提交并推送远端。
+
+## 2026-09-29 第四会话（接手；Arena 沙盒；用户不在，自主）
+- 接手审计：`798f291` 只提交了 HANDOFF-V12.8.md 的哈希没提交文件（manifest 缺失 1、分支 CI 红）；v12.8.3–12.8.7 零自测零 CHANGELOG、promptVersion 未换；
+  v12.8.2–12.8.6 的全部实测产物没入库（新沙盒不可复核）；draft-lint 形态分不区分好稿坏稿（oH 12–13 分却 0/2）；`tools/_dbg.mjs` 入库；文档熔断 1600 过期；
+  **用户给的 API key 粘贴了两遍（102 字 = 51 × 2 ⇒ 401），取前半即通**。
+- 修复（零成本，`9a763ee`）：重写 HANDOFF-V12.8.md；§5t1–5t4 自测；CHANGELOG 补记五条；`compress-v4d3` → `compress-v4d4`；删 _dbg；docs 对齐；merge main（可 ff）。
+- 通道：混合池，fp_dspure_app_v1 33%（作废重发 ×3）。
+- **v4d4 首次成套实测**（预测先写：综合 < 8.0、反驳错改 > 0 ⇒ **证伪**）：编译 5 次副调用（首压 sse accept=invented-identifier ⇒ 门 bug：分句切在反引号内 `(done ?`，修 `splitSentencesTickAware` §5t5）；
+  effect-20：**d4 7.8 vs raw 5.0；基题 8.5（eacces 6.0 / flaky 9.0 / wrong-model 9.0 / sse 8.5 / perf 10.0）；反驳 6.5（9.5 / 6.0 / 4.0，逐题 ≥ raw）；错改 0、死路 0%、回头 read 6%**。
+  真机 v4-live 直写：到位 4/5 = 80%，hold p50 6.0 s（11 k 字 perf 超时）。
+- 归因：纪律句没吞反驳路（主模型当坐实分支的指令）；wrong-model 主模型否决稿的调用处落点改了定义处（冗余闭合再证）；eacces #1 明知逐字在手仍先 grep（本轮输出没带回那一行 ⇒ 上一轮担保信任不够）；
+  flaky~refute #1 重读（第二分支「查 CI 或加固定时钟」零命令 + 析取）；3/5 稿超 1650 字（字数指令无效）。
+- **转正**：`compressV4Direct` 缺省 true（只影响显式 v4；全局缺省仍 v3）；v4-live 模式 v3/v4(直写)/v4ops/v4inc；README/d.ts/config 同步；理论 S9 阶段 1 收官段；EFFECT-EVAL §16。verify 618/0/1。
+- **本基准退役**。下一步 = 阶段 2（多轮台账基准），规格里带上：第二分支命令级、落点跨轮携带（担保时效）、长度靠门不靠提示词。副模型 / 主模型评测**不再为本基准付费**。
+- 费用：副调用 11 + 主调用 ≈ 54（16 有效）+ 盲评 16。
+- 续：用户抢救入库 `4ece275`（oracle/M + mk.py、effect-21、effect-sub-eval、direct-subv4d3-live3*）。核对：effect-sub-eval = 纪律注入前的首轮 v4d3 稿 → **5.1 / 错改 14% / perf~refute 0.0（2/2 错改）**（首轮稿文件仍丢失）；
+  direct-subv4d3-live3 = 纪律注入后的稿，**无主模型评测数据**；effect-21 = oM 只有 sse n=2。⇒ 「eacces 2.0→9.0 / sse 100% / oM 全集 100%」仍无完整产物；effect-20（d4）是第一份全 8 题 0 错改的自动稿评测。已写入 CHANGELOG 审计 3 / EFFECT-EVAL §16 补 / HANDOFF §4。
+
+## 2026-09-29 第五会话（晚）：v4d5 回退 → v4d6 进入 oracle 带
+- 用户校准：oracle I 8.9 = 理论值，目标是自动稿**稳定**到手写水平；别测 oracle。第一版 v4d5（五问 / 时效 / 命令级第二分支 / 口号改具体）两份稿 6.5 / 7.0 < v4d4 7.8。
+- 归因（读 6 版 40 份稿）：样例第二分支改成命令 ⇒ perf 第二个三元组被降成取证；「逻辑改动只写意图」⇒ sse 不落定在手的 return 行；选行随机（sse 落 [DONE] 行、flaky 落 distill.js 逻辑行）；flash 抄样例不读规则。
+- v4d6 = **【在手的代码行】**（程序从工具结果算出 ≤ 8 行，剥 diff 加号 / grep 行号，排 − 行，标 值行·定义行·调用行·返回行）+ 正文**落定句**「改法只落一个」+ **new_text 必写** + 最后结论为准 + 值行 / 定义行优先。
+  闭合率：主落点 4/5 → 14/14；两份独立稿主模型评测 **8.5 / 8.6**（`transfer/effect-23`），死路 / 错改 / 回头 read 全 0；同 8 题 oracle ≈ 8.3。
+- 门：自闭合三元组存在时不兜底绑定；− 行不进候选；no-op new_text 删子句；斜杠枚举不当路径；熔断 2000。工具：`tools/closure-check.mjs`（基准专用闭合尺）。
+- 费用：副模型压稿 ≈ 80 次；主模型 32 次有效 + 作废重发；盲评 32。未解：稿长 ≈ 1630、中转抖动、n 小、真机 v4-live 未复测；下一杠杆 = 并行压两份按门缺陷选一份。
+
+## 2026-09-29 深夜 → 09-30 第五会话末段：阶段 2 开工（用户授权 2a+2b+2c 一次做完；流程 = 理论→实现→归因→修→继续；实时记忆 transfer/LIVE-MEMORY.md）
+- 2a：v4d6 真机 6 s 窗口 0/5、12 s 3/5（中转慢）。理论 S10 多轮台账写入；`buildLedger/ledgerBlock` 进 compressCtx；compress-v4d7（台账在手 ⇒ 四段 + 第 2 轮样例）；样例整句抄写剥离门。
+- 2b：第 3 轮评测（tools/effect-mr）：红题 raw 5.8 / 手写 oracle 8.6–9.5（假完成 0）/ 自动 6.9。归因：推翻路单命令（S10.3′）；sse 红题基准错（rawFinish 是正常流）已修；ASK 协议冲突已修；层 A（含预见）≠ 层 B（忠实压缩）。
+- 2c：假仓库全轨迹（tools/traj-run）：循环里每轮思考短（中位 ≈ 600–1000 字）⇒ 生产门槛 3100 几乎不压；无门槛 auto-all / 零成本 ledger 都比 raw 修得早（n 极小）。假设 H-ledger（S10.11）。
+- 中转：可信后端按内容黏住 ⇒ 重发加零宽空格 + max_tokens:1 探针（只花 prefill）。费用：主模型有效 ≈ 110（2b）+ ≈ 100（2c 含浪费）、盲评 ≈ 100、副模型 ≈ 60。
