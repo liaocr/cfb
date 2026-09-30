@@ -2,10 +2,13 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新覆盖/验收以 docs/analysis/THEORY-COVERAGE-2026-09-30.md 为准；原 R1–R4 验收报告保留历史。
 
-## 1. 当前状态（2026-09-30，第十一会话，批准的零 API 两轮均已验收）
+## 1. 当前状态（2026-09-30，第十二会话，零 API增量控制链优化已验收）
 
 - 已从用户指定来源 `arena/01a0eba2-cfb` 快进同步最新 `042d361`，先读理论、预注册，再一次性实现 R1–R4；不是仅改提示词或交补丁。**本 Arena 会话固定工作/推送分支 `arena/01a0f127-cfb`**，不切其他分支；只快进、不 force、不动 main。作者 `cfb-cleanup <cleanup@local>`；提交/远端状态看 git status/log。
-- 当前授权：用户批准前两轮0 API执行，并催快。**两轮均完成、范围收口，不继续扩框架**；第三轮模型A/B与生产自动接管未批。预注册/实测：`docs/analysis/LOCAL-ITERATIONS-2026-09-30.md`。
+- 当前授权：前两轮已完成；用户新要求“请继续完善优化”，继续只做零API实现层完善，不扩搜索框架、不复用已消费留出。第三轮模型A/B与生产自动接管未批。预注册/实测：`docs/analysis/LOCAL-ITERATIONS-2026-09-30.md`。
+- 最新增量：signal贯穿episode/host/runtime/verifier/子进程；预取消0预算、执行中取消恢复显式文件+JSON、拒绝迟到pass/下一分支，监听器清理。可选冻结before-retry诊断模式跳无下一修复的末轮、首个unknown停止；默认行为/旧policy摘要保持。顺序快照与同步true认证已补。
+- 新13自测、专项59/0；全量真断网 **776/0/1、26套件、manifest294、N1–N7=0、旧编译33/33**，DT仅语法。6个已知train工程回归：static诊断12→8、active-only8→6、完成4/6不变；full完成6/6、诊断6不变；前置/验收均不减。39episode（含3控制）、真实worker/oracle/HTTP各108，selection/test/入库0、API/费用0。新工具evidence:repair:regression及ignored control-regression.json。
+- 当前旧18任务report源码已变，旧iterations入口拒绝重搜；消费日志不删除、不换cycle。原报告保留历史，增量结论仅工程回归，不当新独立泛化。完整外部DSH缺依赖SKIP继续保留。详见REPAIR-HARDENING-2026-09-30.md。
 - 第一轮：18 新代理复现任务/6 真传输族/6:6:6，仅开发 12 实跑、强基线 8/12；发布 20/20、检查可判 64/64、动作 20/20、恢复 12/12，第二分支 4/8。44 工作负载+44 oracle+44 本机 HTTP、双实现 44/44。认证开发记录可复用，不读留出。瓶颈是批准分支选择。
 - 第二轮：新18任务×四冻结臂，static-safe/active-only/routing-only/active-routing完成12/12/18/18（分母均18），诊断36/24/24/18；三个切分分别4/4/6/6（分母6）。完成增益来自路由，EIG只减诊断；342检查/120发布与落地/222双观察器均完整、unknown0。72配对episode，复用12基线，第二轮新增60、工作负载/oracle/本机HTTP各178。3候选/66评估槽+6已冻效率对照，test前持久预占，严格入库1条；报告/库在ignored `.cfb-runtime/repair-iterations/`，再次运行只认证回放，不重复盲测。
 - 新显式批准episode只读品牌host自身认证后验，无外部后验/标签/参考/失败正文入口；unknown/恢复失败/冲突/截止/预算不路由，默认插件不变。第一轮直接修复并复用失败诊断，避免占掉编辑轮。
@@ -48,3 +51,5 @@
 - 第十一会话第一轮：有检查的固定两步基线，真实计时器/子进程/HTTP/JSON恢复已测；修旧提议解析 json→js 截断，未改旧正文/chunks。实测754/0/1，留出0。接着做第二轮，最多四个预注册策略，不扩范围、不调用模型。
 
 - 第十一会话第二轮收口：四臂预注册与实际符合；active-only平局拒绝、路由正项入库1、无负/unknown；全部原始记录认证复核72/72，重启cached=true未重跑。763/0/1、manifest291、N1–N7=0，模型/API/费用0。真实DSH缺依赖与独立泛化仍未证明，停止已批准范围，不继续优化/复用留出；中文小提交与固定分支普通推送结果以git为准。
+
+- 第十二会话收口：安全取消与按重试需要的诊断优化，完成率不冒充提高；776/0/1、manifest294、N1–N7=0，API/费用0，旧盲测未执行/库未写。已读LIVE/先audit/预注册，新增13反例；提交及固定分支普通推送以git为准。模型收益/独立泛化仍需另批或新任务，保持默认旧路。

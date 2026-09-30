@@ -85,6 +85,28 @@ try {
     assert.equal(s.stopped, 'invalid-diagnostic-receipt'); assert.deepEqual(s.prior, prior)
     assert.throws(() => controller.record({}, () => true), /no-pending/)
   })
+  await test('固定检查顺序构造即冻结，不受调用方数组后改影响', () => {
+    const order = ['coarse-clock', 'event-order'], m = model([{ checkId: 'event-order', cost: 1, likelihood: noisy }, { checkId: 'coarse-clock', cost: 1, likelihood: noisy }])
+    const c = I.createDiagnosticController({ model: m, contract, strategy: 'fixed', checkOrder: order })
+    order.reverse(); assert.equal(c.choose(bind).selected.checkId, 'coarse-clock')
+  })
+  await test('认证要求同步true，truthy/Promise/异常不得更新后验', () => {
+    for (const authenticate of [() => 1, () => 'yes', () => Promise.resolve(true), async () => true, () => { throw new Error('invalid') }]) {
+      const c = I.createDiagnosticController({ model: model([{ checkId: 'event-order', cost: 1, likelihood: clear }]), contract })
+      c.choose(bind); const state = c.record({ subjectId: 'event-order', binding: bind, status: 'pass', id: 'not-certified' }, authenticate)
+      assert.equal(state.stopped, 'invalid-diagnostic-receipt'); assert.deepEqual(state.prior, prior); assert.equal(state.history.length, 0)
+    }
+  })
+  await test('可选unknown首个即停，默认继续探测不变，未知不更新后验', async () => {
+    const m = model([{ checkId: 'event-order', cost: 1, likelihood: noisy }, { checkId: 'coarse-clock', cost: 1, likelihood: noisy }])
+    for (const stopOnUnknown of [false, true]) {
+      const c = I.createDiagnosticController({ model: m, contract, stopOnUnknown }), v = I.createEvidenceVerifier({ contract, root, observe: () => ({ error: 'unavailable' }) })
+      const r = await I.runActiveEvidenceChecks({ controller: c, verifier: v, binding: bind })
+      assert.equal(r.receipts.length, stopOnUnknown ? 1 : 2); assert.deepEqual(r.state.prior, prior)
+      if (stopOnUnknown) assert.equal(r.state.stopped, 'unknown-evidence')
+    }
+    assert.throws(() => I.createDiagnosticController({ model: m, contract, stopOnUnknown: 'yes' }), /strategy/)
+  })
   await test('跨会话/制品/轮次不能复用诊断预算/假设，已中断零检查', async () => {
     const m = model([{ checkId: 'event-order', cost: 1, likelihood: clear }]), controller = I.createDiagnosticController({ model: m, contract })
     controller.choose(bind)

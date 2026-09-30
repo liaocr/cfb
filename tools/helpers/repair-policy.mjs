@@ -18,14 +18,16 @@ export async function runApprovedRepair(name, input, options = {}) {
   const configuration = REPAIR_POLICIES[name]
   const e = await makeRepairHost(input, { ...options, diagnosticStrategy: configuration.diagnosticStrategy, diagnosticOrder: configuration.diagnosticStrategy === 'fixed' ? ['b-order', 'c-assertion'] : null })
   try {
-    const policy = I.freezeApprovedRepairPolicy({ ...REPAIR_BRANCH_PLAN, routing: configuration.routing }, e.contract)
+    const policy = I.freezeApprovedRepairPolicy({ ...REPAIR_BRANCH_PLAN, routing: configuration.routing, ...(options.diagnosticMode === undefined ? {} : { diagnosticMode: options.diagnosticMode }) }, e.contract)
     // 控制器不接收 input、family、fixture 文件、参考标签或对照结果。
-    const controller = I.createApprovedRepairEpisode({ host: e.host, contract: e.contract, policy }), result = await controller.run()
-    const recovery = result.outcomes.filter((r) => !r.ok).map((r) => ({ complete: r.status === 'rolled-back' && r.restored?.restored === true, status: r.status }))
-    const summary = summarizeRepair(e, result.outcomes, result.publications, recovery)
-    const output = { ...summary, controllerStatus: result.status, decisions: result.decisions, policyDigest: policy.digest }
+    const controller = I.createApprovedRepairEpisode({ host: e.host, contract: e.contract, policy }), result = await controller.run({ signal: options.signal ?? null })
+    const outcomes = result.outcomes || [], publications = result.publications || []
+    const recovery = outcomes.filter((r) => !r.ok).map((r) => ({ complete: r.status === 'rolled-back' && r.restored?.restored === true, status: r.status }))
+    const summary = summarizeRepair(e, outcomes, publications, recovery)
+    const output = { ...summary, controllerStatus: result.status, decisions: result.decisions || [], policyDigest: policy.digest }
     // 缺失证据不得被二元效果门当成已知的失败，更不能“平均”掉 unknown。
-    if (summary.decidableChecks.unknown || summary.oracleAgreement.n !== summary.oracleAgreement.total || result.status.includes('unknown')) delete output.solved
+    const goalKnown = outcomes.at(-1)?.receipts?.some((r) => r.subjectId === 'goal' && ['pass', 'fail'].includes(r.status))
+    if (!goalKnown || result.status.includes('aborted') || result.status === 'host-unavailable' || summary.decidableChecks.unknown || summary.oracleAgreement.n !== summary.oracleAgreement.total || result.status.includes('unknown')) delete output.solved
     return I.immutableJson(output)
   } finally { e.cleanup() }
 }

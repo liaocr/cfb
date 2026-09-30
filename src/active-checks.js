@@ -48,12 +48,12 @@ export function freezeDiagnosticModel(def, contract) {
   return immutableJson({ ...body, digest: evidenceDigest(body) })
 }
 /** 调度状态只在宿主侧。未知回执消耗预算但不更新假设；不会把诊断成功变成验收成功。 */
-export function createDiagnosticController({ model, contract, maxChecks = 4, maxCost = 8, minGain = 0.01, strategy = 'active', checkOrder = null }) {
+export function createDiagnosticController({ model, contract, maxChecks = 4, maxCost = 8, minGain = 0.01, strategy = 'active', checkOrder = null, stopOnUnknown = false }) {
   const { digest, ...body } = model || {}
   if (evidenceDigest(body) !== digest || body.contractDigest !== assertEvidenceContract(contract).digest) throw new Error('diagnostic-model-drift')
   if (!Number.isInteger(maxChecks) || maxChecks < 0 || maxChecks > 16 || !Number.isFinite(maxCost) || maxCost < 0 || !Number.isFinite(minGain) || minGain < 0) throw new Error('diagnostic-budget')
-  if (!['active', 'fixed'].includes(strategy) || checkOrder !== null && (!Array.isArray(checkOrder) || !checkOrder.length || new Set(checkOrder).size !== checkOrder.length || checkOrder.some((id) => !body.probes.some((p) => p.checkId === id)))) throw new Error('diagnostic-strategy')
-  const order = checkOrder || body.probes.map((p) => p.checkId)
+  if (typeof stopOnUnknown !== 'boolean' || !['active', 'fixed'].includes(strategy) || checkOrder !== null && (!Array.isArray(checkOrder) || !checkOrder.length || new Set(checkOrder).size !== checkOrder.length || checkOrder.some((id) => !body.probes.some((p) => p.checkId === id)))) throw new Error('diagnostic-strategy')
+  const order = [...(checkOrder || body.probes.map((p) => p.checkId))]
   let prior = probabilities(body.prior), count = 0, cost = 0, pending = null, stopped = null, scope = null, lastRevision = null
   const seen = new Set(), history = []
   const view = () => immutableJson({ prior, count, cost, maxChecks, maxCost, pending, stopped, history })
@@ -78,7 +78,9 @@ export function createDiagnosticController({ model, contract, maxChecks = 4, max
   }
   const record = (receipt, authenticate) => {
     if (!pending) throw new Error('no-pending-check')
-    if (typeof authenticate !== 'function' || !authenticate(receipt) || receipt.subjectId !== pending.checkId || evidenceDigest(receipt.binding) !== evidenceDigest(pending.binding)) {
+    let certified = false
+    try { certified = typeof authenticate === 'function' && authenticate.constructor.name !== 'AsyncFunction' && authenticate(receipt) === true && receipt?.subjectId === pending.checkId && evidenceDigest(receipt.binding) === evidenceDigest(pending.binding) } catch { /* 认证失败关闭，不用异常授信。 */ }
+    if (!certified) {
       stopped = 'invalid-diagnostic-receipt'; pending = null; return view()
     }
     const spec = body.probes.find((p) => p.checkId === pending.checkId)
@@ -86,6 +88,7 @@ export function createDiagnosticController({ model, contract, maxChecks = 4, max
     // unknown 是基础设施/证据缺失，不能用缺失去反证任务假设。
     if (post.ok) prior = post.prior
     else if (receipt.status !== 'unknown') stopped = post.reason
+    else if (stopOnUnknown) stopped = 'unknown-evidence'
     history.push({ checkId: pending.checkId, revision: pending.binding.revision, status: receipt.status,
       gain: pending.gain, posteriorApplied: post.ok, receiptId: receipt.id })
     pending = null

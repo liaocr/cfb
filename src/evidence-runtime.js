@@ -39,8 +39,10 @@ export function createEvidenceRuntime({ contract, sessionId, store, adapter, obs
     }
     return immutableJson(result)
   }
-  async function runRound(candidate, { roundId = crypto.randomUUID(), raw = candidate?.explanation || '' } = {}) {
+  async function runRound(candidate, { roundId = crypto.randomUUID(), raw = candidate?.explanation || '', signal = null, diagnostics = true, stopOnUnknown = false } = {}) {
     const blocked = (reason) => immutableJson({ ok: false, status: 'blocked', reason, counters: { rounds, repairs, checks } })
+    if (signal !== null && !(signal instanceof AbortSignal) || typeof diagnostics !== 'boolean' || typeof stopOnUnknown !== 'boolean') return blocked('round-options')
+    if (signal?.aborted) return blocked('round-aborted')
     if (busy) return blocked('runtime-busy')
     if (done) return blocked('episode-already-verified')
     if (rounds >= maxRounds) return blocked('round-budget')
@@ -53,15 +55,19 @@ export function createEvidenceRuntime({ contract, sessionId, store, adapter, obs
     if (hasEdit && (rounds >= maxRepairRounds || repairs >= maxRepairRounds)) return blocked('verification-only')
     busy = true; rounds++; roundIds.add(roundId); if (hasEdit) repairs++
     const abort = new AbortController(), deadline = Date.now() + roundTimeoutMs, timer = setTimeout(() => abort.abort(), roundTimeoutMs)
+    const onAbort = () => abort.abort()
+    signal?.addEventListener('abort', onAbort, { once: true })
+    if (signal?.aborted) onAbort()
     const expired = () => { if (Date.now() >= deadline) abort.abort(); return abort.signal.aborted }
+    const stopReason = () => signal?.aborted ? 'round-aborted' : 'round-timeout'
     let state, artifact, before, lastRevision, diagnostic = null, receipts = [], error = null
     const guardCheck = async (id, binding, opts = {}) => {
       if (checks >= maxChecks) throw new Error('check-budget')
-      if (expired()) throw new Error('round-timeout')
+      if (expired()) throw new Error(stopReason())
       checks++
       const receipt = await verifier.check(id, binding, { ...opts, signal: abort.signal })
       // 同步回调会阻塞 timer；绝对截止须在结果返回后再次检测，不能采纳迟到的 pass。
-      if (expired()) throw new Error('round-timeout')
+      if (expired()) throw new Error(stopReason())
       return receipt
     }
     try {
@@ -74,7 +80,7 @@ export function createEvidenceRuntime({ contract, sessionId, store, adapter, obs
         before = checkpoints.take({ artifactRef: peak?.artifactRef || null })
         lastRevision = before.revision
         while (state.status === 'ready') {
-          if (expired()) throw new Error('round-timeout')
+          if (expired()) throw new Error(stopReason())
           const step = program.steps[state.cursor], binding = evidenceBinding(program, state)
           let batch
           if (state.phase === 'preconditions') {
@@ -86,11 +92,15 @@ export function createEvidenceRuntime({ contract, sessionId, store, adapter, obs
             state = next
           } else if (state.phase === 'action') {
             if (context && step.preconditions.length && !context.intents.canExecute(program.id, roundId, step.id)) throw new Error('obligation-not-ready')
-            if (expired()) throw new Error('round-timeout')
+            if (expired()) throw new Error(stopReason())
             batch = [verifier.action(step.action.id, binding)]
             // 先记录已落地动作的真实终态，再拒绝迟到结果，确保超时也能准确恢复。
             lastRevision = batch[0].nextRevision || adapter.revision()
-            if (expired()) throw new Error('round-timeout')
+            if (expired()) {
+              receipts.push(...batch) // 取消/同步迟到也保留已落地动作的认证回执。
+              if (context) context.intents.record(batch)
+              throw new Error(stopReason())
+            }
             state = advanceEvidenceState(program, state, batch, verifier.authenticate)
           } else {
             batch = []
@@ -103,7 +113,7 @@ export function createEvidenceRuntime({ contract, sessionId, store, adapter, obs
           if (state.status === 'ready' || state.status === 'verified') lastRevision = state.revision
         }
         if (state.status === 'verified') {
-          if (expired()) throw new Error('round-timeout')
+          if (expired()) throw new Error(stopReason())
           const result = { ok: true, status: 'verified', reason: 'all-steps-verified', artifactRef: artifact.indexRef, checkpoint: peak.handle,
             state, receipts, counters: { rounds, repairs, checks }, modelView: dashboard('verified') }
           const resultRef = store.putJson(result, { kind: 'round' })
@@ -114,8 +124,8 @@ export function createEvidenceRuntime({ contract, sessionId, store, adapter, obs
       } catch (e) { error = e.message || 'runtime-error' }
 
       try {
-        if (before && state && diagnosticModel && checks < maxChecks && !abort.signal.aborted) {
-          const controller = createDiagnosticController({ model: diagnosticModel, contract: c, maxChecks: Math.min(diagnosticChecks, maxChecks - checks), maxCost: diagnosticCost, strategy: diagnosticStrategy, checkOrder: diagnosticOrder })
+        if (diagnostics && before && state && diagnosticModel && checks < maxChecks && !abort.signal.aborted) {
+          const controller = createDiagnosticController({ model: diagnosticModel, contract: c, maxChecks: Math.min(diagnosticChecks, maxChecks - checks), maxCost: diagnosticCost, strategy: diagnosticStrategy, checkOrder: diagnosticOrder, stopOnUnknown })
           diagnostic = await runActiveEvidenceChecks({ controller, verifier: { ...verifier, check: guardCheck }, binding: evidenceBinding(program, state), signal: abort.signal })
         }
       } catch (e) { diagnostic = { receipts: [], error: e.message } }
@@ -132,7 +142,7 @@ export function createEvidenceRuntime({ contract, sessionId, store, adapter, obs
         history.push({ roundId, programId: program.id, status, resultRef })
         return finish(program, result, roundId)
       } catch { return immutableJson({ ...blocked('result-archive-failed'), failureReason: error, recoveryError }) }
-    } finally { clearTimeout(timer); busy = false }
+    } finally { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); busy = false }
   }
   return Object.freeze({ runRound, view, modelView: () => dashboard(done ? 'verified' : 'unresolved'),
     contextView: () => context?.view() || null,
@@ -166,10 +176,10 @@ export function createEvidenceHost(options) {
   }
   const host = Object.freeze({ schema: 'cfb.evidence-host/1', sessionId, runtime, captureDraft,
     latest: () => immutableJson([...published.values()]),
-    runLatest: async (index) => {
+    runLatest: async (index, options = {}) => {
       const item = published.get(index)
       if (!item?.authorized) return immutableJson({ ok: false, status: 'blocked', reason: 'no-authorized-draft' })
-      return runtime.runRound(store.getJson(item.programRef, { kind: 'program' }), { raw: recoverEvidenceBlock(store, item.indexRef, 'raw') })
+      return runtime.runRound(store.getJson(item.programRef, { kind: 'program' }), { ...options, raw: recoverEvidenceBlock(store, item.indexRef, 'raw') })
     } })
   HOSTS.add(host); return host
 }

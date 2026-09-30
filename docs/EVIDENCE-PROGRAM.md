@@ -201,3 +201,12 @@ const result = await runtime.runRound(program, { roundId: 'round-1', raw: origin
 对照宿主可设 `diagnosticStrategy:'fixed', diagnosticOrder:[已批准的diagnostic检查ID]`；默认仍是 EIG（active）。固定诊断不会在熵为0时提前终止，这是强对照的既定检查成本，不偷换验收。预注册计划、18个新真实本机故障任务、四臂三切分及完整分母见 [两轮实测](analysis/LOCAL-ITERATIONS-2026-09-30.md)。静态12/18、单EIG12/18、单路由18/18、组合18/18；完成增益来自路由，诊断36→18。两轮验证只使用本机HTTP/计时器/Node进程，无模型或外网API。
 
 `npm run evidence:repair:development`与`npm run evidence:repair:iterations`都经断网入口；签名报告保存于ignored `.cfb-runtime/repair-iterations/`。留出已持久消耗，重跑只认证回放；改变源码后不能靠删库复用。最终763/0/1、25套件、manifest291、N1–N7全零。完整外部DSH/Cordis缺依赖仍未验证；自写复现不称独立泛化，付费模型A/B与生产接管仍待批准。
+
+
+### v13.1.3 增量：取消与按重试需要诊断（显式、默认旧行为）
+
+冻结批准策略可选`diagnosticMode:'before-retry'`：只有还存在下一次批准修复机会才做失败诊断，首个unknown停止；不降低前置/验收要求。省下的诊断不会当成完成增益或评委涨分。未选模式/显式always保留旧policy摘要与每次失败诊断默认。`controller.run({signal})`、`host.runLatest(index,{signal})`、`runtime.runRound(program,{signal})`接受可选AbortSignal；预取消零预算，执行中取消等待本轮显式文件/JSON恢复、不启用下一分支，不采纳迟到检查。
+
+底层显式round选项`diagnostics:false`只跳诊断，不跳验收；`stopOnUnknown:true`让诊断首个未知停止。HMAC认证与角色/轮次仍严格；固定顺序不受构造后调用方数组修改影响。取消不回退已经发生的网络等非受管副作用，也不能抢占同步I/O或强制终止不遵守signal的观察回调；宿主必须保护独占资源。详见 [增量优化/回归](analysis/REPAIR-HARDENING-2026-09-30.md)。
+
+`npm run evidence:repair:regression`只跑6个已知开发任务，不再搜索已消费18任务留出。旧report仍保留历史；源码变化会关闭旧搜索入口，不删库规避。最终776/0/1、26套件、manifest294、N1–N7全零；外部API0、费用0。

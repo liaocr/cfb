@@ -39,7 +39,7 @@ export async function runRepairIterations(store) {
       const head = store.readHead('effect-holdouts'), journal = head && store.getJson(head.ref, { kind: 'holdout-journal' })
       if (!journal || !suite.test.every((f) => journal.spent.includes(f.family))) throw new Error('repair-test-without-persistent-reservation')
     }
-    const output = await runApprovedRepair(name, input), record = { fixtureId: fixture.id, family: fixture.family, inputDigest: I.evidenceDigest(input), split, output, policy: name, reused: false, evaluationScope }
+    const output = await runApprovedRepair(name, input, { signal }), record = { fixtureId: fixture.id, family: fixture.family, inputDigest: I.evidenceDigest(input), split, output, policy: name, reused: false, evaluationScope }
     records.set(k, { ...record, ref: store.putJson(record, { kind: 'repair-paired-record' }) }); return output
   }
   const evaluateAsync = async (entry, input, signal) => {

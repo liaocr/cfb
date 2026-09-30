@@ -586,7 +586,7 @@ export declare function evidenceEntropy(prior: EvidencePrior): number
 export declare function expectedEvidenceGain(prior: EvidencePrior, likelihood: EvidenceLikelihood): number
 export declare function evidencePosterior(prior: EvidencePrior, likelihood: EvidenceLikelihood, outcome: string): { ok: true; probability: number; prior: EvidencePrior } | { ok: false; reason: string; prior: EvidencePrior }
 export declare function freezeDiagnosticModel(def: { prior: EvidencePrior; probes: readonly DiagnosticProbe[] }, contract: EvidenceContract): DiagnosticModel
-export declare function createDiagnosticController(options: { model: DiagnosticModel; contract: EvidenceContract; maxChecks?: number; maxCost?: number; minGain?: number; strategy?: 'active' | 'fixed'; checkOrder?: readonly string[] | null }): DiagnosticController
+export declare function createDiagnosticController(options: { model: DiagnosticModel; contract: EvidenceContract; maxChecks?: number; maxCost?: number; minGain?: number; strategy?: 'active' | 'fixed'; checkOrder?: readonly string[] | null; stopOnUnknown?: boolean }): DiagnosticController
 export interface DiagnosticResult { readonly schema: 'cfb.diagnostic-result/1'; readonly receipts: readonly EvidenceReceipt[]; readonly state: DiagnosticState; readonly acceptanceUnchanged: true }
 export declare function runActiveEvidenceChecks(options: { controller: DiagnosticController; verifier: EvidenceVerifier; binding: EvidenceBinding; signal?: AbortSignal }): Promise<DiagnosticResult>
 
@@ -652,8 +652,9 @@ export interface EvidenceRuntimeOptions {
 }
 export interface EvidenceModelView { readonly schema: 'cfb.evidence-view/1'; readonly status: string; readonly lastPassed: { checkpoint: string; kind: EvidenceCheckpoint['kind']; artifact: string | null } | null; readonly diagnostics: readonly { checkId: string; status: EvidenceReceipt['status'] }[]; readonly memories: ReturnType<EvidenceArchive['retrieve']>; readonly next: 'stop' | 'stop-with-unresolved' | 'choose-another-approved-branch' }
 export interface EvidenceRoundResult { readonly ok: boolean; readonly status: 'verified' | 'blocked' | 'rolled-back' | 'conflict' | 'recovery-failed'; readonly reason: string; readonly counters: { rounds: number; repairs: number; checks: number }; readonly modelView?: EvidenceModelView; readonly artifactRef?: string | null; readonly checkpoint?: string | null; readonly state?: EvidenceState | null; readonly receipts?: readonly EvidenceReceipt[]; readonly diagnostic?: DiagnosticResult | { receipts: readonly EvidenceReceipt[]; error: string } | null; readonly recoveryError?: string | null; readonly failureReason?: string; readonly restored?: ReturnType<EvidenceCheckpoints['restore']> | null }
+export interface EvidenceRoundOptions { roundId?: string; raw?: string; signal?: AbortSignal | null; diagnostics?: boolean; stopOnUnknown?: boolean }
 export interface EvidenceRuntime {
-  runRound(program: EvidenceProgram, options?: { roundId?: string; raw?: string }): Promise<EvidenceRoundResult>
+  runRound(program: EvidenceProgram, options?: EvidenceRoundOptions): Promise<EvidenceRoundResult>
   program(explanation: string, actionIds: readonly string[]): EvidenceProgram; modelView(): EvidenceModelView
   contextView(): EvidenceContextDashboard | null
   modelInput(options?: EvidenceRenderOptions): EvidenceContextFrame | { readonly ok: false; readonly reason: 'context-disabled'; readonly prefix: null; readonly layers: readonly [] }
@@ -665,7 +666,7 @@ export interface EvidenceHost {
   readonly schema: 'cfb.evidence-host/1'; readonly sessionId: string; readonly runtime: EvidenceRuntime
   captureDraft(draft: { raw: string; text: string; sessionId: string; index?: number; ctx?: string; calls?: readonly { name: string; args: EvidenceJson | string }[]; complete?: boolean }): { index: number; authorized: boolean; artifactRef?: string; programRef?: string; reason?: string }
   latest(): readonly { index: number; authorized: boolean; indexRef?: string; programRef?: string; reason?: string }[]
-  runLatest(index: number): Promise<EvidenceRoundResult | { ok: false; status: 'blocked'; reason: string }>
+  runLatest(index: number, options?: Omit<EvidenceRoundOptions, 'raw'>): Promise<EvidenceRoundResult | { ok: false; status: 'blocked'; reason: string }>
 }
 export declare function createEvidenceRuntime(options: EvidenceRuntimeOptions): EvidenceRuntime
 export declare function createEvidenceHost(options: EvidenceRuntimeOptions): EvidenceHost
@@ -771,7 +772,7 @@ export declare function runEvidenceSearch(options: { store: EvidenceStore; suite
 /** 只在冻结契约批准动作内调度；不接收外部后验/失败原文。 */
 export interface ApprovedRepairPolicyDefinition {
   routing: 'fixed' | 'posterior'; firstActionId: string; fallbackActionId: string
-  routes?: Readonly<Record<string, string>>; minPosterior?: number; maxAttempts?: 1 | 2
+  routes?: Readonly<Record<string, string>>; minPosterior?: number; maxAttempts?: 1 | 2; diagnosticMode?: 'always' | 'before-retry'
 }
 export interface ApprovedRepairPolicy extends ApprovedRepairPolicyDefinition {
   readonly schema: 'cfb.approved-repair-policy/1'; readonly contractDigest: string; readonly digest: string
@@ -787,7 +788,7 @@ export interface ApprovedRepairEpisodeResult {
 export interface ApprovedRepairBlocked { readonly schema: 'cfb.approved-repair-blocked/1'; readonly solved: false; readonly status: string }
 export interface ApprovedRepairController {
   readonly schema: 'cfb.approved-repair-controller/1'; readonly policyDigest: string
-  run(): Promise<ApprovedRepairEpisodeResult | ApprovedRepairBlocked>
+  run(options?: { signal?: AbortSignal | null }): Promise<ApprovedRepairEpisodeResult | ApprovedRepairBlocked>
   view(): { readonly started: boolean; readonly busy: boolean; readonly result: ApprovedRepairEpisodeResult | null }
 }
 export declare function createApprovedRepairEpisode(options: { host: EvidenceHost; contract: EvidenceContract; policy: ApprovedRepairPolicy }): ApprovedRepairController

@@ -4,13 +4,13 @@ import { isEvidenceHost } from './evidence-runtime.js'
 const POLICY_SCHEMA = 'cfb.approved-repair-policy/1'
 export function freezeApprovedRepairPolicy(def, contract) {
   const c = assertEvidenceContract(contract)
-  if (!def || !['fixed', 'posterior'].includes(def.routing)) throw new Error('repair-policy')
+  if (!def || !['fixed', 'posterior'].includes(def.routing) || def.diagnosticMode !== undefined && !['always', 'before-retry'].includes(def.diagnosticMode)) throw new Error('repair-policy')
   const routes = def.routes || {}, minPosterior = def.minPosterior ?? 0.99, maxAttempts = def.maxAttempts ?? 2
   const ids = [def.firstActionId, def.fallbackActionId, ...Object.values(routes)]
   if (ids.some((id) => !c.actions.some((a) => a.id === id && a.type === 'replace')) || Object.keys(routes).some((h) => !/^[\w.-]{1,80}$/.test(h)) ||
     !Number.isFinite(minPosterior) || minPosterior < 0.8 || minPosterior > 1 || !Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 2) throw new Error('repair-policy-permission-budget')
   const body = immutableJson({ schema: POLICY_SCHEMA, contractDigest: c.digest, routing: def.routing, firstActionId: def.firstActionId,
-    fallbackActionId: def.fallbackActionId, routes, minPosterior, maxAttempts })
+    fallbackActionId: def.fallbackActionId, routes, minPosterior, maxAttempts, ...(def.diagnosticMode === 'before-retry' ? { diagnosticMode: def.diagnosticMode } : {}) })
   return immutableJson({ ...body, digest: evidenceDigest(body) })
 }
 function assertPolicy(policy, contract) {
@@ -46,13 +46,16 @@ export function createApprovedRepairEpisode({ host, contract, policy }) {
     if (!entries.length || entries.some(([, v]) => !Number.isFinite(v) || v < 0 || v > 1) || Math.abs(sum - 1) > 1e-8) return null
     return { hypothesis: entries[0][0], confidence: entries[0][1], tied: entries.length > 1 && Math.abs(entries[0][1] - entries[1][1]) < 1e-8, checks: receipts.length }
   }
-  const run = async () => {
+  const run = async ({ signal = null } = {}) => {
     if (busy) return immutableJson({ schema: 'cfb.approved-repair-blocked/1', solved: false, status: 'episode-busy' })
     if (started) return immutableJson({ schema: 'cfb.approved-repair-blocked/1', solved: false, status: 'episode-already-run' })
+    if (signal !== null && !(signal instanceof AbortSignal)) return immutableJson({ schema: 'cfb.approved-repair-blocked/1', solved: false, status: 'invalid-signal' })
+    if (signal?.aborted) return immutableJson({ schema: 'cfb.approved-repair-blocked/1', solved: false, status: 'episode-aborted' })
     started = true; busy = true
     const outcomes = [], publications = [], decisions = []; let actionId = p.firstActionId
     try {
       for (let index = 0; index < p.maxAttempts; index++) {
+        if (signal?.aborted) return close('episode-aborted', outcomes, publications, decisions)
         const v = host.runtime.view()
         if (v.busy || v.done || v.repairs >= v.maxRepairRounds || v.rounds >= v.maxRepairRounds || v.rounds >= v.maxRounds || v.checks >= v.maxChecks) return close('runtime-stopped-or-budget', outcomes, publications, decisions)
         const a = c.actions.find((a) => a.id === actionId), command = c.checks.find((x) => a.checks.includes(x.id))?.label || a.checks[0]
@@ -61,11 +64,16 @@ export function createApprovedRepairEpisode({ host, contract, policy }) {
           text: `宿主批准的修复；验收命令是 \`${command}\`。预期：冻结目标通过。`, calls: [{ name: 'edit_file', args: { path: a.path, old_text: a.oldText, new_text: a.newText } }] })
         publications.push(publication)
         if (!publication.authorized) return close('publication-rejected', outcomes, publications, decisions)
-        const r = await host.runLatest(index); outcomes.push(r)
+        if (signal?.aborted) return close('episode-aborted', outcomes, publications, decisions)
+        const retryPossible = index + 1 < p.maxAttempts && v.repairs + 1 < v.maxRepairRounds && v.rounds + 1 < v.maxRepairRounds && v.rounds + 1 < v.maxRounds
+        const lean = p.diagnosticMode === 'before-retry'
+        const r = await host.runLatest(index, { signal, diagnostics: !lean || retryPossible, stopOnUnknown: lean }); outcomes.push(r)
         if (r.ok === true) return close('verified', outcomes, publications, decisions)
+        if (signal?.aborted) return close('episode-aborted', outcomes, publications, decisions)
         if (r.status !== 'rolled-back' || r.restored?.restored !== true || r.recoveryError) return close('recovery-or-runtime-stop', outcomes, publications, decisions)
         if (r.receipts?.some((x) => x.status === 'unknown')) return close('unknown-evidence', outcomes, publications, decisions)
         if (!r.receipts?.some((x) => x.binding.phase === 'action' && x.status === 'pass')) return close('action-not-confirmed', outcomes, publications, decisions)
+        if (lean && !retryPossible) return close('repair-budget', outcomes, publications, decisions)
         const diagnosis = diagnose(r)
         if (!diagnosis) return close('unknown-diagnostic', outcomes, publications, decisions)
         if (index + 1 >= p.maxAttempts) return close('repair-budget', outcomes, publications, decisions)
@@ -76,7 +84,8 @@ export function createApprovedRepairEpisode({ host, contract, policy }) {
         decisions.push({ afterRound: r.state.roundId, route: p.routing, nextActionId: actionId, confidence: diagnosis.confidence, diagnosticChecks: diagnosis.checks })
       }
       return close('repair-budget', outcomes, publications, decisions)
-    } finally { busy = false }
+    } catch { return close('host-unavailable', outcomes, publications, decisions) }
+    finally { busy = false }
   }
   return Object.freeze({ schema: 'cfb.approved-repair-controller/1', policyDigest: p.digest, run, view: () => immutableJson({ started, busy, result }) })
 }

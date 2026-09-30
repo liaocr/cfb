@@ -6,6 +6,13 @@
 
 ---
 
+## v13.1.3（2026-09-30，零 API控制链优化：安全取消与无用诊断停止）
+
+- signal贯穿显式episode/host/runtime/verifier/子进程；预取消零预算，检查中/动作后取消恢复文件+JSON、拒绝迟到绿灯，不执行下一分支，finally清监听器。同步取消也保留真实动作回执；存档故障typed收口、不复制异常正文。
+- 新可选冻结`diagnosticMode:'before-retry'`仅诊断仍能影响下一次批准修复的失败，unknown首个即停；默认行为/旧policy摘要保持不变。固定诊断顺序快照，认证要求同步true，不接受truthy/Promise。
+- 仅6个已知train任务工程回归，不读已消费test、不入库：静态诊断12→8、EIG固定分支8→6，完成4/6不变；组合6/6、诊断6均不变，前置/验收不减。39episode含3控制、工作负载/oracle/本机HTTP各108；非独立泛化或模型收益。新增 `evidence:repair:regression`。
+- 新13自测；专项59/0，全量真断网776/0/1、26套件、manifest294、N1–N7全零、旧编译33/33。模型/评委/API0、费用0；完整外部DSH仍缺依赖，原SKIP保留，DT仅语法。预注册/实测见 REPAIR-HARDENING-2026-09-30.md。
+
 ## v13.1.2（2026-09-30，零 API 第二轮：批准修复调度与因素拆分）
 
 - 新显式 `freezeApprovedRepairPolicy`/`createApprovedRepairEpisode`：只消费品牌原生宿主认证后验，未知/恢复失败/预算停止不路由；不读故障标签/参考答案，不扩编辑权限，不接管默认插件。原样保留 3轮/2修复、冻结检查器与旧 text/chunks。

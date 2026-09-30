@@ -13,6 +13,7 @@ v12.2 把理论第五卷的 v4 规格落成生产代码：`compressPrompt: 'v4'`
 | [`EVIDENCE-PROGRAM.md`](EVIDENCE-PROGRAM.md) | 接口/宿主接入者 | v13 完整设计、预注册、类型化制品/检查/档案/联合恢复、权衡与启用/回退 |
 | [`analysis/EVIDENCE-VALIDATION-2026-09-30.md`](analysis/EVIDENCE-VALIDATION-2026-09-30.md) | 验收者 | 零调用工程自测、历史回放数字、预测与证据边界 |
 | [`analysis/LOCAL-ITERATIONS-2026-09-30.md`](analysis/LOCAL-ITERATIONS-2026-09-30.md) | 两轮验收者 | 原生真实IO强基线、冻结诊断/路由四臂、断网实测与范围边界 |
+| [`analysis/REPAIR-HARDENING-2026-09-30.md`](analysis/REPAIR-HARDENING-2026-09-30.md) | 增量验收者 | 安全取消、按重试需要停止诊断、固定已知开发回归，不复用盲测 |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 改代码的人 | 模块地图、钩子与数据流、持久化位置、不变式、「改哪里」、测试布局 |
 | [`INSTALL.md`](INSTALL.md) | 部署的人 | 注册机制、两层 patch 形态铁律、改完源码如何生效、排错 |
 | [`RUNBOOK-PHASE0.md`](RUNBOOK-PHASE0.md) | 操作的人（零基础） | 阶段 0 纯观测的逐步操作手册（与 x1 无关，仍有效） |
