@@ -9,6 +9,7 @@ import crypto from 'node:crypto'
 import { fidelity, inventedIdentifiers } from './fidelity.js'
 import { settledTraceData } from './trace.js'
 import { estimateTokens } from './tokens.js'
+import { verifyHints } from './compile-v4.js'   // v12.9.1：I2 闸的出处集合并入程序算出的【验收提示】（S10.14）
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ── 出生即提纯（mode: 'birth'）: At-Birth Interception ────────────────────────
@@ -500,7 +501,7 @@ export function birthAccept(raw, candidate, cfg = {}) {
   if (!c.trim()) return { ok: false, why: 'empty-candidate', info: undefined, ...base }
   if (cfg.birthIdentifierGate !== false) {
     let invented = []
-    try { invented = inventedIdentifiers(r, c, { extra: cfg.compressCtx || '' }) } catch { invented = [] }
+    try { invented = inventedIdentifiers(r, c, { extra: (cfg.compressCtx || '') + (/【台账】/.test(String(cfg.compressCtx || '')) ? '\n' + verifyHints(cfg.compressCtx).join('\n') : '') }) } catch { invented = [] }
     if (invented.length) return { ok: false, why: 'invented-identifier', info: { invented }, ...base }
   }
   const minSavedTokens = Number.isFinite(cfg.birthMinSavedTokens) && cfg.birthMinSavedTokens > 0 ? cfg.birthMinSavedTokens : 1

@@ -6,6 +6,22 @@
 
 ---
 
+## v12.9.1（2026-09-30，第六会话）多轮稿 compress-v4d8「层 B+ 可推导的预见」：程序算验收提示（K1–K3、K6）、四段体、收工三问；评委记忆 + 3 票中位数 + 重评；run4 红 8.0 / 绿 9.8
+
+**用户裁定**：多轮没到上限 ⇒ 实现层去修、理论层去搜索补理论；给主模型它自己没有的东西，但「无论什么情况下都是优化」。
+
+**理论**（`docs/theory/CFB-THEORY-COMPLETE.md` S10.13–S10.18）：归因修正（6.9 vs 8.6 里只有一部分是稿的）；层 B+ = 从 ctx 里**推导**出的观察谓词 + 不含任务事实的通用调试知识，六条 K：K1 验收自证新鲜、K2 条件等价、K3 参数跟随（症状跟着参数走 ⇒ 参数只是触发点 ⇒ 下一条是**取证**事件先后、取证之前不动实现）、K4 新出现者优先、K5 收工三问、K6 零效应 ⇒ 消费点（改了参数输出纹丝不动 ⇒ 参数不在通路上 ⇒ grep 消费点、不试第二候选）；每条的不变性论证（有据 / 条件式 / 支配 / 预算）；S10.16 评测修订；S10.17 预注册；S10.18 实测对账与归因。文献：Zeller 科学调试与因果链、Luo FSE'14 flaky、False-Success 2026、OverclaimBench、MAST、Debugging Decay Index、PreAct。
+
+**实现**：
+- `src/compile-v4.js`：`verifyHints(ctx)` / `verifyHintsBlock(ctx)`——只在 ctx 有【本轮已发出的调用】时，从命令文本与观察里的数**算**出 K1（tail / grep 追加日志且没清空 ⇒ `: > <log>` 再跑）、单元测试不算症状级验收（原症状本身是测试失败时不出）、K2（taskset / --cpus / stress）、K3（三元组只差一个数且观察里有 g ∈ (v0, 2v0]）、K6（三元组只差一个数；键名 = 变动数字前最近的标识符、文件 = 调用行路径）；提示片段并入核真集合（`compileV4Direct` hay、`birth.js` I2 闸）；多轮熔断 2600（ctx 含【台账】），单步仍 2000；样例**片段级**抄写剥离 `parrotedFragment`（「换连接池重试（…）」这类列表项，专名真在原文 / 观察里的不动；`EXAMPLE_MARK_RE` 加 pool.log）。
+- `src/prompts.js`：`V4D_MR` 第 10 条四段体（延续 → 增量 → 验收预注册 → 收工三问）+ 第 2 轮样例；③ 里写两条证伪式（K3 / K6）、推翻路「第一步只有一条 → 比差、新出现者优先 → 没新东西才走预写那条（不能是已排除的候选）」；`V4D_MR_TAIL`；多轮提示末尾附【验收提示】块；版本 `compress-v4d8:`。
+- `tools/effect-mr.mjs` v12.9.1：评委记忆 `judge-cache.json`（同文本同分）、`--judge-votes N`（缺省 3，数值取中位数、布尔取多数）、`--rejudge <results.jsonl>`（零主模型成本重评旧回答）、`--obs`、动作类 `actionClass`（claim-fixed / reread / grep / fresh-rerun / instrument / re-edit-same / edit-other …；「再改同处」只算碰到上一轮那一行，插桩不算）、汇总带 n、动作类表、票距。`tools/compile-mr.mjs`：`mrFormCheck` 形态 9 项、`--recompile`（零成本重过门）。
+- 自测：`test/v4.selftest.mjs` 5u2（v4d8 提示）、5u4（verifyHints K1/K2/K3/K6、抑制条件、提示片段不算发明）、5u5（多轮熔断）、5u6（片段级剥离）；`hook-wiring` 版本串。verify 626 / 0 / 1（16/16）。
+
+**实测**（`transfer/mr/run4/`，新评委 3 票中位数，旧结果全部重评；每格 n = 2）：红题 raw 4.9 / auto v4d7 6.5 / oracle 手写 7.8 / **auto v4d8 8.0**（eacces 8.5 · perf 9.0 · wrong-model 9.0 · sse 8.5 · flaky 5.0；假完成 0/10、再调数字 0）；绿题 raw 9.2 / oracle 9.6 / **auto v4d8 9.8**（假完成 0、过度对冲 0）。两次归因修理论：flaky 红 1.5 → 5.0（K3 措辞：取证之前不动实现）、perf 红 6.5 → 9.0（补 K6）。成本：副模型 7 次、主模型 24 次、评委 ≈ 300 次（含重评）。
+
+**未做 / 已知**：稿长 1400–2400（原目标 ≤ 1500 未达；多轮价值在预注册，不在压缩率）；副模型仍会把已排除项写回 fallback（perf 稿）；只发调用的回答评委看不到意图（flaky #0 票 8/2/1）；n = 2 只看方向；生产门槛（birthMinChars 3100 / 6 s 窗口）未动。
+
 ## v12.9.0（2026-09-29 深夜 → 09-30，第五会话末段，阶段 2 开工）多轮台账：理论 S10、程序台账进 compressCtx、compress-v4d7 多轮稿、多轮评测（第 3 轮 / 全轨迹）、真机复测
 
 **用户给的流程**：理论 → 实现 → 出问题先归因（理论 / 实现）→ 修 → 继续；每次测试少一点；留痕不堆垃圾（`transfer/LIVE-MEMORY.md` 是实时记忆，压缩后先读）。

@@ -530,22 +530,39 @@ export function compileV4(output, raw, cfg = {}, budget = null) {
  *   整份稿被丢、原文（3000–9000 字）放行，比一份 1457 字的稿坏得多。熔断的职责是拦「跑飞」（照抄原文 ≥3000），1600 仍拦得住。
  * @returns {{ ok: true, text, stats } | { ok: false, reason, stats }}
  */
-const EXAMPLE_MARK_RE = /pool\.js|net\.yaml|10\.0\.0\.5|\bdial\b|cfg\.port|8123|5432|ping-db|nc -zv|connected|连接池|超时是连不上|三次重试|主机不通|旧端口|端口/
+// 样例专名（片段级剥离用；与 EXAMPLE_MARK_RE 同源，只列会被当成事实抄进「已排除 / 事实」的名词）
+const EXAMPLE_TOKENS = ['换连接池重试', '连接池重试', '连接池', 'ping-db', 'logs/pool.log', 'net.yaml', '10.0.0.5']   // 不列 pool.js / 端口号：真实仓库里可能同名，反引号核真已覆盖代码段
+const EXAMPLE_MARK_RE = /pool\.js|pool\.log|logs\/pool|net\.yaml|10\.0\.0\.5|\bdial\b|cfg\.port|8123|5432|ping-db|nc -zv|connected|连接池|超时是连不上|三次重试|主机不通|旧端口|端口/
 export function compileV4Direct(side, raw, cfg = {}) {
   let text = String(side == null ? '' : side).trim()
   const stats = { outputChars: text.length }
   const fence = text.match(/^```[a-zA-Z0-9_-]*\n([\s\S]*?)\n```$/)
   if (fence) { text = fence[1].trim(); stats.unfenced = true }
   if (!text) return { ok: false, reason: 'v4d-empty', stats }
-  const hay = norm(raw + '\n' + (cfg.compressCtx || ''))
+  // v12.9.1：【验收提示】是程序从 ctx 算出来的（S10.14 K1–K3），稿照抄它的反引号片段（`: > ~/.dsh/trace.log`）不是发明 ⇒ 并入核真集合
+  const hintText = /【台账】/.test(String(cfg.compressCtx || '')) ? verifyHints(cfg.compressCtx).join('\n') : ''
+  const hay = norm(raw + '\n' + (cfg.compressCtx || '') + '\n' + hintText)
   let invented = 0, newText = 0
-  const rawHay = raw + '\n' + (cfg.compressCtx || '')
+  const rawHay = raw + '\n' + (cfg.compressCtx || '') + '\n' + hintText
   // v12.9.0：样例整句抄写（d9a flaky：「调大超时试过没用，不选：超时是连不上的结果不是原因。」原样出现在与端口毫无关系的任务里）——
   //   原文 / 观察里没有这句就剥掉；否则它会被当成事实，多轮台账还会把它当「已排除」跨轮传播
   //   只剥带样例专有内容的句子（端口 / 连接池 / pool.js …）；逃生句、状态声明这类模板句本来就该照抄
   for (const sent of exampleSentences()) {
     if (!EXAMPLE_MARK_RE.test(sent)) continue
     if (text.includes(sent) && !hay.includes(norm(sent))) { text = text.split(sent).join(''); stats.parrotedExample = (stats.parrotedExample || 0) + 1 }
+  }
+  // v12.9.1：样例片段级抄写（auto-d2d flaky：「已排除：调大超时（治症状）、换连接池重试（要动多处、落点没看过）」——「换连接池重试」是样例的排除项，任务里没有连接池）
+  //   原文 / 观察里没有该样例专名 ⇒ 剥掉含它的顿号 / 逗号列表项（连同紧跟的括注），句子其余部分保留；专名真在原文 / 观察里出现的一律不动
+  for (const tok of EXAMPLE_TOKENS) {
+    const core = tok.includes('连接池') ? '连接池' : tok.includes('pool') ? 'pool' : tok
+    if (!text.includes(tok) || hay.includes(norm(core))) continue
+    const re = new RegExp('(^|[、，,；：:])[^、，,。；：:\\n]*' + tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[^、，,。；\\n（(]*(?:[（(][^）)\\n]*[）)])?', 'g')
+    const before = text
+    text = text.replace(re, (all, lead) => (lead === '、' || lead === '，' || lead === ',' ? '' : lead))
+    if (text !== before) {
+      stats.parrotedFragment = (stats.parrotedFragment || 0) + 1
+      text = text.replace(/([：:；])[、，,]/g, '$1').replace(/(?:^|(?<=[。；\n]))[^。；\n]{0,6}(?:已排除|排除)[：:]\s*(?:[。；]|$)/gm, '').replace(/[：:]([。；])/g, '$1')
+    }
   }
   text = text.replace(/`([^`\n]{1,220})`/g, (all, span, at) => {
     const n = norm(span)
@@ -563,7 +580,10 @@ export function compileV4Direct(side, raw, cfg = {}) {
   stats.provenance = /逐字/.test(text)
   stats.register = /看起来|所以|下一步工具调用/.test(text)
   if (cfg.compressCtx) stats.ctxChars = String(cfg.compressCtx).length   // 观察上下文到位与否（生产由 plugin 自动构造）
-  const maxChars = Number.isFinite(cfg.compressV4DirectMaxChars) && cfg.compressV4DirectMaxChars > 0 ? cfg.compressV4DirectMaxChars : 2000
+  // v12.9.1：多轮稿（ctx 含【台账】）四段 + 验收预注册（新鲜度 / 不算证据 / 比差 / 收工三问）合理长度 1800–2400（auto-d2c sse 2427 撞 2000 整份丢掉），
+  //   熔断只拦「跑飞」（照抄原文 ≥3000）⇒ 多轮缺省 2600，单步仍 2000；显式 compressV4DirectMaxChars 两者都覆盖
+  const multiRound = /【台账】/.test(String(cfg.compressCtx || ''))
+  const maxChars = Number.isFinite(cfg.compressV4DirectMaxChars) && cfg.compressV4DirectMaxChars > 0 ? cfg.compressV4DirectMaxChars : (multiRound ? 2600 : 2000)
   if (text.length > maxChars) return { ok: false, reason: 'v4d-too-long', stats }
   // 理论 S8-R7：判读分支的动作闭合与落点绑定（可用句写进分支句内、绑定到具体逐字落点）
   if (cfg.compressV4DirectBind !== false) text = bindFixBranches(text, raw, cfg.compressCtx || '', stats)
@@ -975,6 +995,86 @@ export function inHandLinesBlock(cot, ctx, max = 8) {
     ? '\n（同一处工具结果里有 ' + values.length + ' 个值行在手：落定句只选其中一个；假设被推翻时通常就改另一个——第二分支写成它的三元组并注明不动第一个，不要写成取证）' : ''
   return '\n\n【在手的代码行】（程序从本轮工具结果里逐字摘出；old_text 只能从这里选、一字不改；值行优先于逻辑行，定义行优先于调用行，谁定义约定谁改、不逐个改使用者；不在这里的行不能当落点）\n' +
     rows.map((r) => `- ${r.label || '工具结果'}${srcNote(r.via)} · ${kindOf(r)}：\`${r.span}\``).join('\n') + multi
+}
+
+/**
+ * v12.9.1（理论 S10.14 K1–K3、K6）：从 ctx 的【本轮已发出的调用】与观察里**算**出验收谓词——副模型只转述、不推断。
+ *   K1 新鲜度：验收命令 tail / grep 一个已有日志且没先清空 / 没时间戳 ⇒ 这些行不自证是改后产生的（v4d7 自动稿把 `tail -n 2 ~/.dsh/trace.log` 写成「改完新起的进程」= 假担保）；
+ *      命令含单元测试 ⇒ PASS 不证明原症状消失。
+ *   K2 条件等价：命令含 taskset / --cpus / stress 等 ⇒ 输出说工具缺失 / 回退时通过没有信息量。
+ *   K3 参数跟随：三元组只差一个数 v0 → v1、且上一轮失败输出里有 got/actual 数 g ∈ (v0, 2·v0] ⇒ 预先算好证伪式「仍失败且新数 ≈ v1 + (g − v0) ⇒ 症状跟着参数走，不是余量问题」。
+ * 全部是确定性检出：不触发时为空（不劣于没有）。返回句子数组；verifyHintsBlock 拼成提示词块。
+ */
+export function verifyHints(ctx) {
+  const c = String(ctx || '')
+  const m = c.match(/【本轮已发出的调用】[^\n]*\n([\s\S]*?)(?=\n\n|$)/)
+  if (!m) return []
+  const lines = m[1].split('\n').map((l) => l.replace(/^-\s*/, '').trim()).filter(Boolean)
+  const hints = []
+  const seen = new Set()
+  const push = (s) => { if (!seen.has(s)) { seen.add(s); hints.push(s) } }
+  const pre = c.slice(0, c.search(/\n【台账】|$/))   // 任务描述 + 第 1 轮观察（症状在这里）
+  // 原症状本身是测试失败：任务句里说某测试失败，或第一条工具结果就是 npm test / node test 的 FAIL 输出
+  const symptomIsTest = /(?:测试|test|selftest|spec|用例)[^。\n]{0,40}(?:失败|不通过|FAIL|fail|报错|EACCES|error)/i.test(pre) ||
+    /\[tool: bash\]\s*(?:npm test|node test\/|npx (?:jest|mocha|vitest)|pytest)[\s\S]{0,400}?\b(?:FAIL|failed|失败|Error)\b/.test(pre)
+  const bashes = lines.filter((l) => /^bash\s/.test(l)).map((l) => l.replace(/^bash\s+/, ''))
+  const edits = lines.filter((l) => /^(?:edit_file|str_replace\w*|apply_patch|edit)\s/.test(l))
+  // 引号里的 | ; & 不是管道（grep -E "a|b" ~/.dsh/trace.log）
+  const LOG_READ_RE = /\b(?:tail|grep|egrep|cat|sed|awk|head|less)\b(?:"[^"\n]*"|'[^'\n]*'|[^|;&\n"'])*?((?:~\/|\.{1,2}\/|\/)?[\w.\/-]*(?:\.log|\.txt|\.jsonl|\.ndjson|\.out|trace(?:\.[\w]+)?)\b)/g
+  const FRESH_RE = /(?::\s*>|\btruncate\b|\brm\b\s+-?\w*\s*[~.\/\w-]*(?:\.log|trace)|--since|\bdate\b|mktemp|\$\$|RUN_ID|\bwc -l\b|\bstat\b|\bls -l\w*\b)/
+  for (const cmd of bashes) {
+    const paths = new Set()
+    for (const mm of cmd.matchAll(LOG_READ_RE)) if (mm[1] && !/^\d/.test(mm[1])) paths.add(mm[1])
+    if (paths.size && !FRESH_RE.test(cmd)) {
+      const p = [...paths][0]
+      push(`验收命令读的是 ${[...paths].join(' / ')} 里已有的行（tail / grep 一个追加日志），命令里没有先清空、也没有时间戳或本次运行 id ⇒ 这些行不自证是改后产生的：数字与上一轮那行一样就当旧行，既不能证实也不能证伪；那时第一步只有一条：先 \`: > ${p}\` 再跑同一条命令拿新鲜行，不判定、不收工。`)
+    }
+    // 原症状本身就是「测试失败」（CI 里某测试偶发失败 / npm test 报错）时，测试通过就是症状级验收，不提示；原症状是线上 / trace / 用户报告的现象时，单元测试 PASS 才不算
+    if (!symptomIsTest && /(?:\bnode\s+test\/|\bnpm\s+(?:test|run\s+test)|\bnpx\s+(?:jest|mocha|vitest|ava)|\bpytest\b|\bgo\s+test\b|\bcargo\s+test\b|selftest|\.test\.\w+|\.spec\.\w+)/.test(cmd)) push('验收命令里有单元测试：PASS 只证明被测函数的行为，不证明原症状消失——症状级验收要看原症状（trace / 线上现象）在原处、同等条件下不再出现；单元测试 PASS 不能当收工依据。')
+    if (/\b(?:taskset|--cpus|cpulimit|stress(?:-ng)?|nice\b|ulimit|docker\s+run|cgexec)/.test(cmd)) push('验收命令依赖运行条件（taskset / 限核 / 负载）：若输出里出现 command not found、回退成不限核、或条件与上一轮复现时不同，这次通过没有信息量、不算证据；要在同等条件下重跑或推到能限核的地方跑。')
+  }
+  const obsPart = c.replace(m[0], '')
+  for (const e of edits) {
+    const mm = e.match(/old_text `([^`]*)` → new_text `([^`]*)`/)
+    if (!mm) continue
+    const [o, n] = [mm[1], mm[2]]
+    const NUM_RE = /-?\d+(?:\.\d+)?/g
+    const on = o.match(NUM_RE) || [], nn = n.match(NUM_RE) || []
+    if (!on.length || on.length !== nn.length) continue
+    if (o.replace(NUM_RE, '#') !== n.replace(NUM_RE, '#')) continue
+    const diff = on.map((x, i) => (x !== nn[i] ? i : -1)).filter((i) => i >= 0)
+    if (diff.length !== 1) continue
+    const v0 = Number(on[diff[0]]), v1 = Number(nn[diff[0]])
+    if (!(v0 > 0) || !Number.isFinite(v1) || v1 === v0) continue
+    // 键名 = 变动数字前最近的标识符（`hedgeAfterMs: 1600` / `compressTargetMax: 1800,` / `--limit 30`）；文件 = 调用行里 tool 名后的路径
+    const before = o.slice(0, o.split(NUM_RE).slice(0, diff[0] + 1).join('#').length)
+    const km = before.match(/([A-Za-z_][\w.-]*)\s*[:=]\s*['"]?\s*$/) || before.match(/--([\w-]+)[=\s]+$/) || before.match(/([A-Za-z_][\w.-]*)[^\w]*$/)
+    const key = km ? km[1] : null
+    const fm = e.match(/^(?:edit_file|str_replace\w*|apply_patch|edit)\s+([^\s（(]+)/)
+    const file = fm ? fm[1] : null
+    // K3（S10.14）：症状跟着参数走 ⇒ 参数只是触发点；下一条是取证被等待的事件何时发生，不是改实现、不是再调数
+    const gs = new Set()
+    for (const g of obsPart.matchAll(/(?:\bgot\b|\bactual\b|实际(?:值|是|为)?|拿到|测得|耗时|took|elapsed)\s*[:=：]?\s*((?:\d+(?:\.\d+)?)(?:\s*[、,，/]\s*\d+(?:\.\d+)?)*)/g)) {
+      for (const x of g[1].split(/\s*[、,，/]\s*/)) { const v = Number(x); if (v > v0 && v <= 2 * v0) gs.add(v) }
+    }
+    if (gs.size) {
+      const arr = [...gs].sort((a, b) => a - b)
+      const ds = arr.map((g) => g - v0); const dmin = Math.min(...ds), dmax = Math.max(...ds)
+      const dTxt = dmin === dmax ? String(dmin) : dmin + '~' + dmax
+      push(`本轮改法是把数值 ${v0} 改成 ${v1}（\`${o}\` → \`${n}\`）；上一轮失败输出里的数字 ${arr.slice(0, 4).join('、')} = ${v0} + ${dTxt}。预注册里要写：「若验收仍失败且新数字 ≈ ${v1} + ${dTxt}（症状跟着参数走），那么这不是余量 / 阈值问题，${v1} 不是原因只是触发点：不要再调这个数字、不要改等待逻辑、不要回滚；下一条只写一条取证——在同一次失败运行里打印被这个阈值等待的那个事件实际发生的时刻（或值）和阈值触发的时刻，两者并排比先后，拿到先后再决定改哪里；取证之前不动实现」。`)
+    }
+    // K6（S10.14）：改了参数、输出却纹丝不动 ⇒ 这条路径没读到新值；下一条是找消费点，不是试第二候选
+    if (key) {
+      const where = file ? `${file} 里的 \`${key}\`` : `\`${key}\``
+      push(`本轮改法是把 ${where} 从 ${v0} 改成 ${v1}；预注册里要写：「若验收输出是改后新产生的（不是同一批旧记录）、数字却与上一轮一样（±噪声）、症状原样，那是改动落地却零效应 ⇒ 这条路径没读到新值（没读 \`${key}\`、读的是另一处定义 / 另一份配置、或进程没重载）：第一步只有一条，bash \`grep -n "${key}" ${file || '<改的文件>'}\` 确认改动落地；落地了下一条只写一条：bash \`grep -rn --exclude-dir=node_modules "${key}" .\` 找它的定义与真实消费点；不试第二候选、不再改这个值」。`)
+    }
+  }
+  return hints
+}
+export function verifyHintsBlock(ctx) {
+  const h = verifyHints(ctx)
+  if (!h.length) return ''
+  return '\n\n【验收提示】（程序从本轮已发出的命令与上一轮观察里算出来的，不是猜的；每一条都要照实写进验收预注册，不能丢、不能反着写）\n' + h.map((x) => '- ' + x).join('\n')
 }
 
 /** 硬拒绝占比阈值（schema / I1–I8；去重、I7、retracted 不算「不可信」）。 */

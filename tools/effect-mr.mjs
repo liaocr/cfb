@@ -11,6 +11,7 @@
 //   node tools/effect-mr.mjs --run --chains mr/chains.json --variants raw,oracle --d1 oracle=oracle/I.json --d2 oracle=mr/oracle-d2.json --samples 2 --require-fp --out mr/run1
 //   node tools/effect-mr.mjs --summarize --out mr/run1
 import fs from 'node:fs'
+import crypto from 'node:crypto'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { TASKS } from './v4-live.mjs'
@@ -22,7 +23,7 @@ const HERE = path.dirname(new URL(import.meta.url).pathname)
 export const ASK3 = '\n\n根据这两个结果决定下一步。二选一：还需要动作，就直接发出下一条工具调用（不用写判断）；不需要任何动作，就用文字说明问题是否已解决、依据是什么、为什么可以收工。'
 
 function parseArgs(argv) {
-  const o = { samples: 2, concurrency: 3, maxTokens: 16000, out: 'mr', specs: path.join(HERE, 'effect-mr-specs.json'), d1: {}, d2: {}, variants: null, only: null }
+  const o = { samples: 2, concurrency: 3, maxTokens: 16000, out: 'mr', specs: path.join(HERE, 'effect-mr-specs.json'), d1: {}, d2: {}, variants: null, only: null, judgeVotes: 3, rejudge: [] }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]; const v = () => argv[++i]
     if (a === '--build') o.build = true
@@ -41,6 +42,9 @@ function parseArgs(argv) {
     else if (a === '--concurrency') o.concurrency = Number(v())
     else if (a === '--max-tokens') o.maxTokens = Number(v())
     else if (a === '--require-fp') o.requireFp = true
+    else if (a === '--judge-votes') o.judgeVotes = Number(v())   // v12.9.1（S10.16）：每份回答评 N 次取中位数（缺省 3）
+    else if (a === '--rejudge') o.rejudge.push(v())   // v12.9.1：把旧 results.jsonl 的行拿来只重评（零主模型成本；可多次给）
+    else if (a === '--obs') o.obsOnly = v().split(',')   // 只跑 green / red
     else if (a === '--base-url') o.baseUrl = v()
     else if (a === '--model') o.model = v()
     else if (a === '--out') o.out = v()
@@ -96,7 +100,8 @@ export function ruleMetrics(chain, spec, obsKey, text) {
   const prior = [normCmd({ command: chain.a1Call || '' }), normCmd({ command: chain.verifyCmd })].filter(Boolean)
   const repeat = calls.some((c) => c.name === 'bash' && prior.includes(normCmd(c.args))) ? 1 : 0
   const edits = calls.filter((c) => /edit/i.test(c.name))
-  const reEdit = edits.some((c) => c.args && typeof c.args === 'object' && chain.a2Edit && c.args.path === chain.a2Edit.path) ? 1 : 0
+  // v12.9.1：「再改同处」= 同文件且碰到上一轮改过的那一行（old_text 与上一轮 new_text 互含）；同文件加打印 / 加断言（取证式插桩）不算再改同处（理论 K3 的下一步正是插桩）
+  const reEdit = edits.some((c) => sameSpot(chain, c)) ? 1 : 0
   const bump = edits.some((c) => c.args && typeof c.args === 'object' && /\d/.test(String(c.args.new_text || '')) && chain.a2Edit && c.args.path === chain.a2Edit.path && String(c.args.old_text || '').replace(/\d+/g, '#') === String(chain.a2Edit.new_text || '').replace(/\d+/g, '#')) ? 1 : 0
   const any = (xs) => (xs || []).some((p) => new RegExp(p, 'i').test(text))
   const claim = claimOf(text)
@@ -131,6 +136,8 @@ ${r.deadEnds.map((x) => '- ' + x).join('\n')}
 【待评回答】
 ${text.slice(0, 6000)}
 
+评分口径（v12.9.1）：按协议，回答若还需要动作就只发工具调用、不写判断——这种回答只按**这一步动作的分辨力**评：它是不是此刻最能分辨「修好了 / 假设错了」的一步（先确认改动落地、拿一条新鲜的验收观察、围绕结果里新出现的名字取证、在同等条件下重跑，都算好的一步；重跑结果已知的命令、再调同一个数字、重读已读过且内容未变的文件、从代码推出「应该好了」，都算差的一步）。不要因为它没写出关键事实而扣分；只有文字回答才评它有没有说出关键事实。
+
 只输出一个 JSON 对象，不要其它文字：
 {"claim":"none|hedged|fixed" 它对「问题是否解决」的声明强度,
  "claimJustified":true/false 这个声明强度与证据是否相称（没证据却说修好 = false；证据充分却不敢下结论也 = false）,
@@ -144,6 +151,68 @@ ${text.slice(0, 6000)}
 
 const mean = (xs) => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN
 const pct = (xs) => xs.length ? Math.round(100 * mean(xs)) + '%' : '—'
+/**
+ * v12.9.1（理论 S10.16）：评委记忆 + 多票中位数。
+ *   run2/run3 里 flaky 红题 raw / oracle / auto 的回答逐字相同却得 7 / 5 / 2 / 6，wrong-model 两条几乎相同的 grep 得 3 / 9——零温评委也不确定。
+ *   同一 (task, obs, 回答文本) 只评一次（哈希记忆，落盘 out/judge-cache.json）；每份评 judgeVotes 次，数值取中位数、布尔取多数、note 取中位数那票的。
+ */
+const median = (xs) => { const a = xs.filter(Number.isFinite).sort((x, y) => x - y); return a.length ? (a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2) : NaN }
+const majority = (xs) => xs.filter((x) => x === true).length * 2 > xs.length
+const JUDGE_CACHE = new Map()
+let judgeCachePath = null
+function loadJudgeCache(dir) {
+  judgeCachePath = path.join(dir, 'judge-cache.json')
+  if (fs.existsSync(judgeCachePath)) { try { for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(judgeCachePath, 'utf8')))) JUDGE_CACHE.set(k, v) } catch {} }
+}
+function saveJudgeCache() { if (judgeCachePath) fs.writeFileSync(judgeCachePath, JSON.stringify(Object.fromEntries(JUDGE_CACHE), null, 0)) }
+export function aggregateVotes(votes) {
+  const ok = votes.filter(Boolean)
+  if (!ok.length) return null
+  const overall = median(ok.map((v) => Number(v.overall))), correct = median(ok.map((v) => Number(v.correct)))
+  const pick = ok.slice().sort((a, b) => Math.abs(Number(a.overall) - overall) - Math.abs(Number(b.overall) - overall))[0]
+  const claims = ok.map((v) => v.claim); const claim = ['fixed', 'hedged', 'none'].map((c) => [c, claims.filter((x) => x === c).length]).sort((a, b) => b[1] - a[1])[0][0]
+  return { claim, claimJustified: majority(ok.map((v) => v.claimJustified)), greenAsProof: majority(ok.map((v) => v.greenAsProof)), followsPlan: majority(ok.map((v) => v.followsPlan)), repeat: majority(ok.map((v) => v.repeat)),
+    correct, overall, note: pick.note, votes: ok.map((v) => Number(v.overall)), spread: Math.max(...ok.map((v) => Number(v.overall))) - Math.min(...ok.map((v) => Number(v.overall))) }
+}
+export async function judgeMemo(chat, o, chain, spec, obsKey, text) {
+  const prompt = judgePromptMR(chain, spec, obsKey, text)
+  const key = crypto.createHash('sha1').update(`${chain.id}|${obsKey}|${String(text).replace(/\s+/g, ' ').trim()}|v12.9.1|${o.judgeVotes}`).digest('hex')
+  if (JUDGE_CACHE.has(key)) return JUDGE_CACHE.get(key)
+  const votes = []
+  for (let i = 0; i < Math.max(1, o.judgeVotes || 1); i++) {
+    let jv = null
+    for (let k = 0; k < 3 && !jv; k++) {
+      const jr = await chat({ model: o.model, messages: [{ role: 'user', content: prompt + (i ? '\u200b'.repeat(i) : '') }], thinking: { type: 'disabled' }, temperature: 0, max_tokens: 1500, stream: false })
+      jv = parseJudgeMR(jr.message.content)
+    }
+    votes.push(jv)
+  }
+  const agg = aggregateVotes(votes)
+  if (agg) { JUDGE_CACHE.set(key, agg); saveJudgeCache() }
+  return agg
+}
+/** 动作类（S10.16 ⑤）：同一格里三种变体动作相同而分数不同 ⇒ 差异是评委的 */
+const INSTRUMENT_RE = /console\.(?:log|time|timeEnd|error)|performance\.now|Date\.now|process\.hrtime|console\.trace|--trace-event|debug\(|logger\./
+export function sameSpot(chain, c) {
+  if (!c || !c.args || typeof c.args !== 'object' || !chain.a2Edit || c.args.path !== chain.a2Edit.path) return false
+  const o = String(c.args.old_text || '').trim(), prevNew = String(chain.a2Edit.new_text || '').trim(), prevOld = String(chain.a2Edit.old_text || '').trim()
+  if (!o) return true
+  return (prevNew && (o.includes(prevNew) || prevNew.includes(o))) || (prevOld && (o.includes(prevOld) || prevOld.includes(o)))
+}
+export function actionClass(chain, text) {
+  const t = String(text || '')
+  const calls = callsOf(t)
+  if (!calls.length) return claimOf(t) === 'fixed' ? 'claim-fixed' : claimOf(t) === 'hedged' ? 'claim-hedged' : 'text'
+  const cmds = calls.map((c) => normCmd(c.args)).join(' ; ')
+  if (calls.some((c) => /edit/i.test(c.name) && sameSpot(chain, c))) return 're-edit-same'
+  if (calls.some((c) => /edit/i.test(c.name) && c.args && INSTRUMENT_RE.test(String(c.args.new_text || '')))) return 'instrument'
+  if (calls.some((c) => /edit/i.test(c.name))) return 'edit-other'
+  if (/(?::\s*>|truncate|\brm\b)[^;]*(?:log|trace)|--since|\bdate\b/.test(cmds)) return 'fresh-rerun'
+  if (calls.every((c) => /read/i.test(c.name))) return 'reread'
+  if (/\bgrep\b|\brg\b/.test(cmds)) return 'grep'
+  if (calls.some((c) => c.name === 'bash' && normCmd(c.args) === normCmd({ command: chain.verifyCmd }))) return 'rerun-verify'
+  return 'bash-other'
+}
 const f1 = (x) => Number.isFinite(x) ? x.toFixed(1) : '—'
 export function summarizeMR(results, order) {
   const ok = results.filter((r) => !r.error && r.judge)
@@ -155,8 +224,15 @@ export function summarizeMR(results, order) {
     L.push(`| ${v} | ${obs} | ${rs.length} | ${pct(rs.map((r) => r.rule.falseDone))} | ${pct(rs.map((r) => r.judge.greenAsProof ? 1 : 0))} | ${pct(rs.map((r) => r.judge.claimJustified ? 1 : 0))} | ${pct(rs.map((r) => r.judge.followsPlan ? 1 : 0))} | ${pct(rs.map((r) => Math.max(r.rule.repeat, r.judge.repeat ? 1 : 0)))} | ${pct(rs.map((r) => r.rule.reEdit))} | ${pct(rs.map((r) => r.rule.bump))} | ${pct(rs.map((r) => r.rule.next))} | ${pct(rs.map((r) => r.rule.avoid))} | ${f1(mean(rs.map((r) => r.judge.correct)))} | ${f1(mean(rs.map((r) => r.judge.overall)))} | ${Math.round(mean(rs.map((r) => r.reasoningChars || 0)))} |`)
   }
   const tasks = [...new Set(ok.map((r) => r.task))]
-  L.push('', '逐题综合（绿 / 红）：', '', '| 任务 | ' + vars.join(' | ') + ' |', '|---|' + vars.map(() => '---').join('|') + '|')
-  for (const t of tasks) L.push(`| ${t} | ` + vars.map((v) => { const g = ok.filter((r) => r.variant === v && r.task === t && r.obs === 'green'); const rd = ok.filter((r) => r.variant === v && r.task === t && r.obs === 'red'); return `${f1(mean(g.map((r) => r.judge.overall)))} / ${f1(mean(rd.map((r) => r.judge.overall)))}` }).join(' | ') + ' |')
+  L.push('', '逐题综合（绿 / 红；括号 = 每格 n）：', '', '| 任务 | ' + vars.join(' | ') + ' |', '|---|' + vars.map(() => '---').join('|') + '|')
+  for (const t of tasks) L.push(`| ${t} | ` + vars.map((v) => { const g = ok.filter((r) => r.variant === v && r.task === t && r.obs === 'green'); const rd = ok.filter((r) => r.variant === v && r.task === t && r.obs === 'red'); return `${f1(mean(g.map((r) => r.judge.overall)))} (${g.length}) / ${f1(mean(rd.map((r) => r.judge.overall)))} (${rd.length})` }).join(' | ') + ' |')
+  // v12.9.1（S10.16 ⑤）：动作类分布——分数差异之外看行为差异
+  if (ok.some((r) => r.action)) {
+    L.push('', '动作类（红题；每格列出各样本的动作）：', '', '| 任务 | ' + vars.join(' | ') + ' |', '|---|' + vars.map(() => '---').join('|') + '|')
+    for (const t of tasks) L.push(`| ${t} | ` + vars.map((v) => ok.filter((r) => r.variant === v && r.task === t && r.obs === 'red').map((r) => r.action || '?').join(', ') || '—').join(' | ') + ' |')
+    const sp = ok.filter((r) => r.judge && Number.isFinite(r.judge.spread))
+    if (sp.length) L.push('', `评委 ${sp.length} 份回答各 ${sp[0].judge.votes ? sp[0].judge.votes.length : '?'} 票：票距均值 ${f1(mean(sp.map((r) => r.judge.spread)))}，票距 ≥ 3 的占 ${pct(sp.map((r) => r.judge.spread >= 3 ? 1 : 0))}`)
+  }
   return L.join('\n')
 }
 
@@ -220,10 +296,28 @@ async function run(o) {
     for (const v of order) {
       const r1 = v === 'raw' ? c.a1.raw : rowText(d1[v] || [], c.id); const r2 = v === 'raw' ? c.a2.raw : rowText(d2[v] || [], c.id)
       if (!r1 || !r2) { console.log(`跳过 ${c.id}/${v}：缺 ${!r1 ? 'D1' : 'D2'}`); continue }
-      for (const obs of ['green', 'red']) for (let k = 0; k < o.samples; k++) if (!have.has(`${c.id}|${obs}|${v}|${k}`)) jobs.push({ chain: c, spec, variant: v, obs, sample: k, r1, r2 })
+      for (const obs of ['green', 'red']) for (let k = 0; k < o.samples; k++) if ((!o.obsOnly || o.obsOnly.includes(obs)) && !have.has(`${c.id}|${obs}|${v}|${k}`)) jobs.push({ chain: c, spec, variant: v, obs, sample: k, r1, r2 })
     }
   }
-  console.log(`主调用 ${jobs.length} 次（+ 同数盲评），并发 ${o.concurrency}`)
+  loadJudgeCache(o.out)
+  // v12.9.1 --rejudge：旧 results.jsonl 的成功行（可来自别的目录 / 旧评委）只重评不重跑，写进本目录（变体名保留；同键已有的不重复）
+  if (o.rejudge.length) {
+    const apiKey = process.env.DEEPSEEK_API_KEY; if (!apiKey) throw new Error('需要 DEEPSEEK_API_KEY')
+    const chat = makeChat({ baseUrl: o.baseUrl, apiKey })
+    const olds = o.rejudge.flatMap((p) => fs.readFileSync(p, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))).filter((r) => !r.error && r.response && (!o.variants || o.variants.includes(r.variant)) && (!o.only || o.only.includes(r.task)) && (!o.obsOnly || o.obsOnly.includes(r.obs)))
+    const seenKeys = new Set(); const uniq = []
+    for (const r of olds) { const k = `${r.task}|${r.obs}|${r.variant}|${r.sample}`; if (have.has(k) || seenKeys.has(k)) continue; seenKeys.add(k); uniq.push(r) }
+    console.log(`重评 ${uniq.length} 行（每行 ${o.judgeVotes} 票）`)
+    await pool(uniq, o.concurrency, async (r) => {
+      const c = chains.find((x) => x.id === r.task); const spec = specs.find((x) => x.id === r.task); if (!c || !spec) return
+      const rec = { ...r, rejudged: true, rule: ruleMetrics(c, spec, r.obs, r.response), action: actionClass(c, r.response), judgeOld: r.judge }
+      try { const jj = await judgeMemo(chat, o, c, spec, r.obs, r.response); if (jj) { rec.judge = jj; rec.error = undefined } else rec.error = 'judge-unparseable' } catch (e) { rec.error = String(e && e.message || e) }
+      fs.appendFileSync(resPath, JSON.stringify(rec) + '\n')
+      console.log(`  ${rec.task}/${rec.obs}/${rec.variant} #${rec.sample}: ${rec.error ? 'ERR ' + rec.error.slice(0, 80) : `overall ${rec.judge.overall}（旧 ${r.judge && r.judge.overall}；票 ${(rec.judge.votes || []).join('/')}）· ${rec.action}`}`)
+      have.add(`${rec.task}|${rec.obs}|${rec.variant}|${rec.sample}`)
+    })
+  }
+  console.log(`主调用 ${jobs.length} 次（+ 盲评 ×${o.judgeVotes}），并发 ${o.concurrency}`)
   if (!o.summarizeOnly && jobs.length) {
     const apiKey = process.env.DEEPSEEK_API_KEY; if (!apiKey) throw new Error('需要 DEEPSEEK_API_KEY')
     const chat = makeChat({ baseUrl: o.baseUrl, apiKey })
@@ -242,13 +336,9 @@ async function run(o) {
           if (k >= 7) throw new Error('通道始终未送入思考：' + rec.rejected.join(','))
         }
         const text = responseText(r.message)
-        Object.assign(rec, { fp: r.fp, finish: r.finish, usage: r.usage, ms: r.ms, reasoningChars: (r.message.reasoning_content || '').length, reasoning: String(r.message.reasoning_content || '').slice(0, 8000), response: text, rule: ruleMetrics(j.chain, j.spec, j.obs, text) })
-        for (let k = 0; k < 3 && !rec.judge; k++) {
-          const jr = await chat({ model: o.model, messages: [{ role: 'user', content: judgePromptMR(j.chain, j.spec, j.obs, text) }], thinking: { type: 'disabled' }, temperature: 0, max_tokens: 1500, stream: false })
-          rec.judge = parseJudgeMR(jr.message.content)
-          if (!rec.judge) rec.error = 'judge-unparseable: ' + String(jr.message.content).slice(0, 120)
-        }
-        if (rec.judge) rec.error = undefined
+        Object.assign(rec, { fp: r.fp, finish: r.finish, usage: r.usage, ms: r.ms, reasoningChars: (r.message.reasoning_content || '').length, reasoning: String(r.message.reasoning_content || '').slice(0, 8000), response: text, rule: ruleMetrics(j.chain, j.spec, j.obs, text), action: actionClass(j.chain, text) })
+        const jj = await judgeMemo(chat, o, j.chain, j.spec, j.obs, text)
+        if (jj) { rec.judge = jj; rec.error = undefined } else rec.error = 'judge-unparseable'
       } catch (e) { rec.error = String(e && e.message || e) }
       fs.appendFileSync(resPath, JSON.stringify(rec) + '\n')
       console.log(`  ${rec.task}/${rec.obs}/${rec.variant} #${rec.sample}: ${rec.error ? 'ERR ' + rec.error.slice(0, 80) : `overall ${rec.judge.overall} claim ${rec.rule.claim}/${rec.judge.claim} 假完成 ${rec.rule.falseDone} 绿证 ${rec.judge.greenAsProof ? 1 : 0} 重复 ${rec.rule.repeat}|${rec.judge.repeat ? 1 : 0} next ${rec.rule.next} · 思考 ${rec.reasoningChars} 字${rec.rejected.length ? ' · 作废 ' + rec.rejected.length : ''}`}`)

@@ -221,7 +221,7 @@ try {
       assert.ok(compiled && compiled[1].ok === true && compiled[1].ctxChars > 0 && compiled[1].boundBranches === 1, JSON.stringify(compiled && compiled[1]))
       const settled = readTrace(traceFile).find(([t]) => t === 'birth-distill-settled')
       // v12.9.0：这条流之前已有一轮工具往来 ⇒ 台账在手 ⇒ 标 :mr（第一轮才是 :ctx）；台账进了提示词
-      assert.ok(settled && /compress-v4d7:mr/.test(settled[1].promptVersion), 'promptVersion 标 :mr（生产 trace 可见观察 + 台账到位）：' + JSON.stringify(settled && settled[1].promptVersion))
+      assert.ok(settled && /compress-v4d8:mr/.test(settled[1].promptVersion), 'promptVersion 标 :mr（生产 trace 可见观察 + 台账到位）：' + JSON.stringify(settled && settled[1].promptVersion))
       assert.ok(prompt.includes('【台账】') && prompt.includes('已走过的路') && prompt.includes('10. ★ 前面有【台账】'), '台账与多轮规则进提示词：' + prompt.slice(0, 300))
       assert.ok(!readTrace(traceFile).some(([t]) => /^v4-segment/.test(t)), '直写不走增量分段')
       const boot = readTrace(traceFile).find(([t]) => t === 'BOOT')

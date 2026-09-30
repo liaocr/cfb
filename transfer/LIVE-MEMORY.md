@@ -42,3 +42,13 @@
 ## 5. 费用台账（本阶段）
 - 2b：副模型 ≈ 25 · 主模型有效 ≈ 110 · 盲评 ≈ 100 · 作废重发 ≈ ×1.7
 - 2c：主模型有效 ≈ 90（traj1 ≈ 30、traj2 ≈ 40、traj3 ≈ 20 进行中）+ 作废 / 探针（探针只花 prefill）· 副模型 ≈ 40
+
+## 6. 第六会话（2026-09-30）v12.9.1 / compress-v4d8——多轮稿「可推导的预见」（用户裁定：多轮没到上限 ⇒ 实现层修 + 理论层搜文献补；给的东西必须在任何情况下都是优化）
+- 理论：S10.13 归因修正 → S10.14 六条 K（K1 验收自证新鲜 / K2 条件等价 / K3 参数跟随 ⇒ 取证事件先后、取证前不动实现 / K4 新出现者优先 / K5 收工三问 / K6 零效应 ⇒ 消费点）+ 不变性论证 → S10.16 评委修订 → S10.17 预注册 → S10.18 run4 对账。文献列在 S10.14 脚注。
+- 实现：`verifyHints(ctx)` 程序算提示（只在 ctx 有【本轮已发出的调用】时；单步 / 第 1 轮提示词不变）；V4D_MR 四段体 + 第 2 轮样例；提示片段并入核真集合；多轮熔断 2600；`parrotedFragment` 片段级剥离；effect-mr 评委记忆 / 3 票 / `--rejudge` / 动作类 / `instrument` 类；compile-mr `mrFormCheck` + `--recompile`。
+- 数字（run4，新评委，每格 n = 2）：红 raw 4.9 / v4d7 6.5 / oracle 7.8 / **v4d8 8.0**；绿 raw 9.2 / oracle 9.6 / **v4d8 9.8**；假完成 0/20；再调数字 0。两次归因修理论：flaky 1.5 → 5.0（K3 措辞），perf 6.5 → 9.0（补 K6）。
+- 最终稿文件：`transfer/mr/auto-d2d.json`（eacces / wrong-model / sse 来自 auto-d2c-r，flaky / perf 来自 auto-d2d-part-r）；结果 `transfer/mr/run4/`（results.jsonl 含变体 raw / auto / oracle / oracle2 / oracle3 重评行 + auto8 + auto8b；`results.contaminated.jsonl` 未拷贝——那是 run2 的 sse 旧规范回答被错判到新规范的第一次重评，作废）。
+- 踩坑：重评时 run2 的 sse 红行是旧规范（改前的观察），不能与 run3 混；`--rejudge` 的去重是「先到先得」，顺序与 `--only` 要按规范版本分开跑。
+- 剩余（诚实）：稿长 1400–2400；副模型仍会把已排除项写回 fallback（perf 稿的 maxOutputTokens）；只发调用的回答评委看不到意图（flaky #0 票 8/2/1）；n = 2；生产门槛 birthMinChars 3100 / 6 s 窗口没动——那是宿主决定，不是稿的事。
+- 费用：副模型 7 · 主模型 24（含作废 ≈ ×1.5）· 评委 ≈ 300（含重评，记忆命中零成本）。
+
