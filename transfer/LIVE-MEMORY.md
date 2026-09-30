@@ -23,6 +23,7 @@
 - **写 canned 观察前先把代码语义跑一遍**：sse 红题我把 rawFinish="stop" 当失败，其实是正常流；主模型答对被我判 0。
 - ASK 措辞会和主模型的调用协议冲突（要文字就不能调工具）——问法要二选一。
 - 手写 oracle 含预见（CoT 里没有的），忠实压缩不允许发明；副模型的目标是层 B 形态闭合，不是 oracle 分数。
+- **2026-09-30 用户换了渠道（同 base a6api、新 key）实测**：主模型请求几乎全落到后端 `cb/deepseek-v4.1-flash`（fp=null，usage 带 cache_creation_input_tokens）——**丢弃历史 reasoning_content**（1 字 vs 1000 字 prompt_tokens 339=339 / 44=44，埋暗号 0/16 看见），DeepSeek 式 `thinking:{type:'enabled'}` 被忽略（0 字思考，`reasoning_effort` 才有 ~100 字）。首批 channel-check 6 次曾落到另一后端（372 vs 911 有拼接，但 0 字思考）。⇒ 这条渠道**只能当副模型通道**（compile-direct 2/2 成稿、闸 ok、闭合 2/2、单次 ≈19.6 s）；主模型评测 / 真机效果在它上面全是噪声，`--require-fp` 0% 通过。换回可信通道再跑任何 effect-*/traj-run。
 - 中转抖动：副模型单次 5–90 s，偶发 150 s 超时；可信后端按请求内容黏住、带 tools 字段时更少（有时 0/6）⇒ traj-run 用 --text-tools + max_tokens:1 探针 + 零宽空格打散；effect-eval 未改。
 - 稿长均值 ≈ 1630；熔断 2000；真机 6 s 窗口到位率 v4d6 **未复测**（2a 第一件事）。
 - flash 抄样例不读规则；样例里的名字会被抄进稿里（已禁）。
