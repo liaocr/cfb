@@ -67,3 +67,5 @@ export { makeTraceWriter, settledTraceData } from './src/trace.js'
 
 export { createEvidenceIntents, replayEvidenceTrace, binaryEvidenceFeedback } from './src/evidence-intents.js'
 export { auditEvidenceSlots, createEvidenceContext } from './src/evidence-context.js'
+export { LOCAL_EVIDENCE_FAMILIES, createLocalEvidenceSuite, parseLocalEvidencePolicy, executeLocalEvidenceCase } from './src/local-evidence.js'
+export { createEvidenceDocument, editEvidenceDocument, createEvidenceIssues, compareEvidencePairs, runEvidenceSearch } from './src/evidence-search.js'

@@ -187,3 +187,8 @@ const result = await runtime.runRound(program, { roundId: 'round-1', raw: origin
 命名 head 以 HMAC+独占文件锁+前版本 CAS 更新，档案自动恢复；`reserveHoldout()` 在异步执行 test 之前持久预占，即使崩溃/失败也不返还任务族。恢复旧 `restoreRef` 不可跨越最新 head 的退役状态。崩溃遗留 head 锁不自动抢锁，须宿主检查后处理；这是故意保守的可用性权衡。普通主机断电的目录 fsync/故障文件系统耐久性及恶意特权宿主不在本轮证明范围。
 
 完整覆盖台账与未实施边界见 [四轮覆盖复核](analysis/THEORY-COVERAGE-2026-09-30.md)。零 API 复现：`npm run verify:offline`（Linux/unshare/ip 必需，隔离失败停止，不回退在线）；不读取真实 HOME/DSH_HOME/keys.env，不继承 API/代理/凭据环境，只准 loopback 测试替身。
+
+
+本地搜索补件：`createEvidenceDocument`/`editEvidenceDocument` 只编辑指定文本槽，冻结头与必需槽不可删；次数/字符/总量限额先检查。`runEvidenceSearch` 将 async 真实执行结果无损签名留仓，再交 R3 同步证书内核；最多 8 个候选，固定候选且持久 reserve 后才读 test，任何扰动/观察器负项或 unknown 都 veto。拒绝缓存跨周期要求宿主提供完整源码/环境 `evaluationScope` 指纹，不把函数的字符串表示误认为 closure 环境证明；没有指纹不跳过旧失败。问题队列认证证据、去重、按复发排序、限额并持久恢复，仅供宿主，不作为 solver 失败故事。
+
+本次 `createLocalEvidenceSuite` 只给 32 个代理自写、参考已知的真实文件/状态/本机 HTTP/子进程场景；`executeLocalEvidenceCase` 的策略空间仅 idle/unchecked/checked。它不是任意仓库代码演化或 LLM 效果评估，观察器不可判时缺失 correct 槽而不是假造 false 后赚提升。最终 746/0/1、23 套件，详细分母与边界见四轮覆盖台账。

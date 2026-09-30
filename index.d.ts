@@ -732,3 +732,36 @@ export interface EvidenceContext {
   reset(): void; view(): EvidenceContextDashboard
 }
 export declare function createEvidenceContext(options: EvidenceContextOptions): EvidenceContext
+
+
+/** 已知参考、代理自写的本地工程场景，不是主模型泛化基准。 */
+export declare const LOCAL_EVIDENCE_FAMILIES: Readonly<Record<'train' | 'selection' | 'test', readonly string[]>>
+export declare function createLocalEvidenceSuite(): EffectSuite
+export declare function parseLocalEvidencePolicy(candidate: MemoryCandidate | null): { readonly mode: 'idle' | 'unchecked' | 'checked' }
+export interface LocalEvidenceOutput {
+  readonly correct?: boolean; readonly unknownReason?: string; readonly primary: boolean; readonly secondary: boolean | null; readonly agreement: boolean
+  readonly actualVerified: boolean; readonly status: string; readonly reason: string; readonly managedStateRestored: boolean
+  readonly loopbackRequests: number; readonly externalApiCalls: 0; readonly localOracleProcesses: number
+}
+export declare function executeLocalEvidenceCase(candidate: MemoryCandidate | null, input: { family: string; variant: number }, options?: { perturbation?: 'none' | 'format'; observer?: 'primary' | 'secondary' }): Promise<LocalEvidenceOutput>
+export interface EvidenceDocumentDefinition { readonly protected: EvidenceJson; readonly sections: readonly { readonly id: string; readonly text: string }[]; readonly requiredSections?: readonly string[] }
+export interface EvidenceDocument extends EvidenceDocumentDefinition { readonly schema: 'cfb.bounded-document/1'; readonly id: string; readonly requiredSections: readonly string[] }
+export type EvidenceDocumentEdit = { readonly type: 'add'; readonly id: string; readonly text: string } | { readonly type: 'replace'; readonly id: string; readonly expectedText: string; readonly text: string } | { readonly type: 'delete'; readonly id: string }
+export declare function createEvidenceDocument(definition: EvidenceDocumentDefinition): EvidenceDocument
+export declare function editEvidenceDocument(document: EvidenceDocument, operations: readonly EvidenceDocumentEdit[], options?: { maxEdits?: number; maxChangedChars?: number; maxFinalChars?: number }): { readonly document: EvidenceDocument; readonly edits: number; readonly changedChars: number; readonly protectedDigest: string }
+export interface EvidenceIssue { readonly id: string; readonly signature: MemorySignature; readonly family: string; readonly component: string; readonly reason: string; readonly count: number; readonly status: 'open' | 'resolved'; readonly firstAt: number; readonly lastAt: number; readonly samples: readonly string[] }
+export interface EvidenceIssues {
+  record(issue: { signature: MemorySignature; family: string; component: string; reason: string; evidenceRef: string }): boolean
+  view(): readonly EvidenceIssue[]; persist(): string; resolve(id: string): boolean
+}
+export declare function createEvidenceIssues(options: { store: EvidenceStore; maxIssues?: number; clock?: () => number }): EvidenceIssues
+export interface EvidencePairedObservations { readonly schema: 'cfb.paired-observations/1'; readonly rows: readonly { readonly id: string; readonly answerUnchanged: boolean | null; readonly actionChanged: boolean | null }[]; readonly answerUnchanged: { n: number; total: number; unknown: number }; readonly actionChanged: { n: number; total: number; unknown: number }; readonly note: string }
+export declare function compareEvidencePairs(pairs: readonly { id: string; before?: { answer?: EvidenceJson; action?: EvidenceJson }; after?: { answer?: EvidenceJson; action?: EvidenceJson } }[]): EvidencePairedObservations
+export interface EvidenceSearchRecord { readonly schema: 'cfb.search-record/1'; readonly evaluatorSourceDigest: string; readonly suiteDigest: string; readonly candidateId: string | null; readonly fixtureId: string; readonly inputDigest: string; readonly split: 'train' | 'selection' | 'test'; readonly output: EvidenceJson; readonly error: string | null; readonly ref: string }
+export interface EvidenceSearchResult {
+  readonly schema: 'cfb.evidence-search/1'; readonly suiteDigest: string; readonly evaluatorSourceDigest: string; readonly archiveRef: string; readonly issuesRef: string
+  readonly counters: { candidates: number; maxCandidates: number; evaluations: number; maxEvaluations: number; testEvaluations: number; duplicates: number; priorRejections: number }
+  readonly screened: readonly (EffectCertificate & { readonly cachedFromPriorCycle?: true })[]; readonly final: readonly EffectCertificate[]
+  readonly activeIds: readonly string[]; readonly issues: readonly EvidenceIssue[]; readonly records: readonly EvidenceSearchRecord[]
+}
+export declare function runEvidenceSearch(options: { store: EvidenceStore; suite: EffectSuite; candidates: readonly MemoryDefinition[]; evaluateAsync: (candidate: MemoryCandidate | null, input: EvidenceJson, signal: AbortSignal) => EvidenceJson | Promise<EvidenceJson>; maxCandidates?: number; maxEvaluations?: number; evaluationTimeoutMs?: number; evaluationScope?: string | null }): Promise<EvidenceSearchResult>
