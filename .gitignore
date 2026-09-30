@@ -30,3 +30,6 @@ Thumbs.db
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# 本机评测profile（无密钥，但含本机报价核对日期，不进交付清单）
+/eval-profile.json

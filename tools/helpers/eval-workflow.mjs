@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
-import { buildMinimalPlan, sourceDifferences, summarizeMinimal, resultOf } from './eval-plan.mjs'
+import { buildMinimalPlan, buildBoundedPlanV2, sourceDifferences, summarizeMinimal, resultOf } from './eval-plan.mjs'
 import { auditApiPlan, createBudgetedChat, inspectApiBudget, inputTokenBound, APPROVED_API_LIMITS } from './api-budget.mjs'
 import { assertSafePath, readJson, writeJson, hasSecretMaterial } from './eval-files.mjs'
 import { assertAutoCheckpoint, exportEvaluationBundle } from './eval-bundle.mjs'
@@ -11,6 +11,9 @@ import { readWatermark } from './api-watermark.mjs'
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 export const DEFAULT_HOME = path.join(ROOT, '.cfb-runtime/bounded-ab')
 export const PUBLIC_RECEIPT = path.join(ROOT, 'transfer/api-budget-approval.watermark.json')
+// v2（2026-10-01 新批准）：独立私有仓与公开收据；旧 scope 的收据/账本封存不动。
+export const DEFAULT_HOME_V2 = path.join(ROOT, '.cfb-runtime/bounded-ab-v2')
+export const PUBLIC_RECEIPT_V2 = path.join(ROOT, 'transfer/api-budget-approval-v2.watermark.json')
 export const PROFILE_EXAMPLE = path.join(ROOT, 'deploy/eval-profile.example.json')
 const DEFAULT_EXECUTION = Object.freeze({ apiKeyEnv: 'DEEPSEEK_API_KEY', timeoutMs: 240000, maxResponseBytes: 1024 * 1024 })
 const safeCode = (e) => /^(?:api|eval|response|request|channel|source|profile|explicit)-[a-z0-9-]+$/.test(e?.message || '') || /^HTTP \d{3}$/.test(e?.message || '') ? e.message : 'eval-state-unavailable'
@@ -31,11 +34,11 @@ export function normalizeProfile(input) {
 }
 const paths = (home) => ({ home: assertSafePath(home, { directory: true }), plan: path.join(path.resolve(home), 'plan.json'), preflight: path.join(path.resolve(home), 'preflight.json'), ledger: path.join(path.resolve(home), 'ledger'), summary: path.join(path.resolve(home), 'summary.json') })
 export function loadPrepared(home = DEFAULT_HOME) { return readJson(paths(home).plan) }
-export function prepareEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RECEIPT, profile = readJson(PROFILE_EXAMPLE), pricing, env = {}, simulation = false } = {}) {
+export function prepareEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RECEIPT, profile = readJson(PROFILE_EXAMPLE), pricing, env = {}, simulation = false, version = 1 } = {}) {
   const p = paths(home), normalized = normalizeProfile({ ...profile, ...(pricing !== undefined ? { pricing } : {}) })
   const existing = fs.existsSync(p.plan) ? readJson(p.plan) : null, marker = readWatermark(receiptPath)
   if (marker && !existing) throw new Error('api-budget-restore-required')
-  const base = buildMinimalPlan({ ...normalized, canary: existing?.canary })
+  const base = (version === 2 || existing?.schema === 'cfb.bounded-ab/2' ? buildBoundedPlanV2 : buildMinimalPlan)({ ...normalized, canary: existing?.canary })
   const plan = immutableJson({ ...base, execution: normalized.execution, simulation })
   if (hasSecretMaterial(plan)) throw new Error('api-plan-secret-material')
   if (marker && (!existing || evidenceDigest(existing) !== evidenceDigest(plan))) throw new Error('api-plan-changed')
@@ -96,6 +99,7 @@ export function reportEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_REC
   if (budget) for (const job of plan.jobs.filter((j) => j.kind === 'main')) { const r = budget.cached(job.key); if (r) results.push(resultOf(plan, job, r)) }
   const state = budget?.snapshot() || null
   return immutableJson({ schema: 'cfb.eval-report/1', ...summarizeMinimal(plan, results), mode: plan.simulation ? 'simulation' : 'live', channelVerified: !!state?.entries.some((e) => e.kind === 'probe' && e.status === 'accepted'),
+    requestsRejected: state?.entries.filter((e) => e.status === 'rejected').map((e) => ({ key: e.key, reason: e.reason ?? null })) ?? [],
     requestsReserved: state?.entries.length || 0, reservedUsd: state?.entries.reduce((n, e) => n + e.reservedNano, 0) / 1e9 || 0, actualCostUsd: null,
     stopped: state?.halted || (state?.entries.some((e) => e.status === 'pending') ? 'api-unsettled-dispatch' : null), judgeRequests: 0, retries: 0, sourceDigest: plan.sourceDigest, sourceCurrent: sourceDifferences(plan).length === 0 })
 }
@@ -106,15 +110,28 @@ export async function executePreparedEvaluation({ home, receiptPath, apiKey, fet
   const onStateCommitted = checkpointFile ? () => exportEvaluationBundle({ home, receiptPath, file: checkpointFile, passphrase, replace: true }) : undefined
   const budget = createBudgetedChat({ plan, apiKey, directory: p.ledger, receiptPath, fetchImpl, timeoutMs: plan.execution.timeoutMs, maxResponseBytes: plan.execution.maxResponseBytes, onStateCommitted })
   let stopped = null, processed = 0
+  const snapshotState = () => { try { return inspectApiBudget({ plan, directory: p.ledger, receiptPath })?.snapshot() || null } catch { return null } }
   try {
     for (const job of plan.jobs) {
       if (signal?.aborted) throw new Error('request-aborted')
+      const before = snapshotState()
+      if (before?.halted) { stopped = before.halted; break }
+      // 已作废（rejected）请求永不重发；探针一旦有 accepted，其余备用探针跳过、不预占。
+      if (before?.entries.some((e) => e.key === job.key && e.status === 'rejected')) continue
+      if (job.kind === 'probe' && before?.entries.some((e) => e.kind === 'probe' && e.status === 'accepted')) continue
       const cached = budget.cached(job.key)
-      const r = cached || await budget.run(job.key, { signal })
-      processed++; onProgress({ key: job.key, status: cached ? 'cached' : 'accepted', kind: job.kind })
-      if (stopAfter !== null && processed >= stopAfter) { stopped = 'operator-checkpoint'; break }
-      // r不直接打印；详细响应只留私有认证仓。
-      void r
+      try {
+        const r = cached || await budget.run(job.key, { signal })
+        processed++; onProgress({ key: job.key, status: cached ? 'cached' : 'accepted', kind: job.kind })
+        if (stopAfter !== null && processed >= stopAfter) { stopped = 'operator-checkpoint'; break }
+        // r不直接打印；详细响应只留私有认证仓。
+        void r
+      } catch (e) {
+        const reason = safeCode(e), after = snapshotState()
+        onProgress({ key: job.key, status: 'rejected', kind: job.kind, reason })
+        // v1（无网络失败预算）保持原语义立即停止；v2 仅在账本未停机时继续尚未派发的请求，该失败请求已花费并永久作废。
+        if (!after || after.halted || e.message === 'request-aborted' || !(plan.limits?.networkFailureBudget > 0)) throw e
+      }
     }
   } catch (e) { stopped = safeCode(e) }
   let report

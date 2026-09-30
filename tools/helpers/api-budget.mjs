@@ -6,10 +6,15 @@ import { createEvidenceStore } from '../../src/evidence-store.js'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
 import { makeChat, channelIssue, responseText } from '../effect-eval.mjs'
 import { hasSecretMaterial } from './eval-files.mjs'
-import { API_APPROVAL_SCOPE, apiStoreDirectory, assertExistingBudget, assertWatermark, commitWatermark } from './api-watermark.mjs'
+import { API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, apiStoreDirectory, assertExistingBudget, assertWatermark, commitWatermark } from './api-watermark.mjs'
 
 export const APPROVED_API_LIMITS = Object.freeze({ maxRequests: 13, maxUsd: 2, maxMain: 12, maxProbe: 1, retries: 0, judges: 0 })
+// v2（用户2026-10-01批准）：同矩阵 + 3个同体备用探针；网络类失败只废该请求预留、不株连未派发请求，累计3次仍硬停。
+export const APPROVED_API_LIMITS_V2 = Object.freeze({ maxRequests: 15, maxUsd: 2, maxMain: 12, maxProbe: 3, retries: 0, judges: 0, networkFailureBudget: 3 })
 export const MINIMAL_TASK_IDS = Object.freeze(['flaky-timeout', 'wrong-model', 'eacces-config'])
+const TRANSIENT_REASON = /^(?:request-network-error|request-timeout|HTTP 5\d\d)$/
+export const planIsV2 = (plan) => plan?.schema === 'cfb.bounded-ab/2'
+export const planScope = (plan) => planIsV2(plan) ? API_APPROVAL_SCOPE_V2 : API_APPROVAL_SCOPE
 const NANO = 1e9
 export function inputTokenBound(body) {
   // 完整 JSON UTF-8 字节 + 4096 协议余量；保守工程估计，非供应商 tokenizer 数学证明。
@@ -27,8 +32,9 @@ export function quoteJob(body, pricing) {
   return Object.freeze({ inputTokens, outputTokens, reservedNano, reservedUsd: reservedNano / NANO })
 }
 export function auditApiPlan(plan, { allowUnpriced = false } = {}) {
-  if (plan?.schema !== 'cfb.bounded-ab/1' || typeof plan.model !== 'string' || !/^[\w./:-]{1,120}$/.test(plan.model) || !Array.isArray(plan.jobs) || !plan.jobs.length || plan.jobs.length > 13) throw new Error('api-plan-schema')
-  if (evidenceDigest(plan.limits) !== evidenceDigest(APPROVED_API_LIMITS)) throw new Error('api-approval-changed')
+  const v2 = planIsV2(plan), approvedLimits = v2 ? APPROVED_API_LIMITS_V2 : APPROVED_API_LIMITS
+  if (!['cfb.bounded-ab/1', 'cfb.bounded-ab/2'].includes(plan?.schema) || typeof plan.model !== 'string' || !/^[\w./:-]{1,120}$/.test(plan.model) || !Array.isArray(plan.jobs) || !plan.jobs.length || plan.jobs.length > approvedLimits.maxRequests) throw new Error('api-plan-schema')
+  if (evidenceDigest(plan.limits) !== evidenceDigest(approvedLimits)) throw new Error('api-approval-changed')
   let endpoint
   try { endpoint = new URL(plan.baseUrl) } catch { throw new Error('api-endpoint') }
   if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw new Error('api-endpoint')
@@ -44,7 +50,9 @@ export function auditApiPlan(plan, { allowUnpriced = false } = {}) {
     } else quote = quoteJob(job.body, plan.pricing)
     quotes[job.key] = quote; totalNano += quote.reservedNano ?? 0
   }
-  if (probe !== 1 || plan.jobs[0].kind !== 'probe' || plan.jobs[0].key !== 'probe' || main !== 12 || typeof plan.canary !== 'string' || !/^CFB_CANARY_[a-f0-9]{32}$/.test(plan.canary)) throw new Error('api-matrix')
+  const probeKeys = v2 ? ['probe', 'probe-r1', 'probe-r2'] : ['probe']
+  if (probe !== probeKeys.length || main !== 12 || typeof plan.canary !== 'string' || !/^CFB_CANARY_[a-f0-9]{32}$/.test(plan.canary)) throw new Error('api-matrix')
+  if (probeKeys.some((k, i) => plan.jobs[i].kind !== 'probe' || plan.jobs[i].key !== k || evidenceDigest(plan.jobs[i].body) !== evidenceDigest(plan.jobs[0].body))) throw new Error('api-matrix')
   const probeBody = plan.jobs[0].body, carriers = probeBody.messages.filter((m) => m.reasoning_content?.includes(plan.canary))
   const visibleProbe = { ...probeBody, messages: probeBody.messages.map(({ reasoning_content, ...m }) => m) }
   if (carriers.length !== 1 || carriers[0].role !== 'assistant' || JSON.stringify(visibleProbe).includes(plan.canary)) throw new Error('api-probe-leak')
@@ -54,7 +62,7 @@ export function auditApiPlan(plan, { allowUnpriced = false } = {}) {
     if (pair.some((j) => !j) || evidenceDigest(strip(pair[0].body)) !== evidenceDigest(strip(pair[1].body))) throw new Error('api-matrix-protocol')
   }
   if (totalNano > 2 * NANO) throw new Error('api-budget-plan-exceeds-2usd')
-  return immutableJson({ planDigest: evidenceDigest(plan), maxRequests: 13, maxUsd: 2, main, probe, priced: plan.pricing !== null, totalReservedUsd: plan.pricing === null ? null : totalNano / NANO, quotes })
+  return immutableJson({ planDigest: evidenceDigest(plan), maxRequests: approvedLimits.maxRequests, maxUsd: approvedLimits.maxUsd, main, probe, priced: plan.pricing !== null, totalReservedUsd: plan.pricing === null ? null : totalNano / NANO, quotes })
 }
 function validateToolMessage(message, job) {
   if (!message || typeof message !== 'object' || Array.isArray(message) || message.content !== null && message.content !== undefined && typeof message.content !== 'string') throw new Error('response-message-shape')
@@ -69,21 +77,22 @@ function validateToolMessage(message, job) {
   if (!String(message.content || '').trim() && !calls.length) throw new Error('response-empty')
 }
 function openBudget(plan, directory, receiptPath, { initialize = false, onStateCommitted = () => {} } = {}) {
+  const scope = planScope(plan)
   const file = receiptPath || path.resolve(directory) + '.watermark.json'
-  const marker = assertExistingBudget(directory, file), home = apiStoreDirectory(directory)
+  const marker = assertExistingBudget(directory, file, scope), home = apiStoreDirectory(directory, scope)
   if (!initialize && !fs.existsSync(path.join(home, '.head-api-budget.json'))) return null
   const audit = auditApiPlan(plan)
-  const store = createEvidenceStore({ directory, sessionId: API_APPROVAL_SCOPE })
+  const store = createEvidenceStore({ directory, sessionId: scope })
   const read = () => {
     const head = store.readHead('api-budget')
     const state = head ? store.getJson(head.ref, { kind: 'api-budget' }) : { schema: 'cfb.api-budget/1', planDigest: audit.planDigest, entries: [], halted: null }
     if (state.planDigest !== audit.planDigest) throw new Error('api-plan-changed')
-    if (head) assertWatermark(store, head, state, file)
+    if (head) assertWatermark(store, head, state, file, scope)
     return { head, state }
   }
   const save = (head, state, initial = false) => {
     const next = store.setHead('api-budget', store.putJson(state, { kind: 'api-budget' }), { expectedRevision: head?.revision || null })
-    commitWatermark(store, next, state, file, { initial })
+    commitWatermark(store, next, state, file, { initial, scope })
     const hook = onStateCommitted({ sequence: next.sequence, requestsReserved: state.entries.length })
     if (hook && typeof hook.then === 'function') throw new Error('api-async-state-hook')
     return next
@@ -122,7 +131,7 @@ export function createBudgetedChat({ plan: input, apiKey, directory, receiptPath
       if (state.entries.some((e) => e.key === key)) throw new Error('api-job-already-dispatched')
       if (job.kind === 'main' && !state.entries.some((e) => e.kind === 'probe' && e.status === 'accepted')) throw new Error('api-probe-required')
       const reservedNano = audit.quotes[key].reservedNano
-      if (state.entries.length >= 13 || state.entries.reduce((n, e) => n + e.reservedNano, 0) + reservedNano > 2 * NANO) throw new Error('api-budget-exhausted')
+      if (state.entries.length >= (plan.limits?.maxRequests ?? 13) || state.entries.reduce((n, e) => n + e.reservedNano, 0) + reservedNano > 2 * NANO) throw new Error('api-budget-exhausted')
       save(head, { ...state, authTag, entries: [...state.entries, { key, kind: job.kind, reservedNano, status: 'pending' }] })
       dispatched = true   // 私有仓+公开收据全部 fsync 后才允许 fetch；任一写失败都不发。
     } })
@@ -145,7 +154,12 @@ export function createBudgetedChat({ plan: input, apiKey, directory, receiptPath
         const { head, state } = read()
         if (state.entries.find((x) => x.key === key)?.status === 'accepted') throw new Error('api-checkpoint-write-failed')
         const reason = /^(?:channel-[a-z-]+|api-usage-out-of-bound|response-[a-z-]+|request-aborted|request-timeout|request-network-error|HTTP \d{3})$/.test(e.message) ? e.message : 'api-request-failed'
-        save(head, { ...state, halted: reason, entries: state.entries.map((x) => x.key === key ? { ...x, status: 'rejected', reason } : x) })
+        // 该请求的预留永久作废（不退款、不重发）。v2 只对纯网络类失败不株连未派发请求；可信性失败（channel/usage/response/4xx）与超出网络失败预算仍全停。
+        const entries = state.entries.map((x) => x.key === key ? { ...x, status: 'rejected', reason } : x)
+        const netBudget = Number.isSafeInteger(plan.limits?.networkFailureBudget) ? plan.limits.networkFailureBudget : 0
+        const netCount = entries.filter((x) => x.status === 'rejected' && TRANSIENT_REASON.test(x.reason || '')).length
+        const halted = TRANSIENT_REASON.test(reason) && netBudget > 0 ? (netCount >= netBudget ? 'api-network-failure-budget' : state.halted) : reason
+        save(head, { ...state, halted, entries })
         throw new Error(reason)
       }
       throw e

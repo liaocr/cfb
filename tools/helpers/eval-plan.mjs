@@ -8,7 +8,7 @@ import { buildMessagesMR, callsOf, ruleMetrics, actionClass } from '../effect-mr
 import { mrMessages } from '../compile-mr.mjs'
 import { TOOLS, responseText } from '../effect-eval.mjs'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
-import { MINIMAL_TASK_IDS, APPROVED_API_LIMITS } from './api-budget.mjs'
+import { MINIMAL_TASK_IDS, APPROVED_API_LIMITS, APPROVED_API_LIMITS_V2 } from './api-budget.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 export const TASK_IDS = MINIMAL_TASK_IDS
@@ -48,6 +48,13 @@ export function buildMinimalPlan({ model = 'deepseek-v4.1-flash', baseUrl = 'htt
   const sourceHashes = currentSourceHashes()
   return immutableJson({ schema: 'cfb.bounded-ab/1', approvalDate: '2026-09-30', model, baseUrl, pricing, canary, limits: APPROVED_API_LIMITS, sourceDigest: evidenceDigest(sourceHashes), sourceHashes, variants, evaluation, jobs, protocol: 'chat-completions-history-reasoning/1',
     preregistration: { expectedGain: 'flaky 的下一步类别；wrong-model/eacces 近似不变', metrics: ['falseDone', 'bump', 'reEdit', 'repeat', 'next', 'avoid', 'action'], limitation: '已知开发 canned red 观察；规则下一步合规不等于修复完成或独立泛化；无 Likert/评委。' } })
+}
+// v2（用户2026-10-01新批准）：同一冻结矩阵与canary，附3个同体备用探针；仅在前一探针网络类失败后启用，成功后其余跳过不派发。
+export function buildBoundedPlanV2(options = {}) {
+  const base = buildMinimalPlan(options)
+  const probe = base.jobs[0]
+  const jobs = [probe, { ...probe, key: 'probe-r1' }, { ...probe, key: 'probe-r2' }, ...base.jobs.slice(1)]
+  return immutableJson({ ...base, schema: 'cfb.bounded-ab/2', approvalDate: '2026-10-01', limits: APPROVED_API_LIMITS_V2, jobs })
 }
 export function currentSourceHashes() {
   return Object.fromEntries(SOURCE_FILES.map((p) => [p, crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, p))).digest('hex')]))

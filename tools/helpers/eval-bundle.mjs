@@ -4,15 +4,16 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { evidenceDigest } from '../../src/evidence-program.js'
 import { auditApiPlan, inspectApiBudget } from './api-budget.mjs'
-import { apiStoreDirectory, readWatermark } from './api-watermark.mjs'
+import { apiStoreDirectory, readWatermark, KNOWN_API_SCOPES } from './api-watermark.mjs'
 import { assertSafePath, readBytes, readJson, writeBytes, writeJson, syncDirectory } from './eval-files.mjs'
 const MAGIC = Buffer.from('CFBSTATE1\n'), MAX = 64 * 1024 * 1024
 const PASSWORD = (p) => { if (typeof p !== 'string' || Buffer.byteLength(p) < 16 || Buffer.byteLength(p) > 4096) throw new Error('eval-bundle-passphrase-required'); return p }
 const hash = (b) => crypto.createHash('sha256').update(b).digest('hex')
 const keyOf = (p, salt) => crypto.scryptSync(PASSWORD(p), salt, 32, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 })
-const scopeHex = path.basename(apiStoreDirectory('unused'))
+const SCOPE_HEXES = KNOWN_API_SCOPES.map((scope) => path.basename(apiStoreDirectory('unused', scope)))
+const scopeHexPattern = '(?:' + SCOPE_HEXES.join('|') + ')'
 function allowedPath(p) {
-  return typeof p === 'string' && (['plan.json', 'preflight.json', 'summary.json'].includes(p) || new RegExp('^ledger/' + scopeHex + '/(?:authority\\.key|[a-f0-9]{64}\\.json|\\.head-api-budget\\.json)$').test(p))
+  return typeof p === 'string' && (['plan.json', 'preflight.json', 'summary.json'].includes(p) || new RegExp('^ledger/' + scopeHexPattern + '/(?:authority\\.key|[a-f0-9]{64}\\.json|\\.head-api-budget\\.json)$').test(p))
 }
 function collect(home) {
   const files = []; let bytes = 0
@@ -21,7 +22,7 @@ function collect(home) {
       const relative = prefix + e.name, absolute = path.join(dir, e.name)
       if (e.isSymbolicLink()) throw new Error('eval-bundle-symlink')
       if (e.isDirectory()) {
-        if (!['ledger', 'ledger/' + scopeHex].includes(relative)) throw new Error('eval-bundle-unexpected-path')
+        if (relative !== 'ledger' && !SCOPE_HEXES.some((hex) => relative === 'ledger/' + hex)) throw new Error('eval-bundle-unexpected-path')
         walk(absolute, relative + '/')
       } else {
         if (!allowedPath(relative)) throw new Error('eval-bundle-unexpected-path')
@@ -84,7 +85,7 @@ export function exportEvaluationBundle({ home, receiptPath, file, passphrase, re
     if (marker?.digest !== after?.digest) throw new Error('eval-checkpoint-changed')
     if (budget) budget.snapshot()
     if (marker) {
-      const f = files.find((f) => f.path === 'ledger/' + scopeHex + '/.head-api-budget.json')
+      const f = files.find((f) => SCOPE_HEXES.some((hex) => f.path === 'ledger/' + hex + '/.head-api-budget.json'))
       const h = f && JSON.parse(Buffer.from(f.data, 'base64').toString())
       if (!h || h.revision !== marker.revision || h.sequence !== marker.sequence) throw new Error('eval-checkpoint-changed')
     }
