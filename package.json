@@ -26,7 +26,9 @@
     "evidence:repair:development": "node tools/verify-offline.mjs --repair-development",
     "evidence:repair:iterations": "node tools/verify-offline.mjs --repair-iterations",
     "evidence:repair:regression": "node tools/verify-offline.mjs --repair-regression",
-    "effect:bounded:plan": "node tools/bounded-ab.mjs --plan"
+    "effect:bounded:plan": "node tools/bounded-ab.mjs --plan",
+    "effect:ready": "node tools/effect-ready.mjs",
+    "effect:simulate": "node tools/verify-offline.mjs --ready-simulate"
   },
   "description": "DSH 外部插件：reasoning 块出生即压缩（CAS 原文归档 + 副模型摘要，编造标识符或失败时原文放行）。",
   "peerDependencies": {

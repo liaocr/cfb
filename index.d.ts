@@ -618,6 +618,8 @@ export declare function createEvidenceArchive(options?: { maxEntries?: number; m
 
 export interface EvidenceStore {
   readonly sessionId: string; readonly directory: string
+  /** Public HMAC-derived identity; not the private signing key. */
+  readonly authorityId: string
   put(value: string | Uint8Array, options?: { kind?: string }): string; get(handle: string, options?: { kind?: string }): string | Uint8Array
   putJson(value: unknown, options?: { kind?: string }): string; getJson<T = EvidenceJson>(handle: string, options?: { kind?: string }): Readonly<T>
   stats(): { files: number; heads: number; bytes: number; maxTotalBytes: number }

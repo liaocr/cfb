@@ -117,7 +117,8 @@ export function createEvidenceStore({ directory, sessionId, maxBlobBytes = 8 * 1
       // 崩溃遗留锁不自动过期/抢锁，须宿主排查；安全性优先于自动可用性。
     }
   }
-  const store = Object.freeze({ sessionId, directory: home, put, get, putJson, getJson, stats, readHead, setHead })
+  const authorityId = crypto.createHmac('sha256', key).update('cfb.store-identity/1:' + scope).digest('hex')
+  const store = Object.freeze({ sessionId, directory: home, authorityId, put, get, putJson, getJson, stats, readHead, setHead })
   STORES.add(store); return store
 }
 /** 一个轮制品的完整块表。RAW/EXPLANATION 无损保存，STEP 有类型，不做抽取式压缩。 */

@@ -51,7 +51,8 @@ try {
       const raw = PLAN.jobs[i], current = PLAN.jobs[i + 1]
       const strip = (b) => ({ ...b, messages: b.messages.map(({ reasoning_content, ...m }) => m) })
       assert.deepEqual(strip(raw.body), strip(current.body))
-      assert.equal(raw.variant, 'raw'); assert.equal(current.variant, 'current')
+      assert.deepEqual(new Set([raw.variant, current.variant]), new Set(['raw', 'current']))
+      assert.equal(raw.variant, raw.sample === 0 ? 'raw' : 'current')
       assert.ok(!JSON.stringify(raw.body).includes('【参考：'))
     }
     assert.ok(Object.isFrozen(PLAN.jobs[1].body.messages))
@@ -164,7 +165,7 @@ try {
     const store = createEvidenceStore({ directory, sessionId: 'cfb.minimal-api-approval.2026-09-30' }), head = store.readHead('api-budget'), state = store.getJson(head.ref, { kind: 'api-budget' })
     const next = { ...state, entries: [{ key: 'probe', kind: 'probe', reservedNano: quoteJob(body, PRICING).reservedNano, status: 'pending' }] }
     store.setHead('api-budget', store.putJson(next, { kind: 'api-budget' }), { expectedRevision: head.revision })
-    await assert.rejects(b.run('probe'), /api-unsettled-dispatch/); assert.equal(m.requests.length, 0)
+    await assert.rejects(b.run('probe'), /api-watermark-conflict/); assert.equal(m.requests.length, 0)
   })
   await test('23 两个客户端同一额度不能并发重复探针', async () => {
     const directory = temp(), m = mock(async () => { await new Promise((r) => setTimeout(r, 15)); return payload() }), a = bounded(m, PLAN, directory), b = bounded(m, PLAN, directory)

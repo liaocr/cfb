@@ -166,8 +166,8 @@ export function channelIssue(r, expectedModel, { requireFp = true, requireThinki
 }
 
 // 旧 CLI 的默认退避保留；有界评测显式 maxRetries:0。每一次 dispatch 都先过 beforeRequest。
-export function makeChat({ baseUrl, apiKey, timeoutMs = 240000, maxRetries, beforeRequest, fetchImpl = globalThis.fetch, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) }) {
-  if ((maxRetries !== undefined && (!Number.isInteger(maxRetries) || maxRetries < 0 || maxRetries > 6)) || !Number.isInteger(timeoutMs) || timeoutMs < 1) throw new Error('chat-options')
+export function makeChat({ baseUrl, apiKey, timeoutMs = 240000, maxRetries, beforeRequest, maxResponseBytes = 8 * 1024 * 1024, fetchImpl = globalThis.fetch, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) }) {
+  if ((maxRetries !== undefined && (!Number.isInteger(maxRetries) || maxRetries < 0 || maxRetries > 6)) || !Number.isInteger(timeoutMs) || timeoutMs < 1 || !Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1 || maxResponseBytes > 32 * 1024 * 1024) throw new Error('chat-options')
   const endpoint = new URL(String(baseUrl).replace(/\/+$/, '') + '/chat/completions')
   if (!['https:', 'http:'].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw new Error('chat-endpoint')
   const once = async (body, signal) => {
@@ -184,11 +184,26 @@ export function makeChat({ baseUrl, apiKey, timeoutMs = 240000, maxRetries, befo
       try { res = await fetchImpl(endpoint.href, { method: 'POST', redirect: 'error', signal: ctl.signal, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + apiKey }, body: encoded }) }
       catch { throw new Error(ctl.signal.aborted ? (signal?.aborted ? 'request-aborted' : 'request-timeout') : 'request-network-error') }
       let text
-      try { text = await res.text() } catch { throw new Error(ctl.signal.aborted ? (signal?.aborted ? 'request-aborted' : 'request-timeout') : 'request-network-error') }
+      try {
+        const declared = Number(res.headers?.get('content-length'))
+        if (Number.isFinite(declared) && declared > maxResponseBytes) { await res.body?.cancel().catch(() => {}); throw new Error('response-byte-limit') }
+        if (res.body?.getReader) {
+          const reader = res.body.getReader(), parts = []; let bytes = 0
+          try {
+            for (;;) {
+              const { value, done } = await reader.read(); if (done) break
+              bytes += value.byteLength
+              if (bytes > maxResponseBytes) { await reader.cancel().catch(() => {}); throw new Error('response-byte-limit') }
+              parts.push(Buffer.from(value))
+            }
+            text = Buffer.concat(parts, bytes).toString('utf8')
+          } finally { reader.releaseLock() }
+        } else { text = await res.text(); if (Buffer.byteLength(text, 'utf8') > maxResponseBytes) throw new Error('response-byte-limit') }
+      } catch (e) { if (e.message === 'response-byte-limit') throw e; throw new Error(ctl.signal.aborted ? (signal?.aborted ? 'request-aborted' : 'request-timeout') : 'request-network-error') }
       if (!res.ok) throw new Error('HTTP ' + res.status)   // 不把网关错误正文/可能回显的凭据写进日志
       let j
       try { j = JSON.parse(text) } catch { throw new Error('response-json') }
-      if (!j || typeof j !== 'object' || !j.choices?.[0]?.message) throw new Error('response-shape')
+      if (!j || typeof j !== 'object' || !Array.isArray(j.choices) || j.choices.length !== 1 || !j.choices[0]?.message || typeof j.choices[0].message !== 'object' || Array.isArray(j.choices[0].message)) throw new Error('response-shape')
       if (ctl.signal.aborted || Date.now() - t0 >= timeoutMs) throw new Error(signal?.aborted ? 'request-aborted' : 'request-timeout')
       return { model: j.model || null, message: j.choices[0].message, finish: j.choices[0].finish_reason, usage: j.usage || null, fp: j.system_fingerprint || null, ms: Date.now() - t0 }
     } finally { clearTimeout(t); signal?.removeEventListener('abort', abort) }
