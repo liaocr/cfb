@@ -2,9 +2,13 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
-## 1. 当前状态（2026-09-30，第十六会话，训练准备架构已收口（真实LoRA/供应商未验证））
+## 1. 当前状态（2026-09-30，第十七会话，训练恢复与受控迭代已验收（真实HF/供应商未证））
 
 - 已从用户指定来源 `arena/01a0eba2-cfb` 快进同步最新 `042d361`，先读理论、预注册，再一次性实现 R1–R4；不是仅改提示词或交补丁。**本 Arena 会话固定工作/推送分支 `arena/01a0f127-cfb`**，不切其他分支；只快进、不 force、不动 main。作者 `cfb-cleanup <cleanup@local>`；提交/远端状态看 git status/log。
+- 第十七任务：用户重连后继续全面优化，优先修上次公开承认的LoRA unknown/resume矛盾；仍0真实API/模型/GPU/收费训练，不修模型网络，不读用户钥匙/聊天PAT。前轮未推送源码已核对329清单/远端差异，保留workfiles仅ff并恢复为06c5190，已普通推送；本轮源码提交/远端以git为准。
+- 本地v2：逐步持久预占→ACK→梯度，完整adapter/optimizer/RNG/cursor/数据/源/attempt见证；trainedStep逻辑与累计steps/墙钟/HTTP分离，退出明确+HMAC checkpoint才reconcile→paused→resume，不把unknown变成功。异常3→证2，已花3保留；续到逻辑5花6，再跑cache0；仅5额度时停4/5。活worker/异机未知/陌生checkpoint/越界路径/改pt/假批准/租约冲突拒绝。fixture走同一协调器，非真实HF验证。
+- 有限训练迭代driver已接线：冻结candidatePlans/数据模型/独立suite/evaluationScope/总预算，train先预占、propose只开发符号不见test/判据/参考/失败正文，负/unknown/平局不平均抵消；选择结束先持久消费再测最终test，换cycle同族早拒。真实reference3次训练2+5+8=15步；原229目标因context alias失败候选全拒/test0，保留判据。另工程制品案例final test1但不宣称模型质量/发布；累计18认证观察、cache追加0。
+- 本轮新增30测试(local15/iteration15)，训练专项73/0；真断网919/0/1、31套件、337文件、267稿N1–N7=0、旧33/33，27.4秒。首次整链断言失败已贴出归因，保留拒绝案例另测工程路径，未调原criterion/追分。真实HF/CUDA/模型自主生成/供应商/完整DSH仍未证；旧生产默认不变，旧USD2/13未消费，不复用旧留出。详见TRAINING-ITERATION-2026-10-01.md、训练手册§7。
 - 用户最新强调“极致、后续有网一下快速训练”；本轮补真正训练路径，不再修网络/报价。允许离线训练架构与byte参考测试模型；真实LoRA/GPU/收费训练必须新明确批准/execute，旧USD2/13 AB不能授权微调。模型/GitHub密钥未读/保存，API/费用0，旧生产路径/提示词/正文/权限不变。
 - 新training:ready数据/审核/切分/配方/doctor/authorize/run/report/候选注册/rollback/加密搬迁；SFT默认，偏好IR+DPO worker。完整生产prompt→原始完整side，非抽句/更短/原文尾巴；旧10候选版权/行为未证全隔离、默认训练批准0。HMAC审核绑定具体行+撤销；family/lineage/输入/目标重复连通分量整体切分、test不上传不挑epoch；两已消费族永久阻断。候选≠发布，冻结全项独立客观suite无负/unknown且selection/test严格提升才登记，登记不改插件配置。
 - 无依赖reference-byte实际20梯度，8fixture/8组6:1:1，loss5.549076→5.382317，第5步续训与连续权重bitwise一致、重跑0梯度；只是测试模型，不是CFB收益。远程lo mock两上传/一提交/一查询=4，重跑0追加、unknown不重发、test/审查不上传，不代表A6支持微调。
@@ -80,3 +84,5 @@
 - 第十五会话最终：两步中文提交交付源码与操作链（第一步2c49f95，后续以git为准）；43新反例，全量846/0/1、309清单、N1–N7=0。stop、不继续扩provider/样本/生产权限；模型增益/供应商/完整DSH仍需联网后的批准实测。
 
 - 第十六会话最终：训练关键路径与发布/搬迁闸已交付，实际只byte测试模型训练；889/0/1、329清单、N1–N7=0、43新反例，API/费用0。LoRA权重/CUDA/供应商/独立泛化未证；后续不把旧AB许可或模拟证据转收费训练/发布，不复用旧留出。提交/固定分支普通推送以git为准。
+
+- 第十七收口：用户中断长回复后要求ok，停止扩项，仅完成当前已验919/0/1源码/手册与提交推送；真实模型端到端未证，不声称“联网即全理论/自动有效优化”。

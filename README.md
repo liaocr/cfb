@@ -380,3 +380,8 @@ npm run training:ready -- help
 完整路径为语料审核→族/谱系/重复隔离→SFT/偏好导出→冻结配方/缓存→独立训练批准→明确execute→candidate→独立客观发布闸。已提供可选HF/PEFT LoRA SFT/DPO worker、私有状态/公开水位与加密搬迁；历史未证样本默认隔离，test不上传或选epoch，旧USD2/13推理A/B许可不能授权训练。真实HF/CUDA/供应商微调未在当前无网无ML依赖环境验证，不默认下载、不改旧CFB模型配置或权限。
 
 配置与最短启动见 [训练就绪手册](docs/RUNBOOK-TRAINING-READY.md)，边界/数字见 [训练架构报告](docs/analysis/TRAINING-READY-2026-09-30.md)。
+
+
+### 训练恢复与受控迭代（v13.3.1）
+
+本地worker现在逐步ACK预占、完整checkpoint见证；显式reconcile只在退出+见证明确时恢复，逻辑位置可回退、已花额度不可回退。新增 `npm run training:iteration:demo`，有限候选train→独立二元开发评测→下一候选→一次性最终test已串联；默认不调用外部模型或改生产配置。实测/边界见 [恢复迭代报告](docs/analysis/TRAINING-ITERATION-2026-10-01.md) 与 [训练手册§7](docs/RUNBOOK-TRAINING-READY.md)。

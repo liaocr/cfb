@@ -30,7 +30,8 @@
     "effect:ready": "node tools/effect-ready.mjs",
     "effect:simulate": "node tools/verify-offline.mjs --ready-simulate",
     "training:ready": "node tools/train-ready.mjs",
-    "training:demo": "node tools/verify-offline.mjs --training-demo"
+    "training:demo": "node tools/verify-offline.mjs --training-demo",
+    "training:iteration:demo": "node tools/verify-offline.mjs --training-iteration-demo"
   },
   "description": "DSH 外部插件：reasoning 块出生即压缩（CAS 原文归档 + 副模型摘要，编造标识符或失败时原文放行）。",
   "peerDependencies": {

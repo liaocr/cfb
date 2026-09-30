@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { spawn, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { createEvidenceStore } from '../../src/evidence-store.js'
 import { privateTrainingPath, fingerprintModelCache } from './training-io.mjs'
 import { normalizeTrainingExample } from '../../src/training-core.js'
@@ -12,6 +12,7 @@ import { assertTrainingPlan, TRAIN_ROOT, trainingDatasetPath, trainingModelPath 
 import { trainReferenceModel } from './training-reference.mjs'
 import { createTrainingGovernance, isTrainingApproval } from './training-governance.mjs'
 import { runRemoteTraining, remoteTrainingPreflight } from './training-remote.mjs'
+import { coordinateLocalTraining, productionLocalWorkerAdapter } from './training-local-worker.mjs'
 import { openTrainingState } from './training-state.mjs'
 import { buildCompressPromptV4Direct, buildCompressCtx, turnCallsBlock } from '../../index.js'
 import { callsOf } from '../effect-mr.mjs'
@@ -70,40 +71,7 @@ export async function doctorTraining({ plan, reviews, approval = null, env = {} 
 export async function executeLocalLoRA({ plan, reviews, approval, directory, markerPath, planFile, resume = null, execute = false, signal = null }) {
   if (!execute || !isTrainingApproval(approval) || approval.mode !== 'local-compute' || approval.planDigest !== plan.digest) throw new Error('training-local-compute-approval-required')
   const d = await doctorTraining({ plan, reviews, approval }); if (d.status !== 'training-preflight-ready') throw new Error('training-local-preflight-blocked')
-  const session = openTrainingState({ directory, markerPath, plan, scope: approval.id }), old = session.read()
-  if (old.phase === 'candidate') { const artifact = await fingerprintModelCache(old.candidate.modelDirectory, { adapter: true }); if (!artifact || artifact.digest !== old.candidate.artifact?.digest) throw new Error('training-candidate-artifact-drift'); return { cached: true, candidate: old.candidate } }
-  if (old.pending || ['unknown', 'failed'].includes(old.phase)) throw new Error('training-local-unresolved')
-  session.update((s) => ({ ...s, phase: 'running', pending: { type: 'local-worker' } }))
-  privateTrainingPath(directory, { directory: true, createParents: true })
-  const argv = [path.join(TRAIN_ROOT, 'training/lora_trainer.py'), '--plan', planFile, '--execute', '--operator-approved', '--output', path.join(directory, 'adapter')]
-  if (resume) argv.push('--resume', assertSafePath(resume, { directory: true }))
-  let buffer = '', errors = false, latest = null
-  const child = spawn('python3', argv, { cwd: TRAIN_ROOT, env: { ...cleanEnvironment(), HF_HUB_OFFLINE: '1', TRANSFORMERS_OFFLINE: '1' }, stdio: ['ignore', 'pipe', 'pipe'] })
-  const abort = () => child.kill('SIGTERM'), timer = setTimeout(abort, plan.profile.limits.maxWallSeconds * 1000)
-  signal?.addEventListener('abort', abort, { once: true })
-  child.stdout.on('data', (b) => {
-    buffer += b.toString(); if (buffer.length > 1024 * 1024) { errors = true; abort(); return }
-    let end
-    while ((end = buffer.indexOf('\n')) >= 0) {
-      const line = buffer.slice(0, end); buffer = buffer.slice(end + 1); let e; try { e = JSON.parse(line) } catch { continue }
-      try {
-        if (e.event === 'step' && Number.isInteger(e.step) && Number.isFinite(e.loss)) session.update((s) => ({ ...s, steps: e.step }))
-        if (e.event === 'checkpoint') latest = { directory: e.directory, step: e.step }
-        if (e.error) errors = true
-      } catch { errors = true; abort() }
-    }
-  })
-  child.stderr.on('data', () => {}) // 不把库异常/原文回显进日志。
-  const code = await new Promise((resolve) => { child.once('error', () => resolve(-1)); child.once('close', resolve) })
-  clearTimeout(timer); signal?.removeEventListener('abort', abort)
-  if (code !== 0 || errors || !latest) { session.update((s) => ({ ...s, phase: 'unknown', pending: { type: 'local-worker', reason: 'training-worker-interrupted' } })); throw new Error('training-worker-interrupted') }
-  const checkpoint = path.join(latest.directory, 'trainer_state.json'), metadata = readJson(checkpoint)
-  if (metadata.planDigest !== plan.digest || metadata.testRead !== false) throw new Error('training-worker-checkpoint-binding')
-  const artifact = await fingerprintModelCache(latest.directory, { adapter: true })
-  if (!artifact) throw new Error('training-adapter-artifact-missing')
-  const candidate = { schema: 'cfb.trained-candidate/1', backend: 'local-lora', simulated: false, modelDirectory: latest.directory, planDigest: plan.digest, datasetDigest: plan.dataset.digest, steps: latest.step,
-    artifact, digest: crypto.createHash('sha256').update(JSON.stringify({ checkpoint: metadata, artifactDigest: artifact.digest, dataset: plan.dataset.digest, plan: plan.digest })).digest('hex'), independentEvaluationPassed: false, productionActivated: false }
-  session.update((s) => ({ ...s, phase: 'candidate', pending: null, candidate })); return candidate
+  return coordinateLocalTraining({ plan, reviews, approval, directory, markerPath, planFile, resume, execute, signal, adapter: productionLocalWorkerAdapter() })
 }
 export async function runTraining({ plan, reviews, governance, approvalRef, directory, markerPath, planFile, execute = false, live = false, env = {}, signal = null, resume = null, cancel = false }) {
   assertTrainingPlan(plan)

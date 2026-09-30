@@ -124,3 +124,27 @@ AES256-GCM+scrypt 包含私有审核/作业authority与语料/小模型或adapte
 candidate != verified != released。冻结评测suite在训练前定义全任务/全criterion与独立evaluator sha；遗漏负项、unknown、平局、跨族泄漏、已消费test或模拟证书全部拒绝。只允许逐项不退、selection/test至少一项严格提升，不能由别处平均抵消。
 
 真实发布证书由独立可信宿主签发并在私有发行簿登记；训练器/模型自己给的分数或JSON pass不授予权限。promote只登记模型，`productionConfigModified:false`；不会默认改CFB model/provider/提示词。rollback只回注册表旧版本。线上模型效果/耗时/独立泛化与完整DSH依赖仍待后续实测，不能拿byte模型loss下降宣布CFB提升。
+
+
+## 7. v13.3.1：本地中断恢复与有限优化迭代
+
+本地worker协议升级为v2：Node先持久预占再ACK，worker获得许可后才开始梯度。`trainedStep`是当前模型逻辑位置，`steps/computeSteps`是累计资源预占；恢复旧checkpoint只能回逻辑位置，不能退资源/墙钟/HTTP额度。`limits.maxComputeSteps`默认等于recipe.maxSteps，重做余量须在训练前明确配置并批准，不能删水位或改同一作业来补额度。
+
+完整checkpoint包含adapter、optimizer、RNG、cursor及plan/dataset/source/attempt绑定；宿主验证文件sha并签发HMAC见证。正常边界暂停可自动使用latest恢复；异常退出仅为recoverable/unknown，不是训练成功。只有worker退出已确认且已有完整见证时才reconcile：
+
+```sh
+npm run training:ready -- report --plan PLAN --approval APPROVAL_REF
+npm run training:ready -- reconcile --plan PLAN --approval APPROVAL_REF
+npm run training:ready -- run --plan PLAN --approval APPROVAL_REF --execute
+# 如显式--resume，必须是已认证latest，不能任意指目录或旧v1文件。
+```
+
+本机PID/start token确认旧worker仍活时阻塞；移机无法以本机PID缺失猜旧机退出，需操作者明确确认旧worker已停止（`--confirm-worker-stopped`是宿主信任承诺，不是OS证明）。租约不自动抢，退出/见证不明仍停止。HF实际optimizer恢复仍待真实权重实测；本机子进程fixture只证明同一协调器协议。
+
+```sh
+npm run training:iteration:demo
+```
+
+`tools/helpers/training-iteration.mjs`提供freezeTrainingIteration/runTrainingIteration：先冻结candidatePlans、数据/模型身份、保护的effect suite、evaluationScope与总compute/HTTP上限，再用可信宿主回调propose/train/evaluate及同步认证函数连接。propose只能从有限批准空间选择，不收到test/判据/参考/失败原文；训练先预占，未知不退款或自动重试。开发逐项二元符号选择不按loss/Likert/平均分；负/unknown拒绝，替换incumbent必须严格正项。选择结束后持久消费test族，只测最终候选；换cycle重用同test在train前就拒绝。
+
+这是有界可运行接线，不是已验证真实LLM自主优化器。默认不内置外部模型调用，不自动产生新训练批准或发布；真实模型需要操作者提供受保护的训练/独立观察器适配。演练中原byte目标失败，test未触碰；工程制品案例只证明final-test路径，不能被包装成模型提升。

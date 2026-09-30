@@ -228,3 +228,10 @@ CAS（原文归档）是宿主注入的 `cmbStore` 服务（`ctx.get('cmbStore')
 - `training-reference.mjs`：无依赖真正SGD测试模型；`training-remote.mjs`：显式能力/训练价的files/job/poll/cancel适配器；`training/lora_trainer.py`：可选缓存/助手mask/LoRA SFT/DPO/optimizer+RNG续训worker，当前无ML依赖未验证实际权重。
 - `training-transfer.mjs`：AES-GCM+scrypt私有workspace搬迁/旧水位拒绝，`executionPaths`重定位核对内容、逻辑planDigest不变；大基模型用独立持久缓存。
 - `train-ready.mjs`统一入口，simulation/fixture永不成真实release。模型完成只candidate；默认插件/提示词/旧说明稿/chunks/动作授权无变化。
+
+
+## v13.3.1 恢复与迭代接线
+
+`training-local-worker.mjs`统一生产与仅断网fixture的品牌adapter，逐步ACK/租约/串行事件验证；`training-local-checkpoint.mjs`完整文件指纹、宿主HMAC见证、PID/start-token/异机退出边界、显式reconcile。Python worker不能独立开始监督梯度，token cache跨attempt复用，checkpoint带尝试/源/数据绑定。逻辑trainedStep与累计steps/墙钟/HTTP分开，回滚仅有恢复证据，默认旧插件不变。
+
+`training-iteration.mjs`冻结有限计划空间/总预算/effect suite，宿主callback训练与认证观察、开发逐项符号/严格incumbent替换、持久一次性test与公共消费水位；未知不重试，闭合report认证cache。`training-iteration-demo.mjs`实际reference模型接线，原目标拒绝与工程goal通路分别保留，不伪称HF/LLM质量提升。

@@ -9,7 +9,7 @@ export function createTrainingGovernance({ store, authorize = null, authenticate
   const head = (name, kind, fallback) => { const h = store.readHead(name); return { head: h, state: h ? store.getJson(h.ref, { kind }) : fallback } }
   const approve = (plan, policy) => {
     if (!authorize || authorize(plan, policy) !== true || !['local-compute', 'remote-money', 'fixture'].includes(policy.mode) || typeof policy.owner !== 'string' || !policy.owner || !Number.isFinite(policy.maxUsd) || policy.maxUsd < 0 || policy.maxUsd > 10000 || plan.simulated !== (policy.mode === 'fixture')) throw new Error('training-approval-not-authorized')
-    const body = { schema: 'cfb.training-approval/1', planDigest: plan.digest, datasetDigest: plan.dataset.digest, authorityId: store.authorityId, mode: policy.mode, owner: policy.owner, maxUsd: policy.maxUsd, maxSteps: plan.profile.recipe.maxSteps, maxHttpRequests: plan.profile.limits.maxHttpRequests }
+    const body = { schema: 'cfb.training-approval/1', planDigest: plan.digest, datasetDigest: plan.dataset.digest, authorityId: store.authorityId, mode: policy.mode, owner: policy.owner, maxUsd: policy.maxUsd, maxSteps: plan.profile.recipe.maxSteps, maxComputeSteps: plan.profile.limits.maxComputeSteps ?? plan.profile.recipe.maxSteps, maxWallSeconds: plan.profile.limits.maxWallSeconds, maxHttpRequests: plan.profile.limits.maxHttpRequests }
     const ref = store.putJson(body, { kind: 'training-approval' }), view = head('training-approvals', 'training-approvals', { refs: [], revoked: [] })
     store.setHead('training-approvals', store.putJson({ ...view.state, refs: [...new Set([...view.state.refs, ref])] }, { kind: 'training-approvals' }), { expectedRevision: view.head?.revision || null })
     return openApproval(ref, plan)

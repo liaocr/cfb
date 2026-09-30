@@ -10,6 +10,7 @@ import mmap
 import os
 from pathlib import Path
 import random
+import signal
 import shutil
 import sys
 import tempfile
@@ -20,8 +21,36 @@ class TrainingError(Exception):
     pass
 
 
+PROTOCOL = "cfb.local-training-worker/2"
+ATTEMPT = None
+STOP_REQUESTED = False
+
+
 def emit(value):
+    if ATTEMPT:
+        value = {"protocol": PROTOCOL, "attemptId": ATTEMPT, **value}
     print(json.dumps(value, ensure_ascii=False, separators=(",", ":")), flush=True)
+
+
+def permit(event, **value):
+    emit({"event": event, **value})
+    line = sys.stdin.readline()
+    if not line:
+        raise TrainingError("training-supervisor-eof")
+    try:
+        answer = json.loads(line)
+    except Exception:
+        raise TrainingError("training-supervisor-json")
+    if answer.get("attemptId") != ATTEMPT or answer.get("action") not in ("continue", "pause"):
+        raise TrainingError("training-supervisor-binding")
+    if "step" in value and answer.get("step") != value["step"]:
+        raise TrainingError("training-supervisor-step-binding")
+    return answer["action"] == "continue"
+
+
+def request_stop(_signal, _frame):
+    global STOP_REQUESTED
+    STOP_REQUESTED = True
 
 
 def read_json(file):
@@ -125,7 +154,7 @@ def read_token_row(cache, info):
     return result
 
 
-def run(plan, output, resume=None):
+def run(plan, output, resume=None, cache_directory=None):
     # 不继承任何模型/GitHub凭据，不在缓存miss时自动下载。
     for key in list(os.environ):
         if any(x in key.upper() for x in ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "AUTH")):
@@ -144,7 +173,9 @@ def run(plan, output, resume=None):
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
     # 先完整tokenize/检查目标，再分配模型/GPU；cache不包含test。
-    cache, rows = token_cache(plan, tokenizer, "train", output)
+    cache_root = cache_directory or (output.parent.parent / "token-cache")
+    cache_root.mkdir(parents=True, exist_ok=True)
+    cache, rows = token_cache(plan, tokenizer, "train", cache_root)
     if not rows:
         raise TrainingError("training-no-records")
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -154,7 +185,7 @@ def run(plan, output, resume=None):
     base = AutoModelForCausalLM.from_pretrained(model_path, local_files_only=True, trust_remote_code=False, use_safetensors=True, torch_dtype=dtype)
     if resume:
         previous = read_json(resume / "trainer_state.json")
-        if previous["planDigest"] != plan["digest"]:
+        if previous["planDigest"] != plan["digest"] or previous.get("schema") != "cfb.lora-checkpoint/2" or previous.get("datasetDigest") != plan["dataset"]["digest"] or previous.get("sourceDigest") != plan["sourceDigest"] or previous.get("testRead") is not False:
             raise TrainingError("training-resume-plan-drift")
         model = PeftModel.from_pretrained(base, str(resume), is_trainable=True, local_files_only=True)
     else:
@@ -195,9 +226,33 @@ def run(plan, output, resume=None):
         model.train()
         return -torch.nn.functional.logsigmoid(cfg["preferenceBeta"] * ((logp(chosen) - logp(rejected)) - reference)).mean()
     cached_epoch, order = None, None
+    def save_checkpoint():
+        destination = output / ("step-%08d" % step)
+        if destination.exists():
+            return
+        stage = Path(tempfile.mkdtemp(prefix=".checkpoint-", dir=output))
+        try:
+            model.save_pretrained(stage, safe_serialization=True); tokenizer.save_pretrained(stage)
+            torch.save({"optimizer": optimizer.state_dict(), "torchRng": torch.get_rng_state(), "pythonRng": random.getstate(), "scaler": scaler.state_dict(), "cudaRng": torch.cuda.get_rng_state_all() if device == "cuda" else None}, stage/"optimizer.pt")
+            metadata = {"schema": "cfb.lora-checkpoint/2", "protocol": PROTOCOL, "attemptId": ATTEMPT, "datasetDigest": plan["dataset"]["digest"], "sourceDigest": plan["sourceDigest"], "simulated": False, "planDigest": plan["digest"], "step": step, "cursor": cursor, "elapsedMs": elapsed_base+(time.monotonic()-start)*1000, "candidateOnly": True, "testRead": False}
+            (stage/"trainer_state.json").write_text(json.dumps(metadata), encoding="utf-8")
+            for f in stage.iterdir():
+                if f.is_file():
+                    with open(f, "rb") as opened:
+                        os.fsync(opened.fileno())
+            os.rename(stage, destination)
+        except BaseException:
+            shutil.rmtree(stage, ignore_errors=True); raise
+        if not permit("checkpoint", step=step, cursor=cursor, directory=str(destination)):
+            raise TrainingError("training-supervisor-checkpoint-refused")
+    if not permit("hello", planDigest=plan["digest"], resumedStep=step, goalStep=steps):
+        emit({"event": "paused", "step": step}); return
     while step < steps:
         if elapsed_base + (time.monotonic()-start)*1000 > plan["profile"]["limits"]["maxWallSeconds"]*1000:
             raise TrainingError("training-wall-budget")
+        if STOP_REQUESTED or not permit("step-ready", step=step + 1):
+            save_checkpoint()
+            emit({"event": "paused", "step": step}); return
         optimizer.zero_grad(set_to_none=True); values = []
         accumulation = min(cfg["gradientAccumulation"], total_batches - cursor)
         for _ in range(accumulation):
@@ -213,39 +268,28 @@ def run(plan, output, resume=None):
             scaler.scale(value/accumulation).backward(); cursor += 1
         scaler.unscale_(optimizer); torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0); scaler.step(optimizer); scaler.update(); step += 1
         emit({"event": "step", "step": step, "loss": sum(values)/len(values), "testRead": False})
-        if step % cfg["checkpointEvery"] == 0 or step == steps:
-            destination = output / ("step-%08d" % step)
-            if destination.exists():
-                raise TrainingError("training-checkpoint-exists")
-            stage = Path(tempfile.mkdtemp(prefix=".checkpoint-", dir=output))
-            try:
-                model.save_pretrained(stage, safe_serialization=True); tokenizer.save_pretrained(stage)
-                torch.save({"optimizer": optimizer.state_dict(), "torchRng": torch.get_rng_state(), "pythonRng": random.getstate(), "scaler": scaler.state_dict(), "cudaRng": torch.cuda.get_rng_state_all() if device == "cuda" else None}, stage/"optimizer.pt")
-                metadata = {"schema": "cfb.lora-checkpoint/1", "planDigest": plan["digest"], "step": step, "cursor": cursor, "elapsedMs": elapsed_base+(time.monotonic()-start)*1000, "candidateOnly": True, "testRead": False}
-                (stage/"trainer_state.json").write_text(json.dumps(metadata), encoding="utf-8")
-                for f in stage.iterdir():
-                    if f.is_file():
-                        with open(f, "rb") as opened:
-                            os.fsync(opened.fileno())
-                os.rename(stage, destination)
-            except BaseException:
-                shutil.rmtree(stage, ignore_errors=True); raise
-            emit({"event": "checkpoint", "step": step, "directory": str(destination), "productionActivated": False})
-    emit({"event": "candidate", "steps": step, "productionActivated": False, "realEvaluationPassed": False})
+        if step % cfg["checkpointEvery"] == 0 or step == steps or STOP_REQUESTED:
+            save_checkpoint()
+        if STOP_REQUESTED:
+            emit({"event": "paused", "step": step}); return
+    emit({"event": "candidate", "step": step, "testRead": False, "productionActivated": False, "realEvaluationPassed": False})
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--plan", required=True); parser.add_argument("--doctor", action="store_true"); parser.add_argument("--execute", action="store_true"); parser.add_argument("--operator-approved", action="store_true")
-    parser.add_argument("--output"); parser.add_argument("--resume")
+    parser.add_argument("--output"); parser.add_argument("--resume"); parser.add_argument("--supervised", action="store_true"); parser.add_argument("--attempt-id")
     args = parser.parse_args(); plan = read_json(args.plan)
     if plan.get("schema") != "cfb.training-plan/1" or plan["profile"]["backend"] != "local-lora":
         raise TrainingError("training-worker-plan")
     if args.doctor or not args.execute:
         emit(doctor(plan)); return
-    if not args.operator_approved or not args.output or plan["simulated"]:
+    if not args.operator_approved or not args.output or plan["simulated"] or not args.supervised or not args.attempt_id:
         raise TrainingError("training-local-operator-approval-required")
     # Node协调器必须先验HMAC数据审核/批准/水位；worker是显式可信宿主入口，不是OS沙箱。
+    global ATTEMPT
+    ATTEMPT = args.attempt_id
+    signal.signal(signal.SIGTERM, request_stop); signal.signal(signal.SIGINT, request_stop)
     run(plan, Path(args.output), Path(args.resume) if args.resume else None)
 
 
@@ -253,6 +297,6 @@ if __name__ == "__main__":
     try:
         main()
     except TrainingError as e:
-        emit({"error": str(e), "candidateOnly": True}); sys.exit(2)
+        emit({"event": "error", "error": str(e), "candidateOnly": True}); sys.exit(2)
     except Exception as e:
-        emit({"error": "training-worker-" + type(e).__name__, "candidateOnly": True}); sys.exit(1)
+        emit({"event": "error", "error": "training-worker-" + type(e).__name__, "candidateOnly": True}); sys.exit(1)
