@@ -11,13 +11,13 @@ const HOSTS = new WeakSet()
 
 export function createEvidenceRuntime({ contract, sessionId, store, adapter, observe, diagnosticModel = null, archive = null,
   memoryContext = null, allowEdits = false, allowCommands = false, maxRounds = 3, maxRepairRounds = 2, maxChecks = 32,
-  roundTimeoutMs = 10000, diagnosticChecks = 2, diagnosticCost = 4, contextOptions = null }) {
+  roundTimeoutMs = 10000, diagnosticChecks = 2, diagnosticCost = 4, contextOptions = null, diagnosticStrategy = 'active', diagnosticOrder = null }) {
   const c = assertEvidenceContract(contract)
   if (store.sessionId !== sessionId || typeof sessionId !== 'string' || !sessionId || !adapter ||
     ['capture', 'restore', 'revision', 'perform', 'readConditions'].some((k) => typeof adapter[k] !== 'function') ||
     !Number.isInteger(maxRounds) || maxRounds < 1 || maxRounds > 3 || !Number.isInteger(maxRepairRounds) || maxRepairRounds < 0 || maxRepairRounds > 2 ||
     !Number.isInteger(maxChecks) || maxChecks < 0 || maxChecks > 256 || !Number.isInteger(roundTimeoutMs) || roundTimeoutMs < 1 || roundTimeoutMs > 30000 ||
-    !Number.isInteger(diagnosticChecks) || diagnosticChecks < 0 || diagnosticChecks > 16 || !Number.isFinite(diagnosticCost) || diagnosticCost < 0) throw new Error('runtime-schema')
+    !['active', 'fixed'].includes(diagnosticStrategy) || diagnosticOrder !== null && (!Array.isArray(diagnosticOrder) || !diagnosticOrder.length || new Set(diagnosticOrder).size !== diagnosticOrder.length || diagnosticOrder.some((id) => c.checks.find((x) => x.id === id)?.role !== 'diagnostic')) || !Number.isInteger(diagnosticChecks) || diagnosticChecks < 0 || diagnosticChecks > 16 || !Number.isFinite(diagnosticCost) || diagnosticCost < 0) throw new Error('runtime-schema')
   let busy = false, rounds = 0, repairs = 0, checks = 0, peak = null, done = false
   const history = [], roundIds = new Set()
   const verifier = createEvidenceVerifier({ contract: c, root: adapter.root, observe, perform: adapter.perform,
@@ -115,7 +115,7 @@ export function createEvidenceRuntime({ contract, sessionId, store, adapter, obs
 
       try {
         if (before && state && diagnosticModel && checks < maxChecks && !abort.signal.aborted) {
-          const controller = createDiagnosticController({ model: diagnosticModel, contract: c, maxChecks: Math.min(diagnosticChecks, maxChecks - checks), maxCost: diagnosticCost })
+          const controller = createDiagnosticController({ model: diagnosticModel, contract: c, maxChecks: Math.min(diagnosticChecks, maxChecks - checks), maxCost: diagnosticCost, strategy: diagnosticStrategy, checkOrder: diagnosticOrder })
           diagnostic = await runActiveEvidenceChecks({ controller, verifier: { ...verifier, check: guardCheck }, binding: evidenceBinding(program, state), signal: abort.signal })
         }
       } catch (e) { diagnostic = { receipts: [], error: e.message } }

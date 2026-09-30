@@ -68,6 +68,11 @@ try {
     assert.throws(() => I.createEvidenceProgram('x', { contract: c, sessionId: 's', actionIds: ['invented'] }))
     assert.throws(() => I.createEvidenceProgram('x', { contract: c, sessionId: 's', actionIds: ['fix', 'fix'] }))
   })
+  await test('路径后缀必须完整：json 不截成 js，未知长后缀不授权', () => {
+    const draft = (file) => `所以下一步工具调用是 edit_file ${file}，old_text 是 \`old\`，new_text 是 \`new\`。验收是 \`local file check\`，预期通过。`
+    for (const file of ['config.json', 'file.js', 'file.mjs', 'file.cjs', 'file.tsx', 'file.ts', 'file.yaml', 'file.yml', 'file.py']) assert.equal(I.parseEvidenceProposal(draft(file)).steps[0].action.path, file)
+    for (const file of ['config.json.bak', 'file.jsn', 'file.tsl']) { const p = I.parseEvidenceProposal(draft(file)); assert.equal(p.steps[0].action.path, null); assert.equal(I.bindEvidenceProposal(p, I.freezeEvidenceContract(definition()), 's').ok, false) }
+  })
   await test('旧稿解析是提议，精确匹配授权后才得到证据程序', () => {
     const text = '所以下一步工具调用是 edit_file fixture.txt，old_text 是 `old`，new_text 是 `new`。验收是 `local file check`，预期新值已落地。'
     // .txt 本身不在旧代码文件提示模式中，真实工具结构补齐路径。

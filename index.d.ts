@@ -586,7 +586,7 @@ export declare function evidenceEntropy(prior: EvidencePrior): number
 export declare function expectedEvidenceGain(prior: EvidencePrior, likelihood: EvidenceLikelihood): number
 export declare function evidencePosterior(prior: EvidencePrior, likelihood: EvidenceLikelihood, outcome: string): { ok: true; probability: number; prior: EvidencePrior } | { ok: false; reason: string; prior: EvidencePrior }
 export declare function freezeDiagnosticModel(def: { prior: EvidencePrior; probes: readonly DiagnosticProbe[] }, contract: EvidenceContract): DiagnosticModel
-export declare function createDiagnosticController(options: { model: DiagnosticModel; contract: EvidenceContract; maxChecks?: number; maxCost?: number; minGain?: number }): DiagnosticController
+export declare function createDiagnosticController(options: { model: DiagnosticModel; contract: EvidenceContract; maxChecks?: number; maxCost?: number; minGain?: number; strategy?: 'active' | 'fixed'; checkOrder?: readonly string[] | null }): DiagnosticController
 export interface DiagnosticResult { readonly schema: 'cfb.diagnostic-result/1'; readonly receipts: readonly EvidenceReceipt[]; readonly state: DiagnosticState; readonly acceptanceUnchanged: true }
 export declare function runActiveEvidenceChecks(options: { controller: DiagnosticController; verifier: EvidenceVerifier; binding: EvidenceBinding; signal?: AbortSignal }): Promise<DiagnosticResult>
 
@@ -646,6 +646,7 @@ export interface EvidenceRuntimeOptions {
   contract: EvidenceContract; sessionId: string; store: EvidenceStore; adapter: EvidenceStateAdapter
   observe?: (check: EvidenceCheck, binding: EvidenceBinding, signal?: AbortSignal) => EvidenceObservation | Promise<EvidenceObservation>
   diagnosticModel?: DiagnosticModel | null; archive?: EvidenceArchive | null; memoryContext?: { signature: MemorySignature; observation: EvidenceJson } | null
+  diagnosticStrategy?: 'active' | 'fixed'; diagnosticOrder?: readonly string[] | null
   contextOptions?: Omit<EvidenceContextOptions, 'store' | 'contract' | 'verifier' | 'readRevision' | 'readRuntime'> | null
   allowEdits?: boolean; allowCommands?: boolean; maxRounds?: 1 | 2 | 3; maxRepairRounds?: 0 | 1 | 2; maxChecks?: number; roundTimeoutMs?: number; diagnosticChecks?: number; diagnosticCost?: number
 }

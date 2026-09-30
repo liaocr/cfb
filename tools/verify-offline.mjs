@@ -19,7 +19,7 @@ function options(argv) {
     else if (argv[i] === '--suites') {
       result.suites = String(argv[++i] || '').split(',')
       if (result.suites.some((s) => !/^[a-z0-9-]+$/.test(s))) throw new Error('offline-suite-arguments')
-    } else if (['--demo', '--replay', '--lab'].includes(argv[i])) result.mode = argv[i].slice(2)
+    } else if (['--demo', '--replay', '--lab', '--repair-development'].includes(argv[i])) result.mode = argv[i].slice(2)
     else throw new Error('未知参数 ' + argv[i] + '；没有在线模式')
   }
   return result
@@ -32,7 +32,7 @@ function main(argv) {
   const config = options(argv)
   if (config.inside) {
     console.log('离线边界：' + JSON.stringify(assertOfflineNamespace()))
-    if (config.mode !== 'all') execute(['tools/' + { demo: 'evidence-demo.mjs', replay: 'replay-evidence.mjs', lab: 'local-evidence-bench.mjs' }[config.mode]])
+    if (config.mode !== 'all') execute(['tools/' + { demo: 'evidence-demo.mjs', replay: 'replay-evidence.mjs', lab: 'local-evidence-bench.mjs', 'repair-development': 'repair-development.mjs' }[config.mode]])
     else {
       execute(['verify.mjs', ...config.suites])
       execute(['tools/audit-noninferiority.mjs'])

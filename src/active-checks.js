@@ -48,10 +48,12 @@ export function freezeDiagnosticModel(def, contract) {
   return immutableJson({ ...body, digest: evidenceDigest(body) })
 }
 /** 调度状态只在宿主侧。未知回执消耗预算但不更新假设；不会把诊断成功变成验收成功。 */
-export function createDiagnosticController({ model, contract, maxChecks = 4, maxCost = 8, minGain = 0.01 }) {
+export function createDiagnosticController({ model, contract, maxChecks = 4, maxCost = 8, minGain = 0.01, strategy = 'active', checkOrder = null }) {
   const { digest, ...body } = model || {}
   if (evidenceDigest(body) !== digest || body.contractDigest !== assertEvidenceContract(contract).digest) throw new Error('diagnostic-model-drift')
   if (!Number.isInteger(maxChecks) || maxChecks < 0 || maxChecks > 16 || !Number.isFinite(maxCost) || maxCost < 0 || !Number.isFinite(minGain) || minGain < 0) throw new Error('diagnostic-budget')
+  if (!['active', 'fixed'].includes(strategy) || checkOrder !== null && (!Array.isArray(checkOrder) || !checkOrder.length || new Set(checkOrder).size !== checkOrder.length || checkOrder.some((id) => !body.probes.some((p) => p.checkId === id)))) throw new Error('diagnostic-strategy')
+  const order = checkOrder || body.probes.map((p) => p.checkId)
   let prior = probabilities(body.prior), count = 0, cost = 0, pending = null, stopped = null, scope = null, lastRevision = null
   const seen = new Set(), history = []
   const view = () => immutableJson({ prior, count, cost, maxChecks, maxCost, pending, stopped, history })
@@ -65,11 +67,11 @@ export function createDiagnosticController({ model, contract, maxChecks = 4, max
     lastRevision = binding.revision
     if (stopped) return { ok: false, reason: stopped }
     if (count >= maxChecks) { stopped = 'check-budget'; return { ok: false, reason: stopped } }
-    const candidates = body.probes.filter((p) => !seen.has(binding.revision + ':' + p.checkId) && cost + p.cost <= maxCost + EPS)
+    const candidates = body.probes.filter((p) => (strategy !== 'fixed' || order.includes(p.checkId)) && !seen.has(binding.revision + ':' + p.checkId) && cost + p.cost <= maxCost + EPS)
       .map((p) => ({ ...p, gain: expectedEvidenceGain(prior, p.likelihood) }))
-      .sort((a, b) => b.gain - a.gain || a.cost - b.cost || a.checkId.localeCompare(b.checkId))
+      .sort((a, b) => strategy === 'fixed' ? order.indexOf(a.checkId) - order.indexOf(b.checkId) : b.gain - a.gain || a.cost - b.cost || a.checkId.localeCompare(b.checkId))
     const selected = candidates[0]
-    if (!selected || selected.gain <= minGain + EPS) { stopped = selected ? 'no-information' : 'no-eligible-check'; return { ok: false, reason: stopped } }
+    if (!selected || strategy === 'active' && selected.gain <= minGain + EPS) { stopped = selected ? 'no-information' : 'no-eligible-check'; return { ok: false, reason: stopped } }
     count++; cost += selected.cost; seen.add(binding.revision + ':' + selected.checkId)
     pending = immutableJson({ checkId: selected.checkId, gain: selected.gain, cost: selected.cost, binding })
     return { ok: true, selected: pending }

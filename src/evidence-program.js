@@ -161,7 +161,7 @@ export function parseEvidenceProposal(text, { calls = [], ctx = '' } = {}) {
   const chosen = triples.find((m) => start >= 0 && m.index >= start) || triples[0]
   if (chosen) {
     const before = explanation.slice(Math.max(0, chosen.index - 250), chosen.index)
-    const paths = [...before.matchAll(/(?:edit_file\s+|改\s+)([\w./-]+\.(?:[cm]?js|tsx?|json|ya?ml|py))/g)]
+    const paths = [...before.matchAll(/(?:edit_file\s+|改\s+)([\w./-]+\.(?:json|[cm]?js|tsx?|ya?ml|py))(?![\w./-])/g)]
     const fromCall = toolCalls.find((c) => c.args.old_text === chosen[1] && c.args.new_text === chosen[2])
     const fromCtx = [...String(ctx).matchAll(/(?:edit_file\s+)([\w./-]+)[（(]old_text/g)].pop()
     const file = paths.at(-1)?.[1] || fromCall?.args.path || fromCtx?.[1] || null
