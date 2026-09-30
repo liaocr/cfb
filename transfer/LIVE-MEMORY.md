@@ -61,4 +61,5 @@
 - 费用：副模型 2 · 主模型 0 · 评委 0。
 - 下一步（需用户批）：① run5：v4d9 vs v4d8 主模型对比（≈ 20 主 + ≈ 25 评委）；② 方向 3（程序比差【本轮新出现】、K7–K11）；③ 泛化：3–5 道新红题（先合成 ctx 零成本核形态）。
 - 第八会话（2026-09-30）**能力层文献侦察**（用户：只找能力瓶颈的突破，不要触发/观测）：`docs/analysis/CAPABILITY-SWEEP-2026-09-30.md`。六面墙（文本通道 / token 记忆 / 模仿好摘要 / CoT 剧场 / 陈述不能取证 / 生成≠验证）+ 四块理论拼图（双模拟、Wyner-Ziv 侧信息、任务导向率失真、多描述）。五个可落地动作按序：B 分层多描述 → C 编译期充分性自检（QAEval 式）→ A 剧场判别（forced answering）→ D 探针回填（host 协议）→ E 状态住进稳定前缀。先离线零成本做 B/C。
+- 第八会话·第二轮（**方案**）：`docs/analysis/BREAKTHROUGH-MAP-2026-09-30.md`。诊断：我们把制品留成手工、目标信号又贵又糊（Meta-Harness：compression is the core failure mode / ACE：brevity bias + context collapse / ICLR2026 信息率 r=−0.84）。六个突破：①制品可训练（SkillOpt 留出门 + 文本学习率；GEPA 反思+Pareto）②产出=可执行义务（PIS 三元组 trigger/action/status，PM-Bench 65.1%→82.9%；Agent-C/AgentSpec 运行时监控）③harness 端到端搜索（Meta-Harness 同模型 harness 差 6×；DGM 归档；ADIAS issue manager）④留什么靠测量（ContextCite 消融归因、Thought Anchors 句级反事实重要性——规划/不确定性句最承重）⑤跨会话库学习（DreamCoder 压缩压力）⑥测试时搜索缺省化（best-of + 验证器栈，N=10–20 拿 70–80%）。**前置条件 S0：合成 20–40 题留出任务族 + 确定性判据 + 三切分**（否则①②⑤都无法单调改进）。停止清单：手改提示词立即评测、追加 K 规则、把稿压更短、用评委 Likert 当训练信号、无归档单线迭代。
 
