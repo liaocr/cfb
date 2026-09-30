@@ -45,5 +45,15 @@ export { readApiKey, readProviderSpec, endpointUrl, resolveProviderEndpoint } fr
 export { provenanceOf, mapMessagesToSeqs, textOfContent, reasoningTextOf, artRefsOf, buildCompressCtx, buildLedger, ledgerBlock, continuationText, continuationBlock, editToolOf } from './src/messages.js'
 export { fidelity, protectedTokens, inventedIdentifiers } from './src/fidelity.js'
 
+// ── 宿主证据程序（独立侧车；旧稿与提示词不变）────────────────────────────────
+export { compileV4Evidence } from './src/compile-v4.js'
+export {
+  EVIDENCE_SCHEMA, CONTRACT_SCHEMA, canonicalJson, evidenceDigest, immutableJson, safeRelativePath,
+  freezeEvidenceContract, assertEvidenceContract, createEvidenceProgram, assertEvidenceProgram,
+  parseEvidenceProposal, bindEvidenceProposal, evaluateEvidencePredicate,
+  initialEvidenceState, evidenceBinding, advanceEvidenceState,
+} from './src/evidence-program.js'
+export { createEvidenceVerifier, evidenceFilePath, readEvidenceFile, replaceEvidenceFile } from './src/evidence-host.js'
+
 // ── 观测 ─────────────────────────────────────────────────────────────────────
 export { makeTraceWriter, settledTraceData } from './src/trace.js'

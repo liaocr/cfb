@@ -21,6 +21,7 @@ import { inventedIdentifiers, NEW_TEXT_LEAD_RE } from './fidelity.js'
 import { wideShare } from './tokens.js'
 import { condHints, fixHints, exampleSentences } from './prompts.js'
 import { DEFAULTS } from './config.js'
+import { parseEvidenceProposal, bindEvidenceProposal } from './evidence-program.js'
 
 export const V4_KINDS = ['FACT', 'COMPUTED', 'INCUMBENT', 'REFUTED', 'SHELVED', 'OPEN', 'PLAN', 'READY', 'IF']
 export const V4_EVS = ['tool', 'derived', 'guess']
@@ -1387,3 +1388,12 @@ export function priorLines(kept, max = 30) {
   return kept.slice(-max).map((o) => o.id + ' [' + o.k + (o.key ? ' key=' + o.key : '') + '] ' + stripEnd(o.text).slice(0, 120))
 }
 
+
+/** 证据程序侧车：显式调用的新接口，不修改 compileV4Direct 的输入、闸或输出。 */
+export function compileV4Evidence(side, raw, cfg = {}, options = {}) {
+  const legacy = compileV4Direct(side, raw, cfg)
+  if (!legacy.ok) return legacy
+  const proposal = parseEvidenceProposal(legacy.text, { ctx: cfg.compressCtx || '', calls: options.calls || [] })
+  const binding = options.contract ? bindEvidenceProposal(proposal, options.contract, options.sessionId) : { ok: false, reason: 'no-host-contract' }
+  return { ...legacy, proposal, evidence: binding }
+}
