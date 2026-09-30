@@ -23,7 +23,8 @@
     "evidence:demo": "node tools/evidence-demo.mjs",
     "verify:offline": "node tools/verify-offline.mjs",
     "evidence:lab": "node tools/verify-offline.mjs --lab",
-    "evidence:repair:development": "node tools/verify-offline.mjs --repair-development"
+    "evidence:repair:development": "node tools/verify-offline.mjs --repair-development",
+    "evidence:repair:iterations": "node tools/verify-offline.mjs --repair-iterations"
   },
   "description": "DSH 外部插件：reasoning 块出生即压缩（CAS 原文归档 + 副模型摘要，编造标识符或失败时原文放行）。",
   "peerDependencies": {

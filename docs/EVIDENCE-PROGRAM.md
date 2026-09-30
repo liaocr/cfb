@@ -192,3 +192,12 @@ const result = await runtime.runRound(program, { roundId: 'round-1', raw: origin
 本地搜索补件：`createEvidenceDocument`/`editEvidenceDocument` 只编辑指定文本槽，冻结头与必需槽不可删；次数/字符/总量限额先检查。`runEvidenceSearch` 将 async 真实执行结果无损签名留仓，再交 R3 同步证书内核；最多 8 个候选，固定候选且持久 reserve 后才读 test，任何扰动/观察器负项或 unknown 都 veto。拒绝缓存跨周期要求宿主提供完整源码/环境 `evaluationScope` 指纹，不把函数的字符串表示误认为 closure 环境证明；没有指纹不跳过旧失败。问题队列认证证据、去重、按复发排序、限额并持久恢复，仅供宿主，不作为 solver 失败故事。
 
 本次 `createLocalEvidenceSuite` 只给 32 个代理自写、参考已知的真实文件/状态/本机 HTTP/子进程场景；`executeLocalEvidenceCase` 的策略空间仅 idle/unchecked/checked。它不是任意仓库代码演化或 LLM 效果评估，观察器不可判时缺失 correct 槽而不是假造 false 后赚提升。最终 746/0/1、23 套件，详细分母与边界见四轮覆盖台账。
+
+
+## 零 API两轮后续（v13.1.2；不是模型效果验收）
+
+`freezeApprovedRepairPolicy(def, contract)`冻结初始/后备/后验路由批准动作与>=0.8信心阈值、最多2修复；`createApprovedRepairEpisode({ host, contract, policy }).run()`是显式原生宿主调度入口，不是插件默认开关。它只从品牌host本次runLatest取得认证诊断，拒绝外部后验注入；unknown/恢复不完整/冲突/截止/预算满停止，诊断仍不能扮演验收。构造和调用均需宿主明确授权；断开调用即保留旧路径。
+
+对照宿主可设 `diagnosticStrategy:'fixed', diagnosticOrder:[已批准的diagnostic检查ID]`；默认仍是 EIG（active）。固定诊断不会在熵为0时提前终止，这是强对照的既定检查成本，不偷换验收。预注册计划、18个新真实本机故障任务、四臂三切分及完整分母见 [两轮实测](analysis/LOCAL-ITERATIONS-2026-09-30.md)。静态12/18、单EIG12/18、单路由18/18、组合18/18；完成增益来自路由，诊断36→18。两轮验证只使用本机HTTP/计时器/Node进程，无模型或外网API。
+
+`npm run evidence:repair:development`与`npm run evidence:repair:iterations`都经断网入口；签名报告保存于ignored `.cfb-runtime/repair-iterations/`。留出已持久消耗，重跑只认证回放；改变源码后不能靠删库复用。最终763/0/1、25套件、manifest291、N1–N7全零。完整外部DSH/Cordis缺依赖仍未验证；自写复现不称独立泛化，付费模型A/B与生产接管仍待批准。

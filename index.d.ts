@@ -766,3 +766,28 @@ export interface EvidenceSearchResult {
   readonly activeIds: readonly string[]; readonly issues: readonly EvidenceIssue[]; readonly records: readonly EvidenceSearchRecord[]
 }
 export declare function runEvidenceSearch(options: { store: EvidenceStore; suite: EffectSuite; candidates: readonly MemoryDefinition[]; evaluateAsync: (candidate: MemoryCandidate | null, input: EvidenceJson, signal: AbortSignal) => EvidenceJson | Promise<EvidenceJson>; maxCandidates?: number; maxEvaluations?: number; evaluationTimeoutMs?: number; evaluationScope?: string | null }): Promise<EvidenceSearchResult>
+
+
+/** 只在冻结契约批准动作内调度；不接收外部后验/失败原文。 */
+export interface ApprovedRepairPolicyDefinition {
+  routing: 'fixed' | 'posterior'; firstActionId: string; fallbackActionId: string
+  routes?: Readonly<Record<string, string>>; minPosterior?: number; maxAttempts?: 1 | 2
+}
+export interface ApprovedRepairPolicy extends ApprovedRepairPolicyDefinition {
+  readonly schema: 'cfb.approved-repair-policy/1'; readonly contractDigest: string; readonly digest: string
+  readonly routes: Readonly<Record<string, string>>; readonly minPosterior: number; readonly maxAttempts: 1 | 2
+}
+export declare function freezeApprovedRepairPolicy(def: ApprovedRepairPolicyDefinition, contract: EvidenceContract): ApprovedRepairPolicy
+export interface ApprovedRepairEpisodeResult {
+  readonly schema: 'cfb.approved-repair-episode/1'; readonly policyDigest: string; readonly solved: boolean; readonly status: string
+  readonly outcomes: readonly Awaited<ReturnType<EvidenceHost['runLatest']>>[]; readonly publications: readonly ReturnType<EvidenceHost['captureDraft']>[]
+  readonly decisions: readonly { afterRound: string; route: 'fixed' | 'posterior'; nextActionId: string; confidence: number; diagnosticChecks: number }[]
+  readonly counters: ReturnType<EvidenceRuntime['view']>
+}
+export interface ApprovedRepairBlocked { readonly schema: 'cfb.approved-repair-blocked/1'; readonly solved: false; readonly status: string }
+export interface ApprovedRepairController {
+  readonly schema: 'cfb.approved-repair-controller/1'; readonly policyDigest: string
+  run(): Promise<ApprovedRepairEpisodeResult | ApprovedRepairBlocked>
+  view(): { readonly started: boolean; readonly busy: boolean; readonly result: ApprovedRepairEpisodeResult | null }
+}
+export declare function createApprovedRepairEpisode(options: { host: EvidenceHost; contract: EvidenceContract; policy: ApprovedRepairPolicy }): ApprovedRepairController

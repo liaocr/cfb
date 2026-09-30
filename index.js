@@ -69,3 +69,6 @@ export { createEvidenceIntents, replayEvidenceTrace, binaryEvidenceFeedback } fr
 export { auditEvidenceSlots, createEvidenceContext } from './src/evidence-context.js'
 export { LOCAL_EVIDENCE_FAMILIES, createLocalEvidenceSuite, parseLocalEvidencePolicy, executeLocalEvidenceCase } from './src/local-evidence.js'
 export { createEvidenceDocument, editEvidenceDocument, createEvidenceIssues, compareEvidencePairs, runEvidenceSearch } from './src/evidence-search.js'
+
+// ── 显式批准修复调度（默认不启用、不接管插件）───────────────────────────────
+export { freezeApprovedRepairPolicy, createApprovedRepairEpisode } from './src/evidence-episode.js'
