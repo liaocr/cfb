@@ -15,7 +15,7 @@ import crypto from 'node:crypto'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { TASKS } from './v4-live.mjs'
-import { SYSTEM, ASK, TOOLS, makeChat, responseText, parseJudge, TRUSTED_FP, claudeShaped } from './effect-eval.mjs'
+import { SYSTEM, ASK, TOOLS, makeChat, responseText, parseJudge, channelIssue } from './effect-eval.mjs'
 
 const HERE = path.dirname(new URL(import.meta.url).pathname)
 // v12.9.0 措辞修订：run1 里主模型把「判断 + 工具调用」读成与它的输出协议冲突（调用工具时只能输出 JSON），于是为了能写文字而宣布「无需动作、可以收工」
@@ -192,6 +192,7 @@ export async function judgeMemo(chat, o, chain, spec, obsKey, text, opts = {}) {
     let jv = null
     for (let k = 0; k < 3 && !jv; k++) {
       const jr = await chat({ model: o.model, messages: [{ role: 'user', content: prompt + (pool.length ? '\u200b'.repeat(pool.length) : '') }], thinking: { type: 'disabled' }, temperature: 0, max_tokens: 1500, stream: false })
+      if (channelIssue(jr, o.model, { requireFp: !!o.requireFp, requireThinking: false })) throw new Error('judge-channel-invalid')
       jv = parseJudgeMR(jr.message.content)
     }
     if (!jv) break
@@ -305,14 +306,16 @@ async function build(o) {
     if (truncated) {
       if (!chat) throw new Error(s.id + ' 的第 2 轮思考存档被截断，需要 --base-url + DEEPSEEK_API_KEY 重新生成')
       const d1 = d1auto ? rowText(d1auto, s.id) : raw1
+      let regenerated = false
       for (let k = 0; k < 8; k++) {
         const r = await chat({ model: o.model, messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: task.user }, { role: 'assistant', content: content1, reasoning_content: d1 }, { role: 'user', content: base.followup + ASK }], tools: TOOLS, thinking: { type: 'enabled' }, max_tokens: o.maxTokens, stream: false })
         const txt = responseText(r.message)
-        // 前 4 次只认可信后端；之后只要不是丢历史的 claude 形后端、且真的 edit 了就收（建链只需要一份完整的真实思考）
-        const okBackend = !claudeShaped(r.usage) && (!o.requireFp || TRUSTED_FP.has(r.fp) || k >= 4)
+        // --require-fp 从不因失败次数而降级；缺型号/指纹不归档为真实完整链。
+        const okBackend = !channelIssue(r, o.model, { requireFp: !!o.requireFp })
         console.log(`  重生成 ${s.id} 第 2 轮：fp=${r.fp} 思考 ${(r.message.reasoning_content || '').length} 字 · ${/\[tool_call edit_file\]/.test(txt) ? 'edit ✓' : '非 edit'}`)
-        if (okBackend && /\[tool_call edit_file\]/.test(txt) && (r.message.reasoning_content || '').length > 0) { raw2 = r.message.reasoning_content; resp2 = txt; source = 'regenerated'; break }
+        if (okBackend && /\[tool_call edit_file\]/.test(txt) && (r.message.reasoning_content || '').length > 0) { raw2 = r.message.reasoning_content; resp2 = txt; source = 'regenerated'; regenerated = true; break }
       }
+      if (!regenerated) throw new Error('channel-regeneration-failed:' + s.id)
     }
     const editCall = callsOf(resp2).find((c) => /edit/i.test(c.name))
     chains.push({ id: s.id, u1: task.user, a1: { content: content1, raw: raw1 }, a1Call, u2: base.followup, a2: { content: a2Content(resp2, s.verifyCmd), raw: raw2, source }, a2Edit: editCall && typeof editCall.args === 'object' ? editCall.args : null, verifyCmd: s.verifyCmd })
@@ -372,14 +375,15 @@ async function run(o) {
           const base = buildMessagesMR(j.chain, j.r1, j.r2, j.spec.obs[j.obs].followup)
           const msgs = k === 0 ? base : base.map((m, i) => i === base.length - 1 ? { ...m, content: m.content + '\u200b'.repeat(k) } : m)   // 打散中转的后端黏性
           r = await chat({ model: o.model, messages: msgs, tools: TOOLS, thinking: { type: 'enabled' }, max_tokens: o.maxTokens - k, stream: false })
-          const seen = !claudeShaped(r.usage) && (!o.requireFp || TRUSTED_FP.has(r.fp))
+          const issue = channelIssue(r, o.model, { requireFp: !!o.requireFp })
+          const seen = !issue
           const thought = (r.message.reasoning_content || '').length > 0
           if (seen && thought) break
-          rec.rejected.push(!thought && seen ? 'no-thinking' : claudeShaped(r.usage) ? 'claude-shape' : 'fp=' + r.fp)
+          rec.rejected.push(issue || 'no-thinking')
           if (k >= 7) throw new Error('通道始终未送入思考：' + rec.rejected.join(','))
         }
         const text = responseText(r.message)
-        Object.assign(rec, { fp: r.fp, finish: r.finish, usage: r.usage, ms: r.ms, reasoningChars: (r.message.reasoning_content || '').length, reasoning: String(r.message.reasoning_content || '').slice(0, 8000), response: text, rule: ruleMetrics(j.chain, j.spec, j.obs, text), action: actionClass(j.chain, text) })
+        Object.assign(rec, { model: r.model, fp: r.fp, finish: r.finish, usage: r.usage, ms: r.ms, reasoningChars: (r.message.reasoning_content || '').length, reasoning: String(r.message.reasoning_content || '').slice(0, 8000), response: text, rule: ruleMetrics(j.chain, j.spec, j.obs, text), action: actionClass(j.chain, text) })
         const jj = await judgeWithEscalation(chat, o, j.chain, j.spec, j.obs, text, rec.rule, rec.action, String(r.message.reasoning_content || '').slice(-300))
         if (jj) { rec.judge = jj; rec.error = undefined } else if (o.judgeMode === 'none') rec.judge = null; else rec.error = 'judge-unparseable'
       } catch (e) { rec.error = String(e && e.message || e) }

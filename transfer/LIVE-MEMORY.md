@@ -1,11 +1,15 @@
 # LIVE-MEMORY（压缩后先读；只留当前结论和坑）
 
-> 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新覆盖/验收以 docs/analysis/THEORY-COVERAGE-2026-09-30.md 为准；原 R1–R4 验收报告保留历史。
+> 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
-## 1. 当前状态（2026-09-30，第十二会话，零 API增量控制链优化已验收）
+## 1. 当前状态（2026-09-30，第十三会话，有界评测硬化已验收；API 实跑 blocked）
 
 - 已从用户指定来源 `arena/01a0eba2-cfb` 快进同步最新 `042d361`，先读理论、预注册，再一次性实现 R1–R4；不是仅改提示词或交补丁。**本 Arena 会话固定工作/推送分支 `arena/01a0f127-cfb`**，不切其他分支；只快进、不 force、不动 main。作者 `cfb-cleanup <cleanup@local>`；提交/远端状态看 git status/log。
-- 当前授权：前两轮已完成；用户新要求“请继续完善优化”，继续只做零API实现层完善，不扩搜索框架、不复用已消费留出。第三轮模型A/B与生产自动接管未批。预注册/实测：`docs/analysis/LOCAL-ITERATIONS-2026-09-30.md`。
+- 当前授权：用户最新要求“只凭记忆最新具体型号，然后全面优化，允许API”，已选最小预算 **≤USD2、≤13请求（1探针+12主模型，3题×raw/一个变体×2样本），评委0、自动重试0**。训练/生产接管/旧run5/已消费留出重搜未批。当前 keys.env 不存在、API配置变量为空、可信价格未配置：实跑 blocked、请求/费用0；没有加载密钥。
+- 最新优化：tools/bounded-ab.mjs 冻结完整输入，main只换reasoning；全计划预估过价/缺价第一请求不发，响应model/指纹/本轮历史canary/usage/finish严格核对，坏渠道立即停止。HMAC+CAS dispatch前预占，固定批准scope、失败不退款、pending不抢回、变稿变价/并发不能重置额度；无自动重定向/隐式建链/重压/评委。旧工具退避仍在，不可用旧CLI执行本次批准。移除MR k>=4指纹降级及未知基线默认true；API错误正文不复制、signal与墙钟双截止。默认插件/提示词/text/chunks未改。
+- 最新验收：新增27自测，专项36/0；全量真断网 **803/0/1、27套件、manifest298、267稿N1–N7全零、旧编译33/33**；API/费用0。冻结3题canned red为已知归因题，不能当独立泛化；评委0不能验证旧Likert分值。预检input估计252863、max输出49664；预算是可信价表预留，不是服务商账单物理锁，账户额度需供应商侧限制。详情BOUNDED-API-2026-09-30.md。
+- 本轮初始HEADa3ae126/144既有变动，是提交元数据未对齐：已fetch并逐文件核对295/295等于远端ad62189、index无暂存改动；仅read-tree对齐index后merge --ff-only恢复ad62189，未覆盖工作文件。提交/推送新结果以git为准。
+- 型号记忆答复为GPT-4.1 / Claude Opus 4，明确不能保证截至2026-09-30最新；未查发布网页，不冒称核验最新。
 - 最新增量：signal贯穿episode/host/runtime/verifier/子进程；预取消0预算、执行中取消恢复显式文件+JSON、拒绝迟到pass/下一分支，监听器清理。可选冻结before-retry诊断模式跳无下一修复的末轮、首个unknown停止；默认行为/旧policy摘要保持。顺序快照与同步true认证已补。
 - 新13自测、专项59/0；全量真断网 **776/0/1、26套件、manifest294、N1–N7=0、旧编译33/33**，DT仅语法。6个已知train工程回归：static诊断12→8、active-only8→6、完成4/6不变；full完成6/6、诊断6不变；前置/验收均不减。39episode（含3控制）、真实worker/oracle/HTTP各108，selection/test/入库0、API/费用0。新工具evidence:repair:regression及ignored control-regression.json。
 - 当前旧18任务report源码已变，旧iterations入口拒绝重搜；消费日志不删除、不换cycle。原报告保留历史，增量结论仅工程回归，不当新独立泛化。完整外部DSH缺依赖SKIP继续保留。详见REPAIR-HARDENING-2026-09-30.md。
@@ -35,7 +39,7 @@
 - 密钥 `/home/user/.secrets/keys.env` 永不打印/提交；零调用任务不要加载。任何付费主/副/评委实跑必须先报次数/费用并获批准。未来每轮 raw+一个变体、每任务两样本、`--require-fp`；评委缺省一票+条件补票，禁批量重判。重过闸用 `--recompile`，不重压。
 - 已知渠道坑：新渠道常落 `cb/deepseek-v4.1-flash`、fp=null，历史 reasoning 被丢弃；不能用于主模型效果/轨迹验证。真实效果必须可信通道与指纹。
 - **P1 尚未测试**：增益应集中 flaky；wrong-model 9.0 / eacces 8.5 应几乎不变，任一上涨 >1 分先重做因子归因。P2–P6 有工程证据，不等于模型增益。
-- 待另批：run5、方向 3、S0 独立任务族/真实效果实跑、所有模型/评委 API、生产自主工具接管。本轮允许纯本地断外网补全/验收，不等于批准模型实跑。
+- 待另批：run5、方向3、训练、S0独立任务族/更大真实效果实跑、超过此次USD2/13次的模型调用、所有评委与生产自主工具接管。仅此次最小A/B已获API授权；key/报价/可信渠道缺失就停，不因授权而隐式重试或扩大范围。
 
 ## 4. 本会话里程碑（只记结论）
 
@@ -53,3 +57,5 @@
 - 第十一会话第二轮收口：四臂预注册与实际符合；active-only平局拒绝、路由正项入库1、无负/unknown；全部原始记录认证复核72/72，重启cached=true未重跑。763/0/1、manifest291、N1–N7=0，模型/API/费用0。真实DSH缺依赖与独立泛化仍未证明，停止已批准范围，不继续优化/复用留出；中文小提交与固定分支普通推送结果以git为准。
 
 - 第十二会话收口：安全取消与按重试需要的诊断优化，完成率不冒充提高；776/0/1、manifest294、N1–N7=0，API/费用0，旧盲测未执行/库未写。已读LIVE/先audit/预注册，新增13反例；提交及固定分支普通推送以git为准。模型收益/独立泛化仍需另批或新任务，保持默认旧路。
+
+- 第十三会话收口：有界付费授权已记录但未消费，keys.env缺失与无可信报价导致实跑blocked；新增27请求/通道反例，803/0/1、manifest298、N1–N7=0、旧33/33。固定批准scope预算仓、响应型号与单canary闸门、零重试/评委/重定向入口已实现；不拿接口存在/本地mock当模型实证。未重新搜索/消费旧族、未训练/入库/接管生产。
