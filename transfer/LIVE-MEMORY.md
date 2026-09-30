@@ -2,7 +2,17 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
-## 1. 当前状态（2026-10-01，第十八会话，崩溃迁移核验：patch与已推送1d1d91b逐字节一致，无丢失工作）
+## 1. 当前状态（2026-10-01，第十八会话续：首次真实通道验证完成，v4可见协议A/B 13/13成功）
+
+- 用户提供密钥并授权真实API优化（"用api去真实跑优化…不要调用太多"）。密钥已放~/.secrets/keys.env(0600)未打印未提交；GITHUB_PAT可用，固定分支正常快进推送。
+- **通道取证**：a6api中转当前全部路由丢弃历史reasoning_content（canary复核×2+五别名扫描；vllm自报指纹`vllm-0.0.0-tp4-dp2-ep-869f52fc`三次一致；fp_dspure_app_v1后端已不存在于该token分组）。旧reasoning回放协议在此通道物理不可用——历史"渠道坑"升级为实证结论。
+- **scope账本**（收据全在transfer/，不删不改）：v1探针网络错误$0.0051废；v2探针指纹拦截$0.0051废；v3探针首次accepted+1主accepted+1主length截断$0.0373旧语义停机；**v4全链13/13、12/12配对、$0.2431预留/实际usage≈$0.05**。另诊断9次≈$0.006。合计消费远低于USD2。
+- **v4结果**（n=2/格，确定性规则，judge=0）：eacces双臂满分持平✓、wrong-model current消除1例假完成✓（均合预注册）；flaky名义raw反超1项falseDone——已归因为CLAIM_RE把"主请求完成→primarySettled置位"名词短语误判（且raw臂正文长0物理免疫文本指标=结构性偏差），主结果按原判据记录，正则修正进下轮预注册。flaky current动作=reread+instrument（oracle路线）。
+- **新基建**（936/0/1、33/33、N1–N7=0）：v2网络容错scope（3同体备用探针/网络失败预算3/失败不退款不重发）、v3生产等价可见协议（零reasoning审计/canary可见单点/current=稿块前缀+raw逐字节）、v4输出预算8192+截断样本级容错；指纹按scope锚定、channelIssue旧全局fp集合只留旧CLI；--v2/--v3/--v4 CLI；加密包兼容多scope私有仓。
+- 待批准：扩样本复跑v4矩阵(≈$0.75/轮)、P-B双可见第二对照、可见拼接接入生产birth实测。零成本下一步：CLAIM_RE名词短语修正+回归样例（先预注册再改）。
+- 环境坑（跨会话复发）：沙盒Node20需装22（官方tar到/usr/local，不持久）；.git/config被快照剥离需重加origin；全量自检必须走tools/verify-offline.mjs。
+
+## 1a. 本会话早前（崩溃迁移核验：patch与已推送1d1d91b逐字节一致，无丢失工作）
 
 - 第十八会话（新Arena沙盒，分支仍 `arena/01a0f127-cfb`）：上一模型崩溃、未及汇报/迁移；用户提供其最终工作区patch（实为基线 a3ae126 到最终工作树的全量diff，229文件6.3MB）。在 a3ae126 干净worktree应用后 `git write-tree` 得 tree `21461f3`，与已推送 `1d1d91b^{tree}` **完全相同——最终工作区已全部推送，patch零增量、无丢失工作**，仓库内容无需修正。v13.3.1/TRAINING-ITERATION-2026-10-01 即上轮未汇报交付，其自述验收本轮已独立复现。
 - 新环境两坑（已修，跨会话会复发）：① 沙盒默认 Node20，eval-ready 有 runtime-node≥22 门槛、训练类套件要求断网命名空间，裸跑 `node verify.mjs` 会假性报19失败；必须装 Node≥22（官方 tar 解到 /usr/local，不持久需重装）并用 `node tools/verify-offline.mjs` 标准入口跑全量。本轮实测真断网 **919/0/1、31/31套件、manifest337、N1–N7=0**，与十七收口一致。② Arena快照剥离 `.git/config`：每轮开工先重加 `git remote add origin https://github.com/liaocr/cfb.git` 并 `--set-upstream-to`，再 fetch 核对与远端一致。

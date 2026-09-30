@@ -6,6 +6,13 @@
 
 ---
 
+## v13.4.0（2026-10-01，首次真实通道验证：v2–v4有界评测与生产等价可见协议A/B）
+
+- 用户重新授权真实API后，v1旧计划首个探针死于瞬时网络错误暴露"单错株连全计划"缺陷：开v2 scope（3同体备用探针、网络类失败只废该请求、预算3次仍硬停），可信性闸一条不松；v2探针被channel-fingerprint如实拦截。
+- 取证证明中转全部路由丢弃历史reasoning（canary两次复核+五别名扫描，模型明说只见可见消息）：旧reasoning回放协议物理不可用。v3改测生产等价问题——raw=思考已丢现实，current=压缩稿以冻结定界符可见拼接；审计强制零reasoning、canary单点可见、current=稿块前缀+raw逐字节。v3探针首次accepted（通道验证通过），但首个current样本4096被length截断按旧语义停机。
+- v4：主请求8192+response-incomplete样本级容错（收费/不重发/预算3）。**v4全链13/13 accepted、12/12配对完整**：eacces双臂满分持平、wrong-model current消除1例假完成（均符合预注册）；flaky名义raw反超1项falseDone，归因为CLAIM_RE把"主请求完成→primarySettled"名词短语误判为完成宣称（正则误判+raw臂零正文的结构性度量偏差），按纪律不事后改分，修正进下轮预注册。flaky current臂动作恰为oracle路线的instrument。
+- 17项新自测（v2×10/v3×5/v4×2）；真断网936/0/1、33/33套件、N1–N7全零、旧33/33。四scope收据全部封存入库；实际usage≈USD0.05，作废预留+诊断≈0.05，合计远低于USD2授权。详见LIVE-VISIBLE-2026-10-01.md。
+
 ## v13.3.1（2026-10-01，修复真实恢复缺口并接线有限训练迭代）
 
 - 修旧LoRA unknown一刀切堵resume：worker协议v2监督梯度，ACK前私有/公开预占；完整adapter/optimizer/RNG/cursor与尝试/源/数据绑定，HMAC checkpoint与退出双见证reconcile。逻辑trainedStep可恢复，累计compute/墙钟/HTTP不退款，租约/PID/异机退出/未经见证/篡改拒绝；原插件/稿/提示词/权限不变。
