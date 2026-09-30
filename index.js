@@ -53,7 +53,7 @@ export {
   parseEvidenceProposal, bindEvidenceProposal, evaluateEvidencePredicate,
   initialEvidenceState, evidenceBinding, advanceEvidenceState,
 } from './src/evidence-program.js'
-export { createEvidenceVerifier, protectEvidenceContract, evidenceFilePath, readEvidenceFile, replaceEvidenceFile } from './src/evidence-host.js'
+export { createEvidenceVerifier, isEvidenceVerifier, protectEvidenceContract, evidenceFilePath, readEvidenceFile, replaceEvidenceFile } from './src/evidence-host.js'
 export { evidenceEntropy, evidencePosterior, expectedEvidenceGain, freezeDiagnosticModel, createDiagnosticController, runActiveEvidenceChecks } from './src/active-checks.js'
 
 export { createMemoryCandidate, freezeEffectSuite, createHoldoutRegistry, gateSignedEffects, createEffectCycle, createEvidenceArchive } from './src/effect-archive.js'
@@ -64,3 +64,6 @@ export { createEvidenceRuntime, createEvidenceHost, isEvidenceHost } from './src
 
 // ── 观测 ─────────────────────────────────────────────────────────────────────
 export { makeTraceWriter, settledTraceData } from './src/trace.js'
+
+export { createEvidenceIntents, replayEvidenceTrace, binaryEvidenceFeedback } from './src/evidence-intents.js'
+export { auditEvidenceSlots, createEvidenceContext } from './src/evidence-context.js'

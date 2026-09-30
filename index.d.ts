@@ -646,6 +646,7 @@ export interface EvidenceRuntimeOptions {
   contract: EvidenceContract; sessionId: string; store: EvidenceStore; adapter: EvidenceStateAdapter
   observe?: (check: EvidenceCheck, binding: EvidenceBinding, signal?: AbortSignal) => EvidenceObservation | Promise<EvidenceObservation>
   diagnosticModel?: DiagnosticModel | null; archive?: EvidenceArchive | null; memoryContext?: { signature: MemorySignature; observation: EvidenceJson } | null
+  contextOptions?: Omit<EvidenceContextOptions, 'store' | 'contract' | 'verifier' | 'readRevision' | 'readRuntime'> | null
   allowEdits?: boolean; allowCommands?: boolean; maxRounds?: 1 | 2 | 3; maxRepairRounds?: 0 | 1 | 2; maxChecks?: number; roundTimeoutMs?: number; diagnosticChecks?: number; diagnosticCost?: number
 }
 export interface EvidenceModelView { readonly schema: 'cfb.evidence-view/1'; readonly status: string; readonly lastPassed: { checkpoint: string; kind: EvidenceCheckpoint['kind']; artifact: string | null } | null; readonly diagnostics: readonly { checkId: string; status: EvidenceReceipt['status'] }[]; readonly memories: ReturnType<EvidenceArchive['retrieve']>; readonly next: 'stop' | 'stop-with-unresolved' | 'choose-another-approved-branch' }
@@ -653,6 +654,10 @@ export interface EvidenceRoundResult { readonly ok: boolean; readonly status: 'v
 export interface EvidenceRuntime {
   runRound(program: EvidenceProgram, options?: { roundId?: string; raw?: string }): Promise<EvidenceRoundResult>
   program(explanation: string, actionIds: readonly string[]): EvidenceProgram; modelView(): EvidenceModelView
+  contextView(): EvidenceContextDashboard | null
+  modelInput(options?: EvidenceRenderOptions): EvidenceContextFrame | { readonly ok: false; readonly reason: 'context-disabled'; readonly prefix: null; readonly layers: readonly [] }
+  readBlock(indexRef: string, blockId: string, options?: EvidenceBlockReadOptions): EvidenceBlockReadResult
+  cancelObligation(id: string): boolean; publishDraft(artifactRef: string): boolean
   view(): { sessionId: string; contractDigest: string; rounds: number; repairs: number; checks: number; maxRounds: number; maxRepairRounds: number; maxChecks: number; busy: boolean; done: boolean; peak: EvidenceCheckpoint | null; history: readonly { roundId: string; programId: string; status: string; resultRef: string }[] }
 }
 export interface EvidenceHost {
@@ -664,3 +669,66 @@ export interface EvidenceHost {
 export declare function createEvidenceRuntime(options: EvidenceRuntimeOptions): EvidenceRuntime
 export declare function createEvidenceHost(options: EvidenceRuntimeOptions): EvidenceHost
 export declare function isEvidenceHost(value: unknown): value is EvidenceHost
+
+
+/** 宿主注册品牌；同形对象不能提供回执权。 */
+export declare function isEvidenceVerifier(value: unknown): value is EvidenceVerifier
+export declare function replayEvidenceTrace(program: EvidenceProgram, receipts: readonly EvidenceReceipt[], verifier: EvidenceVerifier): EvidenceState | null
+export interface BinaryEvidenceFeedback {
+  readonly schema: 'cfb.binary-feedback/1'; readonly roundId: string | null; readonly revision: string
+  readonly checks: readonly { readonly checkId: string; readonly role: EvidenceCheck['role']; readonly status: EvidenceReceipt['status']; readonly fresh: boolean }[]
+}
+export declare function binaryEvidenceFeedback(options: { program: EvidenceProgram; receipts?: readonly EvidenceReceipt[]; diagnosticReceipts?: readonly EvidenceReceipt[]; verifier: EvidenceVerifier; revision: string }): BinaryEvidenceFeedback
+export interface EvidenceIntent {
+  readonly id: string; readonly programId: string; readonly roundId: string; readonly stepId: string; readonly contractDigest: string; readonly revision: string
+  readonly triggerChecks: readonly string[]; readonly action: EvidenceAction; readonly acceptanceChecks: readonly string[]
+  readonly status: 'armed' | 'pending' | 'executed' | 'fulfilled' | 'cancelled' | 'invalidated'; readonly reason: string | null; readonly expiresAt: number | null
+  readonly triggerReceipts: Readonly<Record<string, string>>; readonly acceptanceReceipts: Readonly<Record<string, string>>; readonly actionReceipt: string | null; readonly scopeFresh: boolean
+}
+export interface EvidenceIntents {
+  define(options: { program: EvidenceProgram; binding: EvidenceBinding; stepId: string; expiresAt?: number | null }): string
+  record(receipts: readonly EvidenceReceipt[]): void; canExecute(programId: string, roundId: string, stepId: string): boolean
+  cancel(id: string): boolean; invalidateRound(roundId: string): void; view(): readonly EvidenceIntent[]
+}
+export declare function createEvidenceIntents(options: { contract: EvidenceContract; verifier: EvidenceVerifier; sessionId: string; readRevision: () => string; clock?: () => number; maxEntries?: number }): EvidenceIntents
+export interface EvidenceSlotAudit {
+  readonly schema: 'cfb.slot-audit/1'; readonly authorized: boolean; readonly complete: boolean; readonly missing: number; readonly unknown: number
+  readonly rows: readonly { readonly stepId: string; readonly preconditions: 'present' | 'missing'; readonly action: 'present' | 'missing'; readonly expectation: 'present' | 'missing' | 'unknown'; readonly check: 'present' | 'missing' | 'unknown' }[]
+}
+export declare function auditEvidenceSlots(value: unknown, contract?: EvidenceContract): EvidenceSlotAudit
+export interface EvidenceContextOptions {
+  store: EvidenceStore; contract: EvidenceContract; verifier: EvidenceVerifier; readRevision: () => string
+  readRuntime?: () => Partial<{ rounds: number; maxRounds: number; repairs: number; maxRepairRounds: number; checks: number; maxChecks: number }>
+  clock?: () => number; maxTokensEst?: number; maxReadBytes?: number; maxReadCalls?: number; maxArtifacts?: number; allowOptimizerReads?: boolean
+}
+export interface EvidenceContextBudget {
+  readonly maxTokensEst: number; readonly tokensUsedEst: number; readonly remainingTokensEst: number; readonly maxReadBytes: number
+  readonly maxReadCalls: number; readonly remainingReadCalls: number; readonly readCalls: number; readonly layerDeliveries: number; readonly estimation: string; readonly providerReportedUsage: null
+}
+export interface EvidenceContextBlock {
+  readonly id: string; readonly type: 'RAW' | 'EXPLANATION' | 'STEP'; readonly handle: string; readonly indexRef: string; readonly programId: string
+  readonly bytes: number; readonly chars?: number; readonly tokensEst: number; readonly createdAt: number; readonly ageMs: number
+  readonly readCalls: number; readonly layerDeliveries: number; readonly accesses: number; readonly lastAccessAt: number | null
+  readonly freshness: 'stale-revision' | 'current' | 'older-artifact'; readonly verified: boolean; readonly solverReadable: boolean
+}
+export interface EvidenceContextDashboard { readonly schema: 'cfb.context-dashboard/1'; readonly epoch: number; readonly latest: string | null; readonly budget: EvidenceContextBudget; readonly blocks: readonly EvidenceContextBlock[]; readonly obligations: readonly EvidenceIntent[] }
+export type EvidenceDescriptionLevel = 'L0' | 'L1' | 'L2'
+export interface EvidenceObligationCore {
+  readonly schema: 'cfb.obligation-core/1'; readonly sessionId: string; readonly contract: EvidenceContract; readonly programId: string; readonly steps: readonly EvidenceStep[]
+  readonly cycle: { readonly epoch: number; readonly roundId: string | null; readonly revision: string; readonly status: string; readonly verified: boolean }
+  readonly slotAudit: EvidenceSlotAudit; readonly obligations: readonly EvidenceIntent[]; readonly feedback: BinaryEvidenceFeedback
+  readonly budgets: { readonly rounds: number | null; readonly maxRounds: number | null; readonly repairs: number | null; readonly maxRepairRounds: number | null; readonly checks: number | null; readonly maxChecks: number | null; readonly context: EvidenceContextBudget }
+}
+export interface EvidenceRenderOptions { levels?: readonly EvidenceDescriptionLevel[]; tokenBudgetEst?: number }
+export type EvidenceContextFrame = { readonly ok: true; readonly prefix: string; readonly prefixDigest: string; readonly layers: readonly { readonly ref: string; readonly level: EvidenceDescriptionLevel; readonly text: string; readonly tokensEst: number }[]; readonly tokensEst: number; readonly budget: EvidenceContextBudget } |
+  { readonly ok: false; readonly reason: string; readonly prefix: null; readonly layers: readonly []; readonly budget: EvidenceContextBudget }
+export interface EvidenceBlockReadOptions { role?: 'solver' | 'optimizer'; tokenBudgetEst?: number }
+export type EvidenceBlockReadResult = { readonly ok: true; readonly value: string | EvidenceStep; readonly tokensEst: number; readonly bytes: number; readonly budget: EvidenceContextBudget } | { readonly ok: false; readonly reason: string }
+export interface EvidenceContext {
+  readonly intents: EvidenceIntents; stablePrefix(): string
+  publish(program: EvidenceProgram, result: { ok: boolean; status: string; artifactRef: string; state?: EvidenceState | null; receipts?: readonly EvidenceReceipt[]; diagnostic?: { receipts: readonly EvidenceReceipt[] } | null }): string
+  render(options?: EvidenceRenderOptions): EvidenceContextFrame; decode(refs: readonly string[]): EvidenceObligationCore
+  readBlock(indexRef: string, blockId: string, options?: EvidenceBlockReadOptions): EvidenceBlockReadResult
+  reset(): void; view(): EvidenceContextDashboard
+}
+export declare function createEvidenceContext(options: EvidenceContextOptions): EvidenceContext

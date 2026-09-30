@@ -174,3 +174,16 @@ const result = await runtime.runRound(program, { roundId: 'round-1', raw: origin
 - P2–P6 有工程证据支持；P1 尚未测试。合成、自写协议夹具不等于独立人写的真实留出；真实效果、S0、run5、一切模型/评委调用均待批准。
 
 **已实现与未做的界线**：类型化接口、独立冻结判据、主动诊断、逐项档案、块仓、联合恢复、预算/循环与侧车接线已一次交付；没有做训练、forced answering、模型消融、best-of 搜索、生产自动接管或付费泛化。不把缺少宿主权限的数据伪造成“可执行通过”。
+
+
+## 四轮复核补件（v13.1，本地功能，不承诺模型收益）
+
+`contextOptions` 仍默认 `null`。宿主显式设对象（如 `{ maxTokensEst: 8192 }`）才装配新消息与义务动作闸：`runtime.modelInput()` 给固定协议/契约前缀与完整 L0，`runtime.contextView()` 给大小/年龄/当前修订/真实访问/剩余预算，`runtime.readBlock(indexRef, id)` 默认 solver 角色。失败 RAW/EXPLANATION 默认不可读；optimizer 需要构造时显式 `allowOptimizerReads: true` 且请求指定角色，不把角色字符串当认证。真正模型工具分权仍由宿主配置，不把 JS 工厂当 OS 沙箱。
+
+每个 L0/L1/L2 都重复完整冻结契约、步骤四槽、义务/反馈/预算。L1/L2 只附加类型化解释，不摘取原稿。任何非空子集保有相同核心；管理器拒绝混周期、缺核心、伪造描述或旧修订。预算不足整帧拒绝，不送一个残缺尾巴。固定前缀不含轮次/反馈/用量，不承诺 provider 永远缓存命中。`render()` 的核心预算是装配前快照，顶层 `budget` 是交付后账本；块读收费按真实完整内容的 token **估算**，渲染收费包含前缀+各层完整文本，不含 provider 分词器/账单；`providerReportedUsage=null` 明示未知。空块也受读次数硬上限。
+
+只有品牌验证器私有 HMAC 的新鲜前置回执能将条件义务从 armed 触发为 pending；动作仅 executed，所有绑定当前修订的验收才 fulfilled。cancelled/invalidated 不可复活，过期/外部修订/失败关闭不能补跑动作。无前置的 observe 是冻结契约允许的立即验证，不虚构新鲜触发事件。`binaryEvidenceFeedback` 丢弃伪造/错程序/错轮次/错角色证据，陈旧证据标 unknown，动作不扮演验收。逐槽审计只证结构完整，不是 QAEval/LLM 理解测验。
+
+命名 head 以 HMAC+独占文件锁+前版本 CAS 更新，档案自动恢复；`reserveHoldout()` 在异步执行 test 之前持久预占，即使崩溃/失败也不返还任务族。恢复旧 `restoreRef` 不可跨越最新 head 的退役状态。崩溃遗留 head 锁不自动抢锁，须宿主检查后处理；这是故意保守的可用性权衡。普通主机断电的目录 fsync/故障文件系统耐久性及恶意特权宿主不在本轮证明范围。
+
+完整覆盖台账与未实施边界见 [四轮覆盖复核](analysis/THEORY-COVERAGE-2026-09-30.md)。零 API 复现：`npm run verify:offline`（Linux/unshare/ip 必需，隔离失败停止，不回退在线）；不读取真实 HOME/DSH_HOME/keys.env，不继承 API/代理/凭据环境，只准 loopback 测试替身。

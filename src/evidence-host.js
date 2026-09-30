@@ -5,6 +5,9 @@ import crypto from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { assertEvidenceContract, freezeEvidenceContract, canonicalJson, evidenceDigest, evaluateEvidencePredicate, immutableJson, safeRelativePath } from './evidence-program.js'
 
+const VERIFIERS = new WeakSet()
+export const isEvidenceVerifier = (value) => !!value && VERIFIERS.has(value)
+
 /** 不跟随链接，不触碰 Git/密钥/根目录。宿主仍须提供独占工作区（不是 OS 沙箱）。 */
 export function evidenceFilePath(root, relative, { missing = false } = {}) {
   if (!safeRelativePath(relative)) throw new Error('unsafe-path')
@@ -157,5 +160,6 @@ export function createEvidenceVerifier({ contract, root, observe, perform, readR
       return result(id, binding, 'pass', 'action-applied', output, next)
     } catch { return result(id, binding, 'unknown', 'action-error') }
   }
-  return Object.freeze({ contract: c, check, action, authenticate, intact })
+  const verifier = Object.freeze({ contract: c, check, action, authenticate, intact })
+  VERIFIERS.add(verifier); return verifier
 }
