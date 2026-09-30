@@ -44,7 +44,7 @@ const filters = args.filter((a, i) => !a.startsWith('-') && !(jIdx >= 0 && i ===
 
 // 运行顺序：纯函数层 → 核心 / 编译 → birth → 集成与观测
 const ORDER = [
-  'provider-endpoint', 'core', 'compress', 'v4', 'v4-live', 'effect-eval', 'api-budget', 'eval-ready', 'birth', 'robustness', 'hedge',
+  'provider-endpoint', 'core', 'compress', 'v4', 'v4-live', 'effect-eval', 'api-budget', 'eval-ready', 'training-ready', 'birth', 'robustness', 'hedge',
   'hook-wiring', 'hardening', 'concurrency', 'protocol', 'branches',
   'audit-2026-09-27', 'v12', 'evidence-program', 'active-checks', 'effect-archive', 'evidence-runtime', 'evidence-infrastructure', 'evidence-context', 'evidence-search', 'native-repair-host', 'approved-repair', 'evidence-control',
 ]

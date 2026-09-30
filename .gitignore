@@ -25,3 +25,8 @@ Thumbs.db
 .cfb-runtime/
 
 # 说明：MANIFEST.sha256 **要**进仓库 —— 它就是完整性清单本身。
+
+# 可选Python训练器的本地字节码/测试缓存（不属于交付源码）
+__pycache__/
+*.py[cod]
+.pytest_cache/

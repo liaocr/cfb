@@ -72,3 +72,6 @@ export { createEvidenceDocument, editEvidenceDocument, createEvidenceIssues, com
 
 // ── 显式批准修复调度（默认不启用、不接管插件）───────────────────────────────
 export { freezeApprovedRepairPolicy, createApprovedRepairEpisode } from './src/evidence-episode.js'
+
+// 离线训练数据/切分/客观发布纯内核；不启用模型训练或修改默认插件。
+export { TRAINING_SCHEMA, normalizeTrainingExample, trainingFingerprints, splitTrainingGroups, splitTrainingFingerprints, trainingExportRow, freezeTrainingEvaluation, gateTrainingRelease } from './src/training-core.js'

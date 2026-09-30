@@ -17,6 +17,8 @@ v12.2 把理论第五卷的 v4 规格落成生产代码：`compressPrompt: 'v4'`
 | [`analysis/BOUNDED-API-2026-09-30.md`](analysis/BOUNDED-API-2026-09-30.md) | API评测/验收者 | USD2/13次冻结预算、响应型号/指纹/canary、崩溃不重发；当前缺配置blocked |
 | [`RUNBOOK-ONLINE-READY.md`](RUNBOOK-ONLINE-READY.md) | 后续接网/搬机器操作者 | prepare/doctor/live/report、公开水位与私有仓、加密迁移与自动检查点、故障处理 |
 | [`analysis/OFFLINE-READY-2026-09-30.md`](analysis/OFFLINE-READY-2026-09-30.md) | 架构/验收者 | 离线优先预注册、跨轮预算保护、整链本机HTTP演练与未证事项 |
+| [`RUNBOOK-TRAINING-READY.md`](RUNBOOK-TRAINING-READY.md) | 后续训练操作者 | SFT/偏好数据、审核/族隔离、LoRA/远程任务、新训练批准、候选发布与加密搬迁 |
+| [`analysis/TRAINING-READY-2026-09-30.md`](analysis/TRAINING-READY-2026-09-30.md) | 训练架构/验收者 | 训练预注册、真实参考模型梯度、远程替身/缓存/搬迁与LoRA未证事项 |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 改代码的人 | 模块地图、钩子与数据流、持久化位置、不变式、「改哪里」、测试布局 |
 | [`INSTALL.md`](INSTALL.md) | 部署的人 | 注册机制、两层 patch 形态铁律、改完源码如何生效、排错 |
 | [`RUNBOOK-PHASE0.md`](RUNBOOK-PHASE0.md) | 操作的人（零基础） | 阶段 0 纯观测的逐步操作手册（与 x1 无关，仍有效） |

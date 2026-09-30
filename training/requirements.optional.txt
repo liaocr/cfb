@@ -1,0 +1,6 @@
+# 仅未来显式安装；Node核心、doctor、reference-demo不需要这些依赖。
+# 真实CUDA/HF训练未在当前无网环境验证，不能把版本区间当成锁定验收环境。
+torch>=2.4,<3
+transformers>=4.45,<5
+peft>=0.12,<1
+safetensors>=0.4,<1

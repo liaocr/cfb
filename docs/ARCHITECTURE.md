@@ -218,3 +218,13 @@ CAS（原文归档）是宿主注入的 `cmbStore` 服务（`ctx.get('cmbStore')
 - `eval-simulate.mjs`：真实loopback但固定替身；完整矩阵/断点/丢仓恢复/9故障，外部调用0，不执行shell，不证明LLM质量。
 
 公开小watermark保存于transfer、私有数据在ignored `.cfb-runtime`或显式持久卷；AES包包含本地authority，不能作为明文制品进入Git。源码完整性manifest不代替预算收据，也不包含私有仓。两平面存储故障停止，不自动修补；同权限宿主同时抹去全部副本或服务商违背价格/token限制仍不可由本地代码物理保证。
+
+
+## v13.3 训练平面（与生产编译/执行权限分离）
+
+- `src/training-core.js`：完整数据IR、fingerprint连通组切分、训练字段导出、冻结全项评测suite、逐项严格发布纯门；不联网、不训练、不授予权限。
+- `tools/helpers/training-data.mjs`：流式两遍构建、HMAC专家/目标审核、撤销/隔离/已消费族、私有test custody、provider导出等价与内容清单。
+- `training-plan/IO/state/governance`（IO模块`training-io.mjs`）：数据/配方/源/基模型缓存指纹、独立训练批准、双平面CAS步骤/HTTP水位、候选与发布簿；不能靠路径变重置。
+- `training-reference.mjs`：无依赖真正SGD测试模型；`training-remote.mjs`：显式能力/训练价的files/job/poll/cancel适配器；`training/lora_trainer.py`：可选缓存/助手mask/LoRA SFT/DPO/optimizer+RNG续训worker，当前无ML依赖未验证实际权重。
+- `training-transfer.mjs`：AES-GCM+scrypt私有workspace搬迁/旧水位拒绝，`executionPaths`重定位核对内容、逻辑planDigest不变；大基模型用独立持久缓存。
+- `train-ready.mjs`统一入口，simulation/fixture永不成真实release。模型完成只candidate；默认插件/提示词/旧说明稿/chunks/动作授权无变化。

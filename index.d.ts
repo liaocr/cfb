@@ -794,3 +794,23 @@ export interface ApprovedRepairController {
   view(): { readonly started: boolean; readonly busy: boolean; readonly result: ApprovedRepairEpisodeResult | null }
 }
 export declare function createApprovedRepairEpisode(options: { host: EvidenceHost; contract: EvidenceContract; policy: ApprovedRepairPolicy }): ApprovedRepairController
+
+/** Training preparation only. These APIs do not start training or activate production models. */
+export interface TrainingExample {
+  schema: 'cfb.training-example/1'; uid: string; family: string; lineage: string; objective: 'sft' | 'preference'
+  source: { kind: 'operator' | 'historical' | 'fixture'; id: string; sha256: string; trainingAllowed: boolean; license: string }
+  messages: readonly { role: 'system' | 'user' | 'assistant'; content: string }[]
+  target?: string; chosen?: string; rejected?: string; digest?: string; reviewRef?: string
+}
+export interface TrainingFingerprint { family: string; lineage: string; input: string; targets: readonly string[] }
+export interface TrainingSplit { schema: 'cfb.training-split/1'; seed: string; groups: number; counts: { train: number; selection: number; test: number }; assignment: Readonly<Record<string, 'train' | 'selection' | 'test'>>; groupDigest: string }
+export interface TrainingEffect { split: 'train' | 'selection' | 'test'; taskId: string; family: string; criterion: string; before: boolean | null; after: boolean | null }
+export interface TrainingEvaluationSuite { schema: 'cfb.training-evaluation/1'; id: string; evaluatorDigest: string; items: readonly Omit<TrainingEffect, 'before' | 'after'>[]; digest: string }
+export declare const TRAINING_SCHEMA: 'cfb.training-example/1'
+export declare function normalizeTrainingExample(def: TrainingExample): Readonly<TrainingExample & { digest: string }>
+export declare function trainingFingerprints(record: TrainingExample): Readonly<TrainingFingerprint>
+export declare function splitTrainingGroups(records: readonly TrainingExample[], options?: { seed?: string }): Readonly<TrainingSplit>
+export declare function splitTrainingFingerprints(rows: readonly { digest: string; fingerprints: TrainingFingerprint }[], options?: { seed?: string }): Readonly<TrainingSplit>
+export declare function trainingExportRow(record: TrainingExample): Readonly<Record<string, unknown>>
+export declare function freezeTrainingEvaluation(def: { id: string; evaluatorDigest: string; items: readonly Omit<TrainingEffect, 'before' | 'after'>[] }): Readonly<TrainingEvaluationSuite>
+export declare function gateTrainingRelease(effects: readonly TrainingEffect[], options?: { simulated?: boolean; suite?: TrainingEvaluationSuite | null }): { ok: boolean; reason: string }

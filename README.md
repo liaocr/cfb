@@ -368,3 +368,15 @@ npm run effect:ready -- run --live --checkpoint /persistent/cfb/current.cfbstate
 默认不联网；只有显式live才可能使用原批准的USD2/13请求，零自动重试/评委。公开预算收据与私有HMAC仓绑定，丢仓/回滚不能重新初始化；可用AES256-GCM+scrypt加密导入导出与逐步自动检查点。完整配置、体检、错误处理与两平面保存方法见 [联网上手手册](docs/RUNBOOK-ONLINE-READY.md)，实测/范围见 [架构强化报告](docs/analysis/OFFLINE-READY-2026-09-30.md)。
 
 这不改变旧插件/正文/chunks/提示词，不自动接管生产工具，也不宣称模拟通过等于模型提升。其他provider若不支持历史reasoning协议/可信指纹，明确停止，不猜别名或放松闸门。
+
+
+## 训练准备（v13.3，网络恢复后无需重写训练管线）
+
+```sh
+npm run training:demo       # 真断网：实际byte测试模型SGD/续训 + 远程作业HTTP替身
+npm run training:ready -- help
+```
+
+完整路径为语料审核→族/谱系/重复隔离→SFT/偏好导出→冻结配方/缓存→独立训练批准→明确execute→candidate→独立客观发布闸。已提供可选HF/PEFT LoRA SFT/DPO worker、私有状态/公开水位与加密搬迁；历史未证样本默认隔离，test不上传或选epoch，旧USD2/13推理A/B许可不能授权训练。真实HF/CUDA/供应商微调未在当前无网无ML依赖环境验证，不默认下载、不改旧CFB模型配置或权限。
+
+配置与最短启动见 [训练就绪手册](docs/RUNBOOK-TRAINING-READY.md)，边界/数字见 [训练架构报告](docs/analysis/TRAINING-READY-2026-09-30.md)。

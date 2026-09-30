@@ -2,9 +2,14 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
-## 1. 当前状态（2026-09-30，第十五会话，离线优先到联网交付架构已收口）
+## 1. 当前状态（2026-09-30，第十六会话，训练准备架构已收口（真实LoRA/供应商未验证））
 
 - 已从用户指定来源 `arena/01a0eba2-cfb` 快进同步最新 `042d361`，先读理论、预注册，再一次性实现 R1–R4；不是仅改提示词或交补丁。**本 Arena 会话固定工作/推送分支 `arena/01a0f127-cfb`**，不切其他分支；只快进、不 force、不动 main。作者 `cfb-cleanup <cleanup@local>`；提交/远端状态看 git status/log。
+- 用户最新强调“极致、后续有网一下快速训练”；本轮补真正训练路径，不再修网络/报价。允许离线训练架构与byte参考测试模型；真实LoRA/GPU/收费训练必须新明确批准/execute，旧USD2/13 AB不能授权微调。模型/GitHub密钥未读/保存，API/费用0，旧生产路径/提示词/正文/权限不变。
+- 新training:ready数据/审核/切分/配方/doctor/authorize/run/report/候选注册/rollback/加密搬迁；SFT默认，偏好IR+DPO worker。完整生产prompt→原始完整side，非抽句/更短/原文尾巴；旧10候选版权/行为未证全隔离、默认训练批准0。HMAC审核绑定具体行+撤销；family/lineage/输入/目标重复连通分量整体切分、test不上传不挑epoch；两已消费族永久阻断。候选≠发布，冻结全项独立客观suite无负/unknown且selection/test严格提升才登记，登记不改插件配置。
+- 无依赖reference-byte实际20梯度，8fixture/8组6:1:1，loss5.549076→5.382317，第5步续训与连续权重bitwise一致、重跑0梯度；只是测试模型，不是CFB收益。远程lo mock两上传/一提交/一查询=4，重跑0追加、unknown不重发、test/审查不上传，不代表A6支持微调。
+- HF/PEFT LoRA SFT/DPO脚本已实装：local-only/safetensors/no remote code，完整助手mask拒绝截断，数据/tokenizer/revision缓存指纹、int32+mmap、epoch一次shuffle、梯度累计/精度/checkpoint/optimizer/RNG/cursor。本机无torch/transformers/peft/safetensors；仅语法/doctor/纯mask，不冒称GPU/HF已验证。公开步骤/HTTP水位与私有HMAC绑定、AES加密workspace迁移/内容验证relocate不改逻辑计划/预算；保存全部副本/大持久卷仍是宿主义务。
+- 最终新43测试；真断网 **889/0/1、29套件、329文件、N1–N7=0、旧33/33**，24.2秒。初始Git again a3且152既有改动；核对309旧清单与远端2c49差异仅前轮16已验文件+手册，保留files/read-tree/ff后恢复前轮为4bbe9a2并已普通推送。未重消费/搜索旧族、不做真实训练/入库/生产接管；详见docs/RUNBOOK-TRAINING-READY.md、TRAINING-READY-2026-09-30.md。
 - 第二阶段收口：可选逐步auto加密checkpoint（每次dispatch前pending、回复后accepted），备份故障不降级已认证回复，hook禁止Promise，独占包锁/前后水位拒绝并发覆盖/旧包；未价report/迁移不造零价不初始化预算。readiness手册docs/RUNBOOK-ONLINE-READY.md，API_ENV只有环境引用，TLS关闭/离线模式/全零样例/鉴权变更禁止live。
 - 最终43新增自测、专项87/0；真断网 **846/0/1、28套件、309清单、N1–N7=0、旧编译33/33**，18.6秒。独立CLI冷启动prepare/doctor/report与两种拒绝已验，无预算创建。完整lo HTTP仍5断点→恢复→13总/12主配对/9故障续跑新增0，仅固定替身，不是模型/真实修复/泛化。外部模型/API/评委/费用0，不读/保存用户凭据，不重搜/消费旧族，不训练/入库/接管。最小USD2/13授权仍未消费；只有未来明确live且条件全过才执行。
 - 最新任务：用户确认外网持续阻塞，要求全面优化架构、使未来联网最大方便。本轮固定零外部API/模型/评委、不读keys.env、不重试网络/报价；原USD2/13请求授权未消费，仅未来显式live才可能使用。训练/旧run5/已消费留出/生产自动接管未批；旧路径不变。
@@ -47,7 +52,7 @@
 - 密钥 `/home/user/.secrets/keys.env` 永不打印/提交；零调用任务不要加载。任何付费主/副/评委实跑必须先报次数/费用并获批准。未来每轮 raw+一个变体、每任务两样本、`--require-fp`；评委缺省一票+条件补票，禁批量重判。重过闸用 `--recompile`，不重压。
 - 已知渠道坑：新渠道常落 `cb/deepseek-v4.1-flash`、fp=null，历史 reasoning 被丢弃；不能用于主模型效果/轨迹验证。真实效果必须可信通道与指纹。
 - **P1 尚未测试**：增益应集中 flaky；wrong-model 9.0 / eacces 8.5 应几乎不变，任一上涨 >1 分先重做因子归因。P2–P6 有工程证据，不等于模型增益。
-- 待另批：run5、方向3、训练、S0独立任务族/更大真实效果实跑、超过此次USD2/13次的模型调用、所有评委与生产自主工具接管。仅此次最小A/B已获API授权；key/报价/可信渠道缺失就停，不因授权而隐式重试或扩大范围。
+- 待另批：run5、方向3、真实生产模型/GPU/收费训练、S0独立任务族/更大真实效果实跑、超过旧USD2/13次的模型调用、所有评委与生产自主工具接管。离线训练准备与参考模型演练已经用户新任务许可。仅此次最小A/B已获API授权；key/报价/可信渠道缺失就停，不因授权而隐式重试或扩大范围。
 
 ## 4. 本会话里程碑（只记结论）
 
@@ -73,3 +78,5 @@
 - 第十五会话第一阶段：已从bd5abb4做架构收口，无模型/网络探测；38新反例和完整lo HTTP演练已过，841/0/1、308清单、N1–N7=0。新收据跨轮保护/加密迁移/统一生命周期仅显式入口，默认旧路仍在；下一步为可选逐步备份与最终手册，提交/推送以git为准。
 
 - 第十五会话最终：两步中文提交交付源码与操作链（第一步2c49f95，后续以git为准）；43新反例，全量846/0/1、309清单、N1–N7=0。stop、不继续扩provider/样本/生产权限；模型增益/供应商/完整DSH仍需联网后的批准实测。
+
+- 第十六会话最终：训练关键路径与发布/搬迁闸已交付，实际只byte测试模型训练；889/0/1、329清单、N1–N7=0、43新反例，API/费用0。LoRA权重/CUDA/供应商/独立泛化未证；后续不把旧AB许可或模拟证据转收费训练/发布，不复用旧留出。提交/固定分支普通推送以git为准。

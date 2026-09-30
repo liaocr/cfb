@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const LIST = path.join(HERE, 'MANIFEST.sha256')
 const SELF = new Set(['MANIFEST.sha256'])
-const SKIP_DIRS = new Set(['.git', 'node_modules', 'coverage', '.nyc_output', '.cot-form-b-selftest-tmp', '.cfb-runtime'])
+const SKIP_DIRS = new Set(['.git', 'node_modules', 'coverage', '.nyc_output', '.cot-form-b-selftest-tmp', '.cfb-runtime', '__pycache__', '.pytest_cache'])
 
 function walk(dir, base) {
   const out = []
@@ -30,7 +30,7 @@ function walk(dir, base) {
     if (e.isDirectory()) out.push(...walk(abs, rel))
     else if (!SELF.has(rel)) {
       // 与 .gitignore 保持一致：忽略 *.log、*.bak 等运行痕迹与临时备份，避免本地生成的日志进入清单导致 CI 检出缺失
-      if (/\.(?:log|bak)(?:-[^/]+)?$/.test(e.name)) continue
+      if (/\.(?:log|bak)(?:-[^/]+)?$/.test(e.name) || /\.py[co]$/.test(e.name)) continue
       out.push(rel)
     }
   }
