@@ -599,15 +599,15 @@ export interface EffectSuite extends EffectSuiteDefinition { readonly schema: 'c
 export interface SignedEffect { readonly fixtureId: string; readonly family: string; readonly split: 'train' | 'selection' | 'test'; readonly before: boolean | null; readonly after: boolean | null; readonly sign: '+' | '0' | '-' | '?' }
 export interface EffectCertificate { readonly schema: 'cfb.effect-certificate/1'; readonly cycleId: string; readonly suiteDigest: string; readonly evaluatorDigest: string; readonly candidateId: string; readonly phase: 'screen' | 'final'; readonly effects: readonly SignedEffect[]; readonly gate: { ok: boolean; reason: string }; readonly id: string; readonly signature: string }
 export interface HoldoutRegistry { consume(families: readonly string[]): void; snapshot(): readonly string[] }
-export interface EffectCycleView { readonly cycleId: string; readonly suiteDigest: string; readonly evaluatorDigest: string; readonly attempts: number; readonly maxCandidates: number; readonly closed: boolean }
-export interface EffectCycle { readonly cycleId: string; readonly suiteDigest: string; screen(candidate: MemoryDefinition): EffectCertificate; finalize(ids: readonly string[]): readonly EffectCertificate[]; authenticate(certificate: unknown): boolean; view(): EffectCycleView }
+export interface EffectCycleView { readonly cycleId: string; readonly suiteDigest: string; readonly evaluatorDigest: string; readonly attempts: number; readonly maxCandidates: number; readonly closed: boolean; readonly reserved: boolean }
+export interface EffectCycle { readonly cycleId: string; readonly suiteDigest: string; screen(candidate: MemoryDefinition): EffectCertificate; reserve(): boolean; finalize(ids: readonly string[]): readonly EffectCertificate[]; authenticate(certificate: unknown): boolean; view(): EffectCycleView }
 export type EffectEvaluator = (candidate: MemoryCandidate | null, input: EvidenceJson) => EvidenceJson
 export interface EffectArchiveSnapshot { readonly schema: 'cfb.effect-archive/1'; readonly owner: string | null; readonly active: readonly { entry: MemoryCandidate; cell: string; effects: readonly SignedEffect[]; certificateId: string; suiteDigest: string }[]; readonly rejected: readonly { entry: MemoryCandidate; effects: readonly SignedEffect[]; reason: string }[]; readonly retired: readonly { entry: MemoryCandidate; reason: string }[]; readonly heldoutFamiliesSpent: readonly string[]; readonly events: readonly { type: string; id: string; reason: string }[]; readonly cycle: EffectCycleView | null }
 export interface EvidenceArchive {
   beginCycle(options: { suite: EffectSuite; evaluate: EffectEvaluator; maxCandidates?: number }): EffectCycleView
   consider(def: MemoryDefinition): EffectCertificate; finalize(): readonly EffectCertificate[]; retire(id: string, reason?: string): boolean
   retrieve(context: { signature: MemorySignature; observation: EvidenceJson }, options?: { k?: 0 | 1 }): readonly { id: string; kind: MemoryDefinition['kind']; body: string; sources: readonly string[] }[]
-  snapshot(): EffectArchiveSnapshot; persist(): string
+  snapshot(): EffectArchiveSnapshot; reserveHoldout(): boolean; persist(): string
 }
 export declare function createMemoryCandidate(def: MemoryDefinition): MemoryCandidate
 export declare function freezeEffectSuite(def: EffectSuiteDefinition): EffectSuite
@@ -620,7 +620,9 @@ export interface EvidenceStore {
   readonly sessionId: string; readonly directory: string
   put(value: string | Uint8Array, options?: { kind?: string }): string; get(handle: string, options?: { kind?: string }): string | Uint8Array
   putJson(value: unknown, options?: { kind?: string }): string; getJson<T = EvidenceJson>(handle: string, options?: { kind?: string }): Readonly<T>
-  stats(): { files: number; bytes: number; maxTotalBytes: number }
+  stats(): { files: number; heads: number; bytes: number; maxTotalBytes: number }
+  readHead(name: string): { ref: string; revision: string; sequence: number } | null
+  setHead(name: string, ref: string, options: { expectedRevision: string | null }): { ref: string; revision: string; sequence: number }
 }
 export interface EvidenceArtifactIndex { readonly schema: 'cfb.artifact-index/1'; readonly sessionId: string; readonly programId: string; readonly contractDigest: string; readonly programRef: string; readonly blocks: readonly { id: string; type: 'RAW' | 'EXPLANATION' | 'STEP'; handle: string; bytes: number; chars?: number }[] }
 export declare function createEvidenceStore(options: { directory: string; sessionId: string; maxBlobBytes?: number; maxTotalBytes?: number }): EvidenceStore

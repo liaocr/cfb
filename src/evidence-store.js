@@ -41,12 +41,13 @@ export function createEvidenceStore({ directory, sessionId, maxBlobBytes = 8 * 1
   const mac = (digest) => crypto.createHmac('sha256', key).update(digest).digest()
   const prefix = 'evd://' + scope.slice(0, 22) + '/'
   const stats = () => {
-    let bytes = 0, files = 0
-    for (const f of fs.readdirSync(home)) if (/^[a-f0-9]{64}\.json$/.test(f)) {
+    let bytes = 0, files = 0, heads = 0
+    for (const f of fs.readdirSync(home)) if (/^[a-f0-9]{64}\.json$/.test(f) || /^\.head-[a-z0-9_-]+\.json$/.test(f)) {
       const s = fs.lstatSync(path.join(home, f)); if (!s.isFile() || s.isSymbolicLink()) throw new Error('store-file-type')
-      files++; bytes += s.size
+      if (f.startsWith('.head-')) heads++; else files++
+      bytes += s.size
     }
-    return { files, bytes, maxTotalBytes }
+    return { files, heads, bytes, maxTotalBytes }
   }
   const getRecord = (handle, kind) => {
     if (typeof handle !== 'string' || !handle.startsWith(prefix) || !HEX.test(handle.slice(prefix.length))) throw new Error('handle-session-or-format')
@@ -79,7 +80,44 @@ export function createEvidenceStore({ directory, sessionId, maxBlobBytes = 8 * 1
   const get = (handle, { kind } = {}) => { const r = getRecord(handle, kind); return r.encoding === 'base64' ? Buffer.from(r.data, 'base64') : r.data }
   const putJson = (value, { kind = 'json' } = {}) => put(canonicalJson(value), { kind })
   const getJson = (handle, { kind = 'json' } = {}) => immutableJson(JSON.parse(get(handle, { kind })))
-  const store = Object.freeze({ sessionId, directory: home, put, get, putJson, getJson, stats })
+  const headPath = (name) => {
+    if (typeof name !== 'string' || !/^[a-z][a-z0-9_-]{0,31}$/.test(name)) throw new Error('head-name')
+    return path.join(home, '.head-' + name + '.json')
+  }
+  const readHead = (name) => {
+    let record
+    try { record = JSON.parse(readRegular(headPath(name), 4096)) } catch (e) { if (e.code === 'ENOENT') return null; throw e }
+    const { revision, signature, ...body } = record
+    if (body.schema !== 'cfb.evidence-head/1' || body.scope !== scope || body.name !== name || !Number.isSafeInteger(body.sequence) || body.sequence < 1 ||
+      !HEX.test(revision) || evidenceDigest(body) !== revision || !HEX.test(signature) || !crypto.timingSafeEqual(mac(revision), Buffer.from(signature, 'hex'))) throw new Error('head-integrity')
+    getRecord(body.ref)
+    return immutableJson({ ref: body.ref, revision, sequence: body.sequence })
+  }
+  const setHead = (name, ref, options) => {
+    const file = headPath(name), lock = file + '.lock'
+    let lockFd
+    try { lockFd = fs.openSync(lock, 'wx', 0o600) } catch (e) { if (e.code === 'EEXIST') throw new Error('head-conflict'); throw e }
+    try {
+      const current = readHead(name)
+      if (!options || !Object.hasOwn(options, 'expectedRevision') || options.expectedRevision !== (current?.revision || null)) throw new Error('head-conflict')
+      getRecord(ref)
+      if (!current && stats().heads >= 64) throw new Error('head-budget')
+      const body = { schema: 'cfb.evidence-head/1', scope, name, ref, sequence: (current?.sequence || 0) + 1, previousRevision: current?.revision || null }
+      const revision = evidenceDigest(body), encoded = canonicalJson({ ...body, revision, signature: mac(revision).toString('hex') })
+      if (stats().bytes - (current ? fs.statSync(file).size : 0) + Buffer.byteLength(encoded) > maxTotalBytes) throw new Error('store-total-budget')
+      const tmp = path.join(home, '.writing-' + crypto.randomUUID())
+      try {
+        const fd = fs.openSync(tmp, 'wx', 0o600)
+        try { fs.writeFileSync(fd, encoded); fs.fsyncSync(fd) } finally { fs.closeSync(fd) }
+        fs.renameSync(tmp, file)
+      } finally { try { fs.unlinkSync(tmp) } catch { /* renamed / absent */ } }
+      return immutableJson({ ref, revision, sequence: body.sequence })
+    } finally {
+      try { fs.closeSync(lockFd) } finally { fs.unlinkSync(lock) }
+      // 崩溃遗留锁不自动过期/抢锁，须宿主排查；安全性优先于自动可用性。
+    }
+  }
+  const store = Object.freeze({ sessionId, directory: home, put, get, putJson, getJson, stats, readHead, setHead })
   STORES.add(store); return store
 }
 /** 一个轮制品的完整块表。RAW/EXPLANATION 无损保存，STEP 有类型，不做抽取式压缩。 */
