@@ -7,8 +7,10 @@ import { assertSafePath, readJson, writeJson, syncDirectory } from './eval-files
 export const API_APPROVAL_SCOPE = 'cfb.minimal-api-approval.2026-09-30'
 // v2 scope＝用户 2026-10-01 的新明确批准（网络容错有界评测）；旧 scope/收据/私有仓永久封存，不重开。
 export const API_APPROVAL_SCOPE_V2 = 'cfb.bounded-api-approval.2026-10-01'
-export const KNOWN_API_SCOPES = Object.freeze([API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2])
-const SCOPE_MAX_REQUESTS = Object.freeze({ [API_APPROVAL_SCOPE]: 13, [API_APPROVAL_SCOPE_V2]: 15 })
+// v3＝同日新批准的生产等价可见上下文协议：通道已证丢弃reasoning历史（canary证伪），改测可见压缩稿对『思考丢失』现实的净价值。
+export const API_APPROVAL_SCOPE_V3 = 'cfb.visible-context-approval.2026-10-01'
+export const KNOWN_API_SCOPES = Object.freeze([API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3])
+const SCOPE_MAX_REQUESTS = Object.freeze({ [API_APPROVAL_SCOPE]: 13, [API_APPROVAL_SCOPE_V2]: 15, [API_APPROVAL_SCOPE_V3]: 15 })
 export const apiStoreDirectory = (directory, scope = API_APPROVAL_SCOPE) => path.join(path.resolve(directory), crypto.createHash('sha256').update(scope).digest('hex'))
 const HEX = /^[a-f0-9]{64}$/
 export function readWatermark(file) {

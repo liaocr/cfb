@@ -6,15 +6,21 @@ import { createEvidenceStore } from '../../src/evidence-store.js'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
 import { makeChat, channelIssue, responseText } from '../effect-eval.mjs'
 import { hasSecretMaterial } from './eval-files.mjs'
-import { API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, apiStoreDirectory, assertExistingBudget, assertWatermark, commitWatermark } from './api-watermark.mjs'
+import { API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, apiStoreDirectory, assertExistingBudget, assertWatermark, commitWatermark } from './api-watermark.mjs'
 
 export const APPROVED_API_LIMITS = Object.freeze({ maxRequests: 13, maxUsd: 2, maxMain: 12, maxProbe: 1, retries: 0, judges: 0 })
 // v2（用户2026-10-01批准）：同矩阵 + 3个同体备用探针；网络类失败只废该请求预留、不株连未派发请求，累计3次仍硬停。
 export const APPROVED_API_LIMITS_V2 = Object.freeze({ maxRequests: 15, maxUsd: 2, maxMain: 12, maxProbe: 3, retries: 0, judges: 0, networkFailureBudget: 3 })
 export const MINIMAL_TASK_IDS = Object.freeze(['flaky-timeout', 'wrong-model', 'eacces-config'])
 const TRANSIENT_REASON = /^(?:request-network-error|request-timeout|HTTP 5\d\d)$/
-export const planIsV2 = (plan) => plan?.schema === 'cfb.bounded-ab/2'
-export const planScope = (plan) => planIsV2(plan) ? API_APPROVAL_SCOPE_V2 : API_APPROVAL_SCOPE
+export const planVersion = (plan) => plan?.schema === 'cfb.bounded-ab/3' ? 3 : plan?.schema === 'cfb.bounded-ab/2' ? 2 : 1
+export const planIsV2 = (plan) => planVersion(plan) >= 2
+export const planScope = (plan) => [API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3][planVersion(plan) - 1]
+// 指纹只是通道连续性锚：v1/v2锚定曾验证的官方后端；v3锚定2026-10-01三次实测一致的中转vLLM后端（中转自报值，不构成后端供应商内部证明）。
+export const TRUSTED_FINGERPRINTS = Object.freeze({ 1: 'fp_dspure_app_v1', 2: 'fp_dspure_app_v1', 3: 'vllm-0.0.0-tp4-dp2-ep-869f52fc' })
+// v3 可见压缩稿块的冻结定界符；审计凭它验证 raw/current 除稿块外逐字节一致。
+export const DRAFT_BLOCK_PREFIX = '【前情压缩稿】\n'
+export const DRAFT_BLOCK_SUFFIX = '\n【/前情压缩稿】\n\n'
 const NANO = 1e9
 export function inputTokenBound(body) {
   // 完整 JSON UTF-8 字节 + 4096 协议余量；保守工程估计，非供应商 tokenizer 数学证明。
@@ -32,8 +38,8 @@ export function quoteJob(body, pricing) {
   return Object.freeze({ inputTokens, outputTokens, reservedNano, reservedUsd: reservedNano / NANO })
 }
 export function auditApiPlan(plan, { allowUnpriced = false } = {}) {
-  const v2 = planIsV2(plan), approvedLimits = v2 ? APPROVED_API_LIMITS_V2 : APPROVED_API_LIMITS
-  if (!['cfb.bounded-ab/1', 'cfb.bounded-ab/2'].includes(plan?.schema) || typeof plan.model !== 'string' || !/^[\w./:-]{1,120}$/.test(plan.model) || !Array.isArray(plan.jobs) || !plan.jobs.length || plan.jobs.length > approvedLimits.maxRequests) throw new Error('api-plan-schema')
+  const version = planVersion(plan), v2 = version >= 2, approvedLimits = v2 ? APPROVED_API_LIMITS_V2 : APPROVED_API_LIMITS
+  if (!['cfb.bounded-ab/1', 'cfb.bounded-ab/2', 'cfb.bounded-ab/3'].includes(plan?.schema) || typeof plan.model !== 'string' || !/^[\w./:-]{1,120}$/.test(plan.model) || !Array.isArray(plan.jobs) || !plan.jobs.length || plan.jobs.length > approvedLimits.maxRequests) throw new Error('api-plan-schema')
   if (evidenceDigest(plan.limits) !== evidenceDigest(approvedLimits)) throw new Error('api-approval-changed')
   let endpoint
   try { endpoint = new URL(plan.baseUrl) } catch { throw new Error('api-endpoint') }
@@ -53,13 +59,34 @@ export function auditApiPlan(plan, { allowUnpriced = false } = {}) {
   const probeKeys = v2 ? ['probe', 'probe-r1', 'probe-r2'] : ['probe']
   if (probe !== probeKeys.length || main !== 12 || typeof plan.canary !== 'string' || !/^CFB_CANARY_[a-f0-9]{32}$/.test(plan.canary)) throw new Error('api-matrix')
   if (probeKeys.some((k, i) => plan.jobs[i].kind !== 'probe' || plan.jobs[i].key !== k || evidenceDigest(plan.jobs[i].body) !== evidenceDigest(plan.jobs[0].body))) throw new Error('api-matrix')
-  const probeBody = plan.jobs[0].body, carriers = probeBody.messages.filter((m) => m.reasoning_content?.includes(plan.canary))
-  const visibleProbe = { ...probeBody, messages: probeBody.messages.map(({ reasoning_content, ...m }) => m) }
-  if (carriers.length !== 1 || carriers[0].role !== 'assistant' || JSON.stringify(visibleProbe).includes(plan.canary)) throw new Error('api-probe-leak')
+  const probeBody = plan.jobs[0].body
+  if (version === 3) {
+    // v3：全部消息不得携带 reasoning_content（通道已证丢弃）；canary 只出现在探针的单条可见 assistant 消息里。
+    if (plan.jobs.some((j) => j.body.messages.some((m) => m.reasoning_content !== undefined))) throw new Error('api-probe-leak')
+    const carriers = probeBody.messages.filter((m) => typeof m.content === 'string' && m.content.includes(plan.canary))
+    if (carriers.length !== 1 || carriers[0].role !== 'assistant') throw new Error('api-probe-leak')
+    if (plan.jobs.filter((j) => j.kind === 'main').some((j) => JSON.stringify(j.body).includes(plan.canary))) throw new Error('api-probe-leak')
+  } else {
+    const carriers = probeBody.messages.filter((m) => m.reasoning_content?.includes(plan.canary))
+    const visibleProbe = { ...probeBody, messages: probeBody.messages.map(({ reasoning_content, ...m }) => m) }
+    if (carriers.length !== 1 || carriers[0].role !== 'assistant' || JSON.stringify(visibleProbe).includes(plan.canary)) throw new Error('api-probe-leak')
+  }
   const strip = (b) => ({ ...b, messages: b.messages.map(({ reasoning_content, ...m }) => m) })
+  const draftBlockRe = new RegExp('^' + DRAFT_BLOCK_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\n/g, '\\n') + '[\\s\\S]*' + DRAFT_BLOCK_SUFFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\n/g, '\\n'))
   for (const task of MINIMAL_TASK_IDS) for (const sample of [0, 1]) {
     const pair = ['raw', 'current'].map((variant) => plan.jobs.find((j) => j.kind === 'main' && j.task === task && j.sample === sample && j.variant === variant && j.obs === 'red' && j.key === `${task}|${variant}|${sample}`))
-    if (pair.some((j) => !j) || evidenceDigest(strip(pair[0].body)) !== evidenceDigest(strip(pair[1].body))) throw new Error('api-matrix-protocol')
+    if (pair.some((j) => !j)) throw new Error('api-matrix-protocol')
+    if (version === 3) {
+      // 冻结关系：current 的 assistant 轮 = 稿块前缀 + raw 同位置逐字节内容；其余消息完全一致。
+      const [rawB, curB] = [pair[0].body, pair[1].body]
+      if (rawB.messages.length !== curB.messages.length) throw new Error('api-matrix-protocol')
+      for (let i = 0; i < rawB.messages.length; i++) {
+        const a = rawB.messages[i], b = curB.messages[i]
+        if (a.role !== b.role) throw new Error('api-matrix-protocol')
+        if (a.content === b.content) continue
+        if (a.role !== 'assistant' || !draftBlockRe.test(b.content) || !b.content.endsWith(a.content) || !b.content.startsWith(DRAFT_BLOCK_PREFIX)) throw new Error('api-matrix-protocol')
+      }
+    } else if (evidenceDigest(strip(pair[0].body)) !== evidenceDigest(strip(pair[1].body))) throw new Error('api-matrix-protocol')
   }
   if (totalNano > 2 * NANO) throw new Error('api-budget-plan-exceeds-2usd')
   return immutableJson({ planDigest: evidenceDigest(plan), maxRequests: approvedLimits.maxRequests, maxUsd: approvedLimits.maxUsd, main, probe, priced: plan.pricing !== null, totalReservedUsd: plan.pricing === null ? null : totalNano / NANO, quotes })
@@ -137,8 +164,9 @@ export function createBudgetedChat({ plan: input, apiKey, directory, receiptPath
     } })
     try {
       const r = await chat(job.body, { signal })
-      const issue = channelIssue(r, plan.model); if (issue) throw new Error(issue)
-      if (r.fp !== 'fp_dspure_app_v1') throw new Error('channel-fingerprint')
+      // fp 由下一行按 scope 版本锚定检查；channelIssue 的旧全局 TRUSTED_FP 集合只服务旧CLI。
+      const issue = channelIssue(r, plan.model, { requireFp: false }); if (issue) throw new Error(issue)
+      if (r.fp !== TRUSTED_FINGERPRINTS[planVersion(plan)]) throw new Error('channel-fingerprint')
       if (!['stop', 'tool_calls'].includes(r.finish)) throw new Error('response-incomplete')
       if (hasSecretMaterial(r) || apiKey.length >= 16 && JSON.stringify(r).includes(apiKey)) throw new Error('response-secret-material')
       validateToolMessage(r.message, job)

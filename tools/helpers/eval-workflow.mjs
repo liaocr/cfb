@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
-import { buildMinimalPlan, buildBoundedPlanV2, sourceDifferences, summarizeMinimal, resultOf } from './eval-plan.mjs'
+import { buildMinimalPlan, buildBoundedPlanV2, buildVisiblePlanV3, sourceDifferences, summarizeMinimal, resultOf } from './eval-plan.mjs'
 import { auditApiPlan, createBudgetedChat, inspectApiBudget, inputTokenBound, APPROVED_API_LIMITS } from './api-budget.mjs'
 import { assertSafePath, readJson, writeJson, hasSecretMaterial } from './eval-files.mjs'
 import { assertAutoCheckpoint, exportEvaluationBundle } from './eval-bundle.mjs'
@@ -14,6 +14,8 @@ export const PUBLIC_RECEIPT = path.join(ROOT, 'transfer/api-budget-approval.wate
 // v2（2026-10-01 新批准）：独立私有仓与公开收据；旧 scope 的收据/账本封存不动。
 export const DEFAULT_HOME_V2 = path.join(ROOT, '.cfb-runtime/bounded-ab-v2')
 export const PUBLIC_RECEIPT_V2 = path.join(ROOT, 'transfer/api-budget-approval-v2.watermark.json')
+export const DEFAULT_HOME_V3 = path.join(ROOT, '.cfb-runtime/bounded-ab-v3')
+export const PUBLIC_RECEIPT_V3 = path.join(ROOT, 'transfer/api-budget-approval-v3.watermark.json')
 export const PROFILE_EXAMPLE = path.join(ROOT, 'deploy/eval-profile.example.json')
 const DEFAULT_EXECUTION = Object.freeze({ apiKeyEnv: 'DEEPSEEK_API_KEY', timeoutMs: 240000, maxResponseBytes: 1024 * 1024 })
 const safeCode = (e) => /^(?:api|eval|response|request|channel|source|profile|explicit)-[a-z0-9-]+$/.test(e?.message || '') || /^HTTP \d{3}$/.test(e?.message || '') ? e.message : 'eval-state-unavailable'
@@ -38,7 +40,8 @@ export function prepareEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RE
   const p = paths(home), normalized = normalizeProfile({ ...profile, ...(pricing !== undefined ? { pricing } : {}) })
   const existing = fs.existsSync(p.plan) ? readJson(p.plan) : null, marker = readWatermark(receiptPath)
   if (marker && !existing) throw new Error('api-budget-restore-required')
-  const base = (version === 2 || existing?.schema === 'cfb.bounded-ab/2' ? buildBoundedPlanV2 : buildMinimalPlan)({ ...normalized, canary: existing?.canary })
+  const builder = existing?.schema === 'cfb.bounded-ab/3' || version === 3 ? buildVisiblePlanV3 : existing?.schema === 'cfb.bounded-ab/2' || version === 2 ? buildBoundedPlanV2 : buildMinimalPlan
+  const base = builder({ ...normalized, canary: existing?.canary })
   const plan = immutableJson({ ...base, execution: normalized.execution, simulation })
   if (hasSecretMaterial(plan)) throw new Error('api-plan-secret-material')
   if (marker && (!existing || evidenceDigest(existing) !== evidenceDigest(plan))) throw new Error('api-plan-changed')
@@ -57,7 +60,7 @@ export function doctorEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_REC
   check('offline-mode-disabled', env.CFB_OFFLINE !== '1', 'offline环境只允许prepare/doctor/report/simulate，live必须在另一个已获网络许可的环境显式执行。')
   check('tls-verification-enabled', env.NODE_TLS_REJECT_UNAUTHORIZED !== '0', '不能关闭TLS验证来让钥匙/任务原文发送出去。')
   check('runtime-node', Number(process.versions.node.split('.')[0]) >= 22, '使用Node22或更新的兼容环境。')
-  check('protocol', plan.protocol === 'chat-completions-history-reasoning/1' && plan.execution, '重建未开始的计划；其他API协议不可伪装为历史reasoning可见。')
+  check('protocol', ['chat-completions-history-reasoning/1', 'chat-completions-visible-context/1'].includes(plan.protocol) && plan.execution, '重建未开始的计划；协议必须是已冻结的两种之一，不可伪装。')
   check('source-current', sourceDifferences(plan).length === 0, '未开始可重新prepare；已开始需原源码/原计划恢复，不变稿补测。')
   let audit = null; try { audit = auditApiPlan(plan); check('pricing-and-matrix', true) } catch (e) { check(safeCode(e), false, '按实际中转价表填写价格与来源，不用上游价或样例价替代。') }
   let priceCurrent = false

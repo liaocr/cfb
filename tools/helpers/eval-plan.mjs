@@ -8,7 +8,7 @@ import { buildMessagesMR, callsOf, ruleMetrics, actionClass } from '../effect-mr
 import { mrMessages } from '../compile-mr.mjs'
 import { TOOLS, responseText } from '../effect-eval.mjs'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
-import { MINIMAL_TASK_IDS, APPROVED_API_LIMITS, APPROVED_API_LIMITS_V2 } from './api-budget.mjs'
+import { MINIMAL_TASK_IDS, APPROVED_API_LIMITS, APPROVED_API_LIMITS_V2, DRAFT_BLOCK_PREFIX, DRAFT_BLOCK_SUFFIX } from './api-budget.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 export const TASK_IDS = MINIMAL_TASK_IDS
@@ -55,6 +55,30 @@ export function buildBoundedPlanV2(options = {}) {
   const probe = base.jobs[0]
   const jobs = [probe, { ...probe, key: 'probe-r1' }, { ...probe, key: 'probe-r2' }, ...base.jobs.slice(1)]
   return immutableJson({ ...base, schema: 'cfb.bounded-ab/2', approvalDate: '2026-10-01', limits: APPROVED_API_LIMITS_V2, jobs })
+}
+// v3（用户2026-10-01批准，生产等价可见协议）：通道丢弃reasoning历史已被canary证伪可见性；
+// raw臂=思考已丢的现实（无任何payload），current臂=压缩稿以冻结定界符可见拼接。两臂其余逐字节一致。
+export function buildVisiblePlanV3(options = {}) {
+  const base = buildBoundedPlanV2(options), canary = base.canary
+  const probeBody = { model: base.model, stream: false, thinking: { type: 'enabled' }, max_tokens: 512, messages: [
+    { role: 'user', content: '下面这条回复里包含一个标记，请记住它。' },
+    { role: 'assistant', content: '收到，标记是 ' + canary + '，我已记住。' },
+    { role: 'user', content: '逐字返回上一条回复中的标记。只输出标记本身，不解释，不加任何其他字符。' },
+  ] }
+  const jobs = base.jobs.map((job) => {
+    if (job.kind === 'probe') return { ...job, body: probeBody }
+    const messages = job.body.messages.map(({ reasoning_content, ...m }) =>
+      job.variant === 'current' && typeof reasoning_content === 'string' && m.role === 'assistant'
+        ? { ...m, content: DRAFT_BLOCK_PREFIX + reasoning_content + DRAFT_BLOCK_SUFFIX + m.content }
+        : m)
+    return { ...job, body: { ...job.body, messages } }
+  })
+  return immutableJson({ ...base, schema: 'cfb.bounded-ab/3', approvalDate: '2026-10-01', jobs,
+    protocol: 'chat-completions-visible-context/1',
+    preregistration: {
+      expectedGain: 'current(可见压缩稿)相对raw(思考已丢)在三题red上 falseDone/repeat 降低、next/avoid 提高，flaky 差异最大；若 raw 反超净指标先归因，不庆祝',
+      metrics: ['falseDone', 'bump', 'reEdit', 'repeat', 'next', 'avoid', 'action'],
+      limitation: '通道丢弃reasoning历史（canary已证伪可见性），本实验测可见压缩稿对「思考丢失」现实的净价值；vllm指纹为中转自报连续性锚；canned red非独立泛化，无Likert/评委。' } })
 }
 export function currentSourceHashes() {
   return Object.fromEntries(SOURCE_FILES.map((p) => [p, crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, p))).digest('hex')]))
