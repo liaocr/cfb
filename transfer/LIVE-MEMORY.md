@@ -2,7 +2,13 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
-## 1. 当前状态（2026-09-30，第十七会话，训练恢复与受控迭代已验收（真实HF/供应商未证））
+## 1. 当前状态（2026-10-01，第十八会话，崩溃迁移核验：patch与已推送1d1d91b逐字节一致，无丢失工作）
+
+- 第十八会话（新Arena沙盒，分支仍 `arena/01a0f127-cfb`）：上一模型崩溃、未及汇报/迁移；用户提供其最终工作区patch（实为基线 a3ae126 到最终工作树的全量diff，229文件6.3MB）。在 a3ae126 干净worktree应用后 `git write-tree` 得 tree `21461f3`，与已推送 `1d1d91b^{tree}` **完全相同——最终工作区已全部推送，patch零增量、无丢失工作**，仓库内容无需修正。v13.3.1/TRAINING-ITERATION-2026-10-01 即上轮未汇报交付，其自述验收本轮已独立复现。
+- 新环境两坑（已修，跨会话会复发）：① 沙盒默认 Node20，eval-ready 有 runtime-node≥22 门槛、训练类套件要求断网命名空间，裸跑 `node verify.mjs` 会假性报19失败；必须装 Node≥22（官方 tar 解到 /usr/local，不持久需重装）并用 `node tools/verify-offline.mjs` 标准入口跑全量。本轮实测真断网 **919/0/1、31/31套件、manifest337、N1–N7=0**，与十七收口一致。② Arena快照剥离 `.git/config`：每轮开工先重加 `git remote add origin https://github.com/liaocr/cfb.git` 并 `--set-upstream-to`，再 fetch 核对与远端一致。
+- 本轮 keys.env 不存在、无PAT：提交只能留本地待用户提供推送凭据或自行推送；API/模型/评委/费用0，未读任何凭据。未批事项清单不变。
+
+## 1b. 前轮状态（2026-09-30，第十七会话，训练恢复与受控迭代已验收（真实HF/供应商未证））
 
 - 已从用户指定来源 `arena/01a0eba2-cfb` 快进同步最新 `042d361`，先读理论、预注册，再一次性实现 R1–R4；不是仅改提示词或交补丁。**本 Arena 会话固定工作/推送分支 `arena/01a0f127-cfb`**，不切其他分支；只快进、不 force、不动 main。作者 `cfb-cleanup <cleanup@local>`；提交/远端状态看 git status/log。
 - 第十七任务：用户重连后继续全面优化，优先修上次公开承认的LoRA unknown/resume矛盾；仍0真实API/模型/GPU/收费训练，不修模型网络，不读用户钥匙/聊天PAT。前轮未推送源码已核对329清单/远端差异，保留workfiles仅ff并恢复为06c5190，已普通推送；本轮源码提交/远端以git为准。
