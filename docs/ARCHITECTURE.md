@@ -1,9 +1,9 @@
-# 架构（v12.3，开发者视角）
+# 架构（v13，开发者视角）
 
 > 面向改代码的人：模块怎么分、数据怎么流、哪些不变式不能碰、加东西该改哪里。
 > 使用与配置见根目录 [`README.md`](../README.md)；设计沿革见 [`CHANGELOG.md`](../CHANGELOG.md)；v12.0 之前的文件可从 git `cfba57b` 取回。
 >
-> v12.1 起只有**一条路径**：`mode: 'birth'` + compress 编译。checkpoint 模式、迟到认领（deferred claim / late-memory）、
+> 默认生产压稿仍只有**一条路径**：`mode: 'birth'` + compress 编译。checkpoint 模式、迟到认领（deferred claim / late-memory）、
 > memory 模式（证据账本 / 快照 / 状态记忆）、legacy v1 提示词及其全部支撑模块已删除（src 8,990 → 约 3,100 行）。
 
 ## 1. 模块地图
@@ -31,7 +31,7 @@ plugin.js ───────────────────────�
   └─ messages.js         出站消息溯源（只观测）
 ```
 
-规模：最大的是 `birth.js`（约 660 行），其次 `transport.js`、`distill.js`（以 `wc -l src/*.js` 为准）。
+规模：以 `wc -l src/*.js` 为准（当前最大是 `compile-v4.js`）；证据程序为独立宿主模块，不改变默认压稿链。
 
 ## 2. 钩子与数据流
 
@@ -123,7 +123,7 @@ finish 到点      → dist === null 且 task.partial() 非空 ⇒ 同一组闸 
 |---|---|---|
 | `trace.log`（+ `trace.log.1`） | `trace.js` | `trace: true` 时每个事件一行；超过 `traceMaxBytes`（64 MiB）轮转一次 |
 
-v12.1 起插件自己**不再写任何状态文件**（快照、证据账本、锁文件都随 memory 模式删除）。
+默认插件自己**不写状态文件**（旧 memory 模式的快照/账本/锁已删除）。v13 的显式宿主证据 API 使用独立、会话隔离的签名块仓；不恢复旧看板路径，详见下节。
 CAS（原文归档）是宿主注入的 `cmbStore` 服务（`ctx.get('cmbStore')`），本插件只调用 `putText`（与读回探针的只读 API）。
 
 ## 4. 不变式（违反即坏）
@@ -185,3 +185,24 @@ CAS（原文归档）是宿主注入的 `cmbStore` 服务（`ctx.get('cmbStore')
 | branches | 预热（节流 / 停用 / 调用级 provider）、token 估算非字符串输入 |
 | audit-2026-09-27 | 外部审计 F1–F11 的回归钉（F7 随 x1、G 随在途共享删除） |
 | v12 | 退役配置兼容：x1 / v1 回落 v3、checkpoint ⇒ off、memory / 迟到认领 / emitter 键进 retiredOptions、BOOT 单一路径 |
+
+
+## 7. v13 宿主证据程序模块与边界
+
+完整接口/决策/不采用方案/预测/部署见 [`EVIDENCE-PROGRAM.md`](EVIDENCE-PROGRAM.md)。
+
+| 模块 | 职责 |
+|---|---|
+| evidence-program.js | 纯 JSON/三值谓词、冻结契约、类型化步骤、提议/授权分离、逐阶段签名回执闸 |
+| evidence-host.js | 安全本地文件/进程检查、私有 HMAC 回执权、验证器依赖文件固定与漂移检查 |
+| active-checks.js | 完整条件熵 EIG、贝叶斯更新、预算内主动查询，诊断不能替代验收 |
+| effect-archive.js | 逐项正/零/负/未知效果、三切分严格提升门、盲测消耗、拒绝/退役/k≤1 检索、签名仓持久化 |
+| evidence-store.js | RAW/EXPLANATION/STEP 无损块、会话隔离、持久 HMAC、显式回取/容量预算 |
+| evidence-checkpoint.js | 受管文件字节/权限/存在性 + JSON 上下文/条件、冲突拒绝、事务恢复、验证峰值 |
+| evidence-runtime.js | 三阶段检查执行、有界轮次与修复/检查预算、主动诊断、联合恢复、错误历史隔离；会话服务组合根 |
+
+`compileV4Evidence` 是 `compileV4Direct` 的新侧车包装，不改旧闸门/渲染。`birthFinish` 在显式 `evidenceProgram:true` 且原生 `createEvidenceHost` 服务匹配会话时发布制品；不把块仓句柄写进 reasoning，不改 chunks，不自动执行。宿主只有显式 `runRound/runLatest` 才使用新动作链；DSH 工具拦截/完整环境恢复不是既有 stream 钩子提供的能力。
+
+存储默认由宿主选择 `$DSH_HOME/storages/cot-form-b/evidence/`，运行目录也可用 `.cfb-runtime/`（Git/manifest 忽略）。所有新模块无初始化 IO；只创建宿主仓/适配器时才写盘。HMAC 不是 OS 沙箱；宿主须独占资源并保护独立评价器、私钥与留出集。
+
+新增套件 `evidence-program`（15）、`active-checks`（11）、`effect-archive`（12）、`evidence-runtime`（26）；共 20 套件，verify 700/0/1。协议合成夹具不是主模型泛化评测，唯一跳过仍是原有宿主兄弟包等价探针。

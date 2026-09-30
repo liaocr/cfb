@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const LIST = path.join(HERE, 'MANIFEST.sha256')
 const SELF = new Set(['MANIFEST.sha256'])
-const SKIP_DIRS = new Set(['.git', 'node_modules', 'coverage', '.nyc_output', '.cot-form-b-selftest-tmp'])
+const SKIP_DIRS = new Set(['.git', 'node_modules', 'coverage', '.nyc_output', '.cot-form-b-selftest-tmp', '.cfb-runtime'])
 
 function walk(dir, base) {
   const out = []

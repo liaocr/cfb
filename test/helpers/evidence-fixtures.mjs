@@ -1,4 +1,4 @@
-// 人写的宿主协议合成夹具，24 条 / 6 族 / 8:8:8。只测工程门，不是 S0 主模型任务评测。
+// 代码代理编写的宿主协议合成夹具，24 条 / 6 族 / 8:8:8。只测工程门，不是 S0 主模型任务评测。
 import { freezeEffectSuite, createMemoryCandidate } from '../../index.js'
 export function effectFixtureSuite(suffix = '') {
   const parts = {}, families = { train: ['freshness', 'conditions'], selection: ['landing', 'termination'], test: ['revision', 'identity'] }
@@ -10,7 +10,7 @@ export function effectFixtureSuite(suffix = '') {
         predicate: { op: 'equals', field: 'allow', value: i % 2 === 0 } }
     }))
   }
-  return freezeEffectSuite({ id: 'protocol-fixtures' + suffix, evaluatorVersion: 'human-binary-v1', ...parts })
+  return freezeEffectSuite({ id: 'protocol-fixtures' + suffix, evaluatorVersion: 'synthetic-binary-v1', ...parts })
 }
 export function effectFixtureEvaluator(candidate, input) {
   if (candidate?.body === 'unknown') return {}
@@ -21,5 +21,5 @@ export function effectFixtureEvaluator(candidate, input) {
 export const memorySignature = { taskFamily: 'timer-evidence', environment: 'node-fixture-v1', contractVersion: '1' }
 export function memoryCandidate({ kind = 'rule', body = 'strict', signature = memorySignature, expiresAt } = {}) {
   return createMemoryCandidate({ kind, body, signature, trigger: { op: 'equals', field: 'failed', value: true },
-    sources: ['human-protocol-fixture:v1'], ...(expiresAt === undefined ? {} : { expiresAt }) })
+    sources: ['synthetic-host-protocol-fixture:v1'], ...(expiresAt === undefined ? {} : { expiresAt }) })
 }

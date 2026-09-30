@@ -1,4 +1,4 @@
-# 文档索引（v12.2）
+# 文档索引（v13）
 
 v12.0 是一次「干净的开始」：删掉已否决路线的代码与历史归档，文档按用途分三层。
 v12.1 再收一步：**只剩一条路径**（birth + compress，缺省 v3），实验模式与参考原型全部删除，删除清单见 §5。
@@ -10,6 +10,8 @@ v12.2 把理论第五卷的 v4 规格落成生产代码：`compressPrompt: 'v4'`
 | 文件 | 读者 | 内容 |
 |---|---|---|
 | [`../README.md`](../README.md) | 使用者 | 做什么、快速开始、模式与配置、回滚开关、观测、当前状态 |
+| [`EVIDENCE-PROGRAM.md`](EVIDENCE-PROGRAM.md) | 接口/宿主接入者 | v13 完整设计、预注册、类型化制品/检查/档案/联合恢复、权衡与启用/回退 |
+| [`analysis/EVIDENCE-VALIDATION-2026-09-30.md`](analysis/EVIDENCE-VALIDATION-2026-09-30.md) | 验收者 | 零调用工程自测、历史回放数字、预测与证据边界 |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 改代码的人 | 模块地图、钩子与数据流、持久化位置、不变式、「改哪里」、测试布局 |
 | [`INSTALL.md`](INSTALL.md) | 部署的人 | 注册机制、两层 patch 形态铁律、改完源码如何生效、排错 |
 | [`RUNBOOK-PHASE0.md`](RUNBOOK-PHASE0.md) | 操作的人（零基础） | 阶段 0 纯观测的逐步操作手册（与 x1 无关，仍有效） |

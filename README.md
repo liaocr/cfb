@@ -1,5 +1,7 @@
 # dsh-cot-form-b — reasoning 块「出生即压缩」
 
+> **v13 宿主证据程序（默认关）**：旧 birth+compress 说明稿不变；新接口提供冻结类型化步骤、签名回执、主动诊断、严格留出档案及宿主/文件联合恢复。`evidenceProgram:false` 默认保留旧行为。完整设计/启用与回退见 [`docs/EVIDENCE-PROGRAM.md`](docs/EVIDENCE-PROGRAM.md)，零调用验证见 [`docs/analysis/EVIDENCE-VALIDATION-2026-09-30.md`](docs/analysis/EVIDENCE-VALIDATION-2026-09-30.md)。快速本地复现：`npm run evidence:demo` / `npm run evidence:replay`。不自动接管 DSH 工具，不宣称模型涨分。
+
 > **当前实现：v12.3（2026-09-28，单一路径：birth + compress；opt-in 的 compress-v4-ops 认知编译器 + 流式增量编译）** · 自测：`npm test` 全绿（固定 1 项 SKIP，逐版数字见 CHANGELOG） · 真实产品验收：**未验收**
 > CI：`.github/workflows/ci.yml` 在 Node 20 / 22 上跑完整性清单 + 全部自测 + 类型契约。
 > 版本沿革见 [`CHANGELOG.md`](CHANGELOG.md)；开发者视角的模块与数据流见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。

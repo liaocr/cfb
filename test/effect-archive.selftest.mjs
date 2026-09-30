@@ -7,7 +7,7 @@ const test = async (name, fn) => { try { await fn(); pass++; console.log('PASS '
 const suite = effectFixtureSuite(), context = { signature: memorySignature, observation: { failed: true } }
 const cycle = (over = {}) => I.createEffectCycle({ suite, evaluate: effectFixtureEvaluator, registry: I.createHoldoutRegistry(), ...over })
 const archive = (over = {}) => { const a = I.createEvidenceArchive(over); a.beginCycle({ suite, evaluate: effectFixtureEvaluator }); return a }
-await test('24 人写夹具、六族三切分完全隔离，哈希冻结', () => {
+await test('24 条宿主协议合成夹具、六族三切分完全隔离，哈希冻结', () => {
   assert.equal(suite.train.length + suite.selection.length + suite.test.length, 24)
   assert.equal(new Set([...suite.train, ...suite.selection, ...suite.test].map((x) => x.family)).size, 6)
   assert.throws(() => { suite.test[0].predicate.value = false })

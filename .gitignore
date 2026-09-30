@@ -21,4 +21,7 @@ Thumbs.db
 .idea/
 .vscode/
 
+# 本地证据块仓/检查点/演示产物（不含发布文件，不进 Git/manifest）
+.cfb-runtime/
+
 # 说明：MANIFEST.sha256 **要**进仓库 —— 它就是完整性清单本身。

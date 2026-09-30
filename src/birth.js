@@ -6,6 +6,7 @@
 //   birthEconomics  成本模型（只记录，不参与判定）
 //   readPressure    此刻物理水位（官方 tokenMeter；拿不到就如实标 source）
 import crypto from 'node:crypto'
+import { isEvidenceHost } from './evidence-runtime.js'
 import { fidelity, inventedIdentifiers } from './fidelity.js'
 import { settledTraceData } from './trace.js'
 import { estimateTokens } from './tokens.js'
@@ -383,12 +384,23 @@ export async function birthFinish(task, deps = {}) {
   //   （v12.1：迟到认领已删除 ⇒ 放行即取消，不再有「留给下一轮」的消费者。）
   const cancelFlying = (why) => birthCancelFlying(task, cfg, trace, why)
 
+  // opt-in 侧车：宿主块仓可失败，说明稿/chunk 一字不改；失败/部分稿只归档、不授权。
+  const withEvidence = (result, complete, activeCfg = cfg) => {
+    if (cfg.evidenceProgram !== true || !isEvidenceHost(deps.evidenceHost)) return result
+    try {
+      const evidence = deps.evidenceHost.captureDraft({ raw, text: result.text, sessionId: task.sessionId, index: task.index,
+        ctx: activeCfg.compressCtx || '', calls: task.turnCalls || [], complete })
+      trace('birth-evidence-published', { index: task.index, authorized: evidence.authorized })
+      return { ...result, evidence }
+    } catch { trace('birth-evidence-unavailable', { index: task.index }); return result }
+  }
+
   const pass = (why, handle, extra) => {
     const text = raw
     const waitedMs = task.finishEnterAt ? Date.now() - task.finishEnterAt : 0
     const cancelled = cancelFlying(why)
     trace('birth-passthrough', { index: task.index, why, rawChars: raw.length, outChars: text.length, handle: handle || null, waitedMs, short: task.shortReason || null, cancelled, ...(extra || {}) })
-    return { chunks: birthEmitChunks(task, text, deps), text, why, rawChars: raw.length, outChars: text.length, handle: handle || null }
+    return withEvidence({ chunks: birthEmitChunks(task, text, deps), text, why, rawChars: raw.length, outChars: text.length, handle: handle || null }, false)
   }
 
   if (task.belowFloor) return pass(task.why || 'below-floor', null)
@@ -488,11 +500,11 @@ export async function birthFinish(task, deps = {}) {
       birthCancelFlying(task, cfg, trace, 'partial-used')
       trace('birth-condensed', { index: task.index, why: 'condensed-partial', rawChars: raw.length, outChars: candidate.length, netSaved, minSaved, ...tokens, handle,
         waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0, fidelity: fid, econ: task.econ || null, v4: partial.stats })
-      return { chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed-partial', rawChars: raw.length, outChars: candidate.length, netSaved, netSavedTokensEst, handle }
+      return withEvidence({ chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed-partial', rawChars: raw.length, outChars: candidate.length, netSaved, netSavedTokensEst, handle }, false, cfgAcc)
     }
     trace('birth-condensed', { index: task.index, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, minSaved, ...tokens, handle, waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0, fidelity: fid, econ: task.econ || null,
       distillMs: task.distillMs ?? null, promptVersion: dist.meta?.promptVersion || null, v4: dist.meta?.v4 || null })
-    return { chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, netSavedTokensEst, handle }
+    return withEvidence({ chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, netSavedTokensEst, handle }, true, cfgAcc)
   }
   return pass(dist === null ? 'distill-timeout' : 'distill-failed', handle, { error: (dist && dist.error) || null })
 }

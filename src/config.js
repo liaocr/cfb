@@ -226,6 +226,9 @@ export const DEFAULTS = {
   compressCtxMaxChars: 8000,
   // 仅工具用：把副模型原始输出带回 meta.sideOutput（tools/compile-direct.mjs --recompile 零调用重编译）
   captureSideOutput: false,
+  // 证据程序侧车（默认关）：需宿主注册 createEvidenceHost 产生的 cfbEvidenceHost。
+  // 只发布类型化制品，不自动改消息/运行工具；宿主显式 runLatest 才执行冻结检查链。
+  evidenceProgram: false,
   // 首段目标长度（null ⇒ 段长的一半）
   compressV4FirstSegmentChars: null,
   // 尾段走流式 ⇒ 响应头宽限（finishHeadersGraceMs）才会生效。真机（中转 v4.1-flash）：流式首字节 ≈2 s、尾段 3.2–3.7 s，

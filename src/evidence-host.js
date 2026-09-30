@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { assertEvidenceContract, canonicalJson, evidenceDigest, evaluateEvidencePredicate, immutableJson, safeRelativePath } from './evidence-program.js'
+import { assertEvidenceContract, freezeEvidenceContract, canonicalJson, evidenceDigest, evaluateEvidencePredicate, immutableJson, safeRelativePath } from './evidence-program.js'
 
 /** 不跟随链接，不触碰 Git/密钥/根目录。宿主仍须提供独占工作区（不是 OS 沙箱）。 */
 export function evidenceFilePath(root, relative, { missing = false } = {}) {
@@ -27,8 +27,9 @@ export function readEvidenceFile(root, relative, maxBytes = 4 * 1024 * 1024) {
 }
 export function replaceEvidenceFile(root, action) {
   const file = evidenceFilePath(root, action.path), before = readEvidenceFile(root, action.path), text = before.toString('utf8')
+  if (!Buffer.from(text, 'utf8').equals(before)) throw new Error('action-requires-utf8')
   if (text.split(action.oldText).length !== 2) throw new Error('old-text-not-unique')
-  const next = text.replace(action.oldText, action.newText), tmp = file + '.cfb-' + crypto.randomUUID()
+  const next = text.replace(action.oldText, () => action.newText), tmp = file + '.cfb-' + crypto.randomUUID()
   try {
     fs.writeFileSync(tmp, next, { flag: 'wx', mode: fs.statSync(file).mode & 0o777 })
     if (!readEvidenceFile(root, action.path).equals(before)) throw new Error('concurrent-file-change')
@@ -36,6 +37,12 @@ export function replaceEvidenceFile(root, action) {
     evidenceFilePath(root, action.path); fs.renameSync(tmp, file)
     return { changed: true }
   } finally { try { fs.unlinkSync(tmp) } catch { /* already renamed / not created */ } }
+}
+/** 宿主为独立检查器及其依赖预先固定文件指纹；动作不得修改这些路径。 */
+export function protectEvidenceContract(def, { root, paths }) {
+  if (!Array.isArray(paths) || new Set(paths).size !== paths.length) throw new Error('protected-paths')
+  const protectedFiles = paths.map((p) => ({ path: p, sha256: crypto.createHash('sha256').update(readEvidenceFile(root, p)).digest('hex') }))
+  return freezeEvidenceContract({ ...def, protectedFiles })
 }
 const stopChild = (child) => { try { process.kill(-child.pid, 'SIGKILL') } catch { try { child.kill('SIGKILL') } catch { /* exited */ } } }
 function localCommand(check, root, signal) {
@@ -82,7 +89,13 @@ async function boundedObservation(fn, check, binding, signal) {
 }
 /** 私有 HMAC 回执权。哈希只校验内容，签名才认证本验证器产出的回执。 */
 export function createEvidenceVerifier({ contract, root, observe, perform, readRevision, readConditions, allowCommands = false, allowEdits = false }) {
+  if (typeof allowCommands !== 'boolean' || typeof allowEdits !== 'boolean') throw new Error('verifier-capability-boolean')
+  if (perform !== undefined && (typeof perform !== 'function' || perform.constructor.name === 'AsyncFunction')) throw new Error('verifier-perform-sync')
   const c = assertEvidenceContract(contract), base = fs.realpathSync(root), secret = crypto.randomBytes(32)
+  const intact = () => {
+    try { return c.protectedFiles.every((f) => crypto.createHash('sha256').update(readEvidenceFile(base, f.path)).digest('hex') === f.sha256) }
+    catch { return false }
+  }
   const sign = (body) => {
     const v = { schema: 'cfb.evidence-receipt/1', ...body }, id = evidenceDigest(v)
     return immutableJson({ ...v, id, signature: crypto.createHmac('sha256', secret).update(id).digest('hex') })
@@ -102,6 +115,7 @@ export function createEvidenceVerifier({ contract, root, observe, perform, readR
     if (!bindingValid(binding)) throw new Error('verifier-binding')
     const spec = c.checks.find((x) => x.id === id)
     if (!spec) return result(id, binding, 'unknown', 'unregistered-check')
+    if (!intact()) return result(id, binding, 'unknown', 'verifier-source-drift')
     const role = binding.phase === 'preconditions' ? 'precondition' : binding.phase === 'diagnostic' ? 'diagnostic' : binding.phase === 'postconditions' ? 'acceptance' : null
     if (spec.role !== role) return result(id, binding, 'unknown', 'wrong-check-role')
     let sample
@@ -116,6 +130,7 @@ export function createEvidenceVerifier({ contract, root, observe, perform, readR
         sample = await boundedObservation(observe, spec, binding, signal)
       }
       if (signal?.aborted) return result(id, binding, 'unknown', 'aborted')
+      if (!intact()) return result(id, binding, 'unknown', 'verifier-source-drift')
       if (!sample || sample.error) return result(id, binding, 'unknown', sample?.error || 'missing-observation')
       if (sample.revision !== binding.revision || sample.roundId !== binding.roundId || (typeof readRevision === 'function' && readRevision() !== binding.revision)) return result(id, binding, 'unknown', 'stale-observation', sample)
       if (Object.entries(spec.conditions).some(([k, v]) => !Object.hasOwn(sample.conditions || {}, k) || canonicalJson(sample.conditions[k]) !== canonicalJson(v))) return result(id, binding, 'unknown', 'condition-mismatch', sample)
@@ -123,11 +138,12 @@ export function createEvidenceVerifier({ contract, root, observe, perform, readR
       return result(id, binding, ok === true ? 'pass' : ok === false ? 'fail' : 'unknown', ok === null ? 'missing-field' : ok ? 'verified' : 'predicate-failed', sample)
     } catch { return result(id, binding, 'unknown', 'check-error') }
   }
-  /** 同步动作：不允许晚到的异步写入在已经回滚后再次污染工作区。 */
+  /** 只接受同步确认；宿主还须保证回调不安排后台写入，JS 协议不是 OS 沙箱。 */
   function action(id, binding) {
     if (!bindingValid(binding) || binding.phase !== 'action') throw new Error('action-binding')
     const spec = c.actions.find((x) => x.id === id)
     if (!spec) return result(id, binding, 'unknown', 'unregistered-action')
+    if (!intact()) return result(id, binding, 'unknown', 'verifier-source-drift')
     try {
       if (typeof readRevision === 'function' && readRevision() !== binding.revision) return result(id, binding, 'unknown', 'stale-action')
       let output = { observed: true }
@@ -137,8 +153,9 @@ export function createEvidenceVerifier({ contract, root, observe, perform, readR
         if (!output || typeof output.then === 'function' || output.changed !== true) return result(id, binding, 'unknown', 'action-not-confirmed')
       }
       const next = typeof readRevision === 'function' ? readRevision() : binding.revision
+      if (!intact()) return result(id, binding, 'unknown', 'verifier-source-drift')
       return result(id, binding, 'pass', 'action-applied', output, next)
     } catch { return result(id, binding, 'unknown', 'action-error') }
   }
-  return Object.freeze({ contract: c, check, action, authenticate })
+  return Object.freeze({ contract: c, check, action, authenticate, intact })
 }

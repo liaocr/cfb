@@ -1,5 +1,6 @@
 // 规则/事实/疫苗签名档案：逐项二元效果，冻结三切分，盲测只关门一次。
 import crypto from 'node:crypto'
+import { isEvidenceStore } from './evidence-store.js'
 import { canonicalJson, evidenceDigest, evaluateEvidencePredicate, immutableJson } from './evidence-program.js'
 const KINDS = new Set(['rule', 'fact', 'vaccine'])
 export function createMemoryCandidate(def) {
@@ -115,10 +116,29 @@ export function createEffectCycle({ suite, evaluate, registry, maxCandidates = 8
     view: () => immutableJson({ cycleId, suiteDigest: digest, evaluatorDigest, attempts, maxCandidates, closed }) })
 }
 /** 档案宿主侧持有：拒绝缓冲与失败证据不自动进入上下文，默认只检索 1 条。 */
-export function createEvidenceArchive({ maxEntries = 64, maxRejected = 32, clock = Date.now } = {}) {
+export function createEvidenceArchive({ maxEntries = 64, maxRejected = 32, clock = Date.now, store = null, restoreRef = null } = {}) {
   if (!Number.isInteger(maxEntries) || maxEntries < 1 || maxEntries > 512 || !Number.isInteger(maxRejected) || maxRejected < 1 || maxRejected > 128 || typeof clock !== 'function') throw new Error('archive-budget')
-  const active = new Map(), rejected = new Map(), retired = new Map(), candidates = new Map(), events = []
-  const registry = createHoldoutRegistry()
+  if (store && !isEvidenceStore(store) || restoreRef && !store) throw new Error('archive-store-authority')
+  const loaded = restoreRef ? store.getJson(restoreRef, { kind: 'archive' }) : null
+  if (loaded && (loaded.schema !== 'cfb.effect-archive/1' || loaded.owner !== store.sessionId || loaded.active.length > maxEntries || loaded.rejected.length > maxRejected || loaded.retired.length > maxEntries * 2 || loaded.events.length > 128)) throw new Error('archive-restore-schema')
+  const active = new Map(), rejected = new Map(), retired = new Map(), candidates = new Map(), events = [...(loaded?.events || [])]
+  const registry = createHoldoutRegistry(loaded?.heldoutFamiliesSpent || [])
+  for (const item of loaded?.active || []) {
+    const entry = createMemoryCandidate(item.entry), expectedCell = evidenceDigest({ kind: entry.kind, signature: entry.signature, trigger: entry.trigger })
+    if (item.entry.id !== entry.id || item.cell !== expectedCell || !/^[a-f0-9]{64}$/.test(item.certificateId) || !gateSignedEffects(item.effects).ok ||
+      item.effects.some((x) => ![true, false, null].includes(x.before) || ![true, false, null].includes(x.after) || x.sign !== effectSign(x.before, x.after)) || active.has(entry.id)) throw new Error('archive-restore-evidence')
+    active.set(entry.id, item)
+  }
+  for (const item of loaded?.rejected || []) {
+    const entry = createMemoryCandidate(item.entry)
+    if (entry.id !== item.entry.id || typeof item.reason !== 'string' || !item.reason) throw new Error('archive-restore-rejection')
+    rejected.set(evidenceDigest({ kind: entry.kind, signature: entry.signature, reason: item.reason }), item)
+  }
+  for (const item of loaded?.retired || []) {
+    const entry = createMemoryCandidate(item.entry)
+    if (entry.id !== item.entry.id || typeof item.reason !== 'string' || !item.reason || active.has(entry.id)) throw new Error('archive-restore-retirement')
+    retired.set(entry.id, item)
+  }
   let cycle = null
   const event = (type, id, reason) => { events.push({ type, id, reason }); if (events.length > 128) events.shift() }
   const reject = (entry, effects, reason) => {
@@ -174,7 +194,8 @@ export function createEvidenceArchive({ maxEntries = 64, maxRejected = 32, clock
     // 不使用 Likert/总分排名；确定性顺序，默认 k=1，候选同样先过独立门。
     return immutableJson(matches.sort((a, b) => a.entry.id.localeCompare(b.entry.id)).slice(0, k).map((x) => ({ id: x.entry.id, kind: x.entry.kind, body: x.entry.body, sources: x.entry.sources })))
   }
-  const snapshot = () => immutableJson({ schema: 'cfb.effect-archive/1', active: [...active.values()], rejected: [...rejected.values()], retired: [...retired.values()],
+  const snapshot = () => immutableJson({ schema: 'cfb.effect-archive/1', owner: store?.sessionId || null, active: [...active.values()], rejected: [...rejected.values()], retired: [...retired.values()],
     heldoutFamiliesSpent: registry.snapshot(), events, cycle: cycle?.view() || null })
-  return Object.freeze({ beginCycle, consider, finalize, retire, retrieve, snapshot })
+  return Object.freeze({ beginCycle, consider, finalize, retire, retrieve, snapshot,
+    persist: () => { if (!store) throw new Error('no-archive-store'); return store.putJson(snapshot(), { kind: 'archive' }) } })
 }

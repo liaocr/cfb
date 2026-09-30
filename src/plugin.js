@@ -19,6 +19,7 @@ import { streamProvenanceRecord, buildCompressCtx, editToolOf } from './messages
 import { createSessionTracker } from './session-tracker.js'
 import { makeTraceWriter } from './trace.js'
 import { makePrewarmer } from './transport.js'
+import { isEvidenceHost } from './evidence-runtime.js'
 
 // 兼容：mkHandleProbe 自 v11.11 起住在 handle-probe.js；老的 import 路径继续可用
 export { mkHandleProbe }
@@ -133,8 +134,17 @@ export function apply(ctx, config = {}) {
       // v11.11：本次调用专属配置（模型 / provider 跟随这次调用；共享 cfg 永不改写）
       // v12.7：压缩器的「当前任务与观察」上下文（理论 S8-R5/R7 的生产前提）——只读构造，失败 ⇒ 空 = 旧行为
       const streamCfg = compressCtxFor(callCfg, options)
+      let evidenceHost = null
+      if (streamCfg.evidenceProgram === true) {
+        try {
+          const service = ctx.get && ctx.get('cfbEvidenceHost', false)
+          if (isEvidenceHost(service) && service.sessionId === streamSessionId) evidenceHost = service
+          else trace('birth-evidence-no-host', { n })
+        } catch { trace('birth-evidence-no-host', { n }) }
+      }
       return birthTransform(inner, {
         cfg: streamCfg,
+        evidenceHost,
         trace,
         sessionId: streamSessionId,
         // ★ v11.6 成本模型观测用：此刻物理水位（birth.readPressure）。失败返回 null，绝不抛。

@@ -33,7 +33,7 @@ export function immutableJson(value) {
 }
 export function safeRelativePath(p) {
   return typeof p === 'string' && p.length > 0 && p.length <= 500 && !/[\\\x00-\x1f]/.test(p) && !p.startsWith('/') && !p.includes(':') &&
-    p.split('/').every((x) => x && x !== '.' && x !== '..' && x !== '.git' && x !== '.secrets' && !/^(?:\.credentials|\.env|keys\.env)(?:$|[.])/i.test(x))
+    p.split('/').every((x) => x && x !== '.' && x !== '..' && x !== '.git' && x !== '.secrets' && x !== '.cfb-runtime' && !/^(?:\.credentials|\.env|keys\.env)(?:$|[.])/i.test(x))
 }
 const get = (value, field) => {
   if (field === '') return value
@@ -101,11 +101,13 @@ export function freezeEvidenceContract(def) {
       if (c.env && (!plain(c.env) || Object.entries(c.env).some(([k, v]) => !/^[A-Za-z_][\w]*$/.test(k) || /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH/i.test(k) || typeof v !== 'string'))) throw new Error('command-env')
     }
   }
+  body.protectedFiles ??= []
+  if (!Array.isArray(body.protectedFiles) || body.protectedFiles.length > 64 || body.protectedFiles.some((f) => !safeRelativePath(f.path) || !/^[a-f0-9]{64}$/.test(f.sha256)) || new Set(body.protectedFiles.map((f) => f.path)).size !== body.protectedFiles.length) throw new Error('protected-files-schema')
   const checkMap = new Map(body.checks.map((c) => [c.id, c]))
   for (const a of body.actions) {
     if (!['replace', 'observe'].includes(a.type)) throw new Error('action-kind')
-    if (a.type === 'replace' && (!safeRelativePath(a.path) || typeof a.oldText !== 'string' || !a.oldText || typeof a.newText !== 'string' || a.oldText === a.newText)) throw new Error('action-replace')
-    if (!Array.isArray(a.preconditions) || !Array.isArray(a.checks) || !a.checks.length || (a.type === 'replace' && !a.preconditions.length)) throw new Error('action-checks')
+    if (a.type === 'replace' && (body.protectedFiles.some((f) => f.path === a.path) || !safeRelativePath(a.path) || typeof a.oldText !== 'string' || !a.oldText || typeof a.newText !== 'string' || a.oldText === a.newText)) throw new Error('action-replace')
+    if (!Array.isArray(a.preconditions) || !Array.isArray(a.checks) || new Set(a.preconditions).size !== a.preconditions.length || new Set(a.checks).size !== a.checks.length || !a.checks.length || (a.type === 'replace' && !a.preconditions.length)) throw new Error('action-checks')
     for (const id of a.preconditions) if (checkMap.get(id)?.role !== 'precondition') throw new Error('action-precondition')
     for (const id of a.checks) if (checkMap.get(id)?.role !== 'acceptance') throw new Error('action-acceptance')
   }

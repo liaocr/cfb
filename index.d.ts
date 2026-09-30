@@ -77,6 +77,8 @@ export interface CotFormBConfig {
   compressCtxMaxChars?: number
   /** 仅工具用：meta.sideOutput 带回副模型原始输出（缺省 false） */
   captureSideOutput?: boolean
+  /** 默认关：发布宿主证据程序侧车；不自动接管 DSH decision/工具/上下文 */
+  evidenceProgram?: boolean
   /** 仅 v4 增量：目标段长（字符，缺省 1200；在段落 / 行 / 句末处切，0.6–1.5 倍浮动） */
   compressV4SegmentChars?: number
   /** 仅 v4 增量：非尾段的请求超时（缺省 30000；尾段仍用 timeoutMs） */
@@ -463,3 +465,200 @@ export declare function createSessionTracker(opts?: { staleMs?: number; now?: ()
   latest(): { session: unknown; sessionId: string | null }
   pendingCount(): number
 }
+
+// ── v13 宿主证据程序：生成器只能交提议；宿主拥有冻结契约、签名与 IO 能力 ──
+export type EvidenceJson = null | boolean | number | string | readonly EvidenceJson[] | { readonly [key: string]: EvidenceJson }
+export type EvidencePredicate =
+  | { readonly op: 'and' | 'or'; readonly items: readonly EvidencePredicate[] }
+  | { readonly op: 'not'; readonly item: EvidencePredicate }
+  | { readonly op: 'equals'; readonly field: string; readonly value: EvidenceJson }
+  | { readonly op: 'includes' | 'absent'; readonly field: string; readonly value: string }
+  | { readonly op: 'at-least' | 'at-most'; readonly field: string; readonly value: number }
+  | { readonly op: 'before'; readonly field: string; readonly other: string }
+export type EvidenceCheckRole = 'precondition' | 'acceptance' | 'diagnostic'
+export type EvidenceCheck = {
+  readonly id: string; readonly role: EvidenceCheckRole; readonly predicate: EvidencePredicate
+  readonly label?: string; readonly conditions?: Readonly<Record<string, EvidenceJson>>
+} & (
+  | { readonly kind: 'file'; readonly path: string }
+  | { readonly kind: 'observation'; readonly timeoutMs?: number }
+  | { readonly kind: 'command'; readonly executable: string; readonly args: readonly string[]; readonly localOnly: true
+      readonly timeoutMs: number; readonly maxOutputBytes?: number; readonly env?: Readonly<Record<string, string>> }
+)
+export type EvidenceAction = {
+  readonly id: string; readonly preconditions: readonly string[]; readonly checks: readonly string[]
+} & ({ readonly type: 'observe' } | { readonly type: 'replace'; readonly path: string; readonly oldText: string; readonly newText: string })
+export interface EvidenceContractDefinition {
+  readonly task: string; readonly version: string; readonly checks: readonly EvidenceCheck[]; readonly actions?: readonly EvidenceAction[]
+  readonly protectedFiles?: readonly { readonly path: string; readonly sha256: string }[]
+}
+export interface EvidenceContract extends EvidenceContractDefinition {
+  readonly schema: 'cfb.evidence-contract/1'; readonly digest: string; readonly actions: readonly EvidenceAction[]
+  readonly protectedFiles: readonly { readonly path: string; readonly sha256: string }[]
+}
+export interface EvidenceStep {
+  readonly id: string; readonly preconditions: readonly string[]; readonly action: EvidenceAction
+  readonly expectedObservations: readonly { readonly checkId: string; readonly predicate: EvidencePredicate }[]
+  readonly checkCommand: readonly { readonly checkId: string; readonly kind: EvidenceCheck['kind']; readonly command: string }[]
+}
+export interface EvidenceProgram {
+  readonly schema: 'cfb.evidence-program/1'; readonly id: string; readonly sessionId: string; readonly contractDigest: string
+  readonly explanation: string; readonly steps: readonly EvidenceStep[]
+}
+export interface EvidenceProposal {
+  readonly schema: 'cfb.evidence-proposal/1'; readonly explanation: string; readonly parsed: boolean; readonly authorized: false
+  readonly steps: readonly {
+    readonly id: string; readonly preconditions: readonly { readonly type: 'file-contains'; readonly path: string | null; readonly text: string }[]
+    readonly action: { readonly type: 'observe' } | { readonly type: 'replace'; readonly path: string | null; readonly oldText: string; readonly newText: string }
+    readonly expectedObservation: string | null; readonly checkCommand: string | null
+  }[]
+}
+export type EvidencePhase = 'preconditions' | 'action' | 'postconditions' | 'diagnostic'
+export interface EvidenceBinding {
+  readonly sessionId: string; readonly programId: string; readonly contractDigest: string; readonly roundId: string
+  readonly revision: string; readonly stepId: string; readonly phase: EvidencePhase
+}
+export interface EvidenceState {
+  readonly programId: string; readonly contractDigest: string; readonly sessionId: string; readonly roundId: string; readonly revision: string
+  readonly cursor: number; readonly phase: EvidencePhase; readonly status: 'ready' | 'blocked' | 'verified'
+  readonly verifiedSteps: readonly string[]; readonly receiptIds: readonly string[]; readonly reason?: string
+}
+export interface EvidenceReceipt {
+  readonly schema: 'cfb.evidence-receipt/1'; readonly id: string; readonly signature: string; readonly subjectId: string; readonly binding: EvidenceBinding
+  readonly status: 'pass' | 'fail' | 'unknown'; readonly ok: boolean; readonly reason: string; readonly observationDigest: string | null; readonly nextRevision: string | null
+}
+export interface EvidenceObservation {
+  readonly value?: EvidenceJson; readonly revision?: string; readonly roundId?: string
+  readonly conditions?: Readonly<Record<string, EvidenceJson>>; readonly error?: string
+}
+export interface EvidenceVerifier {
+  readonly contract: EvidenceContract
+  check(id: string, binding: EvidenceBinding, options?: { signal?: AbortSignal }): Promise<EvidenceReceipt>
+  action(id: string, binding: EvidenceBinding): EvidenceReceipt
+  authenticate(receipt: unknown): boolean
+  intact(): boolean
+}
+export declare const EVIDENCE_SCHEMA: 'cfb.evidence-program/1'
+export declare const CONTRACT_SCHEMA: 'cfb.evidence-contract/1'
+export declare function canonicalJson(value: unknown): string
+export declare function evidenceDigest(value: unknown): string
+export declare function immutableJson<T>(value: T): Readonly<T>
+export declare function safeRelativePath(value: unknown): value is string
+export declare function evaluateEvidencePredicate(predicate: EvidencePredicate, value: EvidenceJson): boolean | null
+export declare function freezeEvidenceContract(def: EvidenceContractDefinition): EvidenceContract
+export declare function assertEvidenceContract(contract: EvidenceContract): EvidenceContract
+export declare function createEvidenceProgram(explanation: string, options: { contract: EvidenceContract; actionIds: readonly string[]; sessionId: string }): EvidenceProgram
+export declare function assertEvidenceProgram(program: EvidenceProgram, contract: EvidenceContract): EvidenceProgram
+export declare function parseEvidenceProposal(text: string, options?: { calls?: readonly { name: string; args: EvidenceJson | string }[]; ctx?: string }): EvidenceProposal
+export declare function bindEvidenceProposal(proposal: EvidenceProposal, contract: EvidenceContract, sessionId: string): { ok: true; program: EvidenceProgram } | { ok: false; reason: string }
+export declare function initialEvidenceState(program: EvidenceProgram, options: { roundId: string; revision: string }): EvidenceState
+export declare function evidenceBinding(program: EvidenceProgram, state: EvidenceState): EvidenceBinding
+export declare function advanceEvidenceState(program: EvidenceProgram, state: EvidenceState, receipts: readonly EvidenceReceipt[], authenticate?: (r: EvidenceReceipt) => boolean): EvidenceState
+export declare function compileV4Evidence(side: string, raw: string, config?: CotFormBConfig, options?: { contract?: EvidenceContract; sessionId?: string; calls?: readonly { name: string; args: EvidenceJson | string }[] }):
+  { ok: true; text: string; stats: V4Stats; proposal: EvidenceProposal; evidence: { ok: true; program: EvidenceProgram } | { ok: false; reason: string } } |
+  { ok: false; reason: string; stats: V4Stats }
+export declare function protectEvidenceContract(def: EvidenceContractDefinition, options: { root: string; paths: readonly string[] }): EvidenceContract
+export declare function evidenceFilePath(root: string, relative: string, options?: { missing?: boolean }): string
+export declare function readEvidenceFile(root: string, relative: string, maxBytes?: number): Uint8Array
+export declare function replaceEvidenceFile(root: string, action: Extract<EvidenceAction, { type: 'replace' }>): { changed: true }
+export declare function createEvidenceVerifier(options: {
+  contract: EvidenceContract; root: string; allowCommands?: boolean; allowEdits?: boolean
+  observe?: (check: EvidenceCheck, binding: EvidenceBinding, signal?: AbortSignal) => EvidenceObservation | Promise<EvidenceObservation>
+  perform?: (action: Extract<EvidenceAction, { type: 'replace' }>) => { changed: boolean }
+  readRevision?: () => string; readConditions?: () => Record<string, EvidenceJson>
+}): EvidenceVerifier
+
+export type EvidencePrior = Readonly<Record<string, number>>
+export type EvidenceLikelihood = Readonly<Record<string, { readonly pass: number; readonly fail: number }>>
+export interface DiagnosticProbe { readonly checkId: string; readonly cost: number; readonly likelihood: EvidenceLikelihood }
+export interface DiagnosticModel { readonly schema: 'cfb.diagnostic-model/1'; readonly digest: string; readonly contractDigest: string; readonly prior: EvidencePrior; readonly probes: readonly DiagnosticProbe[] }
+export interface DiagnosticState {
+  readonly prior: EvidencePrior; readonly count: number; readonly cost: number; readonly maxChecks: number; readonly maxCost: number
+  readonly pending: { readonly checkId: string; readonly gain: number; readonly cost: number; readonly binding: EvidenceBinding } | null
+  readonly stopped: string | null; readonly history: readonly { checkId: string; revision: string; status: EvidenceReceipt['status']; gain: number; posteriorApplied: boolean; receiptId: string }[]
+}
+export interface DiagnosticController {
+  choose(binding: EvidenceBinding): { ok: true; selected: NonNullable<DiagnosticState['pending']> } | { ok: false; reason: string }
+  record(receipt: EvidenceReceipt, authenticate: (r: EvidenceReceipt) => boolean): DiagnosticState
+  view(): DiagnosticState
+}
+export declare function evidenceEntropy(prior: EvidencePrior): number
+export declare function expectedEvidenceGain(prior: EvidencePrior, likelihood: EvidenceLikelihood): number
+export declare function evidencePosterior(prior: EvidencePrior, likelihood: EvidenceLikelihood, outcome: string): { ok: true; probability: number; prior: EvidencePrior } | { ok: false; reason: string; prior: EvidencePrior }
+export declare function freezeDiagnosticModel(def: { prior: EvidencePrior; probes: readonly DiagnosticProbe[] }, contract: EvidenceContract): DiagnosticModel
+export declare function createDiagnosticController(options: { model: DiagnosticModel; contract: EvidenceContract; maxChecks?: number; maxCost?: number; minGain?: number }): DiagnosticController
+export interface DiagnosticResult { readonly schema: 'cfb.diagnostic-result/1'; readonly receipts: readonly EvidenceReceipt[]; readonly state: DiagnosticState; readonly acceptanceUnchanged: true }
+export declare function runActiveEvidenceChecks(options: { controller: DiagnosticController; verifier: EvidenceVerifier; binding: EvidenceBinding; signal?: AbortSignal }): Promise<DiagnosticResult>
+
+export interface MemorySignature { readonly taskFamily: string; readonly environment: string; readonly contractVersion: string; readonly [key: string]: string }
+export interface MemoryDefinition { readonly kind: 'rule' | 'fact' | 'vaccine'; readonly body: string; readonly signature: MemorySignature; readonly trigger: EvidencePredicate; readonly sources: readonly string[]; readonly expiresAt?: number }
+export interface MemoryCandidate extends MemoryDefinition { readonly schema: 'cfb.memory-candidate/1'; readonly id: string }
+export interface EffectFixture { readonly id: string; readonly family: string; readonly input: EvidenceJson; readonly predicate: EvidencePredicate }
+export interface EffectSuiteDefinition { readonly id: string; readonly evaluatorVersion: string; readonly train: readonly EffectFixture[]; readonly selection: readonly EffectFixture[]; readonly test: readonly EffectFixture[] }
+export interface EffectSuite extends EffectSuiteDefinition { readonly schema: 'cfb.effect-suite/1'; readonly digest: string; readonly testDigest: string }
+export interface SignedEffect { readonly fixtureId: string; readonly family: string; readonly split: 'train' | 'selection' | 'test'; readonly before: boolean | null; readonly after: boolean | null; readonly sign: '+' | '0' | '-' | '?' }
+export interface EffectCertificate { readonly schema: 'cfb.effect-certificate/1'; readonly cycleId: string; readonly suiteDigest: string; readonly evaluatorDigest: string; readonly candidateId: string; readonly phase: 'screen' | 'final'; readonly effects: readonly SignedEffect[]; readonly gate: { ok: boolean; reason: string }; readonly id: string; readonly signature: string }
+export interface HoldoutRegistry { consume(families: readonly string[]): void; snapshot(): readonly string[] }
+export interface EffectCycleView { readonly cycleId: string; readonly suiteDigest: string; readonly evaluatorDigest: string; readonly attempts: number; readonly maxCandidates: number; readonly closed: boolean }
+export interface EffectCycle { readonly cycleId: string; readonly suiteDigest: string; screen(candidate: MemoryDefinition): EffectCertificate; finalize(ids: readonly string[]): readonly EffectCertificate[]; authenticate(certificate: unknown): boolean; view(): EffectCycleView }
+export type EffectEvaluator = (candidate: MemoryCandidate | null, input: EvidenceJson) => EvidenceJson
+export interface EffectArchiveSnapshot { readonly schema: 'cfb.effect-archive/1'; readonly owner: string | null; readonly active: readonly { entry: MemoryCandidate; cell: string; effects: readonly SignedEffect[]; certificateId: string; suiteDigest: string }[]; readonly rejected: readonly { entry: MemoryCandidate; effects: readonly SignedEffect[]; reason: string }[]; readonly retired: readonly { entry: MemoryCandidate; reason: string }[]; readonly heldoutFamiliesSpent: readonly string[]; readonly events: readonly { type: string; id: string; reason: string }[]; readonly cycle: EffectCycleView | null }
+export interface EvidenceArchive {
+  beginCycle(options: { suite: EffectSuite; evaluate: EffectEvaluator; maxCandidates?: number }): EffectCycleView
+  consider(def: MemoryDefinition): EffectCertificate; finalize(): readonly EffectCertificate[]; retire(id: string, reason?: string): boolean
+  retrieve(context: { signature: MemorySignature; observation: EvidenceJson }, options?: { k?: 0 | 1 }): readonly { id: string; kind: MemoryDefinition['kind']; body: string; sources: readonly string[] }[]
+  snapshot(): EffectArchiveSnapshot; persist(): string
+}
+export declare function createMemoryCandidate(def: MemoryDefinition): MemoryCandidate
+export declare function freezeEffectSuite(def: EffectSuiteDefinition): EffectSuite
+export declare function createHoldoutRegistry(initial?: readonly string[]): HoldoutRegistry
+export declare function gateSignedEffects(effects: readonly SignedEffect[], options?: { requireTest?: boolean }): { ok: boolean; reason: string }
+export declare function createEffectCycle(options: { suite: EffectSuite; evaluate: EffectEvaluator; registry: HoldoutRegistry; maxCandidates?: number }): EffectCycle
+export declare function createEvidenceArchive(options?: { maxEntries?: number; maxRejected?: number; clock?: () => number; store?: EvidenceStore | null; restoreRef?: string | null }): EvidenceArchive
+
+export interface EvidenceStore {
+  readonly sessionId: string; readonly directory: string
+  put(value: string | Uint8Array, options?: { kind?: string }): string; get(handle: string, options?: { kind?: string }): string | Uint8Array
+  putJson(value: unknown, options?: { kind?: string }): string; getJson<T = EvidenceJson>(handle: string, options?: { kind?: string }): Readonly<T>
+  stats(): { files: number; bytes: number; maxTotalBytes: number }
+}
+export interface EvidenceArtifactIndex { readonly schema: 'cfb.artifact-index/1'; readonly sessionId: string; readonly programId: string; readonly contractDigest: string; readonly programRef: string; readonly blocks: readonly { id: string; type: 'RAW' | 'EXPLANATION' | 'STEP'; handle: string; bytes: number; chars?: number }[] }
+export declare function createEvidenceStore(options: { directory: string; sessionId: string; maxBlobBytes?: number; maxTotalBytes?: number }): EvidenceStore
+export declare function isEvidenceStore(value: unknown): value is EvidenceStore
+export declare function archiveEvidenceArtifact(store: EvidenceStore, artifact: { raw: string; program: EvidenceProgram }): { programRef: string; indexRef: string; index: EvidenceArtifactIndex }
+export declare function recoverEvidenceBlock(store: EvidenceStore, indexRef: string, blockId: string): string | EvidenceStep
+export interface EvidenceHostSnapshot { readonly schema: 'cfb.host-snapshot/1'; readonly scopeDigest: string; readonly state: EvidenceJson; readonly conditions: EvidenceJson; readonly files: readonly { path: string; exists: boolean; mode: number; data: string }[] }
+export interface EvidenceStateAdapter {
+  readonly root: string; readonly paths: readonly string[]; readonly scopeDigest: string
+  capture(): EvidenceHostSnapshot; revision(): string; restore(snapshot: EvidenceHostSnapshot, options: { expectedRevision: string }): { restored: true; revision: string }
+  perform(action: Extract<EvidenceAction, { type: 'replace' }>): { changed: boolean }; readConditions(): Record<string, EvidenceJson>
+}
+export declare function createFileStateAdapter(options: { root: string; paths: readonly string[]; readState?: () => EvidenceJson; writeState?: (state: EvidenceJson) => void; afterAction?: (action: Extract<EvidenceAction, { type: 'replace' }>) => void; readConditions?: () => Record<string, EvidenceJson>; maxSnapshotBytes?: number }): EvidenceStateAdapter
+export interface EvidenceCheckpoint { readonly handle: string; readonly revision: string; readonly kind: 'before-round' | 'preconditions' | 'verified-step'; readonly artifactRef: string | null }
+export interface EvidenceCheckpoints {
+  take(options?: { kind?: EvidenceCheckpoint['kind']; artifactRef?: string | null; program?: EvidenceProgram | null; state?: EvidenceState | null; receipts?: readonly EvidenceReceipt[] }): EvidenceCheckpoint
+  restore(handle: string, expectedRevision: string): { restored: true; revision: string; artifactRef: string | null; programId: string | null; state: EvidenceState | null; kind: EvidenceCheckpoint['kind'] }
+}
+export declare function createEvidenceCheckpoints(options: { store: EvidenceStore; adapter: EvidenceStateAdapter; sessionId: string; contractDigest: string; authenticate: (r: EvidenceReceipt) => boolean }): EvidenceCheckpoints
+export interface EvidenceRuntimeOptions {
+  contract: EvidenceContract; sessionId: string; store: EvidenceStore; adapter: EvidenceStateAdapter
+  observe?: (check: EvidenceCheck, binding: EvidenceBinding, signal?: AbortSignal) => EvidenceObservation | Promise<EvidenceObservation>
+  diagnosticModel?: DiagnosticModel | null; archive?: EvidenceArchive | null; memoryContext?: { signature: MemorySignature; observation: EvidenceJson } | null
+  allowEdits?: boolean; allowCommands?: boolean; maxRounds?: 1 | 2 | 3; maxRepairRounds?: 0 | 1 | 2; maxChecks?: number; roundTimeoutMs?: number; diagnosticChecks?: number; diagnosticCost?: number
+}
+export interface EvidenceModelView { readonly schema: 'cfb.evidence-view/1'; readonly status: string; readonly lastPassed: { checkpoint: string; kind: EvidenceCheckpoint['kind']; artifact: string | null } | null; readonly diagnostics: readonly { checkId: string; status: EvidenceReceipt['status'] }[]; readonly memories: ReturnType<EvidenceArchive['retrieve']>; readonly next: 'stop' | 'stop-with-unresolved' | 'choose-another-approved-branch' }
+export interface EvidenceRoundResult { readonly ok: boolean; readonly status: 'verified' | 'blocked' | 'rolled-back' | 'conflict' | 'recovery-failed'; readonly reason: string; readonly counters: { rounds: number; repairs: number; checks: number }; readonly modelView?: EvidenceModelView; readonly artifactRef?: string | null; readonly checkpoint?: string | null; readonly state?: EvidenceState | null; readonly receipts?: readonly EvidenceReceipt[]; readonly diagnostic?: DiagnosticResult | { receipts: readonly EvidenceReceipt[]; error: string } | null; readonly recoveryError?: string | null; readonly failureReason?: string; readonly restored?: ReturnType<EvidenceCheckpoints['restore']> | null }
+export interface EvidenceRuntime {
+  runRound(program: EvidenceProgram, options?: { roundId?: string; raw?: string }): Promise<EvidenceRoundResult>
+  program(explanation: string, actionIds: readonly string[]): EvidenceProgram; modelView(): EvidenceModelView
+  view(): { sessionId: string; contractDigest: string; rounds: number; repairs: number; checks: number; maxRounds: number; maxRepairRounds: number; maxChecks: number; busy: boolean; done: boolean; peak: EvidenceCheckpoint | null; history: readonly { roundId: string; programId: string; status: string; resultRef: string }[] }
+}
+export interface EvidenceHost {
+  readonly schema: 'cfb.evidence-host/1'; readonly sessionId: string; readonly runtime: EvidenceRuntime
+  captureDraft(draft: { raw: string; text: string; sessionId: string; index?: number; ctx?: string; calls?: readonly { name: string; args: EvidenceJson | string }[]; complete?: boolean }): { index: number; authorized: boolean; artifactRef?: string; programRef?: string; reason?: string }
+  latest(): readonly { index: number; authorized: boolean; indexRef?: string; programRef?: string; reason?: string }[]
+  runLatest(index: number): Promise<EvidenceRoundResult | { ok: false; status: 'blocked'; reason: string }>
+}
+export declare function createEvidenceRuntime(options: EvidenceRuntimeOptions): EvidenceRuntime
+export declare function createEvidenceHost(options: EvidenceRuntimeOptions): EvidenceHost
+export declare function isEvidenceHost(value: unknown): value is EvidenceHost

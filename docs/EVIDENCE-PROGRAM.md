@@ -78,4 +78,99 @@
 
 `createEvidenceArchive.beginCycle` → `consider` → `finalize`；全拒绝允许关闭周期但不读盲测。已消耗的盲测族不能换 cycle ID 再搜索。通过才入 active；不过门进有界、多样性的拒绝缓冲；同适用格的新候选不因“对裸基线有提升”替换旧技能（还需要成对消融，当前拒绝）。`retrieve` 最多 **k=1**，避免未经验证的技能组合交互；指纹改变、触发缺失、过期或 `retire` 后不检索。失败/拒绝正文只留档，不回灌模型。
 
-本轮 `test/helpers/evidence-fixtures.mjs` 是 **24 条人写宿主协议夹具 / 6 族 / 8:8:8**，覆盖新鲜度、条件、落地、终止、修订和身份。仅测试留出门、泄漏防护、符号归档和拒绝机制；它不是未来 S0 的主模型任务集，也没有给 LLM 技能带来收益的证据。真实档案仍需真实的独立留出任务，不能把合成工程门当泛化证明。R3 自测 12/0；全量 674/0/1，N1–N7 全零。
+本轮 `test/helpers/evidence-fixtures.mjs` 是 **24 条宿主协议合成夹具（本次实现编写） / 6 族 / 8:8:8**，覆盖新鲜度、条件、落地、终止、修订和身份。仅测试留出门、泄漏防护、符号归档和拒绝机制；它不是未来 S0 的主模型任务集，也没有给 LLM 技能带来收益的证据。真实档案仍需真实的独立留出任务，不能把合成工程门当泛化证明。R3 自测 12/0；全量 674/0/1，N1–N7 全零。
+
+## 6. 无损块仓、检查点与有界控制链（R4）
+
+### 6.1 可寻址制品与持久签名
+
+`createEvidenceStore({directory, sessionId})` 保存原始文本（含 Unicode/孤立 surrogate）、二进制及 JSON，不抽取、不截尾；`archiveEvidenceArtifact` 分为 RAW / EXPLANATION / STEP 块，带类型、字节/字符数和地址。`recoverEvidenceBlock` 显式按块取回完整内容；它不是自动把裸句柄塞进 reasoning。块内容 SHA-256 校验、会话命名空间隔离，并由本机 0600 私有 authority key 产生持久 HMAC。读回验证身份/签名/类型，损坏不静默修补；同内容去重，有单块/总容量上限。
+
+`createEvidenceArchive({store}).persist()` 保存 active / reject / retired 和已消耗盲测族；`createEvidenceArchive({store, restoreRef})` 只从本机签名仓恢复，重新核对候选身份/单项符号/接受门。旧在库记忆、退役和盲测消耗不因换 JS 对象被忘掉。未关闭的搜索周期不能继续使用旧私钥证书；重新开周期仍受持久的盲测消耗约束。生成器不得持有本地仓的写入/恢复 API。
+
+### 6.2 联合恢复，而不是 Git reset
+
+`createFileStateAdapter` 显式列出受管**普通文件**以及同步的 `readState/writeState`（上下文也必须在此状态中）；快照保留完整字节、权限、存在性、JSON 状态和测量条件。只恢复声明路径，原本不存在的受管新文件可删除；Git、密钥、`.cfb-runtime`、目录树与仓库根目录永不成为动作目标。恢复之前比较当前修订：外部修改返回 conflict，不覆盖用户内容。
+
+全部文件先暂存，创建即登记清理（写入/chmod/fsync/关闭失败均不遗留副本），再在宿主静止/独占边界内恢复文件和 JSON；setter 或最终核对失败则尝试撤回为恢复前状态。不能恢复的物理条件、未知状态一律报 recovery-failed，绝不伪报成功。**这是受管资源事务，不是 OS 全环境沙箱**：目录元数据、后台进程、网络、真实计时器不能凭 JSON 恢复。需要这些能力时，宿主必须提供具有同等接口与原子恢复语义的适配器。乐观哈希校验不能取代跨进程独占锁；不承诺抵抗拥有同等 OS 权限的恶意并发写者。
+
+`createEvidenceCheckpoints` 在每轮前保存制品引用 + 宿主快照；preconditions 通过后建立安全起点，每个步骤 postconditions 通过才更新峰值。**安全起点/前提通过不等于任务已修好**（kind 单列）。失败回到最近验证步骤的峰值；没有峰值时只恢复宿主提供的轮前状态，不声称其症状已消失。检查点有会话、契约和资源范围绑定；跨 root、契约、会话、哈希损坏均拒绝。
+
+### 6.3 控制器与错误历史隔离
+
+`createEvidenceRuntime` 每个 episode 至多 3 轮、2 轮修复，第 3 轮只能 observe/验证；总检查数上限，轮次绝对截止 + AbortSignal，进程检查有独立超时/输出限额；结果返回后再次核对截止，迟到 pass 不推进。不能抢占同步 I/O，恢复/持久化/清理仍需完成；观察器必须只读并遵守 AbortSignal，动作/状态回调同步且不安排后台写入。并发轮次、重复 round ID、漂移程序不执行。每个阶段只消费对应角色的签名回执。失败后在同一预算内做 R2 诊断，再恢复，另选冻结契约中已经批准的分支；不调用模型再生稿，不用诊断绿灯替代验收。
+
+说明稿/原文/失败回执完整留仓；`modelView` 只返回状态、通过检查点的引用、诊断二元状态与最多一条适用记忆，**不含失败说明稿**。冲突/验证器源码漂移不给记忆。用户上下文是否真正回滚，取决于宿主适配器是否纳入它——本地演示有真实的上下文恢复，DSH 侧车不假装接管 session 内部状态。
+
+独立检查器及其依赖可用 `protectEvidenceContract(def, {root, paths})` 固定 SHA-256，纯契约也接受宿主提供的 `protectedFiles`；动作不得修改这些路径，每次检查/动作前后发现漂移则 unknown。外部检查程序的完整依赖必须由宿主登记或放进不受任务编辑的独立工作区，不能仅固定命令文字就宣称测试未被改弱。默认本地 DSL 没有生成器可编辑的脚本。
+
+## 7. 可运行接口与启用/回退
+
+### 零成本复现（不加载钥匙）
+
+```sh
+node tools/replay-evidence.mjs
+node tools/evidence-demo.mjs
+node verify.mjs evidence-program active-checks effect-archive evidence-runtime
+node tools/audit-noninferiority.mjs
+node manifest.mjs --check
+# 等价快捷命令：npm run evidence:replay / npm run evidence:demo
+```
+
+演示在专用临时工作区进行真实文件编辑与联合恢复，最后删除**演示自己的临时目录**；不改当前仓库文件或 Git。`--out .cfb-runtime/demo.json` 可留报告（忽略目录），没有在线模式。
+
+### 宿主调用（完整执行链）
+
+```js
+import {
+  freezeEvidenceContract, createEvidenceProgram, createEvidenceRuntime,
+  createEvidenceStore, createFileStateAdapter,
+} from '@dsh-external/dsh-cot-form-b'
+
+// 独立的宿主配置，不从模型散文里提取判据。
+const contract = freezeEvidenceContract({
+  task: 'config-change', version: '1',
+  checks: [
+    { id: 'before', kind: 'file', role: 'precondition', path: 'config.txt',
+      predicate: { op: 'equals', field: 'text', value: 'old\n' } },
+    { id: 'landed', kind: 'file', role: 'acceptance', path: 'config.txt',
+      predicate: { op: 'equals', field: 'text', value: 'new\n' } },
+    { id: 'symptom', kind: 'observation', role: 'acceptance',
+      predicate: { op: 'equals', field: 'symptomGone', value: true }, conditions: { cpus: 2 } },
+  ],
+  actions: [{ id: 'change', type: 'replace', path: 'config.txt',
+    oldText: 'old\n', newText: 'new\n', preconditions: ['before'], checks: ['landed', 'symptom'] }],
+})
+// hostRoot、captureContext、restoreContext、measureConditions、observeSymptom 由宿主独立提供。
+const store = createEvidenceStore({ directory: hostEvidenceDirectory, sessionId })
+const adapter = createFileStateAdapter({ root: hostRoot, paths: ['config.txt'],
+  readState: captureContext, writeState: restoreContext, readConditions: measureConditions })
+const runtime = createEvidenceRuntime({ contract, sessionId, store, adapter,
+  allowEdits: true, observe: observeSymptom })
+const program = createEvidenceProgram(explanation, { contract, sessionId, actionIds: ['change'] })
+const result = await runtime.runRound(program, { roundId: 'round-1', raw: originalArtifact })
+// observeSymptom 返回 {value, revision, roundId, conditions}，必须源于本次独立观测，不能复制 binding 冒充新鲜。
+// 只有 result.ok / status=verified 可收工；其余读取 modelView，错误正文不回灌。
+```
+
+上面的宿主变量不是插件替你捏造的服务；完整、本地可直接执行的装配见 `tools/evidence-demo.mjs`。公共接口、结构与可选能力全部在 `index.d.ts`，JS 中还有运行时 schema/权限校验。本项目仍无 TypeScript 构建依赖；类型声明登记自测不代替 `tsc` 全项目类型检查。
+
+### DSH 侧车（默认关闭）
+
+宿主用 `createEvidenceHost(runtimeOptions)` 创建会话专属服务，并用自己的原生服务注册机制使 `ctx.get('cfbEvidenceHost', false)` 返回它。配置 `evidenceProgram: true` 才在 birth 结算处发布侧车；服务缺失/会话不匹配/归档失败只回到旧行为，说明稿和 chunks 不变。未完成、部分稿或 passthrough 只存档、不授权；同索引新制品会先撤销旧授权，归档失败也不能沿用旧候选；不产生原文尾巴的新解释器。
+
+`host.latest()` 可查看已绑定制品；**宿主显式调用 `host.runLatest(index)` 才执行**，原文 RAW 块一起传入执行轮，不用说明稿冒充原文。现有 DSH `llm/stream` 在工具调用发出后才完整获稿，不能靠这个钩子追回已执行工具；本版本不虚构工具拦截/decision 格式、不自动改 DSH 消息或环境。因此接入真正的自主工具循环时必须由宿主在动作前路由到证据执行 API，提供独占状态/上下文适配器；**尚未生产自动接管，也没有获准付费试跑**。
+
+回退：`evidenceProgram: false` 或不注册服务，立刻回到原 birth+compress；程序侧断开宿主调用即可。旧 `dryRun:true / mode:'off' / enabled:false` 原样有效。旧 `mode:'checkpoint' / stateMemory` 仍退役；新检查点不是恢复那些被否决的看板/抽取式路线。
+
+## 8. 实际验收与仍待证明的部分
+
+详见 [完整验收报告](analysis/EVIDENCE-VALIDATION-2026-09-30.md) 与 [历史回放](analysis/EVIDENCE-REPLAY-2026-09-30.md)。
+
+- 本轮模型/评委/副模型 API 调用 **0**，费用 **0**；本地 HTTP 替身只是既有自测，不是真模型。
+- R1 15、R2 11、R3 12、R4 26 项自测；加上原 636 项为 **700 通过 / 0 失败 / 1 原有宿主依赖跳过**，20 套件，manifest 271 文件无漂移。
+- N1–N7 在 267 份历史稿上全零；旧路径默认与新侧车说明稿逐字相等；没有改变提示词/压稿预算。
+- 合成本地控制链：2 个批准分支实际执行，第一轮失败并恢复，第二轮通过；2 轮/2 次修复/7 次检查。只说明工程控制链可用，不是 flaky 模型涨分。
+- P2–P6 有工程证据支持；P1 尚未测试。合成、自写协议夹具不等于独立人写的真实留出；真实效果、S0、run5、一切模型/评委调用均待批准。
+
+**已实现与未做的界线**：类型化接口、独立冻结判据、主动诊断、逐项档案、块仓、联合恢复、预算/循环与侧车接线已一次交付；没有做训练、forced answering、模型消融、best-of 搜索、生产自动接管或付费泛化。不把缺少宿主权限的数据伪造成“可执行通过”。
