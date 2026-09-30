@@ -56,5 +56,7 @@ export {
 export { createEvidenceVerifier, evidenceFilePath, readEvidenceFile, replaceEvidenceFile } from './src/evidence-host.js'
 export { evidenceEntropy, evidencePosterior, expectedEvidenceGain, freezeDiagnosticModel, createDiagnosticController, runActiveEvidenceChecks } from './src/active-checks.js'
 
+export { createMemoryCandidate, freezeEffectSuite, createHoldoutRegistry, gateSignedEffects, createEffectCycle, createEvidenceArchive } from './src/effect-archive.js'
+
 // ── 观测 ─────────────────────────────────────────────────────────────────────
 export { makeTraceWriter, settledTraceData } from './src/trace.js'
