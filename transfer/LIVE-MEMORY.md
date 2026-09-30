@@ -5,6 +5,7 @@
 ## 1. 当前状态（2026-09-30，第九会话收口）
 
 - 已从用户指定来源 `arena/01a0eba2-cfb` 快进同步最新 `042d361`，先读理论、预注册，再一次性实现 R1–R4；不是仅改提示词或交补丁。**本 Arena 会话固定工作/推送分支 `arena/01a0f127-cfb`**，不切其他分支；只快进、不 force、不动 main。作者 `cfb-cleanup <cleanup@local>`；提交/远端状态看 git status/log。
+- **推送尚未完成**：R1–R4 实现已本地提交（R4 `694aef7`），但 git push 报 `could not read Username for https://github.com`，gh 认证也未通过。请用户在 Arena 重连 GitHub，不索要/打印凭据；连接恢复后仅 `git push origin arena/01a0f127-cfb`，禁止 force/换分支。代码和验收结果已保存，当前唯一交付阻塞是推送鉴权。
 - **700 通过 / 0 失败 / 1 原有宿主依赖跳过，20/20 套件；manifest 271 文件无漂移；267 稿 N1–N7 全零。** 原宿主兄弟包等价探针仍跳过，不冒充完整 DSH 宿主验证。新公共 API 类型登记与 Node strip-types 语法通过，未做 tsc 语义检查。
 - R1 冻结类型步骤/宿主判据 + 私有 HMAC 回执，提议不获权限；R2 完整条件熵 EIG/贝叶斯 + 有界诊断；R3 逐项 +/0/-/?、严格族隔离留出、一次性盲测、拒绝/退役/k≤1；R4 无损块仓、受管文件+JSON 上下文联合恢复、最近通过峰值、3 轮/2 修复、检查/截止预算、持久档案及原生侧车接线均已落地。
 - **新侧车默认关闭，旧 text/chunks 与提示词不变**。`evidenceProgram:true` + 同会话原生 `createEvidenceHost` 只发布制品；宿主显式 runRound/runLatest 才执行，不自动接管 DSH 工具、decision 或 session 状态。服务缺失/失败回旧路；部分/失败制品不授权，新归档失败撤销同索引旧候选。
