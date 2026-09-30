@@ -4,8 +4,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createBudgetedChat, inspectApiBudget, auditApiPlan, planScope, planVersion, TRUSTED_FINGERPRINTS, DRAFT_BLOCK_PREFIX, DRAFT_BLOCK_SUFFIX } from '../tools/helpers/api-budget.mjs'
-import { API_APPROVAL_SCOPE_V3 } from '../tools/helpers/api-watermark.mjs'
-import { buildVisiblePlanV3 } from '../tools/helpers/eval-plan.mjs'
+import { API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4 } from '../tools/helpers/api-watermark.mjs'
+import { buildVisiblePlanV3, buildVisiblePlanV4 } from '../tools/helpers/eval-plan.mjs'
 import { prepareEvaluation, doctorEvaluation, loadPrepared, executePreparedEvaluation } from '../tools/helpers/eval-workflow.mjs'
 
 let pass = 0, fail = 0
@@ -68,6 +68,33 @@ try {
     const marker = JSON.parse(fs.readFileSync(w.receiptPath, 'utf8'))
     assert.equal(marker.scope, API_APPROVAL_SCOPE_V3)
     assert.throws(() => prepareEvaluation({ home: path.join(w.dir, 'other'), receiptPath: w.receiptPath, profile: PROFILE, version: 2 }), /api-budget-restore-required|api-watermark-conflict/)
+  })
+  await test('06 v4形状：主请求8192/探针512、limits含sampleFailureBudget、对照关系与v3同构、审计通过', () => {
+    const plan = buildVisiblePlanV4({ pricing: PRICING })
+    assert.equal(plan.schema, 'cfb.bounded-ab/4'); assert.equal(planVersion(plan), 4); assert.equal(planScope(plan), API_APPROVAL_SCOPE_V4)
+    assert.ok(plan.jobs.filter((j) => j.kind === 'main').every((j) => j.body.max_tokens === 8192))
+    assert.ok(plan.jobs.filter((j) => j.kind === 'probe').every((j) => j.body.max_tokens === 512))
+    const a = auditApiPlan(plan); assert.ok(a.totalReservedUsd <= 2); assert.equal(a.maxRequests, 15)
+  })
+  await test('07 v4：response-incomplete为样本级失败不停机；累计3次硬停api-sample-failure-budget；v3老语义保持全停', async () => {
+    const w = (() => { const x = fresh(); prepareEvaluation({ ...x, profile: PROFILE, version: 4 }); return { ...x, plan: loadPrepared(x.home) } })()
+    const truncated = (b, j) => ({ ...payload(w.plan, j), choices: [{ finish_reason: 'length', message: { content: '被截断', reasoning_content: '想' } }] })
+    const c = client(w, mock(w.plan, (b, j, n) => n === 2 ? truncated(b, j) : payload(w.plan, j)))
+    await c.run('probe')
+    await assert.rejects(c.run('flaky-timeout|raw|0'), /response-incomplete/)
+    assert.equal(snapshot(w).halted, null)
+    await c.run('flaky-timeout|current|0')
+    assert.equal(snapshot(w).entries.find((e) => e.key === 'flaky-timeout|current|0').status, 'accepted')
+    const c2 = client(w, mock(w.plan, truncated))
+    await assert.rejects(c2.run('wrong-model|raw|0'), /response-incomplete/)
+    await assert.rejects(c2.run('wrong-model|current|0'), /response-incomplete/)
+    assert.equal(snapshot(w).halted, 'api-sample-failure-budget')
+    // v3 计划仍然是旧语义：单个 response-incomplete 直接停机
+    const w3 = prepared()
+    const c3 = client(w3, mock(w3.plan, (b, j, n) => n === 1 ? payload(w3.plan, j) : truncated(b, j)))
+    await c3.run('probe')
+    await assert.rejects(c3.run('flaky-timeout|raw|0'), /response-incomplete/)
+    assert.equal(snapshot(w3).halted, 'response-incomplete')
   })
 } finally { fs.rmSync(ROOT, { recursive: true, force: true }) }
 console.log(`eval-visible-v3: ${pass} passed, ${fail} failed`)

@@ -9,8 +9,10 @@ export const API_APPROVAL_SCOPE = 'cfb.minimal-api-approval.2026-09-30'
 export const API_APPROVAL_SCOPE_V2 = 'cfb.bounded-api-approval.2026-10-01'
 // v3＝同日新批准的生产等价可见上下文协议：通道已证丢弃reasoning历史（canary证伪），改测可见压缩稿对『思考丢失』现实的净价值。
 export const API_APPROVAL_SCOPE_V3 = 'cfb.visible-context-approval.2026-10-01'
-export const KNOWN_API_SCOPES = Object.freeze([API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3])
-const SCOPE_MAX_REQUESTS = Object.freeze({ [API_APPROVAL_SCOPE]: 13, [API_APPROVAL_SCOPE_V2]: 15, [API_APPROVAL_SCOPE_V3]: 15 })
+// v4＝v3矩阵的输出预算修正版（8192）+ response-incomplete样本级容错；v3计划死于首个current样本length截断，收据封存。
+export const API_APPROVAL_SCOPE_V4 = 'cfb.visible-context-approval.2026-10-01-r2'
+export const KNOWN_API_SCOPES = Object.freeze([API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4])
+const SCOPE_MAX_REQUESTS = Object.freeze({ [API_APPROVAL_SCOPE]: 13, [API_APPROVAL_SCOPE_V2]: 15, [API_APPROVAL_SCOPE_V3]: 15, [API_APPROVAL_SCOPE_V4]: 15 })
 export const apiStoreDirectory = (directory, scope = API_APPROVAL_SCOPE) => path.join(path.resolve(directory), crypto.createHash('sha256').update(scope).digest('hex'))
 const HEX = /^[a-f0-9]{64}$/
 export function readWatermark(file) {

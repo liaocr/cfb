@@ -8,7 +8,7 @@ import { buildMessagesMR, callsOf, ruleMetrics, actionClass } from '../effect-mr
 import { mrMessages } from '../compile-mr.mjs'
 import { TOOLS, responseText } from '../effect-eval.mjs'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
-import { MINIMAL_TASK_IDS, APPROVED_API_LIMITS, APPROVED_API_LIMITS_V2, DRAFT_BLOCK_PREFIX, DRAFT_BLOCK_SUFFIX } from './api-budget.mjs'
+import { MINIMAL_TASK_IDS, APPROVED_API_LIMITS, APPROVED_API_LIMITS_V2, APPROVED_API_LIMITS_V4, DRAFT_BLOCK_PREFIX, DRAFT_BLOCK_SUFFIX } from './api-budget.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 export const TASK_IDS = MINIMAL_TASK_IDS
@@ -79,6 +79,15 @@ export function buildVisiblePlanV3(options = {}) {
       expectedGain: 'current(可见压缩稿)相对raw(思考已丢)在三题red上 falseDone/repeat 降低、next/avoid 提高，flaky 差异最大；若 raw 反超净指标先归因，不庆祝',
       metrics: ['falseDone', 'bump', 'reEdit', 'repeat', 'next', 'avoid', 'action'],
       limitation: '通道丢弃reasoning历史（canary已证伪可见性），本实验测可见压缩稿对「思考丢失」现实的净价值；vllm指纹为中转自报连续性锚；canned red非独立泛化，无Likert/评委。' } })
+}
+// v4＝v3的输出预算修正：主请求max_tokens 4096→8192（v3实测current臂thinking+稿块烧穿4096被length截断），
+// 且response-incomplete降级为样本级失败（收费/不重发/计入sampleFailureBudget=3）。对照关系与v3逐字节同构。
+export function buildVisiblePlanV4(options = {}) {
+  const base = buildVisiblePlanV3(options)
+  const jobs = base.jobs.map((job) => job.kind === 'main' ? { ...job, body: { ...job.body, max_tokens: 8192 } } : job)
+  return immutableJson({ ...base, schema: 'cfb.bounded-ab/4', limits: APPROVED_API_LIMITS_V4, jobs,
+    preregistration: { ...base.preregistration,
+      limitation: base.preregistration.limitation + ' v3首个current样本在4096被length截断（收费作废、计划按旧语义停机）；v4提高输出预算并把截断记为样本级失败，截断本身作为「稿块是否延长思考」的观察量如实报告。' } })
 }
 export function currentSourceHashes() {
   return Object.fromEntries(SOURCE_FILES.map((p) => [p, crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, p))).digest('hex')]))

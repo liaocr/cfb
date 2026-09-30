@@ -6,18 +6,20 @@ import { createEvidenceStore } from '../../src/evidence-store.js'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
 import { makeChat, channelIssue, responseText } from '../effect-eval.mjs'
 import { hasSecretMaterial } from './eval-files.mjs'
-import { API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, apiStoreDirectory, assertExistingBudget, assertWatermark, commitWatermark } from './api-watermark.mjs'
+import { API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, apiStoreDirectory, assertExistingBudget, assertWatermark, commitWatermark } from './api-watermark.mjs'
 
 export const APPROVED_API_LIMITS = Object.freeze({ maxRequests: 13, maxUsd: 2, maxMain: 12, maxProbe: 1, retries: 0, judges: 0 })
 // v2（用户2026-10-01批准）：同矩阵 + 3个同体备用探针；网络类失败只废该请求预留、不株连未派发请求，累计3次仍硬停。
 export const APPROVED_API_LIMITS_V2 = Object.freeze({ maxRequests: 15, maxUsd: 2, maxMain: 12, maxProbe: 3, retries: 0, judges: 0, networkFailureBudget: 3 })
+// v4：在v2基础上增加已结算样本失败预算——response-incomplete(length截断)不再株连整个计划，但同样收费/不重发，累计3次仍全停。
+export const APPROVED_API_LIMITS_V4 = Object.freeze({ maxRequests: 15, maxUsd: 2, maxMain: 12, maxProbe: 3, retries: 0, judges: 0, networkFailureBudget: 3, sampleFailureBudget: 3 })
 export const MINIMAL_TASK_IDS = Object.freeze(['flaky-timeout', 'wrong-model', 'eacces-config'])
 const TRANSIENT_REASON = /^(?:request-network-error|request-timeout|HTTP 5\d\d)$/
-export const planVersion = (plan) => plan?.schema === 'cfb.bounded-ab/3' ? 3 : plan?.schema === 'cfb.bounded-ab/2' ? 2 : 1
+export const planVersion = (plan) => plan?.schema === 'cfb.bounded-ab/4' ? 4 : plan?.schema === 'cfb.bounded-ab/3' ? 3 : plan?.schema === 'cfb.bounded-ab/2' ? 2 : 1
 export const planIsV2 = (plan) => planVersion(plan) >= 2
-export const planScope = (plan) => [API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3][planVersion(plan) - 1]
+export const planScope = (plan) => [API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4][planVersion(plan) - 1]
 // 指纹只是通道连续性锚：v1/v2锚定曾验证的官方后端；v3锚定2026-10-01三次实测一致的中转vLLM后端（中转自报值，不构成后端供应商内部证明）。
-export const TRUSTED_FINGERPRINTS = Object.freeze({ 1: 'fp_dspure_app_v1', 2: 'fp_dspure_app_v1', 3: 'vllm-0.0.0-tp4-dp2-ep-869f52fc' })
+export const TRUSTED_FINGERPRINTS = Object.freeze({ 1: 'fp_dspure_app_v1', 2: 'fp_dspure_app_v1', 3: 'vllm-0.0.0-tp4-dp2-ep-869f52fc', 4: 'vllm-0.0.0-tp4-dp2-ep-869f52fc' })
 // v3 可见压缩稿块的冻结定界符；审计凭它验证 raw/current 除稿块外逐字节一致。
 export const DRAFT_BLOCK_PREFIX = '【前情压缩稿】\n'
 export const DRAFT_BLOCK_SUFFIX = '\n【/前情压缩稿】\n\n'
@@ -38,8 +40,8 @@ export function quoteJob(body, pricing) {
   return Object.freeze({ inputTokens, outputTokens, reservedNano, reservedUsd: reservedNano / NANO })
 }
 export function auditApiPlan(plan, { allowUnpriced = false } = {}) {
-  const version = planVersion(plan), v2 = version >= 2, approvedLimits = v2 ? APPROVED_API_LIMITS_V2 : APPROVED_API_LIMITS
-  if (!['cfb.bounded-ab/1', 'cfb.bounded-ab/2', 'cfb.bounded-ab/3'].includes(plan?.schema) || typeof plan.model !== 'string' || !/^[\w./:-]{1,120}$/.test(plan.model) || !Array.isArray(plan.jobs) || !plan.jobs.length || plan.jobs.length > approvedLimits.maxRequests) throw new Error('api-plan-schema')
+  const version = planVersion(plan), v2 = version >= 2, approvedLimits = version === 4 ? APPROVED_API_LIMITS_V4 : v2 ? APPROVED_API_LIMITS_V2 : APPROVED_API_LIMITS
+  if (!['cfb.bounded-ab/1', 'cfb.bounded-ab/2', 'cfb.bounded-ab/3', 'cfb.bounded-ab/4'].includes(plan?.schema) || typeof plan.model !== 'string' || !/^[\w./:-]{1,120}$/.test(plan.model) || !Array.isArray(plan.jobs) || !plan.jobs.length || plan.jobs.length > approvedLimits.maxRequests) throw new Error('api-plan-schema')
   if (evidenceDigest(plan.limits) !== evidenceDigest(approvedLimits)) throw new Error('api-approval-changed')
   let endpoint
   try { endpoint = new URL(plan.baseUrl) } catch { throw new Error('api-endpoint') }
@@ -60,8 +62,8 @@ export function auditApiPlan(plan, { allowUnpriced = false } = {}) {
   if (probe !== probeKeys.length || main !== 12 || typeof plan.canary !== 'string' || !/^CFB_CANARY_[a-f0-9]{32}$/.test(plan.canary)) throw new Error('api-matrix')
   if (probeKeys.some((k, i) => plan.jobs[i].kind !== 'probe' || plan.jobs[i].key !== k || evidenceDigest(plan.jobs[i].body) !== evidenceDigest(plan.jobs[0].body))) throw new Error('api-matrix')
   const probeBody = plan.jobs[0].body
-  if (version === 3) {
-    // v3：全部消息不得携带 reasoning_content（通道已证丢弃）；canary 只出现在探针的单条可见 assistant 消息里。
+  if (version >= 3) {
+    // v3/v4：全部消息不得携带 reasoning_content（通道已证丢弃）；canary 只出现在探针的单条可见 assistant 消息里。
     if (plan.jobs.some((j) => j.body.messages.some((m) => m.reasoning_content !== undefined))) throw new Error('api-probe-leak')
     const carriers = probeBody.messages.filter((m) => typeof m.content === 'string' && m.content.includes(plan.canary))
     if (carriers.length !== 1 || carriers[0].role !== 'assistant') throw new Error('api-probe-leak')
@@ -76,7 +78,7 @@ export function auditApiPlan(plan, { allowUnpriced = false } = {}) {
   for (const task of MINIMAL_TASK_IDS) for (const sample of [0, 1]) {
     const pair = ['raw', 'current'].map((variant) => plan.jobs.find((j) => j.kind === 'main' && j.task === task && j.sample === sample && j.variant === variant && j.obs === 'red' && j.key === `${task}|${variant}|${sample}`))
     if (pair.some((j) => !j)) throw new Error('api-matrix-protocol')
-    if (version === 3) {
+    if (version >= 3) {
       // 冻结关系：current 的 assistant 轮 = 稿块前缀 + raw 同位置逐字节内容；其余消息完全一致。
       const [rawB, curB] = [pair[0].body, pair[1].body]
       if (rawB.messages.length !== curB.messages.length) throw new Error('api-matrix-protocol')
@@ -185,8 +187,13 @@ export function createBudgetedChat({ plan: input, apiKey, directory, receiptPath
         // 该请求的预留永久作废（不退款、不重发）。v2 只对纯网络类失败不株连未派发请求；可信性失败（channel/usage/response/4xx）与超出网络失败预算仍全停。
         const entries = state.entries.map((x) => x.key === key ? { ...x, status: 'rejected', reason } : x)
         const netBudget = Number.isSafeInteger(plan.limits?.networkFailureBudget) ? plan.limits.networkFailureBudget : 0
+        const sampleBudget = Number.isSafeInteger(plan.limits?.sampleFailureBudget) ? plan.limits.sampleFailureBudget : 0
+        const isNet = TRANSIENT_REASON.test(reason), isSample = reason === 'response-incomplete'
         const netCount = entries.filter((x) => x.status === 'rejected' && TRANSIENT_REASON.test(x.reason || '')).length
-        const halted = TRANSIENT_REASON.test(reason) && netBudget > 0 ? (netCount >= netBudget ? 'api-network-failure-budget' : state.halted) : reason
+        const sampleCount = entries.filter((x) => x.status === 'rejected' && x.reason === 'response-incomplete').length
+        const halted = isNet && netBudget > 0 ? (netCount >= netBudget ? 'api-network-failure-budget' : state.halted)
+          : isSample && sampleBudget > 0 ? (sampleCount >= sampleBudget ? 'api-sample-failure-budget' : state.halted)
+          : reason
         save(head, { ...state, halted, entries })
         throw new Error(reason)
       }
