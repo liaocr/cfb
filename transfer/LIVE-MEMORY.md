@@ -67,3 +67,4 @@
 - 第八会话·**迁移交接**（2026-09-30）：`docs/analysis/HANDOFF-2026-09-30.md`（全量汇总：项目/状态/时间线/四轮侦察要点/R1–R4/约束/坑/迁移清单）+ `transfer/NEXT-MODEL-PROMPT.md`（可直接粘给下一个模型的开工提示词）。**新模型读序**：LIVE-MEMORY → HANDOFF → BREAKTHROUGH-4 → CAPABILITY-BREAKTHROUGH-3 → BREAKTHROUGH-MAP → CAPABILITY-SWEEP → CHANGELOG/run4 summary。**用户已批 R1+R4 开工**（零调用、零费用、可回滚；旧路径保留）。可证伪预测：涨幅应集中在 flaky，wrong-model/eacces 不应变。未批：run5、方向 3、S0 实跑、一切付费测试。
 
 - 第九会话·R1（2026-09-30）：先同步到远端最新 `042d361`、全读理论再预注册 `docs/EVIDENCE-PROGRAM.md`；证据程序把提议/宿主授权/实际检查分离，冻结判据 + HMAC 回执（哈希不冒充签名），旧稿不变。回放 33 稿解析 31、四字段 25；run4 79 行解析 32，历史 8 pass/16 fail/55 unknown；无授权不执行（实时 0）。verify 651/0/1、N1–N7=0；唯一首轮失败是夹具逗号表达式，已修并复验。全部零模型、零费用；R2–R4 继续。
+- 第九会话·R2：完整条件熵 EIG（不是输出熵）+ 宿主有限假设模型 + 带预算主动检查已接入签名验证器；unknown 不更新、同环境不重复、跨轮/会话不复用，诊断不能解锁验收。R2 11/0，全量 662/0/1，N1–N7=0；仍零模型/零费用，继续 R3/R4。

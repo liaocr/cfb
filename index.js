@@ -54,6 +54,7 @@ export {
   initialEvidenceState, evidenceBinding, advanceEvidenceState,
 } from './src/evidence-program.js'
 export { createEvidenceVerifier, evidenceFilePath, readEvidenceFile, replaceEvidenceFile } from './src/evidence-host.js'
+export { evidenceEntropy, evidencePosterior, expectedEvidenceGain, freezeDiagnosticModel, createDiagnosticController, runActiveEvidenceChecks } from './src/active-checks.js'
 
 // ── 观测 ─────────────────────────────────────────────────────────────────────
 export { makeTraceWriter, settledTraceData } from './src/trace.js'
