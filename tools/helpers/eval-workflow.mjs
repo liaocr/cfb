@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
-import { buildMinimalPlan, buildBoundedPlanV2, buildVisiblePlanV3, buildVisiblePlanV4, buildExpandedPlanV5, buildExpandedPlanV6, sourceDifferences, summarizeMinimal, resultOf } from './eval-plan.mjs'
+import { buildMinimalPlan, buildBoundedPlanV2, buildVisiblePlanV3, buildVisiblePlanV4, buildExpandedPlanV5, buildExpandedPlanV6, buildExpandedPlanV7, sourceDifferences, summarizeMinimal, resultOf } from './eval-plan.mjs'
 import { auditApiPlan, createBudgetedChat, inspectApiBudget, inputTokenBound, APPROVED_API_LIMITS } from './api-budget.mjs'
 import { assertSafePath, readJson, writeJson, hasSecretMaterial } from './eval-files.mjs'
 import { assertAutoCheckpoint, exportEvaluationBundle } from './eval-bundle.mjs'
@@ -22,6 +22,8 @@ export const DEFAULT_HOME_V5 = path.join(ROOT, '.cfb-runtime/bounded-ab-v5')
 export const PUBLIC_RECEIPT_V5 = path.join(ROOT, 'transfer/api-budget-approval-v5.watermark.json')
 export const DEFAULT_HOME_V6 = path.join(ROOT, '.cfb-runtime/bounded-ab-v6')
 export const PUBLIC_RECEIPT_V6 = path.join(ROOT, 'transfer/api-budget-approval-v6.watermark.json')
+export const DEFAULT_HOME_V7 = path.join(ROOT, '.cfb-runtime/bounded-ab-v7')
+export const PUBLIC_RECEIPT_V7 = path.join(ROOT, 'transfer/api-budget-approval-v7.watermark.json')
 export const PROFILE_EXAMPLE = path.join(ROOT, 'deploy/eval-profile.example.json')
 const DEFAULT_EXECUTION = Object.freeze({ apiKeyEnv: 'DEEPSEEK_API_KEY', timeoutMs: 240000, maxResponseBytes: 1024 * 1024 })
 const safeCode = (e) => /^(?:api|eval|response|request|channel|source|profile|explicit)-[a-z0-9-]+$/.test(e?.message || '') || /^HTTP \d{3}$/.test(e?.message || '') ? e.message : 'eval-state-unavailable'
@@ -46,7 +48,7 @@ export function prepareEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RE
   const p = paths(home), normalized = normalizeProfile({ ...profile, ...(pricing !== undefined ? { pricing } : {}) })
   const existing = fs.existsSync(p.plan) ? readJson(p.plan) : null, marker = readWatermark(receiptPath)
   if (marker && !existing) throw new Error('api-budget-restore-required')
-  const builder = existing?.schema === 'cfb.bounded-ab/6' || version === 6 ? buildExpandedPlanV6 : existing?.schema === 'cfb.bounded-ab/5' || version === 5 ? buildExpandedPlanV5 : existing?.schema === 'cfb.bounded-ab/4' || version === 4 ? buildVisiblePlanV4 : existing?.schema === 'cfb.bounded-ab/3' || version === 3 ? buildVisiblePlanV3 : existing?.schema === 'cfb.bounded-ab/2' || version === 2 ? buildBoundedPlanV2 : buildMinimalPlan
+  const builder = existing?.schema === 'cfb.bounded-ab/7' || version === 7 ? buildExpandedPlanV7 : existing?.schema === 'cfb.bounded-ab/6' || version === 6 ? buildExpandedPlanV6 : existing?.schema === 'cfb.bounded-ab/5' || version === 5 ? buildExpandedPlanV5 : existing?.schema === 'cfb.bounded-ab/4' || version === 4 ? buildVisiblePlanV4 : existing?.schema === 'cfb.bounded-ab/3' || version === 3 ? buildVisiblePlanV3 : existing?.schema === 'cfb.bounded-ab/2' || version === 2 ? buildBoundedPlanV2 : buildMinimalPlan
   const base = builder({ ...normalized, canary: existing?.canary })
   const plan = immutableJson({ ...base, execution: normalized.execution, simulation })
   if (hasSecretMaterial(plan)) throw new Error('api-plan-secret-material')
@@ -104,10 +106,22 @@ export function doctorEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_REC
 export function reportEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RECEIPT } = {}) {
   const p = paths(home), plan = loadPrepared(home)
   auditApiPlan(plan, { allowUnpriced: true })
-  const budget = inspectApiBudget({ plan, directory: p.ledger, receiptPath }), results = []
-  if (budget) for (const job of plan.jobs.filter((j) => j.kind === 'main')) { const r = budget.cached(job.key); if (r) results.push(resultOf(plan, job, r)) }
+  const budget = inspectApiBudget({ plan, directory: p.ledger, receiptPath }), results = [], fpByKey = {}
+  if (budget) for (const job of plan.jobs) {
+    const r = budget.cached(job.key); if (!r) continue
+    fpByKey[job.key] = r.fp ?? null
+    if (job.kind === 'main') results.push(resultOf(plan, job, r))
+  }
   const state = budget?.snapshot() || null
+  // 指纹透明化：直方图 + 配对样本是否同指纹（池轮换噪声公开，不做闸）。
+  const fingerprintHistogram = Object.values(fpByKey).reduce((h, fp) => ({ ...h, [fp ?? 'null']: (h[fp ?? 'null'] || 0) + 1 }), {})
+  let pairsSameFingerprint = 0, pairsTotal = 0
+  for (const job of plan.jobs.filter((j) => j.kind === 'main' && j.variant === 'raw')) {
+    const other = `${job.task}|current|${job.sample}`
+    if (job.key in fpByKey && other in fpByKey) { pairsTotal++; if (fpByKey[job.key] === fpByKey[other]) pairsSameFingerprint++ }
+  }
   return immutableJson({ schema: 'cfb.eval-report/1', ...summarizeMinimal(plan, results), mode: plan.simulation ? 'simulation' : 'live', channelVerified: !!state?.entries.some((e) => e.kind === 'probe' && e.status === 'accepted'),
+    fingerprintHistogram, pairsSameFingerprint, pairsTotal,
     requestsRejected: state?.entries.filter((e) => e.status === 'rejected').map((e) => ({ key: e.key, reason: e.reason ?? null })) ?? [],
     requestsReserved: state?.entries.length || 0, reservedUsd: state?.entries.reduce((n, e) => n + e.reservedNano, 0) / 1e9 || 0, actualCostUsd: null,
     stopped: state?.halted || (state?.entries.some((e) => e.status === 'pending') ? 'api-unsettled-dispatch' : null), judgeRequests: 0, retries: 0, sourceDigest: plan.sourceDigest, sourceCurrent: sourceDifferences(plan).length === 0 })

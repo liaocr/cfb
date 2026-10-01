@@ -5,8 +5,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { createBudgetedChat, inspectApiBudget, auditApiPlan, planScope, planVersion, TRUSTED_FINGERPRINTS, DRAFT_BLOCK_PREFIX, DRAFT_BLOCK_SUFFIX } from '../tools/helpers/api-budget.mjs'
 import { API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5 } from '../tools/helpers/api-watermark.mjs'
-import { buildVisiblePlanV3, buildVisiblePlanV4, buildExpandedPlanV5, buildExpandedPlanV6, resultOf } from '../tools/helpers/eval-plan.mjs'
-import { prepareEvaluation, doctorEvaluation, loadPrepared, executePreparedEvaluation } from '../tools/helpers/eval-workflow.mjs'
+import { buildVisiblePlanV3, buildVisiblePlanV4, buildExpandedPlanV5, buildExpandedPlanV6, buildExpandedPlanV7, resultOf } from '../tools/helpers/eval-plan.mjs'
+import { prepareEvaluation, doctorEvaluation, loadPrepared, executePreparedEvaluation, reportEvaluation as reportEval } from '../tools/helpers/eval-workflow.mjs'
 import { claimOf, claimOfV2, ruleMetrics } from '../tools/effect-mr.mjs'
 
 let pass = 0, fail = 0
@@ -173,6 +173,19 @@ try {
     await c5.run('probe')
     await assert.rejects(c5.run('flaky-timeout|raw|0'), /channel-no-thinking/)
     assert.equal(snapshot(w5).halted, 'channel-no-thinking')
+  })
+  await test('14 v7：fp自由(null/各不相同均accepted)且逐响应入报告直方图+配对同指纹数；v6钉死语义不变', async () => {
+    const mk = (ver) => { const x = fresh(); prepareEvaluation({ ...x, profile: PROFILE, version: ver }); return { ...x, plan: loadPrepared(x.home) } }
+    const w = mk(7); let n = 0
+    const rotating = (b, j) => { n++; return { model: w.plan.model, system_fingerprint: n % 3 === 0 ? null : 'fp-pool-' + (n % 2), usage: { prompt_tokens: 200, completion_tokens: 20 }, choices: [{ finish_reason: 'stop', message: { content: j?.kind === 'probe' ? w.plan.canary : '答', reasoning_content: '想' } }] } }
+    const r = await executePreparedEvaluation({ home: w.home, receiptPath: w.receiptPath, apiKey: KEY, fetchImpl: mock(w.plan, rotating).fetchImpl })
+    assert.equal(r.complete, true); assert.equal(r.validMainResponses, 36)
+    const rep = reportEval({ home: w.home, receiptPath: w.receiptPath })
+    assert.equal(Object.values(rep.fingerprintHistogram).reduce((a, b) => a + b, 0), 37)
+    assert.ok(rep.pairsTotal === 18 && rep.pairsSameFingerprint >= 0 && rep.pairsSameFingerprint <= 18)
+    // v6 仍钉死：null fp 探针拒绝
+    const w6 = mk(6)
+    await assert.rejects(client(w6, mock(w6.plan, (b, j) => ({ ...payload(w6.plan, j), system_fingerprint: null }))).run('probe'), /channel-fingerprint/)
   })
 } finally { fs.rmSync(ROOT, { recursive: true, force: true }) }
 console.log(`eval-visible-v3: ${pass} passed, ${fail} failed`)

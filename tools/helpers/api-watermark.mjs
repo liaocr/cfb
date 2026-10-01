@@ -15,8 +15,11 @@ export const API_APPROVAL_SCOPE_V4 = 'cfb.visible-context-approval.2026-10-01-r2
 export const API_APPROVAL_SCOPE_V5 = 'cfb.visible-context-expanded.2026-10-01'
 // v6＝v5的探针/样本语义修正：探针免思考要求（echo只测保真）；主请求逐响应验证失败降为样本级（预算6），v5探针死于channel-no-thinking。
 export const API_APPROVAL_SCOPE_V6 = 'cfb.visible-context-expanded.2026-10-01-r2'
-export const KNOWN_API_SCOPES = Object.freeze([API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6])
-const SCOPE_MAX_REQUESTS = Object.freeze({ [API_APPROVAL_SCOPE]: 13, [API_APPROVAL_SCOPE_V2]: 15, [API_APPROVAL_SCOPE_V3]: 15, [API_APPROVAL_SCOPE_V4]: 15, [API_APPROVAL_SCOPE_V5]: 39, [API_APPROVAL_SCOPE_V6]: 39 })
+// v7＝指纹政策修正：中转池轮换使任何钉死指纹数小时即失效（v6探针死于此，诊断显示fp已变null且echo正常）；
+// v7放开fp闸但逐响应记录并在报告公开直方图/配对同指纹数，身份证据=型号精确+canary逐字回显+思考在跑+usage界。
+export const API_APPROVAL_SCOPE_V7 = 'cfb.visible-context-expanded.2026-10-01-r3'
+export const KNOWN_API_SCOPES = Object.freeze([API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6, API_APPROVAL_SCOPE_V7])
+const SCOPE_MAX_REQUESTS = Object.freeze({ [API_APPROVAL_SCOPE]: 13, [API_APPROVAL_SCOPE_V2]: 15, [API_APPROVAL_SCOPE_V3]: 15, [API_APPROVAL_SCOPE_V4]: 15, [API_APPROVAL_SCOPE_V5]: 39, [API_APPROVAL_SCOPE_V6]: 39, [API_APPROVAL_SCOPE_V7]: 39 })
 export const apiStoreDirectory = (directory, scope = API_APPROVAL_SCOPE) => path.join(path.resolve(directory), crypto.createHash('sha256').update(scope).digest('hex'))
 const HEX = /^[a-f0-9]{64}$/
 export function readWatermark(file) {

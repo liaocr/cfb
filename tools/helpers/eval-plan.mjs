@@ -121,6 +121,14 @@ export function buildExpandedPlanV6(options = {}) {
     preregistration: { ...base.preregistration,
       limitation: base.preregistration.limitation + ' v5探针因空reasoning被channel-no-thinking整停（收据封存）；v6探针只测可见echo保真，主请求思考要求保留、逐响应验证失败按样本级计（预算6），每个accepted样本仍逐个过全部闸。' } })
 }
+// v7＝v6的指纹政策修正：池轮换使钉死fp数小时即失效（v6探针死于此）。fp放开但逐响应记录并公开直方图；
+// 身份证据=型号精确+canary逐字回显+思考在跑+usage界；其余语义与v6一致。
+export function buildExpandedPlanV7(options = {}) {
+  const base = buildExpandedPlanV6(options)
+  return immutableJson({ ...base, schema: 'cfb.bounded-ab/7',
+    preregistration: { ...base.preregistration,
+      limitation: base.preregistration.limitation + ' v6探针死于池轮换后的channel-fingerprint（诊断：fp已变null且echo正常）；v7不设fp闸，逐响应记录fp并在报告公开直方图与配对同指纹计数，混池噪声由样本序交错对称化，身份证据回归实质闸。' } })
+}
 export function currentSourceHashes() {
   return Object.fromEntries(SOURCE_FILES.map((p) => [p, crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, p))).digest('hex')]))
 }
