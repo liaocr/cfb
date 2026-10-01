@@ -6,7 +6,7 @@ import { createEvidenceStore } from '../../src/evidence-store.js'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
 import { makeChat, channelIssue, responseText } from '../effect-eval.mjs'
 import { hasSecretMaterial } from './eval-files.mjs'
-import { API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6, API_APPROVAL_SCOPE_V7, apiStoreDirectory, assertExistingBudget, assertWatermark, commitWatermark } from './api-watermark.mjs'
+import { API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6, API_APPROVAL_SCOPE_V7, API_APPROVAL_SCOPE_V8, apiStoreDirectory, assertExistingBudget, assertWatermark, commitWatermark } from './api-watermark.mjs'
 
 export const APPROVED_API_LIMITS = Object.freeze({ maxRequests: 13, maxUsd: 2, maxMain: 12, maxProbe: 1, retries: 0, judges: 0 })
 // v2（用户2026-10-01批准）：同矩阵 + 3个同体备用探针；网络类失败只废该请求预留、不株连未派发请求，累计3次仍硬停。
@@ -15,11 +15,13 @@ export const APPROVED_API_LIMITS_V2 = Object.freeze({ maxRequests: 15, maxUsd: 2
 export const APPROVED_API_LIMITS_V4 = Object.freeze({ maxRequests: 15, maxUsd: 2, maxMain: 12, maxProbe: 3, retries: 0, judges: 0, networkFailureBudget: 3, sampleFailureBudget: 3 })
 // v5：同v4语义，矩阵扩为6样本/格；失败预算按请求数等比放宽，总额仍≤USD2。
 export const APPROVED_API_LIMITS_V5 = Object.freeze({ maxRequests: 39, maxUsd: 2, maxMain: 36, maxProbe: 3, retries: 0, judges: 0, networkFailureBudget: 6, sampleFailureBudget: 6 })
+// v8：回到 v1 的 reasoning 回放矩阵（3题×2臂×2样本=12主），复用 v2 的3同体备用探针与 v4 的样本级截断容错。
+export const APPROVED_API_LIMITS_V8 = Object.freeze({ maxRequests: 15, maxUsd: 2, maxMain: 12, maxProbe: 3, retries: 0, judges: 0, networkFailureBudget: 3, sampleFailureBudget: 3 })
 export const MINIMAL_TASK_IDS = Object.freeze(['flaky-timeout', 'wrong-model', 'eacces-config'])
 const TRANSIENT_REASON = /^(?:request-network-error|request-timeout|HTTP 5\d\d)$/
-export const planVersion = (plan) => plan?.schema === 'cfb.bounded-ab/7' ? 7 : plan?.schema === 'cfb.bounded-ab/6' ? 6 : plan?.schema === 'cfb.bounded-ab/5' ? 5 : plan?.schema === 'cfb.bounded-ab/4' ? 4 : plan?.schema === 'cfb.bounded-ab/3' ? 3 : plan?.schema === 'cfb.bounded-ab/2' ? 2 : 1
+export const planVersion = (plan) => plan?.schema === 'cfb.bounded-ab/8' ? 8 : plan?.schema === 'cfb.bounded-ab/7' ? 7 : plan?.schema === 'cfb.bounded-ab/6' ? 6 : plan?.schema === 'cfb.bounded-ab/5' ? 5 : plan?.schema === 'cfb.bounded-ab/4' ? 4 : plan?.schema === 'cfb.bounded-ab/3' ? 3 : plan?.schema === 'cfb.bounded-ab/2' ? 2 : 1
 export const planIsV2 = (plan) => planVersion(plan) >= 2
-export const planScope = (plan) => [API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6, API_APPROVAL_SCOPE_V7][planVersion(plan) - 1]
+export const planScope = (plan) => [API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6, API_APPROVAL_SCOPE_V7, API_APPROVAL_SCOPE_V8][planVersion(plan) - 1]
 // 指纹只是通道连续性锚：v1/v2锚定曾验证的官方后端；v3-v6锚定实测中转vLLM后端。v7起不在表内＝不设fp闸（池轮换数小时即废任何钉死值），fp照记入报告。
 export const TRUSTED_FINGERPRINTS = Object.freeze({ 1: 'fp_dspure_app_v1', 2: 'fp_dspure_app_v1', 3: 'vllm-0.0.0-tp4-dp2-ep-869f52fc', 4: 'vllm-0.0.0-tp4-dp2-ep-869f52fc', 5: 'vllm-0.0.0-tp4-dp2-ep-869f52fc', 6: 'vllm-0.0.0-tp4-dp2-ep-869f52fc' })
 // v3 可见压缩稿块的冻结定界符；审计凭它验证 raw/current 除稿块外逐字节一致。
@@ -42,8 +44,8 @@ export function quoteJob(body, pricing) {
   return Object.freeze({ inputTokens, outputTokens, reservedNano, reservedUsd: reservedNano / NANO })
 }
 export function auditApiPlan(plan, { allowUnpriced = false } = {}) {
-  const version = planVersion(plan), v2 = version >= 2, approvedLimits = version >= 5 ? APPROVED_API_LIMITS_V5 : version === 4 ? APPROVED_API_LIMITS_V4 : v2 ? APPROVED_API_LIMITS_V2 : APPROVED_API_LIMITS
-  if (!['cfb.bounded-ab/1', 'cfb.bounded-ab/2', 'cfb.bounded-ab/3', 'cfb.bounded-ab/4', 'cfb.bounded-ab/5', 'cfb.bounded-ab/6', 'cfb.bounded-ab/7'].includes(plan?.schema) || typeof plan.model !== 'string' || !/^[\w./:-]{1,120}$/.test(plan.model) || !Array.isArray(plan.jobs) || !plan.jobs.length || plan.jobs.length > approvedLimits.maxRequests) throw new Error('api-plan-schema')
+  const version = planVersion(plan), v2 = version >= 2, approvedLimits = version >= 8 ? APPROVED_API_LIMITS_V8 : version >= 5 ? APPROVED_API_LIMITS_V5 : version === 4 ? APPROVED_API_LIMITS_V4 : v2 ? APPROVED_API_LIMITS_V2 : APPROVED_API_LIMITS
+  if (!['cfb.bounded-ab/1', 'cfb.bounded-ab/2', 'cfb.bounded-ab/3', 'cfb.bounded-ab/4', 'cfb.bounded-ab/5', 'cfb.bounded-ab/6', 'cfb.bounded-ab/7', 'cfb.bounded-ab/8'].includes(plan?.schema) || typeof plan.model !== 'string' || !/^[\w./:-]{1,120}$/.test(plan.model) || !Array.isArray(plan.jobs) || !plan.jobs.length || plan.jobs.length > approvedLimits.maxRequests) throw new Error('api-plan-schema')
   if (evidenceDigest(plan.limits) !== evidenceDigest(approvedLimits)) throw new Error('api-approval-changed')
   let endpoint
   try { endpoint = new URL(plan.baseUrl) } catch { throw new Error('api-endpoint') }
@@ -64,8 +66,11 @@ export function auditApiPlan(plan, { allowUnpriced = false } = {}) {
   if (probe !== probeKeys.length || main !== approvedLimits.maxMain || typeof plan.canary !== 'string' || !/^CFB_CANARY_[a-f0-9]{32}$/.test(plan.canary)) throw new Error('api-matrix')
   if (probeKeys.some((k, i) => plan.jobs[i].kind !== 'probe' || plan.jobs[i].key !== k || evidenceDigest(plan.jobs[i].body) !== evidenceDigest(plan.jobs[0].body))) throw new Error('api-matrix')
   const probeBody = plan.jobs[0].body
-  if (version >= 3) {
-    // v3/v4：全部消息不得携带 reasoning_content（通道已证丢弃）；canary 只出现在探针的单条可见 assistant 消息里。
+  // 可见协议闸只属于 v3–v7：v1/v2 与 v8 走 reasoning 回放口径（v8 是前提更正后回到 v1 的协议）。
+  const visibleProtocol = version >= 3 && version <= 7
+  if (visibleProtocol) {
+    // v3/v4：全部消息不得携带 reasoning_content（当时以为通道已证丢弃；该前提已于 2026-10-01 被 v8 canary 推翻，见 api-watermark 更正块）。
+    // 本闸照旧生效：v3–v7 的协议定义与收据已封存，协议口径不追溯修改；v8 起走 v1 的 reasoning 回放口径（走 else 分支）。
     if (plan.jobs.some((j) => j.body.messages.some((m) => m.reasoning_content !== undefined))) throw new Error('api-probe-leak')
     const carriers = probeBody.messages.filter((m) => typeof m.content === 'string' && m.content.includes(plan.canary))
     if (carriers.length !== 1 || carriers[0].role !== 'assistant') throw new Error('api-probe-leak')
@@ -81,7 +86,7 @@ export function auditApiPlan(plan, { allowUnpriced = false } = {}) {
   for (const task of MINIMAL_TASK_IDS) for (let sample = 0; sample < sampleCount; sample++) {
     const pair = ['raw', 'current'].map((variant) => plan.jobs.find((j) => j.kind === 'main' && j.task === task && j.sample === sample && j.variant === variant && j.obs === 'red' && j.key === `${task}|${variant}|${sample}`))
     if (pair.some((j) => !j)) throw new Error('api-matrix-protocol')
-    if (version >= 3) {
+    if (visibleProtocol) {
       // 冻结关系：current 的 assistant 轮 = 稿块前缀 + raw 同位置逐字节内容；其余消息完全一致。
       const [rawB, curB] = [pair[0].body, pair[1].body]
       if (rawB.messages.length !== curB.messages.length) throw new Error('api-matrix-protocol')
@@ -171,7 +176,7 @@ export function createBudgetedChat({ plan: input, apiKey, directory, receiptPath
       const r = await chat(job.body, { signal })
       // fp 由下一行按 scope 版本锚定检查；channelIssue 的旧全局 TRUSTED_FP 集合只服务旧CLI。
       // v6起：探针是纯可见echo保真测试，不强制思考（v5实测空reasoning误杀整计划）；主请求仍要求思考在跑。
-      const issue = channelIssue(r, plan.model, { requireFp: false, requireThinking: !(planVersion(plan) >= 6 && job.kind === 'probe') }); if (issue) throw new Error(issue)
+      const issue = channelIssue(r, plan.model, { requireFp: false, requireThinking: !(planVersion(plan) >= 6 && job.kind === 'probe'), modelAliases: plan.modelAliases || [] }); if (issue) throw new Error(issue)
       const trustedFp = TRUSTED_FINGERPRINTS[planVersion(plan)]
       if (trustedFp !== undefined && r.fp !== trustedFp) throw new Error('channel-fingerprint')
       if (!['stop', 'tool_calls'].includes(r.finish)) throw new Error('response-incomplete')

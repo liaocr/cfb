@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
-import { buildMinimalPlan, buildBoundedPlanV2, buildVisiblePlanV3, buildVisiblePlanV4, buildExpandedPlanV5, buildExpandedPlanV6, buildExpandedPlanV7, sourceDifferences, summarizeMinimal, resultOf } from './eval-plan.mjs'
+import { buildMinimalPlan, buildBoundedPlanV2, buildVisiblePlanV3, buildVisiblePlanV4, buildExpandedPlanV5, buildExpandedPlanV6, buildExpandedPlanV7, buildReasoningReplayPlanV8, sourceDifferences, summarizeMinimal, resultOf } from './eval-plan.mjs'
 import { auditApiPlan, createBudgetedChat, inspectApiBudget, inputTokenBound, APPROVED_API_LIMITS } from './api-budget.mjs'
 import { assertSafePath, readJson, writeJson, hasSecretMaterial } from './eval-files.mjs'
 import { assertAutoCheckpoint, exportEvaluationBundle } from './eval-bundle.mjs'
@@ -23,6 +23,9 @@ export const PUBLIC_RECEIPT_V5 = path.join(ROOT, 'transfer/api-budget-approval-v
 export const DEFAULT_HOME_V6 = path.join(ROOT, '.cfb-runtime/bounded-ab-v6')
 export const PUBLIC_RECEIPT_V6 = path.join(ROOT, 'transfer/api-budget-approval-v6.watermark.json')
 export const DEFAULT_HOME_V7 = path.join(ROOT, '.cfb-runtime/bounded-ab-v7')
+// v8：前提更正后的 reasoning 回放复跑（独立 home 与公开收据；旧 scope 全部封存不动）。
+export const DEFAULT_HOME_V8 = path.join(ROOT, '.cfb-runtime/bounded-ab-v8')
+export const PUBLIC_RECEIPT_V8 = path.join(ROOT, 'transfer/api-budget-approval-v8.watermark.json')
 export const PUBLIC_RECEIPT_V7 = path.join(ROOT, 'transfer/api-budget-approval-v7.watermark.json')
 export const PROFILE_EXAMPLE = path.join(ROOT, 'deploy/eval-profile.example.json')
 const DEFAULT_EXECUTION = Object.freeze({ apiKeyEnv: 'DEEPSEEK_API_KEY', timeoutMs: 240000, maxResponseBytes: 1024 * 1024 })
@@ -36,11 +39,15 @@ export function normalizeBaseUrl(value) {
   return u.href.replace(/\/+$/, '')
 }
 export function normalizeProfile(input) {
-  if (!input || input.schema !== 'cfb.eval-profile/1' || hasSecretMaterial(input) || Object.keys(input).some((k) => !['schema', 'model', 'baseUrl', 'apiKeyEnv', 'pricing', 'timeoutMs', 'maxResponseBytes'].includes(k))) throw new Error('profile-schema-or-secret')
+  if (!input || input.schema !== 'cfb.eval-profile/1' || hasSecretMaterial(input) || Object.keys(input).some((k) => !['schema', 'model', 'baseUrl', 'apiKeyEnv', 'pricing', 'timeoutMs', 'maxResponseBytes', 'modelAliases'].includes(k))) throw new Error('profile-schema-or-secret')
   if (typeof input.model !== 'string' || !/^[\w./:-]{1,120}$/.test(input.model)) throw new Error('profile-model')
+  // 型号回显别名：显式声明、逐条校验，用于「同一型号、不同书写规范」的中转（见 effect-eval.mjs 的 canonModel 注释）。
+  // 不允许通配/正则/空串；每条必须是合法型号串，且必须与被声明型号规范化后相等（防止借别名放行真型号不符）。
+  const modelAliases = input.modelAliases === undefined ? [] : input.modelAliases
+  if (!Array.isArray(modelAliases) || modelAliases.length > 8 || modelAliases.some((a) => typeof a !== 'string' || !/^[\w./:-]{1,120}$/.test(a) || a.toLowerCase().replace(/[._-]+/g, '-') !== input.model.toLowerCase().replace(/[._-]+/g, '-'))) throw new Error('profile-model-aliases')
   const execution = { ...DEFAULT_EXECUTION, ...Object.fromEntries(['apiKeyEnv', 'timeoutMs', 'maxResponseBytes'].filter((k) => input[k] !== undefined).map((k) => [k, input[k]])) }
   if (typeof execution.apiKeyEnv !== 'string' || !/^[A-Z][A-Z0-9_]{2,80}$/.test(execution.apiKeyEnv) || /^GITHUB_|^GH_/.test(execution.apiKeyEnv) || !Number.isInteger(execution.timeoutMs) || execution.timeoutMs < 100 || execution.timeoutMs > 600000 || !Number.isInteger(execution.maxResponseBytes) || execution.maxResponseBytes < 1024 || execution.maxResponseBytes > 8 * 1024 * 1024) throw new Error('profile-execution')
-  return immutableJson({ schema: input.schema, model: input.model, baseUrl: normalizeBaseUrl(input.baseUrl), pricing: input.pricing ?? null, execution })
+  return immutableJson({ schema: input.schema, model: input.model, baseUrl: normalizeBaseUrl(input.baseUrl), pricing: input.pricing ?? null, modelAliases, execution })
 }
 const paths = (home) => ({ home: assertSafePath(home, { directory: true }), plan: path.join(path.resolve(home), 'plan.json'), preflight: path.join(path.resolve(home), 'preflight.json'), ledger: path.join(path.resolve(home), 'ledger'), summary: path.join(path.resolve(home), 'summary.json') })
 export function loadPrepared(home = DEFAULT_HOME) { return readJson(paths(home).plan) }
@@ -48,9 +55,10 @@ export function prepareEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RE
   const p = paths(home), normalized = normalizeProfile({ ...profile, ...(pricing !== undefined ? { pricing } : {}) })
   const existing = fs.existsSync(p.plan) ? readJson(p.plan) : null, marker = readWatermark(receiptPath)
   if (marker && !existing) throw new Error('api-budget-restore-required')
-  const builder = existing?.schema === 'cfb.bounded-ab/7' || version === 7 ? buildExpandedPlanV7 : existing?.schema === 'cfb.bounded-ab/6' || version === 6 ? buildExpandedPlanV6 : existing?.schema === 'cfb.bounded-ab/5' || version === 5 ? buildExpandedPlanV5 : existing?.schema === 'cfb.bounded-ab/4' || version === 4 ? buildVisiblePlanV4 : existing?.schema === 'cfb.bounded-ab/3' || version === 3 ? buildVisiblePlanV3 : existing?.schema === 'cfb.bounded-ab/2' || version === 2 ? buildBoundedPlanV2 : buildMinimalPlan
+  const builder = existing?.schema === 'cfb.bounded-ab/8' || version === 8 ? buildReasoningReplayPlanV8 : existing?.schema === 'cfb.bounded-ab/7' || version === 7 ? buildExpandedPlanV7 : existing?.schema === 'cfb.bounded-ab/6' || version === 6 ? buildExpandedPlanV6 : existing?.schema === 'cfb.bounded-ab/5' || version === 5 ? buildExpandedPlanV5 : existing?.schema === 'cfb.bounded-ab/4' || version === 4 ? buildVisiblePlanV4 : existing?.schema === 'cfb.bounded-ab/3' || version === 3 ? buildVisiblePlanV3 : existing?.schema === 'cfb.bounded-ab/2' || version === 2 ? buildBoundedPlanV2 : buildMinimalPlan
   const base = builder({ ...normalized, canary: existing?.canary })
-  const plan = immutableJson({ ...base, execution: normalized.execution, simulation })
+  // 型号别名随计划一起冻结：写入计划即进入 planDigest 与公开收据，事后不可改（改＝计划变更，闸会拒绝）。
+  const plan = immutableJson({ ...base, modelAliases: normalized.modelAliases, execution: normalized.execution, simulation })
   if (hasSecretMaterial(plan)) throw new Error('api-plan-secret-material')
   if (marker && (!existing || evidenceDigest(existing) !== evidenceDigest(plan))) throw new Error('api-plan-changed')
   // 准备前只允许未开始的计划调整；已有公开收据时即使 private ledger 消失也不能改稿/重开。
@@ -81,7 +89,7 @@ export function doctorEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_REC
   let executionValid = false
   try {
     const e = plan.execution
-    executionValid = !!e && Object.keys(e).every((k) => Object.hasOwn(DEFAULT_EXECUTION, k)) && normalizeProfile({ schema: 'cfb.eval-profile/1', model: plan.model, baseUrl: plan.baseUrl, ...e }).execution.apiKeyEnv === e.apiKeyEnv
+    executionValid = !!e && Object.keys(e).every((k) => Object.hasOwn(DEFAULT_EXECUTION, k)) && normalizeProfile({ schema: 'cfb.eval-profile/1', model: plan.model, modelAliases: plan.modelAliases, baseUrl: plan.baseUrl, ...e }).execution.apiKeyEnv === e.apiKeyEnv
   } catch { executionValid = false }
   check('execution-reference-valid', executionValid, '只允许模型钥匙环境引用，禁止GitHub/PAT或明文凭据字段。')
   const keyEnv = executionValid ? plan.execution.apiKeyEnv : DEFAULT_EXECUTION.apiKeyEnv, keyConfigured = typeof env[keyEnv] === 'string' && !!env[keyEnv].trim()

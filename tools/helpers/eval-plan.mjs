@@ -8,7 +8,7 @@ import { buildMessagesMR, callsOf, ruleMetrics, actionClass } from '../effect-mr
 import { mrMessages } from '../compile-mr.mjs'
 import { TOOLS, responseText } from '../effect-eval.mjs'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
-import { MINIMAL_TASK_IDS, APPROVED_API_LIMITS, APPROVED_API_LIMITS_V2, APPROVED_API_LIMITS_V4, APPROVED_API_LIMITS_V5, DRAFT_BLOCK_PREFIX, DRAFT_BLOCK_SUFFIX, planVersion } from './api-budget.mjs'
+import { MINIMAL_TASK_IDS, APPROVED_API_LIMITS, APPROVED_API_LIMITS_V2, APPROVED_API_LIMITS_V4, APPROVED_API_LIMITS_V5, APPROVED_API_LIMITS_V8, DRAFT_BLOCK_PREFIX, DRAFT_BLOCK_SUFFIX, planVersion } from './api-budget.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 export const TASK_IDS = MINIMAL_TASK_IDS
@@ -56,7 +56,7 @@ export function buildBoundedPlanV2(options = {}) {
   const jobs = [probe, { ...probe, key: 'probe-r1' }, { ...probe, key: 'probe-r2' }, ...base.jobs.slice(1)]
   return immutableJson({ ...base, schema: 'cfb.bounded-ab/2', approvalDate: '2026-10-01', limits: APPROVED_API_LIMITS_V2, jobs })
 }
-// v3（用户2026-10-01批准，生产等价可见协议）：通道丢弃reasoning历史已被canary证伪可见性；
+// v3（用户2026-10-01批准，生产等价可见协议）：【前提已更正，见v8】当时以为通道丢弃reasoning历史；
 // raw臂=思考已丢的现实（无任何payload），current臂=压缩稿以冻结定界符可见拼接。两臂其余逐字节一致。
 export function buildVisiblePlanV3(options = {}) {
   const base = buildBoundedPlanV2(options), canary = base.canary
@@ -78,7 +78,7 @@ export function buildVisiblePlanV3(options = {}) {
     preregistration: {
       expectedGain: 'current(可见压缩稿)相对raw(思考已丢)在三题red上 falseDone/repeat 降低、next/avoid 提高，flaky 差异最大；若 raw 反超净指标先归因，不庆祝',
       metrics: ['falseDone', 'bump', 'reEdit', 'repeat', 'next', 'avoid', 'action'],
-      limitation: '通道丢弃reasoning历史（canary已证伪可见性），本实验测可见压缩稿对「思考丢失」现实的净价值；vllm指纹为中转自报连续性锚；canned red非独立泛化，无Likert/评委。' } })
+      limitation: '【前提已于2026-10-01被v8推翻】当时以为通道丢弃reasoning历史；实际是聚合站内部分故障商户的上游丢弃，换商户后历史reasoning逐字进上下文。本协议按原样封存、不改分；净价值结论改由v8的reasoning回放协议给出。vllm指纹为中转自报连续性锚；canned red非独立泛化，无Likert/评委。' } })
 }
 // v4＝v3的输出预算修正：主请求max_tokens 4096→8192（v3实测current臂thinking+稿块烧穿4096被length截断），
 // 且response-incomplete降级为样本级失败（收费/不重发/计入sampleFailureBudget=3）。对照关系与v3逐字节同构。
@@ -112,7 +112,7 @@ export function buildExpandedPlanV5(options = {}) {
       expectedGain: 'n=6/格、claimOfV2判据下：current相对raw在wrong-model的falseDone降低；flaky动作分布向instrument/reread偏移且falseDone为0:0；eacces近似不变；任一任务raw净反超则先归因不庆祝',
       metrics: ['falseDone', 'bump', 'reEdit', 'repeat', 'next', 'avoid', 'action'],
       claimVersion: 2,
-      limitation: '通道丢弃reasoning历史（canary已证伪），测可见压缩稿对「思考丢失」现实的净价值；raw臂常零正文、文本类指标两臂不对称（结构性偏差照记）；vllm指纹为中转自报连续性锚；canned red非独立泛化，无Likert/评委。' } })
+      limitation: '【前提已于2026-10-01被v8推翻】当时以为通道丢弃reasoning历史（实为聚合站内故障商户所致）；raw臂常零正文、文本类指标两臂不对称（结构性偏差照记）；vllm指纹为中转自报连续性锚；canned red非独立泛化，无Likert/评委。' } })
 }
 // v6＝v5语义修正版（v5探针死于空reasoning硬停）：探针免思考要求；主请求逐响应验证失败→样本级(预算6)。矩阵/判据/对照与v5一致。
 export function buildExpandedPlanV6(options = {}) {
@@ -129,6 +129,23 @@ export function buildExpandedPlanV7(options = {}) {
     preregistration: { ...base.preregistration,
       limitation: base.preregistration.limitation + ' v6探针死于池轮换后的channel-fingerprint（诊断：fp已变null且echo正常）；v7不设fp闸，逐响应记录fp并在报告公开直方图与配对同指纹计数，混池噪声由样本序交错对称化，身份证据回归实质闸。' } })
 }
+// v8（2026-10-01，**前提更正后的复跑**）：v3–v7 的「可见协议」建立在『通道丢弃历史 reasoning』之上，而该前提是聚合站内
+// 故障商户造成的假象。换商户后 canary 复测证明历史 reasoning_content 逐字进入上下文（Δprompt 539、剂量-反应线性）。
+// ⇒ v8 回到 v1 的**生产等价 reasoning 回放协议**：raw 臂＝录制原文 reasoning，current 臂＝压缩稿替换同一位置，
+//    两臂其余逐字节一致（这正是 cfb 在生产里真正做的事）。判据升级 claimVersion 3（把 v7 五例伪阳性写成回归）。
+export function buildReasoningReplayPlanV8(options = {}) {
+  const base = buildMinimalPlan({ samples: 2, ...options })
+  const probe = base.jobs[0]
+  const jobs = [probe, { ...probe, key: 'probe-r1' }, { ...probe, key: 'probe-r2' },
+    ...base.jobs.slice(1).map((job) => ({ ...job, body: { ...job.body, max_tokens: 8192 } }))]
+  return immutableJson({ ...base, schema: 'cfb.bounded-ab/8', approvalDate: '2026-10-01', limits: APPROVED_API_LIMITS_V8, jobs,
+    protocol: 'chat-completions-history-reasoning/1',
+    preregistration: {
+      expectedGain: 'claimOfV3 判据下（v7 五例伪阳性已回归）：current(压缩稿回放)相对 raw(原文回放) 在 flaky 的 falseDone/bump/reEdit/repeat 降低、next/avoid 提高；wrong-model/eacces 近似不变；任一任务 raw 净反超则先归因不庆祝',
+      metrics: ['falseDone', 'bump', 'reEdit', 'repeat', 'next', 'avoid', 'action'],
+      claimVersion: 3,
+      limitation: '本协议测试的是「压缩稿 vs 原文」在 reasoning 可见前提下的净效果，这才是生产的真实对照；v3–v7 的可见协议结论按其冻结判据存档、不改分、不追溯。fp=null（池轮换，身份证据=型号+canary逐字回显+思考在跑+usage界）；canned red 非独立泛化；无 Likert/评委；n=2/格为小样本。' } })
+}
 export function currentSourceHashes() {
   return Object.fromEntries(SOURCE_FILES.map((p) => [p, crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, p))).digest('hex')]))
 }
@@ -138,8 +155,9 @@ export function sourceDifferences(plan) {
 }
 export function resultOf(plan, job, r) {
   const frozen = plan.evaluation[job.task], text = responseText(r.message)
-  // v5起采用预注册的claimOfV2判据；旧scope按各自冻结判据复算，互不追溯。
-  return { task: job.task, variant: job.variant, sample: job.sample, rule: ruleMetrics(frozen.chain, frozen.spec, 'red', text, { claimVersion: planVersion(plan) >= 5 ? 2 : 1 }), action: actionClass(frozen.chain, text) }
+  // 判据按 scope 版本冻结：v8起 claimOfV3；v5–v7 为 claimOfV2；v1–v4 为 claimOf。互不追溯。
+  const claimVersion = planVersion(plan) >= 8 ? 3 : planVersion(plan) >= 5 ? 2 : 1
+  return { task: job.task, variant: job.variant, sample: job.sample, rule: ruleMetrics(frozen.chain, frozen.spec, 'red', text, { claimVersion }), action: actionClass(frozen.chain, text) }
 }
 export function summarizeMinimal(plan, results) {
   const metrics = ['falseDone', 'bump', 'reEdit', 'repeat', 'next', 'avoid'], unique = new Map(), rejected = [], duplicateKeys = new Set()

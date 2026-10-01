@@ -7,7 +7,10 @@ import { assertSafePath, readJson, writeJson, syncDirectory } from './eval-files
 export const API_APPROVAL_SCOPE = 'cfb.minimal-api-approval.2026-09-30'
 // v2 scope＝用户 2026-10-01 的新明确批准（网络容错有界评测）；旧 scope/收据/私有仓永久封存，不重开。
 export const API_APPROVAL_SCOPE_V2 = 'cfb.bounded-api-approval.2026-10-01'
-// v3＝同日新批准的生产等价可见上下文协议：通道已证丢弃reasoning历史（canary证伪），改测可见压缩稿对『思考丢失』现实的净价值。
+// v3＝同日新批准的生产等价可见上下文协议：当时以为通道丢弃reasoning历史（该结论后被推翻，见 v8/2026-10-01 更正），改测可见压缩稿对『思考丢失』现实的净价值。
+// ⚠ 更正（2026-10-01，v8）：v3–v7 依据的『a6api 全部路由丢弃历史 reasoning_content』**不成立**。真实原因是聚合站内**部分商户的上游**丢弃；
+//   换到正常商户后 canary 复测 Δprompt(1000字−1字)=539、剂量-反应严格线性（0/280/700/1190 字 → +0/+125/+305/+515 tokens），
+//   历史 reasoning 逐字进上下文。v3–v7 收据与其冻结判据按原样封存、不改分、不追溯；v8 回到 v1 的 reasoning 回放协议重跑。
 export const API_APPROVAL_SCOPE_V3 = 'cfb.visible-context-approval.2026-10-01'
 // v4＝v3矩阵的输出预算修正版（8192）+ response-incomplete样本级容错；v3计划死于首个current样本length截断，收据封存。
 export const API_APPROVAL_SCOPE_V4 = 'cfb.visible-context-approval.2026-10-01-r2'
@@ -18,8 +21,13 @@ export const API_APPROVAL_SCOPE_V6 = 'cfb.visible-context-expanded.2026-10-01-r2
 // v7＝指纹政策修正：中转池轮换使任何钉死指纹数小时即失效（v6探针死于此，诊断显示fp已变null且echo正常）；
 // v7放开fp闸但逐响应记录并在报告公开直方图/配对同指纹数，身份证据=型号精确+canary逐字回显+思考在跑+usage界。
 export const API_APPROVAL_SCOPE_V7 = 'cfb.visible-context-expanded.2026-10-01-r3'
-export const KNOWN_API_SCOPES = Object.freeze([API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6, API_APPROVAL_SCOPE_V7])
-const SCOPE_MAX_REQUESTS = Object.freeze({ [API_APPROVAL_SCOPE]: 13, [API_APPROVAL_SCOPE_V2]: 15, [API_APPROVAL_SCOPE_V3]: 15, [API_APPROVAL_SCOPE_V4]: 15, [API_APPROVAL_SCOPE_V5]: 39, [API_APPROVAL_SCOPE_V6]: 39, [API_APPROVAL_SCOPE_V7]: 39 })
+// v8＝**前提更正后的复跑**（用户 2026-10-01 换掉聚合站内故障商户后）：canary 复测证明历史 reasoning_content 逐字进上下文
+//   （Δprompt 539、剂量-反应线性），故 v3–v7 的「可见协议」代换前提消失。v8 回到 v1 的**生产等价 reasoning 回放协议**
+//   （protocol: chat-completions-history-reasoning/1）：raw 臂＝录制原文 reasoning，current 臂＝压缩稿替换同一位置，
+//   其余逐字节一致；判据升级为 claimVersion 3（v7 五例伪阳性回归）。矩阵沿用 v1/v4（3题×2臂×2样本=12主）+3探针。
+export const API_APPROVAL_SCOPE_V8 = 'cfb.history-reasoning-revalidation.2026-10-01'
+export const KNOWN_API_SCOPES = Object.freeze([API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6, API_APPROVAL_SCOPE_V7, API_APPROVAL_SCOPE_V8])
+const SCOPE_MAX_REQUESTS = Object.freeze({ [API_APPROVAL_SCOPE]: 13, [API_APPROVAL_SCOPE_V2]: 15, [API_APPROVAL_SCOPE_V3]: 15, [API_APPROVAL_SCOPE_V4]: 15, [API_APPROVAL_SCOPE_V5]: 39, [API_APPROVAL_SCOPE_V6]: 39, [API_APPROVAL_SCOPE_V7]: 39, [API_APPROVAL_SCOPE_V8]: 15 })
 export const apiStoreDirectory = (directory, scope = API_APPROVAL_SCOPE) => path.join(path.resolve(directory), crypto.createHash('sha256').update(scope).digest('hex'))
 const HEX = /^[a-f0-9]{64}$/
 export function readWatermark(file) {

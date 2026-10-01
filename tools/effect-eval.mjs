@@ -156,9 +156,21 @@ export function sawReasoning(usage, variant, chars, base, fp) {
   return Number.isFinite(Number(usage.prompt_tokens)) && Number(usage.prompt_tokens) >= base + 0.3 * chars
 }
 
+// 型号回显规范（2026-10-01，v8 发现）：某些中转对同一个型号接受点号写法、却用连字符写法回显
+// （实测 a6api：请求 `deepseek-v4.1-flash` → 200 且 model=`deepseek-v4-1-flash`；直接请求连字符形式 → 400）。
+// 这不是"随便都能过"：别名必须**由 profile 显式声明并接受审计**，绝不静默归一化——否则型号身份闸形同虚设。
+// 只允许把点/连字符/下划线的差异视作同一型号，其余任何字符差异仍然拒绝。
+const canonModel = (s) => String(s || '').toLowerCase().replace(/[._-]+/g, '-')
 /** 响应字段只能作渠道证据；请求的 model 字符串不证明实际响应型号。 */
-export function channelIssue(r, expectedModel, { requireFp = true, requireThinking = true } = {}) {
-  if (typeof expectedModel !== 'string' || !expectedModel || r?.model !== expectedModel) return 'channel-model-mismatch'
+export function channelIssue(r, expectedModel, { requireFp = true, requireThinking = true, modelAliases = [] } = {}) {
+  if (typeof expectedModel !== 'string' || !expectedModel) return 'channel-model-mismatch'
+  const got = r?.model
+  if (typeof got !== 'string' || !got) return 'channel-model-mismatch'
+  // 精确相等永远接受；否则只接受 profile 显式声明的别名，且两侧规范化后必须全等。
+  const declared = Array.isArray(modelAliases) && modelAliases.some((a) => typeof a === 'string' && canonModel(a) === canonModel(got))
+  if (got !== expectedModel && !declared) return 'channel-model-mismatch'
+  const canonExpected = canonModel(expectedModel)
+  if (got !== expectedModel && canonModel(got) !== canonExpected) return 'channel-model-mismatch'
   if (!r.usage || claudeShaped(r.usage)) return 'channel-usage'
   if (requireFp && !TRUSTED_FP.has(r.fp)) return 'channel-fingerprint'
   if (requireThinking && (typeof r.message?.reasoning_content !== 'string' || !r.message.reasoning_content.trim())) return 'channel-no-thinking'

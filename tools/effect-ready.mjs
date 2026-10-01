@@ -3,7 +3,7 @@
 import { spawnSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import path from 'node:path'
-import { prepareEvaluation, doctorEvaluation, runEvaluation, reportEvaluation, DEFAULT_HOME, DEFAULT_HOME_V2, DEFAULT_HOME_V3, DEFAULT_HOME_V4, DEFAULT_HOME_V5, DEFAULT_HOME_V6, DEFAULT_HOME_V7, PUBLIC_RECEIPT, PUBLIC_RECEIPT_V2, PUBLIC_RECEIPT_V3, PUBLIC_RECEIPT_V4, PUBLIC_RECEIPT_V5, PUBLIC_RECEIPT_V6, PUBLIC_RECEIPT_V7, PROFILE_EXAMPLE, ROOT } from './helpers/eval-workflow.mjs'
+import { prepareEvaluation, doctorEvaluation, runEvaluation, reportEvaluation, DEFAULT_HOME, DEFAULT_HOME_V2, DEFAULT_HOME_V3, DEFAULT_HOME_V4, DEFAULT_HOME_V5, DEFAULT_HOME_V6, DEFAULT_HOME_V7, DEFAULT_HOME_V8, PUBLIC_RECEIPT_V8, PUBLIC_RECEIPT, PUBLIC_RECEIPT_V2, PUBLIC_RECEIPT_V3, PUBLIC_RECEIPT_V4, PUBLIC_RECEIPT_V5, PUBLIC_RECEIPT_V6, PUBLIC_RECEIPT_V7, PROFILE_EXAMPLE, ROOT } from './helpers/eval-workflow.mjs'
 import { readJson } from './helpers/eval-files.mjs'
 import { exportEvaluationBundle, importEvaluationBundle } from './helpers/eval-bundle.mjs'
 
@@ -21,13 +21,14 @@ export async function readyMain(argv, { env = process.env, output = console.log,
     else if (args[i] === '--v5') o.v5 = true
     else if (args[i] === '--v6') o.v6 = true
     else if (args[i] === '--v7') o.v7 = true
+    else if (args[i] === '--v8') o.v8 = true
     else if (['--home', '--profile', '--pricing', '--file', '--checkpoint'].includes(args[i])) {
       const k = args[i].slice(2); if (!args[i + 1] || args[i + 1].startsWith('--')) throw new Error('eval-option-value')
       o[k] = args[++i]
     } else if (args[i] !== '--json') throw new Error('eval-option')
   }
-  if ([o.v2, o.v3, o.v4, o.v5, o.v6, o.v7].filter(Boolean).length > 1) throw new Error('eval-option-context')
-  const receipt = o.v7 ? PUBLIC_RECEIPT_V7 : o.v6 ? PUBLIC_RECEIPT_V6 : o.v5 ? PUBLIC_RECEIPT_V5 : o.v4 ? PUBLIC_RECEIPT_V4 : o.v3 ? PUBLIC_RECEIPT_V3 : o.v2 ? PUBLIC_RECEIPT_V2 : PUBLIC_RECEIPT
+  if ([o.v2, o.v3, o.v4, o.v5, o.v6, o.v7, o.v8].filter(Boolean).length > 1) throw new Error('eval-option-context')
+  const receipt = o.v8 ? PUBLIC_RECEIPT_V8 : o.v7 ? PUBLIC_RECEIPT_V7 : o.v6 ? PUBLIC_RECEIPT_V6 : o.v5 ? PUBLIC_RECEIPT_V5 : o.v4 ? PUBLIC_RECEIPT_V4 : o.v3 ? PUBLIC_RECEIPT_V3 : o.v2 ? PUBLIC_RECEIPT_V2 : PUBLIC_RECEIPT
   if ((o.v2 || o.v3 || o.v4 || o.v5 || o.v6 || o.v7) && o.home === (env.CFB_EVAL_HOME || DEFAULT_HOME)) o.home = o.v7 ? DEFAULT_HOME_V7 : o.v6 ? DEFAULT_HOME_V6 : o.v5 ? DEFAULT_HOME_V5 : o.v4 ? DEFAULT_HOME_V4 : o.v3 ? DEFAULT_HOME_V3 : DEFAULT_HOME_V2
   if (o.live && command !== 'run' || (o.pricing || o.profile !== PROFILE_EXAMPLE) && command !== 'prepare' || o.file && !['export', 'import'].includes(command) || o.checkpoint && command !== 'run') throw new Error('eval-option-context')
   const print = (r) => output(JSON.stringify(r, null, 2))
