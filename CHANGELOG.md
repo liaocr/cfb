@@ -6,6 +6,30 @@
 
 ---
 
+## v13.6.0（2026-10-01，前提更正：通道并未丢弃历史reasoning；claimOfV3落地；v8 reasoning回放协议就绪）
+
+- **结论更正（本轮主线）**：v13.4.0/v13.5.0 与 LIVE-VISIBLE/LIVE-EXPANDED 的核心前提「a6api 中转全部路由丢弃历史 reasoning_content」**不成立**。
+  用户说明 a6api 是低价聚合站、内含很多商户且可随时切换；**当时那条商户的上游行为异常**，换掉后同一条 canary 立即恢复拼接。
+  独立复测：Δprompt(1000字−1字)=539、剂量-反应严格线性（reasoning_content 0/280/700/1190 字 → +0/+125/+305/+515 prompt_tokens），历史 reasoning 逐字进上下文。
+- **教训（写进纪律）**：**单点/单商户失败不足以证明通道级不变式**。当时把「某个商户的故障」升格为「通道实证结论」，
+  并据此把实验协议从 v1（reasoning 回放）换成 v3 起的「可见协议」——而生产里 cfb 真正做的是把稿写回 reasoning 位，
+  于是 v3–v7 测的是一个**当时并不存在**的场景。v2–v7 的收据/判据/结论**按原样封存、不改分、不追溯**；更正以新增条目记录。
+- **仍然成立并复用**：有界预算/预占/收据三平面绑定、可信性闸、canary、指纹政策、结构性指标方法论、claimOfV2→V3 演进。
+- **claimOfV3 落地**（v13.5.0 预注册，本轮实施于 tools/effect-mr.mjs）：让步守卫（即使/哪怕/就算…修复词…仍/还/依旧）、
+  意图守卫（以/先/再/设计/计划+修复）、拉丁前缀+完成名词守卫，外加否认限定守卫。
+  **回归结果：v7 报告的 5 例伪阳性 5/5 全部不再判 fixed（claimOfV2 对 5 例全部误判），5 例真阳性 5/5 保留，真阴性不退化。** 10 项新自测全过。
+- **v8 协议就绪（reasoning 回放，回到 v1 口径）**：新增 `buildReasoningReplayPlanV8`（schema `cfb.bounded-ab/8`、
+  scope `cfb.history-reasoning-revalidation.2026-10-01`、protocol `chat-completions-history-reasoning/1`、claimVersion 3、
+  3题×2臂×2样本=12主+3探针）。关键不变量已由自测锁定：**raw 臂＝录制原文 reasoning，current 臂＝冻结压缩稿替换同一位置，两臂除 reasoning 外逐字节相同**。
+  同时修正一处真实缺陷：可见协议闸（零 reasoning 强制）原先写成 `version >= 3`，会误杀 v8，现**限定为 v3–v7**。
+- **判据按 scope 冻结**：v8→claimOfV3，v5–v7→claimOfV2，v1–v4→claimOf，互不追溯（`resultOf`）。
+- **未消费任何 API 预算**：本轮**没有**发起 live 请求。尝试 v8 时发现两个前置阻塞，如实记录不绕过：
+  ① 型号回显规范——请求 `deepseek-v4.1-flash` 返回 200 但响应 `model` 恒为 `deepseek-v4-1-flash`，而请求连字符形式为 400；
+  身份闸 `channelIssue` 要求精确字符串相等，按语义会把全部请求判为 `channel-model-mismatch`。② 渠道商户可切换且不稳定
+  （用户切换后同一 canary 由「拼接=是」变为「Δprompt=0、thinking 不生效」）。累计真实消费仍≈USD 0.21 / 授权 USD 2。
+- 自测：新增 `test/eval-reasoning-v8.selftest.mjs` **10/0**；核心 19 套件 **700 通过 / 3 失败**，
+  3 个失败均为平台门槛（2 个需 `symlink` 权限、1 个需 Linux `/proc/net/route`），与本轮改动无关、改动前即如此。
+
 ## v13.5.0（2026-10-01，扩样本n=6实跑：claimOfV2预注册、v5-v7语义修正、结构性指标结论）
 
 - claimOfV2预注册落地（排除事件名词短语/推导箭头，真阳性逐例回归不变），旧claimOf冻结供v1-v4与run4口径；resultOf按planVersion选判据互不追溯。v5扩样本scope（6样本/格36主+3探针，失败预算等比6/6）。

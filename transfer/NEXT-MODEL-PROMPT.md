@@ -1,6 +1,34 @@
 # 给下一个模型的开工提示词（整份粘贴，不要删改）
 
-你是接手 **cfb** 项目的模型。工作目录 `/home/user/cfb`，仓库 `github.com/liaocr/cfb`，当前分支 `arena/01a0eba2-cfb`。**只用中文回复。**
+你是接手 **cfb** 项目的模型。仓库 `github.com/liaocr/cfb`，当前工作分支 **`arena/01a0f127-cfb`**。**只用中文回复。**
+
+> **本节于 2026-10-01（v13.6.0）更新，覆盖下方原始正文里过时的路径与任务描述。** 以本节为准，正文仅作背景。
+
+## 零、先读这段（最新的、必须知道的）
+
+1. **最重要的一条**：v13.4.0/v13.5.0 的核心前提「a6api 中转全部路由丢弃历史 reasoning_content」**已被推翻**。
+   真实原因是聚合站 a6api 内**某个商户（上游）行为异常**；a6api 是低价聚合站、内含很多商户、**可随时切换**。
+   换掉故障商户后 canary 立即恢复拼接（`Δprompt(1000字−1字)=539`、剂量-反应严格线性）。
+   **教训（写进纪律）：单点/单商户失败不足以证明通道级不变式。** 细节见 `CHANGELOG.md` v13.6.0 与
+   `docs/analysis/LIVE-VISIBLE-2026-10-01.md` 顶部的更正块。
+2. **生产里 cfb 真正做的事**是「把压缩稿写回 reasoning 位」——即 v1/v8 协议（`chat-completions-history-reasoning/1`）。
+   v3–v7 测的「可见协议」建立在一个**当时并不存在**的场景上。v2–v7 的收据/判据/结论按原样封存、不改分、不追溯。
+3. **claimOfV3 已落地**（`tools/effect-mr.mjs`）：让步/意图/拉丁前缀/否认四类守卫。v7 报告的 5 例伪阳性 5/5 不再误判，
+   5 例真阳性 5/5 保留。回归在 `test/eval-reasoning-v8.selftest.mjs`（12 项，全过）。
+4. **v8 协议已就绪、但尚未实跑**：`buildReasoningReplayPlanV8`（`cfb.bounded-ab/8`、
+   scope `cfb.history-reasoning-revalidation.2026-10-01`、claimVersion 3、12 主 + 3 探针、预留 ≈USD 0.4515）。
+   跑法：`node tools/effect-ready.mjs prepare --v8 --profile eval-profile.json` → `doctor` → `run --live`。
+5. **实跑前必做三件事**（v8 尝试时全部踩过）：
+   - **逐次 canary**：`node tools/channel-check.mjs --base-url https://a6api.com/v1 --model deepseek-v4.1-flash`。
+     商户不稳定，几分钟内即可能变；**canary 不稳就别开 v8**（别在漂移的通道上做对照）。
+   - **型号回显**：a6api 接受点号写法但**回显连字符**（`deepseek-v4.1-flash` → `deepseek-v4-1-flash`），
+     直接请求连字符是 400。已在 profile 用**显式声明的 `modelAliases`** 处理（`eval-profile.json`），
+     身份闸仍是硬闸：未声明别名 / 近似但不同型号 / 缺 model 一律拒（有单测）。
+   - **定价**：`eval-profile.json` 已按用户给的价填好（输入 $1/M、输出 $4/M、缓存 $0.02/M；缓存费率项目 schema 不建模，仅备注）。
+6. **环境坑**（每轮复发）：Windows 下 3 个平台门槛失败（2 个需 `symlink` 权限、1 个需 Linux `/proc/net/route`），
+   与本项目逻辑无关、改动前即如此；全量断网自检的标准入口 `tools/verify-offline.mjs` 是 **Linux 专有**。
+
+---
 
 ---
 

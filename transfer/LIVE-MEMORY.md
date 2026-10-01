@@ -2,6 +2,17 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
+## 0. ⚠ 前提更正（2026-10-01，第二十会话）
+
+- **「a6api 全部路由丢弃历史 reasoning_content」不成立**（该结论写在本文件 §1a、CHANGELOG v13.4.0、LIVE-VISIBLE-2026-10-01.md、BIRTH-VISIBLE-SPLICE.md）。
+  真实原因：聚合站 a6api 内**某个商户（上游）行为异常**；用户换掉该商户后，同一条 canary 立即恢复拼接
+  （`Δprompt(1000字−1字)=539`、剂量-反应严格线性 0/280/700/1190 字 → +0/+125/+305/+515 prompt_tokens）。
+- **教训**：**单点/单商户失败不足以证明通道级不变式**。当时把"某个商户的故障"升格为"通道实证结论"，并据此**替换了实验协议**（v3 起改测可见协议），
+  而生产里 cfb 真正做的是把稿写回 reasoning 位——协议替换使 v3–v7 测的是一个**当时并不存在**的场景。
+- **处置**：v2–v7 的收据/判据/结论**按原样封存、不改分、不追溯**（纪律不变）；更正以新增条目记录。
+- **仍然成立**：有界预算、可信性闸、canary、指纹记录、结构性指标方法论、claimOfV2/V3 演进——全部有效并被复用。
+- **商户可切换且不稳定**：用户明确 a6api 是低价聚合站、商户很多、可随时切；同一商户数分钟内行为即可变化。**任何真实评测前必须逐次 canary**。
+
 ## 1. 当前状态（2026-10-01，第十九会话：n=6扩样本v7全成功，结构性指标结论落地）
 
 - 用户批准「全面推进下一步，并进行优化」→ 三线推进完毕：①claimOfV2预注册判据（旧claimOf冻结，resultOf按planVersion选判据不追溯）；②v5-v7扩样本scope（6样本/格36主+3探针）；③生产birth可见拼接设计提案docs/design/BIRTH-VISIBLE-SPLICE.md（默认off，未实施待批准）。
@@ -15,7 +26,7 @@
 ## 1a. 前轮（第十八会话：首次真实通道验证完成，v4可见协议A/B 13/13成功）
 
 - 用户提供密钥并授权真实API优化（"用api去真实跑优化…不要调用太多"）。密钥已放~/.secrets/keys.env(0600)未打印未提交；GITHUB_PAT可用，固定分支正常快进推送。
-- **通道取证**：a6api中转当前全部路由丢弃历史reasoning_content（canary复核×2+五别名扫描；vllm自报指纹`vllm-0.0.0-tp4-dp2-ep-869f52fc`三次一致；fp_dspure_app_v1后端已不存在于该token分组）。旧reasoning回放协议在此通道物理不可用——历史"渠道坑"升级为实证结论。
+- **通道取证**（⚠ 已被 §0 更正：实为聚合站内故障商户所致，非通道性质）：a6api中转当前全部路由丢弃历史reasoning_content（canary复核×2+五别名扫描；vllm自报指纹`vllm-0.0.0-tp4-dp2-ep-869f52fc`三次一致；fp_dspure_app_v1后端已不存在于该token分组）。旧reasoning回放协议在此通道物理不可用——历史"渠道坑"升级为实证结论。
 - **scope账本**（收据全在transfer/，不删不改）：v1探针网络错误$0.0051废；v2探针指纹拦截$0.0051废；v3探针首次accepted+1主accepted+1主length截断$0.0373旧语义停机；**v4全链13/13、12/12配对、$0.2431预留/实际usage≈$0.05**。另诊断9次≈$0.006。合计消费远低于USD2。
 - **v4结果**（n=2/格，确定性规则，judge=0）：eacces双臂满分持平✓、wrong-model current消除1例假完成✓（均合预注册）；flaky名义raw反超1项falseDone——已归因为CLAIM_RE把"主请求完成→primarySettled置位"名词短语误判（且raw臂正文长0物理免疫文本指标=结构性偏差），主结果按原判据记录，正则修正进下轮预注册。flaky current动作=reread+instrument（oracle路线）。
 - **新基建**（936/0/1、33/33、N1–N7=0）：v2网络容错scope（3同体备用探针/网络失败预算3/失败不退款不重发）、v3生产等价可见协议（零reasoning审计/canary可见单点/current=稿块前缀+raw逐字节）、v4输出预算8192+截断样本级容错；指纹按scope锚定、channelIssue旧全局fp集合只留旧CLI；--v2/--v3/--v4 CLI；加密包兼容多scope私有仓。
