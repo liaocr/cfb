@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { createBudgetedChat, inspectApiBudget, auditApiPlan, planScope, planVersion, TRUSTED_FINGERPRINTS, DRAFT_BLOCK_PREFIX, DRAFT_BLOCK_SUFFIX } from '../tools/helpers/api-budget.mjs'
 import { API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5 } from '../tools/helpers/api-watermark.mjs'
-import { buildVisiblePlanV3, buildVisiblePlanV4, buildExpandedPlanV5, resultOf } from '../tools/helpers/eval-plan.mjs'
+import { buildVisiblePlanV3, buildVisiblePlanV4, buildExpandedPlanV5, buildExpandedPlanV6, resultOf } from '../tools/helpers/eval-plan.mjs'
 import { prepareEvaluation, doctorEvaluation, loadPrepared, executePreparedEvaluation } from '../tools/helpers/eval-workflow.mjs'
 import { claimOf, claimOfV2, ruleMetrics } from '../tools/effect-mr.mjs'
 
@@ -142,6 +142,37 @@ try {
     assert.equal(r2.complete, false); assert.equal(r2.validMainResponses, 35)
     assert.equal(r2.requestsRejected.length, 1)
     assert.equal(snapshot(w2).halted, null)
+  })
+  await test('12 v6探针：空reasoning也accepted（echo保真即可）；同响应在v5按旧语义channel-no-thinking整停', async () => {
+    const mk = (ver) => { const x = fresh(); prepareEvaluation({ ...x, profile: PROFILE, version: ver }); return { ...x, plan: loadPrepared(x.home) } }
+    const noThink = (plan) => (b, j) => ({ model: plan.model, system_fingerprint: TRUSTED_FINGERPRINTS[3], usage: { prompt_tokens: 200, completion_tokens: 20 }, choices: [{ finish_reason: 'stop', message: { content: j?.kind === 'probe' ? plan.canary : '答', reasoning_content: '' } }] })
+    const w6 = mk(6)
+    await client(w6, mock(w6.plan, noThink(w6.plan))).run('probe')
+    assert.equal(snapshot(w6).entries[0].status, 'accepted')
+    const w5 = mk(5)
+    await assert.rejects(client(w5, mock(w5.plan, noThink(w5.plan))).run('probe'), /channel-no-thinking/)
+    assert.equal(snapshot(w5).halted, 'channel-no-thinking')
+  })
+  await test('13 v6主请求：型号漂移/空思考=样本级不停机；累计6次硬停；探针指纹失败仍整停；主空思考在v5整停', async () => {
+    const mk = (ver) => { const x = fresh(); prepareEvaluation({ ...x, profile: PROFILE, version: ver }); return { ...x, plan: loadPrepared(x.home) } }
+    const w = mk(6)
+    const drift = (b, j) => j?.kind === 'main' ? { ...payload(w.plan, j), model: 'other-model' } : payload(w.plan, j)
+    const c = client(w, mock(w.plan, drift))
+    await c.run('probe')
+    await assert.rejects(c.run('flaky-timeout|raw|0'), /channel-model-mismatch/)
+    assert.equal(snapshot(w).halted, null)
+    const noThinkMain = (b, j) => j?.kind === 'main' ? { ...payload(w.plan, j), choices: [{ finish_reason: 'stop', message: { content: '答', reasoning_content: '' } }] } : payload(w.plan, j)
+    const c2 = client(w, mock(w.plan, noThinkMain))
+    for (const k of ['flaky-timeout|current|0', 'flaky-timeout|current|1', 'flaky-timeout|raw|1', 'wrong-model|raw|0', 'wrong-model|current|0']) await assert.rejects(c2.run(k), /channel-no-thinking/)
+    assert.equal(snapshot(w).halted, 'api-sample-failure-budget')
+    const wp = mk(6)
+    await assert.rejects(client(wp, mock(wp.plan, (b, j) => ({ ...payload(wp.plan, j), system_fingerprint: 'fp_other' }))).run('probe'), /channel-fingerprint/)
+    assert.equal(snapshot(wp).halted, 'channel-fingerprint')
+    const w5 = mk(5)
+    const c5 = client(w5, mock(w5.plan, (b, j) => j?.kind === 'main' ? { ...payload(w5.plan, j), choices: [{ finish_reason: 'stop', message: { content: '答', reasoning_content: '' } }] } : payload(w5.plan, j)))
+    await c5.run('probe')
+    await assert.rejects(c5.run('flaky-timeout|raw|0'), /channel-no-thinking/)
+    assert.equal(snapshot(w5).halted, 'channel-no-thinking')
   })
 } finally { fs.rmSync(ROOT, { recursive: true, force: true }) }
 console.log(`eval-visible-v3: ${pass} passed, ${fail} failed`)

@@ -114,6 +114,13 @@ export function buildExpandedPlanV5(options = {}) {
       claimVersion: 2,
       limitation: '通道丢弃reasoning历史（canary已证伪），测可见压缩稿对「思考丢失」现实的净价值；raw臂常零正文、文本类指标两臂不对称（结构性偏差照记）；vllm指纹为中转自报连续性锚；canned red非独立泛化，无Likert/评委。' } })
 }
+// v6＝v5语义修正版（v5探针死于空reasoning硬停）：探针免思考要求；主请求逐响应验证失败→样本级(预算6)。矩阵/判据/对照与v5一致。
+export function buildExpandedPlanV6(options = {}) {
+  const base = buildExpandedPlanV5(options)
+  return immutableJson({ ...base, schema: 'cfb.bounded-ab/6',
+    preregistration: { ...base.preregistration,
+      limitation: base.preregistration.limitation + ' v5探针因空reasoning被channel-no-thinking整停（收据封存）；v6探针只测可见echo保真，主请求思考要求保留、逐响应验证失败按样本级计（预算6），每个accepted样本仍逐个过全部闸。' } })
+}
 export function currentSourceHashes() {
   return Object.fromEntries(SOURCE_FILES.map((p) => [p, crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, p))).digest('hex')]))
 }

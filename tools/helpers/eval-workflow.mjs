@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
-import { buildMinimalPlan, buildBoundedPlanV2, buildVisiblePlanV3, buildVisiblePlanV4, buildExpandedPlanV5, sourceDifferences, summarizeMinimal, resultOf } from './eval-plan.mjs'
+import { buildMinimalPlan, buildBoundedPlanV2, buildVisiblePlanV3, buildVisiblePlanV4, buildExpandedPlanV5, buildExpandedPlanV6, sourceDifferences, summarizeMinimal, resultOf } from './eval-plan.mjs'
 import { auditApiPlan, createBudgetedChat, inspectApiBudget, inputTokenBound, APPROVED_API_LIMITS } from './api-budget.mjs'
 import { assertSafePath, readJson, writeJson, hasSecretMaterial } from './eval-files.mjs'
 import { assertAutoCheckpoint, exportEvaluationBundle } from './eval-bundle.mjs'
@@ -20,6 +20,8 @@ export const DEFAULT_HOME_V4 = path.join(ROOT, '.cfb-runtime/bounded-ab-v4')
 export const PUBLIC_RECEIPT_V4 = path.join(ROOT, 'transfer/api-budget-approval-v4.watermark.json')
 export const DEFAULT_HOME_V5 = path.join(ROOT, '.cfb-runtime/bounded-ab-v5')
 export const PUBLIC_RECEIPT_V5 = path.join(ROOT, 'transfer/api-budget-approval-v5.watermark.json')
+export const DEFAULT_HOME_V6 = path.join(ROOT, '.cfb-runtime/bounded-ab-v6')
+export const PUBLIC_RECEIPT_V6 = path.join(ROOT, 'transfer/api-budget-approval-v6.watermark.json')
 export const PROFILE_EXAMPLE = path.join(ROOT, 'deploy/eval-profile.example.json')
 const DEFAULT_EXECUTION = Object.freeze({ apiKeyEnv: 'DEEPSEEK_API_KEY', timeoutMs: 240000, maxResponseBytes: 1024 * 1024 })
 const safeCode = (e) => /^(?:api|eval|response|request|channel|source|profile|explicit)-[a-z0-9-]+$/.test(e?.message || '') || /^HTTP \d{3}$/.test(e?.message || '') ? e.message : 'eval-state-unavailable'
@@ -44,7 +46,7 @@ export function prepareEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RE
   const p = paths(home), normalized = normalizeProfile({ ...profile, ...(pricing !== undefined ? { pricing } : {}) })
   const existing = fs.existsSync(p.plan) ? readJson(p.plan) : null, marker = readWatermark(receiptPath)
   if (marker && !existing) throw new Error('api-budget-restore-required')
-  const builder = existing?.schema === 'cfb.bounded-ab/5' || version === 5 ? buildExpandedPlanV5 : existing?.schema === 'cfb.bounded-ab/4' || version === 4 ? buildVisiblePlanV4 : existing?.schema === 'cfb.bounded-ab/3' || version === 3 ? buildVisiblePlanV3 : existing?.schema === 'cfb.bounded-ab/2' || version === 2 ? buildBoundedPlanV2 : buildMinimalPlan
+  const builder = existing?.schema === 'cfb.bounded-ab/6' || version === 6 ? buildExpandedPlanV6 : existing?.schema === 'cfb.bounded-ab/5' || version === 5 ? buildExpandedPlanV5 : existing?.schema === 'cfb.bounded-ab/4' || version === 4 ? buildVisiblePlanV4 : existing?.schema === 'cfb.bounded-ab/3' || version === 3 ? buildVisiblePlanV3 : existing?.schema === 'cfb.bounded-ab/2' || version === 2 ? buildBoundedPlanV2 : buildMinimalPlan
   const base = builder({ ...normalized, canary: existing?.canary })
   const plan = immutableJson({ ...base, execution: normalized.execution, simulation })
   if (hasSecretMaterial(plan)) throw new Error('api-plan-secret-material')
