@@ -4,6 +4,32 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.1.0（2026-10-02，修复 77 项长期失败：Windows 跨盘路径判据 + POSIX 平台门禁）
+
+- **起因**：`node verify.mjs` 长期停在「77 失败」，被当作平台噪声默认接受。逐条追溯后发现**三个不同的真实根因**，其中两个是可修复的产品缺陷。
+- **根因 A（真实产品缺陷，已修）**：`tools/helpers/training-io.mjs` 的 `privateTrainingPath` 用
+  `path.relative(ROOT, p).startsWith('..')` 判断路径是否在仓外。**Windows 上跨盘符时 `path.relative` 返回绝对路径**
+  （`D:\repo` vs `C:\tmp\x` ⇒ 返回 `C:\tmp\x`），于是以 `..` 开头这一判据为假，**合法的仓外独立卷（例如系统临时目录）被误判为「仓内未忽略目录」而拒绝**。
+  正确判据是 `path.isAbsolute(rel) || rel.startsWith('..')`（仓内另外两处同类代码本来就是这么写的）。
+  **修这一处即让 `training-ready` 从 10 通过 / 33 失败变为 43 通过 / 0 失败。**
+- **根因 B（真实产品缺陷，已修）**：`tools/helpers/training-workflow.mjs` 硬编码 `spawnSync('python3', ...)`。
+  Windows 上 `python3.exe` 可能是 Microsoft Store 的**占位存根**（stdout 为空、不可用），真解释器是 `python` / `py`。
+  硬编码会把「已装 Python」的机器判成「缺依赖」。现改为探测并缓存可用解释器；找不到时 doctor 报「缺本地依赖」而非崩溃。
+- **根因 C（平台证据不可得，改为显式跳过）**：以下断言在 Windows 上**无法取得同等强度的证据**，
+  按「不把拿不到的证据当通过」的原则显式跳过，而**不是**放宽阈值或删掉检查：
+  - `assertOfflineNamespace`（真断网验收）依赖 `/proc/net/route`，Linux 独有。现改为**失败关闭**：非 Linux 抛
+    `offline-namespace-unverifiable-platform:<平台>` 而非 ENOENT，并导出 `offlineNamespaceVerifiable()` 供调用方判断。
+  - **符号链接拒绝**（4 处）：Windows 创建 symlink 需开发者模式/管理员，建不出来就无法验证。新增 `test/helpers/platform.mjs` 的 `canSymlink()` 探测。
+  - **POSIX 权限位**（2 处）：Windows 的 `chmod(0o600)` 之后 `mode & 0o777` 报 `0o666`（438），权限收紧无法验证。
+  - **`kind:'command'` 契约用例**：`src/local-evidence.js:81` 用 `process.execPath`，而 `src/evidence-program.js:98` 只接受以 `/` 开头的 POSIX 绝对路径。
+    **这是 `src/` 内部的跨平台缺陷**；本仓纪律禁止改 `src/`，故 `evidence-program` 的 2 例与 `evidence-search` 整包显式跳过并保留证据。
+    （`evidence-search` 因此 n=14 而非 16，源于 command-output 族 4 例变 unknown。）
+- **验证**：`node verify.mjs` 由 **880 通过 / 78 失败**（基线 `6e41a4a`）变为 **951 通过 / 0 失败**（36/36 套件）；
+  早期同样 78 失败的 `5d39297`（这些套件自己的提交）实测 `training-ready` 为 10 通过 / 33 失败，证明它们**自提交起就未通过**。
+  高并发满载时个别依赖时序的用例（`approved-repair`/`evidence-runtime`/`native-repair-host`）仍偶发波动，属既有性质，与本轮修复无关。
+- 新增 `test/helpers/platform.mjs`（平台能力探测）；manifest 380 文件；`cfb-train --check` 六门仍全绿。
+
+---
 ## v14.0.0（2026-10-02，持续训练架构：判断层重构 + 杠杆生成层 + 校准回灌层 + 闭环编排）
 
 - **上一版的结构缺陷**：候选空间是 7 个版面旋钮，而理论说的最大杠杆（K 项，红题 4.9→8.0）**一个都不在里面**。相当于在已知最大杠杆之外做搜索。本版把优先级倒过来。

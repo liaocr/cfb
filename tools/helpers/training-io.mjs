@@ -6,9 +6,19 @@ import { fileURLToPath } from 'node:url'
 import { assertSafePath } from './eval-files.mjs'
 import { evidenceDigest } from '../../src/evidence-program.js'
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+/**
+ * 训练大制品只允许落在「仓内被忽略的目录」或「仓外的独立卷」。
+ *
+ * Windows 陷阱（本次修复）：当两个路径位于不同盘符时，path.relative() **返回绝对路径**
+ * 而不是以 '..' 开头的相对路径（'D:\\repo' vs 'C:\\tmp\x' ⇒ 'C:\\tmp\x'）。
+ * 于是 path.isAbsolute(rel) 才是不在仓内的可靠判据，只判断 rel.startsWith('..') 会把
+ * 合法的外部卷（例如系统临时目录）误判为「仓内未忽略目录」而拒绝。
+ */
 export function privateTrainingPath(value, options = {}) {
   const p = assertSafePath(value, options), rel = path.relative(ROOT, p)
-  if (!rel.startsWith('..') && rel !== '.cfb-runtime' && !rel.startsWith('.cfb-runtime' + path.sep)) throw new Error('training-private-output-must-be-ignored')
+  const outsideRepo = path.isAbsolute(rel) || rel.startsWith('..')
+  const ignoredInRepo = rel === '.cfb-runtime' || rel.startsWith('.cfb-runtime' + path.sep)
+  if (!outsideRepo && !ignoredInRepo) throw new Error('training-private-output-must-be-ignored')
   return p
 }
 export async function fingerprintModelCache(directory, { adapter = false } = {}) {

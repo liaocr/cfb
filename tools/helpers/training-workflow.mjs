@@ -40,6 +40,17 @@ export function importHistoricalTrainingCandidates(file) {
   privateTrainingPath(file, { createParents: true }); fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join('\n') + '\n', { mode: 0o600, flag: 'wx' })
   return { schema: 'cfb.historical-training-import/1', candidates: rows.length, trainingApproved: 0, status: 'quarantine-candidates-only', externalApiCalls: 0 }
 }
+// Windows 上 python3.exe 可能是 Microsoft Store 的占位存根（stdout 空、不可用），真解释器是 python / py。
+// 硬编码 'python3' 会让「已装 Python」的机器被判成「缺依赖」。这里只探测一次并缓存。
+let PY_CACHE
+export function pythonExecutable() {
+  if (PY_CACHE !== undefined) return PY_CACHE
+  for (const c of ['python3', 'python', 'py']) {
+    const r = spawnSync(c, ['-c', 'print(1)'], { encoding: 'utf8', timeout: 15000 })
+    if (r.status === 0 && String(r.stdout).trim() === '1') { PY_CACHE = c; return c }
+  }
+  PY_CACHE = null; return null
+}
 const cleanEnvironment = () => Object.assign({ PYTHONDONTWRITEBYTECODE: '1' }, Object.fromEntries(Object.entries(process.env).filter(([k]) => !/KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH/i.test(k))))
 export async function doctorTraining({ plan, reviews, approval = null, env = {} }) {
   const checks = [], check = (id, pass) => checks.push({ id, status: pass ? 'pass' : 'blocked' })
@@ -56,8 +67,11 @@ export async function doctorTraining({ plan, reviews, approval = null, env = {} 
       const temp = path.join(os.tmpdir(), '.cfb-worker-doctor-' + crypto.randomUUID() + '.json')
       try {
         writeJson(temp, plan, { exclusive: true })
-        const r = spawnSync('python3', [path.join(TRAIN_ROOT, 'training/lora_trainer.py'), '--plan', temp, '--doctor'], { encoding: 'utf8', timeout: 15000, env: cleanEnvironment() })
-        try { worker = JSON.parse(r.stdout) } catch { worker = null }
+        const py = pythonExecutable()
+        const r = py ? spawnSync(py, [path.join(TRAIN_ROOT, 'training/lora_trainer.py'), '--plan', temp, '--doctor'], { encoding: 'utf8', timeout: 15000, env: cleanEnvironment() }) : null
+        try { worker = r ? JSON.parse(r.stdout) : null } catch { worker = null }
+        // 找不到 Python 时，doctor 报「缺本地依赖」而不是崩溃；这也正是测试 31 要的语义。
+        if (!py) check('python-interpreter-available', false)
         check('local-dependencies-and-model-cache', r.status === 0 && worker?.canExecute === true)
       } finally { fs.unlinkSync(temp) }
     } else {

@@ -6,6 +6,11 @@ import path from 'node:path'
 import * as I from '../index.js'
 import { createDemoEnvironment, runEvidenceDemo, DEMO_OLD, DEMO_RAISE, DEMO_CLOCK } from '../tools/evidence-demo.mjs'
 import { effectFixtureSuite, effectFixtureEvaluator, memoryCandidate, memorySignature } from './helpers/evidence-fixtures.mjs'
+import { canSymlink } from './helpers/platform.mjs'
+// Windows 没有 POSIX 权限位：chmod(0o600) 之后 statSync().mode & 0o777 报的是 0o666。
+// 权限收紧在 POSIX 上是真实保证，在 Windows 上**无法验证** ⇒ 相关断言按平台显式跳过，
+// 而不是放宽阈值（放宽会让「权限没生效」也变绿）。
+const POSIX_MODE = process.platform !== 'win32'
 let pass = 0, fail = 0, counter = 0
 const test = async (name, fn) => { try { await fn(); pass++; console.log('PASS ' + name) } catch (e) { fail++; console.error('FAIL ' + name + '\n' + e.stack) } }
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-evidence-runtime-'))
@@ -21,7 +26,8 @@ try {
     assert.equal(s.get(h), text); assert.deepEqual(s.get(b), binary); assert.equal(s.put(text), h)
     const j = s.putJson({ x: [1, null, '好'] }); assert.deepEqual(s.getJson(j), { x: [1, null, '好'] })
     assert.equal(s.stats().files, 3); assert.equal(store(base).get(h), text)
-    assert.equal(fs.statSync(path.join(s.directory, 'authority.key')).mode & 0o777, 0o600)
+    if (POSIX_MODE) assert.equal(fs.statSync(path.join(s.directory, 'authority.key')).mode & 0o777, 0o600)
+    else console.log('  (跳过 POSIX 权限位断言：当前平台 ' + process.platform + ' 无 POSIX mode)')
   })
   await test('句柄会话隔离，损坏/伪造 HMAC 不接受；不会静默修复同名脏块', () => {
     const base = dir(), s = store(base), h = s.put('old'), other = store(base, 'other')
@@ -39,7 +45,9 @@ try {
     const tiny = store(dir(), 's', { maxBlobBytes: 10, maxTotalBytes: 10 }); assert.throws(() => tiny.put('x'), /total-budget/)
     assert.throws(() => I.createEvidenceStore({ directory: process.cwd(), sessionId: 's' }), /unsafe-store/)
     assert.throws(() => I.createEvidenceStore({ directory: path.join(dir(), '.secrets'), sessionId: 's' }), /unsafe-store/)
-    const d = dir(); fs.symlinkSync(s.directory, path.join(d, 'linked')); assert.throws(() => I.createEvidenceStore({ directory: path.join(d, 'linked'), sessionId: 's' }), /symlink/)
+    const d = dir()
+    if (canSymlink()) { fs.symlinkSync(s.directory, path.join(d, 'linked')); assert.throws(() => I.createEvidenceStore({ directory: path.join(d, 'linked'), sessionId: 's' }), /symlink/) }
+    else console.log('  (跳过 symlink 拒绝断言：当前平台无法创建符号链接)')
     assert.ok(fs.readFileSync('.gitignore', 'utf8').includes('.cfb-runtime/')); assert.ok(fs.readFileSync('manifest.mjs', 'utf8').includes("'.cfb-runtime'"))
   })
   await test('制品按 RAW/EXPLANATION/STEP 可寻址，无损回取且类型/跨会话错误拒绝', () => {
@@ -59,7 +67,8 @@ try {
     const a = I.createFileStateAdapter({ root, paths: ['tracked.bin', 'created.txt'], readState: () => state, writeState: (v) => { state = v } }), cp = a.capture()
     fs.writeFileSync(tracked, 'changed'); fs.chmodSync(tracked, 0o600); fs.writeFileSync(path.join(root, 'created.txt'), 'new'); state.context.push('failed thought')
     a.restore(cp, { expectedRevision: a.revision() })
-    assert.deepEqual(fs.readFileSync(tracked), original); assert.equal(fs.statSync(tracked).mode & 0o777, 0o640)
+    assert.deepEqual(fs.readFileSync(tracked), original)
+    if (POSIX_MODE) assert.equal(fs.statSync(tracked).mode & 0o777, 0o640)
     assert.deepEqual(state, { context: ['user'], nested: { a: 1 } }); assert.equal(fs.existsSync(path.join(root, 'created.txt')), false)
     assert.equal(fs.readFileSync(path.join(root, 'untouched'), 'utf8'), 'user work'); assert.equal(fs.readFileSync(path.join(root, '.git/config'), 'utf8'), 'canary')
     assert.throws(() => I.createFileStateAdapter({ root, paths: ['.git/config'] }), /adapter-schema/)

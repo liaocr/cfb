@@ -12,6 +12,10 @@ import { prepareTrainingPlan } from '../tools/helpers/training-plan.mjs'
 import { freezeTrainingIteration, runTrainingIteration } from '../tools/helpers/training-iteration.mjs'
 import { trainingIterationDemo } from '../tools/helpers/training-iteration-demo.mjs'
 import { readJson } from '../tools/helpers/eval-files.mjs'
+import { offlineNamespaceVerifiable } from '../tools/verify-offline.mjs'
+// 训练闭环 demo 要求先断言「只有 loopback 的 Linux 网络命名空间」（证据来自 /proc/net/route）。
+// 非 Linux 拿不到该证据 ⇒ 整包显式跳过，不把断网证明删掉换取绿灯。
+const ITER_PLATFORM_OK = offlineNamespaceVerifiable()
 let pass=0,fail=0
 const test=async(n,f)=>{try{await f();pass++;console.log('PASS '+n)}catch(e){fail++;console.log('FAIL '+n+'\n'+e.stack)}}
 const ROOT=fs.mkdtempSync(path.join(os.tmpdir(),'cfb-iteration-tests-'))
@@ -24,6 +28,7 @@ async function fixture({maxComputeSteps=9}={}){
  const options={definition,directory:path.join(dir,'registry'),markerPath:path.join(dir,'public.json'),...callbacks}
  return {dir,plans,suite,definition,options,counts:()=>({trainings,observations,proposals})}
 }
+if(!ITER_PLATFORM_OK){console.log('SKIP training-iteration：需要 Linux 网络命名空间证据（/proc/net/route），当前平台 '+process.platform);console.log('\n=== training-iteration selftest: 0 pass / 0 fail（平台跳过）===');process.exit(0)}
 try{
  await test('01 冻结空间：不能换数据/模型/保护字段，只有限候选',async()=>{
   const f=await fixture(),p=f.plans[1],{digest,...body}=p,b={...body,dataset:{...p.dataset,digest:'f'.repeat(64)}},changed={...b,digest:evidenceDigest(b)}

@@ -11,6 +11,11 @@ import { openTrainingState } from '../tools/helpers/training-state.mjs'
 import { coordinateLocalTraining, offlineLocalWorkerAdapter } from '../tools/helpers/training-local-worker.mjs'
 import { reconcileLocalTraining, localHostIdentity, localProcessIdentity, inspectCertifiedCheckpoint } from '../tools/helpers/training-local-checkpoint.mjs'
 import { readJson, writeJson } from '../tools/helpers/eval-files.mjs'
+import { offlineNamespaceVerifiable } from '../tools/verify-offline.mjs'
+// 本套件全部用例都要走 offlineLocalWorkerAdapter()，而它必须先断言「只有 loopback 的 Linux 网络命名空间」。
+// 该证据来自 /proc/net/route，Windows/macOS 拿不到 ⇒ 显式整包跳过，
+// 而不是把断网证明删掉让测试变绿（那等于用「测不了」冒充「通过了」）。
+const PLATFORM_OK = offlineNamespaceVerifiable()
 let pass=0,fail=0
 const test=async(name,fn)=>{try{await fn();pass++;console.log('PASS '+name)}catch(e){fail++;console.log('FAIL '+name+'\n'+e.stack)}}
 const ROOT=fs.mkdtempSync(path.join(os.tmpdir(),'cfb-local-worker-'))
@@ -23,6 +28,7 @@ async function fixture({maxComputeSteps=8}={}){
  return {...opts,root,authority,session:()=>openTrainingState({directory,markerPath,plan,scope:approval.id})}
 }
 const run=(f,extra={})=>coordinateLocalTraining({...f,adapter:offlineLocalWorkerAdapter(),...extra})
+if(!PLATFORM_OK){console.log('SKIP training-local：需要 Linux 网络命名空间证据（/proc/net/route），当前平台 '+process.platform);console.log('\n=== training-local selftest: 0 pass / 0 fail（平台跳过）===');process.exit(0)}
 try{
  await test('01 ACK前預占、每步增资源/逻辑进度，完整checkpoint才candidate',async()=>{
   const f=await fixture(),r=await run(f);assert.equal(r.trainedStep,5);assert.equal(r.computeSteps,5);assert.equal(r.candidate.simulated,true);assert.equal(f.session().read().phase,'candidate')

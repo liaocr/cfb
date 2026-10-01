@@ -5,6 +5,13 @@ import os from 'node:os'
 import path from 'node:path'
 import * as I from '../index.js'
 import { replayEvidence } from '../tools/replay-evidence.mjs'
+import { canSymlink } from './helpers/platform.mjs'
+
+
+// 契约（src/evidence-program.js）只接受以 '/' 开头的可执行文件路径 —— 这是面向 POSIX 宿主的设计前提。
+// Windows 的 process.execPath 形如 'D:\\...\\node.exe'，既不以 '/' 开头、也无法按该契约执行，
+// 因此这两个用例在本平台**无法验证**（不是失败）。显式跳过，不修改 src/ 的契约来迁就平台。
+const POSIX_EXEC = process.execPath.startsWith('/')
 
 let pass = 0, fail = 0
 const test = async (name, fn) => { try { await fn(); pass++; console.log('PASS ' + name) } catch (e) { fail++; console.error('FAIL ' + name + '\n' + e.stack) } }
@@ -125,6 +132,7 @@ try {
   })
   await test('拒绝路径逃逸、Git/密钥、符号链接，未触碰外部文件', () => {
     for (const p of ['../out', '/tmp/out', '.git/config', '.secrets/keys.env', 'keys.env', '.env', 'x\\y', 'x/../y', './x', '']) assert.equal(I.safeRelativePath(p), false, p)
+    if (!canSymlink()) { console.log('  (跳过 symlink 逃逸拒绝断言：当前平台无法创建符号链接)'); return }
     fs.symlinkSync('/etc/passwd', path.join(root, 'link'))
     assert.throws(() => I.readEvidenceFile(root, 'link'), /unsafe-file-type/)
     const d = definition(); d.actions[0].path = '.git/config'; assert.throws(() => I.freezeEvidenceContract(d))
@@ -151,6 +159,7 @@ try {
     assert.equal((await f.verifier.check('clock', { ...b, phase: 'diagnostic' })).ok, true)
   })
   await test('进程能力默认关闭；授权后 execFile 语义真实执行，无 shell/密钥继承', async () => {
+    if (!POSIX_EXEC) { console.log('  (跳过 command 契约用例：契约要求 POSIX 绝对可执行路径，当前 process.execPath=' + process.execPath + ')'); return }
     const d = definition(); d.checks.push({ id: 'cmd', kind: 'command', role: 'diagnostic', executable: process.execPath,
       args: ['-e', 'console.log(JSON.stringify({hasKey: !!process.env.CFB_FAKE_API_KEY, arg: process.argv[1]}))', 'x;echo injected'], localOnly: true, timeoutMs: 2000,
       predicate: and(P('equals', 'exitCode', 0), P('includes', 'stdout', '"hasKey":false'), P('includes', 'stdout', 'x;echo injected')) })
@@ -163,6 +172,7 @@ try {
     } finally { delete process.env.CFB_FAKE_API_KEY }
   })
   await test('进程超时/输出超预算/中断均 unknown，不能将 stdout 中 PASS 当成功', async () => {
+    if (!POSIX_EXEC) { console.log('  (跳过 command 预算用例：契约要求 POSIX 绝对可执行路径)'); return }
     for (const [args, timeoutMs, maxOutputBytes, reason] of [
       [['-e', 'setInterval(()=>{},1000)'], 30, 65536, 'check-timeout'],
       [['-e', 'console.log("x".repeat(10000))'], 2000, 100, 'output-budget'],

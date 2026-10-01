@@ -6,12 +6,23 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
+/**
+ * 真断网验收：只有 loopback 的 Linux 网络命名空间。
+ *
+ * 该证明依赖 /proc/net/route —— 这是 **Linux 独有**的证据。非 Linux 平台上拿不到同等强度的证据，
+ * 因此必须**失败关闭**（fail closed）并给出可识别的错误码，而不是抛出 ENOENT 让调用方误以为是崩溃。
+ * 调用方（测试/demo）据此显式跳过，绝不把「拿不到证据」当成「验证通过」。
+ */
 export function assertOfflineNamespace() {
+  if (process.platform !== 'linux') throw new Error('offline-namespace-unverifiable-platform:' + process.platform)
   const interfaces = Object.entries(os.networkInterfaces()).filter(([, rows]) => rows?.length).map(([name]) => name)
-  const routes = fs.readFileSync('/proc/net/route', 'utf8').trim().split('\n').slice(1)
+  let routes
+  try { routes = fs.readFileSync('/proc/net/route', 'utf8').trim().split('\n').slice(1) } catch { throw new Error('offline-namespace-unverifiable-platform:no-proc-net-route') }
   if (!interfaces.length || interfaces.some((name) => name !== 'lo') || routes.length) throw new Error('offline-namespace-required')
   return { isolation: 'linux-user-network-namespace', interfaces, externalRoutes: routes.length, externalApiCalls: 0 }
 }
+/** 平台是否具备断网证据能力（供调用方决定「跳过」还是「失败」）。 */
+export const offlineNamespaceVerifiable = () => process.platform === 'linux' && fs.existsSync('/proc/net/route')
 function options(argv) {
   const result = { inside: false, suites: [], mode: 'all' }
   for (let i = 0; i < argv.length; i++) {
