@@ -21,6 +21,7 @@ v12.2 把理论第五卷的 v4 规格落成生产代码：`compressPrompt: 'v4'`
 | [`RUNBOOK-TRAINING-READY.md`](RUNBOOK-TRAINING-READY.md) | 后续训练操作者 | SFT/偏好数据、审核/族隔离、LoRA/远程任务、新训练批准、候选发布与加密搬迁 |
 | [`analysis/TRAINING-READY-2026-09-30.md`](analysis/TRAINING-READY-2026-09-30.md) | 训练架构/验收者 | 训练预注册、真实参考模型梯度、远程替身/缓存/搬迁与LoRA未证事项 |
 | [`analysis/TRAINING-ITERATION-2026-10-01.md`](analysis/TRAINING-ITERATION-2026-10-01.md) | 恢复/迭代验收者 | worker ACK/完整见证与累计预算，有限候选独立评测/一次性test；真实HF未证 |
+| [`design/OFFLINE-ARCHITECTURE.md`](design/OFFLINE-ARCHITECTURE.md) | 迭代/实验设计者 | **现行**：离线层分层（语料/判据/候选/标注/驱动）、四个门禁、生产漏斗、诚实缺口清单 |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 改代码的人 | 模块地图、钩子与数据流、持久化位置、不变式、「改哪里」、测试布局 |
 | [`INSTALL.md`](INSTALL.md) | 部署的人 | 注册机制、两层 patch 形态铁律、改完源码如何生效、排错 |
 | [`RUNBOOK-PHASE0.md`](RUNBOOK-PHASE0.md) | 操作的人（零基础） | 阶段 0 纯观测的逐步操作手册（与 x1 无关，仍有效） |

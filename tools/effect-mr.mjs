@@ -104,6 +104,11 @@ const CONCESSIVE_RE = /(?:即使|即便|哪怕|就算|纵然|尽管|虽然)[^。
 const INTENT_RE = /(?:以|先|再|然后|去|来|准备|打算|计划|设计|想要|需要|应该)[^。；\n]{0,6}?(?:修复|解决|搞定|修好)/
 const LATIN_DONE_RE = /[A-Za-z_][\w.$\[\]]*\s*(?:完成|完成回调|回调时刻)/
 const DISCLAIM_RE = /(?:但|不过|只是|然而|却)[^。；\n]{0,20}?(?:不是|并非|不等于|谈不上|次要|无关|不是主因)/
+// v13.8 追加两类守卫（由 tools/cfb-criteria.mjs 的黄金集暴露，非事后追改）：
+//   ④ 修复词本身被否定（「修复没有落地」）——NEG_RE 只往前看且要求否定词收尾，够不到后置否定；
+//   ⑤ 修复词当定语（「已修复的路径」）——描述名词，不是对本次问题的宣称。
+const POST_NEG_RE = /^(?:没有|没|未|尚未|不|无法|不能|并未|从未)/
+const ATTR_RE = /(?:修复|解决|搞定|修好|完成)(?:的|之)(?:路|路径|分支|方案|方法|方式|代码|逻辑|部分|地方)/
 export function claimOfV3(text) {
   const t = String(text || '')
   let fixed = false
@@ -111,6 +116,8 @@ export function claimOfV3(text) {
     const before = t.slice(Math.max(0, m.index - 10), m.index)
     const after = t.slice(m.index + m[0].length, m.index + m[0].length + 12)
     if (NEG_RE.test(before) || /^(?:吗|？|\?|了吗|与否|的前提|之前|以前|才|→|⇒|=>)/.test(after)) continue
+    if (POST_NEG_RE.test(after)) continue
+    if (ATTR_RE.test(m[0] + after.split(/[，。；\n]/)[0].slice(0, 4))) continue
     if (/完成$/.test(m[0]) && EVENT_NOUN_RE.test(before)) continue
     fixed = true
   }
