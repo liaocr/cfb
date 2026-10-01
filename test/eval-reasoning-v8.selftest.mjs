@@ -10,7 +10,7 @@ import { API_APPROVAL_SCOPE_V8, KNOWN_API_SCOPES } from '../tools/helpers/api-wa
 import { buildReasoningReplayPlanV8, buildExpandedPlanV7, resultOf, currentSourceHashes } from '../tools/helpers/eval-plan.mjs'
 import { claimOf, claimOfV2, claimOfV3, ruleMetrics } from '../tools/effect-mr.mjs'
 import { channelIssue } from '../tools/effect-eval.mjs'
-import { normalizeProfile } from '../tools/helpers/eval-workflow.mjs'
+import { normalizeProfile, prepareEvaluation } from '../tools/helpers/eval-workflow.mjs'
 
 let pass = 0, fail = 0
 const test = (name, fn) => { try { fn(); pass++; console.log('PASS ' + name) } catch (e) { fail++; console.log('FAIL ' + name + '\n' + e.stack) } }
@@ -135,6 +135,37 @@ try {
     const cur = currentSourceHashes()
     for (const p of ['tools/effect-mr.mjs', 'tools/helpers/eval-plan.mjs', 'tools/helpers/api-budget.mjs']) {
       assert.equal(plan.sourceHashes[p], cur[p], p + ' 应当被冻结')
+    }
+  })
+  test('13 prepareEvaluation 按 version 选 builder：8→/8（15作业）', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-v8-'))
+    const profile = { schema: 'cfb.eval-profile/1', model: 'deepseek-v4.1-flash', baseUrl: 'https://gateway.vendor.test/v1', apiKeyEnv: 'DEEPSEEK_API_KEY', pricing: PRICING }
+    try {
+      prepareEvaluation({ home: path.join(tmp, 'v8'), receiptPath: path.join(tmp, 'v8.json'), profile, version: 8 })
+      const p8 = JSON.parse(fs.readFileSync(path.join(tmp, 'v8', 'plan.json'), 'utf8'))
+      assert.equal(p8.schema, 'cfb.bounded-ab/8')
+      assert.equal(p8.jobs.length, 15)
+      assert.equal(p8.limits.maxProbe, 3)
+      assert.equal(p8.limits.maxRequests, 15)
+      prepareEvaluation({ home: path.join(tmp, 'v1'), receiptPath: path.join(tmp, 'v1.json'), profile, version: 1 })
+      const p1 = JSON.parse(fs.readFileSync(path.join(tmp, 'v1', 'plan.json'), 'utf8'))
+      assert.equal(p1.schema, 'cfb.bounded-ab/1')
+      assert.notEqual(p1.limits.maxRequests, 15)
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
+  })
+  test('14 每个 --vN 旗标必须同时出现在 home 链与 version 链（回归：--v8 曾两处都漏）', () => {
+    const src = fs.readFileSync(new URL('../tools/effect-ready.mjs', import.meta.url), 'utf8')
+    const lines = src.split('\n')
+    const homeLine = lines.find((l) => l.includes('DEFAULT_HOME_V') && l.includes('o.home ='))
+    const versionLine = lines.find((l) => l.includes('version: o.'))
+    assert.ok(homeLine, '未找到 home 选择链')
+    assert.ok(versionLine, '未找到 version 选择链')
+    const flags = [...new Set((src.match(/o\.v\d+/g) || []))].sort()
+    assert.ok(flags.includes('o.v8'), '缺少 --v8 旗标')
+    for (const f of flags) {
+      const n = f.slice(3)
+      assert.ok(homeLine.includes(f + ' ?') || homeLine.includes('DEFAULT_HOME_V' + n), f + ' 未出现在 home 链')
+      assert.ok(versionLine.includes(f + ' ?') || versionLine.includes(': ' + n), f + ' 未出现在 version 链')
     }
   })
 } finally {

@@ -15,6 +15,7 @@ v12.2 把理论第五卷的 v4 规格落成生产代码：`compressPrompt: 'v4'`
 | [`analysis/LOCAL-ITERATIONS-2026-09-30.md`](analysis/LOCAL-ITERATIONS-2026-09-30.md) | 两轮验收者 | 原生真实IO强基线、冻结诊断/路由四臂、断网实测与范围边界 |
 | [`analysis/REPAIR-HARDENING-2026-09-30.md`](analysis/REPAIR-HARDENING-2026-09-30.md) | 增量验收者 | 安全取消、按重试需要停止诊断、固定已知开发回归，不复用盲测 |
 | [`analysis/BOUNDED-API-2026-09-30.md`](analysis/BOUNDED-API-2026-09-30.md) | API评测/验收者 | USD2/13次冻结预算、响应型号/指纹/canary、崩溃不重发；当前缺配置blocked |
+| [`analysis/LIVE-REASONING-REPLAY-2026-10-02.md`](analysis/LIVE-REASONING-REPLAY-2026-10-02.md) | API评测/验收者 | **现行**：v8 reasoning 回放协议首次真实运行——探针逐字回显证拼接、两臂仅 reasoning 不同、结论「不劣但未证更优」；含 `--v8` 静默降级缺陷与回归 |
 | [`RUNBOOK-ONLINE-READY.md`](RUNBOOK-ONLINE-READY.md) | 后续接网/搬机器操作者 | prepare/doctor/live/report、公开水位与私有仓、加密迁移与自动检查点、故障处理 |
 | [`analysis/OFFLINE-READY-2026-09-30.md`](analysis/OFFLINE-READY-2026-09-30.md) | 架构/验收者 | 离线优先预注册、跨轮预算保护、整链本机HTTP演练与未证事项 |
 | [`RUNBOOK-TRAINING-READY.md`](RUNBOOK-TRAINING-READY.md) | 后续训练操作者 | SFT/偏好数据、审核/族隔离、LoRA/远程任务、新训练批准、候选发布与加密搬迁 |

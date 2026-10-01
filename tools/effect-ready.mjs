@@ -7,7 +7,7 @@ import { prepareEvaluation, doctorEvaluation, runEvaluation, reportEvaluation, D
 import { readJson } from './helpers/eval-files.mjs'
 import { exportEvaluationBundle, importEvaluationBundle } from './helpers/eval-bundle.mjs'
 
-const HELP = `CFB 联网准备工具（默认无网络/无费用）\n\n  prepare [--profile FILE] [--pricing FILE] [--home DIR]  冻结完整计划\n  doctor  [--home DIR]                                 只读预检，不探测网络\n  simulate                                             真断网本机HTTP整链演练\n  run --live [--home DIR] [--checkpoint FILE]                               显式执行USD2/13请求批准\n  report [--home DIR]                                   认证缓存重算完整配对\n  export --file FILE [--home DIR]                       加密检查点，口令来自环境\n  import --file FILE [--home DIR]                       恢复空目录，拒绝预算回滚\n\n模型钥匙只来自profile指定环境变量，不从CLI/文件读取。\n迁移口令只来自CFB_STATE_PASSPHRASE；不要把它或模型钥匙贴到聊天。\n公开预算收据固定在transfer/api-budget-approval.watermark.json；不能删/换收据来重获额度。\n--v2：使用2026-10-01新批准scope（3同体备用探针/网络类失败不株连未派发请求/独立v2收据与私有仓）；旧scope收据/账本封存不动。\n--v3：生产等价可见上下文协议（raw=思考已丢现实，current=可见压缩稿；探针测可见消息保真）；独立v3收据与私有仓。\n--v4：v3矩阵输出预算修正(8192)+length截断样本级容错(预算3)；独立v4收据与私有仓。\n--v5：扩样本复跑(6样本/格,36主+3探针,≈USD0.73预留)+claimOfV2预注册判据；独立v5收据与私有仓。\n--v6：v5语义修正(探针免思考要求/主请求逐响应验证失败样本级预算6)；独立v6收据与私有仓。\n--v7：fp闸放开但逐响应记录(池轮换现实)，身份证据=型号+canary回显+思考+usage界；独立v7收据与私有仓。\n`
+const HELP = `CFB 联网准备工具（默认无网络/无费用）\n\n  prepare [--profile FILE] [--pricing FILE] [--home DIR]  冻结完整计划\n  doctor  [--home DIR]                                 只读预检，不探测网络\n  simulate                                             真断网本机HTTP整链演练\n  run --live [--home DIR] [--checkpoint FILE]                               显式执行USD2/13请求批准\n  report [--home DIR]                                   认证缓存重算完整配对\n  export --file FILE [--home DIR]                       加密检查点，口令来自环境\n  import --file FILE [--home DIR]                       恢复空目录，拒绝预算回滚\n\n模型钥匙只来自profile指定环境变量，不从CLI/文件读取。\n迁移口令只来自CFB_STATE_PASSPHRASE；不要把它或模型钥匙贴到聊天。\n公开预算收据固定在transfer/api-budget-approval.watermark.json；不能删/换收据来重获额度。\n--v2：使用2026-10-01新批准scope（3同体备用探针/网络类失败不株连未派发请求/独立v2收据与私有仓）；旧scope收据/账本封存不动。\n--v3：生产等价可见上下文协议（raw=思考已丢现实，current=可见压缩稿；探针测可见消息保真）；独立v3收据与私有仓。\n--v4：v3矩阵输出预算修正(8192)+length截断样本级容错(预算3)；独立v4收据与私有仓。\n--v5：扩样本复跑(6样本/格,36主+3探针,≈USD0.73预留)+claimOfV2预注册判据；独立v5收据与私有仓。\n--v6：v5语义修正(探针免思考要求/主请求逐响应验证失败样本级预算6)；独立v6收据与私有仓。\n--v7：fp闸放开但逐响应记录(池轮换现实)，身份证据=型号+canary回显+思考+usage界；独立v7收据与私有仓。\n--v8：历史reasoning回放协议(raw=原始思考原文,current=冻结压缩稿)，探针实测prompt_tokens随历史reasoning线性增长以证拼接；独立v8收据与私有仓。\n`
 export async function readyMain(argv, { env = process.env, output = console.log, progress = (r) => console.error(JSON.stringify(r)) } = {}) {
   const [command = 'doctor', ...args] = argv
   if (['help', '--help', '-h'].includes(command)) { output(HELP); return 0 }
@@ -29,7 +29,7 @@ export async function readyMain(argv, { env = process.env, output = console.log,
   }
   if ([o.v2, o.v3, o.v4, o.v5, o.v6, o.v7, o.v8].filter(Boolean).length > 1) throw new Error('eval-option-context')
   const receipt = o.v8 ? PUBLIC_RECEIPT_V8 : o.v7 ? PUBLIC_RECEIPT_V7 : o.v6 ? PUBLIC_RECEIPT_V6 : o.v5 ? PUBLIC_RECEIPT_V5 : o.v4 ? PUBLIC_RECEIPT_V4 : o.v3 ? PUBLIC_RECEIPT_V3 : o.v2 ? PUBLIC_RECEIPT_V2 : PUBLIC_RECEIPT
-  if ((o.v2 || o.v3 || o.v4 || o.v5 || o.v6 || o.v7) && o.home === (env.CFB_EVAL_HOME || DEFAULT_HOME)) o.home = o.v7 ? DEFAULT_HOME_V7 : o.v6 ? DEFAULT_HOME_V6 : o.v5 ? DEFAULT_HOME_V5 : o.v4 ? DEFAULT_HOME_V4 : o.v3 ? DEFAULT_HOME_V3 : DEFAULT_HOME_V2
+  if ((o.v2 || o.v3 || o.v4 || o.v5 || o.v6 || o.v7 || o.v8) && o.home === (env.CFB_EVAL_HOME || DEFAULT_HOME)) o.home = o.v8 ? DEFAULT_HOME_V8 : o.v7 ? DEFAULT_HOME_V7 : o.v6 ? DEFAULT_HOME_V6 : o.v5 ? DEFAULT_HOME_V5 : o.v4 ? DEFAULT_HOME_V4 : o.v3 ? DEFAULT_HOME_V3 : DEFAULT_HOME_V2
   if (o.live && command !== 'run' || (o.pricing || o.profile !== PROFILE_EXAMPLE) && command !== 'prepare' || o.file && !['export', 'import'].includes(command) || o.checkpoint && command !== 'run') throw new Error('eval-option-context')
   const print = (r) => output(JSON.stringify(r, null, 2))
   if (command === 'prepare') {
@@ -39,7 +39,7 @@ export async function readyMain(argv, { env = process.env, output = console.log,
       if (env.DEEPSEEK_MODEL) profile.model = env.DEEPSEEK_MODEL
       if (env.DEEPSEEK_BASE_URL) profile.baseUrl = env.DEEPSEEK_BASE_URL
     }
-    print(prepareEvaluation({ home: o.home, receiptPath: receipt, profile, ...(o.pricing ? { pricing: readJson(o.pricing) } : {}), env, version: o.v7 ? 7 : o.v6 ? 6 : o.v5 ? 5 : o.v4 ? 4 : o.v3 ? 3 : o.v2 ? 2 : 1 }))
+    print(prepareEvaluation({ home: o.home, receiptPath: receipt, profile, ...(o.pricing ? { pricing: readJson(o.pricing) } : {}), env, version: o.v8 ? 8 : o.v7 ? 7 : o.v6 ? 6 : o.v5 ? 5 : o.v4 ? 4 : o.v3 ? 3 : o.v2 ? 2 : 1 }))
     return 0
   }
   if (command === 'doctor') { const r = doctorEvaluation({ home: o.home, receiptPath: receipt, env }); print(r); return r.status === 'live-preflight-ready' ? 0 : 2 }

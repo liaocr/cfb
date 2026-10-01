@@ -4,6 +4,29 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v13.7.0（2026-10-02，v8 reasoning 回放协议**首次真实运行**：通道拼接已复证；压缩稿「不劣」但**未**证明更优）
+
+- **真实运行（本轮主线）**：用户切回带思维链的商户后，v8 协议首次跑通并**完整结束**：13 次派发（12 主 + 1 探针）全部 `accepted`，
+  12/12 有效主响应，0 拒绝，`channelVerified=true`，`pairsSameFingerprint=6/6`，`sourceCurrent=true`，预留 **$0.648127**。
+  报告见 [`docs/analysis/LIVE-REASONING-REPLAY-2026-10-02.md`](docs/analysis/LIVE-REASONING-REPLAY-2026-10-02.md)。
+- **通道拼接由探针直接证明（不再是推断）**：v8 探针把一个标记**只**放进上一轮 assistant 的 `reasoning_content`（可见回复不含它），
+  要求模型逐字返回；工具要求回显与 canary **逐字相等**，否则 `channel-history-not-visible` 硬停。首探即过 ⇒ 历史 reasoning 确实进入上下文。
+  另有独立 canary 复测：Δprompt(1000字−1字)=539 ⇒ 拼接=是。
+- **两臂不变量在冻结计划上全局复核**：`arms differ only in reasoning_content = true`；剂量 raw/current = flaky 13548/4627、
+  wrong-model 3920/4457、eacces 13342/3569。这正是生产里 cfb 真正做的事（稿写回 reasoning 位）。
+- **结果（n=2/格，claimOfV3，canned red）**：两臂 `falseDone`/`bump`/`reEdit`/`repeat` **全为 0**、`avoid` 全为 2；
+  flaky `next` 2:2、eacces `next` 2:2、**wrong-model `next` raw 1 vs current 2**（唯一有方向性的差异）。
+- **结论（如实判，不庆祝）**：预注册的「flaky 上 current 更优」**未命中**（并列）。本轮**不能**宣称压缩稿有净收益；
+  能宣称的是两点：①**通道与协议已经是对的**；②**压缩稿不劣**（n=2 下无任何指标变差）。要证「更优」需**扩样本**（v5 式 6/格），不是继续换通道。
+- **本轮暴露并修掉的真实缺陷（工具自身，非通道）**：`tools/effect-ready.mjs` 中 `--v8` 已进旗标表/互斥检查/收据选择，
+  但 **「home 选择链」与「builder version 选择链」两处都漏了 `o.v8`** ⇒ `prepare --v8` **静默降级**为 v1 计划（`cfb.bounded-ab/1`）写进 v1 home，
+  运行时按 v1 语义锚定 `fp_dspure_app_v1`，被 `fp=null` 如实拦下（`channel-fingerprint`）。
+  属最危险的**静默降级**：旗标「看起来生效」（收据路径与互斥都对），协议却整体退了一版。两处链已补齐，代价 1 次请求（$0.006625 预留、作废不退款）。
+- **回归防线**：`test/eval-reasoning-v8.selftest.mjs` 新增两测——**13**：`prepareEvaluation({version:8})` 必须产出 `/8`、15 作业、`maxProbe=3`，`version:1` 必须 `/1`；
+  **14**：从源码抽出全部 `o.vN` 旗标，断言**每一个**都同时出现在 home 链与 version 链（已做**负向对照**：对修复前源码该测必失败）。自测 **14/0**。
+- **仍然不成立的推断**：`fp=null` ⇒ 后端仍在池轮换，身份证据只有「型号 + canary 逐字回显 + 思考在跑 + usage 界」；**换商户即需重跑探针**。
+  结论不外推为通道级事实，不触碰 v1–v7 的任何分数与收据。
+
 ---
 
 ## v13.6.0（2026-10-01，前提更正：通道并未丢弃历史reasoning；claimOfV3落地；v8 reasoning回放协议就绪）
