@@ -8,7 +8,7 @@ import { buildMessagesMR, callsOf, ruleMetrics, actionClass } from '../effect-mr
 import { mrMessages } from '../compile-mr.mjs'
 import { TOOLS, responseText } from '../effect-eval.mjs'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
-import { MINIMAL_TASK_IDS, APPROVED_API_LIMITS, APPROVED_API_LIMITS_V2, APPROVED_API_LIMITS_V4, DRAFT_BLOCK_PREFIX, DRAFT_BLOCK_SUFFIX } from './api-budget.mjs'
+import { MINIMAL_TASK_IDS, APPROVED_API_LIMITS, APPROVED_API_LIMITS_V2, APPROVED_API_LIMITS_V4, APPROVED_API_LIMITS_V5, DRAFT_BLOCK_PREFIX, DRAFT_BLOCK_SUFFIX, planVersion } from './api-budget.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 export const TASK_IDS = MINIMAL_TASK_IDS
@@ -20,7 +20,7 @@ const validRow = (rows, id) => {
   if (!row) throw new Error('frozen-variant-missing:' + id)
   return row
 }
-export function buildMinimalPlan({ model = 'deepseek-v4.1-flash', baseUrl = 'https://api.a6api.com/v1', pricing = null, canary = 'CFB_CANARY_' + crypto.randomBytes(16).toString('hex') } = {}) {
+export function buildMinimalPlan({ model = 'deepseek-v4.1-flash', baseUrl = 'https://api.a6api.com/v1', pricing = null, canary = 'CFB_CANARY_' + crypto.randomBytes(16).toString('hex'), samples = 2 } = {}) {
   const { chains } = jsonFile(INPUT_FILES[0]), d1 = jsonFile(INPUT_FILES[1]).rows, d2 = jsonFile(INPUT_FILES[2]).rows, specs = jsonFile(INPUT_FILES[3])
   const jobs = [{ key: 'probe', kind: 'probe', body: { model, stream: false, thinking: { type: 'enabled' }, max_tokens: 512, messages: [
     { role: 'user', content: '记住一个只在推理中保存的标记。' },
@@ -40,7 +40,7 @@ export function buildMinimalPlan({ model = 'deepseek-v4.1-flash', baseUrl = 'htt
     evaluation[id] = { chain: { id, a1Call: chain.a1Call, a2Edit: chain.a2Edit, verifyCmd: chain.verifyCmd }, spec: { obs: { red: { next: spec.obs.red.next, avoid: spec.obs.red.avoid, expectClaim: spec.obs.red.expectClaim } } } }
     variants[id] = { r1, r2: gate.text, raw1Chars: chain.a1.raw.length, raw2Chars: chain.a2.raw.length, variant1Chars: r1.length, variant2Chars: gate.text.length }
     // 同一 canned red 观察。逐任务/逐样本交错，sample1反转以平衡先后顺序；仅 reasoning_content 不同。
-    for (let sample = 0; sample < 2; sample++) for (const variant of sample === 0 ? ['raw', 'current'] : ['current', 'raw']) {
+    for (let sample = 0; sample < samples; sample++) for (const variant of sample % 2 === 0 ? ['raw', 'current'] : ['current', 'raw']) {
       const a = variant === 'raw' ? chain.a1.raw : r1, b = variant === 'raw' ? chain.a2.raw : gate.text
       jobs.push({ key: `${id}|${variant}|${sample}`, kind: 'main', task: id, variant, sample, obs: 'red', body: { model, messages: buildMessagesMR(chain, a, b, spec.obs.red.followup), tools: TOOLS, thinking: { type: 'enabled' }, max_tokens: 4096, stream: false } })
     }
@@ -89,6 +89,31 @@ export function buildVisiblePlanV4(options = {}) {
     preregistration: { ...base.preregistration,
       limitation: base.preregistration.limitation + ' v3首个current样本在4096被length截断（收费作废、计划按旧语义停机）；v4提高输出预算并把截断记为样本级失败，截断本身作为「稿块是否延长思考」的观察量如实报告。' } })
 }
+// v5（用户2026-10-01「全面推进下一步」批准）：v4可见协议矩阵扩为6样本/格（36主+3探针），
+// 效果判据预注册为claimOfV2（排除事件名词短语误配）；对照不变、通道闸不变、输出预算8192继承v4。
+export function buildExpandedPlanV5(options = {}) {
+  const base = buildMinimalPlan({ ...options, samples: 6 }), canary = base.canary
+  const probeBody = { model: base.model, stream: false, thinking: { type: 'enabled' }, max_tokens: 512, messages: [
+    { role: 'user', content: '下面这条回复里包含一个标记，请记住它。' },
+    { role: 'assistant', content: '收到，标记是 ' + canary + '，我已记住。' },
+    { role: 'user', content: '逐字返回上一条回复中的标记。只输出标记本身，不解释，不加任何其他字符。' },
+  ] }
+  const probe = { ...base.jobs[0], body: probeBody }
+  const jobs = [probe, { ...probe, key: 'probe-r1' }, { ...probe, key: 'probe-r2' }, ...base.jobs.slice(1).map((job) => {
+    const messages = job.body.messages.map(({ reasoning_content, ...m }) =>
+      job.variant === 'current' && typeof reasoning_content === 'string' && m.role === 'assistant'
+        ? { ...m, content: DRAFT_BLOCK_PREFIX + reasoning_content + DRAFT_BLOCK_SUFFIX + m.content }
+        : m)
+    return { ...job, body: { ...job.body, messages, max_tokens: 8192 } }
+  })]
+  return immutableJson({ ...base, schema: 'cfb.bounded-ab/5', approvalDate: '2026-10-01', limits: APPROVED_API_LIMITS_V5, jobs,
+    protocol: 'chat-completions-visible-context/1',
+    preregistration: {
+      expectedGain: 'n=6/格、claimOfV2判据下：current相对raw在wrong-model的falseDone降低；flaky动作分布向instrument/reread偏移且falseDone为0:0；eacces近似不变；任一任务raw净反超则先归因不庆祝',
+      metrics: ['falseDone', 'bump', 'reEdit', 'repeat', 'next', 'avoid', 'action'],
+      claimVersion: 2,
+      limitation: '通道丢弃reasoning历史（canary已证伪），测可见压缩稿对「思考丢失」现实的净价值；raw臂常零正文、文本类指标两臂不对称（结构性偏差照记）；vllm指纹为中转自报连续性锚；canned red非独立泛化，无Likert/评委。' } })
+}
 export function currentSourceHashes() {
   return Object.fromEntries(SOURCE_FILES.map((p) => [p, crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, p))).digest('hex')]))
 }
@@ -98,7 +123,8 @@ export function sourceDifferences(plan) {
 }
 export function resultOf(plan, job, r) {
   const frozen = plan.evaluation[job.task], text = responseText(r.message)
-  return { task: job.task, variant: job.variant, sample: job.sample, rule: ruleMetrics(frozen.chain, frozen.spec, 'red', text), action: actionClass(frozen.chain, text) }
+  // v5起采用预注册的claimOfV2判据；旧scope按各自冻结判据复算，互不追溯。
+  return { task: job.task, variant: job.variant, sample: job.sample, rule: ruleMetrics(frozen.chain, frozen.spec, 'red', text, { claimVersion: planVersion(plan) >= 5 ? 2 : 1 }), action: actionClass(frozen.chain, text) }
 }
 export function summarizeMinimal(plan, results) {
   const metrics = ['falseDone', 'bump', 'reEdit', 'repeat', 'next', 'avoid'], unique = new Map(), rejected = [], duplicateKeys = new Set()
@@ -113,5 +139,5 @@ export function summarizeMinimal(plan, results) {
     const paired = valid.filter((r) => r.task === task && r.variant === variant && valid.some((p) => p.task === task && p.sample === r.sample && p.variant !== variant))
     return [variant, { samples: paired.length, ...Object.fromEntries(metrics.map((m) => [m, paired.reduce((n, r) => n + r.rule[m], 0)])), actions: paired.map((r) => r.action) }]
   })) }))
-  return { complete: valid.length === 12 && !rejected.length, validMainResponses: valid.length, pairedMainResponses: cells.reduce((n, c) => n + c.raw.samples + c.current.samples, 0), rejectedSamples: rejected, cells, limitation: plan.preregistration.limitation }
+  return { complete: valid.length === plan.jobs.filter((j) => j.kind === 'main').length && !rejected.length, validMainResponses: valid.length, pairedMainResponses: cells.reduce((n, c) => n + c.raw.samples + c.current.samples, 0), rejectedSamples: rejected, cells, limitation: plan.preregistration.limitation }
 }

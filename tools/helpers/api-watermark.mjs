@@ -11,8 +11,10 @@ export const API_APPROVAL_SCOPE_V2 = 'cfb.bounded-api-approval.2026-10-01'
 export const API_APPROVAL_SCOPE_V3 = 'cfb.visible-context-approval.2026-10-01'
 // v4＝v3矩阵的输出预算修正版（8192）+ response-incomplete样本级容错；v3计划死于首个current样本length截断，收据封存。
 export const API_APPROVAL_SCOPE_V4 = 'cfb.visible-context-approval.2026-10-01-r2'
-export const KNOWN_API_SCOPES = Object.freeze([API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4])
-const SCOPE_MAX_REQUESTS = Object.freeze({ [API_APPROVAL_SCOPE]: 13, [API_APPROVAL_SCOPE_V2]: 15, [API_APPROVAL_SCOPE_V3]: 15, [API_APPROVAL_SCOPE_V4]: 15 })
+// v5＝用户「全面推进下一步」批准的扩样本复跑：同v4矩阵n=2→6/格（36主+3探针），判据claimOfV2预注册。
+export const API_APPROVAL_SCOPE_V5 = 'cfb.visible-context-expanded.2026-10-01'
+export const KNOWN_API_SCOPES = Object.freeze([API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5])
+const SCOPE_MAX_REQUESTS = Object.freeze({ [API_APPROVAL_SCOPE]: 13, [API_APPROVAL_SCOPE_V2]: 15, [API_APPROVAL_SCOPE_V3]: 15, [API_APPROVAL_SCOPE_V4]: 15, [API_APPROVAL_SCOPE_V5]: 39 })
 export const apiStoreDirectory = (directory, scope = API_APPROVAL_SCOPE) => path.join(path.resolve(directory), crypto.createHash('sha256').update(scope).digest('hex'))
 const HEX = /^[a-f0-9]{64}$/
 export function readWatermark(file) {
