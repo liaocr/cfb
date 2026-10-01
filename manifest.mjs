@@ -16,23 +16,62 @@ import { fileURLToPath } from 'node:url'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const LIST = path.join(HERE, 'MANIFEST.sha256')
 const SELF = new Set(['MANIFEST.sha256'])
-const SKIP_DIRS = new Set(['.git', 'node_modules', 'coverage', '.nyc_output', '.cot-form-b-selftest-tmp', '.cfb-runtime', '__pycache__', '.pytest_cache'])
+
+/**
+ * 忽略规则**从 .gitignore 读取**，而不是再维护一份硬编码副本。
+ *
+ * 为什么必须这样：清单会被推到远端，而 CI 是**干净检出** —— 被 .gitignore 排除的文件在
+ * CI 里根本不存在。之前这里维护着一份与 .gitignore 重复的固定列表，两边一旦不同步
+ * （例如新加了 .cfb-offline/ 或 eval-profile.json），本地生成的清单就会收录那些文件，
+ * 于是 CI 的 --check 必然报「缺失」而失败。单一事实来源只能有一个。
+ */
+function ignoreRules() {
+  const file = path.join(HERE, '.gitignore')
+  const dirs = new Set(['.git'])          // 版本库元数据永远排除
+  const names = new Set()                 // 按文件名/后缀匹配的简单规则
+  const globs = []                        // 其余模式
+  let text = ''
+  try { text = fs.readFileSync(file, 'utf8') } catch { return { dirs, names, globs } }
+  for (let line of text.split(/\r?\n/)) {
+    line = line.trim()
+    if (!line || line.startsWith('#')) continue
+    if (line.startsWith('!')) { globs.push(line); continue }
+    const negated = false
+    if (line.endsWith('/')) { dirs.add(line.slice(0, -1)); continue }
+    // 形如 *.log / *.bak-* / *.py[cod] 的后缀模式
+    if (/^\*\.[\w[\]-]+$/.test(line)) { globs.push(line); continue }
+    // 前导 '/' 在 .gitignore 里表示「锚定仓库根」；我们按路径段/文件名匹配，去掉它即可，
+    // 否则 '/eval-profile.json' 会变成 '^/eval-profile\.json$' 而永远匹配不到 'eval-profile.json'。
+    if (line.startsWith('/')) line = line.slice(1)
+    if (!line.includes('/') && !line.includes('*')) { names.add(line); continue }
+    globs.push(line)
+  }
+  return { dirs, names, globs }
+}
+const IGNORE = ignoreRules()
+/** 把 .gitignore 的反斜杠无关模式转成正则（仅支持本仓实际用到的子集）。 */
+function ignoredByName(name) {
+  if (IGNORE.names.has(name)) return true
+  for (const g of IGNORE.globs) {
+    if (g.startsWith('!')) continue
+    const rx = new RegExp('^' + g.replace(/[.+^$(){}|\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\[([^\]]+)\]/g, '[$1]') + '$')
+    if (rx.test(name)) return true
+  }
+  return false
+}
 
 function walk(dir, base) {
   const out = []
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     // 与 .gitignore 对齐的生成物目录：本地量过覆盖率（c8 → coverage/）再生成清单，曾把几十个本地文件写进清单，
     // 干净的 CI 检出里它们不存在 ⇒ --check 必然失败。只收录真正属于包的文件。
-    if (SKIP_DIRS.has(e.name) && e.isDirectory()) continue
-    if (e.name === '.git' || e.name === 'node_modules') continue
+    if (IGNORE.dirs.has(e.name)) continue
+    if (ignoredByName(e.name)) continue
     const abs = path.join(dir, e.name)
     const rel = base ? base + '/' + e.name : e.name
     if (e.isDirectory()) out.push(...walk(abs, rel))
-    else if (!SELF.has(rel)) {
-      // 与 .gitignore 保持一致：忽略 *.log、*.bak 等运行痕迹与临时备份，避免本地生成的日志进入清单导致 CI 检出缺失
-      if (/\.(?:log|bak)(?:-[^/]+)?$/.test(e.name) || /\.py[co]$/.test(e.name)) continue
-      out.push(rel)
-    }
+    else if (!SELF.has(rel)) out.push(rel)
+    // 注：单个文件的忽略（*.log / *.bak / *.pyc / eval-profile.json）统一由上面的 ignoredByName 处理。
   }
   return out
 }
