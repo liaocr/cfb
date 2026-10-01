@@ -2,7 +2,17 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
-## 1. 当前状态（2026-10-01，第十八会话续：首次真实通道验证完成，v4可见协议A/B 13/13成功）
+## 1. 当前状态（2026-10-01，第十九会话：n=6扩样本v7全成功，结构性指标结论落地）
+
+- 用户批准「全面推进下一步，并进行优化」→ 三线推进完毕：①claimOfV2预注册判据（旧claimOf冻结，resultOf按planVersion选判据不追溯）；②v5-v7扩样本scope（6样本/格36主+3探针）；③生产birth可见拼接设计提案docs/design/BIRTH-VISIBLE-SPLICE.md（默认off，未实施待批准）。
+- scope教训链（收据全封存）：v5探针空reasoning整停→v6探针免思考+主请求验证失败样本级(预算6)；v6探针死于池轮换指纹漂移（诊断fp已变null且echo正常）→v7放开fp闸但逐响应记录+报告直方图/配对同指纹数，身份证据=型号+canary回显+思考+usage界。**钉死指纹在该池数小时即失效**，这是渠道结构性事实。
+- **v7结果**（37/37、36/36配对、18/18对同后端fp=null、实际usage≈$0.143）：flaky结构性指标current全面占优（bump/reEdit清零、next4→5、avoid5→6、动作现instrument，raw现re-edit-same+盲调数字）✓预注册；eacces持平✓；wrong-model冻结判据名义反超✗→归因5/5 falseDone全为伪阳性（让步句「即使…修好…仍」、意图「以设计修复」、拉丁前缀+完成名词），36样本零真实假完成。**结论：文本正则指标被伪阳性饱和，结构性指标(bump/reEdit/repeat/action)才有区分力；下轮起文本指标仅作敏感性分析。**
+- claimOfV3已预注册未实施：让步守卫(即使/哪怕/就算…修复词…仍/还/依旧)+意图守卫(以/先/设计/计划+修复)+拉丁前缀完成名词守卫，回归集=本轮5伪阳性+全部真阳性。
+- 累计API实际消费≈USD0.21（v4 0.05+v7 0.143+诊断0.01+废探针0.015），授权USD2。自检943/0/1、33/33、N1-N7全零。
+- 待批准：claimOfV3落地复跑(≈$0.75)、P-B双可见对照、生产birth可见拼接实施。
+- 环境坑（每轮复发）：Node20→装22（nodejs.org tar到/usr/local）；.git/config剥离→重加origin；全量自检走tools/verify-offline.mjs。
+
+## 1a. 前轮（第十八会话：首次真实通道验证完成，v4可见协议A/B 13/13成功）
 
 - 用户提供密钥并授权真实API优化（"用api去真实跑优化…不要调用太多"）。密钥已放~/.secrets/keys.env(0600)未打印未提交；GITHUB_PAT可用，固定分支正常快进推送。
 - **通道取证**：a6api中转当前全部路由丢弃历史reasoning_content（canary复核×2+五别名扫描；vllm自报指纹`vllm-0.0.0-tp4-dp2-ep-869f52fc`三次一致；fp_dspure_app_v1后端已不存在于该token分组）。旧reasoning回放协议在此通道物理不可用——历史"渠道坑"升级为实证结论。
