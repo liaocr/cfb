@@ -4,6 +4,9 @@
 //   工具：read_file / edit_file 真改；bash 先查 canned（测试 / trace / CI 按文件状态给结果），否则白名单命令真跑（grep/sed/cat/ls/head/tail/wc/find）。
 //   量：到修好的轮数、edit 次数、重复命令、修好后有没有验收、最终声明是否与状态相称、prompt tokens 合计、上下文里 reasoning 字数。
 // 用法：DEEPSEEK_API_KEY=… node tools/traj-run.mjs --variants raw,auto --samples 1 --max-rounds 6 --require-fp --base-url … --model … --out traj1 [--only id]
+// v4.6（v14.11）模式 1：变体 hand = 助手代替副模型手写稿。到了要压缩的那一轮，把副模型本该拿到的 prompt / 原文 / ctx 写进 <out>/pending/<id>.json、
+//   把轨迹状态存进 <out>/state/<task>-s<k>.json 后暂停（results.jsonl 记一行 status:'awaiting-draft'）；助手写好 <out>/drafts/<id>.md 后用**同一条命令**再跑，
+//   自动从状态续：稿走与生产完全相同的闸链（compileV4Direct → 程序部件拼接 → birthAccept）外加 G2「决策不变」闸（hand-draft.mjs）；任一闸不过 ⇒ 继续暂停并把违规写回 pending。
 // v4.1：--policy base,p-xxxx ⇒ 变体 policy:<id>（压缩器 = 生产 v4 提示词 + 策略补丁，两臂同一路径，可比）；--fork ⇒ 同题同样本只跑一次第 1 轮，
 //   各臂从同一第 1 轮状态分叉（配对在分叉点、省 1 次主调用）；每行记逐轮执行器代理旗标 proxySteps / proxyScore（traj-proxy.mjs），
 //   直接喂 cfb-cycle confirm --results（L2 结局 + 效度账本一次到位）。本文件不读任何计划文件；花钱仍只在显式带 KEY 运行时发生。
@@ -18,6 +21,7 @@ import { TRAJ_TASKS, materialize } from './traj-fixtures.mjs'
 import { stepFlags } from './helpers/traj-proxy.mjs'
 import { outcomeComparison } from './helpers/ruler.mjs'
 import { BASE_POLICY, applyPolicyToPrompt, PRODUCTION_COMPRESSOR } from './helpers/generation.mjs'
+import { handDraftGate, HAND_PROTOCOL } from './helpers/hand-draft.mjs'
 
 const SYSTEM = '你是在代码仓库里干活的编码 Agent，可用工具 bash / read_file / edit_file（仓库根目录）。每一轮：先给一句简短判断，再发出下一步需要的工具调用；一次可以发多个独立调用。认为任务已经完成时不要再调用工具，用文字说明改了什么、依据是什么。'
 // --text-tools：不带 tools 字段（中转把带 tools 的请求路由到不可信后端时用），改用文本协议发调用；三种变体同一协议，比较仍成立
@@ -199,17 +203,27 @@ export function callsOfMessage(m) {
   return out.filter((c) => { const k = c.name + '|' + normCmd(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)); if (seen.has(k)) return false; seen.add(k); return true })
 }
 
-export async function runOne({ o, task, variant, sample, chat, I, cred, forkMessage = null, state = null }) {
+export async function runOne({ o, task, variant, sample, chat, I, cred, forkMessage = null, state = null, resume = null }) {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'traj-'))
   materialize(task, repo)
   const policy = loadPolicyFor(variant, o.policyDir)
-  const messages = [{ role: 'system', content: o.textTools ? SYSTEM_TEXT_TOOLS : SYSTEM }, { role: 'user', content: task.prompt }]
+  const hand = variant === 'hand'
+  let messages = [{ role: 'system', content: o.textTools ? SYSTEM_TEXT_TOOLS : SYSTEM }, { role: 'user', content: task.prompt }]
   const rec = { task: task.id, variant, sample, rounds: 0, calls: 0, edits: [], repeats: 0, fixedAtRound: null, verifiedAfterFix: false, promptTokens: 0, compile: [], transcript: [], rejected: 0, ...(policy ? { policy: policy.id } : {}), ...(forkMessage ? { forked: true } : {}), ...(task.perturb ? { perturb: task.perturb } : {}), ...(state ? { fromState: state.id, family: state.family, startRound: state.startRound } : {}) }
-  const seenCmds = new Map()
+  let seenCmds = new Map()
   let firstRound = 1
-  if (state) {
+  const replayLog = []   // 本轨迹已执行过的全部调用（含子状态前缀）—— hand 臂暂停时存下来，续跑时确定性重放恢复仓库
+  if (resume) {
+    // v4.6 hand 臂续跑：仓库 = 重放已执行调用；消息 / 记录 / 已见命令 = 暂停时的快照；本轮主模型回复已在手，不再发主调用
+    for (const c of resume.replay || []) execTool(task, repo, c.name, c.args)
+    replayLog.push(...(resume.replay || []))
+    messages = resume.messages; Object.assign(rec, resume.rec); seenCmds = new Map(resume.seenCmds || []); firstRound = resume.round
+    rec.resumed = (rec.resumed || 0) + 1
+  }
+  if (state && !resume) {
     // v4.3 子状态续跑：确定性重放前 k−1 轮的调用得到仓库状态，消息前缀只含 assistant 文字 + 工具结果（无思维链；模型从这里重新思考）
     for (const c of state.replay || []) { const out = execTool(task, repo, c.name, c.args); if (c.name === 'bash') seenCmds.set(normCmd(c.args && c.args.command), state.startRound - 1); if (c.name === 'edit_file') rec.edits.push({ round: 0, path: c.args && c.args.path, ok: /^ok/.test(out), replayed: true }) }
+    replayLog.push(...(state.replay || []))
     if (task.fixed(repo)) throw new Error('state-already-fixed:' + state.id)
     for (const m of state.messages || []) messages.push(m.role === 'assistant' ? { role: 'assistant', content: m.content } : { role: 'user', content: m.content })
     firstRound = state.startRound
@@ -218,7 +232,8 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
   try {
     for (let round = firstRound; round <= o.maxRounds; round++) {
       let r
-      if (round === firstRound && forkMessage) r = { message: forkMessage, usage: { prompt_tokens: 0 }, fp: 'fork' }
+      if (round === firstRound && resume) r = { message: resume.message, usage: { prompt_tokens: 0 }, fp: 'resume' }
+      else if (round === firstRound && forkMessage) r = { message: forkMessage, usage: { prompt_tokens: 0 }, fp: 'fork' }
       else for (let k = 0; ; k++) {
         // 中转按请求内容（大致）黏住后端，作废重发常连续落到同一不可信后端 ⇒ 先用 max_tokens:1 的探针（只花 prefill）试后端，可信了再发真请求；
         //   每次重试在末条 user 末尾加 k 个零宽空格打散黏性，并退避几秒让路由轮转
@@ -229,6 +244,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
           if (claudeShaped(probe.usage) || !TRUSTED_FP.has(probe.fp)) { rec.probeMiss = (rec.probeMiss || 0) + 1; if (k >= o.maxProbes - 1) throw new Error(`探针 ${o.maxProbes} 次都没等到可信后端`); await new Promise((s) => setTimeout(s, Math.min(30000, 3000 + 1500 * k))); continue }
         }
         r = await chat({ model: o.model, messages: msgs, ...(o.textTools ? {} : { tools: TOOLS }), thinking: { type: 'enabled' }, max_tokens: o.maxTokens - k, stream: false })
+        rec.mainCalls = (rec.mainCalls || 0) + 1   // v4.6：真发出的主调用数（fork / resume 轮不计；hand 臂续跑跨进程累加）
         const seen = !claudeShaped(r.usage) && (!o.requireFp || TRUSTED_FP.has(r.fp))
         if (seen && (r.message.reasoning_content || '').length > 0) break
         rec.rejected++
@@ -236,13 +252,51 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         if (k >= o.maxProbes - 1) throw new Error('通道始终未送入思考：' + rec.rejectedWhy.slice(-10).join(','))
       }
       rec.rounds = round
-      if (round === firstRound && !forkMessage) rec.firstMessage = r.message   // --fork：其他臂从这条（起始轮）回复分叉
+      if (round === firstRound && !forkMessage && !resume) rec.firstMessage = r.message   // --fork：其他臂从这条（起始轮）回复分叉
       rec.promptTokens += Number(r.usage && r.usage.prompt_tokens) || 0
       const reasoning = String(r.message.reasoning_content || '')
       const text = responseText(r.message)
       const calls = callsOfMessage(r.message)
       let stored = reasoning, compileInfo = null
-      if ((variant === 'auto' || policy) && reasoning.length < o.minChars) { compileInfo = { ok: false, belowFloor: true, rawChars: reasoning.length }; rec.compile.push(compileInfo) }
+      if ((variant === 'auto' || policy || hand) && reasoning.length < o.minChars) { compileInfo = { ok: false, belowFloor: true, rawChars: reasoning.length }; rec.compile.push(compileInfo) }
+      else if (hand && (!calls.length || round >= o.maxRounds)) { compileInfo = { ok: false, skipped: 'no-next-round', rawChars: reasoning.length }; rec.compile.push(compileInfo) }   // 没有下一轮会读这份稿 ⇒ 不让操作员白写
+      else if (hand) {
+        // v4.6 模式 1：助手当副模型。稿文件在 ⇒ 过 G2 + 生产闸链；不在 / 不过 ⇒ 写 pending + state 暂停
+        const ctx = I.buildCompressCtx(messages)
+        const safeId = task.id.replace(/[^\w.-]/g, '_')
+        const id = `${safeId}-s${sample}-r${round}`
+        const draftFile = path.join(o.out, 'drafts', id + '.md'), pendingFile = path.join(o.out, 'pending', id + '.json'), stateFile = path.join(o.out, 'state', `${safeId}-s${sample}.json`)
+        const cfg = I.offlineBirthConfig({ model: o.model || 'hand', baseUrl: o.baseUrl || 'http://127.0.0.1:1', credentialsPath: cred, policy: null, normalizeConfig: I.normalizeConfig })
+        const draft = fs.existsSync(draftFile) ? fs.readFileSync(draftFile, 'utf8').trim() : null
+        let violations = null, b = null
+        if (draft) {
+          const g2 = handDraftGate(reasoning, draft, ctx)
+          if (!g2.ok) violations = g2.violations
+          else {
+            b = await I.birthOffline({ raw: reasoning, ctx, calls, cfg, gate: !o.noGate, compile: async (rawText, c) => {
+              const v = o.noGate ? { ok: true, text: draft, stats: null } : I.compileV4Direct(draft, rawText, { compressCtx: c.compressCtx })
+              const pv = I.compressPromptVersion(c) + '+hand'
+              if (!v.ok) { const e = new Error('v4-direct:' + v.reason); e.meta = { v4: v.stats, promptVersion: pv }; throw e }
+              return { text: v.text || draft, meta: { promptVersion: pv, v4: v.stats } }
+            } })
+            if (!b.ok) violations = [{ kind: 'production-gate:' + b.why, detail: String(b.reason || JSON.stringify(b.info || null)).slice(0, 200) }]
+          }
+        }
+        if (b && b.ok) {
+          stored = b.text
+          compileInfo = { ok: true, path: 'hand', ms: b.ms, rawChars: reasoning.length, outChars: stored.length, draftChars: draft.length, policy: 'hand', promptVersion: b.promptVersion, gate: b.v4 || null, spliced: b.spliced || null, accept: b.accept || null, draftFile: path.relative(process.cwd(), draftFile) }
+          rec.compile.push(compileInfo)
+          if (fs.existsSync(pendingFile)) { fs.mkdirSync(path.join(o.out, 'pending', 'done'), { recursive: true }); fs.renameSync(pendingFile, path.join(o.out, 'pending', 'done', id + '.json')) }
+          if (fs.existsSync(stateFile)) fs.unlinkSync(stateFile)
+        } else {
+          fs.mkdirSync(path.dirname(pendingFile), { recursive: true }); fs.mkdirSync(path.dirname(stateFile), { recursive: true }); fs.mkdirSync(path.join(o.out, 'drafts'), { recursive: true })
+          const prompt = I.compressPromptFor({ ...cfg, compressCtx: ctx }, reasoning)
+          fs.writeFileSync(pendingFile, JSON.stringify({ schema: 'cfb.hand-pending/1', id, task: task.id, sample, round, at: new Date().toISOString(), draftFile: path.relative(process.cwd(), draftFile), protocol: HAND_PROTOCOL, violations, draftSeenChars: draft ? draft.length : null, prompt, raw: reasoning, ctx, calls: calls.map((c) => ({ name: c.name, args: typeof c.args === 'string' ? c.args : JSON.stringify(c.args) })), minChars: o.minChars }, null, 2))
+          fs.writeFileSync(stateFile, JSON.stringify({ schema: 'cfb.hand-state/1', id, task: task.id, variant, sample, round, at: new Date().toISOString(), message: r.message, messages, rec: { ...rec, firstMessage: undefined }, seenCmds: [...seenCmds], replay: replayLog }))
+          rec.status = 'awaiting-draft'; rec.awaiting = { id, round, pending: path.relative(process.cwd(), pendingFile), state: path.relative(process.cwd(), stateFile), draftFile: path.relative(process.cwd(), draftFile), violations }
+          return rec
+        }
+      }
       else if (variant === 'auto' || policy) {
         // v14.10：两种压缩臂都走生产 birth 的离线同构体（src/offline-birth.js）：压缩器看不到本轮调用（与生产同）→ 程序部件拼接 → birthAccept 闸。
         //   auto = 无策略；policy:<id> = cfg.compressPolicy（生产同一配置项）⇒ auto ≡ policy:base 由构造保证，不再有工具自拼的第二条请求路径。
@@ -280,6 +334,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         const argsObj = typeof c.args === 'string' ? (() => { try { return JSON.parse(c.args) } catch { return { command: c.args } } })() : c.args
         if (c.name === 'bash') { const k = normCmd(argsObj && argsObj.command); if (seenCmds.has(k) && !rec.edits.some((e) => e.round > seenCmds.get(k))) rec.repeats++; seenCmds.set(k, round) }
         const out = execTool(task, repo, c.name, c.args)
+        replayLog.push({ name: c.name, args: argsObj })
         if (c.name === 'edit_file') { rec.edits.push({ round, path: argsObj && argsObj.path, ok: /^ok/.test(out) }); if (rec.fixedAtRound == null && task.fixed(repo)) rec.fixedAtRound = round }   // 同一轮里 edit 之后紧跟的验收也算
         if (c.name === 'bash' && task.verifyRe.test(String(argsObj && argsObj.command || '')) && rec.fixedAtRound != null) rec.verifiedAfterFix = true
         results.push(`[tool: ${c.name} 结果]\n${out}`)
@@ -324,7 +379,7 @@ export function recomputeVerified(r, verifyRe) {
 }
 export function summarizeTraj(rows) {
   for (const r of rows) { const task = TRAJ_TASKS.find((t) => t.id === r.task); if (task && !r.error) { r.verifiedAfterFix = recomputeVerified(r, task.verifyRe); r.claimJustified = r.claim === 'fixed' ? (r.fixed && r.verifiedAfterFix) : r.claim === 'hedged' ? true : !r.fixed || !r.final } }
-  const ok = rows.filter((r) => !r.error)
+  const ok = rows.filter((r) => !r.error && r.status !== 'awaiting-draft')
   const vars = [...new Set(ok.map((r) => r.variant))]
   const L = ['| 变体 | n | 修好 | 到修好的轮数 | 总轮数 | 工具调用 | edit 次数 | 重复命令 | 修好后验收 | 最终声明 fixed | 声明相称 | prompt tokens 合计 | 上下文 reasoning 字数 | 压稿成功 |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|']
   for (const v of vars) {
@@ -335,6 +390,8 @@ export function summarizeTraj(rows) {
   L.push('', '逐条：', '', '| 任务 | 变体 | # | 修好@轮 | 轮 | 调用 | edit | 重复 | 验收 | 声明 | 相称 | tokens |', '|---|---|---|---|---|---|---|---|---|---|---|---|')
   for (const r of ok) L.push(`| ${r.task} | ${r.variant} | ${r.sample} | ${r.fixed ? (r.fixedAtRound ?? '?') : '✗'} | ${r.rounds} | ${r.calls} | ${r.edits.length} | ${r.repeats} | ${r.verifiedAfterFix ? '●' : '·'} | ${r.claim} | ${r.claimJustified ? '●' : '✗'} | ${r.promptTokens} |`)
   for (const r of rows.filter((r) => r.error)) L.push(`| ${r.task} | ${r.variant} | ${r.sample} | ERR ${r.error.slice(0, 60)} |`)
+  const waiting = rows.filter((r) => r.status === 'awaiting-draft')
+  if (waiting.length) L.push('', `等待手写稿 ${waiting.length} 条：` + waiting.map((r) => `${r.task}/${r.variant} #${r.sample} 第 ${r.awaiting?.round} 轮（${r.awaiting?.pending}）`).join('；'))
   return L.join('\n')
 }
 
@@ -343,7 +400,9 @@ async function main(argv) {
   fs.mkdirSync(o.out, { recursive: true })
   const resPath = path.join(o.out, 'results.jsonl')
   const done = fs.existsSync(resPath) ? fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []
-  const have = new Set(done.filter((r) => !r.error).map((r) => `${r.fromState || r.task}|${r.variant}|${r.sample}`))
+  const have = new Set(done.filter((r) => !r.error && r.status !== 'awaiting-draft').map((r) => `${r.fromState || r.task}|${r.variant}|${r.sample}`))
+  // v4.6：hand 臂暂停过的轨迹有 state 文件 ⇒ 同一条命令再跑时从状态续，而不是重新开始
+  const resumeFor = (task, variant, sample) => { if (variant !== 'hand') return null; const f = path.join(o.out, 'state', `${task.id.replace(/[^\w.-]/g, '_')}-s${sample}.json`); return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null }
   let plan = null
   if (o.plan) { plan = JSON.parse(fs.readFileSync(o.plan, 'utf8')); checkTrajPlan(plan, o); console.log(`按预注册计划 ${plan.id}（digest ${plan.digest}，预估 ≈$${plan.cost?.expectedUsd}，上界 ≈$${plan.cost?.capUsd}）运行；目的：${plan.purpose}`) }
   if (!o.summarizeOnly) {
@@ -355,7 +414,7 @@ async function main(argv) {
     const states = o.fromState ? loadStates(o.fromState) : null
     const scenarioSpecs = (o.only || TRAJ_TASKS.map((t) => t.id)).map((x) => { const [id, kind] = x.split(':'); return { id, kind: kind || (o.perturb && o.perturb[0] !== 'none' ? o.perturb[0] : null) } })
     if (states) { for (const st of states) { const base = TRAJ_TASKS.find((t) => t.id === st.family); if (!base) throw new Error('state-family-unknown:' + st.family); for (const v of o.variants) for (let k = 0; k < o.samples; k++) if (!have.has(`${st.id}|${v}|${k}`)) jobs.push({ task: base, variant: v, sample: k, state: st }) } }
-    else for (const spec of scenarioSpecs) { const base = TRAJ_TASKS.find((t) => t.id === spec.id); if (!base) throw new Error('unknown-scenario:' + spec.id); const task = perturbTask(base, spec.kind); for (const v of o.variants) for (let k = 0; k < o.samples; k++) if (!have.has(`${task.id}|${v}|${k}`)) jobs.push({ task, variant: v, sample: k }) }
+    else for (const spec of scenarioSpecs) { const base = TRAJ_TASKS.find((t) => t.id === spec.id); if (!base) throw new Error('unknown-scenario:' + spec.id); const task = perturbTask(base, spec.kind); for (const v of o.variants) for (let k = 0; k < o.samples; k++) if (!have.has(`${task.id}|${v}|${k}`)) jobs.push({ task, variant: v, sample: k, resume: resumeFor(task, v, k) }) }
     console.log(`轨迹 ${jobs.length} 条（每条 ≤ ${o.maxRounds} 轮主调用${o.variants.includes('auto') ? ' + 同数副调用' : ''}），并发 ${o.concurrency}`)
     // --fork：同题同样本分组，第一臂跑完第 1 轮后其余臂从同一条第 1 轮回复分叉（配对在分叉点、每组省 (臂数−1) 次主调用）
     const groups = o.fork ? [...jobs.reduce((m, j) => { const k = `${j.state ? j.state.id : j.task.id}|${j.sample}`; (m.get(k) || m.set(k, []).get(k)).push(j); return m }, new Map()).values()] : jobs.map((j) => [j])
@@ -375,16 +434,17 @@ async function main(argv) {
         let forkMessage = null
         for (const j of grp) {
         if (stopped) break
-        const rec = await runOne({ o, task: j.task, variant: j.variant, sample: j.sample, chat, I, cred, forkMessage, state: j.state || null })
-        spent.usd += (rec.rounds || 0) * (plan?.cost?.pricing?.mainUsd ?? 0.0125) + (rec.compile || []).filter((c) => !c.belowFloor).length * (plan?.cost?.pricing?.compressUsd ?? 0.0075)
+        const rec = await runOne({ o, task: j.task, variant: j.variant, sample: j.sample, chat, I, cred, forkMessage: j.resume ? null : forkMessage, state: j.state || null, resume: j.resume || null })
+        spent.usd += ((rec.mainCalls ?? rec.rounds ?? 0) - (j.resume?.rec?.mainCalls || 0)) * (plan?.cost?.pricing?.mainUsd ?? 0.0125) + (rec.compile || []).filter((c) => !c.belowFloor && c.path !== 'hand').length * (plan?.cost?.pricing?.compressUsd ?? 0.0075)   // hand 稿零成本；续跑只算本次新发的主调用
         if (o.fork && !forkMessage && rec.firstMessage) forkMessage = rec.firstMessage
         delete rec.firstMessage
         fs.appendFileSync(resPath, JSON.stringify(rec) + '\n')
+        if (rec.status === 'awaiting-draft') { console.log(`  ${rec.task}/${rec.variant} #${rec.sample}: 等待手写稿（第 ${rec.awaiting.round} 轮）→ 读 ${rec.awaiting.pending}，写 ${rec.awaiting.draftFile}，再跑同一条命令` + (rec.awaiting.violations ? `；上一份稿被拒：${rec.awaiting.violations.map((v) => v.kind).join(', ')}` : '')); continue }
         console.log(`  ${rec.task}/${rec.variant} #${rec.sample}: ${rec.error ? 'ERR ' + rec.error : `${rec.fixed ? '修好@' + rec.fixedAtRound : '未修好'} · ${rec.rounds} 轮 · ${rec.calls} 调用 · edit ${rec.edits.length} · 重复 ${rec.repeats} · 验收 ${rec.verifiedAfterFix ? '●' : '·'} · 声明 ${rec.claim}${rec.claimJustified ? '' : '（不相称）'} · tokens ${rec.promptTokens}${rec.compile.length ? ' · 压稿 ' + rec.compile.filter((c) => c.ok).length + '/' + rec.compile.length : ''} · proxy ${rec.proxyScore ?? '—'}${rec.forked ? ' · 分叉' : ''}`}`)
         }
         // v4.3 有界续跑：一次批准内自动跑到判定或预算上界（e 值任意停时有效，提前停不损失保证）
         if (stop && !stopped) {
-          const done = fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => !r.error)
+          const done = fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => !r.error && r.status !== 'awaiting-draft')
           const cmp = stop.compare && stop.compare.champion !== stop.compare.previous ? outcomeComparison(done.map((r) => ({ ...r, arm: r.variant === stop.compare.champion ? 'champion' : r.variant === stop.compare.previous ? 'previous' : null, sample: `${r.fromState || r.task}#${r.sample ?? 0}` })).filter((r) => r.arm)) : null
           const thr = 1 / (stop.alpha || 0.1)
           if (cmp && cmp.pairs.length >= (stop.minPairs || 4) && (cmp.e >= thr || cmp.eReject >= thr)) stopped = `判定达成（${cmp.pairs.length} 对，e=${cmp.e} / 更差 e=${cmp.eReject} ≥ ${thr}）`
@@ -400,7 +460,7 @@ async function main(argv) {
   let md = summarizeTraj([...last.values()])
   const cont = [...last.values()].filter((r) => r.continuation); if (cont.length) md += `\n\n续跑探针（${cont.length} 条）：${cont.map((r) => `${r.fromState}/${r.variant}: ${r.continuation.verdict}（首轮 ${r.continuation.firstRoundCalls} 次调用、重做前缀 ${r.continuation.prefixRepeats}）`).join('；')}\n结论：${cont.every((r) => r.continuation.verdict === 'continued') ? '模型顺着前缀继续 —— 子状态可用' : cont.some((r) => r.continuation.verdict === 'restarted') ? '**有轨迹从头重来** —— 子状态口径存疑，先别扩到 14 个' : '不清楚（首轮无调用）'}`
   fs.writeFileSync(path.join(o.out, 'summary.md'), md + '\n')
-  if (plan) { const rows = [...last.values()]; fs.writeFileSync(path.join(o.out, 'receipt.json'), JSON.stringify({ schema: 'cfb.traj-receipt/1', plan: plan.id, digest: plan.digest, at: new Date().toISOString(), trajectories: rows.length, errors: rows.filter((r) => r.error).length, mainCalls: rows.reduce((a, r) => a + (r.rounds || 0), 0), compressCalls: rows.reduce((a, r) => a + (r.compile || []).filter((c) => !c.belowFloor).length, 0), promptTokens: rows.reduce((a, r) => a + (r.promptTokens || 0), 0), gateFails: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.gateFail).length, 0), estimatedUsd: +spent.usd.toFixed(3), stoppedEarly: stopped || null }, null, 2) + '\n') }
+  if (plan) { const rows = [...last.values()]; fs.writeFileSync(path.join(o.out, 'receipt.json'), JSON.stringify({ schema: 'cfb.traj-receipt/1', plan: plan.id, digest: plan.digest, at: new Date().toISOString(), trajectories: rows.length, errors: rows.filter((r) => r.error).length, awaiting: rows.filter((r) => r.status === 'awaiting-draft').length, mainCalls: rows.reduce((a, r) => a + (r.mainCalls ?? r.rounds ?? 0), 0), compressCalls: rows.reduce((a, r) => a + (r.compile || []).filter((c) => !c.belowFloor && c.path !== 'hand').length, 0), handDrafts: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.path === 'hand').length, 0), promptTokens: rows.reduce((a, r) => a + (r.promptTokens || 0), 0), gateFails: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.gateFail).length, 0), estimatedUsd: +spent.usd.toFixed(3), stoppedEarly: stopped || null }, null, 2) + '\n') }
   console.log('\n' + md)
 }
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) main(process.argv.slice(2)).catch((e) => { console.error(e && e.stack || e); process.exit(1) })

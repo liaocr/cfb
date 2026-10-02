@@ -1,6 +1,6 @@
 {
   "schema": "cfb.cycle-state/1",
-  "at": "2026-10-02T11:14:04.381Z",
+  "at": "2026-10-02T12:07:24.142Z",
   "history": {
     "schema": "cfb.closed-loop/2",
     "hypotheses": {},
@@ -76,11 +76,21 @@
       {
         "n": 4,
         "at": "2026-10-02T11:13:15.996Z",
-        "status": "planned",
+        "status": "superseded",
         "digest": "8e14e8b501991371",
         "design": "3c530cd2949f05e3",
         "expectedUsd": 0.15,
-        "capUsd": 0.372
+        "capUsd": 0.372,
+        "note": "v14.11：改为模式 1 手写稿单元（raw vs hand）先量天花板"
+      },
+      {
+        "n": 5,
+        "at": "2026-10-02T12:04:28.239Z",
+        "status": "planned",
+        "digest": "f033dcf7534fdb42",
+        "design": "230de285e9327ec1",
+        "expectedUsd": 0.113,
+        "capUsd": 0.315
       }
     ]
   },
@@ -260,6 +270,50 @@
         "digest": "8e14e8b501991371",
         "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t4/plan.json --store-text --variants raw --policy base --only sse-truncated --samples 1 --max-rounds 5 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t4",
         "design": "3c530cd2949f05e3"
+      }
+    },
+    {
+      "n": 5,
+      "plan": {
+        "schema": "cfb.traj-plan/1",
+        "id": "t5",
+        "at": "2026-10-02T12:04:28.239Z",
+        "variants": [
+          "raw",
+          "hand"
+        ],
+        "scenarios": [
+          "sse-truncated"
+        ],
+        "samples": 1,
+        "maxRounds": 5,
+        "fork": true,
+        "maxTokens": 8000,
+        "storeText": true,
+        "purpose": "模式 1 天花板：hand 臂 = 助手代替副模型手写稿（同一提示词、同一闸链 + G2 决策不变闸）vs raw；量 f(主模型 | 稿) 的上界与「稿该写什么」；hand 永远不采纳为 champion，过闸且修好的稿进金标注册表（gold add）作模式 2 标准",
+        "yield": {
+          "l1Pairs": 1,
+          "l2Pairs": 1,
+          "validityPairsApprox": 8,
+          "flywheelPairsApprox": 0,
+          "childStatesApprox": 6
+        },
+        "cost": {
+          "mains": 9,
+          "compresses": 0,
+          "expectedUsd": 0.113,
+          "capUsd": 0.315,
+          "pricing": {
+            "mainUsd": 0.0125,
+            "mainCapUsd": 0.035,
+            "compressUsd": 0.0075,
+            "compressCapUsd": 0.0114
+          }
+        },
+        "holdoutNote": "场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索",
+        "digest": "f033dcf7534fdb42",
+        "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t5/plan.json --store-text --variants raw,hand --only sse-truncated --samples 1 --max-rounds 5 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t5",
+        "design": "230de285e9327ec1"
       }
     }
   ],
@@ -661,5 +715,5 @@
       }
     }
   ],
-  "digest": "b154dc571ff00242"
+  "digest": "06446e849297c09a"
 }

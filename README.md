@@ -364,6 +364,9 @@ node tools/cfb-cycle.mjs propose [--allow-provisional]
 node tools/cfb-cycle.mjs status                       # v4.5：一屏（策略 / 计划 / 家族覆盖 / 下一步完整命令）；新克隆先 restore
 node tools/cfb-cycle.mjs plan-traj [--all|--dry|--drop N|--supersede N]   # v4.5：冻结付费单位，缺省一个家族 × raw vs policy:base ≈ $0.15；traj-run --plan 核对；confirm --plan N
 node tools/cfb-cycle.mjs review --plan N              # v4.5：评审稿（分歧轮 / 各臂结局 / 稿原文 / 闸门）
+node tools/cfb-cycle.mjs plan-traj --arms raw,hand    # v4.6 模式 1：助手手写稿臂（压缩 0 次 ≈ $0.11）；traj-run 到压缩轮暂停等 drafts/<id>.md，同一命令续跑
+node tools/cfb-cycle.mjs ceiling --plan N             # v4.6：hand vs raw 的 L2 天花板（不写 champion）→ gold add --plan N（金标 transfer/gold/）
+node tools/cfb-cycle.mjs plan-bench --policies base,p-x && node tools/bench-run.mjs --plan … --dry-run   # v4.6 模式 2：压缩器对金标的召回基准（dd/1）→ bench-report --plan N
 node tools/cfb-cycle.mjs snapshot | restore           # v4.5：闭环状态 ↔ transfer/cycle-state.json
 node tools/cfb-cycle.mjs policy-from-flywheel         # v4.2：零 API 样例槽策略
 node tools/cfb-cycle.mjs propose-policy [--print]     # v4.4：提议证据包（零 API；提议器由助手代工，见 CLOSED-LOOP-V4 §14）；--print 不落盘不占代

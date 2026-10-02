@@ -2,6 +2,13 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
+## −10. 当前状态（2026-10-02，第三十会话：v4.6 —— 三模式：模式 1 助手手写稿 `hand` 臂量天花板 ≈$0.11；金标注册表 `transfer/gold/`；模式 2 压缩器基准 dd/1；模式 3 = 原单元；仍零花费）
+
+- **先跑 `node tools/cfb-cycle.mjs status`**：会列出**在等的手写稿**（pending 路径 + 稿路径 + 续跑命令）、金标数、基准计划、下一步。新克隆先 `restore`。
+- **当前计划 t5 = sse-truncated × raw vs hand × 1 × ≤5 轮 ≈ $0.113（上界 $0.315；压缩 0 次），`--dry-run` 已过，需用户批准。** 步进法：钥匙放沙箱 → 跑 plan.md 里的命令 → hand 臂第 1 轮暂停 → 读 `.cfb-runtime/traj/t5/pending/<id>.json`（里面是副模型本该拿到的那份 prompt + 协议）→ 只看 prompt 写 `drafts/<id>.md`（不许用场景答案；只改记忆不改决定）→ **同一条命令**再跑 → 每轮重复（最后一轮不要稿）→ `review --plan 5` → `ceiling --plan 5`（不是 confirm）→ `gold add --plan 5`。同一场景的稿**不迭代第二次**；第二家族（`plan-traj --arms raw,hand` 自动选）重复后才写规格。
+- **模式 2**：`gold list` → `plan-bench --policies base,<候选> [--dry]`（≈$0.0075 × 策略 × 金标）→ 批准 → `node tools/bench-run.mjs --plan … --dry-run` 核对 → 真跑 → `bench-report --plan N`；promote 的进 `plan-traj --arms raw,policy:<id>`（模式 3）。**基准分不采纳 champion；hand 永远不是候选。** 指标 dd/1 冻结在计划里，改公式先改版本号。
+- 闸：v4 27/27、v3 16/16、closed-loop 25/25、v12 37/37；verify（见 CHANGELOG v14.11.0）；manifest 0 漂移。设计 `CLOSED-LOOP-V4.md` §16。
+
 ## −9. 当前状态（2026-10-02，第二十九会话：v4.5 —— 付费单元缩成一个家族 ≈$0.15；策略即配置；birthOffline 生产同构（压缩器 max_tokens 实为 1600）；操作员面；全量自测 53 → ≈35 s；仍零花费）
 
 - **先跑 `node tools/cfb-cycle.mjs status`**：一屏给出策略、轨迹计划（含 design / 状态）、家族覆盖、**下一步的完整命令**。新克隆先 `restore`（`transfer/cycle-state.json`）。

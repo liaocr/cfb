@@ -311,3 +311,37 @@ t2 = raw / auto / policy:base × 5 家族 × 1 样本 ≤4 轮，≈$0.925。逐
 
 ### 15.5 接上 API 后的一步循环
 `status` → （用户批准 t4，≈$0.15）→ `traj-run --plan .cfb-runtime/traj/t4/plan.json …`（`--dry-run` 已通过）→ `review --plan 4`（读分歧轮 + 稿原文）→ `confirm --plan 4 --map champion=policy:base,previous=raw`（L2 入账）→ 助手写候选 `policy-from-proposal FILE --gen 3` → `plan-traj`（下一个家族，可 `--arms raw,policy:<id>`）。e 值跨单元累计；留出家族（wrong-model / eacces-config）的单元只入账不选稿。
+
+## 16. v4.6（v14.11）：三模式 —— 把「稿写得对不对」与「主模型读了稿做得对不对」拆开量（仍零花费）
+
+### 16.1 为什么拆
+v4.5 的单元（raw vs policy:base）改的是副模型看到的提示词，量的是端到端结局。里面叠着两个未知：**g = 压缩器能不能把稿写到位**、**f = 主模型读了到位的稿能不能做对**。结局 = f ∘ g，一个单元只给一个数，分不出是稿没写好还是写好了也没用；每次改提示词都要重付 f 的钱。用户的三模式提议就是把它们拆开：
+
+| 模式 | 替换掉谁 | 量什么 | 付费 | 产出 |
+| --- | --- | --- | --- | --- |
+| **1 手写稿** | 副模型 → 助手手写（`hand` 臂） | **f 的上界**（天花板）+「稿该写什么」的内容规格 | 只有主调用（压缩 0 次）：一家族 ≈ $0.11 | `ceiling-k.json`、金标注册表 `transfer/gold/` |
+| **2 压缩器基准** | 主模型 → 不要（只比稿） | **g 到手写标准的召回**（`draftDistance` dd/1） | 只有压缩调用：策略 × 金标 × $0.0075 | `bench-report`：谁值得进模式 3 |
+| **3 端到端** | 都不替换（= v4.5 单元） | 验收 | ≈ $0.15 / 家族 | `confirm` → champion |
+
+预测可检验：模式 3 的增益 ≈ 模式 2 的召回 × 模式 1 的余量。若模式 1 余量为 0（手写稿也不比原文好），训练压缩器没有意义，先停。
+
+### 16.2 模式 1 的有效性威胁与闸
+助手知道场景答案（fixture 的 oracle）。防作弊靠**机械闸**，不靠自觉：
+- **G1 锚点闸（生产同一道）**：`compileV4Direct` + 程序部件拼接 + `birthAccept` —— 反引号片段 / 标识符必须出现在原文 ∪ 上下文；稿比原文长或省不下字 ⇒ 不收（与生产逐字节同一条路径：`birthOffline` 注入 `compile`）。
+- **G2 决策不变闸（新，`tools/helpers/hand-draft.mjs`）**：稿里的三元组 ⊆ 原文三元组；原文没有落定句（也没有可引用的三元组）就不许写落定句；已排除 / 验收 / 未解句必须带原文 ∪ ctx 里的锚点。**只许改「记忆」（留什么、怎么排），不许改「决定」（下一步调用、修法）。** 违规 ⇒ 不收、违规写回 pending、继续暂停。
+- **程序约束**：同一场景的稿不迭代第二次（看结局后改稿就是把答案写进去）；规格要在另一家族上重复；`hand` 永远不能映射成 champion（`ceiling` 不写 `champion.json`，`plan-traj` 拒绝 hand 与策略臂混跑）。
+
+### 16.3 模式 1 的操作面（traj-run v4.6）
+`plan-traj --arms raw,hand`（压缩 0 次）→ `traj-run --plan …`：hand 臂到了要压缩的那一轮**暂停**：`<out>/pending/<task>-s<k>-r<n>.json` 写下副模型本该拿到的那份 prompt（`compressPromptFor`，字节同生产）、原文、ctx、本轮调用、协议；`<out>/state/<task>-s<k>.json` 存消息前缀 / 记录 / 已执行调用；`results.jsonl` 记一行 `status:'awaiting-draft'`（`have` / 停止逻辑 / 汇总 / 家族覆盖都不把它当完成行）。助手写 `<out>/drafts/<id>.md`，**再跑同一条命令**：`resumeFor` 找到状态 ⇒ 重放已执行调用恢复仓库、消息前缀照旧、本轮主回复不再重发（`fp:'resume'`，不计费）；稿过 G2 → `birthOffline(compile=稿)` 过 G1 → 续到下一轮；没有下一轮会读的稿（最后一轮 / 无调用）不暂停。`status` 列出所有在等的稿与完整命令。跑完：`review --plan N`（分歧轮 + 稿原文）→ `ceiling --plan N`（hand vs raw 的分层 GPC：修好 > 到修好轮数 > 假宣称 > 验收；≥4 对、≥2 家族、e ≥ 10 才算分得出；效度账本照追加）→ `gold add --plan N`。
+
+### 16.4 金标与模式 2 的量化（防过拟合的设计）
+- **金标** = 过了 G1+G2、且主模型读后**真修好**的手写稿，连同它的原文 / ctx / 调用 / 结局 / 同组 raw 的结局，落 `transfer/gold/<family>/<id>.json`（进仓库；按池的家族切分标 dev / holdout；**落盘后不改**，基准计划冻结每项的摘要，改了就 `gold-changed` 拒跑）。
+- **指标 `draftDistance`（dd/1）**：按槽位比（与生产台账同一套抽取）：`decision`（金标有三元组 / 落定句时候选是否同一决定）→ `excludedRecall` → `acceptOk` → `openRecall` → `anchorPrecision`（候选锚点 ∈ 原文 ∪ ctx 的比例；**不算金标**：照抄金标 / 样例的标识符就是发明 —— v12.6 「flash 照抄样例」的病用这一项抓）→ `lengthOk`（0.6–1.6 倍金标）。**选稿看层级键（字典序），不看加权分**；加权分只给人看。版本号冻结在计划里。
+- **选择规则**：dev 金标上每项候选 vs base 按键配对 → e 值（≥2 家族、e ≥ 10 ⇒ promote）；holdout 金标只报告；dev 提升 − holdout 提升 > 0.15 ⇒ 标 `promote-but-overfit?`。**基准分不采纳 champion**，promote 只决定谁进 `plan-traj`（模式 3）。指标本身要在模式 3 结局上验证（预测：模式 2 胜 ⇒ 模式 3 胜；若不成立，改指标而不是改稿）。
+- 成本：`plan-bench --policies base,p-x` = 2 × 金标数 × $0.0075；5 项金标 ≈ $0.075。压缩器关思考 temperature 0 ⇒ 同一策略重跑近似确定，不必多样本。
+
+### 16.5 接上 API 后的顺序（≈$0.8–1.0 到第一条可采纳候选）
+`status` → 批准 **t5 = sse-truncated × raw vs hand ≈ $0.11**（上界 $0.315）→ 步进（每轮一份稿，一个回合内跑完）→ `review` / `ceiling` / `gold add` → 第二个家族重复（规格要跨家族）→ 用金标写规格 → `propose-policy` 出候选（样例槽只能用 dev 家族的金标）→ `plan-bench` ≈ $0.08 → promote 的进 `plan-traj --arms raw,policy:<id>` ≈ $0.15 → `confirm`。每一步都有收据；模式 1 若余量为 0，整条线在 $0.25 处停。
+
+### 16.6 自测
+A24（hand 臂暂停 / G2 拒 / 生产闸链通过 / 续跑到底 / 仓库重放 / raw 不受影响）、A25（dd/1 语义：自比全 1、丢排除、改决定、照抄锚点先于一切、层级键、G2）、A26（三模式全流程零 API：plan-traj → 两家族步进 → ceiling hand-better 不碰 champion → gold 按家族切分不可改 → plan-bench 设计含金标摘要 → bench-run --dry-run 自比全 1 / 金标被改拒跑 → bench-report promote → 快照含基准计划）。

@@ -415,6 +415,136 @@ try {
       assert.equal(cli('nope-cmd').status, 1)
     } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
   })
+  await test('A24 v4.6 模式 1（hand 臂，零 API）：到压缩轮暂停 ⇒ pending（含副模型同一份 prompt / 原文 / ctx / 协议）+ state；G2 决策不变闸拒发明三元组并把违规写回 pending；合格稿走生产闸链（compileV4Direct → 拼接 → birthAccept）后续跑到底、仓库由重放恢复、state 清掉、pending 归档；raw 臂不受影响', async () => {
+    const I = await import('../index.js'); const TR = await import('../tools/traj-run.mjs'); const { TRAJ_TASKS } = await import('../tools/traj-fixtures.mjs')
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hand-')); const out = path.join(tmp, 'out'); fs.mkdirSync(out)
+    const cred = path.join(tmp, 'c.yaml'); fs.writeFileSync(cred, 'K: "unused"\n')
+    const task = TRAJ_TASKS.find((t) => t.id === 'eacces-config')
+    const raw1 = ('我们需要先确认 src/trace.js 里 home 的来源。看起来 dshHome() 读的是 process.env.HOME，所以测试会写到真实目录。' + '下一步 read_file src/trace.js，看 trace.log 的路径拼接。').repeat(12)
+    const script = [
+      { reasoning_content: raw1, content: '先看 src/trace.js。', tool_calls: [{ id: 'c1', function: { name: 'read_file', arguments: JSON.stringify({ path: 'src/trace.js' }) } }] },
+      { reasoning_content: '看过了。', content: '这轮先停：我还没有改任何文件，结论未定。', tool_calls: [] }
+    ]
+    let calls = 0
+    const chat = async () => ({ message: script[Math.min(calls++, script.length - 1)], usage: { prompt_tokens: 10 }, fp: 'fp_dspure_app_v1' })
+    const o = { out, minChars: 200, maxRounds: 3, maxTokens: 1000, model: 'fixture', baseUrl: 'http://127.0.0.1:1', storeText: true, requireFp: false }
+    const cwd = process.cwd(); process.chdir(tmp)
+    try {
+      // 1) 第 1 轮就得压 ⇒ 暂停
+      const a = await TR.runOne({ o, task, variant: 'hand', sample: 0, chat, I, cred })
+      assert.equal(a.status, 'awaiting-draft', JSON.stringify(a).slice(0, 300)); assert.equal(a.awaiting.round, 1); assert.equal(calls, 1, '只发了 1 次主调用')
+      const pending = JSON.parse(fs.readFileSync(path.join(tmp, a.awaiting.pending), 'utf8')); assert.equal(pending.schema, 'cfb.hand-pending/1'); assert.equal(pending.raw, raw1); assert.match(pending.prompt, /【上一轮思维链】/); assert.ok(pending.prompt.includes(raw1.slice(0, 60))); assert.match(pending.protocol, /G2/); assert.equal(pending.calls[0].name, 'read_file'); assert.ok(!pending.prompt.includes('【本轮已发出的调用】'))
+      const stateFile = path.join(tmp, a.awaiting.state); assert.ok(fs.existsSync(stateFile)); const st = JSON.parse(fs.readFileSync(stateFile, 'utf8')); assert.equal(st.schema, 'cfb.hand-state/1'); assert.equal(st.round, 1); assert.equal(st.messages.length, 2); assert.equal(st.message.reasoning_content, raw1)
+      // 2) 发明三元组的稿 ⇒ G2 拒，仍暂停，违规写回 pending
+      const draftFile = path.join(tmp, a.awaiting.draftFile)
+      fs.writeFileSync(draftFile, '看起来 dshHome() 读 process.env.HOME，所以测试写到真实目录。改法只落一个：改 src/trace.js，old_text 是 `process.env.HOME` 改成 new_text 是 `process.env.DSH_HOME`。所以下一步工具调用是 read_file src/trace.js。')
+      const b = await TR.runOne({ o, task, variant: 'hand', sample: 0, chat, I, cred, resume: JSON.parse(fs.readFileSync(stateFile, 'utf8')) })
+      assert.equal(b.status, 'awaiting-draft'); assert.equal(b.awaiting.violations[0].kind, 'invented-triple', JSON.stringify(b.awaiting)); assert.equal(calls, 1, '续跑不重发本轮主调用')
+      assert.equal(JSON.parse(fs.readFileSync(path.join(tmp, b.awaiting.pending), 'utf8')).violations[0].kind, 'invented-triple')
+      // 3) 合格稿 ⇒ 生产闸链通过 ⇒ 续跑到底（第 2 轮主调用 → 无调用 ⇒ 结束）
+      fs.writeFileSync(draftFile, '我们需要先确认 src/trace.js 里 home 的来源：dshHome() 读 process.env.HOME，测试因此写进真实目录，这就是 EACCES 的原因。所以下一步工具调用是 read_file src/trace.js，看 trace.log 的路径拼接。如果看到 process.env.HOME，那么假设坐实；如果不是，那么假设不成立，此时不要改 trace.js，先看 dshHome 的定义。')
+      const c = await TR.runOne({ o, task, variant: 'hand', sample: 0, chat, I, cred, resume: JSON.parse(fs.readFileSync(stateFile, 'utf8')) })
+      assert.equal(c.status, undefined, JSON.stringify(c).slice(0, 400)); assert.equal(c.rounds, 2); assert.equal(calls, 2); assert.equal(c.resumed, 2)
+      assert.equal(c.compile.length, 2); assert.equal(c.compile[0].path, 'hand'); assert.equal(c.compile[0].ok, true); assert.match(c.compile[0].promptVersion, /\+hand$/); assert.ok(c.compile[0].outChars < raw1.length); assert.equal(c.compile[1].belowFloor, true)
+      assert.ok(c.compile[0].gate && typeof c.compile[0].gate === 'object', '真走了 compileV4Direct'); assert.ok(c.compile[0].accept && c.compile[0].accept.netSaved > 0, '真走了 birthAccept：' + JSON.stringify(c.compile[0].accept))
+      assert.equal(c.transcript[0].storedChars, c.compile[0].outChars); assert.equal(c.transcript[0].calls[0].name, 'read_file'); assert.equal(c.calls, 1); assert.equal(c.fixed, false)
+      assert.ok(!fs.existsSync(stateFile), 'state 清掉'); assert.ok(fs.existsSync(path.join(out, 'pending', 'done', a.awaiting.id + '.json')), 'pending 归档')
+      // raw 臂同一脚本不受 hand 逻辑影响
+      calls = 0; const r = await TR.runOne({ o, task, variant: 'raw', sample: 0, chat, I, cred }); assert.equal(r.status, undefined); assert.equal(r.compile.length, 0); assert.equal(r.rounds, 2)
+    } finally { process.chdir(cwd); fs.rmSync(tmp, { recursive: true, force: true }) }
+  })
+  await test('A25 v4.6 模式 2 指标 draftDistance（dd/1）：金标自比全 1；丢排除句 ⇒ excludedRecall 0、判 lost-exclusions；改三元组 ⇒ decision 0；锚点不在原文∪ctx（照抄样例 / 发明）⇒ anchorPrecision < 1 且先于一切判 invented-anchors；层级键字典序；G2 闸拒发明决定 / 无依据排除', async () => {
+    const H = await import('../tools/helpers/hand-draft.mjs')
+    const raw = '我们需要先确认 src/trace.js 里 home 的来源。看起来 dshHome() 读的是 process.env.HOME，所以测试会写到真实目录。不是权限问题：chown 需要 root，排除。改法：改 src/trace.js，old_text 是 `process.env.HOME` 改成 new_text 是 `opts.home`。下一步 read_file src/trace.js。还没确认 verify.mjs 里 env 怎么传。'
+    const ctx = '【当前任务】EACCES trace.log'
+    const gold = '假设坐实的方向：dshHome() 读 process.env.HOME，测试写进真实目录。已排除：权限路线（chown 需要 root）。改法只落一个：改 src/trace.js，old_text 是 `process.env.HOME` 改成 new_text 是 `opts.home`。未解：verify.mjs 里 env 怎么传。所以下一步工具调用是 read_file src/trace.js。'
+    const self = H.draftDistance(gold, gold, { raw, ctx }); assert.deepEqual(self.key, [1, 1, 1, 1, 1, 1]); assert.equal(self.verdict, 'close'); assert.equal(self.score, 1)
+    const lost = H.draftDistance('dshHome() 读 process.env.HOME，测试写进真实目录。改法只落一个：改 src/trace.js，old_text 是 `process.env.HOME` 改成 new_text 是 `opts.home`。所以下一步工具调用是 read_file src/trace.js。', gold, { raw, ctx })
+    assert.equal(lost.excludedRecall, 0); assert.equal(lost.decision, 1); assert.equal(lost.verdict, 'lost-exclusions')
+    const changed = H.draftDistance(gold.replace('old_text 是 `process.env.HOME` 改成 new_text 是 `opts.home`', 'old_text 是 `opts.home` 改成 new_text 是 `process.env.HOME`'), gold, { raw, ctx })   // 锚点都在原文里，只是决定反了
+    assert.equal(changed.decision, 0); assert.equal(changed.anchorPrecision, 1, JSON.stringify(changed.slots.auto)); assert.equal(changed.verdict, 'decision-differs')
+    const copied = H.draftDistance(gold + ' 另外 assembleSseFrames 的 finish 回退也要看。', gold, { raw, ctx })
+    assert.ok(copied.anchorPrecision < 1); assert.equal(copied.verdict, 'invented-anchors')
+    assert.equal(H.compareKeys(self.key, lost.key), 1); assert.equal(H.compareKeys(changed.key, lost.key), -1, '决定层先于排除层'); assert.equal(H.compareKeys(lost.key, lost.key), 0)
+    const g2bad = H.handDraftGate(raw.replace(/改法：.*?。/, ''), '改法只落一个：改 src/trace.js，old_text 是 `process.env.HOME` 改成 new_text 是 `opts.home`。所以下一步工具调用是 read_file src/trace.js。', ctx)
+    assert.equal(g2bad.ok, false); assert.ok(g2bad.violations.some((v) => v.kind === 'invented-triple'), JSON.stringify(g2bad.violations))
+    const g2foreign = H.handDraftGate(raw, '已排除：assembleSseFrames 路线。所以下一步工具调用是 read_file src/trace.js。', ctx)
+    assert.equal(g2foreign.ok, false); assert.ok(g2foreign.violations.some((v) => v.kind === 'ungrounded:excluded'), JSON.stringify(g2foreign.violations))
+    assert.equal(H.handDraftGate(raw, gold, ctx).ok, true)
+  })
+
+  await test('A26 v4.6 三模式闭环（零 API，临时目录）：plan-traj --arms raw,hand（压缩 0 次、三臂拒）→ 两家族 hand 单元步进（假主模型：hand 修好、raw 假宣称；status 显示等稿）→ ceiling（hand-better，5 对 2 家族，不碰 champion）→ gold add（按家族 dev/holdout、落盘不改、重复不收）→ plan-bench（策略 × 金标，设计含金标摘要，重复不建）→ bench-run --dry-run（金标自比全 1、金标被改 ⇒ 拒）→ bench-report（dev 配对 e 值 promote、holdout 只报告、下一步 plan-traj）→ 快照含基准计划', async () => {
+    const C = await import('../tools/cfb-cycle.mjs'); const TR = await import('../tools/traj-run.mjs'); const B = await import('../tools/bench-run.mjs'); const { TRAJ_TASKS } = await import('../tools/traj-fixtures.mjs'); const I = await import('../index.js')
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-')); const cwd = process.cwd(); process.chdir(tmp)
+    try {
+      let r = C.runCli(['plan-traj', '--arms', 'raw,hand', '--scenarios', 'eacces-config,flaky-timeout'], { dir: tmp }); assert.equal(r.status, 0, r.stderr)
+      const plan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime', 't1', 'plan.json'), 'utf8'))
+      assert.deepEqual(plan.variants, ['raw', 'hand']); assert.equal(plan.cost.compresses, 0); assert.equal(plan.cost.mains, 2 * (1 + 2 * 4)); assert.match(r.stdout, /模式 1 步进/); assert.match(plan.command, /--variants raw,hand/); assert.match(plan.purpose, /模式 1 天花板/)
+      r = C.runCli(['plan-traj', '--arms', 'raw,hand,policy:base', '--dry'], { dir: tmp }); assert.equal(r.status, 1); assert.match(r.stderr, /hand-arm-design/)
+      // 2) 步进：假主模型。raw 臂走权限歧路 + 假宣称；hand 臂读稿后一步改对、npm test 验收
+      const out = path.join(tmp, 'runtime', 't1'); const cred = path.join(tmp, 'c.yaml'); fs.writeFileSync(cred, 'K: "unused"\n')
+      const o = { out, minChars: 200, maxRounds: 5, maxTokens: 1000, model: 'fixture', baseUrl: 'http://127.0.0.1:1', storeText: true, requireFp: false }
+      const fixes = { 'eacces-config': { path: 'test/birth.selftest.mjs', old_text: 'process.env.CFB_REAL_DSH_HOME', new_text: 'process.env.DSH_HOME' }, 'flaky-timeout': { path: 'test/hedge.selftest.mjs', old_text: 'hedgeAfterMs: 1600 })', new_text: 'hedgeAfterMs: 2500 })' } }
+      const raws = { 'eacces-config': ('我们需要先确认 test/birth.selftest.mjs 里 home 的来源。看起来 makeTraceWriter 拿的是 process.env.CFB_REAL_DSH_HOME，所以测试写到真实目录 /home/u/.dsh。不是权限问题：chown 需要 root，排除。下一步 read_file test/birth.selftest.mjs。').repeat(10), 'flaky-timeout': ('看起来 test/hedge.selftest.mjs 里 hedgeAfterMs 1600 只比 primaryDelayMs 1500 多 100ms，CI 2 核慢一点对冲就先发了。不是 fakeServer 的问题，排除。下一步 read_file test/hedge.selftest.mjs。').repeat(12) }
+      const drafts = { 'eacces-config': '假设坐实的方向：makeTraceWriter 拿的是 process.env.CFB_REAL_DSH_HOME，测试写到真实目录 /home/u/.dsh，这就是 EACCES 的原因。已排除：权限路线（chown 需要 root）。所以下一步工具调用是 read_file test/birth.selftest.mjs。如果看到 CFB_REAL_DSH_HOME，那么假设坐实；如果不是，那么假设不成立，先看 makeTraceWriter 的定义。', 'flaky-timeout': '假设坐实的方向：test/hedge.selftest.mjs 里 hedgeAfterMs 1600 只比 primaryDelayMs 1500 多 100ms，CI 2 核慢一点对冲就先发了。已排除：fakeServer 的问题。所以下一步工具调用是 read_file test/hedge.selftest.mjs。如果看到 hedgeAfterMs: 1600，那么假设坐实；如果不是，那么假设不成立。' }
+      const script = (task, good) => [
+        { reasoning_content: raws[task.id], content: '先看文件。', tool_calls: [{ id: 'c1', function: { name: 'read_file', arguments: JSON.stringify({ path: fixes[task.id].path }) } }] },
+        good ? { reasoning_content: '改。', content: '改法只落一个。', tool_calls: [{ id: 'c2', function: { name: 'edit_file', arguments: JSON.stringify(fixes[task.id]) } }] }
+          : { reasoning_content: '试试权限。', content: '先改权限。', tool_calls: [{ id: 'c2', function: { name: 'bash', arguments: JSON.stringify({ command: 'sudo chown -R u /home/u/.dsh' }) } }] },
+        { reasoning_content: '验证。', content: '跑测试。', tool_calls: [{ id: 'c3', function: { name: 'bash', arguments: JSON.stringify({ command: 'npm test' }) } }] },
+        { reasoning_content: '完。', content: '已修复，测试通过。', tool_calls: [] }]
+      const results = path.join(out, 'results.jsonl'); const push = (rec) => fs.appendFileSync(results, JSON.stringify(rec) + '\n')
+      const samples = { 'eacces-config': 3, 'flaky-timeout': 2 }
+      let checkedStatus = false
+      for (const task of TRAJ_TASKS.filter((t) => fixes[t.id])) for (let k = 0; k < samples[task.id]; k++) {
+        let i = 0; const sb = script(task, false); const rr = await TR.runOne({ o, task, variant: 'raw', sample: k, chat: async () => ({ message: sb[Math.min(i++, sb.length - 1)], usage: { prompt_tokens: 10 }, fp: 'x' }), I, cred }); push(rr); assert.equal(rr.fixed, false)
+        let j = 0; const sg = script(task, true); const chatHand = async () => ({ message: sg[Math.min(j++, sg.length - 1)], usage: { prompt_tokens: 10 }, fp: 'x' })
+        let rh = await TR.runOne({ o, task, variant: 'hand', sample: k, chat: chatHand, I, cred }); push(rh); assert.equal(rh.status, 'awaiting-draft')
+        if (!checkedStatus) { const st = C.runCli(['status'], { dir: tmp }); assert.match(st.stdout, /等待手写稿: t1 eacces-config 第 1 轮/); assert.match(st.stdout, /下一步: 先写手写稿/); checkedStatus = true }
+        fs.writeFileSync(path.join(tmp, rh.awaiting.draftFile), drafts[task.id])
+        rh = await TR.runOne({ o, task, variant: 'hand', sample: k, chat: chatHand, I, cred, resume: JSON.parse(fs.readFileSync(path.join(tmp, rh.awaiting.state), 'utf8')) }); push(rh)
+        assert.equal(rh.status, undefined, JSON.stringify(rh.awaiting || rh.compile).slice(0, 400)); assert.equal(rh.fixed, true); assert.equal(rh.fixedAtRound, 2); assert.equal(rh.compile[0].path, 'hand')
+      }
+      // 3) ceiling：hand 5 胜 0 负（2 家族）⇒ hand-better；champion 没被碰
+      r = C.runCli(['ceiling', '--plan', '1'], { dir: tmp }); assert.equal(r.status, 0, r.stderr)
+      assert.match(r.stdout, /模式 1 天花板（hand-better）/); assert.match(r.stdout, /配对 5/); assert.match(r.stdout, /尝试 5、过闸 5、被拒 0/); assert.match(r.stdout, /下一步: node tools\/cfb-cycle.mjs gold add --plan 1/)
+      const ce = JSON.parse(fs.readFileSync(path.join(tmp, 'offline', 'ruler', 'ceiling-1.json'), 'utf8')); assert.equal(ce.cmp.champion.solved, 1); assert.equal(ce.cmp.previous.solved, 0); assert.equal(ce.families, 2); assert.equal(ce.headroom, 1)
+      assert.ok(!fs.existsSync(path.join(tmp, 'offline', 'champion.json')), 'ceiling 不写 champion')
+      assert.match(C.runCli(['status'], { dir: tmp }).stdout, /t1 ceiling/)
+      // 4) gold add：5 项（eacces-config 留出家族 ⇒ holdout；flaky-timeout ⇒ dev）；再加一次 0 项
+      r = C.runCli(['gold', 'add', '--plan', '1'], { dir: tmp }); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /金标 \+5/)
+      const gold = JSON.parse(fs.readFileSync(path.join(tmp, 'gold', 'flaky-timeout', 'flaky-timeout-s0-r1.json'), 'utf8')); assert.equal(gold.split, 'dev'); assert.equal(gold.draft, drafts['flaky-timeout']); assert.ok(gold.raw.startsWith(raws['flaky-timeout'].slice(0, 50))); assert.equal(gold.outcome.vsRaw, 'win'); assert.equal(gold.validated, true); assert.ok(gold.stored && gold.stored.length > 0, '拼接后的稿也存了')
+      assert.equal(JSON.parse(fs.readFileSync(path.join(tmp, 'gold', 'eacces-config', 'eacces-config-s0-r1.json'), 'utf8')).split, 'holdout')
+      assert.match(C.runCli(['gold', 'add', '--plan', '1'], { dir: tmp }).stdout, /金标 \+0/); assert.match(C.runCli(['gold', 'list'], { dir: tmp }).stdout, /5 项/)
+      // 5) plan-bench：dev 只有 flaky 2 项；--split all 5 项 × 2 策略 = 10 次压缩 ≈ $0.075；重复设计不建
+      fs.mkdirSync(path.join(tmp, 'offline', 'policies'), { recursive: true }); fs.writeFileSync(path.join(tmp, 'offline', 'policies', 'p-test1.json'), JSON.stringify({ id: 'p-test1', parent: 'base', status: 'proposed', patches: [{ op: 'append', section: 'rules', text: '测试规则：先逐字核对再编辑。' }] }))
+      r = C.runCli(['plan-bench', '--policies', 'base', '--dry'], { dir: tmp }); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /× 金标 2（dev）= 2 次压缩 ≈ \$0.015/)
+      r = C.runCli(['plan-bench', '--policies', 'base,p-test1', '--split', 'all'], { dir: tmp }); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /压缩调用 10（主模型 0 次）；\*\*期望实付 ≈ \$0.075/)
+      const bplan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime', 'b1', 'plan.json'), 'utf8')); assert.equal(bplan.gold.length, 5); assert.equal(bplan.metric, 'dd/1'); assert.ok(bplan.gold.every((g) => /^[0-9a-f]{16}$/.test(g.digest)))
+      assert.match(C.runCli(['plan-bench', '--policies', 'base,p-test1', '--split', 'all'], { dir: tmp }).stdout, /同一设计的基准计划已存在：b1/)
+      assert.equal(C.runCli(['plan-bench', '--policies', 'p-test1'], { dir: tmp }).status, 1, '没有 base 不建')
+      // 6) bench-run --dry-run：金标自比全 1；金标被改 ⇒ 拒跑
+      const br = await B.benchRun({ plan: path.join(tmp, 'runtime', 'b1', 'plan.json'), out: path.join(tmp, 'runtime', 'b1'), dryRun: true, goldDir: path.join(tmp, 'gold'), policyDir: path.join(tmp, 'offline', 'policies'), concurrency: 1 }, { I })
+      assert.equal(br.dry, true); assert.equal(br.rows.length, 10); assert.ok(br.rows.filter((x) => x.policy === 'self(gold)').every((x) => x.distance.key.every((v) => v === 1)), '金标自比全 1'); assert.ok(!fs.existsSync(path.join(tmp, 'runtime', 'b1', 'receipt.json')))
+      const gf = path.join(tmp, 'gold', 'flaky-timeout', 'flaky-timeout-s0-r1.json'); const g0 = fs.readFileSync(gf, 'utf8'); fs.writeFileSync(gf, g0.replace('已排除', '已经排除'))
+      await assert.rejects(B.benchRun({ plan: path.join(tmp, 'runtime', 'b1', 'plan.json'), out: path.join(tmp, 'runtime', 'b1'), dryRun: true, goldDir: path.join(tmp, 'gold'), policyDir: path.join(tmp, 'offline', 'policies') }, { I }), /gold-changed/); fs.writeFileSync(gf, g0)
+      // 7) 假压缩结果 → bench-report：base = 原文放行；p-test1 = 命中金标；再补一个 dev 家族（perf-regression）两行 ⇒ 5 胜 2 家族 e=10.5 ⇒ promote
+      const H = await import('../tools/helpers/hand-draft.mjs'); const G = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime', 'b1', 'plan.json'), 'utf8')).gold.map((g) => JSON.parse(fs.readFileSync(path.join(tmp, 'gold', g.family, g.id + '.json'), 'utf8')))
+      const fake = []
+      const strip = (d) => { const { slots, ...rest } = d; return rest }
+      for (const g of G) { fake.push({ schema: 'cfb.bench-row/1', plan: 'b1', policy: 'base', gold: g.id, family: g.family, split: g.split, ok: false, why: 'birth-accept', distance: strip(H.draftDistance(g.raw, g.draft, { raw: g.raw, ctx: g.ctx })) }); fake.push({ schema: 'cfb.bench-row/1', plan: 'b1', policy: 'p-test1', gold: g.id, family: g.family, split: g.split, ok: true, distance: strip(H.draftDistance(g.draft, g.draft, { raw: g.raw, ctx: g.ctx })) }) }
+      for (let k = 0; k < 3; k++) { fake.push({ schema: 'cfb.bench-row/1', plan: 'b1', policy: 'base', gold: 'perf-' + k, family: 'perf-regression', split: 'dev', ok: true, distance: { decision: 0, excludedRecall: 1, acceptOk: null, openRecall: 1, anchorPrecision: 1, lengthOk: 1, key: [0, 1, 1, 1, 1, 1], score: 0.5, verdict: 'decision-differs' } }); fake.push({ schema: 'cfb.bench-row/1', plan: 'b1', policy: 'p-test1', gold: 'perf-' + k, family: 'perf-regression', split: 'dev', ok: true, distance: { decision: 1, excludedRecall: 1, acceptOk: null, openRecall: 1, anchorPrecision: 1, lengthOk: 1, key: [1, 1, 1, 1, 1, 1], score: 1, verdict: 'close' } }) }
+      fs.writeFileSync(path.join(tmp, 'runtime', 'b1', 'results.jsonl'), fake.map((x) => JSON.stringify(x)).join('\n') + '\n')
+      r = C.runCli(['bench-report', '--plan', '1'], { dir: tmp }); assert.equal(r.status, 0, r.stderr)
+      assert.match(r.stdout, /p-test1: 5胜 0负 0平（2 家族）e=10.5/); assert.match(r.stdout, /\*\*promote\*\*/); assert.match(r.stdout, /下一步: plan-traj --arms raw,policy:p-test1/)
+      assert.match(r.stdout, /\| base \| holdout \| 3 \|/); assert.match(r.stdout, /\| p-test1 \| dev \| 5 \|/)
+      const rep = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime', 'b1', 'report.json'), 'utf8')); assert.equal(rep.best, 'p-test1'); assert.equal(rep.paired['p-test1'].n, 5, 'holdout 项不进配对')
+      assert.ok(!fs.existsSync(path.join(tmp, 'offline', 'champion.json')), 'bench-report 不写 champion')
+      assert.match(C.runCli(['status'], { dir: tmp }).stdout, /基准计划: b1 reported base vs p-test1 × 5 ≈\$0.075 best=p-test1/)
+      // 8) 快照含基准计划（不写仓库文件：只调库函数）
+      const prev = C.cycleDir(); C.setCycleDir(tmp); try { const snap = C.cycleSnapshot(); assert.equal(snap.benchPlans.length, 1); assert.equal(snap.benchPlans[0].plan.id, 'b1'); assert.equal(snap.trajPlans.length, 1) } finally { C.setCycleDir(prev) }
+    } finally { process.chdir(cwd); fs.rmSync(tmp, { recursive: true, force: true }) }
+  })
 } finally {
   console.log(`\n=== closed-loop-v4 selftest: ${pass} pass / ${fail} fail ===`)
   process.exit(fail ? 1 : 0)

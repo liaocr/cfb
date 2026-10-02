@@ -4,6 +4,16 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.11.0（2026-10-02，闭环 v4.6：三模式 —— 模式 1 助手手写稿量天花板（`hand` 臂，≈$0.11）/ 金标注册表 / 模式 2 压缩器基准 dd/1 / 模式 3 = 原单元；仍零花费）
+
+**起因**：用户在付钱前停下：现在的单元改的是副模型看到的东西，可「稿有没有写到位」与「主模型读了到位的稿做不做得对」是两个叠在一起的未知。提出三模式：① 助手代替压缩器手写稿喂主模型，② 以验证过的手写稿为标准（必须科学量化、防过拟合）训练压缩器，③ 端到端。三者全部建好（零 API），模式 1 步进 = 钥匙放沙箱、一次批准、助手一个回合内步完一条轨迹。
+
+- **模式 1（`tools/traj-run.mjs` v4.6）**：变体 `hand`。到压缩轮暂停：`pending/<id>.json`（副模型本该拿到的同一份 prompt / 原文 / ctx / 调用 / 协议）+ `state/<task>-s<k>.json`（消息前缀 / 记录 / 已执行调用）+ `results.jsonl` 一行 `awaiting-draft`；助手写 `drafts/<id>.md` 后**同一条命令**续跑（重放恢复仓库、本轮主回复不重发不计费）。稿走 **G2 决策不变闸**（`tools/helpers/hand-draft.mjs`：三元组 ⊆ 原文、无依据落定句不收、排除 / 验收 / 未解句须带原文 ∪ ctx 锚点）+ **生产闸链**（`birthOffline` 注入 `compile` ⇒ `compileV4Direct` → 拼接 → `birthAccept`，与生产同一路径）；不过 ⇒ 违规写回 pending、继续暂停。最后一轮 / 无调用的轮不暂停。`mainCalls` 记真发的主调用（续跑跨进程累加，回执 / 停止预算按它算）。
+- **cfb-cycle**：`plan-traj --arms raw,hand`（压缩 0 次；拒绝三臂或无 raw；plan.md 带步进说明；回灌指向 `ceiling`）；**`ceiling --plan N`**（hand vs raw 分层 GPC → `offline/ruler/ceiling-k.json` + 效度账本；≥4 对 ≥2 家族 e ≥ 10 ⇒ hand-better；**不写 champion**）；**`gold add --plan N` / `gold list`**（过闸且修好的稿 → `transfer/gold/<family>/<id>.json`，按池切分 dev / holdout，落盘不改）；**`plan-bench --policies base,p-x [--split dev|holdout|all] [--dry] [--drop N]`**（策略 × 金标各一次压缩调用；设计摘要含金标摘要；必须含 base）；**`bench-report --plan N`**（dev 配对 e 值 promote / holdout 只报告 / 泛化差；下一步 = `plan-traj --arms raw,policy:<best>`；不写 champion）；`status` 列等稿、金标数、基准计划；`snapshot` / `restore` 含基准计划；`familyCoverage` 不计暂停行。
+- **模式 2 工具**：`tools/bench-run.mjs`（副模型 = 生产 `birthOffline`，闸不过 ⇒ 原文放行与生产同；续跑跳过已有；`--dry-run` 零 API 核对金标摘要 + 「不压」「自比」两条基线；metric 版本不符 / 金标被改 ⇒ 拒跑）。指标 `draftDistance` **dd/1**：`decision → excludedRecall → acceptOk → openRecall → anchorPrecision（锚点 ∈ 原文 ∪ ctx，不算金标：照抄即发明）→ lengthOk`，选稿用层级键不用加权分；`anchorsOf` 对带点 / 斜杠的标识符同时登记各段（`process.env.X` ⇒ 也有 `X`）。
+- **计划**：t4 superseded；**t5 = sse-truncated × raw vs hand × 1 × ≤5 轮 ≈ $0.113（上界 $0.315，主 9 + 压缩 0），`traj-run --dry-run` 已过、未发请求、需批准。**
+- 自测：v4 24 → 27（A24 hand 臂、A25 dd/1 语义 + G2、A26 三模式全流程零 API）；verify / manifest / 审计数字见下一条 LIVE-MEMORY §−10。设计见 `CLOSED-LOOP-V4.md` §16。
+
 ## v14.10.0（2026-10-02，闭环 v4.5：付费单元缩成一个家族（≈$0.15）/ 策略即配置 / birthOffline 生产同构 / 操作员面 / 全量自测 53 s → ≈35 s；仍零花费）
 
 **起因**：用户三问 —— t2 的 15 条轨迹每条信息是否有用、助手读得完吗；架构对助手手动操作哪里别扭；全量自测 50 s（以前 8 s），接上 API 后训练要快、省、立刻能跑。设计与数字见 `docs/design/CLOSED-LOOP-V4.md` §15。
