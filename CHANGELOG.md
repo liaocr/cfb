@@ -4,6 +4,18 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.13.0（2026-10-02，DSH 合并 ①：宿主层干预成为训练器的可控变量 —— 官方工具面 `--aci rl-native`、原生协议 `--tool-protocol native`、`gate` 臂（事件门禁，user 角色近场）、`drop` 对照臂（历史无思维链）、形态预检、transcript 记 finish；仍零花费）
+
+- **为什么**（`docs/design/DSH-MERGE.md`）：t6–t9 证明忠实的稿对 flash 在 ≤8 轮上的结局 ≈ 0 是构造上必然的（它只能保住已做出的决定，而模型不忘）；用户旧项目 DSH（`docs/reference/dsh/`，原样保存）的记录里真正有效应的是**宿主层**：工具面（25 工具 91 → bash+str_replace_editor 98/99）、事件门禁（dea48c68 GATE1×2 / GATE2×3 全触发全服从）、用户态指令 ≫ 注入引导；12 法则本身无对照（DESIGN-VS-IMPLEMENTED B1/A8/C1 自认）。两边合起来：**通道决定服从度** —— 同样的话放进助手态思维链槽位（稿）它不理，放进用户态近场（门禁）它照做。另核对本仓库轨迹器：中文系统提示明写「一次可以发多个独立调用」、自定义工具 schema、历史里工具调用压平成文本 —— 三者从未当过变量。
+- **`tools/helpers/aci.mjs`**（新）：`--aci rl-native` = 系统提示只有 `You are a helpful software engineer assistant.` + bash / str_replace_editor，schema **逐字**取自 npm `@deepseek-ai/dsh-tool-bash@0.1.0-rc.6` / `dsh-tool-str-replace-editor@0.1.0-rc.6`（BSD-3-Clause，原文件 `docs/reference/dsh-tools/`）；str_replace_editor 的 view / create / str_replace / insert 语义与回文照官方包；`/home/u/work/repo/…` 绝对路径双向映射到假仓库（bash 真跑段同样映射）；bash 非零退出带 `[exit code: N]`。暂只支持 raw / drop / gate / ledger 臂（压缩臂要先接 compile-v4 的宿主工具映射）。
+- **`tools/traj-run.mjs`**：`--tool-protocol native`（assistant.tool_calls + role:tool，id 成对；缺省 `text` 不变）；臂 **`drop`**（历史 assistant 不带 reasoning_content，第 1 轮复用 raw 影子、第 2 轮起自己发；`requireFp` 下按 no-history 放行）；臂 **`gate`**（raw + `tools/helpers/host-gates.mjs` 三条门禁：act / batch / verify；文本协议附在工具结果消息末尾、原生协议作为 tool 消息后的一条 user 消息；第一次触发那轮起与 raw 分歧；行上记 `gates[]`）；transcript 每轮记 `finish`（之前连长度截断都无法回查）；行上记 `aci` / `toolProtocol`；edits / 修好判定 / proxy 旗标认 str_replace_editor 的编辑；**形态预检**：要跑 native 或 drop 时各发一次 max_tokens:1 的同形历史，通道不收 ⇒ 预检 `shape` ✗ ⇒ 不开跑。
+- **`tools/helpers/host-gates.mjs`**（新）：规则只看宿主能算的事实（调用序列 / 编辑 / 验证命令 / 最终宣称），不看思维链、不含题目知识；幂等（同轮一次、act 两轮内不重复、verify 整条一次）；文本带「这不是用户输入」标记（DSH GUIDE_HEAD 的做法）。
+- **`tools/cfb-cycle.mjs`**：`plan-traj --aci … --tool-protocol …` 进计划（非缺省才写键，旧计划 digest 不变）、设计摘要、命令行；traj-run `checkTrajPlan` 核对；drop 按「第 2 轮起分歧」计费；plan.md 多「工具面 / 协议」「gate 臂」「drop 臂」说明。
+- **`tools/effect-mr.mjs`** `claimOf`：英文宣称 / 否定 / 对冲也认（rl-native 面下模型常用英文收尾）；中文部分一字未动；旧收据不重判。
+- **`docs/reference/dsh/`**：旧项目的 bootstrap（现行 v4.6.1 / 零引导 B 版 / router-standard）、router-core、SESSION-NOTES、DESIGN-VS-IMPLEMENTED、HANDOVER、PRO-CHAIN-DISTILLED、task-pool、8 个分析脚本，原样 + README 索引与证据分级。
+- **没做 / 待批**：可验证版 perf、`guide` 手册臂（ACE 式条目，与红线「不加第 N 条 K 规则」的边界需用户认可）、plan-first 任务提示词、过度思考分。第一组单元（① raw@rl-native perf ≈$0.10；② raw vs drop ≈$0.11；③ raw vs gate ≈$0.16）写在 DSH-MERGE §3，**未建计划、未花钱**。
+- 自测：v4 95/95；closed-loop 36 → **37**（A36：面 / 编辑器语义 / 门禁规则 / drop 与 gate 的 runOne / 原生协议成对 / 形态预检 / 计划核对）。
+
 ## v14.12.4（2026-10-02，闭环 v4.7.4：归因 —— 三次实跑近乎白跑的主因是**理论**（地板 3100 来自只算 token 的目标函数，把 v4d7 证据里的「每轮增补」制度关掉了），次因是实现；制度键进策略正门；t9 预注册 ≈$0.148）
 
 - **归因**（`node tools/attrib-regime.mjs`，零 API，A35 钉数字；细节 `CLOSED-LOOP-V4.md` §18）：`transfer/traj1–3`（同一个 flash、无地板每轮都压）非 raw 臂 72 轮压了 31 轮，**55% 稿比原文长、只有 23% 原文 ≥3100**；auto 臂第 2–4 轮自己的思考比 raw 长 1.3–1.6×；配对 auto 3 / raw 1 / 平 3；重复命令全 0。⇒ 证据属于「每轮增补」制度，不属于「长思维链压短」制度；生产地板 + no-gain + no-token-gain 让后者在 flash 上 87% 的轮不触发（t6 1/5、t7 1/8、t8 2/8）。`birthMinChars` 3100 的推导式 `净收益=(R−1)·d·(B−B′)−T−5·B′` 把稿对结局的作用记 0 —— 目标函数与训练器要优化的东西错位；v12.8.10 的「未解：产品形态要决定」此后十几版没决定。

@@ -14,7 +14,7 @@ import { auc, rulerValidity, rulerValidityTTF, fitFlagWeights } from './ruler.mj
 
 const normCmd = (s) => String(s || '').replace(/\s+/g, ' ').trim()
 const parseArgs = (a) => { if (a && typeof a === 'object') return a; try { return JSON.parse(a) } catch { return { command: String(a || '') } } }
-const FAILED_RE = /^(?:edit_file 失败|read_file 失败|未知工具|bash: 该沙箱不支持|拒绝|不允许|路径越界)/
+const FAILED_RE = /^(?:edit_file 失败|read_file 失败|未知工具|bash: 该沙箱不支持|拒绝|不允许|路径越界|No replacement was performed|The path .* does not exist|Parameter `|Invalid `|File already exists|Unrecognized command)/   // v14.13：后半是 rl-native 面（str_replace_editor）的失败回文
 /** 逐轮旗标。rows 的 transcript[{round, text, calls[{name,args}], results[]}] 为输入；fixedAtRound 给出修好的轮。 */
 export function stepFlags(row) {
   const steps = []
@@ -29,7 +29,7 @@ export function stepFlags(row) {
       const failed = FAILED_RE.test(out)
       if (failed) avoid = 0
       if (c.name === 'bash') { const k = normCmd(a.command); if (seen.has(k) && lastEditRound <= seen.get(k)) repeat = 1; else if (!failed) next = 1; seen.set(k, t.round) }
-      else if (c.name === 'edit_file') { const p = String(a.path || ''); if (edited.has(p)) reEdit = 1; if (!failed) { next = 1; edited.add(p); lastEditRound = t.round } }
+      else if (c.name === 'edit_file' || (c.name === 'str_replace_editor' && /^(?:str_replace|insert|create)$/.test(String(a.command || '')))) { const p = String(a.path || ''); if (edited.has(p)) reEdit = 1; if (!failed) { next = 1; edited.add(p); lastEditRound = t.round } }   // v14.13：两种面同一口径
       else if (!failed) next = 1
     })
     const claim = claimOf(t.text || '')

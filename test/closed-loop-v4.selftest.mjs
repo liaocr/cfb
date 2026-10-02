@@ -811,6 +811,88 @@ try {
     assert.ok(f6.cost.expectedMains < reg.cost.expectedMains && f6.cost.expectedCompresses < reg.cost.expectedCompresses, 'F6 候选仍按影子 + 地板占比计费'); assert.equal(f6.regimeArms, undefined)
     fs.rmSync(tmp, { recursive: true, force: true })
   })
+  await test('A36 v14.13 DSH 合并（零 API）：rl-native 工具面逐字 schema + str_replace_editor 语义；drop 臂历史无思维链；gate 臂三条门禁按事实触发且只以 user 角色近场注入；原生协议 tool_calls/role:tool 成对；计划核对含 aci', async () => {
+    const I = await import('../index.js'); const ACI = await import('../tools/helpers/aci.mjs'); const HG = await import('../tools/helpers/host-gates.mjs')
+    // 1. 面：rl-native = RL 训练句 + 官方两工具（schema 原文关键句在、required 一致）；cfb 面不变
+    const rl = ACI.resolveAci('rl-native', { SYSTEM: 's', SYSTEM_TEXT_TOOLS: 't', TOOLS: [], textTools: false })
+    assert.equal(rl.system, 'You are a helpful software engineer assistant.'); assert.deepEqual(rl.tools.map((t) => t.function.name), ['bash', 'str_replace_editor'])
+    assert.match(rl.tools[0].function.description, /^Execute a bash command \(`bash -c`\)/); assert.match(rl.tools[0].function.description, /Background execution is not available/); assert.deepEqual(rl.tools[0].function.parameters.required, ['command', 'description'])
+    assert.match(rl.tools[1].function.description, /^Custom editing tool for viewing, creating and editing files/); assert.deepEqual(rl.tools[1].function.parameters.properties.command.enum, ['view', 'create', 'str_replace', 'insert']); assert.deepEqual(rl.tools[1].function.parameters.required, ['command', 'path'])
+    assert.throws(() => ACI.resolveAci('rl-native', { SYSTEM: 's', SYSTEM_TEXT_TOOLS: 't', TOOLS: [], textTools: true }), /text-tools/); assert.throws(() => ACI.resolveAci('nope', {}), /unknown-aci/)
+    assert.equal(ACI.resolveAci('cfb', { SYSTEM: 's', SYSTEM_TEXT_TOOLS: 't', TOOLS: [1], textTools: false }).system, 's')
+    // 2. str_replace_editor 语义（view 带行号 / 目录两层 / create 不覆盖 / str_replace 唯一 / insert 行后 / 越界与不存在）；绝对路径 /home/u/work/repo 映射到假仓库
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-aci-')); fs.mkdirSync(path.join(repo, 'src')); fs.writeFileSync(path.join(repo, 'src', 'a.js'), 'const a = 1\nconst b = 2\nconst a2 = 1\n')
+    assert.match(ACI.execStrReplaceEditor(repo, { command: 'view', path: '/home/u/work/repo/src/a.js' }), /total of 4 lines\):\n     1  const a = 1\n     2  const b = 2/)
+    assert.match(ACI.execStrReplaceEditor(repo, { command: 'view', path: 'src/a.js', view_range: [2, 2] }), /view_range=\[2, 2\]:\n     2  const b = 2\n$/)
+    assert.match(ACI.execStrReplaceEditor(repo, { command: 'view', path: '/home/u/work/repo' }), /up to 2 levels deep in \/home\/u\/work\/repo[\s\S]*d\t\/home\/u\/work\/repo\/src\nf\t\/home\/u\/work\/repo\/src\/a\.js/)
+    assert.match(ACI.execStrReplaceEditor(repo, { command: 'str_replace', path: 'src/a.js', old_str: '= 1', new_str: '= 9' }), /^No replacement was performed\. Multiple occurrences .* in lines \[1, 3\]/)
+    assert.match(ACI.execStrReplaceEditor(repo, { command: 'str_replace', path: 'src/a.js', old_str: 'nope' }), /did not appear verbatim in \/home\/u\/work\/repo\/src\/a\.js/)
+    assert.equal(ACI.execStrReplaceEditor(repo, { command: 'str_replace', path: 'src/a.js', old_str: 'const b = 2', new_str: 'const b = 3' }), 'The file /home/u/work/repo/src/a.js has been edited successfully.'); assert.match(fs.readFileSync(path.join(repo, 'src/a.js'), 'utf8'), /const b = 3/)
+    assert.equal(ACI.execStrReplaceEditor(repo, { command: 'insert', path: 'src/a.js', insert_line: 1, new_str: '// x' }), 'The file /home/u/work/repo/src/a.js has been edited successfully.'); assert.equal(fs.readFileSync(path.join(repo, 'src/a.js'), 'utf8').split('\n')[1], '// x')
+    assert.match(ACI.execStrReplaceEditor(repo, { command: 'create', path: 'src/a.js', file_text: 'x' }), /^File already exists at: \/home\/u\/work\/repo\/src\/a\.js/); assert.match(ACI.execStrReplaceEditor(repo, { command: 'create', path: 'src/new.js', file_text: 'y\n' }), /^New file created successfully at: \/home\/u\/work\/repo\/src\/new\.js/)
+    assert.match(ACI.execStrReplaceEditor(repo, { command: 'view', path: '/etc/passwd' }), /does not exist/); assert.match(ACI.execStrReplaceEditor(repo, { command: 'view', path: '../x' }), /does not exist/); assert.match(ACI.execStrReplaceEditor(repo, { command: 'rm', path: 'src/a.js' }), /^Unrecognized command rm/)
+    assert.ok(ACI.isEditCall('str_replace_editor', { command: 'str_replace' }) && ACI.isEditCall('edit_file', {}) && !ACI.isEditCall('str_replace_editor', { command: 'view' }) && ACI.editOk('The file x has been edited successfully.') && ACI.editOk('ok（x 已写入，1 处替换）') && !ACI.editOk('No replacement was performed'))
+    fs.rmSync(repo, { recursive: true, force: true })
+    // 3. 门禁规则（纯函数）：act 要「读过 src + 同一命令 ≥2 + 0 修改 + 最近两轮只读 + 第 ≥3 轮」；batch 要连续两轮修改且中间没验证；verify 要宣称修好且最后修改后没验证；幂等
+    const vre = /npm test/
+    const R = (round, calls) => ({ round, calls })
+    const rowsAct = [R(1, [{ name: 'read_file', args: { path: 'src/trace.js' } }]), R(2, [{ name: 'bash', args: { command: 'npm test' } }]), R(3, [{ name: 'bash', args: { command: 'npm test' } }])]
+    assert.equal(HG.gateAfterTools(rowsAct, { edits: [], verifyRe: vre, gated: [], round: 3, maxRounds: 6 }), 'act')
+    assert.equal(HG.gateAfterTools(rowsAct, { edits: [], verifyRe: vre, gated: [{ round: 2, kind: 'act' }], round: 3, maxRounds: 6 }), null, '两轮内不重复')
+    assert.equal(HG.gateAfterTools(rowsAct, { edits: [{ round: 1, ok: true }], verifyRe: vre, gated: [], round: 3, maxRounds: 6 }), null, '改过了就不催行动')
+    assert.equal(HG.gateAfterTools(rowsAct.slice(0, 2), { edits: [], verifyRe: vre, gated: [], round: 2, maxRounds: 6 }), null, '第 2 轮还不催'); assert.equal(HG.gateAfterTools(rowsAct, { edits: [], verifyRe: vre, gated: [], round: 3, maxRounds: 3 }), null, '最后一轮之后没人读')
+    const rowsBatch = [R(1, [{ name: 'edit_file', args: { path: 'a' } }]), R(2, [{ name: 'edit_file', args: { path: 'a' } }])]
+    assert.equal(HG.gateAfterTools(rowsBatch, { edits: [{ round: 1, ok: true }, { round: 2, ok: true }], verifyRe: vre, gated: [], round: 2, maxRounds: 6 }), 'batch')
+    assert.equal(HG.gateAfterTools([rowsBatch[0], R(2, [{ name: 'edit_file', args: { path: 'a' } }, { name: 'bash', args: { command: 'npm test' } }])], { edits: [{ round: 1, ok: true }, { round: 2, ok: true }], verifyRe: vre, gated: [], round: 2, maxRounds: 6 }), null, '验证了就不算碎片')
+    assert.equal(HG.gateOnFinal([R(1, [{ name: 'edit_file', args: { path: 'a' } }])], { edits: [{ round: 1, ok: true }], verifyRe: vre, gated: [], claim: 'fixed', round: 2, maxRounds: 6 }), 'verify')
+    assert.equal(HG.gateOnFinal([R(1, [{ name: 'edit_file', args: { path: 'a' } }, { name: 'bash', args: { command: 'npm test' } }])], { edits: [{ round: 1, ok: true }], verifyRe: vre, gated: [], claim: 'fixed', round: 2, maxRounds: 6 }), null, '同轮先改后验也算验过')
+    assert.equal(HG.gateOnFinal([R(1, [{ name: 'edit_file', args: { path: 'a' } }])], { edits: [{ round: 1, ok: true }], verifyRe: vre, gated: [{ round: 2, kind: 'verify' }], claim: 'fixed', round: 3, maxRounds: 6 }), null, '整条只催一次'); assert.equal(HG.gateOnFinal([], { edits: [], claim: 'hedged', round: 2 }), null)
+    assert.ok(HG.GATE_TEXTS.act.startsWith(HG.GATE_HEAD) && /这不是用户输入/.test(HG.GATE_HEAD) && /可逆/.test(HG.GATE_TEXTS.act) && /合并写入/.test(HG.GATE_TEXTS.batch) && /先运行验证命令/.test(HG.GATE_TEXTS.verify))
+    // 4. runOne（假 chat）：drop 臂发出去的历史没有 reasoning_content、transcript 记 finish；gate 臂 act 门禁附在工具结果消息末尾（user 角色）、verify 门禁拦下未验证的宣称；raw 对照不注入
+    const task = TRAJ_TASKS.find((t) => t.id === 'eacces-config')
+    const tc = (name, args) => ({ id: 'c_' + name, type: 'function', function: { name, arguments: JSON.stringify(args) } })
+    const mk = (content, calls, reasoning = 'r'.repeat(50)) => ({ message: { content, reasoning_content: reasoning, ...(calls ? { tool_calls: calls } : {}) }, usage: { prompt_tokens: 10 }, fp: 'x', finish: calls ? 'tool_calls' : 'stop' })
+    const sent = []
+    const chatDrop = async (b) => { sent.push(b); const round = b.messages.filter((m) => m.role === 'assistant').length + 1; if (round === 1) return mk('读。', [tc('read_file', { path: 'src/trace.js' })]); if (round === 2) return mk('跑。', [tc('bash', { command: 'npm test' })]); return mk('没修。', null) }
+    const o = { maxRounds: 5, minChars: 3100, model: 'm', maxTokens: 1000, maxProbes: 1, textTools: false, requireFp: false, aci: 'cfb', toolProtocol: 'text' }
+    const d = await runOne({ o, task, variant: 'drop', sample: 0, chat: chatDrop, I, cred: null }); assert.equal(d.error, undefined, d.error)
+    assert.ok(sent.length === 3 && sent[2].messages.filter((m) => m.role === 'assistant').every((m) => !('reasoning_content' in m)), 'drop：历史 assistant 消息不带 reasoning_content'); assert.equal(d.contextReasoningChars, 0); assert.deepEqual(d.transcript.map((t) => t.storedChars), [0, 0, 0]); assert.deepEqual(d.transcript.map((t) => t.finish), ['tool_calls', 'tool_calls', 'stop']); assert.equal(d.aci, 'cfb'); assert.equal(d.toolProtocol, 'text')
+    // gate 臂：r1 读 src、r2/r3 同一命令 ⇒ r3 结果后附 act 门禁；r4 改（成功）并直接宣称修好 ⇒ verify 门禁拦一次 ⇒ r5 跑验证后收
+    const seenGate = []
+    const chatGate = async (b) => { const last = b.messages[b.messages.length - 1]; if (last.role === 'user' && /\[宿主门禁\]/.test(last.content)) seenGate.push({ round: b.messages.filter((m) => m.role === 'assistant').length, kind: /至少两次/.test(last.content) ? 'act' : /宣称/.test(last.content) ? 'verify' : 'other', tail: last.content.endsWith(HG.GATE_TEXTS.act) || last.content === HG.GATE_TEXTS.verify })
+      const round = b.messages.filter((m) => m.role === 'assistant').length + 1
+      if (round === 1) return mk('读。', [tc('read_file', { path: 'src/trace.js' })]); if (round === 2 || round === 3) return mk('跑。', [tc('bash', { command: 'npm test' })])
+      if (round === 4) return mk('改。', [tc('edit_file', { path: 'test/birth.selftest.mjs', old_text: '{ home: process.env.CFB_REAL_DSH_HOME }', new_text: '{}' })])
+      if (round === 5 || round >= 7) return mk('问题已修复。', null); return mk('验。', [tc('bash', { command: 'npm test' })]) }
+    const g = await runOne({ o: { ...o, maxRounds: 7 }, task, variant: 'gate', sample: 0, chat: chatGate, I, cred: null }); assert.equal(g.error, undefined, g.error)
+    assert.deepEqual(g.gates, [{ round: 3, kind: 'act' }, { round: 5, kind: 'verify' }]); assert.deepEqual(seenGate.map((x) => [x.round, x.kind, x.tail]), [[3, 'act', true], [5, 'verify', true]], '门禁只以 user 角色、紧贴最新结果出现')
+    assert.equal(g.fixed, true); assert.equal(g.fixedAtRound, 4); assert.equal(g.verifiedAfterFix, true, 'verify 门禁之后模型真的去验了'); assert.equal(g.rounds, 7); assert.equal(g.claimJustified, true, '被拦下后验证了再宣称 ⇒ 宣称成立（判分口径不变，门禁改变的是行为）')
+    const r = await runOne({ o: { ...o, maxRounds: 7 }, task, variant: 'raw', sample: 0, chat: chatGate, I, cred: null }); assert.equal(r.gates, undefined); assert.equal(r.rounds, 5, 'raw 臂第 5 轮宣称就收'); assert.equal(r.verifiedAfterFix, false); assert.equal(r.claimJustified, false, '同一个脚本在 raw 臂下是未经验证的宣称')
+    // 5. rl-native + 原生协议：系统提示 = RL 句、tools = 官方两工具；历史 assistant 带 tool_calls、结果是 role:tool 且 id 成对；str_replace 计入 edits 并能修好；bash 非零退出带 [exit code]
+    const seenN = []
+    const chatN = async (b) => { seenN.push(b); const round = b.messages.filter((m) => m.role === 'assistant').length + 1
+      if (round === 1) return mk('view。', [{ id: 'id1', type: 'function', function: { name: 'str_replace_editor', arguments: JSON.stringify({ command: 'view', path: '/home/u/work/repo/test/birth.selftest.mjs' }) } }])
+      if (round === 2) return mk('fix。', [{ id: 'id2', type: 'function', function: { name: 'str_replace_editor', arguments: JSON.stringify({ command: 'str_replace', path: '/home/u/work/repo/test/birth.selftest.mjs', old_str: '{ home: process.env.CFB_REAL_DSH_HOME }', new_str: '{}' }) } }, { id: 'id3', type: 'function', function: { name: 'bash', arguments: JSON.stringify({ command: 'npm test', description: 'Run the test suite' }) } }])
+      return mk('Fixed.', null) }
+    const n = await runOne({ o: { ...o, aci: 'rl-native', toolProtocol: 'native' }, task, variant: 'raw', sample: 0, chat: chatN, I, cred: null }); assert.equal(n.error, undefined, n.error)
+    assert.equal(seenN[0].messages[0].content, 'You are a helpful software engineer assistant.'); assert.deepEqual(seenN[0].tools.map((t) => t.function.name), ['bash', 'str_replace_editor'])
+    const h = seenN[2].messages; assert.equal(h[2].role, 'assistant'); assert.equal(h[2].tool_calls[0].id, 'id1'); assert.equal(h[3].role, 'tool'); assert.equal(h[3].tool_call_id, 'id1'); assert.match(h[3].content, /with line numbers/); assert.equal(h[5].tool_call_id, 'id2'); assert.equal(h[6].tool_call_id, 'id3'); assert.match(h[6].content, /PASS test\/birth/)
+    assert.equal(n.edits.length, 1); assert.equal(n.edits[0].ok, true); assert.equal(n.fixed, true); assert.equal(n.fixedAtRound, 2); assert.equal(n.verifiedAfterFix, true); assert.equal(n.aci, 'rl-native'); assert.equal(n.toolProtocol, 'native'); assert.equal(n.claimJustified, true)
+    assert.deepEqual(n.proxySteps.map((s) => s.next), [1, 1, 0], 'proxy 旗标认 str_replace_editor 的编辑'); assert.equal(n.claim, 'fixed', '英文宣称也认（rl-native 面下模型常用英文收尾）')
+    await assert.rejects(runOne({ o: { ...o, aci: 'rl-native' }, task, variant: 'policy:base', sample: 0, chat: chatN, I, cred: null }), /暂只支持/)
+    // 5b. 形态预检：native / drop 的历史形态各发一次 max_tokens:1；通道拒 role:tool ⇒ shape ✗ ⇒ 预检不过、一条轨迹都不开
+    const pfChat = (rejectTool) => async (b) => { if (rejectTool && b.messages.some((m) => m.role === 'tool')) throw new Error('HTTP 400'); return { message: { content: '2', reasoning_content: '想' }, usage: { prompt_tokens: 20 + b.messages.length, completion_tokens_details: { reasoning_tokens: 1 } }, fp: 'fp_dspure_app_v1', finish: 'stop', model: 'm' } }
+    const pfOk = await tr.preflightUpstream({ chat: pfChat(false), o: { model: 'm', aci: 'rl-native', toolProtocol: 'native', variants: ['raw', 'drop'], textTools: false } }); assert.equal(pfOk.ok, true); assert.deepEqual(Object.keys(pfOk.shape), ['native', 'drop']); assert.ok(pfOk.shape.native.ok && pfOk.shape.drop.ok)
+    const pfBad = await tr.preflightUpstream({ chat: pfChat(true), o: { model: 'm', aci: 'cfb', toolProtocol: 'native', variants: ['raw'], textTools: false } }); assert.equal(pfBad.ok, false); assert.ok(pfBad.failed.includes('shape')); assert.equal(pfBad.shape.native.ok, false); assert.equal(pfBad.shape.drop, undefined)
+    const pfPlain = await tr.preflightUpstream({ chat: pfChat(true), o: { model: 'm', aci: 'cfb', toolProtocol: 'text', variants: ['raw', 'gate'], textTools: false } }); assert.equal(pfPlain.shape, undefined, '旧形态不做形态预检（零额外请求）')
+    // 6. 计划核对：plan 带 aci/toolProtocol 时运行参数必须一致；buildTrajPlan 把 drop 当第 2 轮起分歧计费、命令行带 --aci；设计摘要随面变化
+    const plan = cyc.buildTrajPlan({ n: 1, arms: ['raw', 'drop'], scenarios: ['eacces-config'], samples: 1, maxRounds: 5, aci: 'rl-native', toolProtocol: 'native' })
+    assert.equal(plan.aci, 'rl-native'); assert.equal(plan.toolProtocol, 'native'); assert.match(plan.command, /--aci rl-native --tool-protocol native/); assert.equal(plan.cost.expectedMains, 5 + 4, 'drop 第 2 轮起自己发')
+    const base = { variants: ['raw', 'drop'], samples: 1, maxRounds: 5, fork: true, only: ['eacces-config'], storeText: true, aci: 'rl-native', toolProtocol: 'native' }
+    assert.equal(checkTrajPlan(plan, base).ok, true); assert.throws(() => checkTrajPlan(plan, { ...base, aci: 'cfb' }), /aci plan=rl-native run=cfb/); assert.throws(() => checkTrajPlan(plan, { ...base, toolProtocol: 'text' }), /toolProtocol/)
+    const plainPlan = cyc.buildTrajPlan({ n: 1, arms: ['raw', 'gate'], scenarios: ['eacces-config'], samples: 1, maxRounds: 5 }); assert.equal(plainPlan.aci, undefined); assert.ok(!/--aci/.test(plainPlan.command)); assert.equal(checkTrajPlan(plainPlan, { ...base, variants: ['raw', 'gate'], aci: 'cfb', toolProtocol: 'text' }).ok, true)
+    assert.notEqual(cyc.buildTrajPlan({ n: 1, arms: ['raw', 'drop'], scenarios: ['eacces-config'], samples: 1, maxRounds: 5, aci: 'rl-native' }).digest, cyc.buildTrajPlan({ n: 1, arms: ['raw', 'drop'], scenarios: ['eacces-config'], samples: 1, maxRounds: 5 }).digest)
+  })
 } finally {
   console.log(`\n=== closed-loop-v4 selftest: ${pass} pass / ${fail} fail ===`)
   process.exit(fail ? 1 : 0)

@@ -27,6 +27,8 @@ import { claimOf } from './effect-mr.mjs'
 import { TRAJ_TASKS, materialize } from './traj-fixtures.mjs'
 import { stepFlags } from './helpers/traj-proxy.mjs'
 import { outcomeComparison } from './helpers/ruler.mjs'
+import { resolveAci, execStrReplaceEditor, resolveRepoPath, isEditCall, editOk, DISPLAY_ROOT, ACI_IDS, TOOL_PROTOCOLS } from './helpers/aci.mjs'
+import { gateAfterTools, gateOnFinal, GATE_TEXTS } from './helpers/host-gates.mjs'
 import { BASE_POLICY, applyPolicyToPrompt, PRODUCTION_COMPRESSOR } from './helpers/generation.mjs'
 import { handDraftGate, HAND_PROTOCOL } from './helpers/hand-draft.mjs'
 
@@ -35,7 +37,7 @@ const SYSTEM = '你是在代码仓库里干活的编码 Agent，可用工具 bas
 const SYSTEM_TEXT_TOOLS = SYSTEM + '\n\n工具用文本协议调用：每条调用单独一行，格式为 [tool_call bash] {"command":"…"} / [tool_call read_file] {"path":"…"} / [tool_call edit_file] {"path":"…","old_text":"…","new_text":"…"}（JSON 一行、字符串内换行写成 \\n）。调用行之外的文字就是你的判断。结果会以「[tool: 名字 结果]」回给你。'
 
 function parseArgs(argv) {
-  const o = { variants: ['raw', 'auto'], samples: 1, maxRounds: 6, concurrency: 2, maxTokens: 16000, out: 'traj', only: null, minChars: 3100, maxProbes: 15 }   // minChars = 生产 birthMinChars（低于它不压、原样留下）
+  const o = { variants: ['raw', 'auto'], samples: 1, maxRounds: 6, concurrency: 2, maxTokens: 16000, out: 'traj', only: null, minChars: 3100, maxProbes: 15, aci: 'cfb', toolProtocol: 'text' }   // minChars = 生产 birthMinChars（低于它不压、原样留下）
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]; const v = () => argv[++i]
     if (a === '--variants') o.variants = v().split(',')
@@ -65,6 +67,8 @@ function parseArgs(argv) {
     else if (a === '--dry-run') o.dryRun = true                 // v4.3：只构造任务 / 分组并打印，不发任何请求（计划核对）
     else if (a === '--store-text') o.storeText = true          // v4.3：transcript 存 reasoning / stored 全文（≤12k 字）⇒ 子状态同时是压缩任务与飞轮材料
     else if (a === '--from-state') o.fromState = v()           // v4.3：从子状态文件（单个或数组）续跑，而不是从场景第 1 轮开始
+    else if (a === '--aci') { o.aci = v(); if (!ACI_IDS.includes(o.aci)) throw new Error('未知 --aci ' + o.aci + '（cfb | rl-native）') }   // v14.13（DSH P1）：主模型工具面 —— rl-native = 官方 harness B 版（RL 训练句 + bash + str_replace_editor 逐字 schema）
+    else if (a === '--tool-protocol') { o.toolProtocol = v(); if (!TOOL_PROTOCOLS.includes(o.toolProtocol)) throw new Error('未知 --tool-protocol ' + o.toolProtocol + '（text | native）') }   // v14.13：历史里工具调用 / 结果的形态 —— text = 旧（assistant 纯文字 + user「[tool: …]」）；native = assistant.tool_calls + role:tool
     else if (a === '--perturb') o.perturb = v().split(',')     // v4.3：零 API 场景扰动（decoy：诱饵同名文件 + README 误导；两臂同扰动）
     else throw new Error('未知参数 ' + a)
   }
@@ -97,8 +101,8 @@ export function loadPolicyFor(variant, policyDir) {
 export function checkTrajPlan(plan, o) {
   if ((plan.reuseRaw?.file || null) !== (o.forkFrom ? path.normalize(path.relative(process.cwd(), path.resolve(o.forkFrom))) : null)) throw new Error(`traj-plan-mismatch:forkFrom（计划 ${plan.reuseRaw?.file || '无'} ≠ 运行 ${o.forkFrom || '无'}）`)
   if (!plan || plan.schema !== 'cfb.traj-plan/1') throw new Error('traj-plan-schema')
-  const want = { variants: [...plan.variants].sort().join(','), samples: plan.samples, maxRounds: plan.maxRounds, fork: !!plan.fork, only: (plan.scenarios || []).slice().sort().join(','), fromState: plan.fromStates ? path.normalize(plan.fromStates.file) : '', storeText: !!plan.storeText }
-  const have = { variants: [...o.variants].sort().join(','), samples: o.samples, maxRounds: o.maxRounds, fork: !!o.fork, only: (o.only || []).slice().sort().join(','), fromState: o.fromState ? path.normalize(path.relative(process.cwd(), path.resolve(o.fromState))) : '', storeText: !!o.storeText }
+  const want = { variants: [...plan.variants].sort().join(','), samples: plan.samples, maxRounds: plan.maxRounds, fork: !!plan.fork, only: (plan.scenarios || []).slice().sort().join(','), fromState: plan.fromStates ? path.normalize(plan.fromStates.file) : '', storeText: !!plan.storeText, aci: plan.aci || 'cfb', toolProtocol: plan.toolProtocol || 'text' }
+  const have = { variants: [...o.variants].sort().join(','), samples: o.samples, maxRounds: o.maxRounds, fork: !!o.fork, only: (o.only || []).slice().sort().join(','), fromState: o.fromState ? path.normalize(path.relative(process.cwd(), path.resolve(o.fromState))) : '', storeText: !!o.storeText, aci: o.aci || 'cfb', toolProtocol: o.toolProtocol || 'text' }
   const diff = Object.keys(want).filter((k) => String(want[k]) !== String(have[k]))
   if (diff.length) throw new Error('traj-plan-mismatch:' + diff.map((k) => `${k} plan=${want[k]} run=${have[k]}`).join('; '))
   return { ok: true, digest: plan.digest }
@@ -128,8 +132,11 @@ const GENERIC = (cmd) => {
 const ESCAPES_REPO = (cmd) => /(?:^|[\s='"])(?:\/(?!home\/u\b)(?:[\w.-]+|(?=[\s'"]|$))|\.\.(?:\/|(?=[\s'"]|$))|~(?![\w]))|\$\{?HOME/.test(cmd)
 const ESCAPE_PATH = (c) => { const m = /(?:^|[\s='"])((?:\/[\w.\/-]*|~\S*|\.\.\S*))/.exec(c.replace(/\s*2>&1|\s*2>\/dev\/null|\s*>\/dev\/null/g, '')); return m ? m[1] : c }
 const SANDBOX_ENV = (repo) => ({ PATH: process.env.PATH || '/usr/bin:/bin', HOME: repo, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8', TERM: 'dumb' })
+// v14.13：模型眼里的仓库绝对路径（GENERIC pwd 一直答 /home/u/work/repo）在真跑时映射到假仓库，输出里再映射回来；rl-native 面的 str_replace_editor 要求绝对路径
+const realCmd = (repo, c) => c.split(DISPLAY_ROOT).join(repo)
+const unreal = (repo, out) => String(out).split(repo).join(DISPLAY_ROOT)
 /** 复合命令按 && ; || | 切段（引号外），每段：题目 canned → 通用 canned → 白名单真跑；任一段不认识 ⇒ 说明沙箱没有 */
-export function runBash(task, repo, cmd) {
+export function runBash(task, repo, cmd, opts = {}) {
   if (/\bfor\b[\s\S]*\bdo\b|\bwhile\b[\s\S]*\bdo\b/.test(cmd)) { const w = task.canned(cmd, repo); return w != null ? w : `bash: 该沙箱不支持 shell 循环，请直接跑单条命令: ${cmd.slice(0, 80)}` }
   const segs = []; let cur = '', q = null
   for (let i = 0; i < cmd.length; i++) {
@@ -150,13 +157,13 @@ export function runBash(task, repo, cmd) {
     const g = GENERIC(c); if (g != null) return g
     if (ESCAPES_REPO(c)) return `bash: ${ESCAPE_PATH(c)}: No such file or directory`
     if (!SAFE_RE.test(c) || /[`$><]/.test(c.replace(/2>&1|2>\/dev\/null|>\/dev\/null/g, ''))) return `bash: 该沙箱未提供此命令（只有 grep/sed -n/cat/ls/head/tail/wc/find 与题目里的测试 / 分析命令）: ${c.slice(0, 80)}`
-    try { return execFileSync('bash', ['-c', c], { cwd: repo, env: SANDBOX_ENV(repo), encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }).slice(0, 4000) || '（无输出）' }
-    catch (e) { return String((e.stdout || '') + (e.stderr || '')).slice(0, 2000) || `退出码 ${e.status}` }
+    try { return unreal(repo, execFileSync('bash', ['-c', realCmd(repo, c)], { cwd: repo, env: SANDBOX_ENV(repo), encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }).slice(0, 4000)) || '（无输出）' }
+    catch (e) { return unreal(repo, String((e.stdout || '') + (e.stderr || '')).slice(0, 2000)) + (opts.exitMarker ? `\n[exit code: ${e.status ?? 1}]` : '') || `退出码 ${e.status}` }
   }
   // 有管道且全是白名单命令 ⇒ 整条真跑（grep … | head 这类）
   if (hasPipe && parts.every((c) => SAFE_RE.test(c)) && !ESCAPES_REPO(cmd) && !/[`$><]/.test(cmd.replace(/2>&1|2>\/dev\/null|>\/dev\/null/g, ''))) {
-    try { return execFileSync('bash', ['-c', cmd], { cwd: repo, env: SANDBOX_ENV(repo), encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }).slice(0, 4000) || '（无输出）' }
-    catch (e) { return String((e.stdout || '') + (e.stderr || '')).slice(0, 2000) || `退出码 ${e.status}` }
+    try { return unreal(repo, execFileSync('bash', ['-c', realCmd(repo, cmd)], { cwd: repo, env: SANDBOX_ENV(repo), encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }).slice(0, 4000)) || '（无输出）' }
+    catch (e) { return unreal(repo, String((e.stdout || '') + (e.stderr || '')).slice(0, 2000)) + (opts.exitMarker ? `\n[exit code: ${e.status ?? 1}]` : '') || `退出码 ${e.status}` }
   }
   // && ; || 串联：逐段执行（题目 canned 优先），按粗略的成败语义决定下一段跑不跑，输出拼起来
   const failed = (out) => /^bash: |not found|No such file|失败|退出码|Operation not permitted|password is required/.test(String(out))
@@ -164,14 +171,15 @@ export function runBash(task, repo, cmd) {
   for (const sg of segs) {
     const c = sg.c.trim(); if (!c) { prevOp = sg.op; continue }
     if ((prevOp === '&&' && prevFail) || (prevOp === '||' && !prevFail)) { prevOp = sg.op; continue }
-    const out = runBash(task, repo, c); prevFail = failed(out); prevOp = sg.op
+    const out = runBash(task, repo, c, opts); prevFail = failed(out); prevOp = sg.op
     outs.push(`$ ${c}\n${out}`)
   }
   return outs.join('\n')
 }
-export function execTool(task, repo, name, args) {
+export function execTool(task, repo, name, args, opts = {}) {
   const a = typeof args === 'string' ? (() => { try { return JSON.parse(args) } catch { return { command: args } } })() : (args || {})
-  const safe = (p) => { const r = path.resolve(repo, String(p || '')); if (!r.startsWith(repo)) throw new Error('路径越界'); return r }
+  const safe = (p) => { const r = resolveRepoPath(repo, p); if (!r) throw new Error('路径越界'); return r }
+  if (name === 'str_replace_editor') return execStrReplaceEditor(repo, a)   // v14.13（DSH P1）：官方面的编辑器，语义与回文照官方包
   if (name === 'read_file') { try { return fs.readFileSync(safe(a.path), 'utf8').slice(0, 6000) } catch (e) { return `read_file 失败: ${e.message}` } }
   if (name === 'edit_file') {
     try {
@@ -183,7 +191,7 @@ export function execTool(task, repo, name, args) {
       return `ok（${a.path} 已写入，1 处替换）`
     } catch (e) { return `edit_file 失败: ${e.message}` }
   }
-  if (name === 'bash') return runBash(task, repo, String(a.command || ''))
+  if (name === 'bash') return runBash(task, repo, String(a.command || ''), { exitMarker: !!opts.exitMarker })
   return `未知工具 ${name}`
 }
 const normCmd = (s) => String(s || '').replace(/\s+/g, ' ').trim()
@@ -281,8 +289,22 @@ export async function preflightUpstream({ chat, o }) {
     } catch (e) { carry = { error: String(e?.message || e), ok: false } }
   }
   const fpTrusted = !!r && TRUSTED_FP.has(r.fp)
-  const checks = { reachable: !error, fp: !!r && (!o.requireFp || fpTrusted || !!carry?.ok), notClaude: !!r && !claudeShaped(r.usage), reasoning: reasoning.length > 0 || (Number.isFinite(rt) && rt > 0), model: !!r && (!r.model || canonModel(r.model) === canonModel(o.model)) }
-  return { schema: 'cfb.preflight/1', at: new Date().toISOString(), model: o.model, modelEcho: r?.model || null, baseUrl: o.baseUrl, fp: r?.fp || null, fpTrusted, carry, mode: fpTrusted ? 'trusted-fp' : carry?.ok ? 'carry-verified' : null, finish: r?.finish || null, usage: r?.usage || null, reasoningChars: reasoning.length, contentChars: r ? responseText(r.message).length : 0, ms: Date.now() - t0, error, checks, ok: Object.values(checks).every(Boolean),
+  // v14.13 形态预检（每个 max_tokens:1，只花 prefill）：本次运行要发的历史形态通道收不收 —— native = assistant.tool_calls + role:tool；drop = 历史 assistant 不带 reasoning_content。
+  //   起因：DeepSeek 思考模式下工具调用轮的 reasoning_content 是否必须回传、中转收不收 role:tool，都没有在这条通道上实测过；跑前不验就是又一次「假设通道没问题」。
+  let shape = null
+  if (!error && r && ((o.toolProtocol || 'text') === 'native' || (o.variants || []).includes('drop'))) {
+    shape = {}
+    const aciP = resolveAci(o.aci || 'cfb', { SYSTEM, SYSTEM_TEXT_TOOLS, TOOLS, textTools: !!o.textTools })
+    const toolName = aciP.tools[0].function.name, argsStr = JSON.stringify(toolName === 'bash' && aciP.id === 'rl-native' ? { command: 'ls', description: 'List files' } : { command: 'ls' })
+    const hist = (withReasoning, nativeShape) => [{ role: 'system', content: aciP.system }, { role: 'user', content: '列出仓库文件。' },
+      { role: 'assistant', content: nativeShape ? '' : '[tool_call bash] ' + argsStr, ...(withReasoning ? { reasoning_content: '先看一眼目录。' } : {}), ...(nativeShape ? { tool_calls: [{ id: 'pf_1', type: 'function', function: { name: toolName, arguments: argsStr } }] } : {}) },
+      nativeShape ? { role: 'tool', tool_call_id: 'pf_1', content: 'README.md\nsrc' } : { role: 'user', content: '[tool: bash 结果]\nREADME.md\nsrc' }]
+    const probeShape = async (ms) => { try { const x = await chat({ model: o.model, messages: ms, ...(o.textTools ? {} : { tools: aciP.tools }), thinking: { type: 'enabled' }, max_tokens: 1, stream: false }); return { ok: true, promptTokens: Number(x.usage?.prompt_tokens) || null, fp: x.fp || null } } catch (e) { return { ok: false, error: String(e?.message || e) } } }
+    if ((o.toolProtocol || 'text') === 'native') shape.native = await probeShape(hist(true, true))
+    if ((o.variants || []).includes('drop')) shape.drop = await probeShape(hist(false, (o.toolProtocol || 'text') === 'native'))
+  }
+  const checks = { reachable: !error, fp: !!r && (!o.requireFp || fpTrusted || !!carry?.ok), notClaude: !!r && !claudeShaped(r.usage), reasoning: reasoning.length > 0 || (Number.isFinite(rt) && rt > 0), model: !!r && (!r.model || canonModel(r.model) === canonModel(o.model)), ...(shape ? { shape: Object.values(shape).every((x) => x.ok) } : {}) }
+  return { schema: 'cfb.preflight/1', at: new Date().toISOString(), model: o.model, modelEcho: r?.model || null, baseUrl: o.baseUrl, fp: r?.fp || null, fpTrusted, carry, ...(shape ? { shape } : {}), mode: fpTrusted ? 'trusted-fp' : carry?.ok ? 'carry-verified' : null, finish: r?.finish || null, usage: r?.usage || null, reasoningChars: reasoning.length, contentChars: r ? responseText(r.message).length : 0, ms: Date.now() - t0, error, checks, ok: Object.values(checks).every(Boolean),
     failed: Object.entries(checks).filter(([, v]) => !v).map(([k]) => k) }
 }
 export async function runOne({ o, task, variant, sample, chat, I, cred, forkMessage = null, state = null, resume = null, leader = null, extend = null }) {
@@ -290,8 +312,15 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
   materialize(task, repo)
   const policy = loadPolicyFor(variant, o.policyDir)
   const hand = variant === 'hand'
-  let messages = [{ role: 'system', content: o.textTools ? SYSTEM_TEXT_TOOLS : SYSTEM }, { role: 'user', content: task.prompt }]
-  const rec = { at: new Date().toISOString(), task: task.id, variant, sample, rounds: 0, calls: 0, edits: [], repeats: 0, fixedAtRound: null, verifiedAfterFix: false, promptTokens: 0, compile: [], transcript: [], rejected: 0, ...(policy ? { policy: policy.id } : {}), ...(forkMessage || leader ? { forked: true } : {}), ...(task.perturb ? { perturb: task.perturb } : {}), ...(state ? { fromState: state.id, family: state.family, startRound: state.startRound } : {}) }
+  // v14.13（DSH 合并）：工具面 / 协议 / 两个新臂。drop = 历史里不带任何思维链（DeepSeek 官方 API 的默认形态，cfb 从未跑过的对照）；gate = raw + 宿主层事件门禁（user 角色近场注入）
+  const aci = resolveAci(o.aci || 'cfb', { SYSTEM, SYSTEM_TEXT_TOOLS, TOOLS, textTools: !!o.textTools })
+  const native = (o.toolProtocol || 'text') === 'native'
+  const drop = variant === 'drop', gateArm = variant === 'gate'
+  if (aci.id === 'rl-native' && (variant === 'auto' || policy || hand)) throw new Error('aci rl-native 暂只支持 raw / drop / gate / ledger 臂（压缩臂的稿用 edit_file 规范词，换面要先接 compile-v4 的宿主工具映射）')
+  if (o.textTools && native) throw new Error('--text-tools 与 --tool-protocol native 互斥')
+  let messages = [{ role: 'system', content: aci.system }, { role: 'user', content: task.prompt }]
+  const gateRows = []   // gate 臂：逐轮 { round, calls:[{name,args(object)}] }（门禁规则只看这个与 rec.edits，不看思维链）
+  const rec = { at: new Date().toISOString(), task: task.id, variant, sample, rounds: 0, calls: 0, edits: [], repeats: 0, fixedAtRound: null, verifiedAfterFix: false, promptTokens: 0, compile: [], transcript: [], rejected: 0, ...(policy ? { policy: policy.id } : {}), ...(forkMessage || leader ? { forked: true } : {}), ...(task.perturb ? { perturb: task.perturb } : {}), ...(state ? { fromState: state.id, family: state.family, startRound: state.startRound } : {}), aci: aci.id, toolProtocol: native ? 'native' : 'text', ...(gateArm ? { gates: [] } : {}) }
   // v4.7 影子分叉：lead = leader（raw 臂逐轮回复）或老式单条 forkMessage；diverged 之前每轮直接取 lead 的回复，不发主调用
   let lead = leader ? leader.slice() : (forkMessage ? [forkMessage] : null), diverged = false
   if (leader) rec.shadow = { rounds: 0, divergedAt: null }   // 只有 raw 当 leader 的影子分叉才有「分歧轮」语义；老式单条 forkMessage 只分叉第 1 轮
@@ -310,7 +339,8 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
   }
   if (state && !resume) {
     // v4.3 子状态续跑：确定性重放前 k−1 轮的调用得到仓库状态，消息前缀只含 assistant 文字 + 工具结果（无思维链；模型从这里重新思考）
-    for (const c of state.replay || []) { const out = execTool(task, repo, c.name, c.args); if (c.name === 'bash') seenCmds.set(normCmd(c.args && c.args.command), state.startRound - 1); if (c.name === 'edit_file') rec.edits.push({ round: 0, path: c.args && c.args.path, ok: /^ok/.test(out), replayed: true }) }
+    for (const c of state.replay || []) { const out = execTool(task, repo, c.name, c.args); if (c.name === 'bash') seenCmds.set(normCmd(c.args && c.args.command), state.startRound - 1); if (isEditCall(c.name, c.args)) rec.edits.push({ round: 0, path: c.args && c.args.path, ok: editOk(out), replayed: true }) }
+    gateRows.push({ round: state.startRound - 1, calls: (state.replay || []).map((c) => ({ name: c.name, args: c.args && typeof c.args === 'object' ? c.args : {} })) })
     replayLog.push(...(state.replay || []))
     if (task.fixed(repo)) throw new Error('state-already-fixed:' + state.id)
     for (const m of state.messages || []) messages.push(m.role === 'assistant' ? { role: 'assistant', content: m.content } : { role: 'user', content: m.content })
@@ -328,13 +358,13 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         const msgs = k === 0 ? messages : messages.map((m, i) => i === messages.length - 1 && m.role === 'user' ? { ...m, content: m.content + '\u200b'.repeat(k) } : m)
         let carried = null   // v4.7.2：本轮放行依据 —— 'trusted-fp'（指纹）或 'carry-verified'（直接量到历史思考进了 prompt）或 'no-history'（历史里还没有思考可送，无需验）
         if (o.requireFp) {
-          const probe = await chat({ model: o.model, messages: msgs, ...(o.textTools ? {} : { tools: TOOLS }), thinking: { type: 'enabled' }, max_tokens: 1, stream: false })
+          const probe = await chat({ model: o.model, messages: msgs, ...(o.textTools ? {} : { tools: aci.tools }), thinking: { type: 'enabled' }, max_tokens: 1, stream: false })
           rec.probes = (rec.probes || 0) + 1
           if (claudeShaped(probe.usage)) { rec.probeMiss = (rec.probeMiss || 0) + 1; if (k >= o.maxProbes - 1) throw new Error(`探针 ${o.maxProbes} 次都没等到可信后端`); await new Promise((s) => setTimeout(s, Math.min(30000, 3000 + 1500 * k))); continue }
           if (TRUSTED_FP.has(probe.fp)) carried = 'trusted-fp'
           else if (historyReasoningChars(msgs) < CARRY_MIN_HISTORY) carried = 'no-history'
           else {
-            const c = await carryCheck({ chat, o, messages: msgs, tools: o.textTools ? null : TOOLS, probe }); rec.probes++; rec.carry = (rec.carry || []).concat({ round, ...c })
+            const c = await carryCheck({ chat, o, messages: msgs, tools: o.textTools ? null : aci.tools, probe }); rec.probes++; rec.carry = (rec.carry || []).concat({ round, ...c })
             if (c.ok) carried = 'carry-verified'
             else {
               rec.probeMiss = (rec.probeMiss || 0) + 1
@@ -346,7 +376,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
             }
           }
         }
-        r = await chat({ model: o.model, messages: msgs, ...(o.textTools ? {} : { tools: TOOLS }), thinking: { type: 'enabled' }, max_tokens: o.maxTokens - k, stream: false })
+        r = await chat({ model: o.model, messages: msgs, ...(o.textTools ? {} : { tools: aci.tools }), thinking: { type: 'enabled' }, max_tokens: o.maxTokens - k, stream: false })
         rec.mainCalls = (rec.mainCalls || 0) + 1   // v4.6：真发出的主调用数（fork / resume 轮不计；hand 臂续跑跨进程累加）
         // 真请求的放行：指纹可信；或探针已验携带 / 无历史，且真请求与探针走的是同一条路（prompt_tokens 相差 ≤ 2%：中转按内容黏住后端，但要防换路）
         const samePath = carried && (carried === 'trusted-fp' || Math.abs(Number(r.usage?.prompt_tokens) - Number(rec.carry?.length && carried === 'carry-verified' ? rec.carry[rec.carry.length - 1].withReasoning : r.usage?.prompt_tokens)) <= 0.02 * Number(r.usage?.prompt_tokens))
@@ -433,12 +463,16 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         }
         rec.compile.push(compileInfo)
       }
+      if (drop) stored = ''   // drop 臂：什么思维链都不带回去（stored '' ⇒ 第 1 轮就与 raw 影子分歧，第 2 轮起自己发）
       if (lead && !diverged && stored !== reasoning) { diverged = true; if (rec.shadow) rec.shadow.divergedAt = round }   // 从下一轮起本臂的历史与 raw 不同 ⇒ 自己发主调用
-      messages.push({ role: 'assistant', content: text, reasoning_content: stored })
-      rec.transcript.push({ round, reasoningChars: reasoning.length, storedChars: stored.length, text: text.slice(0, 3000), calls: calls.map((c) => ({ name: c.name, args: String(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)).slice(0, o.storeText ? 8000 : 400) })), ...(o.storeText ? { reasoning: reasoning.slice(0, 12000), stored: stored === reasoning ? null : stored.slice(0, 12000) } : {}) })
+      const callIds = calls.map((c, i) => (Array.isArray(r.message.tool_calls) && r.message.tool_calls.find((t) => t.function && t.function.name === c.name && normCmd(t.function.arguments) === normCmd(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)))?.id) || `call_${round}_${i}`)
+      messages.push({ role: 'assistant', content: text, ...(drop ? {} : { reasoning_content: stored }), ...(native && calls.length ? { tool_calls: calls.map((c, i) => ({ id: callIds[i], type: 'function', function: { name: c.name, arguments: typeof c.args === 'string' ? c.args : JSON.stringify(c.args) } })) } : {}) })
+      rec.transcript.push({ round, finish: r.finish || null, reasoningChars: reasoning.length, storedChars: stored.length, text: text.slice(0, 3000), calls: calls.map((c) => ({ name: c.name, args: String(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)).slice(0, o.storeText ? 8000 : 400) })), ...(o.storeText ? { reasoning: reasoning.slice(0, 12000), stored: stored === reasoning ? null : stored.slice(0, 12000) } : {}) })
       // v14.12.4 逐轮进度（stderr，一行）：之前整条轨迹跑完才落一行结果，中转慢的时候几十分钟没有任何可见信号，操作者无从判断是卡住还是在跑
       if (o.out && !o.quiet && !o._compile) process.stderr.write(`[${task.id}${state ? '@' + state.id : ''} ${variant} #${sample} r${round}] ${r.fp === 'shadow' || r.fp === 'fork' ? '影子' : '主 ' + (Number(r.usage && r.usage.prompt_tokens) || 0) + ' tok'} · 思考 ${reasoning.length} 字${compileInfo ? (compileInfo.belowFloor ? ` · 未过地板 ${compileInfo.floor}` : compileInfo.ok ? ` · 稿 ${compileInfo.outChars} 字 ✓` : ` · 稿 ✗ ${compileInfo.why || compileInfo.error || ''}`) : ''} · ${calls.length ? calls.map((c) => c.name + ' ' + String(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)).slice(0, 60).replace(/\s+/g, ' ')).join(' | ') : '（无调用）'}\n`)
       if (!calls.length) {
+        // v14.13 gate 臂·验证门禁：宣称修好、但最后一次修改之后没跑过验证命令 ⇒ 不收最终回复，催一次（user 角色近场）
+        if (gateArm) { const gk = gateOnFinal(gateRows, { edits: rec.edits, verifyRe: task.verifyRe, gated: rec.gates, claim: claimOf(text), round, maxRounds: o.maxRounds }); if (gk) { rec.gates.push({ round, kind: gk }); messages.push({ role: 'user', content: GATE_TEXTS[gk] }); if (lead && !diverged) { diverged = true; if (rec.shadow) rec.shadow.divergedAt = round }; continue } }
         // 中转偶发把「让我读 README…」这类意图当纯文本返回、没带调用 ⇒ 催一次（真实宿主里用户也会这么做）；只催一次
         if (!rec.nudged && round < o.maxRounds && /^(?:让我|我先|先|接下来|下一步|我来)/.test(text.trim()) && text.length < 200) { rec.nudged = true; messages.push({ role: 'user', content: '继续，直接发出工具调用。' }); continue }
         rec.final = text; break
@@ -446,21 +480,27 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
       const results = []
       // v4.3 续跑探针：接上前缀后的第一轮里，有多少调用是在重做前缀里已做过的事（重做多 ⇒ 模型没有把重放的历史当成自己的）
       if (state && round === firstRound) { const keys = calls.map((c) => c.name + '|' + normCmd(typeof c.args === 'string' ? c.args : JSON.stringify(c.args))); const rep = keys.filter((k) => rec.replayKeys.includes(k)).length; rec.continuation = { firstRoundCalls: calls.length, prefixRepeats: rep, verdict: !calls.length ? 'unclear' : rep / calls.length >= 0.5 ? 'restarted' : 'continued' } }
-      for (const c of calls) {
+      const toolMsgs = [], gateCalls = []
+      calls.forEach((c, i) => {
         rec.calls++
         const argsObj = typeof c.args === 'string' ? (() => { try { return JSON.parse(c.args) } catch { return { command: c.args } } })() : c.args
         if (c.name === 'bash') { const k = normCmd(argsObj && argsObj.command); if (seenCmds.has(k) && !rec.edits.some((e) => e.round > seenCmds.get(k))) rec.repeats++; seenCmds.set(k, round) }
-        const out = execTool(task, repo, c.name, c.args)
-        replayLog.push({ name: c.name, args: argsObj })
-        if (c.name === 'edit_file') { rec.edits.push({ round, path: argsObj && argsObj.path, ok: /^ok/.test(out) }); if (rec.fixedAtRound == null && task.fixed(repo)) rec.fixedAtRound = round }   // 同一轮里 edit 之后紧跟的验收也算
+        const out = execTool(task, repo, c.name, c.args, { exitMarker: aci.id === 'rl-native' })
+        replayLog.push({ name: c.name, args: argsObj }); gateCalls.push({ name: c.name, args: argsObj && typeof argsObj === 'object' ? argsObj : {} })
+        if (isEditCall(c.name, argsObj)) { rec.edits.push({ round, path: argsObj && argsObj.path, ok: editOk(out) }); if (rec.fixedAtRound == null && task.fixed(repo)) rec.fixedAtRound = round }   // 同一轮里 edit 之后紧跟的验收也算
         if (c.name === 'bash' && task.verifyRe.test(String(argsObj && argsObj.command || '')) && rec.fixedAtRound != null) rec.verifiedAfterFix = true
-        results.push(`[tool: ${c.name} 结果]\n${out}`)
+        results.push(`[tool: ${c.name} 结果]\n${out}`); toolMsgs.push({ role: 'tool', tool_call_id: callIds[i], content: out })
         rec.transcript[rec.transcript.length - 1].results = (rec.transcript[rec.transcript.length - 1].results || []).concat(out.slice(0, 1500))
-      }
+      })
       if (rec.fixedAtRound == null && task.fixed(repo)) rec.fixedAtRound = round
+      gateRows.push({ round, calls: gateCalls })
       // 变体 ledger（S10.11 假设）：不压缩，只把程序算出的【台账】（已改 / 已排除 / 已走过的路 / 状态）附在本轮工具结果后面——代码算它能算的，零副模型成本
       const ledger = variant === 'ledger' ? I.ledgerBlock(messages.concat([{ role: 'user', content: results.join('\n\n') }])) : ''
-      messages.push({ role: 'user', content: results.join('\n\n') + (ledger ? '\n\n' + ledger : '') })
+      // v14.13 gate 臂：本轮工具结果之后要不要注入门禁（act / batch）；文本协议附在结果消息末尾（最近场），原生协议作为 tool 消息之后的一条 user 消息
+      let gateText = ''
+      if (gateArm) { const gk = gateAfterTools(gateRows, { edits: rec.edits, verifyRe: task.verifyRe, gated: rec.gates, round, maxRounds: o.maxRounds }); if (gk) { rec.gates.push({ round, kind: gk }); gateText = GATE_TEXTS[gk]; if (lead && !diverged) { diverged = true; if (rec.shadow) rec.shadow.divergedAt = round } } }
+      if (native) { messages.push(...toolMsgs); if (ledger || gateText) messages.push({ role: 'user', content: [ledger, gateText].filter(Boolean).join('\n\n') }) }
+      else messages.push({ role: 'user', content: results.join('\n\n') + (ledger ? '\n\n' + ledger : '') + (gateText ? '\n\n' + gateText : '') })
     }
     rec.fixed = task.fixed(repo)
     rec.claim = claimOf(rec.final || '')
@@ -518,6 +558,8 @@ export function summarizeTraj(rows) {
 
 export async function main(argv) {
   const o = parseArgs(argv)
+  if (o.aci === 'rl-native' && o.variants.some((v) => v === 'auto' || v === 'hand' || v.startsWith('policy:'))) throw new Error('aci rl-native 暂只支持 raw / drop / gate / ledger 臂（压缩臂的稿用 edit_file 规范词，换面要先接 compile-v4 的宿主工具映射）')
+  if (o.textTools && o.toolProtocol === 'native') throw new Error('--text-tools 与 --tool-protocol native 互斥')
   fs.mkdirSync(o.out, { recursive: true })
   const resPath = path.join(o.out, 'results.jsonl')
   const done = fs.existsSync(resPath) ? fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []
@@ -557,7 +599,7 @@ export async function main(argv) {
     }
     if (o.forkFrom && !o.dryRun && !o.preflightOnly) for (const x of reused) if (x.row) fs.appendFileSync(resPath, JSON.stringify(x.row) + '\n')   // v14.12.4：--preflight-only 不落任何结果行
     if (o.forkFrom) console.log(`--fork-from ${o.forkFrom}：复用 raw 轨迹 ${reused.length} 条当 leader（非同期对照：只配同模型、短窗口；行上记 reusedFrom${reused.some((x) => !x.row) ? `；其中 ${reused.filter((x) => !x.row).length} 条上次已落盘、本次只取 leader` : ''}）`)
-    console.log(`轨迹 ${jobs.length} 条（每条 ≤ ${o.maxRounds} 轮主调用${o.variants.includes('auto') ? ' + 同数副调用' : ''}），并发 ${o.concurrency}`)
+    console.log(`轨迹 ${jobs.length} 条（每条 ≤ ${o.maxRounds} 轮主调用${o.variants.includes('auto') ? ' + 同数副调用' : ''}），并发 ${o.concurrency}${o.aci !== 'cfb' || o.toolProtocol !== 'text' ? `，工具面 ${o.aci} / 协议 ${o.toolProtocol}` : ''}`)
     // --fork：同题同样本分组，第一臂跑完第 1 轮后其余臂从同一条第 1 轮回复分叉（配对在分叉点、每组省 (臂数−1) 次主调用）
     const groups = o.fork ? [...jobs.reduce((m, j) => { const k = `${j.state ? j.state.id : j.task.id}|${j.sample}`; (m.get(k) || m.set(k, []).get(k)).push(j); return m }, new Map()).values()].map((g) => g.sort((a, b) => (a.variant === 'raw' ? -1 : 0) - (b.variant === 'raw' ? -1 : 0))) : jobs.map((j) => [j])   // raw 先跑：它是影子分叉的 leader
     const stop = plan?.stop || null
@@ -572,7 +614,7 @@ export async function main(argv) {
     // v4.7.1 通道预检：没过就一条轨迹都不开（之前主循环会把「没有思维链」当路由黏住重试 ≤15 次，每次都是完整付费请求）
     const pf = await preflightUpstream({ chat, o })
     fs.appendFileSync(path.join(o.out, 'preflight.jsonl'), JSON.stringify(pf) + '\n')
-    console.log(`通道预检 ${pf.ok ? '通过' : '失败'}：fp=${pf.fp}（${pf.mode || '无放行依据'}）思考 ${pf.reasoningChars} 字 / 正文 ${pf.contentChars} 字 / 型号回显 ${pf.modelEcho} / 携带 ${pf.carry ? (pf.carry.error ? '错误 ' + pf.carry.error : `Δ${pf.carry.delta} tokens / ${pf.carry.L} 字 = ${pf.carry.ratio}`) : '未量'} / ${pf.ms} ms${pf.error ? ' / 错误 ' + pf.error : ''}${pf.ok ? '' : ' / 未过：' + pf.failed.join(',')}`)
+    console.log(`通道预检 ${pf.ok ? '通过' : '失败'}：fp=${pf.fp}（${pf.mode || '无放行依据'}）思考 ${pf.reasoningChars} 字 / 正文 ${pf.contentChars} 字 / 型号回显 ${pf.modelEcho} / 携带 ${pf.carry ? (pf.carry.error ? '错误 ' + pf.carry.error : `Δ${pf.carry.delta} tokens / ${pf.carry.L} 字 = ${pf.carry.ratio}`) : '未量'} / ${pf.ms} ms${pf.error ? ' / 错误 ' + pf.error : ''}${pf.ok ? '' : ' / 未过：' + pf.failed.join(',')}${pf.shape ? ' / 形态 ' + Object.entries(pf.shape).map(([k, v]) => k + (v.ok ? ' ✓' : ' ✗ ' + v.error)).join(' ') : ''}`)
     if (!pf.ok) { fs.rmSync(d, { recursive: true, force: true }); throw new Error('preflight-failed:' + pf.failed.join(',') + '（通道现在不返回思维链 / 指纹不可信 / 型号不符 ⇒ 不开跑、不花钱）') }
     if (o.preflightOnly) { fs.rmSync(d, { recursive: true, force: true }); return { preflight: pf } }
     let i = 0

@@ -368,6 +368,7 @@ node tools/cfb-cycle.mjs plan-traj --arms raw,policy:p-x --reuse-raw .cfb-runtim
 node tools/cfb-cycle.mjs plan-traj --arms raw,hand --max-rounds 8 --reuse-raw .cfb-runtime/traj/t6/results.jsonl   # v4.7.2 延长：被轮数上限截断的旧 raw 不重跑，从 from+1 轮续；跟随臂影子到第一次过地板
 node tools/traj-run.mjs --plan … --preflight-only    # v4.7.1 通道预检（≈3 次 ≤64 token 小请求）：思维链非空 / 携带检验（历史思考进没进 prompt）/ 型号回显；不过不开跑
 node tools/cfb-cycle.mjs plan-bench --policies base,p-x --factors half   # v4.7：候选的 ≤3 条补丁各为因子（2^(k−1) 臂），bench-report 出每条补丁主效应、该留的子集自动落成策略
+node tools/cfb-cycle.mjs plan-traj --arms raw,drop --aci rl-native --tool-protocol native   # v14.13（DSH 合并）：官方工具面（RL 训练句 + bash/str_replace_editor 逐字 schema）+ 原生协议；drop = 历史无思维链的对照臂；gate = raw + 宿主层事件门禁（act / batch / verify，user 角色近场）；traj-run 开跑前多一次形态预检。读 docs/design/DSH-MERGE.md
 node tools/cfb-cycle.mjs review --plan N              # v4.5：评审稿（分歧轮 / 各臂结局 / 稿原文 / 闸门）
 node tools/cfb-cycle.mjs plan-traj --arms raw,hand    # v4.6 模式 1：助手手写稿臂（压缩 0 次；v4.7 期望 ≈ $0.088）；traj-run 到压缩轮暂停等 drafts/<id>.md，同一命令续跑
 node tools/cfb-cycle.mjs ceiling --plan N             # v4.6：hand vs raw 的 L2 天花板（不写 champion）→ gold add --plan N（金标 transfer/gold/）

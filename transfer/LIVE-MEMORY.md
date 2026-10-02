@@ -2,6 +2,14 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
+## −16. 当前状态（2026-10-02，DSH 合并 ①：杠杆从「稿」换到宿主层 —— 工具面 / 协议 / 门禁 / drop 对照已成臂；零花费）
+
+- **先读 `docs/design/DSH-MERGE.md`**。一句话：稿对 flash 在 ≤8 轮上的结局 ≈ 0 是构造上必然的；用户旧项目 DSH 的记录里有效应的是宿主层（工具面 91→98/99、门禁全触发全服从、用户态指令 ≫ 注入引导），12 法则本身无对照。**通道决定服从度**：同样的话放进助手态思维链槽位它不理，放进用户态近场它照做。cfb 轨迹器自己的系统提示还明写「一次可以发多个独立调用」。
+- **已落地（零 API）**：`traj-run --aci rl-native`（RL 训练句 + bash/str_replace_editor 逐字 schema，`tools/helpers/aci.mjs`，官方包原文在 `docs/reference/dsh-tools/`）、`--tool-protocol native`、臂 `gate`（`tools/helpers/host-gates.mjs`）、臂 `drop`、预检 `shape`、transcript `finish`、`plan-traj --aci/--tool-protocol`、claimOf 认英文。rl-native 暂不支持压缩臂。
+- **第一组单元（未建计划、未花钱，等用户点头）**：① raw@rl-native × perf ≈$0.10（工具面是不是 perf 不落子的主因）；② raw vs drop ≈$0.11（思维链携带是干扰 / 无关 / 必需）；③ raw vs gate × perf ≈$0.16（用户态门禁能不能把「找证据」变「改并验证」）。命令在 DSH-MERGE §3。
+- **坑**：rl-native 面下模型多半英文收尾 ⇒ claimOf 已认英文；str_replace_editor 要绝对路径，`/home/u/work/repo` 映射到假仓库；形态预检没过（通道不收 role:tool 或不带思维链的历史）就一条都别跑。
+- 闸：v4 95/95、closed-loop 37/37。
+
 ## −15. 当前状态（2026-10-02，归因：主因是理论 —— 「压缩」与「增补」是两个制度；制度键进正门；t9 预注册 / 实跑）
 
 - **先读 `CLOSED-LOOP-V4.md` §18**。一句话：仓库里唯一的结局证据（traj1–3）来自「每轮都写、允许增补、不看 token」的制度（55% 稿比原文长、只有 23% 原文过 3100）；生产地板 3100 是从只算 token 的成本模型反解的（稿对结局的作用记 0），它把出证据的制度关掉了 ⇒ 训练器三次实跑 87% 的轮压缩器根本不触发。`node tools/attrib-regime.mjs` 可复现（A35）。

@@ -637,7 +637,7 @@ export function armRegime(arm, dir = null) {
   if (!arm || !arm.startsWith('policy:') || arm === 'policy:base') return []
   try { return I.policyRegimeKeys(dir ? readJson(path.join(dir, arm.slice(7) + '.json')) : loadPolicy(arm.slice(7))) } catch { return [] }
 }
-export function buildTrajPlan({ n, arms = ['raw', 'policy:base'], scenarios = TRAJ_TASKS.map((t) => t.id), samples = 2, maxRounds = 4, fork = true, purpose = null, pricing = TRAJ_UNIT, fromStates = null, stop = null, storeText = true, reuseRaw = null, policyDir = null }) {
+export function buildTrajPlan({ aci = 'cfb', toolProtocol = 'text', n, arms = ['raw', 'policy:base'], scenarios = TRAJ_TASKS.map((t) => t.id), samples = 2, maxRounds = 4, fork = true, purpose = null, pricing = TRAJ_UNIT, fromStates = null, stop = null, storeText = true, reuseRaw = null, policyDir = null }) {
   const units = fromStates ? fromStates.count : scenarios.length
   const groups = units * samples, policyArms = arms.filter((a) => a.startsWith('policy:') || a === 'auto').length
   const roundsLeft = fromStates ? Math.max(1, maxRounds - (fromStates.meanStartRound || 2) + 1) : maxRounds
@@ -653,7 +653,7 @@ export function buildTrajPlan({ n, arms = ['raw', 'policy:base'], scenarios = TR
   const rawPays = ext ? Math.max(0, roundsLeft - ext.from) : (reuseRaw ? 0 : roundsLeft)
   // v14.12.4 制度臂（策略带 birthMinChars 等制度键）：地板低 ⇒ 第 1 轮就压、第 2 轮起分歧、每轮都压 —— 不享受影子省钱，也不按 floorShare 打折
   const regimeArms = arms.filter((a) => a.startsWith('policy:') && a !== 'policy:base' && armRegime(a, policyDir).length)
-  const isRegime = (a) => regimeArms.includes(a)
+  const isRegime = (a) => regimeArms.includes(a) || a === 'drop'   // v14.13：drop 臂第 1 轮就与 raw 分歧（历史不带思维链）⇒ 计费同制度臂
   const followerList = fork ? arms.filter((a) => a !== 'raw') : arms
   const fExp = (a) => (isRegime(a) ? roundsLeft - 1 : ext ? Math.max(0, roundsLeft - kStar) : Math.max(0, roundsLeft - dr))
   const fCap = (a) => (isRegime(a) ? roundsLeft - 1 : ext ? Math.max(0, roundsLeft - kStar) : roundsLeft - 1)
@@ -663,6 +663,7 @@ export function buildTrajPlan({ n, arms = ['raw', 'policy:base'], scenarios = TR
   const capMains = shadow ? groups * (rawPays + followerList.reduce((n, a) => n + fCap(a), 0)) : mains
   const expectedUsd = +(expectedMains * pricing.mainUsd + expectedCompresses * pricing.compressUsd).toFixed(3), capUsd = +(capMains * pricing.mainCapUsd + compresses * pricing.compressCapUsd).toFixed(3)
   const plan = { schema: 'cfb.traj-plan/1', id: 't' + n, at: new Date().toISOString(), variants: arms, scenarios: fromStates ? [] : scenarios, samples, maxRounds, fork, maxTokens: 8000, storeText,
+    ...(aci !== 'cfb' ? { aci } : {}), ...(toolProtocol !== 'text' ? { toolProtocol } : {}),   // v14.13（DSH 合并）：工具面 / 协议是预注册的一部分（traj-run checkTrajPlan 核对）
     ...(fromStates ? { fromStates } : {}),
     // v4.3 有界续跑：一次批准内按 e 值任意停时规则提前停（判定达成或预算上界），不再每组回来要一次批准
     ...(stop ? { stop: { alpha: DEFAULT_DESIGN_V4.alphaHoldout, minPairs: 4, capUsd, compare: arms.length >= 2 ? { champion: arms.find((a) => a !== 'raw') || arms[1], previous: arms.includes('raw') ? 'raw' : arms[0] } : null, ...stop } } : {}),
@@ -672,7 +673,7 @@ export function buildTrajPlan({ n, arms = ['raw', 'policy:base'], scenarios = TR
     ...(regimeArms.length ? { regimeArms: Object.fromEntries(regimeArms.map((a) => [a, armRegime(a, policyDir)])) } : {}),
     cost: { mains: capMains, compresses, expectedMains, expectedCompresses, expectedUsd, capUsd, pricing, shadow }, holdoutNote: '场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索' }
   plan.digest = evidenceDigest(plan).slice(0, 16)
-  plan.command = `node tools/traj-run.mjs --plan ${path.relative(ROOT, path.join(trajHomeFor(n), 'plan.json'))}${storeText ? ' --store-text' : ''}${fromStates ? ' --from-state ' + fromStates.file : ''}${reuseRaw ? ' --fork-from ' + reuseRaw.file : ''} --variants ${arms.filter((a) => !a.startsWith('policy:')).join(',') || 'raw'}${arms.some((a) => a.startsWith('policy:')) ? ' --policy ' + arms.filter((a) => a.startsWith('policy:')).map((a) => a.slice(7)).join(',') : ''}${fromStates ? '' : ' --only ' + scenarios.join(',')} --samples ${samples} --max-rounds ${maxRounds}${fork ? ' --fork' : ''} --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out ${path.relative(ROOT, trajHomeFor(n))}`
+  plan.command = `node tools/traj-run.mjs --plan ${path.relative(ROOT, path.join(trajHomeFor(n), 'plan.json'))}${aci !== 'cfb' ? ' --aci ' + aci : ''}${toolProtocol !== 'text' ? ' --tool-protocol ' + toolProtocol : ''}${storeText ? ' --store-text' : ''}${fromStates ? ' --from-state ' + fromStates.file : ''}${reuseRaw ? ' --fork-from ' + reuseRaw.file : ''} --variants ${arms.filter((a) => !a.startsWith('policy:')).join(',') || 'raw'}${arms.some((a) => a.startsWith('policy:')) ? ' --policy ' + arms.filter((a) => a.startsWith('policy:')).map((a) => a.slice(7)).join(',') : ''}${fromStates ? '' : ' --only ' + scenarios.join(',')} --samples ${samples} --max-rounds ${maxRounds}${fork ? ' --fork' : ''} --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out ${path.relative(ROOT, trajHomeFor(n))}`
   return plan
 }
 /** v4.3：把 transfer/traj1–3 与 runtime 轨迹的每个修好前轮次导出为可续跑的子状态（零 API）。 */
@@ -732,7 +733,7 @@ export function nextFamily(cov = familyCoverage(), split = null) {
   return [...ids].sort((a, b) => ((cov[b]?.info ?? 0) - (cov[a]?.info ?? 0)) || ((cov[a]?.total || 0) - (cov[b]?.total || 0)) || ((sp[a] === 'holdout' ? 1 : 0) - (sp[b] === 'holdout' ? 1 : 0)) || (ids.indexOf(a) - ids.indexOf(b)))[0]
 }
 export const familyLine = (cov, split = {}) => Object.entries(cov).map(([k, v]) => `${k}${split[k] === 'holdout' ? '[h]' : ''}=${v.total}${v.rawN ? `(raw修好${v.rawSolved}·过地板${v.floorShare ?? '?'}·信息${v.info ?? '?'})` : ''}`).join(' ')
-const designDigest = (plan) => evidenceDigest({ variants: plan.variants, scenarios: plan.scenarios, samples: plan.samples, maxRounds: plan.maxRounds, fork: plan.fork, fromStates: plan.fromStates || null, stop: plan.stop || null, maxTokens: plan.maxTokens }).slice(0, 16)
+const designDigest = (plan) => evidenceDigest({ variants: plan.variants, scenarios: plan.scenarios, samples: plan.samples, maxRounds: plan.maxRounds, fork: plan.fork, fromStates: plan.fromStates || null, stop: plan.stop || null, maxTokens: plan.maxTokens, ...(plan.aci ? { aci: plan.aci } : {}), ...(plan.toolProtocol ? { toolProtocol: plan.toolProtocol } : {}) }).slice(0, 16)
 function cmdPlanTraj(args) {
   const h = loadHistory()
   if (f(args, '--drop')) { const dn = Number(f(args, '--drop')); const t = (h.trajPlans || []).find((x) => x.n === dn); if (!t) throw new Error('no-such-plan:t' + dn); if (t.status !== 'planned') throw new Error('plan-not-droppable:' + t.status); h.trajPlans = h.trajPlans.filter((x) => x.n !== dn); writeJson(HISTORY, h); fs.rmSync(trajHomeFor(dn), { recursive: true, force: true }); console.log(`已撤销未执行的计划 t${dn}`); return }
@@ -764,13 +765,16 @@ function cmdPlanTraj(args) {
     reuseRaw = { file: path.relative(ROOT, abs), rows: rows.length, byTask, at: rows.map((r) => r.at).filter(Boolean).sort()[0] || null, digest: evidenceDigest(rows.map((r) => [r.task, r.sample, r.rounds, r.fixedAtRound])).slice(0, 16), ...(extend ? { extend } : {}) }
   }
   const calHist = costCalibration(h)   // v4.7.3：有回执就按实测 divergeRound / floorShare 再算一遍期望（常数那份照旧写进计划，校准那份并排给操作者看）
-  const plan = buildTrajPlan({ n, arms, reuseRaw, scenarios: perturb ? scenarios.map((x) => x + ':' + perturb) : scenarios, samples: Number(f(args, '--samples') || 1), maxRounds: Number(f(args, '--max-rounds') || 5), fork: !args.includes('--no-fork'), purpose: f(args, '--purpose') || (hasHand ? '模式 1 天花板：hand 臂 = 助手代替副模型手写稿（同一提示词、同一闸链 + G2 决策不变闸）vs raw；量 f(主模型 | 稿) 的上界与「稿该写什么」；hand 永远不采纳为 champion，过闸且修好的稿进金标注册表（gold add）作模式 2 标准' : fromStates ? `子状态续跑（Math-Shepherd 式蒙特卡洛状态价值）：同一分叉点两臂续跑的修好率 / 到修好轮数之差 = 该轮压缩稿价值的原则性定义；${fromStates.count} 个状态来自家族 ${fromStates.families.join('、')}，扩的是家族内配对数，不计入留出家族数` : perturb ? `加难场景（${perturb}：诱饵同名文件 + README 误导，两臂同扰动）：正确下一步不再唯一，考压缩稿能否保住排除项与证据而不是只保住「下一步」` : null), fromStates, stop: args.includes('--stop') ? (Number(f(args, '--cap-usd')) > 0 ? { capUsd: Number(f(args, '--cap-usd')) } : {}) : null })
+  const aci = f(args, '--aci') || 'cfb', toolProtocol = f(args, '--tool-protocol') || 'text'
+  if (!['cfb', 'rl-native'].includes(aci) || !['text', 'native'].includes(toolProtocol)) throw new Error('plan-traj：--aci cfb|rl-native，--tool-protocol text|native')
+  if (aci === 'rl-native' && arms.some((a) => a.startsWith('policy:') || a === 'hand')) throw new Error('plan-traj：aci rl-native 暂只支持 raw / drop / gate / ledger 臂')
+  const plan = buildTrajPlan({ aci, toolProtocol, n, arms, reuseRaw, scenarios: perturb ? scenarios.map((x) => x + ':' + perturb) : scenarios, samples: Number(f(args, '--samples') || 1), maxRounds: Number(f(args, '--max-rounds') || 5), fork: !args.includes('--no-fork'), purpose: f(args, '--purpose') || (hasHand ? '模式 1 天花板：hand 臂 = 助手代替副模型手写稿（同一提示词、同一闸链 + G2 决策不变闸）vs raw；量 f(主模型 | 稿) 的上界与「稿该写什么」；hand 永远不采纳为 champion，过闸且修好的稿进金标注册表（gold add）作模式 2 标准' : fromStates ? `子状态续跑（Math-Shepherd 式蒙特卡洛状态价值）：同一分叉点两臂续跑的修好率 / 到修好轮数之差 = 该轮压缩稿价值的原则性定义；${fromStates.count} 个状态来自家族 ${fromStates.families.join('、')}，扩的是家族内配对数，不计入留出家族数` : perturb ? `加难场景（${perturb}：诱饵同名文件 + README 误导，两臂同扰动）：正确下一步不再唯一，考压缩稿能否保住排除项与证据而不是只保住「下一步」` : null), fromStates, stop: args.includes('--stop') ? (Number(f(args, '--cap-usd')) > 0 ? { capUsd: Number(f(args, '--cap-usd')) } : {}) : null })
   for (const sc of plan.scenarios) { const [id, kind] = sc.split(':'); if (!TRAJ_TASKS.some((t) => t.id === id)) throw new Error('unknown-scenario:' + sc); if (kind && kind !== 'decoy') throw new Error('unknown-perturb:' + kind) }
   plan.design = designDigest(plan)
   if (calHist.receipts.length && plan.cost.shadow) {
     // 校准份：同一设计、常数换成回执实测（divergeRound 取中位数、floorShare 取均值）；只做展示与记录，不改上界
     const pr = { ...TRAJ_UNIT, ...(calHist.suggest.divergeRound != null ? { divergeRound: calHist.suggest.divergeRound } : {}), ...(calHist.suggest.floorShare != null ? { floorShare: calHist.suggest.floorShare } : {}) }
-    const alt = buildTrajPlan({ n, arms, reuseRaw, scenarios: plan.scenarios, samples: plan.samples, maxRounds: plan.maxRounds, fork: plan.fork, pricing: pr, fromStates: plan.fromStates || null, stop: null })
+    const alt = buildTrajPlan({ aci, toolProtocol, n, arms, reuseRaw, scenarios: plan.scenarios, samples: plan.samples, maxRounds: plan.maxRounds, fork: plan.fork, pricing: pr, fromStates: plan.fromStates || null, stop: null })
     plan.cost.calibrated = { receipts: calHist.receipts.length, divergeRound: pr.divergeRound, floorShare: pr.floorShare, expectedMains: alt.cost.expectedMains, expectedCompresses: alt.cost.expectedCompresses, expectedUsd: alt.cost.expectedUsd }
   }
   const dup = (h.trajPlans || []).find((t) => t.design === plan.design && t.status === 'planned' && t.n !== n)
@@ -782,6 +786,9 @@ function cmdPlanTraj(args) {
     `请求：主调用 ≤${plan.cost.mains} + 压缩 ≤${plan.cost.compresses}（上界：每轮都压、第 1 轮就分歧）；期望主 ${plan.cost.expectedMains} + 压缩 ${plan.cost.expectedCompresses}${plan.cost.shadow ? `（${plan.regimeArms && Object.keys(plan.regimeArms).length ? `制度臂 ${Object.keys(plan.regimeArms).join('/')} 第 1 轮就压、第 2 轮起分歧、每轮都压；其余跟随臂` : '影子分叉：跟随臂'}到第 ${plan.cost.pricing.divergeRound} 轮才分歧、原文过地板的轮占 ${plan.cost.pricing.floorShare}${plan.reuseRaw ? (plan.reuseRaw.extend ? `；raw 复用 ${plan.reuseRaw.file} 的前 ${plan.reuseRaw.extend.from} 轮、只付续跑的 ${Math.max(0, plan.maxRounds - plan.reuseRaw.extend.from)} 轮；跟随臂第 ${plan.reuseRaw.extend.firstFloor || plan.reuseRaw.extend.from + 1} 轮分歧、付之后的 ${Math.max(0, plan.maxRounds - (plan.reuseRaw.extend.firstFloor || plan.reuseRaw.extend.from + 1))} 轮` : '；raw 复用自 ' + plan.reuseRaw.file + '，不付') : ''}）` : ''}；**期望实付 ≈ $${plan.cost.expectedUsd}，上界 ≈ $${plan.cost.capUsd}**（max_tokens 8000；常数见 TRAJ_UNIT，首张回执后更新）`,
     `产出（估）：L1 对 ${plan.yield.l1Pairs}、L2 对 ${plan.yield.l2Pairs}、效度对 ≈${plan.yield.validityPairsApprox}、飞轮对 ≈${plan.yield.flywheelPairsApprox}、子状态 ≈${plan.yield.childStatesApprox}`, '', plan.holdoutNote, '', '批准后执行（traj-run 会核对参数与计划一致，跑完写 receipt.json）：', '```', plan.command, '```', '', hasHand ? `回灌：node tools/cfb-cycle.mjs ceiling --plan ${n}   # 模式 1 不走 confirm：hand 不是候选，只量天花板 + 进金标` : `回灌：node tools/cfb-cycle.mjs confirm --plan ${n} --map champion=policy:base,previous=raw   # 或 --parity（auto vs policy:base）`]
   L.push('', `家族覆盖（轨迹数）：${TRAJ_TASKS.map((t) => `${t.id}=${cov[t.id].total}`).join(' ')}；本计划 ${plan.scenarios.length === 1 ? '只跑 ' + plan.scenarios[0] + '，跑完先 `review --plan ' + n + '` 再决定下一个家族' : '批量 ' + plan.scenarios.length + ' 个家族'}`)
+  if (plan.aci || plan.toolProtocol) L.push('', `**工具面 / 协议**：aci=${plan.aci || 'cfb'}（${plan.aci === 'rl-native' ? '官方 harness B 版：RL 训练句 + bash + str_replace_editor 逐字 schema' : '本仓库旧面：中文系统提示 + bash/read_file/edit_file'}），协议=${plan.toolProtocol || 'text'}（${plan.toolProtocol === 'native' ? 'assistant.tool_calls + role:tool' : 'assistant 纯文字 + user「[tool: …]」'}）—— 两臂同面同协议；面本身当变量时要两个计划分别跑（第 1 轮就不同，影子分叉不适用）。`)
+  if (plan.variants.includes('gate')) L.push('', `**gate 臂**：raw + 宿主层事件门禁（act / batch / verify，tools/helpers/host-gates.mjs；user 角色、紧贴最新工具结果注入）。门禁第一次触发那轮起与 raw 分歧（之前影子）；行上记 gates[]。`)
+  if (plan.variants.includes('drop')) L.push('', `**drop 臂**：历史里不带任何思维链（DeepSeek 官方 API 的默认形态）。第 1 轮复用 raw，第 2 轮起自己发；若 drop ≥ raw，cfb 的「压缩」问题整个消失。`)
   if (plan.regimeArms) L.push('', `**制度臂**：${Object.entries(plan.regimeArms).map(([a, k]) => `${a} 改了 ${k.join(' / ')}`).join('；')} —— 这是**换制度**（什么时候压、什么稿放行），不是调稿：第 1 轮就压、第 2 轮起分歧、每轮都压（计费已按此算，不享受影子省钱）；结论只对「制度 vs 制度」成立，稿的内容规格另量。`)
   if (plan.cost.calibrated) L.push('', `**按回执校准**（${plan.cost.calibrated.receipts} 张：divergeRound ${plan.cost.calibrated.divergeRound} / floorShare ${plan.cost.calibrated.floorShare}）：期望主 ${plan.cost.calibrated.expectedMains} + 压缩 ${plan.cost.calibrated.expectedCompresses} ≈ $${plan.cost.calibrated.expectedUsd}；上界不变。`)
   if (plan.reuseRaw?.extend) L.push('', `**延长**：${plan.reuseRaw.file} 里的 raw 被 ${plan.reuseRaw.extend.from} 轮上限截断（最后一轮还在发调用）⇒ raw 从第 ${plan.reuseRaw.extend.from + 1} 轮续跑（前 ${plan.reuseRaw.extend.from} 轮零主调用、仓库由重放恢复）；跟随臂最早在第 ${plan.reuseRaw.extend.firstFloor || plan.reuseRaw.extend.from + 1} 轮${plan.reuseRaw.extend.firstFloor ? '（旧轨迹第一次过地板）' : ''}分歧，之前影子。`)
