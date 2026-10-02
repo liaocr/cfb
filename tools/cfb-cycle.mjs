@@ -26,13 +26,14 @@ import { evidenceDigest } from '../src/evidence-program.js'
 import * as I from '../index.js'
 import { KNOBS, BASELINE_KNOBS, LEVER_ORDER, loadFrozenTasks, generateCandidates, armSummary, renderCandidate, productionGate, productionContext } from './helpers/candidates.mjs'
 import { buildPool, loadExtraTasks, rotateTasks, validateTaskFile, taskDigest, TASK_ID_RE } from './helpers/tasks.mjs'
-import { BASE_POLICY, makePolicy, parseProposal, validatePatches, leakCheck, promptHead, failureEvidence, GEN_ROLES } from './helpers/generation.mjs'
+import { BASE_POLICY, PATCH_LIMITS, makePolicy, parseProposal, validatePatches, leakCheck, promptHead, failureEvidence, GEN_ROLES } from './helpers/generation.mjs'
 import { truthDimensions, truthComposite, truthDelta, TRUTH_DIMENSIONS } from './helpers/truth-dims.mjs'
 import { sequentialPaired, pairResults, expectedBitsNextPair, bitsBought, pairsToDecide, costEstimate, usdPerBit, DEFAULT_DESIGN, DEFAULT_DESIGN_V3, decideV3, betaCdf } from './helpers/experiment.mjs'
 import { prepareEvaluation, reportEvaluation, loadPrepared, DEFAULT_HOME_V9, PUBLIC_RECEIPT_V9, DEFAULT_HOME_GEN, PUBLIC_RECEIPT_GEN, PROFILE_EXAMPLE, ROOT } from './helpers/eval-workflow.mjs'
 import { auditApiPlan, planScope, APPROVED_API_LIMITS_V9, APPROVED_API_LIMITS_GEN } from './helpers/api-budget.mjs'
 import { readWatermark } from './helpers/api-watermark.mjs'
-import { decideV4, rulerValidity, adoptionPolicy, outcomeComparison, episodeOutcome, eValueWins, winsNeeded, DEFAULT_DESIGN_V4 } from './helpers/ruler.mjs'
+import { decideV4, rulerValidity, adoptionPolicy, outcomeComparison, episodeOutcome, eValueWins, winsNeeded, DEFAULT_DESIGN_V4, l1Discrimination, rulerEconomics } from './helpers/ruler.mjs'
+import { TRAJ_TASKS } from './traj-fixtures.mjs'
 import { trainRanker, scoreText } from './helpers/ranker.mjs'
 import { retroValidity } from './helpers/traj-proxy.mjs'
 
@@ -51,6 +52,10 @@ export const RULER_DIR = path.join(OFFLINE, 'ruler')
 export const VALIDITY = path.join(RULER_DIR, 'validity.jsonl')
 export const EXPOSURE = path.join(RULER_DIR, 'exposure.json')
 export const HOLDOUT_MAX_EXPOSURE = 3
+export const PARITY = path.join(RULER_DIR, 'parity.json')
+export const trajHomeFor = (n) => (BASE ? path.join(BASE, 'runtime', 't' + Number(n)) : path.join(ROOT, '.cfb-runtime', 'traj', 't' + Number(n)))
+// 分叉轨迹的单价常数（§7 算术；首张真实回执后应更新）：主调用期望 / 上界（max_tokens 8000），压缩调用期望 / 上界
+export const TRAJ_UNIT = Object.freeze({ mainUsd: 0.0125, mainCapUsd: 0.003 + 8000 * 4e-6, compressUsd: 0.0075, compressCapUsd: 0.005 + 2048 * 4e-6 })
 const readJsonl = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean) : [])
 export const loadFlywheel = () => readJsonl(TRAIN_PAIRS)
 export const loadValidity = () => readJsonl(VALIDITY)
@@ -274,6 +279,7 @@ function cmdPlan(args) {
     writeJson(HISTORY, h)
   }
   let rankerLine = ''
+  if (r.ok) { const ec = rulerEconomics({ validity: rulerValidity(loadValidity().map((x) => ({ proxy: x.proxy, outcome: x.outcome }))) }); rankerLine += `\nL1 角色：${ec.role}${ec.role === 'diagnostic' ? '（效度未证：这一轮 ≈$' + ec.l1.usd + ' 只买到 ≈' + ec.l1.informativePairs + ' 个非平局对、不计入采纳；推荐先 `plan-traj`）' : ''}` }
   if (r.ok && r.hypothesis.lever !== 'A/A') {
     const rk = trainRanker(loadFlywheel())
     if (rk.status === 'ready') { const m = r.pairs.map((p) => { const v = r.plan.variants[p.task]; return v ? scoreText(rk, v.candidate) - scoreText(rk, v.control) : 0 }); rankerLine = `\n排序器预判（CPU，${rk.pairs} 对飞轮，留一 CV ${rk.cvAcc}）：candidate − control 平均 ${(m.reduce((a, b) => a + b, 0) / Math.max(1, m.length)).toFixed(3)}（只是预判，不替代评委；为负时考虑换假设省这一轮）` } else rankerLine = `\n排序器：${rk.status}（${rk.note}）`
@@ -420,16 +426,36 @@ export function confirmFrom({ rows, map = { champion: 'champion', previous: 'pre
   let verdict = 'report-only', championAfter = cf
   if (cf?.adoption === 'provisional') {
     if (cmp.pairs.length < 4 || new Set(cmp.pairs.map((p) => p.task)).size < 2) verdict = 'pending'
-    else if (cmp.e >= 1 / alpha) { verdict = 'confirmed'; championAfter = { ...cf, adoption: 'confirmed', confirmation: { at: now, pairs: cmp.pairs.length, e: cmp.e, champion: cmp.champion, previous: cmp.previous } } }
+    else if (cmp.e >= 1 / alpha) {
+      // v4.2 路径等价闸：策略 champion 的 L2 证据来自 policy: 直连路径，进生产前必须有「auto（生产路径）vs policy:base（直连路径）」的等价校准，否则被测对象 ≠ 目标对象
+      const parity = cf.policy && cf.policy !== 'base' ? readJson(PARITY) : { ok: true, note: 'knob-only champion：无提示词改动，不需路径等价' }
+      if (!parity?.ok) verdict = 'pending-parity'
+      else { verdict = 'confirmed'; championAfter = { ...cf, adoption: 'confirmed', confirmation: { at: now, pairs: cmp.pairs.length, e: cmp.e, champion: cmp.champion, previous: cmp.previous, parity: parity.note || parity.at || null } } }
+    }
     else if (cmp.eReject >= 1 / alpha) { verdict = 'rolled-back'; championAfter = { schema: 'cfb.champion/3', knobs: cf.previous.knobs, policy: cf.previous.policy, adoption: 'confirmed', previous: null, confirmation: null, adopted: (cf.adopted || []).slice(0, -1), rolledBack: [...(cf.rolledBack || []), { at: now, from: { knobs: cf.knobs, policy: cf.policy }, e: cmp.e, eReject: cmp.eReject, pairs: cmp.pairs.length }], at: now } }
     else verdict = 'pending'
   }
   return { cmp, validity, verdict, championBefore: cf, championAfter }
 }
+/** 路径等价校准：rows 里 auto（生产路径）vs policy:base（直连路径）；两者在 L2 上分不出（e 与「更差」e 都 < 阈、≥4 对）且闸通过率相近 ⇒ ok。 */
+export function parityFrom(rows, { a = 'auto', b = 'policy:base', alpha = DEFAULT_DESIGN_V4.alphaHoldout, now = new Date().toISOString() } = {}) {
+  const typed = rows.map((r) => ({ ...r, arm: r.variant === b ? 'champion' : r.variant === a ? 'previous' : null })).filter((r) => r.arm)
+  const cmp = outcomeComparison(typed)
+  const gateRate = (v) => { const cs = rows.filter((r) => r.variant === v).flatMap((r) => (r.compile || []).filter((c) => !c.belowFloor)); return cs.length ? +(cs.filter((c) => c.ok).length / cs.length).toFixed(3) : null }
+  const g = { [a]: gateRate(a), [b]: gateRate(b) }
+  const gateClose = g[a] == null || g[b] == null || Math.abs(g[a] - g[b]) <= 0.2
+  const ok = cmp.pairs.length >= 4 && cmp.e < 1 / alpha && cmp.eReject < 1 / alpha && gateClose
+  return { schema: 'cfb.path-parity/1', at: now, a, b, pairs: cmp.pairs.length, e: cmp.e, eReject: cmp.eReject, gatePass: g, ok, note: ok ? `${a} 与 ${b} 在 L2 上等价（${cmp.pairs.length} 对，e=${cmp.e}/${cmp.eReject}，闸通过率 ${g[a]}/${g[b]}）` : cmp.pairs.length < 4 ? '配对 < 4' : !gateClose ? '闸通过率差 > 0.2：直连路径与生产路径不同口径' : '两条路径在 L2 上分得出：直连路径不是生产路径的忠实代理' }
+}
 function cmdConfirm(args) {
-  const file = f(args, '--results'); if (!file || !fs.existsSync(file)) throw new Error('--results FILE 必填（traj-run 的 results.jsonl 或 JSON 数组）')
+  const planN = f(args, '--plan')
+  const file = f(args, '--results') || (planN ? path.join(trajHomeFor(planN), 'results.jsonl') : null); if (!file || !fs.existsSync(file)) throw new Error('--results FILE 或 --plan N 必填（traj-run 的 results.jsonl 或 JSON 数组）')
   const raw = fs.readFileSync(file, 'utf8').trim()
   const rows = raw.startsWith('[') ? JSON.parse(raw) : raw.split('\n').filter(Boolean).map((l) => JSON.parse(l))
+  if (args.includes('--parity')) {
+    const pr = parityFrom(rows); ensure(RULER_DIR); writeJson(PARITY, pr)
+    console.log(`# 路径等价校准（${pr.ok ? 'ok' : '未通过'}）\n\n${pr.note}\n已写入 ${path.relative(ROOT, PARITY)}`); return
+  }
   const map = Object.fromEntries((f(args, '--map') || 'champion=champion,previous=previous').split(',').map((kv) => kv.split('=')))
   const r = confirmFrom({ rows, map })
   if (r.verdict === 'confirmed' || r.verdict === 'rolled-back') writeJson(CHAMPION, r.championAfter)
@@ -439,7 +465,7 @@ function cmdConfirm(args) {
   const L = ['# L2 端到端结局确认（' + r.verdict + '）', '', '| 臂 | n | 修好率 | 到修好轮数 | 假宣称 | 修好后验收 | 重复 |', '| --- | --- | --- | --- | --- | --- | --- |']
   for (const [k, v] of [['previous', r.cmp.previous], ['champion', r.cmp.champion]]) L.push(`| ${k} | ${v.n} | ${v.solved ?? '—'} | ${v.meanRoundsToFix ?? '—'} | ${v.falseClaims} | ${v.verified} | ${v.repeats} |`)
   L.push('', `配对 ${r.cmp.pairs.length}（${r.cmp.pairs.map((p) => p.task + ':' + p.outcome).join(' ')}）；e=${r.cmp.e}，「更差」e=${r.cmp.eReject}，阈 ${+(1 / DEFAULT_DESIGN_V4.alphaHoldout).toFixed(1)}`)
-  L.push('', r.verdict === 'confirmed' ? '**champion 确认**：L2 结局证实 L1 采纳；`propose` 现在可出生产 diff' : r.verdict === 'rolled-back' ? '**回滚**：L2 结局证伪 L1 采纳，champion 恢复为 previous（L1 尺子对这个方向可能失效，看 `ruler`）' : r.verdict === 'pending' ? '**待定**：L2 配对不够（需 ≥4 对、≥2 题、e ≥ 阈），继续续跑' : '**只报告**：当前 champion 不是 provisional；本次结果只进效度账本')
+  L.push('', r.verdict === 'confirmed' ? '**champion 确认**：L2 结局证实 L1 采纳；`propose` 现在可出生产 diff' : r.verdict === 'pending-parity' ? '**L2 过了、但缺路径等价校准**：策略 champion 的证据来自 policy: 直连路径；先跑一次 auto vs policy:base 并 `confirm --parity --results …`，等价才能 confirmed' : r.verdict === 'rolled-back' ? '**回滚**：L2 结局证伪 L1 采纳，champion 恢复为 previous（L1 尺子对这个方向可能失效，看 `ruler`）' : r.verdict === 'pending' ? '**待定**：L2 配对不够（需 ≥4 对、≥2 题、e ≥ 阈），继续续跑' : '**只报告**：当前 champion 不是 provisional；本次结果只进效度账本')
   if (r.validity.length) L.push('', `效度账本 +${r.validity.length} 对（L1 代理分 ↔ L2 修好）`)
   console.log(L.join('\n'))
 }
@@ -451,13 +477,17 @@ export function rulerReport({ validity = loadValidity(), exposure = loadExposure
   const trajRows = trajDirs.flatMap((d) => readJsonl(path.join(ROOT, 'transfer', d, 'results.jsonl')).map((r) => ({ ...r, dir: d })))
   const baseline = trajRows.length ? outcomeComparison(trajRows.map((r) => ({ ...r, arm: r.variant === 'auto' ? 'champion' : r.variant === 'raw' ? 'previous' : null, sample: `${r.dir}#${r.sample ?? 0}` })).filter((r) => r.arm)) : null
   const retro = trajRows.length ? retroValidity(trajRows) : null
-  // 信息产出 / 美元（估：主调用 ≈ $0.0125、压缩调用 ≈ $0.0075，按 §7 的 token 算术；分叉轨迹 2 臂 × 5 题 × ≤4 轮）
-  const main = 0.0125, comp = 0.0075, tasks = 6, rounds = 4   // 6 = 3 个假仓库场景 × 2 样本（traj-fixtures；与 v9 冻结 5 题是不同分布——对 champion 是更严的泛化测试）
+  const mrRows = ['run1', 'run2', 'run3', 'run4'].flatMap((d) => readJsonl(path.join(ROOT, 'transfer', 'mr', d, 'results.jsonl')).map((r) => ({ ...r, run: d })))
+  const l1 = mrRows.length ? l1Discrimination(mrRows) : null
+  const l2Ties = baseline ? baseline.pairs.filter((p) => p.outcome === 'tie').length / Math.max(1, baseline.pairs.length) : 0.3
+  // 信息产出 / 美元（估）：v9 L1 轮 vs 预注册的默认分叉轨迹计划（buildTrajPlan 同一套常数）
+  const tp = buildTrajPlan({ n: 0 })
   const infoYield = [
-    { unit: 'v9 L1 轮（13 请求，冻结两轮状态）', usd: +(10 * main + 3 * 0.0003).toFixed(3), l1Pairs: tasks, l2Pairs: 0, validityPairs: 0, flywheelPairs: tasks, childStates: 0 },
-    { unit: `分叉全轨迹（2 臂 × 3 场景 × 2 样本 × ≤${rounds} 轮，第 1 轮共用）`, usd: +((tasks * (1 + 2 * (rounds - 1))) * main + (2 * tasks * (rounds - 1)) * comp).toFixed(3), l1Pairs: tasks, l2Pairs: tasks, validityPairs: 2 * tasks * (rounds - 1), flywheelPairs: 2 * tasks * (rounds - 1), childStates: 2 * tasks * (rounds - 2) }
+    { unit: 'v9 L1 轮（13 请求，冻结两轮状态）', usd: +(10 * TRAJ_UNIT.mainUsd + 3 * 0.0003).toFixed(3), l1Pairs: 5, l2Pairs: 0, validityPairs: 0, flywheelPairs: 5, childStates: 0 },
+    { unit: `分叉全轨迹（${tp.variants.join(' vs ')}，${tp.scenarios.length} 场景 × ${tp.samples} 样本 × ≤${tp.maxRounds} 轮，第 1 轮共用）`, usd: tp.cost.expectedUsd, l1Pairs: tp.yield.l1Pairs, l2Pairs: tp.yield.l2Pairs, validityPairs: tp.yield.validityPairsApprox, flywheelPairs: tp.yield.flywheelPairsApprox, childStates: tp.yield.childStatesApprox }
   ].map((r) => ({ ...r, perUsd: { l1: +(r.l1Pairs / r.usd).toFixed(1), l2: +(r.l2Pairs / r.usd).toFixed(1), validity: +(r.validityPairs / r.usd).toFixed(1) } }))
-  return { retro, infoYield, validity: v, policy: pol, exposure: Object.entries(exposure.tasks).map(([task, e]) => ({ task, n: e.n, retire: e.n >= HOLDOUT_MAX_EXPOSURE })), ranker: { status: rk.status, pairs: rk.pairs, cvAcc: rk.cvAcc, top: rk.top || null, note: rk.note }, baseline: baseline ? { trajectories: trajRows.length, raw: baseline.previous, auto: baseline.champion, pairs: baseline.pairs.length, e: baseline.e, eReject: baseline.eReject } : null, alphaTable: [0.1, 0.05].map((a) => ({ alpha: a, threshold: +(1 / a).toFixed(0), straightWins: winsNeeded(a), pStraightUnderNull: +Math.pow(0.5, winsNeeded(a)).toFixed(4), falseAdoptPerHypothesis: a, over6Hypotheses: +(1 - Math.pow(1 - a, 6)).toFixed(3) })) }
+  const economics = rulerEconomics({ validity: v, l1: { tieRate: l1?.tieRate ?? 0.6 }, l2: { usd: tp.cost.expectedUsd, pairs: tp.yield.l2Pairs, tieRate: +l2Ties.toFixed(3), validityPairs: tp.yield.validityPairsApprox } })
+  return { retro, infoYield, l1, economics, validity: v, policy: pol, exposure: Object.entries(exposure.tasks).map(([task, e]) => ({ task, n: e.n, retire: e.n >= HOLDOUT_MAX_EXPOSURE })), ranker: { status: rk.status, pairs: rk.pairs, cvAcc: rk.cvAcc, top: rk.top || null, note: rk.note }, baseline: baseline ? { trajectories: trajRows.length, raw: baseline.previous, auto: baseline.champion, pairs: baseline.pairs.length, e: baseline.e, eReject: baseline.eReject } : null, alphaTable: [0.1, 0.05].map((a) => ({ alpha: a, threshold: +(1 / a).toFixed(0), straightWins: winsNeeded(a), pStraightUnderNull: +Math.pow(0.5, winsNeeded(a)).toFixed(4), falseAdoptPerHypothesis: a, over6Hypotheses: +(1 - Math.pow(1 - a, 6)).toFixed(3) })) }
 }
 function cmdRuler() {
   const r = rulerReport()
@@ -466,10 +496,66 @@ function cmdRuler() {
   console.log('e 值预算：' + r.alphaTable.map((a) => `α=${a.alpha} ⇒ 阈 ${a.threshold}、留出连胜 ${a.straightWins} 场（零效应下走到这条路的概率 ${(a.pStraightUnderNull * 100).toFixed(1)}%；含任意偷看的误采纳上界 ${a.alpha * 100}%/假设，6 个假设 ≤ ${(a.over6Hypotheses * 100).toFixed(0)}%）`).join('；'))
   console.log('留出题曝光：' + (r.exposure.length ? r.exposure.map((e) => `${e.task}×${e.n}${e.retire ? '（应退役）' : ''}`).join(' ') : '尚无判定'))
   console.log(`排序器（CPU，飞轮偏好对）：${r.ranker.status} pairs=${r.ranker.pairs} cvAcc=${r.ranker.cvAcc ?? '—'}${r.ranker.top ? ' top=' + r.ranker.top.map((t) => t.name + ':' + t.w).join(',') : ''}  — ${r.ranker.note}`)
-  if (r.retro) console.log(`回溯效度（执行器代理 ↔ 修好，零 API，${r.retro.steps} 步）：轨迹级 n=${r.retro.trajectory.n}（负例 ${r.retro.trajectory.neg}）AUC=${r.retro.trajectory.auc ?? '—'} ⇒ ${r.retro.trajectory.status}；步级 n=${r.retro.step.n}/${r.retro.step.clusters} 簇 AUC=${r.retro.step.auc ?? '—'} CI=${r.retro.step.ci95 ? r.retro.step.ci95.join('–') : '—'} ⇒ ${r.retro.step.status}；第 2 轮 n=${r.retro.round2.n} AUC=${r.retro.round2.auc ?? '—'} ⇒ ${r.retro.round2.status}；旗标命中率 ${Object.entries(r.retro.flagRates).map(([k, v]) => k + ' ' + v).join(' ')}（next/avoid 接近天花板：这些题上 L1 几乎不区分，区分的是到修好的轮数）`)
+  if (r.retro) {
+    console.log(`回溯效度（执行器代理 ↔ 修好，零 API，${r.retro.steps} 步；主口径 = 步级簇自助）：**步级 n=${r.retro.step.n}/${r.retro.step.clusters} 簇 AUC=${r.retro.step.auc ?? '—'} CI=${r.retro.step.ci95 ? r.retro.step.ci95.join('–') : '—'} ⇒ ${r.retro.step.status}**；第 2 轮 n=${r.retro.round2.n} AUC=${r.retro.round2.auc ?? '—'} ⇒ ${r.retro.round2.status}`)
+    console.log(`  脚注：轨迹级 n=${r.retro.trajectory.n} 的 AUC 点估计 ${r.retro.trajectory.auc ?? '—'} 建立在仅 ${r.retro.trajectory.neg} 条负例上，不足以下任何结论（status ${r.retro.trajectory.status}）；旗标命中率 ${Object.entries(r.retro.flagRates).map(([k, v]) => k + ' ' + v).join(' ')}`)
+  }
+  if (r.l1) console.log(`L1（规格代理，transfer/mr 162 样本）区分度：天花板率（结构分=2）${r.l1.ceilingRate}；raw vs 压缩稿同题同样本 ${r.l1.pairs.win}胜/${r.l1.pairs.loss}负/${r.l1.pairs.tie}平 ⇒ 平局率 ${r.l1.tieRate}；旗标 ${Object.entries(r.l1.flags).map(([k, v]) => k + ' ' + v).join(' ')}`)
+  console.log(`L1 角色判定：**${r.economics.role}** — ${r.economics.why}`)
   console.log('信息产出/美元（估）：' + r.infoYield.map((x) => `${x.unit} ≈ $${x.usd} ⇒ L1 对 ${x.l1Pairs}、L2 对 ${x.l2Pairs}、效度对 ${x.validityPairs}、飞轮对 ${x.flywheelPairs}、子状态 ${x.childStates}（每美元 L1 ${x.perUsd.l1} / L2 ${x.perUsd.l2} / 效度 ${x.perUsd.validity}）`).join('；'))
   if (r.baseline) console.log(`L2 基线（transfer/traj1–3，${r.baseline.trajectories} 条轨迹）：raw 修好率 ${r.baseline.raw.solved} / 到修好 ${r.baseline.raw.meanRoundsToFix} 轮 / 假宣称 ${r.baseline.raw.falseClaims}；auto 修好率 ${r.baseline.auto.solved} / ${r.baseline.auto.meanRoundsToFix} 轮 / 假宣称 ${r.baseline.auto.falseClaims}；同题同样本配对 ${r.baseline.pairs}，e=${r.baseline.e}（auto 更好）/ ${r.baseline.eReject}（auto 更差）⇒ ${r.baseline.e >= 1 / DEFAULT_DESIGN_V4.alphaHoldout ? 'auto 过 α=' + DEFAULT_DESIGN_V4.alphaHoldout + ' 阈' : r.baseline.eReject >= 1 / DEFAULT_DESIGN_V4.alphaHoldout ? 'auto 更差过阈' : '方向支持 auto，但未过 α=' + DEFAULT_DESIGN_V4.alphaHoldout + ' 的任意时刻阈（' + (1 / DEFAULT_DESIGN_V4.alphaHoldout).toFixed(0) + '）'}`)
   console.log('下一步（v4.1 已接通）：`node tools/traj-run.mjs --variants raw --policy base,<champion> --fork --samples 1 --max-rounds 4 --require-fp … --out trajN` ⇒ `confirm --results trajN/results.jsonl --map champion=policy:<id>,previous=policy:base`；每行自带 proxyScore，L2 结局与效度配对同一次付费产出。')
+}
+
+// ── 5c. v4.2：预注册的分叉轨迹计划（付费单位）与零 API 的样例槽策略 ──────────
+export function buildTrajPlan({ n, arms = ['raw', 'policy:base'], scenarios = TRAJ_TASKS.map((t) => t.id), samples = 2, maxRounds = 4, fork = true, purpose = null, pricing = TRAJ_UNIT }) {
+  const groups = scenarios.length * samples, policyArms = arms.filter((a) => a.startsWith('policy:') || a === 'auto').length
+  const mains = fork ? groups * (1 + arms.length * (maxRounds - 1)) : groups * arms.length * maxRounds
+  const compresses = groups * policyArms * maxRounds
+  const expectedUsd = +(mains * pricing.mainUsd + compresses * pricing.compressUsd).toFixed(3), capUsd = +(mains * pricing.mainCapUsd + compresses * pricing.compressCapUsd).toFixed(3)
+  const plan = { schema: 'cfb.traj-plan/1', id: 't' + n, at: new Date().toISOString(), variants: arms, scenarios, samples, maxRounds, fork, maxTokens: 8000,
+    purpose: purpose || '第一次用真实数据检验尺子有效性：在线效度配对（执行器代理 ↔ 修好）+ raw vs 压缩稿的 L2 对 + 用真实回执校准单价常数。若效度仍 suspect / unvalidated，接受本机目前只能当记录仪，不开始按分搜索。',
+    yield: { l1Pairs: groups, l2Pairs: groups, validityPairsApprox: arms.length * groups * (maxRounds - 1), flywheelPairsApprox: policyArms ? groups * (maxRounds - 1) : 0, childStatesApprox: arms.length * groups * Math.max(0, maxRounds - 2) },
+    cost: { mains, compresses, expectedUsd, capUsd, pricing }, holdoutNote: '场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索' }
+  plan.digest = evidenceDigest(plan).slice(0, 16)
+  plan.command = `node tools/traj-run.mjs --plan ${path.relative(ROOT, path.join(trajHomeFor(n), 'plan.json'))} --variants ${arms.filter((a) => !a.startsWith('policy:')).join(',') || 'raw'}${arms.some((a) => a.startsWith('policy:')) ? ' --policy ' + arms.filter((a) => a.startsWith('policy:')).map((a) => a.slice(7)).join(',') : ''} --only ${scenarios.join(',')} --samples ${samples} --max-rounds ${maxRounds}${fork ? ' --fork' : ''} --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out ${path.relative(ROOT, trajHomeFor(n))}`
+  return plan
+}
+function cmdPlanTraj(args) {
+  const h = loadHistory(); const n = Number(f(args, '--n') || Math.max(0, ...(h.trajPlans || []).map((t) => t.n)) + 1)
+  const plan = buildTrajPlan({ n, arms: (f(args, '--arms') || 'raw,policy:base').split(','), scenarios: f(args, '--scenarios') ? f(args, '--scenarios').split(',') : undefined, samples: Number(f(args, '--samples') || 2), maxRounds: Number(f(args, '--max-rounds') || 4), fork: !args.includes('--no-fork'), purpose: f(args, '--purpose') })
+  for (const sc of plan.scenarios) if (!TRAJ_TASKS.some((t) => t.id === sc)) throw new Error('unknown-scenario:' + sc)
+  const home = trajHomeFor(n); ensure(home); writeJson(path.join(home, 'plan.json'), plan)
+  h.trajPlans = (h.trajPlans || []).filter((t) => t.n !== n).concat([{ n, at: plan.at, status: 'planned', digest: plan.digest, expectedUsd: plan.cost.expectedUsd, capUsd: plan.cost.capUsd }]); writeJson(HISTORY, h)
+  const L = [`# 分叉轨迹计划 t${n}（digest ${plan.digest}，未发请求）`, '', `目的：${plan.purpose}`, '', `臂：${plan.variants.join(' vs ')}；场景：${plan.scenarios.join(', ')} × ${plan.samples} 样本；≤${plan.maxRounds} 轮；${plan.fork ? '第 1 轮共用、各臂分叉' : '不分叉'}`,
+    `请求：主调用 ${plan.cost.mains} + 压缩 ${plan.cost.compresses}；**期望实付 ≈ $${plan.cost.expectedUsd}，上界 ≈ $${plan.cost.capUsd}**（max_tokens 8000；常数见 TRAJ_UNIT，首张回执后更新）`,
+    `产出（估）：L1 对 ${plan.yield.l1Pairs}、L2 对 ${plan.yield.l2Pairs}、效度对 ≈${plan.yield.validityPairsApprox}、飞轮对 ≈${plan.yield.flywheelPairsApprox}、子状态 ≈${plan.yield.childStatesApprox}`, '', plan.holdoutNote, '', '批准后执行（traj-run 会核对参数与计划一致，跑完写 receipt.json）：', '```', plan.command, '```', '', `回灌：node tools/cfb-cycle.mjs confirm --plan ${n} --map champion=policy:base,previous=raw   # 或 --parity（auto vs policy:base）`]
+  fs.writeFileSync(path.join(home, 'plan.md'), L.join('\n') + '\n'); console.log(L.join('\n'))
+}
+/** 零 API 生成候选：从飞轮里挑一条赢稿做【风格样例】槽（GEPA/DSPy 式 bootstrapped demo）；过补丁预算 + 泄漏闸才落为策略。 */
+export function exemplarPolicyFromFlywheel({ flywheel = loadFlywheel(), parent = null, pool = loadPool() } = {}) {
+  if (!parent) { try { parent = loadChampionPolicy() } catch { parent = BASE_POLICY } }
+  const dev = pool.tasks.filter((t) => t.split === 'dev')
+  const cands = flywheel.filter((p) => p.split !== 'holdout' && typeof p.chosenText === 'string' && p.chosenText.length >= 200 && p.chosenText.length <= PATCH_LIMITS.maxExemplarChars)
+    .map((p) => ({ ...p, margin: (p.scores?.candidate ?? 0) - (p.scores?.control ?? 0) })).sort((a, b) => Math.abs(b.margin) - Math.abs(a.margin))
+  if (!cands.length) return { ok: false, why: '飞轮里没有 200–' + PATCH_LIMITS.maxExemplarChars + ' 字、非留出题的赢稿' }
+  const tried = []
+  for (const c of cands.slice(0, 5)) {
+    const patches = [{ op: 'exemplar', text: c.chosenText.trim() }]
+    try { validatePatches(patches) } catch (e) { tried.push({ task: c.task, why: e.message }); continue }
+    const leaks = dev.length ? leakCheck(patches, dev, promptHead(dev[0])) : []
+    if (leaks.length) { tried.push({ task: c.task, why: 'leak:' + leaks.slice(0, 3).join(',') }); continue }
+    const pol = makePolicy({ parent, patches, rationale: `样例槽：用第 ${c.round} 轮 ${c.task} 的赢稿（结构分差 ${c.margin}）替换【风格样例】正文；零 API 生成`, prediction: '赢稿示范的形态（路径 / old_text / 下一步动词）比手写样例更贴近真模型读稿后的好动作', origin: { source: 'flywheel-exemplar', round: c.round, task: c.task, margin: c.margin } })
+    return { ok: true, policy: pol, tried }
+  }
+  return { ok: false, why: '前 5 条赢稿都没过补丁预算 / 泄漏闸', tried }
+}
+function cmdPolicyFromFlywheel() {
+  const r = exemplarPolicyFromFlywheel()
+  if (!r.ok) { console.log('未生成：' + r.why + (r.tried?.length ? '\n' + r.tried.map((t) => `  ${t.task}: ${t.why}`).join('\n') : '')); process.exitCode = 2; return }
+  ensure(POLICIES); const pf = path.join(POLICIES, r.policy.id + '.json')
+  if (fs.existsSync(pf)) { console.log('已存在：' + r.policy.id); return }
+  writeJson(pf, r.policy); console.log(`策略 ${r.policy.id}（parent ${r.policy.parent}，op exemplar，零 API）已落 ${path.relative(ROOT, pf)}；下一步 compile --policy ${r.policy.id} 或直接作为 traj 臂 policy:${r.policy.id}` + (r.tried.length ? '\n跳过：' + r.tried.map((t) => `${t.task}(${t.why})`).join(' ') : ''))
 }
 
 // ── 6. status / doctor / simulate ───────────────────────────────────────────
@@ -717,7 +803,9 @@ const HELP = `cfb-cycle（闭环 v4：e 值采纳 + L2 结局确认；v2/v3 命�
   compile  --policy ID [--tasks a,b] | --mint ID   [--gen N]                      冻结按策略重压 side / 铸造件压稿的计划（≤8 请求）
   mint     --step a --scenario FILE | --step b --id ID   [--gen N]                冻结铸造新题的计划（u1→a1；人补 u2 后 a1+u2→a2）
   ingest-gen --gen N [--report FILE]                                             回灌生成计划：策略文件 / side / 铸造件（三闸：预算、泄漏、可应用）
-  confirm  --results FILE [--map champion=<variant>,previous=<variant>]            v4：L2 端到端结局（traj-run 行）确认 / 回滚 provisional champion；带 proxyScore 的行进效度账本
+  confirm  --results FILE | --plan N [--map champion=<v>,previous=<v>] [--parity]  v4：L2 结局确认 / 回滚 provisional champion；--parity = auto vs policy:base 路径等价校准
+  plan-traj [--arms raw,policy:base] [--scenarios a,b] [--samples 2] [--max-rounds 4] [--purpose 文字]   v4.2：冻结分叉轨迹计划（付费单位；期望 / 上界成本，traj-run --plan 核对）
+  policy-from-flywheel                                                           v4.2：零 API 从飞轮赢稿生成【风格样例】槽策略（过预算 + 泄漏闸）
   ruler                                                                          v4：尺子效度（AUC+CI）/ 采纳规则 / e 值预算 / 留出曝光 / CPU 排序器 / L2 基线
   policies | status | doctor | simulate [--p 0.7] [--rounds 5]
 杠杆（v3 顺序，低风险在前）：${LEVER_ORDER_V3.map((l) => l + '{' + KNOBS[l].values.join('|') + '}').join(' ')}  + policy=<已编译策略>
@@ -729,6 +817,8 @@ function main() {
   else if (cmd === 'propose') cmdPropose(args)
   else if (cmd === 'confirm') cmdConfirm(args)
   else if (cmd === 'ruler') cmdRuler()
+  else if (cmd === 'plan-traj') cmdPlanTraj(args)
+  else if (cmd === 'policy-from-flywheel') cmdPolicyFromFlywheel()
   else if (cmd === 'propose-policy') cmdProposePolicy(args)
   else if (cmd === 'compile') cmdCompile(args)
   else if (cmd === 'mint') cmdMint(args)

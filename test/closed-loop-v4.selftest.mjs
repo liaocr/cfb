@@ -10,7 +10,9 @@ import { eValueWins, winsNeeded, decideV4, DEFAULT_DESIGN_V4, episodeOutcome, au
 import { decideV3 } from '../tools/helpers/experiment.mjs'
 import { trainRanker, rankCandidates, features, FEATURE_NAMES, MIN_PAIRS } from '../tools/helpers/ranker.mjs'
 import { stepFlags, proxyPairs, retroValidity } from '../tools/helpers/traj-proxy.mjs'
-import { runOne, loadPolicyFor, policyCompressBody } from '../tools/traj-run.mjs'
+import { runOne, loadPolicyFor, policyCompressBody, checkTrajPlan } from '../tools/traj-run.mjs'
+import { l1Discrimination, rulerEconomics } from '../tools/helpers/ruler.mjs'
+import { applyPolicyToPrompt, validatePatches, basePrompt } from '../tools/helpers/generation.mjs'
 import { TRAJ_TASKS } from '../tools/traj-fixtures.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -102,6 +104,53 @@ try {
     assert.deepEqual(a.proxySteps.map((s) => s.score), [2, 2, 0]); assert.equal(a.proxyScore, 1.333); assert.equal(a.proxyRound2, 2); assert.equal(a.claim, 'fixed'); assert.equal(a.fixed, false); assert.ok(a.firstMessage)
     const b = await runOne({ o, task, variant: 'policy:base', sample: 0, chat, I, cred: null, forkMessage: a.firstMessage }); assert.equal(b.forked, true); assert.equal(b.transcript[0].calls[0].name, 'read_file'); assert.equal(mains, 5, '2 臂 × 3 轮 − 1 次分叉复用'); assert.equal(compresses, 6)
     fs.rmSync(tmp, { recursive: true, force: true })
+  })
+  await test('A9 L1 值不值得存在（v4.2）：transfer/mr 162 样本天花板率 0.83、raw vs 压缩稿平局率 0.6；尺子未验 ⇒ role=diagnostic；valid 且更便宜 ⇒ prescreen；不更便宜 ⇒ redundant', () => {
+    const rows = ['run1', 'run2', 'run3', 'run4'].flatMap((d) => fs.readFileSync(path.join(ROOT, 'transfer', 'mr', d, 'results.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => ({ ...JSON.parse(l), run: d })))
+    const d = l1Discrimination(rows); assert.equal(d.n, 162); assert.equal(d.ceilingRate, 0.827); assert.deepEqual(d.pairs, { win: 8, loss: 4, tie: 18 }); assert.equal(d.tieRate, 0.6)
+    const e0 = rulerEconomics({ validity: { status: 'unvalidated' }, l1: { tieRate: d.tieRate } }); assert.equal(e0.role, 'diagnostic'); assert.equal(e0.l1.adoptionGradePerUsd, 0); assert.equal(e0.l1.informativePairs, 2)
+    assert.equal(rulerEconomics({ validity: { status: 'valid' }, l1: { tieRate: d.tieRate } }).role, 'prescreen'); assert.equal(rulerEconomics({ validity: { status: 'valid' }, l1: { tieRate: 0.97 } }).role, 'redundant')
+  })
+  await test('A10 样例槽（v4.2，零 API 生成器）：op exemplar 替换【风格样例】正文；预算 / 长度闸；traj 计划参数核对拒绝不一致运行', async () => {
+    const I = await import('../index.js'); const task = { chain: { a2: { raw: '我需要先看配置。'.repeat(30) } }, ctx: '【当前任务】x' }
+    const ex = '先核对 lib/store.js 的 save：它直接 writeFileSync 到用户目录，EACCES 来自目录权限而非文件；old_text 逐字取第 12 行；下一步 ls -ld 确认 owner，再决定 chown 还是改路径。'
+    const p0 = basePrompt(task), p1 = applyPolicyToPrompt(p0, { patches: [{ op: 'exemplar', text: ex }] })
+    assert.ok(p1.includes(ex) && p1.includes('【风格样例】') && p1.length < p0.length && p1.includes('【当前任务与观察】'))
+    assert.equal(validatePatches([{ op: 'exemplar', text: ex }]), true); assert.throws(() => validatePatches([{ op: 'exemplar', text: '短' }]), /exemplar-text/); assert.throws(() => validatePatches([{ op: 'exemplar', text: 'x'.repeat(1300) }]), /exemplar-size/)
+    const plan = { schema: 'cfb.traj-plan/1', id: 't1', digest: 'd', variants: ['raw', 'policy:base'], scenarios: ['eacces-config', 'flaky-timeout'], samples: 2, maxRounds: 4, fork: true }
+    assert.ok(checkTrajPlan(plan, { variants: ['raw', 'policy:base'], only: ['flaky-timeout', 'eacces-config'], samples: 2, maxRounds: 4, fork: true }).ok)
+    assert.throws(() => checkTrajPlan(plan, { variants: ['raw', 'policy:base'], only: ['eacces-config'], samples: 2, maxRounds: 4, fork: true }), /traj-plan-mismatch:only/)
+    assert.throws(() => checkTrajPlan(plan, { variants: ['raw', 'auto'], only: plan.scenarios, samples: 2, maxRounds: 6, fork: true }), /variants.*maxRounds|maxRounds.*variants|traj-plan-mismatch/)
+  })
+  await test('A11 端到端（v4.2）：plan-traj 冻结计划（期望 / 上界成本、目的）→ 策略 champion 的 L2 确认被路径等价闸挡下（pending-parity）→ confirm --parity 通过后 confirmed；policy-from-flywheel 零 API 落策略', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-v42-')); const env = { ...process.env, CFB_CYCLE_DIR: tmp }
+    const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), ...a], { cwd: ROOT, env, encoding: 'utf8' })
+    try {
+      const pt = cli('plan-traj'); assert.equal(pt.status, 0, pt.stdout + pt.stderr); assert.ok(/期望实付 ≈ \$0\.705，上界 ≈ \$1\.787/.test(pt.stdout) && /检验尺子有效性/.test(pt.stdout) && /traj-run\.mjs --plan/.test(pt.stdout), pt.stdout)
+      const plan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/t1/plan.json'), 'utf8')); assert.equal(plan.schema, 'cfb.traj-plan/1'); assert.equal(plan.cost.mains, 42); assert.equal(plan.cost.compresses, 24); assert.ok(!fs.existsSync(path.join(tmp, 'receipts')))
+      assert.notEqual(cli('plan-traj', '--scenarios', 'nope').status, 0)
+      // 策略 champion（provisional）+ L2 champion 更好 ⇒ 没有路径等价校准时只能 pending-parity
+      fs.mkdirSync(path.join(tmp, 'offline'), { recursive: true })
+      fs.writeFileSync(path.join(tmp, 'offline/champion.json'), JSON.stringify({ schema: 'cfb.champion/3', knobs: {}, policy: 'p-abc', adoption: 'provisional', previous: { knobs: {}, policy: 'base' }, adopted: [{ round: 1, lever: 'policy', value: 'p-abc' }] }))
+      const l2 = []; for (const t of ['eacces-config', 'flaky-timeout', 'perf-regression']) for (const smp of [0, 1]) { l2.push({ task: t, variant: 'policy:p-abc', sample: smp, fixed: true, fixedAtRound: 2, rounds: 3, claim: 'fixed', verifiedAfterFix: true, proxyScore: 2 }); l2.push({ task: t, variant: 'policy:base', sample: smp, fixed: smp === 0, fixedAtRound: smp === 0 ? 4 : null, rounds: 4, claim: 'none', proxyScore: 1 }) }
+      fs.writeFileSync(path.join(tmp, 'l2.json'), JSON.stringify(l2))
+      const c1 = cli('confirm', '--results', path.join(tmp, 'l2.json'), '--map', 'champion=policy:p-abc,previous=policy:base'); assert.equal(c1.status, 0, c1.stdout + c1.stderr); assert.ok(/pending-parity/.test(c1.stdout) && /路径等价/.test(c1.stdout), c1.stdout)
+      assert.equal(JSON.parse(fs.readFileSync(path.join(tmp, 'offline/champion.json'), 'utf8')).adoption, 'provisional')
+      // 等价校准：auto vs policy:base 全平 ⇒ ok
+      const par = []; for (const t of ['eacces-config', 'flaky-timeout']) for (const smp of [0, 1]) for (const v of ['auto', 'policy:base']) par.push({ task: t, variant: v, sample: smp, fixed: true, fixedAtRound: 3, rounds: 3, claim: 'fixed', verifiedAfterFix: true, compile: [{ ok: true }, { ok: true }] })
+      fs.writeFileSync(path.join(tmp, 'par.json'), JSON.stringify(par))
+      const c2 = cli('confirm', '--parity', '--results', path.join(tmp, 'par.json')); assert.equal(c2.status, 0, c2.stdout + c2.stderr); assert.ok(/路径等价校准（ok）/.test(c2.stdout), c2.stdout)
+      const c3 = cli('confirm', '--results', path.join(tmp, 'l2.json'), '--map', 'champion=policy:p-abc,previous=policy:base'); assert.ok(/（confirmed）/.test(c3.stdout), c3.stdout)
+      assert.equal(JSON.parse(fs.readFileSync(path.join(tmp, 'offline/champion.json'), 'utf8')).adoption, 'confirmed')
+      // 飞轮样例槽：无飞轮 ⇒ 退出码 2；有一条通用赢稿 ⇒ 落策略（op exemplar）
+      assert.equal(cli('policy-from-flywheel').status, 2)
+      fs.mkdirSync(path.join(tmp, 'offline/train'), { recursive: true })
+      const generic = '上一轮已把保存路径改到用户可写目录；先逐字核对被改文件的 old_text 是否仍存在，再跑一次验收命令确认报错消失；若仍 EACCES，下一步查目录 owner 而不是再改代码。'.repeat(3)
+      fs.writeFileSync(path.join(tmp, 'offline/train/pairs.jsonl'), JSON.stringify({ schema: 'cfb.pref-pair/1', round: 2, task: 'flaky-timeout', split: 'dev', chosenText: generic, rejectedText: '也许修好了。', scores: { candidate: 2, control: 0 } }) + '\n')
+      const pf = cli('policy-from-flywheel'); assert.equal(pf.status, 0, pf.stdout + pf.stderr); assert.match(pf.stdout, /op exemplar/)
+      const pols = fs.readdirSync(path.join(tmp, 'offline/policies')); assert.equal(pols.length, 1); const pol = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/policies', pols[0]), 'utf8')); assert.equal(pol.patches[0].op, 'exemplar'); assert.equal(pol.origin.source, 'flywheel-exemplar'); assert.equal(pol.status, 'proposed')
+      const ru = cli('ruler'); assert.ok(/效度.*valid  n=24/.test(ru.stdout) && /L1 角色判定：\*\*prescreen\*\*/.test(ru.stdout) && /脚注：轨迹级/.test(ru.stdout) && /天花板率（结构分=2）0\.827/.test(ru.stdout), ru.stdout)
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
   })
   await test('E1 端到端：adopt-provisional → propose 被拒 → confirm（L2 更差）⇒ rolled-back 恢复 previous → 曝光记账 → ruler/status 可读', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-v4-'))

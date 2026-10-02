@@ -17,7 +17,7 @@ export const POLICY_SCHEMA = 'cfb.policy/1'
 export const GEN_SCHEMA = 'cfb.generation/1'
 export const GEN_ROLES = Object.freeze(['compile', 'propose', 'mint-a', 'mint-b'])
 export const BASE_POLICY = Object.freeze({ schema: POLICY_SCHEMA, id: 'base', parent: null, base: 'compress-v4d9', patches: [], rationale: '生产现状（src/prompts.js buildCompressPromptV4Direct）', status: 'adopted', sides: {} })
-export const PATCH_LIMITS = Object.freeze({ maxPatches: 3, maxAddedChars: 900, maxReplaceChars: 400 })
+export const PATCH_LIMITS = Object.freeze({ maxPatches: 3, maxAddedChars: 900, maxReplaceChars: 400, maxExemplarChars: 1200 })
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex')
 export const policyId = (policy) => 'p-' + sha(JSON.stringify({ parent: policy.parent || null, patches: policy.patches || [] })).slice(0, 10)
 
@@ -43,6 +43,12 @@ export function applyPolicyToPrompt(prompt, policy) {
       const n = p.split(patch.from).length - 1
       if (n !== 1) throw new Error('policy-patch:' + i + ':from-occurs-' + n)
       p = p.replace(patch.from, patch.to)
+    } else if (patch.op === 'exemplar') {
+      // v4.2 样例槽：把【风格样例】段的正文换成飞轮里赢过的稿（数据直接变成策略，不经人手）；段标题行保留，正文到下一个空行为止
+      if (typeof patch.text !== 'string' || patch.text.trim().length < 40) throw new Error('policy-patch:' + i + ':exemplar-text')
+      const m = p.match(/【风格样例】[^\n]*\n([\s\S]*?)(?=\n\n|$)/)
+      if (!m) throw new Error('policy-patch:' + i + ':exemplar-anchor')
+      p = p.replace(m[1], patch.text.trim())
     } else throw new Error('policy-patch:' + i + ':op')
   }
   return p
@@ -54,6 +60,7 @@ export function validatePatches(patches) {
   for (const x of patches) {
     if (x.op === 'append') { if (!['rules', 'tail'].includes(x.section)) throw new Error('policy-patch-section'); added += String(x.text || '').length }
     else if (x.op === 'replace') { if (String(x.from).length > PATCH_LIMITS.maxReplaceChars || String(x.to).length > PATCH_LIMITS.maxReplaceChars) throw new Error('policy-patch-replace-size'); added += Math.max(0, String(x.to).length - String(x.from).length) }
+    else if (x.op === 'exemplar') { if (String(x.text || '').length > PATCH_LIMITS.maxExemplarChars) throw new Error('policy-patch-exemplar-size'); if (String(x.text || '').trim().length < 40) throw new Error('policy-patch-exemplar-text') }   // 样例槽替换不计入新增字数（替换同长度量级的样例正文）
     else throw new Error('policy-patch-op')
   }
   if (added > PATCH_LIMITS.maxAddedChars) throw new Error('policy-patches-too-long:' + added)
@@ -62,7 +69,7 @@ export function validatePatches(patches) {
 /** 泄漏闸：补丁里的强记号若只出现在 dev 题（u1/u2/raw/followup/spec）而不在基础提示词里 ⇒ 泄漏。 */
 const TOKEN_RE = /[A-Za-z_][\w./-]{3,}|\d{3,}/g
 export function leakCheck(patches, devTasks, prompt) {
-  const text = patches.map((p) => (p.op === 'append' ? p.text : p.to)).join('\n')
+  const text = patches.map((p) => (p.op === 'append' || p.op === 'exemplar' ? p.text : p.to)).join('\n')
   const toks = new Set((text.match(TOKEN_RE) || []).map((t) => t.toLowerCase()))
   const base = (String(prompt).match(TOKEN_RE) || []).map((t) => t.toLowerCase())
   const baseSet = new Set(base)

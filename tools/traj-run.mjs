@@ -42,6 +42,9 @@ function parseArgs(argv) {
     else if (a === '--policy') { for (const id of v().split(',')) o.variants.push('policy:' + id) }
     else if (a === '--policy-dir') o.policyDir = v()
     else if (a === '--fork') o.fork = true
+    else if (a === '--plan') o.plan = v()
+    else if (a === '--max-tokens') o.maxTokens = Number(v())
+    else if (a === '--no-gate') o.noGate = true
     else throw new Error('未知参数 ' + a)
   }
   o.variants = [...new Set(o.variants)]
@@ -56,6 +59,15 @@ export function loadPolicyFor(variant, policyDir) {
   const file = path.join(dir, id + '.json')
   if (!fs.existsSync(file)) throw new Error('policy-not-found:' + id + '（' + file + '）')
   return JSON.parse(fs.readFileSync(file, 'utf8'))
+}
+/** --plan：预注册的分叉轨迹计划（cfb-cycle plan-traj 冻结）。运行参数必须与计划一致，否则拒绝；跑完写回执 receipt.json。 */
+export function checkTrajPlan(plan, o) {
+  if (!plan || plan.schema !== 'cfb.traj-plan/1') throw new Error('traj-plan-schema')
+  const want = { variants: [...plan.variants].sort().join(','), samples: plan.samples, maxRounds: plan.maxRounds, fork: !!plan.fork, only: (plan.scenarios || []).slice().sort().join(',') }
+  const have = { variants: [...o.variants].sort().join(','), samples: o.samples, maxRounds: o.maxRounds, fork: !!o.fork, only: (o.only || []).slice().sort().join(',') }
+  const diff = Object.keys(want).filter((k) => String(want[k]) !== String(have[k]))
+  if (diff.length) throw new Error('traj-plan-mismatch:' + diff.map((k) => `${k} plan=${want[k]} run=${have[k]}`).join('; '))
+  return { ok: true, digest: plan.digest }
 }
 /** 策略压缩请求体（与 generation.compressorBody 同口径：temperature 0、thinking on、max_tokens 2048）。 */
 export function policyCompressBody({ I, model, reasoning, ctx, policy }) {
@@ -206,7 +218,13 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         // v4.1 策略变体：生产 v4 提示词 + 策略补丁，直连同一通道；两臂（policy:base vs policy:<id>）同路径 ⇒ 差异只来自补丁
         const callsBlock = I.turnCallsBlock(calls); const ctx = I.buildCompressCtx(messages) + (callsBlock ? '\n\n' + callsBlock : '')
         const t0 = Date.now()
-        try { const g = await chat(policyCompressBody({ I, model: o.model, reasoning, ctx, policy })); const txt = responseText(g.message); if (!txt || txt.length < 80) throw new Error('empty-compress'); stored = txt; compileInfo = { ok: true, ms: Date.now() - t0, rawChars: reasoning.length, outChars: txt.length, policy: policy.id, gate: null } }
+        try {
+          const g = await chat(policyCompressBody({ I, model: o.model, reasoning, ctx, policy })); const txt = responseText(g.message); if (!txt || txt.length < 80) throw new Error('empty-compress')
+          // v4.2：过生产同一道闸（compileV4Direct：长度包络 / 无发明标识符 / 三元组保留）；闸不过 ⇒ 与生产 birth 一样原文放行（distill-failed）
+          const gate = o.noGate ? { ok: true, stats: null, text: txt } : I.compileV4Direct(txt, reasoning, { compressCtx: ctx })
+          if (gate.ok) { stored = gate.text || txt; compileInfo = { ok: true, ms: Date.now() - t0, rawChars: reasoning.length, outChars: stored.length, policy: policy.id, gate: gate.stats || null } }
+          else { stored = reasoning; compileInfo = { ok: false, gateFail: true, reason: gate.reason, ms: Date.now() - t0, rawChars: reasoning.length, policy: policy.id, gate: gate.stats || null } }
+        }
         catch (e) { compileInfo = { ok: false, ms: Date.now() - t0, rawChars: reasoning.length, policy: policy.id, error: String(e && e.message || e).slice(0, 120) } }
         rec.compile.push(compileInfo)
       }
@@ -295,6 +313,8 @@ async function main(argv) {
   const resPath = path.join(o.out, 'results.jsonl')
   const done = fs.existsSync(resPath) ? fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []
   const have = new Set(done.filter((r) => !r.error).map((r) => `${r.task}|${r.variant}|${r.sample}`))
+  let plan = null
+  if (o.plan) { plan = JSON.parse(fs.readFileSync(o.plan, 'utf8')); checkTrajPlan(plan, o); console.log(`按预注册计划 ${plan.id}（digest ${plan.digest}，预估 ≈$${plan.cost?.expectedUsd}，上界 ≈$${plan.cost?.capUsd}）运行；目的：${plan.purpose}`) }
   if (!o.summarizeOnly) {
     const apiKey = process.env.DEEPSEEK_API_KEY; if (!apiKey) throw new Error('需要 DEEPSEEK_API_KEY')
     const I = await import('../index.js')
@@ -326,6 +346,7 @@ async function main(argv) {
   const last = new Map(); for (const r of all) { const k = `${r.task}|${r.variant}|${r.sample}`; if (!last.has(k) || !r.error) last.set(k, r) }
   const md = summarizeTraj([...last.values()])
   fs.writeFileSync(path.join(o.out, 'summary.md'), md + '\n')
+  if (plan) { const rows = [...last.values()]; fs.writeFileSync(path.join(o.out, 'receipt.json'), JSON.stringify({ schema: 'cfb.traj-receipt/1', plan: plan.id, digest: plan.digest, at: new Date().toISOString(), trajectories: rows.length, errors: rows.filter((r) => r.error).length, mainCalls: rows.reduce((a, r) => a + (r.rounds || 0), 0), compressCalls: rows.reduce((a, r) => a + (r.compile || []).filter((c) => !c.belowFloor).length, 0), promptTokens: rows.reduce((a, r) => a + (r.promptTokens || 0), 0), gateFails: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.gateFail).length, 0) }, null, 2) + '\n') }
   console.log('\n' + md)
 }
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) main(process.argv.slice(2)).catch((e) => { console.error(e && e.stack || e); process.exit(1) })

@@ -2,7 +2,16 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
-## −4. 当前状态（2026-10-02，第二十四会话：v4.1 分叉全轨迹 / 执行器代理 / 回溯效度，零花费）
+## −5. 当前状态（2026-10-02，第二十五会话：v4.2 —— L1 是诊断不是尺子；路径等价闸；plan-traj；样例槽）
+
+- 更正呈现：回溯效度主口径 = 步级簇自助 AUC 0.70（0.56–0.89）suspect；0.944 只是 3 条负例上的点估计，**不要引用**。效度账本（前瞻）n=0。
+- L1 角色由数据判：mr 162 样本天花板率 0.827、raw vs 压缩稿平局率 0.60 ⇒ `rulerEconomics` = **diagnostic**（v9 轮 $0.126 ≈2 个非平局对、0 计入采纳）。valid 后才可能 prescreen。`plan` 每次打印角色。
+- 路径等价：policy: 路径已过生产 `compileV4Direct` 闸；策略 champion 还需 `confirm --parity`（auto vs policy:base）否则 `pending-parity`。
+- 付费单位：`plan-traj` 冻结计划（raw vs policy:base，3×2×≤4，主 42 + 压缩 24，期望 ≈$0.705 / 上界 ≈$1.79），`traj-run --plan` 核对 + receipt.json。目的 = 检验尺子；suspect 则本机只是记录仪。
+- 生成器：`op exemplar` + `policy-from-flywheel`（零 API）。
+- 验证：v4 12/0、v3 16/0、closed-loop 25/0、N1–N7=0。本地提交未推送。
+
+## −4. 上一状态（2026-10-02，第二十四会话：v4.1 分叉全轨迹 / 执行器代理 / 回溯效度，零花费）
 
 - 第三轮评审：v4 设计过审、实现未闭环（L2 接不上 policy、效度 n=0、留出会先耗尽、首付顺序错）。v4.1 全部零 API 修：`traj-run --policy base,<id> --fork`（变体 `policy:<id>`，第 1 轮共用、各臂分叉；每行带 proxySteps/proxyScore）→ `confirm --results trajN/results.jsonl --map champion=policy:<id>,previous=policy:base`。
 - `traj-proxy.mjs`：执行器六旗标从历史 transcript 重算 ⇒ 回溯效度：轨迹级 21 对 AUC 0.944 但负例仅 3 ⇒ unvalidated；步级 67/21 簇 AUC 0.70 suspect；next/avoid ≈ 天花板 ⇒ L1 在这些题上几乎不区分，roundsToFix 才区分。`rulerValidity` 加 minPerClass=5。

@@ -4,6 +4,16 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.6.0（2026-10-02，闭环 v4.2：L1 角色由数据判 / 路径等价闸 / 付费单位预注册 / 样例槽生成器；仍零花费）
+
+- **起因**：第四轮评审：上一版把「账本 n=0→111」打 ✅ 而效度仍 unvalidated（呈现不诚实）；AUC 0.944 不该放显眼处；六旗标接近天花板 ⇒ 要重新论证 L1 还值不值得存在；`policy:` 路径跳过生产闸 ⇒ 被测对象 ≠ 目标对象；生成器侧无新东西。
+- **呈现更正**：`ruler` 与设计文档改为步级簇自助 AUC 0.70（0.56–0.89）suspect 为主口径；轨迹级 0.944 降为脚注并标「仅 3 条负例，不要引用」。
+- **L1 角色判定（数据）**：`ruler.mjs l1Discrimination`：transfer/mr 162 样本天花板率 0.827，raw vs 压缩稿 8/4/18 ⇒ 平局率 0.60；`rulerEconomics`：尺子未验 ⇒ `diagnostic`（v9 轮 $0.126 只买 ≈2 个非平局对且不计入采纳）；valid 且更便宜 ⇒ `prescreen`；否则 `redundant`。`plan` 打印角色。
+- **路径等价闸**：`traj-run` 的 policy: 路径过生产 `compileV4Direct` 闸（不过 ⇒ 原文放行，记 gateFail；`--no-gate` 可关）；`confirm --parity`（auto vs policy:base）写 `offline/ruler/parity.json`；策略 champion 无等价校准 ⇒ `pending-parity`。
+- **付费单位预注册**：`cfb-cycle plan-traj`（期望 ≈$0.705 / 上界 ≈$1.79，目的 = 检验尺子有效性）；`traj-run --plan` 核对参数、写 `receipt.json`；`--max-tokens` 参数；`confirm --plan N`。
+- **生成器**：`op: exemplar`（样例槽，≤1200 字，过泄漏闸）；`policy-from-flywheel` 零 API 从飞轮赢稿落策略。
+- 验证：closed-loop-v4 12/0；v3 16/0（E2 补路径等价步骤）；closed-loop 25/0；全量 / manifest 见提交；N1–N7=0；API 实付 $0。本地提交未推送。
+
 ## v14.5.0（2026-10-02，闭环 v4.1：分叉全轨迹 + 执行器代理 + 回溯效度 —— 一次付费喂五本账；仍零花费）
 
 - **起因**：第三轮评审：v4「设计通过审计，实现未完成」——L2 执行器接不上 policy ⇒ 效度账本 n=0；留出 2 题会先于扩池被曝光退役耗尽；首付若跑 raw vs auto 喂不进效度账本。用户要求：在现架构下尽量省、让信息利用率高起来。

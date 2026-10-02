@@ -360,6 +360,8 @@ v3 的三处无依据被换掉：① 尺子分三层——L1 下一步结构分�
 node tools/cfb-cycle.mjs ruler                       # 尺子效度 / 采纳规则 / e 值预算 / 曝光 / 排序器 / L2 基线（零 API）
 node tools/cfb-cycle.mjs confirm --results FILE --map champion=auto,previous=raw   # L2 结局确认 / 回滚
 node tools/cfb-cycle.mjs propose [--allow-provisional]
+node tools/cfb-cycle.mjs plan-traj                    # v4.2：冻结付费单位（期望/上界成本、目的）；traj-run --plan 核对；confirm --plan N [--parity]
+node tools/cfb-cycle.mjs policy-from-flywheel         # v4.2：零 API 样例槽策略
 # v4.1：付费单位 = 分叉全轨迹（第 1 轮共用，各策略臂分叉；每行自带 proxyScore）→ 同一次付费喂 L1/L2/效度/飞轮
 node tools/traj-run.mjs --variants raw --policy base,<champion> --fork --samples 2 --max-rounds 4 --require-fp --base-url … --model … --out traj4
 ```

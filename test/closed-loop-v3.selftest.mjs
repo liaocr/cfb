@@ -260,9 +260,13 @@ try {
       // L2 确认：traj-run 风格的结局行（champion 修得更快）⇒ confirmed；带 proxyScore 的行进效度账本
       const l2 = []; for (const t of ['eacces-config', 'wrong-model', 'flaky-timeout']) for (const smp of [0, 1]) { l2.push({ task: t, variant: 'champ', sample: smp, fixed: true, fixedAtRound: 2, rounds: 3, claim: 'fixed', verifiedAfterFix: true, proxyScore: 3 }); l2.push({ task: t, variant: 'prev', sample: smp, fixed: smp === 0, fixedAtRound: smp === 0 ? 4 : null, rounds: 5, claim: 'fixed', verifiedAfterFix: false, proxyScore: smp === 0 ? 1 : 0 }) }
       fs.writeFileSync(path.join(tmp, 'l2.jsonl'), l2.map((x) => JSON.stringify(x)).join('\n') + '\n')
-      const cf = cli('confirm', '--results', path.join(tmp, 'l2.jsonl'), '--map', 'champion=champ,previous=prev'); assert.equal(cf.status, 0, cf.stdout + cf.stderr); assert.ok(/confirmed/.test(cf.stdout) && /效度账本 \+12/.test(cf.stdout), cf.stdout)
+      // v4.2：策略 champion 没有路径等价校准 ⇒ pending-parity；补一次 auto vs policy:base（全平）后才 confirmed
+      const cf0 = cli('confirm', '--results', path.join(tmp, 'l2.jsonl'), '--map', 'champion=champ,previous=prev'); assert.ok(/pending-parity/.test(cf0.stdout), cf0.stdout)
+      const par = []; for (const t of ['eacces-config', 'wrong-model']) for (const smp of [0, 1]) for (const v of ['auto', 'policy:base']) par.push({ task: t, variant: v, sample: smp, fixed: true, fixedAtRound: 3, rounds: 3, claim: 'fixed', verifiedAfterFix: true, compile: [{ ok: true }] })
+      fs.writeFileSync(path.join(tmp, 'par.json'), JSON.stringify(par)); assert.ok(/（ok）/.test(cli('confirm', '--parity', '--results', path.join(tmp, 'par.json')).stdout))
+      const cf = cli('confirm', '--results', path.join(tmp, 'l2.jsonl'), '--map', 'champion=champ,previous=prev'); assert.equal(cf.status, 0, cf.stdout + cf.stderr); assert.ok(/（confirmed）/.test(cf.stdout) && /效度账本 \+12/.test(cf.stdout), cf.stdout)
       assert.equal(JSON.parse(fs.readFileSync(path.join(tmp, 'offline/champion.json'), 'utf8')).adoption, 'confirmed')
-      const ru = cli('ruler'); assert.ok(/效度.*valid|效度.*suspect/.test(ru.stdout) && /n=12/.test(ru.stdout), ru.stdout)
+      const ru = cli('ruler'); assert.ok(/效度.*valid|效度.*suspect/.test(ru.stdout) && /n=24/.test(ru.stdout), ru.stdout)   // 两次 confirm 各追加 12 对
       const p3 = cli('plan'); assert.equal(p3.status, 0, p3.stdout + p3.stderr); assert.ok(p3.stdout.includes('champion 策略 `' + pid + '`'))
       const pl3 = plan(4); assert.notEqual(pl3.hypothesis.lever, 'policy'); for (const t of pl3.tasks) assert.equal(pl3.variants[t].control, pl1.variants[t].candidate, '采纳后 control = 策略稿')
       const pr = cli('propose'); assert.equal(pr.status, 0, pr.stdout + pr.stderr); const proposal = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/proposal.json'), 'utf8'))

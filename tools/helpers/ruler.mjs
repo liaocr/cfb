@@ -113,3 +113,32 @@ export function outcomeComparison(rows, { arms = ['previous', 'champion'] } = {}
   const w = outcomes.filter((o) => o.outcome === 'win').length, l = outcomes.filter((o) => o.outcome === 'loss').length
   return { previous: summ(prev), champion: summ(champ), pairs: outcomes, e: +eValueWins(w, l).toFixed(3), eReject: +eValueWins(l, w).toFixed(3) }
 }
+
+// ── 4. L1 值不值得存在：区分度 + 经济学（第四轮评审）────────────────────────
+/** 规格代理（transfer/mr/run1–4 的 rule 旗标）区分度：结构分直方图、天花板率、raw vs 压缩稿同题同样本的平局率。 */
+export function l1Discrimination(rows, { control = 'raw', candidates = ['auto', 'auto8', 'oracle3', 'oracle2', 'oracle'] } = {}) {
+  const score = (r) => { const v = (k) => (r[k] === 1 ? 1 : 0); return v('next') + v('avoid') - v('falseDone') - v('bump') - v('reEdit') - v('repeat') }
+  const ok = rows.filter((r) => r.rule && !r.error)
+  const hist = {}; for (const r of ok) { const s = score(r.rule); hist[s] = (hist[s] || 0) + 1 }
+  const by = {}; for (const r of ok) { const k = `${r.run || ''}|${r.task}|${r.sample}`; (by[k] = by[k] || {})[r.variant] = score(r.rule) }
+  const pairs = { win: 0, loss: 0, tie: 0 }
+  for (const b of Object.values(by)) { const c = candidates.map((v) => b[v]).find((x) => x != null); if (b[control] == null || c == null) continue; pairs[c > b[control] ? 'win' : c < b[control] ? 'loss' : 'tie']++ }
+  const n = pairs.win + pairs.loss + pairs.tie
+  const flags = Object.fromEntries(['next', 'avoid', 'falseDone', 'bump', 'reEdit', 'repeat'].map((f) => [f, ok.length ? +(ok.filter((r) => r.rule[f] === 1).length / ok.length).toFixed(3) : null]))
+  return { n: ok.length, hist, ceilingRate: ok.length ? +((hist[2] || 0) / ok.length).toFixed(3) : null, pairs, tieRate: n ? +(pairs.tie / n).toFixed(3) : null, flags }
+}
+/**
+ * 每美元买到的「可用于采纳的非平局配对」。L1 的配对只有在尺子 valid 时才计入采纳（否则 0）；L2 配对无条件计入。
+ * 返回 L1 的角色：adoption-grade（valid 且更便宜）/ prescreen（valid 但不更便宜）/ diagnostic（未验）。
+ */
+export function rulerEconomics({ l1 = {}, l2 = {}, validity = { status: 'unvalidated' } } = {}) {
+  const a = { usd: 0.126, pairs: 5, tieRate: 0.6, ...l1 }, b = { usd: 0.66, pairs: 6, tieRate: 0.3, validityPairs: 36, ...l2 }
+  const valid = validity?.status === 'valid'
+  const l1Info = a.pairs * (1 - a.tieRate), l2Info = b.pairs * (1 - b.tieRate)
+  const L1 = { usd: a.usd, informativePairs: +l1Info.toFixed(2), usdPerInformativePair: +(a.usd / Math.max(1e-9, l1Info)).toFixed(3), adoptionGradePerUsd: +((valid ? l1Info : 0) / a.usd).toFixed(2) }
+  const L2 = { usd: b.usd, informativePairs: +l2Info.toFixed(2), usdPerInformativePair: +(b.usd / Math.max(1e-9, l2Info)).toFixed(3), adoptionGradePerUsd: +(l2Info / b.usd).toFixed(2), validityPairsPerUsd: +(b.validityPairs / b.usd).toFixed(1) }
+  const role = !valid ? 'diagnostic' : L1.usdPerInformativePair < L2.usdPerInformativePair ? 'prescreen' : 'redundant'
+  const why = role === 'diagnostic' ? `尺子 ${validity?.status || 'unvalidated'}：v9 L1 轮每 $${a.usd} 只买到 ≈${L1.informativePairs} 个非平局对且一个都不计入采纳 ⇒ 只能当诊断 / A/A 校准，不是预筛尺；预算应给分叉轨迹（每 $1 ≈ ${L2.adoptionGradePerUsd} 个采纳级对 + ${L2.validityPairsPerUsd} 个效度对）`
+    : role === 'prescreen' ? `尺子 valid：L1 每个非平局对 $${L1.usdPerInformativePair} < L2 的 $${L2.usdPerInformativePair} ⇒ 值得当预筛（淘汰用），采纳仍要 L2 确认` : `尺子 valid 但 L1 每个非平局对不比 L2 便宜 ⇒ 多余，直接用 L2`
+  return { l1: L1, l2: L2, role, why }
+}
