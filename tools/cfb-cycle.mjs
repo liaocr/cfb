@@ -40,7 +40,7 @@ import { RULE, assertPaidRole } from './helpers/llm-roles.mjs'
 import { TRAJ_TASKS } from './traj-fixtures.mjs'
 import { trainRanker, scoreText } from './helpers/ranker.mjs'
 import { retroValidity } from './helpers/traj-proxy.mjs'
-import { ceilingFrom, goldItemsFromTraj, loadGold, saveGold, buildBenchPlan, benchReport, benchReportMd, readResults } from './helpers/three-mode.mjs'
+import { ceilingFrom, goldItemsFromTraj, loadGold, saveGold, buildBenchPlan, benchReport, benchReportMd, readResults, derivePolicies, maskBits } from './helpers/three-mode.mjs'
 
 // 目录：默认仓库里的 .cfb-offline / .cfb-runtime/bounded-ab-v9/rN / transfer 收据；自测用 CFB_CYCLE_DIR 整体改道（不碰真实轮次）。
 // v14.10：路径是**活绑定**（let + setCycleDir）：自测与脚本可以在进程内改道，不必为每条命令起一个子进程（verify 从 50 s 回到个位数秒的主因之一）。
@@ -67,7 +67,10 @@ export function setCycleDir(dir) {
 }
 setCycleDir(BASE)
 // 分叉轨迹的单价常数（§7 算术；首张真实回执后应更新）：主调用期望 / 上界（max_tokens 8000），压缩调用期望 / 上界
-export const TRAJ_UNIT = Object.freeze({ mainUsd: 0.0125, mainCapUsd: 0.003 + 8000 * 4e-6, compressUsd: 0.0075, compressCapUsd: 0.005 + 1600 * 4e-6 })   // v14.10：压缩器 = 生产 makeBirthCompiler（关思考、max_tokens = max(850, compressV4MaxOutputTokens 1600)）⇒ 上界按 1600 算
+export const TRAJ_UNIT = Object.freeze({ mainUsd: 0.0125, mainCapUsd: 0.003 + 8000 * 4e-6, compressUsd: 0.0075, compressCapUsd: 0.005 + 1600 * 4e-6,
+  // v4.7 影子分叉的期望参数（来自 29 条真实轨迹审计，首张回执后按 receipt.shadowRounds / noContrastGroups 重算）：跟随臂到第 divergeRound 轮才第一次与 raw 分歧（之前零主调用）；
+  //   原文 ≥ 生产地板 3100 字的轮占比 floorShare（审计实测 13%，新家族更难、取 0.4 偏保守）⇒ 压缩调用期望 = 轮数 × floorShare；上界仍按「每轮都压、第 1 轮就分歧」算
+  divergeRound: 3, floorShare: 0.4 })   // v14.10：压缩器 = 生产 makeBirthCompiler（关思考、max_tokens = max(850, compressV4MaxOutputTokens 1600)）⇒ 上界按 1600 算
 const readJsonl = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean) : [])
 export const loadFlywheel = () => readJsonl(TRAIN_PAIRS)
 export const loadValidity = () => readJsonl(VALIDITY)
@@ -481,7 +484,8 @@ export function reviewRows(rows, { maxDraft = 700 } = {}) {
     const arms = Object.keys(g.arms); const rounds = Math.max(...arms.map((a) => (g.arms[a].transcript || []).length))
     const seq = Object.fromEntries(arms.map((a) => [a, (g.arms[a].transcript || []).map(sig)]))
     let diverge = null; for (let i = 0; i < rounds && diverge == null; i++) { const vals = new Set(arms.map((a) => seq[a][i] ?? '«结束»')); if (vals.size > 1) diverge = i + 1 }
-    const lines = [`## ${g.task} #${g.sample}  臂：${arms.join(' / ')}  分歧轮：${diverge ?? '无（动作全同）'}`]
+    const sh = arms.filter((a) => g.arms[a].shadow).map((a) => `${a}:${g.arms[a].shadow.divergedAt ? '稿第 ' + g.arms[a].shadow.divergedAt + ' 轮生效' : '稿未生效'}`).join(' ')
+    const lines = [`## ${g.task} #${g.sample}  臂：${arms.join(' / ')}  分歧轮：${diverge ?? '无（动作全同）'}${sh ? '  影子：' + sh : ''}`]
     for (const a of arms) {
       const r = g.arms[a]; const o = episodeOutcome(r)
       lines.push(`- **${a}**：${o.solved ? `修好@r${o.roundsToFix}` : '未修好'}；声明 ${r.claim || '—'}${r.claim === 'fixed' && !o.solved ? '（假）' : ''}；轮 ${r.rounds}；编辑 ${(r.edits || []).map((e) => e.path).join(',') || '—'}；压缩 ${(r.compile || []).map((c) => (c.ok ? 'o' : c.belowFloor ? '_' : 'x')).join('') || '—'}；代理分 ${r.proxyScore ?? '—'}`)
@@ -565,6 +569,8 @@ function cmdConfirm(args) {
   const L = ['# L2 端到端结局确认（' + r.verdict + '）', '', '| 臂 | n | 修好率 | 到修好轮数 | 假宣称 | 修好后验收 | 重复 |', '| --- | --- | --- | --- | --- | --- | --- |']
   for (const [k, v] of [['previous', r.cmp.previous], ['champion', r.cmp.champion]]) L.push(`| ${k} | ${v.n} | ${v.solved ?? '—'} | ${v.meanRoundsToFix ?? '—'} | ${v.falseClaims} | ${v.verified} | ${v.repeats} |`)
   L.push('', `配对 ${r.cmp.pairs.length}（${r.cmp.pairs.map((p) => p.task + ':' + p.outcome).join(' ')}）；e=${r.cmp.e}，「更差」e=${r.cmp.eReject}，阈 ${+(1 / DEFAULT_DESIGN_V4.alphaHoldout).toFixed(1)}`)
+  const nc = rows.filter((x) => x && !x.error && x.shadow && x.shadow.divergedAt == null && x.status !== 'awaiting-draft').length
+  if (nc) L.push(`其中未分歧组 ${nc}（压缩器整条没触发 ⇒ 与 raw 结局相同、计平手、不是候选优劣的证据）`)
   L.push('', r.verdict === 'confirmed' ? '**champion 确认**：L2 结局证实 L1 采纳；`propose` 现在可出生产 diff' : r.verdict === 'pending-parity' ? '**L2 过了、但缺路径等价校准**：策略 champion 的证据来自 policy: 直连路径；先跑一次 auto vs policy:base 并 `confirm --parity --results …`，等价才能 confirmed' : r.verdict === 'rolled-back' ? '**回滚**：L2 结局证伪 L1 采纳，champion 恢复为 previous（L1 尺子对这个方向可能失效，看 `ruler`）' : r.verdict === 'pending' ? '**待定**：L2 配对不够（需 ≥4 对、≥2 题、e ≥ 阈），继续续跑' : '**只报告**：当前 champion 不是 provisional；本次结果只进效度账本')
   if (r.validity.length) L.push('', `效度账本 +${r.validity.length} 对（L1 代理分 ↔ L2 修好）`)
   console.log(L.join('\n'))
@@ -623,22 +629,29 @@ function cmdRuler(args = []) {
 }
 
 // ── 5c. v4.2：预注册的分叉轨迹计划（付费单位）与零 API 的样例槽策略 ──────────
-export function buildTrajPlan({ n, arms = ['raw', 'policy:base'], scenarios = TRAJ_TASKS.map((t) => t.id), samples = 2, maxRounds = 4, fork = true, purpose = null, pricing = TRAJ_UNIT, fromStates = null, stop = null, storeText = true }) {
+export function buildTrajPlan({ n, arms = ['raw', 'policy:base'], scenarios = TRAJ_TASKS.map((t) => t.id), samples = 2, maxRounds = 4, fork = true, purpose = null, pricing = TRAJ_UNIT, fromStates = null, stop = null, storeText = true, reuseRaw = null }) {
   const units = fromStates ? fromStates.count : scenarios.length
   const groups = units * samples, policyArms = arms.filter((a) => a.startsWith('policy:') || a === 'auto').length
   const roundsLeft = fromStates ? Math.max(1, maxRounds - (fromStates.meanStartRound || 2) + 1) : maxRounds
+  // 上界（mains / compresses）：每轮都压、第 1 轮就分歧 —— 与 v4.5 同；期望（v4.7 影子分叉）：raw 整条 + 跟随臂只付分歧后的轮；--reuse-raw 时 raw 也不付
+  const shadow = fork && !fromStates && arms.includes('raw')
+  const followers = fork ? arms.length - 1 : arms.length
   const mains = fork ? groups * (1 + arms.length * (roundsLeft - 1)) : groups * arms.length * roundsLeft
   const compresses = groups * policyArms * roundsLeft
-  const expectedUsd = +(mains * pricing.mainUsd + compresses * pricing.compressUsd).toFixed(3), capUsd = +(mains * pricing.mainCapUsd + compresses * pricing.compressCapUsd).toFixed(3)
+  const dr = pricing.divergeRound ?? 3, fs_ = pricing.floorShare ?? 1
+  const expectedMains = shadow ? groups * ((reuseRaw ? 0 : roundsLeft) + followers * Math.max(0, roundsLeft - dr)) : mains
+  const expectedCompresses = shadow ? Math.round(groups * policyArms * roundsLeft * fs_) : compresses
+  const expectedUsd = +(expectedMains * pricing.mainUsd + expectedCompresses * pricing.compressUsd).toFixed(3), capUsd = +((reuseRaw ? mains - groups * roundsLeft : mains) * pricing.mainCapUsd + compresses * pricing.compressCapUsd).toFixed(3)
   const plan = { schema: 'cfb.traj-plan/1', id: 't' + n, at: new Date().toISOString(), variants: arms, scenarios: fromStates ? [] : scenarios, samples, maxRounds, fork, maxTokens: 8000, storeText,
     ...(fromStates ? { fromStates } : {}),
     // v4.3 有界续跑：一次批准内按 e 值任意停时规则提前停（判定达成或预算上界），不再每组回来要一次批准
     ...(stop ? { stop: { alpha: DEFAULT_DESIGN_V4.alphaHoldout, minPairs: 4, capUsd, compare: arms.length >= 2 ? { champion: arms.find((a) => a !== 'raw') || arms[1], previous: arms.includes('raw') ? 'raw' : arms[0] } : null, ...stop } } : {}),
     purpose: purpose || '第一次用真实数据检验尺子有效性：在线效度配对（执行器代理 ↔ 修好）+ raw vs 压缩稿的 L2 对 + 用真实回执校准单价常数。若效度仍 suspect / unvalidated，接受本机目前只能当记录仪，不开始按分搜索。',
     yield: { l1Pairs: groups, l2Pairs: groups, validityPairsApprox: arms.length * groups * (maxRounds - 1), flywheelPairsApprox: policyArms ? groups * (maxRounds - 1) : 0, childStatesApprox: arms.length * groups * Math.max(0, maxRounds - 2) },
-    cost: { mains, compresses, expectedUsd, capUsd, pricing }, holdoutNote: '场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索' }
+    ...(reuseRaw ? { reuseRaw } : {}),
+    cost: { mains, compresses, expectedMains, expectedCompresses, expectedUsd, capUsd, pricing, shadow }, holdoutNote: '场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索' }
   plan.digest = evidenceDigest(plan).slice(0, 16)
-  plan.command = `node tools/traj-run.mjs --plan ${path.relative(ROOT, path.join(trajHomeFor(n), 'plan.json'))}${storeText ? ' --store-text' : ''}${fromStates ? ' --from-state ' + fromStates.file : ''} --variants ${arms.filter((a) => !a.startsWith('policy:')).join(',') || 'raw'}${arms.some((a) => a.startsWith('policy:')) ? ' --policy ' + arms.filter((a) => a.startsWith('policy:')).map((a) => a.slice(7)).join(',') : ''}${fromStates ? '' : ' --only ' + scenarios.join(',')} --samples ${samples} --max-rounds ${maxRounds}${fork ? ' --fork' : ''} --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out ${path.relative(ROOT, trajHomeFor(n))}`
+  plan.command = `node tools/traj-run.mjs --plan ${path.relative(ROOT, path.join(trajHomeFor(n), 'plan.json'))}${storeText ? ' --store-text' : ''}${fromStates ? ' --from-state ' + fromStates.file : ''}${reuseRaw ? ' --fork-from ' + reuseRaw.file : ''} --variants ${arms.filter((a) => !a.startsWith('policy:')).join(',') || 'raw'}${arms.some((a) => a.startsWith('policy:')) ? ' --policy ' + arms.filter((a) => a.startsWith('policy:')).map((a) => a.slice(7)).join(',') : ''}${fromStates ? '' : ' --only ' + scenarios.join(',')} --samples ${samples} --max-rounds ${maxRounds}${fork ? ' --fork' : ''} --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out ${path.relative(ROOT, trajHomeFor(n))}`
   return plan
 }
 /** v4.3：把 transfer/traj1–3 与 runtime 轨迹的每个修好前轮次导出为可续跑的子状态（零 API）。 */
@@ -677,16 +690,27 @@ export function familyCoverage({ extraDirs = [] } = {}) {
   try { for (const d of fs.readdirSync(trajRoot)) files.push(path.join(trajRoot, d, 'results.jsonl')) } catch { /* 还没有收据 */ }
   files.push(...extraDirs)
   const rows = files.flatMap((fp) => readJsonl(fp)).filter((r) => r && r.task && !r.error && r.status !== 'awaiting-draft')   // v4.6：hand 臂暂停行不算轨迹
-  const cov = Object.fromEntries(TRAJ_TASKS.map((t) => [t.id, { total: 0, byArm: {} }]))
-  for (const r of rows) { const c = cov[r.task]; if (!c) continue; c.total++; const arm = r.policy ? 'policy:' + r.policy : r.variant; c.byArm[arm] = (c.byArm[arm] || 0) + 1 }
+  const cov = Object.fromEntries(TRAJ_TASKS.map((t) => [t.id, { total: 0, byArm: {}, rawN: 0, rawSolved: null, floorShare: null, info: null }]))
+  const acc = Object.fromEntries(TRAJ_TASKS.map((t) => [t.id, { solved: 0, rounds: 0, over: 0 }]))
+  for (const r of rows) {
+    const fam = String(r.task).split(':')[0]; const c = cov[fam]; if (!c) continue; c.total++; const arm = r.policy ? 'policy:' + r.policy : r.variant; c.byArm[arm] = (c.byArm[arm] || 0) + 1
+    // v4.7 信息量：只看 raw 轨迹 —— 原文过生产地板（3100 字）的轮占比（压缩器会不会触发）与 raw 修好率（天花板效应）
+    if (r.variant === 'raw') { c.rawN++; if (r.fixed || (Number.isInteger(r.fixedAtRound) && r.fixedAtRound > 0)) acc[fam].solved++; for (const t of r.transcript || []) { acc[fam].rounds++; if ((t.reasoningChars || 0) >= 3100) acc[fam].over++ } }
+  }
+  for (const [fam, c] of Object.entries(cov)) if (c.rawN) { c.rawSolved = +(acc[fam].solved / c.rawN).toFixed(2); c.floorShare = acc[fam].rounds ? +(acc[fam].over / acc[fam].rounds).toFixed(2) : null; c.info = c.floorShare == null ? null : +(c.floorShare * (1 - 0.5 * c.rawSolved)).toFixed(3) }   // 触发概率 × (1 − 天花板折扣)：raw 全修好的家族只剩「轮数」一层可分
   return cov
 }
 /** 轨迹最少者优先；平手时 dev 家族先于留出家族（第一单元是给提议器取证，留出家族的失败不能进证据包）；再平手按 TRAJ_TASKS 顺序。 */
+/** 下一个家族：先探索（没有 raw 轨迹的家族，dev 优先），再按信息量 —— 原文过地板的轮占比 × (1 − ½·raw 修好率)（IRT/自适应测验的思路：挑最能分出两臂的题，而不是轮流摊）。
+ *  v4.7 之前只按轨迹数轮转：会把钱花在 raw 全修好、压缩器从不触发的家族上（审计：旧家族 raw 修好 7/8，过地板的轮 13%）。 */
 export function nextFamily(cov = familyCoverage(), split = null) {
   const sp = split || (() => { try { return loadPool().split } catch { return {} } })()
   const ids = TRAJ_TASKS.map((t) => t.id)
-  return [...ids].sort((a, b) => ((cov[a]?.total || 0) - (cov[b]?.total || 0)) || ((sp[a] === 'holdout' ? 1 : 0) - (sp[b] === 'holdout' ? 1 : 0)) || (ids.indexOf(a) - ids.indexOf(b)))[0]
+  const unexplored = ids.filter((id) => !(cov[id]?.rawN || 0) && !(cov[id]?.total || 0))
+  if (unexplored.length) return [...unexplored].sort((a, b) => ((sp[a] === 'holdout' ? 1 : 0) - (sp[b] === 'holdout' ? 1 : 0)) || (ids.indexOf(a) - ids.indexOf(b)))[0]
+  return [...ids].sort((a, b) => ((cov[b]?.info ?? 0) - (cov[a]?.info ?? 0)) || ((cov[a]?.total || 0) - (cov[b]?.total || 0)) || ((sp[a] === 'holdout' ? 1 : 0) - (sp[b] === 'holdout' ? 1 : 0)) || (ids.indexOf(a) - ids.indexOf(b)))[0]
 }
+export const familyLine = (cov, split = {}) => Object.entries(cov).map(([k, v]) => `${k}${split[k] === 'holdout' ? '[h]' : ''}=${v.total}${v.rawN ? `(raw修好${v.rawSolved}·过地板${v.floorShare ?? '?'}·信息${v.info ?? '?'})` : ''}`).join(' ')
 const designDigest = (plan) => evidenceDigest({ variants: plan.variants, scenarios: plan.scenarios, samples: plan.samples, maxRounds: plan.maxRounds, fork: plan.fork, fromStates: plan.fromStates || null, stop: plan.stop || null, maxTokens: plan.maxTokens }).slice(0, 16)
 function cmdPlanTraj(args) {
   const h = loadHistory()
@@ -704,18 +728,28 @@ function cmdPlanTraj(args) {
   if (new Set(arms).size !== arms.length) throw new Error('duplicate-arms:' + arms.join(','))
   const hasHand = arms.includes('hand')
   if (hasHand && (arms.length > 2 || !arms.includes('raw'))) throw new Error('hand-arm-design：模式 1 单元固定为 raw vs hand（两臂）；hand 稿由助手手写，不与策略臂混跑')
-  const plan = buildTrajPlan({ n, arms, scenarios: perturb ? scenarios.map((x) => x + ':' + perturb) : scenarios, samples: Number(f(args, '--samples') || 1), maxRounds: Number(f(args, '--max-rounds') || 5), fork: !args.includes('--no-fork'), purpose: f(args, '--purpose') || (hasHand ? '模式 1 天花板：hand 臂 = 助手代替副模型手写稿（同一提示词、同一闸链 + G2 决策不变闸）vs raw；量 f(主模型 | 稿) 的上界与「稿该写什么」；hand 永远不采纳为 champion，过闸且修好的稿进金标注册表（gold add）作模式 2 标准' : fromStates ? `子状态续跑（Math-Shepherd 式蒙特卡洛状态价值）：同一分叉点两臂续跑的修好率 / 到修好轮数之差 = 该轮压缩稿价值的原则性定义；${fromStates.count} 个状态来自家族 ${fromStates.families.join('、')}，扩的是家族内配对数，不计入留出家族数` : perturb ? `加难场景（${perturb}：诱饵同名文件 + README 误导，两臂同扰动）：正确下一步不再唯一，考压缩稿能否保住排除项与证据而不是只保住「下一步」` : null), fromStates, stop: args.includes('--stop') ? (Number(f(args, '--cap-usd')) > 0 ? { capUsd: Number(f(args, '--cap-usd')) } : {}) : null })
+  // v4.7 --reuse-raw FILE：复用已有 results.jsonl 里带 roundMessages 的 raw 轨迹当 leader（非同期对照）—— 本单元不再付 raw 臂
+  let reuseRaw = null
+  if (f(args, '--reuse-raw')) {
+    const file = f(args, '--reuse-raw'); const abs = path.resolve(ROOT, file); if (!fs.existsSync(abs)) throw new Error('reuse-raw-missing:' + file)
+    const rows = readJsonl(abs).filter((r) => r.variant === 'raw' && !r.error && Array.isArray(r.roundMessages) && r.roundMessages.length)
+    const byTask = {}; for (const r of rows) byTask[r.task] = (byTask[r.task] || 0) + 1
+    const missing = scenarios.filter((sc) => !byTask[sc.split(':')[0] === sc ? sc : sc]); if (missing.length) throw new Error('reuse-raw-no-rows:' + missing.join(',') + '（该文件里没有这些场景的 raw 轨迹，或缺 roundMessages：要 --store-text 跑出来的）')
+    reuseRaw = { file: path.relative(ROOT, abs), rows: rows.length, byTask, at: rows.map((r) => r.at).filter(Boolean).sort()[0] || null, digest: evidenceDigest(rows.map((r) => [r.task, r.sample, r.rounds, r.fixedAtRound])).slice(0, 16) }
+  }
+  const plan = buildTrajPlan({ n, arms, reuseRaw, scenarios: perturb ? scenarios.map((x) => x + ':' + perturb) : scenarios, samples: Number(f(args, '--samples') || 1), maxRounds: Number(f(args, '--max-rounds') || 5), fork: !args.includes('--no-fork'), purpose: f(args, '--purpose') || (hasHand ? '模式 1 天花板：hand 臂 = 助手代替副模型手写稿（同一提示词、同一闸链 + G2 决策不变闸）vs raw；量 f(主模型 | 稿) 的上界与「稿该写什么」；hand 永远不采纳为 champion，过闸且修好的稿进金标注册表（gold add）作模式 2 标准' : fromStates ? `子状态续跑（Math-Shepherd 式蒙特卡洛状态价值）：同一分叉点两臂续跑的修好率 / 到修好轮数之差 = 该轮压缩稿价值的原则性定义；${fromStates.count} 个状态来自家族 ${fromStates.families.join('、')}，扩的是家族内配对数，不计入留出家族数` : perturb ? `加难场景（${perturb}：诱饵同名文件 + README 误导，两臂同扰动）：正确下一步不再唯一，考压缩稿能否保住排除项与证据而不是只保住「下一步」` : null), fromStates, stop: args.includes('--stop') ? (Number(f(args, '--cap-usd')) > 0 ? { capUsd: Number(f(args, '--cap-usd')) } : {}) : null })
   for (const sc of plan.scenarios) { const [id, kind] = sc.split(':'); if (!TRAJ_TASKS.some((t) => t.id === id)) throw new Error('unknown-scenario:' + sc); if (kind && kind !== 'decoy') throw new Error('unknown-perturb:' + kind) }
   plan.design = designDigest(plan)
   const dup = (h.trajPlans || []).find((t) => t.design === plan.design && t.status === 'planned' && t.n !== n)
-  if (args.includes('--dry')) { console.log(`[dry] 不落盘。设计 ${plan.design}：臂 ${plan.variants.join(' vs ')}；场景 ${plan.scenarios.join(', ')} × ${plan.samples}；≤${plan.maxRounds} 轮；主 ${plan.cost.mains} + 压缩 ${plan.cost.compresses} ≈ $${plan.cost.expectedUsd}（上界 $${plan.cost.capUsd}）` + (dup ? `；同设计已有未执行计划 t${dup.n}` : '')); return plan }
+  if (args.includes('--dry')) { console.log(`[dry] 不落盘。设计 ${plan.design}：臂 ${plan.variants.join(' vs ')}；场景 ${plan.scenarios.join(', ')} × ${plan.samples}；≤${plan.maxRounds} 轮；主 ≤${plan.cost.mains} + 压缩 ≤${plan.cost.compresses}，期望主 ${plan.cost.expectedMains} + 压缩 ${plan.cost.expectedCompresses} ≈ $${plan.cost.expectedUsd}（上界 $${plan.cost.capUsd}）` + (dup ? `；同设计已有未执行计划 t${dup.n}` : '')); return plan }
   if (dup && !args.includes('--force')) { console.log(`同一设计的计划已存在：t${dup.n}（design ${dup.design}，未执行）—— 不重复建；要重建加 --force，要撤销用 --drop ${dup.n}`); return readJson(path.join(trajHomeFor(dup.n), 'plan.json')) }
   const home = trajHomeFor(n); ensure(home); writeJson(path.join(home, 'plan.json'), plan)
   h.trajPlans = (h.trajPlans || []).filter((t) => t.n !== n).concat([{ n, at: plan.at, status: 'planned', digest: plan.digest, design: plan.design, expectedUsd: plan.cost.expectedUsd, capUsd: plan.cost.capUsd }]); writeJson(HISTORY, h)
   const L = [`# 分叉轨迹计划 t${n}（digest ${plan.digest}，未发请求）`, '', `目的：${plan.purpose}`, '', `臂：${plan.variants.join(' vs ')}；${plan.fromStates ? `子状态 ${plan.fromStates.count} 个（家族 ${plan.fromStates.families.join(', ')}，平均起始轮 ${plan.fromStates.meanStartRound}，${plan.fromStates.file}）` : '场景：' + plan.scenarios.join(', ')} × ${plan.samples} 样本；≤${plan.maxRounds} 轮；${plan.fork ? '起始轮共用、各臂分叉' : '不分叉'}${plan.stop ? `；**有界续跑**：${plan.stop.compare ? `每组后算 e 值，${plan.stop.compare.champion} vs ${plan.stop.compare.previous} 任一方向 e ≥ ${(1 / plan.stop.alpha).toFixed(0)}（≥${plan.stop.minPairs} 对）或` : '单臂无配对，只按'}估算花费 ≥ $${plan.stop.capUsd} 即停` : ''}`,
-    `请求：主调用 ${plan.cost.mains} + 压缩 ${plan.cost.compresses}；**期望实付 ≈ $${plan.cost.expectedUsd}，上界 ≈ $${plan.cost.capUsd}**（max_tokens 8000；常数见 TRAJ_UNIT，首张回执后更新）`,
+    `请求：主调用 ≤${plan.cost.mains} + 压缩 ≤${plan.cost.compresses}（上界：每轮都压、第 1 轮就分歧）；期望主 ${plan.cost.expectedMains} + 压缩 ${plan.cost.expectedCompresses}${plan.cost.shadow ? `（影子分叉：跟随臂到第 ${plan.cost.pricing.divergeRound} 轮才分歧、原文过地板的轮占 ${plan.cost.pricing.floorShare}${plan.reuseRaw ? '；raw 复用自 ' + plan.reuseRaw.file + '，不付' : ''}）` : ''}；**期望实付 ≈ $${plan.cost.expectedUsd}，上界 ≈ $${plan.cost.capUsd}**（max_tokens 8000；常数见 TRAJ_UNIT，首张回执后更新）`,
     `产出（估）：L1 对 ${plan.yield.l1Pairs}、L2 对 ${plan.yield.l2Pairs}、效度对 ≈${plan.yield.validityPairsApprox}、飞轮对 ≈${plan.yield.flywheelPairsApprox}、子状态 ≈${plan.yield.childStatesApprox}`, '', plan.holdoutNote, '', '批准后执行（traj-run 会核对参数与计划一致，跑完写 receipt.json）：', '```', plan.command, '```', '', hasHand ? `回灌：node tools/cfb-cycle.mjs ceiling --plan ${n}   # 模式 1 不走 confirm：hand 不是候选，只量天花板 + 进金标` : `回灌：node tools/cfb-cycle.mjs confirm --plan ${n} --map champion=policy:base,previous=raw   # 或 --parity（auto vs policy:base）`]
   L.push('', `家族覆盖（轨迹数）：${TRAJ_TASKS.map((t) => `${t.id}=${cov[t.id].total}`).join(' ')}；本计划 ${plan.scenarios.length === 1 ? '只跑 ' + plan.scenarios[0] + '，跑完先 `review --plan ' + n + '` 再决定下一个家族' : '批量 ' + plan.scenarios.length + ' 个家族'}`)
+  if (plan.reuseRaw) L.push('', `**非同期对照**：raw 臂复用 ${plan.reuseRaw.file}（${plan.reuseRaw.rows} 条，最早 ${plan.reuseRaw.at || '?'}）。平台试验里的 non-concurrent control：主模型若有时间漂移会偏；只在同一模型 id、短窗口内用，review 时把两次的日期并排看；多个候选共用同一 raw ⇒ 候选之间的比较相关，别把 k 个候选里挑最好的那个当独立证据。`)
   if (hasHand) L.push('', `**模式 1 步进**：hand 臂每到要压缩的那一轮会暂停（results.jsonl 记 awaiting-draft），把副模型本该拿到的 prompt / 原文 / ctx / 协议写进 \`${path.relative(ROOT, trajHomeFor(n))}/pending/<id>.json\`；助手写 \`drafts/<id>.md\` 后**再跑同一条命令**自动续（G2 + 生产闸不过 ⇒ 继续暂停并把违规写回 pending）。压缩调用 0 次（hand 不花钱）。跑完：\`ceiling --plan ${n}\`（不是 confirm）→ \`gold add --plan ${n}\`。`)
   fs.writeFileSync(path.join(home, 'plan.md'), L.join('\n') + '\n'); console.log(L.join('\n'))
   return plan
@@ -766,7 +800,7 @@ function cmdCeiling(args) {
   const L = [`# 模式 1 天花板（${r.verdict}）`, '', '| 臂 | n | 修好率 | 到修好轮数 | 假宣称 | 修好后验收 | 重复 |', '| --- | --- | --- | --- | --- | --- | --- |']
   for (const [k2, v] of [['raw', r.cmp.previous], ['hand', r.cmp.champion]]) L.push(`| ${k2} | ${v.n} | ${v.solved ?? '—'} | ${v.meanRoundsToFix ?? '—'} | ${v.falseClaims} | ${v.verified} | ${v.repeats} |`)
   L.push('', `配对 ${r.cmp.pairs.length}（${r.cmp.pairs.map((p) => p.task + ':' + p.outcome).join(' ')}）；e=${r.cmp.e}，「更差」e=${r.cmp.eReject}，阈 ${+(1 / DEFAULT_DESIGN_V4.alphaHoldout).toFixed(1)}；修好率差（余量点估计）${r.headroom ?? '—'}`)
-  L.push(`手写稿闸：尝试 ${r.gate.attempts}、过闸 ${r.gate.accepted}、被拒 ${r.gate.rejected}、低于地板不压 ${r.gate.belowFloor}；原文均 ${r.gate.meanRawChars ?? '—'} 字 → 稿 ${r.gate.meanDraftChars ?? '—'} 字 → 拼接后 ${r.gate.meanStoredChars ?? '—'} 字（压缩比 ${r.gate.compression ?? '—'}）`)
+  L.push(`手写稿闸：尝试 ${r.gate.attempts}、过闸 ${r.gate.accepted}、被拒 ${r.gate.rejected}、低于地板不压 ${r.gate.belowFloor}；影子省下主调用 ${r.gate.shadowRounds}、**未分歧组 ${r.gate.noContrast}**（整条没触发 ⇒ 与 raw 同、计平手）；原文均 ${r.gate.meanRawChars ?? '—'} 字 → 稿 ${r.gate.meanDraftChars ?? '—'} 字 → 拼接后 ${r.gate.meanStoredChars ?? '—'} 字（压缩比 ${r.gate.compression ?? '—'}）`)
   if (waiting.length) L.push(`⚠ 还有 ${waiting.length} 条 hand 轨迹在等手写稿（未计入）：` + waiting.map((w) => `${w.task}#${w.sample} r${w.awaiting?.round}`).join(' '))
   L.push('', r.verdict === 'hand-better' ? '**手写稿分得出比原文好**：f(主模型 | 好稿) 有余量 —— 这些稿是模式 2 的标准（`gold add`），下一步在另一个家族重复，规格要能跨家族' : r.verdict === 'hand-worse' ? '**手写稿比原文差**：主模型读稿不如读原文 —— 别训练压缩器了，先回头看稿（review）：是漏了决定还是漏了排除' : r.verdict === 'insufficient' ? '**配对不够**（<4 对或 <2 家族）：不下结论；再跑一个家族（plan-traj --arms raw,hand）' : '**分不出**：余量不显著，别把它当天花板用；看 review 里的分歧轮再决定')
   L.push('', `写入 ${path.relative(ROOT, path.join(RULER_DIR, 'ceiling-' + k + '.json'))}` + (r.validity.length ? `；效度账本 +${r.validity.length}` : '') + `；${r.note}`)
@@ -797,25 +831,36 @@ function cmdPlanBench(args) {
   const h = loadHistory()
   if (f(args, '--drop')) { const dn = Number(f(args, '--drop')); const t = (h.benchPlans || []).find((x) => x.n === dn); if (!t) throw new Error('no-such-plan:b' + dn); if (t.status !== 'planned') throw new Error('plan-not-droppable:' + t.status); h.benchPlans = h.benchPlans.filter((x) => x.n !== dn); writeJson(HISTORY, h); fs.rmSync(benchHomeFor(dn), { recursive: true, force: true }); console.log(`已撤销未执行的基准计划 b${dn}`); return }
   const n = Number(f(args, '--n') || Math.max(0, ...(h.benchPlans || []).map((t) => t.n)) + 1)
-  const policies = (f(args, '--policies') || 'base').split(',')
+  let policies = (f(args, '--policies') || 'base').split(',')
   const known = new Set(listPolicies().map((p) => p.id)); for (const p of policies) if (p !== 'base' && !known.has(p)) throw new Error('policy-not-found:' + p)
   if (new Set(policies).size !== policies.length) throw new Error('duplicate-policies')
   const split = f(args, '--split') || 'dev'; if (!['dev', 'holdout', 'all'].includes(split)) throw new Error('bad-split:' + split)
+  // v4.7 --factors half|full：把唯一候选的 k ≤ 3 条补丁当因子，派生 2^(k−1) / 2^k 个臂（派生策略落 policies/，可独立成候选）；报告出每条补丁的主效应
+  let factorial = null
+  if (f(args, '--factors')) {
+    const cands = policies.filter((p) => p !== 'base'); if (cands.length !== 1) throw new Error('factors-needs-one-candidate（--policies base,<候选> 只能一个候选）')
+    const d = derivePolicies(loadPolicy(cands[0]), f(args, '--factors'))
+    if (!args.includes('--dry')) { ensure(POLICIES); for (const a of d.arms) if (a.policy) { const pf = path.join(POLICIES, a.id + '.json'); const old = readJson(pf); if (old && JSON.stringify(old.patches) !== JSON.stringify(a.policy.patches)) throw new Error('derived-policy-conflict:' + a.id); if (!old) writeJson(pf, a.policy) } }
+    policies = d.arms.map((a) => a.id); factorial = { of: cands[0], kind: d.kind, k: d.k, arms: d.arms.map((a) => ({ id: a.id, mask: a.mask })) }
+  }
   const home = benchHomeFor(n)
-  const plan = buildBenchPlan({ n, policies, gold: loadGold(GOLD_DIR()), split, pricing: TRAJ_UNIT, purpose: f(args, '--purpose'), planRel: path.relative(ROOT, path.join(home, 'plan.json')), homeRel: path.relative(ROOT, home) })
+  const plan = buildBenchPlan({ n, policies, factorial, gold: loadGold(GOLD_DIR()), split, pricing: TRAJ_UNIT, purpose: f(args, '--purpose'), planRel: path.relative(ROOT, path.join(home, 'plan.json')), homeRel: path.relative(ROOT, home) })
   const dup = (h.benchPlans || []).find((t) => t.design === plan.design && t.status === 'planned' && t.n !== n)
   if (args.includes('--dry')) { console.log(`[dry] 不落盘。基准设计 ${plan.design}：策略 ${plan.policies.join(' vs ')} × 金标 ${plan.gold.length}（${split}）= ${plan.cost.calls} 次压缩 ≈ $${plan.cost.expectedUsd}（上界 $${plan.cost.capUsd}）` + (dup ? `；同设计已有未执行计划 b${dup.n}` : '')); return plan }
   if (dup && !args.includes('--force')) { console.log(`同一设计的基准计划已存在：b${dup.n}（design ${dup.design}，未执行）—— 不重复建；--force 重建 / --drop ${dup.n} 撤销`); return readJson(path.join(benchHomeFor(dup.n), 'plan.json')) }
   ensure(home); writeJson(path.join(home, 'plan.json'), plan)
   h.benchPlans = (h.benchPlans || []).filter((t) => t.n !== n).concat([{ n, at: plan.at, status: 'planned', digest: plan.digest, design: plan.design, policies, gold: plan.gold.length, split, expectedUsd: plan.cost.expectedUsd, capUsd: plan.cost.capUsd }]); writeJson(HISTORY, h)
   const L = [`# 压缩器基准计划 b${n}（digest ${plan.digest}，未发请求）`, '', `目的：${plan.purpose}`, '', `策略：${plan.policies.join(' vs ')}；金标 ${plan.gold.length} 项（${split}；${[...new Set(plan.gold.map((g) => g.family))].join(', ')}）；指标 ${plan.metric}（冻结）`,
-    `请求：压缩调用 ${plan.cost.calls}（主模型 0 次）；**期望实付 ≈ $${plan.cost.expectedUsd}，上界 ≈ $${plan.cost.capUsd}**`, '', `选择规则：${plan.selection}`, '', '先零 API 核对（金标摘要 / 两条基线）：', '```', plan.command + ' --dry-run', '```', '批准后执行：', '```', plan.command, '```', '', `回看：node tools/cfb-cycle.mjs bench-report --plan ${n}`]
+    `请求：压缩调用 ${plan.cost.calls}（主模型 0 次）；**期望实付 ≈ $${plan.cost.expectedUsd}，上界 ≈ $${plan.cost.capUsd}**`, ...(plan.factorial ? ['', `因子设计：候选 ${plan.factorial.of} 的 ${plan.factorial.k} 条补丁各为因子，${plan.factorial.kind} ⇒ ${plan.factorial.arms.length} 个臂（${plan.factorial.arms.map((a) => a.id + '=' + maskBits(a.mask, plan.factorial.k)).join('，')}）；bench-report 出每条补丁的主效应（按金标配对的 e 值），不是只报「候选 vs base」`] : []), '', `选择规则：${plan.selection}`, '', '先零 API 核对（金标摘要 / 两条基线）：', '```', plan.command + ' --dry-run', '```', '批准后执行：', '```', plan.command, '```', '', `回看：node tools/cfb-cycle.mjs bench-report --plan ${n}`]
   fs.writeFileSync(path.join(home, 'plan.md'), L.join('\n') + '\n'); console.log(L.join('\n'))
   return plan
 }
 function cmdBenchReport(args) {
   const { planN, home, rows } = resultsArg(args, 'bench')
-  const rep = benchReport(rows.filter((r) => !r.dry), { baseline: f(args, '--baseline') || 'base' })
+  const bplan = readJson(path.join(home, 'plan.json'))
+  const rep = benchReport(rows.filter((r) => !r.dry), { baseline: f(args, '--baseline') || 'base', factorial: bplan?.factorial || null })
+  // 因子设计归因出「只留部分补丁」时，把那个子集落成现成策略（幂等；与 plan-bench --factors 派生的同名同内容），好直接进 plan-traj --arms raw,policy:<id>
+  if (rep.factorial?.keepId) { const d = derivePolicies(loadPolicy(rep.factorial.of), 'full'); const a = d.arms.find((x) => x.id === rep.factorial.keepId); if (a?.policy) { ensure(POLICIES); const pf = path.join(POLICIES, a.id + '.json'); if (!readJson(pf)) writeJson(pf, a.policy) } }
   const md = benchReportMd(rep, { title: `基准 ${planN ? 'b' + planN : path.basename(home)}` })
   fs.writeFileSync(path.join(home, 'report.md'), md + '\n'); writeJson(path.join(home, 'report.json'), rep)
   if (planN) { const h = loadHistory(); const t = (h.benchPlans || []).find((x) => x.n === Number(planN)); if (t) { t.status = 'reported'; t.best = rep.best; t.paired = Object.fromEntries(Object.entries(rep.paired).map(([k, v]) => [k, { e: v.e, n: v.n, decision: v.decision }])); writeJson(HISTORY, h) } }
@@ -847,7 +892,7 @@ function cmdStatus() {
   console.log('轨迹计划: ' + (tp.length ? '' : '无'))
   for (const t of tp) { const pj = readJson(path.join(trajHomeFor(t.n), 'plan.json')); console.log(`  t${t.n} ${String(t.status).padEnd(10)} ${pj ? `${pj.variants.join(' vs ')} × ${pj.scenarios.join(',')} × ${pj.samples} ≤${pj.maxRounds}轮` : '(plan.json 缺)'} ≈$${t.expectedUsd}（上界 $${t.capUsd}）${t.design ? ' design ' + t.design : ''}${t.note ? ' —— ' + t.note : ''}`) }
   let cov = null; try { cov = familyCoverage() } catch { /* 无语料也不碍事 */ }
-  if (cov) { const pool = loadPool(); const nf = nextFamily(cov, pool.split); console.log('家族覆盖（已有轨迹数，[h]=留出）: ' + Object.entries(cov).map(([k, v]) => `${k}${pool.split[k] === 'holdout' ? '[h]' : ''}=${v.total}`).join(' ') + ` ⇒ 下一个 ${nf}`) }
+  if (cov) { const pool = loadPool(); const nf = nextFamily(cov, pool.split); console.log('家族覆盖（已有轨迹数，[h]=留出；raw修好率·原文过地板轮占比·信息量）: ' + familyLine(cov, pool.split) + ` ⇒ 下一个 ${nf}`) }
   // v4.6 三模式：等手写稿 / 金标 / 基准计划
   const pend = pendingDrafts()
   if (pend.length) console.log('等待手写稿: ' + pend.map((p) => `t${p.n} ${p.task} 第 ${p.round} 轮 → 读 ${p.pending}，写 ${p.draftFile}` + (p.violations ? `（上一稿被拒：${p.violations.map((v) => v.kind).join(',')}）` : '')).join('；') + '；写完再跑同一条 traj-run 命令')
@@ -858,8 +903,26 @@ function cmdStatus() {
   const plannedPlan = planned ? readJson(path.join(trajHomeFor(planned.n), 'plan.json')) : null
   const plannedHand = !!plannedPlan?.variants?.includes('hand')
   console.log('下一步: ' + (pend.length ? `先写手写稿（${pend.length} 份在等），再跑：\n  ${pend[0].command || '（见 plan.md）'}` : planned ? `已有未执行计划 t${planned.n}（≈$${planned.expectedUsd}，上界 $${planned.capUsd}）—— 用户批准后：\n  ${plannedCmd}\n  跑完：node tools/cfb-cycle.mjs review --plan ${planned.n}` + (plannedHand ? ` && node tools/cfb-cycle.mjs ceiling --plan ${planned.n} && node tools/cfb-cycle.mjs gold add --plan ${planned.n}` : '') : 'node tools/cfb-cycle.mjs plan-traj（一个家族 × raw vs policy:base ≈ $0.15）；模式 1 用 plan-traj --arms raw,hand（≈$0.11，压缩 0 次）'))
+  const cal = costCalibration(h)
+  if (cal.receipts.length) console.log('成本校准（回执 vs 计划）: ' + cal.receipts.map((x) => `${x.plan} 主 ${x.mainCalls}/${x.expectedMains} 压缩 ${x.compressCalls}/${x.expectedCompresses} $${x.estimatedUsd}/${x.expectedUsd} 影子省 ${x.shadowRounds} 未分歧 ${x.noContrast} 分歧轮 [${x.divergeRounds.join(',')}] 过地板 ${x.floorShareObs ?? '—'}`).join('；') + ` ⇒ TRAJ_UNIT 现 divergeRound ${cal.current.divergeRound} / floorShare ${cal.current.floorShare}，实测建议 ${cal.suggest.divergeRound ?? '—'} / ${cal.suggest.floorShare ?? '—'}`)
   const cf = readJson(CHAMPION); const rv = rulerValidity(loadValidity().map((x) => ({ proxy: x.proxy, outcome: x.outcome })))
   console.log(`尺子: 效度 ${rv.status}（n=${rv.n}）；champion 采纳状态 ${cf?.adoption || (cf ? 'legacy' : 'baseline')}` + (cf?.adoption === 'provisional' ? '（待 L2 确认：confirm --results）' : '') + (exposureWarnings().length ? '；⚠ ' + exposureWarnings().join('；') : ''))
+}
+/** v4.7 成本校准：每张回执（receipt.json）对照计划的期望 ⇒ 实付主调用 / 压缩调用、实测分歧轮、原文过地板轮占比、未分歧组。
+ *  这是 TRAJ_UNIT.divergeRound / floorShare 的唯一更新来源（常数在代码里冻结，证据在这里；回执以前只写不读 —— 产出了没人用的信息）。 */
+export function costCalibration(h = loadHistory()) {
+  const out = []
+  for (const t of h.trajPlans || []) {
+    const home = trajHomeFor(t.n); const rc = readJson(path.join(home, 'receipt.json')); if (!rc) continue
+    const plan = readJson(path.join(home, 'plan.json')) || {}; const rows = fs.existsSync(path.join(home, 'results.jsonl')) ? readJsonl(path.join(home, 'results.jsonl')).filter((r) => r && !r.error && r.status !== 'awaiting-draft') : []
+    const div = rows.filter((r) => r.shadow && r.shadow.divergedAt != null).map((r) => r.shadow.divergedAt)
+    let over = 0, n = 0; for (const r of rows.filter((r) => r.variant === 'raw')) for (const x of r.transcript || []) { n++; if ((x.reasoningChars || 0) >= 3100) over++ }
+    out.push({ plan: 't' + t.n, expectedMains: plan.cost?.expectedMains ?? plan.cost?.mains ?? null, mainCalls: rc.mainCalls ?? null, expectedCompresses: plan.cost?.expectedCompresses ?? plan.cost?.compresses ?? null, compressCalls: rc.compressCalls ?? null,
+      expectedUsd: plan.cost?.expectedUsd ?? null, estimatedUsd: rc.estimatedUsd ?? null, shadowRounds: rc.shadowRounds ?? 0, noContrast: rc.noContrastGroups ?? 0, divergeRounds: div, floorShareObs: n ? +(over / n).toFixed(2) : null, promptTokens: rc.promptTokens ?? null })
+  }
+  const divAll = out.flatMap((x) => x.divergeRounds).sort((a, b) => a - b), fsAll = out.map((x) => x.floorShareObs).filter((x) => x != null)
+  const suggest = { divergeRound: divAll.length ? divAll[Math.floor(divAll.length / 2)] : null, floorShare: fsAll.length ? +(fsAll.reduce((a, b) => a + b, 0) / fsAll.length).toFixed(2) : null }
+  return { receipts: out, suggest, current: { divergeRound: TRAJ_UNIT.divergeRound, floorShare: TRAJ_UNIT.floorShare } }
 }
 export function doctorChecks() {
   const checks = []
@@ -1161,13 +1224,16 @@ const HELP = `cfb-cycle（闭环 v4：e 值采纳 + L2 结局确认；v2/v3 命�
   mint     --step a --scenario FILE | --step b --id ID   [--gen N]                冻结铸造新题的计划（u1→a1；人补 u2 后 a1+u2→a2）
   ingest-gen --gen N [--report FILE]                                             回灌生成计划：策略文件 / side / 铸造件（三闸：预算、泄漏、可应用）
   confirm  --results FILE | --plan N [--map champion=<v>,previous=<v>] [--parity]  v4：L2 结局确认 / 回滚 provisional champion；--parity = auto vs policy:base 路径等价校准
-  plan-traj [--all] [--dry] [--drop N] [--supersede N] [--force] [--arms raw,policy:base] [--scenarios a,b] [--samples 1] [--max-rounds 5] [--perturb decoy] [--stop [--cap-usd X]]
-                                                                                 v4.5：冻结付费单位。缺省 = 轨迹最少的一个家族 × raw vs policy:base × 1 样本 × ≤5 轮（≈$0.15）；
+  plan-traj [--all] [--dry] [--drop N] [--supersede N] [--force] [--arms raw,policy:base] [--scenarios a,b] [--samples 1] [--max-rounds 5] [--perturb decoy] [--stop [--cap-usd X]] [--reuse-raw FILE]
+                                                                                 v4.5：冻结付费单位。缺省 = 下一个家族（未探索优先，其次信息量最高）× raw vs policy:base × 1 样本 × ≤5 轮；
+                                                                                 v4.7 影子分叉：跟随臂分歧前不发主调用 ⇒ 期望 7 主 + 2 压缩 ≈ $0.103（上界 $0.372 不变）；--reuse-raw 复用旧 raw 轨迹当 leader（≈$0.025/对，非同期对照）
                                                                                  --all 五家族；--dry 只算不落盘；同设计未执行的计划不重复建（--force 重建 / --drop 撤销 / --supersede 作废）
   review --plan N | --results FILE [--draft-chars 700]                           v4.5：读一个单元的结果 → review.md（分歧轮、各臂结局、分歧处压缩稿原文、闸门、代理旗标）
   ceiling --plan N | --results FILE [--map hand=hand,raw=raw]                      v4.6 模式 1：hand（助手手写稿）vs raw 的 L2 天花板 → ruler/ceiling-k.json + 效度账本；不碰 champion
   gold add --plan N [--include-unsolved] | gold list                               v4.6：过闸且修好的手写稿 → 金标注册表 transfer/gold/<family>/（按家族 dev/holdout，落盘不改）
-  plan-bench [--policies base,p-x] [--split dev|holdout|all] [--dry] [--drop N]    v4.6 模式 2：策略 × 金标 各一次压缩调用（≈$0.0075/次）；指标 dd/1 冻结；dev 配对选策略、holdout 只报告
+  plan-bench [--policies base,p-x] [--split dev|holdout|all] [--dry] [--drop N] [--factors half|full]
+                                                                                 v4.6 模式 2：策略 × 金标 各一次压缩调用（≈$0.0075/次）；指标 dd/1 冻结；dev 配对选策略、holdout 只报告
+                                                                                 v4.7 --factors：候选的 k≤3 条补丁各为因子（half=2^(k−1) 含 base 不含全开 / full=2^k），bench-report 出每条补丁的主效应 ⇒ 知道该留哪条
   bench-report --plan N | --results FILE [--baseline base]                         v4.6：基准报告 → report.md；promote 的策略进 plan-traj（模式 3）验收，基准分不采纳 champion
   snapshot / restore [--from FILE] [--force]                                     v4.5：闭环状态（history / champion / 策略 / 轨迹计划 / 证据包）↔ transfer/cycle-state.json（进仓库；新克隆先 restore）
   policy-from-flywheel                                                           v4.2：零 API 从飞轮赢稿生成【风格样例】槽策略（过预算 + 泄漏闸）

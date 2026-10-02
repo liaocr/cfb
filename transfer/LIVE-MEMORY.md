@@ -2,6 +2,14 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
+## −11. 当前状态（2026-10-02，第三十一会话：v4.7 —— 全架构审计落地：影子分叉（跟随臂分歧前不付主调用）、`--reuse-raw`、按信息量选家族、`plan-bench --factors` 因子归因、回执→成本校准；仍零花费；commit v14.12.0）
+
+- **先跑 `node tools/cfb-cycle.mjs status`**。当前计划 **t6 = sse-truncated × raw vs hand × 1 × ≤5 轮，期望主 7 ≈ $0.088（上界 $0.315）**，命令与 t5 同（t5 superseded 只因成本模型换了）。需用户批准；步进法同 §−10。
+- **影子分叉读法**：results 行 `shadow.divergedAt` = 稿第一次真的替换历史的轮；`null` = 整条没触发 ⇒ 结局与 raw 全同 ⇒ **平手、不是证据**（`ceiling`/`confirm` 打「未分歧组」）。跑完看 `status` 的「成本校准」行：实付 vs 期望、实测分歧轮、过地板轮占比 ⇒ 决定要不要改 `TRAJ_UNIT.divergeRound / floorShare`（现 3 / 0.4，来自 29 条旧轨迹审计）。
+- **第二个候选起**：`plan-traj --arms raw,policy:<cand> --reuse-raw .cfb-runtime/traj/t6/results.jsonl`（同模型、短窗口才行；candidates 共用 raw ⇒ 相关，不挑最好的当独立证据）。模式 2 候选有 ≥2 条补丁时用 `plan-bench --policies base,<cand> --factors half`，`bench-report` 会说该留哪条补丁并落成 `<cand>.fxxx`。
+- **不要再做的**：降地板制造分歧；拿 v4d7 旧轨迹当 `--fork-from` leader（没有 roundMessages、地板不同）；隔离环境失败套件（量过，不在关键路径）。
+- 闸：v4 30/30、v3 16/16、closed-loop 25/25、v12 37/37；verify 见 CHANGELOG v14.12.0；manifest 0 漂移。设计 `CLOSED-LOOP-V4.md` §17。
+
 ## −10. 当前状态（2026-10-02，第三十会话：v4.6 —— 三模式：模式 1 助手手写稿 `hand` 臂量天花板 ≈$0.11；金标注册表 `transfer/gold/`；模式 2 压缩器基准 dd/1；模式 3 = 原单元；仍零花费）
 
 - **先跑 `node tools/cfb-cycle.mjs status`**：会列出**在等的手写稿**（pending 路径 + 稿路径 + 续跑命令）、金标数、基准计划、下一步。新克隆先 `restore`。

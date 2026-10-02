@@ -4,6 +4,17 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.12.0（2026-10-02，闭环 v4.7：全架构审计 —— 影子分叉（分歧前不付主调用，单元 $0.15 → $0.103）/ 复用 raw 轨迹（≈$0.025/对）/ 按信息量选家族 / 因子设计归因补丁 / 回执→成本校准；仍零花费）
+
+**起因**：用户指出此前的版本不科学、信息产出了用不上、轮次重复付费，要求通盘重审、用更多科学 / 高效方法提高训练器的质量、效率与省钱，「不要说没有」。
+
+- **审计（29 条真实轨迹）**：第 1 轮分叉 + 地板 3100 字 ⇒ 两臂到第一次有效压缩前逐字节相同；raw 逐轮原文 ≥3100 的轮 6/45（13%），压缩臂 **41/66 轮（62%）在分歧前**、8/13 整条没触发 ⇒ 之前每单元 ≈2–4 次主调用是重复付费、未触发的组当成一对。家族只按轨迹数轮转，而旧三家族 raw 修好 7/8（天花板）。回执只写不读。详见 `CLOSED-LOOP-V4.md` §17。
+- **`tools/traj-run.mjs` v4.7 影子分叉**：跟随臂逐轮采用 raw 同轮回复直到 `stored !== reasoning`；`rec.shadow={rounds,divergedAt}`；暂停 / 续跑状态带 `lead/diverged`；`--fork-from FILE` 复用旧 raw（行记 `reusedFrom`，`mainCalls=0`）；raw 行 `--store-text` 持久化 `roundMessages`；回执加 `shadowRounds / noContrastGroups / reusedRaw`；汇总加「影子分叉」行（未分歧 = 平手、不是证据）；`main` 导出；`checkTrajPlan` 核对 `reuseRaw.file`。
+- **cfb-cycle**：`TRAJ_UNIT.divergeRound=3 / floorShare=0.4`；`buildTrajPlan` 分期望 / 上界（`expectedMains / expectedCompresses / shadow`）；`plan-traj --reuse-raw FILE`（非同期对照说明进 plan.md）；`familyCoverage` 加 `rawN / rawSolved / floorShare / info`、`nextFamily` 先未探索再信息量、`familyLine`；`ceiling / confirm / review` 报未分歧组与稿生效轮；`plan-bench --factors half|full`（派生策略落 `policies/`，`derivePolicies / factorialMasks`）+ `bench-report` 主效应（`factorialEffects`，keep 子集自动落成策略）；`costCalibration` + `status` 成本校准行；help 更新。
+- **计划**：t5 superseded；**t6 = sse-truncated × raw vs hand × 1 × ≤5 轮，期望主 7 ≈ $0.088（上界 $0.315），同一条命令，需批准。** 缺省单元 raw vs policy:base ≈ $0.103（上界 $0.372）；`--all` 期望 $0.512（上界 $1.86）。
+- 量过不改：6 个环境失败套件不在 `verify` 关键路径（并发 6 时最长是 evidence-search 18.4 s / closed-loop-v4 18.0 s）。
+- 自测：v4 27 → **30**（A27 影子分叉 + `--fork-from`、A28 因子设计、A29 成本校准）；A11 / A23 成本正则改为新期望。verify / manifest / 审计数字见 LIVE-MEMORY §−11。
+
 ## v14.11.0（2026-10-02，闭环 v4.6：三模式 —— 模式 1 助手手写稿量天花板（`hand` 臂，≈$0.11）/ 金标注册表 / 模式 2 压缩器基准 dd/1 / 模式 3 = 原单元；仍零花费）
 
 **起因**：用户在付钱前停下：现在的单元改的是副模型看到的东西，可「稿有没有写到位」与「主模型读了到位的稿做不做得对」是两个叠在一起的未知。提出三模式：① 助手代替压缩器手写稿喂主模型，② 以验证过的手写稿为标准（必须科学量化、防过拟合）训练压缩器，③ 端到端。三者全部建好（零 API），模式 1 步进 = 钥匙放沙箱、一次批准、助手一个回合内步完一条轨迹。

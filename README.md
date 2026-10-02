@@ -362,9 +362,11 @@ node tools/cfb-cycle.mjs ruler                       # 尺子效度 / 采纳规�
 node tools/cfb-cycle.mjs confirm --results FILE --map champion=auto,previous=raw   # L2 结局确认 / 回滚
 node tools/cfb-cycle.mjs propose [--allow-provisional]
 node tools/cfb-cycle.mjs status                       # v4.5：一屏（策略 / 计划 / 家族覆盖 / 下一步完整命令）；新克隆先 restore
-node tools/cfb-cycle.mjs plan-traj [--all|--dry|--drop N|--supersede N]   # v4.5：冻结付费单位，缺省一个家族 × raw vs policy:base ≈ $0.15；traj-run --plan 核对；confirm --plan N
+node tools/cfb-cycle.mjs plan-traj [--all|--dry|--drop N|--supersede N]   # v4.5：冻结付费单位，缺省一个家族 × raw vs policy:base；v4.7 影子分叉后期望 ≈ $0.103（上界 $0.372）；traj-run --plan 核对；confirm --plan N
+node tools/cfb-cycle.mjs plan-traj --arms raw,policy:p-x --reuse-raw .cfb-runtime/traj/t6/results.jsonl   # v4.7：复用已跑的 raw 轨迹当 leader（≈$0.025/对；非同期对照，同模型短窗口内）
+node tools/cfb-cycle.mjs plan-bench --policies base,p-x --factors half   # v4.7：候选的 ≤3 条补丁各为因子（2^(k−1) 臂），bench-report 出每条补丁主效应、该留的子集自动落成策略
 node tools/cfb-cycle.mjs review --plan N              # v4.5：评审稿（分歧轮 / 各臂结局 / 稿原文 / 闸门）
-node tools/cfb-cycle.mjs plan-traj --arms raw,hand    # v4.6 模式 1：助手手写稿臂（压缩 0 次 ≈ $0.11）；traj-run 到压缩轮暂停等 drafts/<id>.md，同一命令续跑
+node tools/cfb-cycle.mjs plan-traj --arms raw,hand    # v4.6 模式 1：助手手写稿臂（压缩 0 次；v4.7 期望 ≈ $0.088）；traj-run 到压缩轮暂停等 drafts/<id>.md，同一命令续跑
 node tools/cfb-cycle.mjs ceiling --plan N             # v4.6：hand vs raw 的 L2 天花板（不写 champion）→ gold add --plan N（金标 transfer/gold/）
 node tools/cfb-cycle.mjs plan-bench --policies base,p-x && node tools/bench-run.mjs --plan … --dry-run   # v4.6 模式 2：压缩器对金标的召回基准（dd/1）→ bench-report --plan N
 node tools/cfb-cycle.mjs snapshot | restore           # v4.5：闭环状态 ↔ transfer/cycle-state.json

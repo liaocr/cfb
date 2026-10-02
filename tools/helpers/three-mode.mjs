@@ -30,7 +30,8 @@ export function ceilingFrom({ rows, map = { hand: 'hand', raw: 'raw' }, alpha = 
   const compiles = handRows.flatMap((r) => (r.compile || []).map((c, i) => ({ task: r.task, sample: r.sample ?? 0, round: i + 1, ...c })))
   const acc = compiles.filter((c) => c.path === 'hand')
   const attempts = handRows.reduce((a, r) => a + (r.resumed || 0), 0)
-  const gate = { attempts, accepted: acc.length, rejected: Math.max(0, attempts - acc.length), belowFloor: compiles.filter((c) => c.belowFloor).length,
+  const noContrast = handRows.filter((r) => r.shadow && r.shadow.divergedAt == null).length, shadowRounds = handRows.reduce((a, r) => a + (r.shadow?.rounds || 0), 0)
+  const gate = { attempts, accepted: acc.length, rejected: Math.max(0, attempts - acc.length), belowFloor: compiles.filter((c) => c.belowFloor).length, noContrast, shadowRounds,
     meanRawChars: mean(acc.map((c) => c.rawChars)), meanDraftChars: mean(acc.map((c) => c.draftChars)), meanStoredChars: mean(acc.map((c) => c.outChars)),
     compression: acc.length ? +(acc.reduce((a, c) => a + c.outChars, 0) / Math.max(1, acc.reduce((a, c) => a + c.rawChars, 0))).toFixed(3) : null }
   const perGroup = cmp.pairs.map((p) => ({ task: p.task, sample: p.sample, outcome: p.outcome, hand: p.champion, raw: p.previous }))
@@ -89,7 +90,55 @@ export function saveGold(dir, items, { includeUnsolved = false } = {}) {
 }
 
 // ── 模式 2：压缩器基准 ──────────────────────────────────────────────────────
-export function buildBenchPlan({ n, policies = ['base'], gold, split = 'dev', pricing, purpose = null, planRel, homeRel, now = new Date().toISOString() }) {
+/** v4.7 因子设计（DOE）：一个候选策略的 k ≤ 3 条补丁各当一个二水平因子。
+ *  掩码 m 的第 j 位 = 第 j 条补丁开/关；half（k=3）取「偶宇称」那一半 2^(3−1)：000 011 101 110 —— 含 base、不含全开，主效应与另两条补丁的交互混叠（分辨率 III，靠稀疏效应假设）；
+ *  full = 2^k 全部。为什么不是一次改一条（OFAT）：同样 4 次运行，OFAT 每个效应只有 1 对（on vs base），因子设计每个效应用全部 4 次运行估计 ⇒ 同成本精度翻倍、且 base 行可与别的基准复用。 */
+export function factorialMasks(k, kind = 'half') {
+  if (!(Number.isInteger(k) && k >= 1 && k <= 3)) throw new Error('factorial-k:' + k + '（补丁数需 1–3）')
+  if (!['half', 'full'].includes(kind)) throw new Error('factorial-kind:' + kind)
+  const full = Array.from({ length: 1 << k }, (_, m) => m)
+  if (kind === 'full' || k < 3) return full
+  return full.filter((m) => (m.toString(2).split('1').length - 1) % 2 === 0)
+}
+export const maskBits = (m, k) => m.toString(2).padStart(k, '0')
+/** 由候选策略派生因子臂（不含 base=全关；全开就是候选自己）。 */
+export function derivePolicies(policy, kind = 'half') {
+  const patches = policy.patches || []; const k = patches.length
+  const masks = factorialMasks(k, kind)
+  return { k, kind, masks, arms: masks.map((m) => {
+    if (m === 0) return { id: 'base', mask: m }
+    if (m === (1 << k) - 1) return { id: policy.id, mask: m }
+    const sub = patches.filter((_, j) => m & (1 << j))
+    return { id: `${policy.id}.f${maskBits(m, k)}`, mask: m, policy: { schema: policy.schema || 'cfb.policy/1', id: `${policy.id}.f${maskBits(m, k)}`, parent: policy.id, base: policy.base, patches: sub, status: 'derived', derivedFrom: { policy: policy.id, mask: maskBits(m, k), kind, k }, rationale: `因子设计臂：${policy.id} 的补丁 ${[...patches.keys()].filter((j) => m & (1 << j)).map((j) => j + 1).join('+')}（归因用，可独立成候选）` } }
+  }) }
+}
+/** 主效应：对每个金标，开着第 j 条补丁的运行均分 − 关着的均分 ⇒ 按金标配对（符号 ⇒ 胜负 ⇒ e 值）。只用 dev 项。 */
+export function factorialEffects(rows, factorial, { alpha = DEFAULT_DESIGN_V4.alphaHoldout } = {}) {
+  const maskOf = Object.fromEntries(factorial.arms.map((a) => [a.id, a.mask]))
+  const live = rows.filter((r) => r && r.distance && r.split === 'dev' && maskOf[r.policy] != null)
+  const golds = [...new Set(live.map((r) => r.gold))]
+  const effects = []
+  for (let j = 0; j < factorial.k; j++) {
+    const per = []
+    for (const g of golds) {
+      const on = live.filter((r) => r.gold === g && (maskOf[r.policy] & (1 << j))), off = live.filter((r) => r.gold === g && !(maskOf[r.policy] & (1 << j)))
+      if (!on.length || !off.length) continue
+      const m = (xs, f) => xs.reduce((a, r) => a + f(r), 0) / xs.length
+      per.push({ gold: g, family: on[0].family, dScore: +(m(on, (r) => r.distance.score) - m(off, (r) => r.distance.score)).toFixed(3), dDecision: +(m(on, (r) => r.distance.decision ?? 0) - m(off, (r) => r.distance.decision ?? 0)).toFixed(3) })
+    }
+    const w = per.filter((x) => x.dScore > 0).length, l = per.filter((x) => x.dScore < 0).length
+    const fams = new Set(per.filter((x) => x.dScore !== 0).map((x) => x.family)).size
+    const e = +eValueWins(w, l).toFixed(3), eReject = +eValueWins(l, w).toFixed(3)
+    effects.push({ patch: j + 1, n: per.length, meanDScore: per.length ? +(per.reduce((a, x) => a + x.dScore, 0) / per.length).toFixed(3) : null, meanDDecision: per.length ? +(per.reduce((a, x) => a + x.dDecision, 0) / per.length).toFixed(3) : null, wins: w, losses: l, ties: per.length - w - l, families: fams, e, eReject,
+      verdict: e >= 1 / alpha && fams >= 2 ? 'keep' : eReject >= 1 / alpha ? 'drop' : 'undetermined', aliased: factorial.kind === 'half' && factorial.k === 3 ? '与另两条补丁的交互混叠（分辨率 III）' : null })
+  }
+  const keep = effects.filter((x) => x.verdict === 'keep').map((x) => x.patch), drop = effects.filter((x) => x.verdict === 'drop').map((x) => x.patch)
+  return { of: factorial.of, kind: factorial.kind, k: factorial.k, runs: factorial.arms.length, golds: golds.length, effects, keep, drop,
+    keepId: keep.length && keep.length < factorial.k ? `${factorial.of}.f${Array.from({ length: factorial.k }, (_, j) => keep.includes(j + 1) ? '1' : '0').reverse().join('')}` : null,
+    next: keep.length && keep.length < factorial.k ? `只保留补丁 ${keep.join('+')}（派生策略 ${factorial.of}.f${Array.from({ length: factorial.k }, (_, j) => keep.includes(j + 1) ? '1' : '0').reverse().join('')}，bench-report 已落盘）进模式 3；补丁 ${effects.filter((x) => x.verdict !== 'keep').map((x) => x.patch).join('、')} 不带` : keep.length === factorial.k ? `三条补丁都有效 ⇒ 候选 ${factorial.of} 整体进模式 3` : drop.length ? `补丁 ${drop.join('、')} 有害 ⇒ 去掉后重提` : '主效应都未判定 ⇒ 多加 dev 金标再跑同一设计（不要换补丁）' }
+}
+
+export function buildBenchPlan({ n, policies = ['base'], gold, split = 'dev', pricing, purpose = null, planRel, homeRel, now = new Date().toISOString(), factorial = null }) {
   const items = gold.filter((g) => !g.missing && g.validated && (split === 'all' || g.split === split))
   if (!items.length) throw new Error(`no-gold:${split}（注册表里没有可用金标；先跑模式 1：plan-traj --arms raw,hand → traj-run → ceiling → gold add）`)
   if (!policies.includes('base')) throw new Error('bench-needs-base（基准必须含 base：候选只按「对 base 的配对胜负」选，不看绝对分）')
@@ -97,6 +146,7 @@ export function buildBenchPlan({ n, policies = ['base'], gold, split = 'dev', pr
   const plan = { schema: 'cfb.bench-plan/1', id: 'b' + n, at: now, policies, split, metric: DRAFT_DISTANCE_VERSION,
     gold: items.map((g) => ({ id: g.id, family: g.family, split: g.split, digest: g.digest || goldDigest(g) })),
     cost: { calls, expectedUsd: +(calls * pricing.compressUsd).toFixed(3), capUsd: +(calls * pricing.compressCapUsd).toFixed(3), pricing: { compressUsd: pricing.compressUsd, compressCapUsd: pricing.compressCapUsd } },
+    ...(factorial ? { factorial } : {}),
     purpose: purpose || `模式 2：压缩器（生产 birthOffline 同构体，关思考、temperature 0）在金标原文上出稿，与手写金标按 ${DRAFT_DISTANCE_VERSION} 比对；量的是 g(稿 | 策略, 原文) 到手写标准的召回，不量结局`,
     selection: 'dev 项：每个金标上候选 vs base 按层级键配对 → e 值（≥2 家族、e ≥ 阈 ⇒ promote）；holdout 项只报告，不参与选择；promote 的策略进 plan-traj（模式 3）验收，基准分本身不采纳 champion' }
   plan.design = evidenceDigest({ policies, metric: plan.metric, split, gold: plan.gold.map((g) => g.id + ':' + g.digest) }).slice(0, 16)
@@ -106,7 +156,7 @@ export function buildBenchPlan({ n, policies = ['base'], gold, split = 'dev', pr
 }
 const KEYS = ['decision', 'excludedRecall', 'acceptOk', 'openRecall', 'anchorPrecision', 'lengthOk']
 /** 基准报告：每策略 × 切分的均值与判词分布；dev 项候选 vs base 的配对 e 值；holdout 只报告。best = promote 里 e 最大者。 */
-export function benchReport(rows, { baseline = 'base', alpha = DEFAULT_DESIGN_V4.alphaHoldout } = {}) {
+export function benchReport(rows, { baseline = 'base', alpha = DEFAULT_DESIGN_V4.alphaHoldout, factorial = null } = {}) {
   const live = (rows || []).filter((r) => r && r.policy && r.distance && r.gold)
   const policies = [...new Set(live.map((r) => r.policy))]
   const table = []
@@ -130,7 +180,8 @@ export function benchReport(rows, { baseline = 'base', alpha = DEFAULT_DESIGN_V4
   }
   const promoted = Object.entries(paired).filter(([, v]) => v.decision.startsWith('promote')).sort((a, b) => b[1].e - a[1].e)
   const best = promoted.length ? promoted[0][0] : null
-  return { schema: 'cfb.bench-report/1', baseline, metric: DRAFT_DISTANCE_VERSION, policies, table, paired, best, threshold: +(1 / alpha).toFixed(1),
+  const fx = factorial ? factorialEffects(rows, factorial, { alpha }) : null
+  return { schema: 'cfb.bench-report/1', baseline, metric: DRAFT_DISTANCE_VERSION, policies, table, paired, best, threshold: +(1 / alpha).toFixed(1), ...(fx ? { factorial: fx } : {}),
     next: best ? `plan-traj --arms raw,policy:${best}（模式 3 验收：基准分不采纳，只决定谁进轨迹）` : '没有策略在 dev 金标上显著优于 base：改策略（propose-policy）或先补金标（模式 1）' }
 }
 export function benchReportMd(rep, { title = '基准报告' } = {}) {
@@ -139,6 +190,12 @@ export function benchReportMd(rep, { title = '基准报告' } = {}) {
   L.push('', '配对（dev 金标上候选 vs base，层级键：决定 → 排除召回 → 验收 → 未解召回 → 锚点精度 → 长度）：')
   for (const [p, v] of Object.entries(rep.paired)) L.push(`- ${p}: ${v.wins}胜 ${v.losses}负 ${v.ties}平（${v.families} 家族）e=${v.e} 「更差」e=${v.eReject} 阈 ${rep.threshold}；泛化差 ${v.generalizationGap ?? '—'} ⇒ **${v.decision}**`)
   if (!Object.keys(rep.paired).length) L.push('- （只有 base：没有候选可配对）')
+  if (rep.factorial) {
+    const fx = rep.factorial
+    L.push('', `主效应（因子设计 ${fx.kind} 2^${fx.k}${fx.kind === 'half' && fx.k === 3 ? '−1' : ''}，候选 ${fx.of} 的 ${fx.k} 条补丁各为一个因子；${fx.runs} 个臂 × dev 金标 ${fx.golds}；每个效应用全部臂估计、按金标配对）：`)
+    for (const e of fx.effects) L.push(`- 补丁 ${e.patch}: Δ分 ${e.meanDScore ?? '—'}（Δ决定 ${e.meanDDecision ?? '—'}）${e.wins}胜 ${e.losses}负 ${e.ties}平（${e.families} 家族）e=${e.e} 「有害」e=${e.eReject} ⇒ **${e.verdict}**${e.aliased ? '；' + e.aliased : ''}`)
+    L.push(`- 归因结论: ${fx.next}`)
+  }
   L.push('', `下一步: ${rep.next}`, '', '读法：锚点精度 < 1 = 稿里有原文 / ctx 没有的标识符（发明或照抄样例）—— 这一项先于一切；分（score）只给人看，选稿看键。holdout 行只报告，不进选择。')
   return L.join('\n')
 }

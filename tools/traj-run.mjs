@@ -4,6 +4,11 @@
 //   工具：read_file / edit_file 真改；bash 先查 canned（测试 / trace / CI 按文件状态给结果），否则白名单命令真跑（grep/sed/cat/ls/head/tail/wc/find）。
 //   量：到修好的轮数、edit 次数、重复命令、修好后有没有验收、最终声明是否与状态相称、prompt tokens 合计、上下文里 reasoning 字数。
 // 用法：DEEPSEEK_API_KEY=… node tools/traj-run.mjs --variants raw,auto --samples 1 --max-rounds 6 --require-fp --base-url … --model … --out traj1 [--only id]
+// v4.7（v14.12）影子分叉（shadow-until-divergence）：分叉组里 raw 臂先跑完整条；其余臂**不发主调用**地复用 raw 的每一轮回复，直到自己真正存进历史的稿
+//   第一次与原文不同（压缩闸通过 / 手写稿收下）那一轮为止 —— 之后才各自发主调用。在那之前两臂输入逐字节相同，各自采样只是重复抽样（纯噪声、零对比信息；
+//   29 条真实轨迹审计：原文 ≥3100 字的轮只占 13%，首次有效压缩多在第 3 轮，旧设计每组白付 2–4 次主调用并把独立噪声混进「配对」）。
+//   没分歧到底的组 = 压缩器整条都没触发 ⇒ 结局与 raw 相同（记 shadow.divergedAt=null；confirm/ceiling 里按平手计并单独报数）。
+//   --fork-from FILE：复用已有 results.jsonl 里带 roundMessages 的 raw 轨迹当 leader（非同期对照：只能同模型、短窗口；行上记 reusedFrom）。
 // v4.6（v14.11）模式 1：变体 hand = 助手代替副模型手写稿。到了要压缩的那一轮，把副模型本该拿到的 prompt / 原文 / ctx 写进 <out>/pending/<id>.json、
 //   把轨迹状态存进 <out>/state/<task>-s<k>.json 后暂停（results.jsonl 记一行 status:'awaiting-draft'）；助手写好 <out>/drafts/<id>.md 后用**同一条命令**再跑，
 //   自动从状态续：稿走与生产完全相同的闸链（compileV4Direct → 程序部件拼接 → birthAccept）外加 G2「决策不变」闸（hand-draft.mjs）；任一闸不过 ⇒ 继续暂停并把违规写回 pending。
@@ -50,6 +55,7 @@ function parseArgs(argv) {
     else if (a === '--policy-dir') o.policyDir = v()
     else if (a === '--fork') o.fork = true
     else if (a === '--plan') o.plan = v()
+    else if (a === '--fork-from') o.forkFrom = v()
     else if (a === '--max-tokens') o.maxTokens = Number(v())
     else if (a === '--no-gate') o.noGate = true
     else if (a === '--dry-run') o.dryRun = true                 // v4.3：只构造任务 / 分组并打印，不发任何请求（计划核对）
@@ -85,6 +91,7 @@ export function loadPolicyFor(variant, policyDir) {
 }
 /** --plan：预注册的分叉轨迹计划（cfb-cycle plan-traj 冻结）。运行参数必须与计划一致，否则拒绝；跑完写回执 receipt.json。 */
 export function checkTrajPlan(plan, o) {
+  if ((plan.reuseRaw?.file || null) !== (o.forkFrom ? path.normalize(path.relative(process.cwd(), path.resolve(o.forkFrom))) : null)) throw new Error(`traj-plan-mismatch:forkFrom（计划 ${plan.reuseRaw?.file || '无'} ≠ 运行 ${o.forkFrom || '无'}）`)
   if (!plan || plan.schema !== 'cfb.traj-plan/1') throw new Error('traj-plan-schema')
   const want = { variants: [...plan.variants].sort().join(','), samples: plan.samples, maxRounds: plan.maxRounds, fork: !!plan.fork, only: (plan.scenarios || []).slice().sort().join(','), fromState: plan.fromStates ? path.normalize(plan.fromStates.file) : '', storeText: !!plan.storeText }
   const have = { variants: [...o.variants].sort().join(','), samples: o.samples, maxRounds: o.maxRounds, fork: !!o.fork, only: (o.only || []).slice().sort().join(','), fromState: o.fromState ? path.normalize(path.relative(process.cwd(), path.resolve(o.fromState))) : '', storeText: !!o.storeText }
@@ -203,13 +210,17 @@ export function callsOfMessage(m) {
   return out.filter((c) => { const k = c.name + '|' + normCmd(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)); if (seen.has(k)) return false; seen.add(k); return true })
 }
 
-export async function runOne({ o, task, variant, sample, chat, I, cred, forkMessage = null, state = null, resume = null }) {
+export async function runOne({ o, task, variant, sample, chat, I, cred, forkMessage = null, state = null, resume = null, leader = null }) {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'traj-'))
   materialize(task, repo)
   const policy = loadPolicyFor(variant, o.policyDir)
   const hand = variant === 'hand'
   let messages = [{ role: 'system', content: o.textTools ? SYSTEM_TEXT_TOOLS : SYSTEM }, { role: 'user', content: task.prompt }]
-  const rec = { task: task.id, variant, sample, rounds: 0, calls: 0, edits: [], repeats: 0, fixedAtRound: null, verifiedAfterFix: false, promptTokens: 0, compile: [], transcript: [], rejected: 0, ...(policy ? { policy: policy.id } : {}), ...(forkMessage ? { forked: true } : {}), ...(task.perturb ? { perturb: task.perturb } : {}), ...(state ? { fromState: state.id, family: state.family, startRound: state.startRound } : {}) }
+  const rec = { task: task.id, variant, sample, rounds: 0, calls: 0, edits: [], repeats: 0, fixedAtRound: null, verifiedAfterFix: false, promptTokens: 0, compile: [], transcript: [], rejected: 0, ...(policy ? { policy: policy.id } : {}), ...(forkMessage || leader ? { forked: true } : {}), ...(task.perturb ? { perturb: task.perturb } : {}), ...(state ? { fromState: state.id, family: state.family, startRound: state.startRound } : {}) }
+  // v4.7 影子分叉：lead = leader（raw 臂逐轮回复）或老式单条 forkMessage；diverged 之前每轮直接取 lead 的回复，不发主调用
+  let lead = leader ? leader.slice() : (forkMessage ? [forkMessage] : null), diverged = false
+  if (leader) rec.shadow = { rounds: 0, divergedAt: null }   // 只有 raw 当 leader 的影子分叉才有「分歧轮」语义；老式单条 forkMessage 只分叉第 1 轮
+  const ownRounds = []   // 本臂每轮的主模型回复（raw 臂 + --store-text 时持久化为 roundMessages，供影子分叉 / --fork-from 复用）
   let seenCmds = new Map()
   let firstRound = 1
   const replayLog = []   // 本轨迹已执行过的全部调用（含子状态前缀）—— hand 臂暂停时存下来，续跑时确定性重放恢复仓库
@@ -219,6 +230,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
     replayLog.push(...(resume.replay || []))
     messages = resume.messages; Object.assign(rec, resume.rec); seenCmds = new Map(resume.seenCmds || []); firstRound = resume.round
     rec.resumed = (rec.resumed || 0) + 1
+    if (resume.lead) { lead = resume.lead; diverged = !!resume.diverged; if (!rec.shadow) rec.shadow = { rounds: 0, divergedAt: null } }
   }
   if (state && !resume) {
     // v4.3 子状态续跑：确定性重放前 k−1 轮的调用得到仓库状态，消息前缀只含 assistant 文字 + 工具结果（无思维链；模型从这里重新思考）
@@ -233,7 +245,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
     for (let round = firstRound; round <= o.maxRounds; round++) {
       let r
       if (round === firstRound && resume) r = { message: resume.message, usage: { prompt_tokens: 0 }, fp: 'resume' }
-      else if (round === firstRound && forkMessage) r = { message: forkMessage, usage: { prompt_tokens: 0 }, fp: 'fork' }
+      else if (lead && !diverged && lead[round - 1]) { r = { message: lead[round - 1], usage: { prompt_tokens: 0 }, fp: round === 1 ? 'fork' : 'shadow' }; if (rec.shadow) rec.shadow.rounds++ }   // 输入与 leader 逐字节相同 ⇒ 它的采样就是本臂的采样；leader 已结束 / 出错则落到自己发
       else for (let k = 0; ; k++) {
         // 中转按请求内容（大致）黏住后端，作废重发常连续落到同一不可信后端 ⇒ 先用 max_tokens:1 的探针（只花 prefill）试后端，可信了再发真请求；
         //   每次重试在末条 user 末尾加 k 个零宽空格打散黏性，并退避几秒让路由轮转
@@ -252,7 +264,8 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         if (k >= o.maxProbes - 1) throw new Error('通道始终未送入思考：' + rec.rejectedWhy.slice(-10).join(','))
       }
       rec.rounds = round
-      if (round === firstRound && !forkMessage && !resume) rec.firstMessage = r.message   // --fork：其他臂从这条（起始轮）回复分叉
+      if (round === firstRound && !forkMessage && !resume && !leader) rec.firstMessage = r.message   // --fork：其他臂从这条（起始轮）回复分叉
+      ownRounds.push(r.message)
       rec.promptTokens += Number(r.usage && r.usage.prompt_tokens) || 0
       const reasoning = String(r.message.reasoning_content || '')
       const text = responseText(r.message)
@@ -292,7 +305,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
           fs.mkdirSync(path.dirname(pendingFile), { recursive: true }); fs.mkdirSync(path.dirname(stateFile), { recursive: true }); fs.mkdirSync(path.join(o.out, 'drafts'), { recursive: true })
           const prompt = I.compressPromptFor({ ...cfg, compressCtx: ctx }, reasoning)
           fs.writeFileSync(pendingFile, JSON.stringify({ schema: 'cfb.hand-pending/1', id, task: task.id, sample, round, at: new Date().toISOString(), draftFile: path.relative(process.cwd(), draftFile), protocol: HAND_PROTOCOL, violations, draftSeenChars: draft ? draft.length : null, prompt, raw: reasoning, ctx, calls: calls.map((c) => ({ name: c.name, args: typeof c.args === 'string' ? c.args : JSON.stringify(c.args) })), minChars: o.minChars }, null, 2))
-          fs.writeFileSync(stateFile, JSON.stringify({ schema: 'cfb.hand-state/1', id, task: task.id, variant, sample, round, at: new Date().toISOString(), message: r.message, messages, rec: { ...rec, firstMessage: undefined }, seenCmds: [...seenCmds], replay: replayLog }))
+          fs.writeFileSync(stateFile, JSON.stringify({ schema: 'cfb.hand-state/1', id, task: task.id, variant, sample, round, at: new Date().toISOString(), message: r.message, messages, rec: { ...rec, firstMessage: undefined }, seenCmds: [...seenCmds], replay: replayLog, lead: lead && !diverged ? lead : null, diverged }))
           rec.status = 'awaiting-draft'; rec.awaiting = { id, round, pending: path.relative(process.cwd(), pendingFile), state: path.relative(process.cwd(), stateFile), draftFile: path.relative(process.cwd(), draftFile), violations }
           return rec
         }
@@ -319,6 +332,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         }
         rec.compile.push(compileInfo)
       }
+      if (lead && !diverged && stored !== reasoning) { diverged = true; if (rec.shadow) rec.shadow.divergedAt = round }   // 从下一轮起本臂的历史与 raw 不同 ⇒ 自己发主调用
       messages.push({ role: 'assistant', content: text, reasoning_content: stored })
       rec.transcript.push({ round, reasoningChars: reasoning.length, storedChars: stored.length, text: text.slice(0, 3000), calls: calls.map((c) => ({ name: c.name, args: String(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)).slice(0, o.storeText ? 8000 : 400) })), ...(o.storeText ? { reasoning: reasoning.slice(0, 12000), stored: stored === reasoning ? null : stored.slice(0, 12000) } : {}) })
       if (!calls.length) {
@@ -355,6 +369,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
     const pre = rec.proxySteps.filter((s) => !(Number.isInteger(rec.fixedAtRound) && s.round >= rec.fixedAtRound))
     rec.proxyScore = pre.length ? +(pre.reduce((a, s) => a + s.score, 0) / pre.length).toFixed(3) : null
     rec.proxyRound2 = rec.proxySteps.find((s) => s.round === 2)?.score ?? null
+    if (variant === 'raw' && !state) { rec._lead = ownRounds; if (o.storeText) rec.roundMessages = ownRounds }   // raw 臂逐轮回复：同组影子分叉用 _lead；--store-text 时持久化供 --fork-from 复用
   } catch (e) { rec.error = String(e && e.message || e) }
   finally { fs.rmSync(repo, { recursive: true, force: true }) }
   return rec
@@ -390,12 +405,14 @@ export function summarizeTraj(rows) {
   L.push('', '逐条：', '', '| 任务 | 变体 | # | 修好@轮 | 轮 | 调用 | edit | 重复 | 验收 | 声明 | 相称 | tokens |', '|---|---|---|---|---|---|---|---|---|---|---|---|')
   for (const r of ok) L.push(`| ${r.task} | ${r.variant} | ${r.sample} | ${r.fixed ? (r.fixedAtRound ?? '?') : '✗'} | ${r.rounds} | ${r.calls} | ${r.edits.length} | ${r.repeats} | ${r.verifiedAfterFix ? '●' : '·'} | ${r.claim} | ${r.claimJustified ? '●' : '✗'} | ${r.promptTokens} |`)
   for (const r of rows.filter((r) => r.error)) L.push(`| ${r.task} | ${r.variant} | ${r.sample} | ERR ${r.error.slice(0, 60)} |`)
+  const sh = ok.filter((r) => r.shadow)
+  if (sh.length) L.push('', `影子分叉：跟随臂 ${sh.length} 条，省下主调用 ${sh.reduce((a, r) => a + r.shadow.rounds, 0)} 次；分歧轮 ${sh.map((r) => r.shadow.divergedAt ?? '无').join(',')}；**未分歧 ${sh.filter((r) => r.shadow.divergedAt == null).length} 条（压缩器整条没触发 ⇒ 与 raw 结局相同，按平手计、不是证据）**`)
   const waiting = rows.filter((r) => r.status === 'awaiting-draft')
   if (waiting.length) L.push('', `等待手写稿 ${waiting.length} 条：` + waiting.map((r) => `${r.task}/${r.variant} #${r.sample} 第 ${r.awaiting?.round} 轮（${r.awaiting?.pending}）`).join('；'))
   return L.join('\n')
 }
 
-async function main(argv) {
+export async function main(argv) {
   const o = parseArgs(argv)
   fs.mkdirSync(o.out, { recursive: true })
   const resPath = path.join(o.out, 'results.jsonl')
@@ -412,12 +429,25 @@ async function main(argv) {
     const d = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-')); const cred = path.join(d, 'c.yaml'); fs.writeFileSync(cred, 'K: "' + apiKey + '"\n', { mode: 0o600 })
     const jobs = []
     const states = o.fromState ? loadStates(o.fromState) : null
+    // v4.7 --fork-from：复用旧 results.jsonl 里带 roundMessages 的 raw 轨迹当 leader（非同期对照），本次不再跑 raw 臂
+    const reusable = new Map()
+    if (o.forkFrom) { for (const r of fs.readFileSync(o.forkFrom, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))) if (r.variant === 'raw' && !r.error && Array.isArray(r.roundMessages) && r.roundMessages.length) (reusable.get(r.task) || reusable.set(r.task, []).get(r.task)).push(r) }
+    const reused = []
     const scenarioSpecs = (o.only || TRAJ_TASKS.map((t) => t.id)).map((x) => { const [id, kind] = x.split(':'); return { id, kind: kind || (o.perturb && o.perturb[0] !== 'none' ? o.perturb[0] : null) } })
     if (states) { for (const st of states) { const base = TRAJ_TASKS.find((t) => t.id === st.family); if (!base) throw new Error('state-family-unknown:' + st.family); for (const v of o.variants) for (let k = 0; k < o.samples; k++) if (!have.has(`${st.id}|${v}|${k}`)) jobs.push({ task: base, variant: v, sample: k, state: st }) } }
-    else for (const spec of scenarioSpecs) { const base = TRAJ_TASKS.find((t) => t.id === spec.id); if (!base) throw new Error('unknown-scenario:' + spec.id); const task = perturbTask(base, spec.kind); for (const v of o.variants) for (let k = 0; k < o.samples; k++) if (!have.has(`${task.id}|${v}|${k}`)) jobs.push({ task, variant: v, sample: k, resume: resumeFor(task, v, k) }) }
+    else for (const spec of scenarioSpecs) {
+      const base = TRAJ_TASKS.find((t) => t.id === spec.id); if (!base) throw new Error('unknown-scenario:' + spec.id); const task = perturbTask(base, spec.kind)
+      for (let k = 0; k < o.samples; k++) {
+        const old = reusable.get(task.id)?.[k]
+        if (old && o.fork && o.variants.includes('raw') && !have.has(`${task.id}|raw|${k}`)) { const copy = { ...old, sample: k, reusedFrom: { file: o.forkFrom, at: old.at || null, sample: old.sample, task: old.task, mainCalls: old.mainCalls ?? old.rounds ?? null }, mainCalls: 0, roundMessages: undefined }; reused.push({ task, sample: k, row: copy, lead: old.roundMessages }); have.add(`${task.id}|raw|${k}`) }
+        for (const v of o.variants) if (!have.has(`${task.id}|${v}|${k}`)) jobs.push({ task, variant: v, sample: k, resume: resumeFor(task, v, k) })
+      }
+    }
+    if (o.forkFrom && !o.dryRun) for (const x of reused) fs.appendFileSync(resPath, JSON.stringify(x.row) + '\n')
+    if (o.forkFrom) console.log(`--fork-from ${o.forkFrom}：复用 raw 轨迹 ${reused.length} 条当 leader（非同期对照：只配同模型、短窗口；行上记 reusedFrom）`)
     console.log(`轨迹 ${jobs.length} 条（每条 ≤ ${o.maxRounds} 轮主调用${o.variants.includes('auto') ? ' + 同数副调用' : ''}），并发 ${o.concurrency}`)
     // --fork：同题同样本分组，第一臂跑完第 1 轮后其余臂从同一条第 1 轮回复分叉（配对在分叉点、每组省 (臂数−1) 次主调用）
-    const groups = o.fork ? [...jobs.reduce((m, j) => { const k = `${j.state ? j.state.id : j.task.id}|${j.sample}`; (m.get(k) || m.set(k, []).get(k)).push(j); return m }, new Map()).values()] : jobs.map((j) => [j])
+    const groups = o.fork ? [...jobs.reduce((m, j) => { const k = `${j.state ? j.state.id : j.task.id}|${j.sample}`; (m.get(k) || m.set(k, []).get(k)).push(j); return m }, new Map()).values()].map((g) => g.sort((a, b) => (a.variant === 'raw' ? -1 : 0) - (b.variant === 'raw' ? -1 : 0))) : jobs.map((j) => [j])   // raw 先跑：它是影子分叉的 leader
     const stop = plan?.stop || null; let stopped = null; const spent = { usd: 0 }
     if (o.fork) console.log(`--fork：${groups.length} 组，每组 ${o.variants.length} 臂共用第 1 轮`)
     if (o.dryRun) {
@@ -425,22 +455,24 @@ async function main(argv) {
       let replayed = 0, bad = []
       for (const j of jobs) if (j.state) { const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'traj-dry-')); try { materialize(j.task, repo); for (const c of j.state.replay || []) execTool(j.task, repo, c.name, c.args); if (j.task.fixed(repo)) bad.push(j.state.id + ':already-fixed'); else replayed++ } catch (e) { bad.push(j.state.id + ':' + e.message) } finally { fs.rmSync(repo, { recursive: true, force: true }) } }
       console.log(`dry-run：任务 ${jobs.length}（${[...new Set(jobs.map((j) => j.state ? j.state.id : j.task.id))].length} 个起点 × ${o.variants.length} 臂 × ${o.samples} 样本）、组 ${groups.length}；子状态重放成功 ${replayed}${bad.length ? '，失败 ' + bad.length + '：' + bad.slice(0, 5).join(' ') : ''}${stop ? `；停止规则 α=${stop.alpha} 上界 $${stop.capUsd}` : ''}；未发任何请求`)
-      fs.rmSync(d, { recursive: true, force: true }); return { dryRun: true, jobs: jobs.length, groups: groups.length, replayed, bad }
+      fs.rmSync(d, { recursive: true, force: true }); return { dryRun: true, jobs: jobs.length, groups: groups.length, replayed, bad, reusedRaw: reused.length }
     }
     let i = 0
     await Promise.all(Array.from({ length: Math.min(o.concurrency, groups.length) }, async () => {
       while (i < groups.length) {
         const grp = groups[i++]
-        let forkMessage = null
+        let forkMessage = null, lead = null
+        const pre = reused.find((x) => grp.some((j) => !j.state && j.task.id === x.task.id && j.sample === x.sample)); if (pre) lead = pre.lead
         for (const j of grp) {
         if (stopped) break
-        const rec = await runOne({ o, task: j.task, variant: j.variant, sample: j.sample, chat, I, cred, forkMessage: j.resume ? null : forkMessage, state: j.state || null, resume: j.resume || null })
+        const rec = await runOne({ o, task: j.task, variant: j.variant, sample: j.sample, chat, I, cred, forkMessage: j.resume || lead ? null : forkMessage, state: j.state || null, resume: j.resume || null, leader: j.resume ? null : lead })
         spent.usd += ((rec.mainCalls ?? rec.rounds ?? 0) - (j.resume?.rec?.mainCalls || 0)) * (plan?.cost?.pricing?.mainUsd ?? 0.0125) + (rec.compile || []).filter((c) => !c.belowFloor && c.path !== 'hand').length * (plan?.cost?.pricing?.compressUsd ?? 0.0075)   // hand 稿零成本；续跑只算本次新发的主调用
         if (o.fork && !forkMessage && rec.firstMessage) forkMessage = rec.firstMessage
-        delete rec.firstMessage
+        if (o.fork && !lead && rec.variant === 'raw' && rec._lead && !rec.error) lead = rec._lead   // 同组其余臂影子跟随 raw 直到分歧
+        delete rec.firstMessage; delete rec._lead
         fs.appendFileSync(resPath, JSON.stringify(rec) + '\n')
         if (rec.status === 'awaiting-draft') { console.log(`  ${rec.task}/${rec.variant} #${rec.sample}: 等待手写稿（第 ${rec.awaiting.round} 轮）→ 读 ${rec.awaiting.pending}，写 ${rec.awaiting.draftFile}，再跑同一条命令` + (rec.awaiting.violations ? `；上一份稿被拒：${rec.awaiting.violations.map((v) => v.kind).join(', ')}` : '')); continue }
-        console.log(`  ${rec.task}/${rec.variant} #${rec.sample}: ${rec.error ? 'ERR ' + rec.error : `${rec.fixed ? '修好@' + rec.fixedAtRound : '未修好'} · ${rec.rounds} 轮 · ${rec.calls} 调用 · edit ${rec.edits.length} · 重复 ${rec.repeats} · 验收 ${rec.verifiedAfterFix ? '●' : '·'} · 声明 ${rec.claim}${rec.claimJustified ? '' : '（不相称）'} · tokens ${rec.promptTokens}${rec.compile.length ? ' · 压稿 ' + rec.compile.filter((c) => c.ok).length + '/' + rec.compile.length : ''} · proxy ${rec.proxyScore ?? '—'}${rec.forked ? ' · 分叉' : ''}`}`)
+        console.log(`  ${rec.task}/${rec.variant} #${rec.sample}: ${rec.error ? 'ERR ' + rec.error : `${rec.fixed ? '修好@' + rec.fixedAtRound : '未修好'} · ${rec.rounds} 轮${rec.shadow ? `（影子 ${rec.shadow.rounds}，${rec.shadow.divergedAt ? '第 ' + rec.shadow.divergedAt + ' 轮分歧' : '未分歧=与 raw 全同'}）` : ''} · ${rec.calls} 调用 · edit ${rec.edits.length} · 重复 ${rec.repeats} · 验收 ${rec.verifiedAfterFix ? '●' : '·'} · 声明 ${rec.claim}${rec.claimJustified ? '' : '（不相称）'} · tokens ${rec.promptTokens}${rec.compile.length ? ' · 压稿 ' + rec.compile.filter((c) => c.ok).length + '/' + rec.compile.length : ''} · proxy ${rec.proxyScore ?? '—'}${rec.forked ? ' · 分叉' : ''}`}`)
         }
         // v4.3 有界续跑：一次批准内自动跑到判定或预算上界（e 值任意停时有效，提前停不损失保证）
         if (stop && !stopped) {
@@ -460,7 +492,7 @@ async function main(argv) {
   let md = summarizeTraj([...last.values()])
   const cont = [...last.values()].filter((r) => r.continuation); if (cont.length) md += `\n\n续跑探针（${cont.length} 条）：${cont.map((r) => `${r.fromState}/${r.variant}: ${r.continuation.verdict}（首轮 ${r.continuation.firstRoundCalls} 次调用、重做前缀 ${r.continuation.prefixRepeats}）`).join('；')}\n结论：${cont.every((r) => r.continuation.verdict === 'continued') ? '模型顺着前缀继续 —— 子状态可用' : cont.some((r) => r.continuation.verdict === 'restarted') ? '**有轨迹从头重来** —— 子状态口径存疑，先别扩到 14 个' : '不清楚（首轮无调用）'}`
   fs.writeFileSync(path.join(o.out, 'summary.md'), md + '\n')
-  if (plan) { const rows = [...last.values()]; fs.writeFileSync(path.join(o.out, 'receipt.json'), JSON.stringify({ schema: 'cfb.traj-receipt/1', plan: plan.id, digest: plan.digest, at: new Date().toISOString(), trajectories: rows.length, errors: rows.filter((r) => r.error).length, awaiting: rows.filter((r) => r.status === 'awaiting-draft').length, mainCalls: rows.reduce((a, r) => a + (r.mainCalls ?? r.rounds ?? 0), 0), compressCalls: rows.reduce((a, r) => a + (r.compile || []).filter((c) => !c.belowFloor && c.path !== 'hand').length, 0), handDrafts: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.path === 'hand').length, 0), promptTokens: rows.reduce((a, r) => a + (r.promptTokens || 0), 0), gateFails: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.gateFail).length, 0), estimatedUsd: +spent.usd.toFixed(3), stoppedEarly: stopped || null }, null, 2) + '\n') }
+  if (plan) { const rows = [...last.values()]; fs.writeFileSync(path.join(o.out, 'receipt.json'), JSON.stringify({ schema: 'cfb.traj-receipt/1', plan: plan.id, digest: plan.digest, at: new Date().toISOString(), trajectories: rows.length, errors: rows.filter((r) => r.error).length, awaiting: rows.filter((r) => r.status === 'awaiting-draft').length, mainCalls: rows.reduce((a, r) => a + (r.mainCalls ?? r.rounds ?? 0), 0), compressCalls: rows.reduce((a, r) => a + (r.compile || []).filter((c) => !c.belowFloor && c.path !== 'hand').length, 0), handDrafts: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.path === 'hand').length, 0), shadowRounds: rows.reduce((a, r) => a + (r.shadow?.rounds || 0), 0), noContrastGroups: rows.filter((r) => r.shadow && r.shadow.divergedAt == null && r.status !== 'awaiting-draft').length, reusedRaw: rows.filter((r) => r.reusedFrom).length, promptTokens: rows.reduce((a, r) => a + (r.promptTokens || 0), 0), gateFails: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.gateFail).length, 0), estimatedUsd: +spent.usd.toFixed(3), stoppedEarly: stopped || null }, null, 2) + '\n') }
   console.log('\n' + md)
 }
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) main(process.argv.slice(2)).catch((e) => { console.error(e && e.stack || e); process.exit(1) })

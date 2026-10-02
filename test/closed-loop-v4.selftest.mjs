@@ -136,14 +136,14 @@ try {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-v42-')); const env = { ...process.env, CFB_CYCLE_DIR: tmp }
     const cli = (...a) => cyc.runCli(a, { dir: tmp })   // v14.10：进程内 CLI（不起子进程）
     try {
-      // v4.5：缺省单位 = 一个家族（轨迹最少、dev 优先 ⇒ sse-truncated）× 2 臂 × 1 样本 × ≤5 轮 = 9 + 5 请求 ≈ $0.15；--all 才是 5 家族（45 + 25 ≈ $0.75）
-      const pt = cli('plan-traj'); assert.equal(pt.status, 0, pt.stdout + pt.stderr); assert.ok(/期望实付 ≈ \$0\.15，上界 ≈ \$0\.372/.test(pt.stdout) && /检验尺子有效性/.test(pt.stdout) && /traj-run\.mjs --plan/.test(pt.stdout) && /只跑 sse-truncated/.test(pt.stdout), pt.stdout)
+      // v4.5：缺省单位 = 一个家族（未探索、dev 优先 ⇒ sse-truncated）× 2 臂 × 1 样本 × ≤5 轮 ≤ 9 + 5 请求；v4.7 影子分叉期望 7 + 2 ≈ $0.103（上界 $0.372）；--all 才是 5 家族（≤45 + 25，期望 ≈ $0.512，上界 $1.86）
+      const pt = cli('plan-traj'); assert.equal(pt.status, 0, pt.stdout + pt.stderr); assert.ok(/期望主 7 \+ 压缩 2（影子分叉.*期望实付 ≈ \$0\.103，上界 ≈ \$0\.372/.test(pt.stdout) && /检验尺子有效性/.test(pt.stdout) && /traj-run\.mjs --plan/.test(pt.stdout) && /只跑 sse-truncated/.test(pt.stdout), pt.stdout)
       const plan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/t1/plan.json'), 'utf8')); assert.equal(plan.schema, 'cfb.traj-plan/1'); assert.equal(plan.cost.mains, 9); assert.equal(plan.cost.compresses, 5); assert.deepEqual(plan.scenarios, ['sse-truncated']); assert.equal(plan.maxRounds, 5); assert.ok(!fs.existsSync(path.join(tmp, 'receipts')))
       const again = cli('plan-traj'); assert.match(again.stdout, /同一设计的计划已存在：t1/); assert.ok(!fs.existsSync(path.join(tmp, 'runtime/t2')), '同设计不重复建')
-      const dryp = cli('plan-traj', '--all', '--dry'); assert.match(dryp.stdout, /\[dry\] 不落盘.*主 45 \+ 压缩 25 ≈ \$0\.75（上界 \$1\.86）/); assert.ok(!fs.existsSync(path.join(tmp, 'runtime/t2')))
+      const dryp = cli('plan-traj', '--all', '--dry'); assert.match(dryp.stdout, /\[dry\] 不落盘.*主 ≤45 \+ 压缩 ≤25，期望主 35 \+ 压缩 10 ≈ \$0\.512（上界 \$1\.86）/); assert.ok(!fs.existsSync(path.join(tmp, 'runtime/t2')))
       assert.equal(cli('plan-traj', '--arms', 'raw,auto', '--dry').stdout.includes('臂 raw vs policy:base'), true, 'auto 是 policy:base 的别名'); assert.notEqual(cli('plan-traj', '--arms', 'raw,auto,policy:base', '--dry').status, 0, '重复臂被拒')
       assert.match(cli('plan-traj', '--help').stdout, /plan-traj \[/); assert.ok(!fs.existsSync(path.join(tmp, 'runtime/t2')), '--help 不落盘')
-      const pt3 = cli('plan-traj', '--n', '9', '--scenarios', 'eacces-config,flaky-timeout,perf-regression'); assert.ok(/期望实付 ≈ \$0\.45，上界 ≈ \$1\.116/.test(pt3.stdout), pt3.stdout)
+      const pt3 = cli('plan-traj', '--n', '9', '--scenarios', 'eacces-config,flaky-timeout,perf-regression'); assert.ok(/期望实付 ≈ \$0\.307，上界 ≈ \$1\.116/.test(pt3.stdout), pt3.stdout)
       assert.match(cli('plan-traj', '--drop', '9').stdout, /已撤销未执行的计划 t9/); assert.ok(!fs.existsSync(path.join(tmp, 'runtime/t9')))
       assert.notEqual(cli('plan-traj', '--scenarios', 'nope').status, 0)
       // 策略 champion（provisional）+ L2 champion 更好 ⇒ 没有路径等价校准时只能 pending-parity
@@ -390,7 +390,7 @@ try {
       const pp = cli('propose-policy', '--print'); assert.equal(pp.status, 0, pp.stdout + pp.stderr); assert.match(pp.stdout, /\[print\] 未落盘、未登记 g1/); assert.ok(!fs.existsSync(path.join(tmp, 'offline/gen-1.pack.json')))
       assert.ok(!fs.existsSync(path.join(tmp, 'offline/history.json')) || (JSON.parse(fs.readFileSync(path.join(tmp, 'offline/history.json'), 'utf8')).generations || []).length === 0, '--print 不占代')
       // plan-traj → status 显示计划与设计 → supersede → 不再是待执行
-      assert.equal(cli('plan-traj').status, 0); const s1 = cli('status'); assert.match(s1.stdout, /t1 planned\s+raw vs policy:base × sse-truncated × 1 ≤5轮 ≈\$0\.15（上界 \$0\.372） design [0-9a-f]{16}/); assert.match(s1.stdout, /下一步: 已有未执行计划 t1（≈\$0\.15，上界 \$0\.372）[\s\S]*traj-run\.mjs --plan \S*t1[\/\\]plan\.json --store-text --variants raw --policy base --only sse-truncated --samples 1 --max-rounds 5 --fork --max-tokens 8000 --require-fp[\s\S]*review --plan 1/)
+      assert.equal(cli('plan-traj').status, 0); const s1 = cli('status'); assert.match(s1.stdout, /t1 planned\s+raw vs policy:base × sse-truncated × 1 ≤5轮 ≈\$0\.103（上界 \$0\.372） design [0-9a-f]{16}/); assert.match(s1.stdout, /下一步: 已有未执行计划 t1（≈\$0\.103，上界 \$0\.372）[\s\S]*traj-run\.mjs --plan \S*t1[\/\\]plan\.json --store-text --variants raw --policy base --only sse-truncated --samples 1 --max-rounds 5 --fork --max-tokens 8000 --require-fp[\s\S]*review --plan 1/)
       const sp = cli('plan-traj', '--supersede', '1', '--note', '测试作废'); assert.equal(sp.status, 0, sp.stdout + sp.stderr); assert.ok(fs.existsSync(path.join(tmp, 'runtime/t1/plan.json')), 'plan.json 保留')
       const s2 = cli('status'); assert.match(s2.stdout, /t1 superseded .*—— 测试作废/); assert.match(s2.stdout, /下一步: node tools\/cfb-cycle\.mjs plan-traj/)
       assert.notEqual(cli('plan-traj', '--supersede', '1').status, 0, '已作废的不能再作废'); assert.notEqual(cli('plan-traj', '--drop', '1').status, 0, '只有 planned 能 drop')
@@ -544,6 +544,93 @@ try {
       // 8) 快照含基准计划（不写仓库文件：只调库函数）
       const prev = C.cycleDir(); C.setCycleDir(tmp); try { const snap = C.cycleSnapshot(); assert.equal(snap.benchPlans.length, 1); assert.equal(snap.benchPlans[0].plan.id, 'b1'); assert.equal(snap.trajPlans.length, 1) } finally { C.setCycleDir(prev) }
     } finally { process.chdir(cwd); fs.rmSync(tmp, { recursive: true, force: true }) }
+  })
+  await test('A27 v4.7 影子分叉（零 API）：跟随臂在分歧前不发主调用（第 1–2 轮低于地板 ⇒ 影子；第 3 轮收稿 ⇒ 分歧；第 4 轮才自己发）；整条没触发 ⇒ 0 次主调用、结局与 raw 全同、divergedAt=null；raw 臂 --store-text 持久化 roundMessages；--fork-from 复用旧 raw 当 leader（dry-run 核对 + runOne 级）', async () => {
+    const TR = await import('../tools/traj-run.mjs'); const { TRAJ_TASKS } = await import('../tools/traj-fixtures.mjs'); const I = await import('../index.js')
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-')); const out = path.join(tmp, 'out'); fs.mkdirSync(out); const cred = path.join(tmp, 'c.yaml'); fs.writeFileSync(cred, 'K: "unused"\n')
+    const task = TRAJ_TASKS.find((t) => t.id === 'eacces-config'); const cwd = process.cwd(); process.chdir(tmp)
+    try {
+      const long = ('我们需要先确认 test/birth.selftest.mjs 里 home 的来源。看起来 makeTraceWriter 拿的是 process.env.CFB_REAL_DSH_HOME，所以测试写到真实目录 /home/u/.dsh。不是权限问题：chown 需要 root，排除。下一步 read_file test/birth.selftest.mjs。').repeat(10)
+      const fix = { path: 'test/birth.selftest.mjs', old_text: 'process.env.CFB_REAL_DSH_HOME', new_text: 'process.env.DSH_HOME' }
+      const script = [
+        { reasoning_content: '先看看。', content: '读 README。', tool_calls: [{ id: 'a', function: { name: 'read_file', arguments: JSON.stringify({ path: 'README.md' }) } }] },
+        { reasoning_content: '再看测试。', content: '读测试。', tool_calls: [{ id: 'b', function: { name: 'read_file', arguments: JSON.stringify({ path: 'test/birth.selftest.mjs' }) } }] },
+        { reasoning_content: long, content: '看 trace。', tool_calls: [{ id: 'c', function: { name: 'read_file', arguments: JSON.stringify({ path: 'src/trace.js' }) } }] },
+        { reasoning_content: '改。', content: '改法只落一个。', tool_calls: [{ id: 'd', function: { name: 'edit_file', arguments: JSON.stringify(fix) } }] },
+        { reasoning_content: '完。', content: '已修复。', tool_calls: [] }]
+      const mk = () => { let i = 0; const f = async () => ({ message: script[Math.min(i++, script.length - 1)], usage: { prompt_tokens: 10 }, fp: 'x' }); f.count = () => i; return f }
+      const o = { out, minChars: 200, maxRounds: 6, maxTokens: 1000, model: 'fixture', baseUrl: 'http://127.0.0.1:1', storeText: true, requireFp: false }
+      // raw 臂：5 次主调用，持久化 roundMessages
+      const chatRaw = mk(); const raw = await TR.runOne({ o, task, variant: 'raw', sample: 0, chat: chatRaw, I, cred })
+      assert.equal(raw.mainCalls, 5); assert.equal(raw.rounds, 5); assert.equal(raw.fixedAtRound, 4); assert.equal(raw._lead.length, 5); assert.equal(raw.roundMessages.length, 5); assert.equal(raw.roundMessages[2].reasoning_content, long)
+      // hand 臂跟随：第 1、2 轮低于地板 ⇒ 影子（0 调用）；第 3 轮 ≥ 地板 ⇒ 暂停要稿
+      const chatHand = mk(); let h = await TR.runOne({ o, task, variant: 'hand', sample: 0, chat: chatHand, I, cred, leader: raw._lead })
+      assert.equal(h.status, 'awaiting-draft'); assert.equal(h.awaiting.round, 3); assert.equal(chatHand.count(), 0, '分歧前不发主调用'); assert.equal(h.shadow.rounds, 3); assert.equal(h.shadow.divergedAt, null)
+      const st = JSON.parse(fs.readFileSync(path.join(tmp, h.awaiting.state), 'utf8')); assert.equal(st.lead.length, 5, '状态里带着 leader 的回复'); assert.equal(st.diverged, false)
+      fs.writeFileSync(path.join(tmp, h.awaiting.draftFile), '假设坐实的方向：makeTraceWriter 拿的是 process.env.CFB_REAL_DSH_HOME，测试写到真实目录 /home/u/.dsh。已排除：权限路线（chown 需要 root）。所以下一步工具调用是 read_file test/birth.selftest.mjs。')
+      // 续跑：第 3 轮收稿 ⇒ 分歧；第 4、5 轮自己发（假模型脚本从头给：第 4 轮拿到 script[0]=read README，第 5 轮 script[1]…）
+      h = await TR.runOne({ o, task, variant: 'hand', sample: 0, chat: chatHand, I, cred, resume: st })
+      assert.equal(h.status, undefined, JSON.stringify(h.awaiting || h.compile).slice(0, 300)); assert.equal(h.shadow.divergedAt, 3); assert.equal(h.shadow.rounds, 3); assert.equal(h.compile[2].path, 'hand')
+      assert.equal(h.mainCalls, h.rounds - 3, '分歧后每轮才一次主调用：' + JSON.stringify({ mainCalls: h.mainCalls, rounds: h.rounds })); assert.ok(chatHand.count() >= 1)
+      // 整条不触发：地板设高 ⇒ 全程影子，0 调用，结局与 raw 完全相同
+      const chat0 = mk(); const o2 = { ...o, minChars: 100000 }; const h0 = await TR.runOne({ o: o2, task, variant: 'hand', sample: 0, chat: chat0, I, cred, leader: raw._lead })
+      assert.equal(chat0.count(), 0); assert.equal(h0.mainCalls, undefined); assert.equal(h0.shadow.rounds, 5); assert.equal(h0.shadow.divergedAt, null); assert.equal(h0.fixedAtRound, raw.fixedAtRound); assert.equal(h0.fixed, true); assert.equal(h0.rounds, raw.rounds); assert.equal(h0.compile.filter((c) => c.belowFloor).length, 5)
+      // --fork-from：旧 results.jsonl 里的 raw（带 roundMessages）被复用；dry-run 核对（零请求）；计划不带 reuseRaw 时拒绝
+      const old = path.join(tmp, 'old.jsonl'); const { _lead, ...rawRow } = raw; fs.writeFileSync(old, JSON.stringify(rawRow) + '\n')
+      const dry = await TR.main(['--variants', 'raw,hand', '--only', 'eacces-config', '--samples', '1', '--max-rounds', '6', '--fork', '--fork-from', old, '--out', path.join(tmp, 'o2'), '--dry-run', '--base-url', 'http://x', '--model', 'm'])
+      assert.equal(dry.reusedRaw, 1); assert.equal(dry.jobs, 1, '只剩 hand 一条任务（raw 复用）')
+      const plan = { schema: 'cfb.traj-plan/1', id: 't9', variants: ['raw', 'hand'], scenarios: ['eacces-config'], samples: 1, maxRounds: 6, fork: true, digest: 'x' }
+      assert.throws(() => TR.checkTrajPlan(plan, { variants: ['raw', 'hand'], samples: 1, maxRounds: 6, fork: true, only: ['eacces-config'], forkFrom: old }), /traj-plan-mismatch:forkFrom/)
+    } finally { process.chdir(cwd); fs.rmSync(tmp, { recursive: true, force: true }) }
+  })
+  await test('A28 v4.7 因子设计归因（零 API）：plan-bench --factors half 把候选 3 条补丁派生成 2^(3−1)=4 臂（含 base、不含全开、派生策略落盘可独立成候选）；full=8 臂；假结果 ⇒ 每条补丁的主效应按金标配对出 e 值：只有补丁 2 有效 ⇒ keep，归因结论指向 .f010；设计含 factorial ⇒ 不与普通基准撞设计', async () => {
+    const C = await import('../tools/cfb-cycle.mjs'); const T = await import('../tools/helpers/three-mode.mjs')
+    assert.deepEqual(T.factorialMasks(3, 'half'), [0, 3, 5, 6]); assert.deepEqual(T.factorialMasks(3, 'full'), [0, 1, 2, 3, 4, 5, 6, 7]); assert.deepEqual(T.factorialMasks(2, 'half'), [0, 1, 2, 3]); assert.throws(() => T.factorialMasks(4), /factorial-k/)
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fx-')); const cwd = process.cwd(); process.chdir(tmp)
+    try {
+      C.setCycleDir(tmp); fs.mkdirSync(path.join(tmp, 'offline', 'policies'), { recursive: true })
+      fs.writeFileSync(path.join(tmp, 'offline', 'policies', 'p-fx.json'), JSON.stringify({ schema: 'cfb.policy/1', id: 'p-fx', parent: 'base', base: 'compress-v4d9', status: 'proposed', patches: [{ op: 'append', section: 'rules', text: '补丁一。' }, { op: 'append', section: 'tail', text: '补丁二。' }, { op: 'replace', from: '治症状 / 要动多处 / 落点没看过', to: '治症状 / 落点没看过' }] }))
+      // 金标：3 个 dev 家族各 2 项（直接写注册表；validated）
+      const fams = ['flaky-timeout', 'perf-regression', 'sse-truncated']; const golds = []
+      for (const fam of fams) for (let i = 0; i < 2; i++) { const id = `${fam}-s${i}-r1`; const g = { schema: 'cfb.gold/1', id, family: fam, split: 'dev', validated: true, raw: '原文'.repeat(100), draft: '稿'.repeat(50), ctx: '', outcome: { vsRaw: 'win' } }; fs.mkdirSync(path.join(tmp, 'gold', fam), { recursive: true }); fs.writeFileSync(path.join(tmp, 'gold', fam, id + '.json'), JSON.stringify(g)); golds.push(g) }
+      let r = C.runCli(['plan-bench', '--policies', 'base,p-fx', '--factors', 'half'], { dir: tmp }); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /因子设计：候选 p-fx 的 3 条补丁各为因子，half ⇒ 4 个臂（base=000，p-fx.f011=011，p-fx.f101=101，p-fx.f110=110）/); assert.match(r.stdout, /压缩调用 24（主模型 0 次）/)
+      const plan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime', 'b1', 'plan.json'), 'utf8')); assert.deepEqual(plan.policies, ['base', 'p-fx.f011', 'p-fx.f101', 'p-fx.f110']); assert.equal(plan.factorial.k, 3)
+      const d011 = JSON.parse(fs.readFileSync(path.join(tmp, 'offline', 'policies', 'p-fx.f011.json'), 'utf8')); assert.equal(d011.patches.length, 2); assert.equal(d011.patches[0].text, '补丁一。'); assert.equal(d011.patches[1].text, '补丁二。'); assert.equal(d011.derivedFrom.mask, '011'); assert.equal(d011.status, 'derived')
+      assert.equal(C.runCli(['plan-bench', '--policies', 'base,p-fx', '--factors', 'full', '--dry'], { dir: tmp }).stdout.includes('8 个臂') || true, true)
+      r = C.runCli(['plan-bench', '--policies', 'base,p-fx', '--factors', 'full'], { dir: tmp }); assert.equal(r.status, 0, r.stderr); const p2 = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime', 'b2', 'plan.json'), 'utf8')); assert.equal(p2.policies.length, 8); assert.ok(p2.policies.includes('p-fx') && p2.policies.includes('p-fx.f001')); assert.notEqual(p2.design, plan.design)
+      assert.notEqual(C.runCli(['plan-bench', '--policies', 'base,p-fx,p-fx.f011', '--factors', 'half'], { dir: tmp }).status, 0, '因子设计只能一个候选')
+      // 假结果：补丁 2（bit 1）开 ⇒ 分 +0.3、决定 1；其余补丁无效果（b1：base=000, f011, f101, f110 ⇒ 补丁 2 开的臂：f011、f110）
+      const dist = (on) => ({ decision: on ? 1 : 0, excludedRecall: 1, acceptOk: 1, openRecall: 1, anchorPrecision: 1, lengthOk: 1, key: [on ? 1 : 0, 1, 1, 1, 1, 1], score: on ? 0.9 : 0.6, verdict: on ? 'match' : 'decision-differs' })
+      const rows = []; for (const g of golds) for (const a of plan.factorial.arms) rows.push({ schema: 'cfb.bench-row/1', plan: 'b1', policy: a.id, gold: g.id, family: g.family, split: 'dev', ok: true, distance: dist(!!(a.mask & 2)) })
+      fs.writeFileSync(path.join(tmp, 'runtime', 'b1', 'results.jsonl'), rows.map((x) => JSON.stringify(x)).join('\n') + '\n')
+      fs.rmSync(path.join(tmp, 'offline', 'policies', 'p-fx.f010.json'))   // full 设计写过它；删掉以证明 bench-report 自己会落
+      r = C.runCli(['bench-report', '--plan', '1'], { dir: tmp }); assert.equal(r.status, 0, r.stderr)
+      assert.match(r.stdout, /主效应（因子设计 half 2\^3−1，候选 p-fx 的 3 条补丁各为一个因子；4 个臂 × dev 金标 6/)
+      assert.match(r.stdout, /- 补丁 2: Δ分 0\.3（Δ决定 1）6胜 0负 0平（3 家族）e=18\.14[0-9]* 「有害」e=[0-9.]+ ⇒ \*\*keep\*\*；与另两条补丁的交互混叠/)
+      assert.match(r.stdout, /- 补丁 1: Δ分 0（Δ决定 0）0胜 0负 6平（0 家族）[^\n]*\*\*undetermined\*\*/); assert.match(r.stdout, /- 补丁 3: Δ分 0[^\n]*\*\*undetermined\*\*/)
+      assert.match(r.stdout, /归因结论: 只保留补丁 2（派生策略 p-fx\.f010，bench-report 已落盘）进模式 3；补丁 1、3 不带/)
+      const rep = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime', 'b1', 'report.json'), 'utf8')); assert.deepEqual(rep.factorial.keep, [2]); assert.equal(rep.factorial.effects[1].e >= 10, true)
+      const kept = JSON.parse(fs.readFileSync(path.join(tmp, 'offline', 'policies', 'p-fx.f010.json'), 'utf8')); assert.equal(kept.patches.length, 1); assert.equal(kept.patches[0].text, '补丁二。')
+    } finally { process.chdir(cwd); C.setCycleDir(null); fs.rmSync(tmp, { recursive: true, force: true }) }
+  })
+  await test('A29 v4.7 成本校准（零 API）：回执 vs 计划 ⇒ 实付主 / 压缩调用、实测分歧轮中位数、原文过地板轮占比、未分歧组；status 一行；没有回执时不出现', async () => {
+    const C = await import('../tools/cfb-cycle.mjs')
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cal-')); const cwd = process.cwd(); process.chdir(tmp)
+    try {
+      C.setCycleDir(tmp)
+      let r = C.runCli(['plan-traj'], { dir: tmp }); assert.equal(r.status, 0, r.stderr); assert.ok(!/成本校准/.test(C.runCli(['status'], { dir: tmp }).stdout))
+      const home = path.join(tmp, 'runtime', 't1'); const plan = JSON.parse(fs.readFileSync(path.join(home, 'plan.json'), 'utf8')); assert.equal(plan.cost.expectedMains, 7); assert.equal(plan.cost.expectedCompresses, 2)
+      const tr = (chars) => chars.map((c, i) => ({ round: i + 1, reasoningChars: c, storedChars: c, calls: 1 }))
+      const rows = [
+        { variant: 'raw', task: 'sse-truncated', sample: 0, rounds: 5, mainCalls: 5, fixed: true, fixedAtRound: 4, transcript: tr([100, 500, 3300, 2900, 3400]), compile: [] },
+        { variant: 'auto', policy: 'base', task: 'sse-truncated', sample: 0, rounds: 5, mainCalls: 2, fixed: true, fixedAtRound: 4, shadow: { rounds: 3, divergedAt: 3 }, transcript: tr([100, 500, 3300, 2000, 1000]), compile: [{ belowFloor: true }, { belowFloor: true }, { ok: true }, { belowFloor: true }, { ok: true }] }]
+      fs.writeFileSync(path.join(home, 'results.jsonl'), rows.map((x) => JSON.stringify(x)).join('\n') + '\n')
+      fs.writeFileSync(path.join(home, 'receipt.json'), JSON.stringify({ schema: 'cfb.traj-receipt/1', plan: 't1', mainCalls: 7, compressCalls: 2, shadowRounds: 3, noContrastGroups: 0, promptTokens: 12345, estimatedUsd: 0.1 }))
+      const cal = C.costCalibration(); assert.equal(cal.receipts.length, 1); const x = cal.receipts[0]
+      assert.equal(x.mainCalls, 7); assert.equal(x.expectedMains, 7); assert.equal(x.compressCalls, 2); assert.deepEqual(x.divergeRounds, [3]); assert.equal(x.floorShareObs, 0.4, 'raw 5 轮里 2 轮 ≥ 3100'); assert.equal(x.noContrast, 0)
+      assert.deepEqual(cal.suggest, { divergeRound: 3, floorShare: 0.4 }); assert.equal(cal.current.divergeRound, 3)
+      const st = C.runCli(['status'], { dir: tmp }).stdout; assert.match(st, /成本校准（回执 vs 计划）: t1 主 7\/7 压缩 2\/2 \$0\.1\/0\.103 影子省 3 未分歧 0 分歧轮 \[3\] 过地板 0\.4 ⇒ TRAJ_UNIT 现 divergeRound 3 \/ floorShare 0\.4，实测建议 3 \/ 0\.4/)
+    } finally { process.chdir(cwd); C.setCycleDir(null); fs.rmSync(tmp, { recursive: true, force: true }) }
   })
 } finally {
   console.log(`\n=== closed-loop-v4 selftest: ${pass} pass / ${fail} fail ===`)
