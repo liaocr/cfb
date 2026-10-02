@@ -2,6 +2,14 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
+## −14. 当前状态（2026-10-02，t8 跑完：perf-regression 两臂都没修好；F6 落成杠杆；F7 假沙箱泄漏已堵）
+
+- **t8 读数**：raw ✗（第 3 轮拿齐数据，4–8 轮找源码），hand ✗（第 6 轮分歧、两份稿过闸、模型无视稿里的排除；第 8 轮被 F7 污染）⇒ tie e=1，`ceiling-3.json`。三张回执：t6/t7/t8 名义 $0.075/0.1/0.125；校准 divergeRound≈5–6、floorShare≈0.13–0.2（常数仍未动）。**perf 家族瓶颈在主模型不在稿**；别再在 sse-truncated / perf 上用 hand 臂烧钱找「稿的上界」，除非换更强的主模型或换家族（eacces[h] / flaky 的 raw 都能修好，也没有对比空间）。
+- **F6 结论**：程序部件（延续段）占原文 49–61% tokens，让标准长度的稿过不了 `no-token-gain`；`continuationPath: 'bounded'` 已是配置键 + 策略 `p-a0d288ba81`（config-only，proposed）。**转正要模式 3 证据**：`plan-traj --arms raw,policy:base,policy:p-a0d288ba81 --scenarios perf-regression --max-rounds 8` 是三臂（≈$0.27，需明确批准）；两臂版 `raw,policy:p-a0d288ba81` 可用 `--reuse-raw .cfb-runtime/traj/t8/results.jsonl`。预测与作废条件在提议文件里。
+- **F7**：假沙箱之前会真跑 `ls -la ~` / `ls -la /` / `find / …`，已堵（A34）。t8 之前所有轨迹里的 `ls -la /`、`find /` 结果都是宿主真实输出 —— 不影响结局（都没修好 / 修好的与它无关），但以后看旧轨迹要知道。
+- **手写稿预算**：写之前先算 `estimateTokens(稿) ≤ estimateTokens(原文) − programTok − 30`（pending 里没有现成的数，用 `programPartsText(ctx + turnCallsBlock(calls))` 算）；英文原文 ≈0.3 tok/字、中文稿 ≈0.6 tok/字 ⇒ 英文原文 3800 字只给中文稿 ≈1000 字的空间。
+- 闸：v4 95/95、closed-loop 35/35；verify / manifest / 审计数字见 CHANGELOG v14.12.3。
+
 ## −13. 当前状态（2026-10-02，t7 跑完：第一份手写稿过闸、金标 #1、一对平手；两张回执在手）
 
 - 轨迹计划：t6 / t7 都是 `ceiling`（insufficient）；金标 1 项（sse-truncated dev）。成本常数未动（两张回执都说 floorShare≈0.2、divergeRound≈5，等第二个家族）。

@@ -7,7 +7,7 @@
 // 钱：全部走与 A/B 同一套账本 / 收据 / 审计（schema cfb.generation/1，scope cfb.generation.2026-10-02.gN，≤ 8 请求 / ≤ USD 0.3 / 次）。
 //   compile：池内每题 1 次压缩器调用（temperature 0，与生产同体）；propose：1 次提议器调用；mint：铸造新题的 A/B 两步。
 // 防泄漏：提议器只看 dev 题证据；补丁里出现 dev 题特有的标识符 / 数字 ⇒ policy-leak，整份作废（不许把题目答案写进提示词）。
-import { applyPolicyPatches, validatePolicyPatches } from '../../src/policy.js'
+import { applyPolicyPatches, validatePolicyPatches, validatePolicyConfig } from '../../src/policy.js'
 import crypto from 'node:crypto'
 import * as I from '../../index.js'
 import { immutableJson, evidenceDigest } from '../../src/evidence-program.js'
@@ -30,8 +30,8 @@ export function promptHead(task) { return basePrompt(task).split('【当前任�
 /** 把补丁应用到提示词 —— v14.10 起直接调用生产的 src/policy.js applyPolicyPatches（评测与生产同一函数，不再各写一份）。 */
 export function applyPolicyToPrompt(prompt, policy) { return applyPolicyPatches(prompt, policy?.patches || []) }
 /** 补丁预算 + 形状校验（不看内容是否聪明，只看是否越界）。 */
-export function validatePatches(patches) {
-  if (!Array.isArray(patches) || !patches.length || patches.length > PATCH_LIMITS.maxPatches) throw new Error('policy-patches-count')
+export function validatePatches(patches, { allowEmpty = false } = {}) {
+  if (!Array.isArray(patches) || (!patches.length && !allowEmpty) || patches.length > PATCH_LIMITS.maxPatches) throw new Error('policy-patches-count')
   let added = 0
   for (const x of patches) {
     if (x.op === 'append') { if (!['rules', 'tail'].includes(x.section)) throw new Error('policy-patch-section'); added += String(x.text || '').length }
@@ -94,12 +94,15 @@ export function parseProposal(text) {
   const a = s.indexOf('{'), b = s.lastIndexOf('}')
   if (a < 0 || b <= a) throw new Error('proposal-not-json')
   let o; try { o = JSON.parse(s.slice(a, b + 1)) } catch { throw new Error('proposal-not-json') }
-  validatePatches(o.patches)
-  return { patches: o.patches, rationale: String(o.rationale || '').slice(0, 1000), prediction: String(o.prediction || '').slice(0, 500) }
+  // v14.12.3：提议可只带程序部件配置（config，白名单见 src/policy.js POLICY_CONFIG_KEYS）而无提示词补丁 —— F6 延续段形态这类「程序写什么」的候选
+  const config = validatePolicyConfig(o.config)
+  const patches = Array.isArray(o.patches) ? o.patches : []
+  validatePatches(patches, { allowEmpty: Object.keys(config).length > 0 })
+  return { patches, ...(Object.keys(config).length ? { config } : {}), rationale: String(o.rationale || '').slice(0, 1000), prediction: String(o.prediction || '').slice(0, 500) }
 }
 /** 由提议解析结果造策略对象（未编译）。 */
-export function makePolicy({ parent, patches, rationale, prediction, origin }) {
-  const p = { schema: POLICY_SCHEMA, parent: parent?.id || 'base', base: 'compress-v4d9', patches, rationale, prediction, origin, status: 'proposed', sides: {} }
+export function makePolicy({ parent, patches, config = null, rationale, prediction, origin }) {
+  const p = { schema: POLICY_SCHEMA, parent: parent?.id || 'base', base: 'compress-v4d9', patches, ...(config && Object.keys(config).length ? { config } : {}), rationale, prediction, origin, status: 'proposed', sides: {} }
   return { ...p, id: policyId(p) }
 }
 

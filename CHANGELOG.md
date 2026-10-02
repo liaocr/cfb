@@ -4,6 +4,15 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.12.3（2026-10-02，闭环 v4.7.3：t8 实跑 perf-regression（两臂都没修好、第 8 轮被 F7 污染）；F6 定量 —— 程序部件占原文 49–61% 让标准长度的稿过不了 no-token-gain —— 落成 `continuationPath` 杠杆 + 策略 `config`；F7 假沙箱泄宿主目录已堵；台账「事实行」自我放大已修）
+
+- **t8**（raw vs hand × perf-regression × ≤8，10 次主调用，名义 ≈$0.125 / 计划 0.163）：raw 第 3 轮拿齐数据后第 4–8 轮全在找源码，0 edit ✗；hand 第 6 轮分歧（稿第一版 1432 字被 `no-token-gain` 拒、1192 字过），第 7 轮模型无视稿里「不要再 find」照样全盘搜索，第 8 轮追 `ls -la ~` 泄出的宿主目录，0 edit ✗ ⇒ 平手 e=1（`ceiling-3.json`、效度账本 +2）；**这一家族瓶颈不在稿，在主模型的探索冲动**。细节 `CLOSED-LOOP-V4.md` §17.7。
+- **F6 定量**：t8 r6 程序部件 1946 字 ≈699 tokens = 原文 1143 的 61%，r7 924/1886 = 49%；「已走过的路」随调用数无界增长、每轮进稿也进 ctx 两份，而它要防的重复命令 29+ 条轨迹全 0。**落地（缺省不变）**：`continuationText(messages,{path:'bounded'})`（最近两轮原样、更早归并计数、≤600 字；r6 2475→931 字）；配置 `continuationPath: 'full'|'bounded'`（坏值回 full 留痕）；策略可带 `config`（`POLICY_CONFIG_KEYS` 白名单；`normalizePolicy` / `parseProposal` / `makePolicy` / `offlineBirthConfig` / `plugin.compressCtxFor` / traj-run 同一条链）；提议 `docs/proposals/p-f6-bounded-path.json` → 策略 `p-a0d288ba81`（proposed，预测与作废条件已写）；traj-run 每轮压缩记 `compile.budget`，报告尾加「压稿预算（F6）」行。
+- **F6c 修**：`buildLedger` 收「仍在依赖的事实」不再扫程序写的路段、不收像 shell 命令的片段（之前把 `find / -name …` 当事实行写回下一轮延续段）。
+- **F7 修**（traj-run 假沙箱）：裸 `~`、裸 `/`、`..`、`$HOME` 一律「不存在」；白名单真跑改 `bash -c` + `HOME=假仓库` + 最小环境。之前 `ls -la ~` / `ls -la /` / `find / …` 会真跑在宿主上。
+- 小件：`plan-traj` plan.md 多一行「按回执校准」；traj-run `rejectedInfo`；`cmdCeiling` 结果不变。
+- 自测：v4 94 → **95**（5u5）；closed-loop 33 → **35**（A33 F6 正门、A34 F7）。
+
 ## v14.12.2（2026-10-02，t7 实跑：延长到 8 轮 —— 第一份过闸手写稿、第一个金标、一对平手；修 ceiling 的历史暂停行误报）
 
 - **t7**（raw 从第 6 轮续、hand 第 5 轮拿手写稿替换 4198 字思考）：两臂 修好@5 / 验收 ✓ / 声明 none ⇒ 平手 e=1；hand 14 调用 / 3 edit vs raw 17 / 4；稿 1447 字 → 拼延续段后 2794 字（F6：延续段占一半，见 §17.6）。主调用 8（raw 5 含 2 次重试 + hand 3），回执名义 $0.1。

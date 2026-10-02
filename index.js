@@ -15,7 +15,7 @@ export { name, inject, apply, DEP_ID, compressCtxFor } from './src/plugin.js'
 
 // ── 配置 ─────────────────────────────────────────────────────────────────────
 export { DEFAULTS, normalizeConfig, dshHome, dshHomePath } from './src/config.js'
-export { applyPolicyPatches, validatePolicyPatches, normalizePolicy, POLICY_PATCH_LIMITS } from './src/policy.js'   // v14.10 策略即配置
+export { applyPolicyPatches, validatePolicyPatches, normalizePolicy, POLICY_PATCH_LIMITS, POLICY_CONFIG_KEYS, validatePolicyConfig, effectiveContinuationPath } from './src/policy.js'   // v14.10 策略即配置
 
 // ── 出生即压缩（birth）───────────────────────────────────────────────────────
 export {
@@ -44,7 +44,7 @@ export {
 export { readApiKey, readProviderSpec, endpointUrl, resolveProviderEndpoint } from './src/provider.js'
 
 // ── 消息工具与保真度 ─────────────────────────────────────────────────────────
-export { provenanceOf, mapMessagesToSeqs, textOfContent, reasoningTextOf, artRefsOf, buildCompressCtx, buildLedger, ledgerBlock, continuationText, continuationBlock, editToolOf } from './src/messages.js'
+export { provenanceOf, mapMessagesToSeqs, textOfContent, reasoningTextOf, artRefsOf, buildCompressCtx, buildLedger, ledgerBlock, continuationText, continuationBlock, boundedPathText, CONTINUATION_PATH_MODES, editToolOf } from './src/messages.js'
 export { fidelity, protectedTokens, inventedIdentifiers } from './src/fidelity.js'
 
 // ── 宿主证据程序（独立侧车；旧稿与提示词不变）────────────────────────────────

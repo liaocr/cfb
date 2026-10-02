@@ -394,3 +394,30 @@ A24（hand 臂暂停 / G2 拒 / 生产闸链通过 / 续跑到底 / 仓库重放
 - **金标 #1**：`transfer/gold/sse-truncated/sse-truncated-s0-r5.json`（dev）—— 原文 4198 / ctx 2774 / 稿 1447 / 本轮调用；模式 2 基准从这里开始有东西可比，但一项不够（≥ 6 项 dev 才有 e 的空间）。
 - **通道**：真实上下文里携带比 0.27–0.37/字（英文 / 代码为主），预检中文假历史 0.495；carry 探针每轮多付 2 份 prefill（≈ 真请求的 prompt tokens ×2）。
 - **成本校准**：t7 主 8/6（名义 $0.1 / 期望 $0.075），实测 divergeRound 5、floorShare 0.17；t6+t7 两张回执都建议把 `TRAJ_UNIT.floorShare` 从 0.4 降到 ≈0.2、`divergeRound` 3 → 5。先不动常数：两条同家族轨迹不够。
+
+### 17.7 v4.7.3（v14.12.3）：t8 实跑（perf-regression，raw vs hand ≤8）—— 两臂都没修好；F6 定量并落成杠杆；F7 假沙箱泄漏
+
+**t8 结局**（10 次主调用，名义 ≈$0.125；计划 0.163、按回执校准 0.138）：
+
+- **raw**：8 轮 20 调用 0 edit，✗。第 3 轮就拿到了全部数据（v11.9→v11.10：outputTokens 260→1150、contentSpanMs 280→1650、ttfb 610→640、finishReason 都是 stop、promptVersion 两版都是 `compress-v3h:250-450`），第 4–8 轮全部花在找 analyze-trace 的实现与仓库之外的源码（`find /`、`ls /`、git），一次也没碰 `src/config.js` 的两个回滚开关。
+- **hand**：影子到第 6 轮分歧（第 6 轮是第一次过地板）。第 6 轮稿第一版 1432 字 **被生产闸拒：`no-token-gain`**（见 F6 数字），削到 1192 字过闸。稿里写明「不要再 find、不要再 git，能改的只有 src/config.js 里的那两个值」；第 7 轮模型照样 `find /`、`grep -rl compress /`、`ls -la ~`。第 7 轮稿（1168 字）把它自己已经推出的主次（compressTargetMax 是长度目标、直接对上 390→1720；maxOutputTokens 是没卡住的硬上限）和「搜索到此为止，直接回滚」写进分支；第 8 轮它去追 `ls -la ~` 泄出来的宿主目录（F7）。0 edit，✗。
+- **配对**：perf-regression:tie（两臂都没修好），e=1；`ceiling-3.json`，效度账本 +2。**第 8 轮被 F7 污染**（模型追的是假沙箱不该给出的东西），这对的平手不能当 f(主模型 | 稿) 的证据，但也没有反证：第 7 轮在没被污染时就已经无视了稿里的排除。
+- **对「稿能不能推到极限」这个原问题的实测含义**：这一家族上瓶颈不在稿。记忆写得再对，flash 的探索冲动（找源码）压过了稿里的排除与分支；f(主模型 | 稿) 的上界由主模型的策略封顶。这是三模式拆开之后才看得见的事实 —— 在 t7（sse-truncated）稿与 raw 平手是因为 raw 自己也会修；在 t8 稿与 raw 平手是因为主模型两边都不听。
+
+**F6 定量（程序部件把稿预算吃掉）**：
+
+| 轮 | 原文 tokens | 程序部件（延续段 + 验收提示 + 三问） | 份额 | 稿 | 拼接后 | 闸 |
+| --- | --- | --- | --- | --- | --- | --- |
+| t8 r6 第一版 | 1143 | 1946 字 ≈ 699 | 0.61 | 1432 字 ≈ 585 | ≈1192–1209 | **no-token-gain** |
+| t8 r6 第二版 | 1143 | 同上 | 0.61 | 1192 字 ≈ 484 | ≈1092 | 过 |
+| t8 r7 | 1886 | 2674 字 ≈ 924 | 0.49 | 1168 字 ≈ 479 | 1340 | 过 |
+| t7 r5 | 1271 | 1309 字 | ≈0.4 | 1447 字 ≈ 583 | 2794 字 | 过 |
+
+- 「已走过的路」每条历史调用连参数带结果首行全列，随调用数无界增长；每压一轮都原样进稿，也进压缩器 ctx（台账 + 延续段各一份：t8 r6 的 ctx 3534 字里 2×1073 字是它）。它要防的「重复命令」在 transfer/traj1–3 + t6–t8 的 29+ 条轨迹里 **raw / auto / ledger / hand 全是 0**。
+- **F6c（副作用）**：`buildLedger` 收「仍在依赖的事实」时扫整段上一轮稿，程序写的路段里的反引号命令参数被当成事实行再写回下一轮延续段（t8 r7 的延续段里出现「仍在依赖的事实：`which analyze-trace; …`、`find / -name …`」）——自我放大。已修：路段内与像 shell 命令的片段不收（`5u5`）。
+- **落地（被测对象不变）**：`continuationText(messages, {path})` 新增 `bounded`（最近两轮原样、更早按工具+命令头归并计数、≤600 字；同题 r6：2475→931 字、807→333 tokens）；配置键 `continuationPath`（缺省 `full`）；**策略可带 `config`**（白名单 `POLICY_CONFIG_KEYS`，不能借策略改地板等被测对象）；提议 `docs/proposals/p-f6-bounded-path.json` → 策略 `p-a0d288ba81`（status proposed）。预注册预测：p-f6 臂第 ≥5 轮压稿闸拒降为 0、重复命令仍 0、solved 不劣于 base；作废条件写在提议里。traj-run 每轮压缩记 `compile.budget{rawTok, programTok, programShare, draftTok, outTok}`，报告尾加「压稿预算（F6）」行。
+- **不做**：不把 `bounded` 设为缺省（没有模式 3 证据）；不改地板；不把稿压短（红线）。
+
+**F7（假沙箱泄漏，t8 第 7–8 轮实测）**：`ESCAPES_REPO` 只拦 `~/` 不拦裸 `~`，也不拦裸 `/`；`ls -la ~` 真跑后把宿主 $HOME 的目录名（含 `cfb-keys.env`）列给了主模型，它下一轮就 `cat ~/cfb-keys.env`（被 `~/` 规则挡住，没泄内容）；`ls -la /`、`find / …`、`grep -r … /` 之前都会真跑在宿主根目录上。已修：`~` 任何写法、裸 `/`、`..`、`$HOME` 一律「不存在」；真跑的白名单命令改 `bash -c`（不读宿主 profile）、`HOME` 指到假仓库、环境只给 PATH/LANG（`A34`）。
+
+**其它**：`plan-traj` 的 plan.md 多一行「按回执校准」（历史回执的 divergeRound 中位 / floorShare 均值）；traj-run 记 `rejectedInfo`（被拒主回复的 finish / usage / 正文头，≤5 条）。

@@ -215,7 +215,7 @@ export function buildCompressCtx(messages, opts = {}) {
   // v12.9.0：多轮台账（前几轮的稿 + 工具往来）放在 user 之后、本轮工具结果之前——它挂在任务陈述块下，不会被当成「在手的代码行」的文件块
   const ledger = opts.ledger === false ? '' : ledgerBlock(arr)
   // v12.9.2：延续段（程序按台账写的稿首段）紧跟台账
-  const cont = opts.ledger === false || opts.continuation === false || !ledger ? '' : continuationBlock(arr)
+  const cont = opts.ledger === false || opts.continuation === false || !ledger ? '' : continuationBlock(arr, { path: opts.continuationPath })   // v14.12.3：continuationPath 'full' | 'bounded'（F6）
   if (!userPart && !entries.length && !ledger) return ''
   // 超总预算：先丢最旧的结果（最近的观察才是当前分支要绑的落点）
   const fixed = userPart.length + (ledger ? ledger.length + 2 : 0) + (cont ? cont.length + 2 : 0)
@@ -297,8 +297,13 @@ export function buildLedger(messages) {
       for (const t of pick(d, LEDGER_ACCEPT_RE, 2, seen, LEDGER_ACCEPT_KW)) L.accept.push({ round, text: t })
       for (const t of pick(d, LEDGER_OPEN_RE, 2, seen, LEDGER_OPEN_KW)) L.open.push({ round, text: t })
       // v12.9.2：前几轮稿里逐字引用的代码行（「仍在依赖的事实」）——延续段由程序写时要用；只收像代码的段，三元组里的行不重复收
+      // v14.12.3（F6c）：程序写的「已走过的路：…这些不再重跑」一段里的反引号是命令参数，不是事实行 —— 之前会被当成「仍在依赖的事实」再写回下一轮稿（自我放大）
+      const pathSpans = []
+      for (const pm of d.matchAll(/已走过的路[：:]/g)) { const e = d.indexOf('这些不再重跑', pm.index); pathSpans.push([pm.index, e > 0 ? e : d.length]) }
       for (const m2 of d.matchAll(/`([^`\n]{12,200})`/g)) {
         const t = m2[1].trim()
+        if (pathSpans.some(([a, b]) => m2.index >= a && m2.index < b)) continue
+        if (/^(?:cd|which|type|find|command|declare|alias|env|export|printf|xargs|awk|sort|uniq|wc|head|tail|which)\s|\s2>&1\b|2>\/dev\/null|\s\|\s(?:head|tail|grep|wc|sort|xargs|sed)\b/.test(t)) continue   // 像一条 shell 命令的不收（只看命令头 / 重定向 / 管道进过滤器；不碰代码里的 && ; env）
         if (!/[(){}=;:]|\.(?:js|mjs|ts|py|json|ya?ml)\b|\//.test(t) || /^https?:/.test(t)) continue
         // 只收像代码 / 记录的行：不含中文（注释里的中文只许出现在 // 之后）、不以标点开头、不是一条命令
         if (/[\u3400-\u9fff\uff0c\u3002\uff1a\u300c\u300d]/.test(t.replace(/\/\/.*$/, ''))) continue
@@ -347,9 +352,10 @@ export function buildLedger(messages) {
  *   此前让副模型抄一遍：多花 300–500 字、还是抄样例排除项（「换连接池重试」）与编状态的来源。程序写 = 逐字、确定、零副模型成本。
  *   返回一段散文（Agent 本人口吻）；没有前几轮或台账为空时返回空串。
  */
-export function continuationText(messages) {
+export function continuationText(messages, opts = {}) {
   const L = buildLedger(messages)
   if (!L.rounds || (!L.decided.length && !L.edits.length && !L.calls.length && !L.excluded.length)) return ''
+  const pathMode = opts && opts.path === 'bounded' ? 'bounded' : 'full'
   const S = []
   const dec = L.decided[L.decided.length - 1]
   const lastEdit = L.edits[L.edits.length - 1]
@@ -369,12 +375,47 @@ export function continuationText(messages) {
   }
   if (L.excluded.length) S.push(`已排除：${L.excluded.map((x) => x.text.replace(/[。！？]$/, '') + `（第 ${x.round} 轮）`).join('；')}。`)
   if (L.open.length) S.push(`未解：${L.open.map((x) => x.text.replace(/^\s*(?:未解|待解|未定)[：:]\s*/, '').replace(/[。！？]$/, '')).join('；')}。`)
-  if (L.calls.length) S.push(`已走过的路：${L.calls.map((c) => `第 ${c.round} 轮 ${c.name} \`${c.args}\` → 「${c.result || '（无输出）'}」`).join('；')}；这些不再重跑，除非中间改过东西。`)
+  if (L.calls.length) S.push(pathMode === 'bounded' ? boundedPathText(L) : `已走过的路：${L.calls.map((c) => `第 ${c.round} 轮 ${c.name} \`${c.args}\` → 「${c.result || '（无输出）'}」`).join('；')}；这些不再重跑，除非中间改过东西。`)
   return S.join('')
 }
+/**
+ * v14.12.3（F6，有界的「已走过的路」）：full 模式把每一条历史调用连参数带结果首行全列出来，长度随调用数无界增长、每压一轮都原样进稿
+ *   —— t8 perf-regression 第 6 轮实测：程序部件 ≈699 tokens = 原文 1143 tokens 的 61%，标准长度的手写稿（585 tokens）拼上它就过不了
+ *   birthAccept 的 no-token-gain（估算 1192 > 1143）⇒ 压缩在探索重的轮次结构性失败；而它要防的「重复命令」在 29+4 条轨迹里全部为 0。
+ *   bounded：最近两轮的调用保留原样（参数 ≤100 字、结果 ≤40 字），更早的按「工具 + 命令头」归并计数（ls×3、cat×2 …），整段 ≤ 600 字。
+ *   缺省仍是 full（被测对象不变）；bounded 经 policy.config.continuationPath 或 cfg.continuationPath 启用，由模式 3 的证据决定是否转正。
+ */
+export const CONTINUATION_PATH_MODES = Object.freeze(['full', 'bounded'])
+export function boundedPathText(L, { recentRounds = 2, maxChars = 600 } = {}) {
+  const calls = L.calls || []
+  if (!calls.length) return ''
+  const cutoff = (L.rounds || 0) - recentRounds + 1
+  const recent = calls.filter((c) => c.round >= cutoff), older = calls.filter((c) => c.round < cutoff)
+  const headOf = (c) => {
+    let a = String(c.args || '').replace(/^\s*(?:cd\s+\S+\s*(?:&&|;)\s*)+/, '').trim()
+    const m = a.match(/^([A-Za-z0-9_.\/-]+)/)
+    return m ? m[1].replace(/^.*\//, '') : (a.slice(0, 12) || c.name)
+  }
+  const parts = []
+  if (older.length) {
+    const byName = new Map()
+    for (const c of older) { const k = c.name || '?'; if (!byName.has(k)) byName.set(k, new Map()); const h = byName.get(k); const hd = headOf(c); h.set(hd, (h.get(hd) || 0) + 1) }
+    const rounds = [...new Set(older.map((c) => c.round))].sort((a, b) => a - b)
+    const span = rounds.length > 1 ? `第 ${rounds[0]}–${rounds[rounds.length - 1]} 轮` : `第 ${rounds[0]} 轮`
+    const fam = [...byName.entries()].map(([name, h]) => `${name}×${[...h.values()].reduce((a, b) => a + b, 0)}（${[...h.entries()].map(([hd, n]) => (n > 1 ? `${hd}×${n}` : hd)).join('、')}）`).join('，')
+    parts.push(`${span}已跑 ${older.length} 条：${fam}`)
+  }
+  const clipArgs = (a, n) => (a.length > n ? a.slice(0, n) + '…' : a)
+  const clipRes = (r) => { const t = String(r || '（无输出）'); return t.length > 40 ? t.slice(0, 40) + '…' : t }
+  let argMax = 100
+  let recentText = () => recent.map((c) => `第 ${c.round} 轮 ${c.name} \`${clipArgs(c.args, argMax)}\` → 「${clipRes(c.result)}」`).join('；')
+  let out = `已走过的路：${[...parts, recentText()].filter(Boolean).join('；')}；这些不再重跑，除非中间改过东西。`
+  if (out.length > maxChars) { argMax = 60; out = `已走过的路：${[...parts, recentText()].filter(Boolean).join('；')}；这些不再重跑，除非中间改过东西。` }
+  return out
+}
 /** 【延续段】块（放进 compressCtx 的台账之后；compileV4Direct 会把这段散文原样接在稿的开头） */
-export function continuationBlock(messages) {
-  const t = continuationText(messages)
+export function continuationBlock(messages, opts = {}) {
+  const t = continuationText(messages, opts)
   if (!t) return ''
   return '【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）\n' + t
 }

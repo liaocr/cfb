@@ -721,6 +721,52 @@ try {
       const plan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime', 't1', 'plan.json'), 'utf8')); assert.equal(plan.reuseRaw.extend.from, 3); assert.equal(plan.reuseRaw.extend.firstFloor, 3); assert.equal(plan.cost.expectedMains, 4); assert.equal(plan.cost.mains, 4); assert.equal(plan.cost.expectedUsd, 0.05); assert.match(r.stdout, /\*\*延长\*\*：.*raw 从第 4 轮续跑/); assert.match(plan.command, /--fork-from /)
     } finally { process.chdir(cwd); C.setCycleDir(null); fs.rmSync(tmp, { recursive: true, force: true }) }
   })
+  await test('A33 v14.12.3 F6 候选走正门（零 API）：只带 config 的提议过 parseProposal / makePolicy（白名单 continuationPath）；offlineBirthConfig 把策略 config 带进 cfg ⇒ effectiveContinuationPath=bounded，base 仍 full；白名单外的键被拒；traj-run 的压稿预算行按臂汇总程序部件份额与闸拒原因', async () => {
+    const G = await import('../tools/helpers/generation.mjs'); const I = await import('../index.js'); const TR = await import('../tools/traj-run.mjs')
+    const raw = fs.readFileSync(path.join(ROOT, 'docs/proposals/p-f6-bounded-path.json'), 'utf8')
+    const prop = G.parseProposal(raw)
+    assert.deepEqual(prop.patches, []); assert.deepEqual(prop.config, { continuationPath: 'bounded' }); assert.match(prop.prediction, /作废/)
+    assert.throws(() => G.parseProposal(JSON.stringify({ patches: [], config: {} })), /policy-patches-count/, '空补丁 + 空配置不是候选')
+    assert.throws(() => G.parseProposal(JSON.stringify({ patches: [], config: { birthMinChars: 100 } })), /policy:config-key/, '不能借策略改被测对象（地板等不在白名单）')
+    assert.throws(() => G.parseProposal(JSON.stringify({ patches: [], config: { continuationPath: 'none' } })), /policy:config-value/)
+    const pol = G.makePolicy({ parent: { id: 'base' }, patches: prop.patches, config: prop.config, rationale: prop.rationale, prediction: prop.prediction, origin: { by: 'assistant' } })
+    assert.ok(/^p-[0-9a-f]{10}$/.test(pol.id) && pol.config.continuationPath === 'bounded')
+    const cfgP = I.offlineBirthConfig({ model: 'm', baseUrl: 'http://127.0.0.1:1', credentialsPath: '/dev/null', policy: pol, normalizeConfig: I.normalizeConfig })
+    assert.equal(cfgP.compressPolicy && cfgP.compressPolicy.id, pol.id); assert.equal(I.effectiveContinuationPath(cfgP), 'bounded')
+    const cfgB = I.offlineBirthConfig({ model: 'm', baseUrl: 'http://127.0.0.1:1', credentialsPath: '/dev/null', policy: { id: 'base', patches: [] }, normalizeConfig: I.normalizeConfig })
+    assert.equal(cfgB.compressPolicy, null); assert.equal(I.effectiveContinuationPath(cfgB), 'full', 'base 臂 = 生产缺省 = 被测对象不变')
+    assert.equal(I.compressPromptVersion(cfgP), I.compressPromptVersion({ ...cfgB, compressPolicy: { id: pol.id, patches: [] } }), '只有 config 的策略：提示词逐字节同 base，promptVersion 仍带 +id 以便追溯')
+    // 已落盘的策略能被 traj-run 的 policy:<id> 臂读到（与 docs/proposals 的提议同 config）
+    const onDisk = TR.loadPolicyFor('policy:p-a0d288ba81'); assert.deepEqual(onDisk.config, { continuationPath: 'bounded' }); assert.deepEqual(onDisk.patches, [])
+    // 压稿预算行
+    const rows = [
+      { variant: 'hand', compile: [{ ok: false, path: 'hand', why: 'no-token-gain', budget: { programShare: 0.61 } }, { ok: true, path: 'hand', budget: { programShare: 0.61 } }, { ok: true, path: 'hand', budget: { programShare: 0.54 } }, { ok: false, belowFloor: true }] },
+      { variant: 'policy:base', compile: [{ ok: true, path: 'birth-offline', budget: { programShare: 0.3 } }, { ok: false, path: 'birth-offline', why: 'v4d-too-long' }] },
+      { variant: 'raw' }, { variant: 'auto', error: 'x', compile: [{ ok: true }] },
+    ]
+    const line = TR.compressBudgetLine(rows)
+    assert.match(line, /压稿预算（F6）：hand: 压过 3 轮，程序部件\/原文 中位 0.61 最大 0.61，闸拒 no-token-gain×1；policy:base: 压过 2 轮，程序部件\/原文 中位 0.3 最大 0.3，闸拒 v4d-too-long×1/)
+    assert.equal(TR.compressBudgetLine([{ variant: 'raw' }]), '')
+  })
+  await test('A34 v14.12.3 F7 假沙箱不泄宿主（t8 实测漏洞）：裸 ~ / 裸 / / .. / $HOME 一律「不存在」，不真跑；真跑的白名单命令 HOME 指向假仓库、不读宿主 profile；仓库内命令照常', async () => {
+    const TR = await import('../tools/traj-run.mjs'); const F = await import('../tools/traj-fixtures.mjs')
+    const task = F.TRAJ_TASKS.find((t) => t.id === 'perf-regression'); const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'fx-'))
+    try {
+      for (const [n, c] of Object.entries(task.files || {})) { fs.mkdirSync(path.dirname(path.join(repo, n)), { recursive: true }); fs.writeFileSync(path.join(repo, n), c) }
+      const home = os.homedir(); const marker = fs.readdirSync(home).find((f) => !f.startsWith('.')) || ''
+      for (const c of ['ls -la ~', 'ls -la ~ 2>/dev/null', 'cat ~/cfb-keys.env', 'ls $HOME', 'ls -la /', 'find / -type f 2>/dev/null | head', 'grep -r KEY / 2>/dev/null | head', 'ls / /opt', 'cat ../x', 'ls ..', 'ls -la / ; ls /opt']) {
+        const out = TR.runBash(task, repo, c)
+        assert.match(out, /No such file or directory|该沙箱未提供此命令/, c + ' ⇒ ' + out.slice(0, 120))
+        if (marker && !c.includes(marker)) assert.ok(!out.includes(marker), c + ' 泄漏了宿主 HOME 的条目：' + out.slice(0, 200))
+        assert.ok(!/^[d-][rwx-]{9}/m.test(out), c + ' 真跑出了目录清单：' + out.slice(0, 200))
+        assert.ok(!/\b(?:bin|boot|etc|proc|usr)\b[\s\S]*\b(?:bin|boot|etc|proc|usr)\b/.test(out), c + ' 泄漏了宿主根目录：' + out.slice(0, 200))
+      }
+      assert.match(TR.runBash(task, repo, 'ls -la'), /CHANGELOG\.md[\s\S]*README\.md[\s\S]*src/)
+      assert.equal(TR.runBash(task, repo, 'find . -type f').trim().split('\n').sort().join(','), './CHANGELOG.md,./README.md,./src/config.js')
+      assert.match(TR.runBash(task, repo, 'grep -n max src/config.js'), /maxOutputTokens/)
+      assert.match(TR.runBash(task, repo, 'cd ~ && ls'), /CHANGELOG\.md/, 'cd ~ 是空操作、随后的 ls 仍在假仓库')
+    } finally { fs.rmSync(repo, { recursive: true, force: true }) }
+  })
 } finally {
   console.log(`\n=== closed-loop-v4 selftest: ${pass} pass / ${fail} fail ===`)
   process.exit(fail ? 1 : 0)

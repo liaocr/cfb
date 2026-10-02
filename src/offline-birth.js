@@ -45,5 +45,5 @@ export async function birthOffline({ raw, ctx = '', calls = [], cfg, signal = un
 
 /** 评测用：由 traj-run 的参数构造与生产等价的 cfg（同一 normalizeConfig；只多了凭据与策略）。 */
 export function offlineBirthConfig({ model, baseUrl, credentialsPath, policy = null, timeoutMs = 90000, normalizeConfig }) {
-  return normalizeConfig({ compressPrompt: 'v4', compressV4Incremental: false, model, baseUrl, credentialsPath, credentialRef: 'K', followHostProvider: false, followHostModel: false, trace: false, timeoutMs, compressPolicy: policy && policy.id !== 'base' ? { id: policy.id, patches: policy.patches || [] } : null })
+  return normalizeConfig({ compressPrompt: 'v4', compressV4Incremental: false, model, baseUrl, credentialsPath, credentialRef: 'K', followHostProvider: false, followHostModel: false, trace: false, timeoutMs, compressPolicy: policy && policy.id !== 'base' ? { id: policy.id, patches: policy.patches || [], ...(policy.config ? { config: policy.config } : {}) } : null })   // v14.12.3：策略的程序部件配置（continuationPath）一并进 cfg
 }

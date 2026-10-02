@@ -119,7 +119,12 @@ const GENERIC = (cmd) => {
   return null
 }
 // 假仓库之外的路径一律「不存在」（真机器上的文件不能泄漏进题目里；/home/u/.dsh 这类由题目 canned 处理）
-const ESCAPES_REPO = (cmd) => /(?:^|[\s='"])(?:\/(?!home\/u\b)[\w.-]+|\.\.\/|~\/)/.test(cmd)
+//   v14.12.3（F7，t8 实测）：裸 `~`（`ls -la ~`）之前没拦，真跑后把宿主 $HOME 的目录名（含密钥文件名）列给了主模型，它下一轮就去 cat ~/cfb-keys.env（被 `~/` 规则挡住，没泄内容）。
+//   现在 `~` 任何写法都算越界；真跑的 bash 不再 -l（不读宿主 profile），HOME 指到假仓库、环境只给 PATH/LANG。
+//   同时发现裸 `/`（`ls -la /`、`find / -type f`、`grep -r … /`）也没拦 —— 会真跑在宿主根目录上；现在 `/` 单独成参数也算越界。
+const ESCAPES_REPO = (cmd) => /(?:^|[\s='"])(?:\/(?!home\/u\b)(?:[\w.-]+|(?=[\s'"]|$))|\.\.(?:\/|(?=[\s'"]|$))|~(?![\w]))|\$\{?HOME/.test(cmd)
+const ESCAPE_PATH = (c) => { const m = /(?:^|[\s='"])((?:\/[\w.\/-]*|~\S*|\.\.\S*))/.exec(c.replace(/\s*2>&1|\s*2>\/dev\/null|\s*>\/dev\/null/g, '')); return m ? m[1] : c }
+const SANDBOX_ENV = (repo) => ({ PATH: process.env.PATH || '/usr/bin:/bin', HOME: repo, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8', TERM: 'dumb' })
 /** 复合命令按 && ; || | 切段（引号外），每段：题目 canned → 通用 canned → 白名单真跑；任一段不认识 ⇒ 说明沙箱没有 */
 export function runBash(task, repo, cmd) {
   if (/\bfor\b[\s\S]*\bdo\b|\bwhile\b[\s\S]*\bdo\b/.test(cmd)) { const w = task.canned(cmd, repo); return w != null ? w : `bash: 该沙箱不支持 shell 循环，请直接跑单条命令: ${cmd.slice(0, 80)}` }
@@ -140,14 +145,14 @@ export function runBash(task, repo, cmd) {
   if (parts.length === 1) {
     const c = parts[0]
     const g = GENERIC(c); if (g != null) return g
-    if (ESCAPES_REPO(c)) return `bash: ${(/(\/[\w.\/-]+)/.exec(c) || ['', c])[1]}: No such file or directory`
+    if (ESCAPES_REPO(c)) return `bash: ${ESCAPE_PATH(c)}: No such file or directory`
     if (!SAFE_RE.test(c) || /[`$><]/.test(c.replace(/2>&1|2>\/dev\/null|>\/dev\/null/g, ''))) return `bash: 该沙箱未提供此命令（只有 grep/sed -n/cat/ls/head/tail/wc/find 与题目里的测试 / 分析命令）: ${c.slice(0, 80)}`
-    try { return execFileSync('bash', ['-lc', c], { cwd: repo, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }).slice(0, 4000) || '（无输出）' }
+    try { return execFileSync('bash', ['-c', c], { cwd: repo, env: SANDBOX_ENV(repo), encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }).slice(0, 4000) || '（无输出）' }
     catch (e) { return String((e.stdout || '') + (e.stderr || '')).slice(0, 2000) || `退出码 ${e.status}` }
   }
   // 有管道且全是白名单命令 ⇒ 整条真跑（grep … | head 这类）
   if (hasPipe && parts.every((c) => SAFE_RE.test(c)) && !ESCAPES_REPO(cmd) && !/[`$><]/.test(cmd.replace(/2>&1|2>\/dev\/null|>\/dev\/null/g, ''))) {
-    try { return execFileSync('bash', ['-lc', cmd], { cwd: repo, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }).slice(0, 4000) || '（无输出）' }
+    try { return execFileSync('bash', ['-c', cmd], { cwd: repo, env: SANDBOX_ENV(repo), encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }).slice(0, 4000) || '（无输出）' }
     catch (e) { return String((e.stdout || '') + (e.stderr || '')).slice(0, 2000) || `退出码 ${e.status}` }
   }
   // && ; || 串联：逐段执行（题目 canned 优先），按粗略的成败语义决定下一段跑不跑，输出拼起来
@@ -202,7 +207,36 @@ export function parseTextCalls(text) {
   }
   return out
 }
-export function callsOfMessage(m) {
+export /** v14.12.3（F6）：一轮压缩的 token 预算分解 —— 原文 / 程序部件（延续段 + 验收提示 + 三问）/ 稿 / 存入上下文的整段；估算口径同 birthAccept（estimateTokens）。 */
+function compressBudget(I, { ctx, calls, raw, out, draft }) {
+  try {
+    const block = I.turnCallsBlock(calls || [])
+    const prog = I.programPartsText(String(ctx || '') + (block ? '\n\n' + block : ''))
+    const rawTok = I.estimateTokens(String(raw || '')), programTok = I.estimateTokens(prog)
+    return { rawTok, programTok, programChars: prog.length, programShare: rawTok ? +(programTok / rawTok).toFixed(2) : null, draftTok: draft ? I.estimateTokens(String(draft)) : null, outTok: out ? I.estimateTokens(String(out)) : null }
+  } catch { return null }
+}
+/** v14.12.3（F6）：报告尾行 —— 每个压缩臂的压稿预算：压过的轮数、程序部件占原文的份额（中位数 / 最大）、被闸拒的原因计数。看得见「程序部件把稿预算吃掉」这件事。 */
+export function compressBudgetLine(rows) {
+  const by = new Map()
+  for (const r of rows || []) {
+    if (!r || r.error || !Array.isArray(r.compile) || !r.compile.length) continue
+    const v = r.variant === 'hand' ? 'hand' : r.variant
+    const e = by.get(v) || { n: 0, shares: [], why: {} }
+    for (const c of r.compile) {
+      if (!c || c.belowFloor || c.skipped) continue
+      e.n++
+      if (c.budget && Number.isFinite(c.budget.programShare)) e.shares.push(c.budget.programShare)
+      if (!c.ok) { const w = c.why || c.reason || c.error || (c.gateFail ? 'gate' : '?'); e.why[w] = (e.why[w] || 0) + 1 }
+    }
+    by.set(v, e)
+  }
+  if (!by.size) return ''
+  const med = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[Math.floor((s.length - 1) / 2)] }
+  const parts = [...by.entries()].map(([v, e]) => `${v}: 压过 ${e.n} 轮${e.shares.length ? `，程序部件/原文 中位 ${med(e.shares)} 最大 ${Math.max(...e.shares)}` : ''}${Object.keys(e.why).length ? `，闸拒 ${Object.entries(e.why).map(([k, n]) => `${k}×${n}`).join('、')}` : ''}`)
+  return `\n\n压稿预算（F6）：${parts.join('；')}`
+}
+function callsOfMessage(m) {
   const out = []
   if (Array.isArray(m.tool_calls)) for (const c of m.tool_calls) out.push({ name: c.function && c.function.name, args: c.function && c.function.arguments })
   out.push(...parseTextCalls(m.content))   // 两个来源都收，再去重（中转可能只把一部分文本调用解析成 tool_calls）
@@ -317,6 +351,8 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         if (seen && o.requireFp) { const mode = TRUSTED_FP.has(r.fp) ? 'trusted-fp' : carried; rec.fpModes = rec.fpModes || {}; rec.fpModes[mode] = (rec.fpModes[mode] || 0) + 1 }   // 每轮放行依据计数（回执 / review 可见）
         if (seen && (r.message.reasoning_content || '').length > 0) break
         rec.rejected++
+        // v4.7.3：被拒回复的样子留档（通道 20% 回复没有思维链 —— 每次都是一次完整付费请求；要知道它返回的是什么才谈得上省）
+        if ((rec.rejectedInfo || []).length < 5) rec.rejectedInfo = (rec.rejectedInfo || []).concat({ round, k, fp: r.fp || null, finish: r.finish || null, usage: r.usage || null, reasoningChars: String(r.message?.reasoning_content || '').length, contentHead: responseText(r.message).slice(0, 160), calls: callsOfMessage(r.message).map((c) => c.name) })
         if (seen) { rec.emptyReasoning = (rec.emptyReasoning || 0) + 1; if (rec.emptyReasoning >= 3) throw new Error('upstream-no-reasoning：可信指纹但思维链为空已连续 3 次 ⇒ 停（通道不返回思考，重试只是烧钱）') }   // v4.7.1
         rec.rejectedWhy = (rec.rejectedWhy || []).concat(claudeShaped(r.usage) ? 'claude' : 'fp=' + r.fp)
         if (k >= o.maxProbes - 1) throw new Error('通道始终未送入思考：' + rec.rejectedWhy.slice(-10).join(','))
@@ -351,12 +387,12 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
               if (!v.ok) { const e = new Error('v4-direct:' + v.reason); e.meta = { v4: v.stats, promptVersion: pv }; throw e }
               return { text: v.text || draft, meta: { promptVersion: pv, v4: v.stats } }
             } })
-            if (!b.ok) violations = [{ kind: 'production-gate:' + b.why, detail: String(b.reason || JSON.stringify(b.info || null)).slice(0, 200) }]
+            if (!b.ok) { violations = [{ kind: 'production-gate:' + b.why, detail: String(b.reason || JSON.stringify(b.info || null)).slice(0, 200) }]; rec.compile.push({ ok: false, path: 'hand', why: b.why, info: b.info || null, rawChars: reasoning.length, draftChars: draft.length, round, budget: compressBudget(I, { ctx, calls, raw: reasoning, out: null, draft }) }) }   // v14.12.3：被生产闸拒的手写稿也记一条（预算分解可见）
           }
         }
         if (b && b.ok) {
           stored = b.text
-          compileInfo = { ok: true, path: 'hand', ms: b.ms, rawChars: reasoning.length, outChars: stored.length, draftChars: draft.length, policy: 'hand', promptVersion: b.promptVersion, gate: b.v4 || null, spliced: b.spliced || null, accept: b.accept || null, draftFile: path.relative(process.cwd(), draftFile) }
+          compileInfo = { ok: true, path: 'hand', ms: b.ms, rawChars: reasoning.length, outChars: stored.length, draftChars: draft.length, policy: 'hand', promptVersion: b.promptVersion, gate: b.v4 || null, spliced: b.spliced || null, accept: b.accept || null, draftFile: path.relative(process.cwd(), draftFile), budget: compressBudget(I, { ctx, calls, raw: reasoning, out: stored, draft }) }
           rec.compile.push(compileInfo)
           if (fs.existsSync(pendingFile)) { fs.mkdirSync(path.join(o.out, 'pending', 'done'), { recursive: true }); fs.renameSync(pendingFile, path.join(o.out, 'pending', 'done', id + '.json')) }
           if (fs.existsSync(stateFile)) fs.unlinkSync(stateFile)
@@ -373,7 +409,8 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         // v14.10：两种压缩臂都走生产 birth 的离线同构体（src/offline-birth.js）：压缩器看不到本轮调用（与生产同）→ 程序部件拼接 → birthAccept 闸。
         //   auto = 无策略；policy:<id> = cfg.compressPolicy（生产同一配置项）⇒ auto ≡ policy:base 由构造保证，不再有工具自拼的第二条请求路径。
         //   旧路径（policyCompressBody 直连 + compileV4Direct）只在 --legacy-compress 下保留，供对照 v14.9 之前的收据。
-        const ctx = I.buildCompressCtx(messages)
+        const cfgArm = I.offlineBirthConfig({ model: o.model, baseUrl: o.baseUrl, credentialsPath: cred, policy: policy || null, normalizeConfig: I.normalizeConfig })
+        const ctx = I.buildCompressCtx(messages, { continuationPath: I.effectiveContinuationPath(cfgArm) })   // v14.12.3：策略的 continuationPath 决定延续段形态（生产 plugin.compressCtxFor 同一函数）
         if (o.legacyCompress && policy) {
           const callsBlock = I.turnCallsBlock(calls); const ctxL = ctx + (callsBlock ? '\n\n' + callsBlock : '')
           const t0 = Date.now()
@@ -384,10 +421,10 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
             else { stored = reasoning; compileInfo = { ok: false, path: 'legacy', gateFail: true, reason: gate.reason, ms: Date.now() - t0, rawChars: reasoning.length, policy: policy.id, gate: gate.stats || null } }
           } catch (e) { compileInfo = { ok: false, path: 'legacy', ms: Date.now() - t0, rawChars: reasoning.length, policy: policy.id, error: String(e && e.message || e).slice(0, 120) } }
         } else {
-          const cfg = I.offlineBirthConfig({ model: o.model, baseUrl: o.baseUrl, credentialsPath: cred, policy: policy || null, normalizeConfig: I.normalizeConfig })
+          const cfg = cfgArm
           const b = await I.birthOffline({ raw: reasoning, ctx, calls, cfg, gate: !o.noGate, compile: o._compile || null })
           stored = b.text
-          compileInfo = { ok: b.ok, path: 'birth-offline', ms: b.ms, rawChars: reasoning.length, outChars: b.text.length, policy: b.policy, promptVersion: b.promptVersion, gate: b.v4 || null, ...(b.ok ? { spliced: b.spliced || null, accept: b.accept || null } : { why: b.why, reason: b.reason || null, info: b.info || null }) }
+          compileInfo = { ok: b.ok, path: 'birth-offline', ms: b.ms, rawChars: reasoning.length, outChars: b.text.length, policy: b.policy, promptVersion: b.promptVersion, gate: b.v4 || null, continuationPath: I.effectiveContinuationPath(cfg), ...(b.ok ? { spliced: b.spliced || null, accept: b.accept || null } : { why: b.why, reason: b.reason || null, info: b.info || null }), budget: compressBudget(I, { ctx, calls, raw: reasoning, out: b.ok ? b.text : null, draft: null }) }
         }
         rec.compile.push(compileInfo)
       }
@@ -562,6 +599,7 @@ export async function main(argv) {
   const last = new Map(); for (const r of all) { const k = `${r.fromState || r.task}|${r.variant}|${r.sample}`; if (!last.has(k) || !r.error) last.set(k, r) }
   let md = summarizeTraj([...last.values()])
   const cont = [...last.values()].filter((r) => r.continuation); if (cont.length) md += `\n\n续跑探针（${cont.length} 条）：${cont.map((r) => `${r.fromState}/${r.variant}: ${r.continuation.verdict}（首轮 ${r.continuation.firstRoundCalls} 次调用、重做前缀 ${r.continuation.prefixRepeats}）`).join('；')}\n结论：${cont.every((r) => r.continuation.verdict === 'continued') ? '模型顺着前缀继续 —— 子状态可用' : cont.some((r) => r.continuation.verdict === 'restarted') ? '**有轨迹从头重来** —— 子状态口径存疑，先别扩到 14 个' : '不清楚（首轮无调用）'}`
+  md += compressBudgetLine([...last.values()])
   fs.writeFileSync(path.join(o.out, 'summary.md'), md + '\n')
   if (plan) { const rows = [...last.values()]; fs.writeFileSync(path.join(o.out, 'receipt.json'), JSON.stringify({ schema: 'cfb.traj-receipt/1', plan: plan.id, digest: plan.digest, at: new Date().toISOString(), trajectories: rows.length, errors: rows.filter((r) => r.error).length, awaiting: rows.filter((r) => r.status === 'awaiting-draft').length, mainCalls: rows.reduce((a, r) => a + (r.mainCalls ?? (r.shadow || r.reusedFrom ? 0 : r.rounds ?? 0)), 0), compressCalls: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.path === 'birth-offline').length, 0), handDrafts: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.path === 'hand').length, 0), shadowRounds: rows.reduce((a, r) => a + (r.shadow?.rounds || 0), 0), noContrastGroups: rows.filter((r) => r.shadow && !r.extended && r.shadow.divergedAt == null && r.status !== 'awaiting-draft').length, extended: rows.filter((r) => r.extended).length, reusedRaw: rows.filter((r) => r.reusedFrom).length, fpModes: rows.reduce((a, r) => { for (const [k, v] of Object.entries(r.fpModes || {})) a[k] = (a[k] || 0) + v; return a }, {}), preflights: fs.existsSync(path.join(o.out, 'preflight.jsonl')) ? fs.readFileSync(path.join(o.out, 'preflight.jsonl'), 'utf8').trim().split('\n').filter(Boolean).length : 0, promptTokens: rows.reduce((a, r) => a + (r.promptTokens || 0), 0), gateFails: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.gateFail).length, 0), completionTokens: rows.reduce((a, r) => a + (r.completionTokens || 0), 0), estimatedUsd: +rows.reduce((a, r) => a + (r.mainCalls || 0) * (plan.cost?.pricing?.mainUsd ?? 0.0125) + (r.compile || []).filter((c) => c.path === 'birth-offline').length * (plan.cost?.pricing?.compressUsd ?? 0.0075), 0).toFixed(3), stoppedEarly: stopped || null }, null, 2) + '\n') }
   console.log('\n' + md)

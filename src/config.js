@@ -228,6 +228,9 @@ export const DEFAULTS = {
   //   坏策略不让它半生效：normalizeConfig 校验失败 ⇒ 回到 null 并记 configAdjusted.compressPolicy。
   compressPolicy: null,
   compressCtxMaxChars: 8000,
+  // v14.12.3（F6）：程序写的延续段里「已走过的路」的形态：'full'（每条历史调用连参数带结果，随调用数无界增长）| 'bounded'（最近两轮原样、更早归并计数、≤600 字）。
+  //   缺省 full（被测对象不变）；策略可用 compressPolicy.config.continuationPath 覆盖；不认识的值回到 full 并在 configAdjusted 留痕。
+  continuationPath: 'full',
   // 仅工具用：把副模型原始输出带回 meta.sideOutput（tools/compile-direct.mjs --recompile 零调用重编译）
   captureSideOutput: false,
   // 证据程序侧车（默认关）：需宿主注册 createEvidenceHost 产生的 cfbEvidenceHost。
@@ -346,6 +349,10 @@ export function normalizeConfig(config = {}) {
   // v14.10：策略归一化（null/'base' ⇒ null；坏的 ⇒ null + 留痕），生产与评测同一函数（src/policy.js）
   try { c.compressPolicy = normalizePolicy(c.compressPolicy) }
   catch (e) { c.configAdjusted = Object.assign({}, c.configAdjusted, { compressPolicy: { from: c.compressPolicy && c.compressPolicy.id || String(c.compressPolicy), to: null, why: String(e && e.message || e) } }); c.compressPolicy = null }
+  if (c.continuationPath !== 'full' && c.continuationPath !== 'bounded') {
+    c.configAdjusted = Object.assign({}, c.configAdjusted, { continuationPath: { from: c.continuationPath, to: 'full', why: "must be 'full' or 'bounded'" } })
+    c.continuationPath = 'full'
+  }
   // 不认识的处置值 ⇒ 回到安全缺省（passthrough）并在 BOOT 留痕；绝不把拼错的值猜成「照旧归属」
   if (c.birthSessionAmbiguity !== 'passthrough' && c.birthSessionAmbiguity !== 'latest') {
     c.configAdjusted = Object.assign({}, c.configAdjusted, { birthSessionAmbiguity: { from: c.birthSessionAmbiguity, to: 'passthrough', why: "must be 'passthrough' or 'latest'" } })

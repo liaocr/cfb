@@ -53,12 +53,34 @@ export function validatePolicyPatches(patches, limits = POLICY_PATCH_LIMITS) {
   return patches
 }
 
-/** 配置里的策略归一化：null/undefined/'base' ⇒ null（无策略）；对象必须有 string id 与合法 patches。坏的抛。 */
+/** v14.12.3：策略可携带的**程序部件配置**（白名单；值必须在枚举内）。提示词补丁改副模型写什么，这些键改程序写什么（F6 延续段）。 */
+export const POLICY_CONFIG_KEYS = Object.freeze({ continuationPath: Object.freeze(['full', 'bounded']) })
+export function validatePolicyConfig(config) {
+  if (config == null) return {}
+  if (typeof config !== 'object' || Array.isArray(config)) throw new Error('policy:config-shape')
+  const out = {}
+  for (const [k, v] of Object.entries(config)) {
+    const allowed = POLICY_CONFIG_KEYS[k]
+    if (!allowed) throw new Error('policy:config-key:' + k)
+    if (!allowed.includes(v)) throw new Error('policy:config-value:' + k + '=' + String(v))
+    out[k] = v
+  }
+  return out
+}
+/** 策略生效后的程序部件配置：policy.config 覆盖 cfg 顶层键（缺省 full = 被测对象不变）。 */
+export function effectiveContinuationPath(cfg) {
+  const fromPolicy = cfg && cfg.compressPolicy && cfg.compressPolicy.config && cfg.compressPolicy.config.continuationPath
+  const v = fromPolicy || (cfg && cfg.continuationPath) || 'full'
+  return POLICY_CONFIG_KEYS.continuationPath.includes(v) ? v : 'full'
+}
+
+/** 配置里的策略归一化：null/undefined/'base' ⇒ null（无策略）；对象必须有 string id 与合法 patches（或合法 config）。坏的抛。 */
 export function normalizePolicy(x) {
   if (x == null || x === '' || x === 'base' || x === false) return null
   if (typeof x !== 'object') throw new Error('policy:shape')
   const patches = validatePolicyPatches(x.patches || [])
-  if (!patches.length) return null   // 空补丁 = 无策略（与 base 逐字节相同）
+  const config = validatePolicyConfig(x.config)
+  if (!patches.length && !Object.keys(config).length) return null   // 空补丁 + 空配置 = 无策略（与 base 逐字节相同）
   if (typeof x.id !== 'string' || !x.id) throw new Error('policy:id')
-  return Object.freeze({ id: x.id, patches: Object.freeze(patches.map((p) => Object.freeze({ ...p }))) })
+  return Object.freeze({ id: x.id, patches: Object.freeze(patches.map((p) => Object.freeze({ ...p }))), ...(Object.keys(config).length ? { config: Object.freeze(config) } : {}) })
 }

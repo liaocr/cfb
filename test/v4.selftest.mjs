@@ -1239,6 +1239,43 @@ try {
     const withAt = I.compileV4(JSON.stringify({ ops: [ops[0], { ...ops[1], at: 'const env = { ...process.env, DSH_HOME: tmp }' }] }), raw, { compressV4Prose: true, compressCtx: ctx })
     assert.equal(withAt.stats.boundReady, undefined, '已有 at ⇒ 不算本次绑定')
   })
+  await test('5u5 F6（v14.12.3）有界的「已走过的路」：bounded 把最近两轮原样保留、更早的按工具+命令头归并计数、整段 ≤600 字；full 缺省不变；程序写的路段里的反引号命令不再被当成「仍在依赖的事实」；continuationPath 经 cfg / policy.config 生效且坏值回 full 留痕', () => {
+    const call = (cmd) => `[tool_call bash] {"command":${JSON.stringify(cmd)}}`
+    const msgs = [
+      { role: 'user', content: '升级后 birth 收网等待从 900ms 涨到 2400ms，请找原因并修好。' },
+      { role: 'assistant', reasoning_content: 'x', content: call('ls -la && cat README.md') + '\n' + call('cd /tmp && analyze-trace --last 20') },
+      { role: 'user', content: '[tool: bash]\ntotal 8\n[tool: bash]\nv11.9 260' },
+      { role: 'assistant', reasoning_content: 'x', content: call('cat src/config.js') + '\n' + call('find / -name "*trace*" 2>/dev/null | head') },
+      { role: 'user', content: '[tool: bash]\nexport default {}\n[tool: bash]\n(no output)' },
+      { role: 'assistant', reasoning_content: 'x', content: call('type analyze-trace; ls -la /usr/local/bin') + '\n' + call('ls -la / ; ls /opt /srv') },
+      { role: 'user', content: '[tool: bash]\nanalyze-trace is /usr/local/bin/analyze-trace\n[tool: bash]\nbin boot dev' },
+      { role: 'assistant', reasoning_content: 'x', content: call('alias; declare -f analyze-trace; env | head -30') },
+      { role: 'user', content: '[tool: bash]\n(no output)' },
+    ]
+    const full = I.continuationText(msgs), bounded = I.continuationText(msgs, { path: 'bounded' })
+    assert.ok(full.includes('第 1 轮 bash `ls -la && cat README.md`') && full.includes('第 4 轮 bash `alias; declare -f analyze-trace; env | head -30`'), 'full 逐条列出：' + full)
+    assert.ok(bounded.length < full.length && bounded.length <= 600, `bounded ${bounded.length} < full ${full.length} 且 ≤600`)
+    assert.ok(/第 1–2 轮已跑 4 条：bash×4（/.test(bounded) && /analyze-trace/.test(bounded) && /find/.test(bounded), '更早两轮归并计数（命令头，剥掉 cd …&&）：' + bounded)
+    assert.ok(bounded.includes('第 3 轮 bash `type analyze-trace; ls -la /usr/local/bin`') && bounded.includes('第 4 轮 bash `alias; declare -f analyze-trace; env | head -30`'), '最近两轮原样：' + bounded)
+    assert.ok(!bounded.includes('`ls -la && cat README.md`') && bounded.endsWith('这些不再重跑，除非中间改过东西。'), bounded)
+    assert.equal(I.continuationText(msgs, { path: 'nope' }), full, '不认识的形态按 full')
+    // F6c：上一轮稿里程序写的路段（含反引号命令参数）不进「仍在依赖的事实」；像 shell 命令的也不进
+    const stored = full + '\n' + '本轮增量：看到 `const env = { ...process.env, DSH_HOME: tmp }`（read_file verify.mjs 逐字）。'
+    const L = I.buildLedger([...msgs, { role: 'assistant', reasoning_content: stored, content: call('cat src/config.js') }, { role: 'user', content: '[tool: bash]\nexport default {}' }])
+    assert.deepEqual(L.lines.map((l) => l.text), ['const env = { ...process.env, DSH_HOME: tmp }'], '只收真正的事实行：' + JSON.stringify(L.lines))
+    // ctx 接线：buildCompressCtx 的 continuationPath；plugin 侧由 effectiveContinuationPath(cfg) 决定（策略 config 覆盖顶层键）
+    const ctxF = I.buildCompressCtx(msgs), ctxB = I.buildCompressCtx(msgs, { continuationPath: 'bounded' })
+    assert.ok(ctxF.includes('【延续段】') && ctxB.includes('【延续段】') && ctxB.length < ctxF.length && ctxB.includes('第 1–2 轮已跑 4 条'), 'ctx 用 bounded 延续段')
+    assert.equal(I.effectiveContinuationPath(I.normalizeConfig({})), 'full', '缺省 full：被测对象不变')
+    assert.equal(I.effectiveContinuationPath(I.normalizeConfig({ continuationPath: 'bounded' })), 'bounded')
+    const viaPolicy = I.normalizeConfig({ compressPolicy: { id: 'p-f6', patches: [], config: { continuationPath: 'bounded' } } })
+    assert.ok(viaPolicy.compressPolicy && viaPolicy.compressPolicy.id === 'p-f6' && viaPolicy.compressPolicy.config.continuationPath === 'bounded', '只带 config 的策略不再被当成空策略：' + JSON.stringify(viaPolicy.compressPolicy))
+    assert.equal(I.effectiveContinuationPath(viaPolicy), 'bounded')
+    assert.equal(I.normalizeConfig({ compressPolicy: { id: 'p', patches: [], config: {} } }).compressPolicy, null, '空补丁 + 空配置 = 无策略')
+    const bad = I.normalizeConfig({ continuationPath: 'tight', compressPolicy: { id: 'p', patches: [], config: { continuationPath: 'nope' } } })
+    assert.equal(bad.continuationPath, 'full'); assert.ok(bad.configAdjusted.continuationPath && bad.configAdjusted.compressPolicy, '坏值回 full、坏策略回 null，都留痕：' + JSON.stringify(bad.configAdjusted))
+    assert.throws(() => I.validatePolicyConfig({ birthMinChars: 100 }), /policy:config-key/, '白名单之外的键不许进策略（不能借策略改被测对象）')
+  })
 } finally {
   if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome
 }

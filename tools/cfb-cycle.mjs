@@ -749,9 +749,16 @@ function cmdPlanTraj(args) {
     const extend = capped.length ? { rows: capped.length, from: Math.round(capped.reduce((a, r) => a + r.rounds, 0) / capped.length), firstFloor: firstFloor.length ? Math.min(...firstFloor) : null } : null
     reuseRaw = { file: path.relative(ROOT, abs), rows: rows.length, byTask, at: rows.map((r) => r.at).filter(Boolean).sort()[0] || null, digest: evidenceDigest(rows.map((r) => [r.task, r.sample, r.rounds, r.fixedAtRound])).slice(0, 16), ...(extend ? { extend } : {}) }
   }
+  const calHist = costCalibration(h)   // v4.7.3：有回执就按实测 divergeRound / floorShare 再算一遍期望（常数那份照旧写进计划，校准那份并排给操作者看）
   const plan = buildTrajPlan({ n, arms, reuseRaw, scenarios: perturb ? scenarios.map((x) => x + ':' + perturb) : scenarios, samples: Number(f(args, '--samples') || 1), maxRounds: Number(f(args, '--max-rounds') || 5), fork: !args.includes('--no-fork'), purpose: f(args, '--purpose') || (hasHand ? '模式 1 天花板：hand 臂 = 助手代替副模型手写稿（同一提示词、同一闸链 + G2 决策不变闸）vs raw；量 f(主模型 | 稿) 的上界与「稿该写什么」；hand 永远不采纳为 champion，过闸且修好的稿进金标注册表（gold add）作模式 2 标准' : fromStates ? `子状态续跑（Math-Shepherd 式蒙特卡洛状态价值）：同一分叉点两臂续跑的修好率 / 到修好轮数之差 = 该轮压缩稿价值的原则性定义；${fromStates.count} 个状态来自家族 ${fromStates.families.join('、')}，扩的是家族内配对数，不计入留出家族数` : perturb ? `加难场景（${perturb}：诱饵同名文件 + README 误导，两臂同扰动）：正确下一步不再唯一，考压缩稿能否保住排除项与证据而不是只保住「下一步」` : null), fromStates, stop: args.includes('--stop') ? (Number(f(args, '--cap-usd')) > 0 ? { capUsd: Number(f(args, '--cap-usd')) } : {}) : null })
   for (const sc of plan.scenarios) { const [id, kind] = sc.split(':'); if (!TRAJ_TASKS.some((t) => t.id === id)) throw new Error('unknown-scenario:' + sc); if (kind && kind !== 'decoy') throw new Error('unknown-perturb:' + kind) }
   plan.design = designDigest(plan)
+  if (calHist.receipts.length && plan.cost.shadow) {
+    // 校准份：同一设计、常数换成回执实测（divergeRound 取中位数、floorShare 取均值）；只做展示与记录，不改上界
+    const pr = { ...TRAJ_UNIT, ...(calHist.suggest.divergeRound != null ? { divergeRound: calHist.suggest.divergeRound } : {}), ...(calHist.suggest.floorShare != null ? { floorShare: calHist.suggest.floorShare } : {}) }
+    const alt = buildTrajPlan({ n, arms, reuseRaw, scenarios: plan.scenarios, samples: plan.samples, maxRounds: plan.maxRounds, fork: plan.fork, pricing: pr, fromStates: plan.fromStates || null, stop: null })
+    plan.cost.calibrated = { receipts: calHist.receipts.length, divergeRound: pr.divergeRound, floorShare: pr.floorShare, expectedMains: alt.cost.expectedMains, expectedCompresses: alt.cost.expectedCompresses, expectedUsd: alt.cost.expectedUsd }
+  }
   const dup = (h.trajPlans || []).find((t) => t.design === plan.design && t.status === 'planned' && t.n !== n)
   if (args.includes('--dry')) { console.log(`[dry] 不落盘。设计 ${plan.design}：臂 ${plan.variants.join(' vs ')}；场景 ${plan.scenarios.join(', ')} × ${plan.samples}；≤${plan.maxRounds} 轮；主 ≤${plan.cost.mains} + 压缩 ≤${plan.cost.compresses}，期望主 ${plan.cost.expectedMains} + 压缩 ${plan.cost.expectedCompresses} ≈ $${plan.cost.expectedUsd}（上界 $${plan.cost.capUsd}）` + (dup ? `；同设计已有未执行计划 t${dup.n}` : '')); return plan }
   if (dup && !args.includes('--force')) { console.log(`同一设计的计划已存在：t${dup.n}（design ${dup.design}，未执行）—— 不重复建；要重建加 --force，要撤销用 --drop ${dup.n}`); return readJson(path.join(trajHomeFor(dup.n), 'plan.json')) }
@@ -761,6 +768,7 @@ function cmdPlanTraj(args) {
     `请求：主调用 ≤${plan.cost.mains} + 压缩 ≤${plan.cost.compresses}（上界：每轮都压、第 1 轮就分歧）；期望主 ${plan.cost.expectedMains} + 压缩 ${plan.cost.expectedCompresses}${plan.cost.shadow ? `（影子分叉：跟随臂到第 ${plan.cost.pricing.divergeRound} 轮才分歧、原文过地板的轮占 ${plan.cost.pricing.floorShare}${plan.reuseRaw ? (plan.reuseRaw.extend ? `；raw 复用 ${plan.reuseRaw.file} 的前 ${plan.reuseRaw.extend.from} 轮、只付续跑的 ${Math.max(0, plan.maxRounds - plan.reuseRaw.extend.from)} 轮；跟随臂第 ${plan.reuseRaw.extend.firstFloor || plan.reuseRaw.extend.from + 1} 轮分歧、付之后的 ${Math.max(0, plan.maxRounds - (plan.reuseRaw.extend.firstFloor || plan.reuseRaw.extend.from + 1))} 轮` : '；raw 复用自 ' + plan.reuseRaw.file + '，不付') : ''}）` : ''}；**期望实付 ≈ $${plan.cost.expectedUsd}，上界 ≈ $${plan.cost.capUsd}**（max_tokens 8000；常数见 TRAJ_UNIT，首张回执后更新）`,
     `产出（估）：L1 对 ${plan.yield.l1Pairs}、L2 对 ${plan.yield.l2Pairs}、效度对 ≈${plan.yield.validityPairsApprox}、飞轮对 ≈${plan.yield.flywheelPairsApprox}、子状态 ≈${plan.yield.childStatesApprox}`, '', plan.holdoutNote, '', '批准后执行（traj-run 会核对参数与计划一致，跑完写 receipt.json）：', '```', plan.command, '```', '', hasHand ? `回灌：node tools/cfb-cycle.mjs ceiling --plan ${n}   # 模式 1 不走 confirm：hand 不是候选，只量天花板 + 进金标` : `回灌：node tools/cfb-cycle.mjs confirm --plan ${n} --map champion=policy:base,previous=raw   # 或 --parity（auto vs policy:base）`]
   L.push('', `家族覆盖（轨迹数）：${TRAJ_TASKS.map((t) => `${t.id}=${cov[t.id].total}`).join(' ')}；本计划 ${plan.scenarios.length === 1 ? '只跑 ' + plan.scenarios[0] + '，跑完先 `review --plan ' + n + '` 再决定下一个家族' : '批量 ' + plan.scenarios.length + ' 个家族'}`)
+  if (plan.cost.calibrated) L.push('', `**按回执校准**（${plan.cost.calibrated.receipts} 张：divergeRound ${plan.cost.calibrated.divergeRound} / floorShare ${plan.cost.calibrated.floorShare}）：期望主 ${plan.cost.calibrated.expectedMains} + 压缩 ${plan.cost.calibrated.expectedCompresses} ≈ $${plan.cost.calibrated.expectedUsd}；上界不变。`)
   if (plan.reuseRaw?.extend) L.push('', `**延长**：${plan.reuseRaw.file} 里的 raw 被 ${plan.reuseRaw.extend.from} 轮上限截断（最后一轮还在发调用）⇒ raw 从第 ${plan.reuseRaw.extend.from + 1} 轮续跑（前 ${plan.reuseRaw.extend.from} 轮零主调用、仓库由重放恢复）；跟随臂最早在第 ${plan.reuseRaw.extend.firstFloor || plan.reuseRaw.extend.from + 1} 轮${plan.reuseRaw.extend.firstFloor ? '（旧轨迹第一次过地板）' : ''}分歧，之前影子。`)
   if (plan.reuseRaw) L.push('', `**非同期对照**：raw 臂复用 ${plan.reuseRaw.file}（${plan.reuseRaw.rows} 条，最早 ${plan.reuseRaw.at || '?'}）。平台试验里的 non-concurrent control：主模型若有时间漂移会偏；只在同一模型 id、短窗口内用，review 时把两次的日期并排看；多个候选共用同一 raw ⇒ 候选之间的比较相关，别把 k 个候选里挑最好的那个当独立证据。`)
   if (hasHand) L.push('', `**模式 1 步进**：hand 臂每到要压缩的那一轮会暂停（results.jsonl 记 awaiting-draft），把副模型本该拿到的 prompt / 原文 / ctx / 协议写进 \`${path.relative(ROOT, trajHomeFor(n))}/pending/<id>.json\`；助手写 \`drafts/<id>.md\` 后**再跑同一条命令**自动续（G2 + 生产闸不过 ⇒ 继续暂停并把违规写回 pending）。压缩调用 0 次（hand 不花钱）。跑完：\`ceiling --plan ${n}\`（不是 confirm）→ \`gold add --plan ${n}\`。`)
@@ -1055,13 +1063,13 @@ export function policyFromProposal({ file, g = null, parentId = null, now = new 
   const packFile = g != null ? path.join(OFFLINE, `gen-${g}.pack.json`) : null, pack = packFile ? readJson(packFile) : null
   const parent = loadPolicy(parentId || pack?.parent?.id || readJson(CHAMPION)?.policy || 'base')
   let proposal
-  try { proposal = parseProposal(raw); validatePatches(proposal.patches) }   // 闸 1：JSON + 补丁预算（与 ingestGen 的 propose 路径同一函数）
+  try { proposal = parseProposal(raw); validatePatches(proposal.patches, { allowEmpty: !!proposal.config }) }   // 闸 1：JSON + 补丁预算（与 ingestGen 的 propose 路径同一函数）；v14.12.3：只带 config 的提议允许空补丁
   catch (e) { throw new Error('proposal-invalid:' + String(e && e.message || e)) }
   const leaks = leakCheck(proposal.patches, pool.tasks, promptHead(pool.tasks[0]))   // 闸 2：泄漏
   if (leaks.length) throw new Error('leak:' + leaks.join(','))
   try { applyPolicyToPrompt(promptHead(pool.tasks[0]), { patches: proposal.patches }) }   // 闸 3：可应用（replace 的 from 必须在提示词里恰出现一次）
   catch (e) { throw new Error('unapplicable:' + String(e && e.message || e)) }
-  const pol = makePolicy({ parent, patches: proposal.patches, rationale: proposal.rationale, prediction: proposal.prediction, origin: { by: 'assistant', gen: g, pack: pack?.digest || null, file: path.relative(ROOT, path.resolve(file)) } })
+  const pol = makePolicy({ parent, patches: proposal.patches, config: proposal.config || null, rationale: proposal.rationale, prediction: proposal.prediction, origin: { by: 'assistant', gen: g, pack: pack?.digest || null, file: path.relative(ROOT, path.resolve(file)) } })
   const pf = path.join(POLICIES, pol.id + '.json'); ensure(POLICIES)
   if (!fs.existsSync(pf)) writeJson(pf, { ...pol, at: now })
   if (g != null) { const h = loadHistory(); const e = (h.generations || []).find((x) => x.gen === g); if (e) { e.status = 'ingested'; e.policy = pol.id; writeJson(HISTORY, h) } }
