@@ -8,6 +8,7 @@
 - **已落地（零 API）**：`traj-run --aci rl-native`（RL 训练句 + bash/str_replace_editor 逐字 schema，`tools/helpers/aci.mjs`，官方包原文在 `docs/reference/dsh-tools/`）、`--tool-protocol native`、臂 `gate`（`tools/helpers/host-gates.mjs`）、臂 `drop`、预检 `shape`、transcript `finish`、`plan-traj --aci/--tool-protocol`、claimOf 认英文。rl-native 暂不支持压缩臂。
 - **第一组单元（未建计划、未花钱，等用户点头）**：① raw@rl-native × perf ≈$0.10（工具面是不是 perf 不落子的主因）；② raw vs drop ≈$0.11（思维链携带是干扰 / 无关 / 必需）；③ raw vs gate × perf ≈$0.16（用户态门禁能不能把「找证据」变「改并验证」）。命令在 DSH-MERGE §3。
 - **坑**：rl-native 面下模型多半英文收尾 ⇒ claimOf 已认英文；str_replace_editor 要绝对路径，`/home/u/work/repo` 映射到假仓库；形态预检没过（通道不收 role:tool 或不带思维链的历史）就一条都别跑。
+- **方案（2026-10-02 检索后）：`docs/design/BREAKTHROUGH-PLAN.md`** —— 五层（选择 / 面协议效力 / 流程 / 经验 / 上下文），里程碑 M0–M5 带预测与作废条件；关键事实：DeepSeek 契约要求带 tools 时全量传回 reasoning_content（drop 只是对照）；官方极简模式 = 我们刚移植的面；官方端点比中转便宜 ≈10×，是出成果的前提；压缩器改为长程阈值触发。
 - 闸：v4 95/95、closed-loop 37/37。
 
 ## −15. 当前状态（2026-10-02，归因：主因是理论 —— 「压缩」与「增补」是两个制度；制度键进正门；t9 预注册 / 实跑）
