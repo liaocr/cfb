@@ -10,7 +10,7 @@
 //      ② traj-run 在线逐轮记 proxy，和 L2 结局同一条轨迹产出 ⇒ 一次付费同时喂 L1 / L2 / 效度 / 飞轮 / 子状态任务。
 // 口径说明：v9 的 L1 由任务规格（d1/d2）判「下一步对不对」，这里由执行器状态判；两者是同一构念（结构性下一步质量）的两个估计量，账本里分 source 记。
 import { claimOf } from '../effect-mr.mjs'
-import { auc, rulerValidity } from './ruler.mjs'
+import { auc, rulerValidity, rulerValidityTTF, fitFlagWeights } from './ruler.mjs'
 
 const normCmd = (s) => String(s || '').replace(/\s+/g, ' ').trim()
 const parseArgs = (a) => { if (a && typeof a === 'object') return a; try { return JSON.parse(a) } catch { return { command: String(a || '') } } }
@@ -75,5 +75,8 @@ export function clusteredValidity(pairs, { minPairs = 12, minPerClass = 5, boots
 export function retroValidity(rows) {
   const traj = proxyPairs(rows, { level: 'trajectory' }), step = proxyPairs(rows, { level: 'step' }), r2 = proxyPairs(rows, { level: 'step', fromRound: 2 }).filter((p) => p.round === 2)
   const flagRates = (() => { const all = rows.filter((r) => !r.error).flatMap((r) => stepFlags(r)); const k = ['next', 'avoid', 'falseDone', 'bump', 'reEdit', 'repeat']; return Object.fromEntries(k.map((x) => [x, all.length ? +(all.filter((s) => s.flags[x] === 1).length / all.length).toFixed(3) : null])) })()
-  return { trajectory: { ...rulerValidity(traj), pairs: traj }, step: clusteredValidity(step), round2: { ...rulerValidity(r2, { minPairs: 8 }), n: r2.length }, flagRates, steps: rows.filter((r) => !r.error).reduce((a, r) => a + (r.transcript || []).length, 0) }
+  // v4.3：主结局改为「到修好的轮数」（未修好 = 右删失于总轮数），效度 = Harrell C（簇自助）；步级配对的时间 = 从该步起还要几轮修好（删失同理）
+  const ttf = step.map((p) => { const row = rows.find((r) => `${r.dir || ''}|${r.task}|${r.variant}|${r.sample ?? 0}` === p.cluster); const total = row?.rounds || p.round; return { ...p, event: p.outcome, time: p.outcome ? Math.max(1, p.roundsToFix - p.round + 1) : Math.max(1, total - p.round + 1) } })
+  const stepRows = rows.filter((r) => !r.error).flatMap((r) => stepFlags(r).filter((s) => !s.fixedHere && !s.fixedBefore).map((s) => ({ flags: s.flags, outcome: (r.fixed || Number.isInteger(r.fixedAtRound)) ? 1 : 0, cluster: `${r.dir || ''}|${r.task}|${r.variant}|${r.sample ?? 0}` })))
+  return { trajectory: { ...rulerValidity(traj), pairs: traj }, step: clusteredValidity(step), round2: { ...rulerValidity(r2, { minPairs: 8 }), n: r2.length }, timeToFix: rulerValidityTTF(ttf), flagWeights: fitFlagWeights(stepRows), flagRates, steps: rows.filter((r) => !r.error).reduce((a, r) => a + (r.transcript || []).length, 0) }
 }

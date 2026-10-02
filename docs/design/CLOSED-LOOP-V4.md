@@ -139,7 +139,8 @@ ruler ──▶ 效度状态 / 采纳规则 / e 值预算 / 曝光 / 排序器 /
 
 - **v4.1（零 API）**：`traj-run --policy ID --continue-from runtime/rN`；`mint --auto`（自铸）；Spearman(L1, roundsToFix) 进效度账本；ICC 从 A/A 轮估计。
 - **v4.2（首次付费，≈$0.6）**：A/A r1（13 请求）+ 一次 L2 续跑 raw vs auto 留出 2 题（≤16 请求）——同时得到仪器校准、首批 12+ 效度配对、第一张真实 token 收据。
-- **v4.3**：GEPA 式反思 + Pareto 池；故障注入；台账 schema 旋钮。
+- **v4.3（已落地，见 §13）**：Pareto 池（父代选择）、子状态续跑、到修好轮数 C 指数、有界续跑、实测 ICC、decoy 加难。原计划的「Spearman(L1, roundsToFix)」改为 Harrell C（右删失）；故障注入（合并 bug / 两段式）与台账 schema 旋钮顺延到 v4.4。
+- **v4.4**：每场景新 `fixed()` 的合并 bug / 两段式故障（SWE-smith 式）→ 新家族；≥ 4 家族后题型路由表。
 - **放弃清单（不变）**：抽取式压缩、原文尾巴、第 N 条 K 规则、更短稿、Likert 当训练信号、无留出按分搜索；加一条：**L1 没过效度就不许 L1 单独进生产**。
 
 ## 11. v4.1（v14.5）：把每一次付费的信息榨干 —— 分叉全轨迹 + 执行器代理 + 回溯效度
@@ -205,3 +206,31 @@ ruler ──▶ 效度状态 / 采纳规则 / e 值预算 / 曝光 / 排序器 /
 - 效度账本 n=0（前瞻）；回溯效度 suspect。**L1 此刻是诊断，不是尺子。**
 - 留出家族 3（假仓库场景）< 4：所有分叉轨迹结果只用于效度与校准，不用于按分搜索。
 - 生成器侧除样例槽外没有新论据。
+
+## 13. v4.3（v14.7）：第五轮评审的 9 个方向 —— 文献对照后的取舍（仍零花费）
+
+评审给的是**方向**，不是答案。每个方向先查文献，再对照 `transfer/` 四份理论文档的铁规矩（留出家族数是泛化的分母、不按分搜索、尺子必须绑真实结局）决定做什么、不做什么。
+
+| # | 评审方向 | 文献 | v4.3 的取舍 | 落点 |
+|---|---|---|---|---|
+| 1 | 尺子天花板来自题太简单，要更难更长的题 | SWE-smith（arXiv 2504.21798）：注入 / **合并多个函数级 bug** 可靠地造出需多处修改的难题；R2E-Gym、SWE-Playground 同类 | 同意前提。先做零 API 的通用加难算子 `perturbTask(task,'decoy')`：诱饵同名源文件 + README 误导 ⇒ 正确下一步不再唯一，考压缩稿能否保住**排除项与证据**（这正是 v4d9 的论点）；`--max-rounds` 可到 12。"合并 bug"/两段式故障需要每个场景的新 `fixed()` ⇒ 只设计不实现 | `traj-run --perturb decoy` / `--only id:decoy`、`plan-traj --perturb decoy`、A15 |
+| 2 | 生成器在「下一步正确」上饱和，目标换成 roundsToFix / token，L1 效度用 Spearman | Pocock 2012 胜比、Buyse 2010 GPC、Finkelstein–Schoenfeld 分层成对；Harrell C 指数（右删失的 AUC 推广，Uno IPCW 为重删失修正） | 主结局 = **到修好的轮数，未修好右删失于总轮数**（不是把未修好扔掉）。L2 配对本来就是分层 GPC（修好 > 轮数 > 假宣称 > 验证）—— 现在明名并报 **胜比 / 净获益**。L1 效度不用 Spearman（处理不了删失、同轨迹对会灌水）而用 **跨轨迹 Harrell C + 簇自助**。**实测：29 条轨迹 67 步，C = 0.523（0.464–0.584）⇒ invalid** —— 六旗标对「还要几轮」没有信号；这比 0.70 suspect 更坏，也更诚实 | `ruler.concordanceIndex / rulerValidityTTF`、`outcomeComparison.winRatio/netBenefit`、`ruler` 打印、A13 |
+| 3 | 留出家族 3 < 4，用 29 条轨迹的轮次状态派生 100+ 题当主供给 | Math-Shepherd（2312.08935）/ OmegaPRM：步价值 = 从该状态蒙特卡洛续跑的成功率；Unsupervised PRM 同理 | 做，但**改口径**：子状态 = 同一家族内的续跑起点，扩的是**配对数（功效）**，不是家族数（泛化）；留出家族仍 3，这一点评审的「留出 3→10+」不成立。实得 **59 个可重放状态 / 3 家族**（修好后的轮不成题；旧 transcript 参数截 400 字 ⇒ 2 个不可重放；无思维链 ⇒ 只能做 L2 起点，`--store-text` 之后的新轨迹才兼做 L1 题）。两臂在同一状态续跑的修好率 / 轮数之差 = 压缩稿价值的原则性定义（六旗标只是预测它的特征） | `helpers/child-states.mjs`、`cfb-cycle states`、`traj-run --from-state / --store-text`（确定性重放 + 消息前缀）、`valueTable`、A12/A14 |
+| 4 | e 值接到分叉上：一次批准内有界续跑 | 任意时刻有效推断 / e-process：提前停不损失保证 | 做：`plan.stop = {alpha, minPairs, compare, capUsd}`，每组跑完算 `outcomeComparison` 的 e 值，任一方向过阈或 token 估算花费到上界即停；回执记 `stoppedEarly / estimatedUsd` | `plan-traj --stop [--cap-usd]`、`traj-run` 组后检查、`--dry-run`、A14 |
+| 5 | 排序器用 162 个 mr 样本冷启动；ICC 用已有数据估 | — | **冷启动不可能**：mr 行只有旗标与字数，没有压缩稿正文（排序器特征要正文）—— 明说。**ICC 可估**：单因素 ICC(1)，mr 同题同臂重复 56 组 ⇒ **0.366**（接近原先拍的 0.3，但现在有来源）；traj 结局分 9 组 ⇒ 0（样本太少）。`ruler --write-design` 写 `offline/ruler/design.json`，`decideV4` 经 `loadDesign()` 读 | `ruler.iccOneWay`、`loadDesign`、A14 |
+| 6 | 泄漏闸是字符串启发式，要用 dev 对半 / dev-留出增益相关检测过拟合 | Blum–Hardt 2015 **Ladder**（1502.04585）：榜只在显著优于前最佳时更新 ⇒ 自适应过拟合 O(log k)；Dwork 2015 Thresholdout | 不做 3 道 dev 题的对半（无功效）。现有采纳规则（只有留出 e 值显著才采纳 / 否决，留出只通过这一比特泄漏）**就是 Ladder**，这才是主防线；补 `generalizationGap`（dev 净胜率 − 留出净胜率 ≥ 0.5 且留出 ≥ 4 对 ⇒ `suspected-overfit`）作诊断；字符串泄漏闸降为次要 | `ruler.generalizationGap`、`ingest` 报告行、A16 |
+| 7 | 单一擂主 → Pareto 池 | GEPA（2507.19457）§3.3：按题前沿抽父代，概率 ∝ 上榜题数，避免「永远选最好」一轮就卡局部最优 | 做：`scoreMatrix(history)`（候选 / 对照按题均分；对照记到当时的 `championPolicy`）→ `paretoFront`（按题并列最高 + 支配关系）→ `pickParent`；`propose-policy --parent auto`。擂主仍只有一个（生产只能挂一个策略），池只管**父代选择** | `helpers/pareto.mjs`、`ruler` 打印前沿、A16 |
+| 8 | 六旗标权重从真实结局学 / 当搜索对象 | RHB（2605.02964）等：步奖励与结局错位时结局是锚；Math-Shepherd 的 MC 价值 | 原则性目标是 **MC 状态价值**（方向 3），不是在 6 个 ±1 上搜权重。权重回归只做诊断：逻辑回归 + 簇留一 —— **实测 cvAUC 0.14 vs 手工 ±1 的 0.70 ⇒ 保留 ±1**（21 簇上学权重就是过拟合）。学到的权重要替换手工，须在新家族上复验 | `ruler.fitFlagWeights`、A13/A17 |
+| 9 | 按题型路由策略表 | — | 只设计：路由表需要每个题型 ≥ 1 个留出家族，现在总共 3 家族。等 ≥ 4 家族后在 `champion.json` 加 `routes:{family→policy}`，`tasksForRound` 按家族取策略 | 文档 |
+
+### 13.1 评审自己的 top-3，与我们的 top-3
+评审：子状态扩题、roundsToFix + Spearman、Pareto 池，"做完再花 $0.7"。我们：① 子状态（已做，但它是功效不是泛化）；② 到修好轮数 + C 指数（已做，**结论是 invalid**，这才是第一次付费最该验的东西）；③ 有界续跑（已做，一次批准把 $0.7 花到判定或上界为止）。Pareto 池已做但目前没有第二个策略可比，先空转。
+
+### 13.2 第一次付费怎么花（仍需用户批准）
+`plan-traj --stop`（默认单位，期望 ≈ $0.705 / 上界 ≈ $1.79）或 `plan-traj --from-states offline/states/eacces-config.json --samples 1 --max-rounds 6 --stop --cap-usd 1`（14 个留出家族状态 × 2 臂，续跑轮数少，单位更便宜；`--dry-run` 已验证 28 条全部可重放）。两者都先 `traj-run … --dry-run` 核对再批。目的不变：先验尺子（在线 C 指数 / AUC），不是搜索。
+
+### 13.3 仍未验证
+- 子状态续跑一条也没跑过：重放后模型是否顺着前缀继续（而不是从头重来）要看首跑。
+- `estimatedUsd` 用 TRAJ_UNIT 常数估，不是回执。
+- decoy 只验证了结构（文件 / README / fixed 不变），没验证它真的更难。
+- Pareto 池、泛化差距、ICC 的 design.json 都只在模拟历史上跑过。

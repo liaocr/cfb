@@ -6,6 +6,7 @@
 
 ## 零、先读这段（最新的、必须知道的）
 
+000000. **v14.7（2026-10-02）v4.3：读 `docs/design/CLOSED-LOOP-V4.md` §13（评审 9 方向 × 文献 × 取舍表）。** 先跑 `node tools/cfb-cycle.mjs ruler --write-design` 与 `states`：到修好轮数口径下执行器代理 **C=0.52 invalid**、六旗标学权重不如 ±1、ICC 实测 0.366、子状态 59 个但家族仍 3（不是新留出）。付费仍只走 `plan-traj [--stop|--from-states|--perturb decoy]` → `traj-run … --dry-run` 核对 → 用户批准 → `traj-run --plan` → `confirm --plan N`。不要把子状态数当留出家族数；不要在 3 道 dev 题上做对半检验。
 00000. **v14.6（2026-10-02）v4.2：读 `docs/design/CLOSED-LOOP-V4.md` §12。** 先跑 `node tools/cfb-cycle.mjs ruler`：L1 角色现为 diagnostic（不是尺子）；回溯效度主口径 0.70 suspect，0.944 不要引用。付费只走 `plan-traj` → 用户批准 → `traj-run --plan` → `confirm --plan N`（策略 champion 还要 `--parity`）。首跑目的是检验尺子，不是搜索。
 0000. **v14.5（2026-10-02）v4.1 已落地：读 `docs/design/CLOSED-LOOP-V4.md` §11。** 付费单位改为「分叉全轨迹」（`traj-run --fork --policy`），一次付费同时产出 L1 对 / L2 对 / 效度配对 / 飞轮对 / 子状态；`cfb-cycle ruler` 看回溯效度与信息产出/美元。首付 ≈$0.5（raw vs policy:base，3 场景 × 2 样本 × ≤4 轮），先给用户看成本、批准后再跑；留出家族 < 4 之前不按分搜索。
 000. **v14.4（2026-10-02）闭环 v4 已落地，先读 `docs/design/CLOSED-LOOP-V4.md`（再读 V3 / V2 作基座）。** 尺子分三层（L1 代理 / L2 traj-run 结局）、效度账本（AUC+CI）、e 值采纳、provisional→confirm→回滚、留出曝光、CPU 排序器；`node tools/cfb-cycle.mjs ruler` 先看。还没花过一分钱；下一步零 API：`traj-run --policy --continue-from` 与 `mint --auto`；首次付费 ≈$0.6（A/A r1 + L2 续跑留出 2 题），必须先 `plan` 冻结、给用户看预占/期望、批准后再 `run --live`。

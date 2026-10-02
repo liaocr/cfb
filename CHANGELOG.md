@@ -4,6 +4,20 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.7.0（2026-10-02，闭环 v4.3：第五轮评审 9 个方向逐条文献对照 —— 子状态 / 到修好轮数 C 指数 / 有界续跑 / Pareto 池 / 实测 ICC；仍零花费）
+
+- **起因**：第五轮评审给了 9 个优化方向（题太简单、目标换 roundsToFix、子状态扩题、e 值接分叉、排序器冷启动 + ICC、过拟合检测、Pareto 池、学旗标权重、题型路由）；用户要求当方向看、逐条查文献、结合理论后再全面优化。取舍表见 `docs/design/CLOSED-LOOP-V4.md` §13。
+- **子状态（方向 3）**：`tools/helpers/child-states.mjs`：从轨迹每个「修好之前」的轮派生可续跑状态（确定性重放前几轮调用 + 消息前缀）；29 条真实轨迹 ⇒ **59 个 / 3 家族**。口径更正：扩的是家族内配对数，不是留出家族数（评审的「留出 3→10+」不成立）。`cfb-cycle states`、`traj-run --from-state FILE --store-text`（新轨迹存思维链 / 稿全文与完整参数，子状态才兼做 L1 题）、`valueTable`（Math-Shepherd 式蒙特卡洛状态价值）。
+- **主结局改口径（方向 2）**：到修好的轮数、未修好右删失；效度 = 跨轨迹 Harrell C + 簇自助（`concordanceIndex / rulerValidityTTF`）。**实测 C = 0.523（0.464–0.584）⇒ invalid**：六旗标对「还要几轮」没有信号。L2 配对明名为分层 GPC / 胜比（`winRatio`、`netBenefit`）；不用 Spearman。
+- **有界续跑（方向 4）**：`plan-traj --stop [--cap-usd]` 写 `plan.stop`；`traj-run` 每组后算 e 值，过阈或估算花费到上界即停，回执记 `stoppedEarly / estimatedUsd`；`--dry-run` 零请求核对（含子状态重放）。
+- **ICC（方向 5）**：`iccOneWay`；mr 56 组 ⇒ **0.366**，`ruler --write-design` 写 `offline/ruler/design.json`，`decideV4` 经 `loadDesign()` 用实测值。排序器从 mr 冷启动**不可能**（没有稿正文）。
+- **过拟合（方向 6）**：现有「只有留出显著才采纳」= Blum–Hardt Ladder，是主防线；加 `generalizationGap`（dev − 留出净胜率）诊断行；不做 3 题 dev 对半。
+- **Pareto 池（方向 7）**：`tools/helpers/pareto.mjs`（GEPA 式按题前沿 + ∝ 上榜次数抽父代）；`propose-policy --parent auto`；hypothesis 记 `championPolicy`。
+- **旗标权重（方向 8）**：`fitFlagWeights` 逻辑回归 + 簇留一，诊断用：**cvAUC 0.14 vs 手工 ±1 的 0.70 ⇒ 保留 ±1**。
+- **加难场景（方向 1）**：`perturbTask(task,'decoy')`（诱饵同名源文件 + README 误导，两臂同扰动）；`--only id:decoy`、`plan-traj --perturb decoy`；合并 bug / 两段式只设计。方向 9 只设计（家族 < 4）。
+- **验证**：`test/closed-loop-v4.selftest.mjs` 12 → **18/18**（A12–A17）；v3 16/16；closed-loop 25/25；`verify` 仍 21 个已知环境失败；审计 N1–N7=0；manifest 0 漂移；API 花费 $0。
+- **仍未验证**：子状态续跑一次未跑；decoy 是否真更难；单价常数未经回执校准。
+
 ## v14.6.0（2026-10-02，闭环 v4.2：L1 角色由数据判 / 路径等价闸 / 付费单位预注册 / 样例槽生成器；仍零花费）
 
 - **起因**：第四轮评审：上一版把「账本 n=0→111」打 ✅ 而效度仍 unvalidated（呈现不诚实）；AUC 0.944 不该放显眼处；六旗标接近天花板 ⇒ 要重新论证 L1 还值不值得存在；`policy:` 路径跳过生产闸 ⇒ 被测对象 ≠ 目标对象；生成器侧无新东西。

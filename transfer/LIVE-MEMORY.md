@@ -2,7 +2,15 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
-## −5. 当前状态（2026-10-02，第二十五会话：v4.2 —— L1 是诊断不是尺子；路径等价闸；plan-traj；样例槽）
+## −6. 当前状态（2026-10-02，第二十六会话：v4.3 —— 评审 9 方向文献对照；子状态 59/3 家族；到修好轮数 C=0.52 invalid；有界续跑；实测 ICC 0.366；Pareto 池）
+
+- 评审 9 个方向逐条查文献后取舍（`CLOSED-LOOP-V4.md` §13 表）。与评审不同的结论：子状态扩的是**配对数不是家族数**（留出仍 3）；L1 效度用 **Harrell C（右删失）** 不用 Spearman；排序器从 mr **冷启动不可能**（无稿正文），ICC 可估；过拟合主防线是 **Ladder 式显著才采纳**，不是 dev 对半；旗标权重学了也**不如 ±1**（cvAUC 0.14 vs 0.70）。
+- 新的坏消息（诚实）：把主结局改成「到修好的轮数」后，执行器代理 **C = 0.523（0.464–0.584）invalid** —— 比 0.70 suspect 更差。首次付费更应该先验尺子。
+- 新能力（零 API）：`states`（59 个可重放子状态）、`traj-run --from-state/--store-text/--perturb decoy/--dry-run`、`plan-traj --stop/--from-states/--perturb`、`ruler --write-design`（ICC 0.366 → design.json → decideV4）、`propose-policy --parent auto`（GEPA Pareto 池）、`generalizationGap` 诊断行、`outcomeComparison.winRatio/netBenefit`。
+- 验证：v4 18/0、v3 16/0、closed-loop 25/0、N1–N7=0、manifest 0 漂移、$0。本地提交未推送。
+- 下一步仍是**用户批准后**的第一次付费：`plan-traj --stop`（≈$0.705 / 上界 $1.79）或 `plan-traj --from-states offline/states/eacces-config.json --samples 1 --max-rounds 6 --stop --cap-usd 1`；都先 `--dry-run`。
+
+## −5. 上一状态（2026-10-02，第二十五会话：v4.2 —— L1 是诊断不是尺子；路径等价闸；plan-traj；样例槽）
 
 - 更正呈现：回溯效度主口径 = 步级簇自助 AUC 0.70（0.56–0.89）suspect；0.944 只是 3 条负例上的点估计，**不要引用**。效度账本（前瞻）n=0。
 - L1 角色由数据判：mr 162 样本天花板率 0.827、raw vs 压缩稿平局率 0.60 ⇒ `rulerEconomics` = **diagnostic**（v9 轮 $0.126 ≈2 个非平局对、0 计入采纳）。valid 后才可能 prescreen。`plan` 每次打印角色。

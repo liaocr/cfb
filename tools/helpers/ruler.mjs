@@ -65,7 +65,8 @@ export function decideV4({ pairs, split = {}, design = DEFAULT_DESIGN_V4, aa = f
 /** 从 traj-run 的结果行提取 L2 结局（理论 S9 度量）。 */
 export function episodeOutcome(row) {
   const solved = !!(row.fixed || (Number.isInteger(row.fixedAtRound) && row.fixedAtRound > 0))
-  return { solved, roundsToFix: solved ? (row.fixedAtRound ?? null) : null, rounds: row.rounds ?? null, calls: row.calls ?? null, repeats: row.repeats ?? 0,
+  const start = Number.isInteger(row.startRound) ? row.startRound : 1   // v4.3 子状态续跑：到修好轮数从起始轮算
+  return { solved, roundsToFix: solved && Number.isInteger(row.fixedAtRound) ? row.fixedAtRound - start + 1 : solved ? (row.fixedAtRound ?? null) : null, rounds: row.rounds ?? null, startRound: start, fromState: row.fromState ?? null, calls: row.calls ?? null, repeats: row.repeats ?? 0,
     falseClaim: row.claim === 'fixed' && !solved, verifiedAfterFix: !!row.verifiedAfterFix, claimJustified: row.claimJustified ?? null, promptTokens: row.promptTokens ?? null }
 }
 /** AUC（Mann–Whitney，平手 0.5）。 */
@@ -100,18 +101,20 @@ export function adoptionPolicy(validity) {
 }
 /** L2 对照汇总（champion vs previous）：修好率 / 轮数 / 假宣称 / 验收；配对 e 值按「同题同样本谁先修好」计。 */
 export function outcomeComparison(rows, { arms = ['previous', 'champion'] } = {}) {
-  const by = (arm) => rows.filter((r) => r.arm === arm).map((r) => ({ task: r.task, sample: r.sample ?? 0, o: episodeOutcome(r) }))
+  const by = (arm) => rows.filter((r) => r.arm === arm).map((r) => ({ task: r.task, unit: r.fromState || r.task, sample: r.sample ?? 0, o: episodeOutcome(r) }))   // v4.3：子状态续跑按状态配对，task 仍是家族（曝光账按家族记）
   const [prev, champ] = arms.map(by)
   const summ = (xs) => ({ n: xs.length, solved: xs.length ? +(xs.filter((x) => x.o.solved).length / xs.length).toFixed(3) : null, meanRoundsToFix: xs.filter((x) => x.o.roundsToFix).length ? +(xs.filter((x) => x.o.roundsToFix).reduce((a, x) => a + x.o.roundsToFix, 0) / xs.filter((x) => x.o.roundsToFix).length).toFixed(2) : null, falseClaims: xs.filter((x) => x.o.falseClaim).length, verified: xs.filter((x) => x.o.verifiedAfterFix).length, repeats: xs.reduce((a, x) => a + (x.o.repeats || 0), 0) })
   const outcomes = []
   for (const c of champ) {
-    const p = prev.find((x) => x.task === c.task && x.sample === c.sample); if (!p) continue
+    const p = prev.find((x) => x.unit === c.unit && x.sample === c.sample); if (!p) continue
+    // 分层成对比较（Finkelstein–Schoenfeld / Buyse GPC；Pocock 胜比）：修好 > 到修好轮数（少者胜）> 假宣称 > 修后验证；上一层平手才看下一层
     const key = (o) => (o.solved ? 1000 - (o.roundsToFix || 0) * 10 - (o.falseClaim ? 5 : 0) + (o.verifiedAfterFix ? 1 : 0) : (o.falseClaim ? -10 : 0))
     const a = key(c.o), b = key(p.o)
-    outcomes.push({ task: c.task, sample: c.sample, outcome: a > b ? 'win' : a < b ? 'loss' : 'tie', champion: c.o, previous: p.o })
+    outcomes.push({ task: c.task, unit: c.unit, sample: c.sample, outcome: a > b ? 'win' : a < b ? 'loss' : 'tie', champion: c.o, previous: p.o })
   }
   const w = outcomes.filter((o) => o.outcome === 'win').length, l = outcomes.filter((o) => o.outcome === 'loss').length
-  return { previous: summ(prev), champion: summ(champ), pairs: outcomes, e: +eValueWins(w, l).toFixed(3), eReject: +eValueWins(l, w).toFixed(3) }
+  return { previous: summ(prev), champion: summ(champ), pairs: outcomes, e: +eValueWins(w, l).toFixed(3), eReject: +eValueWins(l, w).toFixed(3),
+    winRatio: l ? +(w / l).toFixed(3) : (w ? Infinity : null), netBenefit: outcomes.length ? +((w - l) / outcomes.length).toFixed(3) : null, method: 'hierarchical-GPC(solved>roundsToFix>falseClaim>verified)' }
 }
 
 // ── 4. L1 值不值得存在：区分度 + 经济学（第四轮评审）────────────────────────
@@ -141,4 +144,70 @@ export function rulerEconomics({ l1 = {}, l2 = {}, validity = { status: 'unvalid
   const why = role === 'diagnostic' ? `尺子 ${validity?.status || 'unvalidated'}：v9 L1 轮每 $${a.usd} 只买到 ≈${L1.informativePairs} 个非平局对且一个都不计入采纳 ⇒ 只能当诊断 / A/A 校准，不是预筛尺；预算应给分叉轨迹（每 $1 ≈ ${L2.adoptionGradePerUsd} 个采纳级对 + ${L2.validityPairsPerUsd} 个效度对）`
     : role === 'prescreen' ? `尺子 valid：L1 每个非平局对 $${L1.usdPerInformativePair} < L2 的 $${L2.usdPerInformativePair} ⇒ 值得当预筛（淘汰用），采纳仍要 L2 确认` : `尺子 valid 但 L1 每个非平局对不比 L2 便宜 ⇒ 多余，直接用 L2`
   return { l1: L1, l2: L2, role, why }
+}
+
+// ── 5. v4.3：主结局 = 到修好的轮数（右删失）；ICC 从已有数据估；六旗标权重由结局回归；泛化差距 ───────────
+/**
+ * Harrell C 指数：pairs = [{proxy, time: roundsToFix 或删失时刻 rounds, event: 1 修好 / 0 未修好}]。
+ * 可比对 = 至少一方有事件且其时间更早（删失者只能作「活得更久」的一方）；一致 = 代理分更高者修得更早。
+ */
+export function concordanceIndex(pairs, { crossClusterOnly = false } = {}) {
+  let conc = 0, comp = 0
+  for (let i = 0; i < pairs.length; i++) for (let j = 0; j < pairs.length; j++) {
+    if (i === j) continue
+    const a = pairs[i], b = pairs[j]
+    if (crossClusterOnly && (a.cluster ?? a.task) === (b.cluster ?? b.task)) continue   // 同一轨迹内「早的步剩余轮数必然更多」是构造出来的，不算
+    if (!a.event || !(a.time < b.time)) continue   // a 先到事件，b 更晚（或删失于更晚）
+    comp++; conc += a.proxy > b.proxy ? 1 : a.proxy === b.proxy ? 0.5 : 0
+  }
+  return comp ? { c: conc / comp, comparable: comp } : { c: null, comparable: 0 }
+}
+/** 到修好轮数口径的效度（簇自助）：C 下界 ≥ 0.6 valid；C ≤ 0.55 invalid；少数类 / 可比对不足 unvalidated。 */
+export function rulerValidityTTF(pairs, { minPairs = 12, minEvents = 5, boots = 1000, seed = 11 } = {}) {
+  const n = pairs.length, events = pairs.filter((p) => p.event).length, cens = n - events
+  const cross = pairs.some((p) => p.cluster != null)
+  const pt = concordanceIndex(pairs, { crossClusterOnly: cross })
+  if (n < minPairs || pt.c == null || events < minEvents || cens < 3) return { n, events, censored: cens, c: pt.c == null ? null : +pt.c.toFixed(3), comparable: pt.comparable, ci95: null, status: 'unvalidated', why: n < minPairs ? `配对 ${n} < ${minPairs}` : events < minEvents ? `事件 ${events} < ${minEvents}` : cens < 3 ? `删失（未修好）只有 ${cens} 条，C 指数会过于乐观` : '无可比对' }
+  const clusters = [...new Set(pairs.map((p) => p.cluster ?? p.task ?? String(Math.random())))]
+  let s = seed >>> 0; const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296 }
+  const byC = Object.fromEntries(clusters.map((c) => [c, pairs.filter((p) => (p.cluster ?? p.task) === c)]))
+  const vals = []
+  for (let b = 0; b < boots; b++) { const smp = []; for (let i = 0; i < clusters.length; i++) { const c = clusters[Math.floor(rnd() * clusters.length)]; smp.push(...byC[c].map((p) => ({ ...p, cluster: c + '#' + i }))) } const v = concordanceIndex(smp, { crossClusterOnly: cross }).c; if (v != null) vals.push(v) }
+  vals.sort((a, b) => a - b)
+  const lo = vals[Math.floor(vals.length * 0.025)], hi = vals[Math.floor(vals.length * 0.975)]
+  const status = lo >= 0.6 ? 'valid' : pt.c <= 0.55 ? 'invalid' : 'suspect'
+  return { n, events, censored: cens, c: +pt.c.toFixed(3), comparable: pt.comparable, crossClusterOnly: cross, ci95: [+lo.toFixed(3), +hi.toFixed(3)], clusters: clusters.length, status, why: status === 'valid' ? '代理分高者确实修得更早（簇自助 CI 下界 ≥ 0.6）' : status === 'invalid' ? '代理分与到修好的轮数无关' : '方向存疑（CI 跨 0.6）' }
+}
+/** 单因素 ICC(1)：groups = [[x, x, …], …]（同题同臂的重复样本）。 */
+export function iccOneWay(groups) {
+  const g = groups.filter((x) => x.length >= 2); if (g.length < 2) return { icc: null, groups: g.length, why: '≥2 个组、每组 ≥2 个重复样本才可估' }
+  const all = g.flat(), N = all.length, k = g.length, grand = all.reduce((a, b) => a + b, 0) / N
+  const n0 = (N - g.reduce((a, x) => a + x.length * x.length, 0) / N) / (k - 1)
+  const msb = g.reduce((a, x) => { const m = x.reduce((p, q) => p + q, 0) / x.length; return a + x.length * (m - grand) ** 2 }, 0) / (k - 1)
+  const msw = g.reduce((a, x) => { const m = x.reduce((p, q) => p + q, 0) / x.length; return a + x.reduce((p, q) => p + (q - m) ** 2, 0) }, 0) / (N - k)
+  const icc = (msb - msw) / (msb + (n0 - 1) * msw)
+  return { icc: +Math.max(0, Math.min(1, Number.isFinite(icc) ? icc : 0)).toFixed(3), groups: k, samples: N, msb: +msb.toFixed(4), msw: +msw.toFixed(4) }
+}
+/** 六旗标 → 结局的逻辑回归（CPU，确定性）：pairs = [{flags:{next,…}, outcome: 1|0, cluster}]；按簇留一交叉验证 AUC；与手工 ±1 的 AUC 并列报告。诊断用，不进采纳。 */
+export function fitFlagWeights(pairs, { epochs = 400, lr = 0.1, l2 = 0.02 } = {}) {
+  const K = ['next', 'avoid', 'falseDone', 'bump', 'reEdit', 'repeat']
+  const X = pairs.map((p) => [...K.map((k) => (p.flags?.[k] === 1 ? 1 : 0)), 1]), y = pairs.map((p) => (p.outcome ? 1 : 0))
+  const fit = (idx) => { let w = new Array(K.length + 1).fill(0); for (let e = 0; e < epochs; e++) { const g = new Array(w.length).fill(0); for (const i of idx) { const z = X[i].reduce((s, x, j) => s + x * w[j], 0), p = 1 / (1 + Math.exp(-z)); for (let j = 0; j < w.length; j++) g[j] += (p - y[i]) * X[i][j] } for (let j = 0; j < w.length; j++) w[j] -= lr * (g[j] / Math.max(1, idx.length) + l2 * w[j]) } return w }
+  const score = (w, i) => X[i].reduce((s, x, j) => s + x * w[j], 0)
+  const hand = [1, 1, -1, -1, -1, -1, 0]
+  const n = pairs.length; if (n < 12 || !y.includes(0) || !y.includes(1)) return { n, status: 'unvalidated', why: '配对 < 12 或单一类别' }
+  const clusters = [...new Set(pairs.map((p, i) => p.cluster ?? i))]
+  const cvScores = new Array(n).fill(0)
+  for (const c of clusters) { const test = pairs.map((_, i) => i).filter((i) => (pairs[i].cluster ?? i) === c), train = pairs.map((_, i) => i).filter((i) => (pairs[i].cluster ?? i) !== c); const w = fit(train); for (const i of test) cvScores[i] = score(w, i) }
+  const w = fit(pairs.map((_, i) => i))
+  const aucOf = (sc) => auc(pairs.map((p, i) => ({ proxy: sc[i], outcome: y[i] })))
+  const learnedCv = aucOf(cvScores), handAuc = aucOf(pairs.map((_, i) => score(hand, i)))
+  return { n, clusters: clusters.length, weights: Object.fromEntries(K.map((k, j) => [k, +w[j].toFixed(3)])), bias: +w[K.length].toFixed(3), aucLearnedCv: learnedCv == null ? null : +learnedCv.toFixed(3), aucHand: handAuc == null ? null : +handAuc.toFixed(3), status: 'diagnostic', why: learnedCv != null && handAuc != null && learnedCv > handAuc + 0.05 ? '学到的权重在簇留一下优于手工 ±1：可作候选尺，但须在新家族上复验才能替换' : '学到的权重不优于手工 ±1（或样本不足）：保留 ±1' }
+}
+/** 泛化差距（Ladder 视角）：dev 胜率 − 留出胜率；差距大且留出不显著 ⇒ suspected-overfit。 */
+export function generalizationGap({ dev, holdout }) {
+  if (!dev?.n || !holdout?.n) return { gap: null, flag: 'n/a' }
+  const dr = (dev.wins - dev.losses) / dev.n, hr = (holdout.wins - holdout.losses) / holdout.n
+  const gap = +(dr - hr).toFixed(3)
+  return { gap, devNet: +dr.toFixed(3), holdoutNet: +hr.toFixed(3), flag: holdout.n >= 4 && gap >= 0.5 ? 'suspected-overfit' : 'ok', note: 'Ladder（Blum–Hardt 2015）：留出只通过「采纳 / 否决」这一比特泄漏，更新次数 O(log k)；e 值已是显著性阶梯，这里只报 dev 过度乐观的迹象' }
 }

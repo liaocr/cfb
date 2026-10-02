@@ -14,6 +14,10 @@ import { runOne, loadPolicyFor, policyCompressBody, checkTrajPlan } from '../too
 import { l1Discrimination, rulerEconomics } from '../tools/helpers/ruler.mjs'
 import { applyPolicyToPrompt, validatePatches, basePrompt } from '../tools/helpers/generation.mjs'
 import { TRAJ_TASKS } from '../tools/traj-fixtures.mjs'
+import { concordanceIndex, rulerValidityTTF, iccOneWay, fitFlagWeights, generalizationGap } from '../tools/helpers/ruler.mjs'
+import { childStates, familyCensus, valueTable } from '../tools/helpers/child-states.mjs'
+import { scoreMatrix, paretoFront, pickParent } from '../tools/helpers/pareto.mjs'
+import { perturbTask, loadStates } from '../tools/traj-run.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 let pass = 0, fail = 0
@@ -176,6 +180,80 @@ try {
       const st = cli('status'); assert.ok(/采纳状态 confirmed/.test(st.stdout), st.stdout)
       const pending = cli('confirm', '--results', path.join(tmp, 'l2.json'), '--map', 'champion=auto,previous=raw'); assert.ok(/report-only/.test(pending.stdout), pending.stdout)
     } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
+  })
+  // ── v4.3（v14.7）：子状态 / 到修好轮数 C 指数 / ICC / 六旗标回归 / Pareto 池 / 有界续跑 / 加难场景 ──
+  await test('A12 子状态：29 条真实轨迹派生 ≥50 个可重放状态、家族仍是 3（不是新留出家族）；修好后的轮不成题；参数截断的轮不可重放', () => {
+    const rows = ['traj1', 'traj2', 'traj3'].flatMap((d) => fs.readFileSync(path.join(ROOT, 'transfer', d, 'results.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => ({ ...JSON.parse(l), dir: d })))
+    const states = rows.flatMap((r) => childStates(r))
+    assert.ok(states.length >= 50, 'states ' + states.length); assert.ok(states.every((s) => s.replayable && s.replay.length && s.messages.length === (s.startRound - 1) * 2))
+    const census = familyCensus(states, { holdoutFamilies: ['eacces-config'] }); assert.equal(census.families, 3); assert.equal(census.holdoutFamilies, 1); assert.match(census.note, /不是家族数/)
+    for (const s of states) { const row = rows.find((r) => r.task === s.family && r.variant === s.parentVariant && (r.sample ?? 0) === s.parentSample && r.dir === s.id.split('#').pop()); assert.ok(row); if (Number.isInteger(row.fixedAtRound)) assert.ok(s.startRound <= row.fixedAtRound, '修好后的轮不成题') }
+    const all = rows.flatMap((r) => childStates(r, { onlyReplayable: false })); assert.ok(all.length > states.length && all.some((s) => !s.replayable), '旧行 400 字截断的 edit 参数 ⇒ 不可重放')
+    // 续跑结果按状态配对 + 相对起始轮的到修好轮数
+    const vt = valueTable([{ fromState: 'x@r2', startRound: 2, variant: 'raw', fixedAtRound: 4 }, { fromState: 'x@r2', startRound: 2, variant: 'policy:base', fixedAtRound: 3 }, { fromState: 'y@r3', startRound: 3, variant: 'raw', fixedAtRound: null }, { fromState: 'y@r3', startRound: 3, variant: 'policy:base', fixedAtRound: 3 }])
+    assert.equal(vt.states, 2); assert.deepEqual(vt.pairs, { win: 2, loss: 0 }); assert.equal(vt.table[0].arms.raw.meanRoundsToFix, 3)
+    const cmp = outcomeComparison([{ arm: 'champion', task: 'x', fromState: 'x@r2', startRound: 2, fixedAtRound: 3 }, { arm: 'previous', task: 'x', fromState: 'x@r2', startRound: 2, fixedAtRound: 4 }, { arm: 'champion', task: 'x', fromState: 'x@r3', startRound: 3, fixedAtRound: 3 }, { arm: 'previous', task: 'x', fromState: 'x@r3', startRound: 3, fixedAtRound: null }])
+    assert.equal(cmp.pairs.length, 2, '同家族不同状态按状态配对，不串'); assert.equal(cmp.pairs[0].champion.roundsToFix, 2); assert.equal(cmp.winRatio, Infinity); assert.equal(cmp.netBenefit, 1); assert.match(cmp.method, /GPC/)
+  })
+  await test('A13 到修好轮数口径：C 指数手算一致、删失只能当「更久」方、同轨迹对不计；真实 29 条轨迹上 C≈0.52 ⇒ invalid（六旗标对「还要几轮」没有信号）', () => {
+    const c = concordanceIndex([{ proxy: 2, time: 2, event: 1 }, { proxy: 1, time: 4, event: 1 }, { proxy: 0, time: 6, event: 0 }, { proxy: 2, time: 3, event: 1 }])
+    assert.equal(c.comparable, 6); assert.ok(Math.abs(c.c - 11 / 12) < 1e-9, '一致 5 对 + 平分 1 对 ⇒ 5.5/6')
+    const same = concordanceIndex([{ proxy: 2, time: 1, event: 1, cluster: 'k' }, { proxy: 0, time: 3, event: 1, cluster: 'k' }], { crossClusterOnly: true }); assert.equal(same.comparable, 0)
+    assert.equal(rulerValidityTTF([{ proxy: 1, time: 1, event: 1 }]).status, 'unvalidated')
+    const rows = ['traj1', 'traj2', 'traj3'].flatMap((d) => fs.readFileSync(path.join(ROOT, 'transfer', d, 'results.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => ({ ...JSON.parse(l), dir: d })))
+    const rv = retroValidity(rows); assert.ok(rv.timeToFix.c > 0.45 && rv.timeToFix.c < 0.6 && rv.timeToFix.status === 'invalid', JSON.stringify(rv.timeToFix)); assert.ok(rv.timeToFix.censored >= 10 && rv.timeToFix.crossClusterOnly)
+    assert.equal(rv.flagWeights.status, 'diagnostic'); assert.ok(rv.flagWeights.aucLearnedCv < rv.flagWeights.aucHand, '簇留一下学到的权重不如手工 ±1 ⇒ 保留 ±1'); assert.match(rv.flagWeights.why, /保留 ±1/)
+  })
+  await test('A14 ICC 从已有数据估：手算一致、全同组内 ⇒ 1、全噪 ⇒ 0；mr 162 样本 ICC≈0.37（替代拍脑袋 0.3）；loadDesign 读 design.json', () => {
+    const r = iccOneWay([[2, 2, 1], [1, 0, 1], [2, 2, 2], [0, 1, 0]]); assert.equal(r.groups, 4); assert.ok(Math.abs(r.icc - 0.686) < 0.01, JSON.stringify(r))
+    assert.equal(iccOneWay([[1, 1], [3, 3], [5, 5]]).icc, 1); assert.equal(iccOneWay([[1, 3], [3, 1], [1, 3]]).icc, 0); assert.equal(iccOneWay([[1]]).icc, null)
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cl43-'))
+    const env = { ...process.env, CFB_CYCLE_DIR: tmp }; delete env.DEEPSEEK_API_KEY
+    const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), ...a], { cwd: ROOT, env, encoding: 'utf8' })
+    try {
+      const ru = cli('ruler', '--write-design'); assert.equal(ru.status, 0, ru.stdout + ru.stderr)
+      assert.match(ru.stdout, /ICC（同题同臂重复，实测）：mr 结构分 0\.3\d/); assert.match(ru.stdout, /Harrell C=0\.5\d.*invalid/); assert.match(ru.stdout, /子状态.*5\d 个 \/ 家族 3/)
+      const d = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/ruler/design.json'), 'utf8')); assert.ok(d.icc > 0.3 && d.icc < 0.45 && /transfer\/mr/.test(d.source))
+      const st = cli('states'); assert.equal(st.status, 0, st.stdout + st.stderr); assert.match(st.stdout, /子状态 5\d 个/); assert.match(st.stdout, /eacces-config×\d+\[holdout\]/)
+      const arr = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/states/all.json'), 'utf8')); assert.ok(Array.isArray(arr) && arr.length >= 50 && arr[0].schema === 'cfb.child-state/1')
+      const fam = cli('states', '--family', 'eacces-config', '--max-per-row', '2'); assert.match(fam.stdout, /家族 1（留出家族 1）/)
+      // plan-traj --from-states --stop：单位 = 状态、命令带 --from-state/--store-text、stop 块有 α / 比较臂 / 上界；traj-run --dry-run 重放全部状态且零请求
+      const pt = cli('plan-traj', '--from-states', path.join(tmp, 'offline/states/eacces-config.json'), '--samples', '1', '--max-rounds', '6', '--stop'); assert.equal(pt.status, 0, pt.stdout + pt.stderr)
+      const plan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/t1/plan.json'), 'utf8')); assert.equal(plan.fromStates.count, 14); assert.deepEqual(plan.scenarios, []); assert.equal(plan.stop.alpha, 0.1); assert.equal(plan.stop.compare.champion, 'policy:base'); assert.equal(plan.stop.capUsd, plan.cost.capUsd); assert.ok(plan.storeText)
+      assert.match(plan.command, /--store-text --from-state .*eacces-config\.json/); assert.match(pt.stdout, /有界续跑/)
+      const dry = spawnSync(process.execPath, [path.join(ROOT, 'tools/traj-run.mjs'), '--plan', path.join(tmp, 'runtime/t1/plan.json'), '--store-text', '--from-state', path.join(tmp, 'offline/states/eacces-config.json'), '--variants', 'raw', '--policy', 'base', '--samples', '1', '--max-rounds', '6', '--fork', '--max-tokens', '8000', '--require-fp', '--base-url', 'http://127.0.0.1:9', '--model', 'm', '--out', path.join(tmp, 'runtime/t1'), '--dry-run'], { cwd: ROOT, env, encoding: 'utf8' })
+      assert.equal(dry.status, 0, dry.stdout + dry.stderr); assert.match(dry.stdout, /dry-run：任务 28（14 个起点 × 2 臂 × 1 样本）、组 14；子状态重放成功 28/); assert.match(dry.stdout, /未发任何请求/)
+      assert.ok(!fs.existsSync(path.join(tmp, 'runtime/t1/results.jsonl')))
+      // 加难场景计划：scenarios 带 :decoy，traj-run 认得；参数不一致被拒
+      const p2 = cli('plan-traj', '--perturb', 'decoy', '--samples', '1', '--max-rounds', '6', '--stop', '--cap-usd', '1.2'); assert.equal(p2.status, 0, p2.stdout + p2.stderr)
+      const plan2 = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/t2/plan.json'), 'utf8')); assert.deepEqual(plan2.scenarios, TRAJ_TASKS.map((t) => t.id + ':decoy')); assert.equal(plan2.stop.capUsd, 1.2); assert.match(plan2.purpose, /诱饵/)
+      const bad = spawnSync(process.execPath, [path.join(ROOT, 'tools/traj-run.mjs'), '--plan', path.join(tmp, 'runtime/t2/plan.json'), '--variants', 'raw', '--policy', 'base', '--only', 'eacces-config', '--samples', '1', '--max-rounds', '6', '--fork', '--out', path.join(tmp, 'runtime/t2'), '--dry-run'], { cwd: ROOT, env, encoding: 'utf8' })
+      assert.notEqual(bad.status, 0); assert.match(bad.stderr, /traj-plan-mismatch:only/)
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
+  })
+  await test('A15 加难场景（零 API）：decoy 加一个诱饵源文件 + README 误导；fixed/canned 不变、原任务不被改；未知扰动被拒', () => {
+    for (const t of TRAJ_TASKS) {
+      const d = perturbTask(t, 'decoy'); assert.equal(d.id, t.id + ':decoy'); assert.equal(d.perturb, 'decoy')
+      const added = Object.keys(d.files).filter((f) => !(f in t.files) && f !== 'README.md'); assert.equal(added.length, 1); assert.match(added[0], /\.legacy\.m?js$/); assert.match(d.files['README.md'], /排查时先看/)
+      assert.ok(!t.files[added[0]] && !/排查时先看/.test(t.files['README.md'] || ''), '原任务对象未被改')
+      const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'decoy-')); try { for (const [f, c] of Object.entries(d.files)) { fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true }); fs.writeFileSync(path.join(repo, f), c) } assert.equal(d.fixed(repo), false, '加了诱饵不算修好') } finally { fs.rmSync(repo, { recursive: true, force: true }) }
+    }
+    assert.equal(perturbTask(TRAJ_TASKS[0], 'none'), TRAJ_TASKS[0]); assert.throws(() => perturbTask(TRAJ_TASKS[0], 'swap'), /unknown-perturb/)
+  })
+  await test('A16 Pareto 池（GEPA 式）：按题前沿、被支配者出局、父代抽样概率 ∝ 上榜次数、无数据回退 champion；泛化差距旗标', () => {
+    const mx = { base: { a: 1, b: 2, c: 1 }, p1: { a: 2, b: 1, c: 1 }, p2: { a: 1, b: 1, c: 0 } }
+    const pf = paretoFront(mx); assert.deepEqual(pf.front.sort(), ['base', 'p1']); assert.deepEqual(pf.dominated, ['p2']); assert.deepEqual(pf.byTask.c.sort(), ['base', 'p1']); assert.equal(pf.frontCount.p2, 0)
+    const picks = {}; for (let s = 1; s <= 200; s++) { const p = pickParent(mx, { seed: s }).parent; picks[p] = (picks[p] || 0) + 1 }; assert.ok(picks.base > 50 && picks.p1 > 50 && !picks.p2, JSON.stringify(picks))
+    assert.equal(pickParent({}, { fallback: 'champ' }).parent, 'champ')
+    const h = { hypotheses: { k1: { lever: 'policy', value: 'p1', championPolicy: 'base', outcomes: [{ task: 'a', candidate: 2, control: 1 }, { task: 'b', candidate: 1, control: 2 }, { task: 'a', candidate: 2, control: 1 }] }, k2: { lever: 'closing', value: 'off', championPolicy: 'base', outcomes: [{ task: 'c', candidate: 1, control: 1 }] } } }
+    const m = scoreMatrix(h); assert.deepEqual(m.p1, { a: 2, b: 1 }); assert.deepEqual(m.base, { a: 1, b: 2, c: 1 }, 'knob 假设的 control 也算 champion 策略的分，candidate 不算策略')
+    const g = generalizationGap({ dev: { n: 6, wins: 6, losses: 0 }, holdout: { n: 4, wins: 1, losses: 1 } }); assert.equal(g.flag, 'suspected-overfit'); assert.equal(g.gap, 1)
+    assert.equal(generalizationGap({ dev: { n: 6, wins: 6, losses: 0 }, holdout: { n: 4, wins: 4, losses: 0 } }).flag, 'ok'); assert.equal(generalizationGap({ dev: { n: 6, wins: 6, losses: 0 }, holdout: { n: 2, wins: 0, losses: 2 } }).flag, 'ok', '留出 < 4 对不打旗')
+  })
+  await test('A17 六旗标回归：类别单一 / 样本不足 ⇒ unvalidated；可分数据学到正负号正确且簇留一 AUC 报出', () => {
+    assert.equal(fitFlagWeights(Array.from({ length: 20 }, (_, i) => ({ flags: { next: 1 }, outcome: 1, cluster: i }))).status, 'unvalidated')
+    const pairs = []; for (let i = 0; i < 40; i++) { const good = i % 2 === 0; pairs.push({ flags: { next: good ? 1 : 0, avoid: 1, falseDone: good ? 0 : 1, bump: 0, reEdit: 0, repeat: 0 }, outcome: good ? 1 : 0, cluster: 'c' + (i % 8) }) }
+    const r = fitFlagWeights(pairs); assert.equal(r.status, 'diagnostic'); assert.ok(r.weights.next > 0 && r.weights.falseDone < 0, JSON.stringify(r.weights)); assert.ok(r.aucLearnedCv > 0.9 && r.aucHand > 0.9)
   })
 } finally {
   console.log(`\n=== closed-loop-v4 selftest: ${pass} pass / ${fail} fail ===`)

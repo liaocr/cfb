@@ -16,6 +16,7 @@ import { TOOLS, makeChat, responseText, TRUSTED_FP, claudeShaped } from './effec
 import { claimOf } from './effect-mr.mjs'
 import { TRAJ_TASKS, materialize } from './traj-fixtures.mjs'
 import { stepFlags } from './helpers/traj-proxy.mjs'
+import { outcomeComparison } from './helpers/ruler.mjs'
 import { BASE_POLICY, applyPolicyToPrompt } from './helpers/generation.mjs'
 
 const SYSTEM = '你是在代码仓库里干活的编码 Agent，可用工具 bash / read_file / edit_file（仓库根目录）。每一轮：先给一句简短判断，再发出下一步需要的工具调用；一次可以发多个独立调用。认为任务已经完成时不要再调用工具，用文字说明改了什么、依据是什么。'
@@ -45,11 +46,27 @@ function parseArgs(argv) {
     else if (a === '--plan') o.plan = v()
     else if (a === '--max-tokens') o.maxTokens = Number(v())
     else if (a === '--no-gate') o.noGate = true
+    else if (a === '--dry-run') o.dryRun = true                 // v4.3：只构造任务 / 分组并打印，不发任何请求（计划核对）
+    else if (a === '--store-text') o.storeText = true          // v4.3：transcript 存 reasoning / stored 全文（≤12k 字）⇒ 子状态同时是压缩任务与飞轮材料
+    else if (a === '--from-state') o.fromState = v()           // v4.3：从子状态文件（单个或数组）续跑，而不是从场景第 1 轮开始
+    else if (a === '--perturb') o.perturb = v().split(',')     // v4.3：零 API 场景扰动（decoy：诱饵同名文件 + README 误导；两臂同扰动）
     else throw new Error('未知参数 ' + a)
   }
   o.variants = [...new Set(o.variants)]
   return o
 }
+/** 零 API 场景扰动：decoy = 把最可能被首先打开的源文件复制成一个诱饵（相近文件名 + 误导注释）并在 README 里指向它 ⇒ 正确下一步不再唯一；fixed / canned 不变。 */
+export function perturbTask(task, kind) {
+  if (!kind || kind === 'none') return task
+  if (kind !== 'decoy') throw new Error('unknown-perturb:' + kind)
+  const srcs = Object.keys(task.files).filter((f) => /^src\/.*\.m?js$/.test(f))
+  if (!srcs.length) return { ...task, id: task.id + ':decoy', perturb: kind }
+  const target = srcs[0], decoy = target.replace(/\.(m?js)$/, '.legacy.$1')
+  const files = { ...task.files, [decoy]: `// 旧实现（仍被部分脚本引用；行为与 ${target} 相近）\n` + task.files[target].replace(/\d+/g, (d) => String(Number(d) + 1)), 'README.md': (task.files['README.md'] || '') + `\n\n> 注意：历史原因，${decoy} 与 ${target} 并存，排查时先看 ${decoy}。\n` }
+  return { ...task, id: task.id + ':decoy', perturb: kind, files }
+}
+/** 子状态文件：单个对象或数组（cfb-cycle states 导出）。 */
+export function loadStates(file) { const j = JSON.parse(fs.readFileSync(file, 'utf8')); return Array.isArray(j) ? j : [j] }
 /** 策略变体：policy:base = 生产 v4d9 提示词原样（经同一直连路径）；policy:<id> 读 <policyDir>/<id>.json（默认 CFB_CYCLE_DIR/offline/policies 或 .cfb-offline/policies）。 */
 export function loadPolicyFor(variant, policyDir) {
   if (!variant.startsWith('policy:')) return null
@@ -63,8 +80,8 @@ export function loadPolicyFor(variant, policyDir) {
 /** --plan：预注册的分叉轨迹计划（cfb-cycle plan-traj 冻结）。运行参数必须与计划一致，否则拒绝；跑完写回执 receipt.json。 */
 export function checkTrajPlan(plan, o) {
   if (!plan || plan.schema !== 'cfb.traj-plan/1') throw new Error('traj-plan-schema')
-  const want = { variants: [...plan.variants].sort().join(','), samples: plan.samples, maxRounds: plan.maxRounds, fork: !!plan.fork, only: (plan.scenarios || []).slice().sort().join(',') }
-  const have = { variants: [...o.variants].sort().join(','), samples: o.samples, maxRounds: o.maxRounds, fork: !!o.fork, only: (o.only || []).slice().sort().join(',') }
+  const want = { variants: [...plan.variants].sort().join(','), samples: plan.samples, maxRounds: plan.maxRounds, fork: !!plan.fork, only: (plan.scenarios || []).slice().sort().join(','), fromState: plan.fromStates ? path.normalize(plan.fromStates.file) : '', storeText: !!plan.storeText }
+  const have = { variants: [...o.variants].sort().join(','), samples: o.samples, maxRounds: o.maxRounds, fork: !!o.fork, only: (o.only || []).slice().sort().join(','), fromState: o.fromState ? path.normalize(path.relative(process.cwd(), path.resolve(o.fromState))) : '', storeText: !!o.storeText }
   const diff = Object.keys(want).filter((k) => String(want[k]) !== String(have[k]))
   if (diff.length) throw new Error('traj-plan-mismatch:' + diff.map((k) => `${k} plan=${want[k]} run=${have[k]}`).join('; '))
   return { ok: true, digest: plan.digest }
@@ -179,17 +196,25 @@ export function callsOfMessage(m) {
   return out.filter((c) => { const k = c.name + '|' + normCmd(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)); if (seen.has(k)) return false; seen.add(k); return true })
 }
 
-export async function runOne({ o, task, variant, sample, chat, I, cred, forkMessage = null }) {
+export async function runOne({ o, task, variant, sample, chat, I, cred, forkMessage = null, state = null }) {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'traj-'))
   materialize(task, repo)
   const policy = loadPolicyFor(variant, o.policyDir)
   const messages = [{ role: 'system', content: o.textTools ? SYSTEM_TEXT_TOOLS : SYSTEM }, { role: 'user', content: task.prompt }]
-  const rec = { task: task.id, variant, sample, rounds: 0, calls: 0, edits: [], repeats: 0, fixedAtRound: null, verifiedAfterFix: false, promptTokens: 0, compile: [], transcript: [], rejected: 0, ...(policy ? { policy: policy.id } : {}), ...(forkMessage ? { forked: true } : {}) }
+  const rec = { task: task.id, variant, sample, rounds: 0, calls: 0, edits: [], repeats: 0, fixedAtRound: null, verifiedAfterFix: false, promptTokens: 0, compile: [], transcript: [], rejected: 0, ...(policy ? { policy: policy.id } : {}), ...(forkMessage ? { forked: true } : {}), ...(task.perturb ? { perturb: task.perturb } : {}), ...(state ? { fromState: state.id, family: state.family, startRound: state.startRound } : {}) }
   const seenCmds = new Map()
+  let firstRound = 1
+  if (state) {
+    // v4.3 子状态续跑：确定性重放前 k−1 轮的调用得到仓库状态，消息前缀只含 assistant 文字 + 工具结果（无思维链；模型从这里重新思考）
+    for (const c of state.replay || []) { const out = execTool(task, repo, c.name, c.args); if (c.name === 'bash') seenCmds.set(normCmd(c.args && c.args.command), state.startRound - 1); if (c.name === 'edit_file') rec.edits.push({ round: 0, path: c.args && c.args.path, ok: /^ok/.test(out), replayed: true }) }
+    if (task.fixed(repo)) throw new Error('state-already-fixed:' + state.id)
+    for (const m of state.messages || []) messages.push(m.role === 'assistant' ? { role: 'assistant', content: m.content } : { role: 'user', content: m.content })
+    firstRound = state.startRound
+  }
   try {
-    for (let round = 1; round <= o.maxRounds; round++) {
+    for (let round = firstRound; round <= o.maxRounds; round++) {
       let r
-      if (round === 1 && forkMessage) r = { message: forkMessage, usage: { prompt_tokens: 0 }, fp: 'fork' }
+      if (round === firstRound && forkMessage) r = { message: forkMessage, usage: { prompt_tokens: 0 }, fp: 'fork' }
       else for (let k = 0; ; k++) {
         // 中转按请求内容（大致）黏住后端，作废重发常连续落到同一不可信后端 ⇒ 先用 max_tokens:1 的探针（只花 prefill）试后端，可信了再发真请求；
         //   每次重试在末条 user 末尾加 k 个零宽空格打散黏性，并退避几秒让路由轮转
@@ -207,7 +232,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         if (k >= o.maxProbes - 1) throw new Error('通道始终未送入思考：' + rec.rejectedWhy.slice(-10).join(','))
       }
       rec.rounds = round
-      if (round === 1 && !forkMessage) rec.firstMessage = r.message   // --fork：其他臂从这条第 1 轮回复分叉
+      if (round === firstRound && !forkMessage) rec.firstMessage = r.message   // --fork：其他臂从这条（起始轮）回复分叉
       rec.promptTokens += Number(r.usage && r.usage.prompt_tokens) || 0
       const reasoning = String(r.message.reasoning_content || '')
       const text = responseText(r.message)
@@ -237,7 +262,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         rec.compile.push(compileInfo)
       }
       messages.push({ role: 'assistant', content: text, reasoning_content: stored })
-      rec.transcript.push({ round, reasoningChars: reasoning.length, storedChars: stored.length, text: text.slice(0, 3000), calls: calls.map((c) => ({ name: c.name, args: String(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)).slice(0, 400) })) })
+      rec.transcript.push({ round, reasoningChars: reasoning.length, storedChars: stored.length, text: text.slice(0, 3000), calls: calls.map((c) => ({ name: c.name, args: String(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)).slice(0, o.storeText ? 8000 : 400) })), ...(o.storeText ? { reasoning: reasoning.slice(0, 12000), stored: stored === reasoning ? null : stored.slice(0, 12000) } : {}) })
       if (!calls.length) {
         // 中转偶发把「让我读 README…」这类意图当纯文本返回、没带调用 ⇒ 催一次（真实宿主里用户也会这么做）；只催一次
         if (!rec.nudged && round < o.maxRounds && /^(?:让我|我先|先|接下来|下一步|我来)/.test(text.trim()) && text.length < 200) { rec.nudged = true; messages.push({ role: 'user', content: '继续，直接发出工具调用。' }); continue }
@@ -312,31 +337,53 @@ async function main(argv) {
   fs.mkdirSync(o.out, { recursive: true })
   const resPath = path.join(o.out, 'results.jsonl')
   const done = fs.existsSync(resPath) ? fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []
-  const have = new Set(done.filter((r) => !r.error).map((r) => `${r.task}|${r.variant}|${r.sample}`))
+  const have = new Set(done.filter((r) => !r.error).map((r) => `${r.fromState || r.task}|${r.variant}|${r.sample}`))
   let plan = null
   if (o.plan) { plan = JSON.parse(fs.readFileSync(o.plan, 'utf8')); checkTrajPlan(plan, o); console.log(`按预注册计划 ${plan.id}（digest ${plan.digest}，预估 ≈$${plan.cost?.expectedUsd}，上界 ≈$${plan.cost?.capUsd}）运行；目的：${plan.purpose}`) }
   if (!o.summarizeOnly) {
-    const apiKey = process.env.DEEPSEEK_API_KEY; if (!apiKey) throw new Error('需要 DEEPSEEK_API_KEY')
+    const apiKey = process.env.DEEPSEEK_API_KEY || (o.dryRun ? 'dry' : null); if (!apiKey) throw new Error('需要 DEEPSEEK_API_KEY')
     const I = await import('../index.js')
-    const chat = makeChat({ baseUrl: o.baseUrl, apiKey })
+    const chat = o.dryRun ? async () => { throw new Error('dry-run') } : makeChat({ baseUrl: o.baseUrl, apiKey })
     const d = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-')); const cred = path.join(d, 'c.yaml'); fs.writeFileSync(cred, 'K: "' + apiKey + '"\n', { mode: 0o600 })
     const jobs = []
-    for (const task of TRAJ_TASKS) { if (o.only && !o.only.includes(task.id)) continue; for (const v of o.variants) for (let k = 0; k < o.samples; k++) if (!have.has(`${task.id}|${v}|${k}`)) jobs.push({ task, variant: v, sample: k }) }
+    const states = o.fromState ? loadStates(o.fromState) : null
+    const scenarioSpecs = (o.only || TRAJ_TASKS.map((t) => t.id)).map((x) => { const [id, kind] = x.split(':'); return { id, kind: kind || (o.perturb && o.perturb[0] !== 'none' ? o.perturb[0] : null) } })
+    if (states) { for (const st of states) { const base = TRAJ_TASKS.find((t) => t.id === st.family); if (!base) throw new Error('state-family-unknown:' + st.family); for (const v of o.variants) for (let k = 0; k < o.samples; k++) if (!have.has(`${st.id}|${v}|${k}`)) jobs.push({ task: base, variant: v, sample: k, state: st }) } }
+    else for (const spec of scenarioSpecs) { const base = TRAJ_TASKS.find((t) => t.id === spec.id); if (!base) throw new Error('unknown-scenario:' + spec.id); const task = perturbTask(base, spec.kind); for (const v of o.variants) for (let k = 0; k < o.samples; k++) if (!have.has(`${task.id}|${v}|${k}`)) jobs.push({ task, variant: v, sample: k }) }
     console.log(`轨迹 ${jobs.length} 条（每条 ≤ ${o.maxRounds} 轮主调用${o.variants.includes('auto') ? ' + 同数副调用' : ''}），并发 ${o.concurrency}`)
     // --fork：同题同样本分组，第一臂跑完第 1 轮后其余臂从同一条第 1 轮回复分叉（配对在分叉点、每组省 (臂数−1) 次主调用）
-    const groups = o.fork ? [...jobs.reduce((m, j) => { const k = `${j.task.id}|${j.sample}`; (m.get(k) || m.set(k, []).get(k)).push(j); return m }, new Map()).values()] : jobs.map((j) => [j])
+    const groups = o.fork ? [...jobs.reduce((m, j) => { const k = `${j.state ? j.state.id : j.task.id}|${j.sample}`; (m.get(k) || m.set(k, []).get(k)).push(j); return m }, new Map()).values()] : jobs.map((j) => [j])
+    const stop = plan?.stop || null; let stopped = null; const spent = { usd: 0 }
     if (o.fork) console.log(`--fork：${groups.length} 组，每组 ${o.variants.length} 臂共用第 1 轮`)
+    if (o.dryRun) {
+      // 零 API 核对：对子状态还做一次确定性重放，确认仓库状态可达且尚未修好
+      let replayed = 0, bad = []
+      for (const j of jobs) if (j.state) { const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'traj-dry-')); try { materialize(j.task, repo); for (const c of j.state.replay || []) execTool(j.task, repo, c.name, c.args); if (j.task.fixed(repo)) bad.push(j.state.id + ':already-fixed'); else replayed++ } catch (e) { bad.push(j.state.id + ':' + e.message) } finally { fs.rmSync(repo, { recursive: true, force: true }) } }
+      console.log(`dry-run：任务 ${jobs.length}（${[...new Set(jobs.map((j) => j.state ? j.state.id : j.task.id))].length} 个起点 × ${o.variants.length} 臂 × ${o.samples} 样本）、组 ${groups.length}；子状态重放成功 ${replayed}${bad.length ? '，失败 ' + bad.length + '：' + bad.slice(0, 5).join(' ') : ''}${stop ? `；停止规则 α=${stop.alpha} 上界 $${stop.capUsd}` : ''}；未发任何请求`)
+      fs.rmSync(d, { recursive: true, force: true }); return { dryRun: true, jobs: jobs.length, groups: groups.length, replayed, bad }
+    }
     let i = 0
     await Promise.all(Array.from({ length: Math.min(o.concurrency, groups.length) }, async () => {
       while (i < groups.length) {
         const grp = groups[i++]
         let forkMessage = null
         for (const j of grp) {
-        const rec = await runOne({ o, task: j.task, variant: j.variant, sample: j.sample, chat, I, cred, forkMessage })
+        if (stopped) break
+        const rec = await runOne({ o, task: j.task, variant: j.variant, sample: j.sample, chat, I, cred, forkMessage, state: j.state || null })
+        spent.usd += (rec.rounds || 0) * (plan?.cost?.pricing?.mainUsd ?? 0.0125) + (rec.compile || []).filter((c) => !c.belowFloor).length * (plan?.cost?.pricing?.compressUsd ?? 0.0075)
         if (o.fork && !forkMessage && rec.firstMessage) forkMessage = rec.firstMessage
         delete rec.firstMessage
         fs.appendFileSync(resPath, JSON.stringify(rec) + '\n')
         console.log(`  ${rec.task}/${rec.variant} #${rec.sample}: ${rec.error ? 'ERR ' + rec.error : `${rec.fixed ? '修好@' + rec.fixedAtRound : '未修好'} · ${rec.rounds} 轮 · ${rec.calls} 调用 · edit ${rec.edits.length} · 重复 ${rec.repeats} · 验收 ${rec.verifiedAfterFix ? '●' : '·'} · 声明 ${rec.claim}${rec.claimJustified ? '' : '（不相称）'} · tokens ${rec.promptTokens}${rec.compile.length ? ' · 压稿 ' + rec.compile.filter((c) => c.ok).length + '/' + rec.compile.length : ''} · proxy ${rec.proxyScore ?? '—'}${rec.forked ? ' · 分叉' : ''}`}`)
+        }
+        // v4.3 有界续跑：一次批准内自动跑到判定或预算上界（e 值任意停时有效，提前停不损失保证）
+        if (stop && !stopped) {
+          const done = fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => !r.error)
+          const cmp = outcomeComparison(done.map((r) => ({ ...r, arm: r.variant === stop.compare.champion ? 'champion' : r.variant === stop.compare.previous ? 'previous' : null, sample: `${r.fromState || r.task}#${r.sample ?? 0}` })).filter((r) => r.arm))
+          const thr = 1 / (stop.alpha || 0.1)
+          if (cmp.pairs.length >= (stop.minPairs || 4) && (cmp.e >= thr || cmp.eReject >= thr)) stopped = `判定达成（${cmp.pairs.length} 对，e=${cmp.e} / 更差 e=${cmp.eReject} ≥ ${thr}）`
+          else if (stop.capUsd && spent.usd >= stop.capUsd) stopped = `预算上界 $${stop.capUsd} 已到（估 $${spent.usd.toFixed(3)}）`
+          if (stopped) console.log('提前停止：' + stopped)
         }
       }
     }))
@@ -346,7 +393,7 @@ async function main(argv) {
   const last = new Map(); for (const r of all) { const k = `${r.task}|${r.variant}|${r.sample}`; if (!last.has(k) || !r.error) last.set(k, r) }
   const md = summarizeTraj([...last.values()])
   fs.writeFileSync(path.join(o.out, 'summary.md'), md + '\n')
-  if (plan) { const rows = [...last.values()]; fs.writeFileSync(path.join(o.out, 'receipt.json'), JSON.stringify({ schema: 'cfb.traj-receipt/1', plan: plan.id, digest: plan.digest, at: new Date().toISOString(), trajectories: rows.length, errors: rows.filter((r) => r.error).length, mainCalls: rows.reduce((a, r) => a + (r.rounds || 0), 0), compressCalls: rows.reduce((a, r) => a + (r.compile || []).filter((c) => !c.belowFloor).length, 0), promptTokens: rows.reduce((a, r) => a + (r.promptTokens || 0), 0), gateFails: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.gateFail).length, 0) }, null, 2) + '\n') }
+  if (plan) { const rows = [...last.values()]; fs.writeFileSync(path.join(o.out, 'receipt.json'), JSON.stringify({ schema: 'cfb.traj-receipt/1', plan: plan.id, digest: plan.digest, at: new Date().toISOString(), trajectories: rows.length, errors: rows.filter((r) => r.error).length, mainCalls: rows.reduce((a, r) => a + (r.rounds || 0), 0), compressCalls: rows.reduce((a, r) => a + (r.compile || []).filter((c) => !c.belowFloor).length, 0), promptTokens: rows.reduce((a, r) => a + (r.promptTokens || 0), 0), gateFails: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.gateFail).length, 0), estimatedUsd: +spent.usd.toFixed(3), stoppedEarly: stopped || null }, null, 2) + '\n') }
   console.log('\n' + md)
 }
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) main(process.argv.slice(2)).catch((e) => { console.error(e && e.stack || e); process.exit(1) })
