@@ -3,10 +3,12 @@
 //   每题：{ id, prompt（给 Agent 的裸任务，不预先喂工具结果）, files{path: content}, canned(cmd, repo) → string|null, fixed(repo) → bool, verifyRe（什么命令算验收）}
 import fs from 'node:fs'
 import path from 'node:path'
+import { TRAJ_TASKS_V2 } from './traj-fixtures-v2.mjs'
 
 const read = (repo, p) => { try { return fs.readFileSync(path.join(repo, p), 'utf8') } catch { return '' } }
 
-export const TRAJ_TASKS = [
+// v1 三题（正则 fixed）；v4.3 起追加 traj-fixtures-v2 的两题（隐藏语义 oracle fixed）
+const TRAJ_TASKS_V1 = [
   {
     id: 'eacces-config',
     prompt: '仓库里 `npm test` 在 test/birth.selftest.mjs 上报 EACCES: permission denied, open \'/home/u/.dsh/storages/cot-form-b/trace.log\'。本地是普通用户 u（uid 1000），没有 sudo。请找出原因并修好，修好后说明依据。',
@@ -98,6 +100,8 @@ export const TRAJ_TASKS = [
     },
   },
 ]
+
+export const TRAJ_TASKS = [...TRAJ_TASKS_V1, ...TRAJ_TASKS_V2]
 
 export function materialize(task, dir) {
   fs.rmSync(dir, { recursive: true, force: true })

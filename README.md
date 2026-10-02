@@ -365,6 +365,8 @@ node tools/cfb-cycle.mjs policy-from-flywheel         # v4.2：零 API 样例槽
 node tools/cfb-cycle.mjs states                       # v4.3：从 29 条轨迹派生可续跑子状态（59 个 / 3 家族；扩功效不扩家族）
 node tools/cfb-cycle.mjs ruler --write-design         # v4.3：到修好轮数 C 指数（实测 invalid）/ 实测 ICC 0.366 写入判定 / 旗标回归 / Pareto 池
 node tools/cfb-cycle.mjs plan-traj --stop             # v4.3：有界续跑（一次批准内 e 值过阈或到上界即停）；--from-states / --perturb decoy；traj-run --dry-run 零请求核对
+node tools/cfb-cycle.mjs perturb-check                # v4.3：decoy 惰性检查（真实轨迹反事实重放；21/21 可见、19/21 排查命中 ⇒ active；可见 ≠ 更难）
+node tools/cfb-cycle.mjs states --family eacces-config --start-round 3 --parent-variant raw --limit 1   # 单状态续跑探针（plan-traj --from-states … --arms raw ≈ $0.04）
 # v4.1：付费单位 = 分叉全轨迹（第 1 轮共用，各策略臂分叉；每行自带 proxyScore）→ 同一次付费喂 L1/L2/效度/飞轮
 node tools/traj-run.mjs --variants raw --policy base,<champion> --fork --samples 2 --max-rounds 4 --require-fp --base-url … --model … --out traj4
 ```

@@ -18,6 +18,10 @@ import { concordanceIndex, rulerValidityTTF, iccOneWay, fitFlagWeights, generali
 import { childStates, familyCensus, valueTable } from '../tools/helpers/child-states.mjs'
 import { scoreMatrix, paretoFront, pickParent } from '../tools/helpers/pareto.mjs'
 import { perturbTask, loadStates } from '../tools/traj-run.mjs'
+import * as tr from '../tools/traj-run.mjs'
+import * as cyc from '../tools/cfb-cycle.mjs'
+import { materialize } from '../tools/traj-fixtures.mjs'
+import { perturbExposure } from '../tools/helpers/perturb-check.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 let pass = 0, fail = 0
@@ -130,8 +134,10 @@ try {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-v42-')); const env = { ...process.env, CFB_CYCLE_DIR: tmp }
     const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), ...a], { cwd: ROOT, env, encoding: 'utf8' })
     try {
-      const pt = cli('plan-traj'); assert.equal(pt.status, 0, pt.stdout + pt.stderr); assert.ok(/期望实付 ≈ \$0\.705，上界 ≈ \$1\.787/.test(pt.stdout) && /检验尺子有效性/.test(pt.stdout) && /traj-run\.mjs --plan/.test(pt.stdout), pt.stdout)
-      const plan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/t1/plan.json'), 'utf8')); assert.equal(plan.schema, 'cfb.traj-plan/1'); assert.equal(plan.cost.mains, 42); assert.equal(plan.cost.compresses, 24); assert.ok(!fs.existsSync(path.join(tmp, 'receipts')))
+      // v4.3：默认场景从 3 个家族变成 5 个（traj-fixtures-v2 加了 wrong-model / sse-truncated）⇒ 默认单位 70 + 40 请求、≈$1.175；限定旧 3 题仍是 42 + 24、≈$0.705
+      const pt = cli('plan-traj'); assert.equal(pt.status, 0, pt.stdout + pt.stderr); assert.ok(/期望实付 ≈ \$1\.175，上界 ≈ \$2\.978/.test(pt.stdout) && /检验尺子有效性/.test(pt.stdout) && /traj-run\.mjs --plan/.test(pt.stdout), pt.stdout)
+      const plan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/t1/plan.json'), 'utf8')); assert.equal(plan.schema, 'cfb.traj-plan/1'); assert.equal(plan.cost.mains, 70); assert.equal(plan.cost.compresses, 40); assert.equal(plan.scenarios.length, 5); assert.ok(!fs.existsSync(path.join(tmp, 'receipts')))
+      const pt3 = cli('plan-traj', '--n', '9', '--scenarios', 'eacces-config,flaky-timeout,perf-regression'); assert.ok(/期望实付 ≈ \$0\.705，上界 ≈ \$1\.787/.test(pt3.stdout), pt3.stdout)
       assert.notEqual(cli('plan-traj', '--scenarios', 'nope').status, 0)
       // 策略 champion（provisional）+ L2 champion 更好 ⇒ 没有路径等价校准时只能 pending-parity
       fs.mkdirSync(path.join(tmp, 'offline'), { recursive: true })
@@ -212,7 +218,7 @@ try {
     const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), ...a], { cwd: ROOT, env, encoding: 'utf8' })
     try {
       const ru = cli('ruler', '--write-design'); assert.equal(ru.status, 0, ru.stdout + ru.stderr)
-      assert.match(ru.stdout, /ICC（同题同臂重复，实测）：mr 结构分 0\.3\d/); assert.match(ru.stdout, /Harrell C=0\.5\d.*invalid/); assert.match(ru.stdout, /子状态.*5\d 个 \/ 家族 3/)
+      assert.match(ru.stdout, /ICC（同题同臂重复，实测）：mr 结构分 0\.3\d/); assert.match(ru.stdout, /Harrell C=0\.5\d.*invalid/); assert.match(ru.stdout, /子状态.*5\d 个 \/ 有数据的家族 3（留出 1）；可用场景家族 5（留出 2/)
       const d = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/ruler/design.json'), 'utf8')); assert.ok(d.icc > 0.3 && d.icc < 0.45 && /transfer\/mr/.test(d.source))
       const st = cli('states'); assert.equal(st.status, 0, st.stdout + st.stderr); assert.match(st.stdout, /子状态 5\d 个/); assert.match(st.stdout, /eacces-config×\d+\[holdout\]/)
       const arr = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/states/all.json'), 'utf8')); assert.ok(Array.isArray(arr) && arr.length >= 50 && arr[0].schema === 'cfb.child-state/1')
@@ -254,6 +260,55 @@ try {
     assert.equal(fitFlagWeights(Array.from({ length: 20 }, (_, i) => ({ flags: { next: 1 }, outcome: 1, cluster: i }))).status, 'unvalidated')
     const pairs = []; for (let i = 0; i < 40; i++) { const good = i % 2 === 0; pairs.push({ flags: { next: good ? 1 : 0, avoid: 1, falseDone: good ? 0 : 1, bump: 0, reEdit: 0, repeat: 0 }, outcome: good ? 1 : 0, cluster: 'c' + (i % 8) }) }
     const r = fitFlagWeights(pairs); assert.equal(r.status, 'diagnostic'); assert.ok(r.weights.next > 0 && r.weights.falseDone < 0, JSON.stringify(r.weights)); assert.ok(r.aucLearnedCv > 0.9 && r.aucHand > 0.9)
+  })
+  await test('A18 新家族（零 API）：wrong-model / sse-truncated 落成可执行场景 —— 起始未修好、可见测试是绿的、复现脚本真跑出症状；隐藏 oracle：改脚本不算、两种真修法都算、sse 只改一处不算、改坏不算；decoy 也能加', () => {
+    const { execTool } = tr
+    assert.deepEqual(TRAJ_TASKS.map((t) => t.id), ['eacces-config', 'flaky-timeout', 'perf-regression', 'wrong-model', 'sse-truncated'])
+    const mk = (id) => { const t = TRAJ_TASKS.find((x) => x.id === id); const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'fam-')); materialize(t, repo); return { t, repo } }
+    const tmps = []
+    try {
+      // wrong-model
+      let { t, repo } = mk('wrong-model'); tmps.push(repo)
+      assert.equal(t.fixed(repo), false); assert.match(execTool(t, repo, 'bash', { command: 'npm test' }), /PASS test\/host-follow\.selftest\.mjs[\s\S]*1 通过 \/ 0 失败/)
+      assert.match(execTool(t, repo, 'bash', { command: 'node scripts/smoke-session.mjs' }), /\[compiler-transport-started\] \{"model":"deepseek-v3\.1"\}/)
+      assert.match(execTool(t, repo, 'bash', { command: 'grep -c started trace/trace.log' }), /^3/); assert.match(execTool(t, repo, 'bash', { command: 'node -e "1"' }), /只允许运行题目里的测试/)
+      assert.ok(!fs.existsSync(path.join(repo, '.oracle')), 'oracle 跑完即删')
+      execTool(t, repo, 'edit_file', { path: 'scripts/smoke-session.mjs', old_text: "{ seq: 12, model: 'deepseek-v3.2' }", new_text: "{ seq: 12, model: 'deepseek-v3.1' }" }); assert.equal(t.fixed(repo), false, '改复现脚本不算修好')
+      execTool(t, repo, 'edit_file', { path: 'src/host-follow.js', old_text: 'observe(options) { if (options && options.model) lastModel = options.model }', new_text: 'observe(options, n) { const m = (n && n.model) || (options && options.model); if (m) lastModel = m }' }); assert.equal(t.fixed(repo), true, '修法 A：observe 读第二个参数')
+      ;({ t, repo } = mk('wrong-model')); tmps.push(repo)
+      execTool(t, repo, 'edit_file', { path: 'src/plugin.js', old_text: 'host.observe(options, n)', new_text: 'host.observe({ ...options, model: n && n.model }, n)' }); assert.equal(t.fixed(repo), true, '修法 B：调用方合并 model')
+      assert.match(execTool(t, repo, 'bash', { command: 'node scripts/smoke-session.mjs' }), /\[compiler-transport-started\] \{"model":"deepseek-v3\.2"\}/)
+      // sse-truncated
+      ;({ t, repo } = mk('sse-truncated')); tmps.push(repo)
+      assert.equal(t.fixed(repo), false); assert.match(execTool(t, repo, 'bash', { command: 'npm test' }), /1 通过 \/ 0 失败/)
+      assert.match(execTool(t, repo, 'bash', { command: 'node scripts/replay-truncated.mjs' }), /"ok":true,"finish":"stop"[\s\S]*birth-condensed/)
+      execTool(t, repo, 'edit_file', { path: 'src/transport.js', old_text: "finish: finish || (done ? 'stop' : null)", new_text: 'finish' }); assert.equal(t.fixed(repo), false, '只修 [DONE] 推断不够：ok 仍因有内容为 true')
+      execTool(t, repo, 'edit_file', { path: 'src/transport.js', old_text: 'const ok = r.finish != null || r.out.length > 0', new_text: 'const ok = r.finish != null' }); assert.equal(t.fixed(repo), true, '两处都改才算')
+      assert.match(execTool(t, repo, 'bash', { command: 'node scripts/replay-truncated.mjs' }), /"ok":false,"finish":null[\s\S]*birth-passthrough/)
+      ;({ t, repo } = mk('sse-truncated')); tmps.push(repo)
+      execTool(t, repo, 'edit_file', { path: 'src/transport.js', old_text: 'let out = ', new_text: 'let out = = ' }); assert.equal(t.fixed(repo), false); assert.match(execTool(t, repo, 'bash', { command: 'npm test' }), /^FAIL test\/transport/)
+      for (const id of ['wrong-model', 'sse-truncated']) { const d = perturbTask(TRAJ_TASKS.find((x) => x.id === id), 'decoy'); assert.equal(Object.keys(d.files).filter((f) => /legacy/.test(f)).length, 1) }
+      // 池里的 split：wrong-model 留出、sse-truncated dev ⇒ 场景家族 5、留出家族 2
+      const pool = cyc.loadPool(); assert.equal(pool.split['wrong-model'], 'holdout'); assert.equal(pool.split['sse-truncated'], 'dev')
+    } finally { for (const d of tmps) fs.rmSync(d, { recursive: true, force: true }) }
+  })
+  await test('A19 扰动惰性检查 + 续跑探针 + 单状态探针计划：decoy 在 21 条真实轨迹上 active（排查类调用命中 ≥ 80%）；raw 单臂计划 3 次主调用 ≈$0.038、stop 无配对只看上界；续跑探针字段', () => {
+    const rows = ['traj1', 'traj2', 'traj3'].flatMap((d) => fs.readFileSync(path.join(ROOT, 'transfer', d, 'results.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => ({ ...JSON.parse(l), dir: d })))
+    const r = perturbExposure(rows, { kind: 'decoy' }); assert.equal(r.n, 21); assert.equal(r.exposedBeforeFix, 21); assert.ok(r.searchRate >= 0.8, JSON.stringify(r)); assert.equal(r.verdict, 'active'); assert.match(r.note, /可见 ≠ 更难/)
+    assert.ok(Object.values(r.byFamily).every((f) => f.verdict === 'active'))
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cl43b-'))
+    const env = { ...process.env, CFB_CYCLE_DIR: tmp }; delete env.DEEPSEEK_API_KEY
+    const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), ...a], { cwd: ROOT, env, encoding: 'utf8' })
+    try {
+      const pc = cli('perturb-check'); assert.equal(pc.status, 0, pc.stdout + pc.stderr); assert.match(pc.stdout, /21\/21[\s\S]*\*\*active\*\*/); assert.ok(fs.existsSync(path.join(tmp, 'offline/ruler/perturb-decoy.json')))
+      const st = cli('states', '--family', 'eacces-config', '--start-round', '3', '--parent-variant', 'raw', '--limit', '1'); assert.match(st.stdout, /子状态 1 个/)
+      const file = path.join(tmp, 'offline/states/eacces-config-probe1.json'); const arr = JSON.parse(fs.readFileSync(file, 'utf8')); assert.equal(arr.length, 1); assert.equal(arr[0].startRound, 3); assert.equal(arr[0].parentVariant, 'raw')
+      const p1 = cli('plan-traj', '--from-states', file, '--arms', 'raw', '--samples', '1', '--max-rounds', '5', '--stop'); assert.equal(p1.status, 0, p1.stdout + p1.stderr)
+      const plan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/t1/plan.json'), 'utf8')); assert.equal(plan.cost.mains, 3); assert.equal(plan.cost.compresses, 0); assert.equal(plan.cost.expectedUsd, 0.038); assert.equal(plan.stop.compare, null); assert.match(p1.stdout, /单臂无配对，只按估算花费/)
+      const p2 = cli('plan-traj', '--from-states', file, '--arms', 'raw,policy:base', '--samples', '1', '--max-rounds', '5', '--stop'); const plan2 = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/t2/plan.json'), 'utf8')); assert.equal(plan2.cost.mains, 5); assert.equal(plan2.cost.compresses, 3); assert.equal(plan2.cost.expectedUsd, 0.085)
+      const dry = spawnSync(process.execPath, [path.join(ROOT, 'tools/traj-run.mjs'), '--plan', path.join(tmp, 'runtime/t1/plan.json'), '--store-text', '--from-state', file, '--variants', 'raw', '--samples', '1', '--max-rounds', '5', '--fork', '--max-tokens', '8000', '--require-fp', '--base-url', 'http://127.0.0.1:9', '--model', 'm', '--out', path.join(tmp, 'runtime/t1'), '--dry-run'], { cwd: ROOT, env, encoding: 'utf8' })
+      assert.equal(dry.status, 0, dry.stdout + dry.stderr); assert.match(dry.stdout, /子状态重放成功 1/)
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
   })
 } finally {
   console.log(`\n=== closed-loop-v4 selftest: ${pass} pass / ${fail} fail ===`)

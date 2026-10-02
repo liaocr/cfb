@@ -234,3 +234,13 @@ ruler ──▶ 效度状态 / 采纳规则 / e 值预算 / 曝光 / 排序器 /
 - `estimatedUsd` 用 TRAJ_UNIT 常数估，不是回执。
 - decoy 只验证了结构（文件 / README / fixed 不变），没验证它真的更难。
 - Pareto 池、泛化差距、ICC 的 design.json 都只在模拟历史上跑过。
+
+### 13.4 第六轮评审的回应（v14.8，仍零花费）
+评审接受了 §13 的三处反驳（Spearman→C 指数、子状态是功效不是泛化、排序器冷启动不可能），并指出三件未解：留出家族仍 3、decoy 未验证更难、`--from-state` 未验证模型能续跑；另问 `policy:` 路径闸是否已关。逐条：
+
+1. **家族（地基）：3 → 5 场景家族，零 API。** `tools/traj-fixtures-v2.mjs` 把 v9 冻结题 `wrong-model`（池里留出）与 `sse-truncated`（dev）落成可执行场景，与 v1 三题同一故障故事 ⇒ L1 冻结题与 L2 场景同家族。两点设计不同于 v1：① `fixed()` 不再正则猜代码形状，而是跑一份**隐藏语义 oracle**（临时写入 `.oracle/`，只 import `src/`，跑完即删）—— 任何位置的正确修法都算，改复现脚本 / 改可见测试不算；② 可见测试故意是绿的（和线上一样），复现脚本（`node scripts/*.mjs`）真跑并写 trace，Agent 的验收路径是「复现 → 改 → 再复现」。`sse-truncated` 的正确修法需要两处（`[DONE]` 不得推断 stop + `ok` 必须要求真实 `finish_reason`），只改一处不算 —— 这就是 SWE-smith 「合并 bug」式的多处修改题（§13 方向 1 原本只设计，现在有了一道）。**诚实边界**：留出家族 1 → 2，仍 < 4；新家族一条轨迹都没有，基线要靠首跑。默认 `plan-traj` 单位因此从 3×2（≈$0.705）变为 5×2（主 70 + 压缩 40，**≈$1.175 / 上界 $2.98**）；`--samples 1` ≈ $0.59；`--scenarios` 可限定旧 3 题回到 $0.705。
+2. **decoy 是否「活的」（零 API，`perturb-check`）**：把 21 条真实轨迹的调用原样重放到原仓库与 decoy 仓库 —— **21/21 在修好前会看到不同输出，19/21（90%）的排查类调用（grep / cat / find / README）输出里直接出现诱饵** ⇒ active，不是惰性改动（bind=off 的教训）。**但可见 ≠ 更难**：评审要的「用已有轨迹跑 decoy 版比 roundsToFix」做不到 —— 轨迹是模型对所见的反应，所见变了后面的动作就不是旧轨迹了；「更难」只能由模型在 decoy 题上的到修好轮数回答（付费小探针，见下）。
+3. **续跑探针**：`traj-run` 对 `--from-state` 的轨迹在接上前缀后的第一轮记 `continuation = {firstRoundCalls, prefixRepeats, verdict}`（≥ 一半调用在重做前缀 ⇒ `restarted`；0 重做 ⇒ `continued`），`summary.md` 给总判。探针计划：`states --family eacces-config --start-round 3 --parent-variant raw --limit 1` → `plan-traj --from-states … --arms raw --samples 1 --max-rounds 5 --stop` ⇒ **3 次主调用，≈$0.038 / 上界 $0.105**（两臂版 ≈$0.085）；`--dry-run` 已核对可重放。
+4. **`policy:` 路径闸：v4.2 已关。** `tools/traj-run.mjs` 策略路径过生产 `compileV4Direct`（不过 ⇒ 原文放行并记 `gateFail`）；策略 champion 没有 `offline/ruler/parity.json` 时 `confirm` 给 `pending-parity`；自测 A11 覆盖。
+
+**付费顺序（都需批准，从小到大）**：P1 续跑探针 raw 单臂 ≈$0.04 → P2 decoy 难度探针 `plan-traj --scenarios perf-regression --perturb decoy --arms raw --samples 2 --max-rounds 6`（≈$0.15；与 perf-regression 已有 raw 基线 roundsToFix 比）→ P3 验尺子（含新家族的首跑，`--samples 1` ≈$0.59 或默认 ≈$1.18）。

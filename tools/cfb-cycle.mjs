@@ -35,6 +35,7 @@ import { readWatermark } from './helpers/api-watermark.mjs'
 import { decideV4, rulerValidity, adoptionPolicy, outcomeComparison, episodeOutcome, eValueWins, winsNeeded, DEFAULT_DESIGN_V4, l1Discrimination, rulerEconomics, iccOneWay, generalizationGap } from './helpers/ruler.mjs'
 import { childStates, familyCensus, valueTable } from './helpers/child-states.mjs'
 import { scoreMatrix, paretoFront, pickParent } from './helpers/pareto.mjs'
+import { perturbExposure } from './helpers/perturb-check.mjs'
 import { TRAJ_TASKS } from './traj-fixtures.mjs'
 import { trainRanker, scoreText } from './helpers/ranker.mjs'
 import { retroValidity } from './helpers/traj-proxy.mjs'
@@ -504,6 +505,7 @@ export function rulerReport({ validity = loadValidity(), exposure = loadExposure
   const iccTraj = iccOneWay(grp(trajRows.filter((r) => !r.error), (r) => `${r.task}|${r.variant}`, (r) => (Number.isInteger(r.fixedAtRound) ? Math.max(0, 1 - (r.fixedAtRound - 1) / Math.max(1, r.rounds || 6)) : 0)))
   const states = trajRows.flatMap((r) => childStates(r, { split: loadPool().split }))
   const census = familyCensus(states, { holdoutFamilies: Object.entries(loadPool().split).filter(([, s]) => s === 'holdout').map(([t]) => t) })
+  census.scenarioFamilies = TRAJ_TASKS.length; census.scenarioHoldout = TRAJ_TASKS.filter((t) => loadPool().split[t.id] === 'holdout').length   // v4.3：可用场景家族（含还没有轨迹数据的新家族）
   const matrix = scoreMatrix(loadHistory()); const front = paretoFront(matrix)
   return { retro, infoYield, l1, economics, validity: v, policy: pol, icc: { mr: iccMr, traj: iccTraj, design: readJson(DESIGN_FILE) }, states: census, pareto: { matrix, front }, exposure: Object.entries(exposure.tasks).map(([task, e]) => ({ task, n: e.n, retire: e.n >= HOLDOUT_MAX_EXPOSURE })), ranker: { status: rk.status, pairs: rk.pairs, cvAcc: rk.cvAcc, top: rk.top || null, note: rk.note }, baseline: baseline ? { trajectories: trajRows.length, raw: baseline.previous, auto: baseline.champion, pairs: baseline.pairs.length, e: baseline.e, eReject: baseline.eReject } : null, alphaTable: [0.1, 0.05].map((a) => ({ alpha: a, threshold: +(1 / a).toFixed(0), straightWins: winsNeeded(a), pStraightUnderNull: +Math.pow(0.5, winsNeeded(a)).toFixed(4), falseAdoptPerHypothesis: a, over6Hypotheses: +(1 - Math.pow(1 - a, 6)).toFixed(3) })) }
 }
@@ -522,7 +524,7 @@ function cmdRuler(args = []) {
   if (r.retro?.timeToFix) console.log(`主结局改口径（v4.3，到修好的轮数、未修好右删失）：Harrell C=${r.retro.timeToFix.c ?? '—'} CI=${r.retro.timeToFix.ci95 ? r.retro.timeToFix.ci95.join('–') : '—'}（n=${r.retro.timeToFix.n}，事件 ${r.retro.timeToFix.events} / 删失 ${r.retro.timeToFix.censored}，只算跨轨迹对）⇒ **${r.retro.timeToFix.status}** — ${r.retro.timeToFix.why}`)
   if (r.retro?.flagWeights) console.log(`六旗标权重（逻辑回归，簇留一，诊断用不进采纳）：${r.retro.flagWeights.status}${r.retro.flagWeights.weights ? ' ' + JSON.stringify(r.retro.flagWeights.weights) + ` cvAUC=${r.retro.flagWeights.aucLearnedCv} vs 手工±1 AUC=${r.retro.flagWeights.aucHand}` : ''} — ${r.retro.flagWeights.why}`)
   console.log(`ICC（同题同臂重复，实测）：mr 结构分 ${r.icc.mr.icc ?? '—'}（${r.icc.mr.groups ?? 0} 组）；traj 结局分 ${r.icc.traj.icc ?? '—'}（${r.icc.traj.groups ?? 0} 组）；判定当前用 ${r.icc.design?.icc ?? DEFAULT_DESIGN_V4.icc + '（默认，`ruler --write-design` 写入实测）'}`)
-  console.log(`子状态（零 API，从 transfer/traj 派生的可续跑起点）：${r.states.states} 个 / 家族 ${r.states.families}（留出家族 ${r.states.holdoutFamilies}）— ${r.states.note}`)
+  console.log(`子状态（零 API，从 transfer/traj 派生的可续跑起点）：${r.states.states} 个 / 有数据的家族 ${r.states.families}（留出 ${r.states.holdoutFamilies}）；可用场景家族 ${r.states.scenarioFamilies}（留出 ${r.states.scenarioHoldout}，新家族 wrong-model / sse-truncated 还没有轨迹）— ${r.states.note}`)
   if (r.pareto.front.tasks.length) console.log(`Pareto 池（按题前沿）：${r.pareto.front.front.join(', ') || '—'}；上榜次数 ${JSON.stringify(r.pareto.front.frontCount)}；被支配 ${r.pareto.front.dominated.join(', ') || '无'}`)
   if (r.l1) console.log(`L1（规格代理，transfer/mr 162 样本）区分度：天花板率（结构分=2）${r.l1.ceilingRate}；raw vs 压缩稿同题同样本 ${r.l1.pairs.win}胜/${r.l1.pairs.loss}负/${r.l1.pairs.tie}平 ⇒ 平局率 ${r.l1.tieRate}；旗标 ${Object.entries(r.l1.flags).map(([k, v]) => k + ' ' + v).join(' ')}`)
   console.log(`L1 角色判定：**${r.economics.role}** — ${r.economics.why}`)
@@ -542,7 +544,7 @@ export function buildTrajPlan({ n, arms = ['raw', 'policy:base'], scenarios = TR
   const plan = { schema: 'cfb.traj-plan/1', id: 't' + n, at: new Date().toISOString(), variants: arms, scenarios: fromStates ? [] : scenarios, samples, maxRounds, fork, maxTokens: 8000, storeText,
     ...(fromStates ? { fromStates } : {}),
     // v4.3 有界续跑：一次批准内按 e 值任意停时规则提前停（判定达成或预算上界），不再每组回来要一次批准
-    ...(stop ? { stop: { alpha: DEFAULT_DESIGN_V4.alphaHoldout, minPairs: 4, capUsd, compare: { champion: arms.find((a) => a !== 'raw') || arms[1] || arms[0], previous: arms.includes('raw') ? 'raw' : arms[0] }, ...stop } } : {}),
+    ...(stop ? { stop: { alpha: DEFAULT_DESIGN_V4.alphaHoldout, minPairs: 4, capUsd, compare: arms.length >= 2 ? { champion: arms.find((a) => a !== 'raw') || arms[1], previous: arms.includes('raw') ? 'raw' : arms[0] } : null, ...stop } } : {}),
     purpose: purpose || '第一次用真实数据检验尺子有效性：在线效度配对（执行器代理 ↔ 修好）+ raw vs 压缩稿的 L2 对 + 用真实回执校准单价常数。若效度仍 suspect / unvalidated，接受本机目前只能当记录仪，不开始按分搜索。',
     yield: { l1Pairs: groups, l2Pairs: groups, validityPairsApprox: arms.length * groups * (maxRounds - 1), flywheelPairsApprox: policyArms ? groups * (maxRounds - 1) : 0, childStatesApprox: arms.length * groups * Math.max(0, maxRounds - 2) },
     cost: { mains, compresses, expectedUsd, capUsd, pricing }, holdoutNote: '场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索' }
@@ -555,15 +557,29 @@ function cmdStates(args) {
   const pool = loadPool(); const dirs = ['traj1', 'traj2', 'traj3'].map((d) => path.join(ROOT, 'transfer', d, 'results.jsonl'))
   const extra = (f(args, '--results') || '').split(',').filter(Boolean).map((x) => path.resolve(ROOT, x))
   const rows = [...dirs, ...extra].flatMap((file) => readJsonl(file).map((r) => ({ ...r, dir: path.basename(path.dirname(file)) })))
-  const fam = f(args, '--family'); const maxPerRow = Number(f(args, '--max-per-row') || 4)
-  const states = rows.flatMap((r) => childStates(r, { split: pool.split, maxPerRow })).filter((st) => !fam || st.family === fam)
+  const fam = f(args, '--family'); const maxPerRow = Number(f(args, '--max-per-row') || 4); const startRound = Number(f(args, '--start-round') || 0); const limit = Number(f(args, '--limit') || 0); const parentVariant = f(args, '--parent-variant')
+  let states = rows.flatMap((r) => childStates(r, { split: pool.split, maxPerRow })).filter((st) => (!fam || st.family === fam) && (!startRound || st.startRound === startRound) && (!parentVariant || st.parentVariant === parentVariant))
+  if (limit > 0) states = states.slice(0, limit)   // 探针：按文件顺序取前 N 个（确定性）
   const census = familyCensus(states, { holdoutFamilies: Object.entries(pool.split).filter(([, s]) => s === 'holdout').map(([t]) => t) })
-  ensure(STATES_DIR); const out = path.resolve(ROOT, f(args, '--out') || path.join(STATES_DIR, (fam || 'all') + '.json'))
+  ensure(STATES_DIR); const out = path.resolve(ROOT, f(args, '--out') || path.join(STATES_DIR, (fam || 'all') + (limit ? `-probe${limit}` : '') + '.json'))
   writeJson(out, states)
-  console.log(`子状态 ${states.length} 个 → ${path.relative(ROOT, out)}；家族 ${census.families}（留出家族 ${census.holdoutFamilies}）：${Object.entries(census.byFamily).map(([k, v]) => `${k}×${v.states}[${v.split || '—'}]`).join(' ')}`)
+  console.log(`子状态 ${states.length} 个 → ${path.relative(ROOT, out)}；家族 ${census.families}（留出家族 ${census.holdoutFamilies}）：${Object.entries(census.byFamily).map(([k, v]) => `${k}×${v.states}[${v.split || '—'}]`).join(' ')}；可用场景家族 ${TRAJ_TASKS.length}（留出 ${TRAJ_TASKS.filter((t) => pool.split[t.id] === 'holdout').length}）`)
   console.log('边界：' + census.note + '；历史 transcript 无思维链 ⇒ 这些状态只能做 L2 续跑起点（续跑时各臂重新压缩），`--store-text` 之后的新轨迹才同时是 L1 题。')
   const vt = valueTable(rows); if (vt.states) console.log(`已有续跑结果的状态 ${vt.states} 个：两臂价值配对 ${vt.pairs.win}胜/${vt.pairs.loss}负，e=${vt.e} / 更差 e=${vt.eReject}`)
   return { states, census, out }
+}
+/** v4.3：扰动惰性检查（零 API）—— 把真实轨迹的调用重放到扰动仓库，看模型修好前会不会看到扰动物。 */
+function cmdPerturbCheck(args) {
+  const kind = f(args, '--kind') || 'decoy'
+  const dirs = ['traj1', 'traj2', 'traj3'].map((d) => path.join(ROOT, 'transfer', d, 'results.jsonl'))
+  const extra = (f(args, '--results') || '').split(',').filter(Boolean).map((x) => path.resolve(ROOT, x))
+  const rows = [...dirs, ...extra].flatMap((file) => readJsonl(file).map((r) => ({ ...r, dir: path.basename(path.dirname(file)) })))
+  const r = perturbExposure(rows, { kind })
+  console.log(`扰动 ${kind} 惰性检查（${r.n} 条真实轨迹反事实重放）：修好前看到不同输出 ${r.exposedBeforeFix}/${r.n}；排查类调用（grep/cat/find/README）命中扰动物 ${r.searchHit}/${r.n} ⇒ **${r.verdict}**`)
+  for (const [fam, x] of Object.entries(r.byFamily)) console.log(`  ${fam}: n=${x.n} 可见 ${x.exposedBeforeFix}（首见轮次 ${Object.entries(x.rounds).map(([k, v]) => `r${k}×${v}`).join(' ') || '—'}）排查命中 ${x.searchHit} ⇒ ${x.verdict}${x.truncated ? `（${x.truncated} 条旧行参数截断、只重放到截断处）` : ''}`)
+  console.log('边界：' + r.note)
+  ensure(RULER_DIR); writeJson(path.join(RULER_DIR, `perturb-${kind}.json`), { schema: 'cfb.perturb-check/1', at: new Date().toISOString(), ...r, rows: r.rows.map(({ id, divergedAt, beforeFix, mentionsPerturb, searchHits, searchHitAt, call, truncated }) => ({ id, divergedAt, beforeFix, mentionsPerturb, searchHits, searchHitAt, call, truncated })) })
+  return r
 }
 function cmdPlanTraj(args) {
   const h = loadHistory(); const n = Number(f(args, '--n') || Math.max(0, ...(h.trajPlans || []).map((t) => t.n)) + 1)
@@ -576,7 +592,7 @@ function cmdPlanTraj(args) {
   for (const sc of plan.scenarios) { const [id, kind] = sc.split(':'); if (!TRAJ_TASKS.some((t) => t.id === id)) throw new Error('unknown-scenario:' + sc); if (kind && kind !== 'decoy') throw new Error('unknown-perturb:' + kind) }
   const home = trajHomeFor(n); ensure(home); writeJson(path.join(home, 'plan.json'), plan)
   h.trajPlans = (h.trajPlans || []).filter((t) => t.n !== n).concat([{ n, at: plan.at, status: 'planned', digest: plan.digest, expectedUsd: plan.cost.expectedUsd, capUsd: plan.cost.capUsd }]); writeJson(HISTORY, h)
-  const L = [`# 分叉轨迹计划 t${n}（digest ${plan.digest}，未发请求）`, '', `目的：${plan.purpose}`, '', `臂：${plan.variants.join(' vs ')}；${plan.fromStates ? `子状态 ${plan.fromStates.count} 个（家族 ${plan.fromStates.families.join(', ')}，平均起始轮 ${plan.fromStates.meanStartRound}，${plan.fromStates.file}）` : '场景：' + plan.scenarios.join(', ')} × ${plan.samples} 样本；≤${plan.maxRounds} 轮；${plan.fork ? '起始轮共用、各臂分叉' : '不分叉'}${plan.stop ? `；**有界续跑**：每组后算 e 值，${plan.stop.compare.champion} vs ${plan.stop.compare.previous} 任一方向 e ≥ ${(1 / plan.stop.alpha).toFixed(0)}（≥${plan.stop.minPairs} 对）或估算花费 ≥ $${plan.stop.capUsd} 即停` : ''}`,
+  const L = [`# 分叉轨迹计划 t${n}（digest ${plan.digest}，未发请求）`, '', `目的：${plan.purpose}`, '', `臂：${plan.variants.join(' vs ')}；${plan.fromStates ? `子状态 ${plan.fromStates.count} 个（家族 ${plan.fromStates.families.join(', ')}，平均起始轮 ${plan.fromStates.meanStartRound}，${plan.fromStates.file}）` : '场景：' + plan.scenarios.join(', ')} × ${plan.samples} 样本；≤${plan.maxRounds} 轮；${plan.fork ? '起始轮共用、各臂分叉' : '不分叉'}${plan.stop ? `；**有界续跑**：${plan.stop.compare ? `每组后算 e 值，${plan.stop.compare.champion} vs ${plan.stop.compare.previous} 任一方向 e ≥ ${(1 / plan.stop.alpha).toFixed(0)}（≥${plan.stop.minPairs} 对）或` : '单臂无配对，只按'}估算花费 ≥ $${plan.stop.capUsd} 即停` : ''}`,
     `请求：主调用 ${plan.cost.mains} + 压缩 ${plan.cost.compresses}；**期望实付 ≈ $${plan.cost.expectedUsd}，上界 ≈ $${plan.cost.capUsd}**（max_tokens 8000；常数见 TRAJ_UNIT，首张回执后更新）`,
     `产出（估）：L1 对 ${plan.yield.l1Pairs}、L2 对 ${plan.yield.l2Pairs}、效度对 ≈${plan.yield.validityPairsApprox}、飞轮对 ≈${plan.yield.flywheelPairsApprox}、子状态 ≈${plan.yield.childStatesApprox}`, '', plan.holdoutNote, '', '批准后执行（traj-run 会核对参数与计划一致，跑完写 receipt.json）：', '```', plan.command, '```', '', `回灌：node tools/cfb-cycle.mjs confirm --plan ${n} --map champion=policy:base,previous=raw   # 或 --parity（auto vs policy:base）`]
   fs.writeFileSync(path.join(home, 'plan.md'), L.join('\n') + '\n'); console.log(L.join('\n'))
@@ -851,7 +867,8 @@ const HELP = `cfb-cycle（闭环 v4：e 值采纳 + L2 结局确认；v2/v3 命�
   ingest   --round N [--report FILE]                                              回灌：配对 → decideV4（留出闸门 + e 值）→ adopt-provisional/reject/continue/calibrated；追加飞轮偏好对；记留出曝光
   propose                                                                        把已采纳旋钮 / 策略翻成生产配置 diff / src 改动说明
   propose-policy [--gen N] [--parent ID|auto] [--note 文字]                        冻结提议器计划（只喂 dev 题证据；≤4 请求；auto = Pareto 池抽父代）
-  states [--results F,…] [--family ID] [--out FILE]                                 v4.3：从轨迹派生可续跑的子状态（零 API），打印家族 / 状态盘点
+  states [--results F,…] [--family ID] [--start-round K] [--limit N] [--out FILE]   v4.3：从轨迹派生可续跑的子状态（零 API），打印家族 / 状态盘点；--limit 1 做探针
+  perturb-check [--kind decoy]                                                      v4.3：扰动惰性检查（真实轨迹反事实重放，零 API）：可见 ≠ 更难
   ruler [--write-design]                                                          尺子效度 + v4.3 到修好轮数 C 指数 / ICC / 六旗标回归 / Pareto 池；--write-design 写实测 ICC
   compile  --policy ID [--tasks a,b] | --mint ID   [--gen N]                      冻结按策略重压 side / 铸造件压稿的计划（≤8 请求）
   mint     --step a --scenario FILE | --step b --id ID   [--gen N]                冻结铸造新题的计划（u1→a1；人补 u2 后 a1+u2→a2）
@@ -871,6 +888,7 @@ function main() {
   else if (cmd === 'confirm') cmdConfirm(args)
   else if (cmd === 'ruler') cmdRuler(args)
   else if (cmd === 'states') cmdStates(args)
+  else if (cmd === 'perturb-check') cmdPerturbCheck(args)
   else if (cmd === 'plan-traj') cmdPlanTraj(args)
   else if (cmd === 'policy-from-flywheel') cmdPolicyFromFlywheel()
   else if (cmd === 'propose-policy') cmdProposePolicy(args)

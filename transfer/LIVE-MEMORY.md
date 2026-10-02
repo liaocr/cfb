@@ -2,7 +2,15 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
-## −6. 当前状态（2026-10-02，第二十六会话：v4.3 —— 评审 9 方向文献对照；子状态 59/3 家族；到修好轮数 C=0.52 invalid；有界续跑；实测 ICC 0.366；Pareto 池）
+## −7. 当前状态（2026-10-02，第二十七会话：v4.3 续 —— 场景家族 3→5（零 API）；decoy active；续跑探针；付费顺序 P1 $0.04 → P2 $0.15 → P3）
+
+- 第六轮评审接受三处反驳；三件未解里两件本会话零 API 推进：**家族** `traj-fixtures-v2.mjs`（wrong-model 留出 / sse-truncated dev，隐藏语义 oracle 判修好，sse 需两处修改）⇒ 场景家族 5、留出 2（仍 < 4，且新家族零轨迹）；**decoy 惰性** `perturb-check`：21/21 可见、19/21 排查命中 ⇒ active（可见 ≠ 更难）。第三件（模型能否顺着前缀续跑）只能付费：单状态探针 raw ≈ $0.038（`continuation` 字段自动判 continued / restarted）。
+- `policy:` 路径闸 v4.2 已关（compileV4Direct + pending-parity + A11）—— 评审问到，答案是已关。
+- 默认 `plan-traj` 单位因家族增加变为 ≈ $1.175（`--samples 1` ≈ $0.59；`--scenarios` 旧 3 题 ≈ $0.705）。
+- 验证：v4 20/0、v3 16/0、closed-loop 25/0、N1–N7=0、manifest 0 漂移、$0。本地提交未推送。
+- 下一步（都要用户批准）：P1 续跑探针 → P2 decoy 难度探针（perf-regression raw × 2，≈ $0.15）→ P3 验尺子首跑。
+
+## −6. 上一状态（2026-10-02，第二十六会话：v4.3 —— 评审 9 方向文献对照；子状态 59/3 家族；到修好轮数 C=0.52 invalid；有界续跑；实测 ICC 0.366；Pareto 池）
 
 - 评审 9 个方向逐条查文献后取舍（`CLOSED-LOOP-V4.md` §13 表）。与评审不同的结论：子状态扩的是**配对数不是家族数**（留出仍 3）；L1 效度用 **Harrell C（右删失）** 不用 Spearman；排序器从 mr **冷启动不可能**（无稿正文），ICC 可估；过拟合主防线是 **Ladder 式显著才采纳**，不是 dev 对半；旗标权重学了也**不如 ±1**（cvAUC 0.14 vs 0.70）。
 - 新的坏消息（诚实）：把主结局改成「到修好的轮数」后，执行器代理 **C = 0.523（0.464–0.584）invalid** —— 比 0.70 suspect 更差。首次付费更应该先验尺子。

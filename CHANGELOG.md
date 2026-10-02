@@ -4,6 +4,15 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.8.0（2026-10-02，闭环 v4.3 续：场景家族 3→5（零 API）/ decoy 惰性检查 active / 续跑探针 / 单状态探针计划；仍零花费）
+
+- **起因**：第六轮评审接受 v4.3 的三处反驳，指出留出家族仍 3 是唯一地基问题、decoy 与 `--from-state` 都未验证，建议先花 ~$0.05 验续跑再谈 $1。
+- **新家族**：`tools/traj-fixtures-v2.mjs`：`wrong-model`（留出）、`sse-truncated`（dev）两个可执行场景，题面来自 v9 冻结题同一故障。`fixed()` = 隐藏语义 oracle（临时写入 `.oracle/`、只 import src、跑完即删）：改脚本 / 改可见测试不算，任何位置的正确修法都算；可见测试故意绿、复现脚本真跑写 trace。sse-truncated 需两处修改（合并 bug 式）。`TRAJ_TASKS` 现 5 个；默认 `plan-traj` 单位变为 70 + 40 请求 ≈ $1.175（`--scenarios` 旧 3 题仍 ≈ $0.705）。留出家族 1→2，仍 < 4。
+- **decoy 惰性检查**：`tools/helpers/perturb-check.mjs` + `cfb-cycle perturb-check`：21 条真实轨迹反事实重放，21/21 修好前可见、19/21 排查类调用命中诱饵 ⇒ active。明说可见 ≠ 更难（更难需模型续跑）。
+- **续跑探针**：`traj-run` 为 `--from-state` 记 `continuation` 判定（continued / restarted），`summary.md` 总判；`states --start-round/--parent-variant/--limit`；`plan-traj` 单臂 `--stop` 只按上界停（`stop.compare=null`）。单状态探针 raw ≈ $0.038 / 两臂 ≈ $0.085，`--dry-run` 已核对。
+- **验证**：closed-loop-v4 18 → **20/20**（A18 新家族 oracle 行为、A19 惰性检查 / 探针计划）；v3 16/16；closed-loop 25/25；verify 仍 21 个已知环境失败；审计 N1–N7=0；manifest 0 漂移；$0。
+- **未验证**：新家族无任何轨迹；decoy 是否更难；模型是否顺着前缀续跑 —— 三者都排进了付费顺序 P1（$0.04）→ P2（$0.15）→ P3（$0.59 / $1.18）。
+
 ## v14.7.0（2026-10-02，闭环 v4.3：第五轮评审 9 个方向逐条文献对照 —— 子状态 / 到修好轮数 C 指数 / 有界续跑 / Pareto 池 / 实测 ICC；仍零花费）
 
 - **起因**：第五轮评审给了 9 个优化方向（题太简单、目标换 roundsToFix、子状态扩题、e 值接分叉、排序器冷启动 + ICC、过拟合检测、Pareto 池、学旗标权重、题型路由）；用户要求当方向看、逐条查文献、结合理论后再全面优化。取舍表见 `docs/design/CLOSED-LOOP-V4.md` §13。

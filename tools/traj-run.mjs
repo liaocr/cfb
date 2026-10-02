@@ -146,7 +146,7 @@ export function runBash(task, repo, cmd) {
   }
   return outs.join('\n')
 }
-function execTool(task, repo, name, args) {
+export function execTool(task, repo, name, args) {
   const a = typeof args === 'string' ? (() => { try { return JSON.parse(args) } catch { return { command: args } } })() : (args || {})
   const safe = (p) => { const r = path.resolve(repo, String(p || '')); if (!r.startsWith(repo)) throw new Error('路径越界'); return r }
   if (name === 'read_file') { try { return fs.readFileSync(safe(a.path), 'utf8').slice(0, 6000) } catch (e) { return `read_file 失败: ${e.message}` } }
@@ -210,6 +210,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
     if (task.fixed(repo)) throw new Error('state-already-fixed:' + state.id)
     for (const m of state.messages || []) messages.push(m.role === 'assistant' ? { role: 'assistant', content: m.content } : { role: 'user', content: m.content })
     firstRound = state.startRound
+    rec.replayKeys = (state.replay || []).map((c) => c.name + '|' + normCmd(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)))
   }
   try {
     for (let round = firstRound; round <= o.maxRounds; round++) {
@@ -269,6 +270,8 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         rec.final = text; break
       }
       const results = []
+      // v4.3 续跑探针：接上前缀后的第一轮里，有多少调用是在重做前缀里已做过的事（重做多 ⇒ 模型没有把重放的历史当成自己的）
+      if (state && round === firstRound) { const keys = calls.map((c) => c.name + '|' + normCmd(typeof c.args === 'string' ? c.args : JSON.stringify(c.args))); const rep = keys.filter((k) => rec.replayKeys.includes(k)).length; rec.continuation = { firstRoundCalls: calls.length, prefixRepeats: rep, verdict: !calls.length ? 'unclear' : rep / calls.length >= 0.5 ? 'restarted' : 'continued' } }
       for (const c of calls) {
         rec.calls++
         const argsObj = typeof c.args === 'string' ? (() => { try { return JSON.parse(c.args) } catch { return { command: c.args } } })() : c.args
@@ -379,9 +382,9 @@ async function main(argv) {
         // v4.3 有界续跑：一次批准内自动跑到判定或预算上界（e 值任意停时有效，提前停不损失保证）
         if (stop && !stopped) {
           const done = fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => !r.error)
-          const cmp = outcomeComparison(done.map((r) => ({ ...r, arm: r.variant === stop.compare.champion ? 'champion' : r.variant === stop.compare.previous ? 'previous' : null, sample: `${r.fromState || r.task}#${r.sample ?? 0}` })).filter((r) => r.arm))
+          const cmp = stop.compare && stop.compare.champion !== stop.compare.previous ? outcomeComparison(done.map((r) => ({ ...r, arm: r.variant === stop.compare.champion ? 'champion' : r.variant === stop.compare.previous ? 'previous' : null, sample: `${r.fromState || r.task}#${r.sample ?? 0}` })).filter((r) => r.arm)) : null
           const thr = 1 / (stop.alpha || 0.1)
-          if (cmp.pairs.length >= (stop.minPairs || 4) && (cmp.e >= thr || cmp.eReject >= thr)) stopped = `判定达成（${cmp.pairs.length} 对，e=${cmp.e} / 更差 e=${cmp.eReject} ≥ ${thr}）`
+          if (cmp && cmp.pairs.length >= (stop.minPairs || 4) && (cmp.e >= thr || cmp.eReject >= thr)) stopped = `判定达成（${cmp.pairs.length} 对，e=${cmp.e} / 更差 e=${cmp.eReject} ≥ ${thr}）`
           else if (stop.capUsd && spent.usd >= stop.capUsd) stopped = `预算上界 $${stop.capUsd} 已到（估 $${spent.usd.toFixed(3)}）`
           if (stopped) console.log('提前停止：' + stopped)
         }
@@ -390,8 +393,9 @@ async function main(argv) {
     fs.rmSync(d, { recursive: true, force: true })
   }
   const all = fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
-  const last = new Map(); for (const r of all) { const k = `${r.task}|${r.variant}|${r.sample}`; if (!last.has(k) || !r.error) last.set(k, r) }
-  const md = summarizeTraj([...last.values()])
+  const last = new Map(); for (const r of all) { const k = `${r.fromState || r.task}|${r.variant}|${r.sample}`; if (!last.has(k) || !r.error) last.set(k, r) }
+  let md = summarizeTraj([...last.values()])
+  const cont = [...last.values()].filter((r) => r.continuation); if (cont.length) md += `\n\n续跑探针（${cont.length} 条）：${cont.map((r) => `${r.fromState}/${r.variant}: ${r.continuation.verdict}（首轮 ${r.continuation.firstRoundCalls} 次调用、重做前缀 ${r.continuation.prefixRepeats}）`).join('；')}\n结论：${cont.every((r) => r.continuation.verdict === 'continued') ? '模型顺着前缀继续 —— 子状态可用' : cont.some((r) => r.continuation.verdict === 'restarted') ? '**有轨迹从头重来** —— 子状态口径存疑，先别扩到 14 个' : '不清楚（首轮无调用）'}`
   fs.writeFileSync(path.join(o.out, 'summary.md'), md + '\n')
   if (plan) { const rows = [...last.values()]; fs.writeFileSync(path.join(o.out, 'receipt.json'), JSON.stringify({ schema: 'cfb.traj-receipt/1', plan: plan.id, digest: plan.digest, at: new Date().toISOString(), trajectories: rows.length, errors: rows.filter((r) => r.error).length, mainCalls: rows.reduce((a, r) => a + (r.rounds || 0), 0), compressCalls: rows.reduce((a, r) => a + (r.compile || []).filter((c) => !c.belowFloor).length, 0), promptTokens: rows.reduce((a, r) => a + (r.promptTokens || 0), 0), gateFails: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.gateFail).length, 0), estimatedUsd: +spent.usd.toFixed(3), stoppedEarly: stopped || null }, null, 2) + '\n') }
   console.log('\n' + md)
