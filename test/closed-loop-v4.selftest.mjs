@@ -847,6 +847,16 @@ try {
     assert.equal(HG.gateOnFinal([R(1, [{ name: 'edit_file', args: { path: 'a' } }])], { edits: [{ round: 1, ok: true }], verifyRe: vre, gated: [], claim: 'fixed', round: 2, maxRounds: 6 }), 'verify')
     assert.equal(HG.gateOnFinal([R(1, [{ name: 'edit_file', args: { path: 'a' } }, { name: 'bash', args: { command: 'npm test' } }])], { edits: [{ round: 1, ok: true }], verifyRe: vre, gated: [], claim: 'fixed', round: 2, maxRounds: 6 }), null, '同轮先改后验也算验过')
     assert.equal(HG.gateOnFinal([R(1, [{ name: 'edit_file', args: { path: 'a' } }])], { edits: [{ round: 1, ok: true }], verifyRe: vre, gated: [{ round: 2, kind: 'verify' }], claim: 'fixed', round: 3, maxRounds: 6 }), null, '整条只催一次'); assert.equal(HG.gateOnFinal([], { edits: [], claim: 'hedged', round: 2 }), null)
+    // 3b. v14.13.1 回放真实轨迹（零 API）：第一版 act 规则（只认「同一命令 ≥2 次」）在 29 条记录上一次都不触发 —— t8/t9 的失败是「数据齐了还在找新证据、一条命令不重复」。
+    //     现规则：验证命令跑过之后只看不改 ≥4 调用、第 ≥4 轮 ⇒ 催；traj2 perf raw（0 edit ✗）第 4 轮触发，eacces 早改的轨迹不触发，traj3 perf raw 宣称前没验 ⇒ verify 门禁
+    const replay = (file, task, variant) => { const r = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).find((x) => x.task === task && x.variant === variant && !x.error); const tk = TRAJ_TASKS.find((t) => t.id === task); const rows = [], gated = [], edits = []
+      for (const t of r.transcript) { const calls = (t.calls || []).map((c) => { let a; try { a = JSON.parse(c.args) } catch { a = { command: String(c.args || '') } } return { name: c.name, args: a } }); rows.push({ round: t.round, calls }); calls.forEach((c, i) => { if (c.name === 'edit_file') edits.push({ round: t.round, ok: /^ok/.test(String((t.results || [])[i] || '')) }) })
+        const k = calls.length ? HG.gateAfterTools(rows, { edits, verifyRe: tk.verifyRe, gated, round: t.round, maxRounds: 8 }) : HG.gateOnFinal(rows, { edits, verifyRe: tk.verifyRe, gated, claim: claimOfMr(t.text || ''), round: t.round, maxRounds: 8 }); if (k) gated.push({ round: t.round, kind: k }) }
+      return gated }
+    const { claimOf: claimOfMr } = await import('../tools/effect-mr.mjs')
+    assert.deepEqual(replay('transfer/traj2/results.jsonl', 'perf-regression', 'raw'), [{ round: 4, kind: 'act' }, { round: 6, kind: 'act' }], 'perf 0-edit 失败：第 4 轮催、两轮后再催')
+    assert.deepEqual(replay('transfer/traj2/results.jsonl', 'eacces-config', 'raw'), [], '早改早验的轨迹不打扰')
+    assert.deepEqual(replay('transfer/traj3/results.jsonl', 'perf-regression', 'raw'), [{ round: 6, kind: 'verify' }], '改了没验就宣称 ⇒ verify 门禁')
     assert.ok(HG.GATE_TEXTS.act.startsWith(HG.GATE_HEAD) && /这不是用户输入/.test(HG.GATE_HEAD) && /可逆/.test(HG.GATE_TEXTS.act) && /合并写入/.test(HG.GATE_TEXTS.batch) && /先运行验证命令/.test(HG.GATE_TEXTS.verify))
     // 4. runOne（假 chat）：drop 臂发出去的历史没有 reasoning_content、transcript 记 finish；gate 臂 act 门禁附在工具结果消息末尾（user 角色）、verify 门禁拦下未验证的宣称；raw 对照不注入
     const task = TRAJ_TASKS.find((t) => t.id === 'eacces-config')

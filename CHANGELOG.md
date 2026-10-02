@@ -4,6 +4,14 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.13.1（2026-10-02，自查：gate 臂 act 规则对 29 条真实轨迹零触发 —— 改成记录里的失败签名并以零 API 回放钉住；全面总结 `transfer/SUMMARY-2026-10-02.md`；方案 `docs/design/BREAKTHROUGH-PLAN.md`）
+
+- **漏洞**：v14.13.0 的 act 门禁只认「同一命令重复 ≥2 次」，而 t8/t9 的真实失败是「验证数据第 3 轮齐了、之后 17 个调用全在找新证据、一条命令不重复」—— 对 t6–t9 + traj1–3 共 29 条轨迹零 API 回放，**一次都没触发**。规则写的是想象的失败，不是记录里的失败。
+- **修**（`tools/helpers/host-gates.mjs`）：act 触发 = 0 次成功修改 + 读过源文件 + 最近两轮只读 + 其一：(i) 验证命令跑过后只看不改 ≥4 调用且第 ≥4 轮；(ii) 同一命令（去 `cd …&&` / 重定向后）≥2 次且第 ≥3 轮。回放：t8 raw/hand、t9 raw/policy、traj2 perf raw 第 4、6 轮触发；eacces / flaky 早改的 0 触发；traj2/traj3 三条「改了没验就宣称」被 verify 门禁拦下；代价 t6/t7（第 5 轮才改）第 4 轮多挨一次催。A36 加回放断言（用仓库内 transfer/traj2–3）。
+- **核验**：claimOf 英文扩展对 transfer / .cfb-offline 2915 个文本字段回放 0 变化；沙箱 PyPI / HF / GitHub 可达、无 docker、Python 3.13、1 GB 内存（swe-slice 可行性仍未验）。
+- **文档**：`transfer/SUMMARY-2026-10-02.md`（漏洞清单 / 站得住的结论 / 验证等级 / 冻结建议 / 最小路径）；`docs/design/BREAKTHROUGH-PLAN.md`（检索后的五层方案与 M0–M5）。
+- 自测：v4 95/95；closed-loop 37/37（A36 扩）。
+
 ## v14.13.0（2026-10-02，DSH 合并 ①：宿主层干预成为训练器的可控变量 —— 官方工具面 `--aci rl-native`、原生协议 `--tool-protocol native`、`gate` 臂（事件门禁，user 角色近场）、`drop` 对照臂（历史无思维链）、形态预检、transcript 记 finish；仍零花费）
 
 - **为什么**（`docs/design/DSH-MERGE.md`）：t6–t9 证明忠实的稿对 flash 在 ≤8 轮上的结局 ≈ 0 是构造上必然的（它只能保住已做出的决定，而模型不忘）；用户旧项目 DSH（`docs/reference/dsh/`，原样保存）的记录里真正有效应的是**宿主层**：工具面（25 工具 91 → bash+str_replace_editor 98/99）、事件门禁（dea48c68 GATE1×2 / GATE2×3 全触发全服从）、用户态指令 ≫ 注入引导；12 法则本身无对照（DESIGN-VS-IMPLEMENTED B1/A8/C1 自认）。两边合起来：**通道决定服从度** —— 同样的话放进助手态思维链槽位（稿）它不理，放进用户态近场（门禁）它照做。另核对本仓库轨迹器：中文系统提示明写「一次可以发多个独立调用」、自定义工具 schema、历史里工具调用压平成文本 —— 三者从未当过变量。

@@ -16,12 +16,14 @@ export const GATE_TEXTS = {
 export const GATE_KINDS = Object.keys(GATE_TEXTS)
 
 const normCmd = (s) => String(s || '').replace(/\s+/g, ' ').trim()
+// 命令同一性（比 traj-run 的 repeats 口径松一点）：去掉开头的 `cd … &&`、末尾的重定向，再比；t8/t9 里同一条 analyze-trace 被 `cd /tmp &&` 包了一层就不算重复了
+const cmdKey = (s) => normCmd(s).replace(/^(?:cd\s+\S+\s*(?:&&|;)\s*)+/, '').replace(/\s*(?:2>&1|2>\/dev\/null|>\/dev\/null|\|\s*head(?:\s+-n?\s*\d+)?|\|\s*tail(?:\s+-n?\s*\d+)?)\s*$/g, '').trim()
 const TRIVIAL_RE = /^(?:ls|pwd|cd|echo|true|tree|git status)\b/
 const SRC_READ_RE = /(?:^|[\s'"])(?:\.\/)?(?:src|lib)\/[\w./-]+/
 
 /** 从轨迹器的逐轮记录算门禁状态（零 API）：rows = [{ round, calls: [{ name, args(object) }] }]，edits = rec.edits，verifyRe = task.verifyRe。 */
 export function gateState(rows, { edits = [], verifyRe = null } = {}) {
-  const cmdCount = new Map(); let readSrc = false
+  const cmdCount = new Map(); let readSrc = false, verifySeenRound = null, inspectSinceVerify = 0
   const perRound = rows.map((t) => {
     let editCalls = 0, verifyCalls = 0, readCalls = 0
     for (const c of t.calls || []) {
@@ -30,17 +32,19 @@ export function gateState(rows, { edits = [], verifyRe = null } = {}) {
       else if (c.name === 'read_file' || (c.name === 'str_replace_editor' && a.command === 'view')) { readCalls++; if (SRC_READ_RE.test(String(a.path || ''))) readSrc = true }
       else if (c.name === 'bash') {
         const k = normCmd(a.command); readCalls++
-        if (!TRIVIAL_RE.test(k)) cmdCount.set(k, (cmdCount.get(k) || 0) + 1)
-        if (SRC_READ_RE.test(k) && /^(?:cat|sed -n|head|tail|grep|rg|nl|less|more)\b/.test(k)) readSrc = true
-        if (verifyRe && verifyRe.test(k)) verifyCalls++
+        if (!TRIVIAL_RE.test(k)) { const ck = cmdKey(k); cmdCount.set(ck, (cmdCount.get(ck) || 0) + 1) }
+        if (SRC_READ_RE.test(k) && /(?:^|[;&|]\s*)(?:cat|sed -n|head|tail|grep|rg|nl|less|more)\b/.test(k)) readSrc = true
+        if (verifyRe && verifyRe.test(k)) { verifyCalls++; if (verifySeenRound == null) verifySeenRound = t.round }
       }
     }
+    // 验证命令第一次跑过之后的「只看不改」调用数（t8：第 3 轮数据齐了，第 4–8 轮 17 个调用全在找源码）
+    if (verifySeenRound != null && t.round >= verifySeenRound) inspectSinceVerify += (t.calls || []).length - editCalls
     return { round: t.round, editCalls, verifyCalls, readCalls }
   })
   const okEdits = edits.filter((e) => e.ok)
   const lastOkEditRound = okEdits.length ? Math.max(...okEdits.map((e) => e.round)) : null
   const verifiedAfterLastEdit = lastOkEditRound != null && perRound.some((p) => p.round >= lastOkEditRound && p.verifyCalls > 0 && (p.round > lastOkEditRound || rowsVerifyAfterEdit(rows, lastOkEditRound, verifyRe)))
-  return { perRound, readSrc, repeatedCmd: Math.max(0, ...cmdCount.values()), okEdits: okEdits.length, lastOkEditRound, verifiedAfterLastEdit }
+  return { perRound, readSrc, repeatedCmd: Math.max(0, ...cmdCount.values()), verifySeenRound, inspectSinceVerify, okEdits: okEdits.length, lastOkEditRound, verifiedAfterLastEdit }
 }
 // 同一轮里「先 edit 后验证」也算验证过（与 traj-run 的 verifiedAfterFix 口径一致：按调用顺序）
 function rowsVerifyAfterEdit(rows, round, verifyRe) {
@@ -57,8 +61,13 @@ export function gateAfterTools(rows, { edits = [], verifyRe = null, gated = [], 
   const cur = st.perRound[st.perRound.length - 1], prev = st.perRound[st.perRound.length - 2]
   // batch：连续两轮各有修改、两轮里都没验证
   if (prev && cur.editCalls > 0 && prev.editCalls > 0 && cur.verifyCalls === 0 && prev.verifyCalls === 0 && !gated.some((g) => g.kind === 'batch' && g.round === round)) return 'batch'
-  // act：0 次成功修改 + 读过源文件 + 同一命令 ≥2 次 + 最近两轮都只读 + 两轮内没催过
-  if (st.okEdits === 0 && round >= 3 && st.readSrc && st.repeatedCmd >= 2 && cur.editCalls === 0 && prev && prev.editCalls === 0 && !gated.some((g) => g.kind === 'act' && round - g.round < 2)) return 'act'
+  // act：0 次成功修改 + 读过源文件 + 最近两轮都只读 + 两轮内没催过，且满足其一：
+  //   (i) 验证命令已跑过、之后又只看不改 ≥4 个调用、第 ≥4 轮（t8/t9 的真实签名：数据第 3 轮就齐了，后面全在找证明，一条命令都不重复）
+  //   (ii) 同一条命令（去 cd / 重定向后）≥2 次、第 ≥3 轮（原地打转）
+  //   v14.13.1：第一版只有 (ii)，对 t6–t9 与 traj1–3 全部 29 条轨迹零 API 回放一次都没触发 —— 规则写的是我想象的失败，不是记录里的失败。
+  const inspectHeavy = st.verifySeenRound != null && round >= 4 && st.inspectSinceVerify >= 4
+  const spinning = st.repeatedCmd >= 2 && round >= 3
+  if (st.okEdits === 0 && st.readSrc && (inspectHeavy || spinning) && cur.editCalls === 0 && prev && prev.editCalls === 0 && !gated.some((g) => g.kind === 'act' && round - g.round < 2)) return 'act'
   return null
 }
 /** 模型给出最终回复（无调用）时：宣称修好却没在最后一次修改后验证 ⇒ 'verify'，否则 null。整条轨迹只催一次。 */
