@@ -2,10 +2,18 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
+## −15. 当前状态（2026-10-02，归因：主因是理论 —— 「压缩」与「增补」是两个制度；制度键进正门；t9 预注册 / 实跑）
+
+- **先读 `CLOSED-LOOP-V4.md` §18**。一句话：仓库里唯一的结局证据（traj1–3）来自「每轮都写、允许增补、不看 token」的制度（55% 稿比原文长、只有 23% 原文过 3100）；生产地板 3100 是从只算 token 的成本模型反解的（稿对结局的作用记 0），它把出证据的制度关掉了 ⇒ 训练器三次实跑 87% 的轮压缩器根本不触发。`node tools/attrib-regime.mjs` 可复现（A35）。
+- **怎么改**：制度键 `birthMinChars` / `birthMinSavedChars` / `birthTokenGate`（+ `continuationPath:'none'`）现在是策略 `config` 白名单里的 `regime` 键 —— **只能作预注册候选、由结局判**，缺省生产制度一字没动；traj-run 压缩臂地板按臂算；plan-traj 对制度臂按「第 1 轮就压、每轮都压」计费。候选 `p-29d7400346`（提议 `docs/proposals/p-regime-augment.json`，预测 / 作废条件在里面）。F6 候选 id 变为 `p-67620ded4d`（policyId 现在算 config）。
+- **t9 跑完（$0.148）**：regime 臂 ✗（26 调用 / 0 edit）vs raw ✗，压稿 6/8 过闸 ⇒ 预注册条件 (a) 命中，**H_aug 对 flash × perf 作废**（`p-29d7400346` 已标 falsified）。增补把主模型思考吹大 5–40×（completion ×4.8）。三份独立的稿都没让 flash 落 edit ⇒ **瓶颈是主模型不落子，不是稿的形态**；在用户拍板宿主策略层回合规则之前，不要再为稿的形态花钱；perf-regression 剔出下一家族（三臂全 ✗ = 无信息量的题）。细节 §18.6。
+- **坑**：`--preflight-only` 以前会把复用的 raw 行先落盘、正式跑就丢 leader（已修）；a6api 今天预检一次 145–254 s，整条轨迹要几十分钟，用后台进程跑。
+- 闸：v4 95/95、closed-loop 36/36。
+
 ## −14. 当前状态（2026-10-02，t8 跑完：perf-regression 两臂都没修好；F6 落成杠杆；F7 假沙箱泄漏已堵）
 
 - **t8 读数**：raw ✗（第 3 轮拿齐数据，4–8 轮找源码），hand ✗（第 6 轮分歧、两份稿过闸、模型无视稿里的排除；第 8 轮被 F7 污染）⇒ tie e=1，`ceiling-3.json`。三张回执：t6/t7/t8 名义 $0.075/0.1/0.125；校准 divergeRound≈5–6、floorShare≈0.13–0.2（常数仍未动）。**perf 家族瓶颈在主模型不在稿**；别再在 sse-truncated / perf 上用 hand 臂烧钱找「稿的上界」，除非换更强的主模型或换家族（eacces[h] / flaky 的 raw 都能修好，也没有对比空间）。
-- **F6 结论**：程序部件（延续段）占原文 49–61% tokens，让标准长度的稿过不了 `no-token-gain`；`continuationPath: 'bounded'` 已是配置键 + 策略 `p-a0d288ba81`（config-only，proposed）。**转正要模式 3 证据**：`plan-traj --arms raw,policy:base,policy:p-a0d288ba81 --scenarios perf-regression --max-rounds 8` 是三臂（≈$0.27，需明确批准）；两臂版 `raw,policy:p-a0d288ba81` 可用 `--reuse-raw .cfb-runtime/traj/t8/results.jsonl`。预测与作废条件在提议文件里。
+- **F6 结论**：程序部件（延续段）占原文 49–61% tokens，让标准长度的稿过不了 `no-token-gain`；`continuationPath: 'bounded'` 已是配置键 + 策略 `p-67620ded4d`（config-only，proposed）。**转正要模式 3 证据**：`plan-traj --arms raw,policy:base,policy:p-67620ded4d --scenarios perf-regression --max-rounds 8` 是三臂（≈$0.27，需明确批准）；两臂版 `raw,policy:p-67620ded4d` 可用 `--reuse-raw .cfb-runtime/traj/t8/results.jsonl`。预测与作废条件在提议文件里。
 - **F7**：假沙箱之前会真跑 `ls -la ~` / `ls -la /` / `find / …`，已堵（A34）。t8 之前所有轨迹里的 `ls -la /`、`find /` 结果都是宿主真实输出 —— 不影响结局（都没修好 / 修好的与它无关），但以后看旧轨迹要知道。
 - **手写稿预算**：写之前先算 `estimateTokens(稿) ≤ estimateTokens(原文) − programTok − 30`（pending 里没有现成的数，用 `programPartsText(ctx + turnCallsBlock(calls))` 算）；英文原文 ≈0.3 tok/字、中文稿 ≈0.6 tok/字 ⇒ 英文原文 3800 字只给中文稿 ≈1000 字的空间。
 - 闸：v4 95/95、closed-loop 35/35；verify / manifest / 审计数字见 CHANGELOG v14.12.3。

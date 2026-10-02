@@ -1274,7 +1274,16 @@ try {
     assert.equal(I.normalizeConfig({ compressPolicy: { id: 'p', patches: [], config: {} } }).compressPolicy, null, '空补丁 + 空配置 = 无策略')
     const bad = I.normalizeConfig({ continuationPath: 'tight', compressPolicy: { id: 'p', patches: [], config: { continuationPath: 'nope' } } })
     assert.equal(bad.continuationPath, 'full'); assert.ok(bad.configAdjusted.continuationPath && bad.configAdjusted.compressPolicy, '坏值回 full、坏策略回 null，都留痕：' + JSON.stringify(bad.configAdjusted))
-    assert.throws(() => I.validatePolicyConfig({ birthMinChars: 100 }), /policy:config-key/, '白名单之外的键不许进策略（不能借策略改被测对象）')
+    assert.throws(() => I.validatePolicyConfig({ birthIdentifierGate: false }), /policy:config-key/, '白名单之外的键不许进策略（不能借策略改被测对象）')
+    // v14.12.4 制度键（地板 / 保本线 / token 闸）：可当预注册候选，有范围，normalizeConfig 落到顶层并标 regime；缺省制度一字不变
+    assert.throws(() => I.validatePolicyConfig({ birthMinChars: 0 }), /policy:config-value/); assert.throws(() => I.validatePolicyConfig({ birthMinSavedChars: -9999 }), /policy:config-value/); assert.throws(() => I.validatePolicyConfig({ birthTokenGate: 'no' }), /policy:config-value/)
+    const regime = I.normalizeConfig({ compressPolicy: { id: 'p-r', patches: [], config: { birthMinChars: 1, birthMinSavedChars: -1800, birthTokenGate: false, continuationPath: 'none' } } })
+    assert.equal(regime.birthMinChars, 1); assert.equal(regime.birthMinSavedChars, -1800); assert.equal(regime.birthTokenGate, false); assert.equal(I.effectiveContinuationPath(regime), 'none')
+    assert.deepEqual(regime.policyConfigApplied, { policy: 'p-r', keys: ['birthMinChars', 'birthMinSavedChars', 'birthTokenGate', 'continuationPath'], regime: ['birthMinChars', 'birthMinSavedChars', 'birthTokenGate'] })
+    assert.deepEqual(regime.compressPolicy.regime, ['birthMinChars', 'birthMinSavedChars', 'birthTokenGate'])
+    const dflt = I.normalizeConfig({}); assert.equal(dflt.birthMinChars, 3100); assert.equal(dflt.birthMinSavedChars, 50); assert.equal(dflt.birthTokenGate, true); assert.equal(dflt.policyConfigApplied, undefined)
+    assert.equal(I.continuationBlock([{ role: 'user', content: 'u' }, { role: 'assistant', content: 'a', tool_calls: [{ function: { name: 'bash', arguments: '{"command":"ls"}' } }] }], { path: 'none' }), '', "continuationPath 'none' 不写延续段")
+    assert.ok(I.continuationBlock([{ role: 'user', content: 'u' }, { role: 'assistant', content: 'a', tool_calls: [{ function: { name: 'bash', arguments: '{"command":"ls"}' } }] }], { path: 'full' }).length > 0)
   })
 } finally {
   if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome

@@ -415,9 +415,67 @@ A24（hand 臂暂停 / G2 拒 / 生产闸链通过 / 续跑到底 / 仓库重放
 
 - 「已走过的路」每条历史调用连参数带结果首行全列，随调用数无界增长；每压一轮都原样进稿，也进压缩器 ctx（台账 + 延续段各一份：t8 r6 的 ctx 3534 字里 2×1073 字是它）。它要防的「重复命令」在 transfer/traj1–3 + t6–t8 的 29+ 条轨迹里 **raw / auto / ledger / hand 全是 0**。
 - **F6c（副作用）**：`buildLedger` 收「仍在依赖的事实」时扫整段上一轮稿，程序写的路段里的反引号命令参数被当成事实行再写回下一轮延续段（t8 r7 的延续段里出现「仍在依赖的事实：`which analyze-trace; …`、`find / -name …`」）——自我放大。已修：路段内与像 shell 命令的片段不收（`5u5`）。
-- **落地（被测对象不变）**：`continuationText(messages, {path})` 新增 `bounded`（最近两轮原样、更早按工具+命令头归并计数、≤600 字；同题 r6：2475→931 字、807→333 tokens）；配置键 `continuationPath`（缺省 `full`）；**策略可带 `config`**（白名单 `POLICY_CONFIG_KEYS`，不能借策略改地板等被测对象）；提议 `docs/proposals/p-f6-bounded-path.json` → 策略 `p-a0d288ba81`（status proposed）。预注册预测：p-f6 臂第 ≥5 轮压稿闸拒降为 0、重复命令仍 0、solved 不劣于 base；作废条件写在提议里。traj-run 每轮压缩记 `compile.budget{rawTok, programTok, programShare, draftTok, outTok}`，报告尾加「压稿预算（F6）」行。
+- **落地（被测对象不变）**：`continuationText(messages, {path})` 新增 `bounded`（最近两轮原样、更早按工具+命令头归并计数、≤600 字；同题 r6：2475→931 字、807→333 tokens）；配置键 `continuationPath`（缺省 `full`）；**策略可带 `config`**（白名单 `POLICY_CONFIG_KEYS`，不能借策略改地板等被测对象）；提议 `docs/proposals/p-f6-bounded-path.json` → 策略 `p-67620ded4d`（status proposed）。预注册预测：p-f6 臂第 ≥5 轮压稿闸拒降为 0、重复命令仍 0、solved 不劣于 base；作废条件写在提议里。traj-run 每轮压缩记 `compile.budget{rawTok, programTok, programShare, draftTok, outTok}`，报告尾加「压稿预算（F6）」行。
 - **不做**：不把 `bounded` 设为缺省（没有模式 3 证据）；不改地板；不把稿压短（红线）。
 
 **F7（假沙箱泄漏，t8 第 7–8 轮实测）**：`ESCAPES_REPO` 只拦 `~/` 不拦裸 `~`，也不拦裸 `/`；`ls -la ~` 真跑后把宿主 $HOME 的目录名（含 `cfb-keys.env`）列给了主模型，它下一轮就 `cat ~/cfb-keys.env`（被 `~/` 规则挡住，没泄内容）；`ls -la /`、`find / …`、`grep -r … /` 之前都会真跑在宿主根目录上。已修：`~` 任何写法、裸 `/`、`..`、`$HOME` 一律「不存在」；真跑的白名单命令改 `bash -c`（不读宿主 profile）、`HOME` 指到假仓库、环境只给 PATH/LANG（`A34`）。
 
 **其它**：`plan-traj` 的 plan.md 多一行「按回执校准」（历史回执的 divergeRound 中位 / floorShare 均值）；traj-run 记 `rejectedInfo`（被拒主回复的 finish / usage / 正文头，≤5 条）。
+
+## 18. v4.7.4（v14.12.4）：归因 —— 三次实跑近乎白跑，是理论问题还是实现问题？
+
+### 18.1 症状（t6 / t7 / t8 加起来 ≈ $0.31）
+
+- 压缩器在 flash 上几乎不触发：原文过 3100 地板的轮 t6 1/5、t7 1/8、t8 2/8（≈13%）。两对平手、一对两臂都 ✗。v4d9 对自己的**结局**数据 = 0。
+- 这不是 bug 级的「跑错了」：每一步都按计划、按闸、按回执。所以问题要往上找。
+
+### 18.2 归因方法（零 API，`node tools/attrib-regime.mjs`，自测 A35 钉住数字）
+
+回到仓库里**唯一**的「压稿 vs raw」结局证据：`transfer/traj1–3`（2026-09-29，同一个 flash，v4d7 时代、**无地板、每轮都压**）。
+
+| 臂 | n | 修好率 | 平均轮 |
+|---|---|---|---|
+| raw | 9 | 0.78 | 5.67 |
+| auto | 8 | 0.88 | 5.00 |
+| ledger | 6 | 0.83 | 5.33 |
+
+- 非 raw 臂 72 轮里压缩了 31 轮；**其中 17 轮（55%）稿比原文长**（典型：41 字「先看看」→ 1446 字结构化分析）；**原文 ≥ 3100 的只有 7 轮（23%）** —— 换成现行生产地板，证据里 77% 的压缩轮根本不会发生。
+- auto 臂自己的思考在第 2–4 轮比 raw 长 1.3–1.6×（1163 / 4001 / 4486 vs 908 / 2509 / 3219 字）：稿在**启动**下一轮的思考，不是在省 token。
+- 配对（同目录 / 题 / 样本）raw vs auto：auto 更好 3、raw 更好 1、平 3。
+- 重复命令 29+ 条轨迹全 0 ⇒ 「记忆 / 防重复」这条机制没有可观测收益。
+
+### 18.3 结论：主因是理论（目标函数错位），次因是实现
+
+**理论（主因）**：`birthMinChars: 3100` 是 v11.6 从 token 成本模型反解出来的 —— `净收益 = (R−1)·d·(B−B′) − T − 5·B′`。这个式子把「稿对结局的作用」记为 **0**，只算缓存价差。它导出的制度是「原文够长才压、稿必须更短、token 不省就不换」。而 v4d7 的证据来自另一套制度：**每轮都写、允许增补、不看 token**。两套制度被同一个词「压缩」盖住了，v13–v14 的训练器（尺子、三模式、影子分叉、预算行）全都在为前一套制度优化，却在拿后一套制度的证据当动机。CHANGELOG v12.8.10 的「未解」里其实写过：「生产门槛 3100 让循环里几乎不压 ⇒ 产品形态要决定」—— 之后十几版没有决定，而是绕过去了。
+
+**实现（次因）**：(1) 策略正门只开给提示词补丁和 `continuationPath`，制度键（地板 / 保本线 / token 闸）不许进候选 ⇒ 想检验另一套制度只能改被测对象（禁止）或手改配置（不可预注册）。(2) `plan-traj` 的成本模型默认影子分叉 + 地板占比 0.4，对「第 1 轮就压」的臂会低估一半。(3) `policyId` 只哈希 patches ⇒ 两个只带不同 config 的候选撞同一个 id，第二个落不了盘。(4) `--fork-from` 续跑（含 `--preflight-only` 之后）丢 leader ⇒ 跟随臂多付第 1 轮、shadow 语义丢失。(5) F6：程序部件占原文 49–61%，让标准长度的稿过不了 `no-token-gain`（§17.7）。
+
+### 18.4 落地（仍零花费，直到 t9）
+
+- **制度键进正门**：`POLICY_CONFIG_KEYS` 变成带类型 / 范围的规格；`birthMinChars`（1–20000）、`birthMinSavedChars`（−4000–4000）、`birthTokenGate`（bool）标 `regime`，`continuationPath` 多一档 `'none'`（不写延续段）。`normalizeConfig` 把策略 config 落到顶层、记 `policyConfigApplied {policy, keys, regime}`；缺省制度一字不变（3100 / 50 / true / full）。**换制度只能走预注册候选，由结局判，不许静默采纳。**
+- **traj-run**：压缩臂地板按臂算（策略带 `birthMinChars` 时用它，否则 `--min-chars` = 生产 3100）；行上记 `floor` / `regime`；`--fork-from` 续跑从文件重取 leader，`--preflight-only` 不落结果行。
+- **plan-traj**：`armRegime` 认出制度臂 → 第 1 轮就压、第 2 轮起分歧、每轮都压计费（不享受影子省钱）；plan.md 写「换制度不是调稿」。`policyId` 把 config 算进 id（只有补丁的 id 不变；F6 候选因此从 `p-a0d288ba81` 变为 `p-67620ded4d`）。
+- **候选**：`docs/proposals/p-regime-augment.json` → `p-29d7400346`（config `{birthMinChars:1, birthMinSavedChars:-1800, birthTokenGate:false, continuationPath:'bounded'}`，带预测与作废条件；bounded 是混杂变量，已在提议里声明）。
+- **t9 预注册**：`raw(复用 t8) vs policy:p-29d7400346 × perf-regression × ≤8`，期望 7 主 + 8 压 ≈ $0.148、上界 $0.336。预测与作废条件见提议文件：过闸 ≥5/8 仍 ✗ ⇒ H_aug 对此模型作废（杠杆在主模型）；过闸 <4/8 ⇒ 不下结论，先看 `why`。
+- `tools/attrib-regime.mjs`：归因可复现（A35）。
+
+### 18.5 不做
+
+- 不改生产缺省地板（没有模式 3 证据）；hand 臂仍按生产制度跑；不按分搜索；一对不下采纳结论（≥4 对、≥2 家族）。
+- 不把 v4d7 的 3:1:3 当「已证明」—— n=7、同一天、三个假仓库；它只够决定「值得花 $0.15 再看一次」。
+
+### 18.6 t9 实跑读数（2026-10-02，7 主 + 8 压，名义 $0.148 = 计划值；prompt 63k / completion 24k tokens）
+
+| | raw（t8 复用） | policy:p-29d7400346（每轮增补） |
+|---|---|---|
+| 结局 | ✗ 8 轮、20 调用、0 edit | ✗ 8 轮、**26 调用**、0 edit |
+| 压稿 | — | **6/8 过闸**（r6 / r8 副模型 90 s 超时回退原文） |
+| 稿 / 原文（字） | — | r1 41→318、r2 36→992、r3 901→1698、r4 567→2093、r5 16570→2481、r7 8769→3725 |
+| 主模型自己的思考（字）r5–r8 | 342 / 3781 / 4688 / 838 | **16570 / 7516 / 8769 / 37247** |
+| completion tokens | 4171 | **20085（×4.8）** |
+| 上下文里的思考字数 | 12237 | 56070 |
+
+- **按预注册条件 (a) 判：过闸 ≥5/8 仍 ✗ ⇒ H_aug 对 flash × perf-regression 作废。** 稿本身质量不低（r4 的稿把 CHANGELOG 里 `maxOutputTokens 850→4096` / `compressTargetMax 450→1800` 两处候选、promptVersion 没变、「下一步 cat src/config.js，若同一行见 4096 就 edit_file」都写清了），主模型 r4 也确实 `read_file src/config.js` 读到了 —— 然后 r5 想了 16570 字，去 `find / -type f`、`git log`、再跑 analyze-trace；r8 想了 37247 字还在 grep。**三份独立的稿（t8 两份手写、t9 六份增补）都没能让 flash 落 edit**：瓶颈是主模型的「探索而不落子」，稿换成什么形态都不改这件事。
+- **新发现（反向）**：增补把主模型自己的思考吹大 5–40×（v4d7 里是 1.3–1.6×），completion tokens ×4.8、调用 +30% —— 在 flash 上「每轮增补」不只没救结局，还更贵、更慢；长思考又让副模型超时（7.5k / 37k 字两次 90 s 超时），回退的原文整段进上下文。
+- **不下的结论**：n=1、一个家族、非同期 raw；不能说增补在别的家族也无效（v4d7 的 eacces 2/3 更好仍是未复核的线索）。但它已经够回答本节的问题：**训练器三次近乎白跑的主因是目标函数错位（理论），而把制度切回「增补」在 flash 上也不是出路** —— 稿的两种制度都撞在同一堵墙：主模型不落子。
+- **下一步只剩两条，都不是副模型的事**：(1) 宿主策略层 —— 「拿到落点的那一轮必须 edit 或写明为什么不 edit」这类回合规则（v12.8.10 已提出「宿主策略层强制验收」，一直没做；这是产品决定，要用户拍板）；(2) 换主模型的实验被用户规则禁止。在这两条之一发生之前，**不要再为稿的形态花钱**：perf-regression 三臂全 ✗（raw / hand / regime）已是「永远过不了的题」，按信息量规则从下一个家族名单里剔除。

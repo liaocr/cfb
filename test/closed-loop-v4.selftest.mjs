@@ -112,7 +112,13 @@ try {
     const o = { maxRounds: 4, minChars: 10, model: 'm', maxTokens: 1000, maxProbes: 1, textTools: false, requireFp: false, policyDir: tmp, _compile, noGate: true }   // 假稿比假原文长 ⇒ 关 birthAccept（真闸在 A22 用本地 HTTP 假服务测）
     const a = await runOne({ o, task, variant: 'policy:p-test', sample: 0, chat, I, cred: null }); assert.equal(a.error, undefined, a.error); assert.equal(a.policy, 'p-test'); assert.equal(a.compile.filter((c) => c.ok).length, 3); assert.ok(sawPatch)
     assert.deepEqual(a.proxySteps.map((s) => s.score), [2, 2, 0]); assert.equal(a.proxyScore, 1.333); assert.equal(a.proxyRound2, 2); assert.equal(a.claim, 'fixed'); assert.equal(a.fixed, false); assert.ok(a.firstMessage)
-    const b = await runOne({ o, task, variant: 'policy:base', sample: 0, chat, I, cred: null, forkMessage: a.firstMessage }); assert.equal(b.forked, true); assert.equal(b.transcript[0].calls[0].name, 'read_file'); assert.equal(mains, 5, '2 臂 × 3 轮 − 1 次分叉复用'); assert.equal(compresses, 6); assert.ok(a.compile.every((c) => c.path === 'birth-offline' && c.promptVersion === 'compress-v4d9:ctx+p-test' || c.promptVersion === 'compress-v4d9:mr+p-test'), JSON.stringify(a.compile[0])); assert.ok(b.compile.every((c) => c.policy === 'base' && !/\+/.test(c.promptVersion)))
+    // v14.12.4 制度臂：策略 config 里的地板盖过 --min-chars（生产地板 3100 时 base 臂 3 轮全 below-floor、制度臂 3 轮全压）；行里记 floor / regime
+    fs.writeFileSync(path.join(tmp, 'p-reg.json'), JSON.stringify({ schema: 'cfb.policy/1', id: 'p-reg', parent: 'base', patches: [], config: { birthMinChars: 1, birthMinSavedChars: -1800, birthTokenGate: false, continuationPath: 'bounded' } }))
+    let regCompresses = 0; const oR = { ...o, minChars: 3100, _compile: async (raw, cfg) => { regCompresses++; assert.equal(cfg.birthMinChars, 1); assert.equal(cfg.birthTokenGate, false); return { ok: true, text: '稿'.repeat(60), ms: 1 } } }
+    const r1 = await runOne({ o: oR, task, variant: 'policy:p-reg', sample: 0, chat, I, cred: null }); assert.equal(r1.error, undefined, r1.error); assert.equal(r1.compile.filter((c) => c.ok).length, 3); assert.equal(regCompresses, 3)
+    assert.equal(r1.compile[0].floor, 1); assert.deepEqual(r1.compile[0].regime, ['birthMinChars', 'birthMinSavedChars', 'birthTokenGate']); assert.equal(r1.compile[0].continuationPath, 'bounded')
+    const r0 = await runOne({ o: oR, task, variant: 'policy:base', sample: 0, chat, I, cred: null }); assert.equal(r0.compile.filter((c) => c.belowFloor).length, 3); assert.equal(r0.compile[0].floor, 3100); assert.equal(regCompresses, 3, 'base 臂一次都没压')
+    const b = await runOne({ o, task, variant: 'policy:base', sample: 0, chat, I, cred: null, forkMessage: a.firstMessage }); assert.equal(b.forked, true); assert.equal(b.transcript[0].calls[0].name, 'read_file'); assert.equal(mains, 5 + 6, '2 臂 × 3 轮 − 1 次分叉复用'); assert.equal(compresses, 6); assert.ok(a.compile.every((c) => c.path === 'birth-offline' && c.promptVersion === 'compress-v4d9:ctx+p-test' || c.promptVersion === 'compress-v4d9:mr+p-test'), JSON.stringify(a.compile[0])); assert.ok(b.compile.every((c) => c.policy === 'base' && !/\+/.test(c.promptVersion)))
     fs.rmSync(tmp, { recursive: true, force: true })
   })
   await test('A9 L1 值不值得存在（v4.2）：transfer/mr 162 样本天花板率 0.83、raw vs 压缩稿平局率 0.6；尺子未验 ⇒ role=diagnostic；valid 且更便宜 ⇒ prescreen；不更便宜 ⇒ redundant', () => {
@@ -159,6 +165,11 @@ try {
       const c2 = cli('confirm', '--parity', '--results', path.join(tmp, 'par.json')); assert.equal(c2.status, 0, c2.stdout + c2.stderr); assert.ok(/路径等价校准（ok）/.test(c2.stdout), c2.stdout)
       const c3 = cli('confirm', '--results', path.join(tmp, 'l2.json'), '--map', 'champion=policy:p-abc,previous=policy:base'); assert.ok(/（confirmed）/.test(c3.stdout), c3.stdout)
       assert.equal(JSON.parse(fs.readFileSync(path.join(tmp, 'offline/champion.json'), 'utf8')).adoption, 'confirmed')
+      // v14.12.4：confirm --plan N 把计划标成 confirmed（之前只有 ceiling 改状态 ⇒ status 一直说「已有未执行计划」）；效度账本先备份再还原，不动后面 ruler 的 n=24
+      fs.copyFileSync(path.join(tmp, 'l2.json'), path.join(tmp, 'runtime/t1/results.jsonl')); const vLedger = fs.readFileSync(path.join(tmp, 'offline/ruler/validity.jsonl'), 'utf8')
+      const c4 = cli('confirm', '--plan', '1', '--map', 'champion=policy:p-abc,previous=policy:base'); assert.equal(c4.status, 0, c4.stdout + c4.stderr)
+      const tp1 = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/history.json'), 'utf8')).trajPlans.find((t) => t.n === 1); assert.equal(tp1.status, 'confirmed'); assert.equal(tp1.confirm.pairs, 6); assert.match(tp1.confirm.file, /confirm-\d+\.json/)
+      assert.ok(!/已有未执行计划 t1/.test(cli('status').stdout)); fs.writeFileSync(path.join(tmp, 'offline/ruler/validity.jsonl'), vLedger)
       // 飞轮样例槽：无飞轮 ⇒ 退出码 2；有一条通用赢稿 ⇒ 落策略（op exemplar）
       assert.equal(cli('policy-from-flywheel').status, 2)
       fs.mkdirSync(path.join(tmp, 'offline/train'), { recursive: true })
@@ -727,8 +738,24 @@ try {
     const prop = G.parseProposal(raw)
     assert.deepEqual(prop.patches, []); assert.deepEqual(prop.config, { continuationPath: 'bounded' }); assert.match(prop.prediction, /作废/)
     assert.throws(() => G.parseProposal(JSON.stringify({ patches: [], config: {} })), /policy-patches-count/, '空补丁 + 空配置不是候选')
-    assert.throws(() => G.parseProposal(JSON.stringify({ patches: [], config: { birthMinChars: 100 } })), /policy:config-key/, '不能借策略改被测对象（地板等不在白名单）')
-    assert.throws(() => G.parseProposal(JSON.stringify({ patches: [], config: { continuationPath: 'none' } })), /policy:config-value/)
+    assert.throws(() => G.parseProposal(JSON.stringify({ patches: [], config: { birthIdentifierGate: false } })), /policy:config-key/, '白名单之外的键（发明闸、模型、提示词版本…）不许借策略改')
+    assert.throws(() => G.parseProposal(JSON.stringify({ patches: [], config: { birthMinChars: 0 } })), /policy:config-value/, '制度键有范围')
+    // v14.12.4 制度键：地板 / 保本线 / token 闸可以当候选，但要标 regime，normalizeConfig 把它们落到顶层
+    const reg = G.parseProposal(fs.readFileSync(path.join(ROOT, 'docs/proposals/p-regime-augment.json'), 'utf8'))
+    assert.deepEqual(reg.config, { birthMinChars: 1, birthMinSavedChars: -1800, birthTokenGate: false, continuationPath: 'bounded' })
+    const polR = G.makePolicy({ parent: { id: 'base' }, patches: [], config: reg.config, rationale: reg.rationale, prediction: reg.prediction, origin: { by: 'assistant' } })
+    assert.notEqual(polR.id, G.makePolicy({ parent: { id: 'base' }, patches: [], config: prop.config, rationale: '', prediction: '', origin: {} }).id, '不同 config ⇒ 不同 id（之前只看 patches 会撞）')
+    assert.equal(G.makePolicy({ parent: { id: 'base' }, patches: [{ op: 'append', section: 'tail', text: 'x' }], rationale: '', prediction: '', origin: {} }).id, G.makePolicy({ parent: { id: 'base' }, patches: [{ op: 'append', section: 'tail', text: 'x' }], config: {}, rationale: '', prediction: '', origin: {} }).id, '只有补丁的策略 id 不变')
+    const cfgR = I.offlineBirthConfig({ model: 'm', baseUrl: 'http://127.0.0.1:1', credentialsPath: '/dev/null', policy: polR, normalizeConfig: I.normalizeConfig })
+    assert.equal(cfgR.birthMinChars, 1); assert.equal(cfgR.birthMinSavedChars, -1800); assert.equal(cfgR.birthTokenGate, false); assert.equal(I.effectiveContinuationPath(cfgR), 'bounded')
+    assert.deepEqual(cfgR.policyConfigApplied.regime, ['birthMinChars', 'birthMinSavedChars', 'birthTokenGate']); assert.deepEqual(I.policyRegimeKeys(polR), ['birthMinChars', 'birthMinSavedChars', 'birthTokenGate'])
+    assert.ok(I.birthAccept('x'.repeat(40), 'y'.repeat(1500), { ...cfgR, compressCtx: '' }).ok, '制度臂允许增补（稿比原文长 1460 字 ≤ 1800）')
+    assert.equal(I.birthAccept('x'.repeat(40), 'y'.repeat(1900), { ...cfgR, compressCtx: '' }).why, 'no-gain', '超过保本线仍拒')
+    assert.equal(I.birthAccept('x'.repeat(40), 'y'.repeat(1500), { ...I.offlineBirthConfig({ model: 'm', baseUrl: 'http://127.0.0.1:1', credentialsPath: '/dev/null', policy: { id: 'base', patches: [] }, normalizeConfig: I.normalizeConfig }), compressCtx: '' }).why, 'no-gain', 'base 臂 = 生产：增补被拒')
+    assert.deepEqual(cyc.armRegime('policy:' + fs.readdirSync(path.join(ROOT, '.cfb-offline/policies')).map((f) => f.replace(/\.json$/, '')).find((id) => JSON.parse(fs.readFileSync(path.join(ROOT, '.cfb-offline/policies', id + '.json'), 'utf8')).config?.birthMinChars === 1)), ['birthMinChars', 'birthMinSavedChars', 'birthTokenGate'], '计划能认出制度臂')
+    assert.deepEqual(cyc.armRegime('policy:base'), []); assert.deepEqual(cyc.armRegime('policy:p-67620ded4d'), [], 'F6 候选只改程序部件，不是制度')
+    assert.throws(() => G.parseProposal(JSON.stringify({ patches: [], config: { continuationPath: 'nope' } })), /policy:config-value/)
+    assert.equal(G.parseProposal(JSON.stringify({ patches: [], config: { continuationPath: 'none' } })).config.continuationPath, 'none', "v14.12.4：'none' 是合法档位（不写延续段）")
     const pol = G.makePolicy({ parent: { id: 'base' }, patches: prop.patches, config: prop.config, rationale: prop.rationale, prediction: prop.prediction, origin: { by: 'assistant' } })
     assert.ok(/^p-[0-9a-f]{10}$/.test(pol.id) && pol.config.continuationPath === 'bounded')
     const cfgP = I.offlineBirthConfig({ model: 'm', baseUrl: 'http://127.0.0.1:1', credentialsPath: '/dev/null', policy: pol, normalizeConfig: I.normalizeConfig })
@@ -737,7 +764,7 @@ try {
     assert.equal(cfgB.compressPolicy, null); assert.equal(I.effectiveContinuationPath(cfgB), 'full', 'base 臂 = 生产缺省 = 被测对象不变')
     assert.equal(I.compressPromptVersion(cfgP), I.compressPromptVersion({ ...cfgB, compressPolicy: { id: pol.id, patches: [] } }), '只有 config 的策略：提示词逐字节同 base，promptVersion 仍带 +id 以便追溯')
     // 已落盘的策略能被 traj-run 的 policy:<id> 臂读到（与 docs/proposals 的提议同 config）
-    const onDisk = TR.loadPolicyFor('policy:p-a0d288ba81'); assert.deepEqual(onDisk.config, { continuationPath: 'bounded' }); assert.deepEqual(onDisk.patches, [])
+    const onDisk = TR.loadPolicyFor('policy:p-67620ded4d'); assert.deepEqual(onDisk.config, { continuationPath: 'bounded' }); assert.deepEqual(onDisk.patches, [])
     // 压稿预算行
     const rows = [
       { variant: 'hand', compile: [{ ok: false, path: 'hand', why: 'no-token-gain', budget: { programShare: 0.61 } }, { ok: true, path: 'hand', budget: { programShare: 0.61 } }, { ok: true, path: 'hand', budget: { programShare: 0.54 } }, { ok: false, belowFloor: true }] },
@@ -766,6 +793,23 @@ try {
       assert.match(TR.runBash(task, repo, 'grep -n max src/config.js'), /maxOutputTokens/)
       assert.match(TR.runBash(task, repo, 'cd ~ && ls'), /CHANGELOG\.md/, 'cd ~ 是空操作、随后的 ls 仍在假仓库')
     } finally { fs.rmSync(repo, { recursive: true, force: true }) }
+  })
+  await test('A35 v14.12.4 归因可复现（零 API）：transfer/traj1–3 的压缩轮 31/72、增补 55%、过 3100 地板 23%、配对 auto 3 / raw 1 / 平 3；buildTrajPlan 把制度臂按「第 1 轮就压、每轮都压」计费；plan.md 标「换制度不是调稿」', async () => {
+    const AR = await import('../tools/attrib-regime.mjs')
+    const A = AR.attribRegime(AR.loadRows(['transfer/traj1', 'transfer/traj2', 'transfer/traj3']))
+    assert.deepEqual(A.compressedRounds, { rounds: 72, compressed: 31, expansion: 17, expansionShare: 0.55, aboveFloor: 7, aboveFloorShare: 0.23 })
+    assert.deepEqual(A.pairSummary, { auto: 3, raw: 1, tie: 3 }); assert.equal(A.outcomes.raw.n, 9); assert.equal(A.outcomes.auto.n, 8)
+    assert.ok(A.perRound.find((p) => p.round === 3).auto > A.perRound.find((p) => p.round === 3).raw, '第 3 轮 auto 臂自己的思考更长（启动效应）')
+    assert.match(AR.renderAttrib(A), /增补）17 = 55%/)
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-reg-'))
+    fs.writeFileSync(path.join(tmp, 'p-reg.json'), JSON.stringify({ schema: 'cfb.policy/1', id: 'p-reg', parent: 'base', patches: [], config: { birthMinChars: 1, birthMinSavedChars: -1800, birthTokenGate: false, continuationPath: 'bounded' } }))
+    fs.writeFileSync(path.join(tmp, 'p-f6.json'), JSON.stringify({ schema: 'cfb.policy/1', id: 'p-f6', parent: 'base', patches: [], config: { continuationPath: 'bounded' } }))
+    assert.deepEqual(cyc.armRegime('policy:p-reg', tmp), ['birthMinChars', 'birthMinSavedChars', 'birthTokenGate']); assert.deepEqual(cyc.armRegime('policy:p-f6', tmp), []); assert.deepEqual(cyc.armRegime('raw', tmp), [])
+    const reg = cyc.buildTrajPlan({ n: 1, arms: ['raw', 'policy:p-reg'], scenarios: ['perf-regression'], samples: 1, maxRounds: 8, policyDir: tmp })
+    assert.equal(reg.cost.expectedMains, 8 + 7, '制度臂第 2 轮起分歧 ⇒ 付 R−1 次主调用，不享受影子'); assert.equal(reg.cost.expectedCompresses, 8, '每轮都压'); assert.deepEqual(reg.regimeArms, { 'policy:p-reg': ['birthMinChars', 'birthMinSavedChars', 'birthTokenGate'] })
+    const f6 = cyc.buildTrajPlan({ n: 1, arms: ['raw', 'policy:p-f6'], scenarios: ['perf-regression'], samples: 1, maxRounds: 8, policyDir: tmp })
+    assert.ok(f6.cost.expectedMains < reg.cost.expectedMains && f6.cost.expectedCompresses < reg.cost.expectedCompresses, 'F6 候选仍按影子 + 地板占比计费'); assert.equal(f6.regimeArms, undefined)
+    fs.rmSync(tmp, { recursive: true, force: true })
   })
 } finally {
   console.log(`\n=== closed-loop-v4 selftest: ${pass} pass / ${fail} fail ===`)

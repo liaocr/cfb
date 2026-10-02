@@ -15,7 +15,7 @@ export { name, inject, apply, DEP_ID, compressCtxFor } from './src/plugin.js'
 
 // ── 配置 ─────────────────────────────────────────────────────────────────────
 export { DEFAULTS, normalizeConfig, dshHome, dshHomePath } from './src/config.js'
-export { applyPolicyPatches, validatePolicyPatches, normalizePolicy, POLICY_PATCH_LIMITS, POLICY_CONFIG_KEYS, validatePolicyConfig, effectiveContinuationPath } from './src/policy.js'   // v14.10 策略即配置
+export { applyPolicyPatches, validatePolicyPatches, normalizePolicy, POLICY_PATCH_LIMITS, POLICY_CONFIG_KEYS, POLICY_REGIME_KEYS, validatePolicyConfig, effectiveContinuationPath, policyRegimeKeys, applyPolicyConfig } from './src/policy.js'   // v14.10 策略即配置
 
 // ── 出生即压缩（birth）───────────────────────────────────────────────────────
 export {

@@ -20,7 +20,8 @@ export const GEN_ROLES = Object.freeze(['compile', 'propose', 'mint-a', 'mint-b'
 export const BASE_POLICY = Object.freeze({ schema: POLICY_SCHEMA, id: 'base', parent: null, base: 'compress-v4d9', patches: [], rationale: '生产现状（src/prompts.js buildCompressPromptV4Direct）', status: 'adopted', sides: {} })
 export const PATCH_LIMITS = Object.freeze({ maxPatches: 3, maxAddedChars: 900, maxReplaceChars: 400, maxExemplarChars: 1200 })
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex')
-export const policyId = (policy) => 'p-' + sha(JSON.stringify({ parent: policy.parent || null, patches: policy.patches || [] })).slice(0, 10)
+// v14.12.4：带 config 的策略把 config 也算进 id（之前只看 parent + patches ⇒ 两个只带不同 config 的策略会撞同一个 id、第二个落不了盘）；只有补丁的策略 id 不变
+export const policyId = (policy) => 'p-' + sha(JSON.stringify({ parent: policy.parent || null, patches: policy.patches || [], ...(policy.config && Object.keys(policy.config).length ? { config: policy.config } : {}) })).slice(0, 10)
 
 /** 生产压缩器提示词（与 src/distill.js 同一构造；tool=null = 规范工具名）。 */
 export function basePrompt(task) { return I.buildCompressPromptV4Direct(task.chain.a2.raw, task.ctx, null) }

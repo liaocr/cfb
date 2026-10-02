@@ -53,25 +53,53 @@ export function validatePolicyPatches(patches, limits = POLICY_PATCH_LIMITS) {
   return patches
 }
 
-/** v14.12.3：策略可携带的**程序部件配置**（白名单；值必须在枚举内）。提示词补丁改副模型写什么，这些键改程序写什么（F6 延续段）。 */
-export const POLICY_CONFIG_KEYS = Object.freeze({ continuationPath: Object.freeze(['full', 'bounded']) })
+/** v14.12.3：策略可携带的**配置键**（白名单 + 类型）。提示词补丁改副模型写什么；这些键改程序写什么 / 什么时候压 / 什么稿放行。
+ *   两类：
+ *   · 程序部件：continuationPath（F6 延续段形态）。
+ *   · **制度键（regime）**：birthMinChars（触发地板）/ birthMinSavedChars（净省保本线，负数 = 允许增补）/ birthTokenGate。
+ *     v14.12.4 归因：生产地板 3100 由 v11.6 的 token 成本模型反解（净收益 = (R−1)·d·(B−B′) − T − 5·B′），它给稿对结局的作用记 0；
+ *     而 traj1–3 里 auto 比 raw 多修好的那些轨迹，31 个压缩轮里 55% 是稿比原文长（增补）、只有 23% 过得了 3100 地板。
+ *     制度键让「换制度」成为可预注册、按结局比的候选，而不是改源码；plan-traj 看到制度键会按「第 1 轮就分歧、每轮都压」计费并打提示。
+ *   不在白名单的键（模型、提示词版本、闸的开关 identifierGate 等）不许借策略改。 */
+export const POLICY_CONFIG_KEYS = Object.freeze({
+  continuationPath: Object.freeze({ enum: Object.freeze(['full', 'bounded', 'none']) }),
+  birthMinChars: Object.freeze({ int: Object.freeze([1, 20000]), regime: true }),
+  birthMinSavedChars: Object.freeze({ int: Object.freeze([-4000, 4000]), regime: true }),
+  birthTokenGate: Object.freeze({ bool: true, regime: true }),
+})
+export const POLICY_REGIME_KEYS = Object.freeze(Object.entries(POLICY_CONFIG_KEYS).filter(([, v]) => v.regime).map(([k]) => k))
 export function validatePolicyConfig(config) {
   if (config == null) return {}
   if (typeof config !== 'object' || Array.isArray(config)) throw new Error('policy:config-shape')
   const out = {}
   for (const [k, v] of Object.entries(config)) {
-    const allowed = POLICY_CONFIG_KEYS[k]
-    if (!allowed) throw new Error('policy:config-key:' + k)
-    if (!allowed.includes(v)) throw new Error('policy:config-value:' + k + '=' + String(v))
+    const spec = POLICY_CONFIG_KEYS[k]
+    if (!spec) throw new Error('policy:config-key:' + k)
+    if (spec.enum) { if (!spec.enum.includes(v)) throw new Error('policy:config-value:' + k + '=' + String(v)) }
+    else if (spec.int) { if (!Number.isInteger(v) || v < spec.int[0] || v > spec.int[1]) throw new Error('policy:config-value:' + k + '=' + String(v)) }
+    else if (spec.bool) { if (typeof v !== 'boolean') throw new Error('policy:config-value:' + k + '=' + String(v)) }
     out[k] = v
   }
   return out
+}
+/** 策略是否改了制度（触发 / 放行闸）—— 计划与回执都要标出来：它比的是「换制度」而不是「调稿」。 */
+export function policyRegimeKeys(policy) {
+  const c = policy && policy.config
+  return c ? POLICY_REGIME_KEYS.filter((k) => c[k] !== undefined) : []
+}
+/** 把策略的配置键落到 cfg 顶层（normalizeConfig 末尾调用；生产与评测同一函数）。返回被覆盖的键名列表。 */
+export function applyPolicyConfig(c) {
+  const conf = c && c.compressPolicy && c.compressPolicy.config
+  if (!conf) return []
+  const applied = []
+  for (const [k, v] of Object.entries(conf)) { if (POLICY_CONFIG_KEYS[k] && c[k] !== v) { c[k] = v; applied.push(k) } else if (POLICY_CONFIG_KEYS[k]) applied.push(k) }
+  return applied
 }
 /** 策略生效后的程序部件配置：policy.config 覆盖 cfg 顶层键（缺省 full = 被测对象不变）。 */
 export function effectiveContinuationPath(cfg) {
   const fromPolicy = cfg && cfg.compressPolicy && cfg.compressPolicy.config && cfg.compressPolicy.config.continuationPath
   const v = fromPolicy || (cfg && cfg.continuationPath) || 'full'
-  return POLICY_CONFIG_KEYS.continuationPath.includes(v) ? v : 'full'
+  return POLICY_CONFIG_KEYS.continuationPath.enum.includes(v) ? v : 'full'
 }
 
 /** 配置里的策略归一化：null/undefined/'base' ⇒ null（无策略）；对象必须有 string id 与合法 patches（或合法 config）。坏的抛。 */
@@ -82,5 +110,6 @@ export function normalizePolicy(x) {
   const config = validatePolicyConfig(x.config)
   if (!patches.length && !Object.keys(config).length) return null   // 空补丁 + 空配置 = 无策略（与 base 逐字节相同）
   if (typeof x.id !== 'string' || !x.id) throw new Error('policy:id')
-  return Object.freeze({ id: x.id, patches: Object.freeze(patches.map((p) => Object.freeze({ ...p }))), ...(Object.keys(config).length ? { config: Object.freeze(config) } : {}) })
+  const regime = POLICY_REGIME_KEYS.filter((k) => config[k] !== undefined)
+  return Object.freeze({ id: x.id, patches: Object.freeze(patches.map((p) => Object.freeze({ ...p }))), ...(Object.keys(config).length ? { config: Object.freeze(config) } : {}), ...(regime.length ? { regime: Object.freeze(regime) } : {}) })
 }

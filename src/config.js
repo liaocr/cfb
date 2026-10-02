@@ -3,7 +3,7 @@
 //   DEFAULTS         全部可在 profile patch 的 config 里覆盖（每个值的来历写在旁边）
 //   normalizeConfig  扁平键 + 嵌套写法（distill: / birth:）→ 生效配置；
 //                    退役键/模式、未知键、自动调整全部留痕（BOOT 可见），只报不抛
-import { normalizePolicy } from './policy.js'
+import { normalizePolicy, applyPolicyConfig } from './policy.js'
 import os from 'node:os'
 
 // ── harness home 解析（★ 2026-09-18 公测可移植性：禁止把作者机器路径当默认值）──
@@ -228,7 +228,7 @@ export const DEFAULTS = {
   //   坏策略不让它半生效：normalizeConfig 校验失败 ⇒ 回到 null 并记 configAdjusted.compressPolicy。
   compressPolicy: null,
   compressCtxMaxChars: 8000,
-  // v14.12.3（F6）：程序写的延续段里「已走过的路」的形态：'full'（每条历史调用连参数带结果，随调用数无界增长）| 'bounded'（最近两轮原样、更早归并计数、≤600 字）。
+  // v14.12.3（F6）：程序写的延续段里「已走过的路」的形态：'full'（每条历史调用连参数带结果，随调用数无界增长）| 'bounded'（最近两轮原样、更早归并计数、≤600 字）| 'none'（不写延续段，v12.9.1 及以前的形态）。
   //   缺省 full（被测对象不变）；策略可用 compressPolicy.config.continuationPath 覆盖；不认识的值回到 full 并在 configAdjusted 留痕。
   continuationPath: 'full',
   // 仅工具用：把副模型原始输出带回 meta.sideOutput（tools/compile-direct.mjs --recompile 零调用重编译）
@@ -349,8 +349,10 @@ export function normalizeConfig(config = {}) {
   // v14.10：策略归一化（null/'base' ⇒ null；坏的 ⇒ null + 留痕），生产与评测同一函数（src/policy.js）
   try { c.compressPolicy = normalizePolicy(c.compressPolicy) }
   catch (e) { c.configAdjusted = Object.assign({}, c.configAdjusted, { compressPolicy: { from: c.compressPolicy && c.compressPolicy.id || String(c.compressPolicy), to: null, why: String(e && e.message || e) } }); c.compressPolicy = null }
-  if (c.continuationPath !== 'full' && c.continuationPath !== 'bounded') {
-    c.configAdjusted = Object.assign({}, c.configAdjusted, { continuationPath: { from: c.continuationPath, to: 'full', why: "must be 'full' or 'bounded'" } })
+  // v14.12.4：策略的配置键（continuationPath / 制度键 birthMinChars、birthMinSavedChars、birthTokenGate）落到顶层 —— 采纳 = 写策略，回滚 = 删策略；BOOT 里 policyConfigApplied 可见
+  { const applied = applyPolicyConfig(c); if (applied.length) c.policyConfigApplied = { policy: c.compressPolicy.id, keys: applied, regime: c.compressPolicy.regime || [] } }
+  if (c.continuationPath !== 'full' && c.continuationPath !== 'bounded' && c.continuationPath !== 'none') {
+    c.configAdjusted = Object.assign({}, c.configAdjusted, { continuationPath: { from: c.continuationPath, to: 'full', why: "must be 'full', 'bounded' or 'none'" } })
     c.continuationPath = 'full'
   }
   // 不认识的处置值 ⇒ 回到安全缺省（passthrough）并在 BOOT 留痕；绝不把拼错的值猜成「照旧归属」

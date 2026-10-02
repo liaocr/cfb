@@ -9,6 +9,8 @@
 //   29 条真实轨迹审计：原文 ≥3100 字的轮只占 13%，首次有效压缩多在第 3 轮，旧设计每组白付 2–4 次主调用并把独立噪声混进「配对」）。
 //   没分歧到底的组 = 压缩器整条都没触发 ⇒ 结局与 raw 相同（记 shadow.divergedAt=null；confirm/ceiling 里按平手计并单独报数）。
 //   --fork-from FILE：复用已有 results.jsonl 里带 roundMessages 的 raw 轨迹当 leader（非同期对照：只能同模型、短窗口；行上记 reusedFrom）。
+// v4.7.4（v14.12.4）制度臂：策略 config 带 birthMinChars / birthMinSavedChars / birthTokenGate（regime 键）时，该臂的地板与放行闸按策略算（offlineBirthConfig → normalizeConfig），
+//   其它臂仍按 --min-chars（= 生产 3100）；行上记 compile[].floor / regime。--fork-from 续跑从文件重取 leader（--preflight-only 不再落结果行）。逐轮进度一行到 stderr（--quiet 关）。
 // v4.6（v14.11）模式 1：变体 hand = 助手代替副模型手写稿。到了要压缩的那一轮，把副模型本该拿到的 prompt / 原文 / ctx 写进 <out>/pending/<id>.json、
 //   把轨迹状态存进 <out>/state/<task>-s<k>.json 后暂停（results.jsonl 记一行 status:'awaiting-draft'）；助手写好 <out>/drafts/<id>.md 后用**同一条命令**再跑，
 //   自动从状态续：稿走与生产完全相同的闸链（compileV4Direct → 程序部件拼接 → birthAccept）外加 G2「决策不变」闸（hand-draft.mjs）；任一闸不过 ⇒ 继续暂停并把违规写回 pending。
@@ -42,6 +44,7 @@ function parseArgs(argv) {
     else if (a === '--concurrency') o.concurrency = Number(v())
     else if (a === '--only') o.only = v().split(',')
     else if (a === '--require-fp') o.requireFp = true
+    else if (a === '--quiet') o.quiet = true                           // v14.12.4：不打逐轮进度行
     else if (a === '--preflight-only') o.preflightOnly = true          // v4.7.1：只做通道预检（一次 ≤64 token 的小请求），不跑任何轨迹
     else if (a === '--compress-thinking') o.compressThinking = true   // v14.9：诊断用（只在 --legacy-compress 下有意义）
     else if (a === '--legacy-compress') o.legacyCompress = true   // v14.10：旧的工具自拼请求路径（对照 v14.9 之前的收据用）；缺省走生产 birth 同构体
@@ -366,7 +369,10 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
       const text = responseText(r.message)
       const calls = callsOfMessage(r.message)
       let stored = reasoning, compileInfo = null
-      if ((variant === 'auto' || policy || hand) && reasoning.length < o.minChars) { compileInfo = { ok: false, belowFloor: true, rawChars: reasoning.length }; rec.compile.push(compileInfo) }
+      // v14.12.4：压缩臂的地板按臂算 —— 策略带制度键 birthMinChars 时用它（offlineBirthConfig → normalizeConfig 已把策略 config 落到顶层），否则用 --min-chars（= 生产 3100）
+      const cfgArm = (variant === 'auto' || policy) ? I.offlineBirthConfig({ model: o.model, baseUrl: o.baseUrl, credentialsPath: cred, policy: policy || null, normalizeConfig: I.normalizeConfig }) : null
+      const armFloor = cfgArm && policy && policy.config && policy.config.birthMinChars != null ? cfgArm.birthMinChars : o.minChars
+      if ((variant === 'auto' || policy || hand) && reasoning.length < armFloor) { compileInfo = { ok: false, belowFloor: true, rawChars: reasoning.length, floor: armFloor }; rec.compile.push(compileInfo) }
       else if (hand && (!calls.length || round >= o.maxRounds)) { compileInfo = { ok: false, skipped: 'no-next-round', rawChars: reasoning.length }; rec.compile.push(compileInfo) }   // 没有下一轮会读这份稿 ⇒ 不让操作员白写
       else if (hand) {
         // v4.6 模式 1：助手当副模型。稿文件在 ⇒ 过 G2 + 生产闸链；不在 / 不过 ⇒ 写 pending + state 暂停
@@ -409,7 +415,6 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         // v14.10：两种压缩臂都走生产 birth 的离线同构体（src/offline-birth.js）：压缩器看不到本轮调用（与生产同）→ 程序部件拼接 → birthAccept 闸。
         //   auto = 无策略；policy:<id> = cfg.compressPolicy（生产同一配置项）⇒ auto ≡ policy:base 由构造保证，不再有工具自拼的第二条请求路径。
         //   旧路径（policyCompressBody 直连 + compileV4Direct）只在 --legacy-compress 下保留，供对照 v14.9 之前的收据。
-        const cfgArm = I.offlineBirthConfig({ model: o.model, baseUrl: o.baseUrl, credentialsPath: cred, policy: policy || null, normalizeConfig: I.normalizeConfig })
         const ctx = I.buildCompressCtx(messages, { continuationPath: I.effectiveContinuationPath(cfgArm) })   // v14.12.3：策略的 continuationPath 决定延续段形态（生产 plugin.compressCtxFor 同一函数）
         if (o.legacyCompress && policy) {
           const callsBlock = I.turnCallsBlock(calls); const ctxL = ctx + (callsBlock ? '\n\n' + callsBlock : '')
@@ -424,13 +429,15 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
           const cfg = cfgArm
           const b = await I.birthOffline({ raw: reasoning, ctx, calls, cfg, gate: !o.noGate, compile: o._compile || null })
           stored = b.text
-          compileInfo = { ok: b.ok, path: 'birth-offline', ms: b.ms, rawChars: reasoning.length, outChars: b.text.length, policy: b.policy, promptVersion: b.promptVersion, gate: b.v4 || null, continuationPath: I.effectiveContinuationPath(cfg), ...(b.ok ? { spliced: b.spliced || null, accept: b.accept || null } : { why: b.why, reason: b.reason || null, info: b.info || null }), budget: compressBudget(I, { ctx, calls, raw: reasoning, out: b.ok ? b.text : null, draft: null }) }
+          compileInfo = { ok: b.ok, path: 'birth-offline', ms: b.ms, rawChars: reasoning.length, outChars: b.text.length, policy: b.policy, promptVersion: b.promptVersion, gate: b.v4 || null, continuationPath: I.effectiveContinuationPath(cfg), floor: armFloor, ...(cfg.policyConfigApplied ? { regime: cfg.policyConfigApplied.regime } : {}), ...(b.ok ? { spliced: b.spliced || null, accept: b.accept || null } : { why: b.why, reason: b.reason || null, info: b.info || null }), budget: compressBudget(I, { ctx, calls, raw: reasoning, out: b.ok ? b.text : null, draft: null }) }
         }
         rec.compile.push(compileInfo)
       }
       if (lead && !diverged && stored !== reasoning) { diverged = true; if (rec.shadow) rec.shadow.divergedAt = round }   // 从下一轮起本臂的历史与 raw 不同 ⇒ 自己发主调用
       messages.push({ role: 'assistant', content: text, reasoning_content: stored })
       rec.transcript.push({ round, reasoningChars: reasoning.length, storedChars: stored.length, text: text.slice(0, 3000), calls: calls.map((c) => ({ name: c.name, args: String(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)).slice(0, o.storeText ? 8000 : 400) })), ...(o.storeText ? { reasoning: reasoning.slice(0, 12000), stored: stored === reasoning ? null : stored.slice(0, 12000) } : {}) })
+      // v14.12.4 逐轮进度（stderr，一行）：之前整条轨迹跑完才落一行结果，中转慢的时候几十分钟没有任何可见信号，操作者无从判断是卡住还是在跑
+      if (o.out && !o.quiet && !o._compile) process.stderr.write(`[${task.id}${state ? '@' + state.id : ''} ${variant} #${sample} r${round}] ${r.fp === 'shadow' || r.fp === 'fork' ? '影子' : '主 ' + (Number(r.usage && r.usage.prompt_tokens) || 0) + ' tok'} · 思考 ${reasoning.length} 字${compileInfo ? (compileInfo.belowFloor ? ` · 未过地板 ${compileInfo.floor}` : compileInfo.ok ? ` · 稿 ${compileInfo.outChars} 字 ✓` : ` · 稿 ✗ ${compileInfo.why || compileInfo.error || ''}`) : ''} · ${calls.length ? calls.map((c) => c.name + ' ' + String(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)).slice(0, 60).replace(/\s+/g, ' ')).join(' | ') : '（无调用）'}\n`)
       if (!calls.length) {
         // 中转偶发把「让我读 README…」这类意图当纯文本返回、没带调用 ⇒ 催一次（真实宿主里用户也会这么做）；只催一次
         if (!rec.nudged && round < o.maxRounds && /^(?:让我|我先|先|接下来|下一步|我来)/.test(text.trim()) && text.length < 200) { rec.nudged = true; messages.push({ role: 'user', content: '继续，直接发出工具调用。' }); continue }
@@ -541,12 +548,15 @@ export async function main(argv) {
           // 旧 raw 被轮数上限截断（最后一轮还在发调用）而本计划轮数更多 ⇒ 延长：raw 作业照建，前 old.rounds 轮影子自己的过去（零主调用），之后真跑；否则整条复用、不跑 raw
           if (old.rounds < o.maxRounds && (old.transcript?.[old.transcript.length - 1]?.calls?.length > 0)) extend = { lead: old.roundMessages, from: old.rounds, file: o.forkFrom, at: old.at || null }
           else { const copy = { ...old, sample: k, reusedFrom: { file: o.forkFrom, at: old.at || null, sample: old.sample, task: old.task, mainCalls: old.mainCalls ?? old.rounds ?? null }, mainCalls: 0, roundMessages: undefined }; reused.push({ task, sample: k, row: copy, lead: old.roundMessages }); have.add(`${task.id}|raw|${k}`) }
+        } else if (old && o.fork && o.variants.includes('raw') && done.some((r) => r.task === task.id && r.variant === 'raw' && r.sample === k && r.reusedFrom && !r.error)) {
+          // v14.12.4：续跑（上次中断 / 之前的 --preflight-only 已把复用的 raw 行落盘）⇒ raw 行不再追加，但 leader 仍从 --fork-from 文件重取，跟随臂照样影子 / 分叉（之前这里丢 leader ⇒ 跟随臂多付第 1 轮主调用、shadow 语义丢失）
+          reused.push({ task, sample: k, row: null, lead: old.roundMessages })
         }
         for (const v of o.variants) if (!have.has(`${task.id}|${v}|${k}`)) jobs.push({ task, variant: v, sample: k, resume: resumeFor(task, v, k), ...(v === 'raw' && extend ? { extend } : {}) })
       }
     }
-    if (o.forkFrom && !o.dryRun) for (const x of reused) fs.appendFileSync(resPath, JSON.stringify(x.row) + '\n')
-    if (o.forkFrom) console.log(`--fork-from ${o.forkFrom}：复用 raw 轨迹 ${reused.length} 条当 leader（非同期对照：只配同模型、短窗口；行上记 reusedFrom）`)
+    if (o.forkFrom && !o.dryRun && !o.preflightOnly) for (const x of reused) if (x.row) fs.appendFileSync(resPath, JSON.stringify(x.row) + '\n')   // v14.12.4：--preflight-only 不落任何结果行
+    if (o.forkFrom) console.log(`--fork-from ${o.forkFrom}：复用 raw 轨迹 ${reused.length} 条当 leader（非同期对照：只配同模型、短窗口；行上记 reusedFrom${reused.some((x) => !x.row) ? `；其中 ${reused.filter((x) => !x.row).length} 条上次已落盘、本次只取 leader` : ''}）`)
     console.log(`轨迹 ${jobs.length} 条（每条 ≤ ${o.maxRounds} 轮主调用${o.variants.includes('auto') ? ' + 同数副调用' : ''}），并发 ${o.concurrency}`)
     // --fork：同题同样本分组，第一臂跑完第 1 轮后其余臂从同一条第 1 轮回复分叉（配对在分叉点、每组省 (臂数−1) 次主调用）
     const groups = o.fork ? [...jobs.reduce((m, j) => { const k = `${j.state ? j.state.id : j.task.id}|${j.sample}`; (m.get(k) || m.set(k, []).get(k)).push(j); return m }, new Map()).values()].map((g) => g.sort((a, b) => (a.variant === 'raw' ? -1 : 0) - (b.variant === 'raw' ? -1 : 0))) : jobs.map((j) => [j])   // raw 先跑：它是影子分叉的 leader

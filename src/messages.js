@@ -385,7 +385,7 @@ export function continuationText(messages, opts = {}) {
  *   bounded：最近两轮的调用保留原样（参数 ≤100 字、结果 ≤40 字），更早的按「工具 + 命令头」归并计数（ls×3、cat×2 …），整段 ≤ 600 字。
  *   缺省仍是 full（被测对象不变）；bounded 经 policy.config.continuationPath 或 cfg.continuationPath 启用，由模式 3 的证据决定是否转正。
  */
-export const CONTINUATION_PATH_MODES = Object.freeze(['full', 'bounded'])
+export const CONTINUATION_PATH_MODES = Object.freeze(['full', 'bounded', 'none'])
 export function boundedPathText(L, { recentRounds = 2, maxChars = 600 } = {}) {
   const calls = L.calls || []
   if (!calls.length) return ''
@@ -415,6 +415,7 @@ export function boundedPathText(L, { recentRounds = 2, maxChars = 600 } = {}) {
 }
 /** 【延续段】块（放进 compressCtx 的台账之后；compileV4Direct 会把这段散文原样接在稿的开头） */
 export function continuationBlock(messages, opts = {}) {
+  if (opts && opts.path === 'none') return ''   // v14.12.4：不写延续段（制度候选 / v12.9.1 以前的形态）；台账照旧
   const t = continuationText(messages, opts)
   if (!t) return ''
   return '【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）\n' + t

@@ -1,0 +1,12 @@
+{
+  "schema": "cfb.proposal/1",
+  "by": "assistant",
+  "at": "2026-10-02T17:10:00.000Z",
+  "parent": "base",
+  "title": "制度候选 H_aug：每轮都写稿、允许增补（v4d7 时代出证据的那个制度），而不是只在原文过 3100 地板时压缩",
+  "patches": [],
+  "config": { "birthMinChars": 1, "birthMinSavedChars": -1800, "birthTokenGate": false, "continuationPath": "bounded" },
+  "rationale": "归因：生产地板 3100 由 v11.6 的 token 成本模型反解（净收益 = (R−1)·d·(B−B′) − T − 5·B′），它把稿对结局的作用记为 0，于是只在原文已经很长时才压；而这套训练器要优化的恰是结局。仓库里唯一的结局证据（transfer/traj1–3，v4d7 时代、无地板、每轮都压）：7 对里 auto 更好 3 / raw 更好 1 / 平 3；那 31 个压缩轮里 55% 是稿比原文长（41 字原文 → 1446 字稿），只有 23% 过得了 3100 地板；auto 臂第 2–4 轮自己的思考也更长（1163/4001/4486 vs raw 908/2509/3219 字）。也就是说证据来自「副模型每轮把观察写成结构化分析（增补）」，不是「把长思维链压短」。现行制度（地板 + no-gain + no-token-gain）在 flash 上让压缩器 87% 的轮不触发（t6 1/5、t7 1/8、t8 2/8），v4d9 对自己的结局数据为 0。本候选把触发与放行闸改回出证据的制度（延续段用 bounded 以免程序部件逐轮累积），按结局与 base/raw 比。",
+  "prediction": "模式 3，perf-regression（t8 的 raw ✗，历史 3 条 raw 2 条失败或晚修），--reuse-raw t8：policy:regime 臂第 1 轮就压、第 2 轮起分歧、每轮都压（≈8 次压缩 + 7 次主调用）。预测：若 H_aug 成立，regime 臂修好且 ≤6 轮、每轮思考比 raw 同轮长、重复命令 0；压稿过闸 ≥5/8。作废条件：(a) 压稿过闸 ≥5/8 但仍 ✗ ⇒ flash 关思考写的增补救不了 flash 的探索冲动，H_aug 对此模型作废，剩下的杠杆在主模型不在稿；(b) 过闸 <4/8 ⇒ 本次对 H_aug 不下结论，先看 why（锚点 / 语域 / 太长），改的是闸不是制度。任何情况下 hand 臂不混进来；不按分搜索；一对不够下采纳结论（≥4 对、≥2 家族）。",
+  "evidencePack": null
+}

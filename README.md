@@ -163,8 +163,8 @@ trace：`v4-segment-fired/settled`、`v4-segments-cancelled`。`compressV4Increm
 | `compressPrompt` | `'v3'` | `v3` 绝对长度（`compressTargetMin/Max` = 250/450）· `v2` 相对长度（20%~35%）· **`v4`（v12.2）认知编译器，见上节**。两者保真规则逐字相同。`x1`（v12.0）/ `v1`（v12.1）已退役，旧配置自动回落 `v3` 并记 `configAdjusted` |
 | `compressV4BudgetChars` | `null` | 仅 v4：渲染预算（字符），`null` 跟随 `compressTargetMax`。当前方案 / 证伪路 / 未决问题必留，不受预算限制 |
 | `compressV4MaxOutputTokens` | `1600` | 仅 v4：副模型输出上限（只抬不降：取 `max(maxOutputTokens, 本项)`） |
-| `continuationPath` | `'full'` | **v14.12.3（F6）**：程序写的延续段里「已走过的路」的形态：`full` 每条历史调用连参数带结果（随调用数无界增长）；`bounded` 最近两轮原样、更早按工具+命令头归并计数、≤600 字。坏值回 `full` 并在 `configAdjusted.continuationPath` 留痕；策略可用 `compressPolicy.config.continuationPath` 覆盖。缺省不变，转正要模式 3 证据（提议 `docs/proposals/p-f6-bounded-path.json`） |
-| `compressPolicy` | `null` | **v14.10**：提示词策略即配置 `{id, patches}`（v14.12.3 起可带 `config`，白名单见 `src/policy.js POLICY_CONFIG_KEYS`）（`src/policy.js` 校验：append / replace 槽位补丁，预算内）；v4-direct 提示词应用后 `promptVersion` 带 `+<id>`；坏补丁 ⇒ 置 null 并在 BOOT `configAdjusted.compressPolicy` 留痕。闭环采纳 = 写它，回滚 = 删它 |
+| `continuationPath` | `'full'` | **v14.12.3（F6）**：程序写的延续段里「已走过的路」的形态：`full` 每条历史调用连参数带结果（随调用数无界增长）；`bounded` 最近两轮原样、更早按工具+命令头归并计数、≤600 字。 **v14.12.4** 多一档 `'none'`：不写延续段（台账照旧）。坏值回 `full` 并在 `configAdjusted.continuationPath` 留痕；策略可用 `compressPolicy.config.continuationPath` 覆盖。缺省不变，转正要模式 3 证据（提议 `docs/proposals/p-f6-bounded-path.json`） |
+| `compressPolicy` | `null` | **v14.10**：提示词策略即配置 `{id, patches}`（v14.12.3 起可带 `config`，白名单见 `src/policy.js POLICY_CONFIG_KEYS`；**v14.12.4** 白名单带类型 / 范围，新增**制度键** `birthMinChars` / `birthMinSavedChars` / `birthTokenGate`（标 `regime`）—— 改的是「什么时候压、什么稿放行」而不是稿本身，只能作预注册候选由结局判，`normalizeConfig` 把它们落到顶层并记 `policyConfigApplied`；缺省制度不变）（`src/policy.js` 校验：append / replace 槽位补丁，预算内）；v4-direct 提示词应用后 `promptVersion` 带 `+<id>`；坏补丁 ⇒ 置 null 并在 BOOT `configAdjusted.compressPolicy` 留痕。闭环采纳 = 写它，回滚 = 删它 |
 | `compressV4Tail` | `true` | 仅 v4：尾段（关键结论 + 待确认 + 已备好的改法） |
 | `compressV4MaxRejectRatio` | `0.5` | 仅 v4：硬不变量拒绝占比超过它 ⇒ 整块原文 |
 | `compressV4Incremental` | `'auto'` | 仅 v4：`'auto'` ⇒ `birthFinishWaitMs` ≥ 5000 整块、否则流式增量；`true` / `false` 强制 |

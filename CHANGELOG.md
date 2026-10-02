@@ -4,6 +4,17 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.12.4（2026-10-02，闭环 v4.7.4：归因 —— 三次实跑近乎白跑的主因是**理论**（地板 3100 来自只算 token 的目标函数，把 v4d7 证据里的「每轮增补」制度关掉了），次因是实现；制度键进策略正门；t9 预注册 ≈$0.148）
+
+- **归因**（`node tools/attrib-regime.mjs`，零 API，A35 钉数字；细节 `CLOSED-LOOP-V4.md` §18）：`transfer/traj1–3`（同一个 flash、无地板每轮都压）非 raw 臂 72 轮压了 31 轮，**55% 稿比原文长、只有 23% 原文 ≥3100**；auto 臂第 2–4 轮自己的思考比 raw 长 1.3–1.6×；配对 auto 3 / raw 1 / 平 3；重复命令全 0。⇒ 证据属于「每轮增补」制度，不属于「长思维链压短」制度；生产地板 + no-gain + no-token-gain 让后者在 flash 上 87% 的轮不触发（t6 1/5、t7 1/8、t8 2/8）。`birthMinChars` 3100 的推导式 `净收益=(R−1)·d·(B−B′)−T−5·B′` 把稿对结局的作用记 0 —— 目标函数与训练器要优化的东西错位；v12.8.10 的「未解：产品形态要决定」此后十几版没决定。
+- **`src/policy.js`**：`POLICY_CONFIG_KEYS` 改成带类型 / 范围的规格；新增制度键 `birthMinChars`（1–20000）/ `birthMinSavedChars`（−4000–4000）/ `birthTokenGate`（bool），`continuationPath` 多一档 `'none'`；`POLICY_REGIME_KEYS` / `policyRegimeKeys` / `applyPolicyConfig`；`normalizePolicy` 给策略打 `regime` 标。`src/config.js`：`normalizeConfig` 把策略 config 落到顶层（`policyConfigApplied {policy, keys, regime}`），缺省 3100 / 50 / true / full 一字不变。`src/messages.js`：`continuationBlock` 在 `'none'` 下返回空。
+- **`tools/traj-run.mjs`**：压缩臂地板按臂算（策略带 `birthMinChars` 用它，否则 `--min-chars` = 生产 3100），行上记 `floor` / `regime`；**`--fork-from` 续跑丢 leader 修**（之前 `--preflight-only` 落了复用的 raw 行后，正式跑找不到 leader ⇒ 跟随臂多付第 1 轮、shadow 语义丢失；现在续跑从文件重取 leader，`--preflight-only` 不落结果行）；**逐轮进度行**（stderr：臂 / 轮 / 主 tokens / 思考字数 / 稿过闸与否 / 调用头；`--quiet` 关 —— 之前整条跑完才落一行，中转慢时几十分钟无信号）。
+- **`tools/cfb-cycle.mjs`**：`armRegime(arm, dir)`；`buildTrajPlan` 对制度臂按「第 1 轮就压、第 2 轮起分歧、每轮都压」计费（`plan.regimeArms`），plan.md 标「换制度不是调稿」；`tools/helpers/generation.mjs` `policyId` 把 config 算进 id（只有补丁的 id 不变；**F6 候选 id 从 `p-a0d288ba81` 变为 `p-67620ded4d`**，之前两个只带不同 config 的候选会撞 id、第二个落不了盘）。
+- **候选 + 计划**：`docs/proposals/p-regime-augment.json` → 策略 `p-29d7400346`（`{birthMinChars:1, birthMinSavedChars:-1800, birthTokenGate:false, continuationPath:'bounded'}`，预测 / 作废条件写在提议里）；**t9 = raw（复用 t8）vs policy:p-29d7400346 × perf-regression × ≤8，期望 7 主 + 8 压 ≈ $0.148、上界 $0.336**。读数见下一条。
+- **t9 读数**（跑完回填；§18.6）：7 主 + 8 压，名义 $0.148（= 计划）。regime 臂 **✗**（8 轮、26 调用、0 edit）vs raw ✗（20 调用）⇒ 平手；**压稿 6/8 过闸**（r6 / r8 副模型 90 s 超时回退原文）—— 按预注册条件 (a)：**H_aug 对 flash × perf-regression 作废**，策略 `p-29d7400346` 标 `falsified`。稿本身不差（r4 稿把两处候选、promptVersion 没变、「见 4096 就 edit」都写清；主模型 r4 也读了 src/config.js），但主模型 r5 想了 16570 字去 find / git log，r8 想了 37247 字还在 grep。**新发现**：增补把主模型自己的思考吹大 5–40×（completion tokens 20085 vs 4171 = ×4.8、调用 +30%），在 flash 上更贵更慢，还把副模型拖到超时。三份独立的稿（t8 手写 ×2、t9 增补 ×6）都没让 flash 落 edit ⇒ 瓶颈是主模型「探索不落子」，不是稿；在宿主策略层回合规则（用户拍板）之前不再为稿的形态花钱；perf-regression 三臂全 ✗，按信息量规则剔出下一家族。
+- `confirm --plan N` 现在把计划标成 `confirmed`（之前只有 `ceiling` 改状态 ⇒ `status` 一直说「已有未执行计划」）。
+- 自测：v4 95 → **95**（5u5 扩：制度键 / 'none'）；closed-loop 35 → **36**（A8 扩：按臂地板；A11 扩：confirm --plan 标状态；A33 改：白名单外键换成 `birthIdentifierGate`；A35 新：归因数字 + 制度臂计费）。verify 1064 / 21（已知环境）/ 1；审计 N1–N7 = 0。
+
 ## v14.12.3（2026-10-02，闭环 v4.7.3：t8 实跑 perf-regression（两臂都没修好、第 8 轮被 F7 污染）；F6 定量 —— 程序部件占原文 49–61% 让标准长度的稿过不了 no-token-gain —— 落成 `continuationPath` 杠杆 + 策略 `config`；F7 假沙箱泄宿主目录已堵；台账「事实行」自我放大已修）
 
 - **t8**（raw vs hand × perf-regression × ≤8，10 次主调用，名义 ≈$0.125 / 计划 0.163）：raw 第 3 轮拿齐数据后第 4–8 轮全在找源码，0 edit ✗；hand 第 6 轮分歧（稿第一版 1432 字被 `no-token-gain` 拒、1192 字过），第 7 轮模型无视稿里「不要再 find」照样全盘搜索，第 8 轮追 `ls -la ~` 泄出的宿主目录，0 edit ✗ ⇒ 平手 e=1（`ceiling-3.json`、效度账本 +2）；**这一家族瓶颈不在稿，在主模型的探索冲动**。细节 `CLOSED-LOOP-V4.md` §17.7。
