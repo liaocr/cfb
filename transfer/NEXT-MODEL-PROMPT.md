@@ -6,6 +6,7 @@
 
 ## 零、先读这段（最新的、必须知道的）
 
+0000000000000. **v14.12.2（2026-10-02）t7 跑完：第一份手写稿过闸、金标 #1、平手（§17.6 + LIVE-MEMORY §−13）。** 别再在 sse-truncated 花钱；先零 API 量延续段占比（F6）与造更难题，再跑第二个家族。
 000000000000. **v14.12.1（2026-10-02）第一笔真钱 t6 已跑：未分歧平手（读 §17.5 + LIVE-MEMORY §−12）。** 通道指纹为空 ⇒ 靠携带检验放行；开跑前先 `traj-run … --preflight-only`；t7（延长到 8 轮 ≈ $0.075）已预注册等批准；先拿 t6 真实扣费校准单价。
 00000000000. **v14.12（2026-10-02）v4.7 全架构审计：读 `CLOSED-LOOP-V4.md` §17 + LIVE-MEMORY §−11。** 跟随臂现在是**影子分叉**（分歧前不发主调用；`shadow.divergedAt==null` = 平手不是证据）；当前计划 **t6 = sse-truncated × raw vs hand ≈ $0.088**（需批准）；第二个候选起用 `--reuse-raw`；多补丁候选用 `plan-bench --factors half`；跑完先看 `status` 的「成本校准」行再改 `TRAJ_UNIT`。
 0000000000. **v14.11（2026-10-02）v4.6 三模式：读 `CLOSED-LOOP-V4.md` §16，开工先 `node tools/cfb-cycle.mjs status`。** 当前计划 **t5 = sse-truncated × raw vs hand ≈ $0.11**（压缩 0 次；需批准）。`hand` 臂 = **你代替副模型手写稿**：traj-run 到压缩轮会暂停并写 `pending/<id>.json`（副模型本该拿到的同一份 prompt + 协议），你只看那份 prompt 写 `drafts/<id>.md`（只改记忆、不改决定；不许用场景答案），再跑**同一条命令**续；G2 决策不变闸 + 生产闸链不过会把违规写回 pending。跑完 `review` → `ceiling --plan 5`（不是 confirm；hand 永远不是候选）→ `gold add --plan 5`（金标进 `transfer/gold/`）。模式 2：`plan-bench` → `tools/bench-run.mjs`（先 `--dry-run`）→ `bench-report`，promote 的才进 `plan-traj --arms raw,policy:<id>`；基准分不采纳 champion。

@@ -2,6 +2,12 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
+## −13. 当前状态（2026-10-02，t7 跑完：第一份手写稿过闸、金标 #1、一对平手；两张回执在手）
+
+- 轨迹计划：t6 / t7 都是 `ceiling`（insufficient）；金标 1 项（sse-truncated dev）。成本常数未动（两张回执都说 floorShare≈0.2、divergeRound≈5，等第二个家族）。
+- **下一步最优**：不要再在 sse-truncated 上花钱（flash 修好前几乎不长想）。两条路并行：(a) 零 API —— 量延续段（程序拼的「已走过的路」）在第 6–8 轮有没有被引用（F6），以及造「修好前就要长想」的更难题；(b) 第二个家族的 raw vs hand ≤8 轮（wrong-model 留出 / perf-regression），开跑前 `--preflight-only`。
+- 手写稿写法（已验证过闸）：第 2 轮起只写增量，不写「改法只落一个」与 `old_text 是 … new_text 是 …`（原文没有这种句式时 G2 判 invented）；验收句要带 ctx 里出现过的命令；收工三问结尾。
+
 ## −12. 当前状态（2026-10-02，第三十一会话续：第一笔真钱 t6 跑完 —— 未分歧平手；通道预检 + 携带检验 + 延长已成代码闸；t7 已预注册等批准）
 
 - **通道现状**：api.a6api.com 的 `deepseek-v4.1-flash` 现在返回思维链但 **`system_fingerprint` 为空** ⇒ `--require-fp` 走 **carry-verified**（每轮带 / 不带历史思考各一次 `max_tokens:1` 探针，Δ ≥ max(4, 0.12×字数)）；t6 实测 Δ/字 0.28–0.36、预检中文 0.495。开跑前 **一定** `--preflight-only` 看一眼（≈3 次小请求）。

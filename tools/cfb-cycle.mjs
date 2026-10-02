@@ -804,7 +804,9 @@ function resultsArg(args, kind = 'traj') {
 function cmdCeiling(args) {
   const { planN, home, file, rows } = resultsArg(args)
   const map = Object.fromEntries((f(args, '--map') || 'hand=hand,raw=raw').split(',').map((kv) => kv.split('=')))
-  const waiting = rows.filter((r) => r.status === 'awaiting-draft')
+  // 只算仍在等的：同一 task|variant|sample 后面已有完成行（续跑写的）的暂停行是历史，不再报
+  const doneKeys = new Set(rows.filter((r) => r.status !== 'awaiting-draft' && !r.error).map((r) => `${r.fromState || r.task}|${r.variant}|${r.sample}`))
+  const waiting = rows.filter((r) => r.status === 'awaiting-draft' && !doneKeys.has(`${r.fromState || r.task}|${r.variant}|${r.sample}`))
   const r = ceilingFrom({ rows, map })
   ensure(RULER_DIR); const k = fs.readdirSync(RULER_DIR).filter((x) => x.startsWith('ceiling-')).length + 1
   writeJson(path.join(RULER_DIR, 'ceiling-' + k + '.json'), { ...r, plan: planN ? 't' + planN : null, source: path.relative(ROOT, path.resolve(file)) })
