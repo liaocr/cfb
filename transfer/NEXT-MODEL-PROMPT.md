@@ -6,6 +6,7 @@
 
 ## 零、先读这段（最新的、必须知道的）
 
+000. **v14.4（2026-10-02）闭环 v4 已落地，先读 `docs/design/CLOSED-LOOP-V4.md`（再读 V3 / V2 作基座）。** 尺子分三层（L1 代理 / L2 traj-run 结局）、效度账本（AUC+CI）、e 值采纳、provisional→confirm→回滚、留出曝光、CPU 排序器；`node tools/cfb-cycle.mjs ruler` 先看。还没花过一分钱；下一步零 API：`traj-run --policy --continue-from` 与 `mint --auto`；首次付费 ≈$0.6（A/A r1 + L2 续跑留出 2 题），必须先 `plan` 冻结、给用户看预占/期望、批准后再 `run --live`。
 00. **v14.3（2026-10-02）闭环 v3 已落地，先读 `docs/design/CLOSED-LOOP-V3.md`（再读 V2 作基座）。** 用户的要求是「省只省真实 API 次数，架构与效果一点不省」：
    任务池 + 留出闸门（采纳只认留出题）、首轮 A/A 校准、提示词策略生成层（`propose-policy` → `ingest-gen` 三闸 → `compile --policy` → 自动成为假设）、偏好对飞轮。
    命令总表见 V3 §8；自测 `test/closed-loop-v3.selftest.mjs`。**v9 与 gen 计划一轮都没实跑；每笔钱先给用户看 plan 打印的 scope / 请求 / 预占再等批准。** 不要把 `train/pairs.jsonl` 说成训练。

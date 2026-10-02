@@ -4,6 +4,18 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.4.0（2026-10-02，闭环 v4：结局锚定的尺子 / e 值采纳 / provisional→confirm / 留出曝光 / CPU 排序器；仍零花费）
+
+- **起因**：对 v14.3 的第二轮评审——A/A 只证尺子对称不证有效（代理分从未与端到端结局对齐）；留出 2 道题反复自适应使用（单假设 ≈6%、6 个 ≈30% 误采纳）；扩池要人补 u2；生成器上限；「实付 ≈$0.05–0.15」是断言。用户要求重读 transfer 四份理论文档 + 联网调研后给出「小花费、快迭代、上限高、尺标科学可量化且切实」的训练器。
+- **新部件（全部零 API）**：
+  - `tools/helpers/ruler.mjs`：`eValueWins`（H0: p≤0.5 的混合似然比 e 值，任意停时有效）、`decideV4`（留出 e ≥10 且全部 e ≥10 ⇒ `adopt-provisional`；「更差」e ≥10 ⇒ reject；30 对封顶）、`episodeOutcome`（traj-run 行 → 修好/轮数/假宣称/验收）、`rulerValidity`（L1 代理分 ↔ L2 结局 AUC + 自助 CI → unvalidated/valid/suspect/invalid）、`adoptionPolicy`、`outcomeComparison`（champion vs previous 的 L2 配对 + e 值）。
+  - `tools/helpers/ranker.mjs`：飞轮偏好对上的 20 维 Bradley–Terry 逻辑回归（CPU，确定性；≥20 对且留一 CV ≥0.6 才 ready），只用于付费前给候选排序。
+  - `cfb-cycle`：`ingest` 改用 `decideV4`，采纳落为 `cfb.champion/3 {adoption: provisional, previous}` 并记留出曝光（`offline/ruler/exposure.json`，≥3 次警告退役）；新 `confirm --results FILE [--map]`（L2 结局确认 / 回滚 / 待定；带 `proxyScore` 的行进 `offline/ruler/validity.jsonl`）；新 `ruler`（效度、采纳规则、e 值预算、曝光、排序器、transfer/traj1–3 的 L2 基线）；`propose` 对 provisional champion 拒绝（`--allow-provisional` 放行）；`plan` 打印排序器预判；`status` 加尺子行。
+  - `docs/design/CLOSED-LOOP-V4.md`：三层尺子与效度账本、e 值与误采纳算术、留出曝光与 Thresholdout 的真实位置、自铸协议 / 故障注入 / episode 记录器规格、GEPA 式生成器设计、逐项 token 算术（预占 0.505 vs 期望实付 ≈0.127）、诚实边界、路线图。
+- **行为变化**：4 对留出全胜不再采纳（e=6.2 < 10），最快 3 轮（α=0.1）；三处既有自测相应改为多走一轮并断言 `adopt-provisional`。
+- **已算出的真实数字**：29 条历史全轨迹上 raw 修好率 0.636 / auto 0.900，配对 10，e=6.97（方向支持 auto、未过阈）——终局度量可算、但从未证明过任何提示词改动。
+- 验证：closed-loop-v4 7/0；closed-loop-v3 16/0；closed-loop 25/0；全量见下条记录；manifest 更新；N1–N7=0；API 实付 $0。本地提交未推送。
+
 ## v14.3.0（2026-10-02，闭环 v3：任务池 / 留出闸门 / A/A 校准 / 提示词策略生成层 / 飞轮；仍零花费）
 
 - **起因**：用户转来对 v14.2 的七条批评，并澄清要求：省钱只针对真实 API 调用次数，**架构与效果一点都不能省**——要一套能真的迭代、优化、突破当前上限的环，而不是只会在 6 个旋钮里挑的「仪器」。逐条回应见 `docs/design/CLOSED-LOOP-V3.md` §0（接受 1–5、7；第 6 条「一轮 0.648」是预占上限不是实付，予以纠正）。

@@ -352,6 +352,16 @@ v12.0 / v12.1 删除的文件都可从 git 取回：`git show cfba57b:<路径>`�
 这些留在原开发机的仓库里，需要时再单独取。
 
 
+## 闭环迭代 v4（v14.4：结局锚定的尺子 + e 值采纳 + provisional→confirm；零 API 可走通）
+
+v3 的三处无依据被换掉：① 尺子分三层——L1 下一步结构分只是代理，L2 `traj-run` 端到端结局（修好 / 轮数 / 假宣称 / 验收）是锚，`ruler` 用 AUC+CI 报告代理尺效度；② 采纳用任意停时有效的 e 值（留出 e ≥10 且全部 e ≥10，4 对全胜不再够）；③ 采纳先 `provisional`，`confirm --results`（L2 续跑 champion vs previous）过了才 `confirmed`，`propose` 才放行；L2 证伪自动回滚。留出题按曝光退役；飞轮偏好对上训 CPU 排序器做付费前预筛。设计、算术与边界见 [`docs/design/CLOSED-LOOP-V4.md`](docs/design/CLOSED-LOOP-V4.md)。
+
+```bash
+node tools/cfb-cycle.mjs ruler                       # 尺子效度 / 采纳规则 / e 值预算 / 曝光 / 排序器 / L2 基线（零 API）
+node tools/cfb-cycle.mjs confirm --results FILE --map champion=auto,previous=raw   # L2 结局确认 / 回滚
+node tools/cfb-cycle.mjs propose [--allow-provisional]
+```
+
 ## 闭环迭代 v3（v14.3：任务池 + 留出闸门 + A/A 校准 + 提示词策略生成层；零 API 可走通，花钱只在两条显式命令里）
 
 ```sh

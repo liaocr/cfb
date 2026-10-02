@@ -2,7 +2,17 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
-## −2. 当前状态（2026-10-02，第二十二会话：闭环 v3 落地，零花费）
+## −3. 当前状态（2026-10-02，第二十三会话：闭环 v4 落地，零花费）
+
+- 第二轮评审的硬伤是**尺子效度**（A/A 只证对称）。v4：L1 下一步结构分 = 代理；L2 = `tools/traj-run.mjs` 全轨迹结局（理论 S9 度量）；`ruler.mjs rulerValidity` 用 (proxy, outcome) 配对的 AUC+自助 CI 定 unvalidated/valid/suspect/invalid；`adoptionPolicy` 据此决定 L1 能否单独采纳。现在效度账本 n=0——**没在真模型上跑过一轮**。
+- 统计换 e 值（任意停时有效）：留出 e ≥10 且全部 e ≥10 才 `adopt-provisional`（5 场留出连胜；4 对全胜 e=6.2 不够）；「更差」e ≥10 reject；30 对封顶。champion 升 `cfb.champion/3`（adoption provisional/confirmed、previous、rolledBack）。`confirm --results`（traj-run 行，`--map champion=auto,previous=raw`）⇒ confirmed / rolled-back / pending；`propose` 对 provisional 拒绝（`--allow-provisional`）。
+- 留出曝光 `offline/ruler/exposure.json`：非 continue 判定 +1，≥3 警告退役。Thresholdout 在 n=2 无意义，写明不装。
+- `ranker.mjs`：飞轮偏好对上的 20 维 Bradley–Terry 逻辑回归（CPU），≥20 对且留一 CV ≥0.6 才 ready；只做付费前预筛。
+- 真实数字：29 条历史轨迹 raw 修好 0.636 / auto 0.900，配对 10，e=6.97 未过阈。A/A r1 算术：预占 0.505 / 期望实付 ≈0.127（96% 输出 token）。
+- 待做（v4.1 零 API）：`traj-run --policy ID --continue-from`；`mint --auto` 自铸；ICC 从 A/A 估。首次付费建议 ≈$0.6：A/A r1 + L2 续跑留出 2 题。
+- 验证：closed-loop-v4 7/0；v3 16/0；closed-loop 25/0；全量与 manifest 见 CHANGELOG v14.4.0；N1–N7=0。本地提交未推送。
+
+## −2. 上一状态（2026-10-02，第二十二会话：闭环 v3 落地，零花费）
 
 - 用户转来对 v14.2 的七条批评并澄清：**省钱只针对真实 API 调用次数，架构与效果不能省**。回应：接受 1–5、7，纠正 6（0.648 是预占上限非实付）。已落地 v14.3（`docs/design/CLOSED-LOOP-V3.md`、CHANGELOG v14.3.0）。
 - **v3 四件事**：① 任务池 `tasks.mjs`（冻结 5 题 ∪ `.cfb-offline/tasks/*.task.json`；种子 `cfb-holdout-2026-10-02` 切 dev/holdout；留出 = `eacces-config, wrong-model`；每轮轮换 ≤5 题）；② `decideV3`（采纳需 ≥2 留出题 / ≥4 留出对 / 留出 P≥0.95；ICC 折算 nEff；A/A 只校准）；③ 生成层 `generation.mjs`（提示词补丁策略空间、LLM 提议器只看 dev 题证据、三闸 预算/泄漏/可应用、`compile --policy` 重压 side、策略自动成为假设）；④ 飞轮 `.cfb-offline/train/pairs.jsonl`。

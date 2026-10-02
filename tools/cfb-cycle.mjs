@@ -32,6 +32,8 @@ import { sequentialPaired, pairResults, expectedBitsNextPair, bitsBought, pairsT
 import { prepareEvaluation, reportEvaluation, loadPrepared, DEFAULT_HOME_V9, PUBLIC_RECEIPT_V9, DEFAULT_HOME_GEN, PUBLIC_RECEIPT_GEN, PROFILE_EXAMPLE, ROOT } from './helpers/eval-workflow.mjs'
 import { auditApiPlan, planScope, APPROVED_API_LIMITS_V9, APPROVED_API_LIMITS_GEN } from './helpers/api-budget.mjs'
 import { readWatermark } from './helpers/api-watermark.mjs'
+import { decideV4, rulerValidity, adoptionPolicy, outcomeComparison, episodeOutcome, eValueWins, winsNeeded, DEFAULT_DESIGN_V4 } from './helpers/ruler.mjs'
+import { trainRanker, scoreText } from './helpers/ranker.mjs'
 
 // 目录：默认仓库里的 .cfb-offline / .cfb-runtime/bounded-ab-v9/rN / transfer 收据；自测用 CFB_CYCLE_DIR 整体改道（不碰真实轮次）。
 const BASE = process.env.CFB_CYCLE_DIR ? path.resolve(process.env.CFB_CYCLE_DIR) : null
@@ -43,6 +45,21 @@ export const receiptFor = (round) => (BASE ? path.join(BASE, 'receipts', 'v9-r' 
 export const POLICIES = path.join(OFFLINE, 'policies')
 export const TASKS_DIR = path.join(OFFLINE, 'tasks')
 export const TRAIN_PAIRS = path.join(OFFLINE, 'train', 'pairs.jsonl')
+// v4 尺子账本：效度配对（L1 代理分 ↔ L2 结局）、留出题曝光（每参与一次采纳 / 否决判定 +1，≥3 应退役轮换）、L2 确认结果
+export const RULER_DIR = path.join(OFFLINE, 'ruler')
+export const VALIDITY = path.join(RULER_DIR, 'validity.jsonl')
+export const EXPOSURE = path.join(RULER_DIR, 'exposure.json')
+export const HOLDOUT_MAX_EXPOSURE = 3
+const readJsonl = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean) : [])
+export const loadFlywheel = () => readJsonl(TRAIN_PAIRS)
+export const loadValidity = () => readJsonl(VALIDITY)
+export const loadExposure = () => readJson(EXPOSURE) || { schema: 'cfb.exposure/1', tasks: {} }
+function bumpExposure(tasks, split, round, decision) {
+  const ex = loadExposure()
+  for (const t of new Set(tasks)) { if ((split[t] || 'dev') !== 'holdout') continue; const e = ex.tasks[t] || { n: 0, rounds: [] }; e.n += 1; e.rounds.push({ round, decision }); ex.tasks[t] = e }
+  ensure(RULER_DIR); writeJson(EXPOSURE, ex); return ex
+}
+export const exposureWarnings = (ex = loadExposure()) => Object.entries(ex.tasks).filter(([, e]) => e.n >= HOLDOUT_MAX_EXPOSURE).map(([t, e]) => `留出题 ${t} 已参与 ${e.n} 次判定（≥${HOLDOUT_MAX_EXPOSURE}）：应退役为 dev，换新题进留出（mint / 自铸）`)
 export const genHomeFor = (g) => (BASE ? path.join(BASE, 'runtime', 'g' + Number(g)) : DEFAULT_HOME_GEN(g))
 export const genReceiptFor = (g) => (BASE ? path.join(BASE, 'receipts', 'gen-g' + Number(g) + '.watermark.json') : PUBLIC_RECEIPT_GEN(g))
 // 低风险在前：先改收尾 / 死胡同的呈现，再动选择与版式，kItems（结构性）最后；bind 在冻结语料上惰性，放末位只为可见。
@@ -255,8 +272,13 @@ function cmdPlan(args) {
     h.rounds.sort((a, b) => a.round - b.round)
     writeJson(HISTORY, h)
   }
-  fs.writeFileSync(path.join(OFFLINE, 'round-' + round + '.plan.md'), md + '\n')
-  console.log(md)
+  let rankerLine = ''
+  if (r.ok && r.hypothesis.lever !== 'A/A') {
+    const rk = trainRanker(loadFlywheel())
+    if (rk.status === 'ready') { const m = r.pairs.map((p) => { const v = r.plan.variants[p.task]; return v ? scoreText(rk, v.candidate) - scoreText(rk, v.control) : 0 }); rankerLine = `\n排序器预判（CPU，${rk.pairs} 对飞轮，留一 CV ${rk.cvAcc}）：candidate − control 平均 ${(m.reduce((a, b) => a + b, 0) / Math.max(1, m.length)).toFixed(3)}（只是预判，不替代评委；为负时考虑换假设省这一轮）` } else rankerLine = `\n排序器：${rk.status}（${rk.note}）`
+  }
+  fs.writeFileSync(path.join(OFFLINE, 'round-' + round + '.plan.md'), md + rankerLine + '\n')
+  console.log(md + rankerLine)
   console.log('\n已写入 ' + path.relative(ROOT, path.join(OFFLINE, 'round-' + round + '.plan.md')) + (r.ok ? '；计划冻结在 ' + r.plan.home + '/plan.json（未发请求）' : ''))
   process.exitCode = r.ok ? 0 : 2
 }
@@ -281,11 +303,12 @@ export function ingestRound({ round, report = null, history = loadHistory(), now
   for (const p of pairs) hyp.outcomes.push({ round, task: p.task, split: split[p.task] || 'dev', sample: p.sample, outcome: p.outcome, candidate: p.candidate, control: p.control, candidateAction: p.candidateAction, controlAction: p.controlAction })
   hyp.rounds.push(round)
   const allSplit = Object.fromEntries(hyp.outcomes.map((o) => [o.task, o.split || 'dev']))
-  const d3 = decideV3({ pairs: hyp.outcomes, split: allSplit, aa: isAA })
+  const d3 = decideV4({ pairs: hyp.outcomes, split: allSplit, aa: isAA })
   const seq = d3.all
   hyp.decision = d3.decision
+  hyp.e = d3.e
   hyp.posterior = { n: seq.n, wins: seq.wins, losses: seq.losses, ties: seq.ties, pWin: seq.pWin, mean: seq.mean, ci95: seq.ci95, bitsBought: bitsBought(seq.alpha, seq.beta), nextPairBits: expectedBitsNextPair(seq.alpha, seq.beta) }
-  hyp.v3 = { dev: d3.dev, holdout: d3.holdout, holdoutRecord: d3.holdoutRecord, nEff: d3.nEff, replicatesPerTask: d3.replicatesPerTask, why: d3.why }
+  hyp.v3 = { dev: d3.dev, holdout: d3.holdout, holdoutRecord: d3.holdoutRecord, nEff: d3.nEff, replicatesPerTask: d3.replicatesPerTask, why: d3.why, e: d3.e, thresholds: d3.thresholds }
   if (d3.decision !== 'continue') hyp.decidedAtRound = round
   history.hypotheses[key] = hyp
   if (isAA) history.calibration = { round, at: now, n: seq.n, tieRate: d3.tieRate, winRate: d3.winRate, instrument: d3.instrument, why: d3.why }
@@ -304,13 +327,14 @@ export function ingestRound({ round, report = null, history = loadHistory(), now
     reservedUsd: watermark ? +(watermark.reservedNano / 1e9).toFixed(4) : (rep.reservedUsd ?? null), requestsReserved: watermark?.requests ?? rep.requestsReserved ?? null, rejected: rep.requestsRejected || [], ingestedFrom: report ? 'report-file' : 'ledger', complete: !!rep.complete }
   history.rounds = history.rounds.filter((r) => r.round !== round).concat([roundEntry]).sort((a, b) => a.round - b.round)
   let championChange = null
-  if (d3.decision === 'adopt') {
+  if (!isAA && d3.decision !== 'continue') bumpExposure(plan.tasks, split, round, d3.decision)
+  if (d3.decision === 'adopt-provisional') {
     const prev = readJson(CHAMPION) || { schema: 'cfb.champion/1', knobs: { ...BASELINE_KNOBS }, policy: 'base', adopted: [] }
     const isPolicy = hyp.lever === 'policy'
     const next = isPolicy ? { ...hyp.champion } : { ...hyp.champion, [hyp.lever]: hyp.value }
     const nextPolicy = isPolicy ? hyp.value : (prev.policy || 'base')
     championChange = { from: { knobs: hyp.champion, policy: prev.policy || 'base' }, to: { knobs: next, policy: nextPolicy } }
-    writeJson(CHAMPION, { schema: 'cfb.champion/2', knobs: next, policy: nextPolicy, adopted: [...(prev.adopted || []), { round, lever: hyp.lever, value: hyp.value, pWin: seq.pWin, holdoutPWin: d3.holdout?.pWin ?? null, n: seq.n, nEff: d3.nEff, kind: hyp.kind }], at: now })
+    writeJson(CHAMPION, { schema: 'cfb.champion/3', knobs: next, policy: nextPolicy, adoption: 'provisional', previous: { knobs: hyp.champion, policy: prev.policy || 'base' }, confirmation: null, adopted: [...(prev.adopted || []), { round, lever: hyp.lever, value: hyp.value, pWin: seq.pWin, holdoutPWin: d3.holdout?.pWin ?? null, e: d3.e, n: seq.n, nEff: d3.nEff, kind: hyp.kind, adoption: 'provisional' }], at: now })
     if (isPolicy) { const pf = path.join(POLICIES, hyp.value + '.json'), pol = readJson(pf); if (pol) writeJson(pf, { ...pol, status: 'adopted', adoptedAt: now, adoptedRound: round }) }
     history.champion = next
   } else if (d3.decision === 'reject' && hyp.lever === 'policy') { const pf = path.join(POLICIES, hyp.value + '.json'), pol = readJson(pf); if (pol) writeJson(pf, { ...pol, status: 'rejected', rejectedRound: round }) }
@@ -324,11 +348,13 @@ export function renderIngestMd(r) {
   L.push('| 任务 | 切分 | candidate 结构分 | control 结构分 | 结果 |', '| --- | --- | --- | --- | --- |')
   for (const p of r.pairs) L.push(`| ${p.task} | ${p.split} | ${p.candidate} | ${p.control} | ${p.outcome} |`)
   if (r.v3) L.push('', `留出题：${r.v3.holdout ? `${r.v3.holdout.n} 对（胜 ${r.v3.holdout.wins} / 负 ${r.v3.holdout.losses} / 平 ${r.v3.holdout.ties}，P(p>0.5)=${r.v3.holdout.pWin}）` : '0 对'}，不同留出题 ${r.v3.holdoutRecord?.tasks ?? 0}；dev：${r.v3.dev ? `${r.v3.dev.n} 对，P=${r.v3.dev.pWin}` : '0 对'}；有效 n（ICC 折算）${r.v3.nEff}；判据：${r.v3.why}`)
+  if (r.v3?.e) L.push('', `e 值（任意停时有效，v4）：留出 ${r.v3.e.holdout} / 全部 ${r.v3.e.all} / 「更差」${r.v3.e.reject}；采纳阈 ≥ ${r.v3.thresholds?.adopt}（α=${DEFAULT_DESIGN_V4.alphaHoldout}），否决阈 ≥ ${r.v3.thresholds?.reject}`)
   if (r.calibration) L.push('', `**A/A 校准**：平局率 ${r.calibration.tieRate}，candidate 胜率 ${r.calibration.winRate} ⇒ 仪器 ${r.calibration.instrument}（${r.calibration.why}）`)
   if (r.flywheelPairs) L.push('', `飞轮：追加 ${r.flywheelPairs} 个偏好对到 .cfb-offline/train/pairs.jsonl`)
   const po = r.posterior
   L.push('', `累计 ${po.n} 对：胜 ${po.wins} / 负 ${po.losses} / 平 ${po.ties}；p 后验均值 ${po.mean}，95% ${po.ci95.join('–')}，P(p>0.5)=${po.pWin}；已买到 ${po.bitsBought} bit，再买一对期望 ${po.nextPairBits} bit`)
-  L.push('', `**判定：${r.decision}**` + (r.decision === 'calibrated' ? '  ⇒ 仪器已校准，下一轮开始测假设' : r.decision === 'stop-undecided' ? '  ⇒ 到上限仍未判，不采纳；换假设' : r.decision === 'adopt' ? `  ⇒ champion 更新：${JSON.stringify(r.championChange.to)}（下一轮 control 就是它；\`propose\` 给出生产 diff）` : r.decision === 'reject' ? '  ⇒ 这个旋钮不进生产；下一轮换下一个假设' : r.decision === 'continue' ? '  ⇒ 证据不够：下一轮 `plan` 会继续同一假设' : '  ⇒ 25 对仍分不出：效应量 < 可判定下限，不再为它花钱'))
+  L.push('', `**判定：${r.decision}**` + (r.decision === 'calibrated' ? '  ⇒ 仪器已校准，下一轮开始测假设' : r.decision === 'stop-undecided' ? '  ⇒ 到上限仍未判，不采纳；换假设' : r.decision === 'adopt-provisional' ? `  ⇒ champion **临时**更新：${JSON.stringify(r.championChange.to)}（下一轮 control 就是它；进生产前须 \`confirm --results\` 用 L2 端到端结局确认，或 \`propose --allow-provisional\`）` : r.decision === 'reject' ? '  ⇒ 这个旋钮不进生产；下一轮换下一个假设' : r.decision === 'continue' ? '  ⇒ 证据不够：下一轮 `plan` 会继续同一假设' : '  ⇒ 到上限仍分不出：效应量 < 可判定下限，不再为它花钱'))
+  const exw = exposureWarnings(); if (exw.length) L.push('', ...exw.map((w) => '⚠ ' + w))
   return L.join('\n')
 }
 function cmdIngest(args) {
@@ -365,7 +391,9 @@ export function proposeFrom(champion = loadChampion(), championFile = readJson(C
   }
   return { schema: 'cfb.proposal/3', at: new Date().toISOString(), champion, policy: pid, promptPatch, baseline: BASELINE_KNOBS, configDiff, needsSrcChange, unchanged, adopted: championFile?.adopted || [], rule: '只有 ingest 判 adopt 的旋钮才出现在这里；配置 diff 可直接落 deploy / 本机 config，src 改动按 needsSrcChange 由人实施并走 verify + audit-noninferiority' }
 }
-function cmdPropose() {
+function cmdPropose(args = []) {
+  const cf = readJson(CHAMPION)
+  if (cf?.adoption === 'provisional' && !args.includes('--allow-provisional')) throw new Error('champion-provisional：最近一次采纳只过了 L1 代理尺，尚未经 L2 端到端结局确认；先 `confirm --results FILE`（traj-run 续跑 champion vs previous），或明知风险用 --allow-provisional')
   const p = proposeFrom()
   writeJson(path.join(OFFLINE, 'proposal.json'), p)
   const L = ['# 生产提案（只含已采纳的旋钮）', '', 'champion: `' + JSON.stringify(p.champion) + '`', '']
@@ -378,6 +406,62 @@ function cmdPropose() {
   console.log('已写入 .cfb-offline/proposal.json')
 }
 
+// ── 5b. v4 尺子：confirm（L2 端到端结局确认 / 回滚）与 ruler（效度账本 / 曝光 / 排序器 / L2 基线）────────
+/** rows 来自 tools/traj-run.mjs 的 results.jsonl（或同构 JSON 数组）；--map champion=auto,previous=raw 把 variant 映射成臂。 */
+export function confirmFrom({ rows, map = { champion: 'champion', previous: 'previous' }, alpha = DEFAULT_DESIGN_V4.alphaHoldout, now = new Date().toISOString() }) {
+  const arm = (r) => r.arm || (r.variant === map.champion ? 'champion' : r.variant === map.previous ? 'previous' : null)
+  const typed = rows.map((r) => ({ ...r, arm: arm(r) })).filter((r) => r.arm)
+  if (!typed.length) throw new Error('confirm-no-rows（没有能映射成 champion / previous 的行；用 --map champion=<variant>,previous=<variant>）')
+  const cmp = outcomeComparison(typed)
+  // 效度配对：同一样本既有 L1 代理分（proxyScore / structural）又有 L2 结局 → 追加账本
+  const validity = typed.filter((r) => Number.isFinite(r.proxyScore ?? r.structural)).map((r) => ({ schema: 'cfb.validity-pair/1', at: now, task: r.task, arm: r.arm, sample: r.sample ?? 0, proxy: r.proxyScore ?? r.structural, outcome: episodeOutcome(r).solved ? 1 : 0, roundsToFix: episodeOutcome(r).roundsToFix }))
+  const cf = readJson(CHAMPION)
+  let verdict = 'report-only', championAfter = cf
+  if (cf?.adoption === 'provisional') {
+    if (cmp.pairs.length < 4 || new Set(cmp.pairs.map((p) => p.task)).size < 2) verdict = 'pending'
+    else if (cmp.e >= 1 / alpha) { verdict = 'confirmed'; championAfter = { ...cf, adoption: 'confirmed', confirmation: { at: now, pairs: cmp.pairs.length, e: cmp.e, champion: cmp.champion, previous: cmp.previous } } }
+    else if (cmp.eReject >= 1 / alpha) { verdict = 'rolled-back'; championAfter = { schema: 'cfb.champion/3', knobs: cf.previous.knobs, policy: cf.previous.policy, adoption: 'confirmed', previous: null, confirmation: null, adopted: (cf.adopted || []).slice(0, -1), rolledBack: [...(cf.rolledBack || []), { at: now, from: { knobs: cf.knobs, policy: cf.policy }, e: cmp.e, eReject: cmp.eReject, pairs: cmp.pairs.length }], at: now } }
+    else verdict = 'pending'
+  }
+  return { cmp, validity, verdict, championBefore: cf, championAfter }
+}
+function cmdConfirm(args) {
+  const file = f(args, '--results'); if (!file || !fs.existsSync(file)) throw new Error('--results FILE 必填（traj-run 的 results.jsonl 或 JSON 数组）')
+  const raw = fs.readFileSync(file, 'utf8').trim()
+  const rows = raw.startsWith('[') ? JSON.parse(raw) : raw.split('\n').filter(Boolean).map((l) => JSON.parse(l))
+  const map = Object.fromEntries((f(args, '--map') || 'champion=champion,previous=previous').split(',').map((kv) => kv.split('=')))
+  const r = confirmFrom({ rows, map })
+  if (r.verdict === 'confirmed' || r.verdict === 'rolled-back') writeJson(CHAMPION, r.championAfter)
+  if (r.validity.length) { ensure(RULER_DIR); fs.appendFileSync(VALIDITY, r.validity.map((x) => JSON.stringify(x)).join('\n') + '\n') }
+  ensure(RULER_DIR); const n = fs.readdirSync(RULER_DIR).filter((x) => x.startsWith('confirm-')).length + 1
+  writeJson(path.join(RULER_DIR, 'confirm-' + n + '.json'), { schema: 'cfb.confirm/1', at: new Date().toISOString(), source: path.relative(ROOT, path.resolve(file)), map, ...r })
+  const L = ['# L2 端到端结局确认（' + r.verdict + '）', '', '| 臂 | n | 修好率 | 到修好轮数 | 假宣称 | 修好后验收 | 重复 |', '| --- | --- | --- | --- | --- | --- | --- |']
+  for (const [k, v] of [['previous', r.cmp.previous], ['champion', r.cmp.champion]]) L.push(`| ${k} | ${v.n} | ${v.solved ?? '—'} | ${v.meanRoundsToFix ?? '—'} | ${v.falseClaims} | ${v.verified} | ${v.repeats} |`)
+  L.push('', `配对 ${r.cmp.pairs.length}（${r.cmp.pairs.map((p) => p.task + ':' + p.outcome).join(' ')}）；e=${r.cmp.e}，「更差」e=${r.cmp.eReject}，阈 ${+(1 / DEFAULT_DESIGN_V4.alphaHoldout).toFixed(1)}`)
+  L.push('', r.verdict === 'confirmed' ? '**champion 确认**：L2 结局证实 L1 采纳；`propose` 现在可出生产 diff' : r.verdict === 'rolled-back' ? '**回滚**：L2 结局证伪 L1 采纳，champion 恢复为 previous（L1 尺子对这个方向可能失效，看 `ruler`）' : r.verdict === 'pending' ? '**待定**：L2 配对不够（需 ≥4 对、≥2 题、e ≥ 阈），继续续跑' : '**只报告**：当前 champion 不是 provisional；本次结果只进效度账本')
+  if (r.validity.length) L.push('', `效度账本 +${r.validity.length} 对（L1 代理分 ↔ L2 修好）`)
+  console.log(L.join('\n'))
+}
+/** 零 API：尺子状态总览。transfer/trajN/results.jsonl 若存在，则给出 L2 基线（raw vs auto）。 */
+export function rulerReport({ validity = loadValidity(), exposure = loadExposure(), flywheel = loadFlywheel(), trajDirs = ['traj1', 'traj2', 'traj3'] } = {}) {
+  const v = rulerValidity(validity.map((x) => ({ proxy: x.proxy, outcome: x.outcome })))
+  const pol = adoptionPolicy(v)
+  const rk = trainRanker(flywheel)
+  const trajRows = trajDirs.flatMap((d) => readJsonl(path.join(ROOT, 'transfer', d, 'results.jsonl')).map((r) => ({ ...r, dir: d })))
+  const baseline = trajRows.length ? outcomeComparison(trajRows.map((r) => ({ ...r, arm: r.variant === 'auto' ? 'champion' : r.variant === 'raw' ? 'previous' : null, sample: `${r.dir}#${r.sample ?? 0}` })).filter((r) => r.arm)) : null
+  return { validity: v, policy: pol, exposure: Object.entries(exposure.tasks).map(([task, e]) => ({ task, n: e.n, retire: e.n >= HOLDOUT_MAX_EXPOSURE })), ranker: { status: rk.status, pairs: rk.pairs, cvAcc: rk.cvAcc, top: rk.top || null, note: rk.note }, baseline: baseline ? { trajectories: trajRows.length, raw: baseline.previous, auto: baseline.champion, pairs: baseline.pairs.length, e: baseline.e, eReject: baseline.eReject } : null, alphaTable: [0.1, 0.05].map((a) => ({ alpha: a, threshold: +(1 / a).toFixed(0), straightWins: winsNeeded(a), pStraightUnderNull: +Math.pow(0.5, winsNeeded(a)).toFixed(4), falseAdoptPerHypothesis: a, over6Hypotheses: +(1 - Math.pow(1 - a, 6)).toFixed(3) })) }
+}
+function cmdRuler() {
+  const r = rulerReport()
+  console.log(`尺子效度（L1 代理分 ↔ L2 修好）：${r.validity.status}  n=${r.validity.n} AUC=${r.validity.auc ?? '—'} CI95=${r.validity.ci95 ? r.validity.ci95.join('–') : '—'}  — ${r.validity.why}`)
+  console.log(`采纳规则：${r.policy.note}`)
+  console.log('e 值预算：' + r.alphaTable.map((a) => `α=${a.alpha} ⇒ 阈 ${a.threshold}、留出连胜 ${a.straightWins} 场（零效应下走到这条路的概率 ${(a.pStraightUnderNull * 100).toFixed(1)}%；含任意偷看的误采纳上界 ${a.alpha * 100}%/假设，6 个假设 ≤ ${(a.over6Hypotheses * 100).toFixed(0)}%）`).join('；'))
+  console.log('留出题曝光：' + (r.exposure.length ? r.exposure.map((e) => `${e.task}×${e.n}${e.retire ? '（应退役）' : ''}`).join(' ') : '尚无判定'))
+  console.log(`排序器（CPU，飞轮偏好对）：${r.ranker.status} pairs=${r.ranker.pairs} cvAcc=${r.ranker.cvAcc ?? '—'}${r.ranker.top ? ' top=' + r.ranker.top.map((t) => t.name + ':' + t.w).join(',') : ''}  — ${r.ranker.note}`)
+  if (r.baseline) console.log(`L2 基线（transfer/traj1–3，${r.baseline.trajectories} 条轨迹）：raw 修好率 ${r.baseline.raw.solved} / 到修好 ${r.baseline.raw.meanRoundsToFix} 轮 / 假宣称 ${r.baseline.raw.falseClaims}；auto 修好率 ${r.baseline.auto.solved} / ${r.baseline.auto.meanRoundsToFix} 轮 / 假宣称 ${r.baseline.auto.falseClaims}；同题同样本配对 ${r.baseline.pairs}，e=${r.baseline.e}（auto 更好）/ ${r.baseline.eReject}（auto 更差）⇒ ${r.baseline.e >= 1 / DEFAULT_DESIGN_V4.alphaHoldout ? 'auto 过 α=' + DEFAULT_DESIGN_V4.alphaHoldout + ' 阈' : r.baseline.eReject >= 1 / DEFAULT_DESIGN_V4.alphaHoldout ? 'auto 更差过阈' : '方向支持 auto，但未过 α=' + DEFAULT_DESIGN_V4.alphaHoldout + ' 的任意时刻阈（' + (1 / DEFAULT_DESIGN_V4.alphaHoldout).toFixed(0) + '）'}`)
+  console.log('下一步：L2 确认 = 用 traj-run 从 v9 两轮状态续跑 champion vs previous（≤4 轮 × 2 臂 × 留出题），结果喂 `confirm --results`；每行带 proxyScore 即同时攒效度配对。')
+}
+
 // ── 6. status / doctor / simulate ───────────────────────────────────────────
 function cmdStatus() {
   const h = loadHistory(), champion = loadChampion()
@@ -388,7 +472,9 @@ function cmdStatus() {
   for (const g of h.generations || []) console.log(`  g${g.gen} ${String(g.status).padEnd(8)} ${g.role} ${g.label || ''} reserved≈${g.reservedUsd ?? '未定价'}${g.policy ? ' → ' + g.policy : ''}`)
   const hs = Object.values(h.hypotheses || {})
   console.log('假设: ' + hs.length)
-  for (const x of hs) console.log(`  ${x.key} ${x.decision} n=${x.outcomes.length} P(p>0.5)=${x.posterior?.pWin ?? '—'} bits=${x.posterior?.bitsBought ?? '—'}`)
+  for (const x of hs) console.log(`  ${x.key} ${x.decision} n=${x.outcomes.length} P(p>0.5)=${x.posterior?.pWin ?? '—'} e=${x.e?.holdout ?? '—'}/${x.e?.all ?? '—'} bits=${x.posterior?.bitsBought ?? '—'}`)
+  const cf = readJson(CHAMPION); const rv = rulerValidity(loadValidity().map((x) => ({ proxy: x.proxy, outcome: x.outcome })))
+  console.log(`尺子: 效度 ${rv.status}（n=${rv.n}）；champion 采纳状态 ${cf?.adoption || (cf ? 'legacy' : 'baseline')}` + (cf?.adoption === 'provisional' ? '（待 L2 确认：confirm --results）' : '') + (exposureWarnings().length ? '；⚠ ' + exposureWarnings().join('；') : ''))
 }
 export function doctorChecks() {
   const checks = []
@@ -612,15 +698,17 @@ function cmdPolicies() {
   if (fs.existsSync(TRAIN_PAIRS)) console.log('飞轮偏好对：' + fs.readFileSync(TRAIN_PAIRS, 'utf8').trim().split('\n').filter(Boolean).length)
 }
 
-const HELP = `cfb-cycle（闭环 v3；v2 命令全部保留）：
+const HELP = `cfb-cycle（闭环 v4：e 值采纳 + L2 结局确认；v2/v3 命令全部保留）：
   plan     [--round N] [--lever k=v|A/A|policy=ID] [--skip-aa] [--profile FILE] [--pricing FILE] [--force]
                                                                                  零 API：池轮换 → 成稿 → 冻结 v9 计划，停下等批准（首轮默认 A/A 校准）
-  ingest   --round N [--report FILE]                                              回灌：配对 → decideV3（留出题闸门）→ adopt/reject/continue/calibrated；追加飞轮偏好对
+  ingest   --round N [--report FILE]                                              回灌：配对 → decideV4（留出闸门 + e 值）→ adopt-provisional/reject/continue/calibrated；追加飞轮偏好对；记留出曝光
   propose                                                                        把已采纳旋钮 / 策略翻成生产配置 diff / src 改动说明
   propose-policy [--gen N] [--parent ID] [--note 文字]                             冻结提议器计划（只喂 dev 题证据；≤4 请求）
   compile  --policy ID [--tasks a,b] | --mint ID   [--gen N]                      冻结按策略重压 side / 铸造件压稿的计划（≤8 请求）
   mint     --step a --scenario FILE | --step b --id ID   [--gen N]                冻结铸造新题的计划（u1→a1；人补 u2 后 a1+u2→a2）
   ingest-gen --gen N [--report FILE]                                             回灌生成计划：策略文件 / side / 铸造件（三闸：预算、泄漏、可应用）
+  confirm  --results FILE [--map champion=<variant>,previous=<variant>]            v4：L2 端到端结局（traj-run 行）确认 / 回滚 provisional champion；带 proxyScore 的行进效度账本
+  ruler                                                                          v4：尺子效度（AUC+CI）/ 采纳规则 / e 值预算 / 留出曝光 / CPU 排序器 / L2 基线
   policies | status | doctor | simulate [--p 0.7] [--rounds 5]
 杠杆（v3 顺序，低风险在前）：${LEVER_ORDER_V3.map((l) => l + '{' + KNOBS[l].values.join('|') + '}').join(' ')}  + policy=<已编译策略>
 本文件不发任何网络请求；live 只能由 tools/effect-ready.mjs run --live --v9 --round N 显式执行。`
@@ -628,7 +716,9 @@ function main() {
   const [cmd = 'status', ...args] = process.argv.slice(2)
   if (cmd === 'plan' || cmd === 'run') cmdPlan(args)
   else if (cmd === 'ingest') cmdIngest(args)
-  else if (cmd === 'propose') cmdPropose()
+  else if (cmd === 'propose') cmdPropose(args)
+  else if (cmd === 'confirm') cmdConfirm(args)
+  else if (cmd === 'ruler') cmdRuler()
   else if (cmd === 'propose-policy') cmdProposePolicy(args)
   else if (cmd === 'compile') cmdCompile(args)
   else if (cmd === 'mint') cmdMint(args)
