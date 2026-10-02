@@ -7,6 +7,7 @@
 // 钱：全部走与 A/B 同一套账本 / 收据 / 审计（schema cfb.generation/1，scope cfb.generation.2026-10-02.gN，≤ 8 请求 / ≤ USD 0.3 / 次）。
 //   compile：池内每题 1 次压缩器调用（temperature 0，与生产同体）；propose：1 次提议器调用；mint：铸造新题的 A/B 两步。
 // 防泄漏：提议器只看 dev 题证据；补丁里出现 dev 题特有的标识符 / 数字 ⇒ policy-leak，整份作废（不许把题目答案写进提示词）。
+import { applyPolicyPatches, validatePolicyPatches } from '../../src/policy.js'
 import crypto from 'node:crypto'
 import * as I from '../../index.js'
 import { immutableJson, evidenceDigest } from '../../src/evidence-program.js'
@@ -26,33 +27,8 @@ export function basePrompt(task) { return I.buildCompressPromptV4Direct(task.cha
 /** 提示词的「头」= 规则 + 样例，不含任务上下文与思维链：提议器只看这部分，泄漏闸也只拿这部分当白名单。 */
 export function promptHead(task) { return basePrompt(task).split('【当前任务与观察】')[0] }
 
-/** 把补丁应用到提示词：append(rules|tail) / replace(from 必须恰好出现一次)。补丁不合法即抛，不静默跳过。 */
-export function applyPolicyToPrompt(prompt, policy) {
-  let p = String(prompt)
-  for (const [i, patch] of (policy?.patches || []).entries()) {
-    if (patch.op === 'append') {
-      if (typeof patch.text !== 'string' || !patch.text.trim()) throw new Error('policy-patch:' + i + ':text')
-      if (patch.section === 'tail') p = p + '\n' + patch.text.trim() + '\n'
-      else {
-        const anchor = ['【风格样例】', '【当前任务与观察】', '【上一轮思维链】'].find((a) => p.includes(a))
-        if (!anchor) throw new Error('policy-patch:' + i + ':anchor')
-        p = p.replace(anchor, '【补充规则】\n' + patch.text.trim() + '\n\n' + anchor)
-      }
-    } else if (patch.op === 'replace') {
-      if (typeof patch.from !== 'string' || !patch.from || typeof patch.to !== 'string') throw new Error('policy-patch:' + i + ':replace')
-      const n = p.split(patch.from).length - 1
-      if (n !== 1) throw new Error('policy-patch:' + i + ':from-occurs-' + n)
-      p = p.replace(patch.from, patch.to)
-    } else if (patch.op === 'exemplar') {
-      // v4.2 样例槽：把【风格样例】段的正文换成飞轮里赢过的稿（数据直接变成策略，不经人手）；段标题行保留，正文到下一个空行为止
-      if (typeof patch.text !== 'string' || patch.text.trim().length < 40) throw new Error('policy-patch:' + i + ':exemplar-text')
-      const m = p.match(/【风格样例】[^\n]*\n([\s\S]*?)(?=\n\n|$)/)
-      if (!m) throw new Error('policy-patch:' + i + ':exemplar-anchor')
-      p = p.replace(m[1], patch.text.trim())
-    } else throw new Error('policy-patch:' + i + ':op')
-  }
-  return p
-}
+/** 把补丁应用到提示词 —— v14.10 起直接调用生产的 src/policy.js applyPolicyPatches（评测与生产同一函数，不再各写一份）。 */
+export function applyPolicyToPrompt(prompt, policy) { return applyPolicyPatches(prompt, policy?.patches || []) }
 /** 补丁预算 + 形状校验（不看内容是否聪明，只看是否越界）。 */
 export function validatePatches(patches) {
   if (!Array.isArray(patches) || !patches.length || patches.length > PATCH_LIMITS.maxPatches) throw new Error('policy-patches-count')
@@ -64,6 +40,7 @@ export function validatePatches(patches) {
     else throw new Error('policy-patch-op')
   }
   if (added > PATCH_LIMITS.maxAddedChars) throw new Error('policy-patches-too-long:' + added)
+  validatePolicyPatches(patches)   // v14.10：生产侧校验器也过一遍（normalizeConfig 用的就是它）——评测能落的策略，生产一定能加载
   return true
 }
 /** 泄漏闸：补丁里的强记号若只出现在 dev 题（u1/u2/raw/followup/spec）而不在基础提示词里 ⇒ 泄漏。 */
@@ -126,9 +103,10 @@ export function makePolicy({ parent, patches, rationale, prediction, origin }) {
   return { ...p, id: policyId(p) }
 }
 
-/** 压缩器请求体 —— v14.9 起与生产 distillOnce **逐字段同形**：单 user 消息、temperature 0、max_tokens 850（config.maxOutputTokens）、`thinking:{type:'disabled'}`（config.disableThinking=true，副模型 = 主模型关思考）。
+/** 压缩器请求体（v9 L1 `compile` 角色用；traj-run 的压缩臂不再用它，直接走 src/offline-birth.js 的生产同构体）—— 与生产 distillOnce 的 v4 直写**逐字段同形**：
+ *  单 user 消息、temperature 0、max_tokens = max(maxOutputTokens 850, compressV4MaxOutputTokens 1600) = 1600、`thinking:{type:'disabled'}`（disableThinking=true 的第一次尝试；生产失败后才回退开思考）。
  *  之前 thinking 开着（"以过通道身份闸"）与 2048 上限都不是生产形态：开思考的压缩器写出的稿子不是生产会写出的稿子，测出的效果迁移不回去；通道身份由主调用（思考开）的指纹闸负责。 */
-export const PRODUCTION_COMPRESSOR = Object.freeze({ maxTokens: 850, thinking: Object.freeze({ type: 'disabled' }) })
+export const PRODUCTION_COMPRESSOR = Object.freeze({ maxTokens: 1600, thinking: Object.freeze({ type: 'disabled' }) })
 export function compressorBody({ task, policy, model, maxTokens = PRODUCTION_COMPRESSOR.maxTokens, thinking = PRODUCTION_COMPRESSOR.thinking }) {
   const prompt = applyPolicyToPrompt(basePrompt(task), policy)
   return { model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature: 0, thinking, stream: false }

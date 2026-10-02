@@ -163,6 +163,7 @@ trace：`v4-segment-fired/settled`、`v4-segments-cancelled`。`compressV4Increm
 | `compressPrompt` | `'v3'` | `v3` 绝对长度（`compressTargetMin/Max` = 250/450）· `v2` 相对长度（20%~35%）· **`v4`（v12.2）认知编译器，见上节**。两者保真规则逐字相同。`x1`（v12.0）/ `v1`（v12.1）已退役，旧配置自动回落 `v3` 并记 `configAdjusted` |
 | `compressV4BudgetChars` | `null` | 仅 v4：渲染预算（字符），`null` 跟随 `compressTargetMax`。当前方案 / 证伪路 / 未决问题必留，不受预算限制 |
 | `compressV4MaxOutputTokens` | `1600` | 仅 v4：副模型输出上限（只抬不降：取 `max(maxOutputTokens, 本项)`） |
+| `compressPolicy` | `null` | **v14.10**：提示词策略即配置 `{id, patches}`（`src/policy.js` 校验：append / replace 槽位补丁，预算内）；v4-direct 提示词应用后 `promptVersion` 带 `+<id>`；坏补丁 ⇒ 置 null 并在 BOOT `configAdjusted.compressPolicy` 留痕。闭环采纳 = 写它，回滚 = 删它 |
 | `compressV4Tail` | `true` | 仅 v4：尾段（关键结论 + 待确认 + 已备好的改法） |
 | `compressV4MaxRejectRatio` | `0.5` | 仅 v4：硬不变量拒绝占比超过它 ⇒ 整块原文 |
 | `compressV4Incremental` | `'auto'` | 仅 v4：`'auto'` ⇒ `birthFinishWaitMs` ≥ 5000 整块、否则流式增量；`true` / `false` 强制 |
@@ -360,9 +361,12 @@ v3 的三处无依据被换掉：① 尺子分三层——L1 下一步结构分�
 node tools/cfb-cycle.mjs ruler                       # 尺子效度 / 采纳规则 / e 值预算 / 曝光 / 排序器 / L2 基线（零 API）
 node tools/cfb-cycle.mjs confirm --results FILE --map champion=auto,previous=raw   # L2 结局确认 / 回滚
 node tools/cfb-cycle.mjs propose [--allow-provisional]
-node tools/cfb-cycle.mjs plan-traj                    # v4.2：冻结付费单位（期望/上界成本、目的）；traj-run --plan 核对；confirm --plan N [--parity]
+node tools/cfb-cycle.mjs status                       # v4.5：一屏（策略 / 计划 / 家族覆盖 / 下一步完整命令）；新克隆先 restore
+node tools/cfb-cycle.mjs plan-traj [--all|--dry|--drop N|--supersede N]   # v4.5：冻结付费单位，缺省一个家族 × raw vs policy:base ≈ $0.15；traj-run --plan 核对；confirm --plan N
+node tools/cfb-cycle.mjs review --plan N              # v4.5：评审稿（分歧轮 / 各臂结局 / 稿原文 / 闸门）
+node tools/cfb-cycle.mjs snapshot | restore           # v4.5：闭环状态 ↔ transfer/cycle-state.json
 node tools/cfb-cycle.mjs policy-from-flywheel         # v4.2：零 API 样例槽策略
-node tools/cfb-cycle.mjs propose-policy               # v4.4：提议证据包（零 API；提议器由助手代工，见 CLOSED-LOOP-V4 §14）
+node tools/cfb-cycle.mjs propose-policy [--print]     # v4.4：提议证据包（零 API；提议器由助手代工，见 CLOSED-LOOP-V4 §14）；--print 不落盘不占代
 node tools/cfb-cycle.mjs policy-from-proposal FILE --gen N   # v4.4：助手的 proposal JSON → 预算 / 泄漏 / 可应用三闸 → 策略
 node tools/cfb-cycle.mjs states                       # v4.3：从 29 条轨迹派生可续跑子状态（59 个 / 3 家族；扩功效不扩家族）
 node tools/cfb-cycle.mjs ruler --write-design         # v4.3：到修好轮数 C 指数（实测 invalid）/ 实测 ICC 0.366 写入判定 / 旗标回归 / Pareto 池

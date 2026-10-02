@@ -15,6 +15,7 @@ import { auditApiPlan, planVersion, planScope, APPROVED_API_LIMITS_V9, V9_TASK_I
 import { API_APPROVAL_SCOPES_V9, KNOWN_API_SCOPES } from '../tools/helpers/api-watermark.mjs'
 import { prepareEvaluation, reportEvaluation, DEFAULT_HOME_V9, PUBLIC_RECEIPT_V9 } from '../tools/helpers/eval-workflow.mjs'
 import { readyMain } from '../tools/effect-ready.mjs'
+import * as cyc from '../tools/cfb-cycle.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 let pass = 0, fail = 0
@@ -265,7 +266,7 @@ try {
   test('F1 plan → 合成报告 ingest → adopt 改 champion → 下一轮 control 换新、假设换下一个 → 否决 → propose；重复 ingest 被拒', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-cycle-'))
     const env = { ...process.env, CFB_CYCLE_DIR: tmp }
-    const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), ...a], { cwd: ROOT, env, encoding: 'utf8' })
+    const cli = (...a) => cyc.runCli(a, { dir: tmp })   // v14.10：进程内 CLI（不起子进程）
     try {
       const d = cli('doctor'); assert.ok(/PASS 真值维度方向校验/.test(d.stdout), d.stdout + d.stderr)
       // v3：首轮默认 A/A 校准；这里显式 --skip-aa --lever 走 v2 的旋钮路径（A/A 与留出闸门在 closed-loop-v3.selftest 里测）
@@ -312,7 +313,7 @@ try {
   test('F2 --lever 覆盖、离线不安全拦截（bind=off 被拒）、未花钱的轮可重做而不是开新轮', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-cycle2-'))
     const env = { ...process.env, CFB_CYCLE_DIR: tmp }
-    const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), ...a], { cwd: ROOT, env, encoding: 'utf8' })
+    const cli = (...a) => cyc.runCli(a, { dir: tmp })   // v14.10：进程内 CLI（不起子进程）
     try {
       const r = cli('plan', '--lever', 'bind=off'); assert.equal(r.status, 2, r.stdout); assert.ok(/offline-unsafe/.test(r.stdout))
       assert.ok(!fs.existsSync(path.join(tmp, 'runtime/r1/plan.json')))

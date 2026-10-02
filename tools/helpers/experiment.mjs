@@ -58,10 +58,14 @@ export function betaCdf(x, a, b) {
 /** P(p > x) 。 */
 export const betaTail = (a, b, x = 0.5) => clamp01(1 - betaCdf(x, a, b))
 /** Beta 分位数（二分）。 */
+const QUANTILE_MEMO = new Map()   // v4.5：(q,a,b) 在序贯模拟里重复出现成千上万次；44 次二分（2^-44 ≈ 6e-14）对 toFixed(4) 绰绰有余
 export function betaQuantile(q, a, b) {
+  const key = q + '|' + a + '|' + b; const hit = QUANTILE_MEMO.get(key); if (hit !== undefined) return hit
   let lo = 0, hi = 1
-  for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (betaCdf(mid, a, b) < q) lo = mid; else hi = mid }
-  return (lo + hi) / 2
+  for (let i = 0; i < 44; i++) { const mid = (lo + hi) / 2; if (betaCdf(mid, a, b) < q) lo = mid; else hi = mid }
+  const v = (lo + hi) / 2
+  if (QUANTILE_MEMO.size >= 65536) QUANTILE_MEMO.clear()
+  QUANTILE_MEMO.set(key, v); return v
 }
 
 // ── 2. 配对判据 ─────────────────────────────────────────────────────────────

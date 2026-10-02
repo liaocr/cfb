@@ -94,7 +94,13 @@ export function splitSentences(text) {
   if (cur) out.push(cur)
   return out
 }
-const bigrams = (s) => { const x = String(s).replace(/\s+/g, ''); const out = new Set(); for (let i = 0; i + 1 < x.length; i++) out.add(x.slice(i, i + 2)); return out }
+const BIGRAM_MEMO = new Map()   // v4.5：同一段文本（ctx / 候选句）在一次 plan 里会被两两比对上百次，bigram 集合按原文缓存（上限 4096 条，满了清空）
+const bigrams = (s) => {
+  const key = String(s); const hit = BIGRAM_MEMO.get(key); if (hit) return hit
+  const x = key.replace(/\s+/g, ''); const out = new Set(); for (let i = 0; i + 1 < x.length; i++) out.add(x.slice(i, i + 2))
+  if (BIGRAM_MEMO.size >= 4096) BIGRAM_MEMO.clear()
+  BIGRAM_MEMO.set(key, out); return out
+}
 export function jaccard(a, b) {
   const A = bigrams(a), B = bigrams(b)
   if (!A.size || !B.size) return 0

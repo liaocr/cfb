@@ -100,17 +100,19 @@ try {
     const body = policyCompressBody({ I, model: 'm', reasoning: '我需要先看配置。'.repeat(40), ctx: '【当前任务】x', policy: loadPolicyFor('policy:p-test', tmp) }); assert.ok(body.messages[0].content.includes('测试规则：先逐字核对再编辑') && body.temperature === 0)
     const task = TRAJ_TASKS.find((t) => t.id === 'eacces-config'); let mains = 0, compresses = 0, sawPatch = false
     const tc = (name, args) => ({ id: 'c', type: 'function', function: { name, arguments: JSON.stringify(args) } })
+    // v14.10：压缩臂走生产 birth 同构体（birthOffline）；测试注入 compile，拿到的 cfg 就是生产 cfg ⇒ 用生产 compressPromptFor 看补丁在不在
+    const _compile = async (raw, cfg) => { compresses++; const prompt = I.compressPromptFor(cfg, raw); if (prompt.includes('测试规则')) sawPatch = true; if (cfg.compressPolicy) assert.equal(cfg.compressPolicy.id, 'p-test'); assert.ok(!/【本轮已发出的调用】/.test(cfg.compressCtx), '压缩器看不到本轮调用（与生产同）'); return { text: '【压缩稿】先核对 src/trace.js 的 home 路径；下一步读 verify.mjs。' + 'x'.repeat(60), meta: { promptVersion: I.compressPromptVersion(cfg), v4: null } } }
     const chat = async (b) => {
-      if (b.messages.length === 1) { compresses++; if (b.messages[0].content.includes('测试规则')) sawPatch = true; return { message: { content: '【压缩稿】先核对 src/trace.js 的 home 路径；下一步读 verify.mjs。' + 'x'.repeat(60) }, usage: {} } }
+      assert.notEqual(b.messages.length, 1, '不再有工具自拼的压缩请求')
       mains++; const round = b.messages.filter((x) => x.role === 'assistant').length + 1
       if (round === 1) return { message: { content: '先看。', reasoning_content: 'r'.repeat(40), tool_calls: [tc('read_file', { path: 'src/trace.js' })] }, usage: { prompt_tokens: 500 }, fp: 'x' }
       if (round === 2) return { message: { content: '再看。', reasoning_content: 'r'.repeat(40), tool_calls: [tc('bash', { command: 'cat README.md' })] }, usage: { prompt_tokens: 600 }, fp: 'x' }
       return { message: { content: '问题已修复。', reasoning_content: 'r'.repeat(40) }, usage: { prompt_tokens: 700 }, fp: 'x' }
     }
-    const o = { maxRounds: 4, minChars: 10, model: 'm', maxTokens: 1000, maxProbes: 1, textTools: false, requireFp: false, policyDir: tmp }
+    const o = { maxRounds: 4, minChars: 10, model: 'm', maxTokens: 1000, maxProbes: 1, textTools: false, requireFp: false, policyDir: tmp, _compile, noGate: true }   // 假稿比假原文长 ⇒ 关 birthAccept（真闸在 A22 用本地 HTTP 假服务测）
     const a = await runOne({ o, task, variant: 'policy:p-test', sample: 0, chat, I, cred: null }); assert.equal(a.error, undefined, a.error); assert.equal(a.policy, 'p-test'); assert.equal(a.compile.filter((c) => c.ok).length, 3); assert.ok(sawPatch)
     assert.deepEqual(a.proxySteps.map((s) => s.score), [2, 2, 0]); assert.equal(a.proxyScore, 1.333); assert.equal(a.proxyRound2, 2); assert.equal(a.claim, 'fixed'); assert.equal(a.fixed, false); assert.ok(a.firstMessage)
-    const b = await runOne({ o, task, variant: 'policy:base', sample: 0, chat, I, cred: null, forkMessage: a.firstMessage }); assert.equal(b.forked, true); assert.equal(b.transcript[0].calls[0].name, 'read_file'); assert.equal(mains, 5, '2 臂 × 3 轮 − 1 次分叉复用'); assert.equal(compresses, 6)
+    const b = await runOne({ o, task, variant: 'policy:base', sample: 0, chat, I, cred: null, forkMessage: a.firstMessage }); assert.equal(b.forked, true); assert.equal(b.transcript[0].calls[0].name, 'read_file'); assert.equal(mains, 5, '2 臂 × 3 轮 − 1 次分叉复用'); assert.equal(compresses, 6); assert.ok(a.compile.every((c) => c.path === 'birth-offline' && c.promptVersion === 'compress-v4d9:ctx+p-test' || c.promptVersion === 'compress-v4d9:mr+p-test'), JSON.stringify(a.compile[0])); assert.ok(b.compile.every((c) => c.policy === 'base' && !/\+/.test(c.promptVersion)))
     fs.rmSync(tmp, { recursive: true, force: true })
   })
   await test('A9 L1 值不值得存在（v4.2）：transfer/mr 162 样本天花板率 0.83、raw vs 压缩稿平局率 0.6；尺子未验 ⇒ role=diagnostic；valid 且更便宜 ⇒ prescreen；不更便宜 ⇒ redundant', () => {
@@ -132,12 +134,17 @@ try {
   })
   await test('A11 端到端（v4.2）：plan-traj 冻结计划（期望 / 上界成本、目的）→ 策略 champion 的 L2 确认被路径等价闸挡下（pending-parity）→ confirm --parity 通过后 confirmed；policy-from-flywheel 零 API 落策略', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-v42-')); const env = { ...process.env, CFB_CYCLE_DIR: tmp }
-    const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), ...a], { cwd: ROOT, env, encoding: 'utf8' })
+    const cli = (...a) => cyc.runCli(a, { dir: tmp })   // v14.10：进程内 CLI（不起子进程）
     try {
-      // v4.3：默认场景从 3 个家族变成 5 个（traj-fixtures-v2 加了 wrong-model / sse-truncated）⇒ 默认单位 70 + 40 请求、≈$1.175；限定旧 3 题仍是 42 + 24、≈$0.705
-      const pt = cli('plan-traj'); assert.equal(pt.status, 0, pt.stdout + pt.stderr); assert.ok(/期望实付 ≈ \$1\.175，上界 ≈ \$2\.786/.test(pt.stdout) && /检验尺子有效性/.test(pt.stdout) && /traj-run\.mjs --plan/.test(pt.stdout), pt.stdout)
-      const plan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/t1/plan.json'), 'utf8')); assert.equal(plan.schema, 'cfb.traj-plan/1'); assert.equal(plan.cost.mains, 70); assert.equal(plan.cost.compresses, 40); assert.equal(plan.scenarios.length, 5); assert.ok(!fs.existsSync(path.join(tmp, 'receipts')))
-      const pt3 = cli('plan-traj', '--n', '9', '--scenarios', 'eacces-config,flaky-timeout,perf-regression'); assert.ok(/期望实付 ≈ \$0\.705，上界 ≈ \$1\.672/.test(pt3.stdout), pt3.stdout)
+      // v4.5：缺省单位 = 一个家族（轨迹最少、dev 优先 ⇒ sse-truncated）× 2 臂 × 1 样本 × ≤5 轮 = 9 + 5 请求 ≈ $0.15；--all 才是 5 家族（45 + 25 ≈ $0.75）
+      const pt = cli('plan-traj'); assert.equal(pt.status, 0, pt.stdout + pt.stderr); assert.ok(/期望实付 ≈ \$0\.15，上界 ≈ \$0\.372/.test(pt.stdout) && /检验尺子有效性/.test(pt.stdout) && /traj-run\.mjs --plan/.test(pt.stdout) && /只跑 sse-truncated/.test(pt.stdout), pt.stdout)
+      const plan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/t1/plan.json'), 'utf8')); assert.equal(plan.schema, 'cfb.traj-plan/1'); assert.equal(plan.cost.mains, 9); assert.equal(plan.cost.compresses, 5); assert.deepEqual(plan.scenarios, ['sse-truncated']); assert.equal(plan.maxRounds, 5); assert.ok(!fs.existsSync(path.join(tmp, 'receipts')))
+      const again = cli('plan-traj'); assert.match(again.stdout, /同一设计的计划已存在：t1/); assert.ok(!fs.existsSync(path.join(tmp, 'runtime/t2')), '同设计不重复建')
+      const dryp = cli('plan-traj', '--all', '--dry'); assert.match(dryp.stdout, /\[dry\] 不落盘.*主 45 \+ 压缩 25 ≈ \$0\.75（上界 \$1\.86）/); assert.ok(!fs.existsSync(path.join(tmp, 'runtime/t2')))
+      assert.equal(cli('plan-traj', '--arms', 'raw,auto', '--dry').stdout.includes('臂 raw vs policy:base'), true, 'auto 是 policy:base 的别名'); assert.notEqual(cli('plan-traj', '--arms', 'raw,auto,policy:base', '--dry').status, 0, '重复臂被拒')
+      assert.match(cli('plan-traj', '--help').stdout, /plan-traj \[/); assert.ok(!fs.existsSync(path.join(tmp, 'runtime/t2')), '--help 不落盘')
+      const pt3 = cli('plan-traj', '--n', '9', '--scenarios', 'eacces-config,flaky-timeout,perf-regression'); assert.ok(/期望实付 ≈ \$0\.45，上界 ≈ \$1\.116/.test(pt3.stdout), pt3.stdout)
+      assert.match(cli('plan-traj', '--drop', '9').stdout, /已撤销未执行的计划 t9/); assert.ok(!fs.existsSync(path.join(tmp, 'runtime/t9')))
       assert.notEqual(cli('plan-traj', '--scenarios', 'nope').status, 0)
       // 策略 champion（provisional）+ L2 champion 更好 ⇒ 没有路径等价校准时只能 pending-parity
       fs.mkdirSync(path.join(tmp, 'offline'), { recursive: true })
@@ -165,7 +172,7 @@ try {
   await test('E1 端到端：adopt-provisional → propose 被拒 → confirm（L2 更差）⇒ rolled-back 恢复 previous → 曝光记账 → ruler/status 可读', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-v4-'))
     const env = { ...process.env, CFB_CYCLE_DIR: tmp }
-    const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), ...a], { cwd: ROOT, env, encoding: 'utf8' })
+    const cli = (...a) => cyc.runCli(a, { dir: tmp })   // v14.10：进程内 CLI（不起子进程）
     const plan = (n) => JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/r' + n + '/plan.json'), 'utf8'))
     const fake = (p) => ({ schema: 'cfb.eval-report/1', complete: true, reservedUsd: 0.5, requestsReserved: 13, requestsRejected: [], results: p.jobs.filter((j) => j.kind === 'main').map((j) => ({ task: j.task, variant: j.variant, sample: j.sample, rule: { next: j.variant === 'candidate' ? 1 : 0, avoid: 1, falseDone: 0, bump: 0, reEdit: 0, repeat: 0 }, action: 'read' })) })
     const rep = (n) => { const f = path.join(tmp, 'rep' + n + '.json'); fs.writeFileSync(f, JSON.stringify(fake(plan(n)))); return f }
@@ -215,7 +222,7 @@ try {
     assert.equal(iccOneWay([[1, 1], [3, 3], [5, 5]]).icc, 1); assert.equal(iccOneWay([[1, 3], [3, 1], [1, 3]]).icc, 0); assert.equal(iccOneWay([[1]]).icc, null)
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cl43-'))
     const env = { ...process.env, CFB_CYCLE_DIR: tmp }; delete env.DEEPSEEK_API_KEY
-    const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), ...a], { cwd: ROOT, env, encoding: 'utf8' })
+    const cli = (...a) => cyc.runCli(a, { dir: tmp })   // v14.10：进程内 CLI（不起子进程）
     try {
       const ru = cli('ruler', '--write-design'); assert.equal(ru.status, 0, ru.stdout + ru.stderr)
       assert.match(ru.stdout, /ICC（同题同臂重复，实测）：mr 结构分 0\.3\d/); assert.match(ru.stdout, /Harrell C=0\.5\d.*invalid/); assert.match(ru.stdout, /子状态.*5\d 个 \/ 有数据的家族 3（留出 1）；可用场景家族 5（留出 2/)
@@ -231,7 +238,7 @@ try {
       assert.equal(dry.status, 0, dry.stdout + dry.stderr); assert.match(dry.stdout, /dry-run：任务 28（14 个起点 × 2 臂 × 1 样本）、组 14；子状态重放成功 28/); assert.match(dry.stdout, /未发任何请求/)
       assert.ok(!fs.existsSync(path.join(tmp, 'runtime/t1/results.jsonl')))
       // 加难场景计划：scenarios 带 :decoy，traj-run 认得；参数不一致被拒
-      const p2 = cli('plan-traj', '--perturb', 'decoy', '--samples', '1', '--max-rounds', '6', '--stop', '--cap-usd', '1.2'); assert.equal(p2.status, 0, p2.stdout + p2.stderr)
+      const p2 = cli('plan-traj', '--all', '--perturb', 'decoy', '--samples', '1', '--max-rounds', '6', '--stop', '--cap-usd', '1.2'); assert.equal(p2.status, 0, p2.stdout + p2.stderr)
       const plan2 = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/t2/plan.json'), 'utf8')); assert.deepEqual(plan2.scenarios, TRAJ_TASKS.map((t) => t.id + ':decoy')); assert.equal(plan2.stop.capUsd, 1.2); assert.match(plan2.purpose, /诱饵/)
       const bad = spawnSync(process.execPath, [path.join(ROOT, 'tools/traj-run.mjs'), '--plan', path.join(tmp, 'runtime/t2/plan.json'), '--variants', 'raw', '--policy', 'base', '--only', 'eacces-config', '--samples', '1', '--max-rounds', '6', '--fork', '--out', path.join(tmp, 'runtime/t2'), '--dry-run'], { cwd: ROOT, env, encoding: 'utf8' })
       assert.notEqual(bad.status, 0); assert.match(bad.stderr, /traj-plan-mismatch:only/)
@@ -298,7 +305,7 @@ try {
     assert.ok(Object.values(r.byFamily).every((f) => f.verdict === 'active'))
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cl43b-'))
     const env = { ...process.env, CFB_CYCLE_DIR: tmp }; delete env.DEEPSEEK_API_KEY
-    const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), ...a], { cwd: ROOT, env, encoding: 'utf8' })
+    const cli = (...a) => cyc.runCli(a, { dir: tmp })   // v14.10：进程内 CLI（不起子进程）
     try {
       const pc = cli('perturb-check'); assert.equal(pc.status, 0, pc.stdout + pc.stderr); assert.match(pc.stdout, /21\/21[\s\S]*\*\*active\*\*/); assert.ok(fs.existsSync(path.join(tmp, 'offline/ruler/perturb-decoy.json')))
       const st = cli('states', '--family', 'eacces-config', '--start-round', '3', '--parent-variant', 'raw', '--limit', '1'); assert.match(st.stdout, /子状态 1 个/)
@@ -319,18 +326,18 @@ try {
     assert.ok(GEN_ROLES.includes('propose'), '角色枚举保留（旧收据可读），只是冻结被拒')
     const I = await import('../index.js')
     const task = { chain: { u1: '任务 x', a2: { raw: '我们需要先看配置。'.repeat(30) } }, r1: '我们需要先看配置。'.repeat(30), ctx: '【当前任务】x' }
-    const cb = compressorBody({ task, policy: { patches: [] }, model: 'm' }); assert.deepEqual(cb.thinking, { type: 'disabled' }); assert.equal(cb.max_tokens, 850); assert.equal(cb.temperature, 0); assert.equal(cb.messages.length, 1)
-    assert.deepEqual(PRODUCTION_COMPRESSOR, { maxTokens: 850, thinking: { type: 'disabled' } })
-    const pb = policyCompressBody({ I, model: 'm', reasoning: task.r1, ctx: task.ctx, policy: { patches: [] } }); assert.deepEqual(pb.thinking, { type: 'disabled' }); assert.equal(pb.max_tokens, 850)
+    const cb = compressorBody({ task, policy: { patches: [] }, model: 'm' }); assert.deepEqual(cb.thinking, { type: 'disabled' }); assert.equal(cb.max_tokens, 1600); assert.equal(cb.temperature, 0); assert.equal(cb.messages.length, 1)
+    assert.deepEqual(PRODUCTION_COMPRESSOR, { maxTokens: 1600, thinking: { type: 'disabled' } })
+    const pb = policyCompressBody({ I, model: 'm', reasoning: task.r1, ctx: task.ctx, policy: { patches: [] } }); assert.deepEqual(pb.thinking, { type: 'disabled' }); assert.equal(pb.max_tokens, 1600)
     const pbDiag = policyCompressBody({ I, model: 'm', reasoning: task.r1, ctx: task.ctx, policy: { patches: [] }, thinking: { type: 'enabled' }, maxTokens: 2048 }); assert.equal(pbDiag.thinking.type, 'enabled'); assert.equal(pbDiag.max_tokens, 2048)
     // 与生产 distillOnce 的 payload 字段逐一对齐（src/config.js: disableThinking true / maxOutputTokens 850）
-    const cfg = I.normalizeConfig({ model: 'm', baseUrl: 'https://x/v1', credentialRef: 'K' }); assert.equal(cfg.disableThinking, true); assert.equal(cfg.maxOutputTokens, 850)
-    assert.equal(cyc.TRAJ_UNIT.compressCapUsd, 0.005 + 850 * 4e-6)
+    const cfg = I.normalizeConfig({ model: 'm', baseUrl: 'https://x/v1', credentialRef: 'K' }); assert.equal(cfg.disableThinking, true); assert.equal(cfg.maxOutputTokens, 850); assert.equal(cfg.compressV4MaxOutputTokens, 1600)   // 生产 v4 直写实际上限 = max(850, 1600)
+    assert.equal(cyc.TRAJ_UNIT.compressCapUsd, 0.005 + 1600 * 4e-6)
     // freezeGen 的角色闸：通过 CLI 走 propose-policy --api
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'v44-')); const env = { ...process.env, CFB_CYCLE_DIR: tmp }
     try {
       fs.mkdirSync(path.join(tmp, 'offline'), { recursive: true }); fs.writeFileSync(path.join(tmp, 'offline/history.json'), JSON.stringify({ schema: 'cfb.closed-loop/2', hypotheses: {}, rounds: [], calibration: { round: 0, instrument: 'ok', tieRate: 0.6, winRate: 0.2 } }))
-      const r = spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), 'propose-policy', '--api'], { cwd: ROOT, env, encoding: 'utf8' }); assert.notEqual(r.status, 0); assert.match(r.stderr, /rule:assistant-role:propose/)
+      const r = cyc.runCli(['propose-policy', '--api'], { dir: tmp }); assert.notEqual(r.status, 0); assert.match(r.stderr, /rule:assistant-role:propose/)
     } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
   })
   await test('A21 代工证据与候选 #1：trajFailureEvidence 只含 dev 家族并带版本标签（base 自己 0 条）；docs/proposals/p1-multi-site.json 过预算 / 可应用，无 dev 题强记号，+≤300 字符', async () => {
@@ -346,6 +353,67 @@ try {
     assert.ok(out.length - base.length > 0 && out.length - base.length <= 300, '候选只加 ≤300 字符'); assert.ok(out.includes('10. 多处落点') && !out.includes('治症状 / 要动多处'))
     for (const tok of ['transport.js', 'assembleSseFrames', '[DONE]', 'finish_reason', 'distill.js', 'birth.js']) assert.ok(!JSON.stringify(prop.patches).includes(tok), '补丁不含 dev 题强记号 ' + tok)
     assert.ok(/prediction/.test(raw) && /作废/.test(prop.prediction), '预注册预测含证伪条件')
+  })
+  await test('A22 v4.5 生产同构（本地 HTTP 假服务，零 API）：birthOffline 的请求体 = 生产 distillOnce（单 user 消息 / thinking disabled / max_tokens 1600 / temperature 0）；策略进配置 ⇒ 提示词含补丁、promptVersion 带 +id；policy:base 与无策略逐字节相同；birthAccept 真闸（发明标识符 ⇒ 原文放行）', async () => {
+    const http = await import('node:http'); const I = await import('../index.js')
+    let lastBody = null, reply = '' 
+    const server = http.createServer((req, res) => { let body = ''; req.on('data', (c) => { body += c }); req.on('end', () => { lastBody = JSON.parse(body); res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ choices: [{ message: { content: reply }, finish_reason: 'stop' }], usage: { prompt_tokens: 100, completion_tokens: 50 } })) }) })
+    await new Promise((r) => server.listen(0, '127.0.0.1', r))
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ob-')); const keyFile = path.join(tmp, 'c.yaml'); fs.writeFileSync(keyFile, 'K: "unused"\n')
+    try {
+      const mk = (policy) => I.offlineBirthConfig({ model: 'fixture', baseUrl: 'http://127.0.0.1:' + server.address().port, credentialsPath: keyFile, policy, normalizeConfig: (x) => I.normalizeConfig({ ...x, keepAlive: false, dryRun: false }) })
+      const raw = ('我们需要先确认 src/trace.js 里 home 的来源。看起来 dshHome() 读的是 process.env.HOME，所以测试会写到真实目录。' + '下一步 read_file src/trace.js，看 trace.log 的路径拼接。').repeat(12)
+      const ctx = '【当前任务】测试把 trace.log 写到了真实 HOME\n[tool: bash] FAIL test/birth.selftest.mjs EACCES /home/u/.dsh/trace.log'
+      const policy = { id: 'p-test', patches: [{ op: 'append', section: 'rules', text: '测试规则：先逐字核对再编辑。' }] }
+      reply = '我们需要先确认 src/trace.js 里 home 的来源：dshHome() 读 process.env.HOME，测试因此写进真实目录，这就是 EACCES 的原因。改法只落一个：改 src/trace.js 的 home 来源，让测试走临时目录。所以下一步工具调用是 read_file src/trace.js。如果看到 process.env.HOME，那么假设坐实，直接改；如果不是，那么假设不成立，此时不要改 trace.js，先看 dshHome 的定义。'
+      const a = await I.birthOffline({ raw, ctx, calls: [{ name: 'read_file', args: { path: 'src/trace.js' } }], cfg: mk(policy) })
+      assert.equal(a.ok, true, JSON.stringify(a).slice(0, 300)); assert.equal(a.policy, 'p-test'); assert.equal(a.promptVersion, 'compress-v4d9:ctx+p-test')
+      assert.equal(lastBody.messages.length, 1); assert.equal(lastBody.messages[0].role, 'user'); assert.deepEqual(lastBody.thinking, { type: 'disabled' }); assert.equal(lastBody.max_tokens, 1600); assert.equal(lastBody.temperature, 0)
+      assert.ok(lastBody.messages[0].content.includes('【补充规则】\n测试规则：先逐字核对再编辑。'), '补丁进了生产提示词'); assert.ok(!lastBody.messages[0].content.includes('【本轮已发出的调用】'), '压缩器看不到本轮调用')
+      assert.equal(lastBody.messages[0].content, I.compressPromptFor({ ...mk(policy), compressCtx: ctx }, raw), '请求体 = compressPromptFor（同一函数）')
+      const promptP = lastBody.messages[0].content
+      const b = await I.birthOffline({ raw, ctx, calls: [], cfg: mk({ id: 'base', patches: [] }) }); const promptBase = lastBody.messages[0].content
+      const c = await I.birthOffline({ raw, ctx, calls: [], cfg: mk(null) }); const promptAuto = lastBody.messages[0].content
+      assert.equal(promptBase, promptAuto, 'policy:base ≡ auto 逐字节'); assert.notEqual(promptP, promptAuto); assert.equal(b.policy, 'base'); assert.equal(c.promptVersion, 'compress-v4d9:ctx'); assert.equal(b.ok, true); assert.equal(c.ok, true)
+      reply = '我们需要先看 src/transport.js 的 assembleSseFrames（原文没提过的标识符）。改法只落一个：改 finish 的回退。所以下一步工具调用是 read_file src/transport.js。'
+      const d = await I.birthOffline({ raw, ctx, calls: [], cfg: mk(null) }); assert.equal(d.ok, false, JSON.stringify(d).slice(0, 200)); assert.equal(d.text, raw, '闸不过 ⇒ 原文放行（与生产同）'); assert.ok(['distill-failed', 'invented-identifiers', 'identifier-invented'].includes(d.why) || /invent/.test(d.why + (d.reason || '')), d.why + ':' + d.reason)
+      const e = await I.birthOffline({ raw, ctx, calls: [], cfg: mk(null), gate: false, compile: async () => ({ text: 'x'.repeat(100), meta: {} }) }); assert.equal(e.ok, true); assert.equal(e.gated, false)
+    } finally { server.close(); fs.rmSync(tmp, { recursive: true, force: true }) }
+  })
+  await test('A23 v4.5 操作员面：status 一屏（策略 / 轨迹计划带设计与状态 / 家族覆盖 / 下一步）；propose-policy --print 不落盘不占代；--supersede 只改状态保留 plan.json；review --results 出评审稿（分歧轮 / 各臂结局 / 闸门）；snapshot ↔ restore 往返一致；help 与 --help 零副作用', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cl45-'))
+    const cli = (...a) => cyc.runCli(a, { dir: tmp })
+    try {
+      // 空目录：status 也得能看，并给出第一条命令
+      const s0 = cli('status'); assert.equal(s0.status, 0, s0.stdout + s0.stderr); assert.match(s0.stdout, /策略: 无/); assert.match(s0.stdout, /家族覆盖.*⇒ 下一个 sse-truncated/); assert.match(s0.stdout, /下一步: node tools\/cfb-cycle\.mjs plan-traj/)
+      // --print：证据包只打印
+      const pp = cli('propose-policy', '--print'); assert.equal(pp.status, 0, pp.stdout + pp.stderr); assert.match(pp.stdout, /\[print\] 未落盘、未登记 g1/); assert.ok(!fs.existsSync(path.join(tmp, 'offline/gen-1.pack.json')))
+      assert.ok(!fs.existsSync(path.join(tmp, 'offline/history.json')) || (JSON.parse(fs.readFileSync(path.join(tmp, 'offline/history.json'), 'utf8')).generations || []).length === 0, '--print 不占代')
+      // plan-traj → status 显示计划与设计 → supersede → 不再是待执行
+      assert.equal(cli('plan-traj').status, 0); const s1 = cli('status'); assert.match(s1.stdout, /t1 planned\s+raw vs policy:base × sse-truncated × 1 ≤5轮 ≈\$0\.15（上界 \$0\.372） design [0-9a-f]{16}/); assert.match(s1.stdout, /下一步: 已有未执行计划 t1（≈\$0\.15，上界 \$0\.372）[\s\S]*traj-run\.mjs --plan \S*t1[\/\\]plan\.json --store-text --variants raw --policy base --only sse-truncated --samples 1 --max-rounds 5 --fork --max-tokens 8000 --require-fp[\s\S]*review --plan 1/)
+      const sp = cli('plan-traj', '--supersede', '1', '--note', '测试作废'); assert.equal(sp.status, 0, sp.stdout + sp.stderr); assert.ok(fs.existsSync(path.join(tmp, 'runtime/t1/plan.json')), 'plan.json 保留')
+      const s2 = cli('status'); assert.match(s2.stdout, /t1 superseded .*—— 测试作废/); assert.match(s2.stdout, /下一步: node tools\/cfb-cycle\.mjs plan-traj/)
+      assert.notEqual(cli('plan-traj', '--supersede', '1').status, 0, '已作废的不能再作废'); assert.notEqual(cli('plan-traj', '--drop', '1').status, 0, '只有 planned 能 drop')
+      // review：对历史未分叉结果也能出稿（分歧轮 1）
+      const resCopy = path.join(tmp, 'traj3.jsonl'); fs.copyFileSync(path.join(ROOT, 'transfer/traj3/results.jsonl'), resCopy)
+      const rv = cli('review', '--results', resCopy); assert.equal(rv.status, 0, rv.stdout + rv.stderr); assert.match(rv.stdout, /# 评审稿 traj3\.jsonl（\d+ 行，3 组；零 API）/); assert.match(rv.stdout, /分歧轮/); assert.ok(fs.existsSync(path.join(tmp, 'traj3.review.md')))
+      assert.notEqual(cli('review').status, 0, '没有输入要报错')
+      // snapshot ↔ restore：改道到 tmp 时快照文件仍在仓库 transfer/ —— 这里直接用库函数比对，不写仓库文件
+      const prevDir = cyc.cycleDir(); let snap; cyc.setCycleDir(tmp); try { snap = cyc.cycleSnapshot() } finally { cyc.setCycleDir(prevDir) }
+      assert.equal(snap.schema, 'cfb.cycle-state/1'); assert.equal(snap.trajPlans.length, 1); assert.equal(snap.trajPlans[0].plan.scenarios[0], 'sse-truncated'); assert.equal(snap.history.trajPlans[0].status, 'superseded')
+      const snapFile = path.join(tmp, 'snap.json'); fs.writeFileSync(snapFile, JSON.stringify(snap))
+      const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'cl45b-'))
+      try {
+        const r1 = cyc.runCli(['restore', '--from', snapFile], { dir: tmp2 }); assert.equal(r1.status, 0, r1.stdout + r1.stderr); assert.match(r1.stdout, /补回 2 项：history t1/)
+        const r2 = cyc.runCli(['restore', '--from', snapFile], { dir: tmp2 }); assert.match(r2.stdout, /补回 0 项/)
+        assert.deepEqual(JSON.parse(fs.readFileSync(path.join(tmp2, 'runtime/t1/plan.json'), 'utf8')), snap.trajPlans[0].plan)
+        const s3 = cyc.runCli(['status'], { dir: tmp2 }); assert.match(s3.stdout, /t1 superseded/)
+      } finally { fs.rmSync(tmp2, { recursive: true, force: true }) }
+      // help 零副作用
+      const before = fs.readdirSync(path.join(tmp, 'runtime')).sort(); for (const a of [['plan-traj', '--help'], ['help', 'review'], ['plan', '-h']]) { const r = cli(...a); assert.equal(r.status, 0); assert.ok(r.stdout.length > 10) }
+      assert.deepEqual(fs.readdirSync(path.join(tmp, 'runtime')).sort(), before)
+      assert.equal(cli('nope-cmd').status, 1)
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
   })
 } finally {
   console.log(`\n=== closed-loop-v4 selftest: ${pass} pass / ${fail} fail ===`)

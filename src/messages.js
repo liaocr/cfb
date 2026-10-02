@@ -235,6 +235,23 @@ const LEDGER_DECIDED_RE = /改法只落一个[^。！？\n]*[。！？]?/g
 const LEDGER_ACCEPT_RE = /[^。！？\n]*(?:验收|改完后|预期)[^。！？\n]*[。！？]?/g
 const LEDGER_OPEN_RE = /[^。！？\n]*(?:对不上|未解|不改变落点)[^。！？\n]*[。！？]?/g
 const LEDGER_REJECT_RE = /[^。！？\n]*(?:不选|已排除|排除[:：]|搁置|不动它|不走这条|治症状)[^。！？\n]*[。！？]?/g
+// v14.10：上面三条「整句」正则在没有关键词的长句（代码块、命令输出）上是二次方回溯（每个起点都把句子扫到底再回退）。
+//   语义上一个匹配永远落在同一个 [。！？\n] 分段内，所以先按分段切、只对含关键词的分段跑原正则 ⇒ 结果逐字相同、复杂度线性。见 sentenceMatches。
+const LEDGER_ACCEPT_KW = /验收|改完后|预期/
+const LEDGER_OPEN_KW = /对不上|未解|不改变落点/
+const LEDGER_REJECT_KW = /不选|已排除|排除[:：]|搁置|不动它|不走这条|治症状/
+/** 与 text.matchAll(re) 等价（re 不跨 [。！？\n]、不含锚点/后顾），但只在含 kw 的分段上跑 re。 */
+function* sentenceMatches(text, re, kw) {
+  const s = String(text || '')
+  let start = 0
+  for (let i = 0; i <= s.length; i++) {
+    const ch = i < s.length ? s[i] : '\n'
+    if (ch !== '。' && ch !== '！' && ch !== '？' && ch !== '\n') continue
+    const seg = s.slice(start, ch === '\n' ? i : i + 1)
+    if (kw.test(seg)) for (const m of seg.matchAll(re)) yield m
+    start = i + 1
+  }
+}
 const TRIPLE_RE = /old_text 是 `([^`\n]{1,220})`[^`]{0,160}?new_text 是 `([^`\n]{1,220})`/g
 function draftOf(m) {
   if (!m) return ''
@@ -266,7 +283,7 @@ export function buildLedger(messages) {
   let ui = -1
   for (let i = arr.length - 1; i >= 0; i--) { const m = arr[i]; if (m && m.role === 'user' && !isToolResultMsg(m) && textOfContent(m.content).trim()) { ui = i; break } }
   const L = { rounds: 0, edits: [], calls: [], decided: [], excluded: [], accept: [], open: [], lines: [] }
-  const pick = (text, re, max, seen) => { const out = []; for (const m of String(text || '').matchAll(re)) { const t = m[0].trim(); if (t.length < 8 || t.length > 240 || seen.has(t)) continue; seen.add(t); out.push(t); if (out.length >= max) break } return out }
+  const pick = (text, re, max, seen, kw) => { const out = []; for (const m of (kw ? sentenceMatches(text, re, kw) : String(text || '').matchAll(re))) { const t = m[0].trim(); if (t.length < 8 || t.length > 240 || seen.has(t)) continue; seen.add(t); out.push(t); if (out.length >= max) break } return out }
   const seen = new Set()
   let round = 0
   for (let i = ui + 1; i < arr.length; i++) {
@@ -276,9 +293,9 @@ export function buildLedger(messages) {
     const d = draftOf(m)
     if (d) {
       for (const t of pick(d, LEDGER_DECIDED_RE, 1, seen)) L.decided.push({ round, text: t })
-      for (const t of pick(d, LEDGER_REJECT_RE, 3, seen)) L.excluded.push({ round, text: t })
-      for (const t of pick(d, LEDGER_ACCEPT_RE, 2, seen)) L.accept.push({ round, text: t })
-      for (const t of pick(d, LEDGER_OPEN_RE, 2, seen)) L.open.push({ round, text: t })
+      for (const t of pick(d, LEDGER_REJECT_RE, 3, seen, LEDGER_REJECT_KW)) L.excluded.push({ round, text: t })
+      for (const t of pick(d, LEDGER_ACCEPT_RE, 2, seen, LEDGER_ACCEPT_KW)) L.accept.push({ round, text: t })
+      for (const t of pick(d, LEDGER_OPEN_RE, 2, seen, LEDGER_OPEN_KW)) L.open.push({ round, text: t })
       // v12.9.2：前几轮稿里逐字引用的代码行（「仍在依赖的事实」）——延续段由程序写时要用；只收像代码的段，三元组里的行不重复收
       for (const m2 of d.matchAll(/`([^`\n]{12,200})`/g)) {
         const t = m2[1].trim()
@@ -509,3 +526,5 @@ export function streamProvenanceRecord({ n, options, session, previewChars }) {
     artRefs: artRefsOf(msgs),
   }
 }
+
+export const __ledgerInternals = Object.freeze({ sentenceMatches, LEDGER_ACCEPT_RE, LEDGER_OPEN_RE, LEDGER_REJECT_RE, LEDGER_ACCEPT_KW, LEDGER_OPEN_KW, LEDGER_REJECT_KW })   // v14.10：仅供等价性测试

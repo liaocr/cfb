@@ -270,3 +270,44 @@ ruler ──▶ 效度状态 / 采纳规则 / e 值预算 / 曝光 / 排序器 /
 | 最小 | raw / policy:base | 5 × 1 | ≈$0.59 | 只有基线 + 证据，无 parity |
 
 执行：`DEEPSEEK_API_KEY=… node tools/traj-run.mjs --plan .cfb-runtime/traj/t2/plan.json --store-text --variants raw,auto --policy base --only … --samples 1 --max-rounds 4 --fork --max-tokens 8000 --require-fp --base-url https://api.a6api.com/v1 --model deepseek-v4.1-flash --out .cfb-runtime/traj/t2`（`--dry-run` 已通过）；回灌 `confirm --plan 2 --parity` 与 `confirm --plan 2 --map champion=policy:base,previous=raw`，然后 `propose-policy --gen 3` 让助手读 v4d9 自己的失败再写候选 #2。
+
+## 15. v4.5（v14.10）：付费单元缩成「一个家族」、策略即配置、birthOffline 生产同构、操作员面、全量提速
+
+**起因（用户第十一轮）**：三个问题 —— (1) t2 一次 15 条轨迹 ≤4 轮，每一条信息都有用吗、助手读得完吗；(2) 这套架构对助手手动操作哪里别扭；(3) 全量自测 50 s（以前 8 s），接上 API 后训练要快、省、立刻能跑。
+
+### 15.1 单元设计：为什么 t2 是错的，单元应该多大
+t2 = raw / auto / policy:base × 5 家族 × 1 样本 ≤4 轮，≈$0.925。逐臂拆开看它买到什么：
+
+| 臂 / 项 | 成本 | 买到的信息 | 判定 |
+|---|---|---|---|
+| auto 臂（5 条） | ≈$0.34 | auto ≈ policy:base 的 parity（路径等价） | **冗余**：v4.5 起 `policy:base` ≡ 生产 birth（同一段代码 `birthOffline`、字节相同的提示词，A22 实测），parity 由构造保证，不必花钱证 |
+| 5 家族并跑 | ×5 | 5 对 L2、5 组分歧 | **读不完也用不上**：一对 L2 的信息要靠读「分歧轮两臂各看到了什么」才能变成下一条候选规则；5 组分歧同时到手，助手只能逐组读，后 4 组在读完第 1 组之前不会改变任何决定；而且 n=1/家族 的 L2 无论如何到不了 e≥10（4-0 才 6.2） |
+| ≤4 轮 | — | **截尾 raw**：历史 raw 修好轮次 6,6,4,4,4,3,3，auto 3–4 ⇒ 4 轮把 raw 的「慢但能修好」记成「没修好」，GPC 第一键 solved 直接偏向压缩臂 | 改 ≤5 |
+| `--samples 2`（旧缺省） | ×2 | 同题重复 | ICC 实测 0.366，重复样本的边际信息低于换一个家族 |
+
+**结论**：付费单元 = **一个家族 × raw vs policy:base × 1 样本 × ≤5 轮，分叉**（主 9 + 压缩 5 ≈ **$0.15**，上界 $0.372）。跑完 `review`，助手读分歧轮、写候选、再排下一个家族。`plan-traj` 缺省就是这个单元（家族 = 现有轨迹最少者，dev 先于留出：`sse-truncated` → `wrong-model`[h] → `flaky-timeout` …），`--all` 才是五家族（≈$0.75）。t2 / t3 标记 `superseded`（plan.json 保留）；**t4** 已冻结为第一单元。
+
+### 15.2 策略即配置（`src/policy.js`）与 birthOffline（`src/offline-birth.js`）
+- 生产 `config.compressPolicy = {id, patches} | null`，在 `compressPromptFor`（v4-direct）里以【补充规则】等槽位应用；`compressPromptVersion` ⇒ `compress-v4d9:<ctx>+<id>`；`normalizeConfig` 校验（坏补丁 ⇒ null + `configAdjusted.compressPolicy`）。**采纳 = 把策略写进配置；回滚 = 删掉**，不再有「离线策略」与「生产提示词」两套实现。
+- `birthOffline({raw, ctx, calls, cfg})`：离线评测唯一的压缩路径 = 生产 birth 的复刻 —— 压缩器**看不到本轮调用**（之前 traj-run 把【本轮已发出的调用】塞给了压缩器，生产从不这样）、程序部件从 calls 拼接（`spliceProgramParts`）、`birthAccept` 闸、失败 ⇒ 原文放行并记 `why`；请求体 = 生产 `distillOnce`（单 user 消息 / thinking disabled / **max_tokens 1600**（`max(maxOutputTokens 850, compressV4MaxOutputTokens 1600)`，v14.9 写 850 是错的）/ temperature 0），A22 用本地 HTTP 假服务逐字段核对。`traj-run` 缺省走它（`--legacy-compress` 保留旧路径以便对照）；compile 行带 `path:'birth-offline'`，`confirm` 对这种行 parity 按构造通过。**评测口径因此与 v12.9.2–v14.9 的 compile / traj 结果不同比**（旧结果照旧封存，不重评）；`tools/compile-mr.mjs` 仍是旧口径（压缩器可见调用块），文档注明，不改。
+
+### 15.3 操作员面（助手手动开环时别扭的地方，逐条修）
+| 别扭 | 修法 |
+|---|---|
+| `plan-traj --help` / 任何一次调用都会真的建计划、占 t 号 | `--help`/`-h`/`help <cmd>` 零副作用；`--dry` 只算不落盘；同设计未执行的计划不重复建（`design` 摘要）；`--drop N` 撤销 / `--supersede N` 作废（保留 plan.json） |
+| `propose-policy` 每看一次证据包就多一代 | `--print` 只打印 |
+| 结果 jsonl 要人肉翻 | `review --plan N` → `review.md`：每组分歧轮、各臂结局 / 宣称 / 编辑数 / 压缩闸 / 代理分、每轮动作签名、**分歧处压缩稿原文**（`--store-text`）、闸门 JSON |
+| 看不到全局 | `status` 一屏：策略（状态 / 父 / 代 / 补丁数）、轨迹计划（臂 × 场景 × 样本 ≤轮、期望 / 上界、design、状态、备注）、家族覆盖 + 下一个家族、**下一步的完整命令** |
+| `.cfb-offline` 被 gitignore ⇒ 新克隆丢策略 / 代际 / 计划 | `snapshot` → `transfer/cycle-state.json`（进仓库、进 manifest）；`restore [--from] [--force]` 只补缺不覆盖 |
+| 自测用子进程驱动 CLI（≈150 ms × 上百次） | `runCli(argv, {dir})` 进程内执行、捕获 stdout / stderr / exitCode；`setCycleDir` 改道 |
+
+### 15.4 提速（2 核沙箱实测）
+| 项 | 前 | 后 | 怎么做的 |
+|---|---|---|---|
+| closed-loop / v3 / v4 三套 | 11.1 / 18.1 / 22.6 s | **3.0 / 3.8 / 6.9 s** | 子进程 → `runCli`；`plan` 1093 → 492 ms（`betaQuantile` 记忆化 + 60→44 次二分、bigram 集合缓存）；`ruler` 1424 → 662 ms |
+| `perturbExposure` | 4.1 s × 2 | 1.3 s × 1 | 首见 + 首次排查命中即停（裁决只用这两样；`--full` 全量）；同进程记忆化；判定不变 21/21、19/21 |
+| 台账整句正则（生产 `src/messages.js`） | 968 段 457 ms | 27 ms | 分段预筛再跑原正则；**逐字等价**（2904 次比对 0 差异；v12 自测加了等价 + 线性时间断言） |
+| `verify.mjs` 全量 | 53 s（v14.9 时） | **≈35 s** | 以上合计；并发 6 在 2 核上仍最快（套件多为等待型）。剩余大头是老套件 `evidence-search`（336 个 oracle 子进程，顺序执行是设计）与 `native-repair-host`，没动 |
+
+### 15.5 接上 API 后的一步循环
+`status` → （用户批准 t4，≈$0.15）→ `traj-run --plan .cfb-runtime/traj/t4/plan.json …`（`--dry-run` 已通过）→ `review --plan 4`（读分歧轮 + 稿原文）→ `confirm --plan 4 --map champion=policy:base,previous=raw`（L2 入账）→ 助手写候选 `policy-from-proposal FILE --gen 3` → `plan-traj`（下一个家族，可 `--arms raw,policy:<id>`）。e 值跨单元累计；留出家族（wrong-model / eacces-config）的单元只入账不选稿。

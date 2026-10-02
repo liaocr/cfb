@@ -6,6 +6,7 @@
 
 ## 零、先读这段（最新的、必须知道的）
 
+000000000. **v14.10（2026-10-02）v4.5：开工先 `node tools/cfb-cycle.mjs status`（新克隆先 `restore`），它会打印下一步的完整命令。读 `CLOSED-LOOP-V4.md` §15。** 付费单元现在是**一个家族 × raw vs policy:base × 1 样本 × ≤5 轮 ≈ $0.15**（`plan-traj` 缺省；`--dry` 只算；`--all` 五家族）；t4（sse-truncated）已冻结待批准。跑完 `review --plan N` 出评审稿（分歧轮 + 两臂稿原文），再 `confirm`，再写候选（`propose-policy --print` 看证据包不占代 → `policy-from-proposal`）。策略现在是生产配置 `compressPolicy`（采纳 = 写配置）；离线压缩只走 `birthOffline`（= 生产 birth，max_tokens 1600）。`<cmd> --help` 零副作用；自测用 `runCli` 不起子进程。
 00000000. **v14.9（2026-10-02）用户规则（铁律）：只用 deepseek-v4.1-flash，且只用在主模型（思考开）与副模型（同模型关思考）两个实战位置；提议器 / 评委 / 打标 / 写场景 / 分析由你代工，零 API；不提别的模型。读 `CLOSED-LOOP-V4.md` §14。** 代工流程：`node tools/cfb-cycle.mjs propose-policy` 出证据包 → 你写 proposal JSON → `policy-from-proposal FILE --gen N`。v4d9 目前 0 条结局数据：第一付费单元是 t2（raw / auto / policy:base，≈$0.925，需批准），不是改稿。
 0000000. **v14.8（2026-10-02）v4.3 续：读 `CLOSED-LOOP-V4.md` §13.4。** 场景家族现 5（`traj-fixtures-v2.mjs`：wrong-model 留出 / sse-truncated dev，隐藏 oracle 判修好；新家族零轨迹）；`perturb-check` 证明 decoy 不是惰性改动但不证明更难；付费顺序 P1 单状态续跑探针（≈$0.04，看 summary 的续跑探针判定）→ P2 decoy 难度探针（≈$0.15）→ P3 首跑验尺子。默认 plan-traj 现 ≈$1.18（5 家族 × 2），花钱前先给用户看。
 000000. **v14.7（2026-10-02）v4.3：读 `docs/design/CLOSED-LOOP-V4.md` §13（评审 9 方向 × 文献 × 取舍表）。** 先跑 `node tools/cfb-cycle.mjs ruler --write-design` 与 `states`：到修好轮数口径下执行器代理 **C=0.52 invalid**、六旗标学权重不如 ±1、ICC 实测 0.366、子状态 59 个但家族仍 3（不是新留出）。付费仍只走 `plan-traj [--stop|--from-states|--perturb decoy]` → `traj-run … --dry-run` 核对 → 用户批准 → `traj-run --plan` → `confirm --plan N`。不要把子状态数当留出家族数；不要在 3 道 dev 题上做对半检验。

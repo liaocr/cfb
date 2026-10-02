@@ -33,7 +33,8 @@ function parseArgs(argv) {
     else if (a === '--concurrency') o.concurrency = Number(v())
     else if (a === '--only') o.only = v().split(',')
     else if (a === '--require-fp') o.requireFp = true
-    else if (a === '--compress-thinking') o.compressThinking = true   // v14.9：诊断用；缺省压缩器与生产同形（关思考、850 tokens）
+    else if (a === '--compress-thinking') o.compressThinking = true   // v14.9：诊断用（只在 --legacy-compress 下有意义）
+    else if (a === '--legacy-compress') o.legacyCompress = true   // v14.10：旧的工具自拼请求路径（对照 v14.9 之前的收据用）；缺省走生产 birth 同构体
     else if (a === '--base-url') o.baseUrl = v()
     else if (a === '--model') o.model = v()
     else if (a === '--out') o.out = v()
@@ -242,26 +243,26 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
       const calls = callsOfMessage(r.message)
       let stored = reasoning, compileInfo = null
       if ((variant === 'auto' || policy) && reasoning.length < o.minChars) { compileInfo = { ok: false, belowFloor: true, rawChars: reasoning.length }; rec.compile.push(compileInfo) }
-      else if (policy) {
-        // v4.1 策略变体：生产 v4 提示词 + 策略补丁，直连同一通道；两臂（policy:base vs policy:<id>）同路径 ⇒ 差异只来自补丁
-        const callsBlock = I.turnCallsBlock(calls); const ctx = I.buildCompressCtx(messages) + (callsBlock ? '\n\n' + callsBlock : '')
-        const t0 = Date.now()
-        try {
-          const g = await chat(policyCompressBody({ I, model: o.model, reasoning, ctx, policy, ...(o.compressThinking ? { thinking: { type: 'enabled' }, maxTokens: 2048 } : {}) })); const txt = responseText(g.message); if (!txt || txt.length < 80) throw new Error('empty-compress')
-          // v4.2：过生产同一道闸（compileV4Direct：长度包络 / 无发明标识符 / 三元组保留）；闸不过 ⇒ 与生产 birth 一样原文放行（distill-failed）
-          const gate = o.noGate ? { ok: true, stats: null, text: txt } : I.compileV4Direct(txt, reasoning, { compressCtx: ctx })
-          if (gate.ok) { stored = gate.text || txt; compileInfo = { ok: true, ms: Date.now() - t0, rawChars: reasoning.length, outChars: stored.length, policy: policy.id, gate: gate.stats || null } }
-          else { stored = reasoning; compileInfo = { ok: false, gateFail: true, reason: gate.reason, ms: Date.now() - t0, rawChars: reasoning.length, policy: policy.id, gate: gate.stats || null } }
+      else if (variant === 'auto' || policy) {
+        // v14.10：两种压缩臂都走生产 birth 的离线同构体（src/offline-birth.js）：压缩器看不到本轮调用（与生产同）→ 程序部件拼接 → birthAccept 闸。
+        //   auto = 无策略；policy:<id> = cfg.compressPolicy（生产同一配置项）⇒ auto ≡ policy:base 由构造保证，不再有工具自拼的第二条请求路径。
+        //   旧路径（policyCompressBody 直连 + compileV4Direct）只在 --legacy-compress 下保留，供对照 v14.9 之前的收据。
+        const ctx = I.buildCompressCtx(messages)
+        if (o.legacyCompress && policy) {
+          const callsBlock = I.turnCallsBlock(calls); const ctxL = ctx + (callsBlock ? '\n\n' + callsBlock : '')
+          const t0 = Date.now()
+          try {
+            const g = await chat(policyCompressBody({ I, model: o.model, reasoning, ctx: ctxL, policy, ...(o.compressThinking ? { thinking: { type: 'enabled' }, maxTokens: 2048 } : {}) })); const txt = responseText(g.message); if (!txt || txt.length < 80) throw new Error('empty-compress')
+            const gate = o.noGate ? { ok: true, stats: null, text: txt } : I.compileV4Direct(txt, reasoning, { compressCtx: ctxL })
+            if (gate.ok) { stored = gate.text || txt; compileInfo = { ok: true, path: 'legacy', ms: Date.now() - t0, rawChars: reasoning.length, outChars: stored.length, policy: policy.id, gate: gate.stats || null } }
+            else { stored = reasoning; compileInfo = { ok: false, path: 'legacy', gateFail: true, reason: gate.reason, ms: Date.now() - t0, rawChars: reasoning.length, policy: policy.id, gate: gate.stats || null } }
+          } catch (e) { compileInfo = { ok: false, path: 'legacy', ms: Date.now() - t0, rawChars: reasoning.length, policy: policy.id, error: String(e && e.message || e).slice(0, 120) } }
+        } else {
+          const cfg = I.offlineBirthConfig({ model: o.model, baseUrl: o.baseUrl, credentialsPath: cred, policy: policy || null, normalizeConfig: I.normalizeConfig })
+          const b = await I.birthOffline({ raw: reasoning, ctx, calls, cfg, gate: !o.noGate, compile: o._compile || null })
+          stored = b.text
+          compileInfo = { ok: b.ok, path: 'birth-offline', ms: b.ms, rawChars: reasoning.length, outChars: b.text.length, policy: b.policy, promptVersion: b.promptVersion, gate: b.v4 || null, ...(b.ok ? { spliced: b.spliced || null, accept: b.accept || null } : { why: b.why, reason: b.reason || null, info: b.info || null }) }
         }
-        catch (e) { compileInfo = { ok: false, ms: Date.now() - t0, rawChars: reasoning.length, policy: policy.id, error: String(e && e.message || e).slice(0, 120) } }
-        rec.compile.push(compileInfo)
-      }
-      else if (variant === 'auto') {
-        const callsBlock = I.turnCallsBlock(calls); const ctx = I.buildCompressCtx(messages) + (callsBlock ? '\n\n' + callsBlock : '')   // v12.9.2：与 birth.js / compile-mr 同一渲染（turnCallsBlock）
-        const cfg = I.normalizeConfig({ compressPrompt: 'v4', compressV4Incremental: false, compressCtx: ctx, model: o.model, baseUrl: o.baseUrl, credentialsPath: cred, credentialRef: 'K', followHostProvider: false, followHostModel: false, trace: false, timeoutMs: 90000 })
-        const t0 = Date.now()
-        try { const g = await I.makeBirthCompiler(cfg)(reasoning); stored = g.text; compileInfo = { ok: true, ms: Date.now() - t0, rawChars: reasoning.length, outChars: g.text.length, promptVersion: g.meta && g.meta.promptVersion, gate: g.meta && g.meta.v4 } }
-        catch (e) { compileInfo = { ok: false, ms: Date.now() - t0, rawChars: reasoning.length, error: String(e && e.message || e).slice(0, 120) } }
         rec.compile.push(compileInfo)
       }
       messages.push({ role: 'assistant', content: text, reasoning_content: stored })

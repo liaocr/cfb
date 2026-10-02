@@ -3,6 +3,7 @@
 //   DEFAULTS         全部可在 profile patch 的 config 里覆盖（每个值的来历写在旁边）
 //   normalizeConfig  扁平键 + 嵌套写法（distill: / birth:）→ 生效配置；
 //                    退役键/模式、未知键、自动调整全部留痕（BOOT 可见），只报不抛
+import { normalizePolicy } from './policy.js'
 import os from 'node:os'
 
 // ── harness home 解析（★ 2026-09-18 公测可移植性：禁止把作者机器路径当默认值）──
@@ -223,6 +224,9 @@ export const DEFAULTS = {
   compressCtxAuto: true,
   // v12.8.1：宿主的编辑工具 { name, oldKey, newKey }（稿里的可用句要说宿主真实的工具名；缺省由 plugin 从出站 tools 认出，认不出保留 edit_file / old_text / new_text）
   compressEditTool: null,
+  // v14.10 策略即配置：{id, patches} ⇒ compressPromptFor 在生产路径应用到 v4 直写提示词；null / 'base' = 无策略（逐字节原提示词）。
+  //   坏策略不让它半生效：normalizeConfig 校验失败 ⇒ 回到 null 并记 configAdjusted.compressPolicy。
+  compressPolicy: null,
   compressCtxMaxChars: 8000,
   // 仅工具用：把副模型原始输出带回 meta.sideOutput（tools/compile-direct.mjs --recompile 零调用重编译）
   captureSideOutput: false,
@@ -339,6 +343,9 @@ export function normalizeConfig(config = {}) {
     if (b.sessionAmbiguity !== undefined) c.birthSessionAmbiguity = b.sessionAmbiguity
     if (b.identifierGate !== undefined) c.birthIdentifierGate = b.identifierGate
   }
+  // v14.10：策略归一化（null/'base' ⇒ null；坏的 ⇒ null + 留痕），生产与评测同一函数（src/policy.js）
+  try { c.compressPolicy = normalizePolicy(c.compressPolicy) }
+  catch (e) { c.configAdjusted = Object.assign({}, c.configAdjusted, { compressPolicy: { from: c.compressPolicy && c.compressPolicy.id || String(c.compressPolicy), to: null, why: String(e && e.message || e) } }); c.compressPolicy = null }
   // 不认识的处置值 ⇒ 回到安全缺省（passthrough）并在 BOOT 留痕；绝不把拼错的值猜成「照旧归属」
   if (c.birthSessionAmbiguity !== 'passthrough' && c.birthSessionAmbiguity !== 'latest') {
     c.configAdjusted = Object.assign({}, c.configAdjusted, { birthSessionAmbiguity: { from: c.birthSessionAmbiguity, to: 'passthrough', why: "must be 'passthrough' or 'latest'" } })

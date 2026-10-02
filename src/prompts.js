@@ -10,6 +10,7 @@
 //   splitCompressPrompt    compressSystemPrompt 打开时拆成 system（规则前缀）+ user（原文），字节等价
 //   buildCompressPromptV4  compress-v4-ops（v12.2，opt-in）：副模型**只做结构化标注**（JSON ops），
 //                          出生文本由 src/compile-v4.js 按理论（第五卷 S1–S5）用代码写出
+import { applyPolicyPatches } from './policy.js'
 import { DEFAULTS } from './config.js'
 import { inHandLinesBlock } from './compile-v4.js'   // 循环引用只在调用时解析（compile-v4 也只在函数体内用 condHints / fixHints），顶层不互用
 
@@ -27,7 +28,7 @@ export function compressPromptVersion(cfg) {
   const sys = cfg && cfg.compressSystemPrompt === true ? ':sys' : ''
   if (v === 'v2') return 'compress-v2' + sys
   // v4 把渲染预算与尾段开关写进版本号（它们改变产物；提示词本身不随参数变化）
-  if (v === 'v4' && cfg && cfg.compressV4Direct === true) return 'compress-v4d9:' + (cfg.compressCtx ? (/【台账】/.test(String(cfg.compressCtx)) ? 'mr' : 'ctx') : 'noctx') + sys
+  if (v === 'v4' && cfg && cfg.compressV4Direct === true) return 'compress-v4d9:' + (cfg.compressCtx ? (/【台账】/.test(String(cfg.compressCtx)) ? 'mr' : 'ctx') : 'noctx') + sys + (cfg.compressPolicy && cfg.compressPolicy.id ? '+' + cfg.compressPolicy.id : '')   // v14.10：策略进版本号，trace 能分辨哪份策略写的稿
   if (v === 'v4') return 'compress-v4-ops9:' + v4Budget(cfg) + (cfg && cfg.compressV4Tail === false ? ':notail' : '') +
     (v4Incremental(cfg) ? ':inc' + v4SegmentChars(cfg) : '') + sys
   // v3 把目标长度写进版本号 ⇒ trace / BOOT / A-B 分桶自动带上参数，无需另记字段。
@@ -38,7 +39,13 @@ export function compressPromptVersion(cfg) {
 /** 按配置构造压缩提示词；与 compressPromptVersion 同一口径（v2 显式选择，其余一律 v3）。 */
 export function compressPromptFor(cfg, cot) {
   if (cfg && cfg.compressPrompt === 'v2') return buildCompressPrompt(cot)
-  if (cfg && cfg.compressPrompt === 'v4') return cfg.compressV4Direct === true ? buildCompressPromptV4Direct(cot, cfg.compressCtx || '', cfg.compressEditTool || null) : buildCompressPromptV4(cot)
+  if (cfg && cfg.compressPrompt === 'v4') {
+    if (cfg.compressV4Direct !== true) return buildCompressPromptV4(cot)
+    const p = buildCompressPromptV4Direct(cot, cfg.compressCtx || '', cfg.compressEditTool || null)
+    // v14.10 策略即配置：cfg.compressPolicy（normalizeConfig 已归一化；null = 无策略 = 逐字节原提示词）在生产路径里应用补丁，
+    // 评测的 policy:<id> 臂走的就是这一行 ⇒ 评测与生产同路由构造保证，不再需要付费的路径等价校准。
+    return cfg.compressPolicy && cfg.compressPolicy.patches && cfg.compressPolicy.patches.length ? applyPolicyPatches(p, cfg.compressPolicy.patches) : p
+  }
   const t = compressTargets(cfg)
   return buildCompressPromptV3(cot, t.min, t.max)
 }

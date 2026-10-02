@@ -15,6 +15,7 @@ export { name, inject, apply, DEP_ID, compressCtxFor } from './src/plugin.js'
 
 // ── 配置 ─────────────────────────────────────────────────────────────────────
 export { DEFAULTS, normalizeConfig, dshHome, dshHomePath } from './src/config.js'
+export { applyPolicyPatches, validatePolicyPatches, normalizePolicy, POLICY_PATCH_LIMITS } from './src/policy.js'   // v14.10 策略即配置
 
 // ── 出生即压缩（birth）───────────────────────────────────────────────────────
 export {
@@ -26,6 +27,7 @@ export { createSessionTracker } from './src/session-tracker.js'
 
 // ── 副模型调用 ───────────────────────────────────────────────────────────────
 export { generateDistillation, hedgedDistill, makeBirthCompiler, makeV4SegmentCompiler } from './src/distill.js'
+export { birthOffline, offlineBirthConfig } from './src/offline-birth.js'   // v14.10 生产 birth 的离线同构体（评测唯一压缩路径）
 export {
   buildCompressPrompt, buildCompressPromptV3, buildCompressPromptV4, buildCompressPromptV4Direct, V4D_TAIL, V4D_MR, V4D_MR_TAIL, exampleSentences, splitCompressPrompt, fixHints, condHints,
   compressPromptVersion, compressPromptFor, compressTargets, V4_TAIL, v4Budget, v4Incremental, v4SegmentChars, buildCompressPromptV4Segment,

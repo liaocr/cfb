@@ -14,6 +14,7 @@ import { auditApiPlan, planVersion, planScope, APPROVED_API_LIMITS_GEN, GEN_ROLE
 import { API_APPROVAL_SCOPES_GEN, KNOWN_API_SCOPES, SCOPE_MAX_REQUESTS } from '../tools/helpers/api-watermark.mjs'
 import { prepareEvaluation, reportEvaluation, loadPrepared } from '../tools/helpers/eval-workflow.mjs'
 import { generateCandidates, BASELINE_KNOBS } from '../tools/helpers/candidates.mjs'
+import * as cyc from '../tools/cfb-cycle.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 let pass = 0, fail = 0
@@ -150,7 +151,7 @@ try {
     const comp = buildGenerationPlan({ role: 'compile', round: 1, tasks: pool.tasks, pricing: PRICING })
     assert.equal(planVersion(comp), 10); assert.equal(planScope(comp), 'cfb.generation.2026-10-02.g1')
     const a = auditApiPlan(comp); assert.equal(a.main, 5); assert.equal(a.probe, 3); assert.ok(a.totalReservedUsd < APPROVED_API_LIMITS_GEN.maxUsd)
-    assert.equal(comp.jobs.find((j) => j.kind === 'main').body.max_tokens, 850); assert.equal(comp.jobs.find((j) => j.kind === 'main').body.temperature, 0); assert.equal(comp.jobs.find((j) => j.kind === 'main').body.thinking.type, 'disabled')   // v14.9：与生产 distillOnce 同形
+    assert.equal(comp.jobs.find((j) => j.kind === 'main').body.max_tokens, 1600); assert.equal(comp.jobs.find((j) => j.kind === 'main').body.temperature, 0); assert.equal(comp.jobs.find((j) => j.kind === 'main').body.thinking.type, 'disabled')   // v14.9：与生产 distillOnce 同形
     const prop = buildGenerationPlan({ role: 'propose', round: 40, tasks: dev, evidence: [], devTaskIds: dev.map((t) => t.id), pricing: PRICING })
     assert.equal(auditApiPlan(prop).main, 1); assert.equal(planScope(prop), 'cfb.generation.2026-10-02.g40')
     const mint = buildGenerationPlan({ role: 'mint-a', round: 2, scenario: { id: 'minted-x', u1: '修一下保存配置时的 EACCES' }, pricing: PRICING })
@@ -196,7 +197,7 @@ try {
   test('E1 A/A → calibrated；旋钮 continue → 留出 4 对后 adopt；飞轮追加；status/doctor 显示校准', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-v3-'))
     const env = { ...process.env, CFB_CYCLE_DIR: tmp }
-    const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), ...a], { cwd: ROOT, env, encoding: 'utf8' })
+    const cli = (...a) => cyc.runCli(a, { dir: tmp })   // v14.10：进程内 CLI（不起子进程）
     const plan = (n) => JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/r' + n + '/plan.json'), 'utf8'))
     const rep = (n, p, spec) => { const f = path.join(tmp, 'rep' + n + '.json'); fs.writeFileSync(f, JSON.stringify(fakeAb(p, spec))); return f }
     try {
@@ -226,7 +227,7 @@ try {
   test('E2 生成层：泄漏提案被拒 → 合法提案落策略 → compile 全覆盖 → plan 自动把策略当假设 → 留出采纳 → control 换成策略稿 → propose 给提示词补丁', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-v3g-'))
     const env = { ...process.env, CFB_CYCLE_DIR: tmp }
-    const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), ...a], { cwd: ROOT, env, encoding: 'utf8' })
+    const cli = (...a) => cyc.runCli(a, { dir: tmp })   // v14.10：进程内 CLI（不起子进程）
     const gplan = (n) => JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/g' + n + '/plan.json'), 'utf8'))
     const plan = (n) => JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/r' + n + '/plan.json'), 'utf8'))
     const grep = (n, mode) => { const f = path.join(tmp, 'g' + n + '.json'); fs.writeFileSync(f, JSON.stringify(fakeGen(gplan(n), mode))); return f }
@@ -285,7 +286,7 @@ try {
   test('E3 铸造：mint a → 人补 u2 → mint b → compile --mint r1 → side → task.json 进池（6 题、留出 ≥2、轮换跳过缺 side 的题）', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-v3m-'))
     const env = { ...process.env, CFB_CYCLE_DIR: tmp }
-    const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), ...a], { cwd: ROOT, env, encoding: 'utf8' })
+    const cli = (...a) => cyc.runCli(a, { dir: tmp })   // v14.10：进程内 CLI（不起子进程）
     const gplan = (n) => JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/g' + n + '/plan.json'), 'utf8'))
     const grep = (n) => { const f = path.join(tmp, 'g' + n + '.json'); fs.writeFileSync(f, JSON.stringify(fakeGen(gplan(n)))); return f }
     try {

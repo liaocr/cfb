@@ -42,26 +42,28 @@ import { trainRanker, scoreText } from './helpers/ranker.mjs'
 import { retroValidity } from './helpers/traj-proxy.mjs'
 
 // 目录：默认仓库里的 .cfb-offline / .cfb-runtime/bounded-ab-v9/rN / transfer 收据；自测用 CFB_CYCLE_DIR 整体改道（不碰真实轮次）。
-const BASE = process.env.CFB_CYCLE_DIR ? path.resolve(process.env.CFB_CYCLE_DIR) : null
-export const OFFLINE = BASE ? path.join(BASE, 'offline') : path.join(ROOT, '.cfb-offline')
-export const HISTORY = path.join(OFFLINE, 'history.json')
-export const CHAMPION = path.join(OFFLINE, 'champion.json')
+// v14.10：路径是**活绑定**（let + setCycleDir）：自测与脚本可以在进程内改道，不必为每条命令起一个子进程（verify 从 50 s 回到个位数秒的主因之一）。
+let BASE = process.env.CFB_CYCLE_DIR ? path.resolve(process.env.CFB_CYCLE_DIR) : null
+export let OFFLINE, HISTORY, CHAMPION, POLICIES, TASKS_DIR, TRAIN_PAIRS, RULER_DIR, STATES_DIR, DESIGN_FILE, VALIDITY, EXPOSURE, PARITY
+export const HOLDOUT_MAX_EXPOSURE = 3
 export const homeFor = (round) => (BASE ? path.join(BASE, 'runtime', 'r' + Number(round)) : DEFAULT_HOME_V9(round))
 export const receiptFor = (round) => (BASE ? path.join(BASE, 'receipts', 'v9-r' + Number(round) + '.watermark.json') : PUBLIC_RECEIPT_V9(round))
-export const POLICIES = path.join(OFFLINE, 'policies')
-export const TASKS_DIR = path.join(OFFLINE, 'tasks')
-export const TRAIN_PAIRS = path.join(OFFLINE, 'train', 'pairs.jsonl')
-// v4 尺子账本：效度配对（L1 代理分 ↔ L2 结局）、留出题曝光（每参与一次采纳 / 否决判定 +1，≥3 应退役轮换）、L2 确认结果
-export const RULER_DIR = path.join(OFFLINE, 'ruler')
-export const STATES_DIR = path.join(OFFLINE, 'states')
-export const DESIGN_FILE = path.join(RULER_DIR, 'design.json')   // v4.3：从已有数据估出的设计常数（ICC），替代拍脑袋的 0.3
-export const VALIDITY = path.join(RULER_DIR, 'validity.jsonl')
-export const EXPOSURE = path.join(RULER_DIR, 'exposure.json')
-export const HOLDOUT_MAX_EXPOSURE = 3
-export const PARITY = path.join(RULER_DIR, 'parity.json')
 export const trajHomeFor = (n) => (BASE ? path.join(BASE, 'runtime', 't' + Number(n)) : path.join(ROOT, '.cfb-runtime', 'traj', 't' + Number(n)))
+export function cycleDir() { return BASE }
+/** 把整个闭环目录改道（null = 仓库缺省 .cfb-offline / .cfb-runtime）。只改路径，不碰任何缓存（本模块没有跨调用缓存）。 */
+export function setCycleDir(dir) {
+  BASE = dir ? path.resolve(dir) : null
+  OFFLINE = BASE ? path.join(BASE, 'offline') : path.join(ROOT, '.cfb-offline')
+  HISTORY = path.join(OFFLINE, 'history.json'); CHAMPION = path.join(OFFLINE, 'champion.json')
+  POLICIES = path.join(OFFLINE, 'policies'); TASKS_DIR = path.join(OFFLINE, 'tasks'); TRAIN_PAIRS = path.join(OFFLINE, 'train', 'pairs.jsonl')
+  // v4 尺子账本：效度配对（L1 代理分 ↔ L2 结局）、留出题曝光（每参与一次采纳 / 否决判定 +1，≥3 应退役轮换）、L2 确认结果
+  RULER_DIR = path.join(OFFLINE, 'ruler'); STATES_DIR = path.join(OFFLINE, 'states')
+  DESIGN_FILE = path.join(RULER_DIR, 'design.json'); VALIDITY = path.join(RULER_DIR, 'validity.jsonl'); EXPOSURE = path.join(RULER_DIR, 'exposure.json'); PARITY = path.join(RULER_DIR, 'parity.json')
+  return BASE
+}
+setCycleDir(BASE)
 // 分叉轨迹的单价常数（§7 算术；首张真实回执后应更新）：主调用期望 / 上界（max_tokens 8000），压缩调用期望 / 上界
-export const TRAJ_UNIT = Object.freeze({ mainUsd: 0.0125, mainCapUsd: 0.003 + 8000 * 4e-6, compressUsd: 0.0075, compressCapUsd: 0.005 + 850 * 4e-6 })   // v14.9：压缩器与生产同形（关思考、max_tokens 850）⇒ 上界按 850 算
+export const TRAJ_UNIT = Object.freeze({ mainUsd: 0.0125, mainCapUsd: 0.003 + 8000 * 4e-6, compressUsd: 0.0075, compressCapUsd: 0.005 + 1600 * 4e-6 })   // v14.10：压缩器 = 生产 makeBirthCompiler（关思考、max_tokens = max(850, compressV4MaxOutputTokens 1600)）⇒ 上界按 1600 算
 const readJsonl = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean) : [])
 export const loadFlywheel = () => readJsonl(TRAIN_PAIRS)
 export const loadValidity = () => readJsonl(VALIDITY)
@@ -440,7 +442,9 @@ export function confirmFrom({ rows, map = { champion: 'champion', previous: 'pre
     if (cmp.pairs.length < 4 || new Set(cmp.pairs.map((p) => p.task)).size < 2) verdict = 'pending'
     else if (cmp.e >= 1 / alpha) {
       // v4.2 路径等价闸：策略 champion 的 L2 证据来自 policy: 直连路径，进生产前必须有「auto（生产路径）vs policy:base（直连路径）」的等价校准，否则被测对象 ≠ 目标对象
-      const parity = cf.policy && cf.policy !== 'base' ? readJson(PARITY) : { ok: true, note: 'knob-only champion：无提示词改动，不需路径等价' }
+      // v14.10（v4.5）：结局行若来自生产 birth 同构体（compile[].path === 'birth-offline'，traj-run 缺省路径），路径等价由构造保证，不再需要付费校准；旧收据（直连路径）仍要 parity.json
+      const byConstruction = typed.filter((r) => r.arm === cmp.champion || r.variant === cmp.champion).some((r) => Array.isArray(r.compile) && r.compile.length && r.compile.every((c) => c.path === 'birth-offline'))
+      const parity = !(cf.policy && cf.policy !== 'base') ? { ok: true, note: 'knob-only champion：无提示词改动，不需路径等价' } : byConstruction ? { ok: true, note: 'by-construction：结局行来自生产 birth 同构体（birthOffline），policy:<id> 与生产同一路径' } : readJson(PARITY)
       if (!parity?.ok) verdict = 'pending-parity'
       else { verdict = 'confirmed'; championAfter = { ...cf, adoption: 'confirmed', confirmation: { at: now, pairs: cmp.pairs.length, e: cmp.e, champion: cmp.champion, previous: cmp.previous, parity: parity.note || parity.at || null } } }
     }
@@ -458,6 +462,84 @@ export function parityFrom(rows, { a = 'auto', b = 'policy:base', alpha = DEFAUL
   const gateClose = g[a] == null || g[b] == null || Math.abs(g[a] - g[b]) <= 0.2
   const ok = cmp.pairs.length >= 4 && cmp.e < 1 / alpha && cmp.eReject < 1 / alpha && gateClose
   return { schema: 'cfb.path-parity/1', at: now, a, b, pairs: cmp.pairs.length, e: cmp.e, eReject: cmp.eReject, gatePass: g, ok, note: ok ? `${a} 与 ${b} 在 L2 上等价（${cmp.pairs.length} 对，e=${cmp.e}/${cmp.eReject}，闸通过率 ${g[a]}/${g[b]}）` : cmp.pairs.length < 4 ? '配对 < 4' : !gateClose ? '闸通过率差 > 0.2：直连路径与生产路径不同口径' : '两条路径在 L2 上分得出：直连路径不是生产路径的忠实代理' }
+}
+/** v4.5 `review`：把一次付费单元的结局行压成**一屏一家族**的评审稿（零 API）—— 给代工提议器看的，不是统计表。
+ *  每个分叉组：各臂的动作序列（轮 → 调用 / 编辑 / 声明）、修好轮次、分歧轮（两臂第一次动作不同的那一轮）、
+ *  分歧前那一轮压缩臂读到的稿（stored）与原文的长度 / 头部、压缩闸结果、逐轮代理旗标。 */
+export function reviewRows(rows, { maxDraft = 700 } = {}) {
+  const typed = rows.filter((r) => r && r.task && !r.error)
+  const armOf = (r) => (r.policy ? 'policy:' + r.policy : r.variant)
+  const sig = (t) => (t.calls || []).map((c) => { let a = c.args; try { a = JSON.parse(a) } catch { /* 原样 */ } const s = typeof a === 'object' && a ? (a.path || a.command || a.old_text || JSON.stringify(a)) : String(a); return `${c.name}(${String(s).replace(/\s+/g, ' ').slice(0, 60)})` }).join(' ; ') || (/(修好|已修复|fixed|完成|收工)/.test(t.text || '') ? '«声明修好»' : '«无调用»')
+  const groups = {}
+  for (const r of typed) { const k = `${r.task}#${r.sample ?? 0}`; (groups[k] = groups[k] || { task: r.task, sample: r.sample ?? 0, arms: {} }).arms[armOf(r)] = r }
+  const out = []
+  for (const g of Object.values(groups)) {
+    const arms = Object.keys(g.arms); const rounds = Math.max(...arms.map((a) => (g.arms[a].transcript || []).length))
+    const seq = Object.fromEntries(arms.map((a) => [a, (g.arms[a].transcript || []).map(sig)]))
+    let diverge = null; for (let i = 0; i < rounds && diverge == null; i++) { const vals = new Set(arms.map((a) => seq[a][i] ?? '«结束»')); if (vals.size > 1) diverge = i + 1 }
+    const lines = [`## ${g.task} #${g.sample}  臂：${arms.join(' / ')}  分歧轮：${diverge ?? '无（动作全同）'}`]
+    for (const a of arms) {
+      const r = g.arms[a]; const o = episodeOutcome(r)
+      lines.push(`- **${a}**：${o.solved ? `修好@r${o.roundsToFix}` : '未修好'}；声明 ${r.claim || '—'}${r.claim === 'fixed' && !o.solved ? '（假）' : ''}；轮 ${r.rounds}；编辑 ${(r.edits || []).map((e) => e.path).join(',') || '—'}；压缩 ${(r.compile || []).map((c) => (c.ok ? 'o' : c.belowFloor ? '_' : 'x')).join('') || '—'}；代理分 ${r.proxyScore ?? '—'}`)
+      lines.push('  ' + seq[a].map((x, i) => `r${i + 1} ${x}`).join(' → '))
+    }
+    if (diverge != null) {
+      for (const a of arms) {
+        const t = (g.arms[a].transcript || [])[diverge - 2]   // 分歧那一轮读到的是上一轮的 stored
+        if (!t) continue
+        const drafted = typeof t.stored === 'string' && t.stored
+        if (drafted) lines.push(`- ${a} 在 r${diverge} 读到的稿（r${diverge - 1} 压缩，${t.storedChars}/${t.reasoningChars} 字）：\n  > ${drafted.replace(/\n+/g, ' ⏎ ').slice(0, maxDraft)}${drafted.length > maxDraft ? '…' : ''}`)
+        else if (t.reasoning) lines.push(`- ${a} 在 r${diverge} 读到的是原文（${t.reasoningChars} 字）：\n  > ${t.reasoning.replace(/\n+/g, ' ⏎ ').slice(0, 300)}…`)
+        else lines.push(`- ${a}：transcript 没有存稿文本（跑的时候没开 --store-text）`)
+      }
+      const compressed = arms.filter((a) => a !== 'raw')
+      for (const a of compressed) { const c = (g.arms[a].compile || [])[diverge - 2]; if (c) lines.push(`- ${a} r${diverge - 1} 压缩闸：${JSON.stringify({ ok: c.ok, why: c.why || c.reason || null, path: c.path || 'legacy', promptVersion: c.promptVersion || null, spliced: c.spliced || null }).slice(0, 240)}`) }
+    }
+    const flags = arms.map((a) => `${a}: ${(g.arms[a].proxySteps || []).map((s) => `r${s.round}=${s.score}`).join(' ')}`)
+    lines.push(`- 逐轮代理旗标：${flags.join(' | ')}`)
+    out.push({ task: g.task, sample: g.sample, arms, diverge, md: lines.join('\n') })
+  }
+  return out
+}
+/** v4.5：闭环状态快照 —— .cfb-offline 被 gitignore（可再生语料），但策略 / 代际 / 轨迹计划 / champion 是**不可再生的操作状态**。
+ *  snapshot 把它们写进 transfer/cycle-state.json（进仓库、进 manifest）；restore 在新克隆里把缺的文件补回来（已有的不覆盖，防止回滚收据后的状态）。 */
+export const CYCLE_STATE_FILE = () => path.join(ROOT, 'transfer', 'cycle-state.json')
+export function cycleSnapshot() {
+  const h = loadHistory()
+  const plans = (h.trajPlans || []).map((t) => ({ n: t.n, plan: readJson(path.join(trajHomeFor(t.n), 'plan.json')) })).filter((x) => x.plan)
+  const packs = (h.generations || []).map((g) => g.gen).filter((g, i, a) => a.indexOf(g) === i).map((g) => ({ gen: g, pack: readJson(path.join(OFFLINE, `gen-${g}.pack.json`)) })).filter((x) => x.pack)
+  const snap = { schema: 'cfb.cycle-state/1', at: new Date().toISOString(), history: h, champion: readJson(CHAMPION), policies: listPolicies(), trajPlans: plans, packs }
+  snap.digest = evidenceDigest(JSON.parse(JSON.stringify({ ...snap, at: null }))).slice(0, 16)   // 内容摘要（不含时间；null 也可能来自 readJson，先 JSON 归一）
+  return snap
+}
+function cmdSnapshot() {
+  const snap = cycleSnapshot(); const file = CYCLE_STATE_FILE(); const prev = readJson(file)
+  if (prev && prev.digest === snap.digest) { console.log(`状态未变（digest ${snap.digest}），不改写 ${path.relative(ROOT, file)}`); return snap }
+  ensure(path.dirname(file)); writeJson(file, snap)
+  console.log(`已快照 → ${path.relative(ROOT, file)}（digest ${snap.digest}）：轮 ${snap.history.rounds.length}、代 ${(snap.history.generations || []).length}、策略 ${snap.policies.length}、轨迹计划 ${snap.trajPlans.length}、证据包 ${snap.packs.length}`)
+  return snap
+}
+function cmdRestore(args) {
+  const snap = readJson(f(args, '--from') || CYCLE_STATE_FILE()); if (!snap || snap.schema !== 'cfb.cycle-state/1') throw new Error('no-cycle-state')
+  const did = []
+  const put = (file, obj, label) => { if (fs.existsSync(file) && !args.includes('--force')) return; ensure(path.dirname(file)); writeJson(file, obj); did.push(label) }
+  if (!fs.existsSync(HISTORY) || args.includes('--force')) put(HISTORY, snap.history, 'history')
+  if (snap.champion) put(CHAMPION, snap.champion, 'champion')
+  for (const p of snap.policies || []) put(path.join(POLICIES, p.id + '.json'), p, 'policy:' + p.id)
+  for (const t of snap.trajPlans || []) put(path.join(trajHomeFor(t.n), 'plan.json'), t.plan, 't' + t.n)
+  for (const g of snap.packs || []) put(path.join(OFFLINE, `gen-${g.gen}.pack.json`), g.pack, 'g' + g.gen)
+  console.log(`已从快照（digest ${snap.digest}，${snap.at}）补回 ${did.length} 项` + (did.length ? '：' + did.join(' ') : '（本地都在，什么都没动；--force 覆盖）'))
+  return did
+}
+function cmdReview(args) {
+  const planN = f(args, '--plan'); const file = f(args, '--results') || (planN ? path.join(trajHomeFor(planN), 'results.jsonl') : null)
+  if (!file || !fs.existsSync(file)) throw new Error('review 需要 --plan N（有 results.jsonl）或 --results FILE')
+  const rows = readJsonl(file); const rv = reviewRows(rows, { maxDraft: Number(f(args, '--draft-chars') || 700) })
+  const head = [`# 评审稿 ${planN ? 't' + planN : path.basename(file)}（${rows.length} 行，${rv.length} 组；零 API）`, '', '读法：先看分歧轮 —— 两臂在那一轮之前读到的东西只差一份稿；稿里缺了什么 / 多定了什么，就是下一份候选该改的地方。留出家族的内容不要写进证据包。', '']
+  const md = head.concat(rv.map((x) => x.md + '\n')).join('\n')
+  const outFile = planN ? path.join(trajHomeFor(planN), 'review.md') : file.replace(/\.jsonl$/, '') + '.review.md'
+  fs.writeFileSync(outFile, md); console.log(md); console.log(`评审稿 → ${path.relative(ROOT, outFile)}`)
+  return rv
 }
 function cmdConfirm(args) {
   const planN = f(args, '--plan')
@@ -575,28 +657,59 @@ function cmdPerturbCheck(args) {
   const dirs = ['traj1', 'traj2', 'traj3'].map((d) => path.join(ROOT, 'transfer', d, 'results.jsonl'))
   const extra = (f(args, '--results') || '').split(',').filter(Boolean).map((x) => path.resolve(ROOT, x))
   const rows = [...dirs, ...extra].flatMap((file) => readJsonl(file).map((r) => ({ ...r, dir: path.basename(path.dirname(file)) })))
-  const r = perturbExposure(rows, { kind })
+  const r = perturbExposure(rows, { kind, full: args.includes('--full') })   // v4.5：缺省首见 + 首次排查命中即停；--full 全量重放（searchHits 计满）
   console.log(`扰动 ${kind} 惰性检查（${r.n} 条真实轨迹反事实重放）：修好前看到不同输出 ${r.exposedBeforeFix}/${r.n}；排查类调用（grep/cat/find/README）命中扰动物 ${r.searchHit}/${r.n} ⇒ **${r.verdict}**`)
   for (const [fam, x] of Object.entries(r.byFamily)) console.log(`  ${fam}: n=${x.n} 可见 ${x.exposedBeforeFix}（首见轮次 ${Object.entries(x.rounds).map(([k, v]) => `r${k}×${v}`).join(' ') || '—'}）排查命中 ${x.searchHit} ⇒ ${x.verdict}${x.truncated ? `（${x.truncated} 条旧行参数截断、只重放到截断处）` : ''}`)
   console.log('边界：' + r.note)
   ensure(RULER_DIR); writeJson(path.join(RULER_DIR, `perturb-${kind}.json`), { schema: 'cfb.perturb-check/1', at: new Date().toISOString(), ...r, rows: r.rows.map(({ id, divergedAt, beforeFix, mentionsPerturb, searchHits, searchHitAt, call, truncated }) => ({ id, divergedAt, beforeFix, mentionsPerturb, searchHits, searchHitAt, call, truncated })) })
   return r
 }
+/** v4.5：下一个该跑的家族 = 现有轨迹最少的家族（transfer/traj1–3 + runtime 收据），平手按 TRAJ_TASKS 顺序；一次只跑一个家族，读完再决定下一个。 */
+export function familyCoverage({ extraDirs = [] } = {}) {
+  const files = ['traj1', 'traj2', 'traj3'].map((d) => path.join(ROOT, 'transfer', d, 'results.jsonl'))
+  const trajRoot = path.dirname(trajHomeFor(1))
+  try { for (const d of fs.readdirSync(trajRoot)) files.push(path.join(trajRoot, d, 'results.jsonl')) } catch { /* 还没有收据 */ }
+  files.push(...extraDirs)
+  const rows = files.flatMap((fp) => readJsonl(fp)).filter((r) => r && r.task && !r.error)
+  const cov = Object.fromEntries(TRAJ_TASKS.map((t) => [t.id, { total: 0, byArm: {} }]))
+  for (const r of rows) { const c = cov[r.task]; if (!c) continue; c.total++; const arm = r.policy ? 'policy:' + r.policy : r.variant; c.byArm[arm] = (c.byArm[arm] || 0) + 1 }
+  return cov
+}
+/** 轨迹最少者优先；平手时 dev 家族先于留出家族（第一单元是给提议器取证，留出家族的失败不能进证据包）；再平手按 TRAJ_TASKS 顺序。 */
+export function nextFamily(cov = familyCoverage(), split = null) {
+  const sp = split || (() => { try { return loadPool().split } catch { return {} } })()
+  const ids = TRAJ_TASKS.map((t) => t.id)
+  return [...ids].sort((a, b) => ((cov[a]?.total || 0) - (cov[b]?.total || 0)) || ((sp[a] === 'holdout' ? 1 : 0) - (sp[b] === 'holdout' ? 1 : 0)) || (ids.indexOf(a) - ids.indexOf(b)))[0]
+}
+const designDigest = (plan) => evidenceDigest({ variants: plan.variants, scenarios: plan.scenarios, samples: plan.samples, maxRounds: plan.maxRounds, fork: plan.fork, fromStates: plan.fromStates || null, stop: plan.stop || null, maxTokens: plan.maxTokens }).slice(0, 16)
 function cmdPlanTraj(args) {
-  const h = loadHistory(); const n = Number(f(args, '--n') || Math.max(0, ...(h.trajPlans || []).map((t) => t.n)) + 1)
+  const h = loadHistory()
+  if (f(args, '--drop')) { const dn = Number(f(args, '--drop')); const t = (h.trajPlans || []).find((x) => x.n === dn); if (!t) throw new Error('no-such-plan:t' + dn); if (t.status !== 'planned') throw new Error('plan-not-droppable:' + t.status); h.trajPlans = h.trajPlans.filter((x) => x.n !== dn); writeJson(HISTORY, h); fs.rmSync(trajHomeFor(dn), { recursive: true, force: true }); console.log(`已撤销未执行的计划 t${dn}`); return }
+  if (f(args, '--supersede')) { const n = Number(f(args, '--supersede')); const t = (h.trajPlans || []).find((x) => x.n === n); if (!t) throw new Error('no-such-plan:t' + n); if (t.status !== 'planned') throw new Error('only-planned-can-be-superseded:' + t.status); t.status = 'superseded'; t.note = f(args, '--note') || 'v4.5：被单家族单元取代'; writeJson(HISTORY, h); console.log(`t${n} 标记为 superseded（plan.json 保留以备查，status 不再把它当待执行）`); return }
+  const n = Number(f(args, '--n') || Math.max(0, ...(h.trajPlans || []).map((t) => t.n)) + 1)
   // v4.3：--from-states FILE（子状态续跑，单位 = 状态而非场景）、--perturb decoy（零 API 场景加难，两臂同扰动）、--stop（一次批准内 e 值有界续跑）、--max-rounds 可到 12
   let fromStates = null
   if (f(args, '--from-states')) { const file = f(args, '--from-states'); const arr = readJson(path.resolve(ROOT, file)); if (!Array.isArray(arr) || !arr.length) throw new Error('from-states-empty:' + file); fromStates = { file: path.relative(ROOT, path.resolve(ROOT, file)), count: arr.length, families: [...new Set(arr.map((x) => x.family))], meanStartRound: +(arr.reduce((a, x) => a + (x.startRound || 2), 0) / arr.length).toFixed(2), digest: evidenceDigest(arr.map((x) => x.id)).slice(0, 16) } }
   const perturb = f(args, '--perturb')
-  const scenarios = f(args, '--scenarios') ? f(args, '--scenarios').split(',') : TRAJ_TASKS.map((t) => t.id)
-  const plan = buildTrajPlan({ n, arms: (f(args, '--arms') || 'raw,policy:base').split(','), scenarios: perturb ? scenarios.map((x) => x + ':' + perturb) : scenarios, samples: Number(f(args, '--samples') || 2), maxRounds: Number(f(args, '--max-rounds') || 4), fork: !args.includes('--no-fork'), purpose: f(args, '--purpose') || (fromStates ? `子状态续跑（Math-Shepherd 式蒙特卡洛状态价值）：同一分叉点两臂续跑的修好率 / 到修好轮数之差 = 该轮压缩稿价值的原则性定义；${fromStates.count} 个状态来自家族 ${fromStates.families.join('、')}，扩的是家族内配对数，不计入留出家族数` : perturb ? `加难场景（${perturb}：诱饵同名文件 + README 误导，两臂同扰动）：正确下一步不再唯一，考压缩稿能否保住排除项与证据而不是只保住「下一步」` : null), fromStates, stop: args.includes('--stop') ? (Number(f(args, '--cap-usd')) > 0 ? { capUsd: Number(f(args, '--cap-usd')) } : {}) : null })
+  // v4.5 缺省单位 = **一个家族**（轨迹最少的那个）× 2 臂 × 1 样本 × ≤5 轮 ≈ $0.15：跑完先 review 再决定下一个；--all 才是 5 家族批量
+  const cov = familyCoverage()
+  const scenarios = f(args, '--scenarios') ? f(args, '--scenarios').split(',') : args.includes('--all') ? TRAJ_TASKS.map((t) => t.id) : [nextFamily(cov)]
+  const arms = (f(args, '--arms') || 'raw,policy:base').split(',').map((a) => (a === 'auto' ? 'policy:base' : a))   // v4.5：auto ≡ policy:base（生产 birth 同构体），不再是独立的臂
+  if (new Set(arms).size !== arms.length) throw new Error('duplicate-arms:' + arms.join(','))
+  const plan = buildTrajPlan({ n, arms, scenarios: perturb ? scenarios.map((x) => x + ':' + perturb) : scenarios, samples: Number(f(args, '--samples') || 1), maxRounds: Number(f(args, '--max-rounds') || 5), fork: !args.includes('--no-fork'), purpose: f(args, '--purpose') || (fromStates ? `子状态续跑（Math-Shepherd 式蒙特卡洛状态价值）：同一分叉点两臂续跑的修好率 / 到修好轮数之差 = 该轮压缩稿价值的原则性定义；${fromStates.count} 个状态来自家族 ${fromStates.families.join('、')}，扩的是家族内配对数，不计入留出家族数` : perturb ? `加难场景（${perturb}：诱饵同名文件 + README 误导，两臂同扰动）：正确下一步不再唯一，考压缩稿能否保住排除项与证据而不是只保住「下一步」` : null), fromStates, stop: args.includes('--stop') ? (Number(f(args, '--cap-usd')) > 0 ? { capUsd: Number(f(args, '--cap-usd')) } : {}) : null })
   for (const sc of plan.scenarios) { const [id, kind] = sc.split(':'); if (!TRAJ_TASKS.some((t) => t.id === id)) throw new Error('unknown-scenario:' + sc); if (kind && kind !== 'decoy') throw new Error('unknown-perturb:' + kind) }
+  plan.design = designDigest(plan)
+  const dup = (h.trajPlans || []).find((t) => t.design === plan.design && t.status === 'planned' && t.n !== n)
+  if (args.includes('--dry')) { console.log(`[dry] 不落盘。设计 ${plan.design}：臂 ${plan.variants.join(' vs ')}；场景 ${plan.scenarios.join(', ')} × ${plan.samples}；≤${plan.maxRounds} 轮；主 ${plan.cost.mains} + 压缩 ${plan.cost.compresses} ≈ $${plan.cost.expectedUsd}（上界 $${plan.cost.capUsd}）` + (dup ? `；同设计已有未执行计划 t${dup.n}` : '')); return plan }
+  if (dup && !args.includes('--force')) { console.log(`同一设计的计划已存在：t${dup.n}（design ${dup.design}，未执行）—— 不重复建；要重建加 --force，要撤销用 --drop ${dup.n}`); return readJson(path.join(trajHomeFor(dup.n), 'plan.json')) }
   const home = trajHomeFor(n); ensure(home); writeJson(path.join(home, 'plan.json'), plan)
-  h.trajPlans = (h.trajPlans || []).filter((t) => t.n !== n).concat([{ n, at: plan.at, status: 'planned', digest: plan.digest, expectedUsd: plan.cost.expectedUsd, capUsd: plan.cost.capUsd }]); writeJson(HISTORY, h)
+  h.trajPlans = (h.trajPlans || []).filter((t) => t.n !== n).concat([{ n, at: plan.at, status: 'planned', digest: plan.digest, design: plan.design, expectedUsd: plan.cost.expectedUsd, capUsd: plan.cost.capUsd }]); writeJson(HISTORY, h)
   const L = [`# 分叉轨迹计划 t${n}（digest ${plan.digest}，未发请求）`, '', `目的：${plan.purpose}`, '', `臂：${plan.variants.join(' vs ')}；${plan.fromStates ? `子状态 ${plan.fromStates.count} 个（家族 ${plan.fromStates.families.join(', ')}，平均起始轮 ${plan.fromStates.meanStartRound}，${plan.fromStates.file}）` : '场景：' + plan.scenarios.join(', ')} × ${plan.samples} 样本；≤${plan.maxRounds} 轮；${plan.fork ? '起始轮共用、各臂分叉' : '不分叉'}${plan.stop ? `；**有界续跑**：${plan.stop.compare ? `每组后算 e 值，${plan.stop.compare.champion} vs ${plan.stop.compare.previous} 任一方向 e ≥ ${(1 / plan.stop.alpha).toFixed(0)}（≥${plan.stop.minPairs} 对）或` : '单臂无配对，只按'}估算花费 ≥ $${plan.stop.capUsd} 即停` : ''}`,
     `请求：主调用 ${plan.cost.mains} + 压缩 ${plan.cost.compresses}；**期望实付 ≈ $${plan.cost.expectedUsd}，上界 ≈ $${plan.cost.capUsd}**（max_tokens 8000；常数见 TRAJ_UNIT，首张回执后更新）`,
     `产出（估）：L1 对 ${plan.yield.l1Pairs}、L2 对 ${plan.yield.l2Pairs}、效度对 ≈${plan.yield.validityPairsApprox}、飞轮对 ≈${plan.yield.flywheelPairsApprox}、子状态 ≈${plan.yield.childStatesApprox}`, '', plan.holdoutNote, '', '批准后执行（traj-run 会核对参数与计划一致，跑完写 receipt.json）：', '```', plan.command, '```', '', `回灌：node tools/cfb-cycle.mjs confirm --plan ${n} --map champion=policy:base,previous=raw   # 或 --parity（auto vs policy:base）`]
+  L.push('', `家族覆盖（轨迹数）：${TRAJ_TASKS.map((t) => `${t.id}=${cov[t.id].total}`).join(' ')}；本计划 ${plan.scenarios.length === 1 ? '只跑 ' + plan.scenarios[0] + '，跑完先 `review --plan ' + n + '` 再决定下一个家族' : '批量 ' + plan.scenarios.length + ' 个家族'}`)
   fs.writeFileSync(path.join(home, 'plan.md'), L.join('\n') + '\n'); console.log(L.join('\n'))
+  return plan
 }
 /** 零 API 生成候选：从飞轮里挑一条赢稿做【风格样例】槽（GEPA/DSPy 式 bootstrapped demo）；过补丁预算 + 泄漏闸才落为策略。 */
 export function exemplarPolicyFromFlywheel({ flywheel = loadFlywheel(), parent = null, pool = loadPool() } = {}) {
@@ -635,6 +748,17 @@ function cmdStatus() {
   const hs = Object.values(h.hypotheses || {})
   console.log('假设: ' + hs.length)
   for (const x of hs) console.log(`  ${x.key} ${x.decision} n=${x.outcomes.length} P(p>0.5)=${x.posterior?.pWin ?? '—'} e=${x.e?.holdout ?? '—'}/${x.e?.all ?? '—'} bits=${x.posterior?.bitsBought ?? '—'}`)
+  // v4.5：操作员一屏 —— 策略 / 轨迹计划（带设计与状态）/ 家族覆盖 / 下一步命令
+  const pols = listPolicies()
+  console.log('策略: ' + (pols.length ? pols.map((p) => `${p.id}[${p.status || '?'}]←${p.parent || 'base'}(g${p.origin?.gen ?? '?'}, ${p.patches?.length ?? 0} 补丁)`).join('  ') : '无（只有 base = 生产 v4d9）'))
+  const tp = h.trajPlans || []
+  console.log('轨迹计划: ' + (tp.length ? '' : '无'))
+  for (const t of tp) { const pj = readJson(path.join(trajHomeFor(t.n), 'plan.json')); console.log(`  t${t.n} ${String(t.status).padEnd(10)} ${pj ? `${pj.variants.join(' vs ')} × ${pj.scenarios.join(',')} × ${pj.samples} ≤${pj.maxRounds}轮` : '(plan.json 缺)'} ≈$${t.expectedUsd}（上界 $${t.capUsd}）${t.design ? ' design ' + t.design : ''}${t.note ? ' —— ' + t.note : ''}`) }
+  let cov = null; try { cov = familyCoverage() } catch { /* 无语料也不碍事 */ }
+  if (cov) { const pool = loadPool(); const nf = nextFamily(cov, pool.split); console.log('家族覆盖（已有轨迹数，[h]=留出）: ' + Object.entries(cov).map(([k, v]) => `${k}${pool.split[k] === 'holdout' ? '[h]' : ''}=${v.total}`).join(' ') + ` ⇒ 下一个 ${nf}`) }
+  const planned = tp.find((t) => t.status === 'planned')
+  const plannedCmd = planned ? (readJson(path.join(trajHomeFor(planned.n), 'plan.json'))?.command || `node tools/traj-run.mjs --plan ${path.relative(ROOT, path.join(trajHomeFor(planned.n), 'plan.json'))} …（见 plan.md）`) : null
+  console.log('下一步: ' + (planned ? `已有未执行计划 t${planned.n}（≈$${planned.expectedUsd}，上界 $${planned.capUsd}）—— 用户批准后：\n  ${plannedCmd}\n  跑完：node tools/cfb-cycle.mjs review --plan ${planned.n}` : 'node tools/cfb-cycle.mjs plan-traj（一个家族 × raw vs policy:base ≈ $0.15）'))
   const cf = readJson(CHAMPION); const rv = rulerValidity(loadValidity().map((x) => ({ proxy: x.proxy, outcome: x.outcome })))
   console.log(`尺子: 效度 ${rv.status}（n=${rv.n}）；champion 采纳状态 ${cf?.adoption || (cf ? 'legacy' : 'baseline')}` + (cf?.adoption === 'provisional' ? '（待 L2 确认：confirm --results）' : '') + (exposureWarnings().length ? '；⚠ ' + exposureWarnings().join('；') : ''))
 }
@@ -734,12 +858,14 @@ export function cmdProposePolicy(args) {
   const trajEv = trajFailureEvidence({ holdout: pool.tasks.filter((t) => t.split === 'holdout').map((t) => t.id) })
   const pack = { schema: 'cfb.proposal-pack/1', gen: g, at: new Date().toISOString(), parent: { id: parent.id, patches: parent.patches, rationale: parent.rationale }, devTasks: dev.map((t) => ({ id: t.id, u1: String(t.chain?.u1 || '').slice(0, 600), keyFacts: t.spec?.obs?.green?.reference?.keyFacts || null })), holdoutExcluded: pool.tasks.filter((t) => t.split === 'holdout').map((t) => t.id), evidence: extra ? evidence.concat([{ note: String(extra).slice(0, 600) }]) : evidence, trajEvidence: trajEv, limits: PATCH_LIMITS, promptHeadChars: promptHead(pool.tasks[0]).length }
   pack.digest = evidenceDigest(pack).slice(0, 16)
-  const file = path.join(OFFLINE, `gen-${g}.pack.json`); writeJson(file, pack)
+  const printOnly = args.includes('--print')   // v4.5：只看证据包，不落盘、不占 gen 号（反复阅读 / 对比父策略时用）
+  const file = path.join(OFFLINE, `gen-${g}.pack.json`); if (!printOnly) writeJson(file, pack)
   const md = [`# 提议证据包 g${g}（digest ${pack.digest}）—— 提议器由助手代工，零 API`, '', `父策略：${parent.id}${parentWhy ? '（' + parentWhy + '）' : ''}；补丁预算：≤${PATCH_LIMITS.maxPatches} 条、新增 ≤${PATCH_LIMITS.maxAddedChars} 字、replace 每段 ≤${PATCH_LIMITS.maxReplaceChars} 字、样例槽 ≤${PATCH_LIMITS.maxExemplarChars} 字`, `dev 题：${dev.map((t) => t.id).join(', ')}；留出题已排除：${pack.holdoutExcluded.join(', ')}（证据里不会出现它们的任何内容）`, '',
     '## v9 轮失败证据（history）', ...(evidence.length ? evidence.map((e) => '- ' + JSON.stringify(e).slice(0, 400)) : ['- 无（还没有付费 v9 轮）']), '',
     `## 真实轨迹 / L1 规格样本里的失败证据（transfer，只含 dev 家族）`, `版本提醒：base = ${parent.base || 'compress-v4d9'}；下面 ${trajEv.length} 条证据来自 ${[...new Set(trajEv.map((e) => e.version))].join(' / ') || '—'}；来自 base 本身的结局数据 ${trajEv.filter((e) => e.version === (parent.base || 'compress-v4d9')).length} 条${trajEv.some((e) => e.version === (parent.base || 'compress-v4d9')) ? '' : ' ⇒ 没有 base 自己的失败可修：先跑 raw/auto/policy:base 拿证据，候选只能是机理假设并如实标注'}`, ...trajEv.map((e) => '- ' + JSON.stringify(e).slice(0, 500)), '',
     '## 助手要交回的 JSON（写到任意文件，然后 `policy-from-proposal FILE --gen ' + g + '`）', '```json', JSON.stringify({ patches: [{ op: 'append', section: 'rules', text: '…' }], rationale: '…（引用上面的证据编号）', prediction: '…（哪个旗标会变、不会变）' }, null, 2), '```',
     '闸：补丁预算 → 泄漏闸（补丁里只在 dev 题出现、不在基础提示词里的强记号 ⇒ 拒）→ 可应用（replace 的 from 必须在提示词里恰出现一次）。']
+  if (printOnly) { console.log(md.join('\n')); console.log(`\n[print] 未落盘、未登记 g${g}（去掉 --print 才写 gen-${g}.pack.*）`); return { g, pack, file: null } }
   fs.writeFileSync(path.join(OFFLINE, `gen-${g}.pack.md`), md.join('\n') + '\n')
   recordGen(history, { gen: g, at: pack.at, role: 'propose', status: 'pack', label: 'propose(assistant) ← ' + parent.id, planDigest: pack.digest, by: 'assistant' })
   console.log(md.join('\n')); console.log('\n证据包：' + path.relative(ROOT, file))
@@ -927,7 +1053,7 @@ const HELP = `cfb-cycle（闭环 v4：e 值采纳 + L2 结局确认；v2/v3 命�
                                                                                  零 API：池轮换 → 成稿 → 冻结 v9 计划，停下等批准（首轮默认 A/A 校准）
   ingest   --round N [--report FILE]                                              回灌：配对 → decideV4（留出闸门 + e 值）→ adopt-provisional/reject/continue/calibrated；追加飞轮偏好对；记留出曝光
   propose                                                                        把已采纳旋钮 / 策略翻成生产配置 diff / src 改动说明
-  propose-policy [--gen N] [--parent ID|auto] [--note 文字]                        v14.9：写提议证据包（零 API；提议器由助手代工）；auto = Pareto 池抽父代
+  propose-policy [--gen N] [--parent ID|auto] [--note 文字] [--print]              v14.9：写提议证据包（零 API；提议器由助手代工）；auto = Pareto 池抽父代；--print 只看不落盘
   policy-from-proposal FILE [--gen N] [--parent ID]                                v14.9：助手写的 proposal JSON → 三道闸（预算 / 泄漏 / 可应用）→ 策略文件
   states [--results F,…] [--family ID] [--start-round K] [--limit N] [--out FILE]   v4.3：从轨迹派生可续跑的子状态（零 API），打印家族 / 状态盘点；--limit 1 做探针
   perturb-check [--kind decoy]                                                      v4.3：扰动惰性检查（真实轨迹反事实重放，零 API）：可见 ≠ 更难
@@ -936,14 +1062,19 @@ const HELP = `cfb-cycle（闭环 v4：e 值采纳 + L2 结局确认；v2/v3 命�
   mint     --step a --scenario FILE | --step b --id ID   [--gen N]                冻结铸造新题的计划（u1→a1；人补 u2 后 a1+u2→a2）
   ingest-gen --gen N [--report FILE]                                             回灌生成计划：策略文件 / side / 铸造件（三闸：预算、泄漏、可应用）
   confirm  --results FILE | --plan N [--map champion=<v>,previous=<v>] [--parity]  v4：L2 结局确认 / 回滚 provisional champion；--parity = auto vs policy:base 路径等价校准
-  plan-traj [--arms raw,policy:base] [--scenarios a,b] [--samples 2] [--max-rounds 4] [--purpose 文字] [--from-states FILE] [--perturb decoy] [--stop [--cap-usd X]]   v4.2/4.3：冻结分叉轨迹计划（付费单位；期望 / 上界成本，traj-run --plan 核对）
+  plan-traj [--all] [--dry] [--drop N] [--supersede N] [--force] [--arms raw,policy:base] [--scenarios a,b] [--samples 1] [--max-rounds 5] [--perturb decoy] [--stop [--cap-usd X]]
+                                                                                 v4.5：冻结付费单位。缺省 = 轨迹最少的一个家族 × raw vs policy:base × 1 样本 × ≤5 轮（≈$0.15）；
+                                                                                 --all 五家族；--dry 只算不落盘；同设计未执行的计划不重复建（--force 重建 / --drop 撤销 / --supersede 作废）
+  review --plan N | --results FILE [--draft-chars 700]                           v4.5：读一个单元的结果 → review.md（分歧轮、各臂结局、分歧处压缩稿原文、闸门、代理旗标）
+  snapshot / restore [--from FILE] [--force]                                     v4.5：闭环状态（history / champion / 策略 / 轨迹计划 / 证据包）↔ transfer/cycle-state.json（进仓库；新克隆先 restore）
   policy-from-flywheel                                                           v4.2：零 API 从飞轮赢稿生成【风格样例】槽策略（过预算 + 泄漏闸）
   ruler                                                                          v4：尺子效度（AUC+CI）/ 采纳规则 / e 值预算 / 留出曝光 / CPU 排序器 / L2 基线
   policies | status | doctor | simulate [--p 0.7] [--rounds 5]
 杠杆（v3 顺序，低风险在前）：${LEVER_ORDER_V3.map((l) => l + '{' + KNOBS[l].values.join('|') + '}').join(' ')}  + policy=<已编译策略>
 本文件不发任何网络请求；live 只能由 tools/effect-ready.mjs run --live --v9 --round N 显式执行。`
-function main() {
-  const [cmd = 'status', ...args] = process.argv.slice(2)
+export function dispatch(cmd = 'status', args = []) {
+  // v14.10：--help / -h 在任何子命令后都只打印帮助，不执行、不落盘（之前 `plan-traj --help` 会真的建一个计划）
+  if (args.includes('--help') || args.includes('-h')) { console.log(helpFor(cmd)); return }
   if (cmd === 'plan' || cmd === 'run') cmdPlan(args)
   else if (cmd === 'ingest') cmdIngest(args)
   else if (cmd === 'propose') cmdPropose(args)
@@ -955,6 +1086,9 @@ function main() {
   else if (cmd === 'policy-from-flywheel') cmdPolicyFromFlywheel()
   else if (cmd === 'propose-policy') cmdProposePolicy(args)
   else if (cmd === 'policy-from-proposal') cmdPolicyFromProposal(args)
+  else if (cmd === 'review') cmdReview(args)
+  else if (cmd === 'snapshot') cmdSnapshot()
+  else if (cmd === 'restore') cmdRestore(args)
   else if (cmd === 'compile') cmdCompile(args)
   else if (cmd === 'mint') cmdMint(args)
   else if (cmd === 'ingest-gen') cmdIngestGen(args)
@@ -962,7 +1096,25 @@ function main() {
   else if (cmd === 'status') cmdStatus()
   else if (cmd === 'doctor') cmdDoctor()
   else if (cmd === 'simulate') cmdSimulate(args)
-  else if (['help', '--help', '-h'].includes(cmd)) console.log(HELP)
+  else if (['help', '--help', '-h'].includes(cmd)) console.log(args[0] ? helpFor(args[0]) : HELP)
   else { console.log(HELP); throw new Error('未知子命令 ' + cmd) }
 }
+/** 只给一条子命令的帮助行（找不到就整份）。 */
+export function helpFor(cmd) { const lines = HELP.split('\n').filter((l) => l.trim().startsWith(cmd + ' ') || l.trim() === cmd); return lines.length ? lines.join('\n') : HELP }
+/** 进程内 CLI：与 `node tools/cfb-cycle.mjs <cmd> …` 等价，但不起子进程；可选 dir 改道（跑完恢复）。返回 {status, stdout, stderr}。
+ *  自测用它替代 spawnSync（每次子进程 ≈ 150 ms × 上百次 = 这三套自测的大头）；脚本 / 助手也能用它驱动闭环。 */
+export function runCli(argv, { dir = undefined } = {}) {
+  const [cmd = 'status', ...args] = argv
+  const prevDir = BASE, out = [], err = []
+  const log = console.log, error = console.error
+  console.log = (...a) => { out.push(a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')) }
+  console.error = (...a) => { err.push(a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')) }
+  const prevExit = process.exitCode; process.exitCode = undefined
+  let status = 0
+  try { if (dir !== undefined) setCycleDir(dir); dispatch(cmd, args); status = Number(process.exitCode) || 0 }   // 命令用 process.exitCode 表达非零退出（如 plan 的 offline-unsafe ⇒ 2）
+  catch (e) { status = 1; err.push(e && e.stack ? e.stack : String(e)) }
+  finally { console.log = log; console.error = error; process.exitCode = prevExit; if (dir !== undefined) setCycleDir(prevDir) }
+  return { status, stdout: out.join('\n') + (out.length ? '\n' : ''), stderr: err.join('\n') + (err.length ? '\n' : '') }
+}
+function main() { const [cmd = 'status', ...args] = process.argv.slice(2); dispatch(cmd, args) }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main()

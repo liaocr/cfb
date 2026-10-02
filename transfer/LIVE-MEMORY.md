@@ -2,6 +2,14 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
+## −9. 当前状态（2026-10-02，第二十九会话：v4.5 —— 付费单元缩成一个家族 ≈$0.15；策略即配置；birthOffline 生产同构（压缩器 max_tokens 实为 1600）；操作员面；全量自测 53 → ≈35 s；仍零花费）
+
+- **先跑 `node tools/cfb-cycle.mjs status`**：一屏给出策略、轨迹计划（含 design / 状态）、家族覆盖、**下一步的完整命令**。新克隆先 `restore`（`transfer/cycle-state.json`）。
+- **单元**：t2 / t3 已 `superseded`（auto 臂冗余：`policy:base` ≡ 生产 birth；五家族并跑读不完；≤4 轮截尾 raw）。**t4 = sse-truncated × raw vs policy:base × 1 × ≤5 轮 ≈ $0.15（上界 $0.372），`--dry-run` 已过、未发请求、需用户批准。** 跑完 `review --plan 4` 读分歧轮与稿原文，再 `confirm --plan 4 --map champion=policy:base,previous=raw`，然后写候选、排下一个家族（`plan-traj` 自动选轨迹最少的）。
+- **口径变化**：traj-run 压缩臂改走 `birthOffline`（压缩器看不到本轮调用、`birthAccept` 闸、max_tokens 1600）⇒ 与 v12.9.2–v14.9 的 compile / traj 结果不同比；`compile-mr.mjs` 仍旧口径。
+- **生产改动**：`config.compressPolicy`（`src/policy.js`）、`src/offline-birth.js`、`src/messages.js` 台账正则分段预筛（逐字等价，有测试）⇒ 审计 N1–N7 已重跑。
+- 闸：v4 24/24、v3 16/16、closed-loop 25/25、v12 37/37；verify ≈38 s（1051 / 21 已知环境失败 / 1 跳过）；manifest 0 漂移。见 CHANGELOG v14.10.0、CLOSED-LOOP-V4 §15。
+
 ## −8. 当前状态（2026-10-02，第二十八会话：v4.4 —— 用户规则：只用 deepseek-v4.1-flash 的主/副两角色，其余大模型工作助手代工；压缩器评测形态改成生产同形；仍零花费）
 
 - **规则（必须遵守，`tools/helpers/llm-roles.mjs`）**：付费只许主模型（思考开）与副模型（同模型关思考）两种调用；提议器 / 评委 / 打标 / 写场景 / 分析由助手代工。不提别的模型、不做试点。

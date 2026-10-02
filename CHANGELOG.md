@@ -4,6 +4,18 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.10.0（2026-10-02，闭环 v4.5：付费单元缩成一个家族（≈$0.15）/ 策略即配置 / birthOffline 生产同构 / 操作员面 / 全量自测 53 s → ≈35 s；仍零花费）
+
+**起因**：用户三问 —— t2 的 15 条轨迹每条信息是否有用、助手读得完吗；架构对助手手动操作哪里别扭；全量自测 50 s（以前 8 s），接上 API 后训练要快、省、立刻能跑。设计与数字见 `docs/design/CLOSED-LOOP-V4.md` §15。
+
+- **单元设计**：t2 的 auto 臂（≈$0.34）只买 parity，而 v4.5 起 `policy:base` ≡ 生产 birth（同一段代码、字节相同提示词）⇒ 冗余；五家族并跑的 5 组分歧读完第 1 组前不改变任何决定，且 n=1/家族 到不了 e≥10；≤4 轮截尾 raw（历史 raw 修好轮次 6,6,4,4,4,3,3）。**新缺省单元 = 轨迹最少的一个家族 × raw vs policy:base × 1 样本 × ≤5 轮，分叉：主 9 + 压缩 5 ≈ $0.15（上界 $0.372）**；`--all` 五家族 ≈$0.75。t2 / t3 → `superseded`；**t4（sse-truncated）已冻结、`--dry-run` 通过、未发请求**。
+- **策略即配置**：`src/policy.js`（补丁校验 / 应用，离线与生产共用）；`config.compressPolicy`；`compressPromptFor` v4-direct 应用；`compressPromptVersion` 带 `+<id>`；`normalizeConfig` 校验留痕。采纳 = 写配置，回滚 = 删。
+- **birthOffline**（`src/offline-birth.js`）：离线评测唯一压缩路径 = 生产 birth 复刻（压缩器看不到本轮调用、程序部件拼接、`birthAccept` 闸、失败原文放行）；请求体 = `distillOnce`（thinking disabled / **max_tokens 1600** —— v14.9 写的 850 是错的，生产 v4-direct 取 `max(850, compressV4MaxOutputTokens 1600)` / temperature 0），A22 本地 HTTP 假服务逐字段核对。`traj-run` 缺省走它，`--legacy-compress` 保留旧路径；`TRAJ_UNIT.compressCapUsd` 按 1600。**评测口径与 v12.9.2–v14.9 的 compile / traj 结果不同比**（旧结果封存不重评）；`compile-mr.mjs` 仍旧口径，只注明。
+- **操作员面**：`plan-traj` `--help`/`--dry`/同设计去重/`--drop`/`--supersede`/`--force`/`--all`（`auto` 臂 = `policy:base` 别名，重复臂拒）；`propose-policy --print`；`review --plan N | --results FILE` → `review.md`；`status` 一屏（策略 / 计划带 design 与状态 / 家族覆盖 / 下一步完整命令）；`snapshot` / `restore` ↔ `transfer/cycle-state.json`（进仓库）；`help <cmd>` 与 `<cmd> --help` 零副作用；库接口 `runCli` / `setCycleDir` / `dispatch` / `familyCoverage` / `nextFamily` / `reviewRows` / `cycleSnapshot`。
+- **提速**：三套闭环自测子进程 → 进程内 `runCli`（11.1/18.1/22.6 s → **3.0/3.8/6.9 s**）；`betaQuantile` 记忆化 + 44 次二分、bigram 缓存（`plan` 1093 → 492 ms）；`perturbExposure` 首见 + 首次排查命中即停 + 记忆化（4.1 s×2 → 1.3 s×1，判定不变 21/21、19/21；`perturb-check --full` 全量）；**生产 `src/messages.js` 台账整句正则**分段预筛（457 → 27 ms，2904 次比对逐字等价；`test/v12` 加等价 + 线性时间断言）。`verify.mjs` 全量 **53 s → ≈35 s**（2 核；并发 6 仍最快）。没动：`evidence-search`（336 个 oracle 子进程顺序执行是设计）、`native-repair-host`。
+- **测试**：v4 20 → **24/24**（A8 改 birthOffline、A11 新缺省单元与 `--dry`/去重/`--help`/`--drop`、A20 常数 1600、A22 生产同构、A23 操作员面）；v3 16/16；closed-loop 25/25；v12 35 → 37/37；verify 1051 通过 / 21 已知环境失败 / 1 跳过（≈38 s 墙钟）；manifest 396 文件 0 漂移；审计 N1–N7 全部成立。
+- 文档：`CLOSED-LOOP-V4.md` §15、LIVE-MEMORY §−9、NEXT-MODEL-PROMPT。
+
 ## v14.9.0（2026-10-02，闭环 v4.4：用户规则 —— 只用 deepseek-v4.1-flash 的主/副两角色，其余大模型工作由助手代工；压缩器评测形态改为生产同形；仍零花费）
 
 **用户规则（铁律）**：付费调用只许是实战里真实存在的两种 —— 主模型（Agent，思考开）与副模型（压缩器 = 同一模型关思考），模型只用 deepseek-v4.1-flash；提议器 / 评委 / 打标 / 写场景 / 分析由助手代工，零 API；不换模型、不做试点。`tools/helpers/llm-roles.mjs`（`RULE / assertPaidRole / assertModel`）是它的代码形态。
