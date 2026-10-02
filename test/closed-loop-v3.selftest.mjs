@@ -150,7 +150,7 @@ try {
     const comp = buildGenerationPlan({ role: 'compile', round: 1, tasks: pool.tasks, pricing: PRICING })
     assert.equal(planVersion(comp), 10); assert.equal(planScope(comp), 'cfb.generation.2026-10-02.g1')
     const a = auditApiPlan(comp); assert.equal(a.main, 5); assert.equal(a.probe, 3); assert.ok(a.totalReservedUsd < APPROVED_API_LIMITS_GEN.maxUsd)
-    assert.equal(comp.jobs.find((j) => j.kind === 'main').body.max_tokens, 2048); assert.equal(comp.jobs.find((j) => j.kind === 'main').body.temperature, 0)
+    assert.equal(comp.jobs.find((j) => j.kind === 'main').body.max_tokens, 850); assert.equal(comp.jobs.find((j) => j.kind === 'main').body.temperature, 0); assert.equal(comp.jobs.find((j) => j.kind === 'main').body.thinking.type, 'disabled')   // v14.9：与生产 distillOnce 同形
     const prop = buildGenerationPlan({ role: 'propose', round: 40, tasks: dev, evidence: [], devTaskIds: dev.map((t) => t.id), pricing: PRICING })
     assert.equal(auditApiPlan(prop).main, 1); assert.equal(planScope(prop), 'cfb.generation.2026-10-02.g40')
     const mint = buildGenerationPlan({ role: 'mint-a', round: 2, scenario: { id: 'minted-x', u1: '修一下保存配置时的 EACCES' }, pricing: PRICING })
@@ -234,14 +234,21 @@ try {
     try {
       fs.mkdirSync(path.join(tmp, 'offline'), { recursive: true })
       fs.writeFileSync(path.join(tmp, 'offline/history.json'), JSON.stringify({ schema: 'cfb.closed-loop/2', hypotheses: {}, rounds: [], calibration: { round: 0, instrument: 'ok', tieRate: 0.6, winRate: 0.2 } }))
-      const pp = cli('propose-policy'); assert.equal(pp.status, 0, pp.stdout + pp.stderr); assert.ok(/留出题 .* 已排除/.test(pp.stdout) && /cfb\.generation\.2026-10-02\.g1/.test(pp.stdout))
-      const g1 = gplan(1); assert.equal(g1.role, 'propose'); assert.equal(g1.jobs.filter((j) => j.kind === 'main').length, 1)
-      for (const h of holdout) assert.ok(!JSON.stringify(g1.jobs).includes(h.id), '提议器请求体不含留出题 id')
-      assert.ok(!fs.existsSync(path.join(tmp, 'receipts')), 'propose-policy 不花钱')
-      const bad = cli('ingest-gen', '--gen', '1', '--report', grep(1, 'leak')); assert.equal(bad.status, 0, bad.stdout + bad.stderr); assert.ok(/leak:/.test(bad.stdout)); assert.ok(!fs.existsSync(path.join(tmp, 'offline/policies')))
-      cli('propose-policy'); const bj = cli('ingest-gen', '--gen', '2', '--report', grep(2, 'bad-json')); assert.ok(/proposal-invalid/.test(bj.stdout))
-      cli('propose-policy'); const ok = cli('ingest-gen', '--gen', '3', '--report', grep(3)); assert.equal(ok.status, 0, ok.stdout + ok.stderr)
-      const pid = JSON.parse(ok.stdout.slice(ok.stdout.indexOf('{'), ok.stdout.lastIndexOf('}') + 1)).policy; assert.match(pid, /^p-[0-9a-f]{10}$/)
+      // v14.9 规则：提议器由助手代工 —— propose-policy 只写证据包（零 API、不冻结计划、不含留出题）；助手的 JSON 走 policy-from-proposal 的同三道闸
+      const pp = cli('propose-policy'); assert.equal(pp.status, 0, pp.stdout + pp.stderr); assert.ok(/留出题已排除/.test(pp.stdout) && /提议器由助手代工/.test(pp.stdout), pp.stdout.slice(0, 300))
+      assert.ok(!fs.existsSync(path.join(tmp, 'runtime/g1/plan.json')), 'propose-policy 不再冻结 API 计划'); assert.ok(!fs.existsSync(path.join(tmp, 'receipts')), 'propose-policy 不花钱')
+      const pack = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/gen-1.pack.json'), 'utf8')); assert.equal(pack.schema, 'cfb.proposal-pack/1'); assert.equal(pack.parent.id, 'base')
+      for (const h of holdout) { assert.ok(!JSON.stringify(pack.devTasks).includes(h.id) && !JSON.stringify(pack.evidence).includes(h.id), '证据包不含留出题'); assert.ok(pack.holdoutExcluded.includes(h.id)) }
+      assert.ok(/rule:assistant-role:propose/.test(cli('propose-policy', '--api').stderr), '付费提议器被规则拒绝')
+      const wr = (name, obj) => { const f = path.join(tmp, name); fs.writeFileSync(f, typeof obj === 'string' ? obj : JSON.stringify(obj)); return f }
+      const bad = cli('policy-from-proposal', wr('prop-leak.json', { patches: [{ op: 'append', section: 'rules', text: '遇到 test/hedge.selftest.mjs 先核对' }], rationale: 'x', prediction: 'y' }), '--gen', '1'); assert.notEqual(bad.status, 0); assert.ok(/leak:/.test(bad.stderr), bad.stderr); assert.ok(!fs.existsSync(path.join(tmp, 'offline/policies')))
+      const bj = cli('policy-from-proposal', wr('prop-bad.json', '我觉得应该这样改：把规则加长。'), '--gen', '1'); assert.ok(/proposal-invalid/.test(bj.stderr), bj.stderr)
+      const un = cli('policy-from-proposal', wr('prop-unapp.json', { patches: [{ op: 'replace', from: '这句话不在提示词里zzz', to: '改成这样' }], rationale: 'x', prediction: 'y' }), '--gen', '1'); assert.ok(/unapplicable:policy-patch:0:from-occurs-0/.test(un.stderr), un.stderr)
+      const ok = cli('policy-from-proposal', wr('prop-ok.json', { patches: [{ op: 'append', section: 'rules', text: '若上一轮已发出编辑而观察仍报错，稿首句先逐字写出被改文件路径与改动前后文，再给下一步；不得把已修复写成事实。' }], rationale: '证据 l1-loss：编辑后观察仍报错时压缩臂宣称已修复', prediction: 'falseDone 降，next 不变' }), '--gen', '1'); assert.equal(ok.status, 0, ok.stdout + ok.stderr)
+      const pid = ok.stdout.match(/策略 (p-[0-9a-f]{10}) 已落盘/)[1]
+      assert.equal(JSON.parse(fs.readFileSync(path.join(tmp, 'offline/policies', pid + '.json'), 'utf8')).origin.by, 'assistant')
+      assert.equal(JSON.parse(fs.readFileSync(path.join(tmp, 'offline/history.json'), 'utf8')).generations.find((g) => g.gen === 1).policy, pid)
+      cli('propose-policy'); cli('propose-policy')   // g2、g3 只是证据包（保持后面 compile 的代号 g4 不变）
       const pol = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/policies', pid + '.json'), 'utf8')); assert.equal(pol.status, 'proposed'); assert.equal(pol.parent, 'base')
       const pl = cli('plan'); assert.ok(!/policy=/.test(pl.stdout.split('选它的理由')[0]), '未编译的策略不能成为假设')
       const c = cli('compile', '--policy', pid); assert.equal(c.status, 0, c.stdout + c.stderr); assert.ok(/主 5 \+ 探针 3/.test(c.stdout))
@@ -271,7 +278,7 @@ try {
       const pl3 = plan(4); assert.notEqual(pl3.hypothesis.lever, 'policy'); for (const t of pl3.tasks) assert.equal(pl3.variants[t].control, pl1.variants[t].candidate, '采纳后 control = 策略稿')
       const pr = cli('propose'); assert.equal(pr.status, 0, pr.stdout + pr.stderr); const proposal = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/proposal.json'), 'utf8'))
       assert.equal(proposal.promptPatch.policy, pid); assert.equal(proposal.promptPatch.patches.length, 1); assert.match(proposal.promptPatch.where, /src\/prompts\.js/)
-      const pp2 = cli('propose-policy'); assert.ok(pp2.stdout.includes('父策略 ' + pid), '下一次提议从采纳的策略出发')
+      const pp2 = cli('propose-policy'); assert.ok(pp2.stdout.includes('父策略：' + pid), '下一次提议从采纳的策略出发'); assert.equal(JSON.parse(fs.readFileSync(path.join(tmp, 'offline/gen-5.pack.json'), 'utf8')).parent.patches.length, 1)
       const ls = cli('policies'); assert.ok(ls.stdout.includes(pid) && /adopted/.test(ls.stdout) && /飞轮偏好对：15/.test(ls.stdout))
     } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
   })

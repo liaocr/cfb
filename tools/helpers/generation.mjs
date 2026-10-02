@@ -126,10 +126,12 @@ export function makePolicy({ parent, patches, rationale, prediction, origin }) {
   return { ...p, id: policyId(p) }
 }
 
-/** 压缩器请求体（与生产 generateDistillation 同体：单 user 消息、temperature 0；thinking 开着以过通道身份闸）。 */
-export function compressorBody({ task, policy, model, maxTokens = 2048 }) {
+/** 压缩器请求体 —— v14.9 起与生产 distillOnce **逐字段同形**：单 user 消息、temperature 0、max_tokens 850（config.maxOutputTokens）、`thinking:{type:'disabled'}`（config.disableThinking=true，副模型 = 主模型关思考）。
+ *  之前 thinking 开着（"以过通道身份闸"）与 2048 上限都不是生产形态：开思考的压缩器写出的稿子不是生产会写出的稿子，测出的效果迁移不回去；通道身份由主调用（思考开）的指纹闸负责。 */
+export const PRODUCTION_COMPRESSOR = Object.freeze({ maxTokens: 850, thinking: Object.freeze({ type: 'disabled' }) })
+export function compressorBody({ task, policy, model, maxTokens = PRODUCTION_COMPRESSOR.maxTokens, thinking = PRODUCTION_COMPRESSOR.thinking }) {
   const prompt = applyPolicyToPrompt(basePrompt(task), policy)
-  return { model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature: 0, thinking: { type: 'enabled' }, stream: false }
+  return { model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature: 0, thinking, stream: false }
 }
 const probeJobs = (model, canary) => {
   const probeBody = { model, stream: false, thinking: { type: 'enabled' }, max_tokens: 512, messages: [

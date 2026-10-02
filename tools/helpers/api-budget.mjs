@@ -203,7 +203,9 @@ export function createBudgetedChat({ plan: input, apiKey, directory, receiptPath
       const r = await chat(job.body, { signal })
       // fp 由下一行按 scope 版本锚定检查；channelIssue 的旧全局 TRUSTED_FP 集合只服务旧CLI。
       // v6起：探针是纯可见echo保真测试，不强制思考（v5实测空reasoning误杀整计划）；主请求仍要求思考在跑。
-      const issue = channelIssue(r, plan.model, { requireFp: false, requireThinking: !(planVersion(plan) >= 6 && job.kind === 'probe'), modelAliases: plan.modelAliases || [] }); if (issue) throw new Error(issue)
+      // v14.9：compile（副模型按生产形态关思考）不要求 reasoning_content；通道身份仍由下一行的指纹锚定 + 同计划里思考开着的主调用负责。
+      const compileJob = job.gen?.role === 'compile' && job.body?.thinking?.type === 'disabled'
+      const issue = channelIssue(r, plan.model, { requireFp: false, requireThinking: !(planVersion(plan) >= 6 && job.kind === 'probe') && !compileJob, modelAliases: plan.modelAliases || [] }); if (issue) throw new Error(issue)
       const trustedFp = TRUSTED_FINGERPRINTS[planVersion(plan)]
       if (trustedFp !== undefined && r.fp !== trustedFp) throw new Error('channel-fingerprint')
       if (!['stop', 'tool_calls'].includes(r.finish)) throw new Error('response-incomplete')

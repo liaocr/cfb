@@ -244,3 +244,29 @@ ruler ──▶ 效度状态 / 采纳规则 / e 值预算 / 曝光 / 排序器 /
 4. **`policy:` 路径闸：v4.2 已关。** `tools/traj-run.mjs` 策略路径过生产 `compileV4Direct`（不过 ⇒ 原文放行并记 `gateFail`）；策略 champion 没有 `offline/ruler/parity.json` 时 `confirm` 给 `pending-parity`；自测 A11 覆盖。
 
 **付费顺序（都需批准，从小到大）**：P1 续跑探针 raw 单臂 ≈$0.04 → P2 decoy 难度探针 `plan-traj --scenarios perf-regression --perturb decoy --arms raw --samples 2 --max-rounds 6`（≈$0.15；与 perf-regression 已有 raw 基线 roundsToFix 比）→ P3 验尺子（含新家族的首跑，`--samples 1` ≈$0.59 或默认 ≈$1.18）。
+
+## 14. v4.4（v14.9）：用户规则 —— 只用 deepseek-v4.1-flash 的两个实战角色，其余大模型工作由助手代工
+
+**规则（2026-10-02，用户原话的归纳，`tools/helpers/llm-roles.mjs` 是它的代码形态）**：这个插件是为 deepseek-v4.1-flash 设计的；付费调用只许出现在实战里真实存在的两个位置 —— **主模型**（Agent，思考开）和**副模型**（压缩器 = 同一模型关思考）。提议器、评委、打标、写场景、分析这些生产里不存在的调用，一律由助手代工，零 API。不换模型、不做别家模型的试点。
+
+这不只是省钱：**被测对象 = 目标对象**。之前的 `compile` / `policy:` 压缩请求体是 `thinking:enabled、max_tokens 2048`（"开着以过通道身份闸"），而生产 `distillOnce` 是 `thinking:{type:'disabled'}、max_tokens 850`（`config.disableThinking=true / maxOutputTokens 850`）—— 开思考的压缩器写出的稿子不是生产会写出的稿子，测出的差别迁移不回去。v14.9 起两处都改成生产同形（`generation.PRODUCTION_COMPRESSOR`），`api-budget` 对 `compile` 角色不再要求 reasoning_content（通道身份由同一计划里思考开着的主调用 + 指纹锚定负责），`TRAJ_UNIT.compressCapUsd` 按 850 算。`traj-run --compress-thinking` 保留旧形态仅作诊断。
+
+### 14.1 代码形态
+- `freezeGen` 对 `role:'propose'` 直接拒（`rule:assistant-role:propose`）；`propose-policy` 不再冻结 API 计划，改为写**提议证据包** `offline/gen-N.pack.{json,md}`：父策略与补丁、dev 题首段、v9 轮失败证据、真实轨迹 / L1 规格样本里的失败（`trajFailureEvidence`，只含 dev 家族；留出家族的一切内容不进包）、补丁预算、**版本提醒**（每条证据来自哪一版压缩器；base 自己的结局数据有几条）。
+- `policy-from-proposal FILE [--gen N]`：助手写的 proposal JSON 走与 API 提议**完全相同**的三道闸 —— `parseProposal`/`validatePatches`（预算）→ `leakCheck`（只在 dev 题出现、不在基础提示词里的强记号 ⇒ 拒）→ `applyPolicyToPrompt` 可应用（replace 的 from 恰出现一次）→ `makePolicy`（`origin:{by:'assistant', gen, pack, file}`，status=proposed）。闸不因为提议者是助手而放松。
+- 评委：`effect-mr --judge-mode none` 是规则下唯一允许的形态；评委维本来就不是选择信号（v14.2 起），需要语义判断时助手读稿。
+
+### 14.2 第一次代工的发现：v4d9 没有任何结局数据
+证据包的版本提醒把事实摆出来了：历史失败证据（4 条 L1 红题假完成、2 条未修好轨迹）全部来自 **v4d7 / 手写稿 / ledger 变体**；v4d8 已把红题假完成压到 0/10（CHANGELOG v12.9.1），v4d9 又加了程序部件（收工三问、验收条款、延续段）—— 它们正是针对这些失败设计的，但 v4d9 自身只花过 2 次副模型调用、**0 次主模型结局**。所以提议器此刻没有"v4d9 的失败"可修；按 理论→实现→实测→归因 的顺序，第一付费单元必须先是取证，而不是改稿。
+
+### 14.3 候选 #1（助手代工，机理假设，已过三闸，不进第一单元）
+`docs/proposals/p1-multi-site.json` → 策略 `p-5d92393440`（parent base，+276 字符）。假设：v4d9 规则 3 把「要动多处」列为排除理由、规则 5 只给一个三元组、样例只示范单点改值 ⇒ **单点修复偏置**；当修复真的需要两处（同一个值的产生处与消费处各一行，`traj-fixtures-v2` 的 sse-truncated 家族如此；SWE-smith 报告组合式多处缺陷显著更难），压缩稿会把第二处写进排除段，Agent 改完一处看症状仍在就走"假设不成立"或回头重读。补丁：replace 排除理由（去掉"要动多处"）、新增规则 10「分 N 处落地：① ②…，改完一处症状仍在不算推翻」、尾注保留 N 个三元组。预注册预测写在文件里；若多处家族上不优于 base ⇒ 假设作废，不出第二版。
+
+### 14.4 规则下的付费单元（都已冻结为计划、未发请求、需批准）
+| 计划 | 臂 | 规模 | 期望 / 上界 | 得到什么 |
+|---|---|---|---|---|
+| **t2（推荐）** | raw / auto / policy:base | 5 家族 × 1 样本 ≤4 轮，分叉 | **≈$0.925 / $2.09** | v4d9 生产压缩器的 L2 基线；auto≈policy:base 的 parity（之后任何候选采纳的前提）；第一批 v4d9 自己的失败证据；效度配对 ≈45 |
+| t3（备选） | raw / policy:base / policy:p-5d92393440 | 同上 | ≈$0.925 / $2.09 | 候选 #1 直接对照；但没有 auto 臂 ⇒ parity 悬置，候选赢了也只能 pending-parity |
+| 最小 | raw / policy:base | 5 × 1 | ≈$0.59 | 只有基线 + 证据，无 parity |
+
+执行：`DEEPSEEK_API_KEY=… node tools/traj-run.mjs --plan .cfb-runtime/traj/t2/plan.json --store-text --variants raw,auto --policy base --only … --samples 1 --max-rounds 4 --fork --max-tokens 8000 --require-fp --base-url https://api.a6api.com/v1 --model deepseek-v4.1-flash --out .cfb-runtime/traj/t2`（`--dry-run` 已通过）；回灌 `confirm --plan 2 --parity` 与 `confirm --plan 2 --map champion=policy:base,previous=raw`，然后 `propose-policy --gen 3` 让助手读 v4d9 自己的失败再写候选 #2。

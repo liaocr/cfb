@@ -362,6 +362,8 @@ node tools/cfb-cycle.mjs confirm --results FILE --map champion=auto,previous=raw
 node tools/cfb-cycle.mjs propose [--allow-provisional]
 node tools/cfb-cycle.mjs plan-traj                    # v4.2：冻结付费单位（期望/上界成本、目的）；traj-run --plan 核对；confirm --plan N [--parity]
 node tools/cfb-cycle.mjs policy-from-flywheel         # v4.2：零 API 样例槽策略
+node tools/cfb-cycle.mjs propose-policy               # v4.4：提议证据包（零 API；提议器由助手代工，见 CLOSED-LOOP-V4 §14）
+node tools/cfb-cycle.mjs policy-from-proposal FILE --gen N   # v4.4：助手的 proposal JSON → 预算 / 泄漏 / 可应用三闸 → 策略
 node tools/cfb-cycle.mjs states                       # v4.3：从 29 条轨迹派生可续跑子状态（59 个 / 3 家族；扩功效不扩家族）
 node tools/cfb-cycle.mjs ruler --write-design         # v4.3：到修好轮数 C 指数（实测 invalid）/ 实测 ICC 0.366 写入判定 / 旗标回归 / Pareto 池
 node tools/cfb-cycle.mjs plan-traj --stop             # v4.3：有界续跑（一次批准内 e 值过阈或到上界即停）；--from-states / --perturb decoy；traj-run --dry-run 零请求核对

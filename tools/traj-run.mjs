@@ -17,7 +17,7 @@ import { claimOf } from './effect-mr.mjs'
 import { TRAJ_TASKS, materialize } from './traj-fixtures.mjs'
 import { stepFlags } from './helpers/traj-proxy.mjs'
 import { outcomeComparison } from './helpers/ruler.mjs'
-import { BASE_POLICY, applyPolicyToPrompt } from './helpers/generation.mjs'
+import { BASE_POLICY, applyPolicyToPrompt, PRODUCTION_COMPRESSOR } from './helpers/generation.mjs'
 
 const SYSTEM = '你是在代码仓库里干活的编码 Agent，可用工具 bash / read_file / edit_file（仓库根目录）。每一轮：先给一句简短判断，再发出下一步需要的工具调用；一次可以发多个独立调用。认为任务已经完成时不要再调用工具，用文字说明改了什么、依据是什么。'
 // --text-tools：不带 tools 字段（中转把带 tools 的请求路由到不可信后端时用），改用文本协议发调用；三种变体同一协议，比较仍成立
@@ -33,6 +33,7 @@ function parseArgs(argv) {
     else if (a === '--concurrency') o.concurrency = Number(v())
     else if (a === '--only') o.only = v().split(',')
     else if (a === '--require-fp') o.requireFp = true
+    else if (a === '--compress-thinking') o.compressThinking = true   // v14.9：诊断用；缺省压缩器与生产同形（关思考、850 tokens）
     else if (a === '--base-url') o.baseUrl = v()
     else if (a === '--model') o.model = v()
     else if (a === '--out') o.out = v()
@@ -86,10 +87,11 @@ export function checkTrajPlan(plan, o) {
   if (diff.length) throw new Error('traj-plan-mismatch:' + diff.map((k) => `${k} plan=${want[k]} run=${have[k]}`).join('; '))
   return { ok: true, digest: plan.digest }
 }
-/** 策略压缩请求体（与 generation.compressorBody 同口径：temperature 0、thinking on、max_tokens 2048）。 */
-export function policyCompressBody({ I, model, reasoning, ctx, policy }) {
+/** 策略压缩请求体 —— v14.9 起与生产 distillOnce 同形（temperature 0、max_tokens 850、thinking disabled；见 generation.PRODUCTION_COMPRESSOR）。
+ *  policy:base 臂因此就是生产压缩器本身（只差走不走 birth 的重试/对冲），候选臂与它的差只来自补丁。`--compress-thinking` 可开回旧形态（诊断用，不是生产）。 */
+export function policyCompressBody({ I, model, reasoning, ctx, policy, maxTokens = PRODUCTION_COMPRESSOR.maxTokens, thinking = PRODUCTION_COMPRESSOR.thinking }) {
   const prompt = applyPolicyToPrompt(I.buildCompressPromptV4Direct(reasoning, ctx, null), policy)
-  return { model, messages: [{ role: 'user', content: prompt }], max_tokens: 2048, temperature: 0, thinking: { type: 'enabled' }, stream: false }
+  return { model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature: 0, thinking, stream: false }
 }
 
 const SAFE_RE = /^(?:grep|rg|sed -n|cat|ls|head|tail|wc|find|echo|pwd|tree|sort|uniq|cut|awk|true)\b/
@@ -245,7 +247,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         const callsBlock = I.turnCallsBlock(calls); const ctx = I.buildCompressCtx(messages) + (callsBlock ? '\n\n' + callsBlock : '')
         const t0 = Date.now()
         try {
-          const g = await chat(policyCompressBody({ I, model: o.model, reasoning, ctx, policy })); const txt = responseText(g.message); if (!txt || txt.length < 80) throw new Error('empty-compress')
+          const g = await chat(policyCompressBody({ I, model: o.model, reasoning, ctx, policy, ...(o.compressThinking ? { thinking: { type: 'enabled' }, maxTokens: 2048 } : {}) })); const txt = responseText(g.message); if (!txt || txt.length < 80) throw new Error('empty-compress')
           // v4.2：过生产同一道闸（compileV4Direct：长度包络 / 无发明标识符 / 三元组保留）；闸不过 ⇒ 与生产 birth 一样原文放行（distill-failed）
           const gate = o.noGate ? { ok: true, stats: null, text: txt } : I.compileV4Direct(txt, reasoning, { compressCtx: ctx })
           if (gate.ok) { stored = gate.text || txt; compileInfo = { ok: true, ms: Date.now() - t0, rawChars: reasoning.length, outChars: stored.length, policy: policy.id, gate: gate.stats || null } }

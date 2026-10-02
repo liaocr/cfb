@@ -26,7 +26,7 @@ import { evidenceDigest } from '../src/evidence-program.js'
 import * as I from '../index.js'
 import { KNOBS, BASELINE_KNOBS, LEVER_ORDER, loadFrozenTasks, generateCandidates, armSummary, renderCandidate, productionGate, productionContext } from './helpers/candidates.mjs'
 import { buildPool, loadExtraTasks, rotateTasks, validateTaskFile, taskDigest, TASK_ID_RE } from './helpers/tasks.mjs'
-import { BASE_POLICY, PATCH_LIMITS, makePolicy, parseProposal, validatePatches, leakCheck, promptHead, failureEvidence, GEN_ROLES } from './helpers/generation.mjs'
+import { BASE_POLICY, PATCH_LIMITS, makePolicy, parseProposal, validatePatches, leakCheck, promptHead, failureEvidence, GEN_ROLES, applyPolicyToPrompt } from './helpers/generation.mjs'
 import { truthDimensions, truthComposite, truthDelta, TRUTH_DIMENSIONS } from './helpers/truth-dims.mjs'
 import { sequentialPaired, pairResults, expectedBitsNextPair, bitsBought, pairsToDecide, costEstimate, usdPerBit, DEFAULT_DESIGN, DEFAULT_DESIGN_V3, decideV3, betaCdf } from './helpers/experiment.mjs'
 import { prepareEvaluation, reportEvaluation, loadPrepared, DEFAULT_HOME_V9, PUBLIC_RECEIPT_V9, DEFAULT_HOME_GEN, PUBLIC_RECEIPT_GEN, PROFILE_EXAMPLE, ROOT } from './helpers/eval-workflow.mjs'
@@ -36,6 +36,7 @@ import { decideV4, rulerValidity, adoptionPolicy, outcomeComparison, episodeOutc
 import { childStates, familyCensus, valueTable } from './helpers/child-states.mjs'
 import { scoreMatrix, paretoFront, pickParent } from './helpers/pareto.mjs'
 import { perturbExposure } from './helpers/perturb-check.mjs'
+import { RULE, assertPaidRole } from './helpers/llm-roles.mjs'
 import { TRAJ_TASKS } from './traj-fixtures.mjs'
 import { trainRanker, scoreText } from './helpers/ranker.mjs'
 import { retroValidity } from './helpers/traj-proxy.mjs'
@@ -60,7 +61,7 @@ export const HOLDOUT_MAX_EXPOSURE = 3
 export const PARITY = path.join(RULER_DIR, 'parity.json')
 export const trajHomeFor = (n) => (BASE ? path.join(BASE, 'runtime', 't' + Number(n)) : path.join(ROOT, '.cfb-runtime', 'traj', 't' + Number(n)))
 // 分叉轨迹的单价常数（§7 算术；首张真实回执后应更新）：主调用期望 / 上界（max_tokens 8000），压缩调用期望 / 上界
-export const TRAJ_UNIT = Object.freeze({ mainUsd: 0.0125, mainCapUsd: 0.003 + 8000 * 4e-6, compressUsd: 0.0075, compressCapUsd: 0.005 + 2048 * 4e-6 })
+export const TRAJ_UNIT = Object.freeze({ mainUsd: 0.0125, mainCapUsd: 0.003 + 8000 * 4e-6, compressUsd: 0.0075, compressCapUsd: 0.005 + 850 * 4e-6 })   // v14.9：压缩器与生产同形（关思考、max_tokens 850）⇒ 上界按 850 算
 const readJsonl = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean) : [])
 export const loadFlywheel = () => readJsonl(TRAIN_PAIRS)
 export const loadValidity = () => readJsonl(VALIDITY)
@@ -695,6 +696,7 @@ function genCostLines(g, plan, audit) {
 }
 /** 生成计划的公共尾巴：prepare（冻结）→ 审计 → 记 history.generations → 打印批准块。 */
 function freezeGen({ g, generation, profile, pricing, history, label }) {
+  assertPaidRole(generation.role)   // v14.9 规则：propose 等助手角色不得冻结成 API 计划
   const home = genHomeFor(g), receiptPath = genReceiptFor(g)
   if (readWatermark(receiptPath)) throw new Error('gen-already-has-receipt:' + g)
   prepareEvaluation({ home, receiptPath, profile, ...(pricing !== undefined ? { pricing } : {}), version: 10, generation, round: g, env: process.env })
@@ -718,7 +720,8 @@ function genArgs(args) {
 /** propose-policy：提议器只看 dev 题的失败证据（留出题永不进提议器），输出受限补丁 → ingest-gen 过三闸后落成策略文件。 */
 export function cmdProposePolicy(args) {
   ensure(OFFLINE)
-  const { history, g, profile, pricing } = genArgs(args)
+  if (args.includes('--api')) throw new Error('rule:assistant-role:propose（' + RULE.note + '）')
+  const { history, g } = genArgs(args)
   let parentId = f(args, '--parent') || readJson(CHAMPION)?.policy || 'base', parentWhy = null
   if (parentId === 'auto') { const pk = pickParent(scoreMatrix(loadHistory()), { seed: Number(f(args, '--seed') || 1), fallback: readJson(CHAMPION)?.policy || 'base' }); parentId = pk.parent; parentWhy = pk.why; console.log(`父代（Pareto 池抽样）：${parentId} — ${pk.why}`) }
   const pool = loadPool(), parent = loadPolicy(parentId)
@@ -727,9 +730,67 @@ export function cmdProposePolicy(args) {
   const plans = {}; for (const r of history.rounds) { try { plans[r.round] = loadPrepared(homeFor(r.round)) } catch { /* 无计划 */ } }
   const evidence = failureEvidence({ history, plans, split: pool.split })
   const extra = f(args, '--note')
-  const generation = { role: 'propose', round: g, policy: parent, tasks: dev, evidence: extra ? evidence.concat([{ note: String(extra).slice(0, 600) }]) : evidence, devTaskIds: dev.map((t) => t.id) }
-  console.log(`提议器输入：父策略 ${parent.id}；dev 题 ${dev.map((t) => t.id).join(',')}；失败证据 ${evidence.length} 条（留出题 ${pool.tasks.filter((t) => t.split === 'holdout').map((t) => t.id).join(',')} 已排除）`)
-  freezeGen({ g, generation, profile, pricing, history, label: 'propose ← ' + parent.id })
+  // v14.9：提议器由助手代工 —— 这里只产出「证据包」（与以前喂给 API 的内容同源，只含 dev 题），助手读完写 proposal JSON，再走 policy-from-proposal 的三道闸
+  const trajEv = trajFailureEvidence({ holdout: pool.tasks.filter((t) => t.split === 'holdout').map((t) => t.id) })
+  const pack = { schema: 'cfb.proposal-pack/1', gen: g, at: new Date().toISOString(), parent: { id: parent.id, patches: parent.patches, rationale: parent.rationale }, devTasks: dev.map((t) => ({ id: t.id, u1: String(t.chain?.u1 || '').slice(0, 600), keyFacts: t.spec?.obs?.green?.reference?.keyFacts || null })), holdoutExcluded: pool.tasks.filter((t) => t.split === 'holdout').map((t) => t.id), evidence: extra ? evidence.concat([{ note: String(extra).slice(0, 600) }]) : evidence, trajEvidence: trajEv, limits: PATCH_LIMITS, promptHeadChars: promptHead(pool.tasks[0]).length }
+  pack.digest = evidenceDigest(pack).slice(0, 16)
+  const file = path.join(OFFLINE, `gen-${g}.pack.json`); writeJson(file, pack)
+  const md = [`# 提议证据包 g${g}（digest ${pack.digest}）—— 提议器由助手代工，零 API`, '', `父策略：${parent.id}${parentWhy ? '（' + parentWhy + '）' : ''}；补丁预算：≤${PATCH_LIMITS.maxPatches} 条、新增 ≤${PATCH_LIMITS.maxAddedChars} 字、replace 每段 ≤${PATCH_LIMITS.maxReplaceChars} 字、样例槽 ≤${PATCH_LIMITS.maxExemplarChars} 字`, `dev 题：${dev.map((t) => t.id).join(', ')}；留出题已排除：${pack.holdoutExcluded.join(', ')}（证据里不会出现它们的任何内容）`, '',
+    '## v9 轮失败证据（history）', ...(evidence.length ? evidence.map((e) => '- ' + JSON.stringify(e).slice(0, 400)) : ['- 无（还没有付费 v9 轮）']), '',
+    `## 真实轨迹 / L1 规格样本里的失败证据（transfer，只含 dev 家族）`, `版本提醒：base = ${parent.base || 'compress-v4d9'}；下面 ${trajEv.length} 条证据来自 ${[...new Set(trajEv.map((e) => e.version))].join(' / ') || '—'}；来自 base 本身的结局数据 ${trajEv.filter((e) => e.version === (parent.base || 'compress-v4d9')).length} 条${trajEv.some((e) => e.version === (parent.base || 'compress-v4d9')) ? '' : ' ⇒ 没有 base 自己的失败可修：先跑 raw/auto/policy:base 拿证据，候选只能是机理假设并如实标注'}`, ...trajEv.map((e) => '- ' + JSON.stringify(e).slice(0, 500)), '',
+    '## 助手要交回的 JSON（写到任意文件，然后 `policy-from-proposal FILE --gen ' + g + '`）', '```json', JSON.stringify({ patches: [{ op: 'append', section: 'rules', text: '…' }], rationale: '…（引用上面的证据编号）', prediction: '…（哪个旗标会变、不会变）' }, null, 2), '```',
+    '闸：补丁预算 → 泄漏闸（补丁里只在 dev 题出现、不在基础提示词里的强记号 ⇒ 拒）→ 可应用（replace 的 from 必须在提示词里恰出现一次）。']
+  fs.writeFileSync(path.join(OFFLINE, `gen-${g}.pack.md`), md.join('\n') + '\n')
+  recordGen(history, { gen: g, at: pack.at, role: 'propose', status: 'pack', label: 'propose(assistant) ← ' + parent.id, planDigest: pack.digest, by: 'assistant' })
+  console.log(md.join('\n')); console.log('\n证据包：' + path.relative(ROOT, file))
+  return { g, pack, file }
+}
+/** v14.9：助手代工的提议 → 与 API 提议完全相同的三道闸 → 策略文件。 */
+export function policyFromProposal({ file, g = null, parentId = null, now = new Date().toISOString() }) {
+  const raw = fs.readFileSync(file, 'utf8')
+  const pool = loadPool()
+  const packFile = g != null ? path.join(OFFLINE, `gen-${g}.pack.json`) : null, pack = packFile ? readJson(packFile) : null
+  const parent = loadPolicy(parentId || pack?.parent?.id || readJson(CHAMPION)?.policy || 'base')
+  let proposal
+  try { proposal = parseProposal(raw); validatePatches(proposal.patches) }   // 闸 1：JSON + 补丁预算（与 ingestGen 的 propose 路径同一函数）
+  catch (e) { throw new Error('proposal-invalid:' + String(e && e.message || e)) }
+  const leaks = leakCheck(proposal.patches, pool.tasks, promptHead(pool.tasks[0]))   // 闸 2：泄漏
+  if (leaks.length) throw new Error('leak:' + leaks.join(','))
+  try { applyPolicyToPrompt(promptHead(pool.tasks[0]), { patches: proposal.patches }) }   // 闸 3：可应用（replace 的 from 必须在提示词里恰出现一次）
+  catch (e) { throw new Error('unapplicable:' + String(e && e.message || e)) }
+  const pol = makePolicy({ parent, patches: proposal.patches, rationale: proposal.rationale, prediction: proposal.prediction, origin: { by: 'assistant', gen: g, pack: pack?.digest || null, file: path.relative(ROOT, path.resolve(file)) } })
+  const pf = path.join(POLICIES, pol.id + '.json'); ensure(POLICIES)
+  if (!fs.existsSync(pf)) writeJson(pf, { ...pol, at: now })
+  if (g != null) { const h = loadHistory(); const e = (h.generations || []).find((x) => x.gen === g); if (e) { e.status = 'ingested'; e.policy = pol.id; writeJson(HISTORY, h) } }
+  return { policy: pol.id, file: path.relative(ROOT, pf), patches: pol.patches, parent: parent.id }
+}
+function cmdPolicyFromProposal(args) {
+  const file = args.find((a) => !a.startsWith('--') && fs.existsSync(a)); if (!file) throw new Error('需要 proposal JSON 文件路径')
+  const r = policyFromProposal({ file, g: f(args, '--gen') != null ? Number(f(args, '--gen')) : null, parentId: f(args, '--parent') })
+  console.log(`策略 ${r.policy} 已落盘（status=proposed，parent=${r.parent}，by=assistant）→ ${r.file}\n下一步：plan-traj --arms raw,policy:base,policy:${r.policy}（分叉轨迹里直接当第三臂）；v9 L1 路径才需要 compile --policy ${r.policy}`)
+  return r
+}
+/** 历史证据各变体对应的压缩器版本（CHANGELOG v12.9.1 / v12.9 §2b：run1–4 的 auto = v4d7，auto8/auto8b = v4d8，oracle* = 手写稿；traj1–3 与 run 同期）。
+ *  提议器必须知道证据来自哪一版：base 是 v4d9（v4d8 + 程序部件），v4d9 自身至今 0 条结局数据 —— 别去修 v4d8/v4d9 已经专门针对过的失败。 */
+export const EVIDENCE_VERSIONS = Object.freeze({ auto: 'compress-v4d7', auto8: 'compress-v4d8', auto8b: 'compress-v4d8', oracle: 'handwritten', oracle2: 'handwritten', oracle3: 'handwritten', ledger: 'ledger(v4d7-era)' })
+/** 真实轨迹 + L1 规格样本里的失败证据（只含 dev 家族；留出家族的一切内容都不进提议器）。 */
+export function trajFailureEvidence({ holdout = [], trajDirs = ['traj1', 'traj2', 'traj3'], mrDirs = ['run1', 'run2', 'run3', 'run4'] } = {}) {
+  const out = []
+  const ver = (v) => EVIDENCE_VERSIONS[v] || v
+  const tj = trajDirs.flatMap((d) => readJsonl(path.join(ROOT, 'transfer', d, 'results.jsonl')).map((r) => ({ ...r, dir: d }))).filter((r) => !r.error && !holdout.includes(r.task))
+  for (const r of tj) {
+    const solved = !!(r.fixed || Number.isInteger(r.fixedAtRound))
+    if (r.variant !== 'raw' && (!solved || (r.claim === 'fixed' && !solved))) out.push({ kind: 'traj', task: r.task, variant: r.variant, version: ver(r.variant), rounds: r.rounds, solved, claim: r.claim, compressOk: (r.compile || []).map((c) => (c.ok ? 1 : 0)).join(''), edits: (r.edits || []).map((e) => e.path) })
+  }
+  const mr = mrDirs.flatMap((d) => readJsonl(path.join(ROOT, 'transfer', 'mr', d, 'results.jsonl')).map((r) => ({ ...r, run: d }))).filter((r) => r.rule && !r.error && !holdout.includes(r.task))
+  const score = (x) => { const v = (k) => (x[k] === 1 ? 1 : 0); return v('next') + v('avoid') - v('falseDone') - v('bump') - v('reEdit') - v('repeat') }
+  const by = {}; for (const r of mr) { const k = `${r.run}|${r.task}|${r.sample}`; (by[k] = by[k] || {})[r.variant] = r }
+  for (const [k, b] of Object.entries(by)) {
+    const cv = ['auto', 'auto8', 'oracle3', 'oracle2', 'oracle'].find((v) => b[v]); if (!b.raw || !cv) continue
+    const c = b[cv], r = b.raw; if (score(c.rule) >= score(r.rule)) continue
+    out.push({ kind: 'l1-loss', key: k, variant: cv, version: ver(cv), obs: c.obs, candFlags: c.rule, rawFlags: r.rule, candResponseHead: String(c.response || '').replace(/\s+/g, ' ').slice(0, 220) })
+  }
+  return out
 }
 /** compile：按策略重压 side（≤5 题 / 计划；缺哪些题就压哪些），或为铸造中的任务压 r1 / side（--mint ID）。 */
 export function cmdCompile(args) {
@@ -866,7 +927,8 @@ const HELP = `cfb-cycle（闭环 v4：e 值采纳 + L2 结局确认；v2/v3 命�
                                                                                  零 API：池轮换 → 成稿 → 冻结 v9 计划，停下等批准（首轮默认 A/A 校准）
   ingest   --round N [--report FILE]                                              回灌：配对 → decideV4（留出闸门 + e 值）→ adopt-provisional/reject/continue/calibrated；追加飞轮偏好对；记留出曝光
   propose                                                                        把已采纳旋钮 / 策略翻成生产配置 diff / src 改动说明
-  propose-policy [--gen N] [--parent ID|auto] [--note 文字]                        冻结提议器计划（只喂 dev 题证据；≤4 请求；auto = Pareto 池抽父代）
+  propose-policy [--gen N] [--parent ID|auto] [--note 文字]                        v14.9：写提议证据包（零 API；提议器由助手代工）；auto = Pareto 池抽父代
+  policy-from-proposal FILE [--gen N] [--parent ID]                                v14.9：助手写的 proposal JSON → 三道闸（预算 / 泄漏 / 可应用）→ 策略文件
   states [--results F,…] [--family ID] [--start-round K] [--limit N] [--out FILE]   v4.3：从轨迹派生可续跑的子状态（零 API），打印家族 / 状态盘点；--limit 1 做探针
   perturb-check [--kind decoy]                                                      v4.3：扰动惰性检查（真实轨迹反事实重放，零 API）：可见 ≠ 更难
   ruler [--write-design]                                                          尺子效度 + v4.3 到修好轮数 C 指数 / ICC / 六旗标回归 / Pareto 池；--write-design 写实测 ICC
@@ -892,6 +954,7 @@ function main() {
   else if (cmd === 'plan-traj') cmdPlanTraj(args)
   else if (cmd === 'policy-from-flywheel') cmdPolicyFromFlywheel()
   else if (cmd === 'propose-policy') cmdProposePolicy(args)
+  else if (cmd === 'policy-from-proposal') cmdPolicyFromProposal(args)
   else if (cmd === 'compile') cmdCompile(args)
   else if (cmd === 'mint') cmdMint(args)
   else if (cmd === 'ingest-gen') cmdIngestGen(args)

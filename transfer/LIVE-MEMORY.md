@@ -2,6 +2,15 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
+## −8. 当前状态（2026-10-02，第二十八会话：v4.4 —— 用户规则：只用 deepseek-v4.1-flash 的主/副两角色，其余大模型工作助手代工；压缩器评测形态改成生产同形；仍零花费）
+
+- **规则（必须遵守，`tools/helpers/llm-roles.mjs`）**：付费只许主模型（思考开）与副模型（同模型关思考）两种调用；提议器 / 评委 / 打标 / 写场景 / 分析由助手代工。不提别的模型、不做试点。
+- **形态修正**：`compile` 与 `policy:` 压缩请求体从 `thinking:enabled / 2048` 改为生产同形 `thinking:disabled / 850`（`generation.PRODUCTION_COMPRESSOR`）；`api-budget` 对 compile 不再要求 reasoning_content；`TRAJ_UNIT.compressCapUsd` 按 850。
+- **代工管线**：`propose-policy` → 证据包 `offline/gen-N.pack.{json,md}`（含版本提醒）→ 助手写 JSON → `policy-from-proposal FILE --gen N`（预算 / 泄漏 / 可应用三闸同 API 路径）。`freezeGen(role:'propose')` 与 `propose-policy --api` 直接拒。
+- **发现**：v4d9（生产）0 条结局数据；全部历史失败来自 v4d7 / 手写 / ledger。候选 #1 `p-5d92393440`（`docs/proposals/p1-multi-site.json`，多处落点，机理假设）已过三闸，**不进第一单元**。
+- **第一付费单元 t2（已冻结、未发）**：raw / auto / policy:base × 5 家族 × 1 样本 ≤4 轮 ≈ $0.925（上界 $2.09）；t3 备选把候选当第三臂。见 CLOSED-LOOP-V4 §14。
+- 闸：v4 20/20、v3 16/16（E2 改走代工路径）、closed-loop 25/25；manifest / verify / audit 见 CHANGELOG v14.9.0。
+
 ## −7. 当前状态（2026-10-02，第二十七会话：v4.3 续 —— 场景家族 3→5（零 API）；decoy active；续跑探针；付费顺序 P1 $0.04 → P2 $0.15 → P3）
 
 - 第六轮评审接受三处反驳；三件未解里两件本会话零 API 推进：**家族** `traj-fixtures-v2.mjs`（wrong-model 留出 / sse-truncated dev，隐藏语义 oracle 判修好，sse 需两处修改）⇒ 场景家族 5、留出 2（仍 < 4，且新家族零轨迹）；**decoy 惰性** `perturb-check`：21/21 可见、19/21 排查命中 ⇒ active（可见 ≠ 更难）。第三件（模型能否顺着前缀续跑）只能付费：单状态探针 raw ≈ $0.038（`continuation` 字段自动判 continued / restarted）。

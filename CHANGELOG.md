@@ -4,6 +4,18 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.9.0（2026-10-02，闭环 v4.4：用户规则 —— 只用 deepseek-v4.1-flash 的主/副两角色，其余大模型工作由助手代工；压缩器评测形态改为生产同形；仍零花费）
+
+**用户规则（铁律）**：付费调用只许是实战里真实存在的两种 —— 主模型（Agent，思考开）与副模型（压缩器 = 同一模型关思考），模型只用 deepseek-v4.1-flash；提议器 / 评委 / 打标 / 写场景 / 分析由助手代工，零 API；不换模型、不做试点。`tools/helpers/llm-roles.mjs`（`RULE / assertPaidRole / assertModel`）是它的代码形态。
+
+- **形态修正（被测对象 = 目标对象）**：`generation.compressorBody` 与 `traj-run.policyCompressBody` 从 `thinking:enabled / max_tokens 2048` 改为生产 `distillOnce` 同形 `thinking:{type:'disabled'} / 850`（`PRODUCTION_COMPRESSOR`；`config.disableThinking=true / maxOutputTokens 850`）。`api-budget` 对 `compile` 角色（关思考）不再要求 reasoning_content，通道身份由同计划里思考开着的主调用 + 指纹锚定负责。`TRAJ_UNIT.compressCapUsd` 按 850 算（默认单位上界 2.978 → 2.786）。`traj-run --compress-thinking` 保留旧形态仅作诊断。
+- **代工管线**：`freezeGen` 对 `role:'propose'` 抛 `rule:assistant-role:propose`；`propose-policy` 改为写**提议证据包** `offline/gen-N.pack.{json,md}`（父策略、dev 题首段、v9 轮证据、`trajFailureEvidence`——真实轨迹 / L1 规格样本里 dev 家族的失败、补丁预算、**版本提醒**：每条证据来自哪一版压缩器 `EVIDENCE_VERSIONS`，base 自己的结局数据几条）；新命令 `policy-from-proposal FILE [--gen N] [--parent ID]`：助手的 JSON 走与 API 提议完全相同的三道闸（预算 → 泄漏 → 可应用）→ `makePolicy(origin:{by:'assistant', gen, pack, file})`。
+- **第一次代工的发现**：v4d9（生产）**0 条结局数据**；历史失败证据全部来自 v4d7 / 手写稿 / ledger，而 v4d8（假完成 0/10）与 v4d9 的程序部件正是针对它们设计的 ⇒ 没有 v4d9 的失败可修，第一付费单元必须先取证。
+- **候选 #1（助手代工，机理假设）**：`docs/proposals/p1-multi-site.json` → `p-5d92393440`（parent base，+276 字符）：解除 v4d9 的单点修复偏置（规则 3 排除理由去掉「要动多处」；新增规则 10「分 N 处落地：① ②…，改完一处症状仍在不算推翻」；尾注保留 N 个三元组）。预注册预测与证伪条件写在文件里；**不进第一单元**。
+- **付费单元（已冻结、未发、需批准）**：t2 = raw / auto / policy:base × 5 家族 × 1 样本 ≤4 轮 ≈ $0.925（上界 $2.09）—— v4d9 的 L2 基线 + parity + v4d9 自己的失败证据 + 效度配对；t3 备选把候选 #1 当第三臂（parity 悬置）。`traj-run --plan … --dry-run` 已通过。
+- **测试**：v3 E2 改走代工路径（证据包不含留出题 / `--api` 被拒 / 泄漏 · 坏 JSON · 不可应用三种拒绝 / 合法提案落策略 origin.by=assistant / 后续 compile → plan → 采纳 → confirm 链不变）；v4 新增 A20（规则闸、生产同形、诊断开关、上界常数）与 A21（证据版本标签、留出排除、候选 #1 过闸且无 dev 题强记号）。v4 22/22、v3 16/16、closed-loop 25/25。
+- 文档：`CLOSED-LOOP-V4.md` §14、LIVE-MEMORY §−8、NEXT-MODEL-PROMPT、README。
+
 ## v14.8.0（2026-10-02，闭环 v4.3 续：场景家族 3→5（零 API）/ decoy 惰性检查 active / 续跑探针 / 单状态探针计划；仍零花费）
 
 - **起因**：第六轮评审接受 v4.3 的三处反驳，指出留出家族仍 3 是唯一地基问题、decoy 与 `--from-state` 都未验证，建议先花 ~$0.05 验续跑再谈 $1。
