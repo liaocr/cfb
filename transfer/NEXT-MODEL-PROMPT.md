@@ -6,6 +6,11 @@
 
 ## 零、先读这段（最新的、必须知道的）
 
+0. **v14.2（2026-10-02）闭环 v2 已落地，先读 `docs/design/CLOSED-LOOP-V2.md`。** 旧的 `cfb-cycle run` / `scoreCandidates` / `activeSelect` / `feedback` 流程已被替换：
+   现行环是 `node tools/cfb-cycle.mjs plan`（零 API，成稿 → 离线裁决 → 冻结 v9 计划 → 停）→ 人批准 → `node tools/effect-ready.mjs run --live --v9 --round N`（唯一花钱）→ `cfb-cycle ingest --round N` → adopt 改 champion → `propose` 出生产 diff。
+   用户预算只有**几美元**：一轮实付 ≈ USD 0.13 / 预占 0.50；**任何花钱前先给用户看 `plan` 打印的预占 / 实付 / 每 bit 价并等批准**。评委 LLM 不再是选择信号；没有长度杠杆；`bind=off` 是惰性杠杆。
+   自测 `test/closed-loop.selftest.mjs`；加杠杆照 CLOSED-LOOP-V2.md §7。**v9 一轮都没实跑，不要把模拟当结果。**
+
 1. **最重要的一条**：v13.4.0/v13.5.0 的核心前提「a6api 中转全部路由丢弃历史 reasoning_content」**已被推翻**。
    真实原因是聚合站 a6api 内**某个商户（上游）行为异常**；a6api 是低价聚合站、内含很多商户、**可随时切换**。
    换掉故障商户后 canary 立即恢复拼接（`Δprompt(1000字−1字)=539`、剂量-反应严格线性）。

@@ -352,6 +352,19 @@ v12.0 / v12.1 删除的文件都可从 git 取回：`git show cfba57b:<路径>`�
 这些留在原开发机的仓库里，需要时再单独取。
 
 
+## 闭环迭代（v14.2，零 API 可走通；花钱只在一条命令里）
+
+```sh
+node tools/cfb-cycle.mjs doctor                      # 预检：冻结任务 / 生产闸门 / 真值维方向 / 可测杠杆 / 退化臂
+node tools/cfb-cycle.mjs plan [--pricing FILE]       # 成稿 → 离线裁决 → 冻结 v9 计划（13 请求、≤USD 1）→ 印出预占/实付/每 bit 价 → 停
+node tools/effect-ready.mjs run --live --v9 --round 1   # 唯一花钱的命令，需要人批准
+node tools/cfb-cycle.mjs ingest --round 1            # 配对胜负 → Beta 后验 → adopt / reject / continue
+node tools/cfb-cycle.mjs propose                     # 已采纳旋钮 → 生产配置 diff / src 改动说明（不写 src）
+```
+
+control = 当前 champion 的生产重编译，candidate = 只改一个杠杆；离线真值维只做安全过滤与方向校验，付费判据是与 v8 live 同源的配对结构分。
+一轮 ≈ USD 0.13 实付 / 0.50 预占；几美元 ≈ 3–5 个假设出结论。设计、运行特性与**放弃清单**见 [`docs/design/CLOSED-LOOP-V2.md`](docs/design/CLOSED-LOOP-V2.md)。
+
 ## 离线准备与联网评测（v13.2，显式工具入口）
 
 外网不可用也可完成完整本机HTTP演练、预算恢复与加密迁移：

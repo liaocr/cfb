@@ -21,7 +21,8 @@ v12.2 把理论第五卷的 v4 规格落成生产代码：`compressPrompt: 'v4'`
 | [`RUNBOOK-TRAINING-READY.md`](RUNBOOK-TRAINING-READY.md) | 后续训练操作者 | SFT/偏好数据、审核/族隔离、LoRA/远程任务、新训练批准、候选发布与加密搬迁 |
 | [`analysis/TRAINING-READY-2026-09-30.md`](analysis/TRAINING-READY-2026-09-30.md) | 训练架构/验收者 | 训练预注册、真实参考模型梯度、远程替身/缓存/搬迁与LoRA未证事项 |
 | [`analysis/TRAINING-ITERATION-2026-10-01.md`](analysis/TRAINING-ITERATION-2026-10-01.md) | 恢复/迭代验收者 | worker ACK/完整见证与累计预算，有限候选独立评测/一次性test；真实HF未证 |
-| [`design/CONTINUOUS-TRAINING-ARCHITECTURE.md`](design/CONTINUOUS-TRAINING-ARCHITECTURE.md) | 迭代/训练设计者 | **现行**：持续训练架构（判断层 9维/13.27bit、杠杆生成层、校准回灌层、闭环编排）、六门禁、诚实缺口 |
+| [`design/CLOSED-LOOP-V2.md`](design/CLOSED-LOOP-V2.md) | 迭代/实验设计者、下一个模型 | **现行**：闭环 v2「按比特买证据」——生产等价候选、任务真值维、序贯配对（运行特性表）、v9 预注册、`plan → live → ingest → propose`、放弃清单、怎么加杠杆 |
+| [`design/CONTINUOUS-TRAINING-ARCHITECTURE.md`](design/CONTINUOUS-TRAINING-ARCHITECTURE.md) | 迭代/训练设计者 | v14.0 持续训练架构（判断层维度定义仍有效）；环路部分已被 v14.2 更正与替换，顶部有更正块 |
 | [`design/OFFLINE-ARCHITECTURE.md`](design/OFFLINE-ARCHITECTURE.md) | 迭代/实验设计者 | 离线层分层（语料/判据/候选/标注/驱动）、生产漏斗 |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 改代码的人 | 模块地图、钩子与数据流、持久化位置、不变式、「改哪里」、测试布局 |
 | [`INSTALL.md`](INSTALL.md) | 部署的人 | 注册机制、两层 patch 形态铁律、改完源码如何生效、排错 |

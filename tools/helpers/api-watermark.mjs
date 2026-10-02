@@ -26,8 +26,13 @@ export const API_APPROVAL_SCOPE_V7 = 'cfb.visible-context-expanded.2026-10-01-r3
 //   （protocol: chat-completions-history-reasoning/1）：raw 臂＝录制原文 reasoning，current 臂＝压缩稿替换同一位置，
 //   其余逐字节一致；判据升级为 claimVersion 3（v7 五例伪阳性回归）。矩阵沿用 v1/v4（3题×2臂×2样本=12主）+3探针。
 export const API_APPROVAL_SCOPE_V8 = 'cfb.history-reasoning-revalidation.2026-10-01'
-export const KNOWN_API_SCOPES = Object.freeze([API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6, API_APPROVAL_SCOPE_V7, API_APPROVAL_SCOPE_V8])
-const SCOPE_MAX_REQUESTS = Object.freeze({ [API_APPROVAL_SCOPE]: 13, [API_APPROVAL_SCOPE_V2]: 15, [API_APPROVAL_SCOPE_V3]: 15, [API_APPROVAL_SCOPE_V4]: 15, [API_APPROVAL_SCOPE_V5]: 39, [API_APPROVAL_SCOPE_V6]: 39, [API_APPROVAL_SCOPE_V7]: 39, [API_APPROVAL_SCOPE_V8]: 15 })
+// v9（v14.2 闭环 v2，2026-10-02）＝**候选稿 vs 当前生产稿**的序贯配对回放：每一轮一个 scope（r1…r20，静态表——
+//   eval-bundle 按 KNOWN_API_SCOPES 推导允许的仓目录名，scope 不能动态生成）。每轮 ≤ 13 请求 / ≤ USD 1：
+//   3 同体探针 + ≤5 任务 × 2 臂（control = 当前 champion 旋钮的生产重编译，candidate = 单杠杆变体）。
+//   每个 scope 仍须用户逐轮明确批准后才能 run；收据路径 transfer/api-budget-approval-v9-r<N>.watermark.json。
+export const API_APPROVAL_SCOPES_V9 = Object.freeze(Array.from({ length: 20 }, (_, i) => 'cfb.candidate-replay.2026-10-02.r' + (i + 1)))
+export const KNOWN_API_SCOPES = Object.freeze([API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6, API_APPROVAL_SCOPE_V7, API_APPROVAL_SCOPE_V8, ...API_APPROVAL_SCOPES_V9])
+const SCOPE_MAX_REQUESTS = Object.freeze({ [API_APPROVAL_SCOPE]: 13, [API_APPROVAL_SCOPE_V2]: 15, [API_APPROVAL_SCOPE_V3]: 15, [API_APPROVAL_SCOPE_V4]: 15, [API_APPROVAL_SCOPE_V5]: 39, [API_APPROVAL_SCOPE_V6]: 39, [API_APPROVAL_SCOPE_V7]: 39, [API_APPROVAL_SCOPE_V8]: 15, ...Object.fromEntries(API_APPROVAL_SCOPES_V9.map((s) => [s, 13])) })
 export const apiStoreDirectory = (directory, scope = API_APPROVAL_SCOPE) => path.join(path.resolve(directory), crypto.createHash('sha256').update(scope).digest('hex'))
 const HEX = /^[a-f0-9]{64}$/
 export function readWatermark(file) {

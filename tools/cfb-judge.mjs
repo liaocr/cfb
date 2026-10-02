@@ -2,7 +2,8 @@
 //
 // 判断层的三条硬要求（用户 2026-10-02）：
 //   ① 科学可量化：每个维度有定义/刻度/锚点/测量误差；
-//   ② 上限要高：9 维连续向量 = 9856 状态 / 13.27 bit 每次观测（二值只有 1 bit）；
+//   ② 上限要高：15 维向量（代码 9 / 评委 6）；但 v14.2 起只有代码维（含 6 个任务真值维）是选择信号，
+//      评委维只做诊断——状态空间的 bit 数是「能分多细」，不是「关于质量的信息量」，二者别混（见 CLOSED-LOOP-V2.md）；
 //   ③ 必须有大模型参与：语义维度交评委，代码只做确定性部分，二者交叉验证。
 //
 // 子命令：
@@ -26,14 +27,15 @@ const NUM = (x, n = 3) => (Number.isFinite(x) ? x.toFixed(n) : '—')
 
 function cmdCapacity() {
   const c = judgeCapacity(), b = binaryCeiling(2)
-  console.log('判断层容量（这是「上限够不够高」的量化依据）')
+  console.log('判断层容量（分辨率上限，不是「关于质量的信息量」）')
   console.log('  维度数        : ' + c.dimensions + '（代码 ' + c.codeDims + ' / 评委 ' + c.llmDims + '）')
-  console.log('  状态空间      : ' + c.states.toLocaleString() + ' 种')
-  console.log('  信息量        : ' + c.bits.toFixed(2) + ' bit / 次观测')
-  console.log('  二值判据对照  : ' + b.bits.toFixed(2) + ' bit / 次观测  ⇒ 差 ' + (c.bits / b.bits).toFixed(1) + ' 倍')
+  console.log('  状态空间      : ' + c.states.toLocaleString() + ' 种（全部维度）  ⇒ log2 = ' + c.bits.toFixed(2) + ' bit / 次观测')
+  console.log('  其中代码维    : ' + c.codeBits.toFixed(2) + ' bit / 次观测（选择信号只用这部分：selectionSignal=' + c.selectionSignal + '）')
+  console.log('  二值判据对照  : ' + b.bits.toFixed(2) + ' bit / 次观测')
   console.log('')
-  console.log('  含义：二值指标（如「是否假完成」）一次观测只给 1 bit，n=20 就摸到天花板；')
-  console.log('        本判断层一次给 ' + c.bits.toFixed(1) + ' bit，天花板远高于当前水平，可持续迭代空间大。')
+  console.log('  含义：这些 bit 是「刻度能分多细」的上限；一次观测真正带来的、关于「候选是否更好」的信息')
+  console.log('        要按配对胜负的后验来算（tools/cfb-cycle.mjs 的 expectedBitsNextPair，先验下一对 ≈ 0.19 bit）。')
+  console.log('        评委维（llm）未经校准、锚点一致性未测，v14.2 起只做诊断，不进选择信号。')
   console.log('')
   console.log('  最低可分辨效应（pairedBootstrap，双侧 95%）：')
   for (const n of [5, 10, 20, 50, 100]) {

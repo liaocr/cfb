@@ -1,5 +1,10 @@
 # 持续训练架构（v14.0，2026-10-02）
 
+> **v14.2 更正（2026-10-02）**：本文件描述的 v14.0 环路在三处断开——候选生成是在固定前缀上贴补（6 臂 2 份文本、K1 不在前缀里、截断发生在 K 项之前）、
+> 奖励是未校准的评委 Likert 加权和、`cfb-cycle run` 到出候选组为止且 `feedback()` 的观测数恒为 0。
+> **现行闭环以 [`CLOSED-LOOP-V2.md`](CLOSED-LOOP-V2.md) 为准**：生产等价候选、任务真值维 + live 结构分、序贯配对、`plan → run --live --v9 → ingest → propose` 全在代码里。
+> 下文 §4 / §8 的 `cfb-cycle run`、`scoreCandidates`、`activeSelect`、`feedback` 流程已被替换，保留作背景；§1 判断层的维度定义仍有效，但评委维降为诊断、不再是选择信号。
+
 > **目标**：一台可以一直往下练、不断迭代、逼近上限的机器。
 > **三条硬约束**（用户指令）：① 判断层必须科学可量化；② 判断层上限必须高，不能轻松练到顶；③ 必须保持大模型参与，不能完全交给写死的规则。
 
@@ -150,24 +155,21 @@
 
 ---
 
-## 4. 编排层：一轮怎么转
+## 4. 编排层：一轮怎么转（v14.0 原文；**已被 v14.2 替换**，见 CLOSED-LOOP-V2.md §1）
 
-`tools/cfb-cycle.mjs`：
+v14.0 的 ①–⑦（corpus → judge → `cfb-cycle run` 出候选组 → `scoreCandidates` → `activeSelect` → effect-ready → `feedback`）
+在代码里只走到 ③：候选组不进 `effect-ready` 的计划，`feedback` 没有观测。v14.2 的实际环：
 
 ```
-① 观测   cfb-corpus        生产 trace + 上轮结果 → 语料
-② 判断   cfb-judge         容量自检 + 评委一致性
-③ 生成   cfb-cycle         按效应量选杠杆 → 候选组
-④ 打分   scoreCandidates   代码维度离线打分（可归因）
-⑤ 选择   activeSelect      一半探索（最不确定）+ 一半利用（预期最好）
-⑥ 执行   effect-ready      唯一花钱的一步
-⑦ 回灌   feedback          拟合权重 / 算 ρ / 找缺维度
-        ↓
-      回到 ①
+champion.json ─→ ① candidates.mjs 成稿（control = 生产重编译；candidate = +1 杠杆；过闸；退化标出）
+              ─→ ② truth-dims.mjs 离线裁决（安全过滤 / 方向校验 / 可用 ≥3 题；不排序）
+              ─→ ③ cfb-cycle plan 冻结 v9 计划（13 请求、≤USD 1、预注册）── 停，等批准
+              ─→ ④ effect-ready run --live --v9 --round N（唯一花钱的命令）
+              ─→ ⑤ cfb-cycle ingest（配对胜负 → Beta 后验 → adopt/reject/continue → history.json）
+              ─→ ⑥ adopt ⇒ champion 换新 ⇒ 下一轮 control；propose ⇒ 生产 diff（不写 src）
 ```
 
-**阶段 ⑤ 用主动学习而不是"挑分数最高的"**：花真钱的机会应该用于
-**降低不确定性**（特征离训练集远、维度分歧大），这样才能用最少的钱把打分器练准。
+主动学习（探索/利用 0.6/0.4）与 `missingDimensionSignal` 未进 v14.2 的环：5 对/轮的样本量撑不起它们，先把环转起来。
 
 ---
 
@@ -215,13 +217,14 @@ PASS 5-cycle    闭环编排
 
 ---
 
-## 8. 接上 API 之后的第一步
+## 8. 接上 API 之后的第一步（v14.2 更新）
 
 ```
-node tools/cfb-cycle.mjs run          # 出一轮候选（离线，已可跑）
-node tools/channel-check.mjs ...      # 通道前提探针
-node tools/effect-ready.mjs run --v8 --live
+node tools/cfb-cycle.mjs doctor                           # 9 项预检
+node tools/cfb-cycle.mjs plan --pricing eval-pricing.json # 零 API：成稿 → 离线裁决 → 冻结 v9 计划 → 打印预占/实付/每 bit 价 → 停
+node tools/channel-check.mjs ...                          # 逐次 canary（商户不稳就别开）
+node tools/effect-ready.mjs run --live --v9 --round 1     # 人批准后；≈ USD 0.13 实付 / 0.50 预占
+node tools/cfb-cycle.mjs ingest --round 1                 # 配对 → 后验 → 判定；adopt 改 champion
 ```
 
-跑完把结果写成观测（`{features, outcome}`）喂给 `feedback()`，
-**这就是让 ρ 从 null 变成数字的第一步**，也是整台机器从"能测"变成"能练"的分界点。
+这就是让「观测数从 0 变成 5」的第一步；第二轮起 `plan` 自动以新 champion 为 control、后验跨轮累积。详见 CLOSED-LOOP-V2.md。

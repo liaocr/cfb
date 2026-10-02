@@ -4,6 +4,35 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.2.0（2026-10-02，闭环 v2「按比特买证据」：候选生成 / 奖励 / 环路三处断点接上，预算几美元）
+
+- **起因**：用户要求诚实判断「这套架构一直训练能不能把压缩稿推到极限」。答案是不能，三处有代码证据：
+  ① 旧 `applyKnobs` 在固定前缀上贴补（`layeredSet` 6 臂只有 2 份不同文本；K1 不在前缀里；用户补充：截断发生在 K 项之前，K 项开关臂是空操作）；
+  ② 奖励 = 评委 Likert 加权和，权重写死、从未校准；`judgeCapacity` 把状态空间 bit 当信息量；
+  ③ `cfb-cycle run` 到出候选组为止，候选不进 `effect-ready` 计划，`feedback()` 观测数恒为 0。用户核实后要求在几美元预算内补全，可以放弃东西。
+- **新部件（全部零 API）**：
+  - `tools/helpers/candidates.mjs`：control = champion 旋钮的**生产重编译**（`compileV4Direct` 同路径，1 900–3 200 字），candidate = 只改一个杠杆；
+    `KNOBS` 六个杠杆各写明生产对应物 / kind / 理论；生产闸门（长度包络、无发明标识符、三元组保留）；退化（文本相同）如实标出——`bind=off` 在冻结 r2 稿上 5/5 退化，是惰性杠杆；分句不切反引号内的 `?`/`。`。**没有长度杠杆**（红线）。
+  - `tools/helpers/truth-dims.mjs`：6 个任务真值维（locusHit / nextDerivable / deadEndsCarried / keyFactsCarried / avoidLeak↓ / claimRisk↓），从冻结 chain/spec 可推、与 live 判据同源；
+    只做安全过滤 + 方向校验（五题生产稿 > 原文 5/5）+ 可用性，**不做排序不做奖励**。已登记进 `judge-layer` `DIMENSIONS`（15 维：代码 9 / 评委 6）；评委维降为诊断，`selectionSignal='code'`。
+  - `tools/helpers/experiment.mjs`：配对结构分（next+avoid−falseDone−bump−reEdit−repeat）、Beta(1,1) 序贯判定（P(p>0.5) ≥0.95 采纳 / ≤0.10 否决 / 25 对未判即停）、后验跨轮累积、
+    信息账（expectedBitsNextPair / bitsBought / usdPerBit）、`pairsToDecide` 运行特性（种子固定）、`costEstimate`。
+  - v9 计划 `cfb.bounded-ab/9`（`buildCandidateReplayPlanV9`）：每题 1 对 + 3 同体探针 = 13 请求、scope `cfb.candidate-replay.2026-10-02.r1…r20`（静态表）、
+    `APPROVED_API_LIMITS_V9 = {13 请求, USD 1, 主 10, 探针 3, 重试 0, 评委 0}`；审计拒绝轮次越界 / 任务 <3 / 重复 / 未知 / 缺假设 / 主数不符 / 限额篡改 / 超 USD 1；两臂去 reasoning 后逐字节一致。
+  - `tools/effect-ready.mjs --v9 --round N`：计划只能来自 `cfb-cycle plan`（`eval-v9-plan-via-cfb-cycle`）；`--round` 不能单独用。
+  - `tools/cfb-cycle.mjs` 重写：`plan / ingest / propose / status / doctor / simulate`；`plan` 成稿 → 离线裁决 → 冻结计划 → 印出预占 / 预计实付 / 每 bit 价 → **停**；
+    `ingest` 从收据账本（或 `--report` 离线演练）配对 → 后验 → 判定，adopt 改 `champion.json`，下一轮 control 自动换新、刚采纳的杠杆不反向重测；`propose` 只给 diff / 落点说明，**不写 src**；`CFB_CYCLE_DIR` 可整体改道（自测隔离）。
+  - `tools/helpers/levers.mjs` 的 `applyKnobs` 修为真变换，仅供离线消融，不再被 cfb-cycle 引用。`cfb-judge capacity` 文案改为「分辨率上限，不是信息量」。
+- **运行特性**（2000 次模拟，平局 0.1，上限 25 对）：p=0.3 否决 85.9%；p=0.5 误采纳 12.7%（代价 = 一行配置回滚）；p=0.7 采纳 70.6% 中位 12 对；p=0.8 采纳 94.1% 中位 8 对。
+  **这是按预算塑形的决策规则，不是假设检验**；轮次复用同 5 道冻结任务，p 的含义是「在这些题的回放上 candidate 更好的概率」，不做泛化声明。
+- **钱**：一轮预占 ≈ USD 0.50 / 预计实付 ≈ 0.13（v8 收据口径 + 用户给的 $1/M 输入、$4/M 输出）；一个假设出结论 ≈ 0.26–0.65；几美元 ≈ 3–5 个假设。**本版一分钱没花，v9 一轮都没实跑。**
+- **放弃清单**（全文见 `docs/design/CLOSED-LOOP-V2.md` §6）：评委 LLM 作选择信号、Likert 综合分、大样本 / 名义错误率、每轮多杠杆、LoRA/自托管、版面杠杆付费轮、原文为 base、评委票 / 重试、长度杠杆、`bind` 假设（惰性）、泛化声明。
+- **验证**：新 `test/closed-loop.selftest.mjs` 25/25（含真实长度回归、反引号分句、真值维否定 / 词界 / 自身 edit 豁免、Beta 数值、v9 审计接受 / 拒绝、prepare/report v9、`--v9` 旗标、编排器端到端 plan → ingest → adopt → 换 control → reject → propose）；
+  `judge-calibration` 21/0（维度表改为从 `DIMENSIONS` 推长度）、`api-budget` 27/0、`eval-reasoning-v8` 14/0、`offline-lab` 20/0；
+  全量 `node verify.mjs` **1009 通过 / 21 失败**（失败与基线 `61041fe` 同一组 21 项：Node 20 / 断网命名空间 / 平台门槛，改动前即如此）；`manifest` 373 文件 0 漂移；`audit-noninferiority` N1–N7 = 0。
+- **已知边界**：`claimOfV3` 把「三件都拿到之前不能说修复完成」判成 fixed（否定词不在前 10 字末尾）——冻结判据不改、收据不追溯，生产稿不用这种句式。
+
+---
 ## v14.1.1（2026-10-02，修并发下偶发失败：真实定时器余量太窄，不是超时问题）
 
 - **症状**：`node verify.mjs -j 8` 偶发 1~2 个套件失败，串行/单跑全过。涉及 `native-repair-host`（10 次挂约 2 次）与 `evidence-runtime`（20 次挂约 2 次）。

@@ -27,15 +27,15 @@ export function stages() {
     { id: '1-criteria', name: '判据回归', offline: true, cmd: ['cfb-criteria.mjs', ['--regress']],
       desc: '黄金集上的 P/R/F1；判据不绿则后面全部无效', gate: (r) => r.code === 0 },
     { id: '2-judge', name: '判断层自检', offline: true, cmd: ['cfb-judge.mjs', ['capacity']],
-      desc: '判断层容量：维度/状态空间/信息量，确认天花板够高', gate: (r) => /13\.\d+ bit \/ 次观测/.test(r.out) && /9,856|10,\d+ 种/.test(r.out) },
+      desc: '判断层维度表可加载；v14.2 起选择信号只用代码维（含任务真值维），评委维只做诊断', gate: (r) => /selectionSignal=code/.test(r.out) && /代码 9 \/ 评委 6/.test(r.out) },
     { id: '3-design', name: '候选生成', offline: true, cmd: ['cfb-lab.mjs', ['all']],
       desc: '确定性候选组 + 权重 + 下一步命令', gate: (r) => /已写入 \.cfb-offline\/lab\.md/.test(r.out) },
     { id: '4-quote', name: '出价', offline: true, cmd: ['cfb-lab.mjs', ['quote']],
       desc: '按价表算「验 top-k」的预留上限', gate: (r) => /预留 ≈ \$/.test(r.out) },
     { id: '5-cycle', name: '闭环编排', offline: true, cmd: ['cfb-cycle.mjs', ['doctor']],
-      desc: '观测→判断→生成→打分→校准→回灌 是否全部就位', gate: (r) => r.code === 0 },
-    { id: '6-live', name: '真实运行', offline: false, cmd: ['effect-ready.mjs', ['run', '--live']],
-      desc: '需要通道与钥匙；只有前五阶段全绿才允许进入',
+      desc: '闭环 v2 预检：冻结任务 / 生产闸门 / 真值维方向 / 可测杠杆 / 退化臂 / 实验算术（live 运行时项在 Node 20 上只报不拦）', gate: (r) => r.code === 0 },
+    { id: '6-live', name: '真实运行', offline: false, cmd: ['effect-ready.mjs', ['run', '--live', '--v9', '--round', 'N']],
+      desc: '需要通道与钥匙；只有前五阶段全绿、且 `cfb-cycle plan` 已冻结第 N 轮计划并经人批准才允许进入',
       requires: ['通道检查通过（有思维链 + 历史 reasoning 进上下文）', '环境变量中已设置模型钥匙', '上一轮私有仓与公开收据成套'] },
   ]
 }
@@ -59,9 +59,9 @@ export function runOffline({ stopOnFail = false } = {}) {
 /** 排线：把「通道一好就要跑的东西」固定下来，避免临场再设计。 */
 export function planNext({ topK = 4, samples = 2 } = {}) {
   return {
-    preflight: ['node tools/channel-check.mjs --base-url <url> --model <model>'],
-    live: 'node tools/effect-ready.mjs run --live',
-    rule: '通道检查不通过（无思维链 / 历史 reasoning 不进上下文）就停；不要在会漂的池子上开 A/B',
+    preflight: ['node tools/channel-check.mjs --base-url <url> --model <model>', 'node tools/cfb-cycle.mjs plan --pricing <价表>   # 零 API；印出预占/实付/每 bit 价后停，等批准'],
+    live: 'node tools/effect-ready.mjs run --live --v9 --round <N>   # 唯一花钱的命令；跑完 node tools/cfb-cycle.mjs ingest --round <N>',
+    rule: '通道检查不通过（无思维链 / 历史 reasoning 不进上下文）就停；不要在会漂的池子上开 A/B；plan 没经人批准不开 live',
     topK, samples,
   }
 }

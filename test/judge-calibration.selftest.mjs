@@ -153,13 +153,30 @@ try {
     const all = applyKnobs(base, { kItems: 'all', selection: 'balanced', deadEnd: 'paired', layout: 'state-first', length: 'normal' })
     assert.ok(all.length >= core.length)
     assert.equal(applyKnobs(all, { kItems: 'all', selection: 'balanced', deadEnd: 'paired', layout: 'state-first', length: 'roomy' }), applyKnobs(all, { kItems: 'all', selection: 'balanced', deadEnd: 'paired', layout: 'state-first', length: 'roomy' }), '必须幂等')
-    assert.ok(applyKnobs(base, { kItems: 'off', selection: 'balanced', deadEnd: 'paired', layout: 'state-first', length: 'normal' }).includes('已排除'))
+    // v14.2：死路文本只能来自调用方显式传入的条目（此前写死 eacces 的 chown / 锁文件，贴到任何题上都是注入）
+    assert.ok(!applyKnobs(base, { kItems: 'off', selection: 'balanced', deadEnd: 'paired', layout: 'state-first', length: 'normal' }).includes('已排除'), '没有传 deadEnds 就不能凭空写已排除')
+    const dead = applyKnobs(base, { kItems: 'off', selection: 'balanced', deadEnd: 'paired', layout: 'state-first', length: 'normal' }, { deadEnds: [{ claim: 'chown 改权限', evidence: '改后仍 EACCES' }, { claim: '没有证据的猜测' }] })
+    assert.ok(dead.includes('已排除') && dead.includes('chown 改权限') && !dead.includes('没有证据的猜测'), 'paired 只收有工具证据的条目')
+    assert.ok(!dead.includes('锁文件'), '不能出现写死的别题事实')
+  })
+  test('15b applyKnobs 真实长度回归：5k 字稿配 tight 时 K 段必须活下来、各臂必须互不相同（此前 7/9 候选退化为同一前缀）', () => {
+    const big = Array.from({ length: 120 }, (_, i) => `第 ${i} 句：正文内容，路径 src/file${i}.js 与数字 ${1000 + i}。`).join('')
+    assert.ok(big.length > 4000)
+    const knobs = (o) => ({ kItems: 'off', selection: 'balanced', deadEnd: 'drop', layout: 'state-first', length: 'tight', ...o })
+    const off = applyKnobs(big, knobs()), core = applyKnobs(big, knobs({ kItems: 'core' })), all = applyKnobs(big, knobs({ kItems: 'all' }))
+    const paired = applyKnobs(big, knobs({ deadEnd: 'paired' }), { deadEnds: [{ claim: 'A 路线', evidence: '工具 X 证伪' }] })
+    for (const t of [off, core, all, paired]) assert.ok(t.length <= 1200, 'tight 上限 1200')
+    assert.ok(core.includes('新鲜度') && all.includes('新鲜度'), 'K1 不能被截掉')
+    assert.ok(all.includes('零效应'), 'K6 不能被截掉')
+    assert.ok(paired.includes('✗ A 路线'), '死路段不能被截掉')
+    assert.equal(new Set([off, core, all, paired]).size, 4, '四个臂必须是四份不同的稿')
   })
 
   // ── 校准回灌层
   test('16 权重拟合：样本足够时 R² 高、一致性好；样本不足时收缩不宣称', () => {
     const rows = []
-    for (let i = 0; i < 24; i++) { const q = i / 23; rows.push({ x: [q, q, 0.02, q, q, q, q, q, 1 - q], y: q * 10 }) }
+    // 特征向量长度跟随 DIMENSIONS（v14.2 加了真值维度后不再写死 9 列）：发明率恒低、冗余与 y 反向、其余与 y 同向
+    for (let i = 0; i < 24; i++) { const q = i / 23; rows.push({ x: DIMENSIONS.map((d) => (d.id === 'invention' ? 0.02 : d.id === 'redundancy' ? 1 - q : q)), y: q * 10 }) }
     const f = fitWeights(rows)
     assert.equal(f.ok, true); assert.ok(f.r2 > 0.9, 'R² 应高'); assert.equal(f.confidence, 'high')
     assert.ok(rankAgreement(rows, f.weights).rho > 0.9, '拟合后排序一致性必须高')

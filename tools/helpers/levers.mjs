@@ -77,33 +77,51 @@ const K_TEXT = Object.freeze({
   K5: '能说"修好"要三样同时在手：改动落地的证据、症状级验收（单元测试不算）、观察新鲜。缺任一项只能说"已改未验证"。',
   K6: '若验收是改后新产生的、数字却与上一轮一样、症状原样 ⇒ 改动落地但零效应：先 grep 确认键落在文件里，再找真实消费点，不试第二候选。',
 })
-const DEADEND_TEXT = Object.freeze({
-  none: '',
-  shelved: '\n已搁置（未取证，不作为结论）：chown 权限路线；锁文件路线。',
-  paired: '\n已排除（工具证伪的才是这条）：✗ chown 改权限 —— 改后仍 EACCES；✗ 锁文件未释放 —— fs-lock 检查正常。这两条不要再试。',
-})
+// ⚠ v14.2（2026-10-02，用户核实的缺陷）：此前 DEADEND_TEXT 写死了 eacces 的 chown / 锁文件两条死路，贴到任何题上都是注入错误；
+//   且先贴 K 段再按 maxChars 硬截断 ⇒ 真实 5–10k 字稿配 tight 时 K 段整段被截掉，9 个候选 7 个退化为同一份原稿前缀。
+//   现在：死路条目只来自调用方显式传入的 deadEnds（取自 ctx 台账 / 稿自己的已排除段），没有就只做剥离 / 改标签；
+//   长度先裁正文、后保附录（K 段与死路段永远在最后、永远保留），稿与 K 段都放不下时才裁 K 段本身。
+//   生产等价的候选生成已迁到 tools/helpers/candidates.mjs（真实生产重编译 + 生产闸门）；本函数保留给离线消融自测。
+const DEADEND_LABEL = Object.freeze({ none: null, shelved: '已搁置（未取证，不作为结论）：', paired: '已排除（工具证伪的才是这条）：' })
+function deadEndBlock(mode, deadEnds) {
+  const items = (deadEnds || []).filter((d) => d && typeof d.claim === 'string' && d.claim.trim())
+  if (!DEADEND_LABEL[mode] || !items.length) return ''
+  if (mode === 'shelved') return '\n' + DEADEND_LABEL.shelved + items.map((d) => d.claim.trim()).join('；') + '。'
+  const paired = items.filter((d) => typeof d.evidence === 'string' && d.evidence.trim())   // paired 只收有工具证据的条目（卷五 P4）
+  if (!paired.length) return ''
+  return '\n' + DEADEND_LABEL.paired + paired.map((d) => '✗ ' + d.claim.trim() + ' —— ' + d.evidence.trim()).join('；') + '。这些不要再试。'
+}
+/** 按句裁到 limit 以内（句号 / 换行边界），不足一句时硬切。 */
+function trimSentences(text, limit) {
+  if (text.length <= limit) return text
+  const cut = text.slice(0, limit)
+  const i = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('\n'))
+  return i > limit * 0.5 ? cut.slice(0, i + 1) : cut
+}
 
-/** 对一份已有稿施加 knob 变换，得到变体文本（确定性、零 API）。 */
-export function applyKnobs(draft, knobs, { baseDraft = null } = {}) {
+/**
+ * 对一份已有稿施加 knob 变换，得到变体文本（确定性、零 API、幂等）。
+ * opts.deadEnds: [{ claim, evidence? }] —— 调用方从 ctx 台账 / 稿的已排除段抽出来的条目；不传则不写任何死路文本。
+ */
+export function applyKnobs(draft, knobs, { baseDraft = null, deadEnds = null } = {}) {
   let t = String(draft || '').trim()
   const spec = renderSpec(knobs)
-  // 死路段：先剥掉已有形态，再按目标加回
+  // 1. 剥掉已有的死路段与 K 段（幂等的前提）
   t = t.replace(/\n?已排除[（(][^\n]*\n?/g, '\n').replace(/\n?已搁置[（(][^\n]*\n?/g, '\n')
   t = t.replace(/\n?✗[^\n]*/g, '')
-  if (DEADEND_TEXT[spec.deadEnd]) t = t.replace(/\s+$/, '') + DEADEND_TEXT[spec.deadEnd]
-  // K 项：把已有 K 文本剥掉，再按目标集合加回
+  t = t.replace(/\n*【验收与推翻路】\n?/g, '\n')
   for (const v of Object.values(K_TEXT)) t = t.split(v).join('')
   t = t.replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '')
-  if (spec.kItems.length) {
-    t += '\n\n【验收与推翻路】\n' + spec.kItems.map((k) => K_TEXT[k]).join('\n')
-  }
-  // 长度约束（超出即硬截断到句子边界，模拟压缩器行为）
-  if (t.length > spec.maxChars) {
-    const cut = t.slice(0, spec.maxChars)
-    const i = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('\n'))
-    t = i > spec.targetChars * 0.5 ? cut.slice(0, i + 1) : cut
-  }
-  return t
+  // 2. 附录按目标形态生成（不写死任何题的事实）
+  const dead = deadEndBlock(spec.deadEnd, deadEnds)
+  const kBlock = spec.kItems.length ? '\n\n【验收与推翻路】\n' + spec.kItems.map((k) => K_TEXT[k]).join('\n') : ''
+  // 3. 长度：先裁正文、后保附录；附录本身都放不下时才裁附录
+  const budgetBody = spec.maxChars - dead.length - kBlock.length
+  if (budgetBody >= Math.min(200, t.length)) t = trimSentences(t, budgetBody)
+  else t = trimSentences(t, Math.max(0, Math.floor(spec.maxChars * 0.3)))
+  let out = t.replace(/\s+$/, '') + dead + kBlock
+  if (out.length > spec.maxChars) out = trimSentences(out, spec.maxChars)
+  return out
 }
 
 export function readJson(p) { return JSON.parse(fs.readFileSync(p, 'utf8')) }

@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
-import { buildMinimalPlan, buildBoundedPlanV2, buildVisiblePlanV3, buildVisiblePlanV4, buildExpandedPlanV5, buildExpandedPlanV6, buildExpandedPlanV7, buildReasoningReplayPlanV8, sourceDifferences, summarizeMinimal, resultOf } from './eval-plan.mjs'
+import { buildMinimalPlan, buildBoundedPlanV2, buildVisiblePlanV3, buildVisiblePlanV4, buildExpandedPlanV5, buildExpandedPlanV6, buildExpandedPlanV7, buildReasoningReplayPlanV8, buildCandidateReplayPlanV9, sourceDifferences, summarizeMinimal, resultOf } from './eval-plan.mjs'
 import { auditApiPlan, createBudgetedChat, inspectApiBudget, inputTokenBound, APPROVED_API_LIMITS } from './api-budget.mjs'
 import { assertSafePath, readJson, writeJson, hasSecretMaterial } from './eval-files.mjs'
 import { assertAutoCheckpoint, exportEvaluationBundle } from './eval-bundle.mjs'
@@ -27,6 +27,9 @@ export const DEFAULT_HOME_V7 = path.join(ROOT, '.cfb-runtime/bounded-ab-v7')
 export const DEFAULT_HOME_V8 = path.join(ROOT, '.cfb-runtime/bounded-ab-v8')
 export const PUBLIC_RECEIPT_V8 = path.join(ROOT, 'transfer/api-budget-approval-v8.watermark.json')
 export const PUBLIC_RECEIPT_V7 = path.join(ROOT, 'transfer/api-budget-approval-v7.watermark.json')
+// v9（v14.2 闭环 v2）：每轮一个 home 与一份公开收据（r1…r20），由 cfb-cycle 按轮次推导；旧 scope 全部封存不动。
+export const DEFAULT_HOME_V9 = (round) => path.join(ROOT, '.cfb-runtime/bounded-ab-v9/r' + Number(round))
+export const PUBLIC_RECEIPT_V9 = (round) => path.join(ROOT, 'transfer/api-budget-approval-v9-r' + Number(round) + '.watermark.json')
 export const PROFILE_EXAMPLE = path.join(ROOT, 'deploy/eval-profile.example.json')
 const DEFAULT_EXECUTION = Object.freeze({ apiKeyEnv: 'DEEPSEEK_API_KEY', timeoutMs: 240000, maxResponseBytes: 1024 * 1024 })
 const safeCode = (e) => /^(?:api|eval|response|request|channel|source|profile|explicit)-[a-z0-9-]+$/.test(e?.message || '') || /^HTTP \d{3}$/.test(e?.message || '') ? e.message : 'eval-state-unavailable'
@@ -51,12 +54,17 @@ export function normalizeProfile(input) {
 }
 const paths = (home) => ({ home: assertSafePath(home, { directory: true }), plan: path.join(path.resolve(home), 'plan.json'), preflight: path.join(path.resolve(home), 'preflight.json'), ledger: path.join(path.resolve(home), 'ledger'), summary: path.join(path.resolve(home), 'summary.json') })
 export function loadPrepared(home = DEFAULT_HOME) { return readJson(paths(home).plan) }
-export function prepareEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RECEIPT, profile = readJson(PROFILE_EXAMPLE), pricing, env = {}, simulation = false, version = 1 } = {}) {
+export function prepareEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RECEIPT, profile = readJson(PROFILE_EXAMPLE), pricing, env = {}, simulation = false, version = 1, candidates, round, hypothesis, offline } = {}) {
   const p = paths(home), normalized = normalizeProfile({ ...profile, ...(pricing !== undefined ? { pricing } : {}) })
   const existing = fs.existsSync(p.plan) ? readJson(p.plan) : null, marker = readWatermark(receiptPath)
   if (marker && !existing) throw new Error('api-budget-restore-required')
-  const builder = existing?.schema === 'cfb.bounded-ab/8' || version === 8 ? buildReasoningReplayPlanV8 : existing?.schema === 'cfb.bounded-ab/7' || version === 7 ? buildExpandedPlanV7 : existing?.schema === 'cfb.bounded-ab/6' || version === 6 ? buildExpandedPlanV6 : existing?.schema === 'cfb.bounded-ab/5' || version === 5 ? buildExpandedPlanV5 : existing?.schema === 'cfb.bounded-ab/4' || version === 4 ? buildVisiblePlanV4 : existing?.schema === 'cfb.bounded-ab/3' || version === 3 ? buildVisiblePlanV3 : existing?.schema === 'cfb.bounded-ab/2' || version === 2 ? buildBoundedPlanV2 : buildMinimalPlan
-  const base = builder({ ...normalized, canary: existing?.canary })
+  const isV9 = existing?.schema === 'cfb.bounded-ab/9' || version === 9
+  const builder = isV9 ? buildCandidateReplayPlanV9 : existing?.schema === 'cfb.bounded-ab/8' || version === 8 ? buildReasoningReplayPlanV8 : existing?.schema === 'cfb.bounded-ab/7' || version === 7 ? buildExpandedPlanV7 : existing?.schema === 'cfb.bounded-ab/6' || version === 6 ? buildExpandedPlanV6 : existing?.schema === 'cfb.bounded-ab/5' || version === 5 ? buildExpandedPlanV5 : existing?.schema === 'cfb.bounded-ab/4' || version === 4 ? buildVisiblePlanV4 : existing?.schema === 'cfb.bounded-ab/3' || version === 3 ? buildVisiblePlanV3 : existing?.schema === 'cfb.bounded-ab/2' || version === 2 ? buildBoundedPlanV2 : buildMinimalPlan
+  // v9 的候选稿 / 轮次 / 假设随计划冻结：重新 prepare（如改价表）时沿用已写入的，不允许换稿。
+  const v9Args = isV9 ? {
+    candidates: candidates ?? (existing ? existing.tasks.map((t) => ({ task: t, control: existing.variants[t].control, candidate: existing.variants[t].candidate, knobs: existing.variants[t].knobs })) : undefined),
+    round: round ?? existing?.round, hypothesis: hypothesis ?? existing?.hypothesis, offline: offline ?? existing?.offline ?? null } : {}
+  const base = builder({ ...normalized, canary: existing?.canary, ...v9Args })
   // 型号别名随计划一起冻结：写入计划即进入 planDigest 与公开收据，事后不可改（改＝计划变更，闸会拒绝）。
   const plan = immutableJson({ ...base, modelAliases: normalized.modelAliases, execution: normalized.execution, simulation })
   if (hasSecretMaterial(plan)) throw new Error('api-plan-secret-material')
@@ -124,12 +132,15 @@ export function reportEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_REC
   // 指纹透明化：直方图 + 配对样本是否同指纹（池轮换噪声公开，不做闸）。
   const fingerprintHistogram = Object.values(fpByKey).reduce((h, fp) => ({ ...h, [fp ?? 'null']: (h[fp ?? 'null'] || 0) + 1 }), {})
   let pairsSameFingerprint = 0, pairsTotal = 0
-  for (const job of plan.jobs.filter((j) => j.kind === 'main' && j.variant === 'raw')) {
-    const other = `${job.task}|current|${job.sample}`
+  const [armA, armB] = Array.isArray(plan.arms) ? plan.arms : ['raw', 'current']
+  for (const job of plan.jobs.filter((j) => j.kind === 'main' && j.variant === armA)) {
+    const other = `${job.task}|${armB}|${job.sample}`
     if (job.key in fpByKey && other in fpByKey) { pairsTotal++; if (fpByKey[job.key] === fpByKey[other]) pairsSameFingerprint++ }
   }
   return immutableJson({ schema: 'cfb.eval-report/1', ...summarizeMinimal(plan, results), mode: plan.simulation ? 'simulation' : 'live', channelVerified: !!state?.entries.some((e) => e.kind === 'probe' && e.status === 'accepted'),
     fingerprintHistogram, pairsSameFingerprint, pairsTotal,
+    // v14.2：逐样本规则结果随报告导出（闭环按 task|variant|sample 配对；仍是冻结判据算出的量，不是新打分）。
+    results: results.map((r) => ({ task: r.task, variant: r.variant, sample: r.sample, rule: r.rule, action: r.action })),
     requestsRejected: state?.entries.filter((e) => e.status === 'rejected').map((e) => ({ key: e.key, reason: e.reason ?? null })) ?? [],
     requestsReserved: state?.entries.length || 0, reservedUsd: state?.entries.reduce((n, e) => n + e.reservedNano, 0) / 1e9 || 0, actualCostUsd: null,
     stopped: state?.halted || (state?.entries.some((e) => e.status === 'pending') ? 'api-unsettled-dispatch' : null), judgeRequests: 0, retries: 0, sourceDigest: plan.sourceDigest, sourceCurrent: sourceDifferences(plan).length === 0 })

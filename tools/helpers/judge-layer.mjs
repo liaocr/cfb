@@ -12,6 +12,11 @@
 //   **代码负责「能从上下文确定性推出」的量；评委负责「需要读懂语义」的量。**
 //   两者都记录，且必须能互相校验 —— 分歧本身就是信号（要么规则太粗，要么评委在幻觉）。
 import crypto from 'node:crypto'
+import { TRUTH_DIMENSIONS, TRUTH_LOWER_IS_BETTER, TRUTH_WEIGHTS } from './truth-dims.mjs'
+
+// ⚠ v14.2（2026-10-02）修正上面「必须有大模型参与」的那条约束的**用法**：评委维度保留为诊断与交叉验证，
+//   但**不再作为训练 / 选择信号**（红线：不把评委 Likert 当训练信号——没有金标就没有校准，拟合的是评委偏好）。
+//   选择信号 = 代码侧真值维度（truth-dims.mjs：从冻结任务的参考答案确定性推出，与 live 规则指标同源）+ 付费配对回放的结构分。
 
 // ── 1. 判断维度表 ────────────────────────────────────────────────────────────
 // 每个维度：怎么定义、什么刻度、锚点在哪、谁来测。
@@ -44,7 +49,11 @@ export const DIMENSIONS = Object.freeze([
   { id: 'redundancy', name: '冗余率', scale: [0, 1], rater: 'llm',
     def: '与 ctx 已有内容重复的比例（越低越好）',
     anchors: { 0: '几乎不重复', 0.5: '一半重复', 1: '大段复述' } },
+  // v14.2：任务真值维度（代码测，零 API）——离线选择信号；定义见 truth-dims.mjs
+  ...TRUTH_DIMENSIONS,
 ])
+/** 代码侧（真值）综合权重：离线挑杠杆用；评委维度不参与选择。 */
+export const CODE_WEIGHTS = TRUTH_WEIGHTS
 
 export const DIMS_BY_RATER = Object.freeze({
   code: DIMENSIONS.filter((d) => d.rater === 'code').map((d) => d.id),
@@ -60,7 +69,10 @@ export function judgeCapacity() {
     bits += Math.log2(levels)
   }
   // 均方误差意义下的分辨力：假设每维独立、误差 σ=1 个刻度
-  return { dimensions: DIMENSIONS.length, states, bits, codeDims: DIMS_BY_RATER.code.length, llmDims: DIMS_BY_RATER.llm.length }
+  // v14.2：单列**可用于选择**的容量（只算代码侧维度）——评委维度的 bit 没有金标校准，不计入可买到的信息
+  let codeBits = 0
+  for (const d of DIMENSIONS) if (d.rater === 'code') codeBits += Math.log2(d.scale[1] - d.scale[0] + 1)
+  return { dimensions: DIMENSIONS.length, states, bits, codeDims: DIMS_BY_RATER.code.length, llmDims: DIMS_BY_RATER.llm.length, codeBits, selectionSignal: 'code' }
 }
 
 /** 二值判据的天花板对照：说明为什么不能只用 falseDone。 */
@@ -152,7 +164,7 @@ export const DEFAULT_WEIGHTS = Object.freeze({
  * 所以质量分是 1 − x。约定：返回值 = 该维度的**质量**，1 = 最好，0 = 最差。
  * 权重只需要**符号为正**；负权重表示"这一维方向相反"，不该与方向归一化混用。
  */
-export const LOWER_IS_BETTER = Object.freeze(['invention', 'redundancy'])
+export const LOWER_IS_BETTER = Object.freeze(['invention', 'redundancy', ...TRUTH_LOWER_IS_BETTER])
 
 export function normalizeDims(v) {
   const out = {}

@@ -2,6 +2,17 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
+## −1. 当前状态（2026-10-02，第二十一会话：闭环 v2 落地，零花费）
+
+- 用户问「这套架构一直训练能不能把压缩稿推到极限」→ 答不能，三处断点有代码证据（候选贴补 / 评委 Likert 奖励 / 环不闭合 + 用户补充的截断顺序），用户核实后要求在**几美元**预算内补全、允许放弃东西。
+- 已落地 v14.2（见 `docs/design/CLOSED-LOOP-V2.md`、CHANGELOG v14.2.0）：`candidates.mjs`（生产等价候选、闸门、退化标出）、`truth-dims.mjs`（6 真值维，只做安全过滤 / 方向校验）、`experiment.mjs`（配对结构分、Beta 序贯、信息账）、v9 计划 `cfb.bounded-ab/9`（13 请求 / ≤USD 1 / scope `cfb.candidate-replay.2026-10-02.rN`）、`effect-ready --v9 --round N`、`cfb-cycle plan|ingest|propose|status|doctor|simulate`。
+- **环路命令**：`cfb-cycle plan`（零 API，停下等批准）→ `effect-ready run --live --v9 --round N`（唯一花钱）→ `cfb-cycle ingest --round N` → adopt 改 `.cfb-offline/champion.json` → `propose` 出生产 diff（不写 src）。`--report FILE` 可离线演练 ingest。
+- **钱**：一轮预占 ≈ 0.50 / 实付 ≈ 0.13 USD；一个假设出结论 ≈ 0.26–0.65；几美元 ≈ 3–5 个假设。**本会话 API 费用 0，v9 未实跑**；没读任何凭据。
+- **判定规则是预算塑形的，不是假设检验**：p=0.5 误采纳 12.7%（代价 = 一行配置回滚）；p 只对「这 5 道冻结题的回放」有定义。
+- **惰性杠杆**：`bind=off` 在冻结 r2 稿上 5/5 退化，`plan --lever bind=off` 会拒；首轮默认假设 `kItems=off`（可用 5/5、离线无伤害）。
+- 验证：closed-loop 25/0；全量 1009/21（21 = 基线同一组环境失败）；manifest 373/0；N1–N7=0。本地提交未推送（无凭据）。
+- 下一步（需用户批准花钱）：Node ≥22 环境 + canary → `plan --pricing` → 批准 → `run --live --v9 --round 1` → `ingest`。不批准就什么都不会花。
+
 ## 0. ⚠ 前提更正（2026-10-01，第二十会话）
 
 - **「a6api 全部路由丢弃历史 reasoning_content」不成立**（该结论写在本文件 §1a、CHANGELOG v13.4.0、LIVE-VISIBLE-2026-10-01.md、BIRTH-VISIBLE-SPLICE.md）。
