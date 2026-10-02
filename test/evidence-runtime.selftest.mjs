@@ -48,7 +48,13 @@ try {
     const d = dir()
     if (canSymlink()) { fs.symlinkSync(s.directory, path.join(d, 'linked')); assert.throws(() => I.createEvidenceStore({ directory: path.join(d, 'linked'), sessionId: 's' }), /symlink/) }
     else console.log('  (跳过 symlink 拒绝断言：当前平台无法创建符号链接)')
-    assert.ok(fs.readFileSync('.gitignore', 'utf8').includes('.cfb-runtime/')); assert.ok(fs.readFileSync('manifest.mjs', 'utf8').includes("'.cfb-runtime'"))
+    // 本用例要保证的是**行为**：运行产物既被 git 忽略、也不进清单。
+    // 早先这里断言 manifest.mjs 源码里含字面量 "'.cfb-runtime'"，那是在测实现细节：
+    // 忽略规则改为从 .gitignore 单一来源读取后，该字面量不复存在，但保证反而更强。
+    assert.ok(fs.readFileSync('.gitignore', 'utf8').includes('.cfb-runtime/'), '.cfb-runtime/ 必须在 .gitignore 中')
+    assert.ok(/\.gitignore/.test(fs.readFileSync('manifest.mjs', 'utf8')), 'manifest.mjs 必须从 .gitignore 读取忽略规则')
+    const listed = fs.readFileSync('MANIFEST.sha256', 'utf8').split('\n').some((l) => l.includes('.cfb-runtime/'))
+    assert.ok(!listed, '运行产物不得出现在 MANIFEST.sha256 中')
   })
   await test('制品按 RAW/EXPLANATION/STEP 可寻址，无损回取且类型/跨会话错误拒绝', () => {
     const e = env({ withArchive: false }), p = I.createEvidenceProgram('说明完整\n', { contract: e.contract, actionIds: ['raise-threshold'], sessionId: e.store.sessionId })
@@ -194,9 +200,14 @@ try {
     assert.ok(Date.now() - started < 1500); assert.equal(result.status, 'rolled-back'); assert.equal(file(e), DEMO_OLD)
     assert.equal(r.view().busy, false); assert.equal(result.ok, false)
     let entered = false
-    const sync = env({ withArchive: false, runtimeOptions: { roundTimeoutMs: 50 }, observe: (c, b) => {
+    // 本用例的语义是「同步阻塞的 observe 不能把迟到绿灯偷过绝对截止」，成立条件是
+    //   ① runtime 能在截止前**走到** observe（否则 guardCheck 先抛，observe 根本不被调用）；
+    //   ② observe 的同步阻塞**超过**截止（返回后第 70 行的复查才会判超时）。
+    // 原值（截止 50ms / 阻塞 100ms）只给 ① 留了 50ms 余量，负载下 setup 一慢就变 entered=false。
+    // 数字是任意的，关系才是语义：阻塞(900) > 截止(500)，且截止远大于 setup。
+    const sync = env({ withArchive: false, runtimeOptions: { roundTimeoutMs: 500 }, observe: (c, b) => {
       entered = true
-      const until = Date.now() + 100; while (Date.now() < until) { /* 故障注入：阻塞 timer 的同步观察 */ }
+      const until = Date.now() + 900; while (Date.now() < until) { /* 故障注入：阻塞 timer 的同步观察 */ }
       return sample(b, { fixed: true })
     } }), bounded = I.createEvidenceRuntime({ ...sync.options, diagnosticModel: null })
     const late = await bounded.runRound(bounded.program('同步迟到绿灯不可采纳', ['raise-threshold']))

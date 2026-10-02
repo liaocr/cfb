@@ -4,6 +4,28 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.1.1（2026-10-02，修并发下偶发失败：真实定时器余量太窄，不是超时问题）
+
+- **症状**：`node verify.mjs -j 8` 偶发 1~2 个套件失败，串行/单跑全过。涉及 `native-repair-host`（10 次挂约 2 次）与 `evidence-runtime`（20 次挂约 2 次）。
+- **根因（取证，非猜测）**：`test/fixtures/repair-workload.cjs` 是**两个真实 `setTimeout` 的赛跑** —— 主响应在 `primaryDelayMs` 后返回，
+  hedge 在 `config.waitMs` 后触发，判定 `order = 事件里没有 hedge-start`。捕获到的失败样本逐字为：
+  `request-start@62  hedge-start@112  primary-complete@114` —— **只差 2ms**，order 因此判 false，本应 solved 的任务变 unsolved，8/12 抖成 7/12。
+  原值 `BASE.waitMs=40` / `primaryDelayMs=8` 只留约 30ms 名义余量，并行负载下被事件循环延迟吃掉。
+  **先证伪过一个错误假设**：曾以为是 2000ms 的 `exec` 超时被击穿，把超时提到 30s 后仍复现 2/10 ⇒ 超时不是根因（该改动已回退）。
+  **也证伪过「修复态仍会误触发 hedge」**：用修复后 config 单独跑 120 次，hedge 触发 0 次 ⇒ 竞态只在整体负载下出现。
+- **修法**：把余量按语义拉开（数字任意、关系才是语义），并抽成 `REPAIR_TIMING` 单一来源：
+  `plainPrimaryMs=8` / `timingPrimaryMs=900` / `BASE.waitMs=500` / `relax-delay.waitMs=1800` / `minMarginMs=200`。
+  不变式：timing 仍能复现（500 < 900）；修复态余量 900ms；非 timing 余量 492ms。
+- **`evidence-runtime`** 同属一类：用例语义是「同步阻塞的 observe 不能把迟到绿灯偷过绝对截止」，成立条件为
+  ① runtime 能在截止前**走到** observe（否则 `guardCheck` 先抛，`observe` 根本不被调用 ⇒ 实测 `entered=false`）；② 阻塞超过截止。
+  原值（截止 50ms / 阻塞 100ms）只给 ① 留 50ms 余量。改为截止 500ms / 阻塞 900ms。
+- **新增两条护栏**（`native-repair-host.selftest`）：一条守数值不变式（含「`await-response`/`pin-model` 不得改动 waitMs」），
+  一条直接行为验证（并发 8 路连跑 24 次，断言 `hedge-start` 出现 0 次）——后者能在余量被改窄时立刻报警。
+- **验证**：`native-repair-host` 串行 25 次 0 失败；`evidence-runtime` 串行 20 次 0 失败；
+  `node verify.mjs`（8 并发）连续 6 轮均为 **958 通过 / 0 失败 / 37 套件**。
+- 代价：`native-repair-host` 单次约 12s → 18s（仅 4 次 timing 观测变慢；非 timing 观测在响应返回时即 `clearTimeout`，不受影响）。
+
+---
 ## v14.1.0（2026-10-02，修复 77 项长期失败：Windows 跨盘路径判据 + POSIX 平台门禁）
 
 - **起因**：`node verify.mjs` 长期停在「77 失败」，被当作平台噪声默认接受。逐条追溯后发现**三个不同的真实根因**，其中两个是可修复的产品缺陷。

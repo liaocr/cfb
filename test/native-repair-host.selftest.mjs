@@ -3,7 +3,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import * as I from '../index.js'
-import { repairSuite, makeRepairHost, BASE_CONFIG, REPAIR_CONFIGS } from '../tools/helpers/repair-host.mjs'
+import cp from 'node:child_process'
+import { promisify } from 'node:util'
+import { repairSuite, makeRepairHost, BASE_CONFIG, REPAIR_CONFIGS, REPAIR_TIMING } from '../tools/helpers/repair-host.mjs'
+const exec = promisify(cp.execFile)
 import { runRepairDevelopment } from '../tools/repair-development.mjs'
 let pass = 0, fail = 0, report
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-native-host-test-'))
@@ -15,6 +18,28 @@ try {
     assert.equal(new Set([...suite.train, ...suite.selection, ...suite.test].map((f) => f.family)).size, 6)
     assert.equal(repairSuite({ developmentOnly: true }).test, undefined)
     assert.ok(suite.test.every((f) => ![...suite.train, ...suite.selection].some((a) => a.family === f.family)))
+  })
+  await test('对冲余量足够宽：timing 仍能复现，修复态与非 timing 态不会误触发 hedge', () => {
+    const waitOf = (text) => JSON.parse(text).waitMs
+    const base = waitOf(BASE_CONFIG), relaxed = waitOf(REPAIR_CONFIGS['relax-delay'])
+    const { plainPrimaryMs, timingPrimaryMs, minMarginMs } = REPAIR_TIMING
+    assert.ok(base < timingPrimaryMs, 'timing 故障将无法复现：BASE.waitMs=' + base + ' 不小于 timingPrimaryMs=' + timingPrimaryMs)
+    assert.ok(relaxed - timingPrimaryMs >= minMarginMs, 'relax-delay 余量不足：' + (relaxed - timingPrimaryMs) + 'ms < ' + minMarginMs + 'ms')
+    assert.ok(base - plainPrimaryMs >= minMarginMs, '非 timing 余量不足：' + (base - plainPrimaryMs) + 'ms < ' + minMarginMs + 'ms')
+    for (const id of ['await-response', 'pin-model']) assert.equal(waitOf(REPAIR_CONFIGS[id]), base, id + ' 不应改动 waitMs（否则余量分析失效）')
+  })
+  await test('并发下快速主响应不得被误判为对冲：连跑 24 次没有 hedge-start', async () => {
+    const e = await makeRepairHost({ caseId: 'plain-json:1' })
+    try {
+      const hedged = async () => {
+        const r = await exec(process.execPath, ['repair-workload.cjs'], { cwd: e.adapter.root, timeout: 30000, maxBuffer: 65536 })
+        return JSON.parse(r.stdout).events.some((ev) => ev.kind === 'hedge-start')
+      }
+      const seen = []
+      let i = 0
+      await Promise.all(Array.from({ length: 8 }, async () => { while (i < 24) { i++; seen.push(await hedged()) } }))
+      assert.equal(seen.filter(Boolean).length, 0, '并发下出现 hedge-start ⇒ 对冲余量不足，观测会被误判')
+    } finally { e.cleanup() }
   })
   await test('真实强基线开发执行：8/12，发布/落地/可判/恢复完整，损失在第二分支', async () => {
     report = await runRepairDevelopment(store)

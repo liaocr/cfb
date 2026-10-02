@@ -10,11 +10,25 @@ export const REPAIR_FAMILIES = I.immutableJson({ train: ['plain-json', 'chunked-
 const transports = Object.values(REPAIR_FAMILIES).flat()
 const faults = ['timing', 'assertion', 'identity']
 export const REPAIR_SIGNATURE = I.immutableJson({ taskFamily: 'causal-repair-local-v1', environment: 'native-host-loopback-worker-v1', contractVersion: '1' })
-export const BASE_CONFIG = JSON.stringify({ waitMs: 40, assertMode: 'legacy', route: 'legacy' }) + '\n'
+/**
+ * 定时器余量。workload 是**两个真实 setTimeout 的赛跑**：主响应在 primaryDelayMs 后返回，
+ * hedge 在 config.waitMs 后触发；判定 order = 「事件里没有 hedge-start」。
+ *
+ * 余量太窄时，并行负载下事件循环一抖动，主响应就被推迟到 hedge 之后，本应通过的观测会判失败。
+ * 实测过一次失败：goal 观测里 `hedge-start@112ms` 与 `primary-complete@114ms` **只差 2ms** ⇒ 8/12 抖成 7/12。
+ * 原值（BASE.waitMs=40 / plainPrimaryMs=8）只留约 30ms 名义余量，远不够。
+ *
+ * 数值必须满足（由 native-repair-host.selftest 的「余量」用例守住）：
+ *   · timing 故障要能复现     ⇒ BASE.waitMs < timingPrimaryMs
+ *   · timing 修复后要稳定     ⇒ relax-delay.waitMs − timingPrimaryMs 足够大
+ *   · 非 timing 故障不该对冲  ⇒ BASE.waitMs 远大于 plainPrimaryMs
+ */
+export const REPAIR_TIMING = I.immutableJson({ plainPrimaryMs: 8, timingPrimaryMs: 900, minMarginMs: 200 })
+export const BASE_CONFIG = JSON.stringify({ waitMs: 500, assertMode: 'legacy', route: 'legacy' }) + '\n'
 export const REPAIR_CONFIGS = I.immutableJson({
-  'relax-delay': JSON.stringify({ waitMs: 150, assertMode: 'legacy', route: 'legacy' }) + '\n',
-  'await-response': JSON.stringify({ waitMs: 40, assertMode: 'await', route: 'legacy' }) + '\n',
-  'pin-model': JSON.stringify({ waitMs: 40, assertMode: 'legacy', route: 'approved' }) + '\n',
+  'relax-delay': JSON.stringify({ waitMs: 1800, assertMode: 'legacy', route: 'legacy' }) + '\n',
+  'await-response': JSON.stringify({ waitMs: 500, assertMode: 'await', route: 'legacy' }) + '\n',
+  'pin-model': JSON.stringify({ waitMs: 500, assertMode: 'legacy', route: 'approved' }) + '\n',
 })
 const eq = (field, value) => ({ op: 'equals', field, value })
 export function repairSuite({ developmentOnly = false } = {}) {
@@ -31,7 +45,7 @@ export async function makeRepairHost(input, { diagnosticStrategy = 'active', dia
   const initialState = { context: ['user repair task'], pending: 1 }
   fs.writeFileSync(path.join(root, 'state.json'), JSON.stringify(initialState))
   for (const name of ['repair-workload.cjs', 'repair-oracle.cjs']) fs.copyFileSync(new URL('../../test/fixtures/' + name, import.meta.url), path.join(root, name))
-  fs.writeFileSync(path.join(root, 'fixture.json'), JSON.stringify({ transport: family, primaryDelayMs: fault === 'timing' ? 85 : 8, earlyAssertion: fault === 'assertion', identityFault: fault === 'identity', wrongField: transports.indexOf(family) % 2 ? 'fingerprint' : 'model' }))
+  fs.writeFileSync(path.join(root, 'fixture.json'), JSON.stringify({ transport: family, primaryDelayMs: fault === 'timing' ? REPAIR_TIMING.timingPrimaryMs : REPAIR_TIMING.plainPrimaryMs, earlyAssertion: fault === 'assertion', identityFault: fault === 'identity', wrongField: transports.indexOf(family) % 2 ? 'fingerprint' : 'model' }))
   const traces = [], conditions = { runtime: 'node-local-worker-v1' }
   const adapter = I.createFileStateAdapter({ root, paths: ['config.json'],
     readState: () => JSON.parse(fs.readFileSync(path.join(root, 'state.json'), 'utf8')),
