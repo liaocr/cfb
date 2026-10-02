@@ -442,7 +442,8 @@ export function confirmFrom({ rows, map = { champion: 'champion', previous: 'pre
   if (!typed.length) throw new Error('confirm-no-rows（没有能映射成 champion / previous 的行；用 --map champion=<variant>,previous=<variant>）')
   const cmp = outcomeComparison(typed)
   // 效度配对：同一样本既有 L1 代理分（proxyScore / structural）又有 L2 结局 → 追加账本
-  const validity = typed.filter((r) => Number.isFinite(r.proxyScore ?? r.structural)).map((r) => ({ schema: 'cfb.validity-pair/1', at: now, task: r.task, arm: r.arm, sample: r.sample ?? 0, proxy: r.proxyScore ?? r.structural, outcome: episodeOutcome(r).solved ? 1 : 0, roundsToFix: episodeOutcome(r).roundsToFix }))
+  // v4.7.2：未分歧的影子跟随臂与 leader 逐字节同一条轨迹、复用的 raw 已在原计划入账 ⇒ 都不是新的效度观测（否则同一条轨迹记两次）
+  const validity = typed.filter((r) => Number.isFinite(r.proxyScore ?? r.structural) && !(r.shadow && r.shadow.divergedAt == null) && !r.reusedFrom && !r.extended).map((r) => ({ schema: 'cfb.validity-pair/1', at: now, task: r.task, arm: r.arm, sample: r.sample ?? 0, proxy: r.proxyScore ?? r.structural, outcome: episodeOutcome(r).solved ? 1 : 0, roundsToFix: episodeOutcome(r).roundsToFix }))
   const cf = readJson(CHAMPION)
   let verdict = 'report-only', championAfter = cf
   if (cf?.adoption === 'provisional') {
@@ -569,7 +570,7 @@ function cmdConfirm(args) {
   const L = ['# L2 端到端结局确认（' + r.verdict + '）', '', '| 臂 | n | 修好率 | 到修好轮数 | 假宣称 | 修好后验收 | 重复 |', '| --- | --- | --- | --- | --- | --- | --- |']
   for (const [k, v] of [['previous', r.cmp.previous], ['champion', r.cmp.champion]]) L.push(`| ${k} | ${v.n} | ${v.solved ?? '—'} | ${v.meanRoundsToFix ?? '—'} | ${v.falseClaims} | ${v.verified} | ${v.repeats} |`)
   L.push('', `配对 ${r.cmp.pairs.length}（${r.cmp.pairs.map((p) => p.task + ':' + p.outcome).join(' ')}）；e=${r.cmp.e}，「更差」e=${r.cmp.eReject}，阈 ${+(1 / DEFAULT_DESIGN_V4.alphaHoldout).toFixed(1)}`)
-  const nc = rows.filter((x) => x && !x.error && x.shadow && x.shadow.divergedAt == null && x.status !== 'awaiting-draft').length
+  const nc = rows.filter((x) => x && !x.error && x.shadow && !x.extended && x.shadow.divergedAt == null && x.status !== 'awaiting-draft').length
   if (nc) L.push(`其中未分歧组 ${nc}（压缩器整条没触发 ⇒ 与 raw 结局相同、计平手、不是候选优劣的证据）`)
   L.push('', r.verdict === 'confirmed' ? '**champion 确认**：L2 结局证实 L1 采纳；`propose` 现在可出生产 diff' : r.verdict === 'pending-parity' ? '**L2 过了、但缺路径等价校准**：策略 champion 的证据来自 policy: 直连路径；先跑一次 auto vs policy:base 并 `confirm --parity --results …`，等价才能 confirmed' : r.verdict === 'rolled-back' ? '**回滚**：L2 结局证伪 L1 采纳，champion 恢复为 previous（L1 尺子对这个方向可能失效，看 `ruler`）' : r.verdict === 'pending' ? '**待定**：L2 配对不够（需 ≥4 对、≥2 题、e ≥ 阈），继续续跑' : '**只报告**：当前 champion 不是 provisional；本次结果只进效度账本')
   if (r.validity.length) L.push('', `效度账本 +${r.validity.length} 对（L1 代理分 ↔ L2 修好）`)
@@ -639,9 +640,15 @@ export function buildTrajPlan({ n, arms = ['raw', 'policy:base'], scenarios = TR
   const mains = fork ? groups * (1 + arms.length * (roundsLeft - 1)) : groups * arms.length * roundsLeft
   const compresses = groups * policyArms * roundsLeft
   const dr = pricing.divergeRound ?? 3, fs_ = pricing.floorShare ?? 1
-  const expectedMains = shadow ? groups * ((reuseRaw ? 0 : roundsLeft) + followers * Math.max(0, roundsLeft - dr)) : mains
-  const expectedCompresses = shadow ? Math.round(groups * policyArms * roundsLeft * fs_) : compresses
-  const expectedUsd = +(expectedMains * pricing.mainUsd + expectedCompresses * pricing.compressUsd).toFixed(3), capUsd = +((reuseRaw ? mains - groups * roundsLeft : mains) * pricing.mainCapUsd + compresses * pricing.compressCapUsd).toFixed(3)
+  // 延长（reuseRaw.extend）：raw 付 R − from；跟随臂最早在旧轨迹第一次过地板那轮 k* 分歧（没过过地板 ⇒ 最早 from+1）⇒ 付 R − max(k*, …)；上界同理（k* 之前影子是构造保证，不是假设）
+  const ext = reuseRaw?.extend || null
+  const kStar = ext ? (ext.firstFloor || ext.from + 1) : null
+  const rawPays = ext ? Math.max(0, roundsLeft - ext.from) : (reuseRaw ? 0 : roundsLeft)
+  const followerExpected = ext ? Math.max(0, roundsLeft - kStar) : Math.max(0, roundsLeft - dr), followerCap = ext ? Math.max(0, roundsLeft - kStar) : roundsLeft - 1
+  const expectedMains = shadow ? groups * (rawPays + followers * followerExpected) : mains
+  const expectedCompresses = shadow ? Math.round(groups * policyArms * (ext ? Math.max(1, roundsLeft - kStar + 1) : roundsLeft) * fs_) : compresses
+  const capMains = shadow ? groups * (rawPays + followers * followerCap) : mains
+  const expectedUsd = +(expectedMains * pricing.mainUsd + expectedCompresses * pricing.compressUsd).toFixed(3), capUsd = +(capMains * pricing.mainCapUsd + compresses * pricing.compressCapUsd).toFixed(3)
   const plan = { schema: 'cfb.traj-plan/1', id: 't' + n, at: new Date().toISOString(), variants: arms, scenarios: fromStates ? [] : scenarios, samples, maxRounds, fork, maxTokens: 8000, storeText,
     ...(fromStates ? { fromStates } : {}),
     // v4.3 有界续跑：一次批准内按 e 值任意停时规则提前停（判定达成或预算上界），不再每组回来要一次批准
@@ -649,7 +656,7 @@ export function buildTrajPlan({ n, arms = ['raw', 'policy:base'], scenarios = TR
     purpose: purpose || '第一次用真实数据检验尺子有效性：在线效度配对（执行器代理 ↔ 修好）+ raw vs 压缩稿的 L2 对 + 用真实回执校准单价常数。若效度仍 suspect / unvalidated，接受本机目前只能当记录仪，不开始按分搜索。',
     yield: { l1Pairs: groups, l2Pairs: groups, validityPairsApprox: arms.length * groups * (maxRounds - 1), flywheelPairsApprox: policyArms ? groups * (maxRounds - 1) : 0, childStatesApprox: arms.length * groups * Math.max(0, maxRounds - 2) },
     ...(reuseRaw ? { reuseRaw } : {}),
-    cost: { mains, compresses, expectedMains, expectedCompresses, expectedUsd, capUsd, pricing, shadow }, holdoutNote: '场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索' }
+    cost: { mains: capMains, compresses, expectedMains, expectedCompresses, expectedUsd, capUsd, pricing, shadow }, holdoutNote: '场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索' }
   plan.digest = evidenceDigest(plan).slice(0, 16)
   plan.command = `node tools/traj-run.mjs --plan ${path.relative(ROOT, path.join(trajHomeFor(n), 'plan.json'))}${storeText ? ' --store-text' : ''}${fromStates ? ' --from-state ' + fromStates.file : ''}${reuseRaw ? ' --fork-from ' + reuseRaw.file : ''} --variants ${arms.filter((a) => !a.startsWith('policy:')).join(',') || 'raw'}${arms.some((a) => a.startsWith('policy:')) ? ' --policy ' + arms.filter((a) => a.startsWith('policy:')).map((a) => a.slice(7)).join(',') : ''}${fromStates ? '' : ' --only ' + scenarios.join(',')} --samples ${samples} --max-rounds ${maxRounds}${fork ? ' --fork' : ''} --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out ${path.relative(ROOT, trajHomeFor(n))}`
   return plan
@@ -735,7 +742,12 @@ function cmdPlanTraj(args) {
     const rows = readJsonl(abs).filter((r) => r.variant === 'raw' && !r.error && Array.isArray(r.roundMessages) && r.roundMessages.length)
     const byTask = {}; for (const r of rows) byTask[r.task] = (byTask[r.task] || 0) + 1
     const missing = scenarios.filter((sc) => !byTask[sc.split(':')[0] === sc ? sc : sc]); if (missing.length) throw new Error('reuse-raw-no-rows:' + missing.join(',') + '（该文件里没有这些场景的 raw 轨迹，或缺 roundMessages：要 --store-text 跑出来的）')
-    reuseRaw = { file: path.relative(ROOT, abs), rows: rows.length, byTask, at: rows.map((r) => r.at).filter(Boolean).sort()[0] || null, digest: evidenceDigest(rows.map((r) => [r.task, r.sample, r.rounds, r.fixedAtRound])).slice(0, 16) }
+    // v4.7.2 延长：旧 raw 被轮数上限截断（最后一轮还在发调用）且本计划轮数更多 ⇒ raw 只付 (R − 旧轮数)，跟随臂最早在旧轨迹第一次过地板那一轮分歧（之前影子，零成本）
+    const R = Number(f(args, '--max-rounds') || 5)
+    const capped = rows.filter((r) => r.rounds < R && (r.transcript?.[r.transcript.length - 1]?.calls?.length > 0))
+    const firstFloor = rows.map((r) => (r.transcript || []).findIndex((t) => (t.reasoningChars || 0) >= 3100) + 1).filter((k) => k > 0)
+    const extend = capped.length ? { rows: capped.length, from: Math.round(capped.reduce((a, r) => a + r.rounds, 0) / capped.length), firstFloor: firstFloor.length ? Math.min(...firstFloor) : null } : null
+    reuseRaw = { file: path.relative(ROOT, abs), rows: rows.length, byTask, at: rows.map((r) => r.at).filter(Boolean).sort()[0] || null, digest: evidenceDigest(rows.map((r) => [r.task, r.sample, r.rounds, r.fixedAtRound])).slice(0, 16), ...(extend ? { extend } : {}) }
   }
   const plan = buildTrajPlan({ n, arms, reuseRaw, scenarios: perturb ? scenarios.map((x) => x + ':' + perturb) : scenarios, samples: Number(f(args, '--samples') || 1), maxRounds: Number(f(args, '--max-rounds') || 5), fork: !args.includes('--no-fork'), purpose: f(args, '--purpose') || (hasHand ? '模式 1 天花板：hand 臂 = 助手代替副模型手写稿（同一提示词、同一闸链 + G2 决策不变闸）vs raw；量 f(主模型 | 稿) 的上界与「稿该写什么」；hand 永远不采纳为 champion，过闸且修好的稿进金标注册表（gold add）作模式 2 标准' : fromStates ? `子状态续跑（Math-Shepherd 式蒙特卡洛状态价值）：同一分叉点两臂续跑的修好率 / 到修好轮数之差 = 该轮压缩稿价值的原则性定义；${fromStates.count} 个状态来自家族 ${fromStates.families.join('、')}，扩的是家族内配对数，不计入留出家族数` : perturb ? `加难场景（${perturb}：诱饵同名文件 + README 误导，两臂同扰动）：正确下一步不再唯一，考压缩稿能否保住排除项与证据而不是只保住「下一步」` : null), fromStates, stop: args.includes('--stop') ? (Number(f(args, '--cap-usd')) > 0 ? { capUsd: Number(f(args, '--cap-usd')) } : {}) : null })
   for (const sc of plan.scenarios) { const [id, kind] = sc.split(':'); if (!TRAJ_TASKS.some((t) => t.id === id)) throw new Error('unknown-scenario:' + sc); if (kind && kind !== 'decoy') throw new Error('unknown-perturb:' + kind) }
@@ -746,9 +758,10 @@ function cmdPlanTraj(args) {
   const home = trajHomeFor(n); ensure(home); writeJson(path.join(home, 'plan.json'), plan)
   h.trajPlans = (h.trajPlans || []).filter((t) => t.n !== n).concat([{ n, at: plan.at, status: 'planned', digest: plan.digest, design: plan.design, expectedUsd: plan.cost.expectedUsd, capUsd: plan.cost.capUsd }]); writeJson(HISTORY, h)
   const L = [`# 分叉轨迹计划 t${n}（digest ${plan.digest}，未发请求）`, '', `目的：${plan.purpose}`, '', `臂：${plan.variants.join(' vs ')}；${plan.fromStates ? `子状态 ${plan.fromStates.count} 个（家族 ${plan.fromStates.families.join(', ')}，平均起始轮 ${plan.fromStates.meanStartRound}，${plan.fromStates.file}）` : '场景：' + plan.scenarios.join(', ')} × ${plan.samples} 样本；≤${plan.maxRounds} 轮；${plan.fork ? '起始轮共用、各臂分叉' : '不分叉'}${plan.stop ? `；**有界续跑**：${plan.stop.compare ? `每组后算 e 值，${plan.stop.compare.champion} vs ${plan.stop.compare.previous} 任一方向 e ≥ ${(1 / plan.stop.alpha).toFixed(0)}（≥${plan.stop.minPairs} 对）或` : '单臂无配对，只按'}估算花费 ≥ $${plan.stop.capUsd} 即停` : ''}`,
-    `请求：主调用 ≤${plan.cost.mains} + 压缩 ≤${plan.cost.compresses}（上界：每轮都压、第 1 轮就分歧）；期望主 ${plan.cost.expectedMains} + 压缩 ${plan.cost.expectedCompresses}${plan.cost.shadow ? `（影子分叉：跟随臂到第 ${plan.cost.pricing.divergeRound} 轮才分歧、原文过地板的轮占 ${plan.cost.pricing.floorShare}${plan.reuseRaw ? '；raw 复用自 ' + plan.reuseRaw.file + '，不付' : ''}）` : ''}；**期望实付 ≈ $${plan.cost.expectedUsd}，上界 ≈ $${plan.cost.capUsd}**（max_tokens 8000；常数见 TRAJ_UNIT，首张回执后更新）`,
+    `请求：主调用 ≤${plan.cost.mains} + 压缩 ≤${plan.cost.compresses}（上界：每轮都压、第 1 轮就分歧）；期望主 ${plan.cost.expectedMains} + 压缩 ${plan.cost.expectedCompresses}${plan.cost.shadow ? `（影子分叉：跟随臂到第 ${plan.cost.pricing.divergeRound} 轮才分歧、原文过地板的轮占 ${plan.cost.pricing.floorShare}${plan.reuseRaw ? (plan.reuseRaw.extend ? `；raw 复用 ${plan.reuseRaw.file} 的前 ${plan.reuseRaw.extend.from} 轮、只付续跑的 ${Math.max(0, plan.maxRounds - plan.reuseRaw.extend.from)} 轮；跟随臂第 ${plan.reuseRaw.extend.firstFloor || plan.reuseRaw.extend.from + 1} 轮分歧、付之后的 ${Math.max(0, plan.maxRounds - (plan.reuseRaw.extend.firstFloor || plan.reuseRaw.extend.from + 1))} 轮` : '；raw 复用自 ' + plan.reuseRaw.file + '，不付') : ''}）` : ''}；**期望实付 ≈ $${plan.cost.expectedUsd}，上界 ≈ $${plan.cost.capUsd}**（max_tokens 8000；常数见 TRAJ_UNIT，首张回执后更新）`,
     `产出（估）：L1 对 ${plan.yield.l1Pairs}、L2 对 ${plan.yield.l2Pairs}、效度对 ≈${plan.yield.validityPairsApprox}、飞轮对 ≈${plan.yield.flywheelPairsApprox}、子状态 ≈${plan.yield.childStatesApprox}`, '', plan.holdoutNote, '', '批准后执行（traj-run 会核对参数与计划一致，跑完写 receipt.json）：', '```', plan.command, '```', '', hasHand ? `回灌：node tools/cfb-cycle.mjs ceiling --plan ${n}   # 模式 1 不走 confirm：hand 不是候选，只量天花板 + 进金标` : `回灌：node tools/cfb-cycle.mjs confirm --plan ${n} --map champion=policy:base,previous=raw   # 或 --parity（auto vs policy:base）`]
   L.push('', `家族覆盖（轨迹数）：${TRAJ_TASKS.map((t) => `${t.id}=${cov[t.id].total}`).join(' ')}；本计划 ${plan.scenarios.length === 1 ? '只跑 ' + plan.scenarios[0] + '，跑完先 `review --plan ' + n + '` 再决定下一个家族' : '批量 ' + plan.scenarios.length + ' 个家族'}`)
+  if (plan.reuseRaw?.extend) L.push('', `**延长**：${plan.reuseRaw.file} 里的 raw 被 ${plan.reuseRaw.extend.from} 轮上限截断（最后一轮还在发调用）⇒ raw 从第 ${plan.reuseRaw.extend.from + 1} 轮续跑（前 ${plan.reuseRaw.extend.from} 轮零主调用、仓库由重放恢复）；跟随臂最早在第 ${plan.reuseRaw.extend.firstFloor || plan.reuseRaw.extend.from + 1} 轮${plan.reuseRaw.extend.firstFloor ? '（旧轨迹第一次过地板）' : ''}分歧，之前影子。`)
   if (plan.reuseRaw) L.push('', `**非同期对照**：raw 臂复用 ${plan.reuseRaw.file}（${plan.reuseRaw.rows} 条，最早 ${plan.reuseRaw.at || '?'}）。平台试验里的 non-concurrent control：主模型若有时间漂移会偏；只在同一模型 id、短窗口内用，review 时把两次的日期并排看；多个候选共用同一 raw ⇒ 候选之间的比较相关，别把 k 个候选里挑最好的那个当独立证据。`)
   if (hasHand) L.push('', `**模式 1 步进**：hand 臂每到要压缩的那一轮会暂停（results.jsonl 记 awaiting-draft），把副模型本该拿到的 prompt / 原文 / ctx / 协议写进 \`${path.relative(ROOT, trajHomeFor(n))}/pending/<id>.json\`；助手写 \`drafts/<id>.md\` 后**再跑同一条命令**自动续（G2 + 生产闸不过 ⇒ 继续暂停并把违规写回 pending）。压缩调用 0 次（hand 不花钱）。跑完：\`ceiling --plan ${n}\`（不是 confirm）→ \`gold add --plan ${n}\`。`)
   fs.writeFileSync(path.join(home, 'plan.md'), L.join('\n') + '\n'); console.log(L.join('\n'))
@@ -915,7 +928,7 @@ export function costCalibration(h = loadHistory()) {
   for (const t of h.trajPlans || []) {
     const home = trajHomeFor(t.n); const rc = readJson(path.join(home, 'receipt.json')); if (!rc) continue
     const plan = readJson(path.join(home, 'plan.json')) || {}; const rows = fs.existsSync(path.join(home, 'results.jsonl')) ? readJsonl(path.join(home, 'results.jsonl')).filter((r) => r && !r.error && r.status !== 'awaiting-draft') : []
-    const div = rows.filter((r) => r.shadow && r.shadow.divergedAt != null).map((r) => r.shadow.divergedAt)
+    const div = rows.filter((r) => r.shadow && !r.extended && r.shadow.divergedAt != null).map((r) => r.shadow.divergedAt)
     let over = 0, n = 0; for (const r of rows.filter((r) => r.variant === 'raw')) for (const x of r.transcript || []) { n++; if ((x.reasoningChars || 0) >= 3100) over++ }
     out.push({ plan: 't' + t.n, expectedMains: plan.cost?.expectedMains ?? plan.cost?.mains ?? null, mainCalls: rc.mainCalls ?? null, expectedCompresses: plan.cost?.expectedCompresses ?? plan.cost?.compresses ?? null, compressCalls: rc.compressCalls ?? null,
       expectedUsd: plan.cost?.expectedUsd ?? null, estimatedUsd: rc.estimatedUsd ?? null, shadowRounds: rc.shadowRounds ?? 0, noContrast: rc.noContrastGroups ?? 0, divergeRounds: div, floorShareObs: n ? +(over / n).toFixed(2) : null, promptTokens: rc.promptTokens ?? null })

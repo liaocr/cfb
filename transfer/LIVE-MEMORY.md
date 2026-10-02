@@ -2,6 +2,13 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
+## −12. 当前状态（2026-10-02，第三十一会话续：第一笔真钱 t6 跑完 —— 未分歧平手；通道预检 + 携带检验 + 延长已成代码闸；t7 已预注册等批准）
+
+- **通道现状**：api.a6api.com 的 `deepseek-v4.1-flash` 现在返回思维链但 **`system_fingerprint` 为空** ⇒ `--require-fp` 走 **carry-verified**（每轮带 / 不带历史思考各一次 `max_tokens:1` 探针，Δ ≥ max(4, 0.12×字数)）；t6 实测 Δ/字 0.28–0.36、预检中文 0.495。开跑前 **一定** `--preflight-only` 看一眼（≈3 次小请求）。
+- **t6 读数**：raw 修好@5，思考只有第 5 轮（最后一轮）过地板 ⇒ hand 没机会出稿。原始思考在 `.cfb-runtime/traj/t6/results.jsonl` 的 `roundMessages`（第 5 轮 4198 字可当手写稿题材）。
+- **下一步候选**：t7（t6 延到 8 轮，raw 3 + hand 3 ≈ $0.075 名义）量修好后稿有没有带住验收 / 声明；或 wrong-model ≤8 轮新单元（≈ 8 + 3 次名义）。**先向用户要 t6 的真实扣费**来校准 `TRAJ_UNIT.mainUsd`（现 0.0125/次，疑高 5–10×）。
+- 坑：阈值别再拍脑袋（0.25 烧了 15 对探针）；结果行里 `shadow.divergedAt==null` 的跟随臂、`extended`、`reusedFrom` 行都不是新的效度观测。
+
 ## −11. 当前状态（2026-10-02，第三十一会话：v4.7 —— 全架构审计落地：影子分叉（跟随臂分歧前不付主调用）、`--reuse-raw`、按信息量选家族、`plan-bench --factors` 因子归因、回执→成本校准；仍零花费；commit v14.12.0）
 
 - **先跑 `node tools/cfb-cycle.mjs status`**。当前计划 **t6 = sse-truncated × raw vs hand × 1 × ≤5 轮，期望主 7 ≈ $0.088（上界 $0.315）**，命令与 t5 同（t5 superseded 只因成本模型换了）。需用户批准；步进法同 §−10。

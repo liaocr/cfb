@@ -632,6 +632,95 @@ try {
       const st = C.runCli(['status'], { dir: tmp }).stdout; assert.match(st, /成本校准（回执 vs 计划）: t1 主 7\/7 压缩 2\/2 \$0\.1\/0\.103 影子省 3 未分歧 0 分歧轮 \[3\] 过地板 0\.4 ⇒ TRAJ_UNIT 现 divergeRound 3 \/ floorShare 0\.4，实测建议 3 \/ 0\.4/)
     } finally { process.chdir(cwd); C.setCycleDir(null); fs.rmSync(tmp, { recursive: true, force: true }) }
   })
+  await test('A30 v4.7.1 通道预检（零 API，假通道）：有思维链 + 可信指纹 ⇒ 通过；上游不返回思维链 ⇒ reasoning 未过、不开跑；网络错 ⇒ reachable 未过；型号回显点/连字符差异视为同一型号、别的型号拒；主循环「可信指纹但空思考」连续 3 次即停（不再重试到 15 次）', async () => {
+    const TR = await import('../tools/traj-run.mjs'); const { TRAJ_TASKS } = await import('../tools/traj-fixtures.mjs'); const I = await import('../index.js')
+    const mk = (msg, extra = {}) => async () => ({ message: msg, usage: { prompt_tokens: 20, completion_tokens: 30 }, fp: 'fp_dspure_app_v1', model: 'deepseek-v4-1-flash', finish: 'stop', ...extra })
+    const o = { model: 'deepseek-v4.1-flash', baseUrl: 'http://x', requireFp: true }
+    let pf = await TR.preflightUpstream({ chat: mk({ reasoning_content: '一加一等于二。', content: '2' }), o }); assert.equal(pf.ok, true, JSON.stringify(pf.checks)); assert.equal(pf.reasoningChars, 7); assert.equal(pf.modelEcho, 'deepseek-v4-1-flash')
+    pf = await TR.preflightUpstream({ chat: mk({ content: '2' }), o }); assert.equal(pf.ok, false); assert.deepEqual(pf.failed, ['reasoning'])
+    pf = await TR.preflightUpstream({ chat: mk({ reasoning_content: '…', content: '2' }, { fp: 'fp_other' }), o }); assert.deepEqual(pf.failed, ['fp'])
+    pf = await TR.preflightUpstream({ chat: mk({ reasoning_content: '…', content: '2' }, { fp: 'fp_other' }), o: { ...o, requireFp: false } }); assert.equal(pf.ok, true, '不要求指纹时只看思考')
+    pf = await TR.preflightUpstream({ chat: mk({ reasoning_content: '…', content: '2' }, { model: 'deepseek-chat' }), o }); assert.deepEqual(pf.failed, ['model'])
+    pf = await TR.preflightUpstream({ chat: mk({ reasoning_content: '…', content: '2' }, { usage: { prompt_tokens: 1, claude_cache_tokens: 0 } }), o }); assert.deepEqual(pf.failed, ['notClaude'])
+    pf = await TR.preflightUpstream({ chat: async () => { throw new Error('HTTP 502') }, o }); assert.equal(pf.ok, false); assert.equal(pf.error, 'HTTP 502'); assert.ok(pf.failed.includes('reachable'))
+    // 主循环：通道返回可信指纹但没有思维链 ⇒ 第 3 次就抛，不是 15 次
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nr-')); const cred = path.join(tmp, 'c.yaml'); fs.writeFileSync(cred, 'K: "unused"\n'); let calls = 0
+    const chat = async () => { calls++; return { message: { content: '读 README。', tool_calls: [{ id: 'a', function: { name: 'read_file', arguments: JSON.stringify({ path: 'README.md' }) } }] }, usage: { prompt_tokens: 10 }, fp: 'fp_dspure_app_v1' } }
+    const task = TRAJ_TASKS.find((t) => t.id === 'eacces-config')
+    const rec = await TR.runOne({ o: { out: tmp, minChars: 3100, maxRounds: 5, maxTokens: 1000, model: 'fixture', baseUrl: 'http://127.0.0.1:1', requireFp: false, maxProbes: 15 }, task, variant: 'raw', sample: 0, chat, I, cred })
+    assert.match(String(rec.error), /upstream-no-reasoning/); assert.equal(calls, 3, '3 次就停'); assert.equal(rec.emptyReasoning, 3)
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+  await test('A31 v4.7.2 携带检验（零 API，假通道）：指纹为空时，带 / 不带历史 reasoning_content 的 prompt_tokens 之差 ≥ max(4, 0.12×字数) 才放行（历史 < 40 字按 no-history）；预检在指纹为空但携带成立时 mode=carry-verified 通过、通道丢历史思考时不通过；主循环每轮：有历史思考 ⇒ 携带探针放行并计 fpModes，无历史 ⇒ no-history；丢思考的通道 ⇒ 探针用尽即停', async () => {
+    const TR = await import('../tools/traj-run.mjs'); const { TRAJ_TASKS } = await import('../tools/traj-fixtures.mjs'); const I = await import('../index.js')
+    const tokens = (msgs, carry) => msgs.reduce((n, m) => n + Math.ceil(String(m.content || '').length * 0.5) + (carry ? Math.ceil(String(m.reasoning_content || '').length * 0.5) : 0), 0) + 100
+    const mkChan = (carry) => { let i = 0; const script = [
+      { reasoning_content: '先看看 README，确认入口文件与测试目录结构，再决定读哪个测试。'.repeat(2), content: '读 README。', tool_calls: [{ id: 'a', function: { name: 'read_file', arguments: JSON.stringify({ path: 'README.md' }) } }] },
+      { reasoning_content: '再看测试文件，排除权限路线。'.repeat(20), content: '读测试。', tool_calls: [{ id: 'b', function: { name: 'read_file', arguments: JSON.stringify({ path: 'test/birth.selftest.mjs' }) } }] },
+      { reasoning_content: '完。', content: '收。', tool_calls: [] }]
+      const f = async (body) => { f.calls++; if (body.max_tokens === 1) return { message: { reasoning_content: '…' }, usage: { prompt_tokens: tokens(body.messages, carry) }, fp: null }; const m = script[Math.min(i++, script.length - 1)]; return { message: m, usage: { prompt_tokens: tokens(body.messages, carry) }, fp: null } }; f.calls = 0; return f }
+    const o = { model: 'deepseek-v4.1-flash', baseUrl: 'http://x', requireFp: true }
+    // carryCheck 直接量
+    const hist = [{ role: 'user', content: 'q' }, { role: 'assistant', content: 'a', reasoning_content: '思'.repeat(1000) }, { role: 'user', content: 'q2' }]
+    let c = await TR.carryCheck({ chat: mkChan(true), o, messages: hist }); assert.equal(c.L, 1000); assert.equal(c.delta, 500); assert.equal(c.ok, true); assert.equal(c.ratio, 0.5)
+    c = await TR.carryCheck({ chat: mkChan(false), o, messages: hist }); assert.equal(c.delta, 0); assert.equal(c.ok, false); assert.equal(c.need, 120)
+    // 2026-10-02 实测：82 字英文 / 代码为主的思考 ⇒ Δ19（0.232/字）必须放行；丢思考 Δ=0 / 1 必须拒
+    const mkFixed = (withT, withoutT) => { let n = 0; return async () => ({ message: { reasoning_content: '…' }, usage: { prompt_tokens: n++ % 2 === 0 ? withT : withoutT }, fp: null }) }
+    const h82 = [{ role: 'user', content: 'q' }, { role: 'assistant', content: 'a', reasoning_content: 'x'.repeat(82) }, { role: 'user', content: 'q2' }]
+    c = await TR.carryCheck({ chat: mkFixed(1349, 1330), o, messages: h82 }); assert.equal(c.delta, 19); assert.equal(c.need, 10); assert.equal(c.ok, true)
+    c = await TR.carryCheck({ chat: mkFixed(1331, 1330), o, messages: h82 }); assert.equal(c.ok, false)
+    // 预检：指纹空 + 携带成立 ⇒ 通过（mode carry-verified）；丢思考 ⇒ fp 未过
+    let pf = await TR.preflightUpstream({ chat: mkChan(true), o }); assert.equal(pf.ok, true, JSON.stringify(pf)); assert.equal(pf.mode, 'carry-verified'); assert.equal(pf.carry.L, 1200); assert.equal(pf.carry.ok, true)
+    pf = await TR.preflightUpstream({ chat: mkChan(false), o }); assert.equal(pf.ok, false); assert.deepEqual(pf.failed, ['fp']); assert.equal(pf.mode, null)
+    // 主循环：raw 臂 3 轮；第 1 轮无历史 ⇒ no-history；第 2、3 轮有历史思考 ⇒ 携带探针（每轮 2 次 max_tokens:1）放行
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cy-')); const cred = path.join(tmp, 'c.yaml'); fs.writeFileSync(cred, 'K: "unused"\n')
+    const task = TRAJ_TASKS.find((t) => t.id === 'eacces-config'); const oo = { out: tmp, minChars: 3100, maxRounds: 4, maxTokens: 1000, model: 'deepseek-v4.1-flash', baseUrl: 'http://127.0.0.1:1', requireFp: true, maxProbes: 3, storeText: true }
+    const ch = mkChan(true); const rec = await TR.runOne({ o: oo, task, variant: 'raw', sample: 0, chat: ch, I, cred })
+    assert.equal(rec.error, undefined, String(rec.error)); assert.equal(rec.rounds, 3); assert.equal(rec.mainCalls, 3); assert.deepEqual(rec.fpModes, { 'no-history': 1, 'carry-verified': 2 }); assert.equal(rec.carry.length, 2); assert.ok(rec.carry.every((x) => x.ok && x.ratio === 0.5)); assert.equal(rec.probes, 1 + 2 + 2)
+    // 丢思考的通道：第 1 轮 no-history 过，第 2 轮携带不成立且两次 Δ 相同 ⇒ 第 2 次就停（确定性失败不是路由抖动；不发真请求、不烧满 maxProbes）
+    const bad = mkChan(false); const rec2 = await TR.runOne({ o: oo, task, variant: 'raw', sample: 0, chat: bad, I, cred })
+    assert.match(String(rec2.error), /携带检验稳定不过（Δ=0\/\d+ 字，需 ≥\d+；两次相同/); assert.equal(rec2.mainCalls, 1); assert.equal(rec2.probeMiss, 2); assert.equal(rec2.carry.length, 2)
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+  await test('A32 v4.7.2 延长（零 API）：被轮数上限截断的旧 raw 在更大轮数的计划里不重跑 —— 前 from 轮影子自己的过去（零主调用、仓库由重放恢复），之后真跑；跟随臂影子新 raw 的全部轮；延长行不算「未分歧」、不进效度账本；--fork-from dry-run 建 raw 作业而不是复制；plan-traj --reuse-raw 识别延长并按 R−from / R−k* 计费', async () => {
+    const TR = await import('../tools/traj-run.mjs'); const { TRAJ_TASKS } = await import('../tools/traj-fixtures.mjs'); const I = await import('../index.js'); const C = await import('../tools/cfb-cycle.mjs'); const T = await import('../tools/helpers/three-mode.mjs')
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ext-')); const out = path.join(tmp, 'out'); fs.mkdirSync(out); const cred = path.join(tmp, 'c.yaml'); fs.writeFileSync(cred, 'K: "unused"\n')
+    const task = TRAJ_TASKS.find((t) => t.id === 'eacces-config'); const cwd = process.cwd(); process.chdir(tmp)
+    try {
+      const long = ('我们需要先确认 test/birth.selftest.mjs 里 home 的来源。看起来 makeTraceWriter 拿的是 process.env.CFB_REAL_DSH_HOME，所以测试写到真实目录 /home/u/.dsh。不是权限问题：chown 需要 root，排除。下一步 read_file test/birth.selftest.mjs。').repeat(30)
+      const fix = { path: 'test/birth.selftest.mjs', old_text: 'process.env.CFB_REAL_DSH_HOME', new_text: 'process.env.DSH_HOME' }
+      const script = [
+        { reasoning_content: '先看看。', content: '读 README。', tool_calls: [{ id: 'a', function: { name: 'read_file', arguments: JSON.stringify({ path: 'README.md' }) } }] },
+        { reasoning_content: '再看测试。', content: '读测试。', tool_calls: [{ id: 'b', function: { name: 'read_file', arguments: JSON.stringify({ path: 'test/birth.selftest.mjs' }) } }] },
+        { reasoning_content: long, content: '看 trace。', tool_calls: [{ id: 'c', function: { name: 'read_file', arguments: JSON.stringify({ path: 'src/trace.js' }) } }] },
+        { reasoning_content: '改。', content: '改法只落一个。', tool_calls: [{ id: 'd', function: { name: 'edit_file', arguments: JSON.stringify(fix) } }] },
+        { reasoning_content: '完。', content: '已修复。', tool_calls: [] }]
+      const mk = (from = 0) => { let i = from; const f = async () => ({ message: script[Math.min(i++, script.length - 1)], usage: { prompt_tokens: 10, completion_tokens: 5 }, fp: 'x' }); f.count = () => i - from; return f }
+      // 旧 raw：上限 3 轮被截断（第 3 轮还在发调用）
+      const o3 = { out, minChars: 3100, maxRounds: 3, maxTokens: 1000, model: 'fixture', baseUrl: 'http://127.0.0.1:1', storeText: true, requireFp: false }
+      const oldRaw = await TR.runOne({ o: o3, task, variant: 'raw', sample: 0, chat: mk(), I, cred }); assert.equal(oldRaw.rounds, 3); assert.equal(oldRaw.fixed, false); assert.equal(oldRaw.roundMessages.length, 3); assert.equal(oldRaw.completionTokens, 15); assert.ok(oldRaw.at)
+      const { _lead, ...oldRow } = oldRaw; const oldFile = path.join(tmp, 'old.jsonl'); fs.writeFileSync(oldFile, JSON.stringify(oldRow) + '\n')
+      // 延长到 5 轮：raw 前 3 轮影子自己的过去（假模型从 script[3] 起供第 4、5 轮）
+      const o5 = { ...o3, maxRounds: 5, minChars: 200 }
+      const ch = mk(3); const raw = await TR.runOne({ o: o5, task, variant: 'raw', sample: 0, chat: ch, I, cred, leader: oldRow.roundMessages, extend: { from: 3, file: 'old.jsonl', at: oldRow.at } })
+      assert.equal(raw.error, undefined, String(raw.error)); assert.equal(raw.rounds, 5); assert.equal(raw.mainCalls, 2); assert.equal(raw.shadow.rounds, 3); assert.deepEqual(raw.extended, { from: 3, file: 'old.jsonl', at: oldRow.at }); assert.equal(raw.fixed, true); assert.equal(raw.fixedAtRound, 4); assert.equal(raw._lead.length, 5); assert.equal(raw.firstMessage, undefined)
+      // 跟随臂影子新 raw：第 1、2 轮低于地板 200，第 3 轮（旧轨迹里的长思考）⇒ 暂停要稿；零主调用
+      const chH = mk(); const h = await TR.runOne({ o: o5, task, variant: 'hand', sample: 0, chat: chH, I, cred, leader: raw._lead })
+      assert.equal(h.status, 'awaiting-draft'); assert.equal(h.awaiting.round, 3); assert.equal(chH.count(), 0); assert.equal(h.shadow.rounds, 3)
+      // 延长行不算未分歧、不进效度账本；未分歧跟随臂与复用 raw 也不进
+      const ce = T.ceilingFrom({ rows: [{ ...raw, _lead: undefined, proxyScore: 2 }, { ...raw, variant: 'hand', shadow: { rounds: 5, divergedAt: null }, extended: undefined, proxyScore: 2 }] })
+      assert.equal(ce.gate.noContrast, 1); assert.equal(ce.validity.length, 0, '延长的 raw 与未分歧的 hand 都不是新的效度观测')
+      // main dry-run：--fork-from 旧文件 + 更大轮数 ⇒ raw 作业照建（不复制）、hand 作业 1 ⇒ 2 个作业、reusedRaw 0；同轮数 ⇒ 复制、1 个作业
+      let dry = await TR.main(['--variants', 'raw,hand', '--only', 'eacces-config', '--samples', '1', '--max-rounds', '5', '--fork', '--fork-from', oldFile, '--out', path.join(tmp, 'o2'), '--dry-run', '--base-url', 'http://x', '--model', 'm'])
+      assert.equal(dry.jobs, 2); assert.equal(dry.reusedRaw, 0)
+      dry = await TR.main(['--variants', 'raw,hand', '--only', 'eacces-config', '--samples', '1', '--max-rounds', '3', '--fork', '--fork-from', oldFile, '--out', path.join(tmp, 'o3'), '--dry-run', '--base-url', 'http://x', '--model', 'm'])
+      assert.equal(dry.jobs, 1); assert.equal(dry.reusedRaw, 1)
+      // plan-traj --reuse-raw：识别延长（from 3，旧轨迹第一次过地板 = 第 3 轮 ⇒ k*=3）⇒ 期望主 = (5−3) + (5−3) = 4，上界同 4（k* 之前影子是构造保证）
+      C.setCycleDir(tmp); fs.mkdirSync(path.join(tmp, 'offline'), { recursive: true })
+      const r = C.runCli(['plan-traj', '--arms', 'raw,hand', '--scenarios', 'eacces-config', '--max-rounds', '5', '--reuse-raw', oldFile], { dir: tmp }); assert.equal(r.status, 0, r.stderr)
+      const plan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime', 't1', 'plan.json'), 'utf8')); assert.equal(plan.reuseRaw.extend.from, 3); assert.equal(plan.reuseRaw.extend.firstFloor, 3); assert.equal(plan.cost.expectedMains, 4); assert.equal(plan.cost.mains, 4); assert.equal(plan.cost.expectedUsd, 0.05); assert.match(r.stdout, /\*\*延长\*\*：.*raw 从第 4 轮续跑/); assert.match(plan.command, /--fork-from /)
+    } finally { process.chdir(cwd); C.setCycleDir(null); fs.rmSync(tmp, { recursive: true, force: true }) }
+  })
 } finally {
   console.log(`\n=== closed-loop-v4 selftest: ${pass} pass / ${fail} fail ===`)
   process.exit(fail ? 1 : 0)

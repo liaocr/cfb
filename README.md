@@ -364,6 +364,8 @@ node tools/cfb-cycle.mjs propose [--allow-provisional]
 node tools/cfb-cycle.mjs status                       # v4.5：一屏（策略 / 计划 / 家族覆盖 / 下一步完整命令）；新克隆先 restore
 node tools/cfb-cycle.mjs plan-traj [--all|--dry|--drop N|--supersede N]   # v4.5：冻结付费单位，缺省一个家族 × raw vs policy:base；v4.7 影子分叉后期望 ≈ $0.103（上界 $0.372）；traj-run --plan 核对；confirm --plan N
 node tools/cfb-cycle.mjs plan-traj --arms raw,policy:p-x --reuse-raw .cfb-runtime/traj/t6/results.jsonl   # v4.7：复用已跑的 raw 轨迹当 leader（≈$0.025/对；非同期对照，同模型短窗口内）
+node tools/cfb-cycle.mjs plan-traj --arms raw,hand --max-rounds 8 --reuse-raw .cfb-runtime/traj/t6/results.jsonl   # v4.7.2 延长：被轮数上限截断的旧 raw 不重跑，从 from+1 轮续；跟随臂影子到第一次过地板
+node tools/traj-run.mjs --plan … --preflight-only    # v4.7.1 通道预检（≈3 次 ≤64 token 小请求）：思维链非空 / 携带检验（历史思考进没进 prompt）/ 型号回显；不过不开跑
 node tools/cfb-cycle.mjs plan-bench --policies base,p-x --factors half   # v4.7：候选的 ≤3 条补丁各为因子（2^(k−1) 臂），bench-report 出每条补丁主效应、该留的子集自动落成策略
 node tools/cfb-cycle.mjs review --plan N              # v4.5：评审稿（分歧轮 / 各臂结局 / 稿原文 / 闸门）
 node tools/cfb-cycle.mjs plan-traj --arms raw,hand    # v4.6 模式 1：助手手写稿臂（压缩 0 次；v4.7 期望 ≈ $0.088）；traj-run 到压缩轮暂停等 drafts/<id>.md，同一命令续跑

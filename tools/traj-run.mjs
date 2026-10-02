@@ -42,6 +42,7 @@ function parseArgs(argv) {
     else if (a === '--concurrency') o.concurrency = Number(v())
     else if (a === '--only') o.only = v().split(',')
     else if (a === '--require-fp') o.requireFp = true
+    else if (a === '--preflight-only') o.preflightOnly = true          // v4.7.1：只做通道预检（一次 ≤64 token 的小请求），不跑任何轨迹
     else if (a === '--compress-thinking') o.compressThinking = true   // v14.9：诊断用（只在 --legacy-compress 下有意义）
     else if (a === '--legacy-compress') o.legacyCompress = true   // v14.10：旧的工具自拼请求路径（对照 v14.9 之前的收据用）；缺省走生产 birth 同构体
     else if (a === '--base-url') o.baseUrl = v()
@@ -210,16 +211,54 @@ export function callsOfMessage(m) {
   return out.filter((c) => { const k = c.name + '|' + normCmd(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)); if (seen.has(k)) return false; seen.add(k); return true })
 }
 
-export async function runOne({ o, task, variant, sample, chat, I, cred, forkMessage = null, state = null, resume = null, leader = null }) {
+/** v4.7.1 通道预检（≈1/300 轮的钱）：开跑前一次小请求，证明这条通道**现在**会把思维链返回来（reasoning_content 非空）、指纹可信、不是 Claude 形状、型号回显一致。
+ *  起因：2026-10-02 a6api 上游一度不返回思维链；主循环把「空思考」当成路由黏住去重试，每次重试都是一次完整付费请求 —— 预检不过就一分钱不花地停。 */
+const canonModel = (x) => String(x || '').toLowerCase().replace(/[._-]+/g, '-')
+/** v4.7.2 「携带」检验：通道有没有把历史 assistant 消息里的 reasoning_content 真的送进模型。
+ *  可信指纹（fp_dspure_app_v1）是这件事的代理证据（2026-09-28 实测该后端拼接历史思考：1 字 → 776、1000 字 → 1375 prompt tokens）；指纹为空时直接量：
+ *  同一份消息，带 / 不带历史 reasoning_content 各发一次 max_tokens:1（只花 prefill），Δprompt_tokens ≥ CARRY_MIN_RATIO × 历史思考字数才算送进去了。
+ *  这与 effect-eval 的 sawReasoning（base + 0.3×字数）同一思路，但在每一轮上直接量而不是用一个全局 base。 */
+// 阈值校准（2026-10-02 实测）：中文假历史 1200 字 ⇒ Δ594（0.495/字）；真实第 1 轮思考 82 字（英文 / 代码为主）⇒ Δ19（0.232/字）；丢思考的通道 Δ=0。
+//   取 0.12/字 且 ≥ 4 tokens：与「0」分得开，又不误杀英文 / 代码为主的短思考（第一次用 0.25 把 0.232 判成不过、白烧 15 对探针 —— 教训记在 §17.5）。
+export const CARRY_MIN_RATIO = 0.12, CARRY_MIN_DELTA = 4, CARRY_MIN_HISTORY = 40   // 历史思考 < 40 字时量不出来也无所谓（被测变量是 ≥ 几百字的稿），按 no-history 放行，后面轮会补验
+export const stripReasoning = (messages) => messages.map((m) => (m.role === 'assistant' && m.reasoning_content ? { ...m, reasoning_content: '' } : m))
+export const historyReasoningChars = (messages) => messages.filter((m) => m.role === 'assistant').reduce((n, m) => n + String(m.reasoning_content || '').length, 0)
+export async function carryCheck({ chat, o, messages, tools = null, probe = null }) {
+  const L = historyReasoningChars(messages); const body = (ms) => ({ model: o.model, messages: ms, ...(tools ? { tools } : {}), thinking: { type: 'enabled' }, max_tokens: 1, stream: false })
+  const withR = probe || await chat(body(messages)); const without = await chat(body(stripReasoning(messages)))
+  const a = Number(withR.usage?.prompt_tokens), b = Number(without.usage?.prompt_tokens), delta = a - b
+  const ok = L > 0 && Number.isFinite(delta) && delta >= Math.max(CARRY_MIN_DELTA, CARRY_MIN_RATIO * L)
+  return { L, withReasoning: a, without: b, delta, ratio: L ? +(delta / L).toFixed(3) : null, need: Math.max(CARRY_MIN_DELTA, Math.ceil(CARRY_MIN_RATIO * L)), ok, fp: withR.fp || null }
+}
+export async function preflightUpstream({ chat, o }) {
+  const t0 = Date.now(); let r = null, error = null
+  try { r = await chat({ model: o.model, messages: [{ role: 'user', content: '1+1=?只答数字。' }], thinking: { type: 'enabled' }, max_tokens: 64, stream: false }) } catch (e) { error = String(e?.message || e) }
+  const reasoning = String(r?.message?.reasoning_content || ''); const rt = Number(r?.usage?.completion_tokens_details?.reasoning_tokens)
+  // 携带检验（两次 max_tokens:1）：1200 字的假历史思考要让 prompt_tokens 至少多 300；指纹可信时也量一次留证据，指纹为空时它就是放行依据
+  let carry = null
+  if (!error && r) {
+    try {
+      const fake = '这一段只是用来量通道有没有把历史思考送进模型：先确认 settled.ok 的来源，再看 parseSse 对半包的处理，排除权限路线，下一步读 src/sse.js。'.repeat(15).slice(0, 1200)
+      const hist = [{ role: 'user', content: '1+1=?只答数字。' }, { role: 'assistant', content: '2', reasoning_content: fake }, { role: 'user', content: '再答一次。' }]
+      carry = await carryCheck({ chat, o, messages: hist })
+    } catch (e) { carry = { error: String(e?.message || e), ok: false } }
+  }
+  const fpTrusted = !!r && TRUSTED_FP.has(r.fp)
+  const checks = { reachable: !error, fp: !!r && (!o.requireFp || fpTrusted || !!carry?.ok), notClaude: !!r && !claudeShaped(r.usage), reasoning: reasoning.length > 0 || (Number.isFinite(rt) && rt > 0), model: !!r && (!r.model || canonModel(r.model) === canonModel(o.model)) }
+  return { schema: 'cfb.preflight/1', at: new Date().toISOString(), model: o.model, modelEcho: r?.model || null, baseUrl: o.baseUrl, fp: r?.fp || null, fpTrusted, carry, mode: fpTrusted ? 'trusted-fp' : carry?.ok ? 'carry-verified' : null, finish: r?.finish || null, usage: r?.usage || null, reasoningChars: reasoning.length, contentChars: r ? responseText(r.message).length : 0, ms: Date.now() - t0, error, checks, ok: Object.values(checks).every(Boolean),
+    failed: Object.entries(checks).filter(([, v]) => !v).map(([k]) => k) }
+}
+export async function runOne({ o, task, variant, sample, chat, I, cred, forkMessage = null, state = null, resume = null, leader = null, extend = null }) {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'traj-'))
   materialize(task, repo)
   const policy = loadPolicyFor(variant, o.policyDir)
   const hand = variant === 'hand'
   let messages = [{ role: 'system', content: o.textTools ? SYSTEM_TEXT_TOOLS : SYSTEM }, { role: 'user', content: task.prompt }]
-  const rec = { task: task.id, variant, sample, rounds: 0, calls: 0, edits: [], repeats: 0, fixedAtRound: null, verifiedAfterFix: false, promptTokens: 0, compile: [], transcript: [], rejected: 0, ...(policy ? { policy: policy.id } : {}), ...(forkMessage || leader ? { forked: true } : {}), ...(task.perturb ? { perturb: task.perturb } : {}), ...(state ? { fromState: state.id, family: state.family, startRound: state.startRound } : {}) }
+  const rec = { at: new Date().toISOString(), task: task.id, variant, sample, rounds: 0, calls: 0, edits: [], repeats: 0, fixedAtRound: null, verifiedAfterFix: false, promptTokens: 0, compile: [], transcript: [], rejected: 0, ...(policy ? { policy: policy.id } : {}), ...(forkMessage || leader ? { forked: true } : {}), ...(task.perturb ? { perturb: task.perturb } : {}), ...(state ? { fromState: state.id, family: state.family, startRound: state.startRound } : {}) }
   // v4.7 影子分叉：lead = leader（raw 臂逐轮回复）或老式单条 forkMessage；diverged 之前每轮直接取 lead 的回复，不发主调用
   let lead = leader ? leader.slice() : (forkMessage ? [forkMessage] : null), diverged = false
   if (leader) rec.shadow = { rounds: 0, divergedAt: null }   // 只有 raw 当 leader 的影子分叉才有「分歧轮」语义；老式单条 forkMessage 只分叉第 1 轮
+  if (extend) rec.extended = extend   // v4.7.2 延长：raw 影子自己被轮数上限截断的过去（前 from 轮零主调用），从 from+1 轮起真跑；不是跟随臂，不算「未分歧」
   const ownRounds = []   // 本臂每轮的主模型回复（raw 臂 + --store-text 时持久化为 roundMessages，供影子分叉 / --fork-from 复用）
   let seenCmds = new Map()
   let firstRound = 1
@@ -250,16 +289,35 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         // 中转按请求内容（大致）黏住后端，作废重发常连续落到同一不可信后端 ⇒ 先用 max_tokens:1 的探针（只花 prefill）试后端，可信了再发真请求；
         //   每次重试在末条 user 末尾加 k 个零宽空格打散黏性，并退避几秒让路由轮转
         const msgs = k === 0 ? messages : messages.map((m, i) => i === messages.length - 1 && m.role === 'user' ? { ...m, content: m.content + '\u200b'.repeat(k) } : m)
+        let carried = null   // v4.7.2：本轮放行依据 —— 'trusted-fp'（指纹）或 'carry-verified'（直接量到历史思考进了 prompt）或 'no-history'（历史里还没有思考可送，无需验）
         if (o.requireFp) {
           const probe = await chat({ model: o.model, messages: msgs, ...(o.textTools ? {} : { tools: TOOLS }), thinking: { type: 'enabled' }, max_tokens: 1, stream: false })
           rec.probes = (rec.probes || 0) + 1
-          if (claudeShaped(probe.usage) || !TRUSTED_FP.has(probe.fp)) { rec.probeMiss = (rec.probeMiss || 0) + 1; if (k >= o.maxProbes - 1) throw new Error(`探针 ${o.maxProbes} 次都没等到可信后端`); await new Promise((s) => setTimeout(s, Math.min(30000, 3000 + 1500 * k))); continue }
+          if (claudeShaped(probe.usage)) { rec.probeMiss = (rec.probeMiss || 0) + 1; if (k >= o.maxProbes - 1) throw new Error(`探针 ${o.maxProbes} 次都没等到可信后端`); await new Promise((s) => setTimeout(s, Math.min(30000, 3000 + 1500 * k))); continue }
+          if (TRUSTED_FP.has(probe.fp)) carried = 'trusted-fp'
+          else if (historyReasoningChars(msgs) < CARRY_MIN_HISTORY) carried = 'no-history'
+          else {
+            const c = await carryCheck({ chat, o, messages: msgs, tools: o.textTools ? null : TOOLS, probe }); rec.probes++; rec.carry = (rec.carry || []).concat({ round, ...c })
+            if (c.ok) carried = 'carry-verified'
+            else {
+              rec.probeMiss = (rec.probeMiss || 0) + 1
+              const prev = rec.carry.length >= 2 ? rec.carry[rec.carry.length - 2] : null
+              // 携带检验是确定性的：同一后端两次 Δ 相同就不是路由抖动，再重试只是烧探针 ⇒ 立刻停
+              if (prev && prev.round === round && prev.delta === c.delta && prev.L === c.L) throw new Error(`携带检验稳定不过（Δ=${c.delta}/${c.L} 字，需 ≥${c.need}；两次相同 ⇒ 后端没把历史思考送进模型，不是路由抖动）`)
+              if (k >= o.maxProbes - 1) throw new Error(`探针 ${o.maxProbes} 次都没等到可信后端（指纹 ${probe.fp}，携带 Δ=${c.delta}/${c.L} 字，需 ≥${c.need}）`)
+              await new Promise((s) => setTimeout(s, Math.min(30000, 3000 + 1500 * k))); continue
+            }
+          }
         }
         r = await chat({ model: o.model, messages: msgs, ...(o.textTools ? {} : { tools: TOOLS }), thinking: { type: 'enabled' }, max_tokens: o.maxTokens - k, stream: false })
         rec.mainCalls = (rec.mainCalls || 0) + 1   // v4.6：真发出的主调用数（fork / resume 轮不计；hand 臂续跑跨进程累加）
-        const seen = !claudeShaped(r.usage) && (!o.requireFp || TRUSTED_FP.has(r.fp))
+        // 真请求的放行：指纹可信；或探针已验携带 / 无历史，且真请求与探针走的是同一条路（prompt_tokens 相差 ≤ 2%：中转按内容黏住后端，但要防换路）
+        const samePath = carried && (carried === 'trusted-fp' || Math.abs(Number(r.usage?.prompt_tokens) - Number(rec.carry?.length && carried === 'carry-verified' ? rec.carry[rec.carry.length - 1].withReasoning : r.usage?.prompt_tokens)) <= 0.02 * Number(r.usage?.prompt_tokens))
+        const seen = !claudeShaped(r.usage) && (!o.requireFp || TRUSTED_FP.has(r.fp) || !!samePath)
+        if (seen && o.requireFp) { const mode = TRUSTED_FP.has(r.fp) ? 'trusted-fp' : carried; rec.fpModes = rec.fpModes || {}; rec.fpModes[mode] = (rec.fpModes[mode] || 0) + 1 }   // 每轮放行依据计数（回执 / review 可见）
         if (seen && (r.message.reasoning_content || '').length > 0) break
         rec.rejected++
+        if (seen) { rec.emptyReasoning = (rec.emptyReasoning || 0) + 1; if (rec.emptyReasoning >= 3) throw new Error('upstream-no-reasoning：可信指纹但思维链为空已连续 3 次 ⇒ 停（通道不返回思考，重试只是烧钱）') }   // v4.7.1
         rec.rejectedWhy = (rec.rejectedWhy || []).concat(claudeShaped(r.usage) ? 'claude' : 'fp=' + r.fp)
         if (k >= o.maxProbes - 1) throw new Error('通道始终未送入思考：' + rec.rejectedWhy.slice(-10).join(','))
       }
@@ -267,6 +325,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
       if (round === firstRound && !forkMessage && !resume && !leader) rec.firstMessage = r.message   // --fork：其他臂从这条（起始轮）回复分叉
       ownRounds.push(r.message)
       rec.promptTokens += Number(r.usage && r.usage.prompt_tokens) || 0
+      rec.completionTokens = (rec.completionTokens || 0) + (Number(r.usage && r.usage.completion_tokens) || 0)   // v4.7.2：真实输出 token（含思考），成本校准用
       const reasoning = String(r.message.reasoning_content || '')
       const text = responseText(r.message)
       const calls = callsOfMessage(r.message)
@@ -405,8 +464,9 @@ export function summarizeTraj(rows) {
   L.push('', '逐条：', '', '| 任务 | 变体 | # | 修好@轮 | 轮 | 调用 | edit | 重复 | 验收 | 声明 | 相称 | tokens |', '|---|---|---|---|---|---|---|---|---|---|---|---|')
   for (const r of ok) L.push(`| ${r.task} | ${r.variant} | ${r.sample} | ${r.fixed ? (r.fixedAtRound ?? '?') : '✗'} | ${r.rounds} | ${r.calls} | ${r.edits.length} | ${r.repeats} | ${r.verifiedAfterFix ? '●' : '·'} | ${r.claim} | ${r.claimJustified ? '●' : '✗'} | ${r.promptTokens} |`)
   for (const r of rows.filter((r) => r.error)) L.push(`| ${r.task} | ${r.variant} | ${r.sample} | ERR ${r.error.slice(0, 60)} |`)
-  const sh = ok.filter((r) => r.shadow)
+  const sh = ok.filter((r) => r.shadow && !r.extended), ex = ok.filter((r) => r.extended)
   if (sh.length) L.push('', `影子分叉：跟随臂 ${sh.length} 条，省下主调用 ${sh.reduce((a, r) => a + r.shadow.rounds, 0)} 次；分歧轮 ${sh.map((r) => r.shadow.divergedAt ?? '无').join(',')}；**未分歧 ${sh.filter((r) => r.shadow.divergedAt == null).length} 条（压缩器整条没触发 ⇒ 与 raw 结局相同，按平手计、不是证据）**`)
+  if (ex.length) L.push(`延长：raw ${ex.length} 条从第 ${ex.map((r) => r.extended.from + 1).join(',')} 轮续跑（前面的轮复用自 ${[...new Set(ex.map((r) => r.extended.file))].join(',')}，零主调用）`)
   const waiting = rows.filter((r) => r.status === 'awaiting-draft')
   if (waiting.length) L.push('', `等待手写稿 ${waiting.length} 条：` + waiting.map((r) => `${r.task}/${r.variant} #${r.sample} 第 ${r.awaiting?.round} 轮（${r.awaiting?.pending}）`).join('；'))
   return L.join('\n')
@@ -420,7 +480,7 @@ export async function main(argv) {
   const have = new Set(done.filter((r) => !r.error && r.status !== 'awaiting-draft').map((r) => `${r.fromState || r.task}|${r.variant}|${r.sample}`))
   // v4.6：hand 臂暂停过的轨迹有 state 文件 ⇒ 同一条命令再跑时从状态续，而不是重新开始
   const resumeFor = (task, variant, sample) => { if (variant !== 'hand') return null; const f = path.join(o.out, 'state', `${task.id.replace(/[^\w.-]/g, '_')}-s${sample}.json`); return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null }
-  let plan = null
+  let plan = null, stopped = null; const spent = { usd: 0 }   // 回执在 if 块之外写 ⇒ 声明在函数作用域（v4.7.2 修：第一张真回执 ReferenceError: spent is not defined）
   if (o.plan) { plan = JSON.parse(fs.readFileSync(o.plan, 'utf8')); checkTrajPlan(plan, o); console.log(`按预注册计划 ${plan.id}（digest ${plan.digest}，预估 ≈$${plan.cost?.expectedUsd}，上界 ≈$${plan.cost?.capUsd}）运行；目的：${plan.purpose}`) }
   if (!o.summarizeOnly) {
     const apiKey = process.env.DEEPSEEK_API_KEY || (o.dryRun ? 'dry' : null); if (!apiKey) throw new Error('需要 DEEPSEEK_API_KEY')
@@ -439,8 +499,13 @@ export async function main(argv) {
       const base = TRAJ_TASKS.find((t) => t.id === spec.id); if (!base) throw new Error('unknown-scenario:' + spec.id); const task = perturbTask(base, spec.kind)
       for (let k = 0; k < o.samples; k++) {
         const old = reusable.get(task.id)?.[k]
-        if (old && o.fork && o.variants.includes('raw') && !have.has(`${task.id}|raw|${k}`)) { const copy = { ...old, sample: k, reusedFrom: { file: o.forkFrom, at: old.at || null, sample: old.sample, task: old.task, mainCalls: old.mainCalls ?? old.rounds ?? null }, mainCalls: 0, roundMessages: undefined }; reused.push({ task, sample: k, row: copy, lead: old.roundMessages }); have.add(`${task.id}|raw|${k}`) }
-        for (const v of o.variants) if (!have.has(`${task.id}|${v}|${k}`)) jobs.push({ task, variant: v, sample: k, resume: resumeFor(task, v, k) })
+        let extend = null
+        if (old && o.fork && o.variants.includes('raw') && !have.has(`${task.id}|raw|${k}`)) {
+          // 旧 raw 被轮数上限截断（最后一轮还在发调用）而本计划轮数更多 ⇒ 延长：raw 作业照建，前 old.rounds 轮影子自己的过去（零主调用），之后真跑；否则整条复用、不跑 raw
+          if (old.rounds < o.maxRounds && (old.transcript?.[old.transcript.length - 1]?.calls?.length > 0)) extend = { lead: old.roundMessages, from: old.rounds, file: o.forkFrom, at: old.at || null }
+          else { const copy = { ...old, sample: k, reusedFrom: { file: o.forkFrom, at: old.at || null, sample: old.sample, task: old.task, mainCalls: old.mainCalls ?? old.rounds ?? null }, mainCalls: 0, roundMessages: undefined }; reused.push({ task, sample: k, row: copy, lead: old.roundMessages }); have.add(`${task.id}|raw|${k}`) }
+        }
+        for (const v of o.variants) if (!have.has(`${task.id}|${v}|${k}`)) jobs.push({ task, variant: v, sample: k, resume: resumeFor(task, v, k), ...(v === 'raw' && extend ? { extend } : {}) })
       }
     }
     if (o.forkFrom && !o.dryRun) for (const x of reused) fs.appendFileSync(resPath, JSON.stringify(x.row) + '\n')
@@ -448,7 +513,7 @@ export async function main(argv) {
     console.log(`轨迹 ${jobs.length} 条（每条 ≤ ${o.maxRounds} 轮主调用${o.variants.includes('auto') ? ' + 同数副调用' : ''}），并发 ${o.concurrency}`)
     // --fork：同题同样本分组，第一臂跑完第 1 轮后其余臂从同一条第 1 轮回复分叉（配对在分叉点、每组省 (臂数−1) 次主调用）
     const groups = o.fork ? [...jobs.reduce((m, j) => { const k = `${j.state ? j.state.id : j.task.id}|${j.sample}`; (m.get(k) || m.set(k, []).get(k)).push(j); return m }, new Map()).values()].map((g) => g.sort((a, b) => (a.variant === 'raw' ? -1 : 0) - (b.variant === 'raw' ? -1 : 0))) : jobs.map((j) => [j])   // raw 先跑：它是影子分叉的 leader
-    const stop = plan?.stop || null; let stopped = null; const spent = { usd: 0 }
+    const stop = plan?.stop || null
     if (o.fork) console.log(`--fork：${groups.length} 组，每组 ${o.variants.length} 臂共用第 1 轮`)
     if (o.dryRun) {
       // 零 API 核对：对子状态还做一次确定性重放，确认仓库状态可达且尚未修好
@@ -457,6 +522,12 @@ export async function main(argv) {
       console.log(`dry-run：任务 ${jobs.length}（${[...new Set(jobs.map((j) => j.state ? j.state.id : j.task.id))].length} 个起点 × ${o.variants.length} 臂 × ${o.samples} 样本）、组 ${groups.length}；子状态重放成功 ${replayed}${bad.length ? '，失败 ' + bad.length + '：' + bad.slice(0, 5).join(' ') : ''}${stop ? `；停止规则 α=${stop.alpha} 上界 $${stop.capUsd}` : ''}；未发任何请求`)
       fs.rmSync(d, { recursive: true, force: true }); return { dryRun: true, jobs: jobs.length, groups: groups.length, replayed, bad, reusedRaw: reused.length }
     }
+    // v4.7.1 通道预检：没过就一条轨迹都不开（之前主循环会把「没有思维链」当路由黏住重试 ≤15 次，每次都是完整付费请求）
+    const pf = await preflightUpstream({ chat, o })
+    fs.appendFileSync(path.join(o.out, 'preflight.jsonl'), JSON.stringify(pf) + '\n')
+    console.log(`通道预检 ${pf.ok ? '通过' : '失败'}：fp=${pf.fp}（${pf.mode || '无放行依据'}）思考 ${pf.reasoningChars} 字 / 正文 ${pf.contentChars} 字 / 型号回显 ${pf.modelEcho} / 携带 ${pf.carry ? (pf.carry.error ? '错误 ' + pf.carry.error : `Δ${pf.carry.delta} tokens / ${pf.carry.L} 字 = ${pf.carry.ratio}`) : '未量'} / ${pf.ms} ms${pf.error ? ' / 错误 ' + pf.error : ''}${pf.ok ? '' : ' / 未过：' + pf.failed.join(',')}`)
+    if (!pf.ok) { fs.rmSync(d, { recursive: true, force: true }); throw new Error('preflight-failed:' + pf.failed.join(',') + '（通道现在不返回思维链 / 指纹不可信 / 型号不符 ⇒ 不开跑、不花钱）') }
+    if (o.preflightOnly) { fs.rmSync(d, { recursive: true, force: true }); return { preflight: pf } }
     let i = 0
     await Promise.all(Array.from({ length: Math.min(o.concurrency, groups.length) }, async () => {
       while (i < groups.length) {
@@ -465,14 +536,14 @@ export async function main(argv) {
         const pre = reused.find((x) => grp.some((j) => !j.state && j.task.id === x.task.id && j.sample === x.sample)); if (pre) lead = pre.lead
         for (const j of grp) {
         if (stopped) break
-        const rec = await runOne({ o, task: j.task, variant: j.variant, sample: j.sample, chat, I, cred, forkMessage: j.resume || lead ? null : forkMessage, state: j.state || null, resume: j.resume || null, leader: j.resume ? null : lead })
+        const rec = await runOne({ o, task: j.task, variant: j.variant, sample: j.sample, chat, I, cred, forkMessage: j.resume || lead || j.extend ? null : forkMessage, state: j.state || null, resume: j.resume || null, leader: j.resume ? null : (j.extend ? j.extend.lead : lead), extend: j.extend ? { from: j.extend.from, file: j.extend.file, at: j.extend.at } : null })
         spent.usd += ((rec.mainCalls ?? rec.rounds ?? 0) - (j.resume?.rec?.mainCalls || 0)) * (plan?.cost?.pricing?.mainUsd ?? 0.0125) + (rec.compile || []).filter((c) => !c.belowFloor && c.path !== 'hand').length * (plan?.cost?.pricing?.compressUsd ?? 0.0075)   // hand 稿零成本；续跑只算本次新发的主调用
         if (o.fork && !forkMessage && rec.firstMessage) forkMessage = rec.firstMessage
         if (o.fork && !lead && rec.variant === 'raw' && rec._lead && !rec.error) lead = rec._lead   // 同组其余臂影子跟随 raw 直到分歧
         delete rec.firstMessage; delete rec._lead
         fs.appendFileSync(resPath, JSON.stringify(rec) + '\n')
         if (rec.status === 'awaiting-draft') { console.log(`  ${rec.task}/${rec.variant} #${rec.sample}: 等待手写稿（第 ${rec.awaiting.round} 轮）→ 读 ${rec.awaiting.pending}，写 ${rec.awaiting.draftFile}，再跑同一条命令` + (rec.awaiting.violations ? `；上一份稿被拒：${rec.awaiting.violations.map((v) => v.kind).join(', ')}` : '')); continue }
-        console.log(`  ${rec.task}/${rec.variant} #${rec.sample}: ${rec.error ? 'ERR ' + rec.error : `${rec.fixed ? '修好@' + rec.fixedAtRound : '未修好'} · ${rec.rounds} 轮${rec.shadow ? `（影子 ${rec.shadow.rounds}，${rec.shadow.divergedAt ? '第 ' + rec.shadow.divergedAt + ' 轮分歧' : '未分歧=与 raw 全同'}）` : ''} · ${rec.calls} 调用 · edit ${rec.edits.length} · 重复 ${rec.repeats} · 验收 ${rec.verifiedAfterFix ? '●' : '·'} · 声明 ${rec.claim}${rec.claimJustified ? '' : '（不相称）'} · tokens ${rec.promptTokens}${rec.compile.length ? ' · 压稿 ' + rec.compile.filter((c) => c.ok).length + '/' + rec.compile.length : ''} · proxy ${rec.proxyScore ?? '—'}${rec.forked ? ' · 分叉' : ''}`}`)
+        console.log(`  ${rec.task}/${rec.variant} #${rec.sample}: ${rec.error ? 'ERR ' + rec.error : `${rec.fixed ? '修好@' + rec.fixedAtRound : '未修好'} · ${rec.rounds} 轮${rec.extended ? `（延长：前 ${rec.extended.from} 轮复用）` : rec.shadow ? `（影子 ${rec.shadow.rounds}，${rec.shadow.divergedAt ? '第 ' + rec.shadow.divergedAt + ' 轮分歧' : '未分歧=与 raw 全同'}）` : ''} · ${rec.calls} 调用 · edit ${rec.edits.length} · 重复 ${rec.repeats} · 验收 ${rec.verifiedAfterFix ? '●' : '·'} · 声明 ${rec.claim}${rec.claimJustified ? '' : '（不相称）'} · tokens ${rec.promptTokens}${rec.compile.length ? ' · 压稿 ' + rec.compile.filter((c) => c.ok).length + '/' + rec.compile.length : ''} · proxy ${rec.proxyScore ?? '—'}${rec.forked ? ' · 分叉' : ''}`}`)
         }
         // v4.3 有界续跑：一次批准内自动跑到判定或预算上界（e 值任意停时有效，提前停不损失保证）
         if (stop && !stopped) {
@@ -492,7 +563,7 @@ export async function main(argv) {
   let md = summarizeTraj([...last.values()])
   const cont = [...last.values()].filter((r) => r.continuation); if (cont.length) md += `\n\n续跑探针（${cont.length} 条）：${cont.map((r) => `${r.fromState}/${r.variant}: ${r.continuation.verdict}（首轮 ${r.continuation.firstRoundCalls} 次调用、重做前缀 ${r.continuation.prefixRepeats}）`).join('；')}\n结论：${cont.every((r) => r.continuation.verdict === 'continued') ? '模型顺着前缀继续 —— 子状态可用' : cont.some((r) => r.continuation.verdict === 'restarted') ? '**有轨迹从头重来** —— 子状态口径存疑，先别扩到 14 个' : '不清楚（首轮无调用）'}`
   fs.writeFileSync(path.join(o.out, 'summary.md'), md + '\n')
-  if (plan) { const rows = [...last.values()]; fs.writeFileSync(path.join(o.out, 'receipt.json'), JSON.stringify({ schema: 'cfb.traj-receipt/1', plan: plan.id, digest: plan.digest, at: new Date().toISOString(), trajectories: rows.length, errors: rows.filter((r) => r.error).length, awaiting: rows.filter((r) => r.status === 'awaiting-draft').length, mainCalls: rows.reduce((a, r) => a + (r.mainCalls ?? r.rounds ?? 0), 0), compressCalls: rows.reduce((a, r) => a + (r.compile || []).filter((c) => !c.belowFloor && c.path !== 'hand').length, 0), handDrafts: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.path === 'hand').length, 0), shadowRounds: rows.reduce((a, r) => a + (r.shadow?.rounds || 0), 0), noContrastGroups: rows.filter((r) => r.shadow && r.shadow.divergedAt == null && r.status !== 'awaiting-draft').length, reusedRaw: rows.filter((r) => r.reusedFrom).length, promptTokens: rows.reduce((a, r) => a + (r.promptTokens || 0), 0), gateFails: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.gateFail).length, 0), estimatedUsd: +spent.usd.toFixed(3), stoppedEarly: stopped || null }, null, 2) + '\n') }
+  if (plan) { const rows = [...last.values()]; fs.writeFileSync(path.join(o.out, 'receipt.json'), JSON.stringify({ schema: 'cfb.traj-receipt/1', plan: plan.id, digest: plan.digest, at: new Date().toISOString(), trajectories: rows.length, errors: rows.filter((r) => r.error).length, awaiting: rows.filter((r) => r.status === 'awaiting-draft').length, mainCalls: rows.reduce((a, r) => a + (r.mainCalls ?? (r.shadow || r.reusedFrom ? 0 : r.rounds ?? 0)), 0), compressCalls: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.path === 'birth-offline').length, 0), handDrafts: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.path === 'hand').length, 0), shadowRounds: rows.reduce((a, r) => a + (r.shadow?.rounds || 0), 0), noContrastGroups: rows.filter((r) => r.shadow && !r.extended && r.shadow.divergedAt == null && r.status !== 'awaiting-draft').length, extended: rows.filter((r) => r.extended).length, reusedRaw: rows.filter((r) => r.reusedFrom).length, fpModes: rows.reduce((a, r) => { for (const [k, v] of Object.entries(r.fpModes || {})) a[k] = (a[k] || 0) + v; return a }, {}), preflights: fs.existsSync(path.join(o.out, 'preflight.jsonl')) ? fs.readFileSync(path.join(o.out, 'preflight.jsonl'), 'utf8').trim().split('\n').filter(Boolean).length : 0, promptTokens: rows.reduce((a, r) => a + (r.promptTokens || 0), 0), gateFails: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.gateFail).length, 0), completionTokens: rows.reduce((a, r) => a + (r.completionTokens || 0), 0), estimatedUsd: +rows.reduce((a, r) => a + (r.mainCalls || 0) * (plan.cost?.pricing?.mainUsd ?? 0.0125) + (r.compile || []).filter((c) => c.path === 'birth-offline').length * (plan.cost?.pricing?.compressUsd ?? 0.0075), 0).toFixed(3), stoppedEarly: stopped || null }, null, 2) + '\n') }
   console.log('\n' + md)
 }
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) main(process.argv.slice(2)).catch((e) => { console.error(e && e.stack || e); process.exit(1) })

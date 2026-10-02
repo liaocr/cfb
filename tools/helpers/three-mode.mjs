@@ -30,12 +30,13 @@ export function ceilingFrom({ rows, map = { hand: 'hand', raw: 'raw' }, alpha = 
   const compiles = handRows.flatMap((r) => (r.compile || []).map((c, i) => ({ task: r.task, sample: r.sample ?? 0, round: i + 1, ...c })))
   const acc = compiles.filter((c) => c.path === 'hand')
   const attempts = handRows.reduce((a, r) => a + (r.resumed || 0), 0)
-  const noContrast = handRows.filter((r) => r.shadow && r.shadow.divergedAt == null).length, shadowRounds = handRows.reduce((a, r) => a + (r.shadow?.rounds || 0), 0)
+  const noContrast = handRows.filter((r) => r.shadow && !r.extended && r.shadow.divergedAt == null).length, shadowRounds = handRows.reduce((a, r) => a + (r.shadow?.rounds || 0), 0)
   const gate = { attempts, accepted: acc.length, rejected: Math.max(0, attempts - acc.length), belowFloor: compiles.filter((c) => c.belowFloor).length, noContrast, shadowRounds,
     meanRawChars: mean(acc.map((c) => c.rawChars)), meanDraftChars: mean(acc.map((c) => c.draftChars)), meanStoredChars: mean(acc.map((c) => c.outChars)),
     compression: acc.length ? +(acc.reduce((a, c) => a + c.outChars, 0) / Math.max(1, acc.reduce((a, c) => a + c.rawChars, 0))).toFixed(3) : null }
   const perGroup = cmp.pairs.map((p) => ({ task: p.task, sample: p.sample, outcome: p.outcome, hand: p.champion, raw: p.previous }))
-  const validity = typed.filter((r) => Number.isFinite(r.proxyScore ?? r.structural)).map((r) => { const o = episodeOutcome(r); return { schema: 'cfb.validity-pair/1', at: now, source: 'ceiling', task: r.task, arm: r.arm, sample: r.sample ?? 0, proxy: r.proxyScore ?? r.structural, outcome: o.solved ? 1 : 0, roundsToFix: o.roundsToFix } })
+  // v4.7.2：未分歧的影子跟随臂与 leader 逐字节同一条轨迹、复用的 raw 已在原计划入账 ⇒ 都不是新的效度观测（否则同一条轨迹记两次）
+  const validity = typed.filter((r) => Number.isFinite(r.proxyScore ?? r.structural) && !(r.shadow && r.shadow.divergedAt == null) && !r.reusedFrom && !r.extended).map((r) => { const o = episodeOutcome(r); return { schema: 'cfb.validity-pair/1', at: now, source: 'ceiling', task: r.task, arm: r.arm, sample: r.sample ?? 0, proxy: r.proxyScore ?? r.structural, outcome: o.solved ? 1 : 0, roundsToFix: o.roundsToFix } })
   const families = new Set(cmp.pairs.map((p) => String(p.task).split(':')[0])).size
   const verdict = cmp.pairs.length < 4 || families < 2 ? 'insufficient' : cmp.e >= 1 / alpha ? 'hand-better' : cmp.eReject >= 1 / alpha ? 'hand-worse' : 'undetermined'
   const headroom = cmp.champion.solved != null && cmp.previous.solved != null ? +(cmp.champion.solved - cmp.previous.solved).toFixed(3) : null

@@ -4,6 +4,14 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.12.1（2026-10-02，闭环 v4.7.1–4.7.2：第一笔真钱 t6（≈6 次主调用）—— 通道预检 / 携带检验（指纹为空时直接量历史思考有没有进 prompt）/ 延长而不是重跑 / 回执修正；t6 未分歧 = 平手；t7 已预注册）
+
+- **t6 实跑**：sse-truncated raw 修好@5（思考 41/29/1415/67/4198 字，只有最后一轮过地板）；hand 整条影子 0 次主调用、未分歧 ⇒ 平手不是证据；6 次主调用、9591 prompt tokens、回执估 $0.075；效度账本 +1（hand 影子行不计）。
+- **`tools/traj-run.mjs`**：`preflightUpstream`（开跑前 ≤64 token 小请求 + 携带检验；不过不开跑；`--preflight-only`；`preflight.jsonl`）；`carryCheck`（Δprompt_tokens ≥ max(4, 0.12×历史思考字数)，历史 < 40 字按 no-history；每轮量、真请求与探针 prompt_tokens 差 ≤ 2%；两次 Δ 相同立刻停）；「可信指纹但空思考」×3 即停；延长（`--fork-from` 旧 raw 被上限截断 ⇒ raw 影子自己的前 from 轮）；行加 `at / completionTokens / fpModes / carry / extended`；回执修 `spent` 作用域、主 / 压缩调用计数、加 `fpModes / preflights / extended / completionTokens`。
+- **cfb-cycle**：`plan-traj --reuse-raw` 识别延长并按 R−from / R−k* 计费（k* = 旧轨迹第一次过地板轮，之前影子是构造保证 ⇒ 上界收紧）；plan.md 写延长说明；`ceiling / confirm` 效度账本排除未分歧影子行、复用行、延长行；`costCalibration` 分歧轮只看跟随臂。
+- **计划**：t6 → ceiling（insufficient：1 对平手）；**t7 = t6 延到 8 轮（raw 付 3 + hand 付 3 ≈ $0.075，上界 $0.21）已预注册，未发请求**。
+- 自测：v4 30 → **33**（A30 预检、A31 携带检验、A32 延长）。教训写在 `CLOSED-LOOP-V4.md` §17.5。
+
 ## v14.12.0（2026-10-02，闭环 v4.7：全架构审计 —— 影子分叉（分歧前不付主调用，单元 $0.15 → $0.103）/ 复用 raw 轨迹（≈$0.025/对）/ 按信息量选家族 / 因子设计归因补丁 / 回执→成本校准；仍零花费）
 
 **起因**：用户指出此前的版本不科学、信息产出了用不上、轮次重复付费，要求通盘重审、用更多科学 / 高效方法提高训练器的质量、效率与省钱，「不要说没有」。
