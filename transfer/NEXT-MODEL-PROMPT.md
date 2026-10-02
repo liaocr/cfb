@@ -6,7 +6,10 @@
 
 ## 零、先读这段（最新的、必须知道的）
 
-0. **v14.2（2026-10-02）闭环 v2 已落地，先读 `docs/design/CLOSED-LOOP-V2.md`。** 旧的 `cfb-cycle run` / `scoreCandidates` / `activeSelect` / `feedback` 流程已被替换：
+00. **v14.3（2026-10-02）闭环 v3 已落地，先读 `docs/design/CLOSED-LOOP-V3.md`（再读 V2 作基座）。** 用户的要求是「省只省真实 API 次数，架构与效果一点不省」：
+   任务池 + 留出闸门（采纳只认留出题）、首轮 A/A 校准、提示词策略生成层（`propose-policy` → `ingest-gen` 三闸 → `compile --policy` → 自动成为假设）、偏好对飞轮。
+   命令总表见 V3 §8；自测 `test/closed-loop-v3.selftest.mjs`。**v9 与 gen 计划一轮都没实跑；每笔钱先给用户看 plan 打印的 scope / 请求 / 预占再等批准。** 不要把 `train/pairs.jsonl` 说成训练。
+0. **v14.2（2026-10-02）闭环 v2 已落地，`docs/design/CLOSED-LOOP-V2.md` 是 v3 的基座。** 旧的 `cfb-cycle run` / `scoreCandidates` / `activeSelect` / `feedback` 流程已被替换：
    现行环是 `node tools/cfb-cycle.mjs plan`（零 API，成稿 → 离线裁决 → 冻结 v9 计划 → 停）→ 人批准 → `node tools/effect-ready.mjs run --live --v9 --round N`（唯一花钱）→ `cfb-cycle ingest --round N` → adopt 改 champion → `propose` 出生产 diff。
    用户预算只有**几美元**：一轮实付 ≈ USD 0.13 / 预占 0.50；**任何花钱前先给用户看 `plan` 打印的预占 / 实付 / 每 bit 价并等批准**。评委 LLM 不再是选择信号；没有长度杠杆；`bind=off` 是惰性杠杆。
    自测 `test/closed-loop.selftest.mjs`；加杠杆照 CLOSED-LOOP-V2.md §7。**v9 一轮都没实跑，不要把模拟当结果。**

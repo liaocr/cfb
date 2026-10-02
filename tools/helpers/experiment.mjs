@@ -174,3 +174,53 @@ export function usdPerBit({ alpha, beta, pairs, expectedUsd }) {
   for (let i = 0; i < pairs; i++) { const g = expectedBitsNextPair(a, b); bits += g; const pw = a / (a + b); a += pw; b += 1 - pw }
   return { pairs, expectedBits: +bits.toFixed(4), usdPerBit: bits > 0 && Number.isFinite(expectedUsd) ? +(expectedUsd / bits).toFixed(4) : null }
 }
+
+// ── v14.3 闭环 v3：聚类计数 + 留出采纳（修 v14.2 的硬伤：同 5 题重复观测被当成独立观测、无留出样本）────────────
+/** 逐任务战绩。 */
+export function taskTally(pairs) {
+  const t = {}
+  for (const p of pairs) { const x = (t[p.task] ||= { wins: 0, losses: 0, ties: 0, n: 0 }); x.n++; x[p.outcome === 'win' ? 'wins' : p.outcome === 'loss' ? 'losses' : 'ties']++ }
+  return t
+}
+/** 按「不同任务」计数：一题多次重复只算一票（赢多于输=won，输多于赢=lost，否则 even）。 */
+export function distinctRecord(pairs) {
+  const t = taskTally(pairs); let won = 0, lost = 0, even = 0
+  for (const x of Object.values(t)) { if (x.wins > x.losses) won++; else if (x.losses > x.wins) lost++; else even++ }
+  return { tasks: Object.keys(t).length, won, lost, even }
+}
+/** 设计效应下的有效样本量：n / (1 + (m̄−1)·ICC)，m̄ = 每题平均重复数；ICC 没测出来前用保守先验 0.3。 */
+export function effectiveN(pairs, icc = DEFAULT_DESIGN_V3.icc) {
+  const t = taskTally(pairs), tasks = Object.keys(t).length
+  if (!tasks) return 0
+  const m = pairs.length / tasks
+  return +(pairs.length / (1 + (m - 1) * Math.max(0, Math.min(1, icc)))).toFixed(2)
+}
+export const DEFAULT_DESIGN_V3 = Object.freeze({ ...DEFAULT_DESIGN, icc: 0.3, minHoldoutTasks: 2, minHoldoutPairs: 4, aaSuspectBand: 0.9 })
+/**
+ * v3 判定：筛选（reject / 封顶）看全部配对；**采纳只看留出题**，并且要按不同任务计数：
+ *   adopt ⇔ 留出后验 P(p>0.5) ≥ adoptAt 且 留出配对 ≥ minHoldoutPairs 且 留出赢的不同任务数 ≥ minHoldoutTasks 且 留出没有输掉的任务。
+ *   A/A（两臂同文）走校准：报告胜率 / 平局率 / 后验；|P−0.5| 落在 aaSuspectBand 之外 ⇒ instrument-suspect。
+ * split: { taskId → 'dev' | 'holdout' }。开发题只用来筛选与喂给提议器，永远不作为采纳证据。
+ */
+export function decideV3({ pairs, split = {}, design = DEFAULT_DESIGN_V3, aa = false }) {
+  const all = sequentialPaired(pairs.map((p) => p.outcome), design)
+  const hold = pairs.filter((p) => split[p.task] === 'holdout'), dev = pairs.filter((p) => split[p.task] !== 'holdout')
+  const holdPost = sequentialPaired(hold.map((p) => p.outcome), design), devPost = sequentialPaired(dev.map((p) => p.outcome), design)
+  const rec = distinctRecord(hold), nEff = effectiveN(pairs, design.icc)
+  const base = { all, dev: devPost, holdout: holdPost, holdoutRecord: rec, nEff, replicatesPerTask: pairs.length && +(pairs.length / Object.keys(taskTally(pairs)).length).toFixed(2) }
+  if (aa) {
+    const tieRate = pairs.length ? +(pairs.filter((p) => p.outcome === 'tie').length / pairs.length).toFixed(3) : null
+    const suspect = pairs.length >= 4 && Math.abs(all.pWin - 0.5) > design.aaSuspectBand / 2
+    return { ...base, decision: 'calibrated', tieRate, winRate: pairs.length ? +(pairs.filter((p) => p.outcome === 'win').length / pairs.length).toFixed(3) : null, instrument: suspect ? 'instrument-suspect' : 'ok', why: suspect ? '两臂同文却出现极端胜率：通道漂移 / 顺序效应 / 判据偏置，先修仪器再买假设' : 'A/A 在噪声带内' }
+  }
+  if (all.pWin <= design.rejectAt) return { ...base, decision: 'reject', why: `全部配对后验 P(p>0.5)=${all.pWin} ≤ ${design.rejectAt}` }
+  const holdoutOk = holdPost.pWin >= design.adoptAt && hold.length >= design.minHoldoutPairs && rec.won >= design.minHoldoutTasks && rec.lost === 0
+  if (holdoutOk) return { ...base, decision: 'adopt', why: `留出题 P(p>0.5)=${holdPost.pWin}，${rec.won} 题净胜、0 题净负（${hold.length} 对）` }
+  if (all.n >= design.maxPairs) return { ...base, decision: 'stop-undecided', why: `累计 ${all.n} 对未达采纳条件（留出 P=${holdPost.pWin}，净胜题 ${rec.won}/${design.minHoldoutTasks}，净负题 ${rec.lost}）` }
+  const needs = []
+  if (holdPost.pWin < design.adoptAt) needs.push(`留出后验 ${holdPost.pWin} < ${design.adoptAt}`)
+  if (hold.length < design.minHoldoutPairs) needs.push(`留出配对 ${hold.length} < ${design.minHoldoutPairs}`)
+  if (rec.won < design.minHoldoutTasks) needs.push(`留出净胜题 ${rec.won} < ${design.minHoldoutTasks}`)
+  if (rec.lost > 0) needs.push(`留出有 ${rec.lost} 题净负`)
+  return { ...base, decision: 'continue', why: '还缺：' + needs.join('；') }
+}

@@ -2,7 +2,17 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
-## −1. 当前状态（2026-10-02，第二十一会话：闭环 v2 落地，零花费）
+## −2. 当前状态（2026-10-02，第二十二会话：闭环 v3 落地，零花费）
+
+- 用户转来对 v14.2 的七条批评并澄清：**省钱只针对真实 API 调用次数，架构与效果不能省**。回应：接受 1–5、7，纠正 6（0.648 是预占上限非实付）。已落地 v14.3（`docs/design/CLOSED-LOOP-V3.md`、CHANGELOG v14.3.0）。
+- **v3 四件事**：① 任务池 `tasks.mjs`（冻结 5 题 ∪ `.cfb-offline/tasks/*.task.json`；种子 `cfb-holdout-2026-10-02` 切 dev/holdout；留出 = `eacces-config, wrong-model`；每轮轮换 ≤5 题）；② `decideV3`（采纳需 ≥2 留出题 / ≥4 留出对 / 留出 P≥0.95；ICC 折算 nEff；A/A 只校准）；③ 生成层 `generation.mjs`（提示词补丁策略空间、LLM 提议器只看 dev 题证据、三闸 预算/泄漏/可应用、`compile --policy` 重压 side、策略自动成为假设）；④ 飞轮 `.cfb-offline/train/pairs.jsonl`。
+- **命令**：`plan`（首轮默认 A/A）→ `effect-ready run --live --v9 --round N` → `ingest`；`propose-policy` → `effect-ready run --live --gen --round N` → `ingest-gen` → `compile --policy ID` → run/ingest-gen → `plan` 自动纳入；`mint --step a|b` + `compile --mint` 铸题；`policies` / `propose`。
+- **钱**：gen 计划 ≤8 请求 / ≤USD 0.3（scope `cfb.generation.2026-10-02.gN`）；评测一轮不变（13 / ≤1）。一个策略从提议到采纳 ≈ 51 请求、预占 1.75、实付 ≈ 0.45。**本会话 API 费用 0；v9 与 gen 都未实跑。**
+- **坑**：`promptHead` = 提示词在【当前任务与观察】之前的部分（指令 + 规则 + 样例），文首的「把【上一轮思维链】改写…」只是提及、不是 CoT；side 的闸门要打在生产编译后的成稿上（冻结 side 本身 3/5 过不了 `productionGate`，那是正常的）；`CFB_CYCLE_DIR` 改道时池要用 `loadPool()`（读改道目录的 tasks/）。
+- 验证：closed-loop-v3 16/0；closed-loop 25/0；全量 1025/21（21 = 基线同一组环境失败）；manifest 377/0；N1–N7=0。本地提交未推送。
+- 下一步（需用户批准花钱）：Node ≥22 环境 → `plan --pricing`（A/A）→ 批准 → run → ingest → `propose-policy --pricing` → 批准 → run → ingest-gen → `compile --policy` → … 不批准就什么都不会花。
+
+## −1. 上一状态（2026-10-02，第二十一会话：闭环 v2 落地，零花费）
 
 - 用户问「这套架构一直训练能不能把压缩稿推到极限」→ 答不能，三处断点有代码证据（候选贴补 / 评委 Likert 奖励 / 环不闭合 + 用户补充的截断顺序），用户核实后要求在**几美元**预算内补全、允许放弃东西。
 - 已落地 v14.2（见 `docs/design/CLOSED-LOOP-V2.md`、CHANGELOG v14.2.0）：`candidates.mjs`（生产等价候选、闸门、退化标出）、`truth-dims.mjs`（6 真值维，只做安全过滤 / 方向校验）、`experiment.mjs`（配对结构分、Beta 序贯、信息账）、v9 计划 `cfb.bounded-ab/9`（13 请求 / ≤USD 1 / scope `cfb.candidate-replay.2026-10-02.rN`）、`effect-ready --v9 --round N`、`cfb-cycle plan|ingest|propose|status|doctor|simulate`。

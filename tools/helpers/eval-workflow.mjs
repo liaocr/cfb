@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
+import { buildGenerationPlan, genOutputs } from './generation.mjs'
 import { buildMinimalPlan, buildBoundedPlanV2, buildVisiblePlanV3, buildVisiblePlanV4, buildExpandedPlanV5, buildExpandedPlanV6, buildExpandedPlanV7, buildReasoningReplayPlanV8, buildCandidateReplayPlanV9, sourceDifferences, summarizeMinimal, resultOf } from './eval-plan.mjs'
 import { auditApiPlan, createBudgetedChat, inspectApiBudget, inputTokenBound, APPROVED_API_LIMITS } from './api-budget.mjs'
 import { assertSafePath, readJson, writeJson, hasSecretMaterial } from './eval-files.mjs'
@@ -28,6 +29,8 @@ export const DEFAULT_HOME_V8 = path.join(ROOT, '.cfb-runtime/bounded-ab-v8')
 export const PUBLIC_RECEIPT_V8 = path.join(ROOT, 'transfer/api-budget-approval-v8.watermark.json')
 export const PUBLIC_RECEIPT_V7 = path.join(ROOT, 'transfer/api-budget-approval-v7.watermark.json')
 // v9（v14.2 闭环 v2）：每轮一个 home 与一份公开收据（r1…r20），由 cfb-cycle 按轮次推导；旧 scope 全部封存不动。
+export const DEFAULT_HOME_GEN = (round) => path.join(ROOT, '.cfb-runtime', 'generation', 'g' + Number(round))
+export const PUBLIC_RECEIPT_GEN = (round) => path.join(ROOT, 'transfer', 'api-budget-approval-gen-g' + Number(round) + '.watermark.json')
 export const DEFAULT_HOME_V9 = (round) => path.join(ROOT, '.cfb-runtime/bounded-ab-v9/r' + Number(round))
 export const PUBLIC_RECEIPT_V9 = (round) => path.join(ROOT, 'transfer/api-budget-approval-v9-r' + Number(round) + '.watermark.json')
 export const PROFILE_EXAMPLE = path.join(ROOT, 'deploy/eval-profile.example.json')
@@ -54,17 +57,27 @@ export function normalizeProfile(input) {
 }
 const paths = (home) => ({ home: assertSafePath(home, { directory: true }), plan: path.join(path.resolve(home), 'plan.json'), preflight: path.join(path.resolve(home), 'preflight.json'), ledger: path.join(path.resolve(home), 'ledger'), summary: path.join(path.resolve(home), 'summary.json') })
 export function loadPrepared(home = DEFAULT_HOME) { return readJson(paths(home).plan) }
-export function prepareEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RECEIPT, profile = readJson(PROFILE_EXAMPLE), pricing, env = {}, simulation = false, version = 1, candidates, round, hypothesis, offline } = {}) {
+export function prepareEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RECEIPT, profile = readJson(PROFILE_EXAMPLE), pricing, env = {}, simulation = false, version = 1, candidates, round, hypothesis, offline, pool, generation } = {}) {
   const p = paths(home), normalized = normalizeProfile({ ...profile, ...(pricing !== undefined ? { pricing } : {}) })
   const existing = fs.existsSync(p.plan) ? readJson(p.plan) : null, marker = readWatermark(receiptPath)
   if (marker && !existing) throw new Error('api-budget-restore-required')
   const isV9 = existing?.schema === 'cfb.bounded-ab/9' || version === 9
-  const builder = isV9 ? buildCandidateReplayPlanV9 : existing?.schema === 'cfb.bounded-ab/8' || version === 8 ? buildReasoningReplayPlanV8 : existing?.schema === 'cfb.bounded-ab/7' || version === 7 ? buildExpandedPlanV7 : existing?.schema === 'cfb.bounded-ab/6' || version === 6 ? buildExpandedPlanV6 : existing?.schema === 'cfb.bounded-ab/5' || version === 5 ? buildExpandedPlanV5 : existing?.schema === 'cfb.bounded-ab/4' || version === 4 ? buildVisiblePlanV4 : existing?.schema === 'cfb.bounded-ab/3' || version === 3 ? buildVisiblePlanV3 : existing?.schema === 'cfb.bounded-ab/2' || version === 2 ? buildBoundedPlanV2 : buildMinimalPlan
+  const isGen = existing?.schema === 'cfb.generation/1' || version === 10
+  const builder = isGen ? buildGenerationPlan : isV9 ? buildCandidateReplayPlanV9 : existing?.schema === 'cfb.bounded-ab/8' || version === 8 ? buildReasoningReplayPlanV8 : existing?.schema === 'cfb.bounded-ab/7' || version === 7 ? buildExpandedPlanV7 : existing?.schema === 'cfb.bounded-ab/6' || version === 6 ? buildExpandedPlanV6 : existing?.schema === 'cfb.bounded-ab/5' || version === 5 ? buildExpandedPlanV5 : existing?.schema === 'cfb.bounded-ab/4' || version === 4 ? buildVisiblePlanV4 : existing?.schema === 'cfb.bounded-ab/3' || version === 3 ? buildVisiblePlanV3 : existing?.schema === 'cfb.bounded-ab/2' || version === 2 ? buildBoundedPlanV2 : buildMinimalPlan
   // v9 的候选稿 / 轮次 / 假设随计划冻结：重新 prepare（如改价表）时沿用已写入的，不允许换稿。
   const v9Args = isV9 ? {
     candidates: candidates ?? (existing ? existing.tasks.map((t) => ({ task: t, control: existing.variants[t].control, candidate: existing.variants[t].candidate, knobs: existing.variants[t].knobs })) : undefined),
-    round: round ?? existing?.round, hypothesis: hypothesis ?? existing?.hypothesis, offline: offline ?? existing?.offline ?? null } : {}
-  const base = builder({ ...normalized, canary: existing?.canary, ...v9Args })
+    round: round ?? existing?.round, hypothesis: hypothesis ?? existing?.hypothesis, offline: offline ?? existing?.offline ?? null, pool: pool ?? existing?.pool ?? null } : {}
+  // 生成计划（v14.3）：角色 / 轮次 / 对象随计划冻结；重 prepare（换价表 / 重算预检）沿用已冻结的计划体，不能换对象。
+  if (isGen && !generation && !existing) throw new Error('gen-plan-requires-generation')
+  if (isGen && !generation) {
+    const plan = immutableJson({ ...existing, pricing: normalized.pricing ?? null })
+    if (marker && evidenceDigest(existing) !== evidenceDigest(plan)) throw new Error('api-plan-changed')
+    writeJson(p.plan, plan)
+    const preflight = doctorEvaluation({ home, receiptPath, env }); writeJson(p.preflight, preflight)
+    return immutableJson({ ...preflight, prepared: true, limits: plan.limits, sourceDigest: null })
+  }
+  const base = builder({ ...normalized, canary: existing?.canary, ...v9Args, ...(isGen ? { ...generation, round: generation.round ?? round } : {}) })
   // 型号别名随计划一起冻结：写入计划即进入 planDigest 与公开收据，事后不可改（改＝计划变更，闸会拒绝）。
   const plan = immutableJson({ ...base, modelAliases: normalized.modelAliases, execution: normalized.execution, simulation })
   if (hasSecretMaterial(plan)) throw new Error('api-plan-secret-material')
@@ -75,7 +88,7 @@ export function prepareEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RE
   const preflight = doctorEvaluation({ home, receiptPath, env })
   writeJson(p.preflight, preflight)
   return immutableJson({ ...preflight, prepared: true, limits: APPROVED_API_LIMITS,
-    inputTokenBounds: plan.jobs.map((j) => ({ key: j.key, inputTokens: inputTokenBound(j.body), maxOutputTokens: j.body.max_tokens })), sourceDigest: plan.sourceDigest })
+    inputTokenBounds: plan.jobs.map((j) => ({ key: j.key, inputTokens: inputTokenBound(j.body), maxOutputTokens: j.body.max_tokens })), sourceDigest: plan.sourceDigest ?? null })
 }
 export function doctorEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_RECEIPT, env = {}, now = Date.now() } = {}) {
   const checks = [], check = (id, ok, remedy = null) => checks.push({ id, status: ok ? 'pass' : 'blocked', ...(ok || !remedy ? {} : { remedy }) })
@@ -123,10 +136,18 @@ export function reportEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_REC
   const p = paths(home), plan = loadPrepared(home)
   auditApiPlan(plan, { allowUnpriced: true })
   const budget = inspectApiBudget({ plan, directory: p.ledger, receiptPath }), results = [], fpByKey = {}
+  const isGen = plan.schema === 'cfb.generation/1'
   if (budget) for (const job of plan.jobs) {
     const r = budget.cached(job.key); if (!r) continue
     fpByKey[job.key] = r.fp ?? null
-    if (job.kind === 'main') results.push(resultOf(plan, job, r))
+    if (job.kind === 'main' && !isGen) results.push(resultOf(plan, job, r))
+  }
+  if (isGen) {
+    const outputs = budget ? genOutputs(plan, (k) => budget.cached(k)) : []
+    const gstate = budget?.snapshot() || null
+    return immutableJson({ schema: 'cfb.generation-report/1', role: plan.role, round: plan.round, complete: outputs.length === plan.jobs.filter((j) => j.kind === 'main').length, outputs, mode: plan.simulation ? 'simulation' : 'live',
+      channelVerified: !!gstate?.entries.some((e) => e.kind === 'probe' && e.status === 'accepted'), requestsRejected: gstate?.entries.filter((e) => e.status === 'rejected').map((e) => ({ key: e.key, reason: e.reason ?? null })) ?? [],
+      requestsReserved: gstate?.entries.length || 0, reservedUsd: gstate?.entries.reduce((n, e) => n + e.reservedNano, 0) / 1e9 || 0, actualCostUsd: null, stopped: gstate?.halted || null, judgeRequests: 0, retries: 0 })
   }
   const state = budget?.snapshot() || null
   // 指纹透明化：直方图 + 配对样本是否同指纹（池轮换噪声公开，不做闸）。

@@ -1,4 +1,4 @@
-// test/closed-loop.selftest.mjs —— 闭环 v2（v14.2）自测：候选生成器 / 真值维度 / 实验经济学 / v9 计划与预算 / 编排器端到端（零 API）。
+// test/closed-loop.selftest.mjs —— 闭环 v2（v14.2；v14.3 起 F1/F2 按 v3 语义：留出闸门、首轮 A/A）自测：候选生成器 / 真值维度 / 实验经济学 / v9 计划与预算 / 编排器端到端（零 API）。
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -257,7 +257,7 @@ try {
       await assert.rejects(() => run(['doctor', '--v9', '--round', '0']), /eval-option-context/)
       await assert.rejects(() => run(['prepare', '--v9', '--round', '1', '--home', path.join(tmp, 'empty')]), /eval-v9-plan-via-cfb-cycle/)
       const src = fs.readFileSync(path.join(ROOT, 'tools/effect-ready.mjs'), 'utf8')
-      assert.ok(/o\.v9 \? DEFAULT_HOME_V9\(o\.round\)/.test(src) && /version: o\.v9 \? 9/.test(src))
+      assert.ok(/o\.v9 \? DEFAULT_HOME_V9\(o\.round\)/.test(src) && /version: (o\.gen \? 10 : )?o\.v9 \? 9/.test(src))
     } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
   })
 
@@ -268,7 +268,8 @@ try {
     const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tools/cfb-cycle.mjs'), ...a], { cwd: ROOT, env, encoding: 'utf8' })
     try {
       const d = cli('doctor'); assert.ok(/PASS 真值维度方向校验/.test(d.stdout), d.stdout + d.stderr)
-      const p1 = cli('plan'); assert.equal(p1.status, 0, p1.stdout + p1.stderr)
+      // v3：首轮默认 A/A 校准；这里显式 --skip-aa --lever 走 v2 的旋钮路径（A/A 与留出闸门在 closed-loop-v3.selftest 里测）
+      const p1 = cli('plan', '--skip-aa', '--lever', 'kItems=off'); assert.equal(p1.status, 0, p1.stdout + p1.stderr)
       assert.ok(/kItems=off/.test(p1.stdout) && /未发任何请求/.test(p1.stdout))
       const plan1 = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/r1/plan.json'), 'utf8'))
       assert.equal(plan1.schema, 'cfb.bounded-ab/9'); assert.equal(plan1.hypothesis.lever, 'kItems'); assert.equal(plan1.tasks.length, 5)
@@ -276,20 +277,27 @@ try {
       const fake = (plan, winner) => ({ schema: 'cfb.eval-report/1', complete: true, reservedUsd: 0.5, requestsReserved: 13, requestsRejected: [], results: plan.jobs.filter((j) => j.kind === 'main').map((j) => ({ task: j.task, variant: j.variant, sample: j.sample, action: 'evidence', rule: { claim: 'none', falseDone: 0, overHedge: 0, repeat: 0, bump: 0, reEdit: j.variant === winner ? 0 : 1, next: j.variant === winner ? 1 : 0, avoid: 1, calls: 1 } })) })
       fs.writeFileSync(path.join(tmp, 'rep1.json'), JSON.stringify(fake(plan1, 'candidate')))
       const i1 = cli('ingest', '--round', '1', '--report', path.join(tmp, 'rep1.json')); assert.equal(i1.status, 0, i1.stdout + i1.stderr)
-      assert.ok(/判定：adopt/.test(i1.stdout))
-      const champ = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/champion.json'), 'utf8'))
-      assert.equal(champ.knobs.kItems, 'off')
+      // v3 留出闸门：5 胜里只有 2 对留出题（< 4 对）⇒ continue，不是 v2 的直接 adopt
+      assert.ok(/判定：continue/.test(i1.stdout) && /留出题：2 对/.test(i1.stdout), i1.stdout)
       const again = cli('ingest', '--round', '1', '--report', path.join(tmp, 'rep1.json')); assert.notEqual(again.status, 0); assert.ok(/round-already-ingested/.test(again.stderr + again.stdout))
-      const p2 = cli('plan'); assert.equal(p2.status, 0, p2.stdout + p2.stderr)
-      const plan2 = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/r2/plan.json'), 'utf8'))
-      assert.equal(plan2.hypothesis.champion.kItems, 'off', '第 2 轮 control 必须是新 champion')
+      const p1b = cli('plan', '--skip-aa'); assert.equal(p1b.status, 0, p1b.stdout + p1b.stderr); assert.ok(/继续未判定的假设/.test(p1b.stdout))
+      const plan1b = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/r2/plan.json'), 'utf8'))
+      fs.writeFileSync(path.join(tmp, 'rep1b.json'), JSON.stringify(fake(plan1b, 'candidate')))
+      const i1b = cli('ingest', '--round', '2', '--report', path.join(tmp, 'rep1b.json')); assert.equal(i1b.status, 0, i1b.stdout + i1b.stderr)
+      assert.ok(/判定：adopt/.test(i1b.stdout) && /留出题：4 对/.test(i1b.stdout), i1b.stdout)
+      const champ = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/champion.json'), 'utf8'))
+      assert.equal(champ.knobs.kItems, 'off'); assert.equal(champ.policy, 'base')
+      const p2 = cli('plan', '--skip-aa'); assert.equal(p2.status, 0, p2.stdout + p2.stderr)
+      const plan2 = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/r3/plan.json'), 'utf8'))
+      assert.equal(plan2.hypothesis.champion.kItems, 'off', '第 3 轮 control 必须是新 champion')
       assert.notEqual(plan2.hypothesis.lever, 'kItems', '刚采纳的杠杆不反向重测')
       for (const t of plan2.tasks) assert.equal(plan2.variants[t].control, byArm('kItems=off').find((c) => c.task === t).text, '新 control = kItems=off 的生产重编译')
       fs.writeFileSync(path.join(tmp, 'rep2.json'), JSON.stringify(fake(plan2, 'control')))
-      const i2 = cli('ingest', '--round', '2', '--report', path.join(tmp, 'rep2.json')); assert.equal(i2.status, 0, i2.stdout + i2.stderr)
+      const i2 = cli('ingest', '--round', '3', '--report', path.join(tmp, 'rep2.json')); assert.equal(i2.status, 0, i2.stdout + i2.stderr)
       assert.ok(/判定：(reject|continue)/.test(i2.stdout), i2.stdout)
       const hist = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/history.json'), 'utf8'))
-      assert.equal(hist.rounds.length, 2); assert.equal(hist.rounds[0].decision, 'adopt'); assert.equal(hist.rounds[1].status, 'ingested')
+      assert.equal(hist.rounds.length, 3); assert.equal(hist.rounds[1].decision, 'adopt'); assert.equal(hist.rounds[2].status, 'ingested')
+      assert.equal(fs.readFileSync(path.join(tmp, 'offline/train/pairs.jsonl'), 'utf8').trim().split('\n').length, 15, '飞轮：3 轮 × 5 个非平局配对')
       const pr = cli('propose'); assert.equal(pr.status, 0)
       const proposal = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/proposal.json'), 'utf8'))
       assert.equal(proposal.needsSrcChange.length, 1); assert.equal(proposal.needsSrcChange[0].knob, 'kItems'); assert.deepEqual(proposal.configDiff, {})
@@ -307,7 +315,9 @@ try {
       const bad = cli('plan', '--lever', 'nope=1'); assert.notEqual(bad.status, 0)
       const ok = cli('plan', '--lever', 'closing=off'); assert.equal(ok.status, 0, ok.stdout + ok.stderr); assert.ok(/closing=off/.test(ok.stdout))
       // 已计划、未花钱的轮：再 plan 是重做第 1 轮（计划可改），不是悄悄开第 2 轮
-      const re = cli('plan'); assert.equal(re.status, 0); assert.ok(/第 1 轮计划/.test(re.stdout) && /kItems=off/.test(re.stdout), re.stdout.slice(0, 200))
+      // v3：没有 --lever 时首轮默认 A/A；--skip-aa 则按 v3 顺序取第一个安全杠杆（closing）
+      const re = cli('plan'); assert.equal(re.status, 0); assert.ok(/第 1 轮计划/.test(re.stdout) && /A\/A=control/.test(re.stdout), re.stdout.slice(0, 200))
+      const re2 = cli('plan', '--skip-aa'); assert.equal(re2.status, 0); assert.ok(/第 1 轮计划/.test(re2.stdout) && /closing=off/.test(re2.stdout), re2.stdout.slice(0, 200))
       assert.ok(!fs.existsSync(path.join(tmp, 'runtime/r2')))
       assert.equal(JSON.parse(fs.readFileSync(path.join(tmp, 'offline/history.json'), 'utf8')).rounds.length, 1)
     } finally { fs.rmSync(tmp, { recursive: true, force: true }) }

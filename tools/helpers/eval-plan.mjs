@@ -151,8 +151,9 @@ export function buildReasoningReplayPlanV8(options = {}) {
 //   （tools/helpers/candidates.mjs，过生产闸门、非退化）。每题 1 对、每轮 ≤5 题 ≤10 主 + 3 同体探针；判据 = 结构分配对胜负
 //   （experiment.mjs structuralScore，claimVersion 3），序贯 Beta 后验跨轮累计（同一假设）。
 //   candidates: [{ task, control, candidate }]（文本），round: 1..20，hypothesis: { lever, value, champion, theory }。
-export function buildCandidateReplayPlanV9({ candidates, round, hypothesis, offline = null, model = 'deepseek-v4.1-flash', baseUrl = 'https://api.a6api.com/v1', pricing = null, canary = 'CFB_CANARY_' + crypto.randomBytes(16).toString('hex') } = {}) {
-  if (!Array.isArray(candidates) || candidates.length < 3 || candidates.length > V9_TASK_IDS.length) throw new Error('v9-candidates-count')
+export function buildCandidateReplayPlanV9({ candidates, round, hypothesis, offline = null, pool = null, model = 'deepseek-v4.1-flash', baseUrl = 'https://api.a6api.com/v1', pricing = null, canary = 'CFB_CANARY_' + crypto.randomBytes(16).toString('hex') } = {}) {
+  if (!Array.isArray(candidates) || candidates.length < 3 || candidates.length > 5) throw new Error('v9-candidates-count')
+  const aa = hypothesis?.lever === 'A/A'
   if (!Number.isSafeInteger(round) || round < 1 || round > 20) throw new Error('v9-round')
   if (!hypothesis || typeof hypothesis.lever !== 'string' || typeof hypothesis.value !== 'string' || !hypothesis.champion) throw new Error('v9-hypothesis')
   const { chains } = jsonFile(INPUT_FILES[0]), d1 = jsonFile(INPUT_FILES[1]).rows, specs = jsonFile(INPUT_FILES[3])
@@ -165,11 +166,13 @@ export function buildCandidateReplayPlanV9({ candidates, round, hypothesis, offl
   const variants = {}, evaluation = {}, tasks = []
   candidates.forEach((c, i) => {
     const id = c.task
-    if (!V9_TASK_IDS.includes(id) || tasks.includes(id)) throw new Error('v9-task:' + id)
-    if (typeof c.control !== 'string' || !c.control || typeof c.candidate !== 'string' || !c.candidate || c.control === c.candidate) throw new Error('v9-candidate-text:' + id)
-    const chain = chains.find((x) => x.id === id), spec = specs.find((x) => x.id === id)
+    // v14.3：任务可来自冻结文件，也可由调用方（任务池）直接给 chain / spec / r1（铸造 / 挖掘的题）；池摘要随计划冻结进 plan.pool。
+    const fromPool = !!(c.chain && c.spec && typeof c.r1 === 'string')
+    if ((!V9_TASK_IDS.includes(id) && !(fromPool && pool?.[id])) || tasks.includes(id)) throw new Error('v9-task:' + id)
+    if (typeof c.control !== 'string' || !c.control || typeof c.candidate !== 'string' || !c.candidate || (c.control === c.candidate && !aa)) throw new Error('v9-candidate-text:' + id)
+    const chain = fromPool ? c.chain : chains.find((x) => x.id === id), spec = fromPool ? c.spec : specs.find((x) => x.id === id)
     if (!chain?.a1?.raw || !chain.a2?.raw || !spec?.obs?.red?.followup) throw new Error('frozen-chain-missing:' + id)
-    const r1 = validRow(d1, id).text
+    const r1 = fromPool ? c.r1 : validRow(d1, id).text
     tasks.push(id)
     evaluation[id] = { chain: { id, a1Call: chain.a1Call, a2Edit: chain.a2Edit, verifyCmd: chain.verifyCmd }, spec: { obs: { red: { next: spec.obs.red.next, avoid: spec.obs.red.avoid, expectClaim: spec.obs.red.expectClaim } } } }
     variants[id] = { r1, control: c.control, candidate: c.candidate, controlChars: c.control.length, candidateChars: c.candidate.length, knobs: c.knobs || null }
@@ -181,7 +184,7 @@ export function buildCandidateReplayPlanV9({ candidates, round, hypothesis, offl
   })
   const sourceHashes = currentSourceHashes()
   return immutableJson({ schema: 'cfb.bounded-ab/9', approvalDate: '2026-10-02', round, model, baseUrl, pricing, canary, limits: APPROVED_API_LIMITS_V9, sourceDigest: evidenceDigest(sourceHashes), sourceHashes,
-    tasks, arms: [...V9_ARMS], hypothesis: { lever: hypothesis.lever, value: hypothesis.value, champion: hypothesis.champion, theory: hypothesis.theory || null, kind: hypothesis.kind || null }, offline, variants, evaluation, jobs,
+    tasks, arms: [...V9_ARMS], hypothesis: { lever: hypothesis.lever, value: hypothesis.value, champion: hypothesis.champion, theory: hypothesis.theory || null, kind: hypothesis.kind || null, ...(hypothesis.split ? { split: hypothesis.split } : {}), ...(hypothesis.policy ? { policy: hypothesis.policy } : {}) }, offline, pool: pool || null, variants, evaluation, jobs,
     protocol: 'chat-completions-history-reasoning/1',
     preregistration: {
       expectedGain: `单杠杆假设 ${hypothesis.lever}=${hypothesis.value}（相对 champion ${JSON.stringify(hypothesis.champion)}）：候选稿回放相对控制稿回放，在结构分 next+avoid−falseDone−bump−reEdit−repeat 上配对胜率 p>0.5`,

@@ -4,6 +4,20 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.3.0（2026-10-02，闭环 v3：任务池 / 留出闸门 / A/A 校准 / 提示词策略生成层 / 飞轮；仍零花费）
+
+- **起因**：用户转来对 v14.2 的七条批评，并澄清要求：省钱只针对真实 API 调用次数，**架构与效果一点都不能省**——要一套能真的迭代、优化、突破当前上限的环，而不是只会在 6 个旋钮里挑的「仪器」。逐条回应见 `docs/design/CLOSED-LOOP-V3.md` §0（接受 1–5、7；第 6 条「一轮 0.648」是预占上限不是实付，予以纠正）。
+- **新部件（全部零 API）**：
+  - `tools/helpers/tasks.mjs`：任务池 = 冻结 5 题 ∪ `.cfb-offline/tasks/*.task.json`（minted / mined / authored，`validateTaskFile` 把关）；`splitTasks` 按 `sha256(seed+id)` 确定性切 dev / holdout（≥2 留出）；`rotateTasks` 每轮 ≤5 题且留出 ≥2；`buildPool` 给池摘要与登记表（随计划冻结）。5 题池：留出 `eacces-config, wrong-model`。
+  - `experiment.mjs` 新增 `decideV3`：全体序贯仍可否决；**采纳需留出题闸门**（≥2 个不同留出题、≥4 对留出、留出 P(p>0.5) ≥ 0.95、无净负留出题）；同题重复按 ICC=0.3 折算 `nEff`；`aa:true` 时只产出 `calibrated` + 平局率 / 偏置 / `instrument ok|suspect`。
+  - `tools/helpers/generation.mjs`：提示词级策略空间（对 v4d9 的受限补丁：append:rules / tail / 唯一命中 replace；≤3 补丁 / 900 字）、`policyId` 内容寻址、`applyPolicyToPrompt`、`validatePatches`、`leakCheck`（题目特有标识符即拒，领域通用词放行）、`failureEvidence`（只取 dev 题 loss/tie）、`proposerMessages` / `parseProposal`（严格 JSON 合同）、`buildGenerationPlan`（`cfb.generation/1`：compile ≤5 / propose 1 / mint-a / mint-b，各带 3 同体探针）、`genOutputs`。
+  - 预算 / 账本：`APPROVED_API_LIMITS_GEN = {8 请求, USD 0.3, 主 ≤5, 探针 3, 重试 0, 评委 0}`；scope `cfb.generation.2026-10-02.g1…g40`（静态表，每个 8 请求）；审计新增 v10 分支（角色 / 轮次 / 主数 / gen 元数据 / 金丝雀）；v9 审计允许「池登记题」与 A/A 同文（仅 lever `A/A`）。`eval-plan` v9 计划携带 `pool` / `hypothesis.split|policy`，池题的 chain/spec/r1 可由调用方提供；`eval-workflow` 支持 version 10 的 prepare / 重 prepare / `cfb.generation-report/1` 报告；`effect-ready --gen --round N`。
+  - `tools/cfb-cycle.mjs` 升 v3（v2 命令全部保留）：`plan` 走池轮换、首轮默认 A/A（`--skip-aa` / `--lever A/A|policy=ID`）、顺序 策略 → closing → deadEnd → selection → layout → kItems → bind；`ingest` 用 `decideV3`、写 `history.calibration`、把非平局配对追加到 `.cfb-offline/train/pairs.jsonl`（`cfb.pref-pair/1`）、采纳策略时 champion 升 `cfb.champion/2 {knobs, policy}`；新命令 `propose-policy` / `compile --policy|--mint` / `mint --step a|b` / `ingest-gen` / `policies`；`propose` 多出「需要改提示词」段（补丁 + `src/prompts.js` 落点 + 证据）；`doctor` 多三项（池 / champion 策略 / v3 判定）。
+- **语义变化**：v2 的「5 胜即采纳」不再成立——一个假设至少 2 轮（第 2 轮留出累计 4 对全胜 0.9687 才过）；`test/closed-loop.selftest.mjs` F1/F2 相应改写（仍 25/25）。
+- **钱**：A/A 一轮预占 ≈ 0.50（实付 ≈ 0.13）；propose-policy ≈ 0.05；compile 5 题 ≈ 0.20；mint 一题 4 步 ≈ 0.20；「校准 + 一个策略从提议到采纳」≈ 51 请求 / 预占 1.75 / 实付 ≈ 0.45。**本次 API 费用 0；没有任何 v9 / gen 计划实跑。**
+- **没做**：权重训练（无 GPU；飞轮只存偏好对）；泛化声明（留出仅 2 题）；铸造与挖题未实跑（需要人写 u2 / followup）。
+- **验证**：新 `test/closed-loop-v3.selftest.mjs` 16/16（判定 / 池 / 策略三闸 / 生成计划审计与 v9 池登记 / 三条子进程端到端：A/A→校准→旋钮留出采纳；泄漏提案拒→合法提案→编译→策略假设→采纳→control 换策略稿→propose 补丁；铸造四步进池）；closed-loop 25/25；全量 1025 通过 / 21 失败（21 = 基线同一组环境失败：Node 20 runtime、离线命名空间、本地训练模型）；manifest 377/0；N1–N7 = 0。
+
 ## v14.2.0（2026-10-02，闭环 v2「按比特买证据」：候选生成 / 奖励 / 环路三处断点接上，预算几美元）
 
 - **起因**：用户要求诚实判断「这套架构一直训练能不能把压缩稿推到极限」。答案是不能，三处有代码证据：

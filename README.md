@@ -352,7 +352,22 @@ v12.0 / v12.1 删除的文件都可从 git 取回：`git show cfba57b:<路径>`�
 这些留在原开发机的仓库里，需要时再单独取。
 
 
-## 闭环迭代（v14.2，零 API 可走通；花钱只在一条命令里）
+## 闭环迭代 v3（v14.3：任务池 + 留出闸门 + A/A 校准 + 提示词策略生成层；零 API 可走通，花钱只在两条显式命令里）
+
+```sh
+node tools/cfb-cycle.mjs doctor                                  # 预检：池 / 切分 / champion 策略 / v3 判定 / 生产闸门
+node tools/cfb-cycle.mjs plan [--pricing FILE]                   # 首轮默认 A/A 校准；其后 策略 > closing > deadEnd > … > kItems；冻结 v9 计划 → 停
+node tools/effect-ready.mjs run --live --v9 --round N            # 花钱 ①：评测（13 请求、≤USD 1）
+node tools/cfb-cycle.mjs ingest --round N                        # decideV3：全体序贯 + 留出题闸门 → adopt/reject/continue/calibrated；追加偏好对
+node tools/cfb-cycle.mjs propose-policy                          # LLM 提议器只看 dev 题失败证据 → 冻结 4 请求计划 → 停
+node tools/effect-ready.mjs run --live --gen --round N           # 花钱 ②：生成（≤8 请求、≤USD 0.3）
+node tools/cfb-cycle.mjs ingest-gen --gen N                      # 三闸（预算 / 泄漏 / 可应用）→ 策略文件；compile --policy ID 重压 side 后自动成为假设
+node tools/cfb-cycle.mjs propose                                 # 已采纳旋钮 → 配置 diff / src 说明；已采纳策略 → src/prompts.js 补丁说明（不写 src）
+```
+
+采纳只认留出题（≥2 题、≥4 对、留出 P≥0.95），dev 题只能否决与喂提议器；一个假设至少 2 轮。铸造新题 `mint`、扩池、飞轮与放弃清单见 [`docs/design/CLOSED-LOOP-V3.md`](docs/design/CLOSED-LOOP-V3.md)。
+
+## 闭环迭代 v2（v14.2，仍可单独使用）
 
 ```sh
 node tools/cfb-cycle.mjs doctor                      # 预检：冻结任务 / 生产闸门 / 真值维方向 / 可测杠杆 / 退化臂

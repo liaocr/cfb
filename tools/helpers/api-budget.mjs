@@ -6,7 +6,7 @@ import { createEvidenceStore } from '../../src/evidence-store.js'
 import { evidenceDigest, immutableJson } from '../../src/evidence-program.js'
 import { makeChat, channelIssue, responseText } from '../effect-eval.mjs'
 import { hasSecretMaterial } from './eval-files.mjs'
-import { API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6, API_APPROVAL_SCOPE_V7, API_APPROVAL_SCOPE_V8, API_APPROVAL_SCOPES_V9, apiStoreDirectory, assertExistingBudget, assertWatermark, commitWatermark } from './api-watermark.mjs'
+import { API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6, API_APPROVAL_SCOPE_V7, API_APPROVAL_SCOPE_V8, API_APPROVAL_SCOPES_V9, API_APPROVAL_SCOPES_GEN, apiStoreDirectory, assertExistingBudget, assertWatermark, commitWatermark } from './api-watermark.mjs'
 
 export const APPROVED_API_LIMITS = Object.freeze({ maxRequests: 13, maxUsd: 2, maxMain: 12, maxProbe: 1, retries: 0, judges: 0 })
 // v2（用户2026-10-01批准）：同矩阵 + 3个同体备用探针；网络类失败只废该请求预留、不株连未派发请求，累计3次仍硬停。
@@ -20,15 +20,19 @@ export const APPROVED_API_LIMITS_V8 = Object.freeze({ maxRequests: 15, maxUsd: 2
 // v9（v14.2 闭环 v2）：候选稿 vs 当前生产稿的序贯配对回放。每轮 ≤5 任务 × 2 臂 = ≤10 主 + 3 同体探针，USD 上限 1（实际预占
 //   每请求 ≈ 0.05–0.07，一轮 ≈ 0.5–0.7 预占 / ≈ 0.05–0.10 实付）。失败预算沿用 v4 的样本级容错。每轮一个 scope，需逐轮批准。
 export const APPROVED_API_LIMITS_V9 = Object.freeze({ maxRequests: 13, maxUsd: 1, maxMain: 10, maxProbe: 3, retries: 0, judges: 0, networkFailureBudget: 3, sampleFailureBudget: 3 })
+export const APPROVED_API_LIMITS_GEN = Object.freeze({ maxRequests: 8, maxUsd: 0.3, maxMain: 5, maxProbe: 3, retries: 0, judges: 0, networkFailureBudget: 2, sampleFailureBudget: 2 })
+export const GEN_ROLES_APPROVED = Object.freeze(['compile', 'propose', 'mint-a', 'mint-b'])
+export const POOL_TASK_ID_RE = /^[a-z0-9][a-z0-9-]{2,40}$/
 export const MINIMAL_TASK_IDS = Object.freeze(['flaky-timeout', 'wrong-model', 'eacces-config'])
 /** v9 可选任务全集（effect-mr-specs 五题）；计划的 tasks 必须是它的子集、3–5 题、无重复。 */
 export const V9_TASK_IDS = Object.freeze(['eacces-config', 'flaky-timeout', 'wrong-model', 'perf-regression', 'sse-truncated'])
 export const V9_ARMS = Object.freeze(['control', 'candidate'])
 const TRANSIENT_REASON = /^(?:request-network-error|request-timeout|HTTP 5\d\d)$/
-export const planVersion = (plan) => plan?.schema === 'cfb.bounded-ab/9' ? 9 : plan?.schema === 'cfb.bounded-ab/8' ? 8 : plan?.schema === 'cfb.bounded-ab/7' ? 7 : plan?.schema === 'cfb.bounded-ab/6' ? 6 : plan?.schema === 'cfb.bounded-ab/5' ? 5 : plan?.schema === 'cfb.bounded-ab/4' ? 4 : plan?.schema === 'cfb.bounded-ab/3' ? 3 : plan?.schema === 'cfb.bounded-ab/2' ? 2 : 1
+export const planVersion = (plan) => plan?.schema === 'cfb.generation/1' ? 10 : plan?.schema === 'cfb.bounded-ab/9' ? 9 : plan?.schema === 'cfb.bounded-ab/8' ? 8 : plan?.schema === 'cfb.bounded-ab/7' ? 7 : plan?.schema === 'cfb.bounded-ab/6' ? 6 : plan?.schema === 'cfb.bounded-ab/5' ? 5 : plan?.schema === 'cfb.bounded-ab/4' ? 4 : plan?.schema === 'cfb.bounded-ab/3' ? 3 : plan?.schema === 'cfb.bounded-ab/2' ? 2 : 1
 export const planIsV2 = (plan) => planVersion(plan) >= 2
 export const v9Round = (plan) => (planVersion(plan) === 9 && Number.isSafeInteger(plan.round) && plan.round >= 1 && plan.round <= API_APPROVAL_SCOPES_V9.length ? plan.round : null)
-export const planScope = (plan) => planVersion(plan) === 9 ? (v9Round(plan) ? API_APPROVAL_SCOPES_V9[plan.round - 1] : undefined) : [API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6, API_APPROVAL_SCOPE_V7, API_APPROVAL_SCOPE_V8][planVersion(plan) - 1]
+export const genRound = (plan) => (planVersion(plan) === 10 && Number.isSafeInteger(plan.round) && plan.round >= 1 && plan.round <= API_APPROVAL_SCOPES_GEN.length ? plan.round : null)
+export const planScope = (plan) => planVersion(plan) === 10 ? (genRound(plan) ? API_APPROVAL_SCOPES_GEN[plan.round - 1] : undefined) : planVersion(plan) === 9 ? (v9Round(plan) ? API_APPROVAL_SCOPES_V9[plan.round - 1] : undefined) : [API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6, API_APPROVAL_SCOPE_V7, API_APPROVAL_SCOPE_V8][planVersion(plan) - 1]
 // 指纹只是通道连续性锚：v1/v2锚定曾验证的官方后端；v3-v6锚定实测中转vLLM后端。v7起不在表内＝不设fp闸（池轮换数小时即废任何钉死值），fp照记入报告。
 export const TRUSTED_FINGERPRINTS = Object.freeze({ 1: 'fp_dspure_app_v1', 2: 'fp_dspure_app_v1', 3: 'vllm-0.0.0-tp4-dp2-ep-869f52fc', 4: 'vllm-0.0.0-tp4-dp2-ep-869f52fc', 5: 'vllm-0.0.0-tp4-dp2-ep-869f52fc', 6: 'vllm-0.0.0-tp4-dp2-ep-869f52fc' })
 // v3 可见压缩稿块的冻结定界符；审计凭它验证 raw/current 除稿块外逐字节一致。
@@ -51,12 +55,20 @@ export function quoteJob(body, pricing) {
   return Object.freeze({ inputTokens, outputTokens, reservedNano, reservedUsd: reservedNano / NANO })
 }
 export function auditApiPlan(plan, { allowUnpriced = false } = {}) {
-  const version = planVersion(plan), v2 = version >= 2, approvedLimits = version === 9 ? APPROVED_API_LIMITS_V9 : version >= 8 ? APPROVED_API_LIMITS_V8 : version >= 5 ? APPROVED_API_LIMITS_V5 : version === 4 ? APPROVED_API_LIMITS_V4 : v2 ? APPROVED_API_LIMITS_V2 : APPROVED_API_LIMITS
-  if (!['cfb.bounded-ab/1', 'cfb.bounded-ab/2', 'cfb.bounded-ab/3', 'cfb.bounded-ab/4', 'cfb.bounded-ab/5', 'cfb.bounded-ab/6', 'cfb.bounded-ab/7', 'cfb.bounded-ab/8', 'cfb.bounded-ab/9'].includes(plan?.schema) || typeof plan.model !== 'string' || !/^[\w./:-]{1,120}$/.test(plan.model) || !Array.isArray(plan.jobs) || !plan.jobs.length || plan.jobs.length > approvedLimits.maxRequests) throw new Error('api-plan-schema')
+  const version = planVersion(plan), v2 = version >= 2, approvedLimits = version === 10 ? APPROVED_API_LIMITS_GEN : version === 9 ? APPROVED_API_LIMITS_V9 : version >= 8 ? APPROVED_API_LIMITS_V8 : version >= 5 ? APPROVED_API_LIMITS_V5 : version === 4 ? APPROVED_API_LIMITS_V4 : v2 ? APPROVED_API_LIMITS_V2 : APPROVED_API_LIMITS
+  if (!['cfb.bounded-ab/1', 'cfb.bounded-ab/2', 'cfb.bounded-ab/3', 'cfb.bounded-ab/4', 'cfb.bounded-ab/5', 'cfb.bounded-ab/6', 'cfb.bounded-ab/7', 'cfb.bounded-ab/8', 'cfb.bounded-ab/9', 'cfb.generation/1'].includes(plan?.schema) || typeof plan.model !== 'string' || !/^[\w./:-]{1,120}$/.test(plan.model) || !Array.isArray(plan.jobs) || !plan.jobs.length || plan.jobs.length > approvedLimits.maxRequests) throw new Error('api-plan-schema')
   if (evidenceDigest(plan.limits) !== evidenceDigest(approvedLimits)) throw new Error('api-approval-changed')
   // v9 矩阵形状：轮次 ∈ 1..20（对应静态 scope 表）、任务 3–5 题 ⊂ V9_TASK_IDS、臂固定 control/candidate、每题 1 对、杠杆声明齐全。
   const v9Tasks = version === 9 ? plan.tasks : null
-  if (version === 9 && (!v9Round(plan) || !Array.isArray(v9Tasks) || v9Tasks.length < 3 || v9Tasks.length > V9_TASK_IDS.length || new Set(v9Tasks).size !== v9Tasks.length || v9Tasks.some((t) => !V9_TASK_IDS.includes(t)) || !plan.hypothesis || typeof plan.hypothesis.lever !== 'string' || typeof plan.hypothesis.value !== 'string' || !plan.hypothesis.champion || typeof plan.hypothesis.champion !== 'object')) throw new Error('api-plan-schema')
+  // v14.3：任务 ∈ 冻结 5 题 ∪ 计划登记的任务池（plan.pool[id] = { digest, source, split }，池摘要随计划冻结）；A/A（lever 'A/A'）允许两臂同文。
+  const poolOk = (t) => V9_TASK_IDS.includes(t) || (POOL_TASK_ID_RE.test(t) && plan.pool && typeof plan.pool[t]?.digest === 'string' && /^[a-f0-9]{16}$/.test(plan.pool[t].digest) && ['frozen', 'minted', 'mined', 'authored'].includes(plan.pool[t].source))
+  if (version === 9 && (!v9Round(plan) || !Array.isArray(v9Tasks) || v9Tasks.length < 3 || v9Tasks.length > 5 || new Set(v9Tasks).size !== v9Tasks.length || v9Tasks.some((t) => !poolOk(t)) || !plan.hypothesis || typeof plan.hypothesis.lever !== 'string' || typeof plan.hypothesis.value !== 'string' || !plan.hypothesis.champion || typeof plan.hypothesis.champion !== 'object')) throw new Error('api-plan-schema')
+  // 生成计划形状：轮次 1..40（静态 scope 表）、角色在批准表内、主请求 1..5、每个主请求带 gen 元数据且角色一致。
+  if (version === 10) {
+    const mains = plan.jobs.filter((j) => j.kind === 'main')
+    if (!Number.isSafeInteger(plan.round) || plan.round < 1 || plan.round > 40 || !GEN_ROLES_APPROVED.includes(plan.role) || !mains.length || mains.length > approvedLimits.maxMain || mains.some((j) => !j.gen || j.gen.role !== plan.role) || (plan.role !== 'compile' && mains.length !== 1)) throw new Error('api-plan-schema')
+    if (plan.jobs.some((j) => j.kind === 'main' && JSON.stringify(j.body).includes(plan.canary))) throw new Error('api-probe-leak')
+  }
   let endpoint
   try { endpoint = new URL(plan.baseUrl) } catch { throw new Error('api-endpoint') }
   if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw new Error('api-endpoint')
@@ -73,7 +85,7 @@ export function auditApiPlan(plan, { allowUnpriced = false } = {}) {
     quotes[job.key] = quote; totalNano += quote.reservedNano ?? 0
   }
   const probeKeys = v2 ? ['probe', 'probe-r1', 'probe-r2'] : ['probe']
-  const expectedMain = version === 9 ? v9Tasks.length * V9_ARMS.length : approvedLimits.maxMain
+  const expectedMain = version === 10 ? plan.jobs.filter((j) => j.kind === 'main').length : version === 9 ? v9Tasks.length * V9_ARMS.length : approvedLimits.maxMain
   if (probe !== probeKeys.length || main !== expectedMain || main > approvedLimits.maxMain || typeof plan.canary !== 'string' || !/^CFB_CANARY_[a-f0-9]{32}$/.test(plan.canary)) throw new Error('api-matrix')
   if (probeKeys.some((k, i) => plan.jobs[i].kind !== 'probe' || plan.jobs[i].key !== k || evidenceDigest(plan.jobs[i].body) !== evidenceDigest(plan.jobs[0].body))) throw new Error('api-matrix')
   const probeBody = plan.jobs[0].body
@@ -93,7 +105,8 @@ export function auditApiPlan(plan, { allowUnpriced = false } = {}) {
   }
   const strip = (b) => ({ ...b, messages: b.messages.map(({ reasoning_content, ...m }) => m) })
   const draftBlockRe = new RegExp('^' + DRAFT_BLOCK_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\n/g, '\\n') + '[\\s\\S]*' + DRAFT_BLOCK_SUFFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\n/g, '\\n'))
-  const matrixTasks = version === 9 ? v9Tasks : MINIMAL_TASK_IDS, matrixArms = version === 9 ? V9_ARMS : ['raw', 'current']
+  // 生成计划没有配对矩阵（每个主请求各自独立）；只做请求体通用闸。
+  const matrixTasks = version === 10 ? [] : version === 9 ? v9Tasks : MINIMAL_TASK_IDS, matrixArms = version === 9 ? V9_ARMS : ['raw', 'current']
   const sampleCount = version === 9 ? 1 : approvedLimits.maxMain / (MINIMAL_TASK_IDS.length * 2)
   for (const task of matrixTasks) for (let sample = 0; sample < sampleCount; sample++) {
     const pair = matrixArms.map((variant) => plan.jobs.find((j) => j.kind === 'main' && j.task === task && j.sample === sample && j.variant === variant && j.obs === 'red' && j.key === `${task}|${variant}|${sample}`))

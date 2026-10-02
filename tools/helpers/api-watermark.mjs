@@ -31,8 +31,10 @@ export const API_APPROVAL_SCOPE_V8 = 'cfb.history-reasoning-revalidation.2026-10
 //   3 同体探针 + ≤5 任务 × 2 臂（control = 当前 champion 旋钮的生产重编译，candidate = 单杠杆变体）。
 //   每个 scope 仍须用户逐轮明确批准后才能 run；收据路径 transfer/api-budget-approval-v9-r<N>.watermark.json。
 export const API_APPROVAL_SCOPES_V9 = Object.freeze(Array.from({ length: 20 }, (_, i) => 'cfb.candidate-replay.2026-10-02.r' + (i + 1)))
-export const KNOWN_API_SCOPES = Object.freeze([API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6, API_APPROVAL_SCOPE_V7, API_APPROVAL_SCOPE_V8, ...API_APPROVAL_SCOPES_V9])
-const SCOPE_MAX_REQUESTS = Object.freeze({ [API_APPROVAL_SCOPE]: 13, [API_APPROVAL_SCOPE_V2]: 15, [API_APPROVAL_SCOPE_V3]: 15, [API_APPROVAL_SCOPE_V4]: 15, [API_APPROVAL_SCOPE_V5]: 39, [API_APPROVAL_SCOPE_V6]: 39, [API_APPROVAL_SCOPE_V7]: 39, [API_APPROVAL_SCOPE_V8]: 15, ...Object.fromEntries(API_APPROVAL_SCOPES_V9.map((s) => [s, 13])) })
+// v14.3 生成层（闭环 v3）：提议器 / 编译 / 铸造各一次一 scope，≤ 8 请求 / ≤ USD 0.3；静态表 g1…g40。
+export const API_APPROVAL_SCOPES_GEN = Object.freeze(Array.from({ length: 40 }, (_, i) => 'cfb.generation.2026-10-02.g' + (i + 1)))
+export const KNOWN_API_SCOPES = Object.freeze([API_APPROVAL_SCOPE, API_APPROVAL_SCOPE_V2, API_APPROVAL_SCOPE_V3, API_APPROVAL_SCOPE_V4, API_APPROVAL_SCOPE_V5, API_APPROVAL_SCOPE_V6, API_APPROVAL_SCOPE_V7, API_APPROVAL_SCOPE_V8, ...API_APPROVAL_SCOPES_V9, ...API_APPROVAL_SCOPES_GEN])
+export const SCOPE_MAX_REQUESTS = Object.freeze({ [API_APPROVAL_SCOPE]: 13, [API_APPROVAL_SCOPE_V2]: 15, [API_APPROVAL_SCOPE_V3]: 15, [API_APPROVAL_SCOPE_V4]: 15, [API_APPROVAL_SCOPE_V5]: 39, [API_APPROVAL_SCOPE_V6]: 39, [API_APPROVAL_SCOPE_V7]: 39, [API_APPROVAL_SCOPE_V8]: 15, ...Object.fromEntries(API_APPROVAL_SCOPES_V9.map((s) => [s, 13])), ...Object.fromEntries(API_APPROVAL_SCOPES_GEN.map((s) => [s, 8])) })
 export const apiStoreDirectory = (directory, scope = API_APPROVAL_SCOPE) => path.join(path.resolve(directory), crypto.createHash('sha256').update(scope).digest('hex'))
 const HEX = /^[a-f0-9]{64}$/
 export function readWatermark(file) {
