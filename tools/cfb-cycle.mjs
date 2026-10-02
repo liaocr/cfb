@@ -34,6 +34,7 @@ import { auditApiPlan, planScope, APPROVED_API_LIMITS_V9, APPROVED_API_LIMITS_GE
 import { readWatermark } from './helpers/api-watermark.mjs'
 import { decideV4, rulerValidity, adoptionPolicy, outcomeComparison, episodeOutcome, eValueWins, winsNeeded, DEFAULT_DESIGN_V4 } from './helpers/ruler.mjs'
 import { trainRanker, scoreText } from './helpers/ranker.mjs'
+import { retroValidity } from './helpers/traj-proxy.mjs'
 
 // 目录：默认仓库里的 .cfb-offline / .cfb-runtime/bounded-ab-v9/rN / transfer 收据；自测用 CFB_CYCLE_DIR 整体改道（不碰真实轮次）。
 const BASE = process.env.CFB_CYCLE_DIR ? path.resolve(process.env.CFB_CYCLE_DIR) : null
@@ -449,7 +450,14 @@ export function rulerReport({ validity = loadValidity(), exposure = loadExposure
   const rk = trainRanker(flywheel)
   const trajRows = trajDirs.flatMap((d) => readJsonl(path.join(ROOT, 'transfer', d, 'results.jsonl')).map((r) => ({ ...r, dir: d })))
   const baseline = trajRows.length ? outcomeComparison(trajRows.map((r) => ({ ...r, arm: r.variant === 'auto' ? 'champion' : r.variant === 'raw' ? 'previous' : null, sample: `${r.dir}#${r.sample ?? 0}` })).filter((r) => r.arm)) : null
-  return { validity: v, policy: pol, exposure: Object.entries(exposure.tasks).map(([task, e]) => ({ task, n: e.n, retire: e.n >= HOLDOUT_MAX_EXPOSURE })), ranker: { status: rk.status, pairs: rk.pairs, cvAcc: rk.cvAcc, top: rk.top || null, note: rk.note }, baseline: baseline ? { trajectories: trajRows.length, raw: baseline.previous, auto: baseline.champion, pairs: baseline.pairs.length, e: baseline.e, eReject: baseline.eReject } : null, alphaTable: [0.1, 0.05].map((a) => ({ alpha: a, threshold: +(1 / a).toFixed(0), straightWins: winsNeeded(a), pStraightUnderNull: +Math.pow(0.5, winsNeeded(a)).toFixed(4), falseAdoptPerHypothesis: a, over6Hypotheses: +(1 - Math.pow(1 - a, 6)).toFixed(3) })) }
+  const retro = trajRows.length ? retroValidity(trajRows) : null
+  // 信息产出 / 美元（估：主调用 ≈ $0.0125、压缩调用 ≈ $0.0075，按 §7 的 token 算术；分叉轨迹 2 臂 × 5 题 × ≤4 轮）
+  const main = 0.0125, comp = 0.0075, tasks = 6, rounds = 4   // 6 = 3 个假仓库场景 × 2 样本（traj-fixtures；与 v9 冻结 5 题是不同分布——对 champion 是更严的泛化测试）
+  const infoYield = [
+    { unit: 'v9 L1 轮（13 请求，冻结两轮状态）', usd: +(10 * main + 3 * 0.0003).toFixed(3), l1Pairs: tasks, l2Pairs: 0, validityPairs: 0, flywheelPairs: tasks, childStates: 0 },
+    { unit: `分叉全轨迹（2 臂 × 3 场景 × 2 样本 × ≤${rounds} 轮，第 1 轮共用）`, usd: +((tasks * (1 + 2 * (rounds - 1))) * main + (2 * tasks * (rounds - 1)) * comp).toFixed(3), l1Pairs: tasks, l2Pairs: tasks, validityPairs: 2 * tasks * (rounds - 1), flywheelPairs: 2 * tasks * (rounds - 1), childStates: 2 * tasks * (rounds - 2) }
+  ].map((r) => ({ ...r, perUsd: { l1: +(r.l1Pairs / r.usd).toFixed(1), l2: +(r.l2Pairs / r.usd).toFixed(1), validity: +(r.validityPairs / r.usd).toFixed(1) } }))
+  return { retro, infoYield, validity: v, policy: pol, exposure: Object.entries(exposure.tasks).map(([task, e]) => ({ task, n: e.n, retire: e.n >= HOLDOUT_MAX_EXPOSURE })), ranker: { status: rk.status, pairs: rk.pairs, cvAcc: rk.cvAcc, top: rk.top || null, note: rk.note }, baseline: baseline ? { trajectories: trajRows.length, raw: baseline.previous, auto: baseline.champion, pairs: baseline.pairs.length, e: baseline.e, eReject: baseline.eReject } : null, alphaTable: [0.1, 0.05].map((a) => ({ alpha: a, threshold: +(1 / a).toFixed(0), straightWins: winsNeeded(a), pStraightUnderNull: +Math.pow(0.5, winsNeeded(a)).toFixed(4), falseAdoptPerHypothesis: a, over6Hypotheses: +(1 - Math.pow(1 - a, 6)).toFixed(3) })) }
 }
 function cmdRuler() {
   const r = rulerReport()
@@ -458,8 +466,10 @@ function cmdRuler() {
   console.log('e 值预算：' + r.alphaTable.map((a) => `α=${a.alpha} ⇒ 阈 ${a.threshold}、留出连胜 ${a.straightWins} 场（零效应下走到这条路的概率 ${(a.pStraightUnderNull * 100).toFixed(1)}%；含任意偷看的误采纳上界 ${a.alpha * 100}%/假设，6 个假设 ≤ ${(a.over6Hypotheses * 100).toFixed(0)}%）`).join('；'))
   console.log('留出题曝光：' + (r.exposure.length ? r.exposure.map((e) => `${e.task}×${e.n}${e.retire ? '（应退役）' : ''}`).join(' ') : '尚无判定'))
   console.log(`排序器（CPU，飞轮偏好对）：${r.ranker.status} pairs=${r.ranker.pairs} cvAcc=${r.ranker.cvAcc ?? '—'}${r.ranker.top ? ' top=' + r.ranker.top.map((t) => t.name + ':' + t.w).join(',') : ''}  — ${r.ranker.note}`)
+  if (r.retro) console.log(`回溯效度（执行器代理 ↔ 修好，零 API，${r.retro.steps} 步）：轨迹级 n=${r.retro.trajectory.n}（负例 ${r.retro.trajectory.neg}）AUC=${r.retro.trajectory.auc ?? '—'} ⇒ ${r.retro.trajectory.status}；步级 n=${r.retro.step.n}/${r.retro.step.clusters} 簇 AUC=${r.retro.step.auc ?? '—'} CI=${r.retro.step.ci95 ? r.retro.step.ci95.join('–') : '—'} ⇒ ${r.retro.step.status}；第 2 轮 n=${r.retro.round2.n} AUC=${r.retro.round2.auc ?? '—'} ⇒ ${r.retro.round2.status}；旗标命中率 ${Object.entries(r.retro.flagRates).map(([k, v]) => k + ' ' + v).join(' ')}（next/avoid 接近天花板：这些题上 L1 几乎不区分，区分的是到修好的轮数）`)
+  console.log('信息产出/美元（估）：' + r.infoYield.map((x) => `${x.unit} ≈ $${x.usd} ⇒ L1 对 ${x.l1Pairs}、L2 对 ${x.l2Pairs}、效度对 ${x.validityPairs}、飞轮对 ${x.flywheelPairs}、子状态 ${x.childStates}（每美元 L1 ${x.perUsd.l1} / L2 ${x.perUsd.l2} / 效度 ${x.perUsd.validity}）`).join('；'))
   if (r.baseline) console.log(`L2 基线（transfer/traj1–3，${r.baseline.trajectories} 条轨迹）：raw 修好率 ${r.baseline.raw.solved} / 到修好 ${r.baseline.raw.meanRoundsToFix} 轮 / 假宣称 ${r.baseline.raw.falseClaims}；auto 修好率 ${r.baseline.auto.solved} / ${r.baseline.auto.meanRoundsToFix} 轮 / 假宣称 ${r.baseline.auto.falseClaims}；同题同样本配对 ${r.baseline.pairs}，e=${r.baseline.e}（auto 更好）/ ${r.baseline.eReject}（auto 更差）⇒ ${r.baseline.e >= 1 / DEFAULT_DESIGN_V4.alphaHoldout ? 'auto 过 α=' + DEFAULT_DESIGN_V4.alphaHoldout + ' 阈' : r.baseline.eReject >= 1 / DEFAULT_DESIGN_V4.alphaHoldout ? 'auto 更差过阈' : '方向支持 auto，但未过 α=' + DEFAULT_DESIGN_V4.alphaHoldout + ' 的任意时刻阈（' + (1 / DEFAULT_DESIGN_V4.alphaHoldout).toFixed(0) + '）'}`)
-  console.log('下一步：L2 确认 = 用 traj-run 从 v9 两轮状态续跑 champion vs previous（≤4 轮 × 2 臂 × 留出题），结果喂 `confirm --results`；每行带 proxyScore 即同时攒效度配对。')
+  console.log('下一步（v4.1 已接通）：`node tools/traj-run.mjs --variants raw --policy base,<champion> --fork --samples 1 --max-rounds 4 --require-fp … --out trajN` ⇒ `confirm --results trajN/results.jsonl --map champion=policy:<id>,previous=policy:base`；每行自带 proxyScore，L2 结局与效度配对同一次付费产出。')
 }
 
 // ── 6. status / doctor / simulate ───────────────────────────────────────────

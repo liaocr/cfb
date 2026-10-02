@@ -80,16 +80,16 @@ export function auc(pairs) {
  * 尺子效度：pairs = [{proxy, outcome: 1|0}]。AUC 自助 95% CI（种子固定）；状态：
  * unvalidated（n < minPairs 或单类）/ valid（CI 下界 ≥ 0.6）/ invalid（AUC ≤ 0.55）/ suspect（其余）。
  */
-export function rulerValidity(pairs, { minPairs = 12, boots = 1000, seed = 11 } = {}) {
-  const n = pairs.length, point = auc(pairs)
-  if (n < minPairs || point == null) return { n, auc: point == null ? null : +point.toFixed(3), ci95: null, status: 'unvalidated', why: n < minPairs ? `效度配对 ${n} < ${minPairs}` : '结局只有单一类别' }
+export function rulerValidity(pairs, { minPairs = 12, minPerClass = 5, boots = 1000, seed = 11 } = {}) {
+  const n = pairs.length, point = auc(pairs), pos = pairs.filter((p) => p.outcome === 1).length, neg = n - pos
+  if (n < minPairs || point == null || Math.min(pos, neg) < minPerClass) return { n, pos, neg, auc: point == null ? null : +point.toFixed(3), ci95: null, status: 'unvalidated', why: n < minPairs ? `效度配对 ${n} < ${minPairs}` : point == null ? '结局只有单一类别' : `少数类只有 ${Math.min(pos, neg)} 条（< ${minPerClass}）：AUC 点估计 ${point.toFixed(3)} 但功效不足` }
   let s = seed >>> 0; const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296 }
   const vals = []
   for (let b = 0; b < boots; b++) { const smp = Array.from({ length: n }, () => pairs[Math.floor(rnd() * n)]); const a = auc(smp); if (a != null) vals.push(a) }
   vals.sort((a, b) => a - b)
   const lo = vals[Math.floor(vals.length * 0.025)], hi = vals[Math.floor(vals.length * 0.975)]
   const status = lo >= 0.6 ? 'valid' : point <= 0.55 ? 'invalid' : 'suspect'
-  return { n, auc: +point.toFixed(3), ci95: [+lo.toFixed(3), +hi.toFixed(3)], status, why: status === 'valid' ? '代理尺与端到端结局同向且 CI 下界 ≥ 0.6' : status === 'invalid' ? '代理尺与结局无关：L1 退为预筛，选择只认 L2' : '方向存疑：继续攒效度配对，采纳一律 provisional' }
+  return { n, pos, neg, auc: +point.toFixed(3), ci95: [+lo.toFixed(3), +hi.toFixed(3)], status, why: status === 'valid' ? '代理尺与端到端结局同向且 CI 下界 ≥ 0.6' : status === 'invalid' ? '代理尺与结局无关：L1 退为预筛，选择只认 L2' : '方向存疑：继续攒效度配对，采纳一律 provisional' }
 }
 /** 尺子状态 → 采纳规则。 */
 export function adoptionPolicy(validity) {

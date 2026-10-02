@@ -4,6 +4,17 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.5.0（2026-10-02，闭环 v4.1：分叉全轨迹 + 执行器代理 + 回溯效度 —— 一次付费喂五本账；仍零花费）
+
+- **起因**：第三轮评审：v4「设计通过审计，实现未完成」——L2 执行器接不上 policy ⇒ 效度账本 n=0；留出 2 题会先于扩池被曝光退役耗尽；首付若跑 raw vs auto 喂不进效度账本。用户要求：在现架构下尽量省、让信息利用率高起来。
+- **新部件（全部零 API）**：
+  - `tools/helpers/traj-proxy.mjs`：从全轨迹 transcript 机械算逐轮六旗标（与 `structuralScore` 同式）；`proxyPairs`（轨迹级 / 步级）、`clusteredValidity`（按轨迹簇自助）、`retroValidity`。
+  - `tools/traj-run.mjs`：`--policy base,<id>` ⇒ 变体 `policy:<id>`（生产 v4 提示词 + 策略补丁，直连同一路径）；`--fork` ⇒ 同题同样本共用第 1 轮回复、各臂分叉（省 (臂−1) 次主调用，配对在分叉点）；每行新增 `proxySteps / proxyScore / proxyRound2 / policy / forked`，可直接喂 `cfb-cycle confirm --results`。`runOne` 导出以便零 API 自测。
+  - `ruler.mjs rulerValidity` 加 `minPerClass=5`（少数类不足不判 valid）；`cfb-cycle ruler` 新增回溯效度与「信息产出/美元」表。
+- **回溯效度（真实数据）**：29 条轨迹 111 步；轨迹级 21 对 AUC 0.944 但负例 3 ⇒ unvalidated；步级 67 对 / 21 簇 AUC 0.70（0.56–0.89）suspect；next/avoid 命中率 0.85/0.98 ⇒ 这些题上 L1 接近天花板，区分的是到修好的轮数。
+- **首付顺序改为**：分叉轨迹 raw vs policy:base（3 场景 × 2 样本 × ≤4 轮 ≈ $0.5），同时得到在线效度配对、L2 对与真实收据；留出家族 < 4 之前不开始按分搜索。
+- 验证：closed-loop-v4 9/0；v3 16/0；closed-loop 25/0；全量与 manifest 见提交信息；N1–N7=0；API 实付 $0。本地提交未推送。
+
 ## v14.4.0（2026-10-02，闭环 v4：结局锚定的尺子 / e 值采纳 / provisional→confirm / 留出曝光 / CPU 排序器；仍零花费）
 
 - **起因**：对 v14.3 的第二轮评审——A/A 只证尺子对称不证有效（代理分从未与端到端结局对齐）；留出 2 道题反复自适应使用（单假设 ≈6%、6 个 ≈30% 误采纳）；扩池要人补 u2；生成器上限；「实付 ≈$0.05–0.15」是断言。用户要求重读 transfer 四份理论文档 + 联网调研后给出「小花费、快迭代、上限高、尺标科学可量化且切实」的训练器。

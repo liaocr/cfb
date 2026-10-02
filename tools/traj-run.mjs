@@ -4,6 +4,9 @@
 //   工具：read_file / edit_file 真改；bash 先查 canned（测试 / trace / CI 按文件状态给结果），否则白名单命令真跑（grep/sed/cat/ls/head/tail/wc/find）。
 //   量：到修好的轮数、edit 次数、重复命令、修好后有没有验收、最终声明是否与状态相称、prompt tokens 合计、上下文里 reasoning 字数。
 // 用法：DEEPSEEK_API_KEY=… node tools/traj-run.mjs --variants raw,auto --samples 1 --max-rounds 6 --require-fp --base-url … --model … --out traj1 [--only id]
+// v4.1：--policy base,p-xxxx ⇒ 变体 policy:<id>（压缩器 = 生产 v4 提示词 + 策略补丁，两臂同一路径，可比）；--fork ⇒ 同题同样本只跑一次第 1 轮，
+//   各臂从同一第 1 轮状态分叉（配对在分叉点、省 1 次主调用）；每行记逐轮执行器代理旗标 proxySteps / proxyScore（traj-proxy.mjs），
+//   直接喂 cfb-cycle confirm --results（L2 结局 + 效度账本一次到位）。本文件不读任何计划文件；花钱仍只在显式带 KEY 运行时发生。
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -12,6 +15,8 @@ import { pathToFileURL } from 'node:url'
 import { TOOLS, makeChat, responseText, TRUSTED_FP, claudeShaped } from './effect-eval.mjs'
 import { claimOf } from './effect-mr.mjs'
 import { TRAJ_TASKS, materialize } from './traj-fixtures.mjs'
+import { stepFlags } from './helpers/traj-proxy.mjs'
+import { BASE_POLICY, applyPolicyToPrompt } from './helpers/generation.mjs'
 
 const SYSTEM = '你是在代码仓库里干活的编码 Agent，可用工具 bash / read_file / edit_file（仓库根目录）。每一轮：先给一句简短判断，再发出下一步需要的工具调用；一次可以发多个独立调用。认为任务已经完成时不要再调用工具，用文字说明改了什么、依据是什么。'
 // --text-tools：不带 tools 字段（中转把带 tools 的请求路由到不可信后端时用），改用文本协议发调用；三种变体同一协议，比较仍成立
@@ -34,9 +39,28 @@ function parseArgs(argv) {
     else if (a === '--min-chars') o.minChars = Number(v())
     else if (a === '--text-tools') o.textTools = true
     else if (a === '--max-probes') o.maxProbes = Number(v())
+    else if (a === '--policy') { for (const id of v().split(',')) o.variants.push('policy:' + id) }
+    else if (a === '--policy-dir') o.policyDir = v()
+    else if (a === '--fork') o.fork = true
     else throw new Error('未知参数 ' + a)
   }
+  o.variants = [...new Set(o.variants)]
   return o
+}
+/** 策略变体：policy:base = 生产 v4d9 提示词原样（经同一直连路径）；policy:<id> 读 <policyDir>/<id>.json（默认 CFB_CYCLE_DIR/offline/policies 或 .cfb-offline/policies）。 */
+export function loadPolicyFor(variant, policyDir) {
+  if (!variant.startsWith('policy:')) return null
+  const id = variant.slice('policy:'.length)
+  if (id === 'base') return BASE_POLICY
+  const dir = policyDir || (process.env.CFB_CYCLE_DIR ? path.join(path.resolve(process.env.CFB_CYCLE_DIR), 'offline', 'policies') : path.join(path.dirname(new URL(import.meta.url).pathname), '..', '.cfb-offline', 'policies'))
+  const file = path.join(dir, id + '.json')
+  if (!fs.existsSync(file)) throw new Error('policy-not-found:' + id + '（' + file + '）')
+  return JSON.parse(fs.readFileSync(file, 'utf8'))
+}
+/** 策略压缩请求体（与 generation.compressorBody 同口径：temperature 0、thinking on、max_tokens 2048）。 */
+export function policyCompressBody({ I, model, reasoning, ctx, policy }) {
+  const prompt = applyPolicyToPrompt(I.buildCompressPromptV4Direct(reasoning, ctx, null), policy)
+  return { model, messages: [{ role: 'user', content: prompt }], max_tokens: 2048, temperature: 0, thinking: { type: 'enabled' }, stream: false }
 }
 
 const SAFE_RE = /^(?:grep|rg|sed -n|cat|ls|head|tail|wc|find|echo|pwd|tree|sort|uniq|cut|awk|true)\b/
@@ -143,16 +167,18 @@ export function callsOfMessage(m) {
   return out.filter((c) => { const k = c.name + '|' + normCmd(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)); if (seen.has(k)) return false; seen.add(k); return true })
 }
 
-async function runOne({ o, task, variant, sample, chat, I, cred }) {
+export async function runOne({ o, task, variant, sample, chat, I, cred, forkMessage = null }) {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'traj-'))
   materialize(task, repo)
+  const policy = loadPolicyFor(variant, o.policyDir)
   const messages = [{ role: 'system', content: o.textTools ? SYSTEM_TEXT_TOOLS : SYSTEM }, { role: 'user', content: task.prompt }]
-  const rec = { task: task.id, variant, sample, rounds: 0, calls: 0, edits: [], repeats: 0, fixedAtRound: null, verifiedAfterFix: false, promptTokens: 0, compile: [], transcript: [], rejected: 0 }
+  const rec = { task: task.id, variant, sample, rounds: 0, calls: 0, edits: [], repeats: 0, fixedAtRound: null, verifiedAfterFix: false, promptTokens: 0, compile: [], transcript: [], rejected: 0, ...(policy ? { policy: policy.id } : {}), ...(forkMessage ? { forked: true } : {}) }
   const seenCmds = new Map()
   try {
     for (let round = 1; round <= o.maxRounds; round++) {
       let r
-      for (let k = 0; ; k++) {
+      if (round === 1 && forkMessage) r = { message: forkMessage, usage: { prompt_tokens: 0 }, fp: 'fork' }
+      else for (let k = 0; ; k++) {
         // 中转按请求内容（大致）黏住后端，作废重发常连续落到同一不可信后端 ⇒ 先用 max_tokens:1 的探针（只花 prefill）试后端，可信了再发真请求；
         //   每次重试在末条 user 末尾加 k 个零宽空格打散黏性，并退避几秒让路由轮转
         const msgs = k === 0 ? messages : messages.map((m, i) => i === messages.length - 1 && m.role === 'user' ? { ...m, content: m.content + '\u200b'.repeat(k) } : m)
@@ -169,12 +195,21 @@ async function runOne({ o, task, variant, sample, chat, I, cred }) {
         if (k >= o.maxProbes - 1) throw new Error('通道始终未送入思考：' + rec.rejectedWhy.slice(-10).join(','))
       }
       rec.rounds = round
+      if (round === 1 && !forkMessage) rec.firstMessage = r.message   // --fork：其他臂从这条第 1 轮回复分叉
       rec.promptTokens += Number(r.usage && r.usage.prompt_tokens) || 0
       const reasoning = String(r.message.reasoning_content || '')
       const text = responseText(r.message)
       const calls = callsOfMessage(r.message)
       let stored = reasoning, compileInfo = null
-      if (variant === 'auto' && reasoning.length < o.minChars) { compileInfo = { ok: false, belowFloor: true, rawChars: reasoning.length }; rec.compile.push(compileInfo) }
+      if ((variant === 'auto' || policy) && reasoning.length < o.minChars) { compileInfo = { ok: false, belowFloor: true, rawChars: reasoning.length }; rec.compile.push(compileInfo) }
+      else if (policy) {
+        // v4.1 策略变体：生产 v4 提示词 + 策略补丁，直连同一通道；两臂（policy:base vs policy:<id>）同路径 ⇒ 差异只来自补丁
+        const callsBlock = I.turnCallsBlock(calls); const ctx = I.buildCompressCtx(messages) + (callsBlock ? '\n\n' + callsBlock : '')
+        const t0 = Date.now()
+        try { const g = await chat(policyCompressBody({ I, model: o.model, reasoning, ctx, policy })); const txt = responseText(g.message); if (!txt || txt.length < 80) throw new Error('empty-compress'); stored = txt; compileInfo = { ok: true, ms: Date.now() - t0, rawChars: reasoning.length, outChars: txt.length, policy: policy.id, gate: null } }
+        catch (e) { compileInfo = { ok: false, ms: Date.now() - t0, rawChars: reasoning.length, policy: policy.id, error: String(e && e.message || e).slice(0, 120) } }
+        rec.compile.push(compileInfo)
+      }
       else if (variant === 'auto') {
         const callsBlock = I.turnCallsBlock(calls); const ctx = I.buildCompressCtx(messages) + (callsBlock ? '\n\n' + callsBlock : '')   // v12.9.2：与 birth.js / compile-mr 同一渲染（turnCallsBlock）
         const cfg = I.normalizeConfig({ compressPrompt: 'v4', compressV4Incremental: false, compressCtx: ctx, model: o.model, baseUrl: o.baseUrl, credentialsPath: cred, credentialRef: 'K', followHostProvider: false, followHostModel: false, trace: false, timeoutMs: 90000 })
@@ -211,6 +246,11 @@ async function runOne({ o, task, variant, sample, chat, I, cred }) {
     rec.claimJustified = rec.claim === 'fixed' ? (rec.fixed && rec.verifiedAfterFix) : rec.claim === 'hedged' ? true : !rec.fixed || !rec.final
     rec.contextReasoningChars = messages.filter((m) => m.role === 'assistant').reduce((n, m) => n + String(m.reasoning_content || '').length, 0)
     rec.finalFiles = Object.fromEntries(Object.keys(task.files).filter((p) => /\.(m?js|json)$/.test(p)).map((p) => [p, fs.readFileSync(path.join(repo, p), 'utf8')]).filter(([p, c]) => c !== task.files[p]))
+    // v4.1：逐轮执行器代理旗标（与 v9 L1 同族）；proxyScore = 修好前各轮均分（轨迹级口径），proxyRound2 = 第 2 轮（最早受压缩稿影响的一步）
+    rec.proxySteps = stepFlags(rec).map((s) => ({ round: s.round, ...s.flags, score: s.score }))
+    const pre = rec.proxySteps.filter((s) => !(Number.isInteger(rec.fixedAtRound) && s.round >= rec.fixedAtRound))
+    rec.proxyScore = pre.length ? +(pre.reduce((a, s) => a + s.score, 0) / pre.length).toFixed(3) : null
+    rec.proxyRound2 = rec.proxySteps.find((s) => s.round === 2)?.score ?? null
   } catch (e) { rec.error = String(e && e.message || e) }
   finally { fs.rmSync(repo, { recursive: true, force: true }) }
   return rec
@@ -263,13 +303,21 @@ async function main(argv) {
     const jobs = []
     for (const task of TRAJ_TASKS) { if (o.only && !o.only.includes(task.id)) continue; for (const v of o.variants) for (let k = 0; k < o.samples; k++) if (!have.has(`${task.id}|${v}|${k}`)) jobs.push({ task, variant: v, sample: k }) }
     console.log(`轨迹 ${jobs.length} 条（每条 ≤ ${o.maxRounds} 轮主调用${o.variants.includes('auto') ? ' + 同数副调用' : ''}），并发 ${o.concurrency}`)
+    // --fork：同题同样本分组，第一臂跑完第 1 轮后其余臂从同一条第 1 轮回复分叉（配对在分叉点、每组省 (臂数−1) 次主调用）
+    const groups = o.fork ? [...jobs.reduce((m, j) => { const k = `${j.task.id}|${j.sample}`; (m.get(k) || m.set(k, []).get(k)).push(j); return m }, new Map()).values()] : jobs.map((j) => [j])
+    if (o.fork) console.log(`--fork：${groups.length} 组，每组 ${o.variants.length} 臂共用第 1 轮`)
     let i = 0
-    await Promise.all(Array.from({ length: Math.min(o.concurrency, jobs.length) }, async () => {
-      while (i < jobs.length) {
-        const j = jobs[i++]
-        const rec = await runOne({ o, task: j.task, variant: j.variant, sample: j.sample, chat, I, cred })
+    await Promise.all(Array.from({ length: Math.min(o.concurrency, groups.length) }, async () => {
+      while (i < groups.length) {
+        const grp = groups[i++]
+        let forkMessage = null
+        for (const j of grp) {
+        const rec = await runOne({ o, task: j.task, variant: j.variant, sample: j.sample, chat, I, cred, forkMessage })
+        if (o.fork && !forkMessage && rec.firstMessage) forkMessage = rec.firstMessage
+        delete rec.firstMessage
         fs.appendFileSync(resPath, JSON.stringify(rec) + '\n')
-        console.log(`  ${rec.task}/${rec.variant} #${rec.sample}: ${rec.error ? 'ERR ' + rec.error : `${rec.fixed ? '修好@' + rec.fixedAtRound : '未修好'} · ${rec.rounds} 轮 · ${rec.calls} 调用 · edit ${rec.edits.length} · 重复 ${rec.repeats} · 验收 ${rec.verifiedAfterFix ? '●' : '·'} · 声明 ${rec.claim}${rec.claimJustified ? '' : '（不相称）'} · tokens ${rec.promptTokens}${rec.compile.length ? ' · 压稿 ' + rec.compile.filter((c) => c.ok).length + '/' + rec.compile.length : ''}`}`)
+        console.log(`  ${rec.task}/${rec.variant} #${rec.sample}: ${rec.error ? 'ERR ' + rec.error : `${rec.fixed ? '修好@' + rec.fixedAtRound : '未修好'} · ${rec.rounds} 轮 · ${rec.calls} 调用 · edit ${rec.edits.length} · 重复 ${rec.repeats} · 验收 ${rec.verifiedAfterFix ? '●' : '·'} · 声明 ${rec.claim}${rec.claimJustified ? '' : '（不相称）'} · tokens ${rec.promptTokens}${rec.compile.length ? ' · 压稿 ' + rec.compile.filter((c) => c.ok).length + '/' + rec.compile.length : ''} · proxy ${rec.proxyScore ?? '—'}${rec.forked ? ' · 分叉' : ''}`}`)
+        }
       }
     }))
     fs.rmSync(d, { recursive: true, force: true })

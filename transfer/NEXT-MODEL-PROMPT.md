@@ -6,6 +6,7 @@
 
 ## 零、先读这段（最新的、必须知道的）
 
+0000. **v14.5（2026-10-02）v4.1 已落地：读 `docs/design/CLOSED-LOOP-V4.md` §11。** 付费单位改为「分叉全轨迹」（`traj-run --fork --policy`），一次付费同时产出 L1 对 / L2 对 / 效度配对 / 飞轮对 / 子状态；`cfb-cycle ruler` 看回溯效度与信息产出/美元。首付 ≈$0.5（raw vs policy:base，3 场景 × 2 样本 × ≤4 轮），先给用户看成本、批准后再跑；留出家族 < 4 之前不按分搜索。
 000. **v14.4（2026-10-02）闭环 v4 已落地，先读 `docs/design/CLOSED-LOOP-V4.md`（再读 V3 / V2 作基座）。** 尺子分三层（L1 代理 / L2 traj-run 结局）、效度账本（AUC+CI）、e 值采纳、provisional→confirm→回滚、留出曝光、CPU 排序器；`node tools/cfb-cycle.mjs ruler` 先看。还没花过一分钱；下一步零 API：`traj-run --policy --continue-from` 与 `mint --auto`；首次付费 ≈$0.6（A/A r1 + L2 续跑留出 2 题），必须先 `plan` 冻结、给用户看预占/期望、批准后再 `run --live`。
 00. **v14.3（2026-10-02）闭环 v3 已落地，先读 `docs/design/CLOSED-LOOP-V3.md`（再读 V2 作基座）。** 用户的要求是「省只省真实 API 次数，架构与效果一点不省」：
    任务池 + 留出闸门（采纳只认留出题）、首轮 A/A 校准、提示词策略生成层（`propose-policy` → `ingest-gen` 三闸 → `compile --policy` → 自动成为假设）、偏好对飞轮。

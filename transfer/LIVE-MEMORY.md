@@ -2,7 +2,15 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
-## −3. 当前状态（2026-10-02，第二十三会话：闭环 v4 落地，零花费）
+## −4. 当前状态（2026-10-02，第二十四会话：v4.1 分叉全轨迹 / 执行器代理 / 回溯效度，零花费）
+
+- 第三轮评审：v4 设计过审、实现未闭环（L2 接不上 policy、效度 n=0、留出会先耗尽、首付顺序错）。v4.1 全部零 API 修：`traj-run --policy base,<id> --fork`（变体 `policy:<id>`，第 1 轮共用、各臂分叉；每行带 proxySteps/proxyScore）→ `confirm --results trajN/results.jsonl --map champion=policy:<id>,previous=policy:base`。
+- `traj-proxy.mjs`：执行器六旗标从历史 transcript 重算 ⇒ 回溯效度：轨迹级 21 对 AUC 0.944 但负例仅 3 ⇒ unvalidated；步级 67/21 簇 AUC 0.70 suspect；next/avoid ≈ 天花板 ⇒ L1 在这些题上几乎不区分，roundsToFix 才区分。`rulerValidity` 加 minPerClass=5。
+- 信息产出/美元（估）：v9 L1 轮 $0.126 ⇒ 5 L1 对、0 效度；分叉轨迹 $0.66 ⇒ 6 L1 + 6 L2 + 36 效度 + 36 飞轮 + 24 子状态。尺子未验前 v9 轮是最低效的花法。
+- 首付建议：`node tools/traj-run.mjs --variants raw --policy base --fork --samples 2 --max-rounds 4 --require-fp …`（≈$0.5），须先给用户看成本、批准后再跑；留出家族 < 4 之前不按分搜索。
+- 验证：closed-loop-v4 9/0；v3 16/0；closed-loop 25/0；N1–N7=0；manifest 更新。本地提交未推送。
+
+## −3. 上一状态（2026-10-02，第二十三会话：闭环 v4 落地，零花费）
 
 - 第二轮评审的硬伤是**尺子效度**（A/A 只证对称）。v4：L1 下一步结构分 = 代理；L2 = `tools/traj-run.mjs` 全轨迹结局（理论 S9 度量）；`ruler.mjs rulerValidity` 用 (proxy, outcome) 配对的 AUC+自助 CI 定 unvalidated/valid/suspect/invalid；`adoptionPolicy` 据此决定 L1 能否单独采纳。现在效度账本 n=0——**没在真模型上跑过一轮**。
 - 统计换 e 值（任意停时有效）：留出 e ≥10 且全部 e ≥10 才 `adopt-provisional`（5 场留出连胜；4 对全胜 e=6.2 不够）；「更差」e ≥10 reject；30 对封顶。champion 升 `cfb.champion/3`（adoption provisional/confirmed、previous、rolledBack）。`confirm --results`（traj-run 行，`--map champion=auto,previous=raw`）⇒ confirmed / rolled-back / pending；`propose` 对 provisional 拒绝（`--allow-provisional`）。
