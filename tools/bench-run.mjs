@@ -85,8 +85,9 @@ export async function benchRun(o, { I = null, compile = null, now = () => new Da
     console.log(`dry-run：不发请求、不写 receipt。真跑：去掉 --dry-run（需要 DEEPSEEK_API_KEY）`)
     return { plan, rows, dry: true }
   }
-  const apiKey = process.env.DEEPSEEK_API_KEY || (compile ? 'mock' : null); if (!apiKey) throw new Error('需要 DEEPSEEK_API_KEY')
-  if (!compile && (!o.baseUrl || !o.model)) throw new Error('--base-url 与 --model 必填')
+  const allLocal = policies.every((p) => p.policy?.config?.compressLocalModel === true)
+  const apiKey = process.env.DEEPSEEK_API_KEY || (compile || allLocal ? 'mock' : null); if (!apiKey) throw new Error('需要 DEEPSEEK_API_KEY')
+  if (!compile && !allLocal && (!o.baseUrl || !o.model)) throw new Error('--base-url 与 --model 必填')
   I = I || await import('../index.js')
   const crossCache = o.noCache ? new Map() : loadSiblingBenchCache(o.out, resPath)
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bk-')); const cred = path.join(d, 'c.yaml'); fs.writeFileSync(cred, 'K: "' + apiKey + '"\n', { mode: 0o600 })
@@ -94,7 +95,8 @@ export async function benchRun(o, { I = null, compile = null, now = () => new Da
   await Promise.all(Array.from({ length: Math.max(1, o.concurrency || 2) }, async () => {
     while (i < jobs.length) {
       const { p, g } = jobs[i++]
-      const ck = benchCacheKey({ policyId: p.id, policy: p.policy, goldId: g.id, goldDigest: g.digest, model: o.model })
+      const isLocal = p.policy?.config?.compressLocalModel === true
+      const ck = benchCacheKey({ policyId: p.id, policy: p.policy, goldId: g.id, goldDigest: g.digest, model: isLocal ? 'v5-micro-local' : o.model })
       const hit = crossCache.get(ck)
       if (hit) {
         const text = hit.ok && typeof hit.text === 'string' ? hit.text : g.raw
@@ -104,7 +106,7 @@ export async function benchRun(o, { I = null, compile = null, now = () => new Da
         console.log(`  ${p.id} × ${g.id} [${g.split}]: [缓存自 ${hit.plan}] ${hit.ok ? `稿 ${text.length} 字` : '闸不过 ' + hit.why + ' ⇒ 原文'} · score ${dist.score} · ${dist.verdict}`)
         continue
       }
-      const cfg0 = I.offlineBirthConfig({ model: o.model, baseUrl: o.baseUrl, credentialsPath: cred, policy: p.id === 'base' ? null : p.policy, normalizeConfig: I.normalizeConfig })
+      const cfg0 = I.offlineBirthConfig({ model: isLocal ? 'v5-micro-local' : o.model, baseUrl: isLocal ? 'local://v5' : o.baseUrl, credentialsPath: cred, policy: p.id === 'base' ? null : p.policy, normalizeConfig: I.normalizeConfig })
       const cfg = g.raw.length < 3100 ? { ...cfg0, birthMinSavedChars: Math.min(cfg0.birthMinSavedChars || 50, Math.max(20, Math.floor(g.raw.length * 0.05))), ...(g.raw.length < 2600 ? { birthTokenGate: false } : {}) } : cfg0
       let b
       try { b = await I.birthOffline({ raw: g.raw, ctx: g.ctx, calls: g.calls || [], cfg, compile }) } catch (e) { b = { ok: false, text: g.raw, why: 'error', reason: String(e && e.message || e), ms: 0 } }
@@ -118,7 +120,7 @@ export async function benchRun(o, { I = null, compile = null, now = () => new Da
   }))
   fs.rmSync(d, { recursive: true, force: true })
   const all = prior.concat(rows)
-  const paidCalls = all.filter((r) => !r.cachedFrom).length
+  const paidCalls = all.filter((r) => !r.cachedFrom && !String(r.promptVersion || '').startsWith('compress-v5-local:')).length
   const cachedHits = all.filter((r) => r.cachedFrom).length
   const rep = benchReport(all); const md = benchReportMd(rep, { title: `基准 ${plan.id}` })
   fs.writeFileSync(path.join(o.out, 'report.md'), md + '\n'); fs.writeFileSync(path.join(o.out, 'report.json'), JSON.stringify(rep, null, 2) + '\n')

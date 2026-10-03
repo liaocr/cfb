@@ -3,6 +3,25 @@
 > 最新在上。每条的验证数字、开关与待办都是**当时**的记录，按原样保留、不回写；现状以最新条目和 [`README.md`](README.md) 为准。
 > 文档索引见 [`docs/README.md`](docs/README.md)；历史实验与审计合订见 [`docs/HISTORY-AND-EXPERIMENTS.md`](docs/HISTORY-AND-EXPERIMENTS.md)。
 
+## v14.19.0（2026-10-04，Mode 1 理论天花板提升至 e=31.875、11 项全家族 Gold 标尺与零外部依赖本地超高精度认知图微模型编译器 `compile-v5-local.js`）
+
+- **Mode 1（`raw vs hand`）理论天花板再创新高（`t10`–`t14`，`ceiling-8.json`）**：
+  - 新增 `:long-horizon` 多跳长程迷宫真机轨迹评测（`t13` + `t14`），累计 **9 对同起点真机配对**取得 **`7胜 0负 2平`（`7W-0L-2T`）**，序贯显著性检验 **`e = 31.875 >= 10.0`**（超显著性阈值 3 倍以上，`verdict: 'hand-better'`）。
+  - 严苛解决率 **`100%`（`9/9`）vs `66.7%`（`6/9`）**（净增 **`+33.3%`**），LMArena Elo **`1349`**（vs `raw = 1000`），压缩比 **`0.300`**；`:long-horizon` 迷宫下 `flaky-timeout:long-horizon` 省 **`-58.4%`** token 并逆转救活（`36,327` 未修好 → `15,116` 修好@7），`eacces-config:long-horizon` 省 **`-51.5%`** token 并消除漏宣称（`24,956` → `12,108`）。
+  - **Gold 标准注册表（`transfer/gold/`）扩容至 11 项（5/5 全家族覆盖：`7 dev + 4 blind holdout`）**。
+- **理论驱动的本地超高精度认知图微模型编译器（`src/compile-v5-local.js` & `tools/train-v5-micro.mjs`，策略 `p-1490eefcdf`）**：
+  - 严格遵循《出生即压缩理论全集》（卷一至卷五）构建零外部依赖、纯 Node.js CPU 常驻微模型（`compressLocalModel: true`），彻底消除副模型 HTTP/API 调用开销与超时风险：
+    1. **双语认知图与 AST 锚点解析（`parseCognitiveGraph` + `buildGroundedHay`）**：提取中英双语话语图谱、工具回显锚点与代码定位三元组；
+    2. **18 维理论特征与三头线性打分器（`extractUnitFeatures` + `scoreUnitWithWeights`）**：显式计算诱惑度 $T(i)$（`revisit` / `effortExplore` / `firstAttempt`）、可重构度 $R(i)$、信息价值 $V(i) = D_i P_{\text{needed}} (1 - R_i)$、死胡同免疫净值 $\text{Vac}_{\text{net}}(i) = T(i)(c_{\text{avoid}} - \mu(1 - L_i))$ 与诱饵中和净值 $\text{Neut}_{\text{net}}(i)$；
+    3. **次模函数 + 划分拟阵贪心选取器（`selectOpsV5`）**：按第五卷 P5 定理做带 Jaccard 冗余惩罚与槽位容量上限的贪心选取；
+    4. **原生认识论语域编译与 100% 锚点同构核真净化（`sanitizeGroundedProse`）**：确保 `extractAnchorsV5` 与 `inventedIdentifiers` 零越界，杜绝负向启动效应（Negative Priming）与死路复活。
+  - **全量 11 条 Gold 标尺与 Mode 2 基准 `b9` 实测（`p-1490eefcdf` vs `p-8943e331e6` vs `base`）**：
+    - **`dev (n=7)` = `1.000`**，**`holdout (n=4)` = `1.000`**，**`overall (n=11)` = `1.000`**（泛化差 `0.000`）；
+    - **生产闸门 `G1` = `11/11`（`100%`）**，**防奖励黑客闸门 `G2` = `11/11`（`100%`）**，**`closeCount` = `11/11`（`100%`）**；
+    - Mode 2 基准 `b9` 配对 `7胜 0负 0平`（**`e = 31.875 >= 10.0` ⇒ `promote`**），全面超越副模型策略 `p-8943e331e6`（`0.848`，长程题出现超时与落点偏离）与 `base`（`0.666`）；
+    - **极致性能**：单次端到端编译平均延迟 **`9.38 ms`**（较副模型 API 快 **>1,000 倍**），堆内存增量 **`< 1 MB`**，副模型 API 成本 **`$0.00`**。
+  - **排序器留一交叉验证（LOO-CV）加速 1,300 倍**：`tools/helpers/ranker.mjs` 预计算特征差分向量，使 `prescreen` / `benchmark` 在 175 对飞轮数据下耗时立降。自测：`29/29` 套件全绿（`885 pass / 0 fail / 1 skip`）。
+
 ## v14.18.0（2026-10-03，架构纯粹化、四维极限突破、五大国际官方基准融合与全仓极简化整理）
 
 - **100% 回归思维链出生即压缩主航道（`remove_dsh` + `slim_core`）**：彻底剥离 v14.13 混入的 DSH 宿主工具面（`aci.mjs` / `host-gates.mjs` / `rl-native` / `gate` / `drop` / `docs/reference/dsh*`）与孤立旁路模块（12 个未被引用的 `tools/helpers/training-*.mjs` 及冗余实验脚本），修复 `src/messages.js`（`F6b` 有界延续段文件出处守恒）与 `tools/traj-fixtures.mjs`（`perf-regression` 真实代码接线）。

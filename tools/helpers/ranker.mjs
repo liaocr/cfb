@@ -25,9 +25,8 @@ export const FEATURE_NAMES = Object.freeze(['logTokens', 'lines', 'paths', 'code
 const sigmoid = (z) => 1 / (1 + Math.exp(-z))
 const dot = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0)
 /** 训练：pairs = [{chosenText, rejectedText}] → 权重 w，使 σ(w·(f_c − f_r)) 最大化；L2 正则，固定步数，确定性。 */
-export function fit(pairs, { epochs = 300, lr = 0.1, l2 = 0.01 } = {}) {
-  const diffs = pairs.map((p) => { const a = features(p.chosenText), b = features(p.rejectedText); return a.map((x, i) => x - b[i]) })
-  const dim = FEATURE_NAMES.length; let w = new Array(dim).fill(0)
+function fitDiffs(diffs, { epochs = 300, lr = 0.1, l2 = 0.01 } = {}) {
+  const dim = FEATURE_NAMES.length; const w = new Array(dim).fill(0)
   for (let ep = 0; ep < epochs; ep++) {
     const g = new Array(dim).fill(0)
     for (const d of diffs) { const p = sigmoid(dot(w, d)); for (let i = 0; i < dim; i++) g[i] += (p - 1) * d[i] }
@@ -36,15 +35,20 @@ export function fit(pairs, { epochs = 300, lr = 0.1, l2 = 0.01 } = {}) {
   const acc = diffs.length ? diffs.filter((d) => dot(w, d) > 0).length / diffs.length : null
   return { w, trainAcc: acc == null ? null : +acc.toFixed(3) }
 }
-/** 留一交叉验证准确率（n ≤ 200 时逐个留；更大时 10 折）。 */
+export function fit(pairs, opts = {}) {
+  const diffs = pairs.map((p) => { const a = features(p.chosenText), b = features(p.rejectedText); return a.map((x, i) => x - b[i]) })
+  return fitDiffs(diffs, opts)
+}
+/** 留一交叉验证准确率（n ≤ 200 时逐个留；更大时 10 折；预计算特征差分向量避免 O(n^2) 重复正则扫描）。 */
 export function crossValidate(pairs, opts) {
   const n = pairs.length; if (n < 2) return null
+  const allDiffs = pairs.map((p) => { const a = features(p.chosenText), b = features(p.rejectedText); return a.map((x, i) => x - b[i]) })
   const folds = n <= 200 ? n : 10; let hit = 0, tot = 0
   for (let k = 0; k < folds; k++) {
-    const test = pairs.filter((_, i) => i % folds === k), train = pairs.filter((_, i) => i % folds !== k)
+    const test = allDiffs.filter((_, i) => i % folds === k), train = allDiffs.filter((_, i) => i % folds !== k)
     if (!test.length || !train.length) continue
-    const { w } = fit(train, opts)
-    for (const p of test) { const a = features(p.chosenText), b = features(p.rejectedText); if (dot(w, a) > dot(w, b)) hit++; tot++ }
+    const { w } = fitDiffs(train, opts)
+    for (const d of test) { if (dot(w, d) > 0) hit++; tot++ }
   }
   return tot ? +(hit / tot).toFixed(3) : null
 }

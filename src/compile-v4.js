@@ -1316,7 +1316,7 @@ export function spliceProgramParts(text, ctx, stats = {}, opts = {}) {
       .replace(/；这些不再重跑，除非中间改过东西。/g, '（不再重跑）。')
       .replace(/\s*→\s*「\$\s[^」]*」/g, '')
       .replace(/bash `cd "\$\(pwd\)" && /g, 'bash `')
-      .replace(/\s+2>\/dev\/null/g, '')
+      .replace(/\s+2>\/dev\/null(?=`)/g, '')
       .replace(/((?:read_file|bash\s+`(?:cat|ls|for\s+f\s+in)\b)[^`]*`)\s*→\s*「(?![^」]*(?:FAIL|ERR|Error|EACCES))[^」]*」/g, '$1')
       .replace(/→\s*「bash:\s*该沙箱[^」]*」/g, '→「沙箱拒」')
       .replace(/已排除[：:]\s*已排除[：:]/g, '已排除：')

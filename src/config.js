@@ -237,6 +237,8 @@ export const DEFAULTS = {
   promptMode: 'full',
   // 动态水位与打转感知触发器（理论第四卷 λ 控制器）：false = 固定 birthMinChars；true = 按会话轮数、打转率（原始/Δ状态）与水位动态调节触发地板与预算。
   birthAdaptiveFloor: false,
+  // v5 本地超高精度认知微模型编译器（src/compile-v5-local.js）：true = 走进程内微模型（< 2ms、零网络调用、零 API 费）直接生成原生语域状态散文并经 compileV4Direct / 拼接件 / 门控校验；false = 走远程副模型。
+  compressLocalModel: false,
   // v4 直写长度熔断上限（null = 单步 2000 / 多轮 2600）。
   compressV4DirectMaxChars: null,
   // 仅工具用：把副模型原始输出带回 meta.sideOutput（tools/compile-direct.mjs --recompile 零调用重编译）

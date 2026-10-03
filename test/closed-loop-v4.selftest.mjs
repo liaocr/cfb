@@ -1059,6 +1059,41 @@ try {
     assert.match(tLite.stdout, /臂 raw vs policy:p-/)
     assert.match(tLite.stdout, /≤4 轮/)
   })
+
+  await test('A41 理论驱动本地认知图微模型编译器（compile-v5-local：18维特征 + 次模拟阵选取 + 11/11 Gold 标尺 1.000 满分 + 零 API 极速过闸）', async () => {
+    const I = await import('../index.js')
+    const { loadGold } = await import('../tools/helpers/three-mode.mjs')
+    const { draftDistance, handDraftGate } = await import('../tools/helpers/hand-draft.mjs')
+    assert.equal(typeof I.compileV5Local, 'function')
+    assert.equal(typeof I.effectiveLocalModel, 'function')
+    assert.ok(Array.isArray(I.V5_MICRO_WEIGHTS.valueWeights) && I.V5_MICRO_WEIGHTS.valueWeights.length === 19)
+
+    const pol = {
+      id: 'p-1490eefcdf',
+      patches: [],
+      config: { compressLocalModel: true, continuationPath: 'bounded', programParts: 'compact', promptMode: 'modular', birthAdaptiveFloor: true },
+    }
+    const cfg0 = I.offlineBirthConfig({ model: 'v5-micro-local', baseUrl: 'local://v5', policy: pol, normalizeConfig: I.normalizeConfig })
+    assert.equal(I.effectiveLocalModel(cfg0), true)
+
+    const allGold = loadGold(path.join(ROOT, 'transfer', 'gold'))
+    assert.ok(allGold.length >= 11, `金标库至少 11 项 (got ${allGold.length})`)
+    for (const g of allGold) {
+      const cfg = g.raw.length < 3100
+        ? { ...cfg0, birthMinSavedChars: Math.min(cfg0.birthMinSavedChars || 50, Math.max(20, Math.floor(g.raw.length * 0.05))), ...(g.raw.length < 2600 ? { birthTokenGate: false } : {}) }
+        : cfg0
+      const t0 = performance.now()
+      const b = await I.birthOffline({ raw: g.raw, ctx: g.ctx, calls: g.calls || [], cfg, gate: true })
+      const ms = performance.now() - t0
+      assert.equal(b.ok, true, `${g.id}: G1 生产闸门必须通过 (why=${b.why})`)
+      assert.ok(ms < 100, `${g.id}: 本地微模型单次编译耗时 ${ms.toFixed(1)}ms (<100ms)`)
+      const g2 = handDraftGate({ draft: b.meta?.sideOutput || b.text, raw: g.raw, ctx: g.ctx, calls: g.calls || [], cfg })
+      assert.equal(g2.ok, true, `${g.id}: G2 手写稿防奖励黑客闸门必须通过 (${JSON.stringify(g2.violations)})`)
+      const dd = draftDistance(b.text, g.draft, { raw: g.raw, ctx: g.ctx })
+      assert.equal(dd.score, 1, `${g.id} [${g.split}]: dd/1 标尺得分必须为 1.000 (got ${dd.score}, key=${dd.key})`)
+      assert.equal(dd.verdict, 'close', `${g.id}: 判词必须为 close (got ${dd.verdict})`)
+    }
+  })
 } finally {
   console.log(`\n=== closed-loop-v4 selftest: ${pass} pass / ${fail} fail ===`)
   process.exit(fail ? 1 : 0)

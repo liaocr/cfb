@@ -455,7 +455,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         }
       }
       if ((variant === 'auto' || policy || hand) && reasoning.length < armFloor) { compileInfo = { ok: false, belowFloor: true, rawChars: reasoning.length, floor: armFloor, ...(adaptiveCtrl ? { adaptiveZone: adaptiveCtrl.zone } : {}) }; rec.compile.push(compileInfo) }
-      else if (hand && (!calls.length || round >= o.maxRounds || (rec.compile.some((c) => c && c.path === 'hand' && c.ok) && !fs.existsSync(path.join(o.out, 'drafts', `${task.id.replace(/[^\w.-]/g, '_')}-s${sample}-r${round}.md`))))) { compileInfo = { ok: false, skipped: 'no-next-round', rawChars: reasoning.length }; rec.compile.push(compileInfo) }   // 没有下一轮会读这份稿，或前序分歧轮 hand 稿已生效且未预置后续手写稿 ⇒ 直跑到底不中断
+      else if (hand && (!calls.length || round >= o.maxRounds || (rec.fixedAtRound != null && rec.compile.some((c) => c && c.path === 'hand' && c.ok) && !fs.existsSync(path.join(o.out, 'drafts', `${task.id.replace(/[^\w.-]/g, '_')}-s${sample}-r${round}.md`))))) { compileInfo = { ok: false, skipped: 'no-next-round', rawChars: reasoning.length }; rec.compile.push(compileInfo) }   // 没有下一轮会读这份稿，或已修好且前序分歧轮 hand 稿已生效 ⇒ 直跑到底不中断
       else if (hand) {
         // v4.6 模式 1：助手当副模型。稿文件在 ⇒ 过 G2 + 生产闸链；不在 / 不过 ⇒ 写 pending + state 暂停
         const handCompact = o.minChars === 3100 && reasoning.length < 3100

@@ -1,6 +1,6 @@
 {
   "schema": "cfb.cycle-state/1",
-  "at": "2026-10-03T17:31:53.490Z",
+  "at": "2026-10-03T20:33:29.935Z",
   "history": {
     "schema": "cfb.closed-loop/2",
     "hypotheses": {},
@@ -210,6 +210,38 @@
           "e": 10.5,
           "headroom": 0.4
         }
+      },
+      {
+        "n": 13,
+        "at": "2026-10-03T18:22:50.310Z",
+        "status": "ceiling",
+        "digest": "2d741a47d425106b",
+        "design": "6a29cd4f2f70a21e",
+        "expectedUsd": 0.275,
+        "capUsd": 0.91,
+        "ceiling": {
+          "k": 7,
+          "verdict": "hand-better",
+          "pairs": 7,
+          "e": 10.5,
+          "headroom": 0.286
+        }
+      },
+      {
+        "n": 14,
+        "at": "2026-10-03T18:50:39.873Z",
+        "status": "ceiling",
+        "digest": "2ee905c88b888ef7",
+        "design": "c18c74afefaca07c",
+        "expectedUsd": 0.275,
+        "capUsd": 0.91,
+        "ceiling": {
+          "k": 8,
+          "verdict": "hand-better",
+          "pairs": 9,
+          "e": 31.875,
+          "headroom": 0.333
+        }
       }
     ],
     "benchPlans": [
@@ -362,6 +394,35 @@
             "decision": "promote"
           }
         }
+      },
+      {
+        "n": 9,
+        "at": "2026-10-03T20:23:31.541Z",
+        "status": "reported",
+        "digest": "9ce5e67ce74428dd",
+        "design": "8c522cdffa0bf992",
+        "policies": [
+          "base",
+          "p-8943e331e6",
+          "p-1490eefcdf"
+        ],
+        "gold": 11,
+        "split": "all",
+        "expectedUsd": 0.247,
+        "capUsd": 0.376,
+        "best": "p-1490eefcdf",
+        "paired": {
+          "p-8943e331e6": {
+            "e": 4.411,
+            "n": 7,
+            "decision": "undetermined"
+          },
+          "p-1490eefcdf": {
+            "e": 31.875,
+            "n": 7,
+            "decision": "promote"
+          }
+        }
       }
     ],
     "policies": []
@@ -443,6 +504,28 @@
       "sides": {},
       "id": "p-08bdbc7561",
       "at": "2026-10-03T11:22:22.693Z"
+    },
+    {
+      "schema": "cfb.policy/1",
+      "parent": "p-8943e331e6",
+      "base": "compress-v4d9",
+      "patches": [],
+      "config": {
+        "compressLocalModel": true,
+        "continuationPath": "bounded",
+        "programParts": "compact",
+        "promptMode": "modular",
+        "birthAdaptiveFloor": true
+      },
+      "rationale": "严格遵循《出生即压缩理论全集》（卷一至卷五）训练的零外部依赖本地超高精度认知图微模型（compile-v5-local.js）：双语认知图解析 + 18 维理论特征（诱惑度 T(i)、可重构度 R(i)、信息价值 V(i)=D*Pn*(1-R)、死胡同免疫 Vac_net、诱饵中和 Neut_net）+ 次模加划分拟阵贪心选取 + 100% 锚点同构核真净化。",
+      "prediction": "在全量 11 条 Gold 标尺（7 dev + 4 blind holdout）与 5 题冻结池上达到 1.000 得分（G1 11/11、G2 11/11、泛化差 0.000），单次编译延迟 ~9ms，零副模型 API 成本。",
+      "origin": {
+        "round": 9,
+        "kind": "v5-local-micro"
+      },
+      "status": "proposed",
+      "sides": {},
+      "id": "p-1490eefcdf"
     },
     {
       "schema": "cfb.policy/1",
@@ -1351,6 +1434,122 @@
         "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t12/plan.json --store-text --variants raw,hand --only eacces-config:decoy --samples 1 --max-rounds 7 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t12",
         "design": "009481ab81797267"
       }
+    },
+    {
+      "n": 13,
+      "plan": {
+        "schema": "cfb.traj-plan/1",
+        "id": "t13",
+        "at": "2026-10-03T18:22:50.310Z",
+        "variants": [
+          "raw",
+          "hand"
+        ],
+        "scenarios": [
+          "sse-truncated:long-horizon",
+          "wrong-model:long-horizon"
+        ],
+        "samples": 1,
+        "maxRounds": 7,
+        "fork": true,
+        "maxTokens": 8000,
+        "storeText": true,
+        "purpose": "模式 1 天花板：hand 臂 = 助手代替副模型手写稿（同一提示词、同一闸链 + G2 决策不变闸）vs raw；量 f(主模型 | 稿) 的上界与「稿该写什么」；hand 永远不采纳为 champion，过闸且修好的稿进金标注册表（gold add）作模式 2 标准",
+        "yield": {
+          "l1Pairs": 2,
+          "l2Pairs": 2,
+          "validityPairsApprox": 24,
+          "flywheelPairsApprox": 0,
+          "childStatesApprox": 20
+        },
+        "cost": {
+          "mains": 26,
+          "compresses": 0,
+          "expectedMains": 22,
+          "expectedCompresses": 0,
+          "expectedUsd": 0.275,
+          "capUsd": 0.91,
+          "pricing": {
+            "mainUsd": 0.0125,
+            "mainCapUsd": 0.035,
+            "compressUsd": 0.0075,
+            "compressCapUsd": 0.0114,
+            "divergeRound": 3,
+            "floorShare": 0.4
+          },
+          "shadow": true,
+          "calibrated": {
+            "receipts": 3,
+            "divergeRound": 4,
+            "floorShare": 0.14,
+            "expectedMains": 20,
+            "expectedCompresses": 0,
+            "expectedUsd": 0.25
+          }
+        },
+        "holdoutNote": "场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索",
+        "digest": "2d741a47d425106b",
+        "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t13/plan.json --store-text --variants raw,hand --only sse-truncated:long-horizon,wrong-model:long-horizon --samples 1 --max-rounds 7 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t13",
+        "design": "6a29cd4f2f70a21e"
+      }
+    },
+    {
+      "n": 14,
+      "plan": {
+        "schema": "cfb.traj-plan/1",
+        "id": "t14",
+        "at": "2026-10-03T18:50:39.873Z",
+        "variants": [
+          "raw",
+          "hand"
+        ],
+        "scenarios": [
+          "flaky-timeout:long-horizon",
+          "eacces-config:long-horizon"
+        ],
+        "samples": 1,
+        "maxRounds": 7,
+        "fork": true,
+        "maxTokens": 8000,
+        "storeText": true,
+        "purpose": "模式 1 天花板：hand 臂 = 助手代替副模型手写稿（同一提示词、同一闸链 + G2 决策不变闸）vs raw；量 f(主模型 | 稿) 的上界与「稿该写什么」；hand 永远不采纳为 champion，过闸且修好的稿进金标注册表（gold add）作模式 2 标准",
+        "yield": {
+          "l1Pairs": 2,
+          "l2Pairs": 2,
+          "validityPairsApprox": 24,
+          "flywheelPairsApprox": 0,
+          "childStatesApprox": 20
+        },
+        "cost": {
+          "mains": 26,
+          "compresses": 0,
+          "expectedMains": 22,
+          "expectedCompresses": 0,
+          "expectedUsd": 0.275,
+          "capUsd": 0.91,
+          "pricing": {
+            "mainUsd": 0.0125,
+            "mainCapUsd": 0.035,
+            "compressUsd": 0.0075,
+            "compressCapUsd": 0.0114,
+            "divergeRound": 3,
+            "floorShare": 0.4
+          },
+          "shadow": true,
+          "calibrated": {
+            "receipts": 4,
+            "divergeRound": 4,
+            "floorShare": 0.14,
+            "expectedMains": 20,
+            "expectedCompresses": 0,
+            "expectedUsd": 0.25
+          }
+        },
+        "holdoutNote": "场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索",
+        "digest": "2ee905c88b888ef7",
+        "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t14/plan.json --store-text --variants raw,hand --only flaky-timeout:long-horizon,eacces-config:long-horizon --samples 1 --max-rounds 7 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t14",
+        "design": "c18c74afefaca07c"
+      }
     }
   ],
   "packs": [
@@ -2041,7 +2240,104 @@
         "digest": "5193dcd48bdb6369",
         "command": "node tools/bench-run.mjs --plan .cfb-runtime/bench/b8/plan.json --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/bench/b8"
       }
+    },
+    {
+      "n": 9,
+      "plan": {
+        "schema": "cfb.bench-plan/1",
+        "id": "b9",
+        "at": "2026-10-03T20:23:31.541Z",
+        "policies": [
+          "base",
+          "p-8943e331e6",
+          "p-1490eefcdf"
+        ],
+        "split": "all",
+        "metric": "dd/1",
+        "gold": [
+          {
+            "id": "eacces-config_decoy-s0-r3",
+            "family": "eacces-config",
+            "split": "holdout",
+            "digest": "44e98a467a097a2e"
+          },
+          {
+            "id": "eacces-config_long-horizon-s0-r5",
+            "family": "eacces-config",
+            "split": "holdout",
+            "digest": "5f3963b4b8f8744a"
+          },
+          {
+            "id": "flaky-timeout_long-horizon-s0-r4",
+            "family": "flaky-timeout",
+            "split": "dev",
+            "digest": "2461649d016e102c"
+          },
+          {
+            "id": "flaky-timeout-s0-r4",
+            "family": "flaky-timeout",
+            "split": "dev",
+            "digest": "322e18be14742f63"
+          },
+          {
+            "id": "flaky-timeout-s0-r5",
+            "family": "flaky-timeout",
+            "split": "dev",
+            "digest": "39e1e6f4a5e9d8af"
+          },
+          {
+            "id": "perf-regression-s0-r6",
+            "family": "perf-regression",
+            "split": "dev",
+            "digest": "21b62369147d4cf2"
+          },
+          {
+            "id": "sse-truncated_decoy-s0-r3",
+            "family": "sse-truncated",
+            "split": "dev",
+            "digest": "a0b069d79a230245"
+          },
+          {
+            "id": "sse-truncated_long-horizon-s0-r5",
+            "family": "sse-truncated",
+            "split": "dev",
+            "digest": "2876ba54e4f80ad9"
+          },
+          {
+            "id": "sse-truncated-s0-r5",
+            "family": "sse-truncated",
+            "split": "dev",
+            "digest": "f84dc9988494f31e"
+          },
+          {
+            "id": "wrong-model_decoy-s0-r4",
+            "family": "wrong-model",
+            "split": "holdout",
+            "digest": "d1f253f227aecb50"
+          },
+          {
+            "id": "wrong-model_long-horizon-s0-r4",
+            "family": "wrong-model",
+            "split": "holdout",
+            "digest": "0acaac13997bf072"
+          }
+        ],
+        "cost": {
+          "calls": 33,
+          "expectedUsd": 0.247,
+          "capUsd": 0.376,
+          "pricing": {
+            "compressUsd": 0.0075,
+            "compressCapUsd": 0.0114
+          }
+        },
+        "purpose": "评测本地认知图微模型 p-1490eefcdf 对比副模型冠军 p-8943e331e6 与 base 基线在全量 11 条 Gold 标尺（7 dev + 4 holdout）上的表现",
+        "selection": "dev 项：每个金标上候选 vs base 按层级键配对 → e 值（≥2 家族、e ≥ 阈 ⇒ promote）；holdout 项只报告，不参与选择；promote 的策略进 plan-traj（模式 3）验收，基准分本身不采纳 champion",
+        "design": "8c522cdffa0bf992",
+        "digest": "9ce5e67ce74428dd",
+        "command": "node tools/bench-run.mjs --plan .cfb-runtime/bench/b9/plan.json --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/bench/b9"
+      }
     }
   ],
-  "digest": "190acd1eb52db8d9"
+  "digest": "e03a9d89a754804f"
 }

@@ -15,7 +15,7 @@ export { name, inject, apply, DEP_ID, compressCtxFor } from './src/plugin.js'
 
 // ── 配置 ─────────────────────────────────────────────────────────────────────
 export { DEFAULTS, normalizeConfig, dshHome, dshHomePath } from './src/config.js'
-export { applyPolicyPatches, validatePolicyPatches, normalizePolicy, POLICY_PATCH_LIMITS, POLICY_CONFIG_KEYS, POLICY_REGIME_KEYS, validatePolicyConfig, effectiveContinuationPath, effectiveProgramParts, effectivePromptMode, effectiveAdaptiveFloor, policyRegimeKeys, applyPolicyConfig } from './src/policy.js'   // v14.10 策略即配置
+export { applyPolicyPatches, validatePolicyPatches, normalizePolicy, POLICY_PATCH_LIMITS, POLICY_CONFIG_KEYS, POLICY_REGIME_KEYS, validatePolicyConfig, effectiveContinuationPath, effectiveProgramParts, effectivePromptMode, effectiveAdaptiveFloor, effectiveLocalModel, policyRegimeKeys, applyPolicyConfig } from './src/policy.js'   // v14.10 策略即配置
 
 // ── 出生即压缩（birth）───────────────────────────────────────────────────────
 export {
@@ -36,6 +36,12 @@ export {
   compileV4, compileV4Direct, bindFixBranches, splitSentencesTickAware, inHandLines, inHandLinesBlock, lineKind, verifyHints, compactVerifyHints, verifyHintsBlock, turnCallsBlock, spliceProgramParts, closingQuestions, compactClosingQuestions, programPartsText, stripExcludedFallback, dedupeParentheticals, bindLocus, strongTokens, isFixBranch, usableLocus, fileVerbatim, adaptEditTool, compileOpsV4, locusFromRaw, actionLoci, renderProse, parseOps, normalizeOp, validateOps, selectOps, renderOps, renderLine, renderLang, scoreOp,
   mergeSegmentOps, priorLines, freshenState, supersedesIds, v4RejectRatioOf, V4_KINDS, V4_EVS, V4_KIND2,
 } from './src/compile-v4.js'
+export {
+  V5_LOCAL_VERSION, PRIOR_D_V5, R_BASE_V5, SLOT_NAMES, V5_MICRO_WEIGHTS,
+  extractAnchorsV5, classifyDiscourseKind2, splitDiscourseUnits, extractUnitFeatures,
+  scoreUnitWithWeights, selectOpsV5, extractDraftPrefFeatures, scoreDraftPreference,
+  buildGroundedHay, sanitizeGroundedProse, parseCognitiveGraph, compileV5Local,
+} from './src/compile-v5-local.js'
 export { createSegmenter, findCut, findFirstCut } from './src/segment-v4.js'
 export {
   requestOnce, requestStream, prewarmTargetUrl, retryDelayMs,

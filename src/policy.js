@@ -73,6 +73,7 @@ export const POLICY_CONFIG_KEYS = Object.freeze({
   promptMode: Object.freeze({ enum: Object.freeze(['full', 'modular']) }),
   compressV4DirectMaxChars: Object.freeze({ int: Object.freeze([600, 4000]) }),
   compressV4DirectBind: Object.freeze({ bool: true }),
+  compressLocalModel: Object.freeze({ bool: true }),
   birthAdaptiveFloor: Object.freeze({ bool: true, regime: true }),
   birthMinChars: Object.freeze({ int: Object.freeze([1, 20000]), regime: true }),
   birthMinSavedChars: Object.freeze({ int: Object.freeze([-4000, 4000]), regime: true }),
@@ -128,6 +129,11 @@ export function effectivePromptMode(cfg) {
 export function effectiveAdaptiveFloor(cfg) {
   const fromPolicy = cfg && cfg.compressPolicy && cfg.compressPolicy.config && cfg.compressPolicy.config.birthAdaptiveFloor
   return typeof fromPolicy === 'boolean' ? fromPolicy : !!(cfg && cfg.birthAdaptiveFloor)
+}
+/** 策略生效后的本地微模型编译器开关（缺省 false = 远程副模型；true = 走 compileV5Local 零网络微模型）。 */
+export function effectiveLocalModel(cfg) {
+  const fromPolicy = cfg && cfg.compressPolicy && cfg.compressPolicy.config && cfg.compressPolicy.config.compressLocalModel
+  return typeof fromPolicy === 'boolean' ? fromPolicy : !!(cfg && cfg.compressLocalModel)
 }
 
 /** 配置里的策略归一化：null/undefined/'base' ⇒ null（无策略）；对象必须有 string id 与合法 patches（或合法 config）。坏的抛。 */

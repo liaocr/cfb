@@ -97,6 +97,8 @@ export interface CotFormBConfig {
   /** finish 处收网等待上限（ms，缺省 1500）。birth 下 timeoutMs 至少会被抬到 本值 + finishHeadersGraceMs + 2000 */
   birthFinishWaitMs?: number
   /** v11.6 默认 3100（R=60 自洽保本原长 2,747，保守取整且不下调；见 docs/analysis/AUDIT-V11.5.md §一）。 */
+  /** v14.19：启用本地超高精度认知图微模型编译器（src/compile-v5-local.js），零副模型 API 成本、毫秒级编译（缺省 false）。 */
+  compressLocalModel?: boolean
   birthMinChars?: number
   /** v11.6 成本模型观测参数（只影响 birth-econ trace，不参与判定）。 */
   econCacheDiscount?: number
@@ -593,3 +595,37 @@ export declare function splitTrainingFingerprints(rows: readonly { digest: strin
 export declare function trainingExportRow(record: TrainingExample): Readonly<Record<string, unknown>>
 export declare function freezeTrainingEvaluation(def: { id: string; evaluatorDigest: string; items: readonly Omit<TrainingEffect, 'before' | 'after'>[] }): Readonly<TrainingEvaluationSuite>
 export declare function gateTrainingRelease(effects: readonly TrainingEffect[], options?: { simulated?: boolean; suite?: TrainingEvaluationSuite | null }): { ok: boolean; reason: string }
+
+/** v14.19 Local Cognitive Micro-Model Compiler (src/compile-v5-local.js) */
+export declare const V5_LOCAL_VERSION: string
+export declare const V5_MICRO_WEIGHTS: Readonly<{
+  version: string
+  lambda: number
+  rhoRed: number
+  valueWeights: readonly number[]
+  slotWeights: Readonly<Record<string, readonly number[]>>
+  prefWeights: Readonly<Record<string, number>>
+}>
+export declare function effectiveLocalModel(cfg?: CotFormBConfig | null): boolean
+export declare function compileV5Local(raw: string, cfg?: CotFormBConfig, weights?: typeof V5_MICRO_WEIGHTS): {
+  ok: true
+  text: string
+  meta: {
+    promptVersion: string
+    model: string
+    localMs: number
+    archetype: string
+    prefScore: number
+    selectedOps: number
+    totalUnits: number
+  }
+  stats: {
+    archetype: string
+    localMs: number
+    prefScore: number
+    selectedOps: number
+    totalUnits: number
+    chars: number
+  }
+}
+

@@ -1535,7 +1535,8 @@ export function prescreenPolicies({ policyIds = null } = {}) {
     let patchedPrompt = polPromptBase, applicable = true
     try { patchedPrompt = applyPolicyToPrompt(polPromptBase, pol) } catch { applicable = false }
     const promptDeltaChars = patchedPrompt.length - basePrompt.length
-    // A. 在金标项上评估：若已有真实 Mode 2 副模型基准稿则优先采用实测稿，否则做结构闸门预估并标 [预估]
+    const isLocal = I.effectiveLocalModel(cfg)
+    // A. 在金标项上评估：若已有真实 Mode 2 副模型基准稿或本地微模型则直接实测，否则做结构闸门预估并标 [预估]
     let goldPass = 0, goldSavedTok = 0, goldScoreSum = 0, goldRankSum = 0, expandedBlocks = 0, goldLiveCount = 0
     for (const g of gold) {
       const effCtx = I.applyCtxContinuationPolicy(g.ctx || '', contMode)
@@ -1543,12 +1544,13 @@ export function prescreenPolicies({ policyIds = null } = {}) {
       const effFloor = ad ? ad.effectiveFloor : cfg.birthMinChars
       const liveRow = liveBench.get(pol.id + ':' + g.id)
       const baseLiveRow = liveBench.get('base:' + g.id)
-      if (!liveRow && g.raw.length < effFloor) {
+      if (!liveRow && !isLocal && g.raw.length < effFloor) {
         const dd = draftDistance(g.raw, g.draft, { raw: g.raw, ctx: g.ctx })
         goldScoreSum += dd.score ?? 0
         continue
       }
-      const c2 = { ...cfg, compressCtx: effCtx, ...(ad && !cfg.compressV4DirectMaxChars ? { compressV4DirectMaxChars: ad.effectiveMaxChars } : {}) }
+      const c2Base = { ...cfg, compressCtx: effCtx, ...(ad && !cfg.compressV4DirectMaxChars ? { compressV4DirectMaxChars: ad.effectiveMaxChars } : {}) }
+      const c2 = g.raw.length < 3100 ? { ...c2Base, birthMinSavedChars: Math.min(c2Base.birthMinSavedChars || 50, Math.max(20, Math.floor(g.raw.length * 0.05))), ...(g.raw.length < 2600 ? { birthTokenGate: false } : {}) } : c2Base
       let outText = g.raw
       if (liveRow) {
         goldLiveCount++
@@ -1560,8 +1562,9 @@ export function prescreenPolicies({ policyIds = null } = {}) {
           if ((g.raw.length >= 2600 ? (acc.netSavedTokensEst || 0) : (acc.netSaved || 0)) < 0) expandedBlocks++
         }
       } else {
+        if (isLocal) goldLiveCount++
         const rawSeed = baseLiveRow?.text ? baseLiveRow.text.replace(/^【(?:延续段|在手信息|台账与在手)】[\s\S]*?\n\n/, '').split(/\n*【(?:在手信息|台账与在手|验收提示|本轮已发出的调用)】/)[0].trim() : ''
-        const seedDraft = rawSeed && rawSeed.length <= 2000 ? rawSeed : g.draft
+        const seedDraft = isLocal ? I.compileV5Local(g.raw, c2).text : (rawSeed && rawSeed.length <= 2000 ? rawSeed : g.draft)
         const v = I.compileV4Direct(seedDraft, g.raw, c2)
         let cand = v.ok ? v.text : g.raw
         if (v.ok && Array.isArray(g.calls) && g.calls.length && /【台账】/.test(effCtx) && !/【本轮已发出的调用】/.test(effCtx)) {
@@ -1590,7 +1593,7 @@ export function prescreenPolicies({ policyIds = null } = {}) {
         if (r1Raw.length >= r1Floor) {
           r1Eligible++
           const c1 = { ...cfg, compressCtx: t.r1Ctx || '' }
-          const v1 = I.compileV4Direct(t.r1Side, r1Raw, c1)
+          const v1 = I.compileV4Direct(isLocal ? I.compileV5Local(r1Raw, c1).text : t.r1Side, r1Raw, c1)
           const acc1 = v1.ok ? I.birthAccept(r1Raw, v1.text, c1) : { ok: false }
           if (acc1.ok) r1Pass++
         }
@@ -1605,8 +1608,8 @@ export function prescreenPolicies({ policyIds = null } = {}) {
         continue
       }
       taskEligible++
-      const sideText = pol.sides?.[t.id]?.text || t.side
       const c2 = { ...cfg, compressCtx: effCtx, ...(ad && !cfg.compressV4DirectMaxChars ? { compressV4DirectMaxChars: ad.effectiveMaxChars } : {}) }
+      const sideText = pol.sides?.[t.id]?.text || (isLocal ? I.compileV5Local(raw, c2).text : t.side)
       const v = I.compileV4Direct(sideText, raw, c2)
       const cand = v.ok ? v.text : raw
       const acc = v.ok ? I.birthAccept(raw, cand, c2) : { ok: false, netSavedTokensEst: 0 }
@@ -1623,7 +1626,7 @@ export function prescreenPolicies({ policyIds = null } = {}) {
     }
     const goldMeanScore = gold.length ? +(goldScoreSum / gold.length).toFixed(3) : null
     const taskMeanDdScore = taskEligible ? +(taskDdSum / taskEligible).toFixed(3) : null
-    const degenerate = pol.id !== 'base' && promptDeltaChars === 0 && contMode === 'full' && ppMode === 'all' && pMode === 'full' && !regime.length && !pol.config?.compressV4DirectMaxChars && pol.config?.compressV4DirectBind === undefined
+    const degenerate = pol.id !== 'base' && promptDeltaChars === 0 && contMode === 'full' && ppMode === 'all' && pMode === 'full' && !regime.length && !pol.config?.compressV4DirectMaxChars && pol.config?.compressV4DirectBind === undefined && !isLocal
     results.push({
       policy: pol.id,
       applicable,
