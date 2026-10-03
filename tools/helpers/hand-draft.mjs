@@ -27,16 +27,50 @@ export function anchorsOf(text) {
   for (const m of cleaned.matchAll(ANCHOR_RE)) { const a = m[0].replace(/[.\-]+$/, ''); add(a); if (/[./\-]/.test(a)) for (const part of a.split(/[./\-]+/)) add(part) }
   return out
 }
-/** 单段稿的槽位（与生产台账同一套抽取：落定 / 已排除 / 验收 / 未解 / 提议三元组）。 */
+const stripInHand = (s) => String(s || '').replace(/\n*【(?:在手信息|台账与在手)】[\s\S]*$/, '').trim()
+/** 单段稿的槽位（与生产台账同一套抽取 + 多落点/逃生句/跨轮待办细粒度展开：落定 / 已排除 / 验收 / 未解 / 提议三元组）。 */
 export function slotsOf(text) {
-  const L = buildLedger([{ role: 'user', content: '任务' }, { role: 'assistant', content: '', reasoning_content: String(text || '') }])
-  return {
-    decided: L.decided.map((x) => x.text),
-    excluded: L.excluded.map((x) => x.text),
-    accept: L.accept.map((x) => x.text),
-    open: L.open.map((x) => x.text),
-    triples: L.edits.filter((e) => e.oldText).map((e) => ({ oldText: norm(e.oldText), newText: norm(e.newText) }))
+  const str = String(text || '')
+  const bodyNoInHand = stripInHand(str)
+  const L = buildLedger([{ role: 'user', content: '任务' }, { role: 'assistant', content: '', reasoning_content: str }])
+  let decided = L.decided.map((x) => x.text)
+  const excluded = L.excluded.map((x) => x.text)
+  const accept = L.accept.map((x) => x.text)
+  const open = L.open.map((x) => x.text)
+  const triples = L.edits.filter((e) => e.oldText).map((e) => ({ oldText: norm(e.oldText), newText: norm(e.newText) }))
+  // 1. 多落点协同改法拆分为独立落定子句（按落点逐条计召回，消除单落点伪满分）
+  const extraDecided = []
+  for (const s of bodyNoInHand.split(/(?<=[。！？\n])\s*/)) {
+    const t = norm(s)
+    if (!t) continue
+    if (/(?:本轮直接发了|改法分[一二两三\d]+处|改法只落)/.test(t) && /(?:一处.*；.*另一处|①.*；.*②)/.test(t)) {
+      const head = (t.match(/^[^：:]+[：:]/) || [''])[0]
+      const body = t.slice(head.length).trim()
+      for (const cl of body.split(/；\s*(?=(?:另一处|第[二三]处|②|③))/)) {
+        if (cl.trim()) extraDecided.push((head ? head + ' ' : '') + cl.trim())
+      }
+    }
   }
+  if (extraDecided.length > 1) decided = extraDecided
+  // 2. 抽取正文中的边界排除与伪证据排除（如「`done` 只留作标记不再参与」「`npm test` 的 PASS 不算证据」），不因已有「排除：」句而跳过（保证 gold 与 auto 对称）
+  for (const m of bodyNoInHand.matchAll(/(?:`?(?:done|\[DONE\])`?\s*(?:只留作标记不再参与|不再合成\s*finish|的处理行与\s*birth\s*都不用动)|`?npm test`?[^。；\n]*PASS\s*不算证据[^。；\n]*)/gi)) {
+    const c = norm(m[0])
+    if (!excluded.includes(c)) excluded.push(c)
+  }
+  // 3. 验收预注册扩展：纳入推翻分支（若回放仍…/如果验收不过…）与逃生兜底句（如果输出跟这两种都不像…）
+  for (const s of bodyNoInHand.split(/(?<=[。！？\n])\s*/)) {
+    const t = norm(s)
+    if (/^(?:若|如果)(?:回放|验收|输出跟这两种都不像)/.test(t) && !accept.includes(t)) accept.push(t)
+  }
+  // 4. 跨轮待办与回放后后续计划抽取（「回放过了之后还有两件原文已经定下的事：A；以及 B」）
+  for (const s of bodyNoInHand.split(/(?<=[。！？\n])\s*/)) {
+    const t = norm(s)
+    if (/(?:(?:回放|验收)过了之后还有[一二两三几\d]+件[^：:]*事|待办|后续待办)[：:]/.test(t)) {
+      const body = t.replace(/^[^：:]+[：:]\s*/, '').replace(/[。；\s]+$/, '')
+      for (const cl of body.split(/；\s*(?:以及)?/)) if (cl.trim()) open.push(cl.trim())
+    }
+  }
+  return { decided, excluded, accept, open, triples }
 }
 
 /**
@@ -69,8 +103,8 @@ function recalled(goldSentence, candidates) {
   const as = [...anchorsOf(goldSentence)]
   if (as.length) { const have = anchorsOf(candidates.join('\n')); return as.filter((a) => have.has(a)).length / as.length >= 0.6 }
   if (candidates.some((c) => jaccard(goldSentence, c) >= 0.5)) return true
-  const stripSlot = (x) => norm(x).replace(/^(?:已排除|未解|待解|未定|决定|已定|改法(?:只落一个)?)[：:]\s*/, '').replace(/[。；\s]+$/, '')
-  const gClauses = stripSlot(goldSentence).split(/[、；]+/).map((s) => s.trim()).filter((s) => s.length >= 4)
+  const stripSlot = (x) => norm(x).replace(/^(?:已排除|未解|待解|未定|决定|已定|改法(?:只落一个)?)[：:]\s*/, '').replace(/[`'"]/g, '').replace(/\s*的\s*/g, ' ').replace(/\s+/g, ' ').replace(/[。；\s]+$/, '')
+  const gClauses = stripSlot(goldSentence).split(/[、；，]+/).map((s) => s.trim()).filter((s) => s.length >= 4)
   if (!gClauses.length) return false
   const cJoined = candidates.map(stripSlot).join('；')
   return gClauses.some((cl) => cJoined.includes(cl))
@@ -79,9 +113,9 @@ const recall = (goldList, candList) => goldList.length ? +(goldList.filter((g) =
 
 /**
  * draftDistance(auto, gold, {raw, ctx})：两段稿按槽位比对。层级键（与 GPC 同样的字典序比较）：
- *   decision（gold 有三元组 / 落定句时 auto 是否同一决定）→ excludedRecall → acceptOk → openRecall → anchorPrecision → lengthOk
+ *   decision（gold 有三元组 / 多落点落定句时 auto 的落点召回率）→ excludedRecall → acceptOk（验收与逃生句连续召回）→ openRecall（跨轮待办与未解连续召回）→ anchorPrecision → lengthOk
  * anchorPrecision = auto 的锚点里出现在 原文 ∪ ctx ∪ 程序部件 的比例（gold 不算：照抄 gold 不是本事；锚点若来自别处就是发明 / 抄样例）。
- * score 只是给人看的 0–1 加权汇总；选稿用 key，不用 score。
+ * score 只是给人看的 0–1 加权汇总；gapToCeiling = 1 - score 量化距理论极限天花板（Gold=1.000）的真实差距。
  */
 export function draftDistance(auto, gold, { raw = '', ctx = '' } = {}) {
   const A = slotsOf(auto), G = slotsOf(gold)
@@ -95,10 +129,11 @@ export function draftDistance(auto, gold, { raw = '', ctx = '' } = {}) {
   const deadEndResurrected = resurrectedAnchors.length > 0
   let decision = null
   if (deadEndResurrected) decision = 0
+  else if (G.decided.length > 1) decision = recall(G.decided, A.decided.length ? A.decided : [stripInHand(auto)])
   else if (G.triples.length) decision = G.triples.every((g) => A.triples.some((a) => a.oldText === g.oldText && a.newText === g.newText)) ? 1 : 0
-  else if (G.decided.length) decision = recalled(G.decided[0], A.decided.length ? A.decided : [auto]) ? 1 : 0
+  else if (G.decided.length) decision = recall(G.decided, A.decided.length ? A.decided : [stripInHand(auto)])
   const excludedRecall = recall(G.excluded, A.excluded)
-  const acceptOk = G.accept.length ? (A.accept.length ? 1 : 0) : null
+  const acceptOk = G.accept.length ? (A.accept.length ? recall(G.accept, [stripInHand(auto)]) : 0) : null
   const openRecall = recall(G.open, A.open)
   const lengthRatio = gold.length ? +(String(auto).length / String(gold).length).toFixed(2) : null
   const lengthOk = lengthRatio == null ? null : (lengthRatio >= 0.6 && lengthRatio <= 1.6 ? 1 : 0)
@@ -106,8 +141,9 @@ export function draftDistance(auto, gold, { raw = '', ctx = '' } = {}) {
   const parts = [[decision, 0.35], [excludedRecall, 0.25], [acceptOk, 0.1], [openRecall, 0.1], [anchorPrecision, 0.15], [lengthOk, 0.05]].filter(([v]) => v != null)
   const w = parts.reduce((s, [, x]) => s + x, 0)
   const score = w ? +(parts.reduce((s, [v, x]) => s + v * x, 0) / w).toFixed(3) : null
+  const gapToCeiling = score != null ? +(1 - score).toFixed(3) : null
   const verdict = anchorPrecision < 1 ? 'invented-anchors' : deadEndResurrected ? 'resurrected-dead-end' : decision === 0 ? 'decision-differs' : (excludedRecall != null && excludedRecall < 0.5) ? 'lost-exclusions' : (score != null && score >= 0.85 ? 'close' : 'partial')
-  return { decision, excludedRecall, acceptOk, openRecall, anchorPrecision, lengthRatio, lengthOk, deadEndResurrected, ...(resurrectedAnchors.length ? { resurrectedAnchors } : {}), key, score, verdict, slots: { auto: A, gold: G } }
+  return { decision, excludedRecall, acceptOk, openRecall, anchorPrecision, lengthRatio, lengthOk, deadEndResurrected, ...(resurrectedAnchors.length ? { resurrectedAnchors } : {}), key, score, gapToCeiling, verdict, slots: { auto: A, gold: G } }
 }
 /** 字典序比较两把 key（越大越好）。 */
 export function compareKeys(a, b) { for (let i = 0; i < Math.max(a.length, b.length); i++) { const d = (a[i] ?? 0) - (b[i] ?? 0); if (Math.abs(d) > 1e-9) return d > 0 ? 1 : -1 } return 0 }

@@ -1491,6 +1491,26 @@ export function prescreenPolicies({ policyIds = null } = {}) {
   const allPols = [BASE_POLICY, ...listPolicies()]
   const want = policyIds ? allPols.filter((p) => policyIds.includes(p.id)) : allPols
   const basePrompt = promptHead(pool.tasks[0])
+  // 加载真实 Mode 2 基准落盘结果（按 b1, b2, ... 顺序覆盖，优先采用副模型真实生成稿评估，杜绝静态重拼假饱和）
+  const liveBench = new Map()
+  if (!BASE) {
+    const bRoot = path.dirname(benchHomeFor(1))
+    try {
+      const dirs = fs.readdirSync(bRoot).filter((d) => /^b\d+$/.test(d)).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))
+      for (const d of dirs) {
+        for (const r of readJsonl(path.join(bRoot, d, 'results.jsonl'))) {
+          if (!r.dry && r.policy && r.gold && (typeof r.text === 'string' || r.ok === false)) liveBench.set(r.policy + ':' + r.gold, { ...r, benchPlan: d })
+        }
+      }
+    } catch {}
+  }
+  // 加载 5 家族多轮人类 Oracle 理论极限天花板稿（transfer/mr/oracle-d2c.json）
+  const oracleMap = new Map()
+  const oracleFile = path.join(ROOT, 'transfer', 'mr', 'oracle-d2c.json')
+  try {
+    const oj = readJson(oracleFile)
+    for (const r of oj?.rows || []) if (r.id && r.text) oracleMap.set(r.id, r.text)
+  } catch {}
   const results = []
   for (const pol of want) {
     const cfg = I.normalizeConfig({ compressPrompt: 'v4', compressV4Direct: true, compressPolicy: pol.id === 'base' ? null : { id: pol.id, patches: pol.patches || [], ...(pol.config ? { config: pol.config } : {}) } })
@@ -1503,8 +1523,8 @@ export function prescreenPolicies({ policyIds = null } = {}) {
     let patchedPrompt = polPromptBase, applicable = true
     try { patchedPrompt = applyPolicyToPrompt(polPromptBase, pol) } catch { applicable = false }
     const promptDeltaChars = patchedPrompt.length - basePrompt.length
-    // A. 在金标项上模拟程序部件重拼 + 生产闸门 + draftDistance
-    let goldPass = 0, goldSavedTok = 0, goldScoreSum = 0, goldRankSum = 0, expandedBlocks = 0
+    // A. 在金标项上评估：若已有真实 Mode 2 副模型基准稿则优先采用实测稿，否则做结构闸门预估并标 [预估]
+    let goldPass = 0, goldSavedTok = 0, goldScoreSum = 0, goldRankSum = 0, expandedBlocks = 0, goldLiveCount = 0
     for (const g of gold) {
       const effCtx = I.applyCtxContinuationPolicy(g.ctx || '', contMode)
       const ad = adaptiveOn ? I.computeAdaptiveBirthControl(g.raw, effCtx, null, cfg) : null
@@ -1515,24 +1535,39 @@ export function prescreenPolicies({ policyIds = null } = {}) {
         continue
       }
       const c2 = { ...cfg, compressCtx: effCtx, ...(ad && !cfg.compressV4DirectMaxChars ? { compressV4DirectMaxChars: ad.effectiveMaxChars } : {}) }
-      const v = I.compileV4Direct(g.draft, g.raw, c2)
-      let cand = v.ok ? v.text : g.raw
-      if (v.ok && Array.isArray(g.calls) && g.calls.length && /【台账】/.test(effCtx) && !/【本轮已发出的调用】/.test(effCtx)) {
-        const block = I.turnCallsBlock(g.calls)
-        if (block) cand = I.spliceProgramParts(cand, effCtx + '\n\n' + block, {}, { programParts: ppMode })
-      }
-      const acc = v.ok ? I.birthAccept(g.raw, cand, { ...c2, compressCtx: effCtx + (g.calls?.length ? '\n\n' + I.turnCallsBlock(g.calls) : '') }) : { ok: false, netSavedTokensEst: 0 }
-      const outText = acc.ok ? cand : g.raw
-      if (acc.ok) {
-        goldPass++
-        goldSavedTok += acc.netSavedTokensEst || 0
-        if ((acc.netSavedTokensEst || 0) < 0) expandedBlocks++
+      const liveRow = liveBench.get(pol.id + ':' + g.id)
+      const baseLiveRow = liveBench.get('base:' + g.id)
+      let outText = g.raw
+      if (liveRow) {
+        goldLiveCount++
+        if (liveRow.ok && liveRow.text) {
+          outText = liveRow.text
+          const acc = I.birthAccept(g.raw, outText, { ...c2, compressCtx: effCtx + (g.calls?.length ? '\n\n' + I.turnCallsBlock(g.calls) : '') })
+          goldPass++
+          goldSavedTok += acc.netSavedTokensEst || 0
+          if ((acc.netSavedTokensEst || 0) < 0) expandedBlocks++
+        }
+      } else {
+        const seedDraft = baseLiveRow?.text ? baseLiveRow.text.split(/\n*【(?:在手信息|台账与在手|本轮已发出的调用)】/)[0].trim() : g.draft
+        const v = I.compileV4Direct(seedDraft, g.raw, c2)
+        let cand = v.ok ? v.text : g.raw
+        if (v.ok && Array.isArray(g.calls) && g.calls.length && /【台账】/.test(effCtx) && !/【本轮已发出的调用】/.test(effCtx)) {
+          const block = I.turnCallsBlock(g.calls)
+          if (block) cand = I.spliceProgramParts(cand, effCtx + '\n\n' + block, {}, { programParts: ppMode })
+        }
+        const acc = v.ok ? I.birthAccept(g.raw, cand, { ...c2, compressCtx: effCtx + (g.calls?.length ? '\n\n' + I.turnCallsBlock(g.calls) : '') }) : { ok: false, netSavedTokensEst: 0 }
+        outText = acc.ok ? cand : g.raw
+        if (acc.ok) {
+          goldPass++
+          goldSavedTok += acc.netSavedTokensEst || 0
+          if ((acc.netSavedTokensEst || 0) < 0) expandedBlocks++
+        }
       }
       const dd = draftDistance(outText, g.draft, { raw: g.raw, ctx: g.ctx })
       goldScoreSum += dd.score ?? 0
       if (rk.w) goldRankSum += scoreText(rk, outText) || 0
     }
-    // B. 在冻结任务池上评估真值复合分、信息密度效率分与净省 Token（同时覆盖 R1 全部 5 题 + R2 过门槛题，消除单步/短块覆盖盲区）
+    // B. 在冻结任务池上评估真值复合分、信息密度效率分、净省 Token 与距 5 题人类 Oracle 天花板（oracle-d2c.json）的真实距离
     let taskPass = 0, taskEligible = 0, r1Pass = 0, r1Eligible = 0, taskSavedTok = 0, truthSum = 0, truthEffSum = 0, taskDdSum = 0
     for (const t of pool.tasks) {
       if (t.r1Side && t.chain.a1?.raw) {
@@ -1570,8 +1605,11 @@ export function prescreenPolicies({ policyIds = null } = {}) {
       const chosenText = acc.ok ? cand : raw
       truthSum += truthComposite(truthDimensions(chosenText, t.chain, t.spec)).score ?? 0
       truthEffSum += truthEfficiency(chosenText, t.chain, t.spec, raw.length).score ?? 0
-      taskDdSum += draftDistance(chosenText, t.side, { raw, ctx: effCtx }).score ?? 0
+      const oracleTarget = oracleMap.get(t.id) || t.side
+      taskDdSum += draftDistance(chosenText, oracleTarget, { raw, ctx: effCtx }).score ?? 0
     }
+    const goldMeanScore = gold.length ? +(goldScoreSum / gold.length).toFixed(3) : null
+    const taskMeanDdScore = taskEligible ? +(taskDdSum / taskEligible).toFixed(3) : null
     const degenerate = pol.id !== 'base' && promptDeltaChars === 0 && contMode === 'full' && ppMode === 'all' && pMode === 'full' && !regime.length && !pol.config?.compressV4DirectMaxChars && pol.config?.compressV4DirectBind === undefined
     results.push({
       policy: pol.id,
@@ -1585,35 +1623,40 @@ export function prescreenPolicies({ policyIds = null } = {}) {
       adaptiveFloor: adaptiveOn,
       regime,
       goldN: gold.length,
+      goldLive: gold.length > 0 && goldLiveCount === gold.length,
       goldGatePass: gold.length ? `${goldPass}/${gold.length}` : '—',
       goldMeanSavedTok: gold.length ? Math.round(goldSavedTok / gold.length) : null,
-      goldMeanScore: gold.length ? +(goldScoreSum / gold.length).toFixed(3) : null,
+      goldMeanScore,
+      goldGapToCeiling: goldMeanScore != null ? +(1 - goldMeanScore).toFixed(3) : null,
       goldRankScore: gold.length && rk.w ? +(goldRankSum / gold.length).toFixed(3) : null,
       taskGatePass: `${taskPass}/${taskEligible}`,
       allTurnsGatePass: `${r1Pass + taskPass}/${r1Eligible + taskEligible}`,
       taskMeanSavedTok: Math.round(taskSavedTok / Math.max(1, pool.tasks.length)),
       taskMeanTruth: +(truthSum / pool.tasks.length).toFixed(3),
       taskMeanTruthEff: +(truthEffSum / pool.tasks.length).toFixed(4),
-      taskMeanDdScore: taskEligible ? +(taskDdSum / taskEligible).toFixed(3) : null,
+      taskMeanDdScore,
+      oracleGapToCeiling: taskMeanDdScore != null ? +(1 - taskMeanDdScore).toFixed(3) : null,
     })
   }
-  results.sort((a, b) => (a.expandedBlocks - b.expandedBlocks) || ((b.goldMeanScore ?? 0) - (a.goldMeanScore ?? 0)) || (b.taskMeanTruthEff - a.taskMeanTruthEff) || ((b.goldMeanSavedTok ?? 0) - (a.goldMeanSavedTok ?? 0)) || (b.taskMeanSavedTok - a.taskMeanSavedTok) || (a.promptDeltaChars - b.promptDeltaChars))
+  results.sort((a, b) => (a.expandedBlocks - b.expandedBlocks) || ((b.goldLive ? 1 : 0) - (a.goldLive ? 1 : 0)) || ((b.goldMeanScore ?? 0) - (a.goldMeanScore ?? 0)) || (b.taskMeanTruthEff - a.taskMeanTruthEff) || ((b.goldMeanSavedTok ?? 0) - (a.goldMeanSavedTok ?? 0)) || (b.taskMeanSavedTok - a.taskMeanSavedTok) || (a.promptDeltaChars - b.promptDeltaChars))
   return results
 }
 export function cmdPrescreen(args = []) {
   const ids = f(args, '--policies') ? f(args, '--policies').split(',') : null
   const rows = prescreenPolicies({ policyIds: ids })
-  const L = ['# 零 API 策略预筛榜（prescreen，$0 成本）', '', '| 策略 | 提示词Δ字 | 延续段 | 程序部件 | 提示裁剪 | 制度键 | 金标过闸 | 金标净省tok | 金标dd/1分 | 池题过闸(R2/全轮) | 池题均省tok | 池题dd分 | 真值分 | 密度效率分 | 排序器分 | 状态 |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+  const L = ['# 零 API 策略预筛榜（prescreen，$0 成本）', '', '| 策略 | 提示词Δ字 | 延续段 | 程序部件 | 提示裁剪 | 制度键 | 金标过闸 | 金标净省tok | 金标dd/1(距极限) | 池题过闸(R2/全轮) | 池题均省tok | 5题Oracle dd(距极限) | 真值分 | 密度效率分 | 排序器分 | 状态 |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
   for (const r of rows) {
-    const status = !r.applicable ? '✗补丁不可用' : r.expandedBlocks > 0 ? `⚠逆向增补(${r.expandedBlocks}块变长)` : r.degenerate ? '⚠退化(同base)' : r.regime.length ? '制度候选' : '调稿候选'
-    L.push(`| ${r.policy} | ${r.promptDeltaChars >= 0 ? '+' + r.promptDeltaChars : r.promptDeltaChars} | ${r.continuationPath} | ${r.programParts} | ${r.promptMode} | ${r.regime.join(',') || '—'} | ${r.goldGatePass} | ${r.goldMeanSavedTok ?? '—'} | ${r.goldMeanScore ?? '—'} | ${r.taskGatePass} (${r.allTurnsGatePass}) | ${r.taskMeanSavedTok} | ${r.taskMeanDdScore ?? '—'} | ${r.taskMeanTruth} | ${r.taskMeanTruthEff} | ${r.goldRankScore ?? '—'} | ${status} |`)
+    const status = !r.applicable ? '✗补丁不可用' : r.expandedBlocks > 0 ? `⚠逆向增补(${r.expandedBlocks}块变长)` : r.degenerate ? '⚠退化(同base)' : r.goldLive ? '✓已实测' : r.regime.length ? '制度候选(未实测)' : '调稿候选(未实测)'
+    const goldDdStr = r.goldMeanScore != null ? `${r.goldMeanScore}${r.goldLive ? '[实测]' : '[预估]'} (-${r.goldGapToCeiling})` : '—'
+    const taskDdStr = r.taskMeanDdScore != null ? `${r.taskMeanDdScore} (-${r.oracleGapToCeiling})` : '—'
+    L.push(`| ${r.policy} | ${r.promptDeltaChars >= 0 ? '+' + r.promptDeltaChars : r.promptDeltaChars} | ${r.continuationPath} | ${r.programParts} | ${r.promptMode} | ${r.regime.join(',') || '—'} | ${r.goldGatePass} | ${r.goldMeanSavedTok ?? '—'} | ${goldDdStr} | ${r.taskGatePass} (${r.allTurnsGatePass}) | ${r.taskMeanSavedTok} | ${taskDdStr} | ${r.taskMeanTruth} | ${r.taskMeanTruthEff} | ${r.goldRankScore ?? '—'} | ${status} |`)
   }
   console.log(L.join('\n'))
   return rows
 }
 
 /** 从飞轮偏好对（winner vs loser）蒸馏零泄漏的上下文内对比示范补丁（In-Context DPO Contrastive Exemplar）。
- *  仅使用基础提示词白名单内的规范锚点（src/pool.js、8123、5432、cfg.port），确保 100% 过 leakCheck 闸。 */
+ *  仅使用基础提示词白名单内的规范锚点（src/pool.js、8123、5432、cfg.port、done），确保 100% 过 leakCheck 闸。 */
 export function distillFlywheelContrastivePatch(pairs = loadFlywheel()) {
   const n = Math.max(1, pairs.length)
   let wSingle = 0, lMulti = 0, wChars = 0, lChars = 0
@@ -1627,8 +1670,8 @@ export function distillFlywheelContrastivePatch(pairs = loadFlywheel()) {
   const multiPct = Math.min(99, Math.max(20, Math.round((lMulti / n) * 100)))
   const text = [
     `基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 ${singlePct}% vs 落败稿多点发散/复述率 ${multiPct}%）的正反对比铁律：`,
-    '✗ 落败退化范式（禁止）：把未证实的互斥备选猜想（A 或 B）并列写成待试改法，或把同一根因必须协同修改的两处漏掉一处，或在正文里把程序已自动附上的新鲜度/单元测试/零效应条款再抄一遍。',
-    '✓ 胜出精炼范式（必须）：「本轮增量把机理坐实：5432 open、8123 refused。改法只落一个（若同一机理需协同改 N 处则写“分 N 处落地：① … ② …”，每处均给出逐字 old_text 与 new_text，绝不漏掉任一处协同改动）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是本轮 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先跟上轮输出比差抓新信号，无新信号再跑预写取证，不调超时、不回滚。」',
+    '✗ 落败退化范式（禁止）：把未证实的互斥备选猜想并列写成待试改法，或把同一根因必须协同修改的两处漏掉一处，或漏掉回放通过后原文已定下的补测用例与日志脚本改动，或漏掉逃生段末句。',
+    '✓ 胜出精炼范式（必须）：「本轮增量把机理坐实：5432 open、8123 refused。改法只落一个（若同一机理需协同改两处则写“改法分两处落地：① …；② …”，每处均给出逐字 old_text 与 new_text，若某变量如 `done` 改后仅作标记不再参与合成须写明“`done` 只留作标记不再参与”）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是本轮 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先确认改动落地并与上轮输出比差抓新信号，此时不要再改 pool.js、不要回滚；无新信号再跑预写取证。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。回放过了之后还有两件原文已经定下的事：给对应的单元测试文件补齐原文列出的各条具体用例；以及让回放脚本除了原有日志也写一份原文指定的日志，无害、照做。」',
   ].join('\n')
   return { op: 'exemplar', section: 'contrastive', text }
 }
@@ -1796,14 +1839,17 @@ export function cmdBenchmark() {
   }
   L.push(
     '',
-    '## 二、L1 认知编译器无污染客观基准（LiveBench 口径：8/8 全轮过闸 × 信息密度效率 × 飞轮排序器，$0 成本）',
+    '## 二、L1 认知编译器无污染客观基准（6 维无饱和 dd/1 × 5题人类 Oracle 极限 × AA 信息密度效率）',
+    '> 理论极限天花板（Gold / Oracle）= `1.000`；`[实测]` 为真实副模型 API 生成稿得分，`[预估]` 为 $0 静态结构预筛；括号内 `-0.xxx` 为距理论极限天花板的真实差距。',
     '',
-    '| 排名 | 策略 ID | 提示词Δ字 | 架构配置 | 金标过闸/净省 | 池题全轮过闸 | 池题均省tok | 真值分 | AA密度效率分 | 飞轮排序器分 |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    '| 排名 | 策略 ID | 提示词Δ字 | 架构配置 | 金标过闸/净省 | 金标dd/1(距极限) | 池题全轮过闸 | 池题均省tok | 5题Oracle dd(距极限) | 真值分 | AA密度效率分 | 飞轮排序器分 |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   )
-  pre.slice(0, 6).forEach((r, idx) => {
+  pre.slice(0, 8).forEach((r, idx) => {
     const arch = `${r.continuationPath}/${r.programParts}/${r.promptMode}${r.adaptiveFloor ? '+λ' : ''}`
-    L.push(`| #${idx + 1} | **${r.policy}** | ${r.promptDeltaChars >= 0 ? '+' + r.promptDeltaChars : r.promptDeltaChars} | \`${arch}\` | ${r.goldGatePass} (${r.goldMeanSavedTok}t) | ${r.taskGatePass} (${r.allTurnsGatePass}) | **${r.taskMeanSavedTok} tok** | **${r.taskMeanTruth}** | **${r.taskMeanTruthEff}** | **${r.goldRankScore}** |`)
+    const goldDdStr = r.goldMeanScore != null ? `**${r.goldMeanScore}**${r.goldLive ? '[实测]' : '[预估]'} (-${r.goldGapToCeiling})` : '—'
+    const taskDdStr = r.taskMeanDdScore != null ? `${r.taskMeanDdScore} (-${r.oracleGapToCeiling})` : '—'
+    L.push(`| #${idx + 1} | **${r.policy}** | ${r.promptDeltaChars >= 0 ? '+' + r.promptDeltaChars : r.promptDeltaChars} | \`${arch}\` | ${r.goldGatePass} (${r.goldMeanSavedTok}t) | ${goldDdStr} | ${r.taskGatePass} (${r.allTurnsGatePass}) | **${r.taskMeanSavedTok} tok** | ${taskDdStr} | **${r.taskMeanTruth}** | **${r.taskMeanTruthEff}** | **${r.goldRankScore}** |`)
   })
   L.push(
     '',
