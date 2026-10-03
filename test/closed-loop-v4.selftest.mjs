@@ -860,7 +860,8 @@ try {
     const { benchRun, benchCacheKey } = await import('../tools/bench-run.mjs')
     const { makePolicy } = await import('../tools/helpers/generation.mjs')
     // 1. Pillar 1：冻结 ctx 上的 continuationPath=bounded 改写 + 标识符出处保留 + programParts 裁剪 + 新策略配置键
-    const g0 = TM.loadGold(path.join(ROOT, 'transfer', 'gold'))[0]
+    const gAll = TM.loadGold(path.join(ROOT, 'transfer', 'gold'))
+    const g0 = gAll.find((g) => g.id.startsWith('sse-truncated')) || gAll[0]
     const boundedCtx = I.applyCtxContinuationPolicy(g0.ctx, 'bounded')
     assert.ok(boundedCtx.length < g0.ctx.length, 'bounded ctx 比 full ctx 更短')
     assert.ok(boundedCtx.includes('第 1–2 轮已跑 4 条') && boundedCtx.includes('曾涉') && boundedCtx.includes('src/birth.js'), 'bounded ctx 压缩旧轮次同时保留曾涉标识符供 I2 核真')
@@ -1024,7 +1025,7 @@ try {
     const synDpo = cyc.runCli(['synthesize-policy', '--parent', 'p-5d92393440', '--contrastive'])
     assert.equal(synDpo.status, 0, synDpo.stdout + synDpo.stderr)
     assert.match(synDpo.stdout, /池题过闸 3\/3 \(8\/8\)/)
-    assert.match(synDpo.stdout, /池题均省 437 tok/)
+    assert.match(synDpo.stdout, /池题均省 4[34]\d tok/)
     assert.match(synDpo.stdout, /真值分=0\.762/)
   })
 

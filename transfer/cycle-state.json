@@ -1,6 +1,6 @@
 {
   "schema": "cfb.cycle-state/1",
-  "at": "2026-10-03T14:11:07.021Z",
+  "at": "2026-10-03T16:32:42.251Z",
   "history": {
     "schema": "cfb.closed-loop/2",
     "hypotheses": {},
@@ -162,6 +162,22 @@
           ],
           "file": ".cfb-offline/ruler/confirm-1.json"
         }
+      },
+      {
+        "n": 10,
+        "at": "2026-10-03T14:37:22.656Z",
+        "status": "ceiling",
+        "digest": "0120086adc955f50",
+        "design": "151d0ad4fbed70c7",
+        "expectedUsd": 0.275,
+        "capUsd": 0.91,
+        "ceiling": {
+          "k": 1,
+          "verdict": "insufficient",
+          "pairs": 2,
+          "e": 2.333,
+          "headroom": 0.5
+        }
       }
     ],
     "benchPlans": [
@@ -245,8 +261,69 @@
             "decision": "undetermined"
           }
         }
+      },
+      {
+        "n": 4,
+        "at": "2026-10-03T15:39:24.178Z",
+        "status": "planned",
+        "digest": "be2320fee9115194",
+        "design": "78a8c8adc87ba720",
+        "policies": [
+          "base",
+          "p-55a320e0f8"
+        ],
+        "gold": 4,
+        "split": "dev",
+        "expectedUsd": 0.06,
+        "capUsd": 0.091
+      },
+      {
+        "n": 5,
+        "at": "2026-10-03T15:47:09.828Z",
+        "status": "planned",
+        "digest": "1a82e1aeba7e9e4b",
+        "design": "2c9d1aedc57268ba",
+        "policies": [
+          "base",
+          "p-f94574bf06"
+        ],
+        "gold": 4,
+        "split": "dev",
+        "expectedUsd": 0.06,
+        "capUsd": 0.091
+      },
+      {
+        "n": 6,
+        "at": "2026-10-03T15:53:52.632Z",
+        "status": "planned",
+        "digest": "f3c7ccd6b3530fd7",
+        "design": "8800e3eb6595bc52",
+        "policies": [
+          "base",
+          "p-fcf6948529"
+        ],
+        "gold": 4,
+        "split": "dev",
+        "expectedUsd": 0.06,
+        "capUsd": 0.091
+      },
+      {
+        "n": 7,
+        "at": "2026-10-03T16:13:41.495Z",
+        "status": "planned",
+        "digest": "b55a98d40c3333ed",
+        "design": "752f5b2c50093947",
+        "policies": [
+          "base",
+          "p-8943e331e6"
+        ],
+        "gold": 4,
+        "split": "dev",
+        "expectedUsd": 0.06,
+        "capUsd": 0.091
       }
-    ]
+    ],
+    "policies": []
   },
   "champion": null,
   "policies": [
@@ -453,6 +530,35 @@
     },
     {
       "schema": "cfb.policy/1",
+      "parent": "base",
+      "base": "compress-v4d9",
+      "patches": [
+        {
+          "op": "exemplar",
+          "section": "contrastive",
+          "text": "基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 50% vs 落败稿多点发散/复述率 20%）的正反对比铁律：\n✗ 落败退化范式（禁止）：把原文中段讨论后放弃的第二文件或不改的相邻配置行塞进 old_text，或心算差值/把精确数字四舍五入凑整，或漏掉原文排除的具体代码分支/配置键与不重读目标文件的理由，或漏掉第四段「回放过了之后还有两件原文已经定下的事：…；以及…」及具体用例名/指标名/日志路径。\n✓ 胜出精炼范式（必须，总长控制在 750~1050 字）：「本轮增量把机理坐实：5432 open、8123 refused（数字全部逐字照抄原文，绝不心算或凑整）。已排除：调大 timeout 或另一配置键的路线，因为 30 s 是结果不是原因；已排除：改 net.yaml、新建临时复现脚本或用 cat/wc 重读 pool.js 的路线，因为第 1 轮已拿到完整文件且落点唯一。改法只落一个（仅当同一文件内末尾定下两处协同修改时写“改法分两处落地：① …（`done` 只留作标记不再参与）；② …”）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先确认改动落地并与上轮输出比差抓新信号，此时不要再改 pool.js、不要回滚；无新信号再跑预写取证。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。回放过了之后还有两件原文已经定下的事：确认验收命令跑改后全部目标指标（逐字写出各指标名与恢复数值）稳定恢复且未动已排除文件（若原文定了补测试则逐字写出测试文件路径与全部三条具体用例名）；以及保留不该动的配置键原值并汇总依据收工（若原文定了改脚本写日志则逐字写出脚本路径与两份日志路径落盘）。」"
+        }
+      ],
+      "config": {
+        "continuationPath": "bounded",
+        "programParts": "compact",
+        "promptMode": "modular",
+        "birthAdaptiveFloor": true
+      },
+      "rationale": "帕累托极限合成策略：bounded 延续段（带台账标识符溯源与去重）+ compact 极简工程状态部件（消除双倍叠加与冗长说教）+ modular 按轮次动态提示词裁剪（节省 ~260 input tok/轮）+ birthAdaptiveFloor 动态水位触发器 + 飞轮偏好对蒸馏正反对比示范（In-Context DPO）",
+      "prediction": "金标与任务池全轮（8/8）100% 过闸、0 逆向增补，单轮净省 Token 与真值密度效率分（truthEfficiency）同时达到帕累托全局最优",
+      "origin": {
+        "by": "synthesizer",
+        "parent": "base",
+        "contrastive": true
+      },
+      "status": "proposed",
+      "sides": {},
+      "id": "p-8943e331e6",
+      "at": "2026-10-03T16:13:36.601Z"
+    },
+    {
+      "schema": "cfb.policy/1",
       "parent": "p-5d92393440",
       "base": "compress-v4d9",
       "patches": [
@@ -572,6 +678,45 @@
       "sides": {},
       "id": "p-e62a037097",
       "at": "2026-10-03T11:22:15.601Z"
+    },
+    {
+      "schema": "cfb.policy/1",
+      "parent": "p-5d92393440",
+      "base": "compress-v4d9",
+      "patches": [
+        {
+          "op": "replace",
+          "from": "治症状 / 要动多处 / 落点没看过",
+          "to": "治症状 / 落点没看过 / 原文自己否掉的多处改动"
+        },
+        {
+          "op": "append",
+          "section": "rules",
+          "text": "10. 多处落点：原文最后的结论若明确要改不止一处（同一个值在几处产生或几处消费、两个文件各一行），落定句仍只落一个改法，但要写成「分 N 处落地：① 文件 `行` ② 文件 `行`」，N 处全部从【在手的代码行】里挑、各带自己的 old_text / new_text；第一分支按 ① ② 顺序连续发出，改完一处症状仍在不算假设被推翻，只有 N 处都落地后同等条件复现仍在才走第二分支；几处都在手，就不要为了「只改一处」把其余几处写进排除段。"
+        },
+        {
+          "op": "exemplar",
+          "section": "contrastive",
+          "text": "基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 50% vs 落败稿多点发散/复述率 20%）的正反对比铁律：\n✗ 落败退化范式（禁止）：把原文中段讨论后放弃的第二文件或不改的相邻配置行塞进 old_text，或心算差值/把精确数字四舍五入凑整，或漏掉原文排除的具体代码分支/配置键与不重读目标文件的理由，或漏掉第四段「回放过了之后还有两件原文已经定下的事：…；以及…」及具体用例名/指标名/日志路径。\n✓ 胜出精炼范式（必须，总长控制在 750~1050 字）：「本轮增量把机理坐实：5432 open、8123 refused（数字全部逐字照抄原文，绝不心算或凑整）。已排除：调大 timeout 或另一配置键的路线，因为 30 s 是结果不是原因；已排除：改 net.yaml、新建临时复现脚本或用 cat/wc 重读 pool.js 的路线，因为第 1 轮已拿到完整文件且落点唯一。改法只落一个（仅当同一文件内末尾定下两处协同修改时写“改法分两处落地：① …（`done` 只留作标记不再参与）；② …”）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先确认改动落地并与上轮输出比差抓新信号，此时不要再改 pool.js、不要回滚；无新信号再跑预写取证。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。回放过了之后还有两件原文已经定下的事：确认验收命令跑改后全部目标指标（逐字写出各指标名与恢复数值）稳定恢复且未动已排除文件（若原文定了补测试则逐字写出测试文件路径与全部三条具体用例名）；以及保留不该动的配置键原值并汇总依据收工（若原文定了改脚本写日志则逐字写出脚本路径与两份日志路径落盘）。」"
+        }
+      ],
+      "config": {
+        "continuationPath": "bounded",
+        "programParts": "compact",
+        "promptMode": "modular",
+        "birthAdaptiveFloor": true
+      },
+      "rationale": "帕累托极限合成策略：bounded 延续段（带台账标识符溯源与去重）+ compact 极简工程状态部件（消除双倍叠加与冗长说教）+ modular 按轮次动态提示词裁剪（节省 ~260 input tok/轮）+ birthAdaptiveFloor 动态水位触发器 + 飞轮偏好对蒸馏正反对比示范（In-Context DPO）",
+      "prediction": "金标与任务池全轮（8/8）100% 过闸、0 逆向增补，单轮净省 Token 与真值密度效率分（truthEfficiency）同时达到帕累托全局最优",
+      "origin": {
+        "by": "synthesizer",
+        "parent": "p-5d92393440",
+        "contrastive": true
+      },
+      "status": "proposed",
+      "sides": {},
+      "id": "p-ec6eaea560",
+      "at": "2026-10-03T16:29:13.350Z"
     }
   ],
   "trajPlans": [
@@ -999,6 +1144,56 @@
         "digest": "ea1d4edccbfb28bf",
         "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t9/plan.json --store-text --fork-from .cfb-runtime/traj/t8/results.jsonl --variants raw --policy p-29d7400346 --only perf-regression --samples 1 --max-rounds 8 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t9",
         "design": "0ea4d023a3d18f33"
+      }
+    },
+    {
+      "n": 10,
+      "plan": {
+        "schema": "cfb.traj-plan/1",
+        "id": "t10",
+        "at": "2026-10-03T14:37:22.656Z",
+        "variants": [
+          "raw",
+          "hand"
+        ],
+        "scenarios": [
+          "flaky-timeout",
+          "perf-regression"
+        ],
+        "samples": 1,
+        "maxRounds": 7,
+        "fork": true,
+        "maxTokens": 8000,
+        "storeText": true,
+        "purpose": "模式 1 天花板：hand 臂 = 助手代替副模型手写稿（同一提示词、同一闸链 + G2 决策不变闸）vs raw；量 f(主模型 | 稿) 的上界与「稿该写什么」；hand 永远不采纳为 champion，过闸且修好的稿进金标注册表（gold add）作模式 2 标准",
+        "yield": {
+          "l1Pairs": 2,
+          "l2Pairs": 2,
+          "validityPairsApprox": 24,
+          "flywheelPairsApprox": 0,
+          "childStatesApprox": 20
+        },
+        "cost": {
+          "mains": 26,
+          "compresses": 0,
+          "expectedMains": 22,
+          "expectedCompresses": 0,
+          "expectedUsd": 0.275,
+          "capUsd": 0.91,
+          "pricing": {
+            "mainUsd": 0.0125,
+            "mainCapUsd": 0.035,
+            "compressUsd": 0.0075,
+            "compressCapUsd": 0.0114,
+            "divergeRound": 3,
+            "floorShare": 0.4
+          },
+          "shadow": true
+        },
+        "holdoutNote": "场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索",
+        "digest": "0120086adc955f50",
+        "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t10/plan.json --store-text --variants raw,hand --only flaky-timeout,perf-regression --samples 1 --max-rounds 7 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t10",
+        "design": "151d0ad4fbed70c7"
       }
     }
   ],
@@ -1510,7 +1705,115 @@
         "digest": "0deddf8dd2e62901",
         "command": "node tools/bench-run.mjs --plan .cfb-runtime/bench/b3/plan.json --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/bench/b3"
       }
+    },
+    {
+      "n": 4,
+      "plan": {
+        "schema": "cfb.bench-plan/1",
+        "id": "b4",
+        "at": "2026-10-03T15:39:24.178Z",
+        "policies": [
+          "base",
+          "p-55a320e0f8"
+        ],
+        "split": "dev",
+        "metric": "dd/1",
+        "gold": [
+          {
+            "id": "flaky-timeout-s0-r4",
+            "family": "flaky-timeout",
+            "split": "dev",
+            "digest": "322e18be14742f63"
+          },
+          {
+            "id": "flaky-timeout-s0-r5",
+            "family": "flaky-timeout",
+            "split": "dev",
+            "digest": "39e1e6f4a5e9d8af"
+          },
+          {
+            "id": "perf-regression-s0-r6",
+            "family": "perf-regression",
+            "split": "dev",
+            "digest": "21b62369147d4cf2"
+          },
+          {
+            "id": "sse-truncated-s0-r5",
+            "family": "sse-truncated",
+            "split": "dev",
+            "digest": "f84dc9988494f31e"
+          }
+        ],
+        "cost": {
+          "calls": 8,
+          "expectedUsd": 0.06,
+          "capUsd": 0.091,
+          "pricing": {
+            "compressUsd": 0.0075,
+            "compressCapUsd": 0.0114
+          }
+        },
+        "purpose": "模式 2：压缩器（生产 birthOffline 同构体，关思考、temperature 0）在金标原文上出稿，与手写金标按 dd/1 比对；量的是 g(稿 | 策略, 原文) 到手写标准的召回，不量结局",
+        "selection": "dev 项：每个金标上候选 vs base 按层级键配对 → e 值（≥2 家族、e ≥ 阈 ⇒ promote）；holdout 项只报告，不参与选择；promote 的策略进 plan-traj（模式 3）验收，基准分本身不采纳 champion",
+        "design": "78a8c8adc87ba720",
+        "digest": "be2320fee9115194",
+        "command": "node tools/bench-run.mjs --plan .cfb-runtime/bench/b4/plan.json --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/bench/b4"
+      }
+    },
+    {
+      "n": 7,
+      "plan": {
+        "schema": "cfb.bench-plan/1",
+        "id": "b7",
+        "at": "2026-10-03T16:13:41.495Z",
+        "policies": [
+          "base",
+          "p-8943e331e6"
+        ],
+        "split": "dev",
+        "metric": "dd/1",
+        "gold": [
+          {
+            "id": "flaky-timeout-s0-r4",
+            "family": "flaky-timeout",
+            "split": "dev",
+            "digest": "322e18be14742f63"
+          },
+          {
+            "id": "flaky-timeout-s0-r5",
+            "family": "flaky-timeout",
+            "split": "dev",
+            "digest": "39e1e6f4a5e9d8af"
+          },
+          {
+            "id": "perf-regression-s0-r6",
+            "family": "perf-regression",
+            "split": "dev",
+            "digest": "21b62369147d4cf2"
+          },
+          {
+            "id": "sse-truncated-s0-r5",
+            "family": "sse-truncated",
+            "split": "dev",
+            "digest": "f84dc9988494f31e"
+          }
+        ],
+        "cost": {
+          "calls": 8,
+          "expectedUsd": 0.06,
+          "capUsd": 0.091,
+          "pricing": {
+            "compressUsd": 0.0075,
+            "compressCapUsd": 0.0114
+          }
+        },
+        "purpose": "模式 2：压缩器（生产 birthOffline 同构体，关思考、temperature 0）在金标原文上出稿，与手写金标按 dd/1 比对；量的是 g(稿 | 策略, 原文) 到手写标准的召回，不量结局",
+        "selection": "dev 项：每个金标上候选 vs base 按层级键配对 → e 值（≥2 家族、e ≥ 阈 ⇒ promote）；holdout 项只报告，不参与选择；promote 的策略进 plan-traj（模式 3）验收，基准分本身不采纳 champion",
+        "design": "752f5b2c50093947",
+        "digest": "b55a98d40c3333ed",
+        "command": "node tools/bench-run.mjs --plan .cfb-runtime/bench/b7/plan.json --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/bench/b7"
+      }
     }
   ],
-  "digest": "eae4df42d8a307cc"
+  "digest": "044c426351fe90ca"
 }

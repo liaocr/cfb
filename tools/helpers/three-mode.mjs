@@ -88,7 +88,7 @@ export function goldItemsFromTraj({ home, rows, planId = null, split = {}, fromW
         const storedText = t.stored || ''
         const ctxText = t.ctx || rawT.ctx || ''
         if (!rawText || !storedText || storedText === rawText) return
-        const cont = (ctxText.match(/【延续段】[^\n]*\n([^\n]+)/) || [])[1]?.trim() || ''
+        const cont = (ctxText.match(/^【延续段】[^\n]*\n([^\n]+)/m) || [])[1]?.trim() || ''
         const draftText = cont && storedText.startsWith(cont) ? storedText.slice(cont.length).trim() : storedText.trim()
         const g2 = handDraftGate(rawText, draftText, ctxText)
         const id = `${safeId(r.task)}-s${r.sample ?? 0}-r${round}-${safeId(r.policy || r.variant)}`

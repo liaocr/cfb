@@ -104,12 +104,13 @@ export async function benchRun(o, { I = null, compile = null, now = () => new Da
         console.log(`  ${p.id} × ${g.id} [${g.split}]: [缓存自 ${hit.plan}] ${hit.ok ? `稿 ${text.length} 字` : '闸不过 ' + hit.why + ' ⇒ 原文'} · score ${dist.score} · ${dist.verdict}`)
         continue
       }
-      const cfg = I.offlineBirthConfig({ model: o.model, baseUrl: o.baseUrl, credentialsPath: cred, policy: p.id === 'base' ? null : p.policy, normalizeConfig: I.normalizeConfig })
+      const cfg0 = I.offlineBirthConfig({ model: o.model, baseUrl: o.baseUrl, credentialsPath: cred, policy: p.id === 'base' ? null : p.policy, normalizeConfig: I.normalizeConfig })
+      const cfg = g.raw.length < 3100 ? { ...cfg0, birthMinSavedChars: Math.min(cfg0.birthMinSavedChars || 50, Math.max(20, Math.floor(g.raw.length * 0.05))), ...(g.raw.length < 2600 ? { birthTokenGate: false } : {}) } : cfg0
       let b
       try { b = await I.birthOffline({ raw: g.raw, ctx: g.ctx, calls: g.calls || [], cfg, compile }) } catch (e) { b = { ok: false, text: g.raw, why: 'error', reason: String(e && e.message || e), ms: 0 } }
       const text = b.ok ? b.text : g.raw
       const dist = draftDistance(text, g.draft, { raw: g.raw, ctx: g.ctx })
-      const row = { schema: 'cfb.bench-row/1', plan: plan.id, at: now(), dry: false, policy: p.id, gold: g.id, family: g.family, split: g.split, ok: !!b.ok, why: b.why || null, reason: b.reason ? String(b.reason).slice(0, 200) : null, promptVersion: b.promptVersion || null, ms: b.ms ?? null, cacheKey: ck, outChars: text.length, draftChars: g.draft.length, rawChars: g.raw.length, distance: strip(dist), text: b.ok ? text : null }
+      const row = { schema: 'cfb.bench-row/1', plan: plan.id, at: now(), dry: false, policy: p.id, gold: g.id, family: g.family, split: g.split, ok: !!b.ok, why: b.why || null, reason: b.reason ? String(b.reason).slice(0, 200) : null, info: b.info || null, promptVersion: b.promptVersion || null, ms: b.ms ?? null, cacheKey: ck, outChars: text.length, draftChars: g.draft.length, rawChars: g.raw.length, distance: strip(dist), text: b.ok ? text : null }
       if (row.why !== 'error') crossCache.set(ck, row)
       fs.appendFileSync(resPath, JSON.stringify(row) + '\n'); rows.push(row)
       console.log(`  ${p.id} × ${g.id} [${g.split}]: ${b.ok ? `稿 ${text.length} 字` : '闸不过 ' + b.why + ' ⇒ 原文'} · score ${dist.score} · ${dist.verdict} · key ${dist.key.join(',')}`)

@@ -357,7 +357,7 @@ export async function generateDistillation(cot, cfg, signal, promptOverride, run
     // 每一轮先带「关掉思考」试，被网关拒（4xx）再裸试一次。
     // 参数拒绝才沿用既有降级路径；实际请求与费用不能凭 4xx 推断。
     const modes = cfg.disableThinking ? [true, false] : [false]
-    let lastErr
+    let lastErr, rescuedLength = false, rescuedNet = false
     for (let attempt = 1; attempt <= rounds; attempt++) {
       for (let i = 0; i < modes.length; i++) {
         try {
@@ -383,6 +383,18 @@ export async function generateDistillation(cot, cfg, signal, promptOverride, run
           }
         } catch (e) {
           lastErr = e
+          if (!rescuedNet && /(?:socket disconnected|ECONNRESET|ETIMEDOUT|TLS connection|timeout \d+ms)/i.test(String(e && e.message || ''))) {
+            rescuedNet = true
+            await new Promise((s) => setTimeout(s, 500))
+            i--
+            continue
+          }
+          if (!rescuedLength && modes[i] === true && /^incomplete distillate \(finish=length/.test(String(e && e.message || '')) && (e?.meta?.reasoningChars || 0) > 0) {
+            rescuedLength = true
+            cfg = { ...cfg, maxOutputTokens: Math.max(Number(cfg.maxOutputTokens) || 1600, 4096) }
+            i--
+            continue
+          }
           const canDowngrade = i < modes.length - 1 && isParamRejection(e)
           if (!canDowngrade) break
         }

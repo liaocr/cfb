@@ -66,12 +66,12 @@ const TRAJ_TASKS_V1 = [
       if (/^nproc/.test(c)) return '16'
       if (/^node (-v|--version)/.test(c)) return 'v20.20.2'
       if (/^cat ci\/last5\.log/.test(c)) return null   // 真文件
-      if (/hedge\.selftest\.mjs|npm test/.test(c)) {
+      if (/(?:node\s+\S*hedge\.selftest\.mjs|npm test|node verify\.mjs)/.test(c)) {
         const limited = /taskset|--cpus|cpulimit|stress/.test(c)
-        const loops = /seq 1 (\d+)/.exec(c); const list = /\bin ((?:\d+\s+)+\d+)\s*;?\s*do/.exec(c); const n = loops ? Number(loops[1]) : list ? list[1].trim().split(/\s+/).length : 1
+        const loops = /seq 1 (\d+)/.exec(c); const brace = /\{1\.\.(\d+)\}/.exec(c); const list = /\bin ((?:\d+\s+)+\d+)\s*;?\s*do/.exec(c); const n = loops ? Number(loops[1]) : brace ? Number(brace[1]) : list ? list[1].trim().split(/\s+/).length : 1
         if (!limited || this.fixed(repo)) return n > 1 ? `run 1\n…\nrun ${n}\n（${n}/${n} PASS）` : 'hedge.selftest ok'
         const failAt = Math.min(7, n)
-        return n > 1 ? `run 1\n…\nrun ${failAt}\n§4 对冲在主请求 200 之后不得再发  expected hedgeStartedAt=null, got ${1690 + failAt * 3}\nFAIL test/hedge.selftest.mjs` : 'hedge.selftest ok'
+        return n > 1 ? `run 1\n…\nrun ${failAt}\n§4 对冲在主请求 200 之后不得再发  expected hedgeStartedAt=null, got ${1690 + failAt * 3}\nFAIL test/hedge.selftest.mjs` : '§4 对冲在主请求 200 之后不得再发  expected hedgeStartedAt=null, got 1712\nFAIL test/hedge.selftest.mjs'
       }
       return null
     },
@@ -88,14 +88,15 @@ const TRAJ_TASKS_V1 = [
     fixed(repo) { const m = /compressTargetMax:\s*(\d+)/.exec(read(repo, 'src/config.js')); return !!m && Number(m[1]) <= 600 },
     canned(cmd, repo) {
       const c = cmd.trim()
-      if (/^analyze-trace (--help|-h)/.test(c)) return 'analyze-trace [--compare A B] [--last N] [--steps birth|llm] [--fields f1,f2,…]\n  fields: finishReason outputTokens outputChars contentSpanMs ttfbMs promptVersion finishWaitMs'
+      if (/^(?:npx\s+|node\s+|\.\/)?analyze-trace (--help|-h)/.test(c)) return 'analyze-trace [--compare A B] [--last N] [--steps birth|llm] [--fields f1,f2,…]\n  fields: finishReason outputTokens outputChars contentSpanMs ttfbMs promptVersion finishWaitMs'
       if (/^git diff/.test(c)) return "diff --git a/src/config.js b/src/config.js\n@@ -2,4 +2,4 @@\n-  maxOutputTokens: 850,\n+  maxOutputTokens: 4096,\n-  compressTargetMax: 450,\n+  compressTargetMax: 1800,"
       if (/^git log/.test(c)) return 'v11.10 配置调整：放宽输出上限与长度目标\nv11.9 …'
-      if (/^analyze-trace/.test(c)) {
+      if (/^(?:npx\s+|node\s+|\.\/)?analyze-trace/.test(c)) {
         if (/--compare/.test(c)) return '            finishReason        outputTokens p50   contentSpanMs p50   ttfbMs p50   outputChars p50   promptVersion\nv11.9       stop 100%           260                280                 610          390               compress-v3h:250-450\nv11.10      stop 100%           1150               1650                640          1720              compress-v3h:250-1800'
         const fixed = this.fixed(repo)
         return fixed ? 'contentSpanMs p50: 295\noutputChars p50: 402\nttfbMs p50: 615\npromptVersion: compress-v3h:250-450\nfinishWaitMs p50: 910' : 'contentSpanMs p50: 1650\noutputChars p50: 1720\nttfbMs p50: 640\npromptVersion: compress-v3h:250-1800\nfinishWaitMs p50: 2400'
       }
+      if (/^npm test/.test(c)) return `PASS src/config.js（注意：延迟回归需用 analyze-trace --last 20 验收）`
       return null
     },
   },

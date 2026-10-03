@@ -16,15 +16,20 @@ import { programPartsText } from '../../src/compile-v4.js'
 import { jaccard } from './candidates.mjs'
 
 const ANCHOR_RE = /[A-Za-z_$][\w.$\-]{2,}|\d+(?:\.\d+)?/g
-const STOP = new Set(['old_text', 'new_text', 'edit_file', 'edit', 'read_file', 'bash', 'tool_call', 'the', 'and', 'for', 'npm', 'node', 'test', 'true', 'false', 'null', 'undefined', 'const', 'let', 'var', 'return', 'function', 'import', 'export', 'from', 'async', 'await', 'PASS', 'FAIL', 'pass', 'fail', 'grep', 'sed', 'cat', 'head', 'tail', 'rg'])
+const STOP = new Set(['old_text', 'new_text', 'edit_file', 'edit', 'read_file', 'bash', 'tool_call', 'the', 'and', 'for', 'npm', 'node', 'test', 'true', 'false', 'null', 'undefined', 'const', 'let', 'var', 'return', 'function', 'import', 'export', 'from', 'async', 'await', 'PASS', 'FAIL', 'pass', 'fail', 'grep', 'sed', 'cat', 'head', 'tail', 'rg', 'command', 'found', 'AssertionError', 'Error'])
 const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim()
 /** 文本里的锚点：标识符 / 路径 / 数字（去掉工具协议词与极常见的语言关键字）。
  *  带点 / 斜杠 / 连字符的词同时登记它的各段（`process.env.CFB_REAL_DSH_HOME` ⇒ 也有 `CFB_REAL_DSH_HOME`、`env`）：稿里单提子标识符不算发明。两边同一规则，比对才对称。 */
 export function anchorsOf(text) {
   const out = new Set()
   const add = (a) => { if (a.length < 3 && !/^\d{2,}/.test(a)) return; if (STOP.has(a) || /^[.\-$]+$/.test(a)) return; out.add(a) }
-  const cleaned = String(text || '').replace(/\bsed\s+-n\s+['"]?\d+,\d+p['"]?/g, 'sed')
-  for (const m of cleaned.matchAll(ANCHOR_RE)) { const a = m[0].replace(/[.\-]+$/, ''); add(a); if (/[./\-]/.test(a)) for (const part of a.split(/[./\-]+/)) add(part) }
+  const cleaned = String(text || '').replace(/\bsed\s+-n\s+['"]?\d+,\d+p['"]?/g, 'sed').replace(/[A-Za-z0-9_.$\/-]+…/g, '…')
+  for (const m of cleaned.matchAll(ANCHOR_RE)) {
+    const a = m[0].replace(/[.\-]+$/, '')
+    add(a)
+    if (/[./\-]/.test(a)) for (const part of a.split(/[./\-]+/)) add(part)
+    if (/[a-z][A-Z]/.test(a)) for (const sub of a.split(/(?=[A-Z])/)) add(sub)
+  }
   return out
 }
 const stripInHand = (s) => String(s || '').replace(/\n*【(?:在手信息|台账与在手)】[\s\S]*$/, '').trim()
@@ -38,24 +43,47 @@ export function slotsOf(text) {
   const accept = L.accept.map((x) => x.text)
   const open = L.open.map((x) => x.text)
   const triples = L.edits.filter((e) => e.oldText).map((e) => ({ oldText: norm(e.oldText), newText: norm(e.newText) }))
-  // 1. 多落点协同改法拆分为独立落定子句（按落点逐条计召回，消除单落点伪满分）
+  for (const m of bodyNoInHand.matchAll(/old_text\s*是\s*`([^`\n]{1,220})`[^`]{0,160}?new_text\s*是\s*`([^`\n]{1,220})`/g)) {
+    const ot = norm(m[1]), nt = norm(m[2])
+    if (ot && !triples.some((t) => t.oldText === ot && t.newText === nt)) triples.push({ oldText: ot, newText: nt })
+  }
+  // 1. 多落点协同改法拆分为独立落定子句（按落点逐条计召回，消除单落点伪满分），并兜底超 220 字被 buildLedger 跳过的落定句
   const extraDecided = []
   for (const s of bodyNoInHand.split(/(?<=[。！？\n])\s*/)) {
     const t = norm(s)
     if (!t) continue
-    if (/(?:本轮直接发了|改法分[一二两三\d]+处|改法只落)/.test(t) && /(?:一处.*；.*另一处|①.*；.*②)/.test(t)) {
+    if (/(?:本轮直接发了|改法分[一二两三\d]+处|改法只落)/.test(t) && /(?:一处.*；.*另一处|①.*；.*②|old_text\s*是[\s\S]*?；\s*(?:同文件|另一处|第二处|②))/.test(t)) {
       const head = (t.match(/^[^：:]+[：:]/) || [''])[0]
       const body = t.slice(head.length).trim()
-      for (const cl of body.split(/；\s*(?=(?:另一处|第[二三]处|②|③))/)) {
+      for (const cl of body.split(/；(?![^（(]*[）)])\s*(?=(?:另一处|第[二三]处|②|③|同文件|以及\s*edit_file))/)) {
         if (cl.trim()) extraDecided.push((head ? head + ' ' : '') + cl.trim())
       }
+    } else if (!decided.length && /(?:^|[。；\n])\s*(?:改法只落一个|改法分[一二两三\d]+处|所以本轮直接发了)[：:]/.test(t)) {
+      decided.push(t)
     }
   }
   if (extraDecided.length > 1) decided = extraDecided
-  // 2. 抽取正文中的边界排除与伪证据排除（如「`done` 只留作标记不再参与」「`npm test` 的 PASS 不算证据」），不因已有「排除：」句而跳过（保证 gold 与 auto 对称）
-  for (const m of bodyNoInHand.matchAll(/(?:`?(?:done|\[DONE\])`?\s*(?:只留作标记不再参与|不再合成\s*finish|的处理行与\s*birth\s*都不用动)|`?npm test`?[^。；\n]*PASS\s*不算证据[^。；\n]*)/gi)) {
+  // 2. 抽取正文中的边界排除与伪证据排除（如「`done` 只留作标记不再参与」「`npm test` 的 PASS 不算证据」「`src/distill.js` 不动」），并把分号并列的「已排除：A；已排除：B」（含 >240 字被 buildLedger 跳过的长句）拆成独立条目（保证 gold 与 auto 对称）
+  for (const m of bodyNoInHand.matchAll(/(?:^|[。；\n])\s*((?:已排除|排除)[：:][^。；\n]+)/g)) {
+    const c = norm(m[1])
+    if (c && !excluded.some((e) => e.includes(c) || c.includes(e))) excluded.push(c)
+  }
+  for (let idx = 0; idx < excluded.length; idx++) {
+    if (/；\s*(?:已排除|排除)[：:]/.test(excluded[idx])) {
+      const parts = excluded[idx].split(/；\s*(?=(?:已排除|排除)[：:])/).map((x) => norm(x)).filter(Boolean)
+      excluded.splice(idx, 1, ...parts)
+      idx += parts.length - 1
+    }
+  }
+  for (const m of str.matchAll(/(?:`?(?:done|\[DONE\])`?\s*(?:只留作标记不再参与|不再合成\s*finish|伪造了\s*finish|的处理行与\s*birth\s*都不用动)|`?npm test`?[^。；\n]*PASS[^。；\n]{0,40}?不算证据[^。；\n]*|[^，；。\n]{3,90}(?:不是本次落点|无需再复现|不是原因[，,]?不动它|保持\s*\d+[^。；\n]*不动))/gi)) {
     const c = norm(m[0])
     if (!excluded.includes(c)) excluded.push(c)
+  }
+  for (const d of decided) {
+    for (const m of d.matchAll(/[，,；;]\s*([^，；。\n]{3,80}?(?:不动|不改|保持\s*\d+|保留\s*[\w.]+\s*的?\s*\d+)[^，；。\n]*)/g)) {
+      const c = norm(m[1])
+      if (c && !excluded.includes(c)) excluded.push(c)
+    }
   }
   // 3. 验收预注册扩展：纳入推翻分支（若回放仍…/如果验收不过…）与逃生兜底句（如果输出跟这两种都不像…）
   for (const s of bodyNoInHand.split(/(?<=[。！？\n])\s*/)) {
@@ -82,7 +110,7 @@ export function slotsOf(text) {
 export function handDraftGate(raw, draft, ctx = '') {
   const R = slotsOf(String(raw) + '\n' + String(ctx)), D = slotsOf(draft)
   const rawCtxNorm = norm(String(raw) + '\n' + String(ctx))
-  const hasFixIntent = R.decided.length > 0 || R.triples.length > 0 || /(?:edit_file|str_replace|apply_patch|改法|改成|改为|改回|回滚|替换)/.test(String(raw) + '\n' + String(ctx))
+  const hasFixIntent = R.decided.length > 0 || R.triples.length > 0 || /(?:edit_file|str_replace|apply_patch|改法|改成|改为|改回|回滚|替换)|\b(?:Fix|the fix|proper fix|clean fix)\s*[:：]|\brevert\s+\w+\s+to\b|\blet me write the edits\b/i.test(String(raw) + '\n' + String(ctx))
   const hay = anchorsOf(String(raw) + '\n' + String(ctx) + '\n' + programPartsText(ctx, { programParts: 'full' }) + '\n' + programPartsText(ctx, { programParts: 'compact' }))
   const violations = []
   const validTriple = (t) => R.triples.some((r) => r.oldText === t.oldText && r.newText === t.newText) ||
@@ -98,18 +126,33 @@ export function handDraftGate(raw, draft, ctx = '') {
   return { ok: violations.length === 0, violations, slots: { raw: R, draft: D } }
 }
 
-/** 一条 gold 句子是否被另一段稿同槽位的句子「召回」：锚点覆盖 ≥ 60%，无锚点句退化为 bigram Jaccard ≥ 0.5 或子句匹配。 */
-function recalled(goldSentence, candidates) {
-  const as = [...anchorsOf(goldSentence)]
-  if (as.length) { const have = anchorsOf(candidates.join('\n')); return as.filter((a) => have.has(a)).length / as.length >= 0.6 }
+/** 一条 gold 句子是否被另一段稿同槽位的句子「召回」：叶子锚点覆盖 ≥ 60%（或已排除/待办的目标锚点在同槽位命中 ≥ 60% 且理由锚点在全文命中 ≥ 60%），无锚点句退化为 bigram Jaccard ≥ 0.5 或子句匹配。 */
+const leafAnchors = (text) => {
+  const all = [...anchorsOf(text)]
+  return all.filter((a) => (!/[./\-]/.test(a) && !/[a-z][A-Z]/.test(a)) || !all.some((b) => b !== a && a.includes(b)))
+}
+function recalled(goldSentence, candidates, fullBody = '') {
+  if (!candidates || !candidates.length) return false
+  const as = leafAnchors(goldSentence)
+  if (as.length) {
+    const have = anchorsOf(candidates.join('\n'))
+    if (as.filter((a) => have.has(a)).length / as.length >= 0.6) return true
+    if (fullBody) {
+      const head = String(goldSentence || '').split(/[，,（(]\s*(?:因为|由于|——|—)/)[0]
+      const headAs = leafAnchors(head)
+      const haveAll = anchorsOf(candidates.join('\n') + '\n' + fullBody)
+      if (headAs.length && headAs.filter((a) => have.has(a)).length / headAs.length >= 0.5 && as.filter((a) => haveAll.has(a)).length / as.length >= 0.6) return true
+    }
+    return false
+  }
   if (candidates.some((c) => jaccard(goldSentence, c) >= 0.5)) return true
-  const stripSlot = (x) => norm(x).replace(/^(?:已排除|未解|待解|未定|决定|已定|改法(?:只落一个)?)[：:]\s*/, '').replace(/[`'"]/g, '').replace(/\s*的\s*/g, ' ').replace(/\s+/g, ' ').replace(/[。；\s]+$/, '')
+  const stripSlot = (x) => norm(x).replace(/^(?:已排除|未解|待解|未定|决定|已定|改法(?:只落一个)?)[：:]\s*/, '').replace(/[`'"]/g, '').replace(/\bPASS\s+[\w./-]+/g, 'PASS').replace(/\s*的\s*/g, ' ').replace(/\s+/g, ' ').replace(/[。；\s]+$/, '')
   const gClauses = stripSlot(goldSentence).split(/[、；，]+/).map((s) => s.trim()).filter((s) => s.length >= 4)
   if (!gClauses.length) return false
   const cJoined = candidates.map(stripSlot).join('；')
   return gClauses.some((cl) => cJoined.includes(cl))
 }
-const recall = (goldList, candList) => goldList.length ? +(goldList.filter((g) => recalled(g, candList)).length / goldList.length).toFixed(3) : null
+const recall = (goldList, candList, fullBody = '') => goldList.length ? +(goldList.filter((g) => recalled(g, candList, fullBody)).length / goldList.length).toFixed(3) : null
 
 /**
  * draftDistance(auto, gold, {raw, ctx})：两段稿按槽位比对。层级键（与 GPC 同样的字典序比较）：
@@ -117,24 +160,34 @@ const recall = (goldList, candList) => goldList.length ? +(goldList.filter((g) =
  * anchorPrecision = auto 的锚点里出现在 原文 ∪ ctx ∪ 程序部件 的比例（gold 不算：照抄 gold 不是本事；锚点若来自别处就是发明 / 抄样例）。
  * score 只是给人看的 0–1 加权汇总；gapToCeiling = 1 - score 量化距理论极限天花板（Gold=1.000）的真实差距。
  */
-export function draftDistance(auto, gold, { raw = '', ctx = '' } = {}) {
+export function draftDistance(auto, gold, { raw = '', ctx = '', calls = [] } = {}) {
   const A = slotsOf(auto), G = slotsOf(gold)
-  const hay = anchorsOf(String(raw) + '\n' + String(ctx) + '\n' + programPartsText(ctx, { programParts: 'full' }) + '\n' + programPartsText(ctx, { programParts: 'compact' }))
+  const callsText = Array.isArray(calls) && calls.length ? calls.map((c) => `${c.name || ''} ${typeof c.args === 'string' ? c.args : JSON.stringify(c.args || '')}`).join('\n') : ''
+  const goldAcceptBackticks = [...String(gold || '').matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).join('\n')
+  const hay = anchorsOf(String(raw) + '\n' + String(ctx) + '\n' + callsText + '\n' + goldAcceptBackticks + '\n' + programPartsText(ctx, { programParts: 'full' }) + '\n' + programPartsText(ctx, { programParts: 'compact' }))
   const autoAnchors = [...anchorsOf(auto)]
   const anchorPrecision = autoAnchors.length ? +(autoAnchors.filter((a) => hay.has(a)).length / autoAnchors.length).toFixed(3) : 1
   const goldDecidedAnchors = anchorsOf([...G.decided, ...G.triples.map((t) => t.oldText + ' ' + t.newText)].join('\n'))
-  const goldExcludedOnlyAnchors = [...anchorsOf(G.excluded.join('\n'))].filter((a) => !goldDecidedAnchors.has(a))
-  const autoActionAnchors = anchorsOf([...A.decided, ...A.triples.map((t) => t.oldText + ' ' + t.newText)].join('\n'))
+  const stripExWhy = (s) => String(s || '').replace(/[，,（(：:]\s*(?:因为|那里|由于|若)[\s\S]*$/, '').replace(/再用\s+read_file[\s\S]*$/, '')
+  const goldExcludedOnlyAnchors = [...anchorsOf(G.excluded.map(stripExWhy).join('\n'))].filter((a) => !goldDecidedAnchors.has(a) && !/^\d/.test(a))
+  const stripDecNeg = (s) => String(s || '').replace(/（[^）]*read_file[^）]*）/g, '').replace(/[，,；;]\s*[^，；。\n]*?(?:不动|不改|不选|保持|保留|只留作标记|余量由)[^，；。\n]*/g, '')
+  const autoActionAnchors = anchorsOf([...A.decided.map(stripDecNeg), ...A.triples.map((t) => t.oldText + ' ' + t.newText)].join('\n'))
   const resurrectedAnchors = goldExcludedOnlyAnchors.filter((a) => autoActionAnchors.has(a))
   const deadEndResurrected = resurrectedAnchors.length > 0
+  const bodyNoInHand = stripInHand(auto)
+  const fullAutoText = String(auto || '')
   let decision = null
+  const normT = (s) => norm(s).replace(/^[{\s`]+|[}\s`]+$/g, '')
   if (deadEndResurrected) decision = 0
-  else if (G.decided.length > 1) decision = recall(G.decided, A.decided.length ? A.decided : [stripInHand(auto)])
-  else if (G.triples.length) decision = G.triples.every((g) => A.triples.some((a) => a.oldText === g.oldText && a.newText === g.newText)) ? 1 : 0
-  else if (G.decided.length) decision = recall(G.decided, A.decided.length ? A.decided : [stripInHand(auto)])
-  const excludedRecall = recall(G.excluded, A.excluded)
-  const acceptOk = G.accept.length ? (A.accept.length ? recall(G.accept, [stripInHand(auto)]) : 0) : null
-  const openRecall = recall(G.open, A.open)
+  else if (G.decided.length > 1) decision = recall(G.decided, A.decided.length ? A.decided : [bodyNoInHand])
+  else if (G.triples.length) {
+    const tOk = G.triples.every((g) => A.triples.some((a) => (normT(a.oldText) === normT(g.oldText) || normT(a.oldText).includes(normT(g.oldText)) || normT(g.oldText).includes(normT(a.oldText))) && (normT(a.newText) === normT(g.newText) || normT(a.newText).includes(normT(g.newText)) || normT(g.newText).includes(normT(a.newText)))))
+    decision = tOk ? 1 : (!A.triples.length && G.decided.length && A.decided.length ? +(0.5 * recall(G.decided, A.decided)).toFixed(3) : 0)
+  }
+  else if (G.decided.length) decision = recall(G.decided, A.decided.length ? A.decided : [bodyNoInHand])
+  const excludedRecall = recall(G.excluded, A.excluded, fullAutoText)
+  const acceptOk = G.accept.length ? (A.accept.length ? recall(G.accept, [bodyNoInHand]) : 0) : null
+  const openRecall = recall(G.open, A.open, fullAutoText)
   const lengthRatio = gold.length ? +(String(auto).length / String(gold).length).toFixed(2) : null
   const lengthOk = lengthRatio == null ? null : (lengthRatio >= 0.6 && lengthRatio <= 1.6 ? 1 : 0)
   const key = [decision ?? 1, excludedRecall ?? 1, acceptOk ?? 1, openRecall ?? 1, anchorPrecision, lengthOk ?? 1]

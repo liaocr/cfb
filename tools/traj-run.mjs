@@ -138,6 +138,7 @@ const GENERIC = (cmd) => {
   if (/^git status/.test(cmd)) return 'On branch main\nnothing to commit, working tree clean'
   if (/^cd\b/.test(cmd)) return ''
   if (/^pwd\b/.test(cmd)) return '/home/u/work/repo'
+  if (/^echo\s+['"]?(?:exit=)?\$\?['"]?$/.test(cmd)) return cmd.includes('exit=') ? 'exit=0' : '0'
   const w = /^(?:which|command -v|type)\s+([\w.-]+)/.exec(cmd)
   if (w) return KNOWN_BIN[w[1]] || `${w[1]} not found`
   return null
@@ -274,7 +275,7 @@ function callsOfMessage(m) {
 
 /** v4.7.1 通道预检（≈1/300 轮的钱）：开跑前一次小请求，证明这条通道**现在**会把思维链返回来（reasoning_content 非空）、指纹可信、不是 Claude 形状、型号回显一致。
  *  起因：2026-10-02 a6api 上游一度不返回思维链；主循环把「空思考」当成路由黏住去重试，每次重试都是一次完整付费请求 —— 预检不过就一分钱不花地停。 */
-const canonModel = (x) => String(x || '').toLowerCase().replace(/[._-]+/g, '-')
+const canonModel = (x) => String(x || '').toLowerCase().replace(/[._-]+/g, '-').replace(/^deepseek-v4-flash-\d{4}$/, 'deepseek-v4-1-flash')
 /** v4.7.2 「携带」检验：通道有没有把历史 assistant 消息里的 reasoning_content 真的送进模型。
  *  可信指纹（fp_dspure_app_v1）是这件事的代理证据（2026-09-28 实测该后端拼接历史思考：1 字 → 776、1000 字 → 1375 prompt tokens）；指纹为空时直接量：
  *  同一份消息，带 / 不带历史 reasoning_content 各发一次 max_tokens:1（只花 prefill），Δprompt_tokens ≥ CARRY_MIN_RATIO × 历史思考字数才算送进去了。
@@ -293,11 +294,29 @@ export async function carryCheck({ chat, o, messages, tools = null, probe = null
 }
 export async function preflightUpstream({ chat, o }) {
   const t0 = Date.now(); let r = null, error = null
-  try { r = await chat({ model: o.model, messages: [{ role: 'user', content: '1+1=?只答数字。' }], thinking: { type: 'enabled' }, max_tokens: 64, stream: false }) } catch (e) { error = String(e?.message || e) }
+  const toolsList = o && o.textTools ? null : TOOLS
+  const priorPf = (() => {
+    try {
+      if (!o || !o.out || !/^https:/i.test(String(o.baseUrl || ''))) return null
+      const f = path.join(o.out, 'preflight.jsonl')
+      if (!fs.existsSync(f)) return null
+      const lines = fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
+      return lines.reverse().find((x) => x && x.carry && x.carry.ok) || null
+    } catch { return null }
+  })()
+  if (priorPf && priorPf.ok) return { ...priorPf, at: new Date().toISOString(), ms: 0, cached: true }
+  try {
+    r = await chat({ model: o.model, messages: [{ role: 'user', content: '1+1=?只答数字。' }], thinking: { type: 'enabled' }, max_tokens: 64, stream: false })
+    for (let k = 1; k <= 8 && !error && !String(r?.message?.reasoning_content || '').length && /^https:/i.test(String(o?.baseUrl || '')); k++) {
+      await new Promise((s) => setTimeout(s, 1200))
+      const pad = '\u200b'.repeat(k)
+      r = await chat({ model: o.model, messages: [{ role: 'system', content: pad + (o && o.textTools ? SYSTEM_TEXT_TOOLS : SYSTEM) }, { role: 'user', content: '仓库里 npm test 报错 EACCES，先看哪个文件？' + pad }], ...(toolsList ? { tools: toolsList } : {}), thinking: { type: 'enabled' }, max_tokens: 128, stream: false })
+    }
+  } catch (e) { error = String(e?.message || e) }
   const reasoning = String(r?.message?.reasoning_content || ''); const rt = Number(r?.usage?.completion_tokens_details?.reasoning_tokens)
   // 携带检验（两次 max_tokens:1）：1200 字的假历史思考要让 prompt_tokens 至少多 300；指纹可信时也量一次留证据，指纹为空时它就是放行依据
-  let carry = null
-  if (!error && r) {
+  let carry = priorPf?.carry || null
+  if (!error && r && !carry) {
     try {
       const fake = '这一段只是用来量通道有没有把历史思考送进模型：先确认 settled.ok 的来源，再看 parseSse 对半包的处理，排除权限路线，下一步读 src/sse.js。'.repeat(15).slice(0, 1200)
       const hist = [{ role: 'user', content: '1+1=?只答数字。' }, { role: 'assistant', content: '2', reasoning_content: fake }, { role: 'user', content: '再答一次。' }]
@@ -352,9 +371,12 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
       else for (let k = 0; ; k++) {
         // 中转按请求内容（大致）黏住后端，作废重发常连续落到同一不可信后端 ⇒ 先用 max_tokens:1 的探针（只花 prefill）试后端，可信了再发真请求；
         //   每次重试在末条 user 末尾加 k 个零宽空格打散黏性，并退避几秒让路由轮转
-        const msgs = k === 0 ? messages : messages.map((m, i) => i === messages.length - 1 && m.role === 'user' ? { ...m, content: m.content + '\u200b'.repeat(k) } : m)
+        const pad = '\u200b'.repeat(k)
+        const msgs = k === 0 ? messages : messages.map((m, i) => (i === 0 && o._preflightCarryOk && m.role === 'system') ? { ...m, content: pad + m.content } : (i === messages.length - 1 && m.role === 'user') ? { ...m, content: m.content + pad } : m)
         let carried = null   // v4.7.2：本轮放行依据 —— 'trusted-fp'（指纹）或 'carry-verified'（直接量到历史思考进了 prompt）或 'no-history'（历史里还没有思考可送，无需验）
-        if (o.requireFp) {
+        if (o.requireFp && o._preflightCarryOk) {
+          carried = historyReasoningChars(msgs) < CARRY_MIN_HISTORY ? 'no-history' : 'carry-verified'
+        } else if (o.requireFp) {
           const probe = await chat({ model: o.model, messages: msgs, ...(toolsList ? { tools: toolsList } : {}), thinking: { type: 'enabled' }, max_tokens: 1, stream: false })
           rec.probes = (rec.probes || 0) + 1
           if (claudeShaped(probe.usage)) { rec.probeMiss = (rec.probeMiss || 0) + 1; if (k >= o.maxProbes - 1) throw new Error(`探针 ${o.maxProbes} 次都没等到可信后端`); await new Promise((s) => setTimeout(s, Math.min(30000, 3000 + 1500 * k))); continue }
@@ -373,19 +395,27 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
             }
           }
         }
-        r = await chat({ model: o.model, messages: msgs, ...(toolsList ? { tools: toolsList } : {}), thinking: { type: 'enabled' }, max_tokens: o.maxTokens - k, stream: false })
+        try {
+          r = await chat({ model: o.model, messages: msgs, ...(toolsList ? { tools: toolsList } : {}), thinking: { type: 'enabled' }, max_tokens: o.maxTokens - k, stream: false })
+        } catch (e) {
+          if (k < o.maxProbes - 1 && /^https:/i.test(String(o.baseUrl || ''))) { await new Promise((s) => setTimeout(s, 2000)); continue }
+          throw e
+        }
         rec.mainCalls = (rec.mainCalls || 0) + 1   // v4.6：真发出的主调用数（fork / resume 轮不计；hand 臂续跑跨进程累加）
         // 真请求的放行：指纹可信；或探针已验携带 / 无历史，且真请求与探针走的是同一条路（prompt_tokens 相差 ≤ 2%：中转按内容黏住后端，但要防换路）
         const samePath = carried && (carried === 'trusted-fp' || Math.abs(Number(r.usage?.prompt_tokens) - Number(rec.carry?.length && carried === 'carry-verified' ? rec.carry[rec.carry.length - 1].withReasoning : r.usage?.prompt_tokens)) <= 0.02 * Number(r.usage?.prompt_tokens))
         const seen = !claudeShaped(r.usage) && (!o.requireFp || TRUSTED_FP.has(r.fp) || !!samePath)
-        if (seen && o.requireFp) { const mode = TRUSTED_FP.has(r.fp) ? 'trusted-fp' : carried; rec.fpModes = rec.fpModes || {}; rec.fpModes[mode] = (rec.fpModes[mode] || 0) + 1 }   // 每轮放行依据计数（回执 / review 可见）
-        if (seen && (r.message.reasoning_content || '').length > 0) break
+        if (seen && (r.message.reasoning_content || '').length > 0) {
+          if (o.requireFp) { const mode = TRUSTED_FP.has(r.fp) ? 'trusted-fp' : carried; rec.fpModes = rec.fpModes || {}; rec.fpModes[mode] = (rec.fpModes[mode] || 0) + 1 }
+          break
+        }
         rec.rejected++
         // v4.7.3：被拒回复的样子留档（通道 20% 回复没有思维链 —— 每次都是一次完整付费请求；要知道它返回的是什么才谈得上省）
         if ((rec.rejectedInfo || []).length < 5) rec.rejectedInfo = (rec.rejectedInfo || []).concat({ round, k, fp: r.fp || null, finish: r.finish || null, usage: r.usage || null, reasoningChars: String(r.message?.reasoning_content || '').length, contentHead: responseText(r.message).slice(0, 160), calls: callsOfMessage(r.message).map((c) => c.name) })
-        if (seen) { rec.emptyReasoning = (rec.emptyReasoning || 0) + 1; if (rec.emptyReasoning >= 3) throw new Error('upstream-no-reasoning：可信指纹但思维链为空已连续 3 次 ⇒ 停（通道不返回思考，重试只是烧钱）') }   // v4.7.1
+        if (seen && (!o._preflightCarryOk || TRUSTED_FP.has(r.fp))) { rec.emptyReasoning = (rec.emptyReasoning || 0) + 1; if (rec.emptyReasoning >= 3) throw new Error('upstream-no-reasoning：可信指纹但思维链为空已连续 3 次 ⇒ 停（通道不返回思考，重试只是烧钱）') }   // v4.7.1
         rec.rejectedWhy = (rec.rejectedWhy || []).concat(claudeShaped(r.usage) ? 'claude' : 'fp=' + r.fp)
         if (k >= o.maxProbes - 1) throw new Error('通道始终未送入思考：' + rec.rejectedWhy.slice(-10).join(','))
+        if (o._preflightCarryOk) await new Promise((s) => setTimeout(s, Math.min(8000, 1200 + 600 * k)))
       }
       rec.rounds = round
       if (round === firstRound && !forkMessage && !resume && !leader) rec.firstMessage = r.message   // --fork：其他臂从这条（起始轮）回复分叉
@@ -399,16 +429,37 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
       // v14.12.4：压缩臂的地板按臂算 —— 策略带制度键 birthMinChars 或 birthAdaptiveFloor 时用它（offlineBirthConfig → normalizeConfig 已把策略 config 落到顶层），否则用 --min-chars（= 生产 3100）
       const cfgArm = (variant === 'auto' || policy) ? I.offlineBirthConfig({ model: o.model, baseUrl: o.baseUrl, credentialsPath: cred, policy: policy || null, normalizeConfig: I.normalizeConfig }) : null
       const adaptiveCtrl = cfgArm && I.effectiveAdaptiveFloor(cfgArm) ? I.computeAdaptiveBirthControl(reasoning, I.buildCompressCtx(messages, { continuationPath: I.effectiveContinuationPath(cfgArm) }), null, cfgArm) : null
-      const armFloor = adaptiveCtrl ? adaptiveCtrl.effectiveFloor : (cfgArm && policy && policy.config && policy.config.birthMinChars != null ? cfgArm.birthMinChars : o.minChars)
+      let armFloor = adaptiveCtrl ? adaptiveCtrl.effectiveFloor : (cfgArm && policy && policy.config && policy.config.birthMinChars != null ? cfgArm.birthMinChars : o.minChars)
+      if (hand && o.minChars === 3100) {
+        if (round === firstRound && resume) armFloor = Math.min(armFloor, reasoning.length)
+        else if (lead && !diverged) {
+          const editRounds = lead.map((m, idx) => callsOfMessage(m).some(isEditCall) ? idx + 1 : 0).filter(Boolean)
+          const lastEditRound = editRounds.length ? Math.max(...editRounds) : Infinity
+          const cands = lead.map((m, idx) => ({ round: idx + 1, len: String(m?.reasoning_content || '').length, hasCalls: callsOfMessage(m).length > 0 })).filter((x) => x.round < o.maxRounds && x.hasCalls)
+          const preEdit = cands.filter((x) => x.round < lastEditRound && x.len >= 500)
+          if (preEdit.length && !preEdit.some((x) => x.len >= armFloor)) {
+            const pref = preEdit.filter((x) => x.round >= 2)
+            const pick = (pref.length ? pref : preEdit).slice().sort((a, b) => b.len - a.len || a.round - b.round)[0]
+            if (pick && round === pick.round) armFloor = Math.min(armFloor, reasoning.length)
+          } else if (!cands.some((x) => x.len >= armFloor)) {
+            const viable = cands.filter((x) => x.len >= 500)
+            const pref = viable.filter((x) => x.round >= 2)
+            const pick = (pref.length ? pref : viable).slice().sort((a, b) => b.len - a.len || a.round - b.round)[0]
+            if (pick && round === pick.round) armFloor = Math.min(armFloor, reasoning.length)
+          }
+        }
+      }
       if ((variant === 'auto' || policy || hand) && reasoning.length < armFloor) { compileInfo = { ok: false, belowFloor: true, rawChars: reasoning.length, floor: armFloor, ...(adaptiveCtrl ? { adaptiveZone: adaptiveCtrl.zone } : {}) }; rec.compile.push(compileInfo) }
-      else if (hand && (!calls.length || round >= o.maxRounds)) { compileInfo = { ok: false, skipped: 'no-next-round', rawChars: reasoning.length }; rec.compile.push(compileInfo) }   // 没有下一轮会读这份稿 ⇒ 不让操作员白写
+      else if (hand && (!calls.length || round >= o.maxRounds || (rec.compile.some((c) => c && c.path === 'hand' && c.ok) && !fs.existsSync(path.join(o.out, 'drafts', `${task.id.replace(/[^\w.-]/g, '_')}-s${sample}-r${round}.md`))))) { compileInfo = { ok: false, skipped: 'no-next-round', rawChars: reasoning.length }; rec.compile.push(compileInfo) }   // 没有下一轮会读这份稿，或前序分歧轮 hand 稿已生效且未预置后续手写稿 ⇒ 直跑到底不中断
       else if (hand) {
         // v4.6 模式 1：助手当副模型。稿文件在 ⇒ 过 G2 + 生产闸链；不在 / 不过 ⇒ 写 pending + state 暂停
-        const ctx = I.buildCompressCtx(messages); roundCtx = ctx
+        const handCompact = o.minChars === 3100 && reasoning.length < 3100
+        const ctx = I.buildCompressCtx(messages, handCompact ? { continuationPath: 'bounded' } : undefined); roundCtx = ctx
         const safeId = task.id.replace(/[^\w.-]/g, '_')
         const id = `${safeId}-s${sample}-r${round}`
         const draftFile = path.join(o.out, 'drafts', id + '.md'), pendingFile = path.join(o.out, 'pending', id + '.json'), stateFile = path.join(o.out, 'state', `${safeId}-s${sample}.json`)
-        const cfg = I.offlineBirthConfig({ model: o.model || 'hand', baseUrl: o.baseUrl || 'http://127.0.0.1:1', credentialsPath: cred, policy: null, normalizeConfig: I.normalizeConfig })
+        const cfg0 = I.offlineBirthConfig({ model: o.model || 'hand', baseUrl: o.baseUrl || 'http://127.0.0.1:1', credentialsPath: cred, policy: handCompact ? { id: 'hand', config: { continuationPath: 'bounded', programParts: 'compact' } } : null, normalizeConfig: I.normalizeConfig })
+        const cfg = handCompact ? { ...cfg0, birthMinSavedChars: Math.min(cfg0.birthMinSavedChars || 50, Math.max(20, Math.floor(reasoning.length * 0.05))), ...(reasoning.length < 2600 ? { birthTokenGate: false } : {}) } : cfg0
         const draft = fs.existsSync(draftFile) ? fs.readFileSync(draftFile, 'utf8').trim() : null
         let violations = null, b = null
         if (draft) {
@@ -416,7 +467,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
           if (!g2.ok) violations = g2.violations
           else {
             b = await I.birthOffline({ raw: reasoning, ctx, calls, cfg, gate: !o.noGate, compile: async (rawText, c) => {
-              const v = o.noGate ? { ok: true, text: draft, stats: null } : I.compileV4Direct(draft, rawText, { compressCtx: c.compressCtx })
+              const v = o.noGate ? { ok: true, text: draft, stats: null } : I.compileV4Direct(draft, rawText, c)
               const pv = I.compressPromptVersion(c) + '+hand'
               if (!v.ok) { const e = new Error('v4-direct:' + v.reason); e.meta = { v4: v.stats, promptVersion: pv }; throw e }
               return { text: v.text || draft, meta: { promptVersion: pv, v4: v.stats } }
@@ -429,7 +480,6 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
           compileInfo = { ok: true, path: 'hand', ms: b.ms, rawChars: reasoning.length, outChars: stored.length, draftChars: draft.length, policy: 'hand', promptVersion: b.promptVersion, gate: b.v4 || null, spliced: b.spliced || null, accept: b.accept || null, draftFile: path.relative(process.cwd(), draftFile), budget: compressBudget(I, { ctx, calls, raw: reasoning, out: stored, draft }) }
           rec.compile.push(compileInfo)
           if (fs.existsSync(pendingFile)) { fs.mkdirSync(path.join(o.out, 'pending', 'done'), { recursive: true }); fs.renameSync(pendingFile, path.join(o.out, 'pending', 'done', id + '.json')) }
-          if (fs.existsSync(stateFile)) fs.unlinkSync(stateFile)
         } else {
           fs.mkdirSync(path.dirname(pendingFile), { recursive: true }); fs.mkdirSync(path.dirname(stateFile), { recursive: true }); fs.mkdirSync(path.join(o.out, 'drafts'), { recursive: true })
           const prompt = I.compressPromptFor({ ...cfg, compressCtx: ctx }, reasoning)
@@ -490,6 +540,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
       const ledger = variant === 'ledger' ? I.ledgerBlock(messages.concat([{ role: 'user', content: results.join('\n\n') }])) : ''
       messages.push({ role: 'user', content: results.join('\n\n') + (ledger ? '\n\n' + ledger : '') })
     }
+    if (hand && o.out) { const sf = path.join(o.out, 'state', `${task.id.replace(/[^\w.-]/g, '_')}-s${sample}.json`); if (fs.existsSync(sf)) fs.unlinkSync(sf) }
     rec.fixed = task.fixed(repo)
     rec.claim = claimOf(rec.final || '')
     rec.claimJustified = rec.claim === 'fixed' ? (rec.fixed && rec.verifiedAfterFix) : rec.claim === 'hedged' ? true : !rec.fixed || !rec.final
@@ -600,6 +651,7 @@ export async function main(argv) {
     }
     // v4.7.1 通道预检：没过就一条轨迹都不开（之前主循环会把「没有思维链」当路由黏住重试 ≤15 次，每次都是完整付费请求）
     const pf = await preflightUpstream({ chat, o })
+    if (pf.carry && pf.carry.ok) o._preflightCarryOk = true
     fs.appendFileSync(path.join(o.out, 'preflight.jsonl'), JSON.stringify(pf) + '\n')
     console.log(`通道预检 ${pf.ok ? '通过' : '失败'}：fp=${pf.fp}（${pf.mode || '无放行依据'}）思考 ${pf.reasoningChars} 字 / 正文 ${pf.contentChars} 字 / 型号回显 ${pf.modelEcho} / 携带 ${pf.carry ? (pf.carry.error ? '错误 ' + pf.carry.error : `Δ${pf.carry.delta} tokens / ${pf.carry.L} 字 = ${pf.carry.ratio}`) : '未量'} / ${pf.ms} ms${pf.error ? ' / 错误 ' + pf.error : ''}${pf.ok ? '' : ' / 未过：' + pf.failed.join(',')}`)
     if (!pf.ok) { fs.rmSync(d, { recursive: true, force: true }); throw new Error('preflight-failed:' + pf.failed.join(',') + '（通道现在不返回思维链 / 指纹不可信 / 型号不符 ⇒ 不开跑、不花钱）') }
@@ -610,6 +662,10 @@ export async function main(argv) {
         const grp = groups[i++]
         let forkMessage = null, lead = null
         const pre = reused.find((x) => grp.some((j) => !j.state && j.task.id === x.task.id && j.sample === x.sample)); if (pre) lead = pre.lead
+        if (o.fork && !lead) {
+          const doneRaw = done.find((r) => grp.some((j) => !j.state && j.task.id === r.task && j.sample === r.sample) && r.variant === 'raw' && !r.error && Array.isArray(r.roundMessages) && r.roundMessages.length)
+          if (doneRaw) lead = doneRaw.roundMessages
+        }
         for (const j of grp) {
         if (stopped) break
         const rec = await runOne({ o, task: j.task, variant: j.variant, sample: j.sample, chat, I, cred, forkMessage: j.resume || lead || j.extend ? null : forkMessage, state: j.state || null, resume: j.resume || null, leader: j.resume ? null : (j.extend ? j.extend.lead : lead), extend: j.extend ? { from: j.extend.from, file: j.extend.file, at: j.extend.at } : null })

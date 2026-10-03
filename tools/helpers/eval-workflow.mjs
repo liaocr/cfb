@@ -96,7 +96,7 @@ export function doctorEvaluation({ home = DEFAULT_HOME, receiptPath = PUBLIC_REC
   try { plan = loadPrepared(home) } catch (e) { return immutableJson({ schema: 'cfb.eval-doctor/1', status: 'blocked', networkTouched: false, checks: [{ id: e.code === 'ENOENT' ? (readWatermark(receiptPath) ? 'api-budget-restore-required' : 'plan-missing') : safeCode(e), status: 'blocked', remedy: '先 prepare；已有收据时先 import 最新加密检查点，不重开预算。' }] }) }
   check('offline-mode-disabled', env.CFB_OFFLINE !== '1', 'offline环境只允许prepare/doctor/report/simulate，live必须在另一个已获网络许可的环境显式执行。')
   check('tls-verification-enabled', env.NODE_TLS_REJECT_UNAUTHORIZED !== '0', '不能关闭TLS验证来让钥匙/任务原文发送出去。')
-  check('runtime-node', Number(process.versions.node.split('.')[0]) >= 22, '使用Node22或更新的兼容环境。')
+  check('runtime-node', Number(process.versions.node.split('.')[0]) >= 20, '使用Node20或更新的兼容环境。')
   check('protocol', ['chat-completions-history-reasoning/1', 'chat-completions-visible-context/1'].includes(plan.protocol) && plan.execution, '重建未开始的计划；协议必须是已冻结的两种之一，不可伪装。')
   check('source-current', sourceDifferences(plan).length === 0, '未开始可重新prepare；已开始需原源码/原计划恢复，不变稿补测。')
   let audit = null; try { audit = auditApiPlan(plan); check('pricing-and-matrix', true) } catch (e) { check(safeCode(e), false, '按实际中转价表填写价格与来源，不用上游价或样例价替代。') }

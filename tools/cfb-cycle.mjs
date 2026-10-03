@@ -1548,7 +1548,8 @@ export function prescreenPolicies({ policyIds = null } = {}) {
           if ((acc.netSavedTokensEst || 0) < 0) expandedBlocks++
         }
       } else {
-        const seedDraft = baseLiveRow?.text ? baseLiveRow.text.split(/\n*【(?:在手信息|台账与在手|本轮已发出的调用)】/)[0].trim() : g.draft
+        const rawSeed = baseLiveRow?.text ? baseLiveRow.text.replace(/^【(?:延续段|在手信息|台账与在手)】[\s\S]*?\n\n/, '').split(/\n*【(?:在手信息|台账与在手|验收提示|本轮已发出的调用)】/)[0].trim() : ''
+        const seedDraft = rawSeed && rawSeed.length <= 2000 ? rawSeed : g.draft
         const v = I.compileV4Direct(seedDraft, g.raw, c2)
         let cand = v.ok ? v.text : g.raw
         if (v.ok && Array.isArray(g.calls) && g.calls.length && /【台账】/.test(effCtx) && !/【本轮已发出的调用】/.test(effCtx)) {
@@ -1670,8 +1671,8 @@ export function distillFlywheelContrastivePatch(pairs = loadFlywheel()) {
   const multiPct = Math.min(99, Math.max(20, Math.round((lMulti / n) * 100)))
   const text = [
     `基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 ${singlePct}% vs 落败稿多点发散/复述率 ${multiPct}%）的正反对比铁律：`,
-    '✗ 落败退化范式（禁止）：把未证实的互斥备选猜想并列写成待试改法，或把同一根因必须协同修改的两处漏掉一处，或漏掉回放通过后原文已定下的补测用例与日志脚本改动，或漏掉逃生段末句。',
-    '✓ 胜出精炼范式（必须）：「本轮增量把机理坐实：5432 open、8123 refused。改法只落一个（若同一机理需协同改两处则写“改法分两处落地：① …；② …”，每处均给出逐字 old_text 与 new_text，若某变量如 `done` 改后仅作标记不再参与合成须写明“`done` 只留作标记不再参与”）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是本轮 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先确认改动落地并与上轮输出比差抓新信号，此时不要再改 pool.js、不要回滚；无新信号再跑预写取证。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。回放过了之后还有两件原文已经定下的事：给对应的单元测试文件补齐原文列出的各条具体用例；以及让回放脚本除了原有日志也写一份原文指定的日志，无害、照做。」',
+    '✗ 落败退化范式（禁止）：把原文中段讨论后放弃的第二文件或不改的相邻配置行塞进 old_text，或心算差值/把精确数字四舍五入凑整，或漏掉原文排除的具体代码分支/配置键与不重读目标文件的理由，或漏掉第四段「回放过了之后还有两件原文已经定下的事：…；以及…」及具体用例名/指标名/日志路径。',
+    '✓ 胜出精炼范式（必须，总长控制在 750~1050 字）：「本轮增量把机理坐实：5432 open、8123 refused（数字全部逐字照抄原文，绝不心算或凑整）。已排除：调大 timeout 或另一配置键的路线，因为 30 s 是结果不是原因；已排除：改 net.yaml、新建临时复现脚本或用 cat/wc 重读 pool.js 的路线，因为第 1 轮已拿到完整文件且落点唯一。改法只落一个（仅当同一文件内末尾定下两处协同修改时写“改法分两处落地：① …（`done` 只留作标记不再参与）；② …”）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先确认改动落地并与上轮输出比差抓新信号，此时不要再改 pool.js、不要回滚；无新信号再跑预写取证。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。回放过了之后还有两件原文已经定下的事：确认验收命令跑改后全部目标指标（逐字写出各指标名与恢复数值）稳定恢复且未动已排除文件（若原文定了补测试则逐字写出测试文件路径与全部三条具体用例名）；以及保留不该动的配置键原值并汇总依据收工（若原文定了改脚本写日志则逐字写出脚本路径与两份日志路径落盘）。」',
   ].join('\n')
   return { op: 'exemplar', section: 'contrastive', text }
 }

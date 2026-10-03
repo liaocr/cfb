@@ -565,7 +565,15 @@ export function compileV4Direct(side, raw, cfg = {}) {
       text = text.replace(/([：:；])[、，,]/g, '$1').replace(/(?:^|(?<=[。；\n]))[^。；\n]{0,6}(?:已排除|排除)[：:]\s*(?:[。；]|$)/gm, '').replace(/[：:]([。；])/g, '$1')
     }
   }
-  text = text.replace(/`([^`\n]{1,220})`/g, (all, span, at) => {
+  const hayNums = new Set([...rawHay.matchAll(/\b\d+(?:\.\d+)?\b/g)].map((m) => m[0]))
+  // v14.18.3：若副模型把不同行的两个 key:val 拼进同一个 old_text（如 `primaryDelayMs: 1500, hedgeAfterMs: 1600`），而原文/观察里只有单行 `{ hedgeAfterMs: 1600 }`，自动收敛到真实存在的单键落点（否则主模型照抄 old_text 会匹配失败）
+  text = text.replace(/(old_text\s*是\s*)`?([A-Za-z_]\w*\s*:\s*\d+\s*,\s*([A-Za-z_]\w*\s*:\s*\d+))`?([\s\S]{0,120}?new_text\s*是\s*)`?([A-Za-z_]\w*\s*:\s*\d+\s*,\s*([A-Za-z_]\w*\s*:\s*\d+))`?/g, (all, p1, fullOld, tailOld, mid, fullNew, tailNew) => {
+    if (hay.includes(norm(fullOld))) return all
+    const bracedOld = `{ ${tailOld.replace(/\s+/g, ' ').trim()} }`, bracedNew = `{ ${tailNew.replace(/\s+/g, ' ').trim()} }`
+    if (hay.includes(norm(bracedOld))) { stats.canonicalizedTriple = (stats.canonicalizedTriple || 0) + 1; return `${p1}\`${bracedOld}\`${mid}\`${bracedNew}\`` }
+    return all
+  })
+  text = text.replace(/`([^`\n]{1,300})`/g, (all, span, at) => {
     const n = norm(span)
     if (n && hay.includes(n)) return all
     // 理论 S8-R8b：「new_text 是 `…` / 改成 `…`」引导的段是要写入的新文本，不是引用；按标识符级核真（段内标识符全部来自原文 / 观察即可）
@@ -573,6 +581,17 @@ export function compileV4Direct(side, raw, cfg = {}) {
     invented++
     return span
   })
+  // v14.18.3：确定性数字锚定（消除副模型把 390/280/1720 四舍五入凑整成 400/300/1700，或心算 5000-1500=3500 造出原文未出现的数字）
+  text = text.replace(/\b(\d{3,4})(?=ms\b|\s*(?:上下|左右|附近)|\b)/g, (all, numStr) => {
+    if (hayNums.has(numStr)) return all
+    const v = Number(numStr)
+    if (v % 100 === 0) {
+      const near = [...hayNums].map(Number).filter((h) => Number.isFinite(h) && h >= 100 && Math.abs(h - v) > 0 && Math.abs(h - v) <= 30).sort((a, b) => Math.abs(a - v) - Math.abs(b - v))
+      if (near.length === 1) { stats.snappedNumbers = (stats.snappedNumbers || 0) + 1; return String(near[0]) }
+    }
+    return all
+  })
+  text = text.replace(/[，,；;]?\s*余量(?:由|从)\s*\d+\s*ms\s*拉(?:大)?到\s*(\d{3,4})\s*ms/g, (all, d) => hayNums.has(d) ? all : '，把竞态余量拉大')
   stats.inventedSpans = invented
   if (newText) stats.newTextSpans = newText
   stats.chars = text.length
@@ -624,8 +643,9 @@ export function compileV4Direct(side, raw, cfg = {}) {
 const GENERIC_ID_RE = /^(?:edit_file|old_text|new_text|read_file|bash|grep|node|npm|src|test|tests|lib|file|path|true|false|null|this|that|const|return|await|async|function)$/i
 function excludedIdentifiers(text, ctx) {
   const segs = []
-  for (const m of String(ctx || '').matchAll(/^- 已排除[：:]([^\n]+)/gm)) segs.push(m[1])
-  for (const m of String(text || '').matchAll(/(?:^|[。；\n])\s*已排除[：:]([^。；\n]+)/g)) segs.push(m[1])
+  const stripWhy = (s) => String(s || '').replace(/[，,（(]\s*(?:因为|由于|原因)[\s\S]*$/, '')
+  for (const m of String(ctx || '').matchAll(/^- 已排除[：:]([^\n]+)/gm)) segs.push(stripWhy(m[1]))
+  for (const m of String(text || '').matchAll(/(?:^|[。；\n])\s*已排除[：:]([^。；\n]+)/g)) segs.push(stripWhy(m[1]))
   const ids = new Set()
   for (const seg of segs) for (const w of seg.matchAll(/[A-Za-z_][\w.\/-]{3,}/g)) {
     const x = w[0].replace(/[.,;:]+$/, '')
@@ -636,9 +656,9 @@ function excludedIdentifiers(text, ctx) {
   //   剥掉含它的提议句会把落定三元组连带删掉）：已定 / 已改 / 提议 / 延续段首句 / 本轮 edit 调用 / 稿里的落定句与第一个三元组，全部豁免
   const keep = []
   for (const m of String(ctx || '').matchAll(/^- 第 \d+ 轮(?:已定|已改|提议)[^\n]*/gm)) keep.push(m[0])
-  const cm = String(ctx || '').match(/【延续段】[^\n]*\n([^\n]+)/); if (cm) keep.push(cm[1].split(/(?<=。)/)[0])
+  const cm = String(ctx || '').match(/^【延续段】[^\n]*\n([^\n]+)/m); if (cm) keep.push(cm[1].split(/(?<=。)/)[0])
   for (const m of String(ctx || '').matchAll(/^- (?:edit_file|str_replace\w*|apply_patch|edit)\s[^\n]*/gm)) keep.push(m[0])
-  for (const m of String(text || '').matchAll(/(?:改法只落一个|所以下一步工具调用是)[^。；\n]*/g)) keep.push(m[0])   // 到分号止：「…；仍在依赖的事实：`maxOutputTokens: 4096,`」不算改法
+  for (const m of String(text || '').matchAll(/(?:改法只落一个|改法分[一二两三\d]+处|所以下一步工具调用是)[^。\n]*/g)) keep.push(m[0].split(/；\s*(?=仍在依赖的事实)/)[0])
   const first = String(text || '').match(/old_text 是 `[^`]*`[^。]*?new_text 是 `[^`]*`/); if (first) keep.push(first[0])
   for (const w of keep.join('\n').matchAll(/[A-Za-z_][\w.\/-]{3,}/g)) ids.delete(w[0].replace(/[.,;:]+$/, ''))
   return ids
@@ -649,14 +669,14 @@ export function stripExcludedFallback(text, ctx, stats = {}) {
   const ids = excludedIdentifiers(text, ctx)
   if (!ids.size) return text
   // 只看落定句 / 「所以下一步」之后的分支区（推翻路 / 后路），不碰落定句与第一分支之前的正文
-  const startAt = (() => { const i = String(text).search(/所以下一步工具调用是|验收先写下|验收是本轮/); return i < 0 ? 0 : i })()
+  const startAt = (() => { const i = String(text).search(/所以下一步工具调用是|验收先写下|验收是/); return i < 0 ? String(text).length : i })()
   const head = text.slice(0, startAt), tail = text.slice(startAt)
-  const sents = tail.split(/(?<=[。；])/)
+  const sents = tail.split(/(?<=[。；])(?![^（(]*[）)])/)
   let removed = 0
   const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const kept = sents.filter((sent) => {
     if (!FALLBACK_ACTION_RE.test(sent)) return true
-    if (/^\s*(?:所以下一步工具调用是|上一轮(?:已定|已改|提议)|改法只落一个|仍在依赖的事实|已走过的路)/.test(sent)) return true
+    if (/^\s*(?:所以下一步工具调用是|上一轮(?:已定|已改|提议)|改法只落一个|改法分[一二两三\d]+处|仍在依赖的事实|已走过的路)/.test(sent)) return true
     const words = new Set([...sent.matchAll(/[A-Za-z_][\w.\/-]{3,}/g)].map((w) => w[0].replace(/[.,;:]+$/, '')))
     // 命中的标识符若是被否定的对象（「不要动 X」「X 不选」）⇒ 这句不是在提议它，保留
     // 否定必须贴着这个标识符：前 14 字内有否定词、或其后 10 字内（不跨反引号 / 括号——「`maxOutputTokens: 850,`（本轮不动 compressTargetMax）」里的「不动」不是在否定 maxOutputTokens）
@@ -1248,7 +1268,7 @@ export function programPartsText(ctx, opts = {}) {
   if (!/【台账】/.test(c)) return ''
   const mode = (opts && opts.programParts) || 'all'
   if (mode === 'none') return ''
-  const cont = (c.match(/【延续段】[^\n]*\n([^\n]+)/) || [])[1] || ''
+  const cont = ((c.match(/^【延续段】[^\n]*\n([\s\S]*?)(?=\n\n|\n\[|$)/m) || [])[1] || '').replace(/\s+/g, ' ').trim()
   if (mode === 'compact') {
     return [cont, ...verifyHints(c), ...compactVerifyHints(c), closingQuestions(c), compactClosingQuestions(c)].filter(Boolean).join('\n')
   }
@@ -1261,9 +1281,9 @@ export function spliceProgramParts(text, ctx, stats = {}, opts = {}) {
   const c = String(ctx || '')
   const mode = (opts && opts.programParts) || (stats && stats.programParts) || 'all'
   if (mode === 'none') return t
-  const cm = c.match(/【延续段】[^\n]*\n([^\n]+)/)
+  const cm = c.match(/^【延续段】[^\n]*\n([\s\S]*?)(?=\n\n|\n\[|$)/m)
   if (cm && cm[1].trim()) {
-    const cont = cm[1].trim()
+    const cont = cm[1].replace(/\s+/g, ' ').trim()
     if (!t.includes(cont)) {
       // 副模型自己写的延续句（逐句剥，直到第一句不像延续段为止；稿可能没有空行分段）
       const sents = t.split(/(?<=[。\n])/)
