@@ -125,6 +125,15 @@ if (json) {
   if (filters.length) console.log('  （按关键字过滤：' + filters.join(' ') + '，共 ' + rows.length + ' 个套件；不是全量结论）')
   console.log('  合计: ' + tp + ' 通过 / ' + tf + ' 失败 / ' + ts + ' 跳过   (' + (rows.length - bad.length) + '/' + rows.length + ' 套件通过)   并发 ' + JOBS + ' · 用时 ' + (wallMs / 1000).toFixed(1) + 's')
   console.log(bad.length === 0 ? (ts ? '  ==> 已执行检查通过；存在跳过项，非完整宿主验证' : '  ==> 全部通过') : '  ==> 有失败，见上')
+  // v14.14 环境护栏（2026-10-03 实证：同一 HEAD 下所谓「21 个已知环境失败」在 Node22 + 真断网入口全过，被误记为旧债数日）
+  if (bad.length) {
+    const ENV_SUITES = ['eval-ready', 'eval-ready-v2', 'eval-visible-v3', 'training-ready', 'training-local', 'training-iteration']
+    const envBad = bad.filter((r) => ENV_SUITES.includes(r.name))
+    const nodeOk = Number(process.versions.node.split('.')[0]) >= 22
+    let offline = false
+    try { const os2 = await import('node:os'); const ifs = Object.entries(os2.networkInterfaces()).filter(([, v]) => v?.length).map(([k]) => k); offline = ifs.length > 0 && ifs.every((n) => n === 'lo') } catch { /* 判定失败按在线处理 */ }
+    if (envBad.length && (!nodeOk || !offline)) console.log('  ⚠ 环境护栏：' + envBad.map((r) => r.name).join(' / ') + ' 这些套件要求 Node≥22 且真断网命名空间（当前 Node ' + process.versions.node + (offline ? '、已断网' : '、在线环境') + '）。先用正确入口重验再下代码债结论：安装 Node22 后跑 `node tools/verify-offline.mjs`。')
+  }
   console.log('')
 }
 process.exit(bad.length === 0 && rows.length > 0 ? 0 : 1)

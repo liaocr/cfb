@@ -164,12 +164,15 @@ try {
       fs.writeFileSync(path.join(tmp, 'par.json'), JSON.stringify(par))
       const c2 = cli('confirm', '--parity', '--results', path.join(tmp, 'par.json')); assert.equal(c2.status, 0, c2.stdout + c2.stderr); assert.ok(/路径等价校准（ok）/.test(c2.stdout), c2.stdout)
       const c3 = cli('confirm', '--results', path.join(tmp, 'l2.json'), '--map', 'champion=policy:p-abc,previous=policy:base'); assert.ok(/（confirmed）/.test(c3.stdout), c3.stdout)
+      // v14.14：confirm 重跑幂等——同一结果文件再 confirm，效度对 +0、重复 12 对被点名（此前会翻倍入账，n=24 是旧 bug 的产物）
+      assert.ok(/效度账本 \+0 对/.test(c3.stdout) && /12 对与已有记录重复，未重复入账/.test(c3.stdout), c3.stdout)
+      assert.equal(fs.readFileSync(path.join(tmp, 'offline/ruler/validity.jsonl'), 'utf8').trim().split('\n').length, 12, '同源重跑不增账')
       assert.equal(JSON.parse(fs.readFileSync(path.join(tmp, 'offline/champion.json'), 'utf8')).adoption, 'confirmed')
-      // v14.12.4：confirm --plan N 把计划标成 confirmed（之前只有 ceiling 改状态 ⇒ status 一直说「已有未执行计划」）；效度账本先备份再还原，不动后面 ruler 的 n=24
-      fs.copyFileSync(path.join(tmp, 'l2.json'), path.join(tmp, 'runtime/t1/results.jsonl')); const vLedger = fs.readFileSync(path.join(tmp, 'offline/ruler/validity.jsonl'), 'utf8')
+      // v14.12.4：confirm --plan N 把计划标成 confirmed；v14.14：异源文件（t1/results.jsonl）是新观测 ⇒ 合法 +12 → n=24，无需再备份还原账本
+      fs.copyFileSync(path.join(tmp, 'l2.json'), path.join(tmp, 'runtime/t1/results.jsonl'))
       const c4 = cli('confirm', '--plan', '1', '--map', 'champion=policy:p-abc,previous=policy:base'); assert.equal(c4.status, 0, c4.stdout + c4.stderr)
       const tp1 = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/history.json'), 'utf8')).trajPlans.find((t) => t.n === 1); assert.equal(tp1.status, 'confirmed'); assert.equal(tp1.confirm.pairs, 6); assert.match(tp1.confirm.file, /confirm-\d+\.json/)
-      assert.ok(!/已有未执行计划 t1/.test(cli('status').stdout)); fs.writeFileSync(path.join(tmp, 'offline/ruler/validity.jsonl'), vLedger)
+      assert.ok(!/已有未执行计划 t1/.test(cli('status').stdout))
       // 飞轮样例槽：无飞轮 ⇒ 退出码 2；有一条通用赢稿 ⇒ 落策略（op exemplar）
       assert.equal(cli('policy-from-flywheel').status, 2)
       fs.mkdirSync(path.join(tmp, 'offline/train'), { recursive: true })
@@ -734,6 +737,11 @@ try {
   })
   await test('A33 v14.12.3 F6 候选走正门（零 API）：只带 config 的提议过 parseProposal / makePolicy（白名单 continuationPath）；offlineBirthConfig 把策略 config 带进 cfg ⇒ effectiveContinuationPath=bounded，base 仍 full；白名单外的键被拒；traj-run 的压稿预算行按臂汇总程序部件份额与闸拒原因', async () => {
     const G = await import('../tools/helpers/generation.mjs'); const I = await import('../index.js'); const TR = await import('../tools/traj-run.mjs')
+    // v14.14：新克隆上 .cfb-offline（gitignored 运行时状态）不存在 ⇒ 先走官方恢复路径（transfer/cycle-state.json 快照，幂等）；此前该测试依赖本地状态，干净克隆必挂
+    if (!fs.existsSync(path.join(ROOT, '.cfb-offline/policies'))) {
+      const rs = (await import('node:child_process')).spawnSync(process.execPath, ['tools/cfb-cycle.mjs', 'restore'], { cwd: ROOT, encoding: 'utf8' })
+      assert.equal(rs.status, 0, 'cfb-cycle restore 失败：' + (rs.stderr || rs.stdout))
+    }
     const raw = fs.readFileSync(path.join(ROOT, 'docs/proposals/p-f6-bounded-path.json'), 'utf8')
     const prop = G.parseProposal(raw)
     assert.deepEqual(prop.patches, []); assert.deepEqual(prop.config, { continuationPath: 'bounded' }); assert.match(prop.prediction, /作废/)

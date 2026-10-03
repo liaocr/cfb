@@ -512,7 +512,8 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
     const pre = rec.proxySteps.filter((s) => !(Number.isInteger(rec.fixedAtRound) && s.round >= rec.fixedAtRound))
     rec.proxyScore = pre.length ? +(pre.reduce((a, s) => a + s.score, 0) / pre.length).toFixed(3) : null
     rec.proxyRound2 = rec.proxySteps.find((s) => s.round === 2)?.score ?? null
-    if (variant === 'raw' && !state) { rec._lead = ownRounds; if (o.storeText) rec.roundMessages = ownRounds }   // raw 臂逐轮回复：同组影子分叉用 _lead；--store-text 时持久化供 --fork-from 复用
+    if (variant === 'raw' && !state) rec._lead = ownRounds   // raw 臂逐轮回复：同组影子分叉用 _lead
+    if (o.storeText && !state) rec.roundMessages = ownRounds   // v14.14：--store-text 对所有臂持久化（此前只存 raw ⇒ hand 行无 roundMessages，手写稿题材/延长丢失）；--fork-from 仍只认 raw 行
   } catch (e) { rec.error = String(e && e.message || e) }
   finally { fs.rmSync(repo, { recursive: true, force: true }) }
   return rec

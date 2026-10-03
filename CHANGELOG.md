@@ -4,6 +4,14 @@
 > 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
 > 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
 
+## v14.14.0（2026-10-03，合并后整治：环境误诊证伪、新克隆自给、confirm 幂等、完整架构图）
+
+- **「21 个已知环境失败」证伪**：同一 HEAD 在 Node22 + 真断网入口（tools/verify-offline.mjs）下六套 eval-ready/training-* 全过——数日来被记为旧债的是 Node20 + 在线裸跑的误诊。verify.mjs 加环境护栏：环境敏感套件失败且环境不满足时点名「先修环境再下代码债结论」。
+- 新克隆自给：closed-loop A33 依赖 gitignored 的 .cfb-offline（干净克隆必挂、"v4 95/95"只在原工作区成立）——测试现在缺状态时自动走官方 restore 路径（transfer/cycle-state.json，幂等）。
+- confirm 重跑幂等：效度对按 来源文件+内容 去重，同一 results 再 confirm +0 并点名重复数（A11 原断言 n=24 正是重复入账 bug 的产物，已改为 同源+0/异源+12 的正确语义）；hand 等非 raw 臂在 --store-text 下也持久化 roundMessages（此前手写稿题材/延长丢失）。
+- docs/ARCHITECTURE.md 升 v14.14：新增合并后全景 §0——四平面（生产插件/实验闭环/有界账本/三代训练面）、两类状态目录的再生性区分、环境要求、验证等级 A–D、现行 vs 历史文档链、本轮修复与遗留债（F6b ledgerBlock 动前须 N1–N7+267 稿护航）。MIGRATION.md 修过期 Node/分支/恢复步骤。
+- 真断网全量见本提交验收；费用 0、无模型调用。
+
 ## v14.13.1（2026-10-02，自查：gate 臂 act 规则对 29 条真实轨迹零触发 —— 改成记录里的失败签名并以零 API 回放钉住；全面总结 `transfer/SUMMARY-2026-10-02.md`；方案 `docs/design/BREAKTHROUGH-PLAN.md`）
 
 - **漏洞**：v14.13.0 的 act 门禁只认「同一命令重复 ≥2 次」，而 t8/t9 的真实失败是「验证数据第 3 轮齐了、之后 17 个调用全在找新证据、一条命令不重复」—— 对 t6–t9 + traj1–3 共 29 条轨迹零 API 回放，**一次都没触发**。规则写的是想象的失败，不是记录里的失败。

@@ -1,7 +1,31 @@
-# 架构（v13，开发者视角）
+# 架构（v14.14，开发者视角）
 
 > 面向改代码的人：模块怎么分、数据怎么流、哪些不变式不能碰、加东西该改哪里。
 > 使用与配置见根目录 [`README.md`](../README.md)；设计沿革见 [`CHANGELOG.md`](../CHANGELOG.md)；v12.0 之前的文件可从 git `cfba57b` 取回。
+
+## 0. 合并后全景（v14.14，2026-10-03 整治）——先读这节再看模块图
+
+DSH 合并（v14.13）后仓库有**四个平面**，职责互不混淆：
+
+| 平面 | 入口 | 作用 | 状态 |
+|---|---|---|---|
+| ① 生产插件 | `index.js` → `src/`（birth + compress 唯一路径） | 宿主流内压缩思维链写回 reasoning 块 | 冻结；只能过 N1–N7 + 267 稿逐字回归才许动 |
+| ② 实验闭环（**现行主线**） | `tools/cfb-cycle.mjs`（status/plan-traj/review/ceiling/confirm/ruler/restore）+ `tools/traj-run.mjs` + `tools/helpers/`（aci/host-gates/generation/…） | 预注册 → 实跑（影子分叉/预检/回执）→ L2 结局确认/回滚 → 策略飞轮 | 活跃；架构冻结在 v14.13.1，只许修 bug/加题/加读数 |
+| ③ 有界 API 评测账本 | `tools/effect-ready.mjs`（--v2…--v8 scope）+ `tools/bounded-ab.mjs` | 一 scope 一冻结批准：双平面预占、收据不删、失败不退款 | 封存收据 `transfer/api-budget-approval*.json`；新实验开新 scope |
+| ④ 训练面（三代并存，勿混） | a) `tools/cfb-train/corpus/judge/labels/lab`：**历史实验室**，不再投入；b) `tools/train-ready.mjs` + `src/training-core.js` + `training/lora_trainer.py`：本地 LoRA 协议 v2（ACK 预占/HMAC 见证/恢复），**协议已验、真权重未跑**；c) 闭环飞轮 `offline/train/pairs.jsonl` → `policy-from-flywheel`：**现行**，产策略不产权重 | b 等真 GPU/批准；c 随平面② |
+
+**状态目录（搞混它们 = 本次「乱」的主因之一）**：
+- `.cfb-offline/`（gitignored）：**可再生**运行时状态（策略/计划/金标/效度账本）。新克隆必须先 `node tools/cfb-cycle.mjs restore`（快照在 `transfer/cycle-state.json`）。
+- `.cfb-runtime/`（gitignored）：**不可再生**账本与轨迹回执（bounded-ab 各 scope 私有仓、traj/tN）。迁移只能走加密包（effect-ready export）或快照同步；缺失≠零额度。
+- `transfer/`（入库）：公开收据、周期快照、金标、历史 run 数据、交接文档。
+
+**环境要求（2026-10-03 实证，违反会误诊）**：全量自检必须 Node ≥ 22 且走真断网入口 `node tools/verify-offline.mjs`。此前被记为「21 个已知环境失败/旧债」的 eval-ready/training-* 六套，在正确环境下 **0 失败**——那是 Node20 + 在线裸跑 verify 的误诊，verify.mjs 现已内置环境护栏提示。新克隆三步：`restore` → `manifest` → `verify-offline`。
+
+**验证等级（引 `transfer/SUMMARY-2026-10-02.md` §四，呈现纪律：代码闸过了 ≠ 对模型有效）**：A 真钱有回执（t6–t9，四条负结果）；B 只过假 chat（rl-native/gate/drop/shape）；C 建了没用过（Mode2 基准、ranker、pareto…）；D 已证伪（每轮增补制度等）。
+
+**现行文档链**（其余 design 文档是历史，看前先对此表）：`transfer/SUMMARY-2026-10-02.md` → `docs/design/BREAKTHROUGH-PLAN.md` → `docs/design/DSH-MERGE.md` → `CLOSED-LOOP-V4.md` §17–19 → 本文。历史：CLOSED-LOOP-V2/V3、OFFLINE-ARCHITECTURE、CONTINUOUS-TRAINING-ARCHITECTURE、BIRTH-VISIBLE-SPLICE（提案被 DSH 合并路线覆盖，未实施）、RUNBOOK-ONLINE-READY（③平面仍有效）。
+
+**v14.14 整治修复**：① 21「环境失败」证伪并加 verify 护栏；② closed-loop A33 新克隆自给（缺 .cfb-offline 自动走 restore）；③ `confirm` 重跑幂等（效度对按 来源+内容 去重，重复被点名不入账）；④ `--store-text` 对所有臂持久化 roundMessages（此前 hand 行丢手写稿题材）；⑤ MIGRATION.md 过期信息（Node/分支/恢复步骤）。**遗留债（动前先立规格）**：F6b `ledgerBlock` 重复路径（生产渲染，须 N1–N7+267 稿回归护航）；perf-regression 不可接地（要新题 id，不改旧题）；成本常数未对真实账单。
 >
 > 默认生产压稿仍只有**一条路径**：`mode: 'birth'` + compress 编译。checkpoint 模式、迟到认领（deferred claim / late-memory）、
 > memory 模式（证据账本 / 快照 / 状态记忆）、legacy v1 提示词及其全部支撑模块已删除（src 8,990 → 约 3,100 行）。

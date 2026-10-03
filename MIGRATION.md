@@ -8,8 +8,9 @@
 
 ```bash
 git clone https://github.com/liaocr/cfb.git && cd cfb
-git checkout arena/01a0eba2-cfb          # 应落在 c85f432
-node manifest.mjs && node verify.mjs     # 应全过（有跳过项属正常）
+git checkout arena/01a0f127-cfb            # 当前工作分支（main 落后）
+node tools/cfb-cycle.mjs restore           # 从 transfer/cycle-state.json 重建 .cfb-offline（策略/计划/金标，gitignored 运行时状态）
+node manifest.mjs && node tools/verify-offline.mjs   # 全量自检必须走真断网入口；需要 Node ≥ 22
 ```
 
 然后手动做两件仓库里没有的事：
@@ -50,9 +51,9 @@ cd /home/user/cfb && git status -sb && node manifest.mjs && node verify.mjs
 
 ## 注意事项
 
-- **只允许快进推送**：`git push https://x-access-token:$GITHUB_PAT@github.com/liaocr/cfb.git HEAD:arena/01a0eba2-cfb`；绝不 force。
+- **只允许快进推送**：`git push https://x-access-token:$GITHUB_PAT@github.com/liaocr/cfb.git HEAD:arena/01a0f127-cfb`；绝不 force。
 - **git 身份**：`cfb-cleanup <cleanup@local>`。
 - **密钥**：`.secrets/keys.env` 永不进 git、永不打印；走路线 B 时密钥包单独保管，别和仓库包混放。
-- **Node**：本机实测 v20.20.2（无第三方依赖，纯内置模块）。
-- 迁移的目标分支是 `arena/01a0eba2-cfb`；`main` 落后（PR #6 未合），别误切。
-- 若 `verify.mjs` 失败：先贴失败套件，**不要**在失败状态下开工。
+- **Node**：**全量自检需要 ≥ 22**（eval-ready 有 runtime-node 闸；训练套件要求 verify-offline 的断网命名空间）。生产插件本体纯内置模块。沙盒装法：官方 tar 解到 /usr/local（`curl -fsSL https://nodejs.org/dist/v22.21.1/node-v22.21.1-linux-x64.tar.xz | sudo tar -xJ -C /usr/local --strip-components=1`），跨会话不持久需重装。
+- 迁移的目标分支是 `arena/01a0f127-cfb`；`main` 落后，别误切。Arena 快照会剥离 `.git/config`：每轮先 `git remote add origin https://github.com/liaocr/cfb.git` 再 fetch。
+- 若自检失败：先贴失败套件，**不要**在失败状态下开工。eval-ready / training-* 六套失败而你在 Node<22 或在线环境 ⇒ 大概率是环境不是代码（2026-10-03 实证），用上面的正确入口重验。

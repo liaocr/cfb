@@ -2,6 +2,13 @@
 
 > 历史流水/费用见 CHANGELOG 和 docs/analysis/EFFECT-EVAL-2026-09-28.md；四轮理论与原交接见 docs/analysis/HANDOFF-2026-09-30.md。当前实现/预测以 docs/EVIDENCE-PROGRAM.md 为准，最新有界评测/验收以 docs/analysis/BOUNDED-API-2026-09-30.md 为准，理论覆盖见 docs/analysis/THEORY-COVERAGE-2026-09-30.md；原 R1–R4 验收报告保留历史。
 
+## −18. 当前状态（2026-10-03，合并后整治 v14.14.0：环境误诊证伪、全量真绿、完整架构图）
+
+- 用户反馈「融合草率、项目乱、训练流程乱」→ 全面扫描结论：**代码本体基本健康，乱在三处**：① SUMMARY 所记「21 个已知环境失败」是 Node20+在线裸跑的**误诊**（Node22+verify-offline 下 0 失败，已加 verify 环境护栏）；② 测试依赖 gitignored 运行时状态（A33 干净克隆必挂，已改为自动 restore）；③ 三代训练面并存无人说明（cfb-train 历史 / train-ready LoRA 协议 / 闭环飞轮现行——已写进架构图）。
+- 已修：confirm 效度对幂等（同源+0、异源入账、重复点名；A11 旧断言 n=24 即重复 bug 产物）；--store-text 全臂持久化 roundMessages；MIGRATION 过期信息。**遗留债**：F6b ledgerBlock 重复路径（生产渲染，动前须 N1–N7+267 稿回归规格）；perf-regression 不可接地；成本常数未对账单。
+- **docs/ARCHITECTURE.md §0 = 完整架构权威图**（四平面/状态目录再生性/环境要求/验证等级/文档链）。新克隆三步：restore → manifest → verify-offline。
+- 环境坑（每轮复发）：Node20→装22；.git/config 剥离→重加 origin；密钥在 ~/.secrets/keys.env（本沙盒）。v14.13.1 架构冻结纪律不变：只修 bug/加题/加读数。
+
 ## −17. 全面总结（2026-10-02，v14.13.1）—— **先读 `transfer/SUMMARY-2026-10-02.md`**：漏洞清单（act 规则零触发已修并回放钉住；drop 官方端点 400；费用全是名义；新臂只过假 chat；swe-slice 未验）、站得住的 8 条结论、验证等级 A/B/C/D、架构冻结在 v14.13.1、下一步三件事（官方 key → M0 零 API → M1 基线）。
 
 ## −16. 当前状态（2026-10-02，DSH 合并 ①：杠杆从「稿」换到宿主层 —— 工具面 / 协议 / 门禁 / drop 对照已成臂；零花费）

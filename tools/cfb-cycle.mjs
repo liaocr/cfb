@@ -562,9 +562,18 @@ function cmdConfirm(args) {
     console.log(`# 路径等价校准（${pr.ok ? 'ok' : '未通过'}）\n\n${pr.note}\n已写入 ${path.relative(ROOT, PARITY)}`); return
   }
   const map = Object.fromEntries((f(args, '--map') || 'champion=champion,previous=previous').split(',').map((kv) => kv.split('=')))
-  const r = confirmFrom({ rows, map })
+  let r = confirmFrom({ rows, map })
   if (r.verdict === 'confirmed' || r.verdict === 'rolled-back') writeJson(CHAMPION, r.championAfter)
-  if (r.validity.length) { ensure(RULER_DIR); fs.appendFileSync(VALIDITY, r.validity.map((x) => JSON.stringify(x)).join('\n') + '\n') }
+  // v14.14：confirm 重跑幂等——效度对带来源去重（task|arm|sample|proxy|outcome|roundsToFix|source），同一结果文件再 confirm 不再重复入账
+  if (r.validity.length) {
+    ensure(RULER_DIR)
+    const srcRel = path.relative(ROOT, path.resolve(file))
+    const keyOf = (x) => [x.task, x.arm, x.sample, x.proxy, x.outcome, x.roundsToFix, x.source || srcRel].join('|')
+    const seen = new Set((fs.existsSync(VALIDITY) ? fs.readFileSync(VALIDITY, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []).map(keyOf))
+    const fresh = r.validity.map((x) => ({ ...x, source: srcRel })).filter((x) => !seen.has(keyOf(x)))
+    if (fresh.length) fs.appendFileSync(VALIDITY, fresh.map((x) => JSON.stringify(x)).join('\n') + '\n')
+    r = { ...r, validityAppended: fresh.length, validityDuplicates: r.validity.length - fresh.length }
+  }
   ensure(RULER_DIR); const n = fs.readdirSync(RULER_DIR).filter((x) => x.startsWith('confirm-')).length + 1
   writeJson(path.join(RULER_DIR, 'confirm-' + n + '.json'), { schema: 'cfb.confirm/1', at: new Date().toISOString(), source: path.relative(ROOT, path.resolve(file)), map, ...r })
   // v14.12.4：confirm --plan N 把计划标成已回灌（之前只有 ceiling 会改状态 ⇒ 模式 3 的计划跑完回灌后 status 仍打印「已有未执行计划」）
@@ -575,7 +584,7 @@ function cmdConfirm(args) {
   const nc = rows.filter((x) => x && !x.error && x.shadow && !x.extended && x.shadow.divergedAt == null && x.status !== 'awaiting-draft').length
   if (nc) L.push(`其中未分歧组 ${nc}（压缩器整条没触发 ⇒ 与 raw 结局相同、计平手、不是候选优劣的证据）`)
   L.push('', r.verdict === 'confirmed' ? '**champion 确认**：L2 结局证实 L1 采纳；`propose` 现在可出生产 diff' : r.verdict === 'pending-parity' ? '**L2 过了、但缺路径等价校准**：策略 champion 的证据来自 policy: 直连路径；先跑一次 auto vs policy:base 并 `confirm --parity --results …`，等价才能 confirmed' : r.verdict === 'rolled-back' ? '**回滚**：L2 结局证伪 L1 采纳，champion 恢复为 previous（L1 尺子对这个方向可能失效，看 `ruler`）' : r.verdict === 'pending' ? '**待定**：L2 配对不够（需 ≥4 对、≥2 题、e ≥ 阈），继续续跑' : '**只报告**：当前 champion 不是 provisional；本次结果只进效度账本')
-  if (r.validity.length) L.push('', `效度账本 +${r.validity.length} 对（L1 代理分 ↔ L2 修好）`)
+  if (r.validity.length) L.push('', `效度账本 +${r.validityAppended ?? r.validity.length} 对（L1 代理分 ↔ L2 修好）` + (r.validityDuplicates ? `；${r.validityDuplicates} 对与已有记录重复，未重复入账` : ''))
   console.log(L.join('\n'))
 }
 /** 零 API：尺子状态总览。transfer/trajN/results.jsonl 若存在，则给出 L2 基线（raw vs auto）。 */
