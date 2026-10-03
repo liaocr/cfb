@@ -629,6 +629,12 @@ export function compileV4Direct(side, raw, cfg = {}) {
   // v12.9.2 多轮：① 已排除的候选写回后路（perf 稿把台账里排除的 maxOutputTokens 当「没新东西时走这条」）⇒ 删那一句；
   //   ② 同一括注重复（「（第 1 轮 read_file … 出处仍有效）」抄两三遍）⇒ 只留第一处；③ 程序部件拼进稿（延续段 + 验收提示）
   if (/【台账】/.test(String(cfg.compressCtx || ''))) {
+    for (const dm of rawHay.matchAll(/\bsrc\/([A-Za-z0-9_-]+)\.legacy\.js\b/g)) {
+      const stem = dm[1], leg = `src/${stem}.legacy.js`, main = `src/${stem}.js`
+      if (!text.includes(`${stem}.legacy.js`) && text.includes(main)) {
+        text = text.replace(new RegExp(`(${main.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')})(\\s*(?:都)?不动)`), `$1 与 ${leg}$2`)
+      }
+    }
     text = stripExcludedFallback(text, cfg.compressCtx, stats)
     text = dedupeParentheticals(text, stats)
     const ppMode = (cfg && cfg.compressPolicy && cfg.compressPolicy.config && cfg.compressPolicy.config.programParts) || (cfg && cfg.programParts) || 'all'
@@ -1304,10 +1310,18 @@ export function spliceProgramParts(text, ctx, stats = {}, opts = {}) {
     }
   }
   if (mode === 'compact') {
-    // 1) 压缩【延续段】内的固定套话
+    // 1) 压缩【延续段】内的固定套话与非报错文件头回显
     t = t
       .replace(/——第 (\d+(?:、\d+)*) 轮稿里逐字引用的行，本轮输出里不会再出现，出处仍有效。/g, '（第 $1 轮引，出处有效）。')
       .replace(/；这些不再重跑，除非中间改过东西。/g, '（不再重跑）。')
+      .replace(/\s*→\s*「\$\s[^」]*」/g, '')
+      .replace(/bash `cd "\$\(pwd\)" && /g, 'bash `')
+      .replace(/\s+2>\/dev\/null/g, '')
+      .replace(/((?:read_file|bash\s+`(?:cat|ls|for\s+f\s+in)\b)[^`]*`)\s*→\s*「(?![^」]*(?:FAIL|ERR|Error|EACCES))[^」]*」/g, '$1')
+      .replace(/→\s*「bash:\s*该沙箱[^」]*」/g, '→「沙箱拒」')
+      .replace(/已排除[：:]\s*已排除[：:]/g, '已排除：')
+      .replace(/、`[A-Za-z_\s(),.]{45,}`/g, '')
+      .replace(/(已排除[：:][^。；\n]+；\s*已排除[：:][^。；\n]+)；\s*已排除[：:]新建临时复现脚本[^。；\n]*/g, '$1')
     // 2) 剥离副模型在正文里重复抄写的冗长版 K1/K2/K3/K6 提示与二次重复的 edit_file 样板，统一由极简版 compH 单次注入
     t = t
       .replace(/验收命令是新起进程的直接输出（不是翻旧日志、不是旧记录的统计），输出即本次结果，新鲜。/g, '')
@@ -1317,7 +1331,8 @@ export function spliceProgramParts(text, ctx, stats = {}, opts = {}) {
       .replace(/(?:本轮改法是把数值[^。\n]*。)?若验收仍失败且新数字 ≈[^。\n]*取证之前不动实现。/g, '')
       .replace(/(?:本轮改法是把[^。\n]*；)?若验收输出是改后新产生的[^。\n]*不再改这个值。/g, '')
       .replace(/selftest PASS 不算证据，因为它只证明被测函数的行为、不证明原症状消失；/g, '单元测试 PASS 不能当收工依据；')
-      .replace(/（上一轮 read_file [^）]*的原样行，这次输出里没有它，照用；不带行首缩进也能匹配）/g, '')
+      .replace(/（(?:上一轮|第\s*\d+\s*轮)[`\s]*(?:read_file|cat|grep)[^）]*的原样行[^）]*）/g, '')
+      .replace(/（一个没见过的[^）]*）/g, '')
     if ((t.match(/edit_file\s+\S+/g) || []).length >= 3) {
       t = t.replace(/看到这一点就够了，不用再读[^。\n]*：直接 edit_file [^。\n]+。/g, '即可收工（不再重读或补改）。')
     }

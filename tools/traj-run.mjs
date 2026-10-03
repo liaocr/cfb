@@ -168,8 +168,9 @@ export function runBash(task, repo, cmd, opts = {}) {
   segs.push({ c: cur, op: '' })
   const parts = segs.map((s) => s.c.trim()).filter(Boolean)
   const hasPipe = segs.some((s) => s.op === '|')
-  // 单条命令，或带管道的整条（npm test 2>&1 | tail -n 6 这类）：先问题目 canned
-  if (parts.length === 1 || hasPipe) { const whole = task.canned(cmd, repo); if (whole != null) return whole }
+  const hasChain = segs.some((s) => s.op === ';' || s.op === '&&' || s.op === '||')
+  // 单条命令，或不含 ; && || 的带管道整条（npm test 2>&1 | tail -n 6 这类）：先问题目 canned
+  if (parts.length === 1 || (hasPipe && !hasChain)) { const whole = task.canned(cmd, repo); if (whole != null) return whole }
   if (parts.length === 1) {
     const c = parts[0]
     const g = GENERIC(c); if (g != null) return g
@@ -179,14 +180,17 @@ export function runBash(task, repo, cmd, opts = {}) {
     catch (e) { return unreal(repo, String((e.stdout || '') + (e.stderr || '')).slice(0, 2000)) + (opts.exitMarker ? `\n[exit code: ${e.status ?? 1}]` : '') || `退出码 ${e.status}` }
   }
   // 有管道且全是白名单命令 ⇒ 整条真跑（grep … | head 这类）
-  if (hasPipe && parts.every((c) => SAFE_RE.test(c)) && !ESCAPES_REPO(cmd) && !/[`$><]/.test(cmd.replace(/2>&1|2>\/dev\/null|>\/dev\/null/g, ''))) {
+  if (hasPipe && !hasChain && parts.every((c) => SAFE_RE.test(c)) && !ESCAPES_REPO(cmd) && !/[`$><]/.test(cmd.replace(/2>&1|2>\/dev\/null|>\/dev\/null/g, ''))) {
     try { return unreal(repo, execFileSync('bash', ['-c', realCmd(repo, cmd)], { cwd: repo, env: SANDBOX_ENV(repo), encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }).slice(0, 4000)) || '（无输出）' }
     catch (e) { return unreal(repo, String((e.stdout || '') + (e.stderr || '')).slice(0, 2000)) + (opts.exitMarker ? `\n[exit code: ${e.status ?? 1}]` : '') || `退出码 ${e.status}` }
   }
-  // && ; || 串联：逐段执行（题目 canned 优先），按粗略的成败语义决定下一段跑不跑，输出拼起来
+  // && ; || 串联：把单语句内的 | 拼回同一子句再逐段递归执行（题目 canned 优先）
+  const runSegs = hasChain
+    ? (() => { const cs = []; let acc = ''; for (const sg of segs) { acc += sg.c; if (sg.op === '|') acc += ' | '; else { cs.push({ c: acc, op: sg.op }); acc = '' } } return cs })()
+    : segs
   const failed = (out) => /^bash: |not found|No such file|失败|退出码|Operation not permitted|password is required/.test(String(out))
   const outs = []; let prevFail = false, prevOp = ''
-  for (const sg of segs) {
+  for (const sg of runSegs) {
     const c = sg.c.trim(); if (!c) { prevOp = sg.op; continue }
     if ((prevOp === '&&' && prevFail) || (prevOp === '||' && !prevFail)) { prevOp = sg.op; continue }
     const out = runBash(task, repo, c, opts); prevFail = failed(out); prevOp = sg.op
@@ -405,7 +409,8 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         // 真请求的放行：指纹可信；或探针已验携带 / 无历史，且真请求与探针走的是同一条路（prompt_tokens 相差 ≤ 2%：中转按内容黏住后端，但要防换路）
         const samePath = carried && (carried === 'trusted-fp' || Math.abs(Number(r.usage?.prompt_tokens) - Number(rec.carry?.length && carried === 'carry-verified' ? rec.carry[rec.carry.length - 1].withReasoning : r.usage?.prompt_tokens)) <= 0.02 * Number(r.usage?.prompt_tokens))
         const seen = !claudeShaped(r.usage) && (!o.requireFp || TRUSTED_FP.has(r.fp) || !!samePath)
-        if (seen && (r.message.reasoning_content || '').length > 0) {
+        const isClosingTurn = o._preflightCarryOk && (round >= o.maxRounds || (rec.fixedAtRound != null && !callsOfMessage(r.message).length && responseText(r.message).trim().length > 0))
+        if (seen && ((r.message.reasoning_content || '').length > 0 || isClosingTurn)) {
           if (o.requireFp) { const mode = TRUSTED_FP.has(r.fp) ? 'trusted-fp' : carried; rec.fpModes = rec.fpModes || {}; rec.fpModes[mode] = (rec.fpModes[mode] || 0) + 1 }
           break
         }
@@ -576,7 +581,7 @@ export function recomputeVerified(r, verifyRe) {
   return false
 }
 export function summarizeTraj(rows) {
-  for (const r of rows) { const task = TRAJ_TASKS.find((t) => t.id === r.task); if (task && !r.error) { r.verifiedAfterFix = recomputeVerified(r, task.verifyRe); r.claimJustified = r.claim === 'fixed' ? (r.fixed && r.verifiedAfterFix) : r.claim === 'hedged' ? true : !r.fixed || !r.final } }
+  for (const r of rows) { const task = TRAJ_TASKS.find((t) => t.id === String(r.task).split(':')[0]); if (task && !r.error) { r.verifiedAfterFix = recomputeVerified(r, task.verifyRe); r.claimJustified = r.claim === 'fixed' ? (r.fixed && r.verifiedAfterFix) : r.claim === 'hedged' ? true : !r.fixed || !r.final } }
   const ok = rows.filter((r) => !r.error && r.status !== 'awaiting-draft')
   const vars = [...new Set(ok.map((r) => r.variant))]
   const L = ['| 变体 | n | 修好 | 到修好的轮数 | 总轮数 | 工具调用 | edit 次数 | 重复命令 | 修好后验收 | 最终声明 fixed | 声明相称 | prompt tokens 合计 | 上下文 reasoning 字数 | 压稿成功 |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|']
@@ -609,7 +614,7 @@ export async function main(argv) {
   if (!o.summarizeOnly) {
     const apiKey = process.env.DEEPSEEK_API_KEY || (o.dryRun ? 'dry' : null); if (!apiKey) throw new Error('需要 DEEPSEEK_API_KEY')
     const I = await import('../index.js')
-    const chat = o.dryRun ? async () => { throw new Error('dry-run') } : makeChat({ baseUrl: o.baseUrl, apiKey })
+    const chat = o.dryRun ? async () => { throw new Error('dry-run') } : makeChat({ baseUrl: o.baseUrl, apiKey, timeoutMs: 40000 })
     const d = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-')); const cred = path.join(d, 'c.yaml'); fs.writeFileSync(cred, 'K: "' + apiKey + '"\n', { mode: 0o600 })
     const jobs = []
     const states = o.fromState ? loadStates(o.fromState) : null

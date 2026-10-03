@@ -54,7 +54,7 @@ export function goldItemsFromTraj({ home, rows, planId = null, split = {}, fromW
   const groups = {}
   for (const r of live) (groups[`${r.task}#${r.sample ?? 0}`] = groups[`${r.task}#${r.sample ?? 0}`] || {})[r.variant] = r
   const items = []
-  const vsRawOf = (o, ro) => !ro ? null : o.solved && !ro.solved ? 'win' : !o.solved && ro.solved ? 'loss' : o.solved && ro.solved ? ((o.roundsToFix || 0) < (ro.roundsToFix || 0) ? 'win' : (o.roundsToFix || 0) > (ro.roundsToFix || 0) ? 'loss' : 'tie') : 'tie'
+  const vsRawOf = (o, ro) => !ro ? null : o.solved && !ro.solved ? 'win' : !o.solved && ro.solved ? 'loss' : o.solved && ro.solved ? ((o.roundsToFix || 0) < (ro.roundsToFix || 0) ? 'win' : (o.roundsToFix || 0) > (ro.roundsToFix || 0) ? 'loss' : o.verifiedAfterFix !== ro.verifiedAfterFix ? (o.verifiedAfterFix ? 'win' : 'loss') : o.cleanFinish !== ro.cleanFinish ? (o.cleanFinish ? 'win' : 'loss') : 'tie') : 'tie'
   for (const r of live.filter((x) => x.variant === 'hand')) {
     const rawRow = (groups[`${r.task}#${r.sample ?? 0}`] || {}).raw || null
     const o = episodeOutcome(r), ro = rawRow ? episodeOutcome(rawRow) : null

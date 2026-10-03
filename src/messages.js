@@ -283,7 +283,7 @@ export function buildLedger(messages) {
   let ui = -1
   for (let i = arr.length - 1; i >= 0; i--) { const m = arr[i]; if (m && m.role === 'user' && !isToolResultMsg(m) && textOfContent(m.content).trim()) { ui = i; break } }
   const L = { rounds: 0, edits: [], calls: [], decided: [], excluded: [], accept: [], open: [], lines: [] }
-  const pick = (text, re, max, seen, kw) => { const out = []; for (const m of (kw ? sentenceMatches(text, re, kw) : String(text || '').matchAll(re))) { const t = m[0].trim(); if (t.length < 8 || t.length > 240 || seen.has(t)) continue; seen.add(t); out.push(t); if (out.length >= max) break } return out }
+  const pick = (text, re, max, seen, kw, maxLen = 240) => { const out = []; for (const m of (kw ? sentenceMatches(text, re, kw) : String(text || '').matchAll(re))) { const t = m[0].trim(); if (t.length < 8 || t.length > maxLen || seen.has(t)) continue; seen.add(t); out.push(t); if (out.length >= max) break } return out }
   const seen = new Set()
   let round = 0
   for (let i = ui + 1; i < arr.length; i++) {
@@ -292,13 +292,13 @@ export function buildLedger(messages) {
     round++
     const d = draftOf(m)
     if (d) {
-      const decidedHits = pick(d, LEDGER_DECIDED_RE, 1, seen)
+      const decidedHits = pick(d, LEDGER_DECIDED_RE, 1, seen, null, 420)
       for (const t of decidedHits) L.decided.push({ round, text: t })
       if (!decidedHits.length) {
         // v14.15：低于门槛（< birthMinChars）的原文透传轮次不会带「改法只落一个：/ 落定：」受控前缀，
         // 从自然语言末段抽取明确的改法决定（含文件或反引号代码行，且非否定/条件假设），消除跨轮状态失忆
-        for (const s of d.split(/(?<=[。！？\n])/).map((x) => x.trim()).filter(Boolean).reverse()) {
-          if (/不要|不改|不能|不选|无需|不必|如果|若|假设/.test(s)) continue
+        for (const s of d.split(/(?<=[。！？；\n])/).map((x) => x.trim()).filter(Boolean).reverse()) {
+          if (/不要|不改|不能|不选|无需|不必|如果|若|假设|已排除|排除[:：]/.test(s)) continue
           const rm = s.match(/(?:所以|因此|接下来|现在|应该|需要|准备|决定)?(?:先|直接)?(?:需要|应该|要)?(?:把\s*`[^`\n]+`\s*改(?:成|为)\s*`[^`\n]+`|(?:修改|改)\s+[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+\s*(?:的|里|中)\s*[^\n。]{4,120})/)
           if (rm && rm[0].length >= 10 && rm[0].length <= 240 && !seen.has(rm[0])) {
             seen.add(rm[0])
@@ -463,7 +463,8 @@ export function applyCtxContinuationPolicy(ctx, pathMode = 'full') {
   if (!calls.length) return s
   const L = { rounds: Math.max(...calls.map((c) => c.round)), calls }
   const bt = boundedPathText(L)
-  const idents = [...new Set(calls.flatMap((c) => (`${c.args || ''} ${c.result || ''}`).match(/[A-Za-z_][A-Za-z0-9_./-]{2,}|\b\d{3,6}\b/g) || []).filter((x) => /[._/-]|^\d+$/.test(x)))].slice(0, 32)
+  const existingIdents = (s.match(/^- 已走过的路：（[^）\n]*?曾涉\s+([^）\n]+)）/m)?.[1] || '').split(/\s+/).filter(Boolean)
+  const idents = [...new Set([...existingIdents, ...calls.flatMap((c) => (`${c.args || ''} ${c.result || ''}`).match(/[A-Za-z_][A-Za-z0-9_./-]{2,}|\b\d{3,6}\b/g) || []).filter((x) => /[._/-]|^\d+$/.test(x))])].slice(0, 32)
   let out = s.replace(/已走过的路：[^\n。]+这些不再重跑，除非中间改过东西。/g, bt)
   if (out.includes('【延续段】')) {
     out = out.replace(/^- 已走过的路：[^\n]+/m, `- 已走过的路：（共 ${calls.length} 条调用，详见下方【延续段】${idents.length ? '；曾涉 ' + idents.join(' ') : ''}）`)

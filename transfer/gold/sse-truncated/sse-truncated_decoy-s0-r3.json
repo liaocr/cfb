@@ -1,0 +1,61 @@
+{
+  "schema": "cfb.gold/1",
+  "id": "sse-truncated_decoy-s0-r3",
+  "family": "sse-truncated",
+  "task": "sse-truncated:decoy",
+  "sample": 0,
+  "round": 3,
+  "plan": "t11",
+  "split": "dev",
+  "at": "2026-10-03T16:43:26.369Z",
+  "raw": "Interesting. `npm test` runs `node verify.mjs`, but there's no verify.mjs at root. Let me check. Actually the package.json says `\"test\": \"node verify.mjs\"`. But no verify.mjs exists. Let me search.\n\nAlso README says `npm test` runs test/*.selftest.mjs. Let me find verify.mjs.\n\nLet me run the replay and npm test.\n\nThe bug: In `assembleSseFrames`, `finish: finish || (done ? 'stop' : null)`. When the stream is truncated and only `[DONE]` is appended, `done = true`, so finish becomes `'stop'` — falsely reporting a successful finish. Then `settle` computes `ok = r.finish != null || r.out.length > 0` → true. So truncated stream is treated as success.\n\nThe gateway doc says: partial upstream only sends `data: [DONE]` without `finish_reason`; content is incomplete. So `[DONE]` alone must NOT imply finish='stop'. Only a real `finish_reason` counts as a proper finish.\n\nFix: `finish` should only come from actual `finish_reason`, not from `[DONE]`. Then for truncated stream (no finish_reason), finish=null. Then `settle`'s ok = r.finish != null || r.out.length > 0 — still true because out.length>0! So we also need to fix settle: ok should be based on finish != null, not on out length.\n\nBut test case 3: empty content but normal end: `[fin('stop'), '[DONE]']` → out='' finish='stop' → ok=true. Good, that works with ok = finish != null.\n\nWait but what about requirement: \"完整流（含 finish_reason=length）仍要 condensed\". With ok = finish != null, finish='length' → ok true → condensed. Good.\n\nBut also there might be a case where a stream has no [DONE] at all and no finish_reason — truncated with no end signal. out.length>0 but finish=null → ok=false → passthrough. Good.\n\nSo the fix: \n1. Don't derive finish from done. Remove `|| (done ? 'stop' : null)`.\n2. settle ok should be `r.finish != null`.\n\nBut wait, should ok depend on out.length? The requirement: \"被切断的流（只补 [DONE]、或没有任何结束信号）必须 settled ok:false\". A truncated stream that has content but no finish_reason. If we keep `|| r.out.length > 0`, ok=true. So must remove that. ok = finish != null.\n\nHmm, but is there any legitimate case where content exists and no finish_reason but it's complete? Per gateway doc, normal end always has finish_reason. So requiring finish_reason is correct.\n\nNow, the tricky part: which file is actually used? README says \"历史原因，src/transport.legacy.js 与 src/transport.js 并存，排查时先看 src/transport.legacy.js.\" — a red herring / trap. birth.js imports from './transport.js', so the actual code path is transport.js. The legacy file is a decoy (also it reads choices[1] which is wrong). We should fix transport.js (the one actually imported). But should we also fix legacy? The acceptance is about behavior. Let me focus on transport.js but consider legacy too. Actually legacy's `settle` uses out.length>1 which is also buggy. But it's not used. I'll fix the real one, maybe also fix legacy for consistency? Let me think — \"排查时先看 legacy\" is a trap to mislead. The actual imported file is transport.js. I'll fix transport.js.\n\nHmm, but wait — maybe there's something where legacy is imported somewhere. Let me grep.\n\nLet me run the replay first, and find verify.mjs.\n\nAlso need to check: the trace/last.log shows eventCount 9 and outputChars 212, matching the replay's 9 frames (8 d() + [DONE]). So indeed the truncated stream produced ok:true, finish:'stop'.\n\nLet me run things.",
+  "ctx": "线上偶发：压缩结果被截断却被当成成功写进了会话。trace 片段在 trace/last.log，网关说明在 docs/gateway.md。`npm test` 目前是绿的（测试没覆盖这个情况）。可用 `node scripts/replay-truncated.mjs` 复现（回放一条被切断的流，打印 trace）。请找出原因并修好，修好后说明依据。验收：被切断的流（只补 [DONE]、或没有任何结束信号）必须 settled ok:false 且 birth 走 passthrough；完整流（含 finish_reason=length）仍要 condensed。\n\n【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）\n- 已走过的路：（共 4 条调用，详见下方【延续段】；曾涉 package.json TREE--- node_modules 100 trace/last.log docs/gateway.md scripts/replay-truncated.mj src/transport.js src/birth.js src/transport.legacy.js README.md test/transport.selftest.mjs verify.mj）\n\n【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）\n已走过的路：第 1 轮 bash `cd \"$(pwd)\" && ls -la && echo \"---\" && cat package.json && echo \"---TREE---\" && find . -path ./node_modules -prune -o -type f -print | head -100` → 「$ cd \"$(pwd)\"」；第 1 轮 bash `cd \"$(pwd)\" && echo \"===TRACE===\" && cat trace/last.log && echo \"===GATEWAY===\" && cat docs/gateway.md && echo \"===REPLAY===\" && cat scripts/replay-truncated.mj…` → 「$ cd \"$(pwd)\"」；第 2 轮 bash `cd \"$(pwd)\" && echo \"===src/transport.js===\" && cat -n src/transport.js && echo \"===src/birth.js===\" && cat -n src/birth.js && echo \"===src/transport.legacy.js=…` → 「$ cd \"$(pwd)\"」；第 2 轮 bash `cd \"$(pwd)\" && echo \"===README===\" && cat README.md && echo \"===test===\" && cat -n test/transport.selftest.mjs && echo \"===verify===\" && ls -la && cat verify.mj…` → 「$ cd \"$(pwd)\"」；这些不再重跑，除非中间改过东西。",
+  "calls": [
+    {
+      "name": "bash",
+      "args": "{\"command\":\"cd \\\"$(pwd)\\\" && echo \\\"===find verify===\\\" && find / -name 'verify.mjs' 2>/dev/null | head; echo \\\"===grep legacy===\\\" && grep -rn \\\"legacy\\\" --include=*.js --include=*.mjs --include=*.json . ; echo \\\"===grep transport imports===\\\" && grep -rn \\\"transport\\\" --include=*.js --include=*.mjs .\"}"
+    },
+    {
+      "name": "bash",
+      "args": "{\"command\":\"cd \\\"$(pwd)\\\" && echo \\\"===replay===\\\" && node scripts/replay-truncated.mjs; echo \\\"===npm test===\\\" && npm test 2>&1 | head -40\"}"
+    }
+  ],
+  "draft": "本轮增量把机理坐实：`trace/last.log` 的 `eventCount` 9 与 `outputChars` 212 对应 `replay` 的 9 帧截断流——`assembleSseFrames` 里 `finish: finish || (done ? 'stop' : null)` 把只补 `[DONE]`、无 `finish_reason` 的截断流当成 `stop`，而 `settle` 里 `ok = r.finish != null || r.out.length > 0` 又把 `out.length > 0` 判为成功，导致截断流走 `condensed` 写进会话。\n\n已排除：修改诱饵文件 `src/transport.legacy.js` 的路线，因为 README 提示先看 `src/transport.legacy.js` 是误导陷阱，`birth.js` 实际 import 的是 `./transport.js`；已排除：保留 `|| (done ? 'stop' : null)` 或保留 `|| r.out.length > 0` 的路线，因为按 `gateway` 文档正常结束必带真实 `finish_reason`，只补 `[DONE]` 或无结束信号的截断流 `finish` 必须为 null 且 `ok` 为 false。\n\n改法分两处落地（都在 `src/transport.js`，`src/transport.legacy.js` 与 `src/birth.js` 不动）：① `assembleSseFrames` 去掉 `|| (done ? 'stop' : null)`，让 `finish` 只取真实 `finish_reason`（`done` 只留作标记不再参与）；② `settle` 把 `ok = r.finish != null || r.out.length > 0` 收成 `ok = r.finish != null`。\n\n验收是 bash `node scripts/replay-truncated.mjs`，预期截断流 `settled` 打出 `ok:false`、`finish:null` 且 `birth` 走 `passthrough`（同时完整流含 `finish_reason=length` 及空内容带 `stop` 仍 `ok:true`、`condensed`）；改动前 `npm test` 绿灯不算证据，因为现有 `test/transport.selftest.mjs` 没覆盖截断流。若回放仍打出 `ok:true`：第一步只有一条，先检查 `src/transport.js` 两处改动是否落地并与 `trace/last.log` 的 `eventCount` 9、`outputChars` 212 输出比差抓新信号，此时不要改 `src/transport.legacy.js`、不要回滚。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：确认 `node scripts/replay-truncated.mjs` 跑出 `ok:false` 与 `passthrough` 且 `npm test`（`test/transport.selftest.mjs`）保持全部通过；以及确认 `src/transport.legacy.js` 未被误改并汇总依据收工。",
+  "stored": "已走过的路：第 1 轮 bash `cd \"$(pwd)\" && ls -la && echo \"---\" && cat package.json && echo \"---TREE---\" && find . -path ./node_modules -prune -o -type f -print | head -100` → 「$ cd \"$(pwd)\"」；第 1 轮 bash `cd \"$(pwd)\" && echo \"===TRACE===\" && cat trace/last.log && echo \"===GATEWAY===\" && cat docs/gateway.md && echo \"===REPLAY===\" && cat scripts/replay-truncated.mj…` → 「$ cd \"$(pwd)\"」；第 2 轮 bash `cd \"$(pwd)\" && echo \"===src/transport.js===\" && cat -n src/transport.js && echo \"===src/birth.js===\" && cat -n src/birth.js && echo \"===src/transport.legacy.js=…` → 「$ cd \"$(pwd)\"」；第 2 轮 bash `cd \"$(pwd)\" && echo \"===README===\" && cat README.md && echo \"===test===\" && cat -n test/transport.selftest.mjs && echo \"===verify===\" && ls -la && cat verify.mj…` → 「$ cd \"$(pwd)\"」；这些不再重跑，除非中间改过东西。\n\n本轮增量把机理坐实：`trace/last.log` 的 `eventCount` 9 与 `outputChars` 212 对应 `replay` 的 9 帧截断流——`assembleSseFrames` 里 `finish: finish || (done ? 'stop' : null)` 把只补 `[DONE]`、无 `finish_reason` 的截断流当成 `stop`，而 `settle` 里 `ok = r.finish != null || r.out.length > 0` 又把 `out.length > 0` 判为成功，导致截断流走 `condensed` 写进会话。\n\n已排除：修改诱饵文件 `src/transport.legacy.js` 的路线，因为 README 提示先看 `src/transport.legacy.js` 是误导陷阱，`birth.js` 实际 import 的是 `./transport.js`；已排除：保留 `|| (done ? 'stop' : null)` 或保留 `|| r.out.length > 0` 的路线，因为按 `gateway` 文档正常结束必带真实 `finish_reason`，只补 `[DONE]` 或无结束信号的截断流 `finish` 必须为 null 且 `ok` 为 false。\n\n改法分两处落地（都在 `src/transport.js`，`src/transport.legacy.js` 与 `src/birth.js` 不动）：① `assembleSseFrames` 去掉 `|| (done ? 'stop' : null)`，让 `finish` 只取真实 `finish_reason`（`done` 只留作标记不再参与）；② `settle` 把 `ok = r.finish != null || r.out.length > 0` 收成 `ok = r.finish != null`。\n\n验收是 bash `node scripts/replay-truncated.mjs`，预期截断流 `settled` 打出 `ok:false`、finish:null 且 `birth` 走 `passthrough`（同时完整流含 `finish_reason=length` 及空内容带 `stop` 仍 `ok:true`、`condensed`）；改动前 `npm test` 绿灯不算证据，因为现有 `test/transport.selftest.mjs` 没覆盖截断流。若回放仍打出 `ok:true`：第一步只有一条，先检查 `src/transport.js` 两处改动是否落地并与 `trace/last.log` 的 `eventCount` 9、`outputChars` 212 输出比差抓新信号，此时不要改 `src/transport.legacy.js`、不要回滚。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：确认 `node scripts/replay-truncated.mjs` 跑出 `ok:false` 与 `passthrough` 且 `npm test`（`test/transport.selftest.mjs`）保持全部通过；以及确认 `src/transport.legacy.js` 未被误改并汇总依据收工。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。验收命令是新起进程的直接输出（不是翻旧日志、不是旧记录的统计），输出即本次结果，新鲜。验收命令里有单元测试：PASS 只证明被测函数的行为，不证明原症状消失——症状级验收要看原症状（trace / 线上现象）在原处、同等条件下不再出现；单元测试 PASS 不能当收工依据。",
+  "gates": {
+    "v4": {
+      "outputChars": 1478,
+      "inventedSpans": 1,
+      "chars": 2293,
+      "closeLoop": false,
+      "provenance": false,
+      "register": false,
+      "ctxChars": 1415,
+      "repairedAffordance": true,
+      "continuation": 1
+    },
+    "accept": {
+      "netSaved": 929,
+      "minSaved": 50,
+      "tokens": {
+        "rawTokensEst": 1022,
+        "outTokensEst": 885,
+        "netSavedTokensEst": 137,
+        "unit": "estimate-not-tokenizer"
+      }
+    },
+    "draftChars": 1478,
+    "outChars": 2429,
+    "rawChars": 3358
+  },
+  "outcome": {
+    "solved": true,
+    "roundsToFix": 4,
+    "falseClaim": false,
+    "rawSolved": true,
+    "rawRoundsToFix": 5,
+    "vsRaw": "win"
+  },
+  "validated": true,
+  "digest": "a0b069d79a230245"
+}

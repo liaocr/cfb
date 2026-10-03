@@ -41,10 +41,11 @@ export function compressPromptFor(cfg, cot) {
   if (cfg && cfg.compressPrompt === 'v2') return buildCompressPrompt(cot)
   if (cfg && cfg.compressPrompt === 'v4') {
     if (cfg.compressV4Direct !== true) return buildCompressPromptV4(cot)
-    const p = buildCompressPromptV4Direct(cot, cfg.compressCtx || '', cfg.compressEditTool || null, { promptMode: effectivePromptMode(cfg) })
+    const p0 = buildCompressPromptV4Direct(cot, cfg.compressCtx || '', cfg.compressEditTool || null, { promptMode: effectivePromptMode(cfg) })
     // v14.10 策略即配置：cfg.compressPolicy（normalizeConfig 已归一化；null = 无策略 = 逐字节原提示词）在生产路径里应用补丁，
     // 评测的 policy:<id> 臂走的就是这一行 ⇒ 评测与生产同路由构造保证，不再需要付费的路径等价校准。
-    return cfg.compressPolicy && cfg.compressPolicy.patches && cfg.compressPolicy.patches.length ? applyPolicyPatches(p, cfg.compressPolicy.patches) : p
+    const p = cfg.compressPolicy && cfg.compressPolicy.patches && cfg.compressPolicy.patches.length ? applyPolicyPatches(p0, cfg.compressPolicy.patches) : p0
+    return cot && cot.length < 2400 ? p.replace(/(【要求重申】[\s\S]*?)(?:\d{3,4}~\d{3,4}\s*字(?:之间)?)/g, '$1450~650 字（原文较短，只写核心句，严禁超过 700 字）') : p
   }
   const t = compressTargets(cfg)
   return buildCompressPromptV3(cot, t.min, t.max)

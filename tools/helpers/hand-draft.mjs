@@ -17,6 +17,7 @@ import { jaccard } from './candidates.mjs'
 
 const ANCHOR_RE = /[A-Za-z_$][\w.$\-]{2,}|\d+(?:\.\d+)?/g
 const STOP = new Set(['old_text', 'new_text', 'edit_file', 'edit', 'read_file', 'bash', 'tool_call', 'the', 'and', 'for', 'npm', 'node', 'test', 'true', 'false', 'null', 'undefined', 'const', 'let', 'var', 'return', 'function', 'import', 'export', 'from', 'async', 'await', 'PASS', 'FAIL', 'pass', 'fail', 'grep', 'sed', 'cat', 'head', 'tail', 'rg', 'command', 'found', 'AssertionError', 'Error'])
+const CLI_ALLOW = new Set(['chmod', 'chown', 'sudo', 'mkdir', 'rm', 'ls', 'stat', 'wc', 'echo', 'find', 'cp', 'mv', 'touch', 'kill', 'ps', 'env', 'pwd', 'cd'])
 const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim()
 /** 文本里的锚点：标识符 / 路径 / 数字（去掉工具协议词与极常见的语言关键字）。
  *  带点 / 斜杠 / 连字符的词同时登记它的各段（`process.env.CFB_REAL_DSH_HOME` ⇒ 也有 `CFB_REAL_DSH_HOME`、`env`）：稿里单提子标识符不算发明。两边同一规则，比对才对称。 */
@@ -80,7 +81,7 @@ export function slotsOf(text) {
     if (!excluded.includes(c)) excluded.push(c)
   }
   for (const d of decided) {
-    for (const m of d.matchAll(/[，,；;]\s*([^，；。\n]{3,80}?(?:不动|不改|保持\s*\d+|保留\s*[\w.]+\s*的?\s*\d+)[^，；。\n]*)/g)) {
+    for (const m of d.matchAll(/[，,；;（(]\s*([^，；。\n（(）)]{3,80}?(?:不动|不改|保持\s*\d+|保留\s*[\w.]+\s*的?\s*\d+)[^，；。\n）)]*)/g)) {
       const c = norm(m[1])
       if (c && !excluded.includes(c)) excluded.push(c)
     }
@@ -136,9 +137,17 @@ function recalled(goldSentence, candidates, fullBody = '') {
   const as = leafAnchors(goldSentence)
   if (as.length) {
     const have = anchorsOf(candidates.join('\n'))
+    if (fullBody) {
+      for (const pm of String(goldSentence || '').matchAll(/(?:\/[\w.-]+){2,}/g)) {
+        const p = pm[0], base = p.split('/').pop()
+        if (base && fullBody.includes(p.slice(0, p.lastIndexOf('/'))) && (have.has(base) || base.split('.').every((x) => !x || have.has(x)))) {
+          for (const seg of anchorsOf(p)) have.add(seg)
+        }
+      }
+    }
     if (as.filter((a) => have.has(a)).length / as.length >= 0.6) return true
     if (fullBody) {
-      const head = String(goldSentence || '').split(/[，,（(]\s*(?:因为|由于|——|—)/)[0]
+      const head = String(goldSentence || '').split(/[，,（(]\s*(?:因为|由于|——|—)|且不再/)[0]
       const headAs = leafAnchors(head)
       const haveAll = anchorsOf(candidates.join('\n') + '\n' + fullBody)
       if (headAs.length && headAs.filter((a) => have.has(a)).length / headAs.length >= 0.5 && as.filter((a) => haveAll.has(a)).length / as.length >= 0.6) return true
@@ -166,11 +175,12 @@ export function draftDistance(auto, gold, { raw = '', ctx = '', calls = [] } = {
   const goldAcceptBackticks = [...String(gold || '').matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).join('\n')
   const hay = anchorsOf(String(raw) + '\n' + String(ctx) + '\n' + callsText + '\n' + goldAcceptBackticks + '\n' + programPartsText(ctx, { programParts: 'full' }) + '\n' + programPartsText(ctx, { programParts: 'compact' }))
   const autoAnchors = [...anchorsOf(auto)]
-  const anchorPrecision = autoAnchors.length ? +(autoAnchors.filter((a) => hay.has(a)).length / autoAnchors.length).toFixed(3) : 1
+  const isGrounded = (a) => hay.has(a) || CLI_ALLOW.has(a) || (/[./\-]/.test(a) && !/\.[A-Za-z]{1,5}$/.test(a) && a.split(/[./\-]+/).every((p) => !p || STOP.has(p) || CLI_ALLOW.has(p) || hay.has(p)))
+  const anchorPrecision = autoAnchors.length ? +(autoAnchors.filter(isGrounded).length / autoAnchors.length).toFixed(3) : 1
   const goldDecidedAnchors = anchorsOf([...G.decided, ...G.triples.map((t) => t.oldText + ' ' + t.newText)].join('\n'))
-  const stripExWhy = (s) => String(s || '').replace(/[，,（(：:]\s*(?:因为|那里|由于|若)[\s\S]*$/, '').replace(/再用\s+read_file[\s\S]*$/, '')
+  const stripExWhy = (s) => String(s || '').replace(/（[^）]*才是[^）]*）/g, '').replace(/[，,（(：:]\s*(?:因为|那里|由于|若)[\s\S]*$/, '').replace(/再用\s+read_file[\s\S]*$/, '')
   const goldExcludedOnlyAnchors = [...anchorsOf(G.excluded.map(stripExWhy).join('\n'))].filter((a) => !goldDecidedAnchors.has(a) && !/^\d/.test(a))
-  const stripDecNeg = (s) => String(s || '').replace(/（[^）]*read_file[^）]*）/g, '').replace(/[，,；;]\s*[^，；。\n]*?(?:不动|不改|不选|保持|保留|只留作标记|余量由)[^，；。\n]*/g, '')
+  const stripDecNeg = (s) => String(s || '').replace(/（[^）]*read_file[^）]*）/g, '').replace(/[，,；;（(]\s*[^，；。\n）)]*?(?:不动|不改|不选|保持|保留|只留作标记|余量由)[^，；。\n）)]*[）)]?/g, '')
   const autoActionAnchors = anchorsOf([...A.decided.map(stripDecNeg), ...A.triples.map((t) => t.oldText + ' ' + t.newText)].join('\n'))
   const resurrectedAnchors = goldExcludedOnlyAnchors.filter((a) => autoActionAnchors.has(a))
   const deadEndResurrected = resurrectedAnchors.length > 0
@@ -178,13 +188,21 @@ export function draftDistance(auto, gold, { raw = '', ctx = '', calls = [] } = {
   const fullAutoText = String(auto || '')
   let decision = null
   const normT = (s) => norm(s).replace(/^[{\s`]+|[}\s`]+$/g, '')
+  const gDecClean = G.decided.map(stripDecNeg)
   if (deadEndResurrected) decision = 0
-  else if (G.decided.length > 1) decision = recall(G.decided, A.decided.length ? A.decided : [bodyNoInHand])
+  else if (G.decided.length > 1) decision = recall(gDecClean, A.decided.length ? A.decided : [bodyNoInHand], fullAutoText)
   else if (G.triples.length) {
-    const tOk = G.triples.every((g) => A.triples.some((a) => (normT(a.oldText) === normT(g.oldText) || normT(a.oldText).includes(normT(g.oldText)) || normT(g.oldText).includes(normT(a.oldText))) && (normT(a.newText) === normT(g.newText) || normT(a.newText).includes(normT(g.newText)) || normT(g.newText).includes(normT(a.newText)))))
-    decision = tOk ? 1 : (!A.triples.length && G.decided.length && A.decided.length ? +(0.5 * recall(G.decided, A.decided)).toFixed(3) : 0)
+    const tOk = G.triples.every((g) => A.triples.some((a) => {
+      const oldOk = normT(a.oldText) === normT(g.oldText) || normT(a.oldText).includes(normT(g.oldText)) || normT(g.oldText).includes(normT(a.oldText))
+      if (!oldOk || normT(a.newText) === normT(a.oldText)) return false
+      const newOk = normT(a.newText) === normT(g.newText) || normT(a.newText).includes(normT(g.newText)) || normT(g.newText).includes(normT(a.newText))
+      if (newOk) return true
+      const aNewAs = leafAnchors(a.newText)
+      return aNewAs.length > 0 && aNewAs.every((x) => goldDecidedAnchors.has(x) && !goldExcludedOnlyAnchors.includes(x))
+    }))
+    decision = tOk ? 1 : (!A.triples.length && G.decided.length && A.decided.length ? +(0.5 * recall(gDecClean, A.decided, fullAutoText)).toFixed(3) : 0)
   }
-  else if (G.decided.length) decision = recall(G.decided, A.decided.length ? A.decided : [bodyNoInHand])
+  else if (G.decided.length) decision = recall(gDecClean, A.decided.length ? A.decided : [bodyNoInHand], fullAutoText)
   const excludedRecall = recall(G.excluded, A.excluded, fullAutoText)
   const acceptOk = G.accept.length ? (A.accept.length ? recall(G.accept, [bodyNoInHand]) : 0) : null
   const openRecall = recall(G.open, A.open, fullAutoText)

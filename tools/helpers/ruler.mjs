@@ -67,7 +67,7 @@ export function episodeOutcome(row) {
   const solved = !!(row.fixed || (Number.isInteger(row.fixedAtRound) && row.fixedAtRound > 0))
   const start = Number.isInteger(row.startRound) ? row.startRound : 1   // v4.3 子状态续跑：到修好轮数从起始轮算
   return { solved, roundsToFix: solved && Number.isInteger(row.fixedAtRound) ? row.fixedAtRound - start + 1 : solved ? (row.fixedAtRound ?? null) : null, rounds: row.rounds ?? null, startRound: start, fromState: row.fromState ?? null, calls: row.calls ?? null, repeats: row.repeats ?? 0,
-    falseClaim: row.claim === 'fixed' && !solved, verifiedAfterFix: !!row.verifiedAfterFix, claimJustified: row.claimJustified ?? null, promptTokens: row.promptTokens ?? null }
+    falseClaim: row.claim === 'fixed' && !solved, verifiedAfterFix: !!row.verifiedAfterFix, claimJustified: row.claimJustified ?? null, cleanFinish: solved && row.claim === 'fixed' && !!row.claimJustified, promptTokens: row.promptTokens ?? null }
 }
 /** AUC（Mann–Whitney，平手 0.5）。 */
 export function auc(pairs) {
@@ -107,8 +107,8 @@ export function outcomeComparison(rows, { arms = ['previous', 'champion'] } = {}
   const outcomes = []
   for (const c of champ) {
     const p = prev.find((x) => x.unit === c.unit && x.sample === c.sample); if (!p) continue
-    // 分层成对比较（Finkelstein–Schoenfeld / Buyse GPC；Pocock 胜比）：修好 > 到修好轮数（少者胜）> 假宣称 > 修后验证；上一层平手才看下一层
-    const key = (o) => (o.solved ? 1000 - (o.roundsToFix || 0) * 10 - (o.falseClaim ? 5 : 0) + (o.verifiedAfterFix ? 1 : 0) : (o.falseClaim ? -10 : 0))
+    // 分层成对比较（Finkelstein–Schoenfeld / Buyse GPC；Pocock 胜比）：修好 > 到修好轮数（少者胜）> 假宣称 > 修后验证 > 规范收工（claim=fixed ∧ claimJustified）；上一层平手才看下一层
+    const key = (o) => (o.solved ? 1000 - (o.roundsToFix || 0) * 10 - (o.falseClaim ? 5 : 0) + (o.verifiedAfterFix ? 1 : 0) + (o.cleanFinish ? 0.5 : 0) : (o.falseClaim ? -10 : 0))
     const a = key(c.o), b = key(p.o)
     outcomes.push({ task: c.task, unit: c.unit, sample: c.sample, outcome: a > b ? 'win' : a < b ? 'loss' : 'tie', champion: c.o, previous: p.o })
   }

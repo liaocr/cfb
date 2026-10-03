@@ -389,7 +389,7 @@ export async function generateDistillation(cot, cfg, signal, promptOverride, run
             i--
             continue
           }
-          if (!rescuedLength && modes[i] === true && /^incomplete distillate \(finish=length/.test(String(e && e.message || '')) && (e?.meta?.reasoningChars || 0) > 0) {
+          if (!rescuedLength && modes[i] === true && /^(?:incomplete|empty) distillate \(finish=length/.test(String(e && e.message || ''))) {
             rescuedLength = true
             cfg = { ...cfg, maxOutputTokens: Math.max(Number(cfg.maxOutputTokens) || 1600, 4096) }
             i--

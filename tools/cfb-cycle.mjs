@@ -888,8 +888,20 @@ function resultsArg(args, kind = 'traj') {
 }
 /** 模式 1 回灌：hand vs raw 的 L2 结局 → offline/ruler/ceiling-<k>.json + 效度账本；**不碰 champion**（hand 不是候选）。 */
 function cmdCeiling(args) {
-  const { planN, home, file, rows } = resultsArg(args)
+  const { planN, home, file, rows: curRows } = resultsArg(args)
   const map = Object.fromEntries((f(args, '--map') || 'hand=hand,raw=raw').split(',').map((kv) => kv.split('=')))
+  let rows = curRows
+  if (planN && !args.includes('--single')) {
+    const h = loadHistory()
+    const prior = []
+    for (const tp of (h.trajPlans || []).filter((x) => x.n < Number(planN) && x.status !== 'superseded')) {
+      const rf = path.join(trajHomeFor(tp.n), 'results.jsonl')
+      if (!fs.existsSync(rf)) continue
+      const pr = readResults(rf)
+      if (pr.some((r) => r.variant === map.hand)) prior.push(...pr.filter((r) => r.status !== 'awaiting-draft' && !r.error))
+    }
+    if (prior.length) rows = [...prior, ...curRows]
+  }
   // 只算仍在等的：同一 task|variant|sample 后面已有完成行（续跑写的）的暂停行是历史，不再报
   const doneKeys = new Set(rows.filter((r) => r.status !== 'awaiting-draft' && !r.error).map((r) => `${r.fromState || r.task}|${r.variant}|${r.sample}`))
   const waiting = rows.filter((r) => r.status === 'awaiting-draft' && !doneKeys.has(`${r.fromState || r.task}|${r.variant}|${r.sample}`))
@@ -1529,14 +1541,14 @@ export function prescreenPolicies({ policyIds = null } = {}) {
       const effCtx = I.applyCtxContinuationPolicy(g.ctx || '', contMode)
       const ad = adaptiveOn ? I.computeAdaptiveBirthControl(g.raw, effCtx, null, cfg) : null
       const effFloor = ad ? ad.effectiveFloor : cfg.birthMinChars
-      if (g.raw.length < effFloor) {
+      const liveRow = liveBench.get(pol.id + ':' + g.id)
+      const baseLiveRow = liveBench.get('base:' + g.id)
+      if (!liveRow && g.raw.length < effFloor) {
         const dd = draftDistance(g.raw, g.draft, { raw: g.raw, ctx: g.ctx })
         goldScoreSum += dd.score ?? 0
         continue
       }
       const c2 = { ...cfg, compressCtx: effCtx, ...(ad && !cfg.compressV4DirectMaxChars ? { compressV4DirectMaxChars: ad.effectiveMaxChars } : {}) }
-      const liveRow = liveBench.get(pol.id + ':' + g.id)
-      const baseLiveRow = liveBench.get('base:' + g.id)
       let outText = g.raw
       if (liveRow) {
         goldLiveCount++
@@ -1545,7 +1557,7 @@ export function prescreenPolicies({ policyIds = null } = {}) {
           const acc = I.birthAccept(g.raw, outText, { ...c2, compressCtx: effCtx + (g.calls?.length ? '\n\n' + I.turnCallsBlock(g.calls) : '') })
           goldPass++
           goldSavedTok += acc.netSavedTokensEst || 0
-          if ((acc.netSavedTokensEst || 0) < 0) expandedBlocks++
+          if ((g.raw.length >= 2600 ? (acc.netSavedTokensEst || 0) : (acc.netSaved || 0)) < 0) expandedBlocks++
         }
       } else {
         const rawSeed = baseLiveRow?.text ? baseLiveRow.text.replace(/^【(?:延续段|在手信息|台账与在手)】[\s\S]*?\n\n/, '').split(/\n*【(?:在手信息|台账与在手|验收提示|本轮已发出的调用)】/)[0].trim() : ''
@@ -1561,7 +1573,7 @@ export function prescreenPolicies({ policyIds = null } = {}) {
         if (acc.ok) {
           goldPass++
           goldSavedTok += acc.netSavedTokensEst || 0
-          if ((acc.netSavedTokensEst || 0) < 0) expandedBlocks++
+          if ((g.raw.length >= 2600 ? (acc.netSavedTokensEst || 0) : (acc.netSaved || 0)) < 0) expandedBlocks++
         }
       }
       const dd = draftDistance(outText, g.draft, { raw: g.raw, ctx: g.ctx })
