@@ -172,10 +172,31 @@ function cmdAuditBench(args) {
       candidateDraft: r.text || '',
       ruleDistance: r.distance,
     })
-    items.push({ policy: r.policy, gold: r.gold, family: r.family, verdict: r.distance.verdict, score: r.distance.score, prompt })
+    items.push({ policy: r.policy, gold: r.gold, family: r.family, ok: !!r.ok, text: r.text || '', raw: g?.raw || '', verdict: r.distance.verdict, score: r.distance.score, prompt })
   }
   console.log(`Mode 2 基准双轨语义复核：${items.length} 项待语义裁决（裁决集：${BENCH_SEMANTIC_VERDICTS.join(' | ')}）`)
   for (const it of items) console.log(`  ${it.policy} × ${it.gold} [${it.family}]：dd/1 verdict=${it.verdict} score=${it.score}`)
+  return items
+}
+async function cmdAuditBenchLive(args) {
+  const items = cmdAuditBench(args)
+  if (!items || !items.length || !args.includes('--live')) return items
+  const { makeChat } = await import('./effect-eval.mjs')
+  const onlyPol = f(args, '--policy')
+  const chat = makeChat({ baseUrl: f(args, '--base-url') || process.env.DEEPSEEK_BASE_URL, apiKey: process.env.DEEPSEEK_API_KEY, timeoutMs: 90000 })
+  const model = f(args, '--model') || process.env.DEEPSEEK_MODEL || 'deepseek-v4.1-flash'
+  for (const it of items) {
+    if (onlyPol && it.policy !== onlyPol) continue
+    if (!it.ok || !it.text) { console.log(`  [LLM 跳过] ${it.policy} × ${it.gold}：未产出有效压缩稿（已走原文回退）`); continue }
+    const res = await chat({ model, messages: [{ role: 'user', content: it.prompt }], thinking: { type: 'disabled' }, max_tokens: 400, stream: false })
+    const rawJson = String(res.message?.content || '').replace(/^```(?:json)?\s*|\s*```$/g, '').trim()
+    const parsed = parseBenchJudge(rawJson)
+    const code = codeDimensions(it.text, it.raw)
+    const dis = parsed.ok ? ruleLlmDisagreement(code, parsed.values) : []
+    it.llm = parsed
+    it.disagreements = dis
+    console.log(`  [LLM 语义裁决] ${it.policy} × ${it.gold}：verdict=${parsed.semanticVerdict || parsed.reason} blindspot=${parsed.ruleBlindspot ?? '—'} dis=${dis.length} note=${parsed.note || rawJson.slice(0, 100)}`)
+  }
   return items
 }
 function cmdCalibrate(args) {
@@ -249,7 +270,7 @@ function main() {
   else if (cmd === 'check') cmdCheck(args)
   else if (cmd === 'disagree') cmdDisagree(args)
   else if (cmd === 'audit-traj') cmdAuditTraj(args)
-  else if (cmd === 'audit-bench') cmdAuditBench(args)
+  else if (cmd === 'audit-bench') { if (args.includes('--live')) cmdAuditBenchLive(args); else cmdAuditBench(args) }
   else if (cmd === 'calibrate') cmdCalibrate(args)
   else throw new Error('未知子命令 ' + cmd)
 }

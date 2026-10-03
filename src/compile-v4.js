@@ -1332,8 +1332,8 @@ export function spliceProgramParts(text, ctx, stats = {}, opts = {}) {
     }
     const fixInPlay = /^- (?:edit_file|str_replace\w*|apply_patch|edit)\s/m.test((c.match(/【本轮已发出的调用】[^\n]*\n([\s\S]*?)(?=\n\n|$)/) || ['', ''])[1]) || /^- 第 \d+ 轮(?:已定|已改|提议)/m.test(c)
     const compQ = compactClosingQuestions(c)
-    if (/能说修好要三件事都在手[^。]*。/.test(t)) {
-      t = t.replace(/能说修好要三件事都在手[^。]*。/, compQ)
+    if (/能说修好要三件事都在手[^。]*。/.test(t) || (/【本轮已发出的调用】/.test(c) && /收工核对（[^。]*。/.test(t))) {
+      t = t.replace(/(?:能说修好要三件事都在手|收工核对（)[^。]*。/, compQ)
       stats.splicedClosing = 1
     } else if (/【台账】/.test(c) && fixInPlay && !/收工核对（/.test(t)) {
       t = t.replace(/\s*$/, '') + (/[。！？」`]$/.test(t.trimEnd()) ? '' : '。') + compQ

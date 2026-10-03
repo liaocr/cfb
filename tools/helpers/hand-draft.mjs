@@ -16,14 +16,15 @@ import { programPartsText } from '../../src/compile-v4.js'
 import { jaccard } from './candidates.mjs'
 
 const ANCHOR_RE = /[A-Za-z_$][\w.$\-]{2,}|\d+(?:\.\d+)?/g
-const STOP = new Set(['old_text', 'new_text', 'edit_file', 'read_file', 'bash', 'tool_call', 'the', 'and', 'for', 'npm', 'node', 'test', 'true', 'false', 'null', 'undefined', 'const', 'let', 'var', 'return', 'function', 'import', 'export', 'from', 'async', 'await', 'PASS', 'FAIL', 'pass', 'fail', 'grep'])
+const STOP = new Set(['old_text', 'new_text', 'edit_file', 'edit', 'read_file', 'bash', 'tool_call', 'the', 'and', 'for', 'npm', 'node', 'test', 'true', 'false', 'null', 'undefined', 'const', 'let', 'var', 'return', 'function', 'import', 'export', 'from', 'async', 'await', 'PASS', 'FAIL', 'pass', 'fail', 'grep', 'sed', 'cat', 'head', 'tail', 'rg'])
 const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim()
 /** 文本里的锚点：标识符 / 路径 / 数字（去掉工具协议词与极常见的语言关键字）。
  *  带点 / 斜杠 / 连字符的词同时登记它的各段（`process.env.CFB_REAL_DSH_HOME` ⇒ 也有 `CFB_REAL_DSH_HOME`、`env`）：稿里单提子标识符不算发明。两边同一规则，比对才对称。 */
 export function anchorsOf(text) {
   const out = new Set()
   const add = (a) => { if (a.length < 3 && !/^\d{2,}/.test(a)) return; if (STOP.has(a) || /^[.\-$]+$/.test(a)) return; out.add(a) }
-  for (const m of String(text || '').matchAll(ANCHOR_RE)) { const a = m[0].replace(/[.\-]+$/, ''); add(a); if (/[./\-]/.test(a)) for (const part of a.split(/[./\-]+/)) add(part) }
+  const cleaned = String(text || '').replace(/\bsed\s+-n\s+['"]?\d+,\d+p['"]?/g, 'sed')
+  for (const m of cleaned.matchAll(ANCHOR_RE)) { const a = m[0].replace(/[.\-]+$/, ''); add(a); if (/[./\-]/.test(a)) for (const part of a.split(/[./\-]+/)) add(part) }
   return out
 }
 /** 单段稿的槽位（与生产台账同一套抽取：落定 / 已排除 / 验收 / 未解 / 提议三元组）。 */

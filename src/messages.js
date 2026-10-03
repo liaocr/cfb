@@ -418,7 +418,7 @@ export function boundedPathText(L, { recentRounds = 2, maxChars = 600 } = {}) {
     const rounds = [...new Set(older.map((c) => c.round))].sort((a, b) => a - b)
     const span = rounds.length > 1 ? `第 ${rounds[0]}–${rounds[rounds.length - 1]} 轮` : `第 ${rounds[0]} 轮`
     const fam = [...byName.entries()].map(([name, h]) => `${name}×${[...h.values()].reduce((a, b) => a + b, 0)}（${[...h.entries()].map(([hd, n]) => (n > 1 ? `${hd}×${n}` : hd)).join('、')}）`).join('，')
-    const olderFiles = [...new Set(older.flatMap((c) => (`${c.args || ''} ${c.result || ''}`).match(/(?:[\w.-]+\/)*[\w-]+\.(?:m?js|c?js|ts|json|md|log|py|sh|ya?ml)\b/g) || []).filter((f) => !/^node_modules\//.test(f)))].slice(0, 10)
+    const olderFiles = [...new Set(older.flatMap((c) => (`${c.args || ''} ${c.result || ''}`).match(/(?:[\w.-]+\/)*[\w.-]+\.(?:m?js|c?js|ts|json|md|log|py|sh|ya?ml)\b/g) || []).filter((f) => !/^node_modules\//.test(f)))].slice(0, 10)
     parts.push(`${span}已跑 ${older.length} 条：${fam}${olderFiles.length ? `（已涉 ${olderFiles.join('、')}）` : ''}`)
   }
   const clipArgs = (a, n) => (a.length > n ? a.slice(0, n) + '…' : a)

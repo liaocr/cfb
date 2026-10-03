@@ -938,6 +938,7 @@ function cmdPlanBench(args) {
     ? (() => { const top = prescreenPolicies().find((r) => r.policy !== 'base' && r.applicable && r.expandedBlocks === 0)?.policy; return top ? `base,${top}` : 'base' })()
     : 'base'
   let policies = (f(args, '--policies') || defaultPols).split(',')
+  if (isLite && !policies.includes('base')) policies = ['base', ...policies]
   const known = new Set(listPolicies().map((p) => p.id)); for (const p of policies) if (p !== 'base' && !known.has(p)) throw new Error('policy-not-found:' + p)
   if (new Set(policies).size !== policies.length) throw new Error('duplicate-policies')
   const split = f(args, '--split') || 'dev'; if (!['dev', 'holdout', 'all'].includes(split)) throw new Error('bad-split:' + split)
@@ -1626,8 +1627,8 @@ export function distillFlywheelContrastivePatch(pairs = loadFlywheel()) {
   const multiPct = Math.min(99, Math.max(20, Math.round((lMulti / n) * 100)))
   const text = [
     `基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 ${singlePct}% vs 落败稿多点发散/复述率 ${multiPct}%）的正反对比铁律：`,
-    '✗ 落败退化范式（禁止）：同时把两处备选写成可执行 old_text，或在正文里把程序已自动附上的新鲜度/单元测试/零效应条款再抄一遍，导致篇幅膨胀且诱导主模型下一步过度思考。',
-    '✓ 胜出精炼范式（必须）：「本轮增量把机理坐实：5432 open、8123 refused。改法只落一个：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是本轮 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先跟上轮输出比差抓新信号，无新信号再跑预写取证，不调超时、不回滚。」',
+    '✗ 落败退化范式（禁止）：把未证实的互斥备选猜想（A 或 B）并列写成待试改法，或把同一根因必须协同修改的两处漏掉一处，或在正文里把程序已自动附上的新鲜度/单元测试/零效应条款再抄一遍。',
+    '✓ 胜出精炼范式（必须）：「本轮增量把机理坐实：5432 open、8123 refused。改法只落一个（若同一机理需协同改 N 处则写“分 N 处落地：① … ② …”，每处均给出逐字 old_text 与 new_text，绝不漏掉任一处协同改动）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是本轮 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先跟上轮输出比差抓新信号，无新信号再跑预写取证，不调超时、不回滚。」',
   ].join('\n')
   return { op: 'exemplar', section: 'contrastive', text }
 }
