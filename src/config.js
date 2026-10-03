@@ -231,6 +231,14 @@ export const DEFAULTS = {
   // v14.12.3（F6）：程序写的延续段里「已走过的路」的形态：'full'（每条历史调用连参数带结果，随调用数无界增长）| 'bounded'（最近两轮原样、更早归并计数、≤600 字）| 'none'（不写延续段，v12.9.1 及以前的形态）。
   //   缺省 full（被测对象不变）；策略可用 compressPolicy.config.continuationPath 覆盖；不认识的值回到 full 并在 configAdjusted 留痕。
   continuationPath: 'full',
+  // 程序拼接件组合控制：'all' | 'compact' | 'no-closing' | 'no-hints' | 'continuation-only' | 'none'（缺省 'all' = 全部保留，被测对象不变；'compact' = 保留延续段并将提示/三问浓缩为一行状态锚点）。
+  programParts: 'all',
+  // 提示词按轮次态动态裁剪模式：'full'（缺省，原样保留全部样例）| 'modular'（在多轮【台账】态下仅注入第 2 轮增量样例与多轮重申，剥离冗余单步样例，节省 ~260 input tokens/次并消除顺序冲突）。
+  promptMode: 'full',
+  // 动态水位与打转感知触发器（理论第四卷 λ 控制器）：false = 固定 birthMinChars；true = 按会话轮数、打转率（原始/Δ状态）与水位动态调节触发地板与预算。
+  birthAdaptiveFloor: false,
+  // v4 直写长度熔断上限（null = 单步 2000 / 多轮 2600）。
+  compressV4DirectMaxChars: null,
   // 仅工具用：把副模型原始输出带回 meta.sideOutput（tools/compile-direct.mjs --recompile 零调用重编译）
   captureSideOutput: false,
   // 证据程序侧车（默认关）：需宿主注册 createEvidenceHost 产生的 cfbEvidenceHost。
@@ -354,6 +362,14 @@ export function normalizeConfig(config = {}) {
   if (c.continuationPath !== 'full' && c.continuationPath !== 'bounded' && c.continuationPath !== 'none') {
     c.configAdjusted = Object.assign({}, c.configAdjusted, { continuationPath: { from: c.continuationPath, to: 'full', why: "must be 'full', 'bounded' or 'none'" } })
     c.continuationPath = 'full'
+  }
+  if (!['all', 'compact', 'no-closing', 'no-hints', 'continuation-only', 'none'].includes(c.programParts)) {
+    c.configAdjusted = Object.assign({}, c.configAdjusted, { programParts: { from: c.programParts, to: 'all', why: "must be 'all', 'compact', 'no-closing', 'no-hints', 'continuation-only' or 'none'" } })
+    c.programParts = 'all'
+  }
+  if (!['full', 'modular'].includes(c.promptMode)) {
+    c.configAdjusted = Object.assign({}, c.configAdjusted, { promptMode: { from: c.promptMode, to: 'full', why: "must be 'full' or 'modular'" } })
+    c.promptMode = 'full'
   }
   // 不认识的处置值 ⇒ 回到安全缺省（passthrough）并在 BOOT 留痕；绝不把拼错的值猜成「照旧归属」
   if (c.birthSessionAmbiguity !== 'passthrough' && c.birthSessionAmbiguity !== 'latest') {

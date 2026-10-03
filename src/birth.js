@@ -6,7 +6,6 @@
 //   birthEconomics  成本模型（只记录，不参与判定）
 //   readPressure    此刻物理水位（官方 tokenMeter；拿不到就如实标 source）
 import crypto from 'node:crypto'
-import { isEvidenceHost } from './evidence-runtime.js'
 import { fidelity, inventedIdentifiers } from './fidelity.js'
 import { settledTraceData } from './trace.js'
 import { estimateTokens } from './tokens.js'
@@ -214,6 +213,51 @@ export function readPressure(deps) {
 }
 
 /**
+ * ★ 理论第四卷（v(i) 可计算化 × 编译强度 λ 控制论）+ 卷一 T7（压缩率/打转检测）：
+ *   根据当前思维链原文 raw、多轮上下文 ctx（含【台账】）与物理水位 pressure，
+ *   计算动态触发门槛 effectiveFloor 与动态目标上限 effectiveMaxChars。
+ *   三个工作区：
+ *     1) fresh-early（第 1 轮、低水位、无打转）：主模型无 Context Rot，抬高门槛（×1.20）防过度干预与离策略损耗；
+ *     2) cruise（常规轮次）：保持基准 birthMinChars；
+ *     3) high-spin-or-long-horizon（轮次 ≥ 4、连续只读不改 ≥ 3 轮、高反思冗余打转 spinScore ≥ 0.45、或窗口水位 ≥ 0.50）：
+ *        主动下调触发门槛（×0.65，下限 1600 字）并收紧输出上限，把搜索死循环与冗余分支折叠为紧凑状态。
+ */
+export function computeAdaptiveBirthControl(raw, ctx = '', pressure = null, cfg = {}) {
+  const r = String(raw || '')
+  const c = String(ctx || '')
+  const baseFloor = cfg.birthMinChars == null ? 3100 : cfg.birthMinChars
+  const baseMax = Number.isFinite(cfg.compressV4DirectMaxChars) && cfg.compressV4DirectMaxChars > 0
+    ? cfg.compressV4DirectMaxChars
+    : (/【台账】/.test(c) ? 2600 : 2000)
+  const roundNums = [...c.matchAll(/第 (?:\d+[–-])?(\d+) 轮/g)].map((m) => Number(m[1]))
+  const turnDepth = roundNums.length ? Math.max(...roundNums) + 1 : (/【台账】/.test(c) ? 2 : 1)
+  const editedRounds = new Set([...c.matchAll(/第 (\d+) 轮已改：/g)].map((m) => Number(m[1])))
+  if (/上一轮已改：|状态：已改/.test(c) && turnDepth > 1) editedRounds.add(turnDepth - 1)
+  let readOnlyStreak = 0
+  for (let k = turnDepth - 1; k >= 1; k--) {
+    if (editedRounds.has(k)) break
+    readOnlyStreak++
+  }
+  const spinMatches = (r.match(/等等|不对|换个思路|或者说|还是先|重新看|再看一遍|先别|到底是不是|\bwait\b|\bhmm\b|\bactually\b|\blet me re-read\b/gi) || []).length
+  const codeSpans = new Set([...r.matchAll(/`([^`\n]{2,120})`/g)].map((m) => m[1].trim())).size
+  const charsPerAnchor = r.length / Math.max(1, codeSpans)
+  const spinScore = Math.min(1, +((spinMatches / Math.max(1, r.length / 350)) * 0.6 + (charsPerAnchor > 600 ? 0.4 : charsPerAnchor / 1500)).toFixed(3))
+  const pressureRatio = (pressure && Number.isFinite(pressure.usedTokens) && Number.isFinite(pressure.contextWindow) && pressure.contextWindow > 0)
+    ? +(pressure.usedTokens / pressure.contextWindow).toFixed(3)
+    : Math.min(1, +((c.length + r.length) / 64000).toFixed(3))
+  let zone = 'cruise', effectiveFloor = baseFloor, effectiveMaxChars = baseMax
+  if (turnDepth >= 4 || readOnlyStreak >= 3 || spinScore >= 0.45 || pressureRatio >= 0.5) {
+    zone = 'high-spin-or-long-horizon'
+    effectiveFloor = Math.max(1600, Math.round(baseFloor * 0.65))
+    effectiveMaxChars = Math.max(1100, Math.round(baseMax * 0.85))
+  } else if (turnDepth <= 1 && spinScore < 0.25 && pressureRatio < 0.2) {
+    zone = 'fresh-early'
+    effectiveFloor = Math.round(baseFloor * 1.2)
+  }
+  return { zone, turnDepth, readOnlyStreak, spinScore, pressureRatio, baseFloor, effectiveFloor, baseMax, effectiveMaxChars }
+}
+
+/**
  * 阶段一（block-end 处）：**同步**起火，绝不 await。
  *   ① 内存秒算句柄（~0.05ms）
  *   ② diskP（CAS 写盘）与 distillP（宿主模型提纯）双向并发起飞
@@ -226,7 +270,9 @@ export function birthStart(entry, deps = {}) {
   const taskId = crypto.randomUUID()
   const trace = safeTrace(deps, { taskId })
   const raw = String(entry.text || '')
-  const floor = cfg.birthMinChars == null ? 500 : cfg.birthMinChars
+  const adaptiveOn = !!(cfg.birthAdaptiveFloor || (cfg.compressPolicy && cfg.compressPolicy.config && cfg.compressPolicy.config.birthAdaptiveFloor))
+  const adaptiveCtrl = adaptiveOn ? computeAdaptiveBirthControl(raw, cfg.compressCtx || '', typeof deps.pressure === 'function' ? deps.pressure() : null, cfg) : null
+  const floor = adaptiveCtrl ? adaptiveCtrl.effectiveFloor : (cfg.birthMinChars == null ? 500 : cfg.birthMinChars)
   const sessionId = typeof deps.sessionId === 'function' ? deps.sessionId() : (deps.sessionId || null)
   const task = {
     taskId, index: entry.index, raw, end: entry.end || null, sessionId,
@@ -384,23 +430,12 @@ export async function birthFinish(task, deps = {}) {
   //   （v12.1：迟到认领已删除 ⇒ 放行即取消，不再有「留给下一轮」的消费者。）
   const cancelFlying = (why) => birthCancelFlying(task, cfg, trace, why)
 
-  // opt-in 侧车：宿主块仓可失败，说明稿/chunk 一字不改；失败/部分稿只归档、不授权。
-  const withEvidence = (result, complete, activeCfg = cfg) => {
-    if (cfg.evidenceProgram !== true || !isEvidenceHost(deps.evidenceHost)) return result
-    try {
-      const evidence = deps.evidenceHost.captureDraft({ raw, text: result.text, sessionId: task.sessionId, index: task.index,
-        ctx: activeCfg.compressCtx || '', calls: task.turnCalls || [], complete })
-      trace('birth-evidence-published', { index: task.index, authorized: evidence.authorized })
-      return { ...result, evidence }
-    } catch { trace('birth-evidence-unavailable', { index: task.index }); return result }
-  }
-
   const pass = (why, handle, extra) => {
     const text = raw
     const waitedMs = task.finishEnterAt ? Date.now() - task.finishEnterAt : 0
     const cancelled = cancelFlying(why)
     trace('birth-passthrough', { index: task.index, why, rawChars: raw.length, outChars: text.length, handle: handle || null, waitedMs, short: task.shortReason || null, cancelled, ...(extra || {}) })
-    return withEvidence({ chunks: birthEmitChunks(task, text, deps), text, why, rawChars: raw.length, outChars: text.length, handle: handle || null }, false)
+    return { chunks: birthEmitChunks(task, text, deps), text, why, rawChars: raw.length, outChars: text.length, handle: handle || null }
   }
 
   if (task.belowFloor) return pass(task.why || 'below-floor', null)
@@ -476,7 +511,8 @@ export async function birthFinish(task, deps = {}) {
         if (block) {
           const ctx2 = String(cfg.compressCtx) + '\n\n' + block
           const st = {}
-          const spliced = spliceProgramParts(candidate, ctx2, st)
+          const ppMode = (cfg && cfg.compressPolicy && cfg.compressPolicy.config && cfg.compressPolicy.config.programParts) || (cfg && cfg.programParts) || 'all'
+          const spliced = spliceProgramParts(candidate, ctx2, st, { programParts: ppMode })
           if (spliced !== candidate) { candidate = spliced; trace('birth-hints-spliced', { index: task.index, hints: st.splicedHints || 0, calls: task.turnCalls.length }) }
           cfgAcc = { ...cfg, compressCtx: ctx2 }
         }
@@ -500,11 +536,11 @@ export async function birthFinish(task, deps = {}) {
       birthCancelFlying(task, cfg, trace, 'partial-used')
       trace('birth-condensed', { index: task.index, why: 'condensed-partial', rawChars: raw.length, outChars: candidate.length, netSaved, minSaved, ...tokens, handle,
         waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0, fidelity: fid, econ: task.econ || null, v4: partial.stats })
-      return withEvidence({ chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed-partial', rawChars: raw.length, outChars: candidate.length, netSaved, netSavedTokensEst, handle }, false, cfgAcc)
+      return { chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed-partial', rawChars: raw.length, outChars: candidate.length, netSaved, netSavedTokensEst, handle }
     }
     trace('birth-condensed', { index: task.index, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, minSaved, ...tokens, handle, waitedMs: task.finishEnterAt ? Date.now() - task.finishEnterAt : 0, fidelity: fid, econ: task.econ || null,
       distillMs: task.distillMs ?? null, promptVersion: dist.meta?.promptVersion || null, v4: dist.meta?.v4 || null })
-    return withEvidence({ chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, netSavedTokensEst, handle }, true, cfgAcc)
+    return { chunks: birthEmitChunks(task, candidate, deps), text: candidate, why: 'condensed', rawChars: raw.length, outChars: candidate.length, netSaved, netSavedTokensEst, handle }
   }
   return pass(dist === null ? 'distill-timeout' : 'distill-failed', handle, { error: (dist && dist.error) || null })
 }
@@ -527,7 +563,8 @@ export function birthAccept(raw, candidate, cfg = {}) {
   if (!c.trim()) return { ok: false, why: 'empty-candidate', info: undefined, ...base }
   if (cfg.birthIdentifierGate !== false) {
     let invented = []
-    try { invented = inventedIdentifiers(r, c, { extra: (cfg.compressCtx || '') + '\n' + programPartsText(cfg.compressCtx || '') }) } catch { invented = [] }   // v12.9.2：程序部件（延续段 / 提示 / 三问）的片段都由 ctx 推出，算出处
+    const ppMode = (cfg && cfg.compressPolicy && cfg.compressPolicy.config && cfg.compressPolicy.config.programParts) || (cfg && cfg.programParts) || 'all'
+    try { invented = inventedIdentifiers(r, c, { extra: (cfg.compressCtx || '') + '\n' + programPartsText(cfg.compressCtx || '', { programParts: ppMode }) }) } catch { invented = [] }   // v12.9.2：程序部件（延续段 / 提示 / 三问）的片段都由 ctx 推出，算出处
     if (invented.length) return { ok: false, why: 'invented-identifier', info: { invented }, ...base }
   }
   const minSavedTokens = Number.isFinite(cfg.birthMinSavedTokens) && cfg.birthMinSavedTokens > 0 ? cfg.birthMinSavedTokens : 1

@@ -1,8 +1,0 @@
-{
-  "schema": "cfb.training-profile/1",
-  "backend": "local-lora",
-  "model": { "id": null, "path": null, "revision": null, "licenseAccepted": false },
-  "recipe": { "maxSteps": 1000, "epochs": 1, "learningRate": 0.0002, "seed": 42, "maxSeqLength": 8192, "batchSize": 1, "gradientAccumulation": 16, "checkpointEvery": 50, "loraRank": 8, "loraAlpha": 16, "loraDropout": 0, "precision": "fp32", "targetModules": ["q_proj", "v_proj"], "preferenceBeta": 0.1 },
-  "limits": { "maxWallSeconds": 3600, "maxTrainTokenUpperEst": 10000000, "maxHttpRequests": 8, "maxUsd": null },
-  "provider": null
-}

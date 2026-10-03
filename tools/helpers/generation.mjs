@@ -24,9 +24,9 @@ const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex')
 export const policyId = (policy) => 'p-' + sha(JSON.stringify({ parent: policy.parent || null, patches: policy.patches || [], ...(policy.config && Object.keys(policy.config).length ? { config: policy.config } : {}) })).slice(0, 10)
 
 /** 生产压缩器提示词（与 src/distill.js 同一构造；tool=null = 规范工具名）。 */
-export function basePrompt(task) { return I.buildCompressPromptV4Direct(task.chain.a2.raw, task.ctx, null) }
+export function basePrompt(task, opts = {}) { return I.buildCompressPromptV4Direct(task.chain.a2.raw, task.ctx, null, opts) }
 /** 提示词的「头」= 规则 + 样例，不含任务上下文与思维链：提议器只看这部分，泄漏闸也只拿这部分当白名单。 */
-export function promptHead(task) { return basePrompt(task).split('【当前任务与观察】')[0] }
+export function promptHead(task, opts = {}) { return basePrompt(task, opts).split('【当前任务与观察】')[0] }
 
 /** 把补丁应用到提示词 —— v14.10 起直接调用生产的 src/policy.js applyPolicyPatches（评测与生产同一函数，不再各写一份）。 */
 export function applyPolicyToPrompt(prompt, policy) { return applyPolicyPatches(prompt, policy?.patches || []) }
@@ -112,7 +112,7 @@ export function makePolicy({ parent, patches, config = null, rationale, predicti
  *  之前 thinking 开着（"以过通道身份闸"）与 2048 上限都不是生产形态：开思考的压缩器写出的稿子不是生产会写出的稿子，测出的效果迁移不回去；通道身份由主调用（思考开）的指纹闸负责。 */
 export const PRODUCTION_COMPRESSOR = Object.freeze({ maxTokens: 1600, thinking: Object.freeze({ type: 'disabled' }) })
 export function compressorBody({ task, policy, model, maxTokens = PRODUCTION_COMPRESSOR.maxTokens, thinking = PRODUCTION_COMPRESSOR.thinking }) {
-  const prompt = applyPolicyToPrompt(basePrompt(task), policy)
+  const prompt = applyPolicyToPrompt(basePrompt(task, { promptMode: policy?.config?.promptMode || 'full' }), policy)
   return { model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature: 0, thinking, stream: false }
 }
 const probeJobs = (model, canary) => {

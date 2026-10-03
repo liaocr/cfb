@@ -15,7 +15,9 @@ const count = (rx, s) => (s.match(rx) || []).length
 /** 20 维特征（全部可解释，无外部模型）。 */
 export function features(text = '') {
   const t = String(text), tok = roughTokens(t) || 1, lines = t.split('\n').filter((l) => l.trim()).length || 1
-  const f = [Math.log1p(tok) / 8, lines / 40, count(RX.path, t) / 5, count(RX.codeSpan, t) / 5, count(RX.oldText, t) / 3, count(RX.verb, t) / 3, count(RX.hedge, t) / 3, count(RX.claim, t) / 2, count(RX.number, t) / 10, count(RX.neg, t) / 3,
+  const nOldSpan = count(/old_text\s*(?:是\s*)?`[^`\n]+`/g, t), nOldRaw = count(RX.oldText, t)
+  const oldCommit = nOldRaw >= 5 ? -0.5 : (nOldSpan >= 1 && nOldSpan <= 2 ? 1 : nOldRaw >= 1 && nOldRaw <= 3 ? 0.5 : 0)
+  const f = [Math.log1p(tok) / 8, lines / 40, count(RX.path, t) / 5, count(RX.codeSpan, t) / 5, oldCommit, count(RX.verb, t) / 3, count(RX.hedge, t) / 3, count(RX.claim, t) / 2, count(RX.number, t) / 10, count(RX.neg, t) / 3,
     count(RX.question, t) / 2, count(RX.heading, t) / 10, count(RX.forbid, t) / 4, count(RX.state, t) / 4, count(RX.error, t) / 4, count(RX.file, t) / 5, (t.match(/[\u4e00-\u9fff]/g) || []).length / Math.max(1, t.length), t.trim().endsWith('。') || t.trim().endsWith('.') ? 1 : 0, /\n\s*\n/.test(t) ? 1 : 0, 1]
   return f.map((x) => Math.max(-3, Math.min(3, x)))
 }

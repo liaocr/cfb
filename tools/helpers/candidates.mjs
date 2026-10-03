@@ -50,9 +50,15 @@ export function loadFrozenTasks({ root = ROOT } = {}) {
   for (const chain of chains) {
     const spec = specs.find((s) => s.id === chain.id), r1 = validRow(d1, chain.id), prior = validRow(d2, chain.id)
     if (!spec || !r1 || !prior || !chain.a1?.raw || !chain.a2?.raw) continue
-    out.push({ id: chain.id, chain, spec, r1: r1.text, side: prior.side, ctx: productionContext(chain, r1.text) })
+    out.push({ id: chain.id, chain, spec, r1: r1.text, r1Side: r1.side || null, r1Ctx: round1Context(chain), side: prior.side, ctx: productionContext(chain, r1.text) })
   }
   return out
+}
+
+/** 第 1 轮（单步）压缩上下文（任务 + 第 1 轮已发出的调用；5/5 题原文均 ≥3400 字、100% 过门槛）。 */
+export function round1Context(chain) {
+  const calls = callsOf(chain.a1?.content || ''), callBlock = I.turnCallsBlock(calls)
+  return I.buildCompressCtx([{ role: 'user', content: chain.u1 }]) + (callBlock ? '\n\n' + callBlock : '')
 }
 
 /** 与 eval-plan.buildMinimalPlan 逐字同口径的压缩上下文（任务 + 第 1 轮稿 + 本轮已发出的调用）。 */

@@ -1,6 +1,6 @@
 {
   "schema": "cfb.cycle-state/1",
-  "at": "2026-10-02T17:01:53.417Z",
+  "at": "2026-10-03T11:24:57.688Z",
   "history": {
     "schema": "cfb.closed-loop/2",
     "hypotheses": {},
@@ -169,6 +169,82 @@
   "policies": [
     {
       "schema": "cfb.policy/1",
+      "parent": "p-5d92393440",
+      "base": "compress-v4d9",
+      "patches": [
+        {
+          "op": "replace",
+          "from": "治症状 / 要动多处 / 落点没看过",
+          "to": "治症状 / 落点没看过 / 原文自己否掉的多处改动"
+        },
+        {
+          "op": "append",
+          "section": "rules",
+          "text": "10. 多处落点：原文最后的结论若明确要改不止一处（同一个值在几处产生或几处消费、两个文件各一行），落定句仍只落一个改法，但要写成「分 N 处落地：① 文件 `行` ② 文件 `行`」，N 处全部从【在手的代码行】里挑、各带自己的 old_text / new_text；第一分支按 ① ② 顺序连续发出，改完一处症状仍在不算假设被推翻，只有 N 处都落地后同等条件复现仍在才走第二分支；几处都在手，就不要为了「只改一处」把其余几处写进排除段。"
+        },
+        {
+          "op": "append",
+          "section": "tail",
+          "text": "落定句若分 N 处落地，N 个三元组全部保留；超长先删排除段，不删它们。"
+        }
+      ],
+      "config": {
+        "continuationPath": "bounded",
+        "programParts": "compact",
+        "birthAdaptiveFloor": true
+      },
+      "rationale": "帕累托极限合成策略：bounded 延续段（带台账标识符溯源，消除跨轮线性膨胀）+ compact 极简工程状态部件（消除冗长说教诱导的主模型过度思考）+ birthAdaptiveFloor 动态水位与打转感知触发器",
+      "prediction": "金标与任务池 100% 过闸、0 逆向增补，单轮净省 Token 最大化且保持 100% 真值复合分",
+      "origin": {
+        "by": "synthesizer",
+        "parent": "p-5d92393440"
+      },
+      "status": "proposed",
+      "sides": {},
+      "id": "p-082d742f60",
+      "at": "2026-10-03T10:30:18.932Z"
+    },
+    {
+      "schema": "cfb.policy/1",
+      "parent": "p-5d92393440",
+      "base": "compress-v4d9",
+      "patches": [
+        {
+          "op": "replace",
+          "from": "治症状 / 要动多处 / 落点没看过",
+          "to": "治症状 / 落点没看过 / 原文自己否掉的多处改动"
+        },
+        {
+          "op": "append",
+          "section": "rules",
+          "text": "10. 多处落点：原文最后的结论若明确要改不止一处（同一个值在几处产生或几处消费、两个文件各一行），落定句仍只落一个改法，但要写成「分 N 处落地：① 文件 `行` ② 文件 `行`」，N 处全部从【在手的代码行】里挑、各带自己的 old_text / new_text；第一分支按 ① ② 顺序连续发出，改完一处症状仍在不算假设被推翻，只有 N 处都落地后同等条件复现仍在才走第二分支；几处都在手，就不要为了「只改一处」把其余几处写进排除段。"
+        },
+        {
+          "op": "exemplar",
+          "section": "contrastive",
+          "text": "基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 50% vs 落败稿多点发散/复述率 20%）的正反对比铁律：\n✗ 落败退化范式（禁止）：同时把两处备选写成可执行 old_text，或在正文里把程序已自动附上的新鲜度/单元测试/零效应条款再抄一遍，导致篇幅膨胀且诱导主模型下一步过度思考。\n✓ 胜出精炼范式（必须）：「本轮增量把机理坐实：5432 open、8123 refused。改法只落一个：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是本轮 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先跟上轮输出比差抓新信号，无新信号再跑预写取证，不调超时、不回滚。」"
+        }
+      ],
+      "config": {
+        "continuationPath": "bounded",
+        "programParts": "compact",
+        "promptMode": "modular",
+        "birthAdaptiveFloor": true
+      },
+      "rationale": "帕累托极限合成策略：bounded 延续段（带台账标识符溯源与去重）+ compact 极简工程状态部件（消除双倍叠加与冗长说教）+ modular 按轮次动态提示词裁剪（节省 ~260 input tok/轮）+ birthAdaptiveFloor 动态水位触发器 + 飞轮偏好对蒸馏正反对比示范（In-Context DPO）",
+      "prediction": "金标与任务池全轮（8/8）100% 过闸、0 逆向增补，单轮净省 Token 与真值密度效率分（truthEfficiency）同时达到帕累托全局最优",
+      "origin": {
+        "by": "synthesizer",
+        "parent": "p-5d92393440",
+        "contrastive": true
+      },
+      "status": "proposed",
+      "sides": {},
+      "id": "p-08bdbc7561",
+      "at": "2026-10-03T11:22:22.693Z"
+    },
+    {
+      "schema": "cfb.policy/1",
       "parent": "base",
       "base": "compress-v4d9",
       "patches": [],
@@ -252,6 +328,89 @@
       "sides": {},
       "id": "p-67620ded4d",
       "at": "2026-10-02T16:18:03.441Z"
+    },
+    {
+      "schema": "cfb.policy/1",
+      "parent": "p-5d92393440",
+      "base": "compress-v4d9",
+      "patches": [
+        {
+          "op": "replace",
+          "from": "治症状 / 要动多处 / 落点没看过",
+          "to": "治症状 / 落点没看过 / 原文自己否掉的多处改动"
+        },
+        {
+          "op": "append",
+          "section": "rules",
+          "text": "10. 多处落点：原文最后的结论若明确要改不止一处（同一个值在几处产生或几处消费、两个文件各一行），落定句仍只落一个改法，但要写成「分 N 处落地：① 文件 `行` ② 文件 `行`」，N 处全部从【在手的代码行】里挑、各带自己的 old_text / new_text；第一分支按 ① ② 顺序连续发出，改完一处症状仍在不算假设被推翻，只有 N 处都落地后同等条件复现仍在才走第二分支；几处都在手，就不要为了「只改一处」把其余几处写进排除段。"
+        },
+        {
+          "op": "append",
+          "section": "tail",
+          "text": "落定句若分 N 处落地，N 个三元组全部保留；超长先删排除段，不删它们。"
+        }
+      ],
+      "config": {
+        "continuationPath": "bounded",
+        "programParts": "compact",
+        "promptMode": "modular",
+        "birthAdaptiveFloor": true
+      },
+      "rationale": "帕累托极限合成策略：bounded 延续段（带台账标识符溯源与去重）+ compact 极简工程状态部件（消除双倍叠加与冗长说教）+ modular 按轮次动态提示词裁剪（节省 ~260 input tok/轮）+ birthAdaptiveFloor 动态水位触发器",
+      "prediction": "金标与任务池全轮（8/8）100% 过闸、0 逆向增补，单轮净省 Token 与真值密度效率分（truthEfficiency）同时达到帕累托全局最优",
+      "origin": {
+        "by": "synthesizer",
+        "parent": "p-5d92393440",
+        "contrastive": false
+      },
+      "status": "proposed",
+      "sides": {},
+      "id": "p-bdfd55dd25",
+      "at": "2026-10-03T11:22:19.157Z"
+    },
+    {
+      "schema": "cfb.policy/1",
+      "parent": "base",
+      "base": "compress-v4d9",
+      "patches": [],
+      "config": {
+        "continuationPath": "bounded",
+        "programParts": "compact",
+        "birthAdaptiveFloor": true
+      },
+      "rationale": "帕累托极限合成策略：bounded 延续段（带台账标识符溯源，消除跨轮线性膨胀）+ compact 极简工程状态部件（消除冗长说教诱导的主模型过度思考）+ birthAdaptiveFloor 动态水位与打转感知触发器",
+      "prediction": "金标与任务池 100% 过闸、0 逆向增补，单轮净省 Token 最大化且保持 100% 真值复合分",
+      "origin": {
+        "by": "synthesizer",
+        "parent": "base"
+      },
+      "status": "proposed",
+      "sides": {},
+      "id": "p-c5207358c8",
+      "at": "2026-10-03T08:43:16.653Z"
+    },
+    {
+      "schema": "cfb.policy/1",
+      "parent": "base",
+      "base": "compress-v4d9",
+      "patches": [],
+      "config": {
+        "continuationPath": "bounded",
+        "programParts": "compact",
+        "promptMode": "modular",
+        "birthAdaptiveFloor": true
+      },
+      "rationale": "帕累托极限合成策略：bounded 延续段（带台账标识符溯源与去重）+ compact 极简工程状态部件（消除双倍叠加与冗长说教）+ modular 按轮次动态提示词裁剪（节省 ~260 input tok/轮）+ birthAdaptiveFloor 动态水位触发器",
+      "prediction": "金标与任务池全轮（8/8）100% 过闸、0 逆向增补，单轮净省 Token 与真值密度效率分（truthEfficiency）同时达到帕累托全局最优",
+      "origin": {
+        "by": "synthesizer",
+        "parent": "base",
+        "contrastive": false
+      },
+      "status": "proposed",
+      "sides": {},
+      "id": "p-e62a037097",
+      "at": "2026-10-03T11:22:15.601Z"
     }
   ],
   "trajPlans": [
@@ -1080,5 +1239,5 @@
       }
     }
   ],
-  "digest": "01cd709f73f27872"
+  "digest": "cd5d5077d3b20bba"
 }

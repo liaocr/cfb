@@ -212,10 +212,10 @@ export function buildCompressCtx(messages, opts = {}) {
     return head.trimEnd() + '\n' + clip(String(r.text || '').trim(), perResultChars)
   })
   const userPart = clip(user, userChars)
+  // v12.9.2：延续段（程序按台账写的稿首段）紧跟台账；先算延续段，若有延续段则【台账】不再重复列出整串 L.calls（F6b 去重）
+  const cont = opts.ledger === false || opts.continuation === false ? '' : continuationBlock(arr, { path: opts.continuationPath })   // v14.12.3：continuationPath 'full' | 'bounded' | 'none'（F6）
   // v12.9.0：多轮台账（前几轮的稿 + 工具往来）放在 user 之后、本轮工具结果之前——它挂在任务陈述块下，不会被当成「在手的代码行」的文件块
-  const ledger = opts.ledger === false ? '' : ledgerBlock(arr)
-  // v12.9.2：延续段（程序按台账写的稿首段）紧跟台账
-  const cont = opts.ledger === false || opts.continuation === false || !ledger ? '' : continuationBlock(arr, { path: opts.continuationPath })   // v14.12.3：continuationPath 'full' | 'bounded'（F6）
+  const ledger = opts.ledger === false ? '' : ledgerBlock(arr, { omitCalls: Boolean(cont), path: opts.continuationPath })
   if (!userPart && !entries.length && !ledger) return ''
   // 超总预算：先丢最旧的结果（最近的观察才是当前分支要绑的落点）
   const fixed = userPart.length + (ledger ? ledger.length + 2 : 0) + (cont ? cont.length + 2 : 0)
@@ -292,7 +292,21 @@ export function buildLedger(messages) {
     round++
     const d = draftOf(m)
     if (d) {
-      for (const t of pick(d, LEDGER_DECIDED_RE, 1, seen)) L.decided.push({ round, text: t })
+      const decidedHits = pick(d, LEDGER_DECIDED_RE, 1, seen)
+      for (const t of decidedHits) L.decided.push({ round, text: t })
+      if (!decidedHits.length) {
+        // v14.15：低于门槛（< birthMinChars）的原文透传轮次不会带「改法只落一个：/ 落定：」受控前缀，
+        // 从自然语言末段抽取明确的改法决定（含文件或反引号代码行，且非否定/条件假设），消除跨轮状态失忆
+        for (const s of d.split(/(?<=[。！？\n])/).map((x) => x.trim()).filter(Boolean).reverse()) {
+          if (/不要|不改|不能|不选|无需|不必|如果|若|假设/.test(s)) continue
+          const rm = s.match(/(?:所以|因此|接下来|现在|应该|需要|准备|决定)?(?:先|直接)?(?:需要|应该|要)?(?:把\s*`[^`\n]+`\s*改(?:成|为)\s*`[^`\n]+`|(?:修改|改)\s+[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+\s*(?:的|里|中)\s*[^\n。]{4,120})/)
+          if (rm && rm[0].length >= 10 && rm[0].length <= 240 && !seen.has(rm[0])) {
+            seen.add(rm[0])
+            L.decided.push({ round, text: '改法只落一个：' + rm[0].replace(/^(?:所以|因此|接下来|现在|应该|需要|准备|决定)+/, '').replace(/[。！？]$/, '') + '。' })
+            break
+          }
+        }
+      }
       for (const t of pick(d, LEDGER_REJECT_RE, 3, seen, LEDGER_REJECT_KW)) L.excluded.push({ round, text: t })
       for (const t of pick(d, LEDGER_ACCEPT_RE, 2, seen, LEDGER_ACCEPT_KW)) L.accept.push({ round, text: t })
       for (const t of pick(d, LEDGER_OPEN_RE, 2, seen, LEDGER_OPEN_KW)) L.open.push({ round, text: t })
@@ -369,9 +383,10 @@ export function continuationText(messages, opts = {}) {
   } else if (lastEdit) {
     S.push(lastEdit.proposed ? `上一轮提议、未执行：${trip(lastEdit)}。` : `上一轮已改：edit_file ${lastEdit.file || ''}，${trip(lastEdit)}（结果 ${lastEdit.result || '未知'}）` + (lastEdit.verifiedBy ? `，其后跑过 \`${lastEdit.verifiedBy.args}\` → 「${lastEdit.verifiedBy.result || '（无输出）'}」，验收结果待判。` : '，其后没有跑过任何验收，状态是已改未验证。'))
   }
-  if (L.lines.length) {
-    const byRound = [...new Set(L.lines.map((l) => l.round))].join('、')
-    S.push(`仍在依赖的事实：${L.lines.map((l) => '`' + l.text + '`' + (l.via ? `（${l.via}）` : '')).join('、')}——第 ${byRound} 轮稿里逐字引用的行，本轮输出里不会再出现，出处仍有效。`)
+  const activeLines = pathMode === 'bounded' && dec ? L.lines.filter((l) => !dec.text.includes('`' + l.text + '`')) : L.lines
+  if (activeLines.length) {
+    const byRound = [...new Set(activeLines.map((l) => l.round))].join('、')
+    S.push(`仍在依赖的事实：${activeLines.map((l) => '`' + l.text + '`' + (l.via ? `（${l.via}）` : '')).join('、')}——第 ${byRound} 轮稿里逐字引用的行，本轮输出里不会再出现，出处仍有效。`)
   }
   if (L.excluded.length) S.push(`已排除：${L.excluded.map((x) => x.text.replace(/[。！？]$/, '') + `（第 ${x.round} 轮）`).join('；')}。`)
   if (L.open.length) S.push(`未解：${L.open.map((x) => x.text.replace(/^\s*(?:未解|待解|未定)[：:]\s*/, '').replace(/[。！？]$/, '')).join('；')}。`)
@@ -403,7 +418,8 @@ export function boundedPathText(L, { recentRounds = 2, maxChars = 600 } = {}) {
     const rounds = [...new Set(older.map((c) => c.round))].sort((a, b) => a - b)
     const span = rounds.length > 1 ? `第 ${rounds[0]}–${rounds[rounds.length - 1]} 轮` : `第 ${rounds[0]} 轮`
     const fam = [...byName.entries()].map(([name, h]) => `${name}×${[...h.values()].reduce((a, b) => a + b, 0)}（${[...h.entries()].map(([hd, n]) => (n > 1 ? `${hd}×${n}` : hd)).join('、')}）`).join('，')
-    parts.push(`${span}已跑 ${older.length} 条：${fam}`)
+    const olderFiles = [...new Set(older.flatMap((c) => (`${c.args || ''} ${c.result || ''}`).match(/(?:[\w.-]+\/)*[\w-]+\.(?:m?js|c?js|ts|json|md|log|py|sh|ya?ml)\b/g) || []).filter((f) => !/^node_modules\//.test(f)))].slice(0, 10)
+    parts.push(`${span}已跑 ${older.length} 条：${fam}${olderFiles.length ? `（已涉 ${olderFiles.join('、')}）` : ''}`)
   }
   const clipArgs = (a, n) => (a.length > n ? a.slice(0, n) + '…' : a)
   const clipRes = (r) => { const t = String(r || '（无输出）'); return t.length > 40 ? t.slice(0, 40) + '…' : t }
@@ -420,8 +436,37 @@ export function continuationBlock(messages, opts = {}) {
   if (!t) return ''
   return '【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）\n' + t
 }
-/** 【台账】块（放进 compressCtx 的开头、工具结果之前；没有前几轮时返回空串） */
-export function ledgerBlock(messages) {
+/**
+ * 对已渲染好的静态 ctx 字符串（如金标 g.ctx 或离线任务 ctx）按 continuationPath 策略重投影：
+ *   - full：原样不动（默认）
+ *   - none：剥掉【延续段】块（保留【台账】与工具结果）
+ *   - bounded：把【延续段】里的「已走过的路」重算为有界形态，并按 F6b 折叠上方【台账】里的重复调用列表
+ * 使 Mode 2（bench-run）与离线预筛（prescreen）测试 p-cont-bounded / p-cont-none 时真实生效。
+ */
+export function applyCtxContinuationPolicy(ctx, pathMode = 'full') {
+  const s = String(ctx || '')
+  if (!s || pathMode === 'full' || !['bounded', 'none'].includes(pathMode)) return s
+  if (pathMode === 'none') {
+    return s.replace(/\n\n【延续段】[^\n]*\n[^\n]+(?=\n\n|$)/, '').replace(/^【延续段】[^\n]*\n[^\n]+\n*/, '')
+  }
+  const calls = []
+  for (const m of s.matchAll(/第 (\d+) 轮 ([^\s`]+) `([^`]*)` → 「([^」]*)」/g)) {
+    const round = Number(m[1]), name = m[2], args = m[3], result = m[4]
+    if (!calls.some((c) => c.round === round && c.name === name && c.args === args)) calls.push({ round, name, args, result })
+  }
+  if (!calls.length) return s
+  const L = { rounds: Math.max(...calls.map((c) => c.round)), calls }
+  const bt = boundedPathText(L)
+  const idents = [...new Set(calls.flatMap((c) => (`${c.args || ''} ${c.result || ''}`).match(/[A-Za-z_][A-Za-z0-9_./-]{2,}|\b\d{3,6}\b/g) || []).filter((x) => /[._/-]|^\d+$/.test(x)))].slice(0, 32)
+  let out = s.replace(/已走过的路：[^\n。]+这些不再重跑，除非中间改过东西。/g, bt)
+  if (out.includes('【延续段】')) {
+    out = out.replace(/^- 已走过的路：[^\n]+/m, `- 已走过的路：（共 ${calls.length} 条调用，详见下方【延续段】${idents.length ? '；曾涉 ' + idents.join(' ') : ''}）`)
+  }
+  return out
+}
+/** 【台账】块（放进 compressCtx 的开头、工具结果之前；没有前几轮时返回空串）。
+ *  v14.15（F6b）：当 compressCtx 同时带【延续段】时（opts.omitCalls=true），【台账】不再把 L.calls 全文重复抄一遍（延续段已含 full/bounded 的已走过的路），但保留早先调用涉及的文件/标识符名以供 I2 出处核真。 */
+export function ledgerBlock(messages, opts = {}) {
   const L = buildLedger(messages)
   if (!L.rounds || (!L.decided.length && !L.edits.length && !L.calls.length && !L.excluded.length)) return ''
   const lines = []
@@ -434,7 +479,14 @@ export function ledgerBlock(messages) {
   if (L.excluded.length) lines.push('- 已排除：' + L.excluded.map((x) => `${x.text}（第 ${x.round} 轮）`).join('；'))
   if (L.accept.length) lines.push('- 上一轮写下的验收：' + L.accept.map((x) => x.text).join('；'))
   if (L.open.length) lines.push('- 未解：' + L.open.map((x) => x.text.replace(/^\s*(?:未解|待解|未定)[：:]\s*/, '')).join('；'))
-  if (L.calls.length) lines.push('- 已走过的路：' + L.calls.map((c) => `第 ${c.round} 轮 ${c.name} \`${c.args}\` → 「${c.result || '（无输出）'}」`).join('；'))
+  if (L.calls.length) {
+    if (opts && opts.omitCalls) {
+      const idents = [...new Set(L.calls.flatMap((c) => (`${c.args || ''} ${c.result || ''}`).match(/[A-Za-z_][A-Za-z0-9_./-]{2,}|\b\d{3,6}\b/g) || []).filter((x) => /[._/-]|^\d+$/.test(x)))].slice(0, 32)
+      lines.push(`- 已走过的路：（共 ${L.calls.length} 条调用，详见下方【延续段】${idents.length ? '；曾涉 ' + idents.join(' ') : ''}）`)
+    }
+    else if (opts && opts.path === 'bounded') lines.push('- ' + boundedPathText(L))
+    else lines.push('- 已走过的路：' + L.calls.map((c) => `第 ${c.round} 轮 ${c.name} \`${c.args}\` → 「${c.result || '（无输出）'}」`).join('；'))
+  }
   return '【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）\n' + lines.join('\n')
 }
 

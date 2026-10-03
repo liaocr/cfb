@@ -612,7 +612,8 @@ export function compileV4Direct(side, raw, cfg = {}) {
   if (/【台账】/.test(String(cfg.compressCtx || ''))) {
     text = stripExcludedFallback(text, cfg.compressCtx, stats)
     text = dedupeParentheticals(text, stats)
-    text = spliceProgramParts(text, cfg.compressCtx, stats)
+    const ppMode = (cfg && cfg.compressPolicy && cfg.compressPolicy.config && cfg.compressPolicy.config.programParts) || (cfg && cfg.programParts) || 'all'
+    text = spliceProgramParts(text, cfg.compressCtx, stats, { programParts: ppMode })
   }
   stats.chars = text.length
   if (cfg.compressEditTool) { text = adaptEditTool(text, cfg.compressEditTool); stats.editTool = cfg.compressEditTool.name }
@@ -1136,8 +1137,8 @@ export function verifyHints(ctx) {
     const file = fm ? fm[1] : null
     // K3（S10.14）：症状跟着参数走 ⇒ 参数只是触发点；下一条是取证被等待的事件何时发生，不是改实现、不是再调数
     const gs = new Set()
-    for (const g of obsPart.matchAll(/(?:\bgot\b|\bactual\b|实际(?:值|是|为)?|拿到|测得|耗时|took|elapsed)\s*[:=：]?\s*((?:\d+(?:\.\d+)?)(?:\s*[、,，/]\s*\d+(?:\.\d+)?)*)/g)) {
-      for (const x of g[1].split(/\s*[、,，/]\s*/)) { const v = Number(x); if (v > v0 && v <= 2 * v0) gs.add(v) }
+    for (const g of obsPart.matchAll(/(?:\bgot\b|\bactual\b|实际(?:值|是|为)?|拿到|测得|耗时|took|elapsed|曾涉[^\n\d]*)\s*[:=：]?\s*((?:\d+(?:\.\d+)?)(?:\s*[、,，/\s]\s*\d+(?:\.\d+)?)*)/g)) {
+      for (const x of g[1].split(/\s*[、,，/\s]\s*/)) { const v = Number(x); if (v > v0 && v <= 2 * v0) gs.add(v) }
     }
     if (gs.size) {
       const arr = [...gs].sort((a, b) => a - b)
@@ -1222,16 +1223,44 @@ export function closingQuestions(ctx) {
   const now = edits.length ? '已改未验证' : /^- 第 \d+ 轮已改：/m.test(c) ? '已改、验收结果待判' : '还没有改法落地'
   return `能说修好要三件事都在手：改动落地的证据（${landed}）、原症状在同等条件下消失（${gone}）、这条观察是改后产生的（按上面程序附的新鲜度条款判）；现在能说的：${now}，三件都拿到之前不能说修复完成，拿到就收工、不再取证。`
 }
+/** 极简工程状态版提示与三问（programParts = 'compact'，消除冗长说教对主模型的过度思考示范诱导，同时 100% 保留动作锚点与真值判据）。 */
+export function compactVerifyHints(ctx) {
+  return verifyHints(ctx)
+    .filter((h) => !h.startsWith('验收命令是新起进程的直接输出'))
+    .map((h) => h
+      .replace(/（tail \/ grep 一个已有文件），命令里没有先清空、也没有时间戳或本次运行 id ⇒ 这些行不自证是改后产生的：数字与上一轮那行一样就当旧行，既不能证实也不能证伪；那时第一步只有一条：/, '：若数字同上轮则')
+      .replace(/（这个文件不是追加日志，不要清空它），再跑同一条命令、只看行数之后新增的行/, '取新增行再测')
+      .replace(/（或先 `wc -l ([^`]+)` 记下行数、之后只看新增的行）再跑同一条命令拿新鲜行/, '或 `wc -l $1` 取新行再测')
+      .replace(/验收命令是对已有记录的统计（窗口 \/ 分位数）：窗口里若混着改前的记录，数字就不新鲜；数字与上一轮一模一样就当同一批旧记录，既不能证实也不能证伪，那时第一步只有一条：/, '验收系窗口统计：若数字同上轮则')
+      .replace(/验收命令里有单元测试：PASS 只证明被测函数的行为，不证明原症状消失——症状级验收要看原症状（trace \/ 线上现象）在原处、同等条件下不再出现；/, '')
+      .replace(/那么这不是余量 \/ 阈值问题，([^，]+)不是原因只是触发点：不要再调这个数字、不要改等待逻辑、不要回滚；下一条只写一条取证——/, '则 $1 只是触发点（不调数、不改等待、不回滚），下一步')
+      .replace(/那是改动落地却零效应 ⇒ 这条路径没读到新值（[^）]+）：第一步只有一条，/, '属零效应（未读新值）：先'))
+}
+export function compactClosingQuestions(ctx) {
+  const full = closingQuestions(ctx)
+  const landed = (full.match(/改动落地的证据（([^）]+)）/) || ['', '缺'])[1]
+  const now = (full.match(/现在能说的：([^，]+)/) || ['', '待核'])[1]
+  return `收工核对（${now}）：需集齐落地证据（${landed}）与新鲜输出下原症状消失，集齐前不说修复完成、不回滚、不要再跑同条旧命令。`
+}
 /** 程序写进稿里的全部部件（延续段 + 提示 + 三问）拼成一串——闸门的标识符核真把它当「允许出现的出处」（这些片段都由 ctx 推出，不是发明） */
-export function programPartsText(ctx) {
+export function programPartsText(ctx, opts = {}) {
   const c = String(ctx || '')
   if (!/【台账】/.test(c)) return ''
+  const mode = (opts && opts.programParts) || 'all'
+  if (mode === 'none') return ''
   const cont = (c.match(/【延续段】[^\n]*\n([^\n]+)/) || [])[1] || ''
-  return [cont, ...verifyHints(c), closingQuestions(c)].filter(Boolean).join('\n')
+  if (mode === 'compact') {
+    return [cont, ...verifyHints(c), ...compactVerifyHints(c), closingQuestions(c), compactClosingQuestions(c)].filter(Boolean).join('\n')
+  }
+  const wantHints = mode === 'all' || mode === 'no-closing'
+  const wantClosing = mode === 'all' || mode === 'no-hints'
+  return [cont, ...(wantHints ? verifyHints(c) : []), ...(wantClosing ? [closingQuestions(c)] : [])].filter(Boolean).join('\n')
 }
-export function spliceProgramParts(text, ctx, stats = {}) {
+export function spliceProgramParts(text, ctx, stats = {}, opts = {}) {
   let t = String(text || '')
   const c = String(ctx || '')
+  const mode = (opts && opts.programParts) || (stats && stats.programParts) || 'all'
+  if (mode === 'none') return t
   const cm = c.match(/【延续段】[^\n]*\n([^\n]+)/)
   if (cm && cm[1].trim()) {
     const cont = cm[1].trim()
@@ -1241,12 +1270,80 @@ export function spliceProgramParts(text, ctx, stats = {}) {
       let k = 0
       const CONT_SENT_RE = /^[\s「]*(?:上一轮(?:已定|提议|已改|写下)|仍在依赖的事实|已排除|未解|已走过的路|被推翻的假设|状态[是：:])|出处仍有效|不再重跑复现|台账里/
       while (k < sents.length && (CONT_SENT_RE.test(sents[k]) || !sents[k].trim())) k++
-      if (k > 0 && k < sents.length) { stats.droppedContinuation = k; t = sents.slice(k).join('') }
-      t = cont + '\n\n' + t.replace(/^\s+/, '')
+      let keptExcluded = ''
+      if (k > 0 && k < sents.length) {
+        if (!/已排除[：:]/.test(cont)) {
+          const ex = sents.slice(0, k).join('').match(/已排除[：:][^。\n]+[。]?/)
+          if (ex && ex[0].replace(/^已排除[：:]\s*/, '').replace(/[。；\s]/g, '').length > 0) keptExcluded = ex[0].trim().replace(/(?<![。])$/, '。')
+        }
+        stats.droppedContinuation = k
+        t = sents.slice(k).join('')
+      }
+      t = cont + (keptExcluded ? keptExcluded : '') + '\n\n' + t.replace(/^\s+/, '')
       stats.continuation = 1
     }
   }
-  const hints = /【本轮已发出的调用】/.test(c) ? verifyHints(c) : []
+  if (mode === 'compact') {
+    // 1) 压缩【延续段】内的固定套话
+    t = t
+      .replace(/——第 (\d+(?:、\d+)*) 轮稿里逐字引用的行，本轮输出里不会再出现，出处仍有效。/g, '（第 $1 轮引，出处有效）。')
+      .replace(/；这些不再重跑，除非中间改过东西。/g, '（不再重跑）。')
+    // 2) 剥离副模型在正文里重复抄写的冗长版 K1/K2/K3/K6 提示与二次重复的 edit_file 样板，统一由极简版 compH 单次注入
+    t = t
+      .replace(/验收命令是新起进程的直接输出（不是翻旧日志、不是旧记录的统计），输出即本次结果，新鲜。/g, '')
+      .replace(/这条观察新不新：[^。；\n]*是新起进程的直接输出，新鲜[；。]\s*/g, '')
+      .replace(/这条观察新不新：[^。\n]*里已有的行[^。\n]*。/g, '')
+      .replace(/这条观察新不新：[^。\n]*同一批旧记录[^。\n]*。/g, '')
+      .replace(/(?:本轮改法是把数值[^。\n]*。)?若验收仍失败且新数字 ≈[^。\n]*取证之前不动实现。/g, '')
+      .replace(/(?:本轮改法是把[^。\n]*；)?若验收输出是改后新产生的[^。\n]*不再改这个值。/g, '')
+      .replace(/selftest PASS 不算证据，因为它只证明被测函数的行为、不证明原症状消失；/g, '单元测试 PASS 不能当收工依据；')
+      .replace(/（上一轮 read_file [^）]*的原样行，这次输出里没有它，照用；不带行首缩进也能匹配）/g, '')
+    if ((t.match(/edit_file\s+\S+/g) || []).length >= 3) {
+      t = t.replace(/看到这一点就够了，不用再读[^。\n]*：直接 edit_file [^。\n]+。/g, '即可收工（不再重读或补改）。')
+    }
+    const fullH = /【本轮已发出的调用】/.test(c) ? verifyHints(c) : []
+    const compH = /【本轮已发出的调用】/.test(c) ? compactVerifyHints(c) : []
+    for (let i = 0; i < fullH.length; i++) {
+      if (t.includes(fullH[i])) {
+        const rep = fullH[i].startsWith('验收命令是新起进程的直接输出') ? '' : (compH.find((x) => x.slice(0, 8) === fullH[i].slice(0, 8)) || fullH[i])
+        t = t.replace(fullH[i], rep)
+      }
+    }
+    const alreadyCovered = (h) => {
+      if (t.includes(h.slice(0, 18))) return true
+      if (h.includes('里已有的行') && /:\s*>\s*\S+|wc\s+-l/.test(t)) return true
+      if (h.includes('command not found') && t.includes('command not found')) return true
+      if (h.includes('单元测试 PASS') && /单元测试\s*PASS\s*不能当收工依据/.test(t)) return true
+      if (h.includes('症状跟着参数走') && t.includes('症状跟着参数走')) return true
+      if (h.includes('--exclude-dir=node_modules') && t.includes('--exclude-dir=node_modules')) return true
+      return false
+    }
+    const missing = compH.filter((h) => !alreadyCovered(h))
+    if (missing.length) {
+      const block = missing.join('')
+      const qm = t.match(/能说修好要三件事|收工三问|三件事都在手|收工核对（/)
+      if (qm) {
+        const at = qm.index
+        const cut = Math.max(t.lastIndexOf('。', at), t.lastIndexOf('\n', at))
+        const pos = cut < 0 ? at : cut + 1
+        t = t.slice(0, pos) + block + t.slice(pos)
+      } else t = t.replace(/\s*$/, '') + block
+      stats.splicedHints = (stats.splicedHints || 0) + missing.length
+    }
+    const fixInPlay = /^- (?:edit_file|str_replace\w*|apply_patch|edit)\s/m.test((c.match(/【本轮已发出的调用】[^\n]*\n([\s\S]*?)(?=\n\n|$)/) || ['', ''])[1]) || /^- 第 \d+ 轮(?:已定|已改|提议)/m.test(c)
+    const compQ = compactClosingQuestions(c)
+    if (/能说修好要三件事都在手[^。]*。/.test(t)) {
+      t = t.replace(/能说修好要三件事都在手[^。]*。/, compQ)
+      stats.splicedClosing = 1
+    } else if (/【台账】/.test(c) && fixInPlay && !/收工核对（/.test(t)) {
+      t = t.replace(/\s*$/, '') + (/[。！？」`]$/.test(t.trimEnd()) ? '' : '。') + compQ
+      stats.splicedClosing = 1
+    }
+    return t
+  }
+  const wantHints = mode === 'all' || mode === 'no-closing'
+  const wantClosing = mode === 'all' || mode === 'no-hints'
+  const hints = wantHints && /【本轮已发出的调用】/.test(c) ? verifyHints(c) : []
   const missing = hints.filter((h) => !t.includes(h.slice(0, 24)))
   if (missing.length) {
     const block = missing.join('')
@@ -1262,7 +1359,7 @@ export function spliceProgramParts(text, ctx, stats = {}) {
   }
   // 三问只在「有改法在场」时补（本轮有 edit、或台账里已有已定 / 提议 / 已改）：纯取证轮三件全缺是空话，不占字
   const fixInPlay = /^- (?:edit_file|str_replace\w*|apply_patch|edit)\s/m.test((c.match(/【本轮已发出的调用】[^\n]*\n([\s\S]*?)(?=\n\n|$)/) || ['', ''])[1]) || /^- 第 \d+ 轮(?:已定|已改|提议)/m.test(c)
-  if (/【台账】/.test(c) && fixInPlay && !THREE_Q_RE.test(t)) {
+  if (/【台账】/.test(c) && wantClosing && fixInPlay && !THREE_Q_RE.test(t)) {
     t = t.replace(/\s*$/, '') + (/[。！？」`]$/.test(t.trimEnd()) ? '' : '。') + closingQuestions(c)
     stats.splicedClosing = 1
   }

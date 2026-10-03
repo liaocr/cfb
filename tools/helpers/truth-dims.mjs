@@ -200,3 +200,23 @@ export function truthDelta(cand, ctrl) {
   out.composite = ca == null || cb == null ? null : +(ca - cb).toFixed(4)
   return out
 }
+
+/**
+ * 信息密度 / 认知压缩效率分（v14.15，消除高分段同分盲区）：
+ * 在真值综合分（truthComposite）之上，按「单位千字符承载的真值密度」与「相对原文的信息浓缩增益」计算连续效率分：
+ *   density = truthScore / (1 + Math.max(0, chars - 900) / 3000)
+ *   gain = rawChars > chars ? Math.min(1, (rawChars - chars) / Math.max(800, rawChars * 0.65)) : 0
+ *   efficiency = 0.75 * truthScore + 0.15 * density + 0.10 * (truthScore * gain)
+ * 保证：同真值分下，更精炼、无水分的稿子严格高于冗长重复的稿子；真值分更高始终占主导（0.75 权重）。
+ */
+export function truthEfficiency(draft, chain, spec, rawChars = 0) {
+  const dims = truthDimensions(draft, chain, spec)
+  const tc = truthComposite(dims).score ?? 0
+  const chars = String(draft || '').length
+  const rChars = Number(rawChars) || String(chain?.a2?.raw || '').length || chars
+  const density = tc / (1 + Math.max(0, chars - 900) / 3000)
+  const gain = rChars > chars ? Math.min(1, (rChars - chars) / Math.max(800, rChars * 0.65)) : 0
+  const score = +(0.75 * tc + 0.15 * density + 0.10 * (tc * gain)).toFixed(4)
+  return { score, truthScore: tc, density: +density.toFixed(4), gain: +gain.toFixed(4), chars, rawChars: rChars }
+}
+

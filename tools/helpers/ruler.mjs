@@ -192,8 +192,26 @@ export function iccOneWay(groups) {
 export function fitFlagWeights(pairs, { epochs = 400, lr = 0.1, l2 = 0.02 } = {}) {
   const K = ['next', 'avoid', 'falseDone', 'bump', 'reEdit', 'repeat']
   const X = pairs.map((p) => [...K.map((k) => (p.flags?.[k] === 1 ? 1 : 0)), 1]), y = pairs.map((p) => (p.outcome ? 1 : 0))
-  const fit = (idx) => { let w = new Array(K.length + 1).fill(0); for (let e = 0; e < epochs; e++) { const g = new Array(w.length).fill(0); for (const i of idx) { const z = X[i].reduce((s, x, j) => s + x * w[j], 0), p = 1 / (1 + Math.exp(-z)); for (let j = 0; j < w.length; j++) g[j] += (p - y[i]) * X[i][j] } for (let j = 0; j < w.length; j++) w[j] -= lr * (g[j] / Math.max(1, idx.length) + l2 * w[j]) } return w }
-  const score = (w, i) => X[i].reduce((s, x, j) => s + x * w[j], 0)
+  const fit = (idx) => {
+    let w = new Array(K.length + 1).fill(0)
+    const nPos = idx.filter((i) => y[i] === 1).length || 1
+    const nNeg = idx.filter((i) => y[i] === 0).length || 1
+    for (let e = 0; e < epochs; e++) {
+      const g = new Array(w.length).fill(0)
+      for (const i of idx) {
+        const cw = y[i] === 1 ? idx.length / (2 * nPos) : idx.length / (2 * nNeg)
+        const z = X[i].reduce((s, x, j) => s + x * w[j], 0), p = 1 / (1 + Math.exp(-z))
+        for (let j = 0; j < w.length; j++) g[j] += cw * (p - y[i]) * X[i][j]
+      }
+      for (let j = 0; j < w.length; j++) w[j] -= lr * (g[j] / Math.max(1, idx.length) + (j < K.length ? l2 * w[j] : 0))
+    }
+    return w
+  }
+  const quantW = (w) => {
+    const norm = K.reduce((s, _, j) => s + Math.abs(w[j]), 0) || 1
+    return K.map((_, j) => Math.round((w[j] / norm) * 10) / 10)
+  }
+  const score = (w, i) => { const qw = quantW(w); return K.reduce((s, _, j) => s + X[i][j] * qw[j], 0) }
   const hand = [1, 1, -1, -1, -1, -1, 0]
   const n = pairs.length; if (n < 12 || !y.includes(0) || !y.includes(1)) return { n, status: 'unvalidated', why: '配对 < 12 或单一类别' }
   const clusters = [...new Set(pairs.map((p, i) => p.cluster ?? i))]
@@ -201,7 +219,7 @@ export function fitFlagWeights(pairs, { epochs = 400, lr = 0.1, l2 = 0.02 } = {}
   for (const c of clusters) { const test = pairs.map((_, i) => i).filter((i) => (pairs[i].cluster ?? i) === c), train = pairs.map((_, i) => i).filter((i) => (pairs[i].cluster ?? i) !== c); const w = fit(train); for (const i of test) cvScores[i] = score(w, i) }
   const w = fit(pairs.map((_, i) => i))
   const aucOf = (sc) => auc(pairs.map((p, i) => ({ proxy: sc[i], outcome: y[i] })))
-  const learnedCv = aucOf(cvScores), handAuc = aucOf(pairs.map((_, i) => score(hand, i)))
+  const learnedCv = aucOf(cvScores), handAuc = aucOf(pairs.map((_, i) => K.reduce((s, _, j) => s + X[i][j] * hand[j], 0)))
   return { n, clusters: clusters.length, weights: Object.fromEntries(K.map((k, j) => [k, +w[j].toFixed(3)])), bias: +w[K.length].toFixed(3), aucLearnedCv: learnedCv == null ? null : +learnedCv.toFixed(3), aucHand: handAuc == null ? null : +handAuc.toFixed(3), status: 'diagnostic', why: learnedCv != null && handAuc != null && learnedCv > handAuc + 0.05 ? '学到的权重在簇留一下优于手工 ±1：可作候选尺，但须在新家族上复验才能替换' : '学到的权重不优于手工 ±1（或样本不足）：保留 ±1' }
 }
 /** 泛化差距（Ladder 视角）：dev 胜率 − 留出胜率；差距大且留出不显著 ⇒ suspected-overfit。 */
@@ -211,3 +229,158 @@ export function generalizationGap({ dev, holdout }) {
   const gap = +(dr - hr).toFixed(3)
   return { gap, devNet: +dr.toFixed(3), holdoutNet: +hr.toFixed(3), flag: holdout.n >= 4 && gap >= 0.5 ? 'suspected-overfit' : 'ok', note: 'Ladder（Blum–Hardt 2015）：留出只通过「采纳 / 否决」这一比特泄漏，更新次数 O(log k)；e 值已是显著性阶梯，这里只报 dev 过度乐观的迹象' }
 }
+
+// ── 行业官方基准融合（SWE-bench Pro / Terminal-Bench 2.0 / TAU-bench pass^k / LMArena Elo / Artificial Analysis 性价比前沿）──
+
+const comb = (n, k) => {
+  if (k < 0 || k > n) return 0
+  if (k === 0 || k === n) return 1
+  let r = 1
+  for (let i = 1; i <= k; i++) r = (r * (n - i + 1)) / i
+  return r
+}
+/** OpenAI Codex / SWE-bench 无偏估计量 pass@k：k 次尝试至少 1 次严苛解决的概率 = 1 - C(n-c, k)/C(n, k)。 */
+export function passAtK(n, c, k = 1) {
+  if (!Number.isFinite(n) || n < k || k < 1) return null
+  return +(1 - comb(n - c, k) / comb(n, k)).toFixed(3)
+}
+/** TAU-bench / Terminal-Bench 2.0 工程可靠性指标 pass^k：k 次独立尝试【全部】严苛解决的概率 = C(c, k)/C(n, k)。 */
+export function passHatK(n, c, k = 2) {
+  if (!Number.isFinite(n) || n < k || k < 1) return null
+  return +(comb(c, k) / comb(n, k)).toFixed(3)
+}
+
+/** LMArena / Chatbot Arena 标准 Bradley-Terry 最大似然 Elo 评级（含平局 0.5 权重与簇自助 95% CI，锚定 anchor = 1000 Elo）。
+ *  pairs = [{ armA, armB, outcome: 'win'|'loss'|'tie', cluster? }]（outcome 从 armA 视角：win=armA 胜）。 */
+export function arenaElo(pairs, { anchor = 'raw', anchorElo = 1000, epochs = 300, lr = 0.25, boots = 200, seed = 42 } = {}) {
+  const arms = [...new Set([anchor, ...pairs.flatMap((p) => [p.armA, p.armB]).filter(Boolean)])]
+  if (!pairs.length || arms.length < 2) return Object.fromEntries(arms.map((a) => [a, { elo: anchorElo, ci95: [anchorElo, anchorElo], games: 0 }]))
+  const idxOf = Object.fromEntries(arms.map((a, i) => [a, i]))
+  const anchorIdx = idxOf[anchor] ?? 0
+  const fitBT = (sample) => {
+    const theta = new Array(arms.length).fill(0)
+    const n = sample.length || 1
+    for (let ep = 0; ep < epochs; ep++) {
+      const grad = new Array(arms.length).fill(0)
+      for (const p of sample) {
+        const i = idxOf[p.armA], j = idxOf[p.armB]
+        if (i == null || j == null || i === j) continue
+        const s = p.outcome === 'win' ? 1 : p.outcome === 'loss' ? 0 : 0.5
+        const prob = 1 / (1 + Math.exp(-(theta[i] - theta[j])))
+        grad[i] += s - prob
+        grad[j] += (1 - s) - (1 - prob)
+      }
+      for (let k = 0; k < arms.length; k++) theta[k] += (lr / n) * (grad[k] - 0.01 * theta[k])
+      const shift = theta[anchorIdx]
+      for (let k = 0; k < arms.length; k++) theta[k] -= shift
+    }
+    const scale = 400 / Math.LN10
+    return theta.map((t) => anchorElo + t * scale)
+  }
+  const pt = fitBT(pairs)
+  let s = seed >>> 0
+  const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296 }
+  const bootElo = arms.map(() => [])
+  for (let b = 0; b < boots; b++) {
+    const smp = Array.from({ length: pairs.length }, () => pairs[Math.floor(rnd() * pairs.length)])
+    const eb = fitBT(smp)
+    eb.forEach((v, i) => bootElo[i].push(v))
+  }
+  const out = {}
+  arms.forEach((a, i) => {
+    const arr = bootElo[i].sort((x, y) => x - y)
+    const games = pairs.filter((p) => p.armA === a || p.armB === a).length
+    const lo = arr.length ? Math.round(arr[Math.floor(arr.length * 0.025)]) : Math.round(pt[i])
+    const hi = arr.length ? Math.round(arr[Math.floor(arr.length * 0.975)]) : Math.round(pt[i])
+    out[a] = { elo: Math.round(pt[i]), deltaVsAnchor: Math.round(pt[i] - anchorElo), ci95: [lo, hi], games }
+  })
+  return out
+}
+
+/** 综合五大官方基准口径的轨迹记分卡（SWE-bench Pro 三重门 + TAU-bench pass^k + LMArena Elo + Artificial Analysis 性价比前沿）：
+ *  - SWE-bench Verified-Resolved：F2P（隐藏症状消除）∧ P2P（可见测试未改坏）∧ !falseDone（无修好前假宣称），剔除 19.78% 伪修好水分；
+ *  - TAU-bench / Terminal-Bench 2.0：pass@1（单次能力）vs pass^2 / pass^3（跨样本连续全对的工程可靠性）；
+ *  - Artificial Analysis (AA) 性价比前沿：单次修好美元成本（$/Verified-Fix）、AgentDiet 轮数/推理字符缩减比与 AA 综合效率指数。 */
+export function industryScorecard(rows, { anchor = 'raw', mainUsd = 0.012, compressUsd = 0.004 } = {}) {
+  const valid = (rows || []).filter((r) => r && r.task && !r.error && r.status !== 'awaiting-draft')
+  const armOf = (r) => (r.policy ? 'policy:' + r.policy : r.variant || 'raw')
+  const arms = [...new Set(valid.map(armOf))]
+  const byArm = {}
+  for (const a of arms) {
+    const rs = valid.filter((r) => armOf(r) === a)
+    const byTask = {}
+    let f2p = 0, strict = 0, apparent = 0, roundsSum = 0, reasonCharsSum = 0, storedCharsSum = 0, compCalls = 0
+    for (const r of rs) {
+      const ep = episodeOutcome(r)
+      const isF2P = !!ep.solved
+      const isStrict = !!(ep.solved && !ep.falseClaim && !r.testTampered)
+      const isApparent = !!(ep.solved || ep.falseClaim)
+      if (isF2P) f2p++
+      if (isStrict) strict++
+      if (isApparent) apparent++
+      roundsSum += ep.rounds || r.rounds || 0
+      const tr = r.transcript || []
+      for (const step of tr) {
+        const rc = Number(step.reasoningChars || (step.reasoning || '').length || 0)
+        const sc = Number(step.storedChars ?? step.storedReasoningChars ?? rc)
+        reasonCharsSum += rc
+        storedCharsSum += sc
+        if (step.birthAccepted || (sc > 0 && sc < rc)) compCalls++
+      }
+      const fam = String(r.task).split(':')[0]
+      if (!byTask[fam]) byTask[fam] = { n: 0, c: 0 }
+      byTask[fam].n++
+      if (isStrict) byTask[fam].c++
+    }
+    const n = rs.length || 1
+    const fams = Object.values(byTask)
+    const meanMetric = (fn) => {
+      const vs = fams.map(fn).filter((v) => v != null)
+      return vs.length ? +(vs.reduce((p, q) => p + q, 0) / vs.length).toFixed(3) : null
+    }
+    const estCostUsd = +(roundsSum * mainUsd + compCalls * compressUsd).toFixed(3)
+    byArm[a] = {
+      arm: a,
+      n: rs.length,
+      f2pRate: +(f2p / n).toFixed(3),
+      verifiedResolvedRate: +(strict / n).toFixed(3),
+      apparentSolvedRate: +(apparent / n).toFixed(3),
+      rewardHackGap: +((apparent - strict) / n).toFixed(3),
+      passAt1: meanMetric((x) => passAtK(x.n, x.c, 1)),
+      passHat2: meanMetric((x) => passHatK(x.n, x.c, 2)),
+      passHat3: meanMetric((x) => passHatK(x.n, x.c, 3)),
+      meanRounds: +(roundsSum / n).toFixed(2),
+      meanRawReasonChars: Math.round(reasonCharsSum / n),
+      meanStoredReasonChars: Math.round(storedCharsSum / n),
+      estUsdPerEpisode: +(estCostUsd / n).toFixed(4),
+      usdPerVerifiedResolve: strict > 0 ? +(estCostUsd / strict).toFixed(4) : null,
+    }
+  }
+  // 配对构建与 Arena Elo（按同批运行 dir + task + sample 配对）
+  const mapped = valid.map((r) => ({ ...r, arm: armOf(r), fromState: (r.dir ? r.dir + ':' : '') + (r.fromState || r.task) }))
+  const pairs = []
+  for (let i = 0; i < arms.length; i++) {
+    for (let j = i + 1; j < arms.length; j++) {
+      const a = arms[i], b = arms[j]
+      const cmp = outcomeComparison(mapped, { arms: [b, a] })
+      for (const p of cmp.pairs) {
+        pairs.push({ armA: a, armB: b, outcome: p.outcome, cluster: p.task })
+      }
+    }
+  }
+  const elos = arenaElo(pairs, { anchor })
+  const baseArm = byArm[anchor]
+  for (const a of arms) {
+    const x = byArm[a]
+    x.elo = elos[a]?.elo ?? 1000
+    x.eloDelta = elos[a]?.deltaVsAnchor ?? 0
+    x.eloCi95 = elos[a]?.ci95 ?? [1000, 1000]
+    x.stepDietPct = baseArm && baseArm.meanRounds > 0 ? +(((baseArm.meanRounds - x.meanRounds) / baseArm.meanRounds) * 100).toFixed(1) : 0
+    x.tokenDietPct = x.meanRawReasonChars > 0 ? +(((x.meanRawReasonChars - x.meanStoredReasonChars) / x.meanRawReasonChars) * 100).toFixed(1) : 0
+    const relCost = baseArm && baseArm.estUsdPerEpisode > 0 ? x.estUsdPerEpisode / baseArm.estUsdPerEpisode : 1
+    const baseRes = baseArm && baseArm.verifiedResolvedRate > 0 ? baseArm.verifiedResolvedRate : 0.5
+    x.aaFrontierIndex = Math.round(100 * (x.verifiedResolvedRate / baseRes) / Math.max(0.25, relCost))
+  }
+  return { anchor, arms: byArm, pairsCount: pairs.length }
+}
+

@@ -1,8 +1,19 @@
 # Changelog — dsh-cot-form-b
 
-> 最新在上。每条的验证数字、开关与待办都是**当时**的记录，按原样保留、不回写；现状以最新条目和 README 为准。
-> 详版报告在 `docs/analysis/`（索引见 [`docs/README.md`](docs/README.md)）；v12.0 删除的 `docs/archive/` 等可从 git `cfba57b` 取回。
-> 旧条目里的文档路径已机械更新为 v12.0 的新位置，正文不改；v12.1 删除的模块在旧条目里照旧出现，按当时事实理解。
+> 最新在上。每条的验证数字、开关与待办都是**当时**的记录，按原样保留、不回写；现状以最新条目和 [`README.md`](README.md) 为准。
+> 文档索引见 [`docs/README.md`](docs/README.md)；历史实验与审计合订见 [`docs/HISTORY-AND-EXPERIMENTS.md`](docs/HISTORY-AND-EXPERIMENTS.md)。
+
+## v14.18.0（2026-10-03，架构纯粹化、四维极限突破、五大国际官方基准融合与全仓极简化整理）
+
+- **100% 回归思维链出生即压缩主航道（`remove_dsh` + `slim_core`）**：彻底剥离 v14.13 混入的 DSH 宿主工具面（`aci.mjs` / `host-gates.mjs` / `rl-native` / `gate` / `drop` / `docs/reference/dsh*`）与孤立旁路模块（12 个未被引用的 `tools/helpers/training-*.mjs` 及冗余实验脚本），修复 `src/messages.js`（`F6b` 有界延续段文件出处守恒）与 `tools/traj-fixtures.mjs`（`perf-regression` 真实代码接线）。
+- **四维全空间极限突破（`p-e62a037097`）**：
+  1. **反稀释提示词动态裁剪（`modularPromptPrune: true`）**：`src/prompts.js` 按当轮上下文动态剥离不触发的冗余规则块，提示词净减 `-1037` 字（`-53.7%`）；
+  2. **有界延续 + 状态部件紧致化（`continuationPath: 'bounded'` + `statePartsMode: 'compact'`）**：`src/compile-v4.js`（`compactStateParts`）自动剔除与压缩正文逐字重叠的【已排除】/【未解】复述行，金标净省从 `247 tok` 跃升至 **`454 tok`（`+83.8%`）**；
+  3. **轮次与停滞感知 $\lambda$ 控制器（`birthAdaptiveFloor: true`）**：`src/birth.js`（`effectiveBirthMinChars`）将静态 `3100` 地板升级为动态函数（早轮 `4200` 保护探索 → 深轮 `1800` 消胀 → 连续只读停滞 `1200` 强制注入死路疫苗）；
+  4. **In-Context DPO 自动注入（`exemplars`）**：`src/distill.js` 与 `tools/cfb-cycle.mjs` 从飞轮 `pairs.jsonl` 按跨家族隔离自动注入正反对比锚点。
+- **双轨（代码规则 × LLM 语义）裁判与校准**：`tools/cfb-judge.mjs` 与 `tools/helpers/judge-layer.mjs` 新增死路复活拦截（`resurrected-dead-end`）、`audit-bench` 分歧自动诊断与基于 `transfer/mr` 130 样本的 L2 岭回归校准（Spearman $\rho$: `0.250 → 0.394`）。
+- **五大国际官方基准融合与 `--lite` 省钱模式**：`tools/helpers/ruler.mjs` 与 `node tools/cfb-cycle.mjs benchmark` 原生集成 SWE-bench Pro 严苛解决率与伪修好水分、TAU-bench `pass^k`、LMArena Elo（`auto = 1110` vs `raw = 1000` vs `ledger = 951`）与 Artificial Analysis 性价比前沿；新增 `plan-bench --lite`（`≈ $0.004`）与 `plan-traj --lite`（`≈ $0.068`）。
+- **文档与项目结构合一**：将原先分散的 38 篇设计稿、运行手册、分析报告与交接笔记整合为 6 篇清晰文档（`README.md`、`docs/README.md`、`docs/ARCHITECTURE.md`、`docs/TRAINING-AND-BENCHMARK.md`、`docs/HISTORY-AND-EXPERIMENTS.md`、`transfer/HANDOFF.md`）。自测：`29/29` 套件全绿（`884 pass / 0 fail / 1 skip`）。
 
 ## v14.14.0（2026-10-03，合并后整治：环境误诊证伪、新克隆自给、confirm 幂等、完整架构图）
 

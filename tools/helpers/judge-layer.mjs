@@ -211,21 +211,128 @@ export function raterAgreement(votes) {
   return per
 }
 
-/** 规则与评委的分歧：同一维度上代码判与评委判的差距，超过阈值即标为「待人工裁决」。 */
+/** 规则与评委的双向分歧（Code × LLM Cross-Validation）：
+ *  1. 同维冲突：代码与评委在同一维度差距超过阈值；
+ *  2. 评委虚高 / 幻觉（llm-inflation）：代码测出发明标识符偏高（invention > 0.15）或形态残缺（formClosed < 0.5），评委却给高证据充分度 / 状态相称性；
+ *  3. 规则盲区 / 漏报（rule-blindspot）：代码规则看似满分（无发明、形态闭合），但评委识破语义缺陷（证据不足 < 0.4、状态言过其实 < 0.4、或动作无分辨力 ≤ 3）——
+ *     这正是纯确定性正则无法覆盖真实语义的原因，必须保留评委维度做交叉校验与归因升级。 */
 export function ruleLlmDisagreement(codeVals, llmVals, { threshold = 0.35 } = {}) {
   const pairs = [['formClosed', 'formClosed'], ['kCoverage', null]]
   const out = []
-  // kCoverage 是计数，换算成比例后与"形态闭合"无直接对应；这里只比对真正同维的量。
   for (const [codeKey, llmKey] of pairs) {
     if (!llmKey) continue
     const c = codeVals[codeKey], l = llmVals[llmKey]
     if (!Number.isFinite(c) || !Number.isFinite(l)) continue
-    if (Math.abs(c - l) > threshold) out.push({ dim: llmKey, code: c, llm: l, delta: +(c - l).toFixed(3) })
+    if (Math.abs(c - l) > threshold) out.push({ dim: llmKey, kind: 'same-dim', code: c, llm: l, delta: +(c - l).toFixed(3) })
   }
-  // 发明标识符 vs 证据充分度：发明多却声称证据充分 ⇒ 可疑
-  const inv = codeVals.invention, ev = llmVals.evidenceSufficiency
-  if (Number.isFinite(inv) && Number.isFinite(ev) && inv > 0.15 && ev > 0.8) out.push({ dim: 'invention×evidence', code: inv, llm: ev, delta: null, why: '发明标识符偏多却声称证据充分' })
+  const inv = codeVals.invention, fc = codeVals.formClosed
+  const ev = llmVals.evidenceSufficiency, sc = llmVals.stateCalibration, ar = llmVals.actionResolve
+  if (Number.isFinite(inv) && Number.isFinite(ev) && inv > 0.15 && ev > 0.8) {
+    out.push({ dim: 'invention×evidence', kind: 'llm-inflation', code: inv, llm: ev, delta: null, why: '发明标识符偏多却声称证据充分（评委疑似虚高）' })
+  }
+  const codeClean = (!Number.isFinite(inv) || inv <= 0.1) && (!Number.isFinite(fc) || fc >= 0.75)
+  if (codeClean) {
+    if (Number.isFinite(ev) && ev < 0.4) out.push({ dim: 'formClosed×evidenceSufficiency', kind: 'rule-blindspot', code: fc ?? 1, llm: ev, delta: null, why: '字面形态合规但语义证据不足（规则盲区，需评委升级）' })
+    if (Number.isFinite(sc) && sc < 0.4) out.push({ dim: 'formClosed×stateCalibration', kind: 'rule-blindspot', code: fc ?? 1, llm: sc, delta: null, why: '字面形态合规但状态声明言过其实（规则盲区，需评委升级）' })
+    if (Number.isFinite(ar) && ar <= 3) out.push({ dim: 'formClosed×actionResolve', kind: 'rule-blindspot', code: fc ?? 1, llm: ar, delta: null, why: '字面形态合规但下一步动作缺乏排障分辨力（规则盲区，需评委升级）' })
+  }
   return out
+}
+
+export const CAUSAL_ATTRIBUTIONS = Object.freeze([
+  'dropped-constraint',   // 压缩稿漏掉了原文里的关键排除项 / 边界事实，导致模型走回头路或盲改
+  'over-committed',       // 压缩稿把待验假设写成了单点死命令，导致模型跳过必要取证
+  'stripped-noise',       // 压缩稿剥掉了原文里的发散死路与犹豫，让模型直接命中正确动作
+  'equivalent-sampling',  // 两臂动作差异主要来自采样随机性，稿与原文在决策信息上等价
+])
+
+/** 轨迹分歧轮语义归因提示词：影子分叉轨迹在第 r 轮首次分歧时，两臂在 r 轮前唯一输入差异就是 r-1 轮的原文 vs 压缩稿。
+ *  代码规则只能算「谁先修好 / 代理分多少」，评委负责读懂「稿到底改了什么语义才导致第 r 轮动作分叉」。 */
+export function trajDivergenceJudgePrompt({ task, round, rawReasoning, compressedDraft, rawNextAction, compressedNextAction, outcome }) {
+  const dims = DIMENSIONS.filter((d) => d.rater === 'llm')
+  return [
+    '你是严格的编码 Agent 轨迹分歧评审。两条影子分叉轨迹在第 ' + round + ' 轮首次做出不同动作；在此之前两臂上下文逐字节相同，唯一差异是第 ' + (round - 1) + ' 轮留下的思维链（raw 原文 vs 压缩稿）。',
+    '',
+    '【任务与结局】',
+    String(task || '').slice(0, 1000) + (outcome ? '\n结局对比：' + JSON.stringify(outcome) : ''),
+    '',
+    '【raw 臂在第 ' + (round - 1) + ' 轮的原始思维链】',
+    String(rawReasoning || '').slice(0, 3500),
+    '',
+    '【压缩臂在第 ' + (round - 1) + ' 轮压出的稿】',
+    String(compressedDraft || '').slice(0, 3500),
+    '',
+    '【第 ' + round + ' 轮两臂的下一步动作分歧】',
+    '- raw 臂动作：' + String(rawNextAction || '（无）').slice(0, 600),
+    '- 压缩臂动作：' + String(compressedNextAction || '（无）').slice(0, 600),
+    '',
+    '【评审任务】',
+    '1. 对压缩稿在 6 个语义维度上打分：',
+    ...dims.map((d) => '- ' + d.id + ' [' + d.scale[0] + ',' + d.scale[1] + '] —— ' + d.def),
+    '2. 给出分歧的因果归因（causalAttribution，四选一）：' + CAUSAL_ATTRIBUTIONS.join(' | '),
+    '3. 用一句话指出压缩稿相比原文「漏掉或提炼了哪条具体语义」（keyDiff）。',
+    '',
+    '只输出一个 JSON 对象：',
+    '{"' + dims[0].id + '": 数字, ..., "causalAttribution": "' + CAUSAL_ATTRIBUTIONS[0] + '", "keyDiff": "具体语义差异", "confidence": 0-1, "note": "一句话理由"}',
+  ].join('\n')
+}
+
+export function parseTrajDivergenceJudge(raw) {
+  const base = parseJudgeLad(raw)
+  if (!base.ok) return base
+  let j; try { j = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return { ok: false, reason: 'parse' } }
+  const ca = typeof j.causalAttribution === 'string' && CAUSAL_ATTRIBUTIONS.includes(j.causalAttribution) ? j.causalAttribution : null
+  const keyDiff = typeof j.keyDiff === 'string' && j.keyDiff.trim() ? j.keyDiff.trim().slice(0, 400) : null
+  return { ...base, causalAttribution: ca, keyDiff }
+}
+
+export const BENCH_SEMANTIC_VERDICTS = Object.freeze([
+  'equivalent',          // 候选稿与金标稿在决策、已排除死路、验收与未解问题上语义等价（仅措辞不同）
+  'candidate-better',    // 候选稿比金标稿更精炼或锚点更准，且无信息丢失
+  'missing-decision',    // 候选稿漏掉或改错了金标的落定改法
+  'missing-exclusion',   // 候选稿漏掉了金标的已排除死路
+  'resurrected-dead-end',// 候选稿把金标已排除的死路当成决定方向复活
+  'hallucinated-state',  // 候选稿编造了金标/原文中没有的确定性结论或状态
+])
+
+/** Mode 2（基准）双轨语义评委：当 draftDistance 为 partial 或正则锚点无法裁决同义改写时，由 LLM 评委对比候选压缩稿与金标稿。 */
+export function benchJudgePrompt({ goldId, family, rawReasoning, ctx, goldDraft, candidateDraft, ruleDistance }) {
+  const dims = DIMENSIONS.filter((d) => d.rater === 'llm')
+  return [
+    '你是严格的编码 Agent 压缩器基准（Mode 2）语义评委。请对比同一轮思维链上的「金标稿（已验证能修好 bug）」与「候选策略压缩稿」。',
+    '',
+    `【金标项】${goldId || 'unknown'}（家族 ${family || 'unknown'}）`,
+    ruleDistance ? `【确定性规则距离 dd/1】verdict=${ruleDistance.verdict} score=${ruleDistance.score} key=${JSON.stringify(ruleDistance.key)}${ruleDistance.deadEndResurrected ? ' deadEndResurrected=' + JSON.stringify(ruleDistance.resurrectedAnchors) : ''}` : '',
+    '',
+    '【本轮可见上下文 ctx】',
+    String(ctx || '').slice(0, 2000),
+    '',
+    '【原始思维链 raw（节选）】',
+    String(rawReasoning || '').slice(0, 2500),
+    '',
+    '【金标稿（Gold Standard）】',
+    String(goldDraft || '').slice(0, 2500),
+    '',
+    '【候选策略压缩稿（Candidate）】',
+    String(candidateDraft || '').slice(0, 2500),
+    '',
+    '【评审任务】',
+    '1. 对候选压缩稿在 6 个语义维度上打分：',
+    ...dims.map((d) => '- ' + d.id + ' [' + d.scale[0] + ',' + d.scale[1] + '] —— ' + d.def),
+    '2. 给出对金标的语义对齐裁决（semanticVerdict，五选一）：' + BENCH_SEMANTIC_VERDICTS.join(' | '),
+    '3. 说明规则距离（dd/1）是否因同义改写低估了候选稿，或因表面词重合高估了候选稿（ruleBlindspot: true/false）。',
+    '',
+    '只输出一个 JSON 对象：',
+    '{"' + dims[0].id + '": 数字, ..., "semanticVerdict": "' + BENCH_SEMANTIC_VERDICTS[0] + '", "ruleBlindspot": false, "confidence": 0-1, "note": "一句话理由"}',
+  ].filter(Boolean).join('\n')
+}
+
+export function parseBenchJudge(raw) {
+  const base = parseJudgeLad(raw)
+  if (!base.ok) return base
+  let j; try { j = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return { ok: false, reason: 'parse' } }
+  const sv = typeof j.semanticVerdict === 'string' && BENCH_SEMANTIC_VERDICTS.includes(j.semanticVerdict) ? j.semanticVerdict : null
+  return { ...base, semanticVerdict: sv, ruleBlindspot: typeof j.ruleBlindspot === 'boolean' ? j.ruleBlindspot : null }
 }
 
 // ── 6. 统计工具（用于「提升是否显著」，避免又一次 n=2 空谈）─────────────────

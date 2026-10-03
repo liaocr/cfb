@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { evidenceDigest } from '../../src/evidence-program.js'
 import { outcomeComparison, episodeOutcome, eValueWins, DEFAULT_DESIGN_V4 } from './ruler.mjs'
-import { compareKeys } from './hand-draft.mjs'
+import { compareKeys, handDraftGate } from './hand-draft.mjs'
 
 /** draftDistance 公式版本：冻结进基准计划；改公式必须改版本号，不同版本的基准分不可比（指标在设计里冻结，不随结果调）。 */
 export const DRAFT_DISTANCE_VERSION = 'dd/1'
@@ -46,21 +46,24 @@ export function ceilingFrom({ rows, map = { hand: 'hand', raw: 'raw' }, alpha = 
 
 // ── 金标注册表 ──────────────────────────────────────────────────────────────
 export const goldDigest = (g) => evidenceDigest({ raw: g.raw, ctx: g.ctx, draft: g.draft }).slice(0, 16)
-/** 从一个 hand 单元的结果目录提取金标候选：每条过闸的手写稿 + 它的原文 / ctx（pending/done）+ 该轨迹的 L2 结局 + 同组 raw 的结局。validated = 主模型读了这份稿之后真修好。 */
-export function goldItemsFromTraj({ home, rows, planId = null, split = {} }) {
+/** 从一个轨迹单元提取金标候选：
+ *  - 默认：hand 臂过闸的手写稿 + 原文 / ctx（pending/done）+ L2 结局；
+ *  - fromWinners=true：同时提取非 raw/hand 的胜出压缩臂（轨迹修好、且比同组 raw 更快修好或 raw 未修好）在分歧轮过生产闸 + G2 闸的真实压缩稿，解决金标饥饿。 */
+export function goldItemsFromTraj({ home, rows, planId = null, split = {}, fromWinners = false }) {
   const live = liveRows(rows)
   const groups = {}
   for (const r of live) (groups[`${r.task}#${r.sample ?? 0}`] = groups[`${r.task}#${r.sample ?? 0}`] || {})[r.variant] = r
   const items = []
+  const vsRawOf = (o, ro) => !ro ? null : o.solved && !ro.solved ? 'win' : !o.solved && ro.solved ? 'loss' : o.solved && ro.solved ? ((o.roundsToFix || 0) < (ro.roundsToFix || 0) ? 'win' : (o.roundsToFix || 0) > (ro.roundsToFix || 0) ? 'loss' : 'tie') : 'tie'
   for (const r of live.filter((x) => x.variant === 'hand')) {
     const rawRow = (groups[`${r.task}#${r.sample ?? 0}`] || {}).raw || null
     const o = episodeOutcome(r), ro = rawRow ? episodeOutcome(rawRow) : null
-    const vsRaw = !ro ? null : o.solved && !ro.solved ? 'win' : !o.solved && ro.solved ? 'loss' : o.solved && ro.solved ? ((o.roundsToFix || 0) < (ro.roundsToFix || 0) ? 'win' : (o.roundsToFix || 0) > (ro.roundsToFix || 0) ? 'loss' : 'tie') : 'tie'
+    const vsRaw = vsRawOf(o, ro)
     ;(r.compile || []).forEach((c, i) => {
       if (c.path !== 'hand') return
       const round = i + 1, id = `${safeId(r.task)}-s${r.sample ?? 0}-r${round}`
-      const pend = readJsonMaybe(path.join(home, 'pending', 'done', id + '.json')), draftFile = path.join(home, 'drafts', id + '.md')
-      if (!pend || !fs.existsSync(draftFile)) { items.push({ id, missing: true, why: !pend ? 'pending/done 缺' : 'drafts 缺' }); return }
+      const pend = home ? readJsonMaybe(path.join(home, 'pending', 'done', id + '.json')) : null, draftFile = home ? path.join(home, 'drafts', id + '.md') : null
+      if (!pend || !draftFile || !fs.existsSync(draftFile)) { items.push({ id, missing: true, why: !pend ? 'pending/done 缺' : 'drafts 缺' }); return }
       const family = String(r.task).split(':')[0]
       items.push({ schema: 'cfb.gold/1', id, family, task: r.task, sample: r.sample ?? 0, round, plan: planId, split: split[family] || 'dev', at: pend.at || null,
         raw: pend.raw, ctx: pend.ctx, calls: pend.calls || [], draft: fs.readFileSync(draftFile, 'utf8').trim(), stored: ((r.transcript || [])[round - 1] || {}).stored || null,
@@ -68,6 +71,36 @@ export function goldItemsFromTraj({ home, rows, planId = null, split = {} }) {
         outcome: { solved: !!o.solved, roundsToFix: o.roundsToFix || null, falseClaim: !!o.falseClaim, rawSolved: ro ? !!ro.solved : null, rawRoundsToFix: ro ? ro.roundsToFix || null : null, vsRaw },
         validated: !!o.solved })
     })
+  }
+  if (fromWinners) {
+    for (const r of live.filter((x) => x.variant !== 'raw' && x.variant !== 'hand')) {
+      const rawRow = (groups[`${r.task}#${r.sample ?? 0}`] || {}).raw || null
+      const o = episodeOutcome(r), ro = rawRow ? episodeOutcome(rawRow) : null
+      const vsRaw = vsRawOf(o, ro)
+      if (!o.solved || (ro && vsRaw !== 'win')) continue
+      ;(r.compile || []).forEach((c, i) => {
+        if (!c || !c.ok || c.belowFloor) return
+        const round = i + 1
+        if (o.roundsToFix && round >= o.roundsToFix) return
+        const t = ((r.transcript || [])[i]) || {}
+        const rawT = ((rawRow?.transcript || [])[i]) || {}
+        const rawText = t.reasoning || rawT.reasoning || ''
+        const storedText = t.stored || ''
+        const ctxText = t.ctx || rawT.ctx || ''
+        if (!rawText || !storedText || storedText === rawText) return
+        const cont = (ctxText.match(/【延续段】[^\n]*\n([^\n]+)/) || [])[1]?.trim() || ''
+        const draftText = cont && storedText.startsWith(cont) ? storedText.slice(cont.length).trim() : storedText.trim()
+        const g2 = handDraftGate(rawText, draftText, ctxText)
+        const id = `${safeId(r.task)}-s${r.sample ?? 0}-r${round}-${safeId(r.policy || r.variant)}`
+        if (!g2.ok) { items.push({ id, missing: true, why: 'G2:' + g2.violations.map((v) => v.kind).join(',') }); return }
+        const family = String(r.task).split(':')[0]
+        items.push({ schema: 'cfb.gold/1', id, family, task: r.task, sample: r.sample ?? 0, round, plan: planId, source: 'winner-traj', policy: r.policy || r.variant, split: split[family] || 'dev', at: r.at || new Date().toISOString(),
+          raw: rawText, ctx: ctxText, calls: t.calls || [], draft: draftText, stored: storedText,
+          gates: { v4: c.gate || null, accept: c.accept || null, draftChars: draftText.length, outChars: storedText.length, rawChars: rawText.length },
+          outcome: { solved: true, roundsToFix: o.roundsToFix || null, falseClaim: !!o.falseClaim, rawSolved: ro ? !!ro.solved : null, rawRoundsToFix: ro ? ro.roundsToFix || null : null, vsRaw: vsRaw || 'win' },
+          validated: true })
+      })
+    }
   }
   return items
 }
@@ -200,3 +233,114 @@ export function benchReportMd(rep, { title = '基准报告' } = {}) {
   L.push('', `下一步: ${rep.next}`, '', '读法：锚点精度 < 1 = 稿里有原文 / ctx 没有的标识符（发明或照抄样例）—— 这一项先于一切；分（score）只给人看，选稿看键。holdout 行只报告，不进选择。')
   return L.join('\n')
 }
+
+// ── 飞轮偏好对自动提取（Mode 2 基准 & Mode 3 轨迹 → pairs.jsonl） ──────────────
+/** 从 Mode 3 轨迹结果提取压缩稿偏好对：同组两臂结局分出胜负（修好 vs 未修好，或到修好轮数更少），且在修好前同一轮次两臂有不同压缩稿（或胜出压缩稿 vs 失败压缩稿）。 */
+export function flywheelPairsFromTraj(rows, { split = {}, source = 'traj', roundNum = 0, now = new Date().toISOString() } = {}) {
+  const live = liveRows(rows)
+  const groups = {}
+  for (const r of live) {
+    const k = `${r.task}#${r.sample ?? 0}`
+    const arm = r.policy ? 'policy:' + r.policy : r.variant
+    ;(groups[k] = groups[k] || {})[arm] = r
+  }
+  const out = []
+  const rankArm = (o) => (o.solved ? 100 - (o.roundsToFix || 10) : (o.falseClaim ? -10 : 0))
+  for (const g of Object.values(groups)) {
+    const arms = Object.keys(g)
+    for (let i = 0; i < arms.length; i++) for (let j = i + 1; j < arms.length; j++) {
+      const a = g[arms[i]], b = g[arms[j]]
+      const oa = episodeOutcome(a), ob = episodeOutcome(b)
+      const sa = rankArm(oa), sb = rankArm(ob)
+      if (sa === sb) continue
+      const win = sa > sb ? a : b, lose = sa > sb ? b : a
+      const winArm = sa > sb ? arms[i] : arms[j], loseArm = sa > sb ? arms[j] : arms[i]
+      const maxR = Math.min((win.transcript || []).length, (lose.transcript || []).length)
+      for (let rIdx = 0; rIdx < maxR; rIdx++) {
+        const tw = win.transcript[rIdx], tl = lose.transcript[rIdx]
+        if (!tw || !tl) continue
+        const cw = (win.compile || [])[rIdx], cl = (lose.compile || [])[rIdx]
+        const wCompressed = !!(cw?.ok || cw?.path === 'hand')
+        const lCompressed = !!(cl?.ok || cl?.path === 'hand')
+        if (!wCompressed && !lCompressed) continue
+        const wDraft = tw.stored || tw.reasoning || null
+        const lDraft = tl.stored || tl.reasoning || null
+        if (!wDraft || !lDraft || wDraft === lDraft) continue
+        const fam = String(win.task).split(':')[0]
+        out.push({
+          schema: 'cfb.flywheel-pair/1',
+          at: now,
+          round: roundNum || rIdx + 1,
+          task: fam,
+          split: split[fam] || 'dev',
+          source,
+          chosenArm: winArm,
+          rejectedArm: loseArm,
+          chosenText: wDraft,
+          rejectedText: lDraft,
+          scores: { candidate: Math.max(sa, sb), control: Math.min(sa, sb) },
+        })
+      }
+    }
+  }
+  return out
+}
+
+/** 从 Mode 2 基准结果提取压缩稿偏好对：
+ *  ① 同一金标项上两策略按层级键分出胜负（且文本不同）；
+ *  ② 金标稿（validated）对比在同题上未达 close（score < 0.85 或死路复活 / 丢排除）的策略稿。 */
+export function flywheelPairsFromBench(rows, { gold = [], split = {}, source = 'bench', roundNum = 0, now = new Date().toISOString() } = {}) {
+  const live = (rows || []).filter((r) => r && !r.dry && r.policy && r.distance && r.gold && typeof r.text === 'string' && r.text.trim())
+  const byGold = {}
+  for (const r of live) (byGold[r.gold] = byGold[r.gold] || []).push(r)
+  const goldMap = Object.fromEntries((gold || []).map((g) => [g.id, g]))
+  const out = []
+  for (const [gid, rs] of Object.entries(byGold)) {
+    const g = goldMap[gid]
+    const fam = rs[0]?.family || g?.family || String(gid).split('-s')[0]
+    const sp = rs[0]?.split || g?.split || split[fam] || 'dev'
+    for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) {
+      const a = rs[i], b = rs[j]
+      if (a.text === b.text) continue
+      const c = compareKeys(a.distance.key, b.distance.key)
+      if (c === 0) continue
+      const win = c > 0 ? a : b, lose = c > 0 ? b : a
+      if (!win.ok) continue
+      out.push({
+        schema: 'cfb.flywheel-pair/1',
+        at: now,
+        round: roundNum,
+        task: fam,
+        gold: gid,
+        split: sp,
+        source,
+        chosenArm: 'policy:' + win.policy,
+        rejectedArm: 'policy:' + lose.policy,
+        chosenText: win.text,
+        rejectedText: lose.text,
+        scores: { candidate: +(win.distance.score ?? 1), control: +(lose.distance.score ?? 0) },
+      })
+    }
+    if (g && g.validated && g.draft) {
+      for (const r of rs) {
+        if (r.text === g.draft || (r.ok && r.distance.verdict === 'close' && (r.distance.score ?? 0) >= 0.95)) continue
+        out.push({
+          schema: 'cfb.flywheel-pair/1',
+          at: now,
+          round: roundNum,
+          task: fam,
+          gold: gid,
+          split: sp,
+          source: source + ':gold-vs-policy',
+          chosenArm: 'gold:' + gid,
+          rejectedArm: 'policy:' + r.policy,
+          chosenText: g.draft,
+          rejectedText: r.text,
+          scores: { candidate: 1, control: +(r.distance.score ?? 0) },
+        })
+      }
+    }
+  }
+  return out
+}
+

@@ -13,7 +13,9 @@
 //   这里按生产来 —— 压缩器不看调用，调用只用于 ③ 的程序部件。
 import { makeBirthCompiler } from './distill.js'
 import { turnCallsBlock, spliceProgramParts } from './compile-v4.js'
-import { birthAccept } from './birth.js'
+import { birthAccept, computeAdaptiveBirthControl } from './birth.js'
+import { effectiveContinuationPath, effectiveProgramParts, effectiveAdaptiveFloor } from './policy.js'
+import { applyCtxContinuationPolicy } from './messages.js'
 
 /**
  * @param raw        本轮思维链原文
@@ -25,7 +27,11 @@ import { birthAccept } from './birth.js'
  * @returns {ok, text, why?, reason?, ms, promptVersion, policy, v4?, spliced?, accept?}
  */
 export async function birthOffline({ raw, ctx = '', calls = [], cfg, signal = undefined, gate = true, compile = null }) {
-  const c = { ...cfg, compressCtx: String(ctx || '') }
+  const pathMode = effectiveContinuationPath(cfg)
+  const ppMode = effectiveProgramParts(cfg)
+  const effectiveCtx = applyCtxContinuationPolicy(String(ctx || ''), pathMode)
+  const adaptive = effectiveAdaptiveFloor(cfg) ? computeAdaptiveBirthControl(raw, effectiveCtx, null, cfg) : null
+  const c = { ...cfg, compressCtx: effectiveCtx, ...(adaptive && !cfg.compressV4DirectMaxChars ? { compressV4DirectMaxChars: adaptive.effectiveMaxChars } : {}) }
   const t0 = Date.now(), policy = c.compressPolicy && c.compressPolicy.id || 'base'
   let g
   try { g = typeof compile === 'function' ? await compile(raw, c) : await makeBirthCompiler(c)(raw, signal) }
@@ -34,9 +40,9 @@ export async function birthOffline({ raw, ctx = '', calls = [], cfg, signal = un
   const st = {}
   if (Array.isArray(calls) && calls.length && /【台账】/.test(c.compressCtx) && !/【本轮已发出的调用】/.test(c.compressCtx)) {
     const block = turnCallsBlock(calls)
-    if (block) { const ctx2 = c.compressCtx + '\n\n' + block; candidate = spliceProgramParts(candidate, ctx2, st); cfgAcc = { ...c, compressCtx: ctx2 } }
+    if (block) { const ctx2 = c.compressCtx + '\n\n' + block; candidate = spliceProgramParts(candidate, ctx2, st, { programParts: ppMode }); cfgAcc = { ...c, compressCtx: ctx2 } }
   }
-  const base = { ms: Date.now() - t0, policy, promptVersion: g.meta && g.meta.promptVersion || null, v4: g.meta && g.meta.v4 || null, spliced: st, meta: g.meta || null }
+  const base = { ms: Date.now() - t0, policy, promptVersion: g.meta && g.meta.promptVersion || null, v4: g.meta && g.meta.v4 || null, spliced: st, ...(adaptive ? { adaptive } : {}), meta: g.meta || null }
   if (gate === false) return { ok: true, text: candidate, gated: false, ...base }
   const acc = birthAccept(raw, candidate, cfgAcc)
   if (!acc.ok) return { ok: false, why: acc.why, info: acc.info || null, text: raw, ...base }

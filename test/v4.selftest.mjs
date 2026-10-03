@@ -1266,6 +1266,8 @@ try {
     // ctx 接线：buildCompressCtx 的 continuationPath；plugin 侧由 effectiveContinuationPath(cfg) 决定（策略 config 覆盖顶层键）
     const ctxF = I.buildCompressCtx(msgs), ctxB = I.buildCompressCtx(msgs, { continuationPath: 'bounded' })
     assert.ok(ctxF.includes('【延续段】') && ctxB.includes('【延续段】') && ctxB.length < ctxF.length && ctxB.includes('第 1–2 轮已跑 4 条'), 'ctx 用 bounded 延续段')
+    // F6b：当【延续段】存在时，【台账】不再把已走过的路再铺一遍（避免 bounded 延续段被上方无界台账架空）
+    assert.ok(ctxB.includes('详见下方【延续段】') && !ctxB.split('【延续段】')[0].includes('`ls -la && cat README.md`'), 'F6b：台账不重复铺出已走过的路')
     assert.equal(I.effectiveContinuationPath(I.normalizeConfig({})), 'full', '缺省 full：被测对象不变')
     assert.equal(I.effectiveContinuationPath(I.normalizeConfig({ continuationPath: 'bounded' })), 'bounded')
     const viaPolicy = I.normalizeConfig({ compressPolicy: { id: 'p-f6', patches: [], config: { continuationPath: 'bounded' } } })

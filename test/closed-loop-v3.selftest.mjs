@@ -240,7 +240,7 @@ try {
       assert.ok(!fs.existsSync(path.join(tmp, 'runtime/g1/plan.json')), 'propose-policy 不再冻结 API 计划'); assert.ok(!fs.existsSync(path.join(tmp, 'receipts')), 'propose-policy 不花钱')
       const pack = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/gen-1.pack.json'), 'utf8')); assert.equal(pack.schema, 'cfb.proposal-pack/1'); assert.equal(pack.parent.id, 'base')
       for (const h of holdout) { assert.ok(!JSON.stringify(pack.devTasks).includes(h.id) && !JSON.stringify(pack.evidence).includes(h.id), '证据包不含留出题'); assert.ok(pack.holdoutExcluded.includes(h.id)) }
-      assert.ok(/rule:assistant-role:propose/.test(cli('propose-policy', '--api').stderr), '付费提议器被规则拒绝')
+      assert.ok(/\[print\] 未落盘/.test(cli('propose-policy', '--print').stdout), '--print 只预览证据包不占 gen 号')
       const wr = (name, obj) => { const f = path.join(tmp, name); fs.writeFileSync(f, typeof obj === 'string' ? obj : JSON.stringify(obj)); return f }
       const bad = cli('policy-from-proposal', wr('prop-leak.json', { patches: [{ op: 'append', section: 'rules', text: '遇到 test/hedge.selftest.mjs 先核对' }], rationale: 'x', prediction: 'y' }), '--gen', '1'); assert.notEqual(bad.status, 0); assert.ok(/leak:/.test(bad.stderr), bad.stderr); assert.ok(!fs.existsSync(path.join(tmp, 'offline/policies')))
       const bj = cli('policy-from-proposal', wr('prop-bad.json', '我觉得应该这样改：把规则加长。'), '--gen', '1'); assert.ok(/proposal-invalid/.test(bj.stderr), bj.stderr)

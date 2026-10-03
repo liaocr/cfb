@@ -12,16 +12,17 @@
 //       不是 BLEU/ROUGE（表面重合奖励照抄，而 flash 恰恰爱照抄样例）；锚点精确率 < 1 直接判负，照抄别家族样例会在这里露馅。
 //       这把尺在驱动任何采纳前必须先在模式 3 里证明「召回高 ⇒ 结局好」（与 L1/L2 同一纪律），证不出就只当诊断。
 import { buildLedger } from '../../src/messages.js'
+import { programPartsText } from '../../src/compile-v4.js'
 import { jaccard } from './candidates.mjs'
 
 const ANCHOR_RE = /[A-Za-z_$][\w.$\-]{2,}|\d+(?:\.\d+)?/g
-const STOP = new Set(['old_text', 'new_text', 'edit_file', 'read_file', 'bash', 'tool_call', 'the', 'and', 'for', 'npm', 'node', 'test', 'true', 'false', 'null', 'undefined', 'const', 'let', 'var', 'return', 'function', 'import', 'export', 'from', 'async', 'await'])
+const STOP = new Set(['old_text', 'new_text', 'edit_file', 'read_file', 'bash', 'tool_call', 'the', 'and', 'for', 'npm', 'node', 'test', 'true', 'false', 'null', 'undefined', 'const', 'let', 'var', 'return', 'function', 'import', 'export', 'from', 'async', 'await', 'PASS', 'FAIL', 'pass', 'fail', 'grep'])
 const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim()
 /** 文本里的锚点：标识符 / 路径 / 数字（去掉工具协议词与极常见的语言关键字）。
  *  带点 / 斜杠 / 连字符的词同时登记它的各段（`process.env.CFB_REAL_DSH_HOME` ⇒ 也有 `CFB_REAL_DSH_HOME`、`env`）：稿里单提子标识符不算发明。两边同一规则，比对才对称。 */
 export function anchorsOf(text) {
   const out = new Set()
-  const add = (a) => { if (a.length < 3 && !/^\d/.test(a)) return; if (STOP.has(a) || /^[.\-$]+$/.test(a)) return; out.add(a) }
+  const add = (a) => { if (a.length < 3 && !/^\d{2,}/.test(a)) return; if (STOP.has(a) || /^[.\-$]+$/.test(a)) return; out.add(a) }
   for (const m of String(text || '').matchAll(ANCHOR_RE)) { const a = m[0].replace(/[.\-]+$/, ''); add(a); if (/[./\-]/.test(a)) for (const part of a.split(/[./\-]+/)) add(part) }
   return out
 }
@@ -44,13 +45,17 @@ export function slotsOf(text) {
  *   ungrounded:<slot>  稿里某条落定 / 已排除 / 验收 / 未解句的锚点一个都不在原文 ∪ ctx 里（有锚点才查；无锚点的句子放过）
  */
 export function handDraftGate(raw, draft, ctx = '') {
-  const R = slotsOf(raw), D = slotsOf(draft)
-  const hay = anchorsOf(String(raw) + '\n' + String(ctx))
+  const R = slotsOf(String(raw) + '\n' + String(ctx)), D = slotsOf(draft)
+  const rawCtxNorm = norm(String(raw) + '\n' + String(ctx))
+  const hasFixIntent = R.decided.length > 0 || R.triples.length > 0 || /(?:edit_file|str_replace|apply_patch|改法|改成|改为|改回|回滚|替换)/.test(String(raw) + '\n' + String(ctx))
+  const hay = anchorsOf(String(raw) + '\n' + String(ctx) + '\n' + programPartsText(ctx, { programParts: 'full' }) + '\n' + programPartsText(ctx, { programParts: 'compact' }))
   const violations = []
-  for (const t of D.triples) if (!R.triples.some((r) => r.oldText === t.oldText && r.newText === t.newText)) violations.push({ kind: 'invented-triple', detail: `old_text 是 \`${t.oldText.slice(0, 80)}\`` })
-  // 落定句：原文有落定句，或这句话本身带着原文里已有的三元组（决定的内容就是那个三元组）才算有依据；否则是把原文没下的决定替主模型下了
-  const tripleIn = (sentence) => slotsOf(sentence).triples.some((t) => R.triples.some((r) => r.oldText === t.oldText && r.newText === t.newText))
-  for (const d of D.decided) if (!R.decided.length && !tripleIn(d)) violations.push({ kind: 'invented-decision', detail: d.slice(0, 120) })
+  const validTriple = (t) => R.triples.some((r) => r.oldText === t.oldText && r.newText === t.newText) ||
+    (R.triples.length === 0 && hasFixIntent && rawCtxNorm.includes(t.oldText) && [...anchorsOf(t.newText)].every((a) => hay.has(a)))
+  for (const t of D.triples) if (!validTriple(t)) violations.push({ kind: 'invented-triple', detail: `old_text 是 \`${t.oldText.slice(0, 80)}\`` })
+  // 落定句：原文/台账有落定句或明确改法意图，且句子里的三元组有效才算有依据；否则是把原文没下的决定替主模型下了
+  const tripleIn = (sentence) => slotsOf(sentence).triples.some(validTriple)
+  for (const d of D.decided) if (!R.decided.length && !hasFixIntent && !tripleIn(d)) violations.push({ kind: 'invented-decision', detail: d.slice(0, 120) })
   for (const slot of ['decided', 'excluded', 'accept', 'open']) for (const s of D[slot]) {
     const as = [...anchorsOf(s)]; if (!as.length) continue
     if (!as.some((a) => hay.has(a))) violations.push({ kind: 'ungrounded:' + slot, detail: s.slice(0, 120) })
@@ -58,27 +63,38 @@ export function handDraftGate(raw, draft, ctx = '') {
   return { ok: violations.length === 0, violations, slots: { raw: R, draft: D } }
 }
 
-/** 一条 gold 句子是否被另一段稿同槽位的句子「召回」：锚点覆盖 ≥ 60%，无锚点句退化为 bigram Jaccard ≥ 0.5。 */
+/** 一条 gold 句子是否被另一段稿同槽位的句子「召回」：锚点覆盖 ≥ 60%，无锚点句退化为 bigram Jaccard ≥ 0.5 或子句匹配。 */
 function recalled(goldSentence, candidates) {
   const as = [...anchorsOf(goldSentence)]
   if (as.length) { const have = anchorsOf(candidates.join('\n')); return as.filter((a) => have.has(a)).length / as.length >= 0.6 }
-  return candidates.some((c) => jaccard(goldSentence, c) >= 0.5)
+  if (candidates.some((c) => jaccard(goldSentence, c) >= 0.5)) return true
+  const stripSlot = (x) => norm(x).replace(/^(?:已排除|未解|待解|未定|决定|已定|改法(?:只落一个)?)[：:]\s*/, '').replace(/[。；\s]+$/, '')
+  const gClauses = stripSlot(goldSentence).split(/[、；]+/).map((s) => s.trim()).filter((s) => s.length >= 4)
+  if (!gClauses.length) return false
+  const cJoined = candidates.map(stripSlot).join('；')
+  return gClauses.some((cl) => cJoined.includes(cl))
 }
 const recall = (goldList, candList) => goldList.length ? +(goldList.filter((g) => recalled(g, candList)).length / goldList.length).toFixed(3) : null
 
 /**
  * draftDistance(auto, gold, {raw, ctx})：两段稿按槽位比对。层级键（与 GPC 同样的字典序比较）：
  *   decision（gold 有三元组 / 落定句时 auto 是否同一决定）→ excludedRecall → acceptOk → openRecall → anchorPrecision → lengthOk
- * anchorPrecision = auto 的锚点里出现在 原文 ∪ ctx 的比例（gold 不算：照抄 gold 不是本事；锚点若来自别处就是发明 / 抄样例）。
+ * anchorPrecision = auto 的锚点里出现在 原文 ∪ ctx ∪ 程序部件 的比例（gold 不算：照抄 gold 不是本事；锚点若来自别处就是发明 / 抄样例）。
  * score 只是给人看的 0–1 加权汇总；选稿用 key，不用 score。
  */
 export function draftDistance(auto, gold, { raw = '', ctx = '' } = {}) {
   const A = slotsOf(auto), G = slotsOf(gold)
-  const hay = anchorsOf(String(raw) + '\n' + String(ctx))
+  const hay = anchorsOf(String(raw) + '\n' + String(ctx) + '\n' + programPartsText(ctx, { programParts: 'full' }) + '\n' + programPartsText(ctx, { programParts: 'compact' }))
   const autoAnchors = [...anchorsOf(auto)]
   const anchorPrecision = autoAnchors.length ? +(autoAnchors.filter((a) => hay.has(a)).length / autoAnchors.length).toFixed(3) : 1
+  const goldDecidedAnchors = anchorsOf([...G.decided, ...G.triples.map((t) => t.oldText + ' ' + t.newText)].join('\n'))
+  const goldExcludedOnlyAnchors = [...anchorsOf(G.excluded.join('\n'))].filter((a) => !goldDecidedAnchors.has(a))
+  const autoActionAnchors = anchorsOf([...A.decided, ...A.triples.map((t) => t.oldText + ' ' + t.newText)].join('\n'))
+  const resurrectedAnchors = goldExcludedOnlyAnchors.filter((a) => autoActionAnchors.has(a))
+  const deadEndResurrected = resurrectedAnchors.length > 0
   let decision = null
-  if (G.triples.length) decision = G.triples.every((g) => A.triples.some((a) => a.oldText === g.oldText && a.newText === g.newText)) ? 1 : 0
+  if (deadEndResurrected) decision = 0
+  else if (G.triples.length) decision = G.triples.every((g) => A.triples.some((a) => a.oldText === g.oldText && a.newText === g.newText)) ? 1 : 0
   else if (G.decided.length) decision = recalled(G.decided[0], A.decided.length ? A.decided : [auto]) ? 1 : 0
   const excludedRecall = recall(G.excluded, A.excluded)
   const acceptOk = G.accept.length ? (A.accept.length ? 1 : 0) : null
@@ -89,8 +105,8 @@ export function draftDistance(auto, gold, { raw = '', ctx = '' } = {}) {
   const parts = [[decision, 0.35], [excludedRecall, 0.25], [acceptOk, 0.1], [openRecall, 0.1], [anchorPrecision, 0.15], [lengthOk, 0.05]].filter(([v]) => v != null)
   const w = parts.reduce((s, [, x]) => s + x, 0)
   const score = w ? +(parts.reduce((s, [v, x]) => s + v * x, 0) / w).toFixed(3) : null
-  const verdict = anchorPrecision < 1 ? 'invented-anchors' : decision === 0 ? 'decision-differs' : (excludedRecall != null && excludedRecall < 0.5) ? 'lost-exclusions' : (score != null && score >= 0.85 ? 'close' : 'partial')
-  return { decision, excludedRecall, acceptOk, openRecall, anchorPrecision, lengthRatio, lengthOk, key, score, verdict, slots: { auto: A, gold: G } }
+  const verdict = anchorPrecision < 1 ? 'invented-anchors' : deadEndResurrected ? 'resurrected-dead-end' : decision === 0 ? 'decision-differs' : (excludedRecall != null && excludedRecall < 0.5) ? 'lost-exclusions' : (score != null && score >= 0.85 ? 'close' : 'partial')
+  return { decision, excludedRecall, acceptOk, openRecall, anchorPrecision, lengthRatio, lengthOk, deadEndResurrected, ...(resurrectedAnchors.length ? { resurrectedAnchors } : {}), key, score, verdict, slots: { auto: A, gold: G } }
 }
 /** 字典序比较两把 key（越大越好）。 */
 export function compareKeys(a, b) { for (let i = 0; i < Math.max(a.length, b.length); i++) { const d = (a[i] ?? 0) - (b[i] ?? 0); if (Math.abs(d) > 1e-9) return d > 0 ? 1 : -1 } return 0 }

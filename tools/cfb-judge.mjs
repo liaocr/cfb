@@ -12,10 +12,17 @@
 //   node tools/cfb-judge.mjs prompt --task f --ctx f --draft f   生成评委提示词
 //   node tools/cfb-judge.mjs agree --votes f.json    多票一致性（ICC 近似）
 //   node tools/cfb-judge.mjs check --votes f.json    校验评委输出合法性
+//   node tools/cfb-judge.mjs disagree --code JSON --llm JSON     规则与评委双向交叉校验（同时抓评委虚高与规则盲区）
+//   node tools/cfb-judge.mjs audit-traj --results f.jsonl        分叉轨迹分歧轮语义归因（代码维 + 评委归因提示词）
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { DIMENSIONS, DIMS_BY_RATER, judgeCapacity, binaryCeiling, judgeLadPrompt, parseJudgeLad, compositeScore, DEFAULT_WEIGHTS, raterAgreement, ruleLlmDisagreement, pairedBootstrap, pairedEffectSize } from './helpers/judge-layer.mjs'
+import { DIMENSIONS, DIMS_BY_RATER, judgeCapacity, binaryCeiling, judgeLadPrompt, parseJudgeLad, compositeScore, DEFAULT_WEIGHTS, raterAgreement, ruleLlmDisagreement, pairedBootstrap, pairedEffectSize, codeDimensions, trajDivergenceJudgePrompt, CAUSAL_ATTRIBUTIONS, benchJudgePrompt, parseBenchJudge, BENCH_SEMANTIC_VERDICTS } from './helpers/judge-layer.mjs'
+import { episodeOutcome } from './helpers/ruler.mjs'
+import { toRow, fitWeights, rankAgreement, missingDimensionSignal, activeSelect } from './helpers/calibration.mjs'
+import { loadGold } from './helpers/three-mode.mjs'
+import { loadFrozenTasks } from './helpers/candidates.mjs'
+import { truthDimensions } from './helpers/truth-dims.mjs'
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..')
 const f = (a, d) => (a.includes(d) ? a[a.indexOf(d) + 1] : null)
@@ -94,6 +101,144 @@ function cmdCheck(args) {
   console.log(bad ? '有 ' + bad + ' 票不合法' : '全部合法（' + votes.length + ' 票）')
   process.exitCode = bad ? 1 : 0
 }
+function cmdDisagree(args) {
+  const codeVals = JSON.parse(f(args, '--code') || '{"formClosed":1,"invention":0}')
+  const llmVals = JSON.parse(f(args, '--llm') || '{"formClosed":1,"evidenceSufficiency":0.25,"stateCalibration":0.3,"actionResolve":2}')
+  const out = ruleLlmDisagreement(codeVals, llmVals)
+  console.log(JSON.stringify({ codeVals, llmVals, disagreements: out }, null, 2))
+  return out
+}
+function cmdAuditTraj(args) {
+  const planN = f(args, '--plan')
+  const file = f(args, '--results') || (planN ? path.join(ROOT, '.cfb-runtime', 'traj', 't' + planN, 'results.jsonl') : null)
+  if (!file || !fs.existsSync(file)) { console.log('需要 --results <jsonl> 或 --plan N'); process.exitCode = 1; return }
+  const rows = fs.readFileSync(path.resolve(file), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => !r.error && r.status !== 'awaiting-draft')
+  const groups = new Map()
+  for (const r of rows) {
+    const key = `${r.task}|${r.sample ?? 0}`
+    const arm = r.policy ? `policy:${r.policy}` : r.variant
+    if (!groups.has(key)) groups.set(key, { task: r.task, sample: r.sample ?? 0, arms: {} })
+    groups.get(key).arms[arm] = r
+  }
+  const items = []
+  for (const g of groups.values()) {
+    const raw = g.arms.raw; if (!raw) continue
+    for (const [arm, r] of Object.entries(g.arms)) {
+      if (arm === 'raw') continue
+      let div = r.shadow?.divergedAt ?? null
+      if (!div) {
+        const rounds = Math.max((raw.transcript || []).length, (r.transcript || []).length)
+        for (let i = 1; i < rounds; i++) {
+          const sa = JSON.stringify(raw.transcript?.[i]?.calls || []), sb = JSON.stringify(r.transcript?.[i]?.calls || [])
+          if (sa !== sb) { div = i + 1; break }
+        }
+      }
+      if (!div || div < 2) continue
+      const rawT = (raw.transcript || [])[div - 2], compT = (r.transcript || [])[div - 2]
+      const code = codeDimensions(compT?.stored || '', rawT?.reasoning || '')
+      const prompt = trajDivergenceJudgePrompt({
+        task: g.task,
+        round: div,
+        rawReasoning: rawT?.reasoning || '',
+        compressedDraft: compT?.stored || '',
+        rawNextAction: JSON.stringify(raw.transcript?.[div - 1]?.calls || []),
+        compressedNextAction: JSON.stringify(r.transcript?.[div - 1]?.calls || []),
+        outcome: { raw: episodeOutcome(raw), [arm]: episodeOutcome(r) },
+      })
+      items.push({ task: g.task, sample: g.sample, arm, divergeRound: div, codeDims: code, outcome: { raw: episodeOutcome(raw), [arm]: episodeOutcome(r) }, prompt })
+    }
+  }
+  console.log(`双轨轨迹分歧审计：${items.length} 个分歧对（因果归因集：${CAUSAL_ATTRIBUTIONS.join(' | ')}）`)
+  for (const it of items) console.log(`  ${it.task}#${it.sample} ${it.arm} @ r${it.divergeRound}：code(form=${it.codeDims.formClosed}, inv=${it.codeDims.invention.toFixed(3)})  raw=${it.outcome.raw.solved ? 'solved@r' + it.outcome.raw.roundsToFix : 'unsolved'} vs ${it.arm}=${it.outcome[it.arm].solved ? 'solved@r' + it.outcome[it.arm].roundsToFix : 'unsolved'}`)
+  return items
+}
+function cmdAuditBench(args) {
+  const planN = f(args, '--plan')
+  const file = f(args, '--results') || (planN ? path.join(ROOT, '.cfb-runtime', 'bench', 'b' + planN, 'results.jsonl') : null)
+  if (!file || !fs.existsSync(file)) { console.log('需要 --results <bench results.jsonl> 或 --plan N'); process.exitCode = 1; return }
+  const goldDir = f(args, '--gold-dir') || path.join(ROOT, 'transfer', 'gold')
+  const goldMap = new Map(loadGold(goldDir).map((g) => [g.id, g]))
+  const rows = fs.readFileSync(path.resolve(file), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => !r.dry && r.policy && r.gold && r.distance)
+  const items = []
+  for (const r of rows) {
+    if (r.distance.verdict === 'close' && !args.includes('--all')) continue
+    const g = goldMap.get(r.gold)
+    const prompt = benchJudgePrompt({
+      goldId: r.gold,
+      family: r.family,
+      rawReasoning: g?.raw || '',
+      ctx: g?.ctx || '',
+      goldDraft: g?.draft || '',
+      candidateDraft: r.text || '',
+      ruleDistance: r.distance,
+    })
+    items.push({ policy: r.policy, gold: r.gold, family: r.family, verdict: r.distance.verdict, score: r.distance.score, prompt })
+  }
+  console.log(`Mode 2 基准双轨语义复核：${items.length} 项待语义裁决（裁决集：${BENCH_SEMANTIC_VERDICTS.join(' | ')}）`)
+  for (const it of items) console.log(`  ${it.policy} × ${it.gold} [${it.family}]：dd/1 verdict=${it.verdict} score=${it.score}`)
+  return items
+}
+function cmdCalibrate(args) {
+  const file = f(args, '--obs')
+  let rows = []
+  if (file && fs.existsSync(file)) {
+    const rawRows = fs.readFileSync(path.resolve(file), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+    rows = rawRows.map((r) => r.x && Number.isFinite(r.y) ? r : toRow(r.features || r, r.outcome ?? r.y))
+  } else {
+    const tasks = new Map(loadFrozenTasks().map((t) => [t.id, t]))
+    const loadDraftMap = (p) => {
+      if (!fs.existsSync(p)) return new Map()
+      const j = readJson(p)
+      return new Map((Array.isArray(j) ? j : j.rows || []).map((r) => [r.id, r.text]))
+    }
+    const mrDir = path.join(ROOT, 'transfer', 'mr')
+    const mapByVar = {
+      oracle: loadDraftMap(path.join(mrDir, 'oracle-d2.json')),
+      oracle2: loadDraftMap(path.join(mrDir, 'oracle-d2b.json')),
+      oracle3: loadDraftMap(path.join(mrDir, 'oracle-d2c.json')),
+      auto: loadDraftMap(path.join(mrDir, 'auto-d2.json')),
+      auto8: loadDraftMap(path.join(mrDir, 'auto-d2c.json')),
+      auto8b: loadDraftMap(path.join(mrDir, 'auto-d2d.json')),
+    }
+    for (const runName of ['run1', 'run4']) {
+      const rf = path.join(mrDir, runName, 'results.jsonl')
+      if (!fs.existsSync(rf)) continue
+      for (const l of fs.readFileSync(rf, 'utf8').split('\n').filter(Boolean)) {
+        const r = JSON.parse(l)
+        const t = tasks.get(r.task)
+        if (!t || !r.rule || !r.judge) continue
+        const draft = r.variant === 'raw' ? t.chain.a2.raw : (mapByVar[r.variant]?.get(r.task) || t.side)
+        if (!draft) continue
+        const cd = codeDimensions(draft, t.chain.a2.raw, { total: 4 })
+        const td = truthDimensions(draft, t.chain, t.spec)
+        const full = {
+          ...cd,
+          ...td,
+          evidenceSufficiency: r.judge.claimJustified ? 0.85 : 0.25,
+          actionResolve: Number(r.judge.correct ?? 5),
+          foresight: r.judge.followsPlan ? 0.85 : 0.3,
+          stateCalibration: r.judge.greenAsProof ? 0.2 : 0.85,
+          infoDensity: draft.length < t.chain.a2.raw.length ? 0.8 : 0.4,
+          redundancy: draft.length < t.chain.a2.raw.length ? 0.2 : 0.6,
+        }
+        const y = (r.rule.next ? 1 : 0) - (r.rule.falseDone ? 1 : 0) - (r.rule.avoid === 0 ? 0.5 : 0) - (r.rule.repeat ? 0.5 : 0)
+        rows.push(toRow(full, y))
+      }
+    }
+  }
+  const fit = fitWeights(rows)
+  const agreeDefault = rankAgreement(rows, DEFAULT_WEIGHTS)
+  const agreeFit = rankAgreement(rows, fit.weights || DEFAULT_WEIGHTS)
+  const miss = missingDimensionSignal(rows)
+  console.log(`判断层回灌校准（观测数 n=${rows.length}，状态=${fit.ok ? '已拟合' : fit.reason}）`)
+  console.log(`  默认权重 Spearman ρ = ${NUM(agreeDefault.rho, 3)} → 岭回归校准后 ρ = ${NUM(agreeFit.rho, 3)}（r²=${NUM(fit.r2, 3)}，LOO-RMSE=${NUM(fit.looRmse, 3)}，置信度=${fit.confidence || 'low'}）`)
+  if (fit.ok) {
+    const topW = Object.entries(fit.weights).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
+    console.log(`  拟合非零维度权重：${topW.map(([k, v]) => `${k}=${v}`).join(', ')}`)
+  }
+  console.log(`  缺维度诊断：${miss.ok ? miss.note : `样本不足（n=${miss.n}）`}`)
+  return { ok: fit.ok, n: rows.length, fit, agreeDefault, agreeFit, missingDimension: miss }
+}
 
 function main() {
   const [cmd = 'capacity', ...args] = process.argv.slice(2)
@@ -102,6 +247,10 @@ function main() {
   else if (cmd === 'prompt') cmdPrompt(args)
   else if (cmd === 'agree') cmdAgree(args)
   else if (cmd === 'check') cmdCheck(args)
+  else if (cmd === 'disagree') cmdDisagree(args)
+  else if (cmd === 'audit-traj') cmdAuditTraj(args)
+  else if (cmd === 'audit-bench') cmdAuditBench(args)
+  else if (cmd === 'calibrate') cmdCalibrate(args)
   else throw new Error('未知子命令 ' + cmd)
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main()

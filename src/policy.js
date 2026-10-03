@@ -18,7 +18,7 @@ export function applyPolicyPatches(prompt, patches) {
       if (typeof patch.text !== 'string' || !patch.text.trim()) throw new Error('policy-patch:' + i + ':text')
       if (patch.section === 'tail') p = p + '\n' + patch.text.trim() + '\n'
       else {
-        const anchor = ['【风格样例】', '【当前任务与观察】', '【上一轮思维链】'].find((a) => p.includes(a))
+        const anchor = ['【风格样例】', '【第 2 轮样例】', '【当前任务与观察】', '【上一轮思维链】'].find((a) => p.includes(a))
         if (!anchor) throw new Error('policy-patch:' + i + ':anchor')
         p = p.replace(anchor, '【补充规则】\n' + patch.text.trim() + '\n\n' + anchor)
       }
@@ -29,9 +29,15 @@ export function applyPolicyPatches(prompt, patches) {
       p = p.replace(patch.from, patch.to)
     } else if (patch.op === 'exemplar') {
       if (typeof patch.text !== 'string' || patch.text.trim().length < 40) throw new Error('policy-patch:' + i + ':exemplar-text')
-      const m = p.match(/【风格样例】[^\n]*\n([\s\S]*?)(?=\n\n|$)/)
-      if (!m) throw new Error('policy-patch:' + i + ':exemplar-anchor')
-      p = p.replace(m[1], patch.text.trim())
+      if (patch.section === 'contrastive') {
+        const anchor = ['【风格样例】', '【第 2 轮样例】', '【当前任务与观察】', '【上一轮思维链】'].find((a) => p.includes(a))
+        if (!anchor) throw new Error('policy-patch:' + i + ':exemplar-anchor')
+        p = p.replace(anchor, '【正反对比示范（飞轮偏好对蒸馏）】\n' + patch.text.trim() + '\n\n' + anchor)
+      } else {
+        const m = p.match(/【(?:风格样例|第 2 轮样例)】[^\n]*\n([\s\S]*?)(?=\n\n|$)/)
+        if (!m) throw new Error('policy-patch:' + i + ':exemplar-anchor')
+        p = p.replace(m[1], patch.text.trim())
+      }
     } else throw new Error('policy-patch:' + i + ':op')
   }
   return p
@@ -63,6 +69,11 @@ export function validatePolicyPatches(patches, limits = POLICY_PATCH_LIMITS) {
  *   不在白名单的键（模型、提示词版本、闸的开关 identifierGate 等）不许借策略改。 */
 export const POLICY_CONFIG_KEYS = Object.freeze({
   continuationPath: Object.freeze({ enum: Object.freeze(['full', 'bounded', 'none']) }),
+  programParts: Object.freeze({ enum: Object.freeze(['all', 'compact', 'no-closing', 'no-hints', 'continuation-only', 'none']) }),
+  promptMode: Object.freeze({ enum: Object.freeze(['full', 'modular']) }),
+  compressV4DirectMaxChars: Object.freeze({ int: Object.freeze([600, 4000]) }),
+  compressV4DirectBind: Object.freeze({ bool: true }),
+  birthAdaptiveFloor: Object.freeze({ bool: true, regime: true }),
   birthMinChars: Object.freeze({ int: Object.freeze([1, 20000]), regime: true }),
   birthMinSavedChars: Object.freeze({ int: Object.freeze([-4000, 4000]), regime: true }),
   birthTokenGate: Object.freeze({ bool: true, regime: true }),
@@ -100,6 +111,23 @@ export function effectiveContinuationPath(cfg) {
   const fromPolicy = cfg && cfg.compressPolicy && cfg.compressPolicy.config && cfg.compressPolicy.config.continuationPath
   const v = fromPolicy || (cfg && cfg.continuationPath) || 'full'
   return POLICY_CONFIG_KEYS.continuationPath.enum.includes(v) ? v : 'full'
+}
+/** 策略生效后的程序拼接件配置：控制延续段 / 验收提示 / 收工三问的开关组合（缺省 all = 全部保留）。 */
+export function effectiveProgramParts(cfg) {
+  const fromPolicy = cfg && cfg.compressPolicy && cfg.compressPolicy.config && cfg.compressPolicy.config.programParts
+  const v = fromPolicy || (cfg && cfg.programParts) || 'all'
+  return POLICY_CONFIG_KEYS.programParts.enum.includes(v) ? v : 'all'
+}
+/** 策略生效后的提示词裁剪模式：full（缺省）| modular（按轮次态与台账态动态裁剪冗余样例与重复尾重申）。 */
+export function effectivePromptMode(cfg) {
+  const fromPolicy = cfg && cfg.compressPolicy && cfg.compressPolicy.config && cfg.compressPolicy.config.promptMode
+  const v = fromPolicy || (cfg && cfg.promptMode) || 'full'
+  return POLICY_CONFIG_KEYS.promptMode.enum.includes(v) ? v : 'full'
+}
+/** 策略生效后的动态水位/打转感知触发器开关（缺省 false = 固定门槛）。 */
+export function effectiveAdaptiveFloor(cfg) {
+  const fromPolicy = cfg && cfg.compressPolicy && cfg.compressPolicy.config && cfg.compressPolicy.config.birthAdaptiveFloor
+  return typeof fromPolicy === 'boolean' ? fromPolicy : !!(cfg && cfg.birthAdaptiveFloor)
 }
 
 /** 配置里的策略归一化：null/undefined/'base' ⇒ null（无策略）；对象必须有 string id 与合法 patches（或合法 config）。坏的抛。 */

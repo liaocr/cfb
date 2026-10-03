@@ -15,11 +15,11 @@ export { name, inject, apply, DEP_ID, compressCtxFor } from './src/plugin.js'
 
 // ── 配置 ─────────────────────────────────────────────────────────────────────
 export { DEFAULTS, normalizeConfig, dshHome, dshHomePath } from './src/config.js'
-export { applyPolicyPatches, validatePolicyPatches, normalizePolicy, POLICY_PATCH_LIMITS, POLICY_CONFIG_KEYS, POLICY_REGIME_KEYS, validatePolicyConfig, effectiveContinuationPath, policyRegimeKeys, applyPolicyConfig } from './src/policy.js'   // v14.10 策略即配置
+export { applyPolicyPatches, validatePolicyPatches, normalizePolicy, POLICY_PATCH_LIMITS, POLICY_CONFIG_KEYS, POLICY_REGIME_KEYS, validatePolicyConfig, effectiveContinuationPath, effectiveProgramParts, effectivePromptMode, effectiveAdaptiveFloor, policyRegimeKeys, applyPolicyConfig } from './src/policy.js'   // v14.10 策略即配置
 
 // ── 出生即压缩（birth）───────────────────────────────────────────────────────
 export {
-  birthTransform, birthStart, birthFinish, birthSettle, birthHoldNew, birthAccept, deriveArtHandle, birthEconomics, birthCancelFlying, readPressure,
+  birthTransform, birthStart, birthFinish, birthSettle, birthHoldNew, birthAccept, deriveArtHandle, birthEconomics, birthCancelFlying, readPressure, computeAdaptiveBirthControl,
 } from './src/birth.js'
 export { estimateTokens, wideShare, scriptCounts } from './src/tokens.js'
 export { createHostFollower } from './src/host-follow.js'
@@ -33,7 +33,7 @@ export {
   compressPromptVersion, compressPromptFor, compressTargets, V4_TAIL, v4Budget, v4Incremental, v4SegmentChars, buildCompressPromptV4Segment,
 } from './src/prompts.js'
 export {
-  compileV4, compileV4Direct, bindFixBranches, splitSentencesTickAware, inHandLines, inHandLinesBlock, lineKind, verifyHints, verifyHintsBlock, turnCallsBlock, spliceProgramParts, closingQuestions, programPartsText, stripExcludedFallback, dedupeParentheticals, bindLocus, strongTokens, isFixBranch, usableLocus, fileVerbatim, adaptEditTool, compileOpsV4, locusFromRaw, actionLoci, renderProse, parseOps, normalizeOp, validateOps, selectOps, renderOps, renderLine, renderLang, scoreOp,
+  compileV4, compileV4Direct, bindFixBranches, splitSentencesTickAware, inHandLines, inHandLinesBlock, lineKind, verifyHints, compactVerifyHints, verifyHintsBlock, turnCallsBlock, spliceProgramParts, closingQuestions, compactClosingQuestions, programPartsText, stripExcludedFallback, dedupeParentheticals, bindLocus, strongTokens, isFixBranch, usableLocus, fileVerbatim, adaptEditTool, compileOpsV4, locusFromRaw, actionLoci, renderProse, parseOps, normalizeOp, validateOps, selectOps, renderOps, renderLine, renderLang, scoreOp,
   mergeSegmentOps, priorLines, freshenState, supersedesIds, v4RejectRatioOf, V4_KINDS, V4_EVS, V4_KIND2,
 } from './src/compile-v4.js'
 export { createSegmenter, findCut, findFirstCut } from './src/segment-v4.js'
@@ -44,10 +44,10 @@ export {
 export { readApiKey, readProviderSpec, endpointUrl, resolveProviderEndpoint } from './src/provider.js'
 
 // ── 消息工具与保真度 ─────────────────────────────────────────────────────────
-export { provenanceOf, mapMessagesToSeqs, textOfContent, reasoningTextOf, artRefsOf, buildCompressCtx, buildLedger, ledgerBlock, continuationText, continuationBlock, boundedPathText, CONTINUATION_PATH_MODES, editToolOf } from './src/messages.js'
+export { provenanceOf, mapMessagesToSeqs, textOfContent, reasoningTextOf, artRefsOf, buildCompressCtx, buildLedger, ledgerBlock, continuationText, continuationBlock, applyCtxContinuationPolicy, boundedPathText, CONTINUATION_PATH_MODES, editToolOf } from './src/messages.js'
 export { fidelity, protectedTokens, inventedIdentifiers } from './src/fidelity.js'
 
-// ── 宿主证据程序（独立侧车；旧稿与提示词不变）────────────────────────────────
+// ── 证据摘要与存储原语（被 compile-v4 / api-budget / 闭环计划摘要共用）───────
 export { compileV4Evidence } from './src/compile-v4.js'
 export {
   EVIDENCE_SCHEMA, CONTRACT_SCHEMA, canonicalJson, evidenceDigest, immutableJson, safeRelativePath,
@@ -55,25 +55,10 @@ export {
   parseEvidenceProposal, bindEvidenceProposal, evaluateEvidencePredicate,
   initialEvidenceState, evidenceBinding, advanceEvidenceState,
 } from './src/evidence-program.js'
-export { createEvidenceVerifier, isEvidenceVerifier, protectEvidenceContract, evidenceFilePath, readEvidenceFile, replaceEvidenceFile } from './src/evidence-host.js'
-export { evidenceEntropy, evidencePosterior, expectedEvidenceGain, freezeDiagnosticModel, createDiagnosticController, runActiveEvidenceChecks } from './src/active-checks.js'
-
-export { createMemoryCandidate, freezeEffectSuite, createHoldoutRegistry, gateSignedEffects, createEffectCycle, createEvidenceArchive } from './src/effect-archive.js'
-
 export { createEvidenceStore, isEvidenceStore, archiveEvidenceArtifact, recoverEvidenceBlock } from './src/evidence-store.js'
-export { createFileStateAdapter, createEvidenceCheckpoints } from './src/evidence-checkpoint.js'
-export { createEvidenceRuntime, createEvidenceHost, isEvidenceHost } from './src/evidence-runtime.js'
 
 // ── 观测 ─────────────────────────────────────────────────────────────────────
 export { makeTraceWriter, settledTraceData } from './src/trace.js'
-
-export { createEvidenceIntents, replayEvidenceTrace, binaryEvidenceFeedback } from './src/evidence-intents.js'
-export { auditEvidenceSlots, createEvidenceContext } from './src/evidence-context.js'
-export { LOCAL_EVIDENCE_FAMILIES, createLocalEvidenceSuite, parseLocalEvidencePolicy, executeLocalEvidenceCase } from './src/local-evidence.js'
-export { createEvidenceDocument, editEvidenceDocument, createEvidenceIssues, compareEvidencePairs, runEvidenceSearch } from './src/evidence-search.js'
-
-// ── 显式批准修复调度（默认不启用、不接管插件）───────────────────────────────
-export { freezeApprovedRepairPolicy, createApprovedRepairEpisode } from './src/evidence-episode.js'
 
 // 离线训练数据/切分/客观发布纯内核；不启用模型训练或修改默认插件。
 export { TRAINING_SCHEMA, normalizeTrainingExample, trainingFingerprints, splitTrainingGroups, splitTrainingFingerprints, trainingExportRow, freezeTrainingEvaluation, gateTrainingRelease } from './src/training-core.js'

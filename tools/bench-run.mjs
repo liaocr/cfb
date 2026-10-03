@@ -13,14 +13,24 @@ import { BASE_POLICY } from './helpers/generation.mjs'
 import { loadPolicyFor } from './traj-run.mjs'
 import { draftDistance } from './helpers/hand-draft.mjs'
 import { loadGold, DRAFT_DISTANCE_VERSION, benchReport, benchReportMd } from './helpers/three-mode.mjs'
+import { evidenceDigest } from '../src/evidence-program.js'
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
+export const benchCacheKey = ({ policyId, policy, goldId, goldDigest, model }) => evidenceDigest({
+  policyId: policyId || (policy && policy.id) || 'base',
+  patches: (policy && policy.patches) || [],
+  config: (policy && policy.config) || null,
+  goldId,
+  goldDigest,
+  model: model || '',
+}).slice(0, 16)
+
 function parseArgs(argv) {
-  const o = { plan: null, out: null, baseUrl: null, model: null, dryRun: false, policyDir: null, goldDir: null, concurrency: 2 }
+  const o = { plan: null, out: null, baseUrl: null, model: null, dryRun: false, noCache: false, policyDir: null, goldDir: null, concurrency: 2 }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i], v = () => argv[++i]
     if (a === '--plan') o.plan = v(); else if (a === '--out') o.out = v(); else if (a === '--base-url') o.baseUrl = v(); else if (a === '--model') o.model = v()
-    else if (a === '--dry-run') o.dryRun = true; else if (a === '--policy-dir') o.policyDir = v(); else if (a === '--gold-dir') o.goldDir = v(); else if (a === '--concurrency') o.concurrency = Number(v())
+    else if (a === '--dry-run') o.dryRun = true; else if (a === '--no-cache') o.noCache = true; else if (a === '--policy-dir') o.policyDir = v(); else if (a === '--gold-dir') o.goldDir = v(); else if (a === '--concurrency') o.concurrency = Number(v())
     else if (a === '--require-fp') { /* 压缩调用走生产 birthOffline，没有指纹口径（与 traj-run 压缩臂同）；接受但不起作用 */ }
     else throw new Error('未知参数 ' + a)
   }
@@ -30,7 +40,26 @@ function parseArgs(argv) {
 }
 const strip = (d) => { const { slots, ...rest } = d; return rest }
 
-export async function benchRun(o, { I = null, now = () => new Date().toISOString() } = {}) {
+function loadSiblingBenchCache(outDir, resPath) {
+  const map = new Map()
+  const parent = path.dirname(path.resolve(outDir))
+  if (!fs.existsSync(parent)) return map
+  for (const name of fs.readdirSync(parent).sort()) {
+    const fp = path.join(parent, name, 'results.jsonl')
+    if (path.resolve(fp) === path.resolve(resPath) || !fs.existsSync(fp)) continue
+    for (const line of fs.readFileSync(fp, 'utf8').split('\n').filter(Boolean)) {
+      try {
+        const r = JSON.parse(line)
+        if (!r || r.dry || r.why === 'error' || !r.cacheKey) continue
+        if (r.ok && typeof r.text !== 'string') continue
+        map.set(r.cacheKey, r)
+      } catch { /* ignore malformed row */ }
+    }
+  }
+  return map
+}
+
+export async function benchRun(o, { I = null, compile = null, now = () => new Date().toISOString() } = {}) {
   const plan = JSON.parse(fs.readFileSync(o.plan, 'utf8'))
   if (plan.schema !== 'cfb.bench-plan/1') throw new Error('bench-plan-schema')
   if (plan.metric !== DRAFT_DISTANCE_VERSION) throw new Error(`metric-mismatch: 计划 ${plan.metric} ≠ 本机 ${DRAFT_DISTANCE_VERSION}（公式改过，这个计划不能再跑）`)
@@ -56,30 +85,45 @@ export async function benchRun(o, { I = null, now = () => new Date().toISOString
     console.log(`dry-run：不发请求、不写 receipt。真跑：去掉 --dry-run（需要 DEEPSEEK_API_KEY）`)
     return { plan, rows, dry: true }
   }
-  const apiKey = process.env.DEEPSEEK_API_KEY; if (!apiKey) throw new Error('需要 DEEPSEEK_API_KEY')
-  if (!o.baseUrl || !o.model) throw new Error('--base-url 与 --model 必填')
+  const apiKey = process.env.DEEPSEEK_API_KEY || (compile ? 'mock' : null); if (!apiKey) throw new Error('需要 DEEPSEEK_API_KEY')
+  if (!compile && (!o.baseUrl || !o.model)) throw new Error('--base-url 与 --model 必填')
   I = I || await import('../index.js')
+  const crossCache = o.noCache ? new Map() : loadSiblingBenchCache(o.out, resPath)
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bk-')); const cred = path.join(d, 'c.yaml'); fs.writeFileSync(cred, 'K: "' + apiKey + '"\n', { mode: 0o600 })
   let i = 0
-  await Promise.all(Array.from({ length: Math.max(1, o.concurrency) }, async () => {
+  await Promise.all(Array.from({ length: Math.max(1, o.concurrency || 2) }, async () => {
     while (i < jobs.length) {
       const { p, g } = jobs[i++]
+      const ck = benchCacheKey({ policyId: p.id, policy: p.policy, goldId: g.id, goldDigest: g.digest, model: o.model })
+      const hit = crossCache.get(ck)
+      if (hit) {
+        const text = hit.ok && typeof hit.text === 'string' ? hit.text : g.raw
+        const dist = draftDistance(text, g.draft, { raw: g.raw, ctx: g.ctx })
+        const row = { schema: 'cfb.bench-row/1', plan: plan.id, at: now(), dry: false, policy: p.id, gold: g.id, family: g.family, split: g.split, ok: !!hit.ok, why: hit.why || null, reason: hit.reason || null, promptVersion: hit.promptVersion || null, ms: 0, cachedFrom: hit.plan, cacheKey: ck, outChars: text.length, draftChars: g.draft.length, rawChars: g.raw.length, distance: strip(dist), text: hit.ok ? text : null }
+        fs.appendFileSync(resPath, JSON.stringify(row) + '\n'); rows.push(row)
+        console.log(`  ${p.id} × ${g.id} [${g.split}]: [缓存自 ${hit.plan}] ${hit.ok ? `稿 ${text.length} 字` : '闸不过 ' + hit.why + ' ⇒ 原文'} · score ${dist.score} · ${dist.verdict}`)
+        continue
+      }
       const cfg = I.offlineBirthConfig({ model: o.model, baseUrl: o.baseUrl, credentialsPath: cred, policy: p.id === 'base' ? null : p.policy, normalizeConfig: I.normalizeConfig })
       let b
-      try { b = await I.birthOffline({ raw: g.raw, ctx: g.ctx, calls: g.calls || [], cfg }) } catch (e) { b = { ok: false, text: g.raw, why: 'error', reason: String(e && e.message || e), ms: 0 } }
+      try { b = await I.birthOffline({ raw: g.raw, ctx: g.ctx, calls: g.calls || [], cfg, compile }) } catch (e) { b = { ok: false, text: g.raw, why: 'error', reason: String(e && e.message || e), ms: 0 } }
       const text = b.ok ? b.text : g.raw
       const dist = draftDistance(text, g.draft, { raw: g.raw, ctx: g.ctx })
-      const row = { schema: 'cfb.bench-row/1', plan: plan.id, at: now(), dry: false, policy: p.id, gold: g.id, family: g.family, split: g.split, ok: !!b.ok, why: b.why || null, reason: b.reason ? String(b.reason).slice(0, 200) : null, promptVersion: b.promptVersion || null, ms: b.ms ?? null, outChars: text.length, draftChars: g.draft.length, rawChars: g.raw.length, distance: strip(dist), text: b.ok ? text : null }
+      const row = { schema: 'cfb.bench-row/1', plan: plan.id, at: now(), dry: false, policy: p.id, gold: g.id, family: g.family, split: g.split, ok: !!b.ok, why: b.why || null, reason: b.reason ? String(b.reason).slice(0, 200) : null, promptVersion: b.promptVersion || null, ms: b.ms ?? null, cacheKey: ck, outChars: text.length, draftChars: g.draft.length, rawChars: g.raw.length, distance: strip(dist), text: b.ok ? text : null }
+      if (row.why !== 'error') crossCache.set(ck, row)
       fs.appendFileSync(resPath, JSON.stringify(row) + '\n'); rows.push(row)
       console.log(`  ${p.id} × ${g.id} [${g.split}]: ${b.ok ? `稿 ${text.length} 字` : '闸不过 ' + b.why + ' ⇒ 原文'} · score ${dist.score} · ${dist.verdict} · key ${dist.key.join(',')}`)
     }
   }))
   fs.rmSync(d, { recursive: true, force: true })
   const all = prior.concat(rows)
+  const paidCalls = all.filter((r) => !r.cachedFrom).length
+  const cachedHits = all.filter((r) => r.cachedFrom).length
   const rep = benchReport(all); const md = benchReportMd(rep, { title: `基准 ${plan.id}` })
   fs.writeFileSync(path.join(o.out, 'report.md'), md + '\n'); fs.writeFileSync(path.join(o.out, 'report.json'), JSON.stringify(rep, null, 2) + '\n')
-  fs.writeFileSync(path.join(o.out, 'receipt.json'), JSON.stringify({ schema: 'cfb.bench-receipt/1', plan: plan.id, digest: plan.digest, at: now(), rows: all.length, callsThisRun: rows.length, gateFails: all.filter((r) => !r.ok).length, estimatedUsd: +(all.length * plan.cost.pricing.compressUsd).toFixed(3), best: rep.best }, null, 2) + '\n')
+  const receipt = { schema: 'cfb.bench-receipt/1', plan: plan.id, digest: plan.digest, at: now(), rows: all.length, callsThisRun: rows.filter((r) => !r.cachedFrom).length, cachedHits, gateFails: all.filter((r) => !r.ok).length, estimatedUsd: +(paidCalls * plan.cost.pricing.compressUsd).toFixed(3), best: rep.best }
+  fs.writeFileSync(path.join(o.out, 'receipt.json'), JSON.stringify(receipt, null, 2) + '\n')
   console.log('\n' + md)
-  return { plan, rows: all, report: rep, dry: false }
+  return { plan, rows: all, report: rep, receipt, dry: false, cachedHits }
 }
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) benchRun(parseArgs(process.argv.slice(2))).catch((e) => { console.error(e && e.stack || e); process.exit(1) })

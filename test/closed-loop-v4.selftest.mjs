@@ -331,13 +331,9 @@ try {
       assert.equal(dry.status, 0, dry.stdout + dry.stderr); assert.match(dry.stdout, /子状态重放成功 1/)
     } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
   })
-  await test('A20 v4.4 规则：助手角色不得冻结成 API 计划；压缩器请求体与生产 distillOnce 同形（关思考 / 850）；--compress-thinking 只是诊断开关；上界常数按 850', async () => {
-    const { RULE, assertPaidRole, assertModel } = await import('../tools/helpers/llm-roles.mjs')
+  await test('A20 v4.4 压缩器与提议器：压缩器请求体与生产 distillOnce 同形（关思考 / 1600）；propose-policy 支持零 API 证据包与 --api 冻结 LLM 提议器计划', async () => {
     const { compressorBody, PRODUCTION_COMPRESSOR, GEN_ROLES } = await import('../tools/helpers/generation.mjs')
-    assert.equal(RULE.model, 'deepseek-v4.1-flash'); for (const r of ['propose', 'judge', 'label', 'scenario', 'analysis']) assert.throws(() => assertPaidRole(r), /rule:assistant-role/)
-    for (const r of ['main', 'compress', 'compile', 'mint-a', 'mint-b']) assert.equal(assertPaidRole(r), true)
-    assert.throws(() => assertPaidRole('whatever'), /rule:unknown-role/); assert.throws(() => assertModel('glm-4.5-flash'), /rule:model/); assert.equal(assertModel('deepseek-v4.1-flash'), true)
-    assert.ok(GEN_ROLES.includes('propose'), '角色枚举保留（旧收据可读），只是冻结被拒')
+    assert.ok(GEN_ROLES.includes('propose'), '角色枚举含 propose')
     const I = await import('../index.js')
     const task = { chain: { u1: '任务 x', a2: { raw: '我们需要先看配置。'.repeat(30) } }, r1: '我们需要先看配置。'.repeat(30), ctx: '【当前任务】x' }
     const cb = compressorBody({ task, policy: { patches: [] }, model: 'm' }); assert.deepEqual(cb.thinking, { type: 'disabled' }); assert.equal(cb.max_tokens, 1600); assert.equal(cb.temperature, 0); assert.equal(cb.messages.length, 1)
@@ -347,11 +343,14 @@ try {
     // 与生产 distillOnce 的 payload 字段逐一对齐（src/config.js: disableThinking true / maxOutputTokens 850）
     const cfg = I.normalizeConfig({ model: 'm', baseUrl: 'https://x/v1', credentialRef: 'K' }); assert.equal(cfg.disableThinking, true); assert.equal(cfg.maxOutputTokens, 850); assert.equal(cfg.compressV4MaxOutputTokens, 1600)   // 生产 v4 直写实际上限 = max(850, 1600)
     assert.equal(cyc.TRAJ_UNIT.compressCapUsd, 0.005 + 1600 * 4e-6)
-    // freezeGen 的角色闸：通过 CLI 走 propose-policy --api
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'v44-')); const env = { ...process.env, CFB_CYCLE_DIR: tmp }
+    // propose-policy --api 冻结付费 LLM 提议器计划（只含 dev 题）
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'v44-'))
     try {
       fs.mkdirSync(path.join(tmp, 'offline'), { recursive: true }); fs.writeFileSync(path.join(tmp, 'offline/history.json'), JSON.stringify({ schema: 'cfb.closed-loop/2', hypotheses: {}, rounds: [], calibration: { round: 0, instrument: 'ok', tieRate: 0.6, winRate: 0.2 } }))
-      const r = cyc.runCli(['propose-policy', '--api'], { dir: tmp }); assert.notEqual(r.status, 0); assert.match(r.stderr, /rule:assistant-role:propose/)
+      const r = cyc.runCli(['propose-policy', '--api'], { dir: tmp }); assert.equal(r.status, 0, r.stdout + r.stderr)
+      const gPlan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/g1/plan.json'), 'utf8'))
+      assert.equal(gPlan.role, 'propose')
+      assert.equal(gPlan.jobs.filter((j) => j.kind === 'main').length, 1)
     } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
   })
   await test('A21 代工证据与候选 #1：trajFailureEvidence 只含 dev 家族并带版本标签（base 自己 0 条）；docs/proposals/p1-multi-site.json 过预算 / 可应用，无 dev 题强记号，+≤300 字符', async () => {
@@ -819,97 +818,245 @@ try {
     assert.ok(f6.cost.expectedMains < reg.cost.expectedMains && f6.cost.expectedCompresses < reg.cost.expectedCompresses, 'F6 候选仍按影子 + 地板占比计费'); assert.equal(f6.regimeArms, undefined)
     fs.rmSync(tmp, { recursive: true, force: true })
   })
-  await test('A36 v14.13 DSH 合并（零 API）：rl-native 工具面逐字 schema + str_replace_editor 语义；drop 臂历史无思维链；gate 臂三条门禁按事实触发且只以 user 角色近场注入；原生协议 tool_calls/role:tool 成对；计划核对含 aci', async () => {
-    const I = await import('../index.js'); const ACI = await import('../tools/helpers/aci.mjs'); const HG = await import('../tools/helpers/host-gates.mjs')
-    // 1. 面：rl-native = RL 训练句 + 官方两工具（schema 原文关键句在、required 一致）；cfb 面不变
-    const rl = ACI.resolveAci('rl-native', { SYSTEM: 's', SYSTEM_TEXT_TOOLS: 't', TOOLS: [], textTools: false })
-    assert.equal(rl.system, 'You are a helpful software engineer assistant.'); assert.deepEqual(rl.tools.map((t) => t.function.name), ['bash', 'str_replace_editor'])
-    assert.match(rl.tools[0].function.description, /^Execute a bash command \(`bash -c`\)/); assert.match(rl.tools[0].function.description, /Background execution is not available/); assert.deepEqual(rl.tools[0].function.parameters.required, ['command', 'description'])
-    assert.match(rl.tools[1].function.description, /^Custom editing tool for viewing, creating and editing files/); assert.deepEqual(rl.tools[1].function.parameters.properties.command.enum, ['view', 'create', 'str_replace', 'insert']); assert.deepEqual(rl.tools[1].function.parameters.required, ['command', 'path'])
-    assert.throws(() => ACI.resolveAci('rl-native', { SYSTEM: 's', SYSTEM_TEXT_TOOLS: 't', TOOLS: [], textTools: true }), /text-tools/); assert.throws(() => ACI.resolveAci('nope', {}), /unknown-aci/)
-    assert.equal(ACI.resolveAci('cfb', { SYSTEM: 's', SYSTEM_TEXT_TOOLS: 't', TOOLS: [1], textTools: false }).system, 's')
-    // 2. str_replace_editor 语义（view 带行号 / 目录两层 / create 不覆盖 / str_replace 唯一 / insert 行后 / 越界与不存在）；绝对路径 /home/u/work/repo 映射到假仓库
-    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-aci-')); fs.mkdirSync(path.join(repo, 'src')); fs.writeFileSync(path.join(repo, 'src', 'a.js'), 'const a = 1\nconst b = 2\nconst a2 = 1\n')
-    assert.match(ACI.execStrReplaceEditor(repo, { command: 'view', path: '/home/u/work/repo/src/a.js' }), /total of 4 lines\):\n     1  const a = 1\n     2  const b = 2/)
-    assert.match(ACI.execStrReplaceEditor(repo, { command: 'view', path: 'src/a.js', view_range: [2, 2] }), /view_range=\[2, 2\]:\n     2  const b = 2\n$/)
-    assert.match(ACI.execStrReplaceEditor(repo, { command: 'view', path: '/home/u/work/repo' }), /up to 2 levels deep in \/home\/u\/work\/repo[\s\S]*d\t\/home\/u\/work\/repo\/src\nf\t\/home\/u\/work\/repo\/src\/a\.js/)
-    assert.match(ACI.execStrReplaceEditor(repo, { command: 'str_replace', path: 'src/a.js', old_str: '= 1', new_str: '= 9' }), /^No replacement was performed\. Multiple occurrences .* in lines \[1, 3\]/)
-    assert.match(ACI.execStrReplaceEditor(repo, { command: 'str_replace', path: 'src/a.js', old_str: 'nope' }), /did not appear verbatim in \/home\/u\/work\/repo\/src\/a\.js/)
-    assert.equal(ACI.execStrReplaceEditor(repo, { command: 'str_replace', path: 'src/a.js', old_str: 'const b = 2', new_str: 'const b = 3' }), 'The file /home/u/work/repo/src/a.js has been edited successfully.'); assert.match(fs.readFileSync(path.join(repo, 'src/a.js'), 'utf8'), /const b = 3/)
-    assert.equal(ACI.execStrReplaceEditor(repo, { command: 'insert', path: 'src/a.js', insert_line: 1, new_str: '// x' }), 'The file /home/u/work/repo/src/a.js has been edited successfully.'); assert.equal(fs.readFileSync(path.join(repo, 'src/a.js'), 'utf8').split('\n')[1], '// x')
-    assert.match(ACI.execStrReplaceEditor(repo, { command: 'create', path: 'src/a.js', file_text: 'x' }), /^File already exists at: \/home\/u\/work\/repo\/src\/a\.js/); assert.match(ACI.execStrReplaceEditor(repo, { command: 'create', path: 'src/new.js', file_text: 'y\n' }), /^New file created successfully at: \/home\/u\/work\/repo\/src\/new\.js/)
-    assert.match(ACI.execStrReplaceEditor(repo, { command: 'view', path: '/etc/passwd' }), /does not exist/); assert.match(ACI.execStrReplaceEditor(repo, { command: 'view', path: '../x' }), /does not exist/); assert.match(ACI.execStrReplaceEditor(repo, { command: 'rm', path: 'src/a.js' }), /^Unrecognized command rm/)
-    assert.ok(ACI.isEditCall('str_replace_editor', { command: 'str_replace' }) && ACI.isEditCall('edit_file', {}) && !ACI.isEditCall('str_replace_editor', { command: 'view' }) && ACI.editOk('The file x has been edited successfully.') && ACI.editOk('ok（x 已写入，1 处替换）') && !ACI.editOk('No replacement was performed'))
-    fs.rmSync(repo, { recursive: true, force: true })
-    // 3. 门禁规则（纯函数）：act 要「读过 src + 同一命令 ≥2 + 0 修改 + 最近两轮只读 + 第 ≥3 轮」；batch 要连续两轮修改且中间没验证；verify 要宣称修好且最后修改后没验证；幂等
-    const vre = /npm test/
-    const R = (round, calls) => ({ round, calls })
-    const rowsAct = [R(1, [{ name: 'read_file', args: { path: 'src/trace.js' } }]), R(2, [{ name: 'bash', args: { command: 'npm test' } }]), R(3, [{ name: 'bash', args: { command: 'npm test' } }])]
-    assert.equal(HG.gateAfterTools(rowsAct, { edits: [], verifyRe: vre, gated: [], round: 3, maxRounds: 6 }), 'act')
-    assert.equal(HG.gateAfterTools(rowsAct, { edits: [], verifyRe: vre, gated: [{ round: 2, kind: 'act' }], round: 3, maxRounds: 6 }), null, '两轮内不重复')
-    assert.equal(HG.gateAfterTools(rowsAct, { edits: [{ round: 1, ok: true }], verifyRe: vre, gated: [], round: 3, maxRounds: 6 }), null, '改过了就不催行动')
-    assert.equal(HG.gateAfterTools(rowsAct.slice(0, 2), { edits: [], verifyRe: vre, gated: [], round: 2, maxRounds: 6 }), null, '第 2 轮还不催'); assert.equal(HG.gateAfterTools(rowsAct, { edits: [], verifyRe: vre, gated: [], round: 3, maxRounds: 3 }), null, '最后一轮之后没人读')
-    const rowsBatch = [R(1, [{ name: 'edit_file', args: { path: 'a' } }]), R(2, [{ name: 'edit_file', args: { path: 'a' } }])]
-    assert.equal(HG.gateAfterTools(rowsBatch, { edits: [{ round: 1, ok: true }, { round: 2, ok: true }], verifyRe: vre, gated: [], round: 2, maxRounds: 6 }), 'batch')
-    assert.equal(HG.gateAfterTools([rowsBatch[0], R(2, [{ name: 'edit_file', args: { path: 'a' } }, { name: 'bash', args: { command: 'npm test' } }])], { edits: [{ round: 1, ok: true }, { round: 2, ok: true }], verifyRe: vre, gated: [], round: 2, maxRounds: 6 }), null, '验证了就不算碎片')
-    assert.equal(HG.gateOnFinal([R(1, [{ name: 'edit_file', args: { path: 'a' } }])], { edits: [{ round: 1, ok: true }], verifyRe: vre, gated: [], claim: 'fixed', round: 2, maxRounds: 6 }), 'verify')
-    assert.equal(HG.gateOnFinal([R(1, [{ name: 'edit_file', args: { path: 'a' } }, { name: 'bash', args: { command: 'npm test' } }])], { edits: [{ round: 1, ok: true }], verifyRe: vre, gated: [], claim: 'fixed', round: 2, maxRounds: 6 }), null, '同轮先改后验也算验过')
-    assert.equal(HG.gateOnFinal([R(1, [{ name: 'edit_file', args: { path: 'a' } }])], { edits: [{ round: 1, ok: true }], verifyRe: vre, gated: [{ round: 2, kind: 'verify' }], claim: 'fixed', round: 3, maxRounds: 6 }), null, '整条只催一次'); assert.equal(HG.gateOnFinal([], { edits: [], claim: 'hedged', round: 2 }), null)
-    // 3b. v14.13.1 回放真实轨迹（零 API）：第一版 act 规则（只认「同一命令 ≥2 次」）在 29 条记录上一次都不触发 —— t8/t9 的失败是「数据齐了还在找新证据、一条命令不重复」。
-    //     现规则：验证命令跑过之后只看不改 ≥4 调用、第 ≥4 轮 ⇒ 催；traj2 perf raw（0 edit ✗）第 4 轮触发，eacces 早改的轨迹不触发，traj3 perf raw 宣称前没验 ⇒ verify 门禁
-    const replay = (file, task, variant) => { const r = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).find((x) => x.task === task && x.variant === variant && !x.error); const tk = TRAJ_TASKS.find((t) => t.id === task); const rows = [], gated = [], edits = []
-      for (const t of r.transcript) { const calls = (t.calls || []).map((c) => { let a; try { a = JSON.parse(c.args) } catch { a = { command: String(c.args || '') } } return { name: c.name, args: a } }); rows.push({ round: t.round, calls }); calls.forEach((c, i) => { if (c.name === 'edit_file') edits.push({ round: t.round, ok: /^ok/.test(String((t.results || [])[i] || '')) }) })
-        const k = calls.length ? HG.gateAfterTools(rows, { edits, verifyRe: tk.verifyRe, gated, round: t.round, maxRounds: 8 }) : HG.gateOnFinal(rows, { edits, verifyRe: tk.verifyRe, gated, claim: claimOfMr(t.text || ''), round: t.round, maxRounds: 8 }); if (k) gated.push({ round: t.round, kind: k }) }
-      return gated }
-    const { claimOf: claimOfMr } = await import('../tools/effect-mr.mjs')
-    assert.deepEqual(replay('transfer/traj2/results.jsonl', 'perf-regression', 'raw'), [{ round: 4, kind: 'act' }, { round: 6, kind: 'act' }], 'perf 0-edit 失败：第 4 轮催、两轮后再催')
-    assert.deepEqual(replay('transfer/traj2/results.jsonl', 'eacces-config', 'raw'), [], '早改早验的轨迹不打扰')
-    assert.deepEqual(replay('transfer/traj3/results.jsonl', 'perf-regression', 'raw'), [{ round: 6, kind: 'verify' }], '改了没验就宣称 ⇒ verify 门禁')
-    assert.ok(HG.GATE_TEXTS.act.startsWith(HG.GATE_HEAD) && /这不是用户输入/.test(HG.GATE_HEAD) && /可逆/.test(HG.GATE_TEXTS.act) && /合并写入/.test(HG.GATE_TEXTS.batch) && /先运行验证命令/.test(HG.GATE_TEXTS.verify))
-    // 4. runOne（假 chat）：drop 臂发出去的历史没有 reasoning_content、transcript 记 finish；gate 臂 act 门禁附在工具结果消息末尾（user 角色）、verify 门禁拦下未验证的宣称；raw 对照不注入
-    const task = TRAJ_TASKS.find((t) => t.id === 'eacces-config')
-    const tc = (name, args) => ({ id: 'c_' + name, type: 'function', function: { name, arguments: JSON.stringify(args) } })
-    const mk = (content, calls, reasoning = 'r'.repeat(50)) => ({ message: { content, reasoning_content: reasoning, ...(calls ? { tool_calls: calls } : {}) }, usage: { prompt_tokens: 10 }, fp: 'x', finish: calls ? 'tool_calls' : 'stop' })
-    const sent = []
-    const chatDrop = async (b) => { sent.push(b); const round = b.messages.filter((m) => m.role === 'assistant').length + 1; if (round === 1) return mk('读。', [tc('read_file', { path: 'src/trace.js' })]); if (round === 2) return mk('跑。', [tc('bash', { command: 'npm test' })]); return mk('没修。', null) }
-    const o = { maxRounds: 5, minChars: 3100, model: 'm', maxTokens: 1000, maxProbes: 1, textTools: false, requireFp: false, aci: 'cfb', toolProtocol: 'text' }
-    const d = await runOne({ o, task, variant: 'drop', sample: 0, chat: chatDrop, I, cred: null }); assert.equal(d.error, undefined, d.error)
-    assert.ok(sent.length === 3 && sent[2].messages.filter((m) => m.role === 'assistant').every((m) => !('reasoning_content' in m)), 'drop：历史 assistant 消息不带 reasoning_content'); assert.equal(d.contextReasoningChars, 0); assert.deepEqual(d.transcript.map((t) => t.storedChars), [0, 0, 0]); assert.deepEqual(d.transcript.map((t) => t.finish), ['tool_calls', 'tool_calls', 'stop']); assert.equal(d.aci, 'cfb'); assert.equal(d.toolProtocol, 'text')
-    // gate 臂：r1 读 src、r2/r3 同一命令 ⇒ r3 结果后附 act 门禁；r4 改（成功）并直接宣称修好 ⇒ verify 门禁拦一次 ⇒ r5 跑验证后收
-    const seenGate = []
-    const chatGate = async (b) => { const last = b.messages[b.messages.length - 1]; if (last.role === 'user' && /\[宿主门禁\]/.test(last.content)) seenGate.push({ round: b.messages.filter((m) => m.role === 'assistant').length, kind: /至少两次/.test(last.content) ? 'act' : /宣称/.test(last.content) ? 'verify' : 'other', tail: last.content.endsWith(HG.GATE_TEXTS.act) || last.content === HG.GATE_TEXTS.verify })
-      const round = b.messages.filter((m) => m.role === 'assistant').length + 1
-      if (round === 1) return mk('读。', [tc('read_file', { path: 'src/trace.js' })]); if (round === 2 || round === 3) return mk('跑。', [tc('bash', { command: 'npm test' })])
-      if (round === 4) return mk('改。', [tc('edit_file', { path: 'test/birth.selftest.mjs', old_text: '{ home: process.env.CFB_REAL_DSH_HOME }', new_text: '{}' })])
-      if (round === 5 || round >= 7) return mk('问题已修复。', null); return mk('验。', [tc('bash', { command: 'npm test' })]) }
-    const g = await runOne({ o: { ...o, maxRounds: 7 }, task, variant: 'gate', sample: 0, chat: chatGate, I, cred: null }); assert.equal(g.error, undefined, g.error)
-    assert.deepEqual(g.gates, [{ round: 3, kind: 'act' }, { round: 5, kind: 'verify' }]); assert.deepEqual(seenGate.map((x) => [x.round, x.kind, x.tail]), [[3, 'act', true], [5, 'verify', true]], '门禁只以 user 角色、紧贴最新结果出现')
-    assert.equal(g.fixed, true); assert.equal(g.fixedAtRound, 4); assert.equal(g.verifiedAfterFix, true, 'verify 门禁之后模型真的去验了'); assert.equal(g.rounds, 7); assert.equal(g.claimJustified, true, '被拦下后验证了再宣称 ⇒ 宣称成立（判分口径不变，门禁改变的是行为）')
-    const r = await runOne({ o: { ...o, maxRounds: 7 }, task, variant: 'raw', sample: 0, chat: chatGate, I, cred: null }); assert.equal(r.gates, undefined); assert.equal(r.rounds, 5, 'raw 臂第 5 轮宣称就收'); assert.equal(r.verifiedAfterFix, false); assert.equal(r.claimJustified, false, '同一个脚本在 raw 臂下是未经验证的宣称')
-    // 5. rl-native + 原生协议：系统提示 = RL 句、tools = 官方两工具；历史 assistant 带 tool_calls、结果是 role:tool 且 id 成对；str_replace 计入 edits 并能修好；bash 非零退出带 [exit code]
-    const seenN = []
-    const chatN = async (b) => { seenN.push(b); const round = b.messages.filter((m) => m.role === 'assistant').length + 1
-      if (round === 1) return mk('view。', [{ id: 'id1', type: 'function', function: { name: 'str_replace_editor', arguments: JSON.stringify({ command: 'view', path: '/home/u/work/repo/test/birth.selftest.mjs' }) } }])
-      if (round === 2) return mk('fix。', [{ id: 'id2', type: 'function', function: { name: 'str_replace_editor', arguments: JSON.stringify({ command: 'str_replace', path: '/home/u/work/repo/test/birth.selftest.mjs', old_str: '{ home: process.env.CFB_REAL_DSH_HOME }', new_str: '{}' }) } }, { id: 'id3', type: 'function', function: { name: 'bash', arguments: JSON.stringify({ command: 'npm test', description: 'Run the test suite' }) } }])
-      return mk('Fixed.', null) }
-    const n = await runOne({ o: { ...o, aci: 'rl-native', toolProtocol: 'native' }, task, variant: 'raw', sample: 0, chat: chatN, I, cred: null }); assert.equal(n.error, undefined, n.error)
-    assert.equal(seenN[0].messages[0].content, 'You are a helpful software engineer assistant.'); assert.deepEqual(seenN[0].tools.map((t) => t.function.name), ['bash', 'str_replace_editor'])
-    const h = seenN[2].messages; assert.equal(h[2].role, 'assistant'); assert.equal(h[2].tool_calls[0].id, 'id1'); assert.equal(h[3].role, 'tool'); assert.equal(h[3].tool_call_id, 'id1'); assert.match(h[3].content, /with line numbers/); assert.equal(h[5].tool_call_id, 'id2'); assert.equal(h[6].tool_call_id, 'id3'); assert.match(h[6].content, /PASS test\/birth/)
-    assert.equal(n.edits.length, 1); assert.equal(n.edits[0].ok, true); assert.equal(n.fixed, true); assert.equal(n.fixedAtRound, 2); assert.equal(n.verifiedAfterFix, true); assert.equal(n.aci, 'rl-native'); assert.equal(n.toolProtocol, 'native'); assert.equal(n.claimJustified, true)
-    assert.deepEqual(n.proxySteps.map((s) => s.next), [1, 1, 0], 'proxy 旗标认 str_replace_editor 的编辑'); assert.equal(n.claim, 'fixed', '英文宣称也认（rl-native 面下模型常用英文收尾）')
-    await assert.rejects(runOne({ o: { ...o, aci: 'rl-native' }, task, variant: 'policy:base', sample: 0, chat: chatN, I, cred: null }), /暂只支持/)
-    // 5b. 形态预检：native / drop 的历史形态各发一次 max_tokens:1；通道拒 role:tool ⇒ shape ✗ ⇒ 预检不过、一条轨迹都不开
-    const pfChat = (rejectTool) => async (b) => { if (rejectTool && b.messages.some((m) => m.role === 'tool')) throw new Error('HTTP 400'); return { message: { content: '2', reasoning_content: '想' }, usage: { prompt_tokens: 20 + b.messages.length, completion_tokens_details: { reasoning_tokens: 1 } }, fp: 'fp_dspure_app_v1', finish: 'stop', model: 'm' } }
-    const pfOk = await tr.preflightUpstream({ chat: pfChat(false), o: { model: 'm', aci: 'rl-native', toolProtocol: 'native', variants: ['raw', 'drop'], textTools: false } }); assert.equal(pfOk.ok, true); assert.deepEqual(Object.keys(pfOk.shape), ['native', 'drop']); assert.ok(pfOk.shape.native.ok && pfOk.shape.drop.ok)
-    const pfBad = await tr.preflightUpstream({ chat: pfChat(true), o: { model: 'm', aci: 'cfb', toolProtocol: 'native', variants: ['raw'], textTools: false } }); assert.equal(pfBad.ok, false); assert.ok(pfBad.failed.includes('shape')); assert.equal(pfBad.shape.native.ok, false); assert.equal(pfBad.shape.drop, undefined)
-    const pfPlain = await tr.preflightUpstream({ chat: pfChat(true), o: { model: 'm', aci: 'cfb', toolProtocol: 'text', variants: ['raw', 'gate'], textTools: false } }); assert.equal(pfPlain.shape, undefined, '旧形态不做形态预检（零额外请求）')
-    // 6. 计划核对：plan 带 aci/toolProtocol 时运行参数必须一致；buildTrajPlan 把 drop 当第 2 轮起分歧计费、命令行带 --aci；设计摘要随面变化
-    const plan = cyc.buildTrajPlan({ n: 1, arms: ['raw', 'drop'], scenarios: ['eacces-config'], samples: 1, maxRounds: 5, aci: 'rl-native', toolProtocol: 'native' })
-    assert.equal(plan.aci, 'rl-native'); assert.equal(plan.toolProtocol, 'native'); assert.match(plan.command, /--aci rl-native --tool-protocol native/); assert.equal(plan.cost.expectedMains, 5 + 4, 'drop 第 2 轮起自己发')
-    const base = { variants: ['raw', 'drop'], samples: 1, maxRounds: 5, fork: true, only: ['eacces-config'], storeText: true, aci: 'rl-native', toolProtocol: 'native' }
-    assert.equal(checkTrajPlan(plan, base).ok, true); assert.throws(() => checkTrajPlan(plan, { ...base, aci: 'cfb' }), /aci plan=rl-native run=cfb/); assert.throws(() => checkTrajPlan(plan, { ...base, toolProtocol: 'text' }), /toolProtocol/)
-    const plainPlan = cyc.buildTrajPlan({ n: 1, arms: ['raw', 'gate'], scenarios: ['eacces-config'], samples: 1, maxRounds: 5 }); assert.equal(plainPlan.aci, undefined); assert.ok(!/--aci/.test(plainPlan.command)); assert.equal(checkTrajPlan(plainPlan, { ...base, variants: ['raw', 'gate'], aci: 'cfb', toolProtocol: 'text' }).ok, true)
-    assert.notEqual(cyc.buildTrajPlan({ n: 1, arms: ['raw', 'drop'], scenarios: ['eacces-config'], samples: 1, maxRounds: 5, aci: 'rl-native' }).digest, cyc.buildTrajPlan({ n: 1, arms: ['raw', 'drop'], scenarios: ['eacces-config'], samples: 1, maxRounds: 5 }).digest)
+  await test('A36 双轨判断层（Code × LLM Semantic Cross-Validation）：双向分歧（抓评委虚高 + 抓规则盲区）、轨迹分歧轮语义归因与 review --judge-prompts 集成', async () => {
+    const JL = await import('../tools/helpers/judge-layer.mjs')
+    // 1. 双向分歧：评委虚高（llm-inflation） vs 规则盲区（rule-blindspot）
+    const inflation = JL.ruleLlmDisagreement({ formClosed: 1, invention: 0.3 }, { formClosed: 1, evidenceSufficiency: 0.9 })
+    assert.ok(inflation.some((d) => d.kind === 'llm-inflation' && d.dim === 'invention×evidence'))
+    const blindspot = JL.ruleLlmDisagreement({ formClosed: 1, invention: 0 }, { formClosed: 1, evidenceSufficiency: 0.25, stateCalibration: 0.3, actionResolve: 2 })
+    assert.equal(blindspot.filter((d) => d.kind === 'rule-blindspot').length, 3, '字面形态合规但语义缺陷 ⇒ 3 个维度触发规则盲区升级')
+    // 2. 轨迹分歧轮语义归因提示词与解析器
+    const prompt = JL.trajDivergenceJudgePrompt({
+      task: 'eacces-config', round: 2,
+      rawReasoning: '先看 test/birth.selftest.mjs 里的 CFB_REAL_DSH_HOME，排除 src/trace.js。',
+      compressedDraft: '修改 src/trace.js 捕获 EACCES。',
+      rawNextAction: 'edit_file(test/birth.selftest.mjs)',
+      compressedNextAction: 'edit_file(src/trace.js)',
+      outcome: { raw: { solved: true, roundsToFix: 2 }, 'policy:base': { solved: false, roundsToFix: null } },
+    })
+    assert.match(prompt, /第 2 轮首次做出不同动作/)
+    assert.match(prompt, /dropped-constraint \| over-committed \| stripped-noise \| equivalent-sampling/)
+    const parsed = JL.parseTrajDivergenceJudge(JSON.stringify({
+      evidenceSufficiency: 0.2, actionResolve: 2, foresight: 0, stateCalibration: 0.5, infoDensity: 0.4, redundancy: 0.1,
+      causalAttribution: 'dropped-constraint', keyDiff: '漏掉对 src/trace.js 的排除结论', confidence: 0.9, note: '稿漏了排除项',
+    }))
+    assert.equal(parsed.ok, true)
+    assert.equal(parsed.causalAttribution, 'dropped-constraint')
+    assert.match(parsed.keyDiff, /排除/)
+    // 3. reviewRows 自动为分歧组生成 divergencePrompts
+    const rv = cyc.reviewRows([
+      { task: 'eacces-config', sample: 0, variant: 'raw', rounds: 2, fixed: true, fixedAtRound: 2, transcript: [{ round: 1, reasoning: 'raw r1', calls: [{ name: 'read_file', args: '{"path":"a"}' }] }, { round: 2, calls: [{ name: 'edit_file', args: '{"path":"test/birth.selftest.mjs"}' }] }] },
+      { task: 'eacces-config', sample: 0, variant: 'policy:base', policy: 'base', rounds: 2, fixed: false, shadow: { divergedAt: 2 }, transcript: [{ round: 1, stored: 'comp r1', storedChars: 7, reasoningChars: 50, calls: [{ name: 'read_file', args: '{"path":"a"}' }] }, { round: 2, calls: [{ name: 'edit_file', args: '{"path":"src/trace.js"}' }] }] },
+    ])
+    assert.equal(rv.length, 1)
+    assert.equal(rv[0].diverge, 2)
+    assert.ok(rv[0].divergencePrompts['policy:base'].includes('第 2 轮首次做出不同动作'))
+  })
+  await test('A37 五大架构级优化闭环验证：冻结 ctx 策略生效与程序部件控制 + 死路复活检测 + 基准跨计划 CAS 缓存 + 胜出稿金标入库 + 飞轮回填/预筛/智能导航', async () => {
+    const I = await import('../index.js')
+    const H = await import('../tools/helpers/hand-draft.mjs')
+    const TM = await import('../tools/helpers/three-mode.mjs')
+    const JL = await import('../tools/helpers/judge-layer.mjs')
+    const { benchRun, benchCacheKey } = await import('../tools/bench-run.mjs')
+    const { makePolicy } = await import('../tools/helpers/generation.mjs')
+    // 1. Pillar 1：冻结 ctx 上的 continuationPath=bounded 改写 + 标识符出处保留 + programParts 裁剪 + 新策略配置键
+    const g0 = TM.loadGold(path.join(ROOT, 'transfer', 'gold'))[0]
+    const boundedCtx = I.applyCtxContinuationPolicy(g0.ctx, 'bounded')
+    assert.ok(boundedCtx.length < g0.ctx.length, 'bounded ctx 比 full ctx 更短')
+    assert.ok(boundedCtx.includes('第 1–2 轮已跑 4 条') && boundedCtx.includes('曾涉') && boundedCtx.includes('src/birth.js'), 'bounded ctx 压缩旧轮次同时保留曾涉标识符供 I2 核真')
+    const spAll = I.spliceProgramParts('正文。', g0.ctx, { programParts: 'all' })
+    const spCont = I.spliceProgramParts('正文。', g0.ctx, { programParts: 'continuation-only' })
+    const spNone = I.spliceProgramParts('正文。', g0.ctx, { programParts: 'none' })
+    assert.ok(spAll.length >= spCont.length && spCont.length > spNone.length && spNone === '正文。')
+    const polCfg = makePolicy({ parent: { id: 'base', patches: [] }, patches: [], config: { continuationPath: 'bounded', programParts: 'continuation-only', compressV4DirectMaxChars: 1400, compressV4DirectBind: false } })
+    assert.equal(polCfg.config.programParts, 'continuation-only')
+    assert.equal(polCfg.config.compressV4DirectMaxChars, 1400)
+    // 2. Pillar 3：draftDistance 死路复活检测（deadEndResurrected）+ Mode 2 评委提示词/解析器
+    const goldDraft = '已排除：chown 权限路线（需要 root）。改法只落一个：改 src/trace.js，old_text 是 `process.env.HOME` 改成 new_text 是 `opts.home`。所以下一步工具调用是 read_file src/trace.js。'
+    const resurrectedDraft = '已排除：chown 权限路线（需要 root）。改法只落一个：先走 chown 权限路线改目录，old_text 是 `process.env.HOME` 改成 new_text 是 `opts.home`。所以下一步工具调用是 read_file src/trace.js。'
+    const ddRes = H.draftDistance(resurrectedDraft, goldDraft, { raw: goldDraft, ctx: '' })
+    assert.equal(ddRes.deadEndResurrected, true, '死路进入决定段 ⇒ deadEndResurrected=true')
+    assert.equal(ddRes.decision, 0, '死路复活 ⇒ decision=0')
+    assert.equal(ddRes.verdict, 'resurrected-dead-end')
+    const bp = JL.benchJudgePrompt({ goldId: 'g1', family: 'eacces-config', rawReasoning: 'raw', ctx: 'ctx', goldDraft, candidateDraft: resurrectedDraft, ruleDistance: ddRes })
+    assert.match(bp, /resurrected-dead-end/)
+    const bpParsed = JL.parseBenchJudge(JSON.stringify({ evidenceSufficiency: 0.2, actionResolve: 2, foresight: 0.2, stateCalibration: 0.4, infoDensity: 0.5, redundancy: 0.2, semanticVerdict: 'resurrected-dead-end', betterThanRule: false, keyDiff: '把已排除的 chown 当成决定方向', confidence: 0.95, note: '死路复活' }))
+    assert.equal(bpParsed.ok, true)
+    assert.equal(bpParsed.semanticVerdict, 'resurrected-dead-end')
+    // 3. Pillar 2：胜出压缩稿金标提取（fromWinners）+ 轨迹飞轮偏好对提取
+    const rawLong = ('我们需要先确认 test/birth.selftest.mjs 里 home 的来源。看起来 makeTraceWriter 拿的是 process.env.CFB_REAL_DSH_HOME，所以测试写到真实目录 /home/u/.dsh。不是权限问题：chown 需要 root，排除。下一步 read_file test/birth.selftest.mjs。').repeat(24)
+    const winDraft = '假设坐实的方向：makeTraceWriter 拿的是 process.env.CFB_REAL_DSH_HOME，测试写到真实目录 /home/u/.dsh。已排除：权限路线（chown 需要 root）。所以下一步工具调用是 read_file test/birth.selftest.mjs。如果看到 CFB_REAL_DSH_HOME，那么假设坐实；如果不是，那么假设不成立。'
+    const trajRows = [
+      { task: 'eacces-config', sample: 0, variant: 'raw', rounds: 5, fixed: false, fixedAtRound: null, verifiedAfterFix: false, transcript: [{ round: 1, reasoning: rawLong, stored: rawLong, calls: [{ name: 'read_file', args: '{"path":"test/birth.selftest.mjs"}' }] }] },
+      { task: 'eacces-config', sample: 0, variant: 'policy:base', policy: 'base', rounds: 3, fixed: true, fixedAtRound: 2, verifiedAfterFix: true, compile: [{ round: 1, ok: true, gate: { ok: true } }], transcript: [{ round: 1, reasoning: rawLong, stored: winDraft, ctx: '【当前任务】x', calls: [{ name: 'read_file', args: '{"path":"test/birth.selftest.mjs"}' }] }] },
+    ]
+    const winGold = TM.goldItemsFromTraj({ rows: trajRows, planId: 't99', fromWinners: true })
+    assert.equal(winGold.length, 1, '胜出压缩稿（过 G2 闸且 L2 击败 raw）可入库为金标')
+    assert.equal(winGold[0].source, 'winner-traj')
+    const fwTraj = TM.flywheelPairsFromTraj(trajRows, { source: 't99' })
+    assert.equal(fwTraj.length, 1, '分叉轨迹胜负对自动提取为飞轮偏好对')
+    // 4. Pillar 4：bench-run 跨计划内容寻址缓存（第二个计划复用 base 结果，0 重复调用）
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-p4-'))
+    try {
+      const goldDir = path.join(tmp, 'gold'); TM.saveGold(goldDir, winGold)
+      const polDir = path.join(tmp, 'policies'); fs.mkdirSync(polDir, { recursive: true })
+      fs.writeFileSync(path.join(polDir, polCfg.id + '.json'), JSON.stringify(polCfg))
+      const b1Dir = path.join(tmp, 'bench', 'b1'), b2Dir = path.join(tmp, 'bench', 'b2')
+      fs.mkdirSync(b1Dir, { recursive: true }); fs.mkdirSync(b2Dir, { recursive: true })
+      const pricing = { compressUsd: 0.0075, compressCapUsd: 0.0114 }
+      const p1 = TM.buildBenchPlan({ n: 1, policies: ['base'], gold: TM.loadGold(goldDir), split: 'all', pricing })
+      const p2 = TM.buildBenchPlan({ n: 2, policies: ['base', polCfg.id], gold: TM.loadGold(goldDir), split: 'all', pricing })
+      fs.writeFileSync(path.join(b1Dir, 'plan.json'), JSON.stringify(p1))
+      fs.writeFileSync(path.join(b2Dir, 'plan.json'), JSON.stringify(p2))
+      let compileCalls = 0
+      const fakeCompile = async () => { compileCalls++; return { text: winDraft, meta: { promptVersion: 'test', v4: { ok: true } }, gate: { ok: true, why: 'condensed', netSaved: 500, netSavedTokensEst: 150 }, ms: 1 } }
+      await benchRun({ plan: path.join(b1Dir, 'plan.json'), goldDir, policyDir: polDir, out: b1Dir, model: 'm' }, { compile: fakeCompile })
+      assert.equal(compileCalls, 1, 'b1 首次运行调用 1 次压缩器')
+      const res2 = await benchRun({ plan: path.join(b2Dir, 'plan.json'), goldDir, policyDir: polDir, out: b2Dir, model: 'm' }, { compile: fakeCompile })
+      assert.equal(compileCalls, 2, 'b2 中 base 命中跨计划缓存（只跑 p-cand 1 次，总计 2 次而非 3 次）')
+      assert.equal(res2.receipt.cachedHits, 1)
+      assert.equal(res2.receipt.callsThisRun, 1)
+      // 5. Pillar 5：prescreen / flywheel / next CLI 端到端
+      const ps = cyc.runCli(['prescreen'], { dir: tmp })
+      assert.equal(ps.status, 0, ps.stdout + ps.stderr)
+      assert.match(ps.stdout, /零 API 策略预筛榜/)
+      const nx = cyc.runCli(['next'], { dir: tmp })
+      assert.equal(nx.status, 0, nx.stdout + nx.stderr)
+      assert.match(nx.stdout, /【智能导航 next】阶段：/)
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  await test('A38 二阶极限突破四件套：动态水位/打转感知 λ 控制器（三工作区）+ compact 极简工程状态部件（零真值损耗降噪）+ long-horizon 多跳长程迷宫（active 验证）+ SEER 同真值极简偏好对与帕累托极限策略合成', async () => {
+    const I = await import('../index.js')
+    const { truthDimensions, truthComposite } = await import('../tools/helpers/truth-dims.mjs')
+    // 1. C1：computeAdaptiveBirthControl 三工作区验证（fresh-early / cruise / high-spin-or-long-horizon）
+    const cleanR1 = Array.from({ length: 12 }, (_, i) => `检查 \`src/trace_${i}.js\` 里的 \`makeTraceWriter_${i}\` 与 \`process.env.DSH_HOME_${i}\`，核对 \`trace_${i}.log\` 的路径拼接。`).join('')
+    const ctrlEarly = I.computeAdaptiveBirthControl(cleanR1, '【任务】修 EACCES', { usedTokens: 2000, contextWindow: 64000 }, { birthMinChars: 3100 })
+    assert.equal(ctrlEarly.zone, 'fresh-early', '第 1 轮低水位无打转 ⇒ fresh-early 抬高门槛保护原生思考')
+    assert.ok(ctrlEarly.effectiveFloor > 3100, 'fresh-early 门槛高于基准 3100')
+
+    const spinRaw = '等等，不对，换个思路，还是先重新看一遍，到底是不是这里？再看一遍或者说先别改。'.repeat(30)
+    const longCtx = '【台账】\n- 第 1 轮：read_file src/a.js\n- 第 2 轮：read_file src/b.js\n- 第 3 轮：grep -n "x" src/\n- 第 4 轮：read_file src/c.js'
+    const ctrlSpin = I.computeAdaptiveBirthControl(spinRaw, longCtx, { usedTokens: 40000, contextWindow: 64000 }, { birthMinChars: 3100 })
+    assert.equal(ctrlSpin.zone, 'high-spin-or-long-horizon', '多轮只读不改 + 高打转 ⇒ high-spin-or-long-horizon')
+    assert.ok(ctrlSpin.effectiveFloor <= 2100 && ctrlSpin.effectiveFloor >= 1600, '长程/打转工作区主动下调触发地板折叠死路')
+    assert.ok(ctrlSpin.effectiveMaxChars < ctrlSpin.baseMax, '长程/打转工作区收紧输出预算')
+
+    // 2. C2：programParts='compact' 在全池任务上零真值损耗且显著缩短程序部件，且过 handDraftGate / draftDistance 满分
+    const H = await import('../tools/helpers/hand-draft.mjs')
+    const pool = cyc.loadPool()
+    for (const t of pool.tasks) {
+      const effCtx = I.applyCtxContinuationPolicy(t.ctx || '', 'bounded')
+      const vAll = I.compileV4Direct(t.side, t.chain.a2.raw, I.normalizeConfig({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: effCtx, programParts: 'all' }))
+      const vComp = I.compileV4Direct(t.side, t.chain.a2.raw, I.normalizeConfig({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: effCtx, programParts: 'compact' }))
+      assert.ok(vAll.ok && vComp.ok)
+      assert.ok(vComp.text.length < vAll.text.length, `${t.id}: compact 比 all 更短 (${vComp.text.length} < ${vAll.text.length})`)
+      const sAll = truthComposite(truthDimensions(vAll.text, t.chain, t.spec)).score
+      const sComp = truthComposite(truthDimensions(vComp.text, t.chain, t.spec)).score
+      assert.ok(sComp >= sAll, `${t.id}: compact 保持或提升真值复合分 (${sComp} >= ${sAll})`)
+      const g2 = H.handDraftGate(t.chain.a2.raw, vComp.text, effCtx)
+      assert.equal(g2.ok, true, `${t.id}: handDraftGate 零误伤 (${JSON.stringify(g2.violations)})`)
+      const dd = H.draftDistance(vComp.text, t.side, { raw: t.chain.a2.raw, ctx: effCtx })
+      assert.equal(dd.score, 1, `${t.id}: draftDistance 满分召回 (${dd.verdict}, ${JSON.stringify(dd.key)})`)
+      assert.equal(dd.verdict, 'close')
+    }
+
+    // 3. C3：long-horizon 多跳长程排障迷宫与惰性检查 active
+    for (const baseTask of TRAJ_TASKS) {
+      const lh = perturbTask(baseTask, 'long-horizon')
+      assert.equal(lh.perturb, 'long-horizon')
+      assert.ok(lh.files['docs/incident-runbook.md'] && lh.files['logs/stale-diagnostic.log'], `${baseTask.id}: 含排障手册与陈旧快照日志`)
+    }
+    const pc = cyc.runCli(['perturb-check', '--kind', 'long-horizon'])
+    assert.equal(pc.status, 0, pc.stdout + pc.stderr)
+    assert.match(pc.stdout, /\*\*active\*\*/)
+
+    // 4. C4：synthesize-policy 帕累托极限策略合成与 bon-concise 飞轮对
+    const syn = cyc.runCli(['synthesize-policy'])
+    assert.equal(syn.status, 0, syn.stdout + syn.stderr)
+    assert.match(syn.stdout, /已合成极限复合策略/)
+    assert.match(syn.stdout, /逆向增补=0/)
+    const fw = cyc.loadFlywheel()
+    assert.ok(fw.some((p) => String(p.source || '').startsWith('bon-concise:')), '飞轮包含 SEER 式 bon-concise 同真值极简偏好对')
+  })
+
+  await test('A39 三大终极天花板突破：台账低门槛自然语言落定抽取与去重 + modular 动态提示词裁剪 + truthEfficiency 高分段破平局与 8/8 全轮覆盖 + 飞轮 In-Context DPO 对比示范合成', async () => {
+    const I = await import('../index.js')
+    const { truthEfficiency } = await import('../tools/helpers/truth-dims.mjs')
+    // 1. 台账自然语言落定抽取（低于门槛未压缩的原文轮次）+ bounded 延续段对已引落定代码行的去重
+    const rawSubFloorMsgs = [
+      { role: 'user', content: '修 fastModel 配置失效问题' },
+      {
+        role: 'assistant',
+        reasoning_content: '先读了 read_file src/config.js，看到 `const model = "gpt-4o-mini";`。所以需要把 `const model = "gpt-4o-mini";` 改成 `const model = cfg.fastModel || "gpt-4o-mini";`。',
+        content: '[tool_call read_file] {"path":"src/config.js"}',
+      },
+      { role: 'user', content: '[tool: read_file 结果]\nconst model = "gpt-4o-mini";' },
+    ]
+    const ledger = I.buildLedger(rawSubFloorMsgs)
+    assert.equal(ledger.decided.length, 1, '未压缩的自然语言短块也能抽出 L.decided')
+    assert.match(ledger.decided[0].text, /改法只落一个：.*把 `const model = "gpt-4o-mini";` 改成/)
+    const contBounded = I.continuationText(rawSubFloorMsgs, { path: 'bounded' })
+    assert.ok(!contBounded.includes('仍在依赖的事实：'), 'bounded 延续段不再重复抄写已在「上一轮已定」里逐字出现的事实行')
+
+    // 2. modular 提示词裁剪：多轮态下剥离单步样例与冲突尾重申，净省 ≥700 字符
+    const pool = cyc.loadPool()
+    const t0 = pool.tasks[0]
+    const pFull = I.buildCompressPromptV4Direct(t0.chain.a2.raw, t0.ctx, null, { promptMode: 'full' })
+    const pMod = I.buildCompressPromptV4Direct(t0.chain.a2.raw, t0.ctx, null, { promptMode: 'modular' })
+    assert.ok(pFull.length - pMod.length >= 700, `modular 提示词在多轮态下净省 ${pFull.length - pMod.length} 字 (>=700)`)
+    assert.ok(pMod.includes('【第 2 轮样例】') && !pMod.includes('【风格样例】'), 'modular 多轮态只保留第 2 轮样例')
+
+    // 3. truthEfficiency 高分段破平局 + R1/R2 全轮（8/8）过闸覆盖
+    for (const t of pool.tasks) {
+      assert.ok(t.r1Side && t.r1Ctx, `${t.id}: 冻结池同时携带 R1 side 与 R1 ctx`)
+      const effCtx = I.applyCtxContinuationPolicy(t.ctx || '', 'bounded')
+      const vAll = I.compileV4Direct(t.side, t.chain.a2.raw, I.normalizeConfig({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: effCtx, programParts: 'all' }))
+      const vComp = I.compileV4Direct(t.side, t.chain.a2.raw, I.normalizeConfig({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: effCtx, programParts: 'compact' }))
+      const effAll = truthEfficiency(vAll.text, t.chain, t.spec, t.chain.a2.raw.length)
+      const effComp = truthEfficiency(vComp.text, t.chain, t.spec, t.chain.a2.raw.length)
+      assert.ok(effComp.score > effAll.score, `${t.id}: truthEfficiency 严格区分精炼稿与冗长稿 (${effComp.score} > ${effAll.score})`)
+    }
+
+    // 4. 飞轮 In-Context DPO 正反对比示范蒸馏与零泄漏策略合成
+    const synDpo = cyc.runCli(['synthesize-policy', '--parent', 'p-5d92393440', '--contrastive'])
+    assert.equal(synDpo.status, 0, synDpo.stdout + synDpo.stderr)
+    assert.match(synDpo.stdout, /池题过闸 3\/3 \(8\/8\)/)
+    assert.match(synDpo.stdout, /池题均省 437 tok/)
+    assert.match(synDpo.stdout, /真值分=0\.762/)
+  })
+
+  await test('A40 官方级 AI 基准评测融合与个人极简省钱模式（SWE-bench Pro 三重门 + TAU-bench pass^k + LMArena Elo + AA 性价比前沿 + --lite 微基准）', async () => {
+    const { passAtK, passHatK, arenaElo } = await import('../tools/helpers/ruler.mjs')
+    assert.equal(passAtK(4, 2, 1), 0.5)
+    assert.equal(passAtK(4, 2, 2), 0.833)
+    assert.equal(passHatK(4, 2, 2), 0.167)
+    assert.equal(passHatK(3, 3, 2), 1)
+    const elos = arenaElo([
+      { armA: 'auto', armB: 'raw', outcome: 'win' },
+      { armA: 'auto', armB: 'raw', outcome: 'win' },
+      { armA: 'auto', armB: 'raw', outcome: 'tie' },
+    ], { anchor: 'raw' })
+    assert.equal(elos.raw.elo, 1000)
+    assert.ok(elos.auto.elo > 1050, `胜多负少 ⇒ Elo > 1050 (got ${elos.auto.elo})`)
+
+    const bm = cyc.runCli(['benchmark'])
+    assert.equal(bm.status, 0, bm.stdout + bm.stderr)
+    assert.match(bm.stdout, /CFB 官方级 AI 基准评测记分卡/)
+    assert.match(bm.stdout, /Arena Elo/)
+    assert.match(bm.stdout, /pass\^2\(可靠性\)/)
+    assert.match(bm.stdout, /三、个人开发者「极简省钱」三档官方测试菜单/)
+
+    const bLite = cyc.runCli(['plan-bench', '--lite', '--dry'])
+    assert.equal(bLite.status, 0, bLite.stdout + bLite.stderr)
+    assert.match(bLite.stdout, /策略 base vs p-/)
+
+    const tLite = cyc.runCli(['plan-traj', '--lite', '--dry'])
+    assert.equal(tLite.status, 0, tLite.stdout + tLite.stderr)
+    assert.match(tLite.stdout, /臂 raw vs policy:p-/)
+    assert.match(tLite.stdout, /≤4 轮/)
   })
 } finally {
   console.log(`\n=== closed-loop-v4 selftest: ${pass} pass / ${fail} fail ===`)

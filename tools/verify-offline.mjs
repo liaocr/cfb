@@ -30,7 +30,7 @@ function options(argv) {
     else if (argv[i] === '--suites') {
       result.suites = String(argv[++i] || '').split(',')
       if (result.suites.some((s) => !/^[a-z0-9-]+$/.test(s))) throw new Error('offline-suite-arguments')
-    } else if (['--demo', '--replay', '--lab', '--repair-development', '--repair-iterations', '--repair-regression', '--ready-simulate', '--training-demo', '--training-iteration-demo'].includes(argv[i])) result.mode = argv[i].slice(2)
+    } else if (argv[i] === '--ready-simulate') result.mode = 'ready-simulate'
     else throw new Error('未知参数 ' + argv[i] + '；没有在线模式')
   }
   return result
@@ -43,14 +43,10 @@ function main(argv) {
   const config = options(argv)
   if (config.inside) {
     console.log('离线边界：' + JSON.stringify(assertOfflineNamespace()))
-    if (config.mode === 'training-iteration-demo') execute(['tools/train-ready.mjs', 'iteration-demo'])
-    else if (config.mode === 'training-demo') execute(['tools/train-ready.mjs', 'demo'])
-    else if (config.mode === 'ready-simulate') execute(['tools/effect-ready.mjs', 'simulate'])
-    else if (config.mode !== 'all') execute(['tools/' + { demo: 'evidence-demo.mjs', replay: 'replay-evidence.mjs', lab: 'local-evidence-bench.mjs', 'repair-development': 'repair-development.mjs', 'repair-iterations': 'repair-iterations.mjs', 'repair-regression': 'repair-regression.mjs' }[config.mode]])
+    if (config.mode === 'ready-simulate') execute(['tools/effect-ready.mjs', 'simulate'])
     else {
       execute(['verify.mjs', ...config.suites])
       execute(['tools/audit-noninferiority.mjs'])
-      if (!config.suites.length) { execute(['tools/replay-evidence.mjs']); execute(['tools/evidence-demo.mjs']) }
     }
     return
   }

@@ -80,7 +80,7 @@ const TRAJ_TASKS_V1 = [
     id: 'perf-regression',
     prompt: '从 v11.9 升级到 v11.10 之后，birth 收网的平均等待从 900ms 涨到 2400ms。可用 `analyze-trace`（支持 --compare v11.9 v11.10 --steps birth --fields …，以及 --last N）。请找出原因并修好，修好后说明依据。',
     files: {
-      'src/config.js': "export const DEFAULTS = {\n  mode: 'birth',\n  maxOutputTokens: 4096,\n  compressTargetMin: 250,\n  compressTargetMax: 1800,\n  birthFinishWaitMs: 1500,\n}\n",
+      'src/config.js': "export const DEFAULTS = {\n  mode: 'birth',\n  maxOutputTokens: 4096,\n  compressTargetMin: 250,\n  compressTargetMax: 1800,\n  birthFinishWaitMs: 1500,\n}\n\nexport function compressTargets(cfg = DEFAULTS) {\n  const min = cfg.compressTargetMin ?? DEFAULTS.compressTargetMin\n  const max = cfg.compressTargetMax ?? DEFAULTS.compressTargetMax\n  return { min, max, promptVersion: `compress-v3h:${min}-${max}` }\n}\n",
       'README.md': '# 回滚开关\n\n| 键 | 作用 |\n|---|---|\n| `compressTargetMax` | 只影响 v3 的长度目标（提示词里的目标字数上限） |\n| `maxOutputTokens` | 副模型单次输出上限 |\n',
       'CHANGELOG.md': '## v11.10\n- maxOutputTokens 850 → 4096\n- compressTargetMax 450 → 1800\n',
     },
@@ -92,9 +92,9 @@ const TRAJ_TASKS_V1 = [
       if (/^git diff/.test(c)) return "diff --git a/src/config.js b/src/config.js\n@@ -2,4 +2,4 @@\n-  maxOutputTokens: 850,\n+  maxOutputTokens: 4096,\n-  compressTargetMax: 450,\n+  compressTargetMax: 1800,"
       if (/^git log/.test(c)) return 'v11.10 配置调整：放宽输出上限与长度目标\nv11.9 …'
       if (/^analyze-trace/.test(c)) {
-        if (/--compare/.test(c)) return '            finishReason        outputTokens p50   contentSpanMs p50   ttfbMs p50   outputChars p50   promptVersion\nv11.9       stop 100%           260                280                 610          390               compress-v3h:250-450\nv11.10      stop 100%           1150               1650                640          1720              compress-v3h:250-450'
+        if (/--compare/.test(c)) return '            finishReason        outputTokens p50   contentSpanMs p50   ttfbMs p50   outputChars p50   promptVersion\nv11.9       stop 100%           260                280                 610          390               compress-v3h:250-450\nv11.10      stop 100%           1150               1650                640          1720              compress-v3h:250-1800'
         const fixed = this.fixed(repo)
-        return fixed ? 'contentSpanMs p50: 295\noutputChars p50: 402\nttfbMs p50: 615\npromptVersion: compress-v3h:250-450\nfinishWaitMs p50: 910' : 'contentSpanMs p50: 1650\noutputChars p50: 1720\nttfbMs p50: 640\npromptVersion: compress-v3h:250-450\nfinishWaitMs p50: 2400'
+        return fixed ? 'contentSpanMs p50: 295\noutputChars p50: 402\nttfbMs p50: 615\npromptVersion: compress-v3h:250-450\nfinishWaitMs p50: 910' : 'contentSpanMs p50: 1650\noutputChars p50: 1720\nttfbMs p50: 640\npromptVersion: compress-v3h:250-1800\nfinishWaitMs p50: 2400'
       }
       return null
     },
