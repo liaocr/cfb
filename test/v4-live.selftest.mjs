@@ -105,14 +105,15 @@ function startMock() {
   const mock = await startMock()
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'v4live-'))
   try {
-    await test('§3 端到端（假 DeepSeek）：录制 → 三模式回放；v4 整块超时、v4 增量替换成功；钥匙不落盘', async () => {
+    await test('§3 端到端（假 DeepSeek）：录制 → 三模式回放；v4ops 整块超时、v4inc 增量替换成功；钥匙不落盘', async () => {
       const cfg = JSON.stringify({ birthFinishWaitMs: 500, finishHeadersGraceMs: 0, birthMinChars: 800, birthMinSavedChars: 50, birthTokenGate: false, compressV4SegmentChars: 500, prewarm: false })
-      const r = await run([path.join(ROOT, 'tools/v4-live.mjs'), '--base-url', mock.url, '--out', out, '--only', 'eacces-config', '--cfg', cfg],
+      // v12.8.8：直写成为 v4 缺省，假 DeepSeek 只会回 ops JSON ⇒ 这里显式跑 ops 整块（v4ops）与 ops 增量（v4inc）；直写端到端见 hook-wiring §6
+      const r = await run([path.join(ROOT, 'tools/v4-live.mjs'), '--base-url', mock.url, '--out', out, '--only', 'eacces-config', '--modes', 'v3,v4ops,v4inc', '--cfg', cfg],
         { ...process.env, DEEPSEEK_API_KEY: 'sk-test-SECRET-123' })
       assert.equal(r.status, 0, r.stdout + r.stderr)
       const rep = JSON.parse(fs.readFileSync(path.join(out, 'report.json'), 'utf8'))
       const by = Object.fromEntries(rep.rows.map((x) => [x.mode, x]))
-      assert.equal(by.v4.why, 'distill-timeout', JSON.stringify(by.v4))
+      assert.equal(by.v4ops.why, 'distill-timeout', JSON.stringify(by.v4ops))
       assert.equal(by.v4inc.why, 'condensed', JSON.stringify({ ...by.v4inc, text: undefined }))
       assert.equal(by.v4inc.promptVersion, 'compress-v4-ops9:800:inc500')
       assert.ok(by.v4inc.segments && by.v4inc.segments.n >= 4 && by.v4inc.segments.ok === by.v4inc.segments.n)

@@ -1,0 +1,1331 @@
+{
+  "model": "deepseek-v4.1-flash",
+  "modes": [
+    "v4"
+  ],
+  "cfg": {
+    "compressV4Direct": true,
+    "distillStream": true
+  },
+  "summary": {
+    "v4": {
+      "blocks": 6,
+      "eligible": 5,
+      "condensed": 4,
+      "hitRate": 0.8,
+      "whys": {
+        "condensed": 4,
+        "distill-timeout": 1,
+        "below-floor": 1
+      },
+      "ratioP50": 0.29,
+      "finishHoldMsP50": 6009,
+      "finishHoldMsMax": 7122,
+      "outCharsP50": 1575
+    }
+  },
+  "rows": [
+    {
+      "id": "eacces-config",
+      "mode": "v4",
+      "promptVersion": "compress-v4d4:ctx",
+      "why": "condensed",
+      "rawChars": 10074,
+      "outChars": 1493,
+      "ratio": 0.148,
+      "finishHoldMs": 7122,
+      "blockEndToFinishMs": 678,
+      "distillMs": 7793,
+      "waitedMs": 7122,
+      "distillError": null,
+      "v4": {
+        "outputChars": 1493,
+        "inventedSpans": 0,
+        "newTextSpans": 2,
+        "chars": 1493,
+        "closeLoop": true,
+        "provenance": true,
+        "register": true,
+        "ctxChars": 762,
+        "branches": 2,
+        "fixBranches": 2,
+        "boundBranches": 2,
+        "boundBy": [
+          "had",
+          "had"
+        ],
+        "compileMs": 5.02
+      },
+      "segments": null,
+      "identifierRecall": 5.8,
+      "traceTags": {
+        "birth-econ": 1,
+        "compiler-preparation-cost": 1,
+        "birth-fired": 1,
+        "compiler-transport-started": 1,
+        "birth-archive-settled": 1,
+        "birth-window-probe": 1,
+        "birth-finish-enter": 1,
+        "birth-distill-headers": 1,
+        "compiler-transport-settled": 1,
+        "compiler-v4-compiled": 1,
+        "birth-distill-settled": 1,
+        "birth-finish-headers-grace": 1,
+        "birth-handle-source": 1,
+        "birth-condensed": 1
+      },
+      "segmentErrors": [],
+      "text": "我们需要先确认测试为什么写到真实 DSH_HOME。错误是 `FAIL test/birth.selftest.mjs  Error: EACCES: permission denied, open '/home/u/.dsh/storages/cot-form-b/trace.log'`，而 `ls -la /home/u/.dsh/storages/cot-form-b/` 显示 `drwxr-xr-x 2 root root`、`-rw-r--r-- 1 root root 88213`，当前 `uid=1000(u) gid=1000(u)`，所以真实 home 下这个 trace.log 属 root，u 写不进去。verify.mjs 节选逐字是 `  const env = { ...process.env, DSH_HOME: tmp }`，本意是每个套件在独立临时 DSH_HOME 里跑；但 test/birth.selftest.mjs 第 1-12 行逐字是 `  const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })`，它读的是 CFB_REAL_DSH_HOME 而不是 DSH_HOME。看起来隔离变量没对齐，测试绕过了临时 DSH_HOME，落回真实 `/home/u/.dsh`。所以下一步工具调用是 bash `grep -R \"CFB_REAL_DSH_HOME\" -n verify.mjs test src; echo \"CFB_REAL_DSH_HOME=${CFB_REAL_DSH_HOME:-<unset>}\"`。如果输出里 verify.mjs 完全没有 CFB_REAL_DSH_HOME、且环境里它是空或 `/home/u/.dsh`，那么看到这一点就够了，直接 edit_file verify.mjs，old_text 是 `  const env = { ...process.env, DSH_HOME: tmp }`（read_file 里原样的一整行，不带行首缩进也能匹配），new_text 是 `  const env = { ...process.env, DSH_HOME: tmp, CFB_REAL_DSH_HOME: tmp }`，让 birth.selftest 的 `makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })` 读到临时 home；看到结果就必须直接动手 edit_file，严禁再用 read_file 或 sed 查看上下文或确认。如果输出显示 verify.mjs 已经设置了 `CFB_REAL_DSH_HOME: tmp`，那么问题在别处，此时不要改 verify.mjs，改 test/birth.selftest.mjs 里那一行 `  const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })`（同样是文件里原样的一整行，可直接当 old_text），new_text 是 `  const w = makeTraceWriter({ home: process.env.DSH_HOME })`，让它跟随临时 DSH_HOME；看到结果就必须直接 edit_file，不要回头读同一文件。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+      "capture": [],
+      "timeline": [
+        {
+          "ms": 21415,
+          "tag": "birth-econ",
+          "index": 0,
+          "B": 10074,
+          "R": 60,
+          "rSource": "fallback",
+          "remainingTokens": null,
+          "d": 0.02,
+          "T": 460,
+          "rhoMax": 0.1835,
+          "bAbs": 390,
+          "bMin": 2452,
+          "netAtTarget": 8646,
+          "verdict": "ok",
+          "rawTokensEst": 4014,
+          "taskId": "9395b75a-dd43-4515-96bb-beda0b41004e"
+        },
+        {
+          "ms": 21416,
+          "tag": "compiler-preparation-cost"
+        },
+        {
+          "ms": 21416,
+          "tag": "birth-fired",
+          "index": 0,
+          "rawChars": 10074,
+          "handle": "art://CgYaYNzQPKqaEDVYcOnj5O",
+          "taskId": "9395b75a-dd43-4515-96bb-beda0b41004e"
+        },
+        {
+          "ms": 21420,
+          "tag": "compiler-transport-started"
+        },
+        {
+          "ms": 21453,
+          "tag": "birth-archive-settled",
+          "index": 0,
+          "ok": true,
+          "handle": "art://live-eacces-config",
+          "rawSha256": "e4886c9c6d7c7fe1014c9b185c08a4d2ba17d92712327228c773009534c3094f",
+          "taskId": "9395b75a-dd43-4515-96bb-beda0b41004e"
+        },
+        {
+          "ms": 22090,
+          "tag": "birth-window-probe",
+          "reasoningBlocks": 1,
+          "reasoningEndMs": [
+            21412
+          ],
+          "firstOtherStartMs": 21452,
+          "firstOtherType": "text",
+          "finishMs": 22090,
+          "otherStartToLastEndMs": -40,
+          "lastEndToFinishMs": 678
+        },
+        {
+          "ms": 22090,
+          "tag": "birth-finish-enter",
+          "index": 0,
+          "gapMs": 674,
+          "taskId": "9395b75a-dd43-4515-96bb-beda0b41004e"
+        },
+        {
+          "ms": 26919,
+          "tag": "birth-distill-headers",
+          "index": 0,
+          "ttfbMs": 5498,
+          "sinceFiredMs": 5503,
+          "taskId": "9395b75a-dd43-4515-96bb-beda0b41004e"
+        },
+        {
+          "ms": 29202,
+          "tag": "compiler-transport-settled"
+        },
+        {
+          "ms": 29209,
+          "tag": "compiler-v4-compiled"
+        },
+        {
+          "ms": 7793,
+          "tag": "birth-distill-settled",
+          "index": 0,
+          "ok": true,
+          "chars": 1493,
+          "reason": null,
+          "model": "deepseek-v4.1-flash",
+          "endpoint": "legacy|explicit",
+          "style": "chat",
+          "thinkingOff": true,
+          "inputChars": 10074,
+          "promptVersion": "compress-v4d4:ctx",
+          "inputAmplificationRatio": 1.44,
+          "compressRatio": 1.44,
+          "promptChars": 14530,
+          "maxOutputTokens": 1600,
+          "promptWideChars": 5763,
+          "promptOtherChars": 8767,
+          "outputWideChars": 312,
+          "outputOtherChars": 1181,
+          "connectMs": 313,
+          "ttfbMs": 5498,
+          "totalMs": 7780,
+          "chunks": 381,
+          "reused": false,
+          "status": 200,
+          "bytes": 165973,
+          "cancelled": false,
+          "finish": "stop",
+          "reasoningChars": 0,
+          "stream": true,
+          "providerReportedUsage": {
+            "completion_tokens": 541,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_cache_hit_tokens": 0,
+            "prompt_cache_miss_tokens": 6090,
+            "prompt_tokens": 6090,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 6631
+          },
+          "requestId": "87923a82-411c-42a0-b24d-6b23d1bb7a93",
+          "afterContentMs": 1,
+          "eventCount": 615,
+          "badFrame": 0,
+          "outputChars": 1493,
+          "toFirstEventMs": 5500,
+          "toFirstContentMs": 5500,
+          "contentSpanMs": 2279,
+          "toCompleteMs": 7780,
+          "v4": {
+            "outputChars": 1493,
+            "inventedSpans": 0,
+            "newTextSpans": 2,
+            "chars": 1493,
+            "closeLoop": true,
+            "provenance": true,
+            "register": true,
+            "ctxChars": 762,
+            "branches": 2,
+            "fixBranches": 2,
+            "boundBranches": 2,
+            "boundBy": [
+              "had",
+              "had"
+            ],
+            "compileMs": 5.02
+          },
+          "taskId": "9395b75a-dd43-4515-96bb-beda0b41004e"
+        },
+        {
+          "ms": 29209,
+          "tag": "birth-finish-headers-grace",
+          "index": 0,
+          "graceMs": 1500,
+          "waitedMs": 1118,
+          "settled": true,
+          "taskId": "9395b75a-dd43-4515-96bb-beda0b41004e"
+        },
+        {
+          "ms": 29209,
+          "tag": "birth-handle-source",
+          "index": 0,
+          "source": "store-returned",
+          "taskId": "9395b75a-dd43-4515-96bb-beda0b41004e"
+        },
+        {
+          "ms": 29212,
+          "tag": "birth-condensed",
+          "index": 0,
+          "why": "condensed",
+          "rawChars": 10074,
+          "outChars": 1493,
+          "netSaved": 8581,
+          "minSaved": 50,
+          "rawTokensEst": 4014,
+          "outTokensEst": 542,
+          "netSavedTokensEst": 3472,
+          "unit": "estimate-not-tokenizer",
+          "handle": "art://live-eacces-config",
+          "waitedMs": 7122,
+          "fidelity": {
+            "identifierRecall": 5.8,
+            "protectedTokens": 430,
+            "lostTokens": 405,
+            "lostSample": [
+              "src/trace.js",
+              "644/755",
+              "test/src",
+              "`rm -rf /home/u/.dsh/storages/cot-form-b`",
+              "`grep -R \"CFB_REAL_DSH_HOME\" -n . --exclude-dir=node_modules --exclude-dir=.git`",
+              "`const env = { ...process.env, DSH_HOME: tmp }`"
+            ],
+            "unmeasurable": false
+          },
+          "econ": {
+            "B": 10074,
+            "R": 60,
+            "rSource": "fallback",
+            "remainingTokens": null,
+            "d": 0.02,
+            "T": 460,
+            "rhoMax": 0.1835,
+            "bAbs": 390,
+            "bMin": 2452,
+            "netAtTarget": 8646,
+            "verdict": "ok",
+            "rawTokensEst": 4014
+          },
+          "distillMs": 7793,
+          "promptVersion": "compress-v4d4:ctx",
+          "v4": {
+            "outputChars": 1493,
+            "inventedSpans": 0,
+            "newTextSpans": 2,
+            "chars": 1493,
+            "closeLoop": true,
+            "provenance": true,
+            "register": true,
+            "ctxChars": 762,
+            "branches": 2,
+            "fixBranches": 2,
+            "boundBranches": 2,
+            "boundBy": [
+              "had",
+              "had"
+            ],
+            "compileMs": 5.02
+          },
+          "taskId": "9395b75a-dd43-4515-96bb-beda0b41004e"
+        }
+      ]
+    },
+    {
+      "id": "flaky-timeout",
+      "mode": "v4",
+      "promptVersion": "compress-v4d4:ctx",
+      "why": "condensed",
+      "rawChars": 9053,
+      "outChars": 1652,
+      "ratio": 0.182,
+      "finishHoldMs": 7065,
+      "blockEndToFinishMs": 1183,
+      "distillMs": 8245,
+      "waitedMs": 7064,
+      "distillError": null,
+      "v4": {
+        "outputChars": 1652,
+        "inventedSpans": 0,
+        "newTextSpans": 1,
+        "chars": 1652,
+        "closeLoop": true,
+        "provenance": true,
+        "register": true,
+        "ctxChars": 649,
+        "branches": 2,
+        "compileMs": 1.39
+      },
+      "segments": null,
+      "identifierRecall": 9.9,
+      "traceTags": {
+        "birth-econ": 1,
+        "compiler-preparation-cost": 1,
+        "birth-fired": 1,
+        "compiler-transport-started": 1,
+        "birth-archive-settled": 1,
+        "birth-window-probe": 1,
+        "birth-finish-enter": 1,
+        "birth-distill-headers": 1,
+        "compiler-transport-settled": 1,
+        "compiler-v4-compiled": 1,
+        "birth-distill-settled": 1,
+        "birth-finish-headers-grace": 1,
+        "birth-handle-source": 1,
+        "birth-condensed": 1
+      },
+      "segmentErrors": [],
+      "text": "我们需要判断 CI 里 test/hedge.selftest.mjs 约每 5 次失败 1 次、本地从不失败的原因。失败输出逐字：`expected hedgeStartedAt=null, got 1712`，另一条 `got 1698`。测试 §4 逐字：`server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600`，`assert.equal(meta.hedgeStartedAt, null)`。源码 hedgedDistill 节选逐字：`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)` 和 `primary.then(() => { primarySettled = true })`。nproc CI 是 2，本地 16。\n\n看起来本地 16 核时，1500ms 的 server 定时器先执行，主请求响应在 poll 阶段 resolve，`primary.then` 微任务把 `primarySettled` 置 true，到 1600ms 对冲定时器触发时检查为 false 的条件不成立。CI 只有 2 核，事件循环在 1500-1600ms 窗口被阻塞，两个 setTimeout 积压到同一 timers 阶段：先执行 1500ms 的 server 回调发 200，再执行 1600ms 的对冲回调；此时主请求的 HTTP 响应还没在 poll 阶段被客户端处理，`primary.then` 微任务尚未设置 `primarySettled`，所以 `startHedge()` 被调用，got 1712/1698 正是定时器被延迟后的实际触发时间。已排除逻辑必然错误：本地从不失败说明代码路径本身能走通。用 fake timers 的改法没在原文工具结果里看到落点，不选；把 `primarySettled` 改成在 `primary.finally` 中设置也解决不了同一 timers 阶段先执行对冲回调的问题，搁置。落定改法：增大测试时间差，让主请求 1500ms 与 hedgeAfterMs 1600 的 100ms 余量变大，这是改动最小且落点在手的候选。\n\n所以下一步工具调用是 bash `taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`。如果输出里出现 `expected hedgeStartedAt=null, got` 且数字大于 1600，那么坐实 2 核调度抖动导致两个定时器积压；直接动手 edit_file test/hedge.selftest.mjs，old_text 是 `  server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600`（read_file 里原样的一整行，不带行首缩进也能匹配），new_text 是 `  server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 3000`，只改这一个值把余量从 100ms 拉到 1500ms；看到失败输出就必须直接 edit_file，严禁再 read_file 或 sed 查看上下文确认。如果 50 次全部 PASS、没有出现 `got` 大于 1600，那么本地 16 核无法复现，问题只在 CI 的 2 核环境，此时不要改 test/hedge.selftest.mjs；下一步应看 CI 配置里 test/hedge.selftest.mjs 是否与其它测试并行、是否限制 CPU，把该测试串行化或单独跑。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+      "capture": [],
+      "timeline": [
+        {
+          "ms": 22979,
+          "tag": "birth-econ",
+          "index": 0,
+          "B": 9053,
+          "R": 60,
+          "rSource": "fallback",
+          "remainingTokens": null,
+          "d": 0.02,
+          "T": 460,
+          "rhoMax": 0.1827,
+          "bAbs": 390,
+          "bMin": 2463,
+          "netAtTarget": 7442,
+          "verdict": "ok",
+          "rawTokensEst": 3910,
+          "taskId": "0e8c3d80-262a-4d8e-8cbb-9be9c28d92bb"
+        },
+        {
+          "ms": 22979,
+          "tag": "compiler-preparation-cost"
+        },
+        {
+          "ms": 22979,
+          "tag": "birth-fired",
+          "index": 0,
+          "rawChars": 9053,
+          "handle": "art://5oJVBW0xQfPqN4JCMf4PSJ",
+          "taskId": "0e8c3d80-262a-4d8e-8cbb-9be9c28d92bb"
+        },
+        {
+          "ms": 22979,
+          "tag": "compiler-transport-started"
+        },
+        {
+          "ms": 22980,
+          "tag": "birth-archive-settled",
+          "index": 0,
+          "ok": true,
+          "handle": "art://live-flaky-timeout",
+          "rawSha256": "80eb4ebe7304823e085b62d3f41de2e74b4150296d05b1eff0c52e78009578ca",
+          "taskId": "0e8c3d80-262a-4d8e-8cbb-9be9c28d92bb"
+        },
+        {
+          "ms": 24161,
+          "tag": "birth-window-probe",
+          "reasoningBlocks": 1,
+          "reasoningEndMs": [
+            22978
+          ],
+          "firstOtherStartMs": 22980,
+          "firstOtherType": "text",
+          "finishMs": 24161,
+          "otherStartToLastEndMs": -2,
+          "lastEndToFinishMs": 1183
+        },
+        {
+          "ms": 24161,
+          "tag": "birth-finish-enter",
+          "index": 0,
+          "gapMs": 1182,
+          "taskId": "0e8c3d80-262a-4d8e-8cbb-9be9c28d92bb"
+        },
+        {
+          "ms": 28142,
+          "tag": "birth-distill-headers",
+          "index": 0,
+          "ttfbMs": 5162,
+          "sinceFiredMs": 5163,
+          "taskId": "0e8c3d80-262a-4d8e-8cbb-9be9c28d92bb"
+        },
+        {
+          "ms": 31222,
+          "tag": "compiler-transport-settled"
+        },
+        {
+          "ms": 31224,
+          "tag": "compiler-v4-compiled"
+        },
+        {
+          "ms": 8245,
+          "tag": "birth-distill-settled",
+          "index": 0,
+          "ok": true,
+          "chars": 1652,
+          "reason": null,
+          "model": "deepseek-v4.1-flash",
+          "endpoint": "legacy|explicit",
+          "style": "chat",
+          "thinkingOff": true,
+          "inputChars": 9053,
+          "promptVersion": "compress-v4d4:ctx",
+          "inputAmplificationRatio": 1.47,
+          "compressRatio": 1.47,
+          "promptChars": 13271,
+          "maxOutputTokens": 1600,
+          "promptWideChars": 6455,
+          "promptOtherChars": 6816,
+          "outputWideChars": 555,
+          "outputOtherChars": 1097,
+          "connectMs": 0,
+          "ttfbMs": 5162,
+          "totalMs": 8242,
+          "chunks": 537,
+          "reused": true,
+          "status": 200,
+          "bytes": 201739,
+          "cancelled": false,
+          "finish": "stop",
+          "reasoningChars": 0,
+          "stream": true,
+          "providerReportedUsage": {
+            "completion_tokens": 662,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_cache_hit_tokens": 1408,
+            "prompt_cache_miss_tokens": 4511,
+            "prompt_tokens": 5919,
+            "prompt_tokens_details": {
+              "cached_tokens": 1408
+            },
+            "total_tokens": 6581
+          },
+          "requestId": "51c5355a-8de4-437c-b0e8-97cbcec36e1e",
+          "afterContentMs": 0,
+          "eventCount": 747,
+          "badFrame": 0,
+          "outputChars": 1652,
+          "toFirstEventMs": 5162,
+          "toFirstContentMs": 5162,
+          "contentSpanMs": 3080,
+          "toCompleteMs": 8242,
+          "v4": {
+            "outputChars": 1652,
+            "inventedSpans": 0,
+            "newTextSpans": 1,
+            "chars": 1652,
+            "closeLoop": true,
+            "provenance": true,
+            "register": true,
+            "ctxChars": 649,
+            "branches": 2,
+            "compileMs": 1.39
+          },
+          "taskId": "0e8c3d80-262a-4d8e-8cbb-9be9c28d92bb"
+        },
+        {
+          "ms": 31224,
+          "tag": "birth-finish-headers-grace",
+          "index": 0,
+          "graceMs": 1500,
+          "waitedMs": 1062,
+          "settled": true,
+          "taskId": "0e8c3d80-262a-4d8e-8cbb-9be9c28d92bb"
+        },
+        {
+          "ms": 31224,
+          "tag": "birth-handle-source",
+          "index": 0,
+          "source": "store-returned",
+          "taskId": "0e8c3d80-262a-4d8e-8cbb-9be9c28d92bb"
+        },
+        {
+          "ms": 31226,
+          "tag": "birth-condensed",
+          "index": 0,
+          "why": "condensed",
+          "rawChars": 9053,
+          "outChars": 1652,
+          "netSaved": 7401,
+          "minSaved": 50,
+          "rawTokensEst": 3910,
+          "outTokensEst": 663,
+          "netSavedTokensEst": 3247,
+          "unit": "estimate-not-tokenizer",
+          "handle": "art://live-flaky-timeout",
+          "waitedMs": 7064,
+          "fidelity": {
+            "identifierRecall": 9.9,
+            "protectedTokens": 534,
+            "lostTokens": 481,
+            "lostSample": [
+              "I/O",
+              "src/distill.js",
+              "`taskset -c 0,1`",
+              "`for i in {1..20}; do node test/hedge.selftest.mjs || break; done`",
+              "`stress`",
+              "`const timer = setTimeout(...)`"
+            ],
+            "unmeasurable": false
+          },
+          "econ": {
+            "B": 9053,
+            "R": 60,
+            "rSource": "fallback",
+            "remainingTokens": null,
+            "d": 0.02,
+            "T": 460,
+            "rhoMax": 0.1827,
+            "bAbs": 390,
+            "bMin": 2463,
+            "netAtTarget": 7442,
+            "verdict": "ok",
+            "rawTokensEst": 3910
+          },
+          "distillMs": 8245,
+          "promptVersion": "compress-v4d4:ctx",
+          "v4": {
+            "outputChars": 1652,
+            "inventedSpans": 0,
+            "newTextSpans": 1,
+            "chars": 1652,
+            "closeLoop": true,
+            "provenance": true,
+            "register": true,
+            "ctxChars": 649,
+            "branches": 2,
+            "compileMs": 1.39
+          },
+          "taskId": "0e8c3d80-262a-4d8e-8cbb-9be9c28d92bb"
+        }
+      ]
+    },
+    {
+      "id": "wrong-model",
+      "mode": "v4",
+      "promptVersion": "compress-v4d4:ctx",
+      "why": "condensed",
+      "rawChars": 3414,
+      "outChars": 1507,
+      "ratio": 0.441,
+      "finishHoldMs": 3000,
+      "blockEndToFinishMs": 928,
+      "distillMs": 3926,
+      "waitedMs": 3000,
+      "distillError": null,
+      "v4": {
+        "outputChars": 1507,
+        "inventedSpans": 0,
+        "chars": 1507,
+        "closeLoop": true,
+        "provenance": true,
+        "register": true,
+        "ctxChars": 799,
+        "branches": 2,
+        "fixBranches": 1,
+        "boundBranches": 1,
+        "boundBy": [
+          "had"
+        ],
+        "compileMs": 0.79
+      },
+      "segments": null,
+      "identifierRecall": 21.4,
+      "traceTags": {
+        "birth-econ": 1,
+        "compiler-preparation-cost": 1,
+        "birth-fired": 1,
+        "compiler-transport-started": 1,
+        "birth-archive-settled": 1,
+        "birth-window-probe": 1,
+        "birth-finish-enter": 1,
+        "birth-distill-headers": 1,
+        "compiler-transport-settled": 1,
+        "compiler-v4-compiled": 1,
+        "birth-distill-settled": 1,
+        "birth-handle-source": 1,
+        "birth-condensed": 1
+      },
+      "segmentErrors": [],
+      "text": "trace 里 `[llm-stream] {\"n\":12,\"model\":\"deepseek-v3.2\"}` 与 `[llm-stream] {\"n\":13,\"model\":\"deepseek-v3.2\"}` 之间夹着 `[compiler-transport-started] {\"model\":\"deepseek-v3.1\"}`，当前会话是 v3.2，压缩那条却用了 v3.1。看 src/host-follow.js（逐字）：\n`let lastModel = null`\n`observe(options) { if (options && options.model) lastModel = options.model }`\n`callConfig(options) { return { ...cfg, model: lastModel || cfg.model } }`\n再看 src/plugin.js（逐字）：\n`host.observe(options, n)`\n`const callCfg = host.callConfig(options)`\n`return birthTransform(inner, { cfg: callCfg, ... })`\n看起来 lastModel 是模块级变量，跨会话保留；observe 的签名只读第一个参数的 model，而调用处传了 `(options, n)`，第二参数被忽略。所以如果当前模型挂在 n 上、options 里没有 model，lastModel 就不会更新，callConfig 继续用上一次会话的 v3.1 覆盖 cfg.model。prewarm 那条 grep 只说明 transport 里存在 `makePrewarmer(cfg, trace)`，跟这个覆盖没有直接关系，先搁置；把 observe 改成读 n.model 的改法虽然可能，但落点还没看过，不选；当前最小确认是看 plugin 里 options 与 n 的真实字段。所以下一步工具调用是 bash grep -n -C 10 \"observe\\|callConfig\" src/plugin.js。\n如果 grep 出来 n 带 model 字段、或 options 里根本没有 model，那么坐实 observe 没读到当前模型：看到这一行就够了，不用再读 plugin.js，直接 edit_file src/host-follow.js，old_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`（read_file 里原样的一整行，不带行首缩进也能匹配，可以直接当 old_text），逻辑改法意图是让 observe 读到 n 上的 model、options.model 兜底，改完 callConfig 就能拿到当前会话模型；看到结果就必须直接动手 edit_file，严禁再用 read_file 或 sed 查看上下文或确认。如果 grep 出来 options 里确实有 model、observe 调用顺序也在 callConfig 之前，那么 lastModel 本应被更新，问题不在 observe 的入参，此时不要改 host-follow.js，去看 src/plugin.js 里 callConfig 之后 cfg 是否又被别处覆盖。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+      "capture": [],
+      "timeline": [
+        {
+          "ms": 7788,
+          "tag": "birth-econ",
+          "index": 0,
+          "B": 3414,
+          "R": 60,
+          "rSource": "fallback",
+          "remainingTokens": null,
+          "d": 0.02,
+          "T": 460,
+          "rhoMax": 0.1691,
+          "bAbs": 390,
+          "bMin": 2661,
+          "netAtTarget": 788,
+          "verdict": "ok",
+          "rawTokensEst": 1305,
+          "taskId": "79e6a17d-a695-45ae-bf18-c5cd16f9affe"
+        },
+        {
+          "ms": 7788,
+          "tag": "compiler-preparation-cost"
+        },
+        {
+          "ms": 7788,
+          "tag": "birth-fired",
+          "index": 0,
+          "rawChars": 3414,
+          "handle": "art://1Jr1khmFw17x1sSOWL5Jmy",
+          "taskId": "79e6a17d-a695-45ae-bf18-c5cd16f9affe"
+        },
+        {
+          "ms": 7789,
+          "tag": "compiler-transport-started"
+        },
+        {
+          "ms": 7789,
+          "tag": "birth-archive-settled",
+          "index": 0,
+          "ok": true,
+          "handle": "art://live-wrong-model",
+          "rawSha256": "f2717fc377f6bc3242661ee0671b1d25a5847936bddafbb6d4fac13c7ada28c5",
+          "taskId": "79e6a17d-a695-45ae-bf18-c5cd16f9affe"
+        },
+        {
+          "ms": 8716,
+          "tag": "birth-window-probe",
+          "reasoningBlocks": 1,
+          "reasoningEndMs": [
+            7788
+          ],
+          "firstOtherStartMs": 7789,
+          "firstOtherType": "text",
+          "finishMs": 8716,
+          "otherStartToLastEndMs": -1,
+          "lastEndToFinishMs": 928
+        },
+        {
+          "ms": 8716,
+          "tag": "birth-finish-enter",
+          "index": 0,
+          "gapMs": 928,
+          "taskId": "79e6a17d-a695-45ae-bf18-c5cd16f9affe"
+        },
+        {
+          "ms": 9327,
+          "tag": "birth-distill-headers",
+          "index": 0,
+          "ttfbMs": 1538,
+          "sinceFiredMs": 1539,
+          "taskId": "79e6a17d-a695-45ae-bf18-c5cd16f9affe"
+        },
+        {
+          "ms": 11710,
+          "tag": "compiler-transport-settled"
+        },
+        {
+          "ms": 11714,
+          "tag": "compiler-v4-compiled"
+        },
+        {
+          "ms": 3926,
+          "tag": "birth-distill-settled",
+          "index": 0,
+          "ok": true,
+          "chars": 1507,
+          "reason": null,
+          "model": "deepseek-v4.1-flash",
+          "endpoint": "legacy|explicit",
+          "style": "chat",
+          "thinkingOff": true,
+          "inputChars": 3414,
+          "promptVersion": "compress-v4d4:ctx",
+          "inputAmplificationRatio": 2.18,
+          "compressRatio": 2.18,
+          "promptChars": 7442,
+          "maxOutputTokens": 1600,
+          "promptWideChars": 3211,
+          "promptOtherChars": 4231,
+          "outputWideChars": 395,
+          "outputOtherChars": 1112,
+          "connectMs": 1,
+          "ttfbMs": 1538,
+          "totalMs": 3920,
+          "chunks": 434,
+          "reused": true,
+          "status": 200,
+          "bytes": 152893,
+          "cancelled": false,
+          "finish": "stop",
+          "reasoningChars": 0,
+          "stream": true,
+          "providerReportedUsage": {
+            "completion_tokens": 570,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_cache_hit_tokens": 1408,
+            "prompt_cache_miss_tokens": 1789,
+            "prompt_tokens": 3197,
+            "prompt_tokens_details": {
+              "cached_tokens": 1408
+            },
+            "total_tokens": 3767
+          },
+          "requestId": "80ee445a-98c1-4488-ae53-5cb482d20156",
+          "afterContentMs": 0,
+          "eventCount": 565,
+          "badFrame": 0,
+          "outputChars": 1507,
+          "toFirstEventMs": 1539,
+          "toFirstContentMs": 1539,
+          "contentSpanMs": 2381,
+          "toCompleteMs": 3920,
+          "v4": {
+            "outputChars": 1507,
+            "inventedSpans": 0,
+            "chars": 1507,
+            "closeLoop": true,
+            "provenance": true,
+            "register": true,
+            "ctxChars": 799,
+            "branches": 2,
+            "fixBranches": 1,
+            "boundBranches": 1,
+            "boundBy": [
+              "had"
+            ],
+            "compileMs": 0.79
+          },
+          "taskId": "79e6a17d-a695-45ae-bf18-c5cd16f9affe"
+        },
+        {
+          "ms": 11714,
+          "tag": "birth-handle-source",
+          "index": 0,
+          "source": "store-returned",
+          "taskId": "79e6a17d-a695-45ae-bf18-c5cd16f9affe"
+        },
+        {
+          "ms": 11716,
+          "tag": "birth-condensed",
+          "index": 0,
+          "why": "condensed",
+          "rawChars": 3414,
+          "outChars": 1507,
+          "netSaved": 1907,
+          "minSaved": 50,
+          "rawTokensEst": 1305,
+          "outTokensEst": 571,
+          "netSavedTokensEst": 734,
+          "unit": "estimate-not-tokenizer",
+          "handle": "art://live-wrong-model",
+          "waitedMs": 3000,
+          "fidelity": {
+            "identifierRecall": 21.4,
+            "protectedTokens": 126,
+            "lostTokens": 99,
+            "lostSample": [
+              "options/n",
+              "\"observe(\"",
+              "\"host.observe\\\\|callConfig\"",
+              "\"observe\\\\|callConfig\"",
+              "8",
+              "transport.js"
+            ],
+            "unmeasurable": false
+          },
+          "econ": {
+            "B": 3414,
+            "R": 60,
+            "rSource": "fallback",
+            "remainingTokens": null,
+            "d": 0.02,
+            "T": 460,
+            "rhoMax": 0.1691,
+            "bAbs": 390,
+            "bMin": 2661,
+            "netAtTarget": 788,
+            "verdict": "ok",
+            "rawTokensEst": 1305
+          },
+          "distillMs": 3926,
+          "promptVersion": "compress-v4d4:ctx",
+          "v4": {
+            "outputChars": 1507,
+            "inventedSpans": 0,
+            "chars": 1507,
+            "closeLoop": true,
+            "provenance": true,
+            "register": true,
+            "ctxChars": 799,
+            "branches": 2,
+            "fixBranches": 1,
+            "boundBranches": 1,
+            "boundBy": [
+              "had"
+            ],
+            "compileMs": 0.79
+          },
+          "taskId": "79e6a17d-a695-45ae-bf18-c5cd16f9affe"
+        }
+      ]
+    },
+    {
+      "id": "sse-truncated",
+      "mode": "v4",
+      "promptVersion": "compress-v4d4:ctx",
+      "why": "condensed",
+      "rawChars": 5424,
+      "outChars": 1575,
+      "ratio": 0.29,
+      "finishHoldMs": 3002,
+      "blockEndToFinishMs": 1355,
+      "distillMs": 4355,
+      "waitedMs": 3002,
+      "distillError": null,
+      "v4": {
+        "outputChars": 1575,
+        "inventedSpans": 0,
+        "chars": 1575,
+        "closeLoop": true,
+        "provenance": true,
+        "register": true,
+        "ctxChars": 630,
+        "branches": 2,
+        "fixBranches": 1,
+        "boundBranches": 1,
+        "boundBy": [
+          "had"
+        ],
+        "compileMs": 0.77
+      },
+      "segments": null,
+      "identifierRecall": 20.1,
+      "traceTags": {
+        "birth-econ": 1,
+        "compiler-preparation-cost": 1,
+        "birth-fired": 1,
+        "compiler-transport-started": 1,
+        "birth-archive-settled": 1,
+        "birth-window-probe": 1,
+        "birth-finish-enter": 1,
+        "birth-distill-headers": 1,
+        "compiler-transport-settled": 1,
+        "compiler-v4-compiled": 1,
+        "birth-distill-settled": 1,
+        "birth-handle-source": 1,
+        "birth-condensed": 1
+      },
+      "segmentErrors": [],
+      "text": "我们需要的关键证据是 trace 里 `[compiler-transport-settled] {\"ok\":true,\"finish\":null,\"stream\":true,\"outputChars\":212,\"eventCount\":9}` 和 `[birth-condensed] {\"rawChars\":8123,\"outChars\":212}`，截断输出 212 字符却 ok:true。read_file src/transport.js assembleSseFrames 节选（逐字）：\n`if (f === '[DONE]') { done = true; continue }`\n`const j = JSON.parse(f); out += j.choices?.[0]?.delta?.content || ''`\n`if (j.choices?.[0]?.finish_reason) finish = j.choices[0].finish_reason`\n`return { out, finish: finish || (done ? 'stop' : null) }`\n网关文档说部分上游在连接被代理切断时只补发 `data: [DONE]`。看起来：没有真实 finish_reason 时，代码仅凭 `[DONE]` 就把 finish 兜成 `stop`；如果 frames 里拿到的是 `data: [DONE]` 而不是裸 `[DONE]`，done 甚至不会置位，但 settle 仍可能因流结束把 ok 判真。所以截断被当成功写会话。trace 的 finish:null 与 ok:true 并存，说明 settle 的 ok 判定没有要求 finish 非空，或者它记录的是原始 finish_reason 而非 assembleSseFrames 的兜底值。调大超时/重试的改法已排除：这是结束语义问题，不是网络重试能解决；只改 `[DONE]` 判断也不够，因为 ok:true 的源头还没看到。原文提过把仅 `[DONE]` 当 `incomplete`/`unknown`，但落点未定，先搁置；先找 settle 与写会话调用处。\n所以下一步工具调用是 `[tool: bash] grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled|assembleSseFrames|birth-condensed\" src`。如果输出里出现 `compiler-transport-settled` 所在行，且同一段里 ok 由 `finish` 或 `done` 直接赋值、没有要求 finish_reason，那么看到这一行就够了，不用再读 transport.js：edit_file 该文件，old_text 是 grep 输出里那一整行去掉「文件名:行号:」后的文件原文（文件里原样的一行，不带行首缩进也能匹配），new_text 是让 ok 只在 `finish_reason` 存在时才为 true、仅 `[DONE]` 视为 incomplete 的那一行；看到结果就必须直接动手 edit_file，严禁再用 read_file 或 sed 查看上下文或确认。如果输出只找到 `assembleSseFrames` 定义、没有 settle 或写会话处，那么问题在调用方，此时不要改 transport.js 的 `[DONE]` 行；下一条命令查 `birth-condensed` 的写入点，看它是否把 `outChars` 当完整结果。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+      "capture": [],
+      "timeline": [
+        {
+          "ms": 12160,
+          "tag": "birth-econ",
+          "index": 0,
+          "B": 5424,
+          "R": 60,
+          "rSource": "fallback",
+          "remainingTokens": null,
+          "d": 0.02,
+          "T": 460,
+          "rhoMax": 0.1772,
+          "bAbs": 390,
+          "bMin": 2540,
+          "netAtTarget": 3159,
+          "verdict": "ok",
+          "rawTokensEst": 2093,
+          "taskId": "9db24281-54eb-463b-932e-3d5f492f4f2b"
+        },
+        {
+          "ms": 12160,
+          "tag": "compiler-preparation-cost"
+        },
+        {
+          "ms": 12160,
+          "tag": "birth-fired",
+          "index": 0,
+          "rawChars": 5424,
+          "handle": "art://CK_DnRLt-2DvL53II0OiRQ",
+          "taskId": "9db24281-54eb-463b-932e-3d5f492f4f2b"
+        },
+        {
+          "ms": 12160,
+          "tag": "compiler-transport-started"
+        },
+        {
+          "ms": 12161,
+          "tag": "birth-archive-settled",
+          "index": 0,
+          "ok": true,
+          "handle": "art://live-sse-truncated",
+          "rawSha256": "13eb69399916459ff02c30df345a07a23bee0a6d8691cf7fb9811c4eaa03bae2",
+          "taskId": "9db24281-54eb-463b-932e-3d5f492f4f2b"
+        },
+        {
+          "ms": 13514,
+          "tag": "birth-window-probe",
+          "reasoningBlocks": 1,
+          "reasoningEndMs": [
+            12159
+          ],
+          "firstOtherStartMs": 12161,
+          "firstOtherType": "text",
+          "finishMs": 13514,
+          "otherStartToLastEndMs": -2,
+          "lastEndToFinishMs": 1355
+        },
+        {
+          "ms": 13514,
+          "tag": "birth-finish-enter",
+          "index": 0,
+          "gapMs": 1354,
+          "taskId": "9db24281-54eb-463b-932e-3d5f492f4f2b"
+        },
+        {
+          "ms": 13592,
+          "tag": "birth-distill-headers",
+          "index": 0,
+          "ttfbMs": 1432,
+          "sinceFiredMs": 1432,
+          "taskId": "9db24281-54eb-463b-932e-3d5f492f4f2b"
+        },
+        {
+          "ms": 16512,
+          "tag": "compiler-transport-settled"
+        },
+        {
+          "ms": 16515,
+          "tag": "compiler-v4-compiled"
+        },
+        {
+          "ms": 4355,
+          "tag": "birth-distill-settled",
+          "index": 0,
+          "ok": true,
+          "chars": 1575,
+          "reason": null,
+          "model": "deepseek-v4.1-flash",
+          "endpoint": "legacy|explicit",
+          "style": "chat",
+          "thinkingOff": true,
+          "inputChars": 5424,
+          "promptVersion": "compress-v4d4:ctx",
+          "inputAmplificationRatio": 1.75,
+          "compressRatio": 1.75,
+          "promptChars": 9484,
+          "maxOutputTokens": 1600,
+          "promptWideChars": 3918,
+          "promptOtherChars": 5566,
+          "outputWideChars": 456,
+          "outputOtherChars": 1119,
+          "connectMs": 1,
+          "ttfbMs": 1432,
+          "totalMs": 4351,
+          "chunks": 517,
+          "reused": true,
+          "status": 200,
+          "bytes": 180189,
+          "cancelled": false,
+          "finish": "stop",
+          "reasoningChars": 0,
+          "stream": true,
+          "providerReportedUsage": {
+            "completion_tokens": 608,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_cache_hit_tokens": 1408,
+            "prompt_cache_miss_tokens": 2614,
+            "prompt_tokens": 4022,
+            "prompt_tokens_details": {
+              "cached_tokens": 1408
+            },
+            "total_tokens": 4630
+          },
+          "requestId": "243c83f0-9753-4348-a7df-a9448ff696bd",
+          "afterContentMs": 0,
+          "eventCount": 667,
+          "badFrame": 0,
+          "outputChars": 1575,
+          "toFirstEventMs": 1433,
+          "toFirstContentMs": 1433,
+          "contentSpanMs": 2918,
+          "toCompleteMs": 4351,
+          "v4": {
+            "outputChars": 1575,
+            "inventedSpans": 0,
+            "chars": 1575,
+            "closeLoop": true,
+            "provenance": true,
+            "register": true,
+            "ctxChars": 630,
+            "branches": 2,
+            "fixBranches": 1,
+            "boundBranches": 1,
+            "boundBy": [
+              "had"
+            ],
+            "compileMs": 0.77
+          },
+          "taskId": "9db24281-54eb-463b-932e-3d5f492f4f2b"
+        },
+        {
+          "ms": 16515,
+          "tag": "birth-handle-source",
+          "index": 0,
+          "source": "store-returned",
+          "taskId": "9db24281-54eb-463b-932e-3d5f492f4f2b"
+        },
+        {
+          "ms": 16516,
+          "tag": "birth-condensed",
+          "index": 0,
+          "why": "condensed",
+          "rawChars": 5424,
+          "outChars": 1575,
+          "netSaved": 3849,
+          "minSaved": 50,
+          "rawTokensEst": 2093,
+          "outTokensEst": 610,
+          "netSavedTokensEst": 1483,
+          "unit": "estimate-not-tokenizer",
+          "handle": "art://live-sse-truncated",
+          "waitedMs": 3002,
+          "fidelity": {
+            "identifierRecall": 20.1,
+            "protectedTokens": 239,
+            "lostTokens": 191,
+            "lostSample": [
+              "k:\\\\s*true|birth-condensed",
+              "ok/finish",
+              "`done=true`",
+              "`{out, finish:'stop'}`",
+              "`finish==='stop'`",
+              "`ok:true`"
+            ],
+            "unmeasurable": false
+          },
+          "econ": {
+            "B": 5424,
+            "R": 60,
+            "rSource": "fallback",
+            "remainingTokens": null,
+            "d": 0.02,
+            "T": 460,
+            "rhoMax": 0.1772,
+            "bAbs": 390,
+            "bMin": 2540,
+            "netAtTarget": 3159,
+            "verdict": "ok",
+            "rawTokensEst": 2093
+          },
+          "distillMs": 4355,
+          "promptVersion": "compress-v4d4:ctx",
+          "v4": {
+            "outputChars": 1575,
+            "inventedSpans": 0,
+            "chars": 1575,
+            "closeLoop": true,
+            "provenance": true,
+            "register": true,
+            "ctxChars": 630,
+            "branches": 2,
+            "fixBranches": 1,
+            "boundBranches": 1,
+            "boundBy": [
+              "had"
+            ],
+            "compileMs": 0.77
+          },
+          "taskId": "9db24281-54eb-463b-932e-3d5f492f4f2b"
+        }
+      ]
+    },
+    {
+      "id": "perf-regression",
+      "mode": "v4",
+      "promptVersion": null,
+      "why": "distill-timeout",
+      "rawChars": 11322,
+      "outChars": 11322,
+      "ratio": 1,
+      "finishHoldMs": 6009,
+      "blockEndToFinishMs": 2969,
+      "distillMs": null,
+      "waitedMs": 6007,
+      "distillError": "cancelled",
+      "v4": null,
+      "segments": null,
+      "identifierRecall": null,
+      "traceTags": {
+        "birth-econ": 1,
+        "compiler-preparation-cost": 1,
+        "birth-fired": 1,
+        "compiler-transport-started": 1,
+        "birth-archive-settled": 1,
+        "birth-window-probe": 1,
+        "birth-finish-enter": 1,
+        "birth-handle-source": 1,
+        "birth-distill-cancelled": 1,
+        "birth-passthrough": 1,
+        "compiler-transport-settled": 1,
+        "birth-distill-failed": 1
+      },
+      "segmentErrors": [],
+      "text": "Let me analyze. The user is a coding agent scenario. Upgrade from v11.9 to v11.10: birth收网平均等待900ms →2400ms.\n\nEvidence:\n- ttfbMs p50:610 →640 (basically unchanged, +30ms)\n- contentSpanMs p50:280 →1650 (5.9x increase)\n- outputChars p50:390 →1720 (4.4x increase)\n- promptVersion unchanged: compress-v3:250-450Diff: maxOutputTokens850 →4096; compressTargetMax450 →1800.\n\nREADME says compressTargetMax only affects v3's length target. But promptVersion still reports compress-v3:250-450 — meaning the compress step's prompt version string still says250-450, i.e., the change to compressTargetMax apparently did NOT take effect (prompt version tag unchanged), OR the tag is stale.\n\nHmm. Wait — key: outputChars grew4.4x. ttfb unchanged. So the model is generating much longer output. The wait time increase is dominated by content span (generation duration), not TTFB. That's consistent with more tokens generated.\n\nWhy did output grow if compressTargetMax only affects v3 length target and promptVersion unchanged? Two hypotheses:\n\nH1: maxOutputTokens raise850→4096 didn't cause longer output by itself (it's just a cap). But if previously the output was truncated at850 tokens, raising cap lets generation run longer → more chars. Actually outputChars390 →1720 chars.390 chars ≈130-260 tokens (Chinese ~1 token/char... actually for Chinese, ~1 token ≈1.5 chars).1720 chars could exceed850 tokens?1720 Chinese chars ≈ maybe860-1200 tokens. Hmm plausible that previous run was truncated at850 tokens cap? Wait390 chars wouldn't hit850 tokens cap. Hmm.\n\nActually careful: outputChars p50390 pre-upgrade,1720 post. Compress target was450 (chars? tokens?) — README says compressTargetMax only affects v3's length target. Post-upgrade target1800. outputChars1720 ≈1800. So the output length now tracks the new compressTargetMax =1800, roughly. Pre-upgrade outputChars390 ≈450 target. So the compress step IS producing to the new target → so compressTargetMax DID take effect. But promptVersion still reads compress-v3:250-450 — the version tag is stale/hardcoded, not reflecting actual config. That's a trap: don't trust promptVersion as evidence that config didn't apply.\n\nWait but the promptVersion says250-450 both before and after. Hmm, \"compress-v3:250-450\" — maybe format is min-max? compressTargetMin? Anyway.\n\nSo root cause: the extended generation span is caused by longer outputs, driven by compressTargetMax450→1800, not by maxOutputTokens per se (which is just a ceiling and didn't bind at390... actually it could bind post-change? no, ceiling raise doesn't force longer output).\n\nKey question: is the increased latency due to maxOutputTokens change? The evidence: outputChars grew in proportion to compressTargetMax, not maxOutputTokens. So the culprit is compressTargetMax (the compress step now targets1800 chars/tokens), which makes the \"收网\" (final answer) longer — the \"birth\" step presumably consumes compressed context and produces the final answer; longer compressed context → longer output? Hmm.\n\nActually think: birth收网 = final network收网? \"birth\" is a codename for a pipeline step. contentSpanMs is the generation span. Output chars grew4.4x while TTFB flat → pure decode-time increase. Decode throughput: pre390 chars /280ms =1.39 chars/ms; post1720/1650 =1.04 chars/ms. Slightly lower but roughly same order → confirms it's token count, not a per-token slowdown regression. So it's a volume problem, not a perf regression.\n\nBut wait, also is the promptVersion mismatch a signal that the config change isn't wired in the code path used by birth? The README says compressTargetMax only affects v3's length target — v3 = compress-v3. promptVersion shows compress-v3, so the changed knob does apply to the v3 compressor. So yes it applies.\n\nAlternative reading: promptVersion string \"compress-v3:250-450\" contains450 which equals old compressTargetMax; unchanged after means the version tag was built from constants that weren't updated OR the code that emits it is hardcoded. Either way, the tag embeds the old target, so it's not reliable evidence. But the outputChars moving to ~target-new strongly suggests the new target took effect.\n\nSo root cause:不是 maxOutputTokens（只是上限，不强制变长），而是 compressTargetMax450→1800让压缩产物变长，birth收网的输出随之膨胀 ~4.4x，解码时间 contentSpanMs从280→1650ms，占总等待的绝大部分；ttfb只 +30ms。\n\nHmm, but should double check: does longer compress output cause longer birth output? outputChars is likely the birth step's output chars. Hmm, the trace shows outputChars as a whole. Let's think about what evidence is needed to discriminate: (a) compressTargetMax raised → compressed prompt longer → but a longer input prompt increases prefill (ttfb), not decode length. ttfb flat. So longer input alone wouldn't inflate outputChars. So the output-length change must come from something that changes generation length target. Only compressTargetMax is described as a \"length target\"... but it's v3's target (the compressor's own target), not birth's.\n\nHmm, that's the tension. Possibility: birth's output includes/echoes the compressed content, so longer compressed text inflates birth output. Or compressTargetMax is actually the target for the final answer in that \"compress\" mode.\n\nAlternative hypothesis: the real explanation is that maxOutputTokens850 was the binding constraint before — birth's generation was being truncated at850 tokens →390 chars?? No,850 tokens ≠390 chars unless chars measured differently (maybe outputChars counts only some part). Hmm. If output was truncated at cap, raising cap to4096 lets it run to natural stop → longer output. But then compressTargetMax is innocent (README says only affects v3 length target; and output390 didn't equal450 anyway...390 vs450, close-ish).\n\nHmm which is it? Two competing hypotheses:\nH-A: maxOutputTokens850 was truncating → raising cap unmasks full-length output. Evidence for:390 chars pre... but850 tokens truncation would still produce more than390 chars typically. Weak.\nH-B: compressTargetMax450→1800 raised the target; output1720 ≈1800. Evidence: post output chars ≈ new target almost exactly, pre390 near old target450. Strong numeric match.\n\nThe clean discriminator: check whether the pre-upgrade output ended mid-sentence (truncated by cap, finish_reason=length) or naturally. Also check whether the compress step's own promptVersion / the compressor code reads compressTargetMax. And check finish_reason in the trace.\n\nGiven H-B numerically matches better (390≈450,1720≈1800, ratio4.0/4.4 matching target ratio4.0), I'd say compressTargetMax is the driver.\n\nNext step: one tool call. Options:\n1. Check finish_reason / truncation: `analyze-trace --fields finishReason` to see if pre-upgrade runs ended with length vs stop → discriminates H-A vs H-B.\n2. grep code for where compressTargetMax is consumed and where promptVersion tag is built: `grep -rn \"compressTargetMax\\|compress-v3\" src/` to confirm the knob reaches the birth path and why the tag is stale.\n3. Roll back compressTargetMax to450 and re-measure (A/B).\n\nI think the most informative single next step: confirm which knob actually gates birth's output length by inspecting the code path — grep. But is that \"one tool call\"? Yes, one bash grep.\n\nActually a stronger discriminator: the promptVersion tag not changing despite the config change and despite output length changing is a discrepancy worth explaining. If the code builds the tag from config, then tag unchanged = config not read from there = compressTargetMax change didn't apply to this path → then maxOutputTokens is the cause (unmasked truncation). Hmm! That's a real possibility. promptVersion \"compress-v3:250-450\":250-450 could be min-max of compressTarget. If it were built from config, after the change it should read250-1800. It reads250-450 → suggests the running build isn't picking up the new value, i.e., the version string is hardcoded/elsewhere. Hmm, but then outputChars wouldn't move to1720... unless outputChars moved because of maxOutputTokens.\n\nUgh, the two readings flip depending on interpretation. Let's be careful and honest with the user: present the dominant conclusion plus the one unknown, and pick a tool call that discriminates.\n\nBest single discriminator: examine finish_reason / truncation stats pre vs post. If pre-upgrade p50 output was truncated at850 (finish_reason=length), then maxOutputTokens raise is the cause. If pre-upgrade stopped naturally, then the cap never bound, so maxOutputTokens is innocent and the length target (compressTargetMax, or whatever the birth path reads) is the cause.\n\nThat's one clean tool call: `analyze-trace --before --fields finishReason,outputTokens` or bash grep. Hmm which is better? Actually both cheap; but I must give ONE.\n\nAlternatively, the \"instrument check\": grep the code for `compressTargetMax` and `compress-v3` to see whether the birth path reads compressTargetMax and whether the promptVersion tag derives from config. That resolves the blame assignment definitively. But it doesn't discriminate H-A (truncation) directly... actually it does: if birth path doesn't read compressTargetMax at all, and README says it only affects v3 target, then the output-length change can't come from it → blame maxOutputTokens via truncation. Combined with checking whether850 was binding.\n\nHmm, I think the highest-information single call: check finish_reason + output token counts from the trace, split by step, to see whether the pre-upgrade birth output hit the850 cap. Let me craft:\n\n`analyze-trace --diff --steps birth --fields finishReason,maxTokens,outputTokens,contentSpanMs`\n\nHmm, I don't know the tool CLI exactly. I'll frame it plausibly: `analyze-trace --span birth --fields finishReason,outputTokens,ttfbMs,contentSpanMs --before --after`.\n\nActually maybe cleaner: the deciding artifact is whether pre-upgrade generation was cut by the850 cap. Let me propose:\n\nbash: `analyze-trace --compare v11.9 v11.10 --fields finishReason,outputTokens --steps birth`\n\nPlus note: if pre shows finishReason=length → maxOutputTokens是主因；若 stop →长度目标（compressTargetMax）是主因。\n\nAlso mention: contentSpan增大是纯解码量问题（吞吐1.39 →1.04 chars/ms，量级一致），不是单 token变慢；ttfb只 +30ms说明 prefill基本没变。\n\nLet me also compute:2400-900 =1500ms ≈ contentSpan增量1650-280 =1370ms. So ~90% of added wait is content span. Good.\n\nAlso note the \"promptVersion不变\" is a red herring / possible stale instrument — flag it, because if the tag were derived from config it should have changed; that's exactly why we need finishReason evidence.\n\nAlso potential: maybe the compress step itself is the \"birth收网\" — anyway.\n\nLet me write the answer in Chinese, structured:结论（按证据强度）,原因,下一步一条工具调用.\n\nI should be honest about uncertainty: two candidate causes, evidence favors compressTargetMax as the length driver, but the neutral promptVersion tag needs resolution.\n\nHmm, does the instruction want me to also verify with tools available? The available tools are CNB docs tools, not relevant. The scenario says give one tool call (bash/read_file style) as next step. I'll output a single bash call in a code block. Should I actually make a tool call? The instruction: \"给出下一步一条工具调用\" — output the call textually. I'll just print it.\n\nNote: no relevant CNB tool needed. Don't call cnb_pipeline_syntax (not relevant).\n\nLet me write concisely but with the math.\n\nFormat: headers + bullets, moderate length.",
+      "capture": [],
+      "timeline": [
+        {
+          "ms": 15950,
+          "tag": "birth-econ",
+          "index": 0,
+          "B": 11322,
+          "R": 60,
+          "rSource": "fallback",
+          "remainingTokens": null,
+          "d": 0.02,
+          "T": 460,
+          "rhoMax": 0.1844,
+          "bAbs": 390,
+          "bMin": 2441,
+          "netAtTarget": 10119,
+          "verdict": "ok",
+          "rawTokensEst": 3442,
+          "taskId": "3ecbdf68-2c44-4c88-9160-eb14a22f2db5"
+        },
+        {
+          "ms": 15951,
+          "tag": "compiler-preparation-cost"
+        },
+        {
+          "ms": 15951,
+          "tag": "birth-fired",
+          "index": 0,
+          "rawChars": 11322,
+          "handle": "art://--3F4mglTALJS06FpmlYzN",
+          "taskId": "3ecbdf68-2c44-4c88-9160-eb14a22f2db5"
+        },
+        {
+          "ms": 15951,
+          "tag": "compiler-transport-started"
+        },
+        {
+          "ms": 15952,
+          "tag": "birth-archive-settled",
+          "index": 0,
+          "ok": true,
+          "handle": "art://live-perf-regression",
+          "rawSha256": "cf5881005a67d73744805d9ec75b9dbd341274f2bee100452740ee78ad6b318f",
+          "taskId": "3ecbdf68-2c44-4c88-9160-eb14a22f2db5"
+        },
+        {
+          "ms": 18919,
+          "tag": "birth-window-probe",
+          "reasoningBlocks": 1,
+          "reasoningEndMs": [
+            15950
+          ],
+          "firstOtherStartMs": 15952,
+          "firstOtherType": "text",
+          "finishMs": 18919,
+          "otherStartToLastEndMs": -2,
+          "lastEndToFinishMs": 2969
+        },
+        {
+          "ms": 18919,
+          "tag": "birth-finish-enter",
+          "index": 0,
+          "gapMs": 2968,
+          "taskId": "3ecbdf68-2c44-4c88-9160-eb14a22f2db5"
+        },
+        {
+          "ms": 24926,
+          "tag": "birth-handle-source",
+          "index": 0,
+          "source": "store-returned",
+          "taskId": "3ecbdf68-2c44-4c88-9160-eb14a22f2db5"
+        },
+        {
+          "ms": 24927,
+          "tag": "birth-distill-cancelled",
+          "index": 0,
+          "why": "distill-timeout",
+          "waitedMs": 6008,
+          "taskId": "3ecbdf68-2c44-4c88-9160-eb14a22f2db5"
+        },
+        {
+          "ms": 24927,
+          "tag": "birth-passthrough",
+          "index": 0,
+          "why": "distill-timeout",
+          "rawChars": 11322,
+          "outChars": 11322,
+          "handle": "art://live-perf-regression",
+          "waitedMs": 6007,
+          "short": null,
+          "cancelled": true,
+          "error": null,
+          "taskId": "3ecbdf68-2c44-4c88-9160-eb14a22f2db5"
+        },
+        {
+          "ms": 24927,
+          "tag": "compiler-transport-settled"
+        },
+        {
+          "ms": 24928,
+          "tag": "birth-distill-failed",
+          "index": 0,
+          "error": "cancelled",
+          "ttfbMs": null,
+          "totalMs": 8975,
+          "chunks": 0,
+          "reused": null,
+          "status": null,
+          "cancelled": true,
+          "stream": true,
+          "toFirstEventMs": null,
+          "toFirstContentMs": null,
+          "contentSpanMs": null,
+          "eventCount": 0,
+          "taskId": "3ecbdf68-2c44-4c88-9160-eb14a22f2db5"
+        }
+      ]
+    },
+    {
+      "id": "session-mixup",
+      "mode": "v4",
+      "promptVersion": null,
+      "why": "below-floor",
+      "rawChars": 1897,
+      "outChars": 1897,
+      "ratio": 1,
+      "finishHoldMs": 0,
+      "blockEndToFinishMs": 2280,
+      "distillMs": null,
+      "waitedMs": null,
+      "distillError": null,
+      "v4": null,
+      "segments": null,
+      "identifierRecall": null,
+      "traceTags": {
+        "birth-below-floor": 1,
+        "birth-window-probe": 1
+      },
+      "segmentErrors": [],
+      "text": "用户报告：A会话的推理原文被归档到了 B会话名下。给了一段代码和 trace。我们要分析原因，给出下一步一条工具调用。\n\n代码：onPreStep(session)每次覆盖 this.last = session，并 push seen。forStream()返回 this.last（最近一次 pre-step的 session）和 sessionId，ambiguous: false。\n\ntrace：\n[pre-step] session=A n=40[pre-step] session=B n=41[llm-stream] n=41 （A的流，晚到）\n[birth-archive-settled] sessionId=Bn=41是 B的 pre-step后进来的流，但实际是 A的流（晚到）。forStream用 this.last即 B（最后一次 pre-step的会话），所以把 A的流归属为 B。且 ambiguous恒为 false，意味着永不标记不确定，直接采用最近会话。\n\nREADME: v11.11流归属交错 ⇒不可证 ⇒缺省原文放行 ——即当归属不可证明时，应该\"放行\"（不归档/不作为归属？）\"缺省原文放行\"意思是默认把原文放行（归档？）。嗯，\"缺省原文放行\"可能指在无法确证时，默认放行原始文本（不写入归档），或者默认归属？这里的关键矛盾：代码里 ambiguous硬编码 false，导致本应进入\"不可证\"分支的情况被当成确证归属。\n\n所以根因：forStream用\"最近一次 onPreStep的会话\"作为流归属的唯一依据，属于 last-write-wins；而流是异步晚到的，n=41的流在 B的 pre-step之后才到达，被误绑到 B。同时 ambiguous恒为 false，绕过了 README所述 v11.11的\"归属不可证 ⇒缺省放行\"策略。\n\n下一步：一条工具调用。不能凭空改。应该先看谁调用 forStream / ambiguous的使用点 ——用 read_file / grep找消费处。或者先看 trace里 n计数含义、流与 pre-step的关联键。最合适的下一步：搜索 'forStream|ambiguous'的调用点，确认 ambiguous被如何处理（是否有\"不可证\"分支）。一条工具调用：grep（bash）或 read_file。\n\nCLI没有本地文件工具，但这里给出的工具是 read_file / bash（用户模拟的工具）。我应该输出一条工具调用。选项：grep -rn \"ambiguous\" src/或 read_file src/session-tracker.js全文。\n\n我认为最好的是先定位消费者：grep。一条调用即可。\n\n输出格式：原因分析 +一条工具调用。\n\n用工具的 block形式。我不确定客户端工具名，但可以给 bash grep。写成：\n\n```json{\"tool\": \"bash\", \"command\": \"grep -rn \\\"forStream\\\\|ambiguous\\\" src/ --include=*.js\"}\n```\n\n或者用 read_file读完整文件。我倾向 grep更省。\n\n分析要点：\n1.归属依据错误：this.last单槽位覆盖，last-write-wins。流是晚到/异步，n=41的 pre-step是 B，但流属于 A（n=41的标签其实就是 B的 pre-step序号，流与 pre-step无关联键）。\n2.缺少关联键：流事件没有携带 session id或请求 id，只能靠时序猜测，而时序被 pre-step交错破坏（40→41交错）。\n3. ambiguous恒 false：把\"不可证\"降级为\"确证\"，绕过了 v11.11的兜底策略（缺省原文放行）。所以 A的原文被写进 B的归档。\n4.修正方向：给流加关联键（请求级 token/sessionId回传），或至少让 ambiguous在 last与流到达间隔/序号不匹配时为 true并走放行分支。\n\n下一步一条工具调用：grep找 ambiguous的读取点，确认放行分支是否存在。\n\n注意不要编造。工具调用只能一条。\n\n我给出简短分析 +一条调用。使用 <tool_calls>格式？系统说可以用工具调用块。我写：\n\nbash: grep -rn \"ambiguous\" src/ && grep -rn \"forStream\" src/\n\n一条调用（一个 bash）。好。",
+      "capture": [],
+      "timeline": [
+        {
+          "ms": 6459,
+          "tag": "birth-below-floor",
+          "index": 0,
+          "rawChars": 1897,
+          "why": "below-floor"
+        },
+        {
+          "ms": 8739,
+          "tag": "birth-window-probe",
+          "reasoningBlocks": 1,
+          "reasoningEndMs": [
+            6459
+          ],
+          "firstOtherStartMs": 6459,
+          "firstOtherType": "text",
+          "finishMs": 8739,
+          "otherStartToLastEndMs": 0,
+          "lastEndToFinishMs": 2280
+        }
+      ]
+    }
+  ]
+}

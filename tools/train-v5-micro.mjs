@@ -1,0 +1,278 @@
+#!/usr/bin/env node
+// tools/train-v5-micro.mjs —— 严格在 dev 集（7 条 dev Gold + 3 条 dev Pool + dev 飞轮偏好对）上训练
+//   v5 本地认知微模型参数（Head 1 槽位分类 + Head 2 条目价值 + Head 3 偏好排序），
+//   全程 0 接触 holdout（eacces-config / wrong-model），随后在 dev + blind holdout 上用完整尺子（dd/1 + G1 + G2）检验。
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {
+  V5_MICRO_WEIGHTS, SLOT_NAMES, extractAnchorsV5, splitDiscourseUnits,
+  extractUnitFeatures, scoreUnitWithWeights, extractDraftPrefFeatures, compileV5Local,
+} from '../src/compile-v5-local.js'
+import { birthOffline, offlineBirthConfig } from '../src/offline-birth.js'
+import { normalizeConfig } from '../src/config.js'
+import { slotsOf, draftDistance, handDraftGate } from './helpers/hand-draft.mjs'
+import { loadGold } from './helpers/three-mode.mjs'
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const HOLDOUT_FAMS = new Set(['eacces-config', 'wrong-model'])
+const isHoldout = (fam) => HOLDOUT_FAMS.has(String(fam || '').split(':')[0].replace(/_(?:decoy|long-horizon).*$/, ''))
+
+function loadAllGold(root = ROOT) {
+  return loadGold(path.join(root, 'transfer', 'gold')).map((g) => ({
+    ...g,
+    hand: g.draft || g.gold || g.hand || '',
+    split: g.split || (isHoldout(g.family) ? 'holdout' : 'dev'),
+  }))
+}
+
+const dot = (w, x) => { let s = 0; for (let i = 0; i < Math.min(w.length, x.length); i++) s += w[i] * x[i]; return s }
+const sigmoid = (z) => 1 / (1 + Math.exp(-Math.max(-20, Math.min(20, z))))
+
+function labelUnitByGoldSlots(unit, goldSlots) {
+  const uIds = extractAnchorsV5(unit)
+  const overlapWith = (lines) => {
+    const gIds = extractAnchorsV5((lines || []).join('\n'))
+    if (!gIds.size || !uIds.size) return 0
+    let hit = 0
+    for (const id of uIds) if (gIds.has(id)) hit++
+    return hit / Math.max(1, Math.min(uIds.size, gIds.size))
+  }
+  const sDec = overlapWith([...goldSlots.decided, ...goldSlots.triples.map((t) => t.oldText + ' ' + t.newText)])
+  const sEx = overlapWith(goldSlots.excluded)
+  const sAcc = overlapWith(goldSlots.accept)
+  const sOp = overlapWith(goldSlots.open)
+
+  if (/(?:改法只落|改法分|old_text|new_text|edit_file|改成|改为|改回)/.test(unit) && sDec >= 0.25) return { slot: 'DECIDED', yVal: 1.0 }
+  if (/(?:已排除|排除|诱饵|legacy|compat|不用改|不改|不是.*原因|repro\.tmp)/.test(unit) && sEx >= 0.2) return { slot: 'EXCLUDED', yVal: 0.88 }
+  if (/(?:验收|预期|不算证据|若.*仍|如果输出跟这两种都不像)/.test(unit) && sAcc >= 0.2) return { slot: 'ACCEPT', yVal: 0.85 }
+  if (/(?:未解|回放过了之后|汇总.*收工|确认.*通过)/.test(unit) && sOp >= 0.2) return { slot: 'OPEN', yVal: 0.80 }
+  if (sDec >= 0.45) return { slot: 'DECIDED', yVal: 0.92 }
+  if (sEx >= 0.40) return { slot: 'EXCLUDED', yVal: 0.82 }
+  if (sAcc >= 0.40) return { slot: 'ACCEPT', yVal: 0.80 }
+  if (sOp >= 0.40) return { slot: 'OPEN', yVal: 0.75 }
+  if (uIds.size >= 2 && unit.length >= 18 && !/^\s*(?:Let me|Hmm|Wait,\s*$)/i.test(unit)) return { slot: 'MECHANISM', yVal: 0.55 }
+  return { slot: 'NOISE', yVal: 0.05 }
+}
+
+function trainMicroModelOnDev() {
+  const allGold = loadAllGold(ROOT)
+  const devGold = allGold.filter((g) => g.split === 'dev' && !isHoldout(g.family))
+  const oracleD2c = JSON.parse(fs.readFileSync(path.join(ROOT, 'transfer/mr/oracle-d2c.json'), 'utf8'))
+  const pack = JSON.parse(fs.readFileSync(path.join(ROOT, '.cfb-offline/gen-2.pack.json'), 'utf8'))
+  const devPool = (pack.pool?.tasks || []).filter((t) => !isHoldout(t.id))
+
+  // 1. 构造 dev 句子级训练样本（严格只用 devGold + devPool）
+  const unitSamples = []
+  for (const g of devGold) {
+    const goldSlots = slotsOf(g.hand)
+    const units = splitDiscourseUnits(g.raw)
+    const targetAnchors = extractAnchorsV5(g.raw.slice(Math.floor(g.raw.length * 0.65)))
+    const ctxInfo = { raw: g.raw, toolText: g.ctx, targetAnchors, offsets: [] }
+    units.forEach((u, i) => {
+      const feat = extractUnitFeatures(u, i, units.length, ctxInfo)
+      const lbl = labelUnitByGoldSlots(u, goldSlots)
+      unitSamples.push({ x: feat.vec, slot: lbl.slot, yVal: lbl.yVal })
+    })
+  }
+  for (const t of devPool) {
+    const o = oracleD2c.tasks?.[t.id]?.rounds?.[2]
+    if (!o?.oracle) continue
+    const goldSlots = slotsOf(o.oracle)
+    const units = splitDiscourseUnits(t.raw)
+    const targetAnchors = extractAnchorsV5(t.raw.slice(Math.floor(t.raw.length * 0.65)))
+    const ctxInfo = { raw: t.raw, toolText: t.ctx, targetAnchors, offsets: [] }
+    units.forEach((u, i) => {
+      const feat = extractUnitFeatures(u, i, units.length, ctxInfo)
+      const lbl = labelUnitByGoldSlots(u, goldSlots)
+      unitSamples.push({ x: feat.vec, slot: lbl.slot, yVal: lbl.yVal })
+    })
+  }
+
+  // 2. 在 dev 样本上以理论先验为锚点做 L2 正则化梯度下降（MAP 估计）
+  const priorVal = [...V5_MICRO_WEIGHTS.valueWeights]
+  const valW = [...priorVal]
+  const slotW = {}
+  for (const s of SLOT_NAMES) slotW[s] = [...V5_MICRO_WEIGHTS.slotWeights[s]]
+
+  const lr = 0.015, l2Prior = 0.25, epochs = 120
+  for (let ep = 0; ep < epochs; ep++) {
+    for (const smp of unitSamples) {
+      // Head 2: value regression
+      const predV = sigmoid(dot(valW, smp.x))
+      const errV = predV - smp.yVal
+      for (let j = 0; j < valW.length; j++) {
+        valW[j] -= lr * (errV * smp.x[j] + l2Prior * (valW[j] - priorVal[j])) / unitSamples.length
+      }
+      // Head 1: 6-class softmax
+      let maxL = -Infinity
+      const logits = {}
+      for (const s of SLOT_NAMES) {
+        logits[s] = dot(slotW[s], smp.x)
+        if (logits[s] > maxL) maxL = logits[s]
+      }
+      let sumE = 0
+      const probs = {}
+      for (const s of SLOT_NAMES) { probs[s] = Math.exp(logits[s] - maxL); sumE += probs[s] }
+      for (const s of SLOT_NAMES) {
+        const p = probs[s] / sumE
+        const y = s === smp.slot ? 1 : 0
+        const g = p - y
+        for (let j = 0; j < slotW[s].length; j++) {
+          slotW[s][j] -= lr * (g * smp.x[j] + l2Prior * (slotW[s][j] - V5_MICRO_WEIGHTS.slotWeights[s][j])) / unitSamples.length
+        }
+      }
+    }
+  }
+
+  // 3. 在 dev 飞轮偏好对（过滤掉 holdout 家族）上训练 Head 3 偏好排序权重
+  const fwPath = path.join(ROOT, '.cfb-offline/train/pairs.jsonl')
+  const fwLines = fs.existsSync(fwPath) ? fs.readFileSync(fwPath, 'utf8').trim().split('\n').filter(Boolean) : []
+  const devPairs = fwLines.map((l) => JSON.parse(l)).filter((p) => {
+    const fam = String(p.task || p.taskId || p.family || '').split(':')[0].replace(/_(?:decoy|long-horizon).*$/, '')
+    return p.split !== 'holdout' && !isHoldout(fam) && (p.chosenText || p.chosen?.draft || p.chosen) && (p.rejectedText || p.rejected?.draft || p.rejected)
+  })
+
+  const prefKeys = Object.keys(V5_MICRO_WEIGHTS.prefWeights)
+  const priorPref = prefKeys.map((k) => V5_MICRO_WEIGHTS.prefWeights[k])
+  const prefVec = [...priorPref]
+
+  for (let ep = 0; ep < 80; ep++) {
+    for (const pair of devPairs) {
+      const cText = pair.chosenText || (typeof pair.chosen === 'string' ? pair.chosen : pair.chosen.draft)
+      const rText = pair.rejectedText || (typeof pair.rejected === 'string' ? pair.rejected : pair.rejected.draft)
+      const fc = extractDraftPrefFeatures(cText, '', '')
+      const fr = extractDraftPrefFeatures(rText, '', '')
+      const diff = prefKeys.map((k) => (fc[k] || 0) - (fr[k] || 0))
+      const margin = dot(prefVec, diff)
+      const pWin = sigmoid(margin)
+      const grad = pWin - 1.0
+      for (let j = 0; j < prefVec.length; j++) {
+        prefVec[j] -= 0.02 * (grad * diff[j] + 0.2 * (prefVec[j] - priorPref[j])) / Math.max(1, devPairs.length)
+      }
+    }
+  }
+
+  let pairCorrect = 0
+  for (const pair of devPairs) {
+    const cText = pair.chosenText || (typeof pair.chosen === 'string' ? pair.chosen : pair.chosen.draft)
+    const rText = pair.rejectedText || (typeof pair.rejected === 'string' ? pair.rejected : pair.rejected.draft)
+    const fc = extractDraftPrefFeatures(cText, '', '')
+    const fr = extractDraftPrefFeatures(rText, '', '')
+    const diff = prefKeys.map((k) => (fc[k] || 0) - (fr[k] || 0))
+    if (dot(prefVec, diff) >= 0) pairCorrect++
+  }
+
+  const trained = {
+    ...V5_MICRO_WEIGHTS,
+    trainedOn: `dev-only (${devGold.length} gold:dev + ${devPool.length} pool:dev + ${devPairs.length} flywheel:dev)`,
+    holdoutTouched: false,
+    trainingStats: {
+      devGoldCount: devGold.length,
+      devPoolCount: devPool.length,
+      devUnitSamples: unitSamples.length,
+      devPreferencePairs: devPairs.length,
+      devPairwiseAccuracy: devPairs.length ? +(pairCorrect / devPairs.length).toFixed(4) : 1.0,
+    },
+    valueWeights: valW.map((v) => +v.toFixed(4)),
+    slotWeights: Object.fromEntries(SLOT_NAMES.map((s) => [s, slotW[s].map((v) => +v.toFixed(4))])),
+    prefWeights: Object.fromEntries(prefKeys.map((k, i) => [k, +prefVec[i].toFixed(4)])),
+  }
+
+  const outDir = path.join(ROOT, 'transfer/models')
+  fs.mkdirSync(outDir, { recursive: true })
+  fs.writeFileSync(path.join(outDir, 'v5-micro-weights.json'), JSON.stringify(trained, null, 2) + '\n')
+  return trained
+}
+
+async function evaluateWithRuler(trained) {
+  const allGold = loadAllGold(ROOT)
+  const localPolicy = {
+    id: 'p-v5-local-micro',
+    patches: [],
+    config: { compressLocalModel: true, continuationPath: 'bounded', programParts: 'compact' },
+  }
+  const cfg = { ...offlineBirthConfig({ model: 'v5-micro-local', baseUrl: 'local://v5-micro', policy: localPolicy, normalizeConfig }), captureSideOutput: true }
+
+  console.log('══ 1. 训练回执（严格 dev-only，holdout 零接触） ══')
+  console.log(JSON.stringify(trained.trainingStats, null, 2))
+
+  console.log('\n══ 2. 全量 11 条 Gold 标尺检验（7 dev + 4 blind holdout） ══')
+  const rows = []
+  const latencies = []
+  const memBefore = process.memoryUsage().heapUsed
+
+  for (const g of allGold) {
+    const cfgItem = g.raw.length < 3100 ? { ...cfg, birthMinSavedChars: Math.min(cfg.birthMinSavedChars || 50, Math.max(20, Math.floor(g.raw.length * 0.05))), ...(g.raw.length < 2600 ? { birthTokenGate: false } : {}) } : cfg
+    const t0 = performance.now()
+    const bGated = await birthOffline({ raw: g.raw, ctx: g.ctx, calls: g.calls || [], cfg: cfgItem, gate: true })
+    const ms = +(performance.now() - t0).toFixed(2)
+    const b = bGated.ok ? bGated : await birthOffline({ raw: g.raw, ctx: g.ctx, calls: g.calls || [], cfg: cfgItem, gate: false })
+    latencies.push(ms)
+    const dd = draftDistance(b.text, g.hand, { raw: g.raw, ctx: g.ctx, calls: g.calls || [] })
+    const gate = handDraftGate(g.raw, b.text, g.ctx)
+    rows.push({
+      id: g.id,
+      family: g.family,
+      split: g.split,
+      ms,
+      rawChars: g.raw.length,
+      draftChars: (b.meta?.sideOutput || '').length,
+      splicedChars: b.text.length,
+      g1Accept: bGated.ok,
+      g1Why: bGated.why || bGated.reason || null,
+      g1Info: bGated.info || null,
+      g2Ok: gate.ok,
+      score: dd.score,
+      verdict: dd.verdict,
+      slots: {
+        decision: dd.decision,
+        excludedRecall: dd.excludedRecall,
+        acceptOk: dd.acceptOk,
+        openRecall: dd.openRecall,
+        anchorPrecision: dd.anchorPrecision,
+        lengthOk: dd.lengthOk,
+        lengthRatio: dd.lengthRatio,
+      },
+      resurrected: dd.resurrectedAnchors || [],
+      gateReasons: gate.errors || [],
+    })
+  }
+  const memAfter = process.memoryUsage().heapUsed
+  const memDeltaKB = +((memAfter - memBefore) / 1024).toFixed(1)
+
+  for (const r of rows) {
+    console.log(
+      `  [${r.split.padEnd(7)}] ${r.id.padEnd(36)} | score=${r.score.toFixed(3)} (${r.verdict}) | G1=${r.g1Accept ? '✓' : '✗'} G2=${r.g2Ok ? '✓' : '✗'} | ` +
+      `dec=${r.slots.decision} ex=${r.slots.excludedRecall} acc=${r.slots.acceptOk} open=${r.slots.openRecall} prec=${r.slots.anchorPrecision} len=${r.slots.lengthOk} | ` +
+      `${r.rawChars}→${r.draftChars}/${r.splicedChars} chars | ${r.ms}ms` +
+      (r.g1Why ? ` | g1Why=${r.g1Why}${r.g1Info ? ':' + JSON.stringify(r.g1Info) : ''}` : '') +
+      (r.gateReasons.length ? ` | gateReasons=${JSON.stringify(r.gateReasons)}` : '') +
+      (r.resurrected?.length ? ` | resurrected=${JSON.stringify(r.resurrected)}` : '') +
+      (r.missingEx?.length ? ` | missEx=${JSON.stringify(r.missingEx)}` : '') +
+      (r.missingAcc?.length ? ` | missAcc=${JSON.stringify(r.missingAcc)}` : '') +
+      (r.missingOpen?.length ? ` | missOpen=${JSON.stringify(r.missingOpen)}` : '')
+    )
+  }
+
+  const devRows = rows.filter((r) => r.split === 'dev')
+  const holdoutRows = rows.filter((r) => r.split === 'holdout')
+  const mean = (arr) => arr.reduce((s, x) => s + x, 0) / Math.max(1, arr.length)
+  console.log('\n══ 3. 汇总指标（dev vs holdout 泛化检验 + 延迟/内存） ══')
+  console.log({
+    totalItems: rows.length,
+    devMeanScore: +mean(devRows.map((r) => r.score)).toFixed(4),
+    holdoutMeanScore: +mean(holdoutRows.map((r) => r.score)).toFixed(4),
+    overallMeanScore: +mean(rows.map((r) => r.score)).toFixed(4),
+    generalizationGap: +Math.abs(mean(devRows.map((r) => r.score)) - mean(holdoutRows.map((r) => r.score))).toFixed(4),
+    g1PassCount: `${rows.filter((r) => r.g1Accept).length}/${rows.length}`,
+    g2PassCount: `${rows.filter((r) => r.g2Ok).length}/${rows.length}`,
+    closeCount: `${rows.filter((r) => r.verdict === 'close').length}/${rows.length}`,
+    meanMs: +mean(latencies).toFixed(2),
+    maxMs: Math.max(...latencies),
+    heapDeltaKB: memDeltaKB,
+  })
+}
+
+const trained = trainMicroModelOnDev()
+await evaluateWithRuler(trained)

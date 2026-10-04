@@ -369,7 +369,8 @@ try {
     })
     await new Promise((r) => server.listen(0, '127.0.0.1', r))
     const cred = path.join(home, 'credentials.yaml'); fs.writeFileSync(cred, 'TEST_KEY: local-only\n')
-    const cfg = I.normalizeConfig({ model: 'local-test', baseUrl: 'http://127.0.0.1:' + server.address().port, compressPrompt: 'v4',
+    // v12.8.8：compressV4Direct 缺省 true；§7 测的是 ops 路 ⇒ 显式关直写
+    const cfg = I.normalizeConfig({ model: 'local-test', baseUrl: 'http://127.0.0.1:' + server.address().port, compressPrompt: 'v4', compressV4Direct: false,
       credentialsPath: cred, credentialRef: 'TEST_KEY', maxAttempts: 1, timeoutMs: 3000, keepAlive: false, followHostProvider: false, followHostModel: false })
     const LONG = (RAW + '\n').repeat(4)
     try {
@@ -701,8 +702,8 @@ try {
     assert.ok(!I.buildCompressPromptV4Direct('RAW').includes('【当前任务与观察】'), '无 ctx 不带块')
   })
   await test('5o2 compressPromptVersion/For：v4d 分流', () => {
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x' }), 'compress-v4d3:ctx')
-    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d3:noctx')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x' }), 'compress-v4d9:ctx')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d9:noctx')
     const p = I.compressPromptFor({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'T' }, 'COT')
     assert.ok(p.includes('【上一轮思维链】\nCOT') && p.includes('【当前任务与观察】\nT'))
   })
@@ -734,7 +735,7 @@ try {
     assert.equal(r.ok, true); assert.equal(r.stats.unfenced, true)
     assert.equal(I.compileV4Direct('  ', 'raw', {}).ok, false)
     assert.equal(I.compileV4Direct('  ', 'raw', {}).reason, 'v4d-empty')
-    const long = I.compileV4Direct('看起来。'.repeat(500), 'raw', {})
+    const long = I.compileV4Direct('看起来。'.repeat(700), 'raw', {})
     assert.equal(long.ok, false); assert.equal(long.reason, 'v4d-too-long')
     assert.equal(I.compileV4Direct('看起来。'.repeat(370), 'raw', {}).ok, true, 'v12.7.1：1480 字的闭合分支稿不熔断（缺省 1600）')
     assert.equal(I.compileV4Direct('看起来。'.repeat(370), 'raw', { compressV4DirectMaxChars: 1300 }).reason, 'v4d-too-long', '显式给 1300 仍按 1300 熔断')
@@ -865,18 +866,286 @@ try {
     assert.equal(off.stats.boundBranches, undefined); assert.equal(off.stats.repairedAffordance, true)
     assert.ok(off.text.endsWith('上面逐字引出的代码行可以直接当 edit_file 的 old_text。'))
   })
-  await test('5p6 v4d3 提示词：样例分支闭合（三元组 + 可用句 + 不再复现）、文件逐字、判读覆盖、候选落定、下一步 = 原文实际发出的调用', () => {
+  await test('5p6 v4d3→v4d5 提示词：样例分支闭合（三元组 + 出处/时效句 + 不再读）、文件逐字、判读覆盖、候选落定、下一步 = 原文实际发出的调用', () => {
     const p = I.buildCompressPromptV4Direct('RAW', 'CTX')
-    assert.ok(p.includes('old_text 是 `const port = 8123 // 旧端口`') && p.includes('new_text 是 `const port = cfg.port`') && p.includes('拨测结果一到就改，不再复现'), '样例分支闭合（v4d3：三元组）')
-    assert.ok(p.includes('四个问题') && p.includes('逐字是对文件说的') && p.includes('工具输出里会字面出现的特征') && p.includes('改定义处优先于改调用处'), 'v4d3 规则：明文清单 / 文件逐字 / 判读覆盖 / 落定次序')
-    assert.ok(p.includes('不要替 Agent 写出那一行代码') && p.includes('不许写成「那就再取证」') && p.includes('如果输出跟这两种都不像，先别改'), 'v12.8.1：new_text 只给换值类 / 第二分支具体 / 逃生句')
+    assert.ok(p.includes('old_text 是 `const port = 8123 // 旧端口`') && p.includes('new_text 是 `const port = cfg.port`') && p.includes('不用再读 pool.js、也不用再核 net.yaml 的端口'), '样例分支闭合（三元组 + 具体的不再看什么）')
+    assert.ok(p.includes('五个答案') && p.includes('逐字是对文件说的') && p.includes('会字面出现') && p.includes('改定义行优先于改调用行'), '规则：明文清单 / 文件逐字 / 判读覆盖 / 落定次序')
+    assert.ok(p.includes('new_text 由原文里出现过的标识符拼成一整行') && p.includes('不写「再看看 / 再取证」') && p.includes('如果输出跟这两种都不像，先别改'), 'new_text 必写（R8b 恢复）/ 第二分支具体 / 逃生句')
     // 宿主工具名替换：规则与样例里的规范词换成宿主的；反引号里的代码不动
     const claude = I.buildCompressPromptV4Direct('RAW', 'CTX', { name: 'str_replace_based_edit_tool', oldKey: 'old_str', newKey: 'new_str' })
-    assert.ok(claude.includes('可以直接当 str_replace_based_edit_tool 的 old_str') && claude.includes('new_str 是 `const port = cfg.port`') && !/\bedit_file\b/.test(claude), '宿主工具名进提示词')
-    assert.ok(p.includes('只落定一个') && p.includes('不要写「A 或 B」两可'), '候选落定规则')
-    assert.ok(p.includes('X 就是原文最后决定发出的那一条调用'), '回溯一致')
+    assert.ok(claude.includes('str_replace_based_edit_tool src/pool.js，old_str 是 `const port = 8123 // 旧端口`') && claude.includes('new_str 是 `const port = cfg.port`') && !/\bedit_file\b/.test(claude) && !/\bold_text\b/.test(claude), '宿主工具名进提示词')
+    assert.ok(p.includes('改法只落一个') && p.includes('不写「A 或 B」两个方向'), '候选落定规则')
+    assert.ok(p.includes('X 就是原文最后实际发出的那一条调用'), '回溯一致')
     assert.ok(!p.includes('证据是否充分按这个标准判'), 'v4d1 的下一步仲裁已撤回')
     assert.ok(I.V4D_TAIL.includes('文件里逐字的一行') && I.V4D_TAIL.includes('new_text'))
+  })
+  // ---- §5t v12.8.3–12.8.7 的门 / 闸 / 提示词改动（当时未补自测，v12.8.8 补齐）----
+  await test('5t1 isFixBranch：「改为 + 取证动词」是取证分支（v12.8.3）；后置反选「这条候选我自己否了」与「按第一条分支改」不算本分支改法（v12.8.5）', () => {
+    assert.equal(I.isFixBranch('那么改为在 grep 结果里看 rawFinish 是不是 length，再决定'), false, '「改为在 grep 结果里看」= 换取证手段')
+    assert.equal(I.isFixBranch('那么改为 `hedgeAfterMs: 3000`，不用再读文件'), true, '「改为 `值`」仍是改法')
+    assert.equal(I.isFixBranch('那么改 transport.js 这条候选我自己否了，因为调用方不在手'), false, '后置反选')
+    assert.equal(I.isFixBranch('那么按第一条分支改即可，此时不要动 config.js'), false, '引用前文分支不是本分支动作')
+    assert.equal(I.isFixBranch('那么直接改 `hedgeAfterMs: 1600` 为 3000'), true, '阳性对照')
+    // 端到端：取证分支不再被绑落点（v12.8.3 之前 sse 稿的「改为在 grep 结果里看」被当改法，插入可用句把稿撑到 1968 字）
+    const ctxG = '[tool: bash] grep -n finish src/transport.js\n  src/transport.js:233:  return { ok: r.finish === \'stop\', text: r.out }'
+    const r = I.compileV4Direct('所以下一步工具调用是 bash grep。如果输出里只有 233 行这一处，那么改为在 grep 结果里看 rawFinish 是不是 length，再决定；如果还有别处，那么先别改。', 'raw 提过 rawFinish 与 r.finish', { compressCtx: ctxG })
+    assert.equal(r.stats.fixBranches, undefined, '没有改法分支 ⇒ 不绑定：' + JSON.stringify(r.stats))
+    assert.ok(!r.text.includes('——落点'), r.text)
+  })
+  await test('5t2 发明标识符闸（v12.8.4 / 12.8.6）：纯数字比值不是路径；标准环境变量名不算发明；new_text 段尾带标点仍整段豁免；假环境变量照报', () => {
+    const raw = 'read_file src/host-follow.js：observe(options) { if (options && options.model) lastModel = options.model } 只读 options.model。'
+    assert.deepEqual(I.inventedIdentifiers(raw, '耗时 4.4/4.0 秒，100/50 的比值'), [])
+    assert.deepEqual(I.inventedIdentifiers(raw, '把 NODE_OPTIONS 与 PATH 一起传下去'), [])
+    assert.deepEqual(I.inventedIdentifiers(raw, '把 MY_FAKE_ENV_VAR 传下去'), ['MY_FAKE_ENV_VAR'])
+    assert.deepEqual(I.inventedIdentifiers(raw, 'new_text 是 `observe(options, n) { const m = (n && n.model) || (options && options.model); if (m) lastModel = m }`，不用再读文件。'), [], '段尾「`，」不破坏 new_text 段识别')
+  })
+  await test('5t3 直写熔断缺省 2000（v12.8.6 起 1800，v12.8.9 起 2000：v4d5 完整稿 1600–1950 字，2/10 撞 1800）；配置可覆盖', () => {
+    const body = '所以下一步工具调用是 bash 复现。' + '看起来是时序竞态。'.repeat(240)
+    assert.equal(I.compileV4Direct(body.slice(0, 1990), 'raw', {}).ok, true)
+    assert.equal(I.compileV4Direct(body.slice(0, 2001) + '。', 'raw', {}).reason, 'v4d-too-long')
+    assert.equal(I.compileV4Direct(body.slice(0, 1790), 'raw', { compressV4DirectMaxChars: 1500 }).reason, 'v4d-too-long')
+  })
+  await test('5t5 分句不切反引号内（v12.8.8，v4d4 sse 稿真机撞上）：`done ? \'stop\' : null` 里的 ? 不是句号；可用句接在分支句尾而不是插进代码段；birthAccept 放行', () => {
+    assert.deepEqual(I.splitSentencesTickAware('甲。乙 `a ? b : c; d` 丙？丁'), ['甲。', '乙 `a ? b : c; d` 丙？', '丁'])
+    const ctxS = '[tool: read_file] src/transport.js\n  return { out, finish: finish || (done ? \'stop\' : null) }'
+    const t = '看起来 ok 只看了 finish。所以下一步工具调用是 bash grep。如果 grep 出来 ok 已经依赖 finish，但返回处被覆盖成 `\'stop\'`，那么改 src/transport.js 里 `  return { out, finish: finish || (done ? \'stop\' : null) }` 这一行，new_text 是 `  return { out, finish: finish || null }`，此时不要改调用方。如果输出跟这两种都不像，先别改。'
+    const r = I.compileV4Direct(t, 'raw 里引过 return { out, finish: finish || (done ? \'stop\' : null) }', { compressCtx: ctxS })
+    assert.equal(r.stats.fixBranches, 1); assert.deepEqual(r.stats.boundBy, ['span'])
+    assert.ok(r.text.includes('(done ? \'stop\' : null) }` 这一行，new_text 是'), '代码段完整：' + r.text)
+    assert.ok(r.text.includes('此时不要改调用方——落点 `return { out, finish: finish || (done ? \'stop\' : null) }` 的逐字原文已给出'), '可用句在分支句尾：' + r.text)
+    assert.ok(!r.text.includes('?——落点'), '不再插进代码段中间')
+    assert.deepEqual(I.inventedIdentifiers('raw 里引过 return { out, finish: finish || (done ? \'stop\' : null) }', r.text, { extra: ctxS }), [], '发明标识符闸放行（真机此前报 invented-identifier）')
+  })
+  await test('5t4 提示词 v4d6（v12.8.9，理论 S8-R11）：五问 + 落定句 + 最后结论为准 + 在手清单选行 + 值行优先 + new_text 必写 + 出处时效 + 第二分支配对；promptVersion = compress-v4d6', () => {
+    const p = I.buildCompressPromptV4Direct('RAW', 'CTX')
+    assert.ok(p.includes('①假设坐实了吗 ②old_text 精确吗 ③改成什么 ④还有没有非看不可的 ⑤假设被推翻了走哪条'), 'R10/R11：五问清单')
+    assert.ok(p.includes('只等一条结果就动手的人写的') && p.includes('改法只落一个：改 文件 的 `那一行`') && p.includes('改法只落一个：改 src/pool.js 的 `const port = 8123 // 旧端口` 这一行'), '落定句：规则 + 样例（oracle I 的写法）')
+    assert.ok(p.includes('以原文**最后**的结论段（根因 + 修复方向）为准') && p.includes('产生错误值 / 定义那个数值的那一行'), '最后结论为准 / 产生错误值的那一行（d6 sse 落到 [DONE] 行、flaky 落到 clearTimeout 的归因）')
+    assert.ok(p.includes('落点从【在手的代码行】里选') && p.includes('有值行（ident: 数值）能修就选值行'), '从程序给的清单里选，值行优先')
+    assert.ok(p.includes('new_text 由原文里出现过的标识符拼成一整行') && p.includes('new_text 绝不能和 old_text 相同'), 'R8b 恢复：new_text 必写（oracle 逐份都写；R10.3 只写意图让副模型不敢落定）')
+    assert.ok(p.includes('这次输出里有没有它') && p.includes('拨测输出里没有它，照用'), 'R11a 出处时效：规则 + 样例')
+    assert.ok(p.includes('那么假设坐实，看到这一点就够了') && p.includes('那么假设不成立：<原文里考虑过的另一个解释>') && p.includes('如果两个端口都 refused，那么假设不成立'), '两个分支的配对形态')
+    assert.ok(p.includes('原文对这种情形也有在手的改法（比如 diff 里的另一行）就写成第二个三元组'), '第二分支：有在手改法就三元组，否则最具体的取证（d5 把 perf 第二个三元组降成取证的归因）')
+    assert.ok(!p.includes('必须下达绝对行动纪律') && p.includes('不写「严禁再确认」这类口号'), '口号 → 具体')
+    assert.ok(p.includes('命令、复现方案一个都不许写，哪怕只是说它不可行'), '命令名也算发明')
+    assert.ok(p.includes('1000~1400 字符，绝不超过 1600') && p.includes('永远不删落定句、三元组与触发特征'), '长度 + 删减次序')
+    assert.ok(p.includes('行号是 grep 前缀，文件里这一行是 `host: 10.0.0.5`'), '样例演示 grep 前缀剥离（R8a）')
+    assert.ok(/old_text 是 `const port = 8123 \/\/ 旧端口`/.test(p) && /new_text 是 `const port = cfg\.port`/.test(p), '三元组样例用规范词')
+    assert.ok(p.includes('【原文里的改法句】') === false, '无改法句的 RAW 不加块')
+    const withHint = I.buildCompressPromptV4Direct('原文说：下一步修复：在 verify.mjs 的 env 中加 `CFB_REAL_DSH_HOME: tmp`。', 'CTX')
+    assert.ok(withHint.includes('【原文里的改法句】（程序逐字摘出，按原文先后；越靠后越接近原文最后的结论') && !withHint.includes('READY'), '直写用自己的改法句块，不带 ops 标签')
+    assert.ok(I.buildCompressPromptV4('原文说：下一步修复：在 verify.mjs 的 env 中加 `CFB_REAL_DSH_HOME: tmp`。').includes('【改法线索】'), 'ops 提示词的块不变')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true }), 'compress-v4d9:noctx')
+  })
+  await test('5t6 no-op 三元组（v12.8.9）：new_text 与 old_text 相同 ⇒ 删 new_text 子句、留 old_text + 意图；不同则不动', () => {
+    const raw = 'read_file src/host-follow.js 里 observe(options) { if (options && options.model) lastModel = options.model } 这一行；plugin 传 (options, n)'
+    const same = '所以下一步工具调用是 bash grep -n observe src/plugin.js。如果输出里 n 带 model 字段，那么假设坐实：edit_file src/host-follow.js，old_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`（出处是上一轮 read_file，这次 grep 输出里不会再出现它，照用即可），new_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`，让 observe 从 n 上取 model、options.model 兜底；看到 n 带 model 就改，不用再读 plugin.js。'
+    const r = I.compileV4Direct(same, raw, {})
+    assert.ok(r.ok, JSON.stringify(r))
+    assert.equal(r.stats.noopNewText, 1)
+    assert.ok(!/new_text 是 `observe/.test(r.text) && /new_text 按下面说的意图改/.test(r.text) && /old_text 是 `observe\(options\)/.test(r.text) && /让 observe 从 n 上取 model/.test(r.text), r.text)
+    const diff = same.replace('new_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`', 'new_text 是 `observe(options, n) { const m = (n && n.model) || (options && options.model); if (m) lastModel = m }`')
+    const r2 = I.compileV4Direct(diff, raw, {})
+    assert.ok(r2.ok && !r2.stats.noopNewText && /new_text 是 `observe\(options, n\)/.test(r2.text), '不同的 new_text 原样保留：' + r2.text)
+  })
+  await test('5t7 diff「-」行不当落点候选（v12.8.9）：稿把旧值行写成文件形，门不再把它绑给分支；「+」行照绑', () => {
+    const ctx = '[tool: bash] git diff v11.9..v11.10 -- src/config.js\n-  maxOutputTokens: 850,\n+  maxOutputTokens: 4096,\n-  compressTargetMax: 450,\n+  compressTargetMax: 1800,'
+    const raw = 'diff 显示旧值 850 / 450，新值 4096 / 1800。'
+    const draft = 'git diff 逐字：`maxOutputTokens: 850,` 变成 `maxOutputTokens: 4096,`。所以下一步工具调用是 bash analyze-trace --fields finishReason。' +
+      '如果升级前 finishReason 是 stop，那么假设坐实：改回长度目标，edit_file src/config.js，old_text 是 `compressTargetMax: 1800,`，new_text 是 `compressTargetMax: 450,`，看到 stop 就改。' +
+      '如果升级前是 length，那么假设不成立：此时不要动 compressTargetMax，把上限改回 850，看清截断分布再定。如果输出跟这两种都不像，先别改。'
+    const r = I.compileV4Direct(draft, raw, { compressCtx: ctx })
+    assert.ok(r.ok, JSON.stringify(r))
+    assert.ok(!/落点 `maxOutputTokens: 850,`/.test(r.text), '旧值行不被绑成落点：' + r.text)
+    assert.ok(r.stats.bindSkippedSelfClosed >= 1 && !/落点 `/.test(r.text), '稿里已有自闭合三元组 ⇒ 其余分支不做兜底绑定（不会把 - 行或无关行绑上）：' + r.text)
+    // 没有自闭合三元组的稿仍走兜底绑定，此时 - 行候选被跳过
+    const bare = 'git diff 逐字：`maxOutputTokens: 850,` 变成 `maxOutputTokens: 4096,`。所以下一步工具调用是 bash analyze-trace。如果升级前是 length，那么把上限改回 850，看清截断分布再定。如果输出跟这两种都不像，先别改。'
+    const r2 = I.compileV4Direct(bare, raw, { compressCtx: ctx })
+    assert.ok(r2.ok && r2.stats.minusLineCandidateSkipped >= 1 && !/落点 `maxOutputTokens: 850,`/.test(r2.text), '兜底绑定不取 - 行：' + JSON.stringify(r2.stats) + r2.text)
+  })
+  await test('5t8 【在手的代码行】（v12.8.9，R11 / 卷四 A1）：只取文件内容类工具块、剥 diff 加号与 grep 行号、排除 - 行与日志、散文里的值段单列；进直写提示词', () => {
+    const ctx = '你是编码 Agent。CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次。\n' +
+      '[tool: read_file] test/hedge.selftest.mjs §4\nserver 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600\nassert.equal(meta.hedgeStartedAt, null)\n' +
+      '[tool: read_file] src/distill.js hedgedDistill 节选\nconst timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)\nprimary.then(() => { primarySettled = true })\n' +
+      '[tool: bash] git diff -- src/config.js\n-  maxOutputTokens: 850,\n+  maxOutputTokens: 4096,\n' +
+      '[tool: bash] grep -n "prewarm" src/transport.js\nsrc/transport.js:12:  const url = prewarmTargetUrl(cfg)\n' +
+      '[tool: bash] nproc\n2\n[tool: bash] ls -la\n-rw-r--r-- 1 root root 88213 trace.log\n[tool: bash] id\nuid=1000(u) gid=1000(u)'
+    const cot = '看起来 hedgeAfterMs 1600 与 1500 只差 100ms；primarySettled 在 primary.then 才置 true；maxOutputTokens 抬到 4096；prewarmTargetUrl 无关'
+    const rows = I.inHandLines(cot, ctx)
+    const spans = rows.map((r) => r.span)
+    assert.ok(spans.includes('hedgeAfterMs: 1600'), '散文行里的值段单列：' + JSON.stringify(spans))
+    assert.ok(rows.find((r) => r.span === 'hedgeAfterMs: 1600').valueLine && rows.find((r) => r.span === 'hedgeAfterMs: 1600').segment)
+    assert.ok(spans.includes('maxOutputTokens: 4096,') && rows.find((r) => r.span === 'maxOutputTokens: 4096,').via === 'diff', 'diff + 行剥加号')
+    assert.ok(!spans.some((x) => /850/.test(x)), 'diff - 行不进清单')
+    assert.ok(spans.includes('const url = prewarmTargetUrl(cfg)') && rows.find((r) => r.span === 'const url = prewarmTargetUrl(cfg)').via === 'grep', 'grep 行剥「文件:行号:」')
+    assert.ok(!spans.some((x) => /root|uid=|^2$/.test(x)), 'ls / id / nproc 输出不是文件行')
+    assert.ok(!spans.some((x) => /你是编码/.test(x)), '任务陈述不是文件行')
+    const block = I.inHandLinesBlock(cot, ctx)
+    assert.ok(block.startsWith('\n\n【在手的代码行】') && block.includes('值段') && block.includes('`hedgeAfterMs: 1600`'), block)
+    assert.ok(block.includes('定义行：`const timer = setTimeout') && I.lineKind('host.observe(options, n)') === '调用行' && I.lineKind("return { out, finish: finish || (done ? 'stop' : null) }") === '返回行' && I.lineKind('observe(options) { if (options && options.model) lastModel = options.model }') === '定义行', '行类别标签')
+    const two = I.inHandLinesBlock('maxOutputTokens 与 compressTargetMax 两个都在 diff 里', '[tool: bash] git diff -- src/config.js\n+  maxOutputTokens: 4096,\n+  compressTargetMax: 1800,')
+    assert.ok(two.includes('2 个值行在手') && two.includes('第二分支写成它的三元组'), '同一处两个值行 ⇒ 第二分支三元组提示：' + two)
+    const p = I.buildCompressPromptV4Direct(cot, ctx)
+    const H = '【在手的代码行】（程序从本轮工具结果里逐字摘出'
+    assert.ok(p.includes(H) && p.indexOf(H) > p.indexOf('【上一轮思维链】') && p.indexOf(H) < p.indexOf('【要求重申】'), '清单放在原文之后、重申之前')
+    assert.ok(!I.buildCompressPromptV4Direct(cot, '').includes(H), '无 ctx 时不加')
+    assert.ok(!I.buildCompressPromptV4Direct('与观察毫无重叠的原文', ctx).includes(H), '原文没讨论过的行不进清单（无重叠 ⇒ 空块）')
+    assert.equal(I.inHandLinesBlock(cot, ''), '')
+  })
+  await test('5u1 多轮台账 buildLedger / ledgerBlock（v12.9.0，理论 S10.2）：落定 / 排除 / 验收 / 未解从前几轮稿里逐字摘；已改 + 其后验收；已走过的路带结果首行 + 失败行；纯文本「[tool: …]」回灌也算工具结果；台账进 compressCtx 且在工具结果之前', () => {
+    const msgs = [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: '你是编码 Agent。CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次。' },
+      { role: 'assistant', reasoning_content: '看起来是时序竞态。清除 timer 不选：定时器先于 settle 触发。改法只落一个：改 test/hedge.selftest.mjs 的 `hedgeAfterMs: 1600` 这一行，让余量拉大。如果出现 FAIL，那么假设坐实：edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（原样行），new_text 是 `hedgeAfterMs: 3000`。验收是再跑 50 次循环，预期全 PASS；本地全 PASS 不算证据，因为本地从不失败。got 1712 与 1600 对不上，不改变落点。', content: '先复现。\n[tool: bash] taskset -c 0,1 bash -lc \'for i in $(seq 1 50); do node test/hedge.selftest.mjs || break; done\'' },
+      { role: 'user', content: '[tool: bash 结果]\nrun 1 PASS\nrun 2 FAIL §4 got 1712' },
+      { role: 'assistant', reasoning_content: '坐实了。', content: '[tool_call edit_file] {"path":"test/hedge.selftest.mjs","old_text":"hedgeAfterMs: 1600","new_text":"hedgeAfterMs: 3000"}\n[tool_call bash] {"command":"npm test"}' },
+      { role: 'user', content: [{ type: 'tool-result', toolCallId: 'e1', content: [{ type: 'text', text: 'ok（已写入）' }] }, { type: 'tool-result', toolCallId: 'b1', content: [{ type: 'text', text: 'PASS 12 / FAIL 0' }] }] },
+    ]
+    const L = I.buildLedger(msgs)
+    assert.equal(L.rounds, 2)
+    assert.equal(L.decided.length, 1); assert.ok(/改法只落一个：改 test\/hedge/.test(L.decided[0].text))
+    assert.equal(L.excluded.length, 1); assert.equal(L.accept.length, 1); assert.equal(L.open.length, 1)
+    assert.equal(L.edits.length, 1, '稿里的三元组被第 2 轮真实 edit 覆盖，不再算提议：' + JSON.stringify(L.edits))
+    assert.equal(L.edits[0].file, 'test/hedge.selftest.mjs'); assert.equal(L.edits[0].result, 'ok（已写入）'); assert.equal(L.edits[0].verifiedBy.args, 'npm test'); assert.equal(L.edits[0].verifiedBy.result, 'PASS 12 / FAIL 0')
+    assert.equal(L.calls.length, 2); assert.equal(L.calls[0].result, 'run 1 PASS … run 2 FAIL §4 got 1712', '结果首行 + 第一条失败行')
+    const b = I.ledgerBlock(msgs)
+    assert.ok(b.startsWith('【台账】') && b.includes('第 2 轮已改：edit_file test/hedge.selftest.mjs') && b.includes('已走过的路：第 1 轮 bash') && b.includes('上一轮写下的验收'), b)
+    const ctx = I.buildCompressCtx(msgs)
+    assert.ok(ctx.startsWith('你是编码 Agent') && ctx.indexOf('【台账】') > 0 && ctx.indexOf('【台账】') < ctx.indexOf('[tool: '), '台账在 user 之后、工具结果之前：' + ctx.slice(0, 200))
+    assert.equal(I.buildCompressCtx(msgs.slice(0, 2)), '你是编码 Agent。CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次。', '没有前几轮 ⇒ 无台账、行为同 v12.8')
+    assert.ok(!I.inHandLinesBlock('hedgeAfterMs 1600 3000', ctx).includes('已改'), '台账行不会被当成在手的文件行')
+  })
+  await test('5u2 compress-v4d9 多轮块（v12.9.2，S10.13–S10.19）：ctx 含【台账】才追加第 10 条四段规则 + 第 2 轮样例 + 多轮重申；①延续段与③通用条款程序写、副模型不写；第一轮提示词同 v4d6；promptVersion 标 :mr', () => {
+    const single = I.buildCompressPromptV4Direct('RAW', '任务\n\n[tool: bash 结果]\nok')
+    const multi = I.buildCompressPromptV4Direct('RAW', '任务\n\n【台账】（程序摘出）\n- 第 1 轮已定：改 x\n\n[tool: bash 结果]\nok')
+    assert.ok(!single.includes('10. ★ 前面有【台账】') && !single.includes('【多轮重申】') && !single.includes('【验收提示】') && !single.includes('【第 2 轮样例】'), '第一轮不带多轮块')
+    assert.ok(multi.includes('10. ★ 前面有【台账】时') && multi.includes('①延续段：程序已按台账写好') && multi.includes('**你不要写它**') && multi.includes('②本轮增量') && multi.includes('③验收预注册') && multi.includes('④收工三问') && multi.includes('第一步只有一条') && multi.includes('新出现') && multi.includes('比差'), '四段规则（①程序写 / K4 比差 / K5 三问）')
+    assert.ok(multi.includes('这些条款程序会按命令与数字算出来附在稿的验收段，**你不用写、也不要写反**') && multi.includes('按程序附的新鲜度条款判') && !multi.includes('新不新：'), '③通用条款（新鲜度 / 单元测试 / 运行条件 / 参数跟随）由程序附，副模型不写；样例里不再演示「新不新」')
+    const ex = multi.slice(multi.indexOf('【第 2 轮样例】'), multi.indexOf('【风格样例】'))
+    assert.ok(ex.includes('延续段程序已写，样例从②开始') && /\n拨测把假设坐实了/.test(ex) && !ex.includes('上一轮已定') && !ex.includes(': > logs/pool.log') && ex.includes('tail -n 3 logs/pool.log') && ex.includes('能说修好要三件事都在手') && ex.includes('按程序附的新鲜度条款判'), '第 2 轮样例从②开始、不带延续段、不带新鲜度断言：' + ex.slice(0, 300))
+    assert.ok(multi.includes('验收命令只能是【本轮已发出的调用】里那条') && multi.includes('目标 700~1100 字符'), '验收命令来源约束 + 增量长度目标')
+    assert.ok(multi.indexOf('10. ★') < multi.indexOf('【风格样例】') && multi.indexOf('【多轮重申】') < multi.indexOf('【要求重申】') && multi.includes('延续段程序已写（不要写「上一轮已定…」）'), '位置：规则在样例前、多轮重申在要求重申前；重申里有「延续段程序已写」')
+    assert.ok(!multi.includes('【验收提示】') && !I.buildCompressPromptV4Direct('RAW', '任务\n\n【台账】\n- x\n\n【本轮已发出的调用】\n- bash tail -n 3 logs/pool.log').includes('【验收提示】'), 'v4d9：验收提示不再进提示词（改由闸门拼进稿，见 5u8）')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x【台账】y' }), 'compress-v4d9:mr')
+    assert.equal(I.compressPromptVersion({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: 'x' }), 'compress-v4d9:ctx')
+  })
+  await test('5u4 verifyHints（v12.9.1，S10.14 K1–K3、K6）：程序从【本轮已发出的调用】与观察里算出验收谓词；不触发时为空；稿照抄提示里的反引号片段不算发明', () => {
+    const base = '任务：线上偶发截断被写进会话。\n\n[tool: bash] trace\n[x] {"finish":null,"outputChars":212}\n\n【台账】\n- 第 1 轮已定：改 a\n\n'
+    const sse = base + '【本轮已发出的调用】（…）\n- edit_file src/transport.js（old_text `return { out, finish: finish || (done ? \'stop\' : null) }` → new_text `return { out, finish: finish || null }`）\n- bash bash -lc \'node test/transport.selftest.mjs; grep -E "compiler-transport-settled|birth-condensed" ~/.dsh/trace.log | tail -n 2\''
+    const h = I.verifyHints(sse)
+    assert.ok(h.length === 2 && /~\/\.dsh\/trace\.log 里已有的行/.test(h[0]) && /: > ~\/\.dsh\/trace\.log/.test(h[0]) && /单元测试/.test(h[1]), 'K1 日志尾部（引号里的 | 不是管道）+ 单元测试：' + JSON.stringify(h))
+    assert.ok(/【验收提示】（程序/.test(I.verifyHintsBlock(sse)) && !I.buildCompressPromptV4Direct('RAW', sse).includes('【验收提示】'), 'v12.9.2：块仍可渲染（工具用），但不进提示词——由 compileV4Direct 拼进稿（5u8）')
+    const fresh = base + '【本轮已发出的调用】\n- bash bash -lc \': > ~/.dsh/trace.log; node scripts/smoke.mjs; grep -E "a|b" ~/.dsh/trace.log | tail -n 2\''
+    assert.equal(I.verifyHints(fresh).length, 0, '先清空 ⇒ 新鲜，不提示')
+    const testSym = '任务：CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次。\n\n[tool: bash] 日志\nrun 2: FAIL §4 expected hedgeStartedAt=null, got 1712\nrun 5: FAIL got 1698\n\n【台账】\n- 已走过的路：bash x → 「FAIL 全部是 §4，got 1703、1711、1720」\n\n【本轮已发出的调用】\n- edit_file test/hedge.selftest.mjs（old_text `hedgeAfterMs: 1600` → new_text `hedgeAfterMs: 3000`）\n- bash taskset -c 0,1 bash -lc \'for i in $(seq 1 50); do node test/hedge.selftest.mjs || break; done\' 2>&1 | tail -n 4'
+    const h2 = I.verifyHints(testSym)
+    assert.ok(h2.length === 4 && /新起进程的直接输出/.test(h2[0]) && /taskset/.test(h2[1]) && /1600 改成 3000/.test(h2[2]) && /1698、1703、1711、1712/.test(h2[2]) && /3000 \+ 98~120/.test(h2[2]) && /取证之前不动实现/.test(h2[2]) && !h2.some((x) => /单元测试/.test(x)), 'K2 条件 + K3 参数跟随（下一步是取证、不动实现）；原症状是测试失败 ⇒ 不出单元测试提示：' + JSON.stringify(h2))
+    assert.ok(/test\/hedge\.selftest\.mjs 里的 `hedgeAfterMs` 从 1600 改成 3000/.test(h2[3]) && /grep -n "hedgeAfterMs" test\/hedge\.selftest\.mjs/.test(h2[3]) && /grep -rn --exclude-dir=node_modules "hedgeAfterMs" \./.test(h2[3]) && /不试第二候选/.test(h2[3]), 'K6 零效应 ⇒ 消费点（键名 + 文件从调用行里取）：' + h2[2])
+    const noNum = testSym.replace('got 1712', 'got 12').replace('got 1698', '').replace('got 1703、1711、1720', 'x')
+    const h3 = I.verifyHints(noNum)
+    assert.ok(!h3.some((x) => /改成 3000（/.test(x)) && h3.some((x) => /`hedgeAfterMs` 从 1600 改成 3000/.test(x)), '观察里没有 (v0, 2v0] 的失败数 ⇒ 不出 K3，K6 仍出（只依赖改法本身）')
+    const cfgEdit = base + '【本轮已发出的调用】\n- edit_file src/config.js（old_text `compressTargetMax: 1800,` → new_text `compressTargetMax: 450,`）\n- bash analyze-trace --last 30 --steps birth'
+    const h4 = I.verifyHints(cfgEdit)
+    assert.ok(h4.length === 2 && /对已有记录的统计/.test(h4[0]) && /src\/config\.js 里的 `compressTargetMax` 从 1800 改成 450/.test(h4[1]), 'v12.9.2：统计窗口类验收先出新鲜度条款；键名取变动数字前最近的标识符：' + JSON.stringify(h4))
+    assert.equal(I.verifyHints(base + '【本轮已发出的调用】\n- edit_file src/a.js（old_text `return a + 1` → new_text `return a + 2 + b`）').length, 0, '不是单一数值改动 ⇒ 不出 K3 / K6')
+    const r = I.compileV4Direct('上一轮已定：改 src/transport.js。这条观察新不新：tail 出来的是 ~/.dsh/trace.log 里已有的行，先 `: > ~/.dsh/trace.log` 再跑同一条。所以下一步工具调用是 edit_file。如果 PASS，那么坐实：edit_file src/transport.js，old_text 是 `return { out, finish: finish || (done ? \'stop\' : null) }`，new_text 是 `return { out, finish: finish || null }`。如果输出跟这两种都不像，先别改。', 'RAW 原文 return { out, finish: finish || (done ? \'stop\' : null) }', { compressCtx: sse })
+    assert.ok(r.ok && r.stats.inventedSpans === 0 && r.text.includes('`: > ~/.dsh/trace.log`'), '提示里的片段不算发明：' + JSON.stringify(r.stats))
+  })
+  await test('5u6 样例片段级抄写剥离（v12.9.1）：「已排除：调大超时、换连接池重试（…）」里的样例排除项被剥掉、其余保留；原文 / 观察里真有连接池的不动；整项空了连标签一起删', () => {
+    const tail = '所以下一步工具调用是 bash x。如果 PASS，那么坐实。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。'
+    const r = I.compileV4Direct('上一轮已定：改 a。已排除：调大超时（治症状）、换连接池重试（要动多处、落点没看过）。' + tail, 'RAW 调大超时', { compressCtx: '任务\n\n【台账】\n- x' })
+    assert.ok(r.ok && r.stats.parrotedFragment === 1 && r.text.includes('已排除：调大超时（治症状）。') && !r.text.includes('连接池'), JSON.stringify(r.text))
+    const r2 = I.compileV4Direct('已排除：换连接池重试（要动三处）、调大超时。' + tail, 'RAW', {})
+    assert.ok(r2.ok && r2.text.startsWith('已排除：调大超时。'), JSON.stringify(r2.text))
+    const r3 = I.compileV4Direct('已排除：换连接池重试（要动三处）。' + tail, 'RAW 连接池重试', {})
+    assert.ok(r3.ok && !r3.stats.parrotedFragment && r3.text.includes('换连接池重试'), '原文里有连接池 ⇒ 不动')
+    const r4 = I.compileV4Direct('机理如此；已排除：换连接池重试（要动三处）；未解：无。' + tail, 'RAW', {})
+    assert.ok(r4.ok && r4.text.startsWith('机理如此；未解：无。'), JSON.stringify(r4.text))
+  })
+  await test('5u5 多轮熔断 2600（v12.9.1）：ctx 含【台账】时超长阈值 2600、单步仍 2000；显式 compressV4DirectMaxChars 两者都覆盖', () => {
+    const body = ('上一轮已定：改 a。所以下一步工具调用是 bash x。如果 PASS，那么坐实。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。' + '取证句取证句取证句取证句取证句取证句取证句取证句取证句取证句。'.repeat(90)).slice(0, 2300)
+    assert.ok(body.length > 2000 && body.length < 2600)
+    assert.equal(I.compileV4Direct(body, 'RAW', {}).reason, 'v4d-too-long', '单步 2000')
+    assert.ok(I.compileV4Direct(body, 'RAW', { compressCtx: '任务\n\n【台账】\n- x' }).ok, '多轮 2600')
+    assert.equal(I.compileV4Direct(body, 'RAW', { compressCtx: '任务\n\n【台账】\n- x', compressV4DirectMaxChars: 2100 }).reason, 'v4d-too-long', '显式覆盖')
+  })
+  await test('5u7 延续段由程序写（v12.9.2，S10.19）：continuationText 从台账推出「上一轮已定 / 状态 / 仍在依赖的事实 / 已排除 / 未解 / 已走过的路」；new_text 的提议行不算事实；未解不双标签；buildCompressCtx 把【延续段】放在【台账】之后、工具结果之前；没有前几轮 ⇒ 空', () => {
+    const msgs = [
+      { role: 'user', content: '你是编码 Agent。CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次。' },
+      { role: 'assistant', reasoning_content: '日志里失败全是 §4，got 1703、1711、1720。read_file test/hedge.selftest.mjs（逐字）：`const hedgeAfterMs = cfg.hedgeAfterMs || 1600;`。改法只落一个：改 test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`，new_text 是 `hedgeAfterMs: 3000`。调大 CI 超时不选：症状跟着阈值走。验收是 bash `npm test`，预期 PASS 12。未解：为什么只在 CI 上。', content: '[tool_call bash] {"command":"for i in 1 2 3; do npm test; done"}' },
+      { role: 'user', content: [{ type: 'tool-result', toolCallId: 'b1', content: [{ type: 'text', text: 'run 1 PASS\nrun 2 FAIL §4 got 1712' }] }] },
+    ]
+    const t = I.continuationText(msgs)
+    assert.ok(t.startsWith('上一轮已定：改 test/hedge.selftest.mjs') && /（第 1 轮）；状态：提议、未执行（old_text `hedgeAfterMs: 1600` → new_text `hedgeAfterMs: 3000`）。/.test(t), '已定 + 状态（提议未执行）：' + t)
+    const facts = (t.match(/仍在依赖的事实：[^。]*。/) || [''])[0]
+    assert.ok(facts === '仍在依赖的事实：`const hedgeAfterMs = cfg.hedgeAfterMs || 1600;`（read_file test/hedge.selftest.mjs）——第 1 轮稿里逐字引用的行，本轮输出里不会再出现，出处仍有效。', '事实行带出处；三元组里的行（尤其 new_text 的提议行）不算事实：' + facts)
+    assert.ok(t.includes('已排除：调大 CI 超时不选：症状跟着阈值走（第 1 轮）。') && t.includes('未解：为什么只在 CI 上。') && !t.includes('未解：未解'), '排除 / 未解（不双标签）：' + t)
+    assert.ok(/已走过的路：第 1 轮 bash `for i in 1 2 3; do npm test; done` → 「run 1 PASS … run 2 FAIL §4 got 1712」；这些不再重跑，除非中间改过东西。$/.test(t), '已走过的路带结果首行 + 失败行，句尾是「不再重跑」：' + t)
+    const ctx = I.buildCompressCtx(msgs)
+    assert.ok(ctx.indexOf('【台账】') > 0 && ctx.indexOf('【台账】') < ctx.indexOf('【延续段】') && ctx.indexOf('【延续段】') < ctx.indexOf('[tool: ') && ctx.includes('\n' + t + '\n\n[tool: '), '延续段在台账之后、工具结果之前，且逐字 = continuationText：' + ctx.slice(ctx.indexOf('【延续段】') - 20))
+    assert.equal(I.continuationText(msgs.slice(0, 1)), ''); assert.equal(I.continuationBlock(msgs.slice(0, 1)), '')
+    assert.equal(I.buildCompressCtx(msgs.slice(0, 1)), '你是编码 Agent。CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次。', '没有前几轮 ⇒ 无台账无延续段')
+    assert.ok(I.ledgerBlock(msgs).includes('- 未解：为什么只在 CI 上。') && !I.ledgerBlock(msgs).includes('未解：未解'), '台账里未解也不双标签')
+    // 已改 + 验收过 ⇒ 状态带回执与其后跑过的命令
+    const msgs2 = [...msgs, { role: 'assistant', reasoning_content: '坐实了。', content: '[tool_call edit_file] {"path":"test/hedge.selftest.mjs","old_text":"hedgeAfterMs: 1600","new_text":"hedgeAfterMs: 3000"}\n[tool_call bash] {"command":"npm test"}' }, { role: 'user', content: '[tool: edit_file 结果]\nok（已写入）\n\n[tool: bash 结果]\nPASS 12 / FAIL 0' }]
+    const t2 = I.continuationText(msgs2)
+    assert.ok(/状态：已改（edit_file test\/hedge\.selftest\.mjs，old_text `hedgeAfterMs: 1600` → new_text `hedgeAfterMs: 3000`，结果 ok（已写入）），其后跑过 `npm test` → 「PASS 12 \/ FAIL 0」/.test(t2), '已改 + 其后验收：' + t2)
+  })
+  await test('5u8 闸门拼稿（v12.9.2，S10.19）：spliceProgramParts 把【延续段】原样放稿首、剥掉副模型自己写的延续句；【验收提示】插在收工三问之前、只补稿里没有的；stripExcludedFallback 只删「提议已排除候选」的后路句、否定式提及保留；dedupeParentheticals 折叠重复出处括注；compileV4Direct 在 ctx 含【台账】时全部启用', () => {
+    const cont = '上一轮已定：改 src/config.js，old_text 是 `compressTargetMax: 1800,`，new_text 是 `compressTargetMax: 450,`（第 1 轮）；状态：提议、未执行。已排除：maxOutputTokens 850（第 1 轮）。'
+    const ctx = '任务：v11.10 起 p95 涨了。\n\n【台账】（程序摘出）\n- 第 1 轮已定：改 src/config.js\n- 已排除：maxOutputTokens 850 不是原因\n\n【延续段】（程序按台账写好的稿首段）\n' + cont + '\n\n[tool: bash 结果]\np95 1412ms\n\n【本轮已发出的调用】\n- edit_file src/config.js（old_text `compressTargetMax: 1800,` → new_text `compressTargetMax: 450,`）\n- bash analyze-trace --last 30 --steps birth'
+    const draft = '上一轮已定：改 src/config.js 的 compressTargetMax，已排除 maxOutputTokens 850。仍在依赖的事实：`compressTargetMax: 1800,` 出处仍有效。' +
+      '本轮 analyze-trace 坐实 p95 1412ms 全在 birth 步。改法只落一个：edit_file src/config.js，old_text 是 `compressTargetMax: 1800,`（第 1 轮 git diff 的原样行，本轮输出里没有它，照用），new_text 是 `compressTargetMax: 450,`（第 1 轮 git diff 的原样行，本轮输出里没有它，照用）。' +
+      '所以下一步工具调用是 edit_file。验收先写下：验收是本轮一起发出的 bash `analyze-trace --last 30 --steps birth`，预期 p95 < 900ms；总 p95 下降不算证据，因为窗口里混着旧记录。若 p95 仍 ≥ 1400：第一步只有一条，bash `grep -n "compressTargetMax" src/config.js` 确认落地；落地了先比差，新出现的键名就是下一条取证对象；输出里没有新东西才走这条：edit_file src/config.js，old_text 是 `maxOutputTokens: 4096,`，new_text 是 `maxOutputTokens: 850,`。此时不要动 compressTargetMax、maxOutputTokens 已排除不动。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。' +
+      '能说修好要三件事都在手：改动落地的证据（缺：靠那条 grep 补）、p95 回到 900ms 以下（缺）、这条观察是改后产生的（按程序附的新鲜度条款判）；现在能说的：已改未验证。'
+    const st = {}
+    let out = I.spliceProgramParts(draft, ctx, st)
+    assert.ok(out.startsWith(cont + '\n\n本轮 analyze-trace 坐实') && st.continuation === 1 && st.droppedContinuation === 2, '延续段原样在首、副模型自己的两句延续被剥：' + JSON.stringify(st) + ' ' + out.slice(0, 200))
+    const hints = I.verifyHints(ctx)
+    assert.ok(hints.length === 2 && st.splicedHints === 2 && hints.every((h) => out.includes(h)), '两条提示（统计窗口新鲜度 + K6 零效应）都拼进稿')
+    const iH = out.indexOf(hints[0]), iQ = out.indexOf('能说修好要三件事都在手'), iE = out.indexOf('如果输出跟这两种都不像')
+    assert.ok(iE < iH && iH < iQ && out.indexOf(hints[1]) < iQ, '位置：逃生句之后、收工三问之前')
+    assert.equal(I.spliceProgramParts(out, ctx, {}), out, '幂等：已含延续段与提示 ⇒ 不再动')
+    const st2 = {}
+    const out2 = I.stripExcludedFallback(out, ctx, st2)
+    assert.ok(!out2.includes('new_text 是 `maxOutputTokens: 850,`') && out2.includes('maxOutputTokens 已排除不动') && out2.includes('old_text 是 `compressTargetMax: 1800,`') && st2.excludedFallback && st2.excludedFallback.includes('maxOutputTokens'), '提议已排除候选的后路句被删；否定式提及与落定三元组保留：' + JSON.stringify(st2))
+    assert.ok(/新出现的键名就是下一条取证对象；此时不要动 compressTargetMax、maxOutputTokens 已排除不动。如果输出跟这两种都不像/.test(out2) && !out2.includes('才走这条：edit_file'), '整句后路（含冒号引导）一起删，前后句接上：' + out2.slice(out2.indexOf('新出现'), out2.indexOf('新出现') + 100))
+    const st3 = {}
+    const out3 = I.dedupeParentheticals(out2, st3)
+    assert.ok(st3.dedupedParentheticals === 1 && out3.includes('new_text 是 `compressTargetMax: 450,`（出处同上）') && out3.includes('old_text 是 `compressTargetMax: 1800,`（第 1 轮 git diff 的原样行'), '第二个相同出处括注折叠为（出处同上）')
+    // 端到端：compileV4Direct 在 ctx 含【台账】时把三步都做了；不含【台账】时一步都不做
+    const r = I.compileV4Direct(draft, 'RAW', { compressCtx: ctx })
+    assert.ok(r.ok && r.text.startsWith(cont) && hints.every((h) => r.text.includes(h)) && !r.text.includes('new_text 是 `maxOutputTokens: 850,`') && r.text.includes('（出处同上）'), 'compileV4Direct 全部启用：' + JSON.stringify(r.stats))
+    const r0 = I.compileV4Direct(draft, 'RAW', { compressCtx: '任务：x\n\n[tool: bash 结果]\np95 1412ms' })
+    assert.ok(r0.ok && !r0.text.startsWith(cont) && !r0.text.includes('（出处同上）') && r0.text.includes('maxOutputTokens: 850,'), '单步 ctx（无台账）不动稿')
+    // 否定要贴着标识符：「`maxOutputTokens: 850,`（本轮不动 compressTargetMax）」里的「不动」不是在否定 maxOutputTokens（auto-d2e perf 稿真机漏网）
+    const leak = draft.replace('new_text 是 `maxOutputTokens: 850,`。', 'new_text 是 `maxOutputTokens: 850,`（本轮不动 compressTargetMax）。')
+    const stL = {}
+    assert.ok(!I.stripExcludedFallback(leak, ctx, stL).includes('maxOutputTokens: 850,') && stL.excludedFallback, '括号里否定别的标识符不能替已排除候选挡刀')
+    // 副模型漏写收工三问（长度预算下最先被砍）⇒ 程序按本轮调用 + 台账补一段（S10.19）；写了就不动
+    const noQ = draft.slice(0, draft.indexOf('能说修好要三件事都在手'))
+    const stQ = {}
+    const outQ = I.spliceProgramParts(noQ, ctx, stQ)
+    const q = I.closingQuestions(ctx)
+    assert.ok(stQ.splicedClosing === 1 && outQ.endsWith(q) && outQ.indexOf(hints[1]) < outQ.indexOf(q), '三问补在提示之后、稿末')
+    assert.ok(q.includes('改动落地的证据（缺：edit 回执加 bash `grep -n "compressTargetMax" src/config.js`）') && q.includes('原症状在同等条件下消失（缺：看本轮一起发出的 bash `analyze-trace --last 30 --steps birth` 的输出') && q.includes('这条观察是改后产生的（按上面程序附的新鲜度条款判）') && q.includes('现在能说的：已改未验证'), '三问三个格都从本轮调用推出：' + q)
+    assert.ok(!('splicedClosing' in st), '稿里已有三问 ⇒ 不补')
+    // 本轮没有 edit：落地证据看台账里前几轮的已改回执；都没有 ⇒ 还没有改法落地
+    const ctxPrev = ctx.replace('- 已排除：maxOutputTokens 850 不是原因', '- 第 1 轮已改：edit_file src/config.js，old_text `compressTargetMax: 1800,` → new_text `compressTargetMax: 450,`（结果：ok（已写入））；其后没有跑过任何验收；状态：已改未验证').replace(/【本轮已发出的调用】[\s\S]*$/, '【本轮已发出的调用】\n- bash analyze-trace --last 30 --steps birth')
+    const q2 = I.closingQuestions(ctxPrev)
+    assert.ok(q2.includes('改动落地的证据（有：第 1 轮 edit_file src/config.js 回执「ok（已写入）」）') && q2.includes('现在能说的：已改、验收结果待判'), '前几轮已改 ⇒ 落地证据「有」+ 待判：' + q2)
+    const q3 = I.closingQuestions(ctx.replace(/【本轮已发出的调用】[\s\S]*$/, '【本轮已发出的调用】\n- read_file src/config.js'))
+    assert.ok(q3.includes('改动落地的证据（缺：还没有改法落地）') && q3.includes('原症状在同等条件下消失（缺：看验收命令的输出，按上面写下的预期判）') && q3.includes('现在能说的：还没有改法落地'), '本轮只读文件 ⇒ 三件全缺：' + q3)
+  })
+  await test('5u3 样例整句抄写剥离（v12.9.0）：稿里出现样例的整句、而原文 / 观察里没有 ⇒ 剥掉并计 parrotedExample；原文里真有的句子不动', () => {
+    const ex = I.exampleSentences()
+    assert.ok(ex.some((x) => x.startsWith('调大超时试过没用')) && ex.some((x) => x.startsWith('把 dial 换成连接池重试')) && ex.length >= 8, JSON.stringify(ex.slice(0, 5)))
+    const raw = '看起来是时序竞态，hedgeAfterMs 1600 与 1500 只差 100ms。'
+    const draft = '看起来是时序竞态。调大超时试过没用，不选：超时是连不上的结果不是原因。把 dial 换成连接池重试要动三处、那段代码没读过，不选。改法只落一个：改 `hedgeAfterMs 1600` 这一行。所以下一步工具调用是 bash 复现。如果 FAIL，那么假设坐实：改它。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。'
+    const r = I.compileV4Direct(draft, raw, {})
+    assert.ok(r.ok && r.stats.parrotedExample === 2 && !r.text.includes('连接池') && !r.text.includes('调大超时') && r.text.includes('改法只落一个') && r.text.includes('如果输出跟这两种都不像，先别改'), '只剥带样例专有内容的句子，逃生句保留：' + JSON.stringify(r))
+    const r2 = I.compileV4Direct(draft, raw + ' 调大超时试过没用，不选：超时是连不上的结果不是原因。', {})
+    assert.ok(r2.ok && r2.stats.parrotedExample === 1 && r2.text.includes('调大超时试过没用'), '原文里真有的句子不剥')
   })
   // ---- §5q v12.7 compressCtx 自动构造（理论 S8-R5/R7 的生产前提：压缩器要看到 Agent 看到的观察）----
   await test('5q1 buildCompressCtx：最后一条人类 user + 本回合工具结果（pi-ai 块形与 OpenAI 形都认），格式同 TASKS', () => {
@@ -919,7 +1188,7 @@ try {
     const base = { compressPrompt: 'v4' }
     assert.equal(I.compressCtxFor(base, { messages: [] }), base, '空 ctx ⇒ 原对象')
     assert.equal(I.compressCtxFor(base, { get messages() { throw new Error('boom') } }), base, '异常 ⇒ 原配置')
-    assert.equal(I.compressPromptVersion(I.compressCtxFor({ compressPrompt: 'v4', compressV4Direct: true }, { messages: msgs })), 'compress-v4d3:ctx')
+    assert.equal(I.compressPromptVersion(I.compressCtxFor({ compressPrompt: 'v4', compressV4Direct: true }, { messages: msgs })), 'compress-v4d9:ctx')
     const src = fs.readFileSync(new URL('../src/plugin.js', import.meta.url), 'utf8')
     assert.ok(/const streamCfg = compressCtxFor\(callCfg, options\)/.test(src), 'plugin.js birth 分支用 compressCtxFor 派生 streamCfg')
   })
@@ -933,9 +1202,11 @@ try {
     assert.equal(keep.birthFinishWaitMs, 9000); assert.ok(!keep.configAdjusted || !keep.configAdjusted.birthFinishWaitMs, '已满足 ⇒ 不动')
     const off = I.normalizeConfig({ mode: 'birth', compressPrompt: 'v4', compressV4Direct: true, compressV4DirectMinWaitMs: 0 })
     assert.equal(off.birthFinishWaitMs, 1500, '0 = 不抬')
-    assert.equal(I.normalizeConfig({ mode: 'birth', compressPrompt: 'v4' }).birthFinishWaitMs, 1500, '不开直写零变化')
+    assert.equal(I.normalizeConfig({ mode: 'birth', compressPrompt: 'v4', compressV4Direct: false }).birthFinishWaitMs, 1500, '关直写零变化')
+    assert.equal(I.DEFAULTS.compressV4Direct, true, 'v12.8.8 转正：直写为 v4 缺省（v3 仍是全局缺省 compressPrompt）'); assert.equal(I.DEFAULTS.compressPrompt, 'v3')
+    assert.equal(I.normalizeConfig({ mode: 'birth' }).birthFinishWaitMs, 1500, '全局缺省 v3 ⇒ 窗口不动（缺省配置线上零变化）')
   })
-  // ---- §5r S8-R7 用到 ops 路（生产 v4 缺省）：无落点的 READY 按观察绑落点；自动改法条目去项目符号并带落点渲染 ----
+  // ---- §5r S8-R7 用到 ops 路（v12.8.8 前的生产 v4 缺省；现为 compressV4Direct:false 的路）：无落点的 READY 按观察绑落点；自动改法条目去项目符号并带落点渲染 ----
   await test('5r1 ops 路：副模型没标改法 ⇒ 代码从原文补 READY（去掉「- 」），并从 compressCtx 绑到 `hedgeAfterMs: 1600`', () => {
     const raw = 'CI 失败 got 1712。100ms 余量太小。修复方向：\n- 增大时间差，例如主请求 1000ms，hedgeAfterMs 2000ms，或主请求 1500，hedge 3000。\n- 测试中使用 fake timers。\n' +
       '如果失败复现，再修。' + '填充句子。'.repeat(150)
@@ -967,6 +1238,54 @@ try {
     assert.ok(r.text.includes('这一行的逐字原文是 `const env = { ...process.env, DSH_HOME: tmp }`'), r.text)
     const withAt = I.compileV4(JSON.stringify({ ops: [ops[0], { ...ops[1], at: 'const env = { ...process.env, DSH_HOME: tmp }' }] }), raw, { compressV4Prose: true, compressCtx: ctx })
     assert.equal(withAt.stats.boundReady, undefined, '已有 at ⇒ 不算本次绑定')
+  })
+  await test('5u5 F6（v14.12.3）有界的「已走过的路」：bounded 把最近两轮原样保留、更早的按工具+命令头归并计数、整段 ≤600 字；full 缺省不变；程序写的路段里的反引号命令不再被当成「仍在依赖的事实」；continuationPath 经 cfg / policy.config 生效且坏值回 full 留痕', () => {
+    const call = (cmd) => `[tool_call bash] {"command":${JSON.stringify(cmd)}}`
+    const msgs = [
+      { role: 'user', content: '升级后 birth 收网等待从 900ms 涨到 2400ms，请找原因并修好。' },
+      { role: 'assistant', reasoning_content: 'x', content: call('ls -la && cat README.md') + '\n' + call('cd /tmp && analyze-trace --last 20') },
+      { role: 'user', content: '[tool: bash]\ntotal 8\n[tool: bash]\nv11.9 260' },
+      { role: 'assistant', reasoning_content: 'x', content: call('cat src/config.js') + '\n' + call('find / -name "*trace*" 2>/dev/null | head') },
+      { role: 'user', content: '[tool: bash]\nexport default {}\n[tool: bash]\n(no output)' },
+      { role: 'assistant', reasoning_content: 'x', content: call('type analyze-trace; ls -la /usr/local/bin') + '\n' + call('ls -la / ; ls /opt /srv') },
+      { role: 'user', content: '[tool: bash]\nanalyze-trace is /usr/local/bin/analyze-trace\n[tool: bash]\nbin boot dev' },
+      { role: 'assistant', reasoning_content: 'x', content: call('alias; declare -f analyze-trace; env | head -30') },
+      { role: 'user', content: '[tool: bash]\n(no output)' },
+    ]
+    const full = I.continuationText(msgs), bounded = I.continuationText(msgs, { path: 'bounded' })
+    assert.ok(full.includes('第 1 轮 bash `ls -la && cat README.md`') && full.includes('第 4 轮 bash `alias; declare -f analyze-trace; env | head -30`'), 'full 逐条列出：' + full)
+    assert.ok(bounded.length < full.length && bounded.length <= 600, `bounded ${bounded.length} < full ${full.length} 且 ≤600`)
+    assert.ok(/第 1–2 轮已跑 4 条：bash×4（/.test(bounded) && /analyze-trace/.test(bounded) && /find/.test(bounded), '更早两轮归并计数（命令头，剥掉 cd …&&）：' + bounded)
+    assert.ok(bounded.includes('第 3 轮 bash `type analyze-trace; ls -la /usr/local/bin`') && bounded.includes('第 4 轮 bash `alias; declare -f analyze-trace; env | head -30`'), '最近两轮原样：' + bounded)
+    assert.ok(!bounded.includes('`ls -la && cat README.md`') && bounded.endsWith('这些不再重跑，除非中间改过东西。'), bounded)
+    assert.equal(I.continuationText(msgs, { path: 'nope' }), full, '不认识的形态按 full')
+    // F6c：上一轮稿里程序写的路段（含反引号命令参数）不进「仍在依赖的事实」；像 shell 命令的也不进
+    const stored = full + '\n' + '本轮增量：看到 `const env = { ...process.env, DSH_HOME: tmp }`（read_file verify.mjs 逐字）。'
+    const L = I.buildLedger([...msgs, { role: 'assistant', reasoning_content: stored, content: call('cat src/config.js') }, { role: 'user', content: '[tool: bash]\nexport default {}' }])
+    assert.deepEqual(L.lines.map((l) => l.text), ['const env = { ...process.env, DSH_HOME: tmp }'], '只收真正的事实行：' + JSON.stringify(L.lines))
+    // ctx 接线：buildCompressCtx 的 continuationPath；plugin 侧由 effectiveContinuationPath(cfg) 决定（策略 config 覆盖顶层键）
+    const ctxF = I.buildCompressCtx(msgs), ctxB = I.buildCompressCtx(msgs, { continuationPath: 'bounded' })
+    assert.ok(ctxF.includes('【延续段】') && ctxB.includes('【延续段】') && ctxB.length < ctxF.length && ctxB.includes('第 1–2 轮已跑 4 条'), 'ctx 用 bounded 延续段')
+    // F6b：当【延续段】存在时，【台账】不再把已走过的路再铺一遍（避免 bounded 延续段被上方无界台账架空）
+    assert.ok(ctxB.includes('详见下方【延续段】') && !ctxB.split('【延续段】')[0].includes('`ls -la && cat README.md`'), 'F6b：台账不重复铺出已走过的路')
+    assert.equal(I.effectiveContinuationPath(I.normalizeConfig({})), 'full', '缺省 full：被测对象不变')
+    assert.equal(I.effectiveContinuationPath(I.normalizeConfig({ continuationPath: 'bounded' })), 'bounded')
+    const viaPolicy = I.normalizeConfig({ compressPolicy: { id: 'p-f6', patches: [], config: { continuationPath: 'bounded' } } })
+    assert.ok(viaPolicy.compressPolicy && viaPolicy.compressPolicy.id === 'p-f6' && viaPolicy.compressPolicy.config.continuationPath === 'bounded', '只带 config 的策略不再被当成空策略：' + JSON.stringify(viaPolicy.compressPolicy))
+    assert.equal(I.effectiveContinuationPath(viaPolicy), 'bounded')
+    assert.equal(I.normalizeConfig({ compressPolicy: { id: 'p', patches: [], config: {} } }).compressPolicy, null, '空补丁 + 空配置 = 无策略')
+    const bad = I.normalizeConfig({ continuationPath: 'tight', compressPolicy: { id: 'p', patches: [], config: { continuationPath: 'nope' } } })
+    assert.equal(bad.continuationPath, 'full'); assert.ok(bad.configAdjusted.continuationPath && bad.configAdjusted.compressPolicy, '坏值回 full、坏策略回 null，都留痕：' + JSON.stringify(bad.configAdjusted))
+    assert.throws(() => I.validatePolicyConfig({ birthIdentifierGate: false }), /policy:config-key/, '白名单之外的键不许进策略（不能借策略改被测对象）')
+    // v14.12.4 制度键（地板 / 保本线 / token 闸）：可当预注册候选，有范围，normalizeConfig 落到顶层并标 regime；缺省制度一字不变
+    assert.throws(() => I.validatePolicyConfig({ birthMinChars: 0 }), /policy:config-value/); assert.throws(() => I.validatePolicyConfig({ birthMinSavedChars: -9999 }), /policy:config-value/); assert.throws(() => I.validatePolicyConfig({ birthTokenGate: 'no' }), /policy:config-value/)
+    const regime = I.normalizeConfig({ compressPolicy: { id: 'p-r', patches: [], config: { birthMinChars: 1, birthMinSavedChars: -1800, birthTokenGate: false, continuationPath: 'none' } } })
+    assert.equal(regime.birthMinChars, 1); assert.equal(regime.birthMinSavedChars, -1800); assert.equal(regime.birthTokenGate, false); assert.equal(I.effectiveContinuationPath(regime), 'none')
+    assert.deepEqual(regime.policyConfigApplied, { policy: 'p-r', keys: ['birthMinChars', 'birthMinSavedChars', 'birthTokenGate', 'continuationPath'], regime: ['birthMinChars', 'birthMinSavedChars', 'birthTokenGate'] })
+    assert.deepEqual(regime.compressPolicy.regime, ['birthMinChars', 'birthMinSavedChars', 'birthTokenGate'])
+    const dflt = I.normalizeConfig({}); assert.equal(dflt.birthMinChars, 3100); assert.equal(dflt.birthMinSavedChars, 50); assert.equal(dflt.birthTokenGate, true); assert.equal(dflt.policyConfigApplied, undefined)
+    assert.equal(I.continuationBlock([{ role: 'user', content: 'u' }, { role: 'assistant', content: 'a', tool_calls: [{ function: { name: 'bash', arguments: '{"command":"ls"}' } }] }], { path: 'none' }), '', "continuationPath 'none' 不写延续段")
+    assert.ok(I.continuationBlock([{ role: 'user', content: 'u' }, { role: 'assistant', content: 'a', tool_calls: [{ function: { name: 'bash', arguments: '{"command":"ls"}' } }] }], { path: 'full' }).length > 0)
   })
 } finally {
   if (oldHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = oldHome

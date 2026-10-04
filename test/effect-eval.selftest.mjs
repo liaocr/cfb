@@ -46,7 +46,8 @@ const specs = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/effect-specs.jso
     assert.equal(E.sawReasoning(claude, 'raw', 10074, 1310), false)
     assert.equal(E.sawReasoning({ prompt_tokens: 1310 }, 'empty', 0, undefined), true)
     assert.equal(E.sawReasoning(claude, 'empty', 0, undefined), false)
-    assert.equal(E.sawReasoning({ prompt_tokens: 900 }, 'v4', 500, undefined), true, '还没有基线 ⇒ 只看通道')
+    assert.equal(E.sawReasoning({ prompt_tokens: 900 }, 'v4', 500, undefined), false, '缺基线和可信指纹 ⇒ unknown，不冒充有效')
+    assert.equal(E.sawReasoning({ prompt_tokens: 900 }, 'v4', 500, undefined, 'fp_dspure_app_v1'), true)
   })
   await test('§5 responseText 合并正文与 tool_calls；parseJudge 容忍前后杂字、坏 JSON 返回 null', () => {
     const t = E.responseText({ content: '判断', tool_calls: [{ function: { name: 'edit_file', arguments: '{"path":"a"}' } }] })

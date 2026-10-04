@@ -1,0 +1,34 @@
+{
+  "schema": "cfb.policy/1",
+  "parent": "base",
+  "base": "compress-v4d9",
+  "patches": [
+    {
+      "op": "replace",
+      "from": "治症状 / 要动多处 / 落点没看过",
+      "to": "治症状 / 落点没看过 / 原文自己否掉的多处改动"
+    },
+    {
+      "op": "append",
+      "section": "rules",
+      "text": "10. 多处落点：原文最后的结论若明确要改不止一处（同一个值在几处产生或几处消费、两个文件各一行），落定句仍只落一个改法，但要写成「分 N 处落地：① 文件 `行` ② 文件 `行`」，N 处全部从【在手的代码行】里挑、各带自己的 old_text / new_text；第一分支按 ① ② 顺序连续发出，改完一处症状仍在不算假设被推翻，只有 N 处都落地后同等条件复现仍在才走第二分支；几处都在手，就不要为了「只改一处」把其余几处写进排除段。"
+    },
+    {
+      "op": "append",
+      "section": "tail",
+      "text": "落定句若分 N 处落地，N 个三元组全部保留；超长先删排除段，不删它们。"
+    }
+  ],
+  "rationale": "证据包 g2 的版本提醒：base=v4d9 的结局数据为 0 条，6 条历史失败都来自 v4d7 / 手写稿，而 v4d8（收工三问、K 提示）已把红题假完成压到 0/10 —— 所以这不是「修 v4d9 的某次失败」，是机理假设：v4d9 规则 3 把「要动多处」列为排除理由、规则 5 只给一个三元组、样例也只示范单点改值 ⇒ 当真正的修复需要两处（同一个值在产生处和消费处各一行；traj-fixtures-v2 的 sse-truncated 家族即如此，SWE-smith 也报告组合式多处缺陷显著更难），压缩稿会把第二处写进排除段，Agent 改完一处看症状仍在就走「假设不成立」分支或回头重读。补丁只在原文结论本身要求多处时触发，单点任务不改变行为；标识符仍受【在手的代码行】与 compileV4Direct 无发明闸约束。",
+  "prediction": "L2（traj-fixtures-v2 sse-truncated 等多处家族）：policy:p1 相对 policy:base 的 roundsToFix 更短、改完一处后的假修好声明更少；单处家族（eacces / wrong-model / flaky / perf）与 base 无差（补丁条件不触发）。L1 旗标：next 不降、falseDone 不升；稿长 +80~150 字符仍在 1600 内。若多处家族上 p1 不优于 base ⇒ 单点偏置不是瓶颈，候选作废，不改第二版。",
+  "origin": {
+    "by": "assistant",
+    "gen": 2,
+    "pack": "ed7dd486332280e7",
+    "file": "docs/proposals/p1-multi-site.json"
+  },
+  "status": "proposed",
+  "sides": {},
+  "id": "p-5d92393440",
+  "at": "2026-10-02T10:24:57.632Z"
+}

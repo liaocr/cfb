@@ -21,4 +21,18 @@ Thumbs.db
 .idea/
 .vscode/
 
+# 本地证据块仓/检查点/演示产物（不含发布文件，不进 Git/manifest）
+.cfb-runtime/
+
 # 说明：MANIFEST.sha256 **要**进仓库 —— 它就是完整性清单本身。
+
+# 可选Python训练器的本地字节码/测试缓存（不属于交付源码）
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# 本机评测profile（无密钥，但含本机报价核对日期，不进交付清单）
+/eval-profile.json
+
+# 离线层运行时产物（语料/候选/规划；可再生，不进交付清单）
+.cfb-offline/

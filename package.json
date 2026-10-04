@@ -14,13 +14,27 @@
   "scripts": {
     "test": "node verify.mjs",
     "verify": "node verify.mjs",
+    "verify:offline": "node tools/verify-offline.mjs",
+    "bench": "node tools/cfb-cycle.mjs benchmark",
+    "bench:lite": "node tools/cfb-cycle.mjs plan-bench --lite",
+    "traj:lite": "node tools/cfb-cycle.mjs plan-traj --lite",
+    "cycle": "node tools/cfb-cycle.mjs status",
+    "next": "node tools/cfb-cycle.mjs next",
+    "prescreen": "node tools/cfb-cycle.mjs prescreen",
+    "judge": "node tools/cfb-judge.mjs capacity",
+    "train:export": "node tools/cfb-cycle.mjs export-train",
+    "restore": "node tools/cfb-cycle.mjs restore",
+    "snapshot": "node tools/cfb-cycle.mjs snapshot",
     "manifest": "node manifest.mjs",
     "manifest:check": "node manifest.mjs --check",
     "onboard": "node deploy/onboard.mjs",
     "trace:audit": "node tools/analyze-trace.mjs",
-    "trace:efficiency": "node tools/analyze-efficiency.mjs"
+    "trace:efficiency": "node tools/analyze-efficiency.mjs",
+    "effect:bounded:plan": "node tools/bounded-ab.mjs --plan",
+    "effect:ready": "node tools/effect-ready.mjs",
+    "effect:simulate": "node tools/verify-offline.mjs --ready-simulate"
   },
-  "description": "DSH 外部插件：reasoning 块出生即压缩（CAS 原文归档 + 副模型摘要，编造标识符或失败时原文放行）。",
+  "description": "DSH 外部插件：reasoning 块出生即压缩（CAS 原文归档 + 认知编译器压缩，编造标识符或失败时原文放行）。",
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1"
   },

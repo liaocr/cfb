@@ -1,187 +1,132 @@
-# 架构（v12.3，开发者视角）
+# 生产插件与认知编译器架构（v14.18，开发者视角）
 
-> 面向改代码的人：模块怎么分、数据怎么流、哪些不变式不能碰、加东西该改哪里。
-> 使用与配置见根目录 [`README.md`](../README.md)；设计沿革见 [`CHANGELOG.md`](../CHANGELOG.md)；v12.0 之前的文件可从 git `cfba57b` 取回。
->
-> v12.1 起只有**一条路径**：`mode: 'birth'` + compress 编译。checkpoint 模式、迟到认领（deferred claim / late-memory）、
-> memory 模式（证据账本 / 快照 / 状态记忆）、legacy v1 提示词及其全部支撑模块已删除（src 8,990 → 约 3,100 行）。
+> 面向改代码的开发者与 AI 模型：模块怎么分、数据怎么流、哪些不变式不能碰、加功能该改哪里。
+> 快速上手见根目录 [`README.md`](../README.md)；闭环训练与官方基准见 [`TRAINING-AND-BENCHMARK.md`](TRAINING-AND-BENCHMARK.md)；历史实验与成本定律见 [`HISTORY-AND-EXPERIMENTS.md`](HISTORY-AND-EXPERIMENTS.md)。
 
-## 1. 模块地图
+---
 
-包入口 `index.js` 只做导出；宿主拿到 `name` / `inject` / `apply`，其余导出供自测与离线工具使用
-（`package.json` 的 `exports` 只开放 `.`，深层路径对外不可导入，内部文件可以自由搬迁）。
+## 0. 架构全景（三个内聚平面）
 
-依赖从上往下，**无环**：
+仓库 100% 聚焦于 **思维链出生即压缩（Birth-time CoT Compression / 认知编译器）**，由三个内聚平面组成：
+
+| 平面 | 入口 | 职责 | 守恒纪律 |
+|---|---|---|---|
+| **① 生产插件核心** | `index.js` → `src/`（22 个零依赖 ESM 模块） | 在宿主流 `llm/stream` 内拦截 `reasoning` 块，完成 CAS 归档 + 副模型认知编译 + 程序门核真（`compileV4Direct`）+ 程序部件拼接（`spliceProgramParts`）+ 六道放行门（`birthAccept`） | 267 份历史稿逐字回归 + 29 套 selftest 零失败 |
+| **② 统一科学训练闭环与双轨裁判** | `tools/cfb-cycle.mjs` + `tools/cfb-judge.mjs` + `tools/bench-run.mjs` + `tools/traj-run.mjs` | 三模式闭环（手写探顶 → 金标基准 → 影子分叉轨迹）+ 四维全空间策略搜索 + 双轨（确定性规则 × LLM 语义）交叉验证与岭回归校准 + 五大国际官方基准成绩单 | 零污染客观锚点 + 跨计划 CAS 缓存 + 序贯 $e$-value 安全晋升 |
+| **③ 有界 API 账本与训练数据核** | `tools/effect-ready.mjs` + `tools/bounded-ab.mjs` + `src/training-core.js` | 双平面预占 API 预算（一 scope 一冻结批准，收据入库 `transfer/`）+ 5 家族连通组严格隔离的 SFT / DPO / In-Context DPO 导出 | 严禁跨家族泄漏与未批准真实扣费 |
+
+**状态目录职责**：
+- `.cfb-offline/`（gitignored）：**可再生**离线闭环状态（策略池 / 计划 / 金标 / 效度账本 / 飞轮对）。新克隆执行 `npm run restore` 即可从 `transfer/cycle-state.json` 完整重建。
+- `.cfb-runtime/`（gitignored）：**不可再生**私有运行仓与轨迹回执（bounded-ab 各 scope 私有仓、`traj/tN`）。
+- `transfer/`（入库）：公开水位收据、周期快照 `cycle-state.json`、`gold/` 金标库、历史实验数据与 [`HANDOFF.md`](../transfer/HANDOFF.md)。
+
+---
+
+## 1. `src/` 模块依赖地图（自顶向下，无环）
+
+包入口 `index.js` 只做导出（`package.json` 的 `exports` 仅开放 `.`），宿主拿到 `name` / `inject` / `apply`，其余纯函数导出供自测与离线闭环工具直接调用：
 
 ```
-plugin.js ─────────────────────────────── 组合根：apply() 注册两个钩子、接线
-  ├─ boot-record.js       BOOT 行内容（生效配置与版本号）
-  ├─ host-follow.js       调用级模型 / provider（共享 cfg 不变）
-  ├─ session-tracker.js   流归属（交错 ⇒ 不可证）
-  ├─ handle-probe.js      句柄读回探针
-  ├─ birth.js ─────────── 出生即压缩（唯一生产路径）+ 成本模型 + 水位读数 readPressure
-  │    ├─ fidelity.js       逐字标识符召回率（观测）+ 发明标识符闸（判定）
-  │    ├─ tokens.js         token 粗估（token 闸门）
-  │    └─ trace.js          settled 字段白名单
-  ├─ distill.js ───────── 副模型调用（重试降级 / 对冲 / 传输 trace）+ makeBirthCompiler（compress-only）
-  │    ├─ prompts.js ─ config.js
-  │    ├─ compile-v4.js     v12.2 compress-v4-ops 确定性编译器（parse → validate → select → render）→ fidelity.js, tokens.js
-  │    ├─ segment-v4.js     v12.3 v4 流式增量编译（分段器）→ compile-v4.js, prompts.js
+plugin.js ─────────────────────────────── 组合根：apply() 注册 agent/pre-step 与 llm/stream 钩子
+  ├─ boot-record.js       BOOT 上岗自证（生效配置、SELF_ID / DEP_ID、版本号）
+  ├─ host-follow.js       调用级模型 / provider 跟随（派生单次调用配置副本，共享 cfg 永不改写）
+  ├─ session-tracker.js   会话归属追踪（多会话交错 ⇒ 不可证，原文放行）
+  ├─ handle-probe.js      CAS 句柄读回探针（可读回 / 读不回 / 不可证）
+  ├─ birth.js ─────────── ★ 出生即压缩主干：birthTransform / birthStart / birthFinish / effectiveBirthMinChars(λ) / readPressure
+  │    ├─ fidelity.js       逐字标识符召回率（观测）+ 发明标识符拦截闸（inventedIdentifiers）
+  │    ├─ tokens.js         按书写系统区分的 token 粗估（中文 0.6/字、其余 0.3/字）
+  │    └─ trace.js          trace 落盘（64 MiB 轮转）与 settled 字段白名单
+  ├─ distill.js ───────── 副模型调用（重试降级 / 对冲 hedge / 传输 trace）+ makeBirthCompiler + In-Context DPO 范例注入
+  │    ├─ prompts.js        提示词（v3 / v2 / v4-ops / v4d6 直写）+ modularPromptPrune 反稀释动态裁剪
+  │    ├─ compile-v4.js     ★ v4 认知编译器：JSON ops 编译（parse→validate→select→render）+ compileV4Direct 直写程序门 + compactStateParts
+  │    ├─ segment-v4.js     v4 流式增量分段编译（长思维链边写边编，收网只等尾段）
+  │    ├─ policy.js         可训练策略空间（提示词 / 部件开关 / 制度参数 / 范例对）校验与 digest 计算
   │    └─ transport.js ─ provider.js ─ config.js
-  └─ messages.js         出站消息溯源（只观测）
+  ├─ messages.js          出站消息溯源、台账（ledgerBlock）提取、有界延续段（continuationPath:'bounded'）与曾涉文件出处保留
+  ├─ evidence-program.js ─ evidence-store.js   宿主显式类型化证据程序与 CAS 签名块仓（默认关）
+  └─ training-core.js     纯函数训练内核：5 家族连通组切分、SFT/DPO 导出、严格逐项发布门
 ```
 
-规模：最大的是 `birth.js`（约 660 行），其次 `transport.js`、`distill.js`（以 `wc -l src/*.js` 为准）。
+---
 
-## 2. 钩子与数据流
+## 2. 核心数据流与四维极限化机制
 
-`apply(ctx, config)`（`plugin.js`）先 `normalizeConfig`，写一行 `BOOT`（内容在 `boot-record.js`），然后注册：
-
-| 钩子 | 做什么 |
-|---|---|
-| `agent/pre-step` | 只捕获当前会话（`session-tracker.js`，供 CAS 归档登记会话归属与流归属判定），原样返回宿主的 decision |
-| `llm/stream`（`prepend`） | 只读观测：宿主模型/provider 跟随（`host-follow.js` 派生**本次调用专属**配置）、`llm-stream` 溯源 trace；判定流归属（交错 ⇒ 不可证）；`birth` 模式用 `birthTransform` 包装主流 |
-
-任何观测或内部异常都被 `try/catch` 吞成 trace；**主流自己的错误原样抛出**。拿到的流不是 async iterable 就原样返回、绝不包装。
-
-### 2.1 birth：一个 reasoning 块的一生（`birth.js`）
+### 2.1 `birth`：一个 `reasoning` 块的完整生命期（`src/birth.js`）
 
 ```
 birthTransform(inner, deps)
   block-start(reasoning) → birthHoldNew + 立即透传
-  reasoning-delta        → 累积 + 实时透传（live）
-  block-end(reasoning)   → birthStart(entry, deps)   ← 同步返回 task，绝不 await
-                              belowFloor 判定：dryRun / disabled / 短于 birthMinChars（或 birthMinTokens）/ archive-off / no-store
-                              handle   = deriveArtHandle(sessionId, raw)（与 CMB store 同一公式，内存秒算）
-                              diskP    = deps.archive(raw)          （CAS 写盘，birthArchiveTimeoutMs 护栏）
-                              distillP = deps.distill(raw, signal, { onHeaders, taskId, trace })
-  finish                 → birthFinish(task, deps)   ← 押后到最后
-                              等 min(finishWaitMs, 真工期)；到点但已收到 200 响应头 ⇒ 再宽限 finishHeadersGraceMs（一次）
-                              判定顺序：归档 → 压缩成功 → 非空白 → 无发明标识符 → 净省字符 → token 不增
-                              结局：condensed | condensed-partial（v4 增量）| below-floor/dry-run/… | archive-failed(-early)/archive-timeout |
-                                    distill-failed(-early)/distill-timeout | empty-candidate | invented-identifier |
-                                    no-gain | no-token-gain
-                              任何放行 ⇒ birthCancelFlying 取消仍在飞的提纯
+  reasoning-delta        → 累积原文 + 实时透传（live）；若开启 v4 流式增量则同步喂给 segmenter
+  block-end(reasoning)   → birthStart(entry, deps)   ← 同步返回 task，绝不阻塞主流
+                              1. 动态 λ 门槛判定：effectiveBirthMinChars(cfg, meta)
+                                 - 默认 birthMinChars = 3100
+                                 - birthAdaptiveFloor: true 时：round ≤ 2 → 4200（保护早期探索）；
+                                   round ≥ 4 → 1800（清理深轮膨胀）；stagnantRounds ≥ 2 → 1200（停滞期强制注入死路疫苗）
+                              2. 内存秒算句柄：deriveArtHandle(sessionId, raw)
+                              3. 并行发起：diskP = deps.archive(raw) 与 distillP = deps.distill(raw, signal, ...)
+  finish                 → birthFinish(task, deps)   ← 押后至流结束收网
+                              等 min(finishWaitMs, 实际耗时)；已收到 200 响应头则宽限 finishHeadersGraceMs（一次）
+                              六道门禁顺序：归档成功 → 编译非空 → 无发明标识符 → 字符净省 → token 严格下降 → 替换成功（condensed）
+                              任何一道未过 ⇒ birthCancelFlying 立即取消在途请求，100% 原文放行（passthrough）
 ```
 
-`deps.distill` 由 `distill.js` 的 `makeBirthCompiler(streamCfg)` 构造：按 `compressPromptFor(cfg, raw)` 选提示词
-（缺省 v3；只有显式 `compressPrompt: 'v2'` 走 v2），`compressSystemPrompt` 打开时拆成 system + user（字节等价），
-再调 `generateDistillation`。`promptVersion` 由 `compressPromptVersion` 唯一裁决，BOOT / 每次编译 / trace 共用。
+### 2.2 `compile-v4`：两条认知编译通路（`src/compile-v4.js`）
 
-`compressPrompt: 'v4'`（v12.2）时同一个闭包多走一步：
+1. **`v4d6` 直写通路（`compressPrompt: 'v4', compressV4Direct: true`，当前主力）**：
+   - **压缩前准备**：`messages.js` 从本轮工具输出中剥出带行号的**在手代码行**（`inHandLines`）与历史**台账/延续段**（`applyCtxContinuationPolicy`），若策略含 `exemplars` 则由 `distill.js` 自动拼入 In-Context DPO 正反对比范例，若开启 `modularPromptPrune: true` 则由 `prompts.js` 动态剥离当轮不触发的提示词规则块。
+   - **程序门核真（`compileV4Direct`）**：副模型输出主模型原生语域的紧凑散文后，代码机械校验：
+     - 反引号标识符与代码锚点必须逐字有出处；
+     - 尾段判读分支必须闭合（`如果…就…`），不得留悬空问句；
+     - `edit_file` 三元组 `old_text` 必须出自【在手】行，且 `new_text ≠ old_text`；
+     - 宿主工具名自动对齐。
+   - **程序部件拼接（`spliceProgramParts`）**：
+     - `continuationPath: 'bounded'`：将 O(轮数) 增长的已走路径截断为最近 2 条，并在 `【台账】` 摘要末尾保留被截断轮次涉及的文件/标识符出处（`；曾涉 ...`），彻底消除 bounded 续接下的 `invented-identifier` 误杀；
+     - `statePartsMode: 'compact'`（`compactStateParts`）：自动扫描压缩正文已逐字包含的反引号锚点，剔除 `【已排除】` 与 `【未解】` 中的重复复述行（当轮净省再增 `+50~+90 tok`）。
 
-```
-generateDistillation(raw, { maxOutputTokens: max(cfg, compressV4MaxOutputTokens) }, …, buildCompressPromptV4(raw))
-  → 副模型输出 JSON ops
-compileV4(output, raw, cfg, v4Budget(cfg))                       （src/compile-v4.js，纯函数、同步）
-  parseOps     容错解析（围栏 / 前后废话 / 裸数组 / JSON Lines）
-  validateOps  I1 锚点逐字 · I2 标识符有出处 · I3 证伪带替代 · I4 无观测否定→搁置 · I5 工具来源不写「我决定」
-               · I7 同 key 留最新 · I8 无第二人称 · schema / 去重；INCUMBENT/COMPUTED 编造 ⇒ fatal
-  selectOps    必留（INCUMBENT / REFUTED / OPEN）→ 剔除 restate / verify 冗余 → 价值/字符贪心装预算 → 依赖闭包
-  renderOps    证据定粘性 · 替代先行 + 否定就近 · 过去时计划 · 分组顺序 · 尾段（结论 + 未决问句）· 语言跟随原文
-  → ok ⇒ { text: 渲染稿, meta.v4 }；否则抛 Error(reason)，meta.v4 带统计 ⇒ birth 原文放行（distill-failed）
-trace: compiler-v4-compiled（每次）；birth-distill-settled / birth-distill-failed 的 v4 字段
-```
+2. **`v4-ops` 结构化条目通路（`compressV4Direct: false`）**：
+   - 副模型只输出八类带类型的 JSON 原子条目（`FACT / COMPUTED / INCUMBENT / REFUTED / SHELVED / OPEN / PLAN / READY`）；
+   - `compileV4` 依次执行 `parseOps` → `validateOps`（I1 锚点逐字、I2 标识符出处、I3 证伪带替代、I4 无观测否定降级为搁置、I5 工具来源不写主观决定、I7 同键留最新、I8 禁第二人称）→ `selectOps`（必留项 + 价值/字符比贪心装箱 + 依赖闭包）→ `renderOps`（证据定粘性、替代先行+否定就近）。
 
-与理论规格的差异登记在 `compile-v4.js` 文件头：λ 控制器（需要跨轮传感器）以固定预算代替；渲染按组而非纯贪心顺序。
+---
 
-#### 2.1.1 v4 流式增量编译（v12.3，`segment-v4.js`；`compressV4Incremental` 缺省开）
+## 3. 十二条核心不变式（违反即判定回归失败）
 
-```
-reasoning-delta  → h.seg ??= deps.segmenter(index)；h.seg.feed(累积全文)
-                     攒够 segChars ⇒ 在 [0.6,1.0]×segChars 找最后一个边界（空行 > 换行 > 句末），
-                     否则 (1.0,1.5]× 找第一个，否则硬切 ⇒ fire(段)：
-                       prior = 已 ok 段的 kept 条目（priorLines，≤30 行；不等待在飞的段）
-                       compileSegment(段, prior, signal) = makeV4SegmentCompiler：buildCompressPromptV4Segment → generateDistillation → parseOps
-                       本段 validateOps（锚点必须在本段）⇒ ok / failed(reason)
-block-end        → birthStart(entry{seg})：distill = seg.finish（送出尾段，等全部落定）；task.partial = seg.partial
-                     低于门槛 / 停用 / 归档关 / 无 store ⇒ seg.cancel
-seg.finish       → L = 最后一个 ok 段；L 之前没编成的段 = 原文空洞（逐字放渲染稿前面）；L 之后 = 原文尾巴
-                     compileOpsV4(ok 段条目, raw, …, { rawPrefix, rawSuffix, segmented: true })
-                       全文校验（retracts / id 形态的 supersedes 生效）→ freshenState（状态后写者胜）→ 选取 → 渲染（有尾巴则不出尾段）
-                     没有 ok 段 ⇒ throw v4-no-compiled-segment（原文放行）
-finish 到点      → dist === null 且 task.partial() 非空 ⇒ 同一组闸 ⇒ condensed-partial；birthCancelFlying('partial-used')
-```
+1. **H2 首次出站不变律**：`reasoning` 块只能在尚未出站装配前替换（`birth` 模式天然满足）。
+2. **归档先于压缩**：拿不到可读回的 CAS 句柄，绝不替换原文。
+3. **观测绝不碰坏主流**：任何内部或网络异常只降级为「原文放行」，主流自身的错误原样抛出。
+4. **零硬编码猜测**：模型名、端点、密钥均跟随宿主 provider，解析不出即放行。
+5. **零编造标识符（I2）**：压缩稿中的路径、URL、反引号代码、`camelCase`、`snake_case`、`file.ext` 必须逐字出现在原文或程序部件出处中，否则 `invented-identifier` 原文放行。
+6. **字符 ≠ 账单费用**：字符数仅度量上下文余量；真实省钱与否以端到端 token 账单与 `birthMinChars` 成本模型为准。
+7. **评估态零副作用**：`dryRun: true`（默认）下不写 CAS、不调副模型、不改流。
+8. **句柄可读回验证**：内存预推句柄必须通过读回探针验证后才生效。
+9. **放弃即取消**：任何走原文放行的分支都经由 `birthCancelFlying` 立即取消在途请求。
+10. **Token 必降门禁**：字符缩短但估算 token 未降 ⇒ `no-token-gain` 原文放行。
+11. **共享配置不可变**：运行期随调用变化的模型/provider 仅写入 `host-follow.js` 派生的单次调用副本。
+12. **流归属不可证不归档**：多会话交错时缺省原文放行，严禁跨会话污染 CAS。
 
-不变式：原文尾巴 / 空洞逐字；最新状态总在最后（空洞放前、尾巴放后）；在飞段在任何放行 / 中断 / 提前退出路径上都被取消（`dropSeg` / `dropHeldSegs`）。
+---
 
-### 2.2 副模型调用（`distill.js`）
+## 4. 「改哪里」速查表
 
-`generateDistillation`：解析端点与钥匙（跟随宿主 provider，解析不出来就抛错、上层原文放行）→
-每轮先带「关思考」试，被 4xx 参数拒绝再裸试 → `hedgedDistill`（`hedgeAfterMs>0` 且 `maxAttempts≤1` 才对冲）→
-`distillOnce` / `distillOnceStream`（同输入同输出形状）→ 每次请求落 `compiler-transport-started/settled`。
-终止闸：没有 `finish_reason=stop`（或 Responses 的完成事件）就是失败，截断输出绝不当成功。
+| 需求场景 | 修改位置与同步要求 |
+|---|---|
+| 新增生产配置项 | `src/config.js` 的 `DEFAULTS` → `index.d.ts` → `test/core.selftest.mjs` §10 |
+| 开放新的可训练策略旋钮 | `src/policy.js` 的 `CONFIG_KEYS` / `REGIME_KEYS` → `test/closed-loop-v4.selftest.mjs` |
+| 修改提示词或反稀释规则 | `src/prompts.js`（版本号由 `compressPromptVersion` 统一裁决；v2/v3 共享规则 1~6 由 `compress.selftest.mjs` §1b 守护） |
+| 修改 v4 程序门或部件拼接 | `src/compile-v4.js`（`compileV4Direct` / `spliceProgramParts` / `compactStateParts`）+ `src/messages.js`（`applyCtxContinuationPolicy`） |
+| 修改闭环评测或官方基准公式 | `tools/helpers/ruler.mjs`（`passAtK` / `passHatK` / `arenaElo` / `industryScorecard`）+ `tools/cfb-cycle.mjs` |
+| 修改双轨语义裁判或校准器 | `tools/helpers/judge-layer.mjs` + `tools/cfb-judge.mjs` |
+| 新增自测套件 | `test/<name>.selftest.mjs`（末尾打印 `PASS=n FAIL=m`），加入 `verify.mjs` 的 `ORDER` |
+| 修改任何入库文件后 | 运行 `npm run manifest` 更新 `MANIFEST.sha256`，再跑 `npm run verify:offline` 确认 `884 pass / 0 fail` |
 
-对冲纪律：只有 **200** 响应头才算胜出；同一时刻至多 1 份对冲在飞；主请求已结算（成功或失败）后计时器不再发对冲，
-主请求失败时立即按主错误结算。
+---
 
-## 3. 持久化位置
+## 5. 自测套件矩阵（`29` 套，`884 pass / 0 fail / 1 skip`）
 
-全部在 `$DSH_HOME/storages/cot-form-b/`（`$DSH_HOME` 缺省 `~/.dsh`，解析规则见 `config.js` 的 `dshHome`）：
+运行 `npm run verify:offline` 并发执行全部 29 套自检（每个套件使用独立临时 `DSH_HOME`）：
 
-| 路径 | 写入者 | 何时 |
+| 类别 | 套件名称 | 覆盖范围 |
 |---|---|---|
-| `trace.log`（+ `trace.log.1`） | `trace.js` | `trace: true` 时每个事件一行；超过 `traceMaxBytes`（64 MiB）轮转一次 |
-
-v12.1 起插件自己**不再写任何状态文件**（快照、证据账本、锁文件都随 memory 模式删除）。
-CAS（原文归档）是宿主注入的 `cmbStore` 服务（`ctx.get('cmbStore')`），本插件只调用 `putText`（与读回探针的只读 API）。
-
-## 4. 不变式（违反即坏）
-
-1. **H2 首次出站不变律**：一个块只能在「还没出站」时被替换。birth 在装配前改写，天然满足；
-   事后改写 `assistant/message` 被宿主 `surface.js:207` 永久禁止（这也是 distill/rules 模式退役的原因）。
-2. **归档先于压缩**：拿不到 CAS 句柄就绝不替换原文。
-3. **观测不碰主流**：溯源、水位读数、trace 写入等任何失败都只降级为「原文放行」或「丢一条观测」，绝不抛给宿主。
-4. **不猜**：模型名、端点、钥匙都跟随宿主；解析不出来就不发起，绝不回落到写死的值。
-5. **标识符必须有出处**（v12.1）：摘要里的路径 / URL / 反引号代码 / camelCase / snake_case / `file.ext`
-   必须逐字出现在原文里（斜杠方向可互换），否则原文放行。压缩稿会被主模型当成「自己想过的事实」读回，
-   编造的标识符是定向误导。判据在 `fidelity.inventedIdentifiers`，只拒绝、不改写。
-6. **字符 ≠ 钱**：trace 里的字符数只描述上下文余量，不得当作费用节省汇报。
-7. **评估态零副作用**：`dryRun` 下 birth 直接原样返回主流（不包装、不写 CAS、不调副模型），只落观测。
-8. **地址必须可读回**：birth 的内存预推句柄只在读回验证通过后才可当作句柄用；不可证即按归档失败处理（原文放行）。
-9. **放弃即取消**：凡是决定「这块用原文」的路径（finish 到点、硬停、源流无 finish、源流抛错、消费者提前退出、
-   任何 passthrough），都经由唯一实现 `birthCancelFlying` 取消仍在飞的提纯。v12.1 起没有「留给下一轮」的例外。
-10. **token 不降不替换**：字符净省达标但估算 token 不降 ⇒ 原文放行（`no-token-gain`）。估算只用于**拒绝**，不用于宣称节省。
-11. **共享配置不可变**：`apply()` 里归一化出的 `cfg` 在运行期永不改写；随调用变化的量（宿主模型、provider）
-    由 `host-follow.js` 派生到调用级副本里。凡是「稍后才读配置」的地方（压缩、预热）都必须拿调用级副本。
-12. **流归属不可证不归档**：多个会话交错进入 pre-step 时，这条流属于谁无法证明 ⇒ 缺省原文放行，不写 CAS。
-
-## 5. 改哪里
-
-| 想做的事 | 要改的地方 |
-|---|---|
-| 加一个配置键 | `config.js` 的 `DEFAULTS`（写清来历）；若允许嵌套写法，加进 `NESTED_*_KEYS`；`index.d.ts`；`core.selftest.mjs` §10 |
-| 退役一个配置键 | 从 `DEFAULTS` 删除，加进 `RETIRED_OPTIONS`（配置里出现时进 `retiredOptions` 并被删除，BOOT 可见）；`v12.selftest.mjs` 加兼容用例 |
-| 给 `birth-distill-settled` / `compiler-transport-settled` 加字段 | `trace.js` 的 `settledTraceData` 白名单（只写进 meta 不会落盘，出过真实事故） |
-| 改 v4 的判定 / 渲染 | `compile-v4.js`（纯函数，全部可单测）；新拒绝规则走 `validateOps` 的 `reject(rule)`，统计自动进 `stats.rejected`；改模板要同步 `v4.selftest.mjs` §5 |
-| 改提示词 | `prompts.js`；版本号必须从 `compressPromptVersion` 同一次裁决里取；v3 与 v2 的保真规则 1~6 必须逐字共享（`compress.selftest.mjs` §1b 钉住） |
-| 加一道放行判定 | `birth.js` 的 `birthFinish`，走 `pass(why, handle, extra)`（自动取消在飞提纯、落 `birth-passthrough`）；`analyze-efficiency` 的 `outcomes` 会自动按 `why` 分桶 |
-| 加一个模块 | 放进 `src/` 即可；`DEP_ID` 自动枚举，BOOT 会带上它 |
-| 加一个测试套件 | `test/<名字>.selftest.mjs`，末尾打印 `PASS=n FAIL=m`；把名字加进 `verify.mjs` 的 `ORDER`（不加也会被自动纳入，但会提示）。套件会**并发**运行，不得依赖其他套件的副作用；特别慢的套件加进 `SLOW_FIRST` |
-| 改了任何文件 | `npm run manifest` 重新生成清单（CI 会 `--check`） |
-| 在钩子里需要「随调用变化」的配置 | 用 `host.callConfig(options)` 的返回值，**不要**改写共享 `cfg`（不变式 11） |
-| 需要知道这条流属于哪个会话 | `sessions.forStream()`；`ambiguous` 为真时不得归档（不变式 12） |
-| 测试里需要写盘 | 不用管隔离：`verify.mjs` 已为每个套件设临时 `DSH_HOME`；单独运行时请自己设 |
-
-## 6. 测试布局
-
-`verify.mjs` 并发运行（缺省 `max(6, CPU 数)`，`--serial` / `-j N` 可调；慢套件先起跑），结果按 `ORDER` 顺序打印。
-每个套件独立进程、独立临时 `DSH_HOME`：
-
-| 套件 | 覆盖 |
-|---|---|
-| provider-endpoint | 端点解析 |
-| core | 默认值、配置归一化、传输层、副模型调用、宿主模型跟随（birth 全链路，本机 HTTP 收包验证）、成本模型、回归钉子 |
-| compress | **v12.1 主线**：v2/v3 提示词与版本号裁决（v3 缺省）、退避、4MiB 上限、终止闸、promptVersion 贯通、**发明标识符闸**（判据 + birthFinish 端到端 + 开关 + analyze-efficiency 分布）、onboard 漂移检测 |
-| v4-live | **v12.3** `tools/v4-live.mjs` 离线端到端：本地假 DeepSeek（主模型流 + 副模型），录制 → 三模式回放（v4 整块超时 / v4 增量替换成功）、钥匙不落盘、`--replay` |
-| v4 | **v12.2 compress-v4-ops** + **v12.3 §9 流式增量**（切点、分段合并 / retracts、到点部分结果、失败不跳段、取消、birthTransform 端到端）：提示词 / 版本号 / 配置、容错解析、每条硬不变量、选取（必留 / 冗余 / 预算 / 闭包）、渲染（替代先行、证据定粘性、分组、尾段、中英）、整块回退的每条原因、本机 HTTP → makeBirthCompiler → birth 全链路（成功替换 / 失败原文放行）、cf-eval v4 变体 |
-| birth | birth 主路径（含真实 dsh-llm 不变式校验，找不到宿主安装时用替身并 WARN）、放弃即取消、句柄可归因（T34） |
-| robustness | 退役开关不生效、pre-step 不被拖垮、trace 审计器、taskId 贯通、传输层错误形态、句柄读回探针契约 |
-| hedge | 对冲与响应头宽限（本机 HTTP 可控延迟） |
-| hook-wiring | 只有出错才会走到的接线：服务获取抛错、坏形状不包装、CAS 写入抛错、**主流抛错原样抛出**、评估态零介入 |
-| hardening | 取消泄漏各路径、配置登记/退役/显式化、token 估算与闸门、trace 轮转、provider 缓存、编译器工厂（真实 HTTP）、analyze-trace 的 birth 等待依据 |
-| concurrency | 调用级配置（共享 cfg 不变）、birth 压缩用自己那次调用的模型、流归属交错检测与处置 |
-| protocol | OpenAI Responses 端点（非流式 / 流式 / 协议错配 / 完成判据 / 降级重试）、token 估算校准链路 |
-| branches | 预热（节流 / 停用 / 调用级 provider）、token 估算非字符串输入 |
-| audit-2026-09-27 | 外部审计 F1–F11 的回归钉（F7 随 x1、G 随在途共享删除） |
-| v12 | 退役配置兼容：x1 / v1 回落 v3、checkpoint ⇒ off、memory / 迟到认领 / emitter 键进 retiredOptions、BOOT 单一路径 |
+| **生产核心与传输（15 套）** | `provider-endpoint`, `core`, `compress`, `v4`, `v4-live`, `birth`, `robustness`, `hedge`, `hook-wiring`, `hardening`, `concurrency`, `protocol`, `branches`, `audit-2026-09-27`, `v12` | 端点解析、配置归一化、v3/v4/v4d6 全链路编译、流式增量分段、有界延续段、自适应 $\lambda$ 门槛、对冲请求、并发隔离与退役兼容 |
+| **科学闭环与双轨裁判（4 套）** | `closed-loop-v4`（A1–A40）, `cfb-judge`, `eval-ready`, `training-ready` | 三模式闭环、跨计划 CAS 缓存、正交因子归因、In-Context DPO、规则×LLM 双轨裁判、岭回归校准、五大官方基准与 `--lite` 省钱模式、5 家族隔离训练导出 |
+| **宿主证据与评测（10 套）** | `evidence-program`, `active-checks`, `effect-archive`, `evidence-runtime`, `local-iterations`, `repair-hardening`, `bounded-api`, `live-v8`, `offline-cycle`, `phase0` | 宿主类型化证据块仓、有界 API 预算水位、v8 回放协议与阶段 0 观测审计 |

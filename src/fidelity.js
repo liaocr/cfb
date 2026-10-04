@@ -160,6 +160,12 @@ export function inventedIdentifiers(src, out, opts = {}) {
     if (st.length >= 3 && (sq ??= squash(hay)).includes(st)) continue
     // 反斜杠 / 正斜杠互换视为同一路径（Windows 原文、POSIX 摘要）
     if (hay.includes(t.replace(/\\/g, '/')) || hay.includes(t.replace(/\//g, '\\'))) continue
+    // v12.8.9：「chmod/chown/rm」「v11.9/v11.10」是用斜杠并列的枚举，不是路径——每一段都在原文里就放行；
+    //   真正的文件路径（末段带字母扩展名，如 src/plugin.js）仍按整体核真，防止用已知目录 + 已知文件名拼出没见过的路径
+    if (/[\\/]/.test(t) && !/^(?:[A-Za-z]:[\\/]|\.{0,2}\/)/.test(t) && !/\.[A-Za-z][A-Za-z0-9]{0,5}$/.test(t)) {
+      const parts = t.split(/[\\/]/).filter(Boolean)
+      if (parts.length >= 2 && parts.every((p) => p.length < 3 || GATE_ALLOW.has(p) || hay.includes(p))) continue
+    }
     res.push(t)
     if (res.length >= 8) break
   }

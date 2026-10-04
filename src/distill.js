@@ -8,6 +8,8 @@ import crypto from 'node:crypto'
 import { scriptCounts } from './tokens.js'
 import { compressPromptVersion, compressPromptFor, splitCompressPrompt, v4Budget, buildCompressPromptV4Segment } from './prompts.js'
 import { compileV4, compileV4Direct, parseOps } from './compile-v4.js'
+import { compileV5Local } from './compile-v5-local.js'
+import { effectiveLocalModel } from './policy.js'
 import { endpointUrl, resolveProviderEndpoint, readApiKeyRef, readApiKey } from './provider.js'
 import { settledTraceData } from './trace.js'
 import {
@@ -357,7 +359,7 @@ export async function generateDistillation(cot, cfg, signal, promptOverride, run
     // 每一轮先带「关掉思考」试，被网关拒（4xx）再裸试一次。
     // 参数拒绝才沿用既有降级路径；实际请求与费用不能凭 4xx 推断。
     const modes = cfg.disableThinking ? [true, false] : [false]
-    let lastErr
+    let lastErr, rescuedLength = false, rescuedNet = false
     for (let attempt = 1; attempt <= rounds; attempt++) {
       for (let i = 0; i < modes.length; i++) {
         try {
@@ -383,6 +385,18 @@ export async function generateDistillation(cot, cfg, signal, promptOverride, run
           }
         } catch (e) {
           lastErr = e
+          if (!rescuedNet && /(?:socket disconnected|ECONNRESET|ETIMEDOUT|TLS connection|timeout \d+ms)/i.test(String(e && e.message || ''))) {
+            rescuedNet = true
+            await new Promise((s) => setTimeout(s, 500))
+            i--
+            continue
+          }
+          if (!rescuedLength && modes[i] === true && /^(?:incomplete|empty) distillate \(finish=length/.test(String(e && e.message || ''))) {
+            rescuedLength = true
+            cfg = { ...cfg, maxOutputTokens: Math.max(Number(cfg.maxOutputTokens) || 1600, 4096) }
+            i--
+            continue
+          }
           const canDowngrade = i < modes.length - 1 && isParamRejection(e)
           if (!canDowngrade) break
         }
@@ -425,7 +439,10 @@ export function makeBirthCompiler(cfg) {
     //   编译失败（解析不了 / 锚点对不上 / 关键条目编造 / 拒绝率过高）⇒ 抛错 ⇒ birth 原文放行（distill-failed，trace 带 v4 统计）。
     const v4Max = Number.isFinite(cfg.compressV4MaxOutputTokens) && cfg.compressV4MaxOutputTokens > 0 ? cfg.compressV4MaxOutputTokens : 1600
     c.maxOutputTokens = Math.max(Number(cfg.maxOutputTokens) || 0, v4Max)
-    const r = await withCalibration(prompt, generateDistillation(raw, c, signal, prompt, { trace, promptVersion: pv }))
+    const useLocal = effectiveLocalModel(c)
+    const r = useLocal
+      ? compileV5Local(raw, c)
+      : await withCalibration(prompt, generateDistillation(raw, c, signal, prompt, { trace, promptVersion: pv }))
     const t0 = performance.now()
     const out = cfg.compressV4Direct === true ? compileV4Direct(r.text, raw, cfg) : compileV4(r.text, raw, cfg, v4Budget(cfg))
     const v4 = { ...out.stats, compileMs: Number((performance.now() - t0).toFixed(2)), ...(out.ok ? {} : { reason: out.reason }) }

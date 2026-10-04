@@ -16,6 +16,7 @@ import { createSegmenter } from './segment-v4.js'
 import { mkHandleProbe } from './handle-probe.js'
 import { createHostFollower } from './host-follow.js'
 import { streamProvenanceRecord, buildCompressCtx, editToolOf } from './messages.js'
+import { effectiveContinuationPath } from './policy.js'
 import { createSessionTracker } from './session-tracker.js'
 import { makeTraceWriter } from './trace.js'
 import { makePrewarmer } from './transport.js'
@@ -53,7 +54,7 @@ export function compressCtxFor(callCfg, options) {
   try {
     let out = callCfg
     if (!callCfg.compressCtx) {
-      const ctx = buildCompressCtx(options && options.messages, { maxChars: callCfg.compressCtxMaxChars })
+      const ctx = buildCompressCtx(options && options.messages, { maxChars: callCfg.compressCtxMaxChars, continuationPath: effectiveContinuationPath(callCfg) })   // v14.12.3：策略/配置决定延续段形态（F6）
       if (ctx) out = { ...out, compressCtx: ctx }
     }
     // v12.8.1：宿主的编辑工具名 / 参数名（稿里的可用句要说宿主真实的名字；显式配置优先）

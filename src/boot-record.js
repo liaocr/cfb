@@ -28,6 +28,7 @@ export function bootRecord(cfg, { selfId, deps }) {
     deps,
     mode: cfg.mode,
     dryRun: cfg.dryRun,
+    evidenceProgram: cfg.evidenceProgram === true,
     birthHandleProbeTimeoutMs: cfg.birthHandleProbeTimeoutMs,
     timeoutMs: cfg.timeoutMs,
     maxAttempts: cfg.maxAttempts,

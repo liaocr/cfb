@@ -152,32 +152,81 @@ export function sawReasoning(usage, variant, chars, base, fp) {
   if (!usage || claudeShaped(usage)) return false
   if (variant === 'empty' || !chars) return true
   if (fp && TRUSTED_FP.has(fp)) return true
-  if (!Number.isFinite(base)) return true
-  return Number(usage.prompt_tokens) >= base + 0.3 * chars
+  if (!Number.isFinite(base)) return false   // 没有可信指纹/基线是 unknown，不是已送入历史推理
+  return Number.isFinite(Number(usage.prompt_tokens)) && Number(usage.prompt_tokens) >= base + 0.3 * chars
 }
 
-export function makeChat({ baseUrl, apiKey, timeoutMs = 240000 }) {
-  const url = String(baseUrl).replace(/\/+$/, '') + '/chat/completions'
-  const once = async (body) => {
-    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), timeoutMs)
-    const t0 = Date.now()
+// 型号回显规范（2026-10-01，v8 发现）：某些中转对同一个型号接受点号写法、却用连字符写法回显
+// （实测 a6api：请求 `deepseek-v4.1-flash` → 200 且 model=`deepseek-v4-1-flash`；直接请求连字符形式 → 400）。
+// 这不是"随便都能过"：别名必须**由 profile 显式声明并接受审计**，绝不静默归一化——否则型号身份闸形同虚设。
+// 只允许把点/连字符/下划线的差异视作同一型号，其余任何字符差异仍然拒绝。
+const canonModel = (s) => String(s || '').toLowerCase().replace(/[._-]+/g, '-')
+/** 响应字段只能作渠道证据；请求的 model 字符串不证明实际响应型号。 */
+export function channelIssue(r, expectedModel, { requireFp = true, requireThinking = true, modelAliases = [] } = {}) {
+  if (typeof expectedModel !== 'string' || !expectedModel) return 'channel-model-mismatch'
+  const got = r?.model
+  if (typeof got !== 'string' || !got) return 'channel-model-mismatch'
+  // 精确相等永远接受；否则只接受 profile 显式声明的别名，且两侧规范化后必须全等。
+  const declared = Array.isArray(modelAliases) && modelAliases.some((a) => typeof a === 'string' && canonModel(a) === canonModel(got))
+  if (got !== expectedModel && !declared) return 'channel-model-mismatch'
+  const canonExpected = canonModel(expectedModel)
+  if (got !== expectedModel && canonModel(got) !== canonExpected) return 'channel-model-mismatch'
+  if (!r.usage || claudeShaped(r.usage)) return 'channel-usage'
+  if (requireFp && !TRUSTED_FP.has(r.fp)) return 'channel-fingerprint'
+  if (requireThinking && (typeof r.message?.reasoning_content !== 'string' || !r.message.reasoning_content.trim())) return 'channel-no-thinking'
+  return null
+}
+
+// 旧 CLI 的默认退避保留；有界评测显式 maxRetries:0。每一次 dispatch 都先过 beforeRequest。
+export function makeChat({ baseUrl, apiKey, timeoutMs = 240000, maxRetries, beforeRequest, maxResponseBytes = 8 * 1024 * 1024, fetchImpl = globalThis.fetch, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) }) {
+  if ((maxRetries !== undefined && (!Number.isInteger(maxRetries) || maxRetries < 0 || maxRetries > 6)) || !Number.isInteger(timeoutMs) || timeoutMs < 1 || !Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1 || maxResponseBytes > 32 * 1024 * 1024) throw new Error('chat-options')
+  const endpoint = new URL(String(baseUrl).replace(/\/+$/, '') + '/chat/completions')
+  if (!['https:', 'http:'].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw new Error('chat-endpoint')
+  const once = async (body, signal) => {
+    if (signal?.aborted) throw new Error('request-aborted')
+    const ctl = new AbortController(), abort = () => ctl.abort()
+    signal?.addEventListener('abort', abort, { once: true })
+    const t = setTimeout(abort, timeoutMs), t0 = Date.now()
     try {
-      const res = await fetch(url, { method: 'POST', signal: ctl.signal, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + apiKey }, body: JSON.stringify(body) })
-      const text = await res.text()
-      if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + text.slice(0, 300))
-      const j = JSON.parse(text)
-      return { message: (j.choices && j.choices[0] && j.choices[0].message) || {}, finish: j.choices && j.choices[0] && j.choices[0].finish_reason, usage: j.usage || null, fp: j.system_fingerprint || null, ms: Date.now() - t0 }
-    } finally { clearTimeout(t) }
+      // 固定请求字节，避免预算检查后的 body 异步变异；重定向不转发凭据，也不产生隐式第二次请求。
+      const encoded = JSON.stringify(body)
+      if (beforeRequest) await beforeRequest(JSON.parse(encoded))
+      if (ctl.signal.aborted || Date.now() - t0 >= timeoutMs) throw new Error(signal?.aborted ? 'request-aborted' : 'request-timeout')
+      let res
+      try { res = await fetchImpl(endpoint.href, { method: 'POST', redirect: 'error', signal: ctl.signal, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + apiKey }, body: encoded }) }
+      catch { throw new Error(ctl.signal.aborted ? (signal?.aborted ? 'request-aborted' : 'request-timeout') : 'request-network-error') }
+      let text
+      try {
+        const declared = Number(res.headers?.get('content-length'))
+        if (Number.isFinite(declared) && declared > maxResponseBytes) { await res.body?.cancel().catch(() => {}); throw new Error('response-byte-limit') }
+        if (res.body?.getReader) {
+          const reader = res.body.getReader(), parts = []; let bytes = 0
+          try {
+            for (;;) {
+              const { value, done } = await reader.read(); if (done) break
+              bytes += value.byteLength
+              if (bytes > maxResponseBytes) { await reader.cancel().catch(() => {}); throw new Error('response-byte-limit') }
+              parts.push(Buffer.from(value))
+            }
+            text = Buffer.concat(parts, bytes).toString('utf8')
+          } finally { reader.releaseLock() }
+        } else { text = await res.text(); if (Buffer.byteLength(text, 'utf8') > maxResponseBytes) throw new Error('response-byte-limit') }
+      } catch (e) { if (e.message === 'response-byte-limit') throw e; throw new Error(ctl.signal.aborted ? (signal?.aborted ? 'request-aborted' : 'request-timeout') : 'request-network-error') }
+      if (!res.ok) throw new Error('HTTP ' + res.status)   // 不把网关错误正文/可能回显的凭据写进日志
+      let j
+      try { j = JSON.parse(text) } catch { throw new Error('response-json') }
+      if (!j || typeof j !== 'object' || !Array.isArray(j.choices) || j.choices.length !== 1 || !j.choices[0]?.message || typeof j.choices[0].message !== 'object' || Array.isArray(j.choices[0].message)) throw new Error('response-shape')
+      if (ctl.signal.aborted || Date.now() - t0 >= timeoutMs) throw new Error(signal?.aborted ? 'request-aborted' : 'request-timeout')
+      return { model: j.model || null, message: j.choices[0].message, finish: j.choices[0].finish_reason, usage: j.usage || null, fp: j.system_fingerprint || null, ms: Date.now() - t0 }
+    } finally { clearTimeout(t); signal?.removeEventListener('abort', abort) }
   }
-  // 连接层错误与中转 5xx 重试（中转偶发换 IP / 502）
-  return async (body) => {
+  return async (body, { signal } = {}) => {
     for (let k = 0; ; k++) {
-      try { return await once(body) } catch (e) {
-        const msg = String(e && e.message)
-        const http5 = /^HTTP 5\d\d/.test(msg)
-        // 连接层错误重试 2 次；中转 5xx（502/503/504）退避重试 6 次（15 s 起，约 3 分钟）；其余 HTTP 错误不重试
-        if ((/^HTTP /.test(msg) && !http5) || k >= (http5 ? 6 : 2)) throw e
-        await new Promise((r) => setTimeout(r, http5 ? 15000 + 5000 * k : 8000))
+      try { return await once(body, signal) } catch (e) {
+        const msg = String(e?.message), http5 = /^HTTP 5\d\d/.test(msg)
+        // 预算拒绝、取消、JSON/协议错误不重试；只对明确的连接/5xx 错误应用旧退避。
+        if (signal?.aborted || (!http5 && msg !== 'request-network-error') || k >= (maxRetries ?? (http5 ? 6 : 2))) throw e
+        await sleep(http5 ? 15000 + 5000 * k : 8000)
       }
     }
   }
@@ -283,7 +332,7 @@ async function main(argv) {
           let r
           for (let k = 0; ; k++) {
             r = await chat({ model: o.model, messages: buildMessages(j.task, j.content, j.reasoning, j.spec.followup), tools: TOOLS, thinking: { type: 'enabled' }, max_tokens: o.maxTokens, stream: false })
-            const seen = o.requireFp ? (!claudeShaped(r.usage) && TRUSTED_FP.has(r.fp)) : sawReasoning(r.usage, j.variant, j.reasoning.length, base[j.spec.id], r.fp)   // --require-fp：所有变体（含 raw、empty）都钉在同一个已验证后端，避免跨后端混杂
+            const seen = o.requireFp ? !channelIssue(r, o.model) : sawReasoning(r.usage, j.variant, j.reasoning.length, base[j.spec.id], r.fp)   // --require-fp：所有变体（含 raw、empty）都钉在同一个已验证后端，避免跨后端混杂
             // v12.7.1：thinking 显式开着却一字未想 ⇒ 这条通道这次没跑思考（effect-18 perf/oH#1：0 字、直接 read README），与「没送入变体」同等作废
             const thought = (r.message.reasoning_content || '').length > 0
             if (seen && thought) break
@@ -293,11 +342,12 @@ async function main(argv) {
           if (j.variant === 'empty') base[j.spec.id] = Math.max(base[j.spec.id] || 0, Number(r.usage.prompt_tokens))
           text = responseText(r.message)
           // v12.7.1：主模型本轮思考原文也落盘（头 6000 字）——归因时要看「短思考 ⇒ 回头 read」的样本到底在想什么，只有字数不够
-          Object.assign(rec, { fp: r.fp, finish: r.finish, usage: r.usage, ms: r.ms, reasoningChars: (r.message.reasoning_content || '').length, reasoning: String(r.message.reasoning_content || '').slice(0, 6000), response: text, rule: ruleScore(j.spec, text), act: actScore(j.spec, text) })
+          Object.assign(rec, { model: r.model, fp: r.fp, finish: r.finish, usage: r.usage, ms: r.ms, reasoningChars: (r.message.reasoning_content || '').length, reasoning: String(r.message.reasoning_content || '').slice(0, 6000), response: text, rule: ruleScore(j.spec, text), act: actScore(j.spec, text) })
         }
         // 盲评：解析不出（空内容 / 截断）再试 2 次，仍不行才记错（下次运行只补盲评）
         for (let k = 0; k < 3 && !rec.judge; k++) {
           const jr = await chat({ model: o.model, messages: [{ role: 'user', content: judgePrompt(j.task, j.spec, text) }], thinking: { type: 'disabled' }, temperature: 0, max_tokens: 1500, stream: false })
+          if (channelIssue(jr, o.model, { requireFp: !!o.requireFp, requireThinking: false })) throw new Error('judge-channel-invalid')
           rec.judge = parseJudge(jr.message.content)
           if (!rec.judge) rec.error = 'judge-unparseable: ' + String(jr.message.content).slice(0, 120)
         }

@@ -59,11 +59,11 @@ export interface CotFormBConfig {
   compressV4AutoHints?: boolean
   compressV4Loci?: boolean
   compressV4Prose?: boolean
-  /** 仅 v4（v12.6，理论 S8-R6）：副模型直写原生语域散文（oracle C 形态），不经 ops→模板；缺省 false */
+  /** 仅 v4（v12.6，理论 S8-R6）：副模型直写原生语域散文（oracle C 形态），不经 ops→模板；缺省 true（v12.8.8 转正；false = 回到 ops→散文路） */
   compressV4Direct?: boolean
   /** 仅 v4 直写（v12.7，理论 S8-R7）：尾段判读分支的闭合与落点绑定（改法分支必须带已核真的逐字落点 + 分支内可用句）；缺省 true */
   compressV4DirectBind?: boolean
-  /** 仅 v4 直写：超过此长度熔断为原文放行（缺省 1600；v12.7.1 起，R7 闭合分支比开放分支长 200–500 字） */
+  /** 仅 v4 直写：超过此长度熔断为原文放行（缺省 2000；v12.7.1 起 1600、v12.8.6 起 1800、v12.8.9 起 2000——完整闭合稿 1600–1950 字，熔断只拦「跑飞」照抄原文） */
   compressV4DirectMaxChars?: number
   /** 仅 v4 直写：整块编译 ⇒ 收网窗口 birthFinishWaitMs 只抬不降到此下限（缺省 6000；0 = 不抬），BOOT configAdjusted 留痕 */
   compressV4DirectMinWaitMs?: number
@@ -77,6 +77,8 @@ export interface CotFormBConfig {
   compressCtxMaxChars?: number
   /** 仅工具用：meta.sideOutput 带回副模型原始输出（缺省 false） */
   captureSideOutput?: boolean
+  /** 默认关：发布宿主证据程序侧车；不自动接管 DSH decision/工具/上下文 */
+  evidenceProgram?: boolean
   /** 仅 v4 增量：目标段长（字符，缺省 1200；在段落 / 行 / 句末处切，0.6–1.5 倍浮动） */
   compressV4SegmentChars?: number
   /** 仅 v4 增量：非尾段的请求超时（缺省 30000；尾段仍用 timeoutMs） */
@@ -95,6 +97,8 @@ export interface CotFormBConfig {
   /** finish 处收网等待上限（ms，缺省 1500）。birth 下 timeoutMs 至少会被抬到 本值 + finishHeadersGraceMs + 2000 */
   birthFinishWaitMs?: number
   /** v11.6 默认 3100（R=60 自洽保本原长 2,747，保守取整且不下调；见 docs/analysis/AUDIT-V11.5.md §一）。 */
+  /** v14.19：启用本地超高精度认知图微模型编译器（src/compile-v5-local.js），零副模型 API 成本、毫秒级编译（缺省 false）。 */
+  compressLocalModel?: boolean
   birthMinChars?: number
   /** v11.6 成本模型观测参数（只影响 birth-econ trace，不参与判定）。 */
   econCacheDiscount?: number
@@ -463,3 +467,165 @@ export declare function createSessionTracker(opts?: { staleMs?: number; now?: ()
   latest(): { session: unknown; sessionId: string | null }
   pendingCount(): number
 }
+
+// ── v13 宿主证据程序：生成器只能交提议；宿主拥有冻结契约、签名与 IO 能力 ──
+export type EvidenceJson = null | boolean | number | string | readonly EvidenceJson[] | { readonly [key: string]: EvidenceJson }
+export type EvidencePredicate =
+  | { readonly op: 'and' | 'or'; readonly items: readonly EvidencePredicate[] }
+  | { readonly op: 'not'; readonly item: EvidencePredicate }
+  | { readonly op: 'equals'; readonly field: string; readonly value: EvidenceJson }
+  | { readonly op: 'includes' | 'absent'; readonly field: string; readonly value: string }
+  | { readonly op: 'at-least' | 'at-most'; readonly field: string; readonly value: number }
+  | { readonly op: 'before'; readonly field: string; readonly other: string }
+export type EvidenceCheckRole = 'precondition' | 'acceptance' | 'diagnostic'
+export type EvidenceCheck = {
+  readonly id: string; readonly role: EvidenceCheckRole; readonly predicate: EvidencePredicate
+  readonly label?: string; readonly conditions?: Readonly<Record<string, EvidenceJson>>
+} & (
+  | { readonly kind: 'file'; readonly path: string }
+  | { readonly kind: 'observation'; readonly timeoutMs?: number }
+  | { readonly kind: 'command'; readonly executable: string; readonly args: readonly string[]; readonly localOnly: true
+      readonly timeoutMs: number; readonly maxOutputBytes?: number; readonly env?: Readonly<Record<string, string>> }
+)
+export type EvidenceAction = {
+  readonly id: string; readonly preconditions: readonly string[]; readonly checks: readonly string[]
+} & ({ readonly type: 'observe' } | { readonly type: 'replace'; readonly path: string; readonly oldText: string; readonly newText: string })
+export interface EvidenceContractDefinition {
+  readonly task: string; readonly version: string; readonly checks: readonly EvidenceCheck[]; readonly actions?: readonly EvidenceAction[]
+  readonly protectedFiles?: readonly { readonly path: string; readonly sha256: string }[]
+}
+export interface EvidenceContract extends EvidenceContractDefinition {
+  readonly schema: 'cfb.evidence-contract/1'; readonly digest: string; readonly actions: readonly EvidenceAction[]
+  readonly protectedFiles: readonly { readonly path: string; readonly sha256: string }[]
+}
+export interface EvidenceStep {
+  readonly id: string; readonly preconditions: readonly string[]; readonly action: EvidenceAction
+  readonly expectedObservations: readonly { readonly checkId: string; readonly predicate: EvidencePredicate }[]
+  readonly checkCommand: readonly { readonly checkId: string; readonly kind: EvidenceCheck['kind']; readonly command: string }[]
+}
+export interface EvidenceProgram {
+  readonly schema: 'cfb.evidence-program/1'; readonly id: string; readonly sessionId: string; readonly contractDigest: string
+  readonly explanation: string; readonly steps: readonly EvidenceStep[]
+}
+export interface EvidenceProposal {
+  readonly schema: 'cfb.evidence-proposal/1'; readonly explanation: string; readonly parsed: boolean; readonly authorized: false
+  readonly steps: readonly {
+    readonly id: string; readonly preconditions: readonly { readonly type: 'file-contains'; readonly path: string | null; readonly text: string }[]
+    readonly action: { readonly type: 'observe' } | { readonly type: 'replace'; readonly path: string | null; readonly oldText: string; readonly newText: string }
+    readonly expectedObservation: string | null; readonly checkCommand: string | null
+  }[]
+}
+export type EvidencePhase = 'preconditions' | 'action' | 'postconditions' | 'diagnostic'
+export interface EvidenceBinding {
+  readonly sessionId: string; readonly programId: string; readonly contractDigest: string; readonly roundId: string
+  readonly revision: string; readonly stepId: string; readonly phase: EvidencePhase
+}
+export interface EvidenceState {
+  readonly programId: string; readonly contractDigest: string; readonly sessionId: string; readonly roundId: string; readonly revision: string
+  readonly cursor: number; readonly phase: EvidencePhase; readonly status: 'ready' | 'blocked' | 'verified'
+  readonly verifiedSteps: readonly string[]; readonly receiptIds: readonly string[]; readonly reason?: string
+}
+export interface EvidenceReceipt {
+  readonly schema: 'cfb.evidence-receipt/1'; readonly id: string; readonly signature: string; readonly subjectId: string; readonly binding: EvidenceBinding
+  readonly status: 'pass' | 'fail' | 'unknown'; readonly ok: boolean; readonly reason: string; readonly observationDigest: string | null; readonly nextRevision: string | null
+}
+export interface EvidenceObservation {
+  readonly value?: EvidenceJson; readonly revision?: string; readonly roundId?: string
+  readonly conditions?: Readonly<Record<string, EvidenceJson>>; readonly error?: string
+}
+export interface EvidenceVerifier {
+  readonly contract: EvidenceContract
+  check(id: string, binding: EvidenceBinding, options?: { signal?: AbortSignal }): Promise<EvidenceReceipt>
+  action(id: string, binding: EvidenceBinding): EvidenceReceipt
+  authenticate(receipt: unknown): boolean
+  intact(): boolean
+}
+export declare const EVIDENCE_SCHEMA: 'cfb.evidence-program/1'
+export declare const CONTRACT_SCHEMA: 'cfb.evidence-contract/1'
+export declare function canonicalJson(value: unknown): string
+export declare function evidenceDigest(value: unknown): string
+export declare function immutableJson<T>(value: T): Readonly<T>
+export declare function safeRelativePath(value: unknown): value is string
+export declare function evaluateEvidencePredicate(predicate: EvidencePredicate, value: EvidenceJson): boolean | null
+export declare function freezeEvidenceContract(def: EvidenceContractDefinition): EvidenceContract
+export declare function assertEvidenceContract(contract: EvidenceContract): EvidenceContract
+export declare function createEvidenceProgram(explanation: string, options: { contract: EvidenceContract; actionIds: readonly string[]; sessionId: string }): EvidenceProgram
+export declare function assertEvidenceProgram(program: EvidenceProgram, contract: EvidenceContract): EvidenceProgram
+export declare function parseEvidenceProposal(text: string, options?: { calls?: readonly { name: string; args: EvidenceJson | string }[]; ctx?: string }): EvidenceProposal
+export declare function bindEvidenceProposal(proposal: EvidenceProposal, contract: EvidenceContract, sessionId: string): { ok: true; program: EvidenceProgram } | { ok: false; reason: string }
+export declare function initialEvidenceState(program: EvidenceProgram, options: { roundId: string; revision: string }): EvidenceState
+export declare function evidenceBinding(program: EvidenceProgram, state: EvidenceState): EvidenceBinding
+export declare function advanceEvidenceState(program: EvidenceProgram, state: EvidenceState, receipts: readonly EvidenceReceipt[], authenticate?: (r: EvidenceReceipt) => boolean): EvidenceState
+export declare function compileV4Evidence(side: string, raw: string, config?: CotFormBConfig, options?: { contract?: EvidenceContract; sessionId?: string; calls?: readonly { name: string; args: EvidenceJson | string }[] }):
+  { ok: true; text: string; stats: V4Stats; proposal: EvidenceProposal; evidence: { ok: true; program: EvidenceProgram } | { ok: false; reason: string } } |
+  { ok: false; reason: string; stats: V4Stats }
+
+export interface EvidenceStore {
+  readonly sessionId: string; readonly directory: string
+  /** Public HMAC-derived identity; not the private signing key. */
+  readonly authorityId: string
+  put(value: string | Uint8Array, options?: { kind?: string }): string; get(handle: string, options?: { kind?: string }): string | Uint8Array
+  putJson(value: unknown, options?: { kind?: string }): string; getJson<T = EvidenceJson>(handle: string, options?: { kind?: string }): Readonly<T>
+  stats(): { files: number; heads: number; bytes: number; maxTotalBytes: number }
+  readHead(name: string): { ref: string; revision: string; sequence: number } | null
+  setHead(name: string, ref: string, options: { expectedRevision: string | null }): { ref: string; revision: string; sequence: number }
+}
+export interface EvidenceArtifactIndex { readonly schema: 'cfb.artifact-index/1'; readonly sessionId: string; readonly programId: string; readonly contractDigest: string; readonly programRef: string; readonly blocks: readonly { id: string; type: 'RAW' | 'EXPLANATION' | 'STEP'; handle: string; bytes: number; chars?: number }[] }
+export declare function createEvidenceStore(options: { directory: string; sessionId: string; maxBlobBytes?: number; maxTotalBytes?: number }): EvidenceStore
+export declare function isEvidenceStore(value: unknown): value is EvidenceStore
+export declare function archiveEvidenceArtifact(store: EvidenceStore, artifact: { raw: string; program: EvidenceProgram }): { programRef: string; indexRef: string; index: EvidenceArtifactIndex }
+export declare function recoverEvidenceBlock(store: EvidenceStore, indexRef: string, blockId: string): string | EvidenceStep
+
+/** Training preparation only. These APIs do not start training or activate production models. */
+export interface TrainingExample {
+  schema: 'cfb.training-example/1'; uid: string; family: string; lineage: string; objective: 'sft' | 'preference'
+  source: { kind: 'operator' | 'historical' | 'fixture'; id: string; sha256: string; trainingAllowed: boolean; license: string }
+  messages: readonly { role: 'system' | 'user' | 'assistant'; content: string }[]
+  target?: string; chosen?: string; rejected?: string; digest?: string; reviewRef?: string
+}
+export interface TrainingFingerprint { family: string; lineage: string; input: string; targets: readonly string[] }
+export interface TrainingSplit { schema: 'cfb.training-split/1'; seed: string; groups: number; counts: { train: number; selection: number; test: number }; assignment: Readonly<Record<string, 'train' | 'selection' | 'test'>>; groupDigest: string }
+export interface TrainingEffect { split: 'train' | 'selection' | 'test'; taskId: string; family: string; criterion: string; before: boolean | null; after: boolean | null }
+export interface TrainingEvaluationSuite { schema: 'cfb.training-evaluation/1'; id: string; evaluatorDigest: string; items: readonly Omit<TrainingEffect, 'before' | 'after'>[]; digest: string }
+export declare const TRAINING_SCHEMA: 'cfb.training-example/1'
+export declare function normalizeTrainingExample(def: TrainingExample): Readonly<TrainingExample & { digest: string }>
+export declare function trainingFingerprints(record: TrainingExample): Readonly<TrainingFingerprint>
+export declare function splitTrainingGroups(records: readonly TrainingExample[], options?: { seed?: string }): Readonly<TrainingSplit>
+export declare function splitTrainingFingerprints(rows: readonly { digest: string; fingerprints: TrainingFingerprint }[], options?: { seed?: string }): Readonly<TrainingSplit>
+export declare function trainingExportRow(record: TrainingExample): Readonly<Record<string, unknown>>
+export declare function freezeTrainingEvaluation(def: { id: string; evaluatorDigest: string; items: readonly Omit<TrainingEffect, 'before' | 'after'>[] }): Readonly<TrainingEvaluationSuite>
+export declare function gateTrainingRelease(effects: readonly TrainingEffect[], options?: { simulated?: boolean; suite?: TrainingEvaluationSuite | null }): { ok: boolean; reason: string }
+
+/** v14.19 Local Cognitive Micro-Model Compiler (src/compile-v5-local.js) */
+export declare const V5_LOCAL_VERSION: string
+export declare const V5_MICRO_WEIGHTS: Readonly<{
+  version: string
+  lambda: number
+  rhoRed: number
+  valueWeights: readonly number[]
+  slotWeights: Readonly<Record<string, readonly number[]>>
+  prefWeights: Readonly<Record<string, number>>
+}>
+export declare function effectiveLocalModel(cfg?: CotFormBConfig | null): boolean
+export declare function compileV5Local(raw: string, cfg?: CotFormBConfig, weights?: typeof V5_MICRO_WEIGHTS): {
+  ok: true
+  text: string
+  meta: {
+    promptVersion: string
+    model: string
+    localMs: number
+    archetype: string
+    prefScore: number
+    selectedOps: number
+    totalUnits: number
+  }
+  stats: {
+    archetype: string
+    localMs: number
+    prefScore: number
+    selectedOps: number
+    totalUnits: number
+    chars: number
+  }
+}
+

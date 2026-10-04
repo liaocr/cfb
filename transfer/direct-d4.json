@@ -1,0 +1,151 @@
+{
+ "rows": [
+  {
+   "id": "eacces-config",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 10074,
+   "outChars": 1480,
+   "ms": 4699,
+   "promptVersion": "compress-v4d4:ctx",
+   "gate": {
+    "outputChars": 1363,
+    "inventedSpans": 2,
+    "newTextSpans": 1,
+    "chars": 1359,
+    "closeLoop": true,
+    "provenance": true,
+    "register": true,
+    "ctxChars": 762,
+    "branches": 2,
+    "fixBranches": 2,
+    "boundBranches": 2,
+    "boundBy": [
+     "had",
+     "overlap"
+    ],
+    "compileMs": 6.88
+   },
+   "accept": "ok",
+   "text": "读取到的证据：`FAIL test/birth.selftest.mjs  Error: EACCES: permission denied, open '/home/u/.dsh/storages/cot-form-b/trace.log'`，而 `ls -la /home/u/.dsh/storages/cot-form-b/` 显示 `drwxr-xr-x 2 root root` 与 -rw-r--r-- 1 root root 88213 trace.log，`id` 是 `uid=1000(u)`，`echo $DSH_HOME` 是 `/home/u/.dsh`。verify.mjs 里逐字是 `const env = { ...process.env, DSH_HOME: tmp }`（有「每个套件在独立的临时 DSH_HOME 里跑」的注释），test/birth.selftest.mjs 第 1-12 行逐字是 `const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })`。看起来隔离变量对不上：verify.mjs 只改 DSH_HOME，测试却读 CFB_REAL_DSH_HOME，于是绕过临时目录写到 root 拥有的真实 trace.log，当前用户 u 无写权限才 EACCES。直接 chown/rm 那条路先搁置，要用 sudo 且会动真实 home；改测试改用 DSH_HOME 那条也搁置，需先确认 verify.mjs 到底有没有设 CFB_REAL_DSH_HOME 以及 env 是否真传给了子进程。所以下一步工具调用是 bash 执行 `grep -R \"CFB_REAL_DSH_HOME\" -n verify.mjs test src` 并顺带 echo \"CFB_REAL_DSH_HOME=${CFB_REAL_DSH_HOME:-unset}\"。如果 grep 出来 verify.mjs 里确实没有 `CFB_REAL_DSH_HOME`、而该变量当前是 `/home/u/.dsh` 或 unset，那么假设坐实、看到这一点就直接动手 edit_file verify.mjs，old_text 是 `const env = { ...process.env, DSH_HOME: tmp }`（read_file 里原样的一整行，不带行首缩进也能匹配），new_text 是 `const env = { ...process.env, DSH_HOME: tmp, CFB_REAL_DSH_HOME: tmp }`，让测试拿到临时 home；改完立刻重跑，严禁再 read_file 或 sed 看 verify.mjs 上下文。如果 grep 出来 verify.mjs 里本来就有 CFB_REAL_DSH_HOME 却没生效，那么问题在 env 没传给子进程，改 verify.mjs 里把 env 传给 spawn/exec 的那一处调用，此时不要动测试文件、也不要动权限——落点 `const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })` 的逐字原文已给出，可以直接当 edit_file 的 old_text，看到结果后不用再读文件；看到该行就改，不再复现。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+   "side": "读取到的证据：`FAIL test/birth.selftest.mjs  Error: EACCES: permission denied, open '/home/u/.dsh/storages/cot-form-b/trace.log'`，而 `ls -la /home/u/.dsh/storages/cot-form-b/` 显示 `drwxr-xr-x 2 root root` 与 `-rw-r--r-- 1 root root 88213 trace.log`，`id` 是 `uid=1000(u)`，`echo $DSH_HOME` 是 `/home/u/.dsh`。verify.mjs 里逐字是 `const env = { ...process.env, DSH_HOME: tmp }`（有「每个套件在独立的临时 DSH_HOME 里跑」的注释），test/birth.selftest.mjs 第 1-12 行逐字是 `const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })`。看起来隔离变量对不上：verify.mjs 只改 DSH_HOME，测试却读 CFB_REAL_DSH_HOME，于是绕过临时目录写到 root 拥有的真实 trace.log，当前用户 u 无写权限才 EACCES。直接 chown/rm 那条路先搁置，要用 sudo 且会动真实 home；改测试改用 DSH_HOME 那条也搁置，需先确认 verify.mjs 到底有没有设 CFB_REAL_DSH_HOME 以及 env 是否真传给了子进程。所以下一步工具调用是 bash 执行 `grep -R \"CFB_REAL_DSH_HOME\" -n verify.mjs test src` 并顺带 `echo \"CFB_REAL_DSH_HOME=${CFB_REAL_DSH_HOME:-unset}\"`。如果 grep 出来 verify.mjs 里确实没有 `CFB_REAL_DSH_HOME`、而该变量当前是 `/home/u/.dsh` 或 unset，那么假设坐实、看到这一点就直接动手 edit_file verify.mjs，old_text 是 `const env = { ...process.env, DSH_HOME: tmp }`（read_file 里原样的一整行，不带行首缩进也能匹配），new_text 是 `const env = { ...process.env, DSH_HOME: tmp, CFB_REAL_DSH_HOME: tmp }`，让测试拿到临时 home；改完立刻重跑，严禁再 read_file 或 sed 看 verify.mjs 上下文。如果 grep 出来 verify.mjs 里本来就有 CFB_REAL_DSH_HOME 却没生效，那么问题在 env 没传给子进程，改 verify.mjs 里把 env 传给 spawn/exec 的那一处调用，此时不要动测试文件、也不要动权限；看到该行就改，不再复现。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
+  },
+  {
+   "id": "flaky-timeout",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 9053,
+   "outChars": 1434,
+   "ms": 4701,
+   "promptVersion": "compress-v4d4:ctx",
+   "gate": {
+    "outputChars": 1438,
+    "inventedSpans": 2,
+    "newTextSpans": 1,
+    "chars": 1434,
+    "closeLoop": true,
+    "provenance": true,
+    "register": true,
+    "ctxChars": 649,
+    "branches": 2,
+    "fixBranches": 1,
+    "boundBranches": 1,
+    "boundBy": [
+     "had"
+    ],
+    "disjunctiveFix": 1,
+    "compileMs": 0.71
+   },
+   "accept": "ok",
+   "text": "CI 里 test/hedge.selftest.mjs §4 大约每 5 次失败 1 次，失败记录是 `expected hedgeStartedAt=null, got 1712` 和 `got 1698`。测试里的边界（逐字，来自 read_file test/hedge.selftest.mjs §4）：\n`server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600`\n`assert.equal(meta.hedgeStartedAt, null)`\n源码（逐字，来自 read_file src/distill.js hedgedDistill 节选）：\n`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`\n`primary.then(() => { primarySettled = true })`\n而 `nproc (CI) → 2`，`nproc (本地) → 16`。看起来这不是逻辑错误：1500 与 1600 只差 100ms，2 核 CI 上事件循环被阻塞时，server 的 1500ms 定时器和客户端的 1600ms 对冲定时器都积压到同一 timers 阶段（1712/1698 正好是延迟量），Node 先执行到期更早的 1500 回调发出响应，紧接着执行 1600 回调触发 hedge，而主请求的 HTTP 响应要到 poll 阶段才 resolve，`primary.then` 微任务还没跑，`primarySettled` 仍是 false；本地 16 核无负载，响应在 1600 之前就 settle 了。清除 timer 不解决问题（还没 settle 就触发了），先搁置；换成检查 primary 是否已 settled 也只是把同一个竞态挪个位置，没把握，不选；增大时间差是改动最小的候选，但落点（测试里那两行配置）这次没在手，不先动。所以下一步工具调用是 bash 限制双核并循环复现：\n`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`\n如果输出里出现 run N 后跟 got 1xxx 或 `expected hedgeStartedAt=null` 的 FAIL，那么就坐实了调度抖动，看到这一行就直接动手 edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（文件里原样的一整行，不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`，把余量从 100ms 拉到 1500ms，改完即停、严禁再用 read_file 或 sed 去确认那行上下文。如果循环 50 次全部 PASS（本地 16 核压不到 2 核的程度），那么说明瓶颈只出在 CI 的核数与负载，此时不要改 test/hedge.selftest.mjs 的 hedgeAfterMs，改去 CI 侧复现或直接给该测试加固定时钟注入。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+   "side": "CI 里 test/hedge.selftest.mjs §4 大约每 5 次失败 1 次，失败记录是 `expected hedgeStartedAt=null, got 1712` 和 `got 1698`。测试里的边界（逐字，来自 read_file test/hedge.selftest.mjs §4）：\n`server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600`\n`assert.equal(meta.hedgeStartedAt, null)`\n源码（逐字，来自 read_file src/distill.js hedgedDistill 节选）：\n`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`\n`primary.then(() => { primarySettled = true })`\n而 `nproc (CI) → 2`，`nproc (本地) → 16`。看起来这不是逻辑错误：1500 与 1600 只差 100ms，2 核 CI 上事件循环被阻塞时，server 的 1500ms 定时器和客户端的 1600ms 对冲定时器都积压到同一 timers 阶段（1712/1698 正好是延迟量），Node 先执行到期更早的 1500 回调发出响应，紧接着执行 1600 回调触发 hedge，而主请求的 HTTP 响应要到 poll 阶段才 resolve，`primary.then` 微任务还没跑，`primarySettled` 仍是 false；本地 16 核无负载，响应在 1600 之前就 settle 了。清除 timer 不解决问题（还没 settle 就触发了），先搁置；换成检查 primary 是否已 settled 也只是把同一个竞态挪个位置，没把握，不选；增大时间差是改动最小的候选，但落点（测试里那两行配置）这次没在手，不先动。所以下一步工具调用是 bash 限制双核并循环复现：\n`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`\n如果输出里出现 `run N` 后跟 `got 1xxx` 或 `expected hedgeStartedAt=null` 的 FAIL，那么就坐实了调度抖动，看到这一行就直接动手 edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（文件里原样的一整行，不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`，把余量从 100ms 拉到 1500ms，改完即停、严禁再用 read_file 或 sed 去确认那行上下文。如果循环 50 次全部 PASS（本地 16 核压不到 2 核的程度），那么说明瓶颈只出在 CI 的核数与负载，此时不要改 test/hedge.selftest.mjs 的 hedgeAfterMs，改去 CI 侧复现或直接给该测试加固定时钟注入。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
+  },
+  {
+   "id": "wrong-model",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 3414,
+   "outChars": 1777,
+   "ms": 4918,
+   "promptVersion": "compress-v4d4:ctx",
+   "gate": {
+    "outputChars": 1779,
+    "inventedSpans": 1,
+    "newTextSpans": 1,
+    "chars": 1777,
+    "closeLoop": true,
+    "provenance": true,
+    "register": true,
+    "ctxChars": 799,
+    "branches": 2,
+    "fixBranches": 1,
+    "boundBranches": 1,
+    "boundBy": [
+     "had"
+    ],
+    "compileMs": 0.35
+   },
+   "accept": "ok",
+   "text": "当前会话的 trace 是 `[llm-stream] {\"n\":12,\"model\":\"deepseek-v3.2\"}`，而压缩 transport 启动时是 `[compiler-transport-started] {\"model\":\"deepseek-v3.1\"}`，n13 又回到 v3.2，看起来压缩走的是上一次会话留下的模型。read_file src/host-follow.js（逐字）：\n`let lastModel = null`\n`observe(options) { if (options && options.model) lastModel = options.model }`\n`callConfig(options) { return { ...cfg, model: lastModel || cfg.model } }`\nread_file src/plugin.js（逐字）：\n`host.observe(options, n)`\n`const callCfg = host.callConfig(options)`\n`return birthTransform(inner, { cfg: callCfg, ... })`\n所以 lastModel 是模块级单例、跨会话保留；observe 只认第一个参数的 options.model，plugin 传的却是 `(options, n)`，如果当前模型在 n 上，lastModel 就不会被刷新，callConfig 继续拿旧值 v3.1 覆盖 cfg.model。prewarm 那条 grep 只到 `makePrewarmer(cfg, trace)` 和 `fetch(prewarmTargetUrl(cfg))`，未必是压缩入口，先搁置。观察调用顺序本身没问题：observe 在 callConfig 之前；被排除的是「callConfig 顺序错了」这条路，trace 里 v3.2 的 n12 与 v3.1 的 compiler-transport 同时存在，说明不是顺序而是值来源不对。原文想过直接改 host-follow 让 observe 读第二个参数，但落点没看过，先不动；改 plugin 调用处传 model 是另一个候选，也搁置。下一步先确认 options 和 n 的真实字段。\n所以下一步工具调用是 bash grep -n -C 10 \"host.observe\\|callConfig\" src/plugin.js。如果输出里 n 带 model 字段、或 options 里根本没有 model，那么假设坐实：edit_file src/plugin.js，old_text 是 `host.observe(options, n)`（read_file 里原样的一整行，不带行首缩进也能匹配，可以直接当 edit_file 的 old_text，不用再读文件），new_text 是 `host.observe(n || options)`，让 observe 读到 n 上的 model、options.model 兜底；看到结果就必须直接动手 edit_file，严禁再用 read_file 或 sed 查看上下文或确认。如果输出显示 options 本身就有 model 而 n 只是计数、observe 却仍未生效，那么问题不在这一行，此时不要改 plugin.js，改看 host-follow.js 里 `observe(options) { if (options && options.model) lastModel = options.model }` 的落点：old_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`，new_text 保留条件但让它在每次会话开始时清掉旧 lastModel（逻辑改动，不写出整行）；n12 与 n13 的 v3.2 说明同一会话内 llm-stream 正常，这不改变落点。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+   "side": "当前会话的 trace 是 `[llm-stream] {\"n\":12,\"model\":\"deepseek-v3.2\"}`，而压缩 transport 启动时是 `[compiler-transport-started] {\"model\":\"deepseek-v3.1\"}`，n13 又回到 v3.2，看起来压缩走的是上一次会话留下的模型。read_file src/host-follow.js（逐字）：\n`let lastModel = null`\n`observe(options) { if (options && options.model) lastModel = options.model }`\n`callConfig(options) { return { ...cfg, model: lastModel || cfg.model } }`\nread_file src/plugin.js（逐字）：\n`host.observe(options, n)`\n`const callCfg = host.callConfig(options)`\n`return birthTransform(inner, { cfg: callCfg, ... })`\n所以 lastModel 是模块级单例、跨会话保留；observe 只认第一个参数的 options.model，plugin 传的却是 `(options, n)`，如果当前模型在 n 上，lastModel 就不会被刷新，callConfig 继续拿旧值 v3.1 覆盖 cfg.model。prewarm 那条 grep 只到 `makePrewarmer(cfg, trace)` 和 `fetch(prewarmTargetUrl(cfg))`，未必是压缩入口，先搁置。观察调用顺序本身没问题：observe 在 callConfig 之前；被排除的是「callConfig 顺序错了」这条路，trace 里 v3.2 的 n12 与 v3.1 的 compiler-transport 同时存在，说明不是顺序而是值来源不对。原文想过直接改 host-follow 让 observe 读第二个参数，但落点没看过，先不动；改 plugin 调用处传 model 是另一个候选，也搁置。下一步先确认 options 和 n 的真实字段。\n所以下一步工具调用是 bash `grep -n -C 10 \"host.observe\\|callConfig\" src/plugin.js`。如果输出里 n 带 model 字段、或 options 里根本没有 model，那么假设坐实：edit_file src/plugin.js，old_text 是 `host.observe(options, n)`（read_file 里原样的一整行，不带行首缩进也能匹配，可以直接当 edit_file 的 old_text，不用再读文件），new_text 是 `host.observe(n || options)`，让 observe 读到 n 上的 model、options.model 兜底；看到结果就必须直接动手 edit_file，严禁再用 read_file 或 sed 查看上下文或确认。如果输出显示 options 本身就有 model 而 n 只是计数、observe 却仍未生效，那么问题不在这一行，此时不要改 plugin.js，改看 host-follow.js 里 `observe(options) { if (options && options.model) lastModel = options.model }` 的落点：old_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`，new_text 保留条件但让它在每次会话开始时清掉旧 lastModel（逻辑改动，不写出整行）；n12 与 n13 的 v3.2 说明同一会话内 llm-stream 正常，这不改变落点。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
+  },
+  {
+   "id": "sse-truncated",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 5424,
+   "outChars": 1720,
+   "ms": 9134,
+   "promptVersion": "compress-v4d4:ctx",
+   "gate": {
+    "outputChars": 1664,
+    "inventedSpans": 3,
+    "newTextSpans": 1,
+    "chars": 1658,
+    "closeLoop": true,
+    "provenance": true,
+    "register": true,
+    "ctxChars": 630,
+    "branches": 1,
+    "fixBranches": 1,
+    "boundBranches": 1,
+    "boundBy": [
+     "span"
+    ],
+    "compileMs": 1.7
+   },
+   "accept": "invented-identifier:  return { out, finish: finish || (done ?——落点 | 的逐字原文已给出，可以直接当 edit_file 的 old_text，看到结果后不用再读文件。 'stop' : null) }",
+   "text": "trace 里 `[compiler-transport-settled] {\"ok\":true,\"finish\":null,\"stream\":true,\"outputChars\":212,\"eventCount\":9}` 和 `[birth-condensed] {\"rawChars\":8123,\"outChars\":212}` 说明截断没有让 ok 变 false。read_file src/transport.js assembleSseFrames 节选逐字：\n`for (const f of frames) {`\n`    if (f === '[DONE]') { done = true; continue }`\n`    const j = JSON.parse(f); out += j.choices?.[0]?.delta?.content || ''`\n`    if (j.choices?.[0]?.finish_reason) finish = j.choices[0].finish_reason`\n`  }`\n`  return { out, finish: finish || (done ? 'stop' : null) }`\n看起来 `[DONE]` 被当成正常收尾：没有 `finish_reason` 时，`done` 会让返回的 finish 变成 `'stop'`，而 `ok:true` 不看 finish 是否来自上游。网关文档说部分上游在连接被代理切断时只补发 `data: [DONE]`，这正好能造成“212 字符后流结束，却被当作 stop 写进会话”。trace 里 `finish:null` 反而说明 settle 记录的可能是原始 finish_reason，而不是 assembleSseFrames 组装后的 `'stop'`，所以调用方的 ok/写会话条件还没看到；把 `finish` 当完整标志的改法先搁置，因为落点在调用方，不在手。另一个可能是 frames 没剥掉 `data: ` 导致 `f === '[DONE]'` 不成立，但那要等 grep 出来才能定；改 frames 解析不是现在最小改动。\n所以下一步工具调用是 bash `grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled|assembleSseFrames|birth-condensed\" src`。\n如果 grep 出来 `compiler-transport-settled` 附近有 ok: true 只依赖 !err 或 `stream` 结束，那么直接改这里：看到这一行就够了，不用再 read_file 确认上下文，edit_file 把 ok 的条件改成必须拿到真实 finish_reason 或内容完整标志，finish: null 且只有 `[DONE]` 时按 incomplete 处理，不写会话；old_text 用 grep 输出里该文件原样的那一整行，不带行号和 grep 前缀也能匹配，diff 里的 `+` 是标记不是文件内容，看到结果就必须直接动手，严禁再 sed 或 read_file 查看周边。如果 grep 出来 ok 已经依赖 finish，但 assembleSseFrames 的返回处被调用方覆盖成 `'stop'`，那么改 src/transport.js 里 `  return { out, finish: finish || (done ?——落点 `'stop'` 的逐字原文已给出，可以直接当 edit_file 的 old_text，看到结果后不用再读文件。 'stop' : null) }` 这一行，new_text 是 `  return { out, finish: finish || null }`，让仅 `[DONE]` 不再冒充 stop，此时不要改调用方。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+   "side": "trace 里 `[compiler-transport-settled] {\"ok\":true,\"finish\":null,\"stream\":true,\"outputChars\":212,\"eventCount\":9}` 和 `[birth-condensed] {\"rawChars\":8123,\"outChars\":212}` 说明截断没有让 ok 变 false。read_file src/transport.js assembleSseFrames 节选逐字：\n`for (const f of frames) {`\n`    if (f === '[DONE]') { done = true; continue }`\n`    const j = JSON.parse(f); out += j.choices?.[0]?.delta?.content || ''`\n`    if (j.choices?.[0]?.finish_reason) finish = j.choices[0].finish_reason`\n`  }`\n`  return { out, finish: finish || (done ? 'stop' : null) }`\n看起来 `[DONE]` 被当成正常收尾：没有 `finish_reason` 时，`done` 会让返回的 finish 变成 `'stop'`，而 `ok:true` 不看 finish 是否来自上游。网关文档说部分上游在连接被代理切断时只补发 `data: [DONE]`，这正好能造成“212 字符后流结束，却被当作 stop 写进会话”。trace 里 `finish:null` 反而说明 settle 记录的可能是原始 finish_reason，而不是 assembleSseFrames 组装后的 `'stop'`，所以调用方的 ok/写会话条件还没看到；把 `finish` 当完整标志的改法先搁置，因为落点在调用方，不在手。另一个可能是 frames 没剥掉 `data: ` 导致 `f === '[DONE]'` 不成立，但那要等 grep 出来才能定；改 frames 解析不是现在最小改动。\n所以下一步工具调用是 bash `grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled|assembleSseFrames|birth-condensed\" src`。\n如果 grep 出来 `compiler-transport-settled` 附近有 `ok: true` 只依赖 `!err` 或 `stream` 结束，那么直接改这里：看到这一行就够了，不用再 read_file 确认上下文，edit_file 把 ok 的条件改成必须拿到真实 finish_reason 或内容完整标志，`finish: null` 且只有 `[DONE]` 时按 incomplete 处理，不写会话；old_text 用 grep 输出里该文件原样的那一整行，不带行号和 grep 前缀也能匹配，diff 里的 `+` 是标记不是文件内容，看到结果就必须直接动手，严禁再 sed 或 read_file 查看周边。如果 grep 出来 ok 已经依赖 finish，但 assembleSseFrames 的返回处被调用方覆盖成 `'stop'`，那么改 src/transport.js 里 `  return { out, finish: finish || (done ? 'stop' : null) }` 这一行，new_text 是 `  return { out, finish: finish || null }`，让仅 `[DONE]` 不再冒充 stop，此时不要改调用方。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
+  },
+  {
+   "id": "perf-regression",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 11322,
+   "outChars": 1714,
+   "ms": 9465,
+   "promptVersion": "compress-v4d4:ctx",
+   "gate": {
+    "outputChars": 1716,
+    "inventedSpans": 1,
+    "chars": 1714,
+    "closeLoop": true,
+    "provenance": true,
+    "register": true,
+    "ctxChars": 483,
+    "branches": 3,
+    "fixBranches": 2,
+    "boundBranches": 2,
+    "boundBy": [
+     "had",
+     "had"
+    ],
+    "compileMs": 1.5
+   },
+   "accept": "ok",
+   "text": "这次升级后 birth 收网从 900ms 涨到 2400ms，加的 1500ms 里约 1370ms 全是 contentSpan（280→1650），ttfb 只 +30ms（610→640），说明 prefill 基本没动、时间全花在解码上。吞吐 390/280=1.39 chars/ms、1720/1650=1.04 chars/ms，量级一致，所以不是单 token 变慢，是生成的量变大：outputChars 390→1720。git diff v11.9..v11.10 -- src/config.js（逐字）：`-  maxOutputTokens: 850,` `+  maxOutputTokens: 4096,` `-  compressTargetMax: 450,` `+  compressTargetMax: 1800,`（diff 里的加号减号只是标记，文件里的样子是 `maxOutputTokens: 4096,` 和 `compressTargetMax: 1800,`，不带符号也能匹配；减号行是旧值，只能当 new_text 的材料）。README 回滚开关表写 compressTargetMax 只影响 v3 的长度目标。数字对得很齐：旧 outputChars 390 贴近旧目标 450，新 1720 贴近新目标 1800，比例 4.4 与目标比 4.0 同阶，看起来 compressTargetMax 450→1800 才是把产物拉长的那个旋钮；maxOutputTokens 850→4096 只是上限，本身不强制变长，除非旧版本一直被 850 截断。promptVersion 前后都是 compress-v3:250-450，这条是可疑仪表：若该标签由 config 拼出，改了 compressTargetMax 就该变成 250-1800，它没变，所以不能拿它证明配置没生效。回滚 compressTargetMax 的 A/B 重测先搁置（要重跑一整轮，且现在还不知道该回滚哪个旋钮）；只改 maxOutputTokens 的候选数据比 compressTargetMax 弱，不选。\n所以下一步工具调用是 bash analyze-trace --compare v11.9 v11.10 --steps birth --fields finishReason,outputTokens。如果升级前那侧出现 finishReason=length（或 outputTokens 卡在 850），那么 850 确实一直在截断、maxOutputTokens 是主因，此时不要动 compressTargetMax：edit_file src/config.js，old_text 是 `maxOutputTokens: 4096,`（read_file 里原样的一整行，不带行首缩进也能匹配），new_text 是 `maxOutputTokens: 850,`（diff 的 `-` 行是旧值，只能当 new_text 的材料），回到 850 一处即可，看到 finishReason=length 就直接改，不用再读 config.js 上下文；如果升级前那侧是 finishReason=stop（outputTokens 明显低于 850，说明上限从未生效），那么责任落在长度目标上，此时不要改 maxOutputTokens：edit_file src/config.js，old_text 是 `compressTargetMax: 1800,`（同样是文件里原样的一行，可直接当 old_text），new_text 是 `compressTargetMax: 450,`，把 v3 长度目标回滚到旧值、birth 输出随之回到 ~390 chars；标签 250-450 不改也不影响落点，看到 stop 就直接动手，不要再 grep promptVersion 或复跑 trace。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+   "side": "这次升级后 birth 收网从 900ms 涨到 2400ms，加的 1500ms 里约 1370ms 全是 contentSpan（280→1650），ttfb 只 +30ms（610→640），说明 prefill 基本没动、时间全花在解码上。吞吐 390/280=1.39 chars/ms、1720/1650=1.04 chars/ms，量级一致，所以不是单 token 变慢，是生成的量变大：outputChars 390→1720。git diff v11.9..v11.10 -- src/config.js（逐字）：`-  maxOutputTokens: 850,` `+  maxOutputTokens: 4096,` `-  compressTargetMax: 450,` `+  compressTargetMax: 1800,`（diff 里的加号减号只是标记，文件里的样子是 `maxOutputTokens: 4096,` 和 `compressTargetMax: 1800,`，不带符号也能匹配；减号行是旧值，只能当 new_text 的材料）。README 回滚开关表写 compressTargetMax 只影响 v3 的长度目标。数字对得很齐：旧 outputChars 390 贴近旧目标 450，新 1720 贴近新目标 1800，比例 4.4 与目标比 4.0 同阶，看起来 compressTargetMax 450→1800 才是把产物拉长的那个旋钮；maxOutputTokens 850→4096 只是上限，本身不强制变长，除非旧版本一直被 850 截断。promptVersion 前后都是 compress-v3:250-450，这条是可疑仪表：若该标签由 config 拼出，改了 compressTargetMax 就该变成 250-1800，它没变，所以不能拿它证明配置没生效。回滚 compressTargetMax 的 A/B 重测先搁置（要重跑一整轮，且现在还不知道该回滚哪个旋钮）；只改 maxOutputTokens 的候选数据比 compressTargetMax 弱，不选。\n所以下一步工具调用是 bash `analyze-trace --compare v11.9 v11.10 --steps birth --fields finishReason,outputTokens`。如果升级前那侧出现 finishReason=length（或 outputTokens 卡在 850），那么 850 确实一直在截断、maxOutputTokens 是主因，此时不要动 compressTargetMax：edit_file src/config.js，old_text 是 `maxOutputTokens: 4096,`（read_file 里原样的一整行，不带行首缩进也能匹配），new_text 是 `maxOutputTokens: 850,`（diff 的 `-` 行是旧值，只能当 new_text 的材料），回到 850 一处即可，看到 finishReason=length 就直接改，不用再读 config.js 上下文；如果升级前那侧是 finishReason=stop（outputTokens 明显低于 850，说明上限从未生效），那么责任落在长度目标上，此时不要改 maxOutputTokens：edit_file src/config.js，old_text 是 `compressTargetMax: 1800,`（同样是文件里原样的一行，可直接当 old_text），new_text 是 `compressTargetMax: 450,`，把 v3 长度目标回滚到旧值、birth 输出随之回到 ~390 chars；标签 250-450 不改也不影响落点，看到 stop 就直接动手，不要再 grep promptVersion 或复跑 trace。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
+  }
+ ]
+}

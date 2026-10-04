@@ -3,6 +3,7 @@
 //   DEFAULTS         全部可在 profile patch 的 config 里覆盖（每个值的来历写在旁边）
 //   normalizeConfig  扁平键 + 嵌套写法（distill: / birth:）→ 生效配置；
 //                    退役键/模式、未知键、自动调整全部留痕（BOOT 可见），只报不抛
+import { normalizePolicy, applyPolicyConfig } from './policy.js'
 import os from 'node:os'
 
 // ── harness home 解析（★ 2026-09-18 公测可移植性：禁止把作者机器路径当默认值）──
@@ -206,8 +207,12 @@ export const DEFAULTS = {
   // v12.5（理论 S8-R4′）：层 A 用第一人称推理散文（原生思考语域）代替行式条目；it5 同后端 n=20 实测胜出（综合 5.8 vs 原文 5.0、死路 20% vs 40%）⇒ 缺省开
   compressV4Prose: true,
   // v12.6（理论 S8-R6，oracle C 形态固化）：副模型直写原生语域散文，不经 ops→模板；锚点逐字由 compileV4Direct 硬校验。
-  //   oracle 三轮同后端实测：C 形态 6.4 / 直接改 70%（自动 ops 稿 5.8 / 50%）⇒ 缺省关（先实测固化稿，赢了再转正）
-  compressV4Direct: false,
+  //   oracle 三轮同后端实测：C 形态 6.4 / 直接改 70%（自动 ops 稿 5.8 / 50%）⇒ 当时缺省关（先实测固化稿，赢了再转正）。
+  //   v12.8.8 转正（effect-20，v4d4 自动稿 8 题 × 2，同后端 --require-fp）：基题 8.5 / 反驳 6.5（raw 5.0 / 5.0）、错改 0、死路 0%、回头 read 6%、
+  //   flaky 9.0；v4-live 直写到位率 4/5 = 80%，finish 多扣 p50 6.0 s / max 7.1 s。达到 S9 阶段 1 全部门槛（n=2/题，均在门槛边上）⇒ v4 之内缺省直写。
+  //   注意：全局缺省仍是 compressPrompt 'v3'（缺省配置线上零变化）；只影响显式选 v4 的部署。回退：compressV4Direct:false（ops 路原样保留）。
+  //   v12.8.9 提示词 compress-v4d6（在手代码行清单 + 落定句 + new_text 必写，理论 S8-R11）：两份独立自动稿 8.5 / 8.6，死路 / 错改 / 回头 read 全 0（effect-23）。
+  compressV4Direct: true,
   // v12.7：直写是整块编译（不走增量分段），收网窗口只抬不降到这个下限（真机 flash 3.6–10.9 s / 块）；0 = 不抬
   compressV4DirectMinWaitMs: 6000,
   // v12.7（理论 S8-R7）：直写稿尾段判读分支的闭合与落点绑定（含改法的分支必须带已核真的逐字落点 + 分支内可用句；缺则按标识符重叠绑定）；false 关闭
@@ -219,9 +224,28 @@ export const DEFAULTS = {
   compressCtxAuto: true,
   // v12.8.1：宿主的编辑工具 { name, oldKey, newKey }（稿里的可用句要说宿主真实的工具名；缺省由 plugin 从出站 tools 认出，认不出保留 edit_file / old_text / new_text）
   compressEditTool: null,
+  // v14.10 策略即配置：{id, patches} ⇒ compressPromptFor 在生产路径应用到 v4 直写提示词；null / 'base' = 无策略（逐字节原提示词）。
+  //   坏策略不让它半生效：normalizeConfig 校验失败 ⇒ 回到 null 并记 configAdjusted.compressPolicy。
+  compressPolicy: null,
   compressCtxMaxChars: 8000,
+  // v14.12.3（F6）：程序写的延续段里「已走过的路」的形态：'full'（每条历史调用连参数带结果，随调用数无界增长）| 'bounded'（最近两轮原样、更早归并计数、≤600 字）| 'none'（不写延续段，v12.9.1 及以前的形态）。
+  //   缺省 full（被测对象不变）；策略可用 compressPolicy.config.continuationPath 覆盖；不认识的值回到 full 并在 configAdjusted 留痕。
+  continuationPath: 'full',
+  // 程序拼接件组合控制：'all' | 'compact' | 'no-closing' | 'no-hints' | 'continuation-only' | 'none'（缺省 'all' = 全部保留，被测对象不变；'compact' = 保留延续段并将提示/三问浓缩为一行状态锚点）。
+  programParts: 'all',
+  // 提示词按轮次态动态裁剪模式：'full'（缺省，原样保留全部样例）| 'modular'（在多轮【台账】态下仅注入第 2 轮增量样例与多轮重申，剥离冗余单步样例，节省 ~260 input tokens/次并消除顺序冲突）。
+  promptMode: 'full',
+  // 动态水位与打转感知触发器（理论第四卷 λ 控制器）：false = 固定 birthMinChars；true = 按会话轮数、打转率（原始/Δ状态）与水位动态调节触发地板与预算。
+  birthAdaptiveFloor: false,
+  // v5 本地超高精度认知微模型编译器（src/compile-v5-local.js）：true = 走进程内微模型（< 2ms、零网络调用、零 API 费）直接生成原生语域状态散文并经 compileV4Direct / 拼接件 / 门控校验；false = 走远程副模型。
+  compressLocalModel: false,
+  // v4 直写长度熔断上限（null = 单步 2000 / 多轮 2600）。
+  compressV4DirectMaxChars: null,
   // 仅工具用：把副模型原始输出带回 meta.sideOutput（tools/compile-direct.mjs --recompile 零调用重编译）
   captureSideOutput: false,
+  // 证据程序侧车（默认关）：需宿主注册 createEvidenceHost 产生的 cfbEvidenceHost。
+  // 只发布类型化制品，不自动改消息/运行工具；宿主显式 runLatest 才执行冻结检查链。
+  evidenceProgram: false,
   // 首段目标长度（null ⇒ 段长的一半）
   compressV4FirstSegmentChars: null,
   // 尾段走流式 ⇒ 响应头宽限（finishHeadersGraceMs）才会生效。真机（中转 v4.1-flash）：流式首字节 ≈2 s、尾段 3.2–3.7 s，
@@ -331,6 +355,23 @@ export function normalizeConfig(config = {}) {
     if (b.minSavedTokens !== undefined) c.birthMinSavedTokens = b.minSavedTokens
     if (b.sessionAmbiguity !== undefined) c.birthSessionAmbiguity = b.sessionAmbiguity
     if (b.identifierGate !== undefined) c.birthIdentifierGate = b.identifierGate
+  }
+  // v14.10：策略归一化（null/'base' ⇒ null；坏的 ⇒ null + 留痕），生产与评测同一函数（src/policy.js）
+  try { c.compressPolicy = normalizePolicy(c.compressPolicy) }
+  catch (e) { c.configAdjusted = Object.assign({}, c.configAdjusted, { compressPolicy: { from: c.compressPolicy && c.compressPolicy.id || String(c.compressPolicy), to: null, why: String(e && e.message || e) } }); c.compressPolicy = null }
+  // v14.12.4：策略的配置键（continuationPath / 制度键 birthMinChars、birthMinSavedChars、birthTokenGate）落到顶层 —— 采纳 = 写策略，回滚 = 删策略；BOOT 里 policyConfigApplied 可见
+  { const applied = applyPolicyConfig(c); if (applied.length) c.policyConfigApplied = { policy: c.compressPolicy.id, keys: applied, regime: c.compressPolicy.regime || [] } }
+  if (c.continuationPath !== 'full' && c.continuationPath !== 'bounded' && c.continuationPath !== 'none') {
+    c.configAdjusted = Object.assign({}, c.configAdjusted, { continuationPath: { from: c.continuationPath, to: 'full', why: "must be 'full', 'bounded' or 'none'" } })
+    c.continuationPath = 'full'
+  }
+  if (!['all', 'compact', 'no-closing', 'no-hints', 'continuation-only', 'none'].includes(c.programParts)) {
+    c.configAdjusted = Object.assign({}, c.configAdjusted, { programParts: { from: c.programParts, to: 'all', why: "must be 'all', 'compact', 'no-closing', 'no-hints', 'continuation-only' or 'none'" } })
+    c.programParts = 'all'
+  }
+  if (!['full', 'modular'].includes(c.promptMode)) {
+    c.configAdjusted = Object.assign({}, c.configAdjusted, { promptMode: { from: c.promptMode, to: 'full', why: "must be 'full' or 'modular'" } })
+    c.promptMode = 'full'
   }
   // 不认识的处置值 ⇒ 回到安全缺省（passthrough）并在 BOOT 留痕；绝不把拼错的值猜成「照旧归属」
   if (c.birthSessionAmbiguity !== 'passthrough' && c.birthSessionAmbiguity !== 'latest') {
