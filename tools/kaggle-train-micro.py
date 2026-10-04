@@ -1038,6 +1038,7 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
         "unitTrain": unit_train_metrics,
         "unitValidation": student_val_metrics,
         "unitPairLossWeight": pair_loss_weight,
+        "unitPairMatchedBucketWeight": matched_bucket_weight,
         "unitPairBeta": float(args.beta_simpo),
         "unitPairObjective": args.student_pair_objective,
         "unitPairMarginSource": "gammaStep from audited Unit preference pairs",
