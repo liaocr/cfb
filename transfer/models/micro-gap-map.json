@@ -1099,5 +1099,31 @@
       "reproduce": "node tools/cfb-cycle.mjs plan-traj --lite --arms raw,policy:v5-local-early --scenarios perf-regression --samples 1 --max-rounds 7 --stop --cap-usd 0.12　＋　同 t18 的 traj-run 命令（策略文件见 earlyPolicyConfig，落在 .cfb-offline/policies/，该目录 gitignore）"
     }
   },
-  "rulerArtifactNote": "残余 1 条 resurrected-dead-end（flaky-timeout-s0-r4）为测量伪影：仅由裸英文通用词 'server' 触发（尺子把它当锚点）；从锚点集中去掉该类词后判决变 decision-differs、分数不变 0.375。补丁仅在 scratch 上验证，未采纳（保金标可比）。"
+  "rulerArtifactNote": "残余 1 条 resurrected-dead-end（flaky-timeout-s0-r4）为测量伪影：仅由裸英文通用词 'server' 触发（尺子把它当锚点）；从锚点集中去掉该类词后判决变 decision-differs、分数不变 0.375。补丁仅在 scratch 上验证，未采纳（保金标可比）。",
+  "compressAllRegime": {
+    "note": "「无视门槛、全部压缩」的三处机制（都是现成的，无需改码的一半在策略白名单里）",
+    "mechanisms": {
+      "lambda_controller": "src/birth.js computeAdaptiveBirthControl：第≥4轮 / 连续只读≥3轮 / spinScore≥0.45 / 水位≥0.5 ⇒ 门槛×0.65（下限1600）、输出上限×0.85；策略键 birthAdaptiveFloor=true 打开",
+      "policy_keys": "src/policy.js 白名单：birthMinChars（1..20000）/ birthMinSavedChars（-4000..4000，负=允许稿比原文长）/ birthTokenGate（false=关 token 闸）",
+      "traj_flag": "tools/traj-run.mjs --min-chars 0 = 每轮都压（2c 的 auto-all 变体就是这么跑的）"
+    },
+    "history": "理论 S10.12 2c：auto-all（每轮都压，min-chars 0）5/5 修好、3.4 轮、13.2k tokens，全面优于 raw（5/6、4.0、16.8k）",
+    "localMicroModelProbe": {
+      "at": "2026-10-04",
+      "input": "t17 真实 7 轮（24–3215 字）",
+      "policy": {
+        "compressLocalModel": true,
+        "birthMinChars": 1,
+        "birthMinSavedChars": -4000,
+        "birthTokenGate": false
+      },
+      "result": "7 轮尝试 → 4 轮真压缩（3 轮无可搬内容原样放行），5469 → 4753 字（省 86.9%）",
+      "findings": [
+        "24–52 字的短轮原本渲染成「看清：」后为空的 62 字骨架 = 纯噪声 ⇒ 已加 W4 安全闸：无实质内容时原样放行",
+        "本地编译器只从 raw 取材，台账 ctx 只用于锚点核真、不是草稿来源 —— 全压制度下短轮的内容只能来自台账，这是「微模型替代副模型」的第一个工程缺口",
+        "槽位选薄：Long rounds 的 改法位出现 \"改法只落一个：Interesting.\" 这类陈述句占位"
+      ]
+    },
+    "mode2Gap": "副模型现状（transfer/effect-17 综合分，10 项）：raw 5.0 / 副模型稿 5.7；手写稿历史带 8.6–9.5 ⇒ 副模型距上限仍有 ~3 分；逐任务有倒退（wrong-model raw 9.0 → 稿 5.5）"
+  }
 }

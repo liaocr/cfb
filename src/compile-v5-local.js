@@ -887,7 +887,15 @@ function compileGeneralDiscourseGraph(g, weights = V5_MICRO_WEIGHTS) {
   if (bySlot.OPEN.length) {
     parts.push(bySlot.OPEN.map((s) => (/^(?:未解|回放)/.test(s) ? s : '未解：' + s)).join('；'))
   }
-  return parts.join('\n\n')
+  const body = parts.join('\n\n')
+  // ── 2026-10-04 W4 全压制度安全闸 ──────────────────────────────────────────
+  // 实测（compress-all：地板 1 + 允许稿更长 + 关 token 闸）：24–52 字的短轮会被渲染成
+  // 「看清：」后为空的 62 字骨架 —— 纯噪声。短轮没有可搬内容时，宁可**原样放行**。
+  const mechText = String(parts[0] || '').replace(/^看清：/, '').replace(/\s+/g, ' ').trim()
+  const substantive = mechText.length > 0 || bySlot.DECIDED.length || bySlot.EXCLUDED.length ||
+    bySlot.ACCEPT.length || bySlot.OPEN.length || ihlLive.length
+  if (!substantive) return raw
+  return body
 }
 
 // ── 主入口：compileV5Local(raw, cfg) ─────────────────────────────────────────
