@@ -192,7 +192,7 @@ async function evaluateWithRuler(trained) {
     patches: [],
     config: { compressLocalModel: true, continuationPath: 'bounded', programParts: 'compact' },
   }
-  const cfg = { ...offlineBirthConfig({ model: 'v5-micro-local', baseUrl: 'local://v5-micro', policy: localPolicy, normalizeConfig }), captureSideOutput: true }
+  const cfg = { ...offlineBirthConfig({ model: 'v5-micro-local', baseUrl: 'local://v5-micro', policy: localPolicy, normalizeConfig }), captureSideOutput: true, microWeights: trained }
 
   console.log('══ 1. 训练回执（严格 dev-only，holdout 零接触） ══')
   console.log(JSON.stringify(trained.trainingStats, null, 2))
@@ -274,5 +274,9 @@ async function evaluateWithRuler(trained) {
   })
 }
 
-const trained = trainMicroModelOnDev()
+const evalOnly = process.argv.includes('--eval-only')
+const weightsPath = path.join(ROOT, 'transfer/models/v5-micro-weights.json')
+const trained = (evalOnly && fs.existsSync(weightsPath))
+  ? JSON.parse(fs.readFileSync(weightsPath, 'utf8'))
+  : trainMicroModelOnDev()
 await evaluateWithRuler(trained)

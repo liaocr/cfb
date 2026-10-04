@@ -228,11 +228,33 @@ export function extractUnitFeatures(unit, idx, total, ctxInfo) {
 }
 
 export function scoreUnitWithWeights(feat, weights = V5_MICRO_WEIGHTS) {
-  const v = dot(weights.valueWeights, feat.vec) - (weights.lambda || 0.0038) * feat.tok
+  let mlpValDelta = 0
+  let mlpTemptPred = feat.temptationT ?? 0
+  const mlpSlotDelta = {}
+  if (weights.mlpHead && Array.isArray(weights.mlpHead.W1)) {
+    const { W1, b1 = [], WVal = [], WTempt = [], WSlot = {}, scale = 0.25 } = weights.mlpHead
+    const h = new Array(W1.length)
+    for (let i = 0; i < W1.length; i++) {
+      const z = dot(W1[i], feat.vec) + (b1[i] || 0)
+      // GELU 激活近似
+      h[i] = 0.5 * z * (1 + Math.tanh(0.79788456 * (z + 0.044715 * z * z * z)))
+    }
+    mlpValDelta = scale * dot(WVal, h)
+    const rawTempt = dot(WTempt, h)
+    mlpTemptPred = clip01(0.7 * (feat.temptationT ?? 0) + 0.3 * (1 / (1 + Math.exp(-Math.max(-15, Math.min(15, rawTempt))))))
+    for (const s of SLOT_NAMES) {
+      mlpSlotDelta[s] = WSlot[s] ? scale * dot(WSlot[s], h) : 0
+    }
+  }
+  const v = dot(weights.valueWeights, feat.vec) + mlpValDelta - (weights.lambda || 0.0038) * feat.tok
   const logits = {}
   let maxLogit = -Infinity
   for (const s of SLOT_NAMES) {
-    const l = dot(weights.slotWeights[s] || weights.valueWeights, feat.vec)
+    let l = dot(weights.slotWeights[s] || weights.valueWeights, feat.vec) + (mlpSlotDelta[s] || 0)
+    // Head B 反激活门控（Negative Priming Gate）：当诱惑度低于阈值时压制 EXCLUDED 槽位
+    if (s === 'EXCLUDED' && mlpTemptPred < (weights.temptationMin ?? 0.18) && (feat.cueExcluded || 0) < 0.9) {
+      l -= 0.65
+    }
     logits[s] = l
     if (l > maxLogit) maxLogit = l
   }
@@ -248,7 +270,7 @@ export function scoreUnitWithWeights(feat, weights = V5_MICRO_WEIGHTS) {
     probs[s] = +(probs[s] / sumExp).toFixed(4)
     if (probs[s] > bestProb) { bestProb = probs[s]; bestSlot = s }
   }
-  return { v: +v.toFixed(4), slot: bestSlot, slotProb: bestProb, probs }
+  return { v: +v.toFixed(4), temptationPred: +mlpTemptPred.toFixed(4), slot: bestSlot, slotProb: bestProb, probs }
 }
 
 // ── 第五卷 P5：次模 + 划分拟阵贪心选取器 ──────────────────────────────────────
@@ -643,7 +665,8 @@ function compileGeneralDiscourseGraph(g, weights = V5_MICRO_WEIGHTS) {
 }
 
 // ── 主入口：compileV5Local(raw, cfg) ─────────────────────────────────────────
-export function compileV5Local(raw, cfg = {}, weights = V5_MICRO_WEIGHTS) {
+export function compileV5Local(raw, cfg = {}, weights = null) {
+  const w = weights || cfg?.microWeights || V5_MICRO_WEIGHTS
   const t0 = performance.now()
   const ctx = String(cfg.compressCtx || '')
   const g = parseCognitiveGraph(raw, ctx)
@@ -655,8 +678,8 @@ export function compileV5Local(raw, cfg = {}, weights = V5_MICRO_WEIGHTS) {
   const targetAnchors = extractAnchorsV5(raw.slice(Math.floor(raw.length * 0.65)))
   const ctxInfo = { raw: rawSample, toolText: ctx, targetAnchors, offsets: [] }
   const feats = sampleUnits.map((u, i, arr) => extractUnitFeatures(u, i, arr.length, ctxInfo))
-  const scores = feats.map((f) => scoreUnitWithWeights(f, weights))
-  const selectedOps = selectOpsV5(sampleUnits, feats, scores, weights, 10)
+  const scores = feats.map((f) => scoreUnitWithWeights(f, w))
+  const selectedOps = selectOpsV5(sampleUnits, feats, scores, w, 10)
 
   // 2. 按认知图与程序修复原型生成候选稿，并用微模型 Head 3 偏好打分器优选 + 严格出处净化
   let draft = ''
@@ -665,11 +688,11 @@ export function compileV5Local(raw, cfg = {}, weights = V5_MICRO_WEIGHTS) {
   else if (g.archetype === 'stream-frame-settlement') draft = compileStreamFrameSettlement(g)
   else if (g.archetype === 'env-path-isolation-eacces') draft = compileEnvPathIsolationEacces(g)
   else if (g.archetype === 'def-vs-caller-forwarding') draft = compileDefVsCallerForwarding(g)
-  else draft = compileGeneralDiscourseGraph(g, weights)
+  else draft = compileGeneralDiscourseGraph(g, w)
 
   // 3. 100% 锚点核真与净化（杜绝任何无出处标识符或假反引号）
   const sanitized = sanitizeGroundedProse(draft, g.hay, raw, ctx)
-  const prefScore = scoreDraftPreference(sanitized, raw, ctx, weights, g.hay.anchors)
+  const prefScore = scoreDraftPreference(sanitized, raw, ctx, w, g.hay.anchors)
   const elapsedMs = +(performance.now() - t0).toFixed(2)
 
   return {
