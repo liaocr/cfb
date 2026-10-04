@@ -1,0 +1,16 @@
+{
+  "schema": "cfb.micro-final-test-ledger/1",
+  "entries": [
+    {
+      "family": "case-fold-collision",
+      "datasetSha256": "05f0cf258ce55e60c762fe8d50a6bf20bb76207318eb3863d867412547fc24ce",
+      "candidateWeightsDigest": "89584d5684e4adcaecf22340629b145d865bdc311e73b2dc09e2c9fa606eb497",
+      "evaluatedAt": "2026-10-04T12:06:46Z",
+      "status": "evaluated-below-90-percent-gates",
+      "unitPairs": 30,
+      "unitPairAccuracy": 0.8333,
+      "draftPairs": 8,
+      "draftPairAccuracy": 0
+    }
+  ]
+}
