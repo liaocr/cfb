@@ -1,0 +1,406 @@
+{
+  "schema": "cfb.micro-gap-map/1",
+  "measuredAt": "2026-10-04T14:49:09.590Z",
+  "purpose": "Mode-1 ceiling vs Mode-2 engine gap: archetype templates (what fires today) vs the general fallback path (what fires on un-prototyped raws), with production vs candidate weights.",
+  "metricNotes": [
+    "distanceScore/verdict = draftDistance vs the hand gold (1.0/close means the compressor matches the gold standard)",
+    "keepCoverage/dropNoise = identifier proxy over independently labelled units",
+    "all 7 items pass G2 handDraftGate in every variant"
+  ],
+  "aggregate": {
+    "items": 7,
+    "archetypeProduction": {
+      "distanceScore": 1,
+      "keepCoverage": 0.1706585540736326,
+      "dropNoise": 0.014405762304921969,
+      "meanChars": 1371
+    },
+    "archetypeCandidate": {
+      "distanceScore": 1,
+      "keepCoverage": 0.1706585540736326,
+      "dropNoise": 0.014405762304921969,
+      "meanChars": 1371
+    },
+    "generalProduction": {
+      "distanceScore": 0.15485714285714286,
+      "keepCoverage": 0.12479143354994086,
+      "dropNoise": 0.08044756364084095,
+      "meanChars": 441
+    },
+    "generalCandidate": {
+      "distanceScore": 0.29100000000000004,
+      "keepCoverage": 0.19228468204948035,
+      "dropNoise": 0.017022193492781727,
+      "meanChars": 1031
+    },
+    "gold": {
+      "meanChars": 1532
+    }
+  },
+  "items": [
+    {
+      "id": "flaky-timeout_long-horizon-s0-r4",
+      "family": "flaky-timeout",
+      "units": 271,
+      "keepUnits": 135,
+      "dropUnits": 39,
+      "goldChars": 1554,
+      "archetypeProduction": {
+        "chars": 1247,
+        "archetype": "timing-race-threshold",
+        "selectedOps": 5,
+        "prefScore": 10.5734,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.06666666666666667,
+        "dropNoise": 0
+      },
+      "archetypeCandidate": {
+        "chars": 1247,
+        "archetype": "timing-race-threshold",
+        "selectedOps": 10,
+        "prefScore": 10.7527,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.06666666666666667,
+        "dropNoise": 0
+      },
+      "generalProduction": {
+        "chars": 685,
+        "archetype": "timing-race-threshold",
+        "selectedOps": 5,
+        "prefScore": 9.128,
+        "distanceScore": 0.15,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.07407407407407407,
+        "dropNoise": 0.10256410256410256
+      },
+      "generalCandidate": {
+        "chars": 1401,
+        "archetype": "timing-race-threshold",
+        "selectedOps": 10,
+        "prefScore": 9.168,
+        "distanceScore": 0.2,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.1259259259259259,
+        "dropNoise": 0.07692307692307693
+      }
+    },
+    {
+      "id": "flaky-timeout-s0-r4",
+      "family": "flaky-timeout",
+      "units": 483,
+      "keepUnits": 134,
+      "dropUnits": 78,
+      "goldChars": 1361,
+      "archetypeProduction": {
+        "chars": 1337,
+        "archetype": "timing-race-threshold",
+        "selectedOps": 3,
+        "prefScore": 11.6427,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.014925373134328358,
+        "dropNoise": 0
+      },
+      "archetypeCandidate": {
+        "chars": 1337,
+        "archetype": "timing-race-threshold",
+        "selectedOps": 10,
+        "prefScore": 11.8126,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.014925373134328358,
+        "dropNoise": 0
+      },
+      "generalProduction": {
+        "chars": 372,
+        "archetype": "timing-race-threshold",
+        "selectedOps": 3,
+        "prefScore": 7.0822,
+        "distanceScore": 0.15,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.029850746268656716,
+        "dropNoise": 0
+      },
+      "generalCandidate": {
+        "chars": 1673,
+        "archetype": "timing-race-threshold",
+        "selectedOps": 10,
+        "prefScore": 7.8324,
+        "distanceScore": 0.325,
+        "distanceVerdict": "resurrected-dead-end",
+        "g2": true,
+        "keepCoverage": 0.08208955223880597,
+        "dropNoise": 0.01282051282051282
+      }
+    },
+    {
+      "id": "flaky-timeout-s0-r5",
+      "family": "flaky-timeout",
+      "units": 199,
+      "keepUnits": 34,
+      "dropUnits": 34,
+      "goldChars": 1589,
+      "archetypeProduction": {
+        "chars": 1325,
+        "archetype": "timing-race-threshold",
+        "selectedOps": 3,
+        "prefScore": 11.6427,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.058823529411764705,
+        "dropNoise": 0.029411764705882353
+      },
+      "archetypeCandidate": {
+        "chars": 1325,
+        "archetype": "timing-race-threshold",
+        "selectedOps": 9,
+        "prefScore": 11.8126,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.058823529411764705,
+        "dropNoise": 0.029411764705882353
+      },
+      "generalProduction": {
+        "chars": 300,
+        "archetype": "timing-race-threshold",
+        "selectedOps": 3,
+        "prefScore": 7.0822,
+        "distanceScore": 0.15,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0,
+        "dropNoise": 0.058823529411764705
+      },
+      "generalCandidate": {
+        "chars": 983,
+        "archetype": "timing-race-threshold",
+        "selectedOps": 9,
+        "prefScore": 11.2456,
+        "distanceScore": 0.2,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.11764705882352941,
+        "dropNoise": 0.029411764705882353
+      }
+    },
+    {
+      "id": "perf-regression-s0-r6",
+      "family": "perf-regression",
+      "units": 78,
+      "keepUnits": 30,
+      "dropUnits": 13,
+      "goldChars": 1704,
+      "archetypeProduction": {
+        "chars": 1262,
+        "archetype": "config-version-regression",
+        "selectedOps": 4,
+        "prefScore": 9.7251,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.2,
+        "dropNoise": 0
+      },
+      "archetypeCandidate": {
+        "chars": 1262,
+        "archetype": "config-version-regression",
+        "selectedOps": 10,
+        "prefScore": 9.8166,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.2,
+        "dropNoise": 0
+      },
+      "generalProduction": {
+        "chars": 202,
+        "archetype": "config-version-regression",
+        "selectedOps": 4,
+        "prefScore": 7.0822,
+        "distanceScore": 0.15,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.1,
+        "dropNoise": 0.15384615384615385
+      },
+      "generalCandidate": {
+        "chars": 1009,
+        "archetype": "config-version-regression",
+        "selectedOps": 10,
+        "prefScore": 9.9486,
+        "distanceScore": 0.55,
+        "distanceVerdict": "lost-exclusions",
+        "g2": true,
+        "keepCoverage": 0.3,
+        "dropNoise": 0
+      }
+    },
+    {
+      "id": "sse-truncated_decoy-s0-r3",
+      "family": "sse-truncated",
+      "units": 69,
+      "keepUnits": 21,
+      "dropUnits": 11,
+      "goldChars": 1506,
+      "archetypeProduction": {
+        "chars": 1458,
+        "archetype": "stream-frame-settlement",
+        "selectedOps": 3,
+        "prefScore": 7.8539,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.23809523809523808,
+        "dropNoise": 0
+      },
+      "archetypeCandidate": {
+        "chars": 1458,
+        "archetype": "stream-frame-settlement",
+        "selectedOps": 10,
+        "prefScore": 7.8454,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.23809523809523808,
+        "dropNoise": 0
+      },
+      "generalProduction": {
+        "chars": 518,
+        "archetype": "stream-frame-settlement",
+        "selectedOps": 3,
+        "prefScore": 7.7011,
+        "distanceScore": 0.167,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.2857142857142857,
+        "dropNoise": 0
+      },
+      "generalCandidate": {
+        "chars": 858,
+        "archetype": "stream-frame-settlement",
+        "selectedOps": 10,
+        "prefScore": 9.752,
+        "distanceScore": 0.306,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.3333333333333333,
+        "dropNoise": 0
+      }
+    },
+    {
+      "id": "sse-truncated_long-horizon-s0-r5",
+      "family": "sse-truncated",
+      "units": 110,
+      "keepUnits": 34,
+      "dropUnits": 14,
+      "goldChars": 1564,
+      "archetypeProduction": {
+        "chars": 1558,
+        "archetype": "stream-frame-settlement",
+        "selectedOps": 3,
+        "prefScore": 10.3255,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.35294117647058826,
+        "dropNoise": 0.07142857142857142
+      },
+      "archetypeCandidate": {
+        "chars": 1558,
+        "archetype": "stream-frame-settlement",
+        "selectedOps": 9,
+        "prefScore": 10.4098,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.35294117647058826,
+        "dropNoise": 0.07142857142857142
+      },
+      "generalProduction": {
+        "chars": 539,
+        "archetype": "stream-frame-settlement",
+        "selectedOps": 3,
+        "prefScore": 7.2978,
+        "distanceScore": 0.167,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.14705882352941177,
+        "dropNoise": 0.07142857142857142
+      },
+      "generalCandidate": {
+        "chars": 725,
+        "archetype": "stream-frame-settlement",
+        "selectedOps": 9,
+        "prefScore": 9.3994,
+        "distanceScore": 0.306,
+        "distanceVerdict": "resurrected-dead-end",
+        "g2": true,
+        "keepCoverage": 0.17647058823529413,
+        "dropNoise": 0
+      }
+    },
+    {
+      "id": "sse-truncated-s0-r5",
+      "family": "sse-truncated",
+      "units": 94,
+      "keepUnits": 38,
+      "dropUnits": 17,
+      "goldChars": 1447,
+      "archetypeProduction": {
+        "chars": 1407,
+        "archetype": "stream-frame-settlement",
+        "selectedOps": 6,
+        "prefScore": 9.7401,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.2631578947368421,
+        "dropNoise": 0
+      },
+      "archetypeCandidate": {
+        "chars": 1407,
+        "archetype": "stream-frame-settlement",
+        "selectedOps": 8,
+        "prefScore": 9.7932,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.2631578947368421,
+        "dropNoise": 0
+      },
+      "generalProduction": {
+        "chars": 472,
+        "archetype": "stream-frame-settlement",
+        "selectedOps": 6,
+        "prefScore": 7.0822,
+        "distanceScore": 0.15,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.23684210526315788,
+        "dropNoise": 0.17647058823529413
+      },
+      "generalCandidate": {
+        "chars": 570,
+        "archetype": "stream-frame-settlement",
+        "selectedOps": 8,
+        "prefScore": 8.3229,
+        "distanceScore": 0.15,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.21052631578947367,
+        "dropNoise": 0
+      }
+    }
+  ]
+}

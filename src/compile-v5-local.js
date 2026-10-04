@@ -814,11 +814,13 @@ export function compileV5Local(raw, cfg = {}, weights = null) {
 
   // 2. 按认知图与程序修复原型生成候选稿，并用微模型 Head 3 偏好打分器优选 + 严格出处净化
   let draft = ''
-  if (g.archetype === 'timing-race-threshold') draft = compileTimingRaceThreshold(g)
-  else if (g.archetype === 'config-version-regression') draft = compileConfigVersionRegression(g)
-  else if (g.archetype === 'stream-frame-settlement') draft = compileStreamFrameSettlement(g)
-  else if (g.archetype === 'env-path-isolation-eacces') draft = compileEnvPathIsolationEacces(g)
-  else if (g.archetype === 'def-vs-caller-forwarding') draft = compileDefVsCallerForwarding(g)
+  // cfg.forceGeneralPath = true 时跳过全部原型模板，强制走兜底路径（测量/审计用；默认关闭，生产行为不变）。
+  const forceGeneralPath = Boolean(cfg.forceGeneralPath)
+  if (!forceGeneralPath && g.archetype === 'timing-race-threshold') draft = compileTimingRaceThreshold(g)
+  else if (!forceGeneralPath && g.archetype === 'config-version-regression') draft = compileConfigVersionRegression(g)
+  else if (!forceGeneralPath && g.archetype === 'stream-frame-settlement') draft = compileStreamFrameSettlement(g)
+  else if (!forceGeneralPath && g.archetype === 'env-path-isolation-eacces') draft = compileEnvPathIsolationEacces(g)
+  else if (!forceGeneralPath && g.archetype === 'def-vs-caller-forwarding') draft = compileDefVsCallerForwarding(g)
   else draft = compileGeneralDiscourseGraph(g, w)
 
   // 3. 100% 锚点核真与净化（杜绝任何无出处标识符或假反引号）
