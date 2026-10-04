@@ -1,0 +1,155 @@
+{
+  "schema": "cfb.change-direction-teacher/1",
+  "at": "2026-10-04T16:41:44.351Z",
+  "teacher": "deepseek-v4.1-flash via https://api.a6api.com/v1",
+  "task": "仅凭原文末尾片段 + 候选改动清单，独立判读每条对话最终采纳的改动方向；结果用于（a）微模型判读头的教师标签（b）副模型在决定槽位上距金标的实测",
+  "costMeter": {
+    "promptTokens": 9295,
+    "completionTokens": 7096,
+    "calls": 3,
+    "usd": 0.10408285,
+    "capped": false,
+    "usdPerToken": 0.00000635,
+    "capUsd": 0.12,
+    "note": "token 数为网关实测；usd 为按 t18 回执混合单价估算"
+  },
+  "agreement": {
+    "comparable": 2,
+    "agree": 2,
+    "abstain": 7
+  },
+  "items": [
+    {
+      "id": "eacces-config_decoy-s0-r3",
+      "teacher": {
+        "pick": null,
+        "old": null,
+        "new": null,
+        "reason": "候选清单为空，片段仍在分析根因，未形成可对应的最终改动。",
+        "confidence": "high"
+      },
+      "goldDirections": 1,
+      "agreeWithGold": null
+    },
+    {
+      "id": "eacces-config_long-horizon-s0-r5",
+      "teacher": {
+        "pick": null,
+        "old": null,
+        "new": null,
+        "reason": "候选清单为空，片段只提出两种可能修复并计划继续查证，没有采纳结论。",
+        "confidence": "high"
+      },
+      "goldDirections": 0,
+      "agreeWithGold": null
+    },
+    {
+      "id": "flaky-timeout_long-horizon-s0-r4",
+      "teacher": {
+        "pick": null,
+        "old": null,
+        "new": null,
+        "reason": "片段还在准备复现和收集证据，未决定修改 primaryDelayMs 或 hedgeAfterMs，不能对应任一候选。",
+        "confidence": "high"
+      },
+      "goldDirections": 0,
+      "agreeWithGold": null
+    },
+    {
+      "id": "flaky-timeout-s0-r4",
+      "teacher": {
+        "pick": null,
+        "old": null,
+        "new": null,
+        "reason": "片段只是在编写复现脚本并计划运行，未对候选中的 hedgeAfterMs 等参数形成最终改动。",
+        "confidence": "high"
+      },
+      "goldDirections": 1,
+      "agreeWithGold": null
+    },
+    {
+      "id": "flaky-timeout-s0-r5",
+      "teacher": {
+        "pick": 0,
+        "old": "{ hedgeAfterMs: 1600 }",
+        "new": "{ hedgeAfterMs: 5000 }",
+        "reason": "末尾结论是只把 hedge 余量调大（widening margin）让 primary 总先完成再 clearTimeout，对应 hedgeAfterMs 1600→5000。",
+        "confidence": "medium"
+      },
+      "goldDirections": 1,
+      "agreeWithGold": true
+    },
+    {
+      "id": "perf-regression-s0-r6",
+      "teacher": {
+        "pick": 13,
+        "old": "v3h:250-1800.",
+        "new": "v3h:250-450.",
+        "reason": "末尾明确要 revert compressTargetMax 回 450、保留 maxOutputTokens，对应 v3h:250-1800.→v3h:250-450.。",
+        "confidence": "high"
+      },
+      "goldDirections": 0,
+      "agreeWithGold": null
+    },
+    {
+      "id": "sse-truncated_decoy-s0-r3",
+      "teacher": {
+        "pick": 0,
+        "old": "finish='stop'",
+        "new": "finish=null.",
+        "reason": "结论要求截断流 ok:false、不能靠 out.length 判成功，需让默认 finish 不再是 'stop' 而变为 null。",
+        "confidence": "medium"
+      },
+      "goldDirections": 2,
+      "agreeWithGold": true
+    },
+    {
+      "id": "sse-truncated_long-horizon-s0-r5",
+      "teacher": {
+        "pick": null,
+        "old": null,
+        "new": null,
+        "reason": "片段末尾只确定要改 src/transport.js 且 legacy/compat 是诱饵，尚未落到任何 finish 字面值的最终结论。",
+        "confidence": "medium"
+      },
+      "goldDirections": 0,
+      "agreeWithGold": null
+    },
+    {
+      "id": "sse-truncated-s0-r5",
+      "teacher": {
+        "pick": null,
+        "old": null,
+        "new": null,
+        "reason": "片段末尾最终决定的是让 replay 脚本额外写 trace/last.log，与候选的 finish=null/j.choices 无关，候选无对应改动。",
+        "confidence": "medium"
+      },
+      "goldDirections": 1,
+      "agreeWithGold": null
+    },
+    {
+      "id": "wrong-model_decoy-s0-r4",
+      "teacher": {
+        "pick": null,
+        "old": null,
+        "new": null,
+        "reason": "该条候选清单为空，无可选改动。",
+        "confidence": "high"
+      },
+      "goldDirections": 0,
+      "agreeWithGold": null
+    },
+    {
+      "id": "wrong-model_long-horizon-s0-r4",
+      "teacher": {
+        "pick": 3,
+        "old": "currentModel = null",
+        "new": "currentModel = n.model",
+        "reason": "末尾明确结论为关键修复是读取 n.model，即把 currentModel 由 null 改为 n.model，对应候选下标 3。",
+        "confidence": "medium"
+      },
+      "goldDirections": 0,
+      "agreeWithGold": null
+    }
+  ]
+}

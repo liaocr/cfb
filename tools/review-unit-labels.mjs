@@ -27,6 +27,7 @@ const LIMIT = Number(argValue('--limit', '0')) || 0
 const BATCH = Number(argValue('--batch', '8')) || 8
 const CONCURRENCY = Number(argValue('--concurrency', '4')) || 4
 const RESUME = process.argv.includes('--resume')
+const CAP_USD = Number(argValue('--cap-usd', '0')) || 0
 const API_KEY = process.env.DEEPSEEK_API_KEY || ''
 const BASE = (process.env.DEEPSEEK_BASE_URL || 'https://api.a6api.com/v1').replace(/\/$/, '')
 const MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-v4.1-flash'
@@ -103,7 +104,11 @@ for (let i = 0; i < todo.length; i += BATCH) batches.push(todo.slice(i, i + BATC
 console.log(`[review] batches=${batches.length} batch=${BATCH} concurrency=${CONCURRENCY}`)
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+// 成本计量：单价取自本会话 t18 回执（14803 prompt + 4436 completion = $0.122）⇒ 混合 6.35e-6 美元/词
+const USD_PER_TOKEN = 6.35e-6
+const meter = { promptTokens: 0, completionTokens: 0, calls: 0, usd: 0, capped: false }
 async function callModel(items) {
+  if (meter.capped) throw new Error(`cap-usd already reached: $${meter.usd.toFixed(4)} >= $${CAP_USD} (硬停，不再发起调用)`)
   const body = {
     model: MODEL,
     temperature: 0,
@@ -123,6 +128,13 @@ async function callModel(items) {
       })
       if (!res.ok) throw new Error(`http ${res.status}: ${(await res.text()).slice(0, 300)}`)
       const json = await res.json()
+      const u = json.usage || {}
+      meter.promptTokens += Number(u.prompt_tokens) || 0
+      meter.completionTokens += Number(u.completion_tokens) || 0
+      meter.calls++
+      meter.usd = (meter.promptTokens + meter.completionTokens) * USD_PER_TOKEN
+      if (meter.calls % 5 === 0 || CAP_USD > 0) console.log(`[review] meter: calls=${meter.calls} tokens=${meter.promptTokens}+${meter.completionTokens} ≈$${meter.usd.toFixed(4)}${CAP_USD ? ' / 顶 $' + CAP_USD : ''}`)
+      if (CAP_USD > 0 && meter.usd >= CAP_USD) { meter.capped = true; throw new Error(`cap-usd reached: $${meter.usd.toFixed(4)} >= $${CAP_USD} (stop)`) }
       const text = json.choices?.[0]?.message?.content || ''
       const match = text.match(/\{[\s\S]*\}/)
       if (!match) throw new Error('no JSON object in reply')
@@ -144,6 +156,7 @@ async function callModel(items) {
       if (!ok.length) throw new Error('no valid items parsed')
       return ok
     } catch (err) {
+      if (meter.capped) throw err   // 触顶不可重试（2026-10-05 教训：重试会继续烧钱）
       lastErr = err
       await sleep(1500 * attempt)
     }
@@ -162,6 +175,7 @@ function writeOut(counts) {
     datasetSha256AtReview: datasetSha,
     selectionRule: 'trainingEligible=false && text.length>=8',
     counts,
+    costMeter: { ...meter, usdPerToken: USD_PER_TOKEN, capUsd: CAP_USD || null, note: 'usd 为按 t18 回执混合单价 6.35e-6$/词 的估算，token 数为网关实测' },
     items,
   }
   fs.writeFileSync(OUT, JSON.stringify(payload, null, 2) + '\n')
@@ -195,4 +209,4 @@ async function worker(queue) {
 const queue = [...batches]
 await Promise.all(Array.from({ length: CONCURRENCY }, () => worker(queue)))
 writeOut({ selected: selected.length, reviewed: byId.size, batchesDone: done, batchesFailed: failed, batchesTotal: batches.length })
-console.log(`[review] done: ${byId.size} items -> ${path.relative(REPO, OUT)}`)
+console.log(`[review] done: ${byId.size} items -> ${path.relative(REPO, OUT)} | meter calls=${meter.calls} tokens=${meter.promptTokens}+${meter.completionTokens} ≈$${meter.usd.toFixed(4)}${meter.capped ? ' (已触顶停机)' : ''}`)
