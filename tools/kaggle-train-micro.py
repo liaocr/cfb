@@ -257,9 +257,18 @@ class CFBMicro97M(nn.Module):
 
         with torch.no_grad():
             if prior:
-                self.linear_val.weight.copy_(torch.tensor(prior["valueWeights"], dtype=torch.float32).unsqueeze(0))
-                slot_rows = [prior["slotWeights"][s] for s in SLOT_NAMES]
-                self.linear_slot.weight.copy_(torch.tensor(slot_rows, dtype=torch.float32))
+                # 2026-10-04：符号特征可扩展（19 基础 + 文本哈希桶）。生产先验权重是 19 维：
+                # 前 19 维原样载入、新特征块以 0 初始化（特征非零 → 梯度非零，可正常学习）。
+                def _fit(vec):
+                    v = torch.tensor(vec, dtype=torch.float32)
+                    if v.numel() == self.sym_dim:
+                        return v
+                    if v.numel() > self.sym_dim:
+                        return v[:self.sym_dim]
+                    return torch.cat([v, torch.zeros(self.sym_dim - v.numel(), dtype=torch.float32)])
+                self.linear_val.weight.copy_(_fit(prior["valueWeights"]).unsqueeze(0))
+                slot_rows = torch.stack([_fit(prior["slotWeights"][s]) for s in SLOT_NAMES])
+                self.linear_slot.weight.copy_(slot_rows)
                 pref_rows = [prior["prefWeights"][k] for k in PREF_KEYS]
                 self.pref_linear.weight.copy_(torch.tensor(pref_rows, dtype=torch.float32).unsqueeze(0))
 
