@@ -795,6 +795,9 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
     pair_loss_weight = float(args.student_unit_pair_loss_weight)
     if not math.isfinite(pair_loss_weight) or pair_loss_weight <= 0:
         raise ValueError("--student-unit-pair-loss-weight must be finite and positive")
+    matched_bucket_weight = float(args.matched_bucket_loss_weight)
+    if not math.isfinite(matched_bucket_weight) or matched_bucket_weight <= 0:
+        raise ValueError("--matched-bucket-loss-weight must be finite and positive")
     temperature = 2.0
     optimizer = torch.optim.AdamW(student.parameters(), lr=args.student_lr, weight_decay=1e-4)
     history = []
@@ -826,6 +829,13 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
         )
         delta = win_score - lose_score
         accuracy = float((delta > 0).float().mean().item())
+        # 2026-10-04 杠杆B 追加：长度匹配桶（承重读数）加权；报告口径的 accuracy 保持不加权。
+        length_gap = (unit_token_counts[win_idx] - unit_token_counts[lose_idx]).abs()
+        member_weights = torch.where(
+            length_gap <= float(args.near_length_tokens),
+            torch.full_like(length_gap, matched_bucket_weight),
+            torch.ones_like(length_gap),
+        )
         if args.student_pair_objective == "ranknet":
             rank_loss = -F.logsigmoid(args.beta_simpo * (delta - margins)).mean()
             return rank_loss, accuracy, len(pairs)
@@ -833,12 +843,15 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
         for position, pair in enumerate(pairs):
             grouped.setdefault(int(pair["winIdx"]), []).append(position)
         group_losses = []
+        group_weights = []
         for members in grouped.values():
             member_ix = torch.tensor(members, dtype=torch.long, device=device)
             anchor = win_score[member_ix][0] - margins[member_ix].mean()
             candidates = torch.cat([anchor.reshape(1), lose_score[member_ix]])
             group_losses.append(torch.logsumexp(candidates, dim=0) - anchor)
-        list_loss = torch.stack(group_losses).mean()
+            group_weights.append(member_weights[member_ix].mean())
+        group_weights = torch.stack(group_weights)
+        list_loss = (torch.stack(group_losses) * group_weights).sum() / group_weights.sum()
         return list_loss, accuracy, len(grouped)
 
     def student_eval(selected, pairs):
@@ -878,6 +891,7 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
     ).float().clamp(min=1.0)
     _sqrt_inv = torch.sqrt(_label_counts.sum() / (len(SLOT_NAMES) * _label_counts))
     unit_class_weights = (_sqrt_inv / _sqrt_inv.mean()).clamp(0.5, 3.0).to(device)
+    print(f"   [Student] matched-bucket (|delta token| <= {args.near_length_tokens}) loss weight = {matched_bucket_weight}")
     print("   [Student] class-balanced CE weights (sqrt-inv-freq, clamp 0.5-3.0): "
           + ", ".join(f"{name}={float(w):.3f}" for name, w in zip(SLOT_NAMES, unit_class_weights)))
 
@@ -1643,7 +1657,7 @@ def main():
     parser.add_argument("--pref-lr", type=float, default=5e-4)
     parser.add_argument("--student-lr", type=float, default=2e-3)
     parser.add_argument("--pref-student-lr", type=float, default=1e-3)
-    parser.add_argument("--student-epochs", type=int, default=160)
+    parser.add_argument("--student-epochs", type=int, default=260)
     parser.add_argument("--student-pair-objective", choices=["listwise", "ranknet"], default="listwise",
                         help="compact student Unit pair objective; listwise = softmax over each positive's negative group (default), ranknet = pairwise margin sigmoid")
     parser.add_argument("--neg-judge-weights", type=str,
@@ -1660,11 +1674,13 @@ def main():
                         help="max preference pairs generated per positive Unit (dataset builder CFB_MICRO_PAIR_PER_POSITIVE)")
     parser.add_argument("--near-length-tokens", type=int, default=3,
                         help="|delta token| threshold counted as a length-matched negative (dataset builder CFB_MICRO_NEAR_LENGTH_TOKENS)")
+    parser.add_argument("--matched-bucket-loss-weight", type=float, default=1.5,
+                        help="extra loss weight for Unit preference groups in the length-matched bucket (|delta token| <= --near-length-tokens): the load-bearing ruler reading")
     parser.add_argument("--student-unit-pair-loss-weight", type=float, default=1.0,
                         help="weight for the compact student's audited Unit pairwise ranking loss")
     parser.add_argument("--pref-student-epochs", type=int, default=100)
     parser.add_argument("--student-batch-size", type=int, default=128)
-    parser.add_argument("--student-patience", type=int, default=20)
+    parser.add_argument("--student-patience", type=int, default=30)
     parser.add_argument("--patience", type=int, default=4)
     parser.add_argument("--beta-simpo", type=float, default=0.85)
     parser.add_argument("--draft-loss-weight", type=float, default=1.2)
