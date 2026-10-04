@@ -1880,17 +1880,26 @@ def main():
     save_json(JS_PARITY_FIXTURES_PATH, parity_fixtures)
 
     print("\n[Stage 5.5/6] Checking PyTorch→JSON→actual JS numerical parity and scoring audited Unit/Draft pairs...")
-    js_pair_proc = subprocess.run(
-        [
-            "node", str(ROOT / "tools" / "eval-micro-js-pairs.mjs"),
-            "--dataset", str(DATASET_PATH),
-            "--weights", str(CANDIDATE_WEIGHTS_PATH),
-            "--validation-family", sft_result["validationFamily"],
-            "--parity-fixtures", str(JS_PARITY_FIXTURES_PATH),
-            "--report", str(JS_PAIR_EVAL_PATH),
-        ],
-        cwd=str(ROOT), capture_output=True, text=True, check=True,
-    )
+    js_pair_cmd = [
+        "node", str(ROOT / "tools" / "eval-micro-js-pairs.mjs"),
+        "--dataset", str(DATASET_PATH),
+        "--weights", str(CANDIDATE_WEIGHTS_PATH),
+        "--validation-family", sft_result["validationFamily"],
+        "--parity-fixtures", str(JS_PARITY_FIXTURES_PATH),
+        "--report", str(JS_PAIR_EVAL_PATH),
+    ]
+    try:
+        js_pair_proc = subprocess.run(js_pair_cmd, cwd=str(ROOT), capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as exc:
+        # 2026-10-04：这里以前会吞掉子进程的真实报错（只留 exit status 1），排障时看不到原因。
+        print(f"\n[Stage 5.5] FAILED: eval-micro-js-pairs.mjs exited with {exc.returncode}")
+        print("---- child stdout (tail) ----")
+        print((exc.stdout or "")[-4000:])
+        print("---- child stderr (tail) ----")
+        print((exc.stderr or "")[-4000:])
+        print("---- command ----")
+        print(" ".join(js_pair_cmd))
+        raise
     print(js_pair_proc.stdout)
     js_pair_eval = json.loads(JS_PAIR_EVAL_PATH.read_text(encoding="utf-8"))
     if js_pair_eval.get("numericalParity", {}).get("status") != "passed":
