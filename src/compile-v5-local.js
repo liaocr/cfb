@@ -487,7 +487,8 @@ export function buildGroundedHay(raw = '', ctx = '') {
 
 /** 对反引号与全文 token 做严格同构核真：确保 extractAnchorsV5 与 inventedIdentifiers 零越界。 */
 export function sanitizeGroundedProse(draft, hay, raw = '', ctx = '') {
-  let out = String(draft || '')
+  // 0. 控制标签卫生（2026-10-04 W1.1）：模型有时把思维链控制标签带进原文，成品稿里绝不能出现。
+  let out = String(draft || '').replace(/<\/?\s*(?:thinking|analysis|tool_call|tool_calls|tool_result|function_calls|result|antml:[\w:]+)\s*>/gi, ' ')
   // 1. 反引号核真：只有逐字出现或 new_text 引导且全部锚点合法才保留反引号
   out = out.replace(/`([^`\n]+)`/g, (all, span, offset) => {
     const before = out.slice(Math.max(0, offset - 14), offset)
@@ -762,13 +763,30 @@ function compileGeneralDiscourseGraph(g, weights = V5_MICRO_WEIGHTS) {
   // 预算按原文长度取 30%，夹在 [700, 1700]；选材池放大到 24，按次模增益顺序填充，每槽至少保 1 条。
   const budget = Math.max(700, Math.min(1700, Math.round(String(raw).length * 0.30)))
   const chosen = selectOpsV5(units, feats, scores, weights, 24)
-  const clean = (s) => String(s).replace(/\s+/g, ' ').replace(/^[-*•]\s*/, '').trim()
+  const clean = (s) => String(s)
+    .replace(/<\/?\s*(?:thinking|analysis|tool_call|tool_calls|tool_result|function_calls|result|antml:[\w:]+)\s*>/gi, ' ')
+    .replace(/\s+/g, ' ').replace(/^[-*•]\s*/, '').trim()
+  // ── 2026-10-04 W1.1 卫生三件套（活轨迹回放 t17 抓到的真缺陷：`</thinking>` 泄露 + 英文自言自语进骨架 + 死路被复活）──
+  const DEAD_END_RE = /已排除|不可行|行不通|走不通|不要(?:再|用|试)|别再|别用|死路|无效|放弃|排除掉|排除：|白试/
+  const cjkRatio = (t) => { const c = (String(t).match(/[\u4e00-\u9fff]/g) || []).length; const l = (String(t).match(/[A-Za-z]/g) || []).length; return c / Math.max(1, c + l) }
+  const rawCjk = cjkRatio(raw) > 0.30          // 原文以中文为主时才启用英文碎句过滤（英文原文不受影响）
+  // 自言自语与探索碎念：与原文语言无关（真轨迹回放 t17：模型用英文思考，中文原文判定因此失效 ⇒ 骨架里混进 "Let me…"）
+  const selfTalk = (t) => /(?:^|[\s。；;])(?:Let me|Let's|I'll|I will|I need|I should|I think|I can|I could|I might|I want|Maybe I|Or maybe|Hmm|Hold on|Wait|Now let me|Next,? I|Let us)\b/i.test(t)
+    || /explore by trial|trial and error|let me (?:try|check|see|look)/i.test(t)
+  const latinHeavy = (t) => rawCjk && cjkRatio(t) < 0.15 && !/`[^`]+`/.test(t)
+  const tokensOf = (t) => new Set((String(t).match(/[A-Za-z_][A-Za-z0-9_.]{2,}|[\u4e00-\u9fff]{2,}/g) || []).map((x) => x.toLowerCase()))
+  const overlap = (a, b) => { const A = tokensOf(a), B = tokensOf(b); if (!A.size || !B.size) return 0; let hit = 0; for (const x of A) if (B.has(x)) hit++; return hit / Math.min(A.size, B.size) }
+  // 句级擦洗：中文原文里「没有 `代码` 出处、几乎全是英文」的句子 = 模型自言自语，逐句剔掉；剔空则整条弃用。
+  const scrubUnit = (t) => String(t).split(/(?<=[。！？!?；;]|(?<=[a-z])\.\s+)/).filter((x) => x && x.trim()).filter((x) => { const y = x.trim(); return !(selfTalk(y) || (rawCjk && cjkRatio(y) < 0.15 && !/`[^`]+`/.test(y))) }).join('').trim()
+  const deadEndTexts = units.map(clean).filter((t) => t && DEAD_END_RE.test(t))
   const bySlot = { MECHANISM: [], EXCLUDED: [], DECIDED: [], ACCEPT: [], OPEN: [] }
   let usedChars = 0
   for (const c of chosen) {
-    const slot = bySlot[c.slot] ? c.slot : 'MECHANISM'
-    const text = clean(c.text)
+    const text = scrubUnit(clean(c.text))
     if (!text) continue
+    if (selfTalk(text) || latinHeavy(text)) continue
+    const dead = DEAD_END_RE.test(text) || deadEndTexts.some((e) => e !== text && overlap(text, e) >= 0.6)
+    const slot = dead ? 'EXCLUDED' : (bySlot[c.slot] ? c.slot : 'MECHANISM')   // 死路只进「已排除」，绝不进「改法/看清」
     const roomLeft = usedChars + text.length <= budget
     if (!roomLeft && bySlot[slot].length) continue   // 超预算且该槽已有内容：跳过
     bySlot[slot].push(text)
@@ -780,19 +798,26 @@ function compileGeneralDiscourseGraph(g, weights = V5_MICRO_WEIGHTS) {
   const parts = []
   const tailClause = '如果输出跟这两种都不像，先别改，把不一样的地方看清再说。'
   if (bySlot.MECHANISM.length) parts.push('看清：' + bySlot.MECHANISM.join(' '))
-  else parts.push('看清：' + units.slice(0, 2).map(clean).join(' '))
-  if (ihl.length) {
-    const topSpan = ihl[0].span
+  else parts.push('看清：' + units.map((u) => scrubUnit(clean(u))).filter((t) => t && !selfTalk(t) && !latinHeavy(t) && !DEAD_END_RE.test(t)).slice(0, 2).join(' '))
+  const ihlLive = ihl.filter((x) => !DEAD_END_RE.test(String(x.span)))
+  if (ihlLive.length) {
+    const topSpan = ihlLive[0].span
     parts.push(`在手代码行（逐字）：\`${topSpan}\`。`)
   }
   if (bySlot.EXCLUDED.length) {
     parts.push(bySlot.EXCLUDED.map((s) => (/^已排除/.test(s) ? s : '已排除：' + s)).join('；'))
   }
-  if (bySlot.DECIDED.length) {
-    const d0 = bySlot.DECIDED[0]
-    parts.push(/^改法/.test(d0) ? d0 : '改法只落一个：' + d0)
-  } else if (ihl.length) {
-    parts.push(`改法只落一个：针对 \`${ihl[0].span}\` 落定最小改动，可以直接当 edit_file 的 old_text，看到结果后不用再读文件。`)
+  // 「改法」位必须是**改动陈述**：带代码的落定句优先；提问句/叙述句不许占位（活轨迹回放：自问句 "should I fix compat/legacy too?" 把诱饵文件又摆回动作位 = 死路复活）。
+  const DECIDED_HOSTILE = /[?？]\s*$|^\s*(?:should I|whether|do I|can I|maybe (?:I|we)|perhaps I|考虑|要不要|是否|或许)/i
+  const tripleish = (s) => /`[^`\n]+`/.test(s) && /(?:old_text|new_text|改成|改为|换成|替换|删掉|去掉|替换掉|instead of|change .{0,40} to|set .{0,40} to)/i.test(s)
+  const codeish = (s) => /`[^`\n]+`/.test(s)
+  const decidedPool = bySlot.DECIDED.filter((x) => !DECIDED_HOSTILE.test(x))
+  const d0 = decidedPool.find(tripleish) || decidedPool.find(codeish)
+  if (d0) parts.push(/^改法/.test(d0) ? d0 : '改法只落一个：' + d0)
+  else if (ihlLive.length) {
+    parts.push(`改法只落一个：针对 \`${ihlLive[0].span}\` 落定最小改动，可以直接当 edit_file 的 old_text，看到结果后不用再读文件。`)
+  } else if (decidedPool.length) {
+    parts.push(/^改法/.test(decidedPool[0]) ? decidedPool[0] : '改法只落一个：' + decidedPool[0])
   }
   if (bySlot.ACCEPT.length) {
     parts.push(bySlot.ACCEPT.map((s) => (/^验收/.test(s) ? s : '验收是：' + s)).join(' ') + ' ' + tailClause)

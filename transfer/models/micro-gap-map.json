@@ -429,5 +429,362 @@
         "dropNoise": 0.058823529411764705
       }
     }
+  ],
+  "measuredAtW1_1": "2026-10-04T15:05:51.036Z",
+  "aggregateAfterW1_1": {
+    "items": 7,
+    "archetypeProduction": {
+      "distanceScore": 1,
+      "keepCoverage": 0.1707,
+      "dropNoise": 0.0144,
+      "meanChars": 1371,
+      "meanPrefScore": 10.215
+    },
+    "archetypeCandidate": {
+      "distanceScore": 1,
+      "keepCoverage": 0.1707,
+      "dropNoise": 0.0144,
+      "meanChars": 1371,
+      "meanPrefScore": 10.321
+    },
+    "generalProduction": {
+      "distanceScore": 0.1596,
+      "keepCoverage": 0.1008,
+      "dropNoise": 0.0223,
+      "meanChars": 311,
+      "meanPrefScore": 7.347
+    },
+    "generalCandidate": {
+      "distanceScore": 0.3429,
+      "keepCoverage": 0.215,
+      "dropNoise": 0.0176,
+      "meanChars": 1031,
+      "meanPrefScore": 9.801
+    },
+    "gold": {
+      "meanChars": 1532
+    },
+    "notes": [
+      "W1.1：控制标签卫生（`</thinking>` 等一律剔除）· 句级擦洗掉自言自语（Let me…/Hmm…，与原文语言无关）· 死路只进「已排除」位 · 「改法」位只接受带代码的改动陈述，提问句/叙述句不许占位",
+      "对照 W1：generalCandidate 0.362/0.228/1175 · 噪声 0.053 · 死路复活 2 条 ⇒ W1.1：距离略降、覆盖略降、噪声腰斩、死路 2→1",
+      "残余：flaky-timeout-s0-r4 仍判 resurrected-dead-end，复活锚点是裸英文词 \"server\"（尺子把通用词当锚点，属测量面问题，未动尺子以保持金标可比）"
+    ]
+  },
+  "itemsAfterW1_1": [
+    {
+      "id": "flaky-timeout_long-horizon-s0-r4",
+      "family": "flaky-timeout",
+      "goldChars": 1554,
+      "archetypeProduction": {
+        "chars": 1247,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.0667,
+        "dropNoise": 0,
+        "prefScore": 10.573,
+        "selectedOps": 5
+      },
+      "archetypeCandidate": {
+        "chars": 1247,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.0667,
+        "dropNoise": 0,
+        "prefScore": 10.753,
+        "selectedOps": 10
+      },
+      "generalProduction": {
+        "chars": 470,
+        "distanceScore": 0.15,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.0667,
+        "dropNoise": 0.0256,
+        "prefScore": 7.701,
+        "selectedOps": 5
+      },
+      "generalCandidate": {
+        "chars": 1259,
+        "distanceScore": 0.2,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.1185,
+        "dropNoise": 0.0513,
+        "prefScore": 9.817,
+        "selectedOps": 10
+      }
+    },
+    {
+      "id": "flaky-timeout-s0-r4",
+      "family": "flaky-timeout",
+      "goldChars": 1361,
+      "archetypeProduction": {
+        "chars": 1337,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.0149,
+        "dropNoise": 0,
+        "prefScore": 11.643,
+        "selectedOps": 3
+      },
+      "archetypeCandidate": {
+        "chars": 1337,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.0149,
+        "dropNoise": 0,
+        "prefScore": 11.813,
+        "selectedOps": 10
+      },
+      "generalProduction": {
+        "chars": 276,
+        "distanceScore": 0.15,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.0224,
+        "dropNoise": 0,
+        "prefScore": 7.082,
+        "selectedOps": 3
+      },
+      "generalCandidate": {
+        "chars": 1655,
+        "distanceScore": 0.325,
+        "distanceVerdict": "resurrected-dead-end",
+        "g2": true,
+        "keepCoverage": 0.0896,
+        "dropNoise": 0.0128,
+        "prefScore": 9.398,
+        "selectedOps": 10
+      }
+    },
+    {
+      "id": "flaky-timeout-s0-r5",
+      "family": "flaky-timeout",
+      "goldChars": 1589,
+      "archetypeProduction": {
+        "chars": 1325,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.0588,
+        "dropNoise": 0.0294,
+        "prefScore": 11.643,
+        "selectedOps": 3
+      },
+      "archetypeCandidate": {
+        "chars": 1325,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.0588,
+        "dropNoise": 0.0294,
+        "prefScore": 11.813,
+        "selectedOps": 9
+      },
+      "generalProduction": {
+        "chars": 152,
+        "distanceScore": 0.15,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0,
+        "dropNoise": 0,
+        "prefScore": 7.082,
+        "selectedOps": 3
+      },
+      "generalCandidate": {
+        "chars": 814,
+        "distanceScore": 0.175,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.0588,
+        "dropNoise": 0,
+        "prefScore": 7.827,
+        "selectedOps": 9
+      }
+    },
+    {
+      "id": "perf-regression-s0-r6",
+      "family": "perf-regression",
+      "goldChars": 1704,
+      "archetypeProduction": {
+        "chars": 1262,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.2,
+        "dropNoise": 0,
+        "prefScore": 9.725,
+        "selectedOps": 4
+      },
+      "archetypeCandidate": {
+        "chars": 1262,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.2,
+        "dropNoise": 0,
+        "prefScore": 9.817,
+        "selectedOps": 10
+      },
+      "generalProduction": {
+        "chars": 147,
+        "distanceScore": 0.15,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.1,
+        "dropNoise": 0,
+        "prefScore": 7.082,
+        "selectedOps": 4
+      },
+      "generalCandidate": {
+        "chars": 1096,
+        "distanceScore": 0.767,
+        "distanceVerdict": "partial",
+        "g2": true,
+        "keepCoverage": 0.4,
+        "dropNoise": 0,
+        "prefScore": 9.817,
+        "selectedOps": 10
+      }
+    },
+    {
+      "id": "sse-truncated_decoy-s0-r3",
+      "family": "sse-truncated",
+      "goldChars": 1506,
+      "archetypeProduction": {
+        "chars": 1458,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.2381,
+        "dropNoise": 0,
+        "prefScore": 7.854,
+        "selectedOps": 3
+      },
+      "archetypeCandidate": {
+        "chars": 1458,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.2381,
+        "dropNoise": 0,
+        "prefScore": 7.845,
+        "selectedOps": 10
+      },
+      "generalProduction": {
+        "chars": 462,
+        "distanceScore": 0.167,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.2381,
+        "dropNoise": 0,
+        "prefScore": 7.701,
+        "selectedOps": 3
+      },
+      "generalCandidate": {
+        "chars": 965,
+        "distanceScore": 0.472,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.3333,
+        "dropNoise": 0,
+        "prefScore": 11.246,
+        "selectedOps": 10
+      }
+    },
+    {
+      "id": "sse-truncated_long-horizon-s0-r5",
+      "family": "sse-truncated",
+      "goldChars": 1564,
+      "archetypeProduction": {
+        "chars": 1558,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.3529,
+        "dropNoise": 0.0714,
+        "prefScore": 10.325,
+        "selectedOps": 3
+      },
+      "archetypeCandidate": {
+        "chars": 1558,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.3529,
+        "dropNoise": 0.0714,
+        "prefScore": 10.41,
+        "selectedOps": 9
+      },
+      "generalProduction": {
+        "chars": 481,
+        "distanceScore": 0.167,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.1471,
+        "dropNoise": 0.0714,
+        "prefScore": 7.701,
+        "selectedOps": 3
+      },
+      "generalCandidate": {
+        "chars": 817,
+        "distanceScore": 0.278,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.2941,
+        "dropNoise": 0,
+        "prefScore": 12.182,
+        "selectedOps": 9
+      }
+    },
+    {
+      "id": "sse-truncated-s0-r5",
+      "family": "sse-truncated",
+      "goldChars": 1447,
+      "archetypeProduction": {
+        "chars": 1407,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.2632,
+        "dropNoise": 0,
+        "prefScore": 9.74,
+        "selectedOps": 6
+      },
+      "archetypeCandidate": {
+        "chars": 1407,
+        "distanceScore": 1,
+        "distanceVerdict": "close",
+        "g2": true,
+        "keepCoverage": 0.2632,
+        "dropNoise": 0,
+        "prefScore": 9.793,
+        "selectedOps": 8
+      },
+      "generalProduction": {
+        "chars": 191,
+        "distanceScore": 0.183,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.1316,
+        "dropNoise": 0.0588,
+        "prefScore": 7.082,
+        "selectedOps": 6
+      },
+      "generalCandidate": {
+        "chars": 611,
+        "distanceScore": 0.183,
+        "distanceVerdict": "decision-differs",
+        "g2": true,
+        "keepCoverage": 0.2105,
+        "dropNoise": 0.0588,
+        "prefScore": 8.323,
+        "selectedOps": 8
+      }
+    }
   ]
 }

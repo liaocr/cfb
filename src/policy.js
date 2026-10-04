@@ -74,6 +74,7 @@ export const POLICY_CONFIG_KEYS = Object.freeze({
   compressV4DirectMaxChars: Object.freeze({ int: Object.freeze([600, 4000]) }),
   compressV4DirectBind: Object.freeze({ bool: true }),
   compressLocalModel: Object.freeze({ bool: true }),
+  forceGeneralPath: Object.freeze({ bool: true }),   // v14.13 测量臂：跳过 5 个手写原型模板强制走兜底路径（= 真实用户仓的处境；缺省不出现 ⇒ 生产不变）
   birthAdaptiveFloor: Object.freeze({ bool: true, regime: true }),
   birthMinChars: Object.freeze({ int: Object.freeze([1, 20000]), regime: true }),
   birthMinSavedChars: Object.freeze({ int: Object.freeze([-4000, 4000]), regime: true }),
