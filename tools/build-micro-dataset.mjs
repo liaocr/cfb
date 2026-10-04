@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // tools/build-micro-dataset.mjs —— 严格零泄漏（dev-only）构建 <0.1B (CFB-Micro) 专用出生压缩微模型数据集
 //
-// 产物：transfer/models/micro-65m-dev-dataset.json
+// 产物：transfer/models/micro-dev-dataset.json
 // 包含三层监督信号（holdout 家族 eacces-config / wrong-model 全程物理隔离，零接触）：
 //   1. unitSamples: 话语单元级多任务监督（19维符号特征 + 原始文本 + Head A 6类槽位 + Head B 价值V/诱惑度T + Head C 跨度起止下标）
 //   2. stepSimpoPairs: Step-DPO × SimPO 步级反事实偏好对（5类困难负例 + 飞轮真实偏好对 + 动态奖励间隔 γ_dd）
@@ -349,13 +349,13 @@ export function buildMicroDataset() {
   }
 
   const dataset = {
-    schema: 'cfb.micro-65m-dataset/1',
+    schema: 'cfb.micro-dev-dataset/2',
     createdAt: new Date().toISOString(),
     holdoutFamiliesExcluded: [...HOLDOUT_FAMS],
     holdoutTouched: false,
     stats: {
       devGoldItems: devGold.length,
-      holdoutGoldItemsReservedForBlindEval: holdoutGold.length,
+      holdoutGoldItemsExcludedFromTraining: holdoutGold.length,
       devPoolItems: devPool.length,
       unitSamplesCount: unitSamples.length,
       spanDocumentsCount: spanSamples.length,
@@ -370,7 +370,7 @@ export function buildMicroDataset() {
     stepSimpoPairs,
   }
 
-  const outPath = path.join(ROOT, 'transfer/models/micro-65m-dev-dataset.json')
+  const outPath = path.join(ROOT, 'transfer/models/micro-dev-dataset.json')
   fs.mkdirSync(path.dirname(outPath), { recursive: true })
   fs.writeFileSync(outPath, JSON.stringify(dataset, null, 2) + '\n')
   console.log('[build-micro-dataset] Written:', outPath)

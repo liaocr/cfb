@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // tools/train-v5-micro.mjs —— 严格在 dev 集（7 条 dev Gold + 3 条 dev Pool + dev 飞轮偏好对）上训练
 //   v5 本地认知微模型参数（Head 1 槽位分类 + Head 2 条目价值 + Head 3 偏好排序），
-//   全程 0 接触 holdout（eacces-config / wrong-model），随后在 dev + blind holdout 上用完整尺子（dd/1 + G1 + G2）检验。
+//   全程 0 接触 holdout（eacces-config / wrong-model）进行拟合；完整尺子（dd/1 + G1 + G2）随后也检查既有 holdout，但它并非全新盲测。
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -197,7 +197,7 @@ async function evaluateWithRuler(trained) {
   console.log('══ 1. 训练回执（严格 dev-only，holdout 零接触） ══')
   console.log(JSON.stringify(trained.trainingStats, null, 2))
 
-  console.log('\n══ 2. 全量 11 条 Gold 标尺检验（7 dev + 4 blind holdout） ══')
+  console.log('\n══ 2. 全量 Gold 标尺检验（dev + 此前已评测的 holdout） ══')
   const rows = []
   const latencies = []
   const memBefore = process.memoryUsage().heapUsed
@@ -258,25 +258,53 @@ async function evaluateWithRuler(trained) {
   const devRows = rows.filter((r) => r.split === 'dev')
   const holdoutRows = rows.filter((r) => r.split === 'holdout')
   const mean = (arr) => arr.reduce((s, x) => s + x, 0) / Math.max(1, arr.length)
-  console.log('\n══ 3. 汇总指标（dev vs holdout 泛化检验 + 延迟/内存） ══')
-  console.log({
+  const summary = {
     totalItems: rows.length,
+    devItems: devRows.length,
+    holdoutItems: holdoutRows.length,
     devMeanScore: +mean(devRows.map((r) => r.score)).toFixed(4),
     holdoutMeanScore: +mean(holdoutRows.map((r) => r.score)).toFixed(4),
     overallMeanScore: +mean(rows.map((r) => r.score)).toFixed(4),
     generalizationGap: +Math.abs(mean(devRows.map((r) => r.score)) - mean(holdoutRows.map((r) => r.score))).toFixed(4),
-    g1PassCount: `${rows.filter((r) => r.g1Accept).length}/${rows.length}`,
-    g2PassCount: `${rows.filter((r) => r.g2Ok).length}/${rows.length}`,
-    closeCount: `${rows.filter((r) => r.verdict === 'close').length}/${rows.length}`,
+    g1PassCount: rows.filter((r) => r.g1Accept).length,
+    g2PassCount: rows.filter((r) => r.g2Ok).length,
+    closeCount: rows.filter((r) => r.verdict === 'close').length,
+    meanRawChars: +mean(rows.map((r) => r.rawChars)).toFixed(1),
+    meanSplicedChars: +mean(rows.map((r) => r.splicedChars)).toFixed(1),
+    meanSplicedToRawRatio: +mean(rows.map((r) => r.splicedChars / Math.max(1, r.rawChars))).toFixed(4),
+    meanCharReductionPct: +((1 - mean(rows.map((r) => r.splicedChars / Math.max(1, r.rawChars)))) * 100).toFixed(2),
     meanMs: +mean(latencies).toFixed(2),
     maxMs: Math.max(...latencies),
     heapDeltaKB: memDeltaKB,
+  }
+  console.log('\n══ 3. 汇总指标（dev vs holdout 泛化检验 + 延迟/内存） ══')
+  console.log({
+    ...summary,
+    g1PassCount: `${summary.g1PassCount}/${summary.totalItems}`,
+    g2PassCount: `${summary.g2PassCount}/${summary.totalItems}`,
+    closeCount: `${summary.closeCount}/${summary.totalItems}`,
   })
+  return { schema: 'cfb.micro-mode2-eval/1', trainingStats: trained.trainingStats || null, summary, rows }
 }
 
-const evalOnly = process.argv.includes('--eval-only')
-const weightsPath = path.join(ROOT, 'transfer/models/v5-micro-weights.json')
-const trained = (evalOnly && fs.existsSync(weightsPath))
+const args = process.argv.slice(2)
+const argValue = (name, fallback = null) => {
+  const i = args.indexOf(name)
+  return i >= 0 && args[i + 1] ? args[i + 1] : fallback
+}
+const evalOnly = args.includes('--eval-only')
+const weightsPath = path.resolve(ROOT, argValue('--weights-path', 'transfer/models/v5-micro-weights.json'))
+const evalJsonPath = argValue('--eval-json')
+if (evalOnly && !fs.existsSync(weightsPath)) {
+  throw new Error(`--eval-only weights file not found: ${weightsPath}`)
+}
+const trained = evalOnly
   ? JSON.parse(fs.readFileSync(weightsPath, 'utf8'))
   : trainMicroModelOnDev()
-await evaluateWithRuler(trained)
+const evalReport = await evaluateWithRuler(trained)
+if (evalJsonPath) {
+  const target = path.resolve(evalJsonPath)
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+  fs.writeFileSync(target, JSON.stringify(evalReport, null, 2) + '\n')
+  console.log(`\n   ✓ 机器可读 Mode 2 报告: ${target}`)
+}

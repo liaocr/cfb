@@ -340,9 +340,24 @@ export function extractDraftPrefFeatures(text, raw = '', ctx = '', preHayAnchors
 export function scoreDraftPreference(text, raw = '', ctx = '', weights = V5_MICRO_WEIGHTS, preHayAnchors = null) {
   const f = extractDraftPrefFeatures(text, raw, ctx, preHayAnchors)
   const pw = weights.prefWeights || V5_MICRO_WEIGHTS.prefWeights
-  let s = 0
-  for (const [k, v] of Object.entries(pw)) s += (f[k] || 0) * v
-  return +s.toFixed(4)
+  let score = 0
+  for (const [k, v] of Object.entries(pw)) score += (f[k] || 0) * v
+
+  // Optional distilled nonlinear residual; old linear-only weight files remain compatible.
+  const head = weights.prefMlpHead
+  if (head && Array.isArray(head.W1) && Array.isArray(head.W2)) {
+    const keys = Object.keys(pw)
+    const x = keys.map((k) => f[k] || 0)
+    const hidden = head.W1.map((row, i) => {
+      let z = head.b1?.[i] || 0
+      for (let j = 0; j < Math.min(row.length, x.length); j++) z += row[j] * x[j]
+      return 0.5 * z * (1 + Math.tanh(0.79788456 * (z + 0.044715 * z * z * z)))
+    })
+    let residual = head.b2 || 0
+    for (let i = 0; i < Math.min(head.W2.length, hidden.length); i++) residual += head.W2[i] * hidden[i]
+    score += (head.scale ?? 1) * residual
+  }
+  return +score.toFixed(4)
 }
 
 // ── 严格出处核真与净化器（I1/I2：保证 anchorPrecision === 1.000 & G1/G2 100% 过闸） ──

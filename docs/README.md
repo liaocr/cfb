@@ -11,7 +11,7 @@
 | [`../README.md`](../README.md) | 所有人（入口） | 30 秒极速上手、常用命令速查表、目录地图、生产工作流与当前官方基准总表 |
 | [`../transfer/HANDOFF.md`](../transfer/HANDOFF.md) | 接手的新模型 / 开发者 | **一页交接卡**：环境恢复三步法、当前最优策略（`p-e62a037097`）、省钱评测三档菜单与工程铁律 |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 改代码的开发者 / 模型 | 生产插件与认知编译器（`src/` 22 模块 + `tools/` CLI）数据流、12 条核心不变式、「改哪里」指南与 29 套自检矩阵 |
-| [`TRAINING-AND-BENCHMARK.md`](TRAINING-AND-BENCHMARK.md) | 训练与评测操作者 | **闭环、基准与 `<0.1B` 微模型训练指南**：三模式训练闭环（手写探顶→金标基准→影子分叉轨迹）、`<0.1B`（`CFB-Micro-65M`）专用出生压缩微模型完整训练流水线、规则×LLM 双轨裁判与五大国际官方基准 |
+| [`TRAINING-AND-BENCHMARK.md`](TRAINING-AND-BENCHMARK.md) | 训练与评测操作者 | **闭环、基准与 `<0.1B` 微模型训练指南**：三模式训练闭环（手写探顶→金标基准→影子分叉轨迹）、`<0.1B` 预训练双向编码器 + 紧凑学生出生压缩微模型完整训练流水线、规则×LLM 双轨裁判与五大国际官方基准 |
 | [`HISTORY-AND-EXPERIMENTS.md`](HISTORY-AND-EXPERIMENTS.md) | 审计者 / 研究者 | **历史实验与审计合一**：`birthMinChars=3100` 成本定律、`v11.5–v14.18` 关键里程碑、`effect-1..23` / `mr/run1..4` / `traj1..3` 实证结论、两制度分离定理与历史淘汰清单 |
 | [`theory/CFB-THEORY-COMPLETE.md`](theory/CFB-THEORY-COMPLETE.md) | 理论研究者 | **认知编译器六卷完整理论**：T1–T7 信息论基础、价值函数 $v(i;\lambda)$ 与 $\lambda$ 控制器、疫苗记忆（REFUTED）与宿主协议（C0–C3） |
 

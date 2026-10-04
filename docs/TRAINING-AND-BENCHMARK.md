@@ -126,70 +126,68 @@ npm run traj:lite
 
 ---
 
-## 6. `< 0.1B`（`CFB-Micro-65M`）专用出生压缩微模型训练完整指南
+## 6. `< 0.1B` CFB-Micro 出生压缩模型训练指南
 
-由于出生即压缩器（Birth-Time Cognitive Compiler）**不需要通用世界知识或闲聊能力**，它的唯一使命是在 `8ms~20ms` 内将主模型冗长的原生思考链（`raw CoT`）无损编译为高信噪比、零幻觉、强行动导向的四段式认知状态。因此，我们将微模型严格控制在 **`≤ 0.1B`（推荐 `~65M` 参数，`0.065B`）**，彻底摒弃缓慢且易幻觉的自回归生成（Causal LM），采用 **「长窗口双向编码器 + 并行跨度指针 + 次模拟阵拼装」** 架构。
+本流程用**预训练双向编码器作教师模型**，再把任务信号蒸馏到当前同步 JavaScript 编译器使用的轻量特征头。教师模型不是从 1,538 条样本随机初始化训练：底座选用 [IBM Granite Embedding 97M Multilingual R2](https://huggingface.co/ibm-granite/granite-embedding-97m-multilingual-r2)，Apache-2.0，约 97M 参数，覆盖中文、英文与代码；仓库把 HF revision 固定在 `835ad14087e140460703cf0fae09f97d469d65c2`。任务头也计入总参数，代码在训练前硬性检查 `totalParameters < 100,000,000`，超限就退出。
 
-### 6.1 五大前沿学术支撑（为什么 `< 0.1B` 非自回归架构是理论最优解）
+### 6.1 两条明确分开的推理路径
 
-| 核心方法 | 文献来源 | 解决的核心工程与理论问题 |
-|---|---|---|
-| **1. 双向编码器分类替代自回归生成** | **LLMLingua-2** (Pan et al., ACL 2024) | 因果语言模型算单向熵会漏掉后文才揭晓的结论，且生成式压缩易产生幻觉并拖慢延迟。重定义为**双向 Transformer Encoder 的保留/丢弃与槽位分类任务**后，从结构上保证 100% 忠实于原文，速度提升 `3x~6x`，显存降低 `8x`。 |
-| **2. 并行跨度指针网络（Span Pointer）** | **GLiNER / GLiNER2** (Zaratiana et al., NAACL 2024 / EMNLP 2025) | `50M~90M` 参数的双向编码器通过**并行跨度打分 `FFN(h_start, h_end)`** 将槽位标签与原文区间 $(i, j)$ 在统一隐空间内匹配，无需逐 token 解码即可击败数十亿参数 LLM，且原生支持导出 **ONNX 在纯 CPU 上毫秒级推理**。 |
-| **3. 8K 长上下文去填充编码器底座** | **ModernBERT** (Warner et al., 2024/2025) | 引入 **RoPE（旋转位置编码）**、**局部/全局交替注意力（每 3 层 1 次全局注意力）**、**GeGLU** 与 **Unpadding（去填充序列拼接）**，使轻量编码器原生支持 **`8,192+` tokens** 超长思考链（如 `28,000` 字 `flaky-timeout`），消除二次方填充浪费。 |
-| **4. 可控压缩比与关键捷径学习** | **TokenSkip & C3oT** (Xia et al., EMNLP 2025; Kang et al., 2025) | 先按执行结果正确性过滤轨迹，再在多档目标压缩预算 $\gamma \in \{0.20, 0.30, 0.45\}$ 下蒸馏关键因果步骤，仅需 `5K~7.5K` 样本即可砍掉 `40%~50%` 冗余思考且不伤推理准确率。 |
-| **5. 步级无参考模型间隔偏好对齐** | **Step-DPO + SimPO** (Lai et al., 2024; Meng et al., NeurIPS 2024) | **Step-DPO** 证明在**单个推理步/认知槽位**粒度上构造正负偏好对仅需 `5K~10K` 对即可精准抑制死路；**SimPO** 用**长度归一化平均对数概率**作为隐式奖励并引入**显式目标间隔 $\gamma_{\text{dd}} > 0$**，砍掉参考模型（省 `50%` 显存）并彻底消除短稿长度偏置。 |
+1. **完整教师编码器（高能力、可选部署）**：双向 ModernBERT 编码 + 槽位、价值/诱惑度、跨度和草稿偏好头；导出完整 INT8 ONNX。它支持跨语种和代码语义表示。当前训练把输入截到 `256` 个 tokenizer tokens；不要把模型卡的长上下文上限误报为本次训练/验收长度。
+2. **紧凑学生（当前生产快速路径）**：将教师在 `dev` 上的信号蒸馏到 19 维符号特征 MLP 和偏好小头。同步、无外部运行时依赖的 `compileV5Local` 使用这个学生权重；**它不会在 JS 调用中执行完整 97M Transformer**。紧凑 ONNX 延迟仅代表学生，不代表完整编码器。
 
----
+这样保留插件已有的低开销、可审计和原文落点守门路径，同时把完整神经编码器作为独立候选产物；不以固定 Gold 得分冒充教师模型的泛化证据。
 
-### 6.2 `CFB-Micro-65M` 六层混合架构设计（总参数量 `~65M < 0.1B`）
+### 6.2 严格隔离的数据与真实规模
 
-1. **输入层（Unpadded RoPE + 18 维符号特征，`~18M`）**
-   - 输入 `[SLOT_PROMPTS] ⊕ ctx ⊕ raw`（支持 `8,192` tokens）；在每个话语单元（Discourse Unit）边界直接拼接 `src/compile-v5-local.js` 提取的 18 维确定性符号特征（复访次数、探查努力度、代码块标记、台账重合度等）。
-2. **骨干编码器（8 层交替注意力 Transformer，`~42M`）**
-   - `d_model = 512`，`n_heads = 8`，GeGLU 激活；每 3 层 1 次全局注意力、其余局部滑窗注意力，一次性看全首尾跨段依赖（如第 1 段怀疑某文件、最后 1 段证伪它）。
-3. **Head A：话语单元槽位与保留概率头（LLMLingua-2 式，`~1.5M`）**
-   - 对每个话语单元 $u_k$ 预测 6 类认知槽位分布 $P(s \mid u_k) \in \Delta^6$（`机理 / 决定 / 排除 / 验收 / 未解 / 噪音`）及条件预算 $\gamma$ 下的保留概率。
-4. **Head B：反事实价值 $V(i)$ 与死路诱惑度 $T(i)$ 门控头（`~1.0M`）**
-   - 双标量回归头预测信息价值 $\hat{V}(i) \in [0,1]$ 与诱惑度 $\hat{T}(i) \in [0,1]$，执行硬门控：**仅当 $\hat{T}(i) > \tau_{\text{tempt}}$ 时才允许进入 `已排除：`**，从根源上杜绝主模型未动念头的低诱惑项引发**反激活（Negative Priming）**。
-5. **Head C：并行跨度指针头（GLiNER 式，`~2.5M`）**
-   - 计算候选原文区间 $(i, j)$ 的跨度表征 $S_{i,j}$ 并与槽位向量做点积匹配，直接抽取 `target_file`、`old_text`、`new_text`、`verify_cmd` 的起止下标——**100% 为原文子串切片，从数学上根除编造标识符幻觉（G1 恒为 `1.0`）**。
-6. **确定性闭合渲染器（`0` 参数代码层）**
-   - 次模 + 划分拟阵贪心选取（见 `src/compile-v5-local.js`）$\to$ 填入中文四段式骨架 $\to$ 自动绑定同轮 `edit_file + bash` 指令 $\to$ `compileV4Direct` + `birthAccept` 双闸守门。
+运行 `node tools/build-micro-dataset.mjs` 会写出临时文件 `transfer/models/micro-dev-dataset.json`，训练脚本结束后删除。当前数据规模以生成器输出为准：
 
----
+| 数据 | 当前计数 | 用途 |
+|---|---:|---|
+| dev Gold | 7 | 话语单元、跨度、反事实样本 |
+| dev Pool | 3 | 补充单元与反事实样本 |
+| 单元样本 | 1,538 | Head A/B/C 监督 |
+| 跨度指针 | 57 | 文件、代码片段和验收命令 |
+| Unit Step-SimPO | 2,452 对 | 单元级正负偏好 |
+| Draft Step-SimPO | 155 对 | 反事实 + 过滤后的 dev 飞轮偏好 |
+| 原保留 Gold holdout | 4 | `eacces-config`、`wrong-model` 不进训练数据；这 4 条已在此前运行中评测过，因此后续报告按固定安全门禁处理，不冒称全新盲测 |
 
-### 6.3 三级金字塔训练数据构建与自动清洗流水线
+SFT 和两类偏好数据采用**按 family 分组**的确定性 dev train/validation 切分；同一 family 不跨两边。每次报告会写出实际 `validationFamily`、样本数、训练/验证胜率。验证集规模有限，因此它是分组 dev 验证，不替代更多任务家族上的外部泛化测试。
 
-1. **L2 真机金标锚点池（权重 $5\times$）**
-   - 直接采用 `transfer/gold/` 的 **11 条 Mode 1 真机满分金标**（`7 dev + 4 holdout`，Mode 1 `ceiling-9` 达成 `7W-0L-2T`、`e = 31.875 >= 10.0`、解决率 `100% vs 66.7%`、Prompt Token 净省 `-49.3%`）+ `transfer/oracle/M.json` + `.cfb-offline/train/pairs.jsonl` 的偏好对。
-   - **严格物理隔离**：`holdout` 家族（`wrong-model`、`eacces-config`）严禁进入任何训练或超参搜索。
-2. **银标蒸馏池（Teacher 蒸馏 + LLMLingua-2 双指标硬过滤，`3,000 ~ 5,000` 条）**
-   - 在 20+ 类多轮排障长思考链上按 3 档预算 $\gamma \in \{0.20, 0.30, 0.45\}$ 蒸馏，执行三道自动化入库过滤：
-     - **变异率过滤（Variation Rate $= 0$）**：通过 `inventedIdentifiers` 检查，凡含未在 `raw ∪ ctx` 出现的标识符一律拒绝或剥离；
-     - **对齐间隙过滤（Alignment Gap $\le 0.05$）**：将蒸馏稿反向对齐回原文话语单元 $u_k$ 与跨度下标 $[i, j]$；
-     - **G1 + G2 双闸过滤**：必须同时通过 `birthAccept` 与 `handDraftGate`。
-3. **Step-DPO 步级反事实困难负例池（`10,000` 对）**
-   - 对每条金标/银标自动通过局部单槽位破坏构造 5 类困难负例：
-     1. **反激活负例**：往 `已排除：` 塞入 `ctx` 存在但 `raw` 未深入怀疑的低诱惑文件（训练 Head B 压低 $T(i)$）；
-     2. **漏排除负例**：删掉 `raw` 反复证伪的高诱惑死路（训练 Head B 抬高 $T(i)$）；
-     3. **三元组边界偏移负例**：将 `old_text` / `new_text` 跨度边界偏移 1~2 个 token（训练 Head C 指针锐度）；
-     4. **机械提示污染负例**：在改代码前混入伪验收机械提示（训练模型拒绝伪提示）；
-     5. **拆轮负例**：把同轮 `edit_file + bash` 拆成“本轮只改代码、下一轮再测”。
+### 6.3 Kaggle 免费 GPU 操作
 
----
+需要 Kaggle Notebook 的 Internet 开启，以下载固定版本的公开模型；不需要付费 GPU。Notebook Secrets 添加 `GITHUB_PAT`，然后运行：
 
-### 6.4 三步训练法与 ONNX INT8 部署准入
+```python
+%cd /kaggle/working
+import os
+from kaggle_secrets import UserSecretsClient
 
-1. **阶段 1：多任务监督微调（StableAdamW Multi-Task SFT）**
-   - 联合优化槽位分类（Head A）、跨度指针（Head C）与价值/诱惑度回归（Head B）：
-     $$\mathcal{L}_{\text{SFT}} = \mathcal{L}_{\text{CE}}^{\text{slot}}(\text{Head A}) + \lambda_1 \mathcal{L}_{\text{BCE}}^{\text{span}}(\text{Head C}) + \lambda_2 \mathcal{L}_{\text{Huber}}^{V, T}(\text{Head B})$$
-   - `65M` 参数在单张消费级 GPU 上跑 `5,000` 条样本仅需 **15~25 分钟**。
-2. **阶段 2：步级无参考模型间隔偏好对齐（Step-SimPO）**
-   - 无需加载参考模型，直接优化长度归一化隐式奖励与目标间隔 $\gamma_{\text{dd}}$：
-     $$\mathcal{L}_{\text{Step-SimPO}}(\theta) = -\mathbb{E}_{(x, s_w, s_l)}\left[\log \sigma\left(\beta \left(\frac{1}{|s_w|}\log \pi_\theta(s_w \mid x) - \frac{1}{|s_l|}\log \pi_\theta(s_l \mid x) - \gamma_{\text{dd}}\right)\right)\right]$$
-   - **超参护栏**：$\beta \in [0.5, 1.5]$（防过早饱和刷分），目标间隔 $\gamma_{\text{dd}} \in [0.5, 1.2]$ 按正负样本真实 `dd/1` 分差动态设定。
-3. **阶段 3：次模拟阵配额校准与 ONNX INT8 导出**
-   - 在 `dev` 集校准拟阵槽位配额（对应线性原型 `node tools/train-v5-micro.mjs` 与 `transfer/models/v5-micro-weights.json`），导出为动态 INT8 量化的 `model.onnx`（体积 **`~65MB`**，纯 CPU 推理 **`8ms~20ms`**）。
-   - **三关准入考核**：① Mode 2 `holdout` 盲测 `G1=100%, G2=100%, dd/1 >= 0.90`；② Mode 3 `--fork` 真机轨迹解决率 $\ge \text{raw}$、平均轮数更少、$e \ge 10.0$；③ 生产收网超时或拒收时 100% 毫秒级无损回退 `passthrough`。
+pat = UserSecretsClient().get_secret("GITHUB_PAT")
+os.environ["GITHUB_PAT"] = pat
+repo_url = f"https://x-access-token:{pat}@github.com/liaocr/cfb.git"
+
+!rm -rf /kaggle/working/cfb
+!git clone --depth 1 -b main {repo_url} /kaggle/working/cfb
+!pip install -q "transformers==4.56.2" safetensors onnx onnxruntime requests
+
+%cd /kaggle/working/cfb
+!python3 tools/kaggle-train-micro.py --epochs-sft 12 --epochs-simpo 12 --push-back
+```
+
+训练使用低 encoder 学习率、warmup + cosine scheduler、梯度裁剪 `1.0`、按分组验证早停；双卡时启用 `DataParallel([0, 1])`。日志只说明双卡并行已配置，不宣称 GPU 一直满载。
+
+### 6.4 机器可读验收与晋级规则
+
+- 每轮都在**完整 train 与 family-held-out validation** 上重新计算 pair win rate，不再累计更新前的训练批次分数。
+- `tools/train-v5-micro.mjs --eval-json <path>` 把实际 11 条 Mode 2 逐项结果和汇总写成 JSON；报告不再把 `1.0` 或 `11/11` 写死。
+- 只有以下条件全部满足，才将 candidate 晋级为生产权重：总参数 `<100M`、Unit validation `>=90%`、紧凑学生 Draft validation `>=90%`、Mode 2 的 G1/G2 全通过、完整 INT8 ONNX 导出及 ORT smoke test 成功。否则只发布候选报告/权重/紧凑学生 ONNX；成功导出的完整编码器 ONNX 仍会持久化为候选文件或 GitHub prerelease asset，**不会覆盖**当前生产权重。
+- 产物报告：`transfer/models/cfb-micro-97m-report.json`。报告分别记录完整编码器 ONNX 与紧凑学生 ONNX 的尺寸、实测延迟、train/validation 胜率、Gold dev/holdout 分数及精确参数余量。完整 ONNX 大于普通 Git blob 安全阈值时，训练脚本会改发 GitHub prerelease asset；具体 URL 写入报告。推送需要 Notebook Secret `GITHUB_PAT`；大文件 release 还需要该 token 有创建 release/上传 asset 的权限。
+
+快速本地复核已晋级的 JS 学生权重：
+
+```bash
+node tools/train-v5-micro.mjs --eval-only \
+  --weights-path transfer/models/v5-micro-weights.json \
+  --eval-json /tmp/cfb-micro-mode2.json
+```
 
