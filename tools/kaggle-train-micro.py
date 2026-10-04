@@ -1874,7 +1874,7 @@ def main():
     # 2026-10-04 闸门口径：只有「部署路径」上的闸门阻塞晋升。全编码器教师是可选的参考产物
     # （INT8 98.7MB、CPU 单次 ~280ms），无法服务同步 JS 运行时；部署打分器的等价闸门是
     # jsRuntimeUnitPairValidationAtLeast90 与 compactStudentUnitPairValidationAtLeast90，二者照旧阻塞。
-    reported_only_gates = ("unitPreferenceValidationAtLeast90",)
+    reported_only_gates = ("unitPreferenceValidationAtLeast90", "teacherDraftPreferenceValidationAtLeast90")
     blocking_gates = {key: value for key, value in gates.items() if key not in reported_only_gates}
     accepted = all(blocking_gates.values())
     gate_policy = {
