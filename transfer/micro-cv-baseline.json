@@ -3,10 +3,10 @@
   "createdAt": "2026-10-04T00:00:00.000Z",
   "purpose": "no-regression guard for gate policy v2: per-family length-matched accuracy of the PREVIOUS candidate",
   "candidateWeights": "transfer/models/v5-micro-weights.judge-4764fd2.json",
-  "candidateNote": "previous candidate = 19-dim symbolic student recorded in 4764fd2; measured locally with tools/eval-micro-js-pairs.mjs on the same dev dataset (275-dim features, judge-frozen pair set), one fold per --validation-family",
+  "candidateNote": "previous candidate = 19-dim symbolic student recorded in 4764fd2; measured locally with tools/eval-micro-js-pairs.mjs on the same dev dataset (275-dim features, judge-frozen pair set), one fold per --validation-family; NOTE: that model trained on the flaky-timeout and perf-regression families (its own validation family was sse-truncated), so its flaky/perf numbers are optimistic for the baseline — which makes the no-regression guard conservative (harder to pass), never laxer.",
   "matched": {
     "flaky-timeout": 0.6976,
-    "perf-regression": 0.8000,
+    "perf-regression": 0.8,
     "sse-truncated": 0.8571
   },
   "matchedCounts": {
