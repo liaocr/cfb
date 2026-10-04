@@ -1042,5 +1042,62 @@
       "keepCoverage": 0.2105,
       "dropNoise": 0.0588
     }
-  ]
+  ],
+  "trajectoryEvidence": {
+    "note": "真轨迹上的压缩器证据（② 结局验证；t15/t17 无对照，t18 首次产生真分歧）。轨迹 = traj-fixtures 假仓库，单样本 n=1，只作案例不作战率。",
+    "t15": {
+      "scenario": "perf-regression",
+      "arms": 3,
+      "rounds": 4,
+      "mainCalls": 4,
+      "compressCalls": 0,
+      "usd": 0.05,
+      "finding": "全臂思考 96-525 字，地板 3100 下压缩器零触发，三臂逐字相同"
+    },
+    "t17": {
+      "scenario": "perf-regression",
+      "arms": 3,
+      "rounds": 7,
+      "mainCalls": 7,
+      "compressCalls": 2,
+      "usd": 0.103,
+      "finding": "第 7 轮才过地板（3215 字）⇒ 压缩发生在最后一轮，结局无差异窗口；两臂同路径（原型未触发；连 perf 自己的 fixture 都判 general-discourse-graph）；回放原文后修出 W1.1 的三个真缺陷"
+    },
+    "t18": {
+      "scenario": "perf-regression",
+      "arms": 2,
+      "rounds": 7,
+      "mainCalls": 13,
+      "compressCalls": 3,
+      "usd": 0.123,
+      "design": "raw vs policy:v5-local-early（compressLocalModel + birthMinChars:300 制度臂）",
+      "result": {
+        "raw": {
+          "fixed": false,
+          "rounds": 7,
+          "calls": 14,
+          "edits": 0,
+          "promptTokens": 11362
+        },
+        "localEarly": {
+          "fixed": false,
+          "rounds": 7,
+          "calls": 14,
+          "edits": 0,
+          "promptTokens": 3441,
+          "draftsAdmitted": "2/7 (2621→1657, 8285→2083)"
+        }
+      },
+      "divergedAtRound": 6,
+      "finding": "压缩器首次在真轨迹上开火并被生产闸链采纳：同轮数、同调用数、同结局（都没修好——该场景 7 轮内无人 edit），但 prompt tokens 11362 → 3441（−69.7%）⇒ 第一次拿到「压缩器不改结局、只降成本」的直接证据",
+      "earlyPolicyConfig": {
+        "compressLocalModel": true,
+        "birthMinChars": 300,
+        "continuationPath": "bounded",
+        "programParts": "compact"
+      },
+      "reproduce": "node tools/cfb-cycle.mjs plan-traj --lite --arms raw,policy:v5-local-early --scenarios perf-regression --samples 1 --max-rounds 7 --stop --cap-usd 0.12　＋　同 t18 的 traj-run 命令（策略文件见 earlyPolicyConfig，落在 .cfb-offline/policies/，该目录 gitignore）"
+    }
+  },
+  "rulerArtifactNote": "残余 1 条 resurrected-dead-end（flaky-timeout-s0-r4）为测量伪影：仅由裸英文通用词 'server' 触发（尺子把它当锚点）；从锚点集中去掉该类词后判决变 decision-differs、分数不变 0.375。补丁仅在 scratch 上验证，未采纳（保金标可比）。"
 }
