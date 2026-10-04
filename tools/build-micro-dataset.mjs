@@ -17,6 +17,7 @@ import {
 } from '../src/compile-v5-local.js'
 import { slotsOf, draftDistance, handDraftGate } from './helpers/hand-draft.mjs'
 import { loadGold } from './helpers/three-mode.mjs'
+import { readHandSamples } from './helpers/hand-capture.mjs'
 import { buildPool } from './helpers/tasks.mjs'
 import { productionContext } from './helpers/candidates.mjs'
 
@@ -633,6 +634,41 @@ export function buildMicroDataset() {
   const eligibleFamilyCounts = Object.fromEntries(
     devFamilies.map((family) => [family, unitSamples.filter((u) => u.trainingEligible && familyKey(u.family) === family).length]),
   )
+  // ── 模式 1 侧数据采集（$0）：示范对 / 修订差 / 闸门理由 / 距离向量 ──────────────────
+  const handCapture = (() => {
+    const { samples, files } = readHandSamples(ROOT)
+    const distBy = { decision: [], excludedRecall: [], acceptOk: [], openRecall: [], anchorPrecision: [], lengthOk: [] }
+    let withDraft = 0, gateOk = 0, gateFail = 0, productionFail = 0, revisions = 0, distances = 0
+    const items = []
+    for (const s0 of samples) {
+      const draftPath = s0.draftFile ? path.resolve(ROOT, s0.draftFile) : null
+      const draftText = draftPath && fs.existsSync(draftPath) ? fs.readFileSync(draftPath, 'utf8').trim() : null
+      if (!draftText) continue
+      withDraft++
+      const gateOkNow = !!(s0.gate && s0.gate.ok === true), prodFail = !!(s0.production && s0.production.ok === false)
+      if (gateOkNow && !prodFail) gateOk++
+      if (s0.gate && s0.gate.ok === false) gateFail++
+      if (prodFail) productionFail++
+      if (s0.revision) revisions++
+      const g = allGold.find((x) => x.id === s0.task) || null
+      let distance = null
+      if (g) {
+        try {
+          const pendPath = s0.pendingFile ? path.resolve(ROOT, s0.pendingFile) : null
+          const pend = pendPath && fs.existsSync(pendPath) ? JSON.parse(fs.readFileSync(pendPath, 'utf8')) : null
+          const d = draftDistance(draftText, g.hand, { raw: pend?.raw || g.raw || '', ctx: pend?.ctx || g.ctx || '', calls: pend?.calls || [] })
+          distance = { decision: d.decision, excludedRecall: d.excludedRecall, acceptOk: d.acceptOk, openRecall: d.openRecall, anchorPrecision: d.anchorPrecision, lengthOk: d.lengthOk, score: d.score, verdict: d.verdict }
+          distances++
+          for (const k of Object.keys(distBy)) if (distance[k] != null) distBy[k].push(distance[k])
+        } catch { distance = null }
+      }
+      const rev = s0.revision ? { prevId: s0.revision.prevId, added: (s0.revision.added || []).slice(0, 8), removed: (s0.revision.removed || []).slice(0, 8), addedChars: s0.revision.addedChars, removedChars: s0.revision.removedChars } : null
+      items.push({ id: s0.id, traj: s0.traj, task: s0.task, sample: s0.sample, round: s0.round, at: s0.at, rawChars: s0.rawChars, draftChars: s0.draftChars, gate: s0.gate || null, production: s0.production || null, revision: rev, distance })
+    }
+    const mean = (a) => (a.length ? +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(3) : null)
+    return { files, samples: samples.length, withDraft, gateOk, gateFail, productionFail, revisions, distances, distanceMean: Object.fromEntries(Object.entries(distBy).map(([k, v]) => [k, mean(v)])), items: items.slice(-200) }
+  })()
+
   const dataset = {
     schema: 'cfb.micro-dev-dataset/3',
     createdAt: process.env.CFB_DATASET_FIXED_TIME || new Date().toISOString(),
@@ -726,8 +762,10 @@ export function buildMicroDataset() {
         needsReviewPreferencePairs: stepSimpoPairs.filter((p) => !p.trainingEligible).length,
         reviewStatus: 'deterministic-screen-only; LLM/human semantic review not run',
       },
+      handCapture: { files: handCapture.files, samples: handCapture.samples, withDraft: handCapture.withDraft, gateOk: handCapture.gateOk, gateFail: handCapture.gateFail, productionFail: handCapture.productionFail, revisions: handCapture.revisions, distances: handCapture.distances, distanceMean: handCapture.distanceMean, note: '模式 1 训练轮的侧数据（示范对/修订差/闸门理由/距离向量）；由 tools/traj-run.mjs 采集、本构建器读取' },
     },
     slotNames: SLOT_NAMES,
+    handSamples: handCapture.items,
     unitSamples,
     unitStepPairs,
     spanSamples,

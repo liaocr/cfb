@@ -29,6 +29,7 @@ import { stepFlags } from './helpers/traj-proxy.mjs'
 import { outcomeComparison } from './helpers/ruler.mjs'
 import { BASE_POLICY, applyPolicyToPrompt, PRODUCTION_COMPRESSOR } from './helpers/generation.mjs'
 import { handDraftGate, HAND_PROTOCOL } from './helpers/hand-draft.mjs'
+import { appendHandSample, previousDraft, draftDelta, HAND_SAMPLE_SCHEMA } from './helpers/hand-capture.mjs'   // 模式 1 侧数据采集（$0，训练金标时顺手产出）
 
 export const DISPLAY_ROOT = '/home/u/work/repo'
 export function resolveRepoPath(repo, rawPath) {
@@ -486,7 +487,18 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
           compileInfo = { ok: true, path: 'hand', ms: b.ms, rawChars: reasoning.length, outChars: stored.length, draftChars: draft.length, policy: 'hand', promptVersion: b.promptVersion, gate: b.v4 || null, spliced: b.spliced || null, accept: b.accept || null, draftFile: path.relative(process.cwd(), draftFile), budget: compressBudget(I, { ctx, calls, raw: reasoning, out: stored, draft }) }
           rec.compile.push(compileInfo)
           if (fs.existsSync(pendingFile)) { fs.mkdirSync(path.join(o.out, 'pending', 'done'), { recursive: true }); fs.renameSync(pendingFile, path.join(o.out, 'pending', 'done', id + '.json')) }
+          { // 采集 (a)(b)：pending→draft 示范对 + 跨轮修订差；失败不打断训练轮
+            const donePath = path.join(o.out, 'pending', 'done', id + '.json')
+            const prev = previousDraft(o.out, safeId, sample, round)
+            const prevText = prev && fs.existsSync(prev.file) ? fs.readFileSync(prev.file, 'utf8') : ''
+            const delta = prevText ? draftDelta(prevText, draft) : null
+            appendHandSample(o.out, { schema: HAND_SAMPLE_SCHEMA, id, task: task.id, sample, round, at: new Date().toISOString(), draftFile: path.relative(process.cwd(), draftFile), pendingFile: fs.existsSync(donePath) ? path.relative(process.cwd(), donePath) : null, rawChars: reasoning.length, draftChars: draft.length, outChars: stored.length, gate: { ok: true, violations: [] }, production: { ok: true, promptVersion: b.promptVersion, accept: b.accept || null, spliced: b.spliced || null, budget: compileInfo.budget || null }, revision: prev ? { prevId: `${safeId}-s${sample}-r${prev.round}`, prevDraftFile: path.relative(process.cwd(), prev.file), added: delta.added, removed: delta.removed, addedChars: delta.addedChars, removedChars: delta.removedChars } : null, callsThisRound: calls.map((c) => ({ name: c.name, args: String(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)).slice(0, 300) })) })
+          }
         } else {
+          if (draft) { // 采集 (c)：G2/生产闸拒稿的理由文本（结构负例）
+            const prod = violations && violations.some((v) => String(v.kind || '').startsWith('production-gate:'))
+            appendHandSample(o.out, { schema: HAND_SAMPLE_SCHEMA, id, task: task.id, sample, round, at: new Date().toISOString(), draftFile: path.relative(process.cwd(), draftFile), pendingFile: null, rawChars: reasoning.length, draftChars: draft.length, outChars: null, gate: prod ? { ok: true, violations: [] } : { ok: false, violations: (violations || []).map((v) => ({ kind: v.kind, detail: String(v.detail || '').slice(0, 200) })) }, production: prod ? { ok: false, why: String(violations[0].kind).replace('production-gate:', ''), reason: String(violations[0].detail || '').slice(0, 200) } : null, revision: null, callsThisRound: calls.map((c) => ({ name: c.name, args: String(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)).slice(0, 300) })) })
+          }
           fs.mkdirSync(path.dirname(pendingFile), { recursive: true }); fs.mkdirSync(path.dirname(stateFile), { recursive: true }); fs.mkdirSync(path.join(o.out, 'drafts'), { recursive: true })
           const prompt = I.compressPromptFor({ ...cfg, compressCtx: ctx }, reasoning)
           fs.writeFileSync(pendingFile, JSON.stringify({ schema: 'cfb.hand-pending/1', id, task: task.id, sample, round, at: new Date().toISOString(), draftFile: path.relative(process.cwd(), draftFile), protocol: HAND_PROTOCOL, violations, draftSeenChars: draft ? draft.length : null, prompt, raw: reasoning, ctx, calls: calls.map((c) => ({ name: c.name, args: typeof c.args === 'string' ? c.args : JSON.stringify(c.args) })), minChars: o.minChars }, null, 2))
