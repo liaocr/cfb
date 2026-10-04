@@ -757,14 +757,30 @@ function compileGeneralDiscourseGraph(g, weights = V5_MICRO_WEIGHTS) {
   const featOpts = { textHashBuckets: weights.textHashBuckets || 0 }
   const feats = units.map((u, i) => extractUnitFeatures(u, i, units.length, ctxInfo, featOpts))
   const scores = feats.map((f) => scoreUnitWithWeights(f, weights))
-  const chosen = selectOpsV5(units, feats, scores, weights, 10)
 
+  // ── 2026-10-04 W1：字符预算驱动的选材（原实现写死 10 条，兜底稿平均 441 字 vs 金标 1532 字，严重欠覆盖）──
+  // 预算按原文长度取 30%，夹在 [700, 1700]；选材池放大到 24，按次模增益顺序填充，每槽至少保 1 条。
+  const budget = Math.max(700, Math.min(1700, Math.round(String(raw).length * 0.30)))
+  const chosen = selectOpsV5(units, feats, scores, weights, 24)
+  const clean = (s) => String(s).replace(/\s+/g, ' ').replace(/^[-*•]\s*/, '').trim()
   const bySlot = { MECHANISM: [], EXCLUDED: [], DECIDED: [], ACCEPT: [], OPEN: [] }
-  for (const c of chosen) (bySlot[c.slot] || bySlot.MECHANISM).push(c.text)
+  let usedChars = 0
+  for (const c of chosen) {
+    const slot = bySlot[c.slot] ? c.slot : 'MECHANISM'
+    const text = clean(c.text)
+    if (!text) continue
+    const roomLeft = usedChars + text.length <= budget
+    if (!roomLeft && bySlot[slot].length) continue   // 超预算且该槽已有内容：跳过
+    bySlot[slot].push(text)
+    usedChars += text.length
+  }
 
+  // 组装：与五大原型同一套话术锚点（看清/在手代码行/已排除/改法只落一个/验收是/未解），
+  // 使偏好打分器（Head 3）与放行门控能识别结构，而不是一段无骨架的句子串。
   const parts = []
-  if (bySlot.MECHANISM.length) parts.push('我们需要根据在手观察收敛根因：' + bySlot.MECHANISM.join(' '))
-  else parts.push('我们需要根据在手观察收敛根因：' + units.slice(0, 2).join(' '))
+  const tailClause = '如果输出跟这两种都不像，先别改，把不一样的地方看清再说。'
+  if (bySlot.MECHANISM.length) parts.push('看清：' + bySlot.MECHANISM.join(' '))
+  else parts.push('看清：' + units.slice(0, 2).map(clean).join(' '))
   if (ihl.length) {
     const topSpan = ihl[0].span
     parts.push(`在手代码行（逐字）：\`${topSpan}\`。`)
@@ -779,9 +795,9 @@ function compileGeneralDiscourseGraph(g, weights = V5_MICRO_WEIGHTS) {
     parts.push(`改法只落一个：针对 \`${ihl[0].span}\` 落定最小改动，可以直接当 edit_file 的 old_text，看到结果后不用再读文件。`)
   }
   if (bySlot.ACCEPT.length) {
-    parts.push(bySlot.ACCEPT.join(' ') + ' 如果输出跟这两种都不像，先别改，把不一样的地方看清再说。')
+    parts.push(bySlot.ACCEPT.map((s) => (/^验收/.test(s) ? s : '验收是：' + s)).join(' ') + ' ' + tailClause)
   } else {
-    parts.push('如果验证输出坐实假设，那么看到这一点就够了，直接落地改法；如果输出跟这两种都不像，先别改，把不一样的地方看清再说。')
+    parts.push('如果验证输出坐实假设，那么看到这一点就够了，直接落地改法；' + tailClause)
   }
   if (bySlot.OPEN.length) {
     parts.push(bySlot.OPEN.map((s) => (/^(?:未解|回放)/.test(s) ? s : '未解：' + s)).join('；'))
