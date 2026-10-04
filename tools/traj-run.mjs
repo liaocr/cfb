@@ -38,7 +38,7 @@ export function resolveRepoPath(repo, rawPath) {
   const r = path.resolve(repo, rel)
   return r === repo || r.startsWith(repo + path.sep) ? r : null
 }
-export const isEditCall = (name) => name === 'edit_file'
+export const isEditCall = (c) => (typeof c === 'string' ? c : c && c.name) === 'edit_file'
 export const editOk = (out) => String(out || '').startsWith('ok')
 
 const SYSTEM = '你是在代码仓库里干活的编码 Agent，可用工具 bash / read_file / edit_file（仓库根目录）。每一轮：先给一句简短判断，再发出下一步需要的工具调用；一次可以发多个独立调用。认为任务已经完成时不要再调用工具，用文字说明改了什么、依据是什么。'
@@ -138,7 +138,7 @@ const GENERIC = (cmd) => {
   if (/^git status/.test(cmd)) return 'On branch main\nnothing to commit, working tree clean'
   if (/^cd\b/.test(cmd)) return ''
   if (/^pwd\b/.test(cmd)) return '/home/u/work/repo'
-  if (/^echo\s+['"]?(?:exit=)?\$\?['"]?$/.test(cmd)) return cmd.includes('exit=') ? 'exit=0' : '0'
+  if (/^echo\s+['"]?(?:[\w-]+=)?\$\?['"]?$/.test(cmd)) return cmd.replace(/^echo\s+['"]?|['"]?$/g, '').replace(/\$\?/g, '0')
   const w = /^(?:which|command -v|type)\s+([\w.-]+)/.exec(cmd)
   if (w) return KNOWN_BIN[w[1]] || `${w[1]} not found`
   return null
@@ -409,7 +409,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         // 真请求的放行：指纹可信；或探针已验携带 / 无历史，且真请求与探针走的是同一条路（prompt_tokens 相差 ≤ 2%：中转按内容黏住后端，但要防换路）
         const samePath = carried && (carried === 'trusted-fp' || Math.abs(Number(r.usage?.prompt_tokens) - Number(rec.carry?.length && carried === 'carry-verified' ? rec.carry[rec.carry.length - 1].withReasoning : r.usage?.prompt_tokens)) <= 0.02 * Number(r.usage?.prompt_tokens))
         const seen = !claudeShaped(r.usage) && (!o.requireFp || TRUSTED_FP.has(r.fp) || !!samePath)
-        const isClosingTurn = o._preflightCarryOk && (round >= o.maxRounds || (rec.fixedAtRound != null && !callsOfMessage(r.message).length && responseText(r.message).trim().length > 0))
+        const isClosingTurn = o._preflightCarryOk && rec.fixedAtRound != null && !callsOfMessage(r.message).length && responseText(r.message).trim().length > 0
         if (seen && ((r.message.reasoning_content || '').length > 0 || isClosingTurn)) {
           if (o.requireFp) { const mode = TRUSTED_FP.has(r.fp) ? 'trusted-fp' : carried; rec.fpModes = rec.fpModes || {}; rec.fpModes[mode] = (rec.fpModes[mode] || 0) + 1 }
           break
@@ -455,7 +455,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         }
       }
       if ((variant === 'auto' || policy || hand) && reasoning.length < armFloor) { compileInfo = { ok: false, belowFloor: true, rawChars: reasoning.length, floor: armFloor, ...(adaptiveCtrl ? { adaptiveZone: adaptiveCtrl.zone } : {}) }; rec.compile.push(compileInfo) }
-      else if (hand && (!calls.length || round >= o.maxRounds || (rec.fixedAtRound != null && rec.compile.some((c) => c && c.path === 'hand' && c.ok) && !fs.existsSync(path.join(o.out, 'drafts', `${task.id.replace(/[^\w.-]/g, '_')}-s${sample}-r${round}.md`))))) { compileInfo = { ok: false, skipped: 'no-next-round', rawChars: reasoning.length }; rec.compile.push(compileInfo) }   // 没有下一轮会读这份稿，或已修好且前序分歧轮 hand 稿已生效 ⇒ 直跑到底不中断
+      else if (hand && (!calls.length || round >= o.maxRounds || (rec.compile.some((c) => c && c.path === 'hand' && c.ok) && !fs.existsSync(path.join(o.out, 'drafts', `${task.id.replace(/[^\w.-]/g, '_')}-s${sample}-r${round}.md`))))) { compileInfo = { ok: false, skipped: 'no-next-round', rawChars: reasoning.length }; rec.compile.push(compileInfo) }   // 没有下一轮会读这份稿，或前序分歧轮 hand 稿已生效且未预置二段手写稿 ⇒ 直跑到底不中断
       else if (hand) {
         // v4.6 模式 1：助手当副模型。稿文件在 ⇒ 过 G2 + 生产闸链；不在 / 不过 ⇒ 写 pending + state 暂停
         const handCompact = o.minChars === 3100 && reasoning.length < 3100
@@ -463,7 +463,8 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         const safeId = task.id.replace(/[^\w.-]/g, '_')
         const id = `${safeId}-s${sample}-r${round}`
         const draftFile = path.join(o.out, 'drafts', id + '.md'), pendingFile = path.join(o.out, 'pending', id + '.json'), stateFile = path.join(o.out, 'state', `${safeId}-s${sample}.json`)
-        const cfg0 = I.offlineBirthConfig({ model: o.model || 'hand', baseUrl: o.baseUrl || 'http://127.0.0.1:1', credentialsPath: cred, policy: handCompact ? { id: 'hand', config: { continuationPath: 'bounded', programParts: 'compact' } } : null, normalizeConfig: I.normalizeConfig })
+        const handPolicy = o.minChars === 3100 ? { id: 'hand', config: handCompact ? { continuationPath: 'bounded', programParts: 'compact' } : { programParts: 'no-hints' } } : null
+        const cfg0 = I.offlineBirthConfig({ model: o.model || 'hand', baseUrl: o.baseUrl || 'http://127.0.0.1:1', credentialsPath: cred, policy: handPolicy, normalizeConfig: I.normalizeConfig })
         const cfg = handCompact ? { ...cfg0, birthMinSavedChars: Math.min(cfg0.birthMinSavedChars || 50, Math.max(20, Math.floor(reasoning.length * 0.05))), ...(reasoning.length < 2600 ? { birthTokenGate: false } : {}) } : cfg0
         const draft = fs.existsSync(draftFile) ? fs.readFileSync(draftFile, 'utf8').trim() : null
         let violations = null, b = null

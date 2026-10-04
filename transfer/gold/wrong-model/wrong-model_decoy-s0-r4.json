@@ -53,5 +53,6 @@
     "vsRaw": "win"
   },
   "validated": true,
-  "digest": "d1f253f227aecb50"
+  "digest": "d1f253f227aecb50",
+  "file": "transfer/gold/wrong-model/wrong-model_decoy-s0-r4.json"
 }

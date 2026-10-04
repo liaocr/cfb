@@ -455,6 +455,7 @@ export function applyCtxContinuationPolicy(ctx, pathMode = 'full') {
   if (pathMode === 'none') {
     return s.replace(/\n\n【延续段】[^\n]*\n[^\n]+(?=\n\n|$)/, '').replace(/^【延续段】[^\n]*\n[^\n]+\n*/, '')
   }
+  if (/已走过的路：第 \d+(?:[–-]\d+)? 轮已跑 \d+ 条/.test(s)) return s
   const calls = []
   for (const m of s.matchAll(/第 (\d+) 轮 ([^\s`]+) `([^`]*)` → 「([^」]*)」/g)) {
     const round = Number(m[1]), name = m[2], args = m[3], result = m[4]

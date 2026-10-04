@@ -20,13 +20,14 @@
       "args": "{\"command\":\"cd \\\"$(pwd)\\\" && echo \\\"===replay===\\\" && node scripts/replay-truncated.mjs; echo \\\"===npm test===\\\" && npm test 2>&1 | head -40\"}"
     }
   ],
-  "draft": "本轮增量把机理坐实：`trace/last.log` 的 `eventCount` 9 与 `outputChars` 212 对应 `replay` 的 9 帧截断流——`assembleSseFrames` 里 `finish: finish || (done ? 'stop' : null)` 把只补 `[DONE]`、无 `finish_reason` 的截断流当成 `stop`，而 `settle` 里 `ok = r.finish != null || r.out.length > 0` 又把 `out.length > 0` 判为成功，导致截断流走 `condensed` 写进会话。\n\n已排除：修改诱饵文件 `src/transport.legacy.js` 的路线，因为 README 提示先看 `src/transport.legacy.js` 是误导陷阱，`birth.js` 实际 import 的是 `./transport.js`；已排除：保留 `|| (done ? 'stop' : null)` 或保留 `|| r.out.length > 0` 的路线，因为按 `gateway` 文档正常结束必带真实 `finish_reason`，只补 `[DONE]` 或无结束信号的截断流 `finish` 必须为 null 且 `ok` 为 false。\n\n改法分两处落地（都在 `src/transport.js`，`src/transport.legacy.js` 与 `src/birth.js` 不动）：① `assembleSseFrames` 去掉 `|| (done ? 'stop' : null)`，让 `finish` 只取真实 `finish_reason`（`done` 只留作标记不再参与）；② `settle` 把 `ok = r.finish != null || r.out.length > 0` 收成 `ok = r.finish != null`。\n\n验收是 bash `node scripts/replay-truncated.mjs`，预期截断流 `settled` 打出 `ok:false`、`finish:null` 且 `birth` 走 `passthrough`（同时完整流含 `finish_reason=length` 及空内容带 `stop` 仍 `ok:true`、`condensed`）；改动前 `npm test` 绿灯不算证据，因为现有 `test/transport.selftest.mjs` 没覆盖截断流。若回放仍打出 `ok:true`：第一步只有一条，先检查 `src/transport.js` 两处改动是否落地并与 `trace/last.log` 的 `eventCount` 9、`outputChars` 212 输出比差抓新信号，此时不要改 `src/transport.legacy.js`、不要回滚。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：确认 `node scripts/replay-truncated.mjs` 跑出 `ok:false` 与 `passthrough` 且 `npm test`（`test/transport.selftest.mjs`）保持全部通过；以及确认 `src/transport.legacy.js` 未被误改并汇总依据收工。",
-  "stored": "已走过的路：第 1 轮 bash `cd \"$(pwd)\" && ls -la && echo \"---\" && cat package.json && echo \"---TREE---\" && find . -path ./node_modules -prune -o -type f -print | head -100` → 「$ cd \"$(pwd)\"」；第 1 轮 bash `cd \"$(pwd)\" && echo \"===TRACE===\" && cat trace/last.log && echo \"===GATEWAY===\" && cat docs/gateway.md && echo \"===REPLAY===\" && cat scripts/replay-truncated.mj…` → 「$ cd \"$(pwd)\"」；第 2 轮 bash `cd \"$(pwd)\" && echo \"===src/transport.js===\" && cat -n src/transport.js && echo \"===src/birth.js===\" && cat -n src/birth.js && echo \"===src/transport.legacy.js=…` → 「$ cd \"$(pwd)\"」；第 2 轮 bash `cd \"$(pwd)\" && echo \"===README===\" && cat README.md && echo \"===test===\" && cat -n test/transport.selftest.mjs && echo \"===verify===\" && ls -la && cat verify.mj…` → 「$ cd \"$(pwd)\"」；这些不再重跑，除非中间改过东西。\n\n本轮增量把机理坐实：`trace/last.log` 的 `eventCount` 9 与 `outputChars` 212 对应 `replay` 的 9 帧截断流——`assembleSseFrames` 里 `finish: finish || (done ? 'stop' : null)` 把只补 `[DONE]`、无 `finish_reason` 的截断流当成 `stop`，而 `settle` 里 `ok = r.finish != null || r.out.length > 0` 又把 `out.length > 0` 判为成功，导致截断流走 `condensed` 写进会话。\n\n已排除：修改诱饵文件 `src/transport.legacy.js` 的路线，因为 README 提示先看 `src/transport.legacy.js` 是误导陷阱，`birth.js` 实际 import 的是 `./transport.js`；已排除：保留 `|| (done ? 'stop' : null)` 或保留 `|| r.out.length > 0` 的路线，因为按 `gateway` 文档正常结束必带真实 `finish_reason`，只补 `[DONE]` 或无结束信号的截断流 `finish` 必须为 null 且 `ok` 为 false。\n\n改法分两处落地（都在 `src/transport.js`，`src/transport.legacy.js` 与 `src/birth.js` 不动）：① `assembleSseFrames` 去掉 `|| (done ? 'stop' : null)`，让 `finish` 只取真实 `finish_reason`（`done` 只留作标记不再参与）；② `settle` 把 `ok = r.finish != null || r.out.length > 0` 收成 `ok = r.finish != null`。\n\n验收是 bash `node scripts/replay-truncated.mjs`，预期截断流 `settled` 打出 `ok:false`、finish:null 且 `birth` 走 `passthrough`（同时完整流含 `finish_reason=length` 及空内容带 `stop` 仍 `ok:true`、`condensed`）；改动前 `npm test` 绿灯不算证据，因为现有 `test/transport.selftest.mjs` 没覆盖截断流。若回放仍打出 `ok:true`：第一步只有一条，先检查 `src/transport.js` 两处改动是否落地并与 `trace/last.log` 的 `eventCount` 9、`outputChars` 212 输出比差抓新信号，此时不要改 `src/transport.legacy.js`、不要回滚。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：确认 `node scripts/replay-truncated.mjs` 跑出 `ok:false` 与 `passthrough` 且 `npm test`（`test/transport.selftest.mjs`）保持全部通过；以及确认 `src/transport.legacy.js` 未被误改并汇总依据收工。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。验收命令是新起进程的直接输出（不是翻旧日志、不是旧记录的统计），输出即本次结果，新鲜。验收命令里有单元测试：PASS 只证明被测函数的行为，不证明原症状消失——症状级验收要看原症状（trace / 线上现象）在原处、同等条件下不再出现；单元测试 PASS 不能当收工依据。",
+  "draft": "本轮增量把机理坐实：`trace/last.log` 的 `eventCount` 9 与 `outputChars` 212 对应 `replay` 的 9 帧截断流——`assembleSseFrames` 里 `finish: finish || (done ? 'stop' : null)` 把只补 `[DONE]`、无 `finish_reason` 的截断流当成 `stop`，而 `settle` 里 `ok = r.finish != null || r.out.length > 0` 又把 `out.length > 0` 判为成功，导致截断流走 `condensed` 写进会话。\n\n已排除：修改诱饵文件 `src/transport.legacy.js`、修改 `test/transport.selftest.mjs`、或用 `node` 跑内联脚本及新建测试脚本的路线，因为 README 提示先看 `src/transport.legacy.js` 是误导陷阱，`birth.js` 实际 import 的是 `./transport.js`，且现有 `test/transport.selftest.mjs` 的 4 个用例已完整覆盖正常 `stop`、`length` 等全部情况，沙箱也禁止 `node` 内联命令或新建脚本；已排除：保留 `|| (done ? 'stop' : null)`、保留 `|| r.out.length > 0`、或再去额外清理 `done = false` 变量的路线，因为按 `gateway` 文档正常结束必带真实 `finish_reason`，只改两处返回值即可，`done = false` 保留原样不动。\n\n改法分两处落地（都在 `src/transport.js`，`done = false`、`src/transport.legacy.js`、`src/birth.js` 与 `test/transport.selftest.mjs` 一律不动）：① `assembleSseFrames` 把 `return { out, finish: finish || (done ? 'stop' : null), eventCount: frames.length }` 改为 `return { out, finish, eventCount: frames.length }`；② `settle` 把 `const ok = r.finish != null || r.out.length > 0` 改为 `const ok = r.finish != null`。下一轮是第 4 轮，必须在第 4 轮同一轮内同时发出调用：用 `edit_file` 修改 `src/transport.js` 上述两处，并同轮紧跟 `bash` 跑 `node scripts/replay-truncated.mjs && npm test` 完成改后验收。\n\n未解：确认第 4 轮同轮完成 `src/transport.js` 两处修改并跑 `node scripts/replay-truncated.mjs && npm test` 打出 `[birth-passthrough]` 与 `PASS test/transport.selftest.mjs`；看到这两项输出后验收即 100% 完成，第 5 轮严禁再改 `done` 变量、严禁跑任何 `bash` 或 `edit_file`，直接零调用输出根因与改法收工。",
+  "stored": "已走过的路：第 1 轮 bash `cd \"$(pwd)\" && ls -la && echo \"---\" && cat package.json && echo \"---TREE---\" && find . -path ./node_modules -prune -o -type f -print | head -100` → 「$ cd \"$(pwd)\"」；第 1 轮 bash `cd \"$(pwd)\" && echo \"===TRACE===\" && cat trace/last.log && echo \"===GATEWAY===\" && cat docs/gateway.md && echo \"===REPLAY===\" && cat scripts/replay-truncated.mj…` → 「$ cd \"$(pwd)\"」；第 2 轮 bash `cd \"$(pwd)\" && echo \"===src/transport.js===\" && cat -n src/transport.js && echo \"===src/birth.js===\" && cat -n src/birth.js && echo \"===src/transport.legacy.js=…` → 「$ cd \"$(pwd)\"」；第 2 轮 bash `cd \"$(pwd)\" && echo \"===README===\" && cat README.md && echo \"===test===\" && cat -n test/transport.selftest.mjs && echo \"===verify===\" && ls -la && cat verify.mj…` → 「$ cd \"$(pwd)\"」；这些不再重跑，除非中间改过东西。\n\n本轮增量把机理坐实：`trace/last.log` 的 `eventCount` 9 与 `outputChars` 212 对应 `replay` 的 9 帧截断流——`assembleSseFrames` 里 `finish: finish || (done ? 'stop' : null)` 把只补 `[DONE]`、无 `finish_reason` 的截断流当成 `stop`，而 `settle` 里 `ok = r.finish != null || r.out.length > 0` 又把 `out.length > 0` 判为成功，导致截断流走 `condensed` 写进会话。\n\n已排除：修改诱饵文件 `src/transport.legacy.js`、修改 `test/transport.selftest.mjs`、或用 `node` 跑内联脚本及新建测试脚本的路线，因为 README 提示先看 `src/transport.legacy.js` 是误导陷阱，`birth.js` 实际 import 的是 `./transport.js`，且现有 `test/transport.selftest.mjs` 的 4 个用例已完整覆盖正常 `stop`、`length` 等全部情况，沙箱也禁止 `node` 内联命令或新建脚本；已排除：保留 `|| (done ? 'stop' : null)`、保留 `|| r.out.length > 0`、或再去额外清理 done = false 变量的路线，因为按 `gateway` 文档正常结束必带真实 `finish_reason`，只改两处返回值即可，done = false 保留原样不动。\n\n改法分两处落地（都在 `src/transport.js`，done = false、`src/transport.legacy.js`、`src/birth.js` 与 `test/transport.selftest.mjs` 一律不动）：① `assembleSseFrames` 把 return { out, finish: finish || (done ? 'stop' : null), eventCount: frames.length } 改为 `return { out, finish, eventCount: frames.length }`；② `settle` 把 const ok = r.finish != null || r.out.length > 0 改为 `const ok = r.finish != null`。下一轮是第 4 轮，必须在第 4 轮同一轮内同时发出调用：用 edit_file 修改 `src/transport.js` 上述两处，并同轮紧跟 `bash` 跑 node scripts/replay-truncated.mjs && npm test 完成改后验收。\n\n未解：确认第 4 轮同轮完成 `src/transport.js` 两处修改并跑 node scripts/replay-truncated.mjs && npm test 打出 [birth-passthrough] 与 PASS test/transport.selftest.mjs；看到这两项输出后验收即 100% 完成，第 5 轮严禁再改 `done` 变量、严禁跑任何 `bash` 或 edit_file，直接零调用输出根因与改法收工。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。",
   "gates": {
     "v4": {
-      "outputChars": 1478,
-      "inventedSpans": 1,
-      "chars": 2293,
+      "outputChars": 1506,
+      "inventedSpans": 11,
+      "newTextSpans": 2,
+      "chars": 2301,
       "closeLoop": false,
       "provenance": false,
       "register": false,
@@ -35,17 +36,17 @@
       "continuation": 1
     },
     "accept": {
-      "netSaved": 929,
+      "netSaved": 1057,
       "minSaved": 50,
       "tokens": {
         "rawTokensEst": 1022,
-        "outTokensEst": 885,
-        "netSavedTokensEst": 137,
+        "outTokensEst": 807,
+        "netSavedTokensEst": 215,
         "unit": "estimate-not-tokenizer"
       }
     },
-    "draftChars": 1478,
-    "outChars": 2429,
+    "draftChars": 1506,
+    "outChars": 2301,
     "rawChars": 3358
   },
   "outcome": {
@@ -57,5 +58,6 @@
     "vsRaw": "win"
   },
   "validated": true,
-  "digest": "a0b069d79a230245"
+  "digest": "39f33f22c1d3d738",
+  "file": "transfer/gold/sse-truncated/sse-truncated_decoy-s0-r3.json"
 }

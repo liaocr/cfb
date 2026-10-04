@@ -57,5 +57,6 @@
     "vsRaw": "tie"
   },
   "validated": true,
-  "digest": "2876ba54e4f80ad9"
+  "digest": "2876ba54e4f80ad9",
+  "file": "transfer/gold/sse-truncated/sse-truncated_long-horizon-s0-r5.json"
 }

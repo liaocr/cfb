@@ -1317,7 +1317,7 @@ export function spliceProgramParts(text, ctx, stats = {}, opts = {}) {
       .replace(/\s*→\s*「\$\s[^」]*」/g, '')
       .replace(/bash `cd "\$\(pwd\)" && /g, 'bash `')
       .replace(/\s+2>\/dev\/null(?=`)/g, '')
-      .replace(/((?:read_file|bash\s+`(?:cat|ls|for\s+f\s+in)\b)[^`]*`)\s*→\s*「(?![^」]*(?:FAIL|ERR|Error|EACCES))[^」]*」/g, '$1')
+      .replace(/((?:read_file\s+`|bash\s+`(?:cat|ls|for\s+f\s+in)\b)[^`]*`)\s*→\s*「(?![^」]*(?:FAIL|ERR|Error|EACCES))[^」]*」/g, '$1')
       .replace(/→\s*「bash:\s*该沙箱[^」]*」/g, '→「沙箱拒」')
       .replace(/已排除[：:]\s*已排除[：:]/g, '已排除：')
       .replace(/、`[A-Za-z_\s(),.]{45,}`/g, '')
@@ -1353,6 +1353,7 @@ export function spliceProgramParts(text, ctx, stats = {}, opts = {}) {
       if (h.includes('--exclude-dir=node_modules') && t.includes('--exclude-dir=node_modules')) return true
       return false
     }
+    const fixInPlay = /^- (?:edit_file|str_replace\w*|apply_patch|edit)\s/m.test((c.match(/【本轮已发出的调用】[^\n]*\n([\s\S]*?)(?=\n\n|$)/) || ['', ''])[1]) || /^- 第 \d+ 轮(?:已定|已改|提议)/m.test(c)
     const missing = compH.filter((h) => !alreadyCovered(h))
     if (missing.length) {
       const block = missing.join('')
@@ -1362,10 +1363,12 @@ export function spliceProgramParts(text, ctx, stats = {}, opts = {}) {
         const cut = Math.max(t.lastIndexOf('。', at), t.lastIndexOf('\n', at))
         const pos = cut < 0 ? at : cut + 1
         t = t.slice(0, pos) + block + t.slice(pos)
-      } else t = t.replace(/\s*$/, '') + block
-      stats.splicedHints = (stats.splicedHints || 0) + missing.length
+        stats.splicedHints = (stats.splicedHints || 0) + missing.length
+      } else if (fixInPlay) {
+        t = t.replace(/\s*$/, '') + block
+        stats.splicedHints = (stats.splicedHints || 0) + missing.length
+      }
     }
-    const fixInPlay = /^- (?:edit_file|str_replace\w*|apply_patch|edit)\s/m.test((c.match(/【本轮已发出的调用】[^\n]*\n([\s\S]*?)(?=\n\n|$)/) || ['', ''])[1]) || /^- 第 \d+ 轮(?:已定|已改|提议)/m.test(c)
     const compQ = compactClosingQuestions(c)
     if (/能说修好要三件事都在手[^。]*。/.test(t) || (/【本轮已发出的调用】/.test(c) && /收工核对（[^。]*。/.test(t))) {
       t = t.replace(/(?:能说修好要三件事都在手|收工核对（)[^。]*。/, compQ)

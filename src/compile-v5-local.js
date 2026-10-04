@@ -574,22 +574,22 @@ function compileDefVsCallerForwarding(g) {
   const hasLegacy = has('host-follow.legacy.js')
   const hasCompat = has('host-follow.compat.js')
 
-  const mech = `根因坐实：\`src/plugin.js\` 导入 \`src/host-follow.js\`；宿主 \`0.9\` 下 \`options.model\` 为 \`undefined\`，模型在 \`n.model\`，原 \`observe\` 只看 \`options.model\` 使 \`lastModel\` 未更新。`
+  const mech = `根因：\`src/plugin.js\` 导 \`src/host-follow.js\`；宿主 \`0.9\` 的 \`options.model\` 为 \`undefined\`，模型在 \`n.model\`，\`observe\` 只看 \`options.model\` 致 \`lastModel\` 未更新。`
 
   const ex = [
-    `已排除：改 \`src/host-follow.legacy.js\`${hasCompat ? '、`src/host-follow.compat.js`' : ''}、\`src/transport.js\` 或 \`src/birth.js\`（${hasCurrentModel ? '及找 `verify.mjs`' : '及跑 `for` 循环或找 `verify.mjs`'}），因为 \`README.md\`${has('incident-runbook.md') ? '、`docs/incident-runbook.md` 与 `logs/stale-diagnostic.log`' : ''} 的 \`legacy\` 是诱饵（\`red herring\`），真实链只在 \`src/host-follow.js\`。`,
-    `已排除：只靠 \`options.model\` 或改 \`src/plugin.js\` / \`test/host-follow.selftest.mjs\`，因为 \`src/plugin.js\` 已传 \`observe(options, n)\`；\`npm test\` 的 PASS 不算证据。`,
+    `已排除：改 \`src/host-follow.legacy.js\`${hasCompat ? '、`src/host-follow.compat.js`' : ''}、\`src/transport.js\` 或 \`src/birth.js\`（${hasCurrentModel ? '及找 `verify.mjs`' : '及跑 `for` 循环或找 `verify.mjs`'}），因 \`README.md\`${has('incident-runbook.md') ? '、`docs/incident-runbook.md` 与 `logs/stale-diagnostic.log`' : ''} 的 \`legacy\` 是诱饵（\`red herring\`），真实链在 \`src/host-follow.js\`。`,
+    `已排除：只靠 \`options.model\` 或改 \`src/plugin.js\` / \`test/host-follow.selftest.mjs\`，因 \`src/plugin.js\` 已传 \`observe(options, n)\`；\`npm test\` 的 PASS 不算证据。`,
   ].join('\n')
 
   const dec = hasCurrentModel
     ? `改法只落一个：只改 \`src/host-follow.js\` 的 \`makeHostFollow(cfg)\`（不改 \`src/plugin.js\`、\`test/host-follow.selftest.mjs\`），在 \`observe(options, n)\` 读 \`n && n.model\` 回退 \`options && options.model\`（\`currentModel = fromSession || fromOptions || null\`），\`callConfig(options)\` 返回 \`{ ...cfg, model: currentModel || fromOptions || cfg.model }\`。`
-    : `改法只落一个：只改 \`src/host-follow.js\` 的 \`makeHostFollow\`（不改 \`src/plugin.js\`、\`test/host-follow.selftest.mjs\`），将 \`lastModel\` 放闭包，\`observe(options, n)\` 优先读 \`n.model\` 回退 \`options.model\`，由 \`callConfig(options)\` 返回。`
+    : `改法只落一个：只改 \`src/host-follow.js\` 的 \`makeHostFollow\`（不改 \`src/plugin.js\`、\`test/host-follow.selftest.mjs\`），\`lastModel\` 放闭包，\`observe(options, n)\` 读 \`n.model\` 回退 \`options.model\`，由 \`callConfig(options)\` 返回。`
 
-  const acc = `验收是 \`bash\` 跑 \`node scripts/smoke-session.mjs\` 与 \`node test/host-follow.selftest.mjs\`，预期 \`compiler-transport-started\` 的 \`model\` 等于 \`n.model\`（\`deepseek-v3.2\`）；\`npm test\` 的 PASS 不算证据。若仍失败：第一步只有一条，先查 \`src/host-follow.js\` 的 \`observe(options, n)\` 是否落地，不改 \`src/plugin.js\`。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。`
+  const acc = `验收是 \`bash\` 跑 \`node scripts/smoke-session.mjs\` 与 \`node test/host-follow.selftest.mjs\`，预期 \`compiler-transport-started\` 的 \`model\` 为 \`n.model\`（\`deepseek-v3.2\`）；\`npm test\` 的 PASS 不算证据。若失败：第一步查 \`src/host-follow.js\` 的 \`observe(options, n)\`，不改 \`src/plugin.js\`。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。`
 
   const open = hasCurrentModel
     ? `未解：第 ${nextRound} 轮 \`edit_file\` 改 \`src/host-follow.js\` 并跑 \`node scripts/smoke-session.mjs\` 与 \`node test/host-follow.selftest.mjs\` 通过后收工。`
-    : `回放过了之后还有两件原文已经定下的事：确认 \`node scripts/smoke-session.mjs\` 打出 \`deepseek-v3.2\` 且 \`npm test\` 通过、未动 \`src/plugin.js\`；以及核对落盘后收工。未解：第 ${nextRound} 轮改 \`src/host-follow.js\` 并跑 \`node scripts/smoke-session.mjs\` 与 \`npm test\` 通过后收工。`
+    : `回放过了之后还有两件原文已经定下的事：确认 \`node scripts/smoke-session.mjs\` 打出 \`deepseek-v3.2\` 且 \`npm test\` 通过；以及核对落盘收工。未解：第 ${nextRound} 轮改 \`src/host-follow.js\` 并跑 \`node scripts/smoke-session.mjs\` 与 \`npm test\` 通过后收工。`
 
   return [mech, ex, dec, acc, open].join('\n\n')
 }

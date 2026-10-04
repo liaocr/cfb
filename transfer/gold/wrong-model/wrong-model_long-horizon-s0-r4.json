@@ -60,5 +60,6 @@
     "vsRaw": "tie"
   },
   "validated": true,
-  "digest": "0acaac13997bf072"
+  "digest": "0acaac13997bf072",
+  "file": "transfer/gold/wrong-model/wrong-model_long-horizon-s0-r4.json"
 }

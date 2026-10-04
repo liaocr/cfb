@@ -56,5 +56,6 @@
     "vsRaw": "win"
   },
   "validated": true,
-  "digest": "39e1e6f4a5e9d8af"
+  "digest": "39e1e6f4a5e9d8af",
+  "file": "transfer/gold/flaky-timeout/flaky-timeout-s0-r5.json"
 }

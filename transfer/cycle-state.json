@@ -1,6 +1,6 @@
 {
   "schema": "cfb.cycle-state/1",
-  "at": "2026-10-03T20:33:29.935Z",
+  "at": "2026-10-04T03:05:34.795Z",
   "history": {
     "schema": "cfb.closed-loop/2",
     "hypotheses": {},
@@ -236,7 +236,7 @@
         "expectedUsd": 0.275,
         "capUsd": 0.91,
         "ceiling": {
-          "k": 8,
+          "k": 9,
           "verdict": "hand-better",
           "pairs": 9,
           "e": 31.875,
@@ -410,17 +410,12 @@
         "split": "all",
         "expectedUsd": 0.247,
         "capUsd": 0.376,
-        "best": "p-1490eefcdf",
+        "best": null,
         "paired": {
           "p-8943e331e6": {
             "e": 4.411,
             "n": 7,
             "decision": "undetermined"
-          },
-          "p-1490eefcdf": {
-            "e": 31.875,
-            "n": 7,
-            "decision": "promote"
           }
         }
       }
@@ -2334,10 +2329,23 @@
         "purpose": "评测本地认知图微模型 p-1490eefcdf 对比副模型冠军 p-8943e331e6 与 base 基线在全量 11 条 Gold 标尺（7 dev + 4 holdout）上的表现",
         "selection": "dev 项：每个金标上候选 vs base 按层级键配对 → e 值（≥2 家族、e ≥ 阈 ⇒ promote）；holdout 项只报告，不参与选择；promote 的策略进 plan-traj（模式 3）验收，基准分本身不采纳 champion",
         "design": "8c522cdffa0bf992",
-        "digest": "9ce5e67ce74428dd",
-        "command": "node tools/bench-run.mjs --plan .cfb-runtime/bench/b9/plan.json --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/bench/b9"
+        "digest": "b1829857dd28ed3c",
+        "command": "node tools/bench-run.mjs --plan .cfb-runtime/bench/b9/plan.json --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/bench/b9",
+        "goldDigests": {
+          "eacces-config_decoy-s0-r3": "44e98a467a097a2e",
+          "eacces-config_long-horizon-s0-r5": "5f3963b4b8f8744a",
+          "flaky-timeout_long-horizon-s0-r4": "2461649d016e102c",
+          "flaky-timeout-s0-r4": "e711251379735954",
+          "flaky-timeout-s0-r5": "39e1e6f4a5e9d8af",
+          "perf-regression-s0-r6": "6abde4745bf37b2c",
+          "sse-truncated_decoy-s0-r3": "39f33f22c1d3d738",
+          "sse-truncated_long-horizon-s0-r5": "2876ba54e4f80ad9",
+          "sse-truncated-s0-r5": "f84dc9988494f31e",
+          "wrong-model_decoy-s0-r4": "d1f253f227aecb50",
+          "wrong-model_long-horizon-s0-r4": "0acaac13997bf072"
+        }
       }
     }
   ],
-  "digest": "e03a9d89a754804f"
+  "digest": "7865a8dd0ae359ee"
 }

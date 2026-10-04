@@ -57,5 +57,6 @@
     "vsRaw": "win"
   },
   "validated": true,
-  "digest": "5f3963b4b8f8744a"
+  "digest": "5f3963b4b8f8744a",
+  "file": "transfer/gold/eacces-config/eacces-config_long-horizon-s0-r5.json"
 }
