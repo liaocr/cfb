@@ -11,7 +11,9 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    # verify:offline proves loopback-only isolation with unshare -Urn; pin the runner
+    # because ubuntu-latest moved to an image that restricts unprivileged user namespaces.
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -24,7 +26,7 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Integrity manifest (MANIFEST.sha256)
         run: node manifest.mjs --check
-      - name: Self-tests (all suites, isolated temp DSH_HOME per suite)
-        run: node verify.mjs
+      - name: Offline self-tests (loopback-only network namespace)
+        run: npm run verify:offline
       - name: Type contract (index.d.ts)
         run: npx --yes -p typescript@5 tsc --noEmit --strict index.d.ts

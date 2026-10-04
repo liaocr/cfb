@@ -378,17 +378,30 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
 {
   const raw = bulkReasoning()
   const entry = { index: 0, text: raw, end: { type: 'block-end', index: 0, block: { type: 'reasoning', text: raw } } }
-  let distillStarted = false
-  const deps = { cfg: mkCfg(), trace: noTrace, archive: async () => 'art://ARCH16', sessionId: () => 's', deriveHandle: (s, t) => 'art://PRE16',
-                 distill: async () => { distillStarted = true; return { text: SUMMARY } } }
-  const t0 = Date.now()
-  const task = birthStart(entry, deps)
-  const syncMs = Date.now() - t0
-  ok('T16 ★ birthStart 同步返回（<5ms，内存算句柄）', syncMs < 5 && !!task && task.belowFloor === false, syncMs + 'ms')
+  let distillStarted = false, asyncWorkStarted = 0
+  const deps = { cfg: mkCfg(), trace: noTrace,
+                 archive: async () => { asyncWorkStarted++; return 'art://ARCH16' },
+                 sessionId: () => 's', deriveHandle: (s, t) => 'art://PRE16',
+                 distill: async () => { asyncWorkStarted++; distillStarted = true; return { text: SUMMARY } } }
+  // A single timing sample can include scheduler preemption. Keep the <5ms target, use a
+  // monotonic clock, discard two warm-ups, and assert the median of seven real invocations.
+  const samples = []
+  for (let i = 0; i < 9; i++) {
+    const t0 = process.hrtime.bigint()
+    const task = birthStart(entry, deps)
+    samples.push({ task, ms: Number(process.hrtime.bigint() - t0) / 1e6 })
+  }
+  const steady = samples.slice(2).map((x) => x.ms).sort((a, b) => a - b)
+  const syncMs = steady[Math.floor(steady.length / 2)]
+  const task = samples[0].task
+  ok('T16 ★ birthStart 同步返回（热身后中位数 <5ms，内存算句柄）',
+     syncMs < 5 && samples.every((x) => x.task && x.task.belowFloor === false) && asyncWorkStarted === 0,
+     `median=${syncMs.toFixed(3)}ms; samples=${steady.map((x) => x.toFixed(3)).join(',')}ms; asyncStarted=${asyncWorkStarted}`)
   ok('T16 ★ 句柄已内存秒算（无需等写盘）', task.handle === 'art://PRE16', String(task.handle))
-  const chunks = await birthFinish(task, deps)
+  const results = await Promise.all(samples.map((x) => birthFinish(x.task, deps)))
+  const chunks = results[0]
   ok('T16 ★ 收网后采用蒸馏稿 + 落盘句柄',
-     chunks.chunks.filter((c) => c.type === 'block-end')[0].block.text === SUMMARY,
+     chunks.chunks.filter((c) => c.type === 'block-end')[0].block.text === SUMMARY && distillStarted,
      JSON.stringify(chunks.chunks).slice(0, 160))
 }
 

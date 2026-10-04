@@ -930,57 +930,71 @@ try {
   })
 
   await test('A38 二阶极限突破四件套：动态水位/打转感知 λ 控制器（三工作区）+ compact 极简工程状态部件（零真值损耗降噪）+ long-horizon 多跳长程迷宫（active 验证）+ SEER 同真值极简偏好对与帕累托极限策略合成', async () => {
-    const I = await import('../index.js')
-    const { truthDimensions, truthComposite } = await import('../tools/helpers/truth-dims.mjs')
-    // 1. C1：computeAdaptiveBirthControl 三工作区验证（fresh-early / cruise / high-spin-or-long-horizon）
-    const cleanR1 = Array.from({ length: 12 }, (_, i) => `检查 \`src/trace_${i}.js\` 里的 \`makeTraceWriter_${i}\` 与 \`process.env.DSH_HOME_${i}\`，核对 \`trace_${i}.log\` 的路径拼接。`).join('')
-    const ctrlEarly = I.computeAdaptiveBirthControl(cleanR1, '【任务】修 EACCES', { usedTokens: 2000, contextWindow: 64000 }, { birthMinChars: 3100 })
-    assert.equal(ctrlEarly.zone, 'fresh-early', '第 1 轮低水位无打转 ⇒ fresh-early 抬高门槛保护原生思考')
-    assert.ok(ctrlEarly.effectiveFloor > 3100, 'fresh-early 门槛高于基准 3100')
+    const previousCycleDir = cyc.cycleDir()
+    const isolatedCycleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-a38-'))
+    try {
+      fs.cpSync(path.join(ROOT, 'transfer', 'gold'), path.join(isolatedCycleDir, 'gold'), { recursive: true })
+      cyc.setCycleDir(isolatedCycleDir)
+      const I = await import('../index.js')
+      const { truthDimensions, truthComposite } = await import('../tools/helpers/truth-dims.mjs')
+      // 1. C1：computeAdaptiveBirthControl 三工作区验证（fresh-early / cruise / high-spin-or-long-horizon）
+      const cleanR1 = Array.from({ length: 12 }, (_, i) => `检查 \`src/trace_${i}.js\` 里的 \`makeTraceWriter_${i}\` 与 \`process.env.DSH_HOME_${i}\`，核对 \`trace_${i}.log\` 的路径拼接。`).join('')
+      const ctrlEarly = I.computeAdaptiveBirthControl(cleanR1, '【任务】修 EACCES', { usedTokens: 2000, contextWindow: 64000 }, { birthMinChars: 3100 })
+      assert.equal(ctrlEarly.zone, 'fresh-early', '第 1 轮低水位无打转 ⇒ fresh-early 抬高门槛保护原生思考')
+      assert.ok(ctrlEarly.effectiveFloor > 3100, 'fresh-early 门槛高于基准 3100')
 
-    const spinRaw = '等等，不对，换个思路，还是先重新看一遍，到底是不是这里？再看一遍或者说先别改。'.repeat(30)
-    const longCtx = '【台账】\n- 第 1 轮：read_file src/a.js\n- 第 2 轮：read_file src/b.js\n- 第 3 轮：grep -n "x" src/\n- 第 4 轮：read_file src/c.js'
-    const ctrlSpin = I.computeAdaptiveBirthControl(spinRaw, longCtx, { usedTokens: 40000, contextWindow: 64000 }, { birthMinChars: 3100 })
-    assert.equal(ctrlSpin.zone, 'high-spin-or-long-horizon', '多轮只读不改 + 高打转 ⇒ high-spin-or-long-horizon')
-    assert.ok(ctrlSpin.effectiveFloor <= 2100 && ctrlSpin.effectiveFloor >= 1600, '长程/打转工作区主动下调触发地板折叠死路')
-    assert.ok(ctrlSpin.effectiveMaxChars < ctrlSpin.baseMax, '长程/打转工作区收紧输出预算')
+      const spinRaw = '等等，不对，换个思路，还是先重新看一遍，到底是不是这里？再看一遍或者说先别改。'.repeat(30)
+      const longCtx = '【台账】\n- 第 1 轮：read_file src/a.js\n- 第 2 轮：read_file src/b.js\n- 第 3 轮：grep -n "x" src/\n- 第 4 轮：read_file src/c.js'
+      const ctrlSpin = I.computeAdaptiveBirthControl(spinRaw, longCtx, { usedTokens: 40000, contextWindow: 64000 }, { birthMinChars: 3100 })
+      assert.equal(ctrlSpin.zone, 'high-spin-or-long-horizon', '多轮只读不改 + 高打转 ⇒ high-spin-or-long-horizon')
+      assert.ok(ctrlSpin.effectiveFloor <= 2100 && ctrlSpin.effectiveFloor >= 1600, '长程/打转工作区主动下调触发地板折叠死路')
+      assert.ok(ctrlSpin.effectiveMaxChars < ctrlSpin.baseMax, '长程/打转工作区收紧输出预算')
 
-    // 2. C2：programParts='compact' 在全池任务上零真值损耗且显著缩短程序部件，且过 handDraftGate / draftDistance 满分
-    const H = await import('../tools/helpers/hand-draft.mjs')
-    const pool = cyc.loadPool()
-    for (const t of pool.tasks) {
-      const effCtx = I.applyCtxContinuationPolicy(t.ctx || '', 'bounded')
-      const vAll = I.compileV4Direct(t.side, t.chain.a2.raw, I.normalizeConfig({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: effCtx, programParts: 'all' }))
-      const vComp = I.compileV4Direct(t.side, t.chain.a2.raw, I.normalizeConfig({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: effCtx, programParts: 'compact' }))
-      assert.ok(vAll.ok && vComp.ok)
-      assert.ok(vComp.text.length < vAll.text.length, `${t.id}: compact 比 all 更短 (${vComp.text.length} < ${vAll.text.length})`)
-      const sAll = truthComposite(truthDimensions(vAll.text, t.chain, t.spec)).score
-      const sComp = truthComposite(truthDimensions(vComp.text, t.chain, t.spec)).score
-      assert.ok(sComp >= sAll, `${t.id}: compact 保持或提升真值复合分 (${sComp} >= ${sAll})`)
-      const g2 = H.handDraftGate(t.chain.a2.raw, vComp.text, effCtx)
-      assert.equal(g2.ok, true, `${t.id}: handDraftGate 零误伤 (${JSON.stringify(g2.violations)})`)
-      const dd = H.draftDistance(vComp.text, t.side, { raw: t.chain.a2.raw, ctx: effCtx })
-      assert.equal(dd.score, 1, `${t.id}: draftDistance 满分召回 (${dd.verdict}, ${JSON.stringify(dd.key)})`)
-      assert.equal(dd.verdict, 'close')
+      // 2. C2：programParts='compact' 在全池任务上零真值损耗且显著缩短程序部件，且过 handDraftGate / draftDistance 满分
+      const H = await import('../tools/helpers/hand-draft.mjs')
+      const pool = cyc.loadPool()
+      for (const t of pool.tasks) {
+        const effCtx = I.applyCtxContinuationPolicy(t.ctx || '', 'bounded')
+        const vAll = I.compileV4Direct(t.side, t.chain.a2.raw, I.normalizeConfig({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: effCtx, programParts: 'all' }))
+        const vComp = I.compileV4Direct(t.side, t.chain.a2.raw, I.normalizeConfig({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: effCtx, programParts: 'compact' }))
+        assert.ok(vAll.ok && vComp.ok)
+        assert.ok(vComp.text.length < vAll.text.length, `${t.id}: compact 比 all 更短 (${vComp.text.length} < ${vAll.text.length})`)
+        const sAll = truthComposite(truthDimensions(vAll.text, t.chain, t.spec)).score
+        const sComp = truthComposite(truthDimensions(vComp.text, t.chain, t.spec)).score
+        assert.ok(sComp >= sAll, `${t.id}: compact 保持或提升真值复合分 (${sComp} >= ${sAll})`)
+        const g2 = H.handDraftGate(t.chain.a2.raw, vComp.text, effCtx)
+        assert.equal(g2.ok, true, `${t.id}: handDraftGate 零误伤 (${JSON.stringify(g2.violations)})`)
+        const dd = H.draftDistance(vComp.text, t.side, { raw: t.chain.a2.raw, ctx: effCtx })
+        assert.equal(dd.score, 1, `${t.id}: draftDistance 满分召回 (${dd.verdict}, ${JSON.stringify(dd.key)})`)
+        assert.equal(dd.verdict, 'close')
+      }
+
+      // 3. C3：long-horizon 多跳长程排障迷宫与惰性检查 active
+      for (const baseTask of TRAJ_TASKS) {
+        const lh = perturbTask(baseTask, 'long-horizon')
+        assert.equal(lh.perturb, 'long-horizon')
+        assert.ok(lh.files['docs/incident-runbook.md'] && lh.files['logs/stale-diagnostic.log'], `${baseTask.id}: 含排障手册与陈旧快照日志`)
+      }
+      const pc = cyc.runCli(['perturb-check', '--kind', 'long-horizon'])
+      assert.equal(pc.status, 0, pc.stdout + pc.stderr)
+      assert.match(pc.stdout, /\*\*active\*\*/)
+
+      // 4. C4：synthesize-policy 帕累托极限策略合成与 bon-concise 飞轮对。
+      //    用跟踪的历史轨迹/金标在临时 cycle dir 中显式 harvest；不依赖本机 .cfb-offline 状态。
+      const syn = cyc.runCli(['synthesize-policy'])
+      assert.equal(syn.status, 0, syn.stdout + syn.stderr)
+      assert.match(syn.stdout, /已合成极限复合策略/)
+      assert.match(syn.stdout, /逆向增补=0/)
+      const harvested = cyc.harvestHistoricalFlywheel()
+      assert.ok(harvested.added > 0, '跟踪的历史资产可回填偏好对')
+      const fw = cyc.loadFlywheel()
+      assert.ok(fw.some((p) => String(p.source || '').startsWith('bon-concise:')), '飞轮包含 SEER 式 bon-concise 同真值极简偏好对')
+      const repeatedHarvest = cyc.harvestHistoricalFlywheel()
+      assert.equal(repeatedHarvest.added, 0, '重复回填按内容去重，不产生重复偏好对')
+    } finally {
+      cyc.setCycleDir(previousCycleDir)
+      fs.rmSync(isolatedCycleDir, { recursive: true, force: true })
     }
-
-    // 3. C3：long-horizon 多跳长程排障迷宫与惰性检查 active
-    for (const baseTask of TRAJ_TASKS) {
-      const lh = perturbTask(baseTask, 'long-horizon')
-      assert.equal(lh.perturb, 'long-horizon')
-      assert.ok(lh.files['docs/incident-runbook.md'] && lh.files['logs/stale-diagnostic.log'], `${baseTask.id}: 含排障手册与陈旧快照日志`)
-    }
-    const pc = cyc.runCli(['perturb-check', '--kind', 'long-horizon'])
-    assert.equal(pc.status, 0, pc.stdout + pc.stderr)
-    assert.match(pc.stdout, /\*\*active\*\*/)
-
-    // 4. C4：synthesize-policy 帕累托极限策略合成与 bon-concise 飞轮对
-    const syn = cyc.runCli(['synthesize-policy'])
-    assert.equal(syn.status, 0, syn.stdout + syn.stderr)
-    assert.match(syn.stdout, /已合成极限复合策略/)
-    assert.match(syn.stdout, /逆向增补=0/)
-    const fw = cyc.loadFlywheel()
-    assert.ok(fw.some((p) => String(p.source || '').startsWith('bon-concise:')), '飞轮包含 SEER 式 bon-concise 同真值极简偏好对')
   })
 
   await test('A39 三大终极天花板突破：台账低门槛自然语言落定抽取与去重 + modular 动态提示词裁剪 + truthEfficiency 高分段破平局与 8/8 全轮覆盖 + 飞轮 In-Context DPO 对比示范合成', async () => {
