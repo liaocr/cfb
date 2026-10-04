@@ -1,0 +1,31 @@
+{
+  "schema": "cfb.micro-preregistration/1",
+  "createdAt": "2026-10-04T00:00:00.000Z",
+  "purpose": "3-fold family cross-validation run, per fold. The flagged values are the ONLY recipe; the trainer refuses to start if any flagged flag differs from the file. Fold variable (--validation-family) is declared in 'folds' and intentionally not flagged.",
+  "flags": {
+    "epochs_sft": 12,
+    "epochs_simpo": 12,
+    "student_epochs": 260,
+    "student_patience": 30,
+    "student_pair_objective": "listwise",
+    "student_unit_pair_loss_weight": 1.0,
+    "matched_bucket_loss_weight": 1.5,
+    "micro_mlp_hidden": 96,
+    "dataset_neg_strategy": "hardened",
+    "unit_pair_degree_cap": 4,
+    "unit_pairs_per_positive": 4,
+    "near_length_tokens": 3,
+    "neg_judge_weights": "transfer/models/v5-micro-weights.candidate.json",
+    "unit_review_file": "transfer/models/unit-label-review.json"
+  },
+  "datasetBuilder": {
+    "schema": "cfb.micro-dev-dataset/3",
+    "textHashBuckets": 256,
+    "expectedFeatureDim": 275,
+    "unitLabelReviewFile": "transfer/models/unit-label-review.json"
+  },
+  "folds": ["flaky-timeout", "perf-regression", "sse-truncated"],
+  "decisionRule": "Read rulerReading.candidateUnitValidation per fold. Decide on matched-bucket mean across 3 folds >= 0.93 AND worst-fold matched >= 0.90; also require point-estimate mean >= 0.94 and report Wilson LCBs. No per-fold hyperparameter changes: one recipe, three folds.",
+  "expectedSelectionGapNote": "Measured once: dev 0.9189 -> blind family unit 0.8333 (gap 8.6pp) and matched bucket is the load-bearing reading. Any new independent family is expected to land 3-8pp below the fold mean; a family will only be authorized when fold mean minus that gap stays >= 0.90.",
+  "whyOneVariable": "This run changes exactly one modelling variable versus 4764fd2: symbolic features gain the 256-bucket text-hash block (19 -> 275 dims). mlp hidden widens 32 -> 96 because the input block grew; everything else is frozen from 4764fd2."
+}

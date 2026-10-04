@@ -38,6 +38,35 @@ export const V5_FEATURE_NAMES = Object.freeze([
   'rederivability_R', 'info_val', 'vac_net', 'neut_net',
   'cue_decided', 'cue_excluded', 'cue_accept', 'cue_open', 'tok_cost',
 ])
+// ── 2026-10-04：可选「文本哈希」特征块（char 2-4gram -> 定长桶, log1p 计数）────────────
+// 动机（本地实测）：19 维符号特征线性全拟合 val=92.6%/matched 83.7%；追加 256 桶哈希后
+// val=95.6%/matched 95.2%；错对 0 条为「特征完全相同」⇒ 缺口在文本信息，不在标签。
+// 兼容性：桶数由权重文件声明（textHashBuckets）；生产权重未声明 = 0 桶，特征与打分逐字节不变。
+export const V5_TEXT_HASH_MAX_BUCKETS = 512
+export function v5TextHashFeatureNames(buckets) {
+  return Array.from({ length: buckets }, (_, i) => `txh_${i}`)
+}
+export function v5FeatureNamesFor(textHashBuckets = 0) {
+  const b = Math.max(0, Math.min(V5_TEXT_HASH_MAX_BUCKETS, Math.floor(Number(textHashBuckets) || 0)))
+  return [...V5_FEATURE_NAMES, ...v5TextHashFeatureNames(b)]
+}
+// 与数据集一致：只对单元文本前 360 字符取 gram（数据集存的就是 slice(0,360)）。
+export function textHashFeatures(text, buckets) {
+  const n = Math.max(0, Math.min(V5_TEXT_HASH_MAX_BUCKETS, Math.floor(Number(buckets) || 0)))
+  if (!n) return []
+  const t = String(text || '').slice(0, 360).toLowerCase()
+  const counts = new Array(n).fill(0)
+  for (let gram = 2; gram <= 4; gram++) {
+    for (let i = 0; i + gram <= t.length; i++) {
+      let h = 2166136261
+      for (let j = i; j < i + gram; j++) { h ^= t.charCodeAt(j); h = Math.imul(h, 16777619) }
+      counts[(h >>> 0) % n] += 1
+    }
+  }
+  for (let i = 0; i < n; i++) counts[i] = +Math.log1p(counts[i]).toFixed(4)
+  return counts
+}
+
 export const V5_PREF_FEATURE_NAMES = Object.freeze([
   'hasSingleLocus', 'hasDualLocus', 'hasTriple', 'excludedCount',
   'hasAcceptCmd', 'hasEscapeClause', 'hasOpenAgenda', 'anchorGrounded',
@@ -66,12 +95,18 @@ export function validateV5MicroWeights(weights) {
       || !/^cfb\.v5-micro-weights\/\d/.test(weights.schema || '')) {
     throw new Error('invalid-v5-micro-weights-schema')
   }
-  if (JSON.stringify(weights.featureNames) !== JSON.stringify(V5_FEATURE_NAMES)) {
+  if (weights.textHashBuckets != null) {
+    const b = Number(weights.textHashBuckets)
+    if (!Number.isInteger(b) || b < 0 || b > V5_TEXT_HASH_MAX_BUCKETS) throw new Error('invalid-v5-textHashBuckets')
+  }
+  const declaredBuckets = Number.isInteger(weights.textHashBuckets) ? weights.textHashBuckets : 0
+  const expectedNames = v5FeatureNamesFor(declaredBuckets)
+  if (JSON.stringify(weights.featureNames) !== JSON.stringify(expectedNames)) {
     throw new Error('invalid-v5-micro-feature-order')
   }
-  finiteVector(weights.valueWeights, V5_FEATURE_NAMES.length, 'valueWeights')
+  finiteVector(weights.valueWeights, expectedNames.length, 'valueWeights')
   if (!weights.slotWeights || typeof weights.slotWeights !== 'object') throw new Error('invalid-v5-slotWeights')
-  for (const slot of SLOT_NAMES) finiteVector(weights.slotWeights[slot], V5_FEATURE_NAMES.length, `slotWeights-${slot}`)
+  for (const slot of SLOT_NAMES) finiteVector(weights.slotWeights[slot], expectedNames.length, `slotWeights-${slot}`)
   if (!weights.prefWeights || typeof weights.prefWeights !== 'object') throw new Error('invalid-v5-prefWeights')
   for (const key of V5_PREF_FEATURE_NAMES) {
     if (!Number.isFinite(weights.prefWeights[key])) throw new Error(`invalid-v5-prefWeight-${key}`)
@@ -84,7 +119,7 @@ export function validateV5MicroWeights(weights) {
   if (unitHead != null) {
     if (!Array.isArray(unitHead.W1) || !unitHead.W1.length) throw new Error('invalid-v5-unit-mlp-W1')
     const hidden = unitHead.W1.length
-    for (const row of unitHead.W1) finiteVector(row, V5_FEATURE_NAMES.length, 'unit-mlp-W1-row')
+    for (const row of unitHead.W1) finiteVector(row, expectedNames.length, 'unit-mlp-W1-row')
     finiteVector(unitHead.b1, hidden, 'unit-mlp-b1')
     finiteVector(unitHead.WVal, hidden, 'unit-mlp-WVal')
     finiteVector(unitHead.WTempt, hidden, 'unit-mlp-WTempt')
@@ -225,7 +260,7 @@ export function splitDiscourseUnits(raw = '') {
 }
 
 // ── 19 维理论特征计算（第四卷 A1–A6 & 第五卷 P1–P5） ─────────────────────────
-export function extractUnitFeatures(unit, idx, total, ctxInfo) {
+export function extractUnitFeatures(unit, idx, total, ctxInfo, opts = {}) {
   const { raw = '', toolText = '', targetAnchors = new Set(), offsets = [] } = ctxInfo
   const rawTok = Math.max(1, estimateTokens(raw))
   const ids = extractAnchorsV5(unit)
@@ -291,7 +326,10 @@ export function extractUnitFeatures(unit, idx, total, ctxInfo) {
     cueOpen,
     +tokCost.toFixed(4),
   ]
-  return { vec, ids, tok, kind2, priorD, posNorm, isTail, fanoutG, actionLink, revisit, temptationT, R, infoVal, vacNet, neutNet, cueDecided, cueExcluded, cueAccept, cueOpen }
+  const textHashBuckets = Math.max(0, Math.min(V5_TEXT_HASH_MAX_BUCKETS, Math.floor(Number(opts.textHashBuckets) || 0)))
+  const textHash = textHashBuckets ? textHashFeatures(unit, textHashBuckets) : []
+  if (textHash.length) vec.push(...textHash)
+  return { vec, textHash, textHashBuckets, ids, tok, kind2, priorD, posNorm, isTail, fanoutG, actionLink, revisit, temptationT, R, infoVal, vacNet, neutNet, cueDecided, cueExcluded, cueAccept, cueOpen }
 }
 
 export function scoreUnitWithWeights(feat, weights = V5_MICRO_WEIGHTS) {
@@ -716,7 +754,8 @@ function compileGeneralDiscourseGraph(g, weights = V5_MICRO_WEIGHTS) {
     if (at >= 0) pos = at + u.length
   }
   const ctxInfo = { raw, toolText: ctx, targetAnchors, offsets }
-  const feats = units.map((u, i) => extractUnitFeatures(u, i, units.length, ctxInfo))
+  const featOpts = { textHashBuckets: weights.textHashBuckets || 0 }
+  const feats = units.map((u, i) => extractUnitFeatures(u, i, units.length, ctxInfo, featOpts))
   const scores = feats.map((f) => scoreUnitWithWeights(f, weights))
   const chosen = selectOpsV5(units, feats, scores, weights, 10)
 
@@ -768,7 +807,8 @@ export function compileV5Local(raw, cfg = {}, weights = null) {
   const rawSample = raw.length > 6000 ? raw.slice(0, 2000) + '\n' + raw.slice(-4000) : raw
   const targetAnchors = extractAnchorsV5(raw.slice(Math.floor(raw.length * 0.65)))
   const ctxInfo = { raw: rawSample, toolText: ctx, targetAnchors, offsets: [] }
-  const feats = sampleUnits.map((u, i, arr) => extractUnitFeatures(u, i, arr.length, ctxInfo))
+  const featOpts = { textHashBuckets: w.textHashBuckets || 0 }
+  const feats = sampleUnits.map((u, i, arr) => extractUnitFeatures(u, i, arr.length, ctxInfo, featOpts))
   const scores = feats.map((f) => scoreUnitWithWeights(f, w))
   const selectedOps = selectOpsV5(sampleUnits, feats, scores, w, 10)
 

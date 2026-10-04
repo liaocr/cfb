@@ -122,8 +122,12 @@ const lengthStratumOf = (deltaTok) => {
 const candidateWeights = loadV5MicroWeights(weightsPath)
 const productionWeights = V5_MICRO_WEIGHTS
 
+const EXPECTED_FEATURE_DIM = (() => {
+  const stats = (() => { try { return JSON.parse(fs.readFileSync(datasetPath, 'utf8')).stats || {} } catch { return {} } })()
+  return Number(stats.featureDim) || (19 + Math.max(0, Math.floor(Number(stats.textHashBuckets) || 0)))
+})()
 function makeUnitFeatures(row, index) {
-  if (!row || !Array.isArray(row.features) || row.features.length !== 19 || !Number.isFinite(row.tokenCount)) {
+  if (!row || !Array.isArray(row.features) || row.features.length !== EXPECTED_FEATURE_DIM || !Number.isFinite(row.tokenCount)) {
     throw new Error(`invalid-unit-endpoint:${index}`)
   }
   return {

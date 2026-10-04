@@ -31,6 +31,9 @@ const NEG_STRATEGY = process.env.CFB_MICRO_NEG_STRATEGY || 'hardened'
 const UNIT_PAIR_MAX_ENDPOINT_DEGREE = Number(process.env.CFB_MICRO_PAIR_DEGREE_CAP || 4)
 const UNIT_PAIR_MAX_PER_POSITIVE = Number(process.env.CFB_MICRO_PAIR_PER_POSITIVE || 4)
 const NEAR_LENGTH_TOKENS = Number(process.env.CFB_MICRO_NEAR_LENGTH_TOKENS || 3)
+// 2026-10-04：文本哈希特征块（char 2-4gram 定长桶）。默认 256；设为 0 即回到纯 19 维。
+const TEXT_HASH_BUCKETS = Math.max(0, Math.min(512, Math.floor(Number(process.env.CFB_MICRO_TEXT_HASH_BUCKETS ?? 256))))
+const FEATURE_OPTS = { textHashBuckets: TEXT_HASH_BUCKETS }
 // 2026-10-04 杠杆C：困难负例裁判改用「新候选权重」（缺省 74f690c 产出的 v5-micro-weights.candidate.json,
 // dev val unit=0.8502），而非生产权重（0.6087）；缺失/加载失败时回落到生产权重并如实记录。
 const NEG_JUDGE_WEIGHTS_PATH = (process.env.CFB_MICRO_NEG_JUDGE_WEIGHTS ?? 'transfer/models/v5-micro-weights.candidate.json').trim()
@@ -477,7 +480,7 @@ export function buildMicroDataset() {
     const ctxInfo = { raw: g.raw, toolText: g.ctx, targetAnchors, offsets: [] }
     const docUnits = []
     units.forEach((u, i) => {
-      const feat = extractUnitFeatures(u, i, units.length, ctxInfo)
+      const feat = extractUnitFeatures(u, i, units.length, ctxInfo, FEATURE_OPTS)
       const lbl = labelUnitMultiTask(u, feat, goldSlots)
       applyUnitLabelReview(lbl, { sourceId: g.id, unitIdx: i, text: u.slice(0, 360) })
       const item = {
@@ -521,7 +524,7 @@ export function buildMicroDataset() {
     const ctxInfo = { raw: rawText, toolText: ctxText, targetAnchors, offsets: [] }
     const docUnits = []
     units.forEach((u, i) => {
-      const feat = extractUnitFeatures(u, i, units.length, ctxInfo)
+      const feat = extractUnitFeatures(u, i, units.length, ctxInfo, FEATURE_OPTS)
       const lbl = labelUnitMultiTask(u, feat, goldSlots)
       applyUnitLabelReview(lbl, { sourceId: `pool:${t.id}`, unitIdx: i, text: u.slice(0, 360) })
       const item = {
@@ -639,6 +642,8 @@ export function buildMicroDataset() {
       devGoldItems: devGold.length,
       holdoutGoldItemsExcludedFromTraining: holdoutGold.length,
       devPoolItems: devPool.length,
+      featureDim: unitSamples[0]?.features?.length ?? 0,
+      textHashBuckets: TEXT_HASH_BUCKETS,
       unitSamplesCount: unitSamples.length,
       spanDocumentsCount: spanSamples.length,
       totalSpanPointers: spanSamples.reduce((s, x) => s + x.spans.length, 0),

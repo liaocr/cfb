@@ -87,6 +87,31 @@ def is_holdout_family(value) -> bool:
     return family_key(value) in HOLDOUT_FAMILIES
 
 
+def load_preregistration(args) -> dict:
+    """2026-10-04：预注册 = 训练前把「本轮唯一变量 + 判定规则」写进仓库里的机器可读文件；
+    运行时逐键比对，任何不一致直接拒绝启动训练（防止看结果改口径）。"""
+    path = Path(args.preregistration)
+    if not path.is_absolute():
+        path = ROOT / path
+    if not path.is_file():
+        return {"file": None, "matched": None, "reason": "no-preregistration-file"}
+    raw = path.read_bytes()
+    data = json.loads(raw.decode("utf-8"))
+    declared = data.get("flags") or {}
+    actual = {key: getattr(args, key, None) for key in declared}
+    diffs = {key: {"declared": value, "actual": actual.get(key)} for key, value in declared.items() if actual.get(key) != value}
+    if diffs:
+        raise RuntimeError(f"preregistration mismatch (refusing to train): {json.dumps(diffs, ensure_ascii=False)}")
+    return {
+        "file": str(path.relative_to(ROOT)) if str(path).startswith(str(ROOT)) else str(path),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "matched": True,
+        "declaredFlagCount": len(declared),
+        "decisionRule": data.get("decisionRule"),
+        "datasetBuilder": data.get("datasetBuilder"),
+    }
+
+
 def choose_validation_family(unit_samples: list[dict]) -> str:
     eligible = [u for u in unit_samples if u.get("trainingEligible", True) and not is_holdout_family(u.get("family"))]
     families = sorted({family_key(u.get("family")) for u in eligible})
@@ -182,11 +207,13 @@ def classification_stats(logits: torch.Tensor, targets: torch.Tensor) -> dict:
 class CFBMicro97M(nn.Module):
     """Pretrained multilingual ModernBERT teacher with symbolic/task heads."""
 
-    def __init__(self, encoder: nn.Module, prior_weights: dict, mlp_hidden: int = 32, pref_hidden: int = 16):
+    def __init__(self, encoder: nn.Module, prior_weights: dict, mlp_hidden: int = 32, pref_hidden: int = 16,
+                 sym_dim: int = 19):
         super().__init__()
         self.encoder = encoder
         self.d_model = int(encoder.config.hidden_size)
-        self.sym_dim = 19
+        # 2026-10-04：符号特征维度由数据集决定（19 维基础块 + 可选文本哈希块）。
+        self.sym_dim = int(sym_dim)
         self.pref_dim = len(PREF_KEYS)
         self.mlp_hidden = mlp_hidden
         self.pref_hidden = pref_hidden
@@ -443,7 +470,14 @@ def encode_draft_pairs(tokenizer, pairs, device):
 
 def stage1_sft(args, dp_model, model, tokenizer, dataset, device, use_amp):
     units = dataset["unitSamples"]
-    val_family = choose_validation_family(units)
+    if getattr(args, "validation_family", None):
+        known = sorted({family_key(u.get("family")) for u in units
+                        if u.get("trainingEligible", True) and not is_holdout_family(u.get("family"))})
+        if args.validation_family not in known:
+            raise RuntimeError(f"--validation-family must be one of {known}; got {args.validation_family}")
+        val_family = args.validation_family
+    else:
+        val_family = choose_validation_family(units)
     train_indices = [i for i, u in enumerate(units) if u.get("trainingEligible", True)
                      and family_key(u.get("family")) != val_family]
     val_indices = [i for i, u in enumerate(units) if u.get("trainingEligible", True)
@@ -1086,6 +1120,19 @@ def serialize_candidate(prior_weights: dict, student: CompactSymbolicStudent,
             "W2": [round(float(v), 6) for v in student.pref_mlp2.weight.squeeze(0).cpu().tolist()],
             "b2": round(float(student.pref_mlp2.bias.squeeze(0).cpu().item()), 6),
         }
+    # 2026-10-04：19 维基础名 + 文本哈希桶名（与 JS v5FeatureNamesFor 逐字一致）。
+    buckets = int(dataset.get("stats", {}).get("textHashBuckets", 0) or 0)
+    base_names = list(prior_weights.get("featureNames") or [])
+    if len(base_names) != 19:
+        raise RuntimeError(f"prior weights featureNames must be the 19 base names; got {len(base_names)}")
+    feature_names = base_names + [f"txh_{i}" for i in range(buckets)]
+    if len(feature_names) != len(value_weights) or len(feature_names) != len(slot_weights[SLOT_NAMES[0]]):
+        raise RuntimeError(
+            f"serialized feature width mismatch: names={len(feature_names)} "
+            f"valueWeights={len(value_weights)} slotWeights={len(slot_weights[SLOT_NAMES[0]])}"
+        )
+    if unit_mlp["W1"] and len(unit_mlp["W1"][0]) != len(feature_names):
+        raise RuntimeError(f"unit MLP input width {len(unit_mlp['W1'][0])} != feature width {len(feature_names)}")
     return {
         **prior_weights,
         "schema": "cfb.v5-micro-weights/3-distilled-pretrained",
@@ -1105,7 +1152,7 @@ def serialize_candidate(prior_weights: dict, student: CompactSymbolicStudent,
             "under01B": total_params < 100_000_000,
             "fullEncoderOnnxArtifact": "see cfb-micro-97m-report.json for the persisted candidate/release or production location",
             "compactStudentOnnxArtifact": "see cfb-micro-97m-report.json for candidate or production path",
-            "runtimePath": "compileV5Local: 19-dim symbolic feature student; full encoder ONNX is separately available",
+            "runtimePath": "compileV5Local: symbolic feature student (19 base dims + textHashBuckets); full encoder ONNX is separately available",
             "trainingMaxTokens": MAX_SEQ_LEN,
         },
         "trainingStats": {
@@ -1148,6 +1195,9 @@ def serialize_candidate(prior_weights: dict, student: CompactSymbolicStudent,
             "pytorchStudentDraftTrainPairAcc": student_stats["prefTrainPairAcc"],
             "pytorchStudentDraftValidationPairAcc": student_stats["prefValidationPairAcc"],
         },
+        "featureNames": feature_names,
+        "textHashBuckets": buckets,
+        "symFeatureDim": len(feature_names),
         "valueWeights": value_weights,
         "slotWeights": slot_weights,
         "prefWeights": pref_weights,
@@ -1257,7 +1307,7 @@ def export_models(teacher, student, tokenizer):
     compact_tmp = Path("/kaggle/working/cfb-micro-neural.candidate.onnx")
     compact_tmp.parent.mkdir(parents=True, exist_ok=True)
     student_cpu = CompactStudentONNX(student.cpu().eval())
-    dummy_sym = torch.randn(36, 19, dtype=torch.float32)
+    dummy_sym = torch.randn(36, student.sym_dim, dtype=torch.float32)
     dummy_pref = torch.randn(36, len(PREF_KEYS), dtype=torch.float32)
     safe_onnx_export(
         student_cpu,
@@ -1276,7 +1326,7 @@ def export_models(teacher, student, tokenizer):
         opset_version=17,
     )
     compact_sess = ort.InferenceSession(str(compact_tmp), providers=["CPUExecutionProvider"])
-    compact_input = np.random.default_rng(7).normal(size=(36, 19)).astype(np.float32)
+    compact_input = np.random.default_rng(7).normal(size=(36, student.sym_dim)).astype(np.float32)
     compact_pref = np.random.default_rng(8).normal(size=(36, len(PREF_KEYS))).astype(np.float32)
     compact_sess.run(None, {"sym_features": compact_input, "pref_features": compact_pref})
     start_time = time.perf_counter()
@@ -1300,7 +1350,7 @@ def export_models(teacher, student, tokenizer):
         dummy_ids = torch.ones(2, MAX_SEQ_LEN, dtype=torch.long)
         dummy_mask = torch.ones(2, MAX_SEQ_LEN, dtype=torch.long)
         dummy_span = torch.ones(2, dtype=torch.long)
-        dummy_sym = torch.randn(2, 19, dtype=torch.float32)
+        dummy_sym = torch.randn(2, teacher.sym_dim, dtype=torch.float32)
         dummy_pref = torch.randn(2, len(PREF_KEYS), dtype=torch.float32)
         safe_onnx_export(
             full_wrapper,
@@ -1331,7 +1381,7 @@ def export_models(teacher, student, tokenizer):
         full_feed = {
             "input_ids": np.ones((2, MAX_SEQ_LEN), dtype=np.int64),
             "attention_mask": np.ones((2, MAX_SEQ_LEN), dtype=np.int64),
-            "sym_features": np.zeros((2, 19), dtype=np.float32),
+            "sym_features": np.zeros((2, teacher.sym_dim), dtype=np.float32),
             "pref_features": np.zeros((2, len(PREF_KEYS)), dtype=np.float32),
             "span_start": np.ones((2,), dtype=np.int64),
             "span_end": np.full((2,), 3, dtype=np.int64),
@@ -1451,6 +1501,12 @@ def push_back(report: dict, promoted: bool, compact_path: Path, full_path: Path 
 
     save_json(REPORT_JSON_PATH, report)
     staged = ["transfer/models/cfb-micro-97m-report.json"]
+    # 2026-10-04：3 折家族 CV 时额外落一份带折名的报告，便于三折并读（互不覆盖）。
+    fold_family = (report.get("training", {}) or {}).get("validationFamily") or (report.get("dataset", {}) or {}).get("validationFamily")
+    if fold_family:
+        fold_path = REPORT_JSON_PATH.with_name(f"cfb-micro-97m-report.fold-{fold_family}.json")
+        save_json(fold_path, report)
+        staged.append(str(fold_path.relative_to(ROOT)))
     if FINAL_TEST_LEDGER_PATH.exists():
         staged.append(str(FINAL_TEST_LEDGER_PATH.relative_to(ROOT)))
     if CANDIDATE_WEIGHTS_PATH.exists():
@@ -1658,6 +1714,12 @@ def main():
     parser.add_argument("--pref-lr", type=float, default=5e-4)
     parser.add_argument("--student-lr", type=float, default=2e-3)
     parser.add_argument("--pref-student-lr", type=float, default=1e-3)
+    parser.add_argument("--micro-mlp-hidden", type=int, default=96,
+                        help="hidden width of the symbolic MLP head (teacher and compact student share it)")
+    parser.add_argument("--validation-family", type=str, default=None,
+                        help="override the grouped validation family (used for the 3-fold family cross-validation)")
+    parser.add_argument("--preregistration", type=str, default="transfer/micro-preregistration.json",
+                        help="machine-readable pre-registration; if present, CLI flags must match it or training refuses to start")
     parser.add_argument("--student-epochs", type=int, default=260)
     parser.add_argument("--student-pair-objective", choices=["listwise", "ranknet"], default="listwise",
                         help="compact student Unit pair objective; listwise = softmax over each positive's negative group (default), ranknet = pairwise margin sigmoid")
@@ -1695,6 +1757,11 @@ def main():
     except ImportError as exc:
         raise RuntimeError('missing dependency: run pip install "transformers==4.56.2" safetensors') from exc
 
+    prereg_info = load_preregistration(args)
+    if prereg_info.get("matched"):
+        print(f"   [Prereg] matched {prereg_info['file']} (sha256 {prereg_info['sha256'][:12]}…, {prereg_info['declaredFlagCount']} flags)")
+    elif prereg_info.get("file") is None:
+        print("   [Prereg] no preregistration file; proceeding without the decision-rule lock")
     t_start = time.time()
     set_seed(42)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -1757,7 +1824,12 @@ def main():
         if is_holdout_family(pair.get("family")) or pair.get("split") == "holdout":
             raise RuntimeError("holdout preference pair entered the training dataset")
 
-    model = CFBMicro97M(encoder, prior_weights).to(device)
+    SYM_DIM = int(len(dataset["unitSamples"][0]["features"]))
+    TEXT_HASH_BUCKETS = int(dataset.get("stats", {}).get("textHashBuckets", 0) or 0)
+    if SYM_DIM != 19 + TEXT_HASH_BUCKETS:
+        raise RuntimeError(f"dataset feature width mismatch: symDim={SYM_DIM}, textHashBuckets={TEXT_HASH_BUCKETS}")
+    print(f"   [Data] symbolic feature dim={SYM_DIM} (19 base + {TEXT_HASH_BUCKETS} text-hash buckets)")
+    model = CFBMicro97M(encoder, prior_weights, mlp_hidden=args.micro_mlp_hidden, sym_dim=SYM_DIM).to(device)
     total_params = sum(p.numel() for p in model.parameters())
     backbone_params = sum(p.numel() for p in model.encoder.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -2082,6 +2154,7 @@ def main():
         "gates": gates,
         "accepted": accepted,
         "promotionEligible": accepted,
+        "preregistration": prereg_info,
         "gatePolicy": gate_policy,
         "promoted": False,
         "scope": {
