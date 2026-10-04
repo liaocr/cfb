@@ -1,6 +1,6 @@
 {
   "schema": "cfb.micro-97m-training-report/3",
-  "completedAt": "2026-10-04T08:15:25Z",
+  "completedAt": "2026-10-04T11:20:21Z",
   "model": {
     "id": "ibm-granite/granite-embedding-97m-multilingual-r2",
     "revision": "835ad14087e140460703cf0fae09f97d469d65c2",
@@ -20,9 +20,9 @@
     "holdoutEvaluatedForMode2": true,
     "holdoutFreshBlindSet": false,
     "freshIndependentNewFamilyTest": {
-      "status": "blocked-no-new-independent-family",
+      "status": "blocked-final-dataset-not-found",
       "passed": false,
-      "reason": "--final-test-dataset was not supplied; existing sse-truncated validation and Gold holdouts are not blind",
+      "datasetPath": "/kaggle/input/cfb-final-family/micro-final-test.json",
       "eligibleFamiliesInCurrentMicroCorpus": [
         "flaky-timeout",
         "perf-regression",
@@ -31,16 +31,16 @@
       "requiredNext": "supply a genuinely new, semantically reviewed family after code/data/split/checkpoint freeze; never relabel _decoy/_long-horizon variants"
     },
     "finalEvaluationFreeze": {
-      "frozenAt": "2026-10-04T08:15:25Z",
-      "codeCommit": "47e15c0994c35a1fa4f00fe4dfb37ae4683fe057",
+      "frozenAt": "2026-10-04T11:20:21Z",
+      "codeCommit": "fb539255a342aea765c66b70d2cdc5383e6d04cb",
       "sourceSha256": {
         "src/compile-v5-local.js": "7ce00c74a1b90a4686e354964575177125acc4ad01c9ed67aa516625cb9d3a37",
-        "tools/build-micro-dataset.mjs": "b5844dc2a6f5bb080821c6de4a69ab1eba8af3acb45ea059bdfab2672a2ee8a4",
-        "tools/eval-micro-js-pairs.mjs": "85827d7bcc1f6fa234a41d47efe1b7459c698a13392b3722d90039db2eccabd8",
-        "tools/kaggle-train-micro.py": "894853b0499c6387f142e0b93868eea4ecf42a9cc3390c6b34373d83eaeef1c4"
+        "tools/build-micro-dataset.mjs": "7db58867828028ce454d0cacb0820144025d5cf1bb8ac05171c05568b8b4612a",
+        "tools/eval-micro-js-pairs.mjs": "d926380a9d07edd433256952ee96fec01f69d3634b83541bfdaf006b2663b7e8",
+        "tools/kaggle-train-micro.py": "b3037e96c683334d03b01346cb444975f77d47cf189c1774c7c63db196e72fe8"
       },
-      "trainingDatasetSha256": "400080ef45537e76a64cd3d4020092742cf9b5b9f35918d36fc3e48ee213767d",
-      "candidateScoringWeightsSha256": "26375f701b86feddfd4962b62ffedeb85932506d15d23408d1d990815df6c8fa",
+      "trainingDatasetSha256": "164f99eaae77a187021a03ab65153d437592938e33d934d516b6a848a67909a8",
+      "candidateScoringWeightsSha256": "7f4a23b6a55eb5417ea3d06a8d4985fea3ab1f5ab4cfe16efe4e16b45b2689cc",
       "candidateWeightsPath": "transfer/models/v5-micro-weights.candidate.json",
       "validationFamily": "sse-truncated",
       "trainingObjective": "grouped SFT multi-task + teacher SimPO-inspired margin pair loss + compact-student JS-aligned Unit gammaStep pair loss + compact-student draft reward distillation; final candidate Unit/Draft scores use the production JS scorer"
@@ -58,27 +58,38 @@
     "devGoldItems": 7,
     "devPoolItems": 3,
     "unitSamples": 1538,
-    "unitPairs": 406,
-    "draftPairs": 155,
+    "unitPairs": 609,
+    "draftPairs": 71,
     "trainEligibleUnitSamples": 569,
     "unitLabelNeedsReview": 969,
-    "trainEligibleDraftPairs": 128,
-    "draftPairLabelsNeedsReview": 27,
+    "trainEligibleDraftPairs": 38,
+    "draftPairLabelsNeedsReview": 33,
     "unitPairEndpointReuse": {
-      "maxDegree": 2,
-      "uniqueEndpoints": 529,
-      "endpointReferences": 812,
-      "endpointsReused": 283,
-      "reuseFraction": 0.535,
+      "maxDegree": 3,
+      "uniqueEndpoints": 569,
+      "endpointReferences": 1218,
+      "endpointsReused": 396,
+      "reuseFraction": 0.696,
       "degreeHistogram": {
-        "1": 246,
-        "2": 283,
-        "3": 0,
+        "1": 173,
+        "2": 143,
+        "3": 253,
         "4": 0
       },
-      "cap": 2
+      "cap": 3
     },
-    "uniqueUnitPairEndpoints": 529,
+    "pairConstruction": {
+      "strategy": "hardened",
+      "endpointDegreeCap": 3,
+      "maxPairsPerPositive": 3,
+      "nearLengthTokens": 3,
+      "note": "hardened = length-matched + model-hard negatives first; legacy = hardness only"
+    },
+    "flywheelSourcePath": "transfer/models/dev-flywheel-pairs.json",
+    "flywheelScoresDegenerate": false,
+    "flywheelDistinctScorePairs": 6,
+    "trainingDatasetSha256": "164f99eaae77a187021a03ab65153d437592938e33d934d516b6a848a67909a8",
+    "uniqueUnitPairEndpoints": 569,
     "familyCount": 3,
     "familyNames": [
       "flaky-timeout",
@@ -105,9 +116,9 @@
         "noise-label-has-actionable-cue": 22,
         "noise-label-has-gold-overlap": 33
       },
-      "preferencePairs": 155,
-      "trainEligiblePreferencePairs": 128,
-      "needsReviewPreferencePairs": 27,
+      "preferencePairs": 71,
+      "trainEligiblePreferencePairs": 38,
+      "needsReviewPreferencePairs": 33,
       "reviewStatus": "deterministic-screen-only; LLM/human semantic review not run"
     },
     "splitAndCheckpointRules": {
@@ -115,30 +126,261 @@
       "validationFamilySelection": "closest eligible-unit family size to 20%; deterministic SHA-256 tie-break; no label or score optimization",
       "sftCheckpoint": "minimum grouped validation loss",
       "teacherPreferenceCheckpoint": "maximum unweighted mean of grouped validation Unit-pair and Draft-pair accuracy",
-      "compactUnitHeadCheckpoint": "minimum grouped validation distillation/classification loss; Unit-pair score is reported only through actual JS runtime after serialization",
+      "compactUnitHeadCheckpoint": "minimum grouped validation total loss = multitask (0.55*CE + 0.45*KL + huber(value) + 0.6*huber(temptation)) + unit_pair_loss_weight * Unit pair objective loss; the Unit-pair objective therefore participates in checkpoint selection",
       "compactDraftHeadCheckpoint": "maximum grouped validation pair accuracy; lower distillation/ranking loss breaks ties",
       "freshNewFamilyTest": "run after the frozen candidate if --final-test-dataset is supplied; never enters fitting or checkpoint selection"
     },
-    "unitPairTrainCount": 268,
-    "unitPairValidationCount": 138,
-    "draftPairTrainCount": 88,
-    "draftPairValidationCount": 40
+    "unitPairTrainCount": 402,
+    "unitPairValidationCount": 207,
+    "draftPairTrainCount": 26,
+    "draftPairValidationCount": 12
   },
   "ceilingDistances": {
     "sftValidationSlotAccTo100Pp": 74.85,
-    "unitPreferenceValidationTo100Pp": 43.48,
-    "compactStudentUnitPairValidationTo100Pp": 13.77,
-    "jsRuntimeUnitPairValidationTo100Pp": 13.77,
-    "teacherDraftPreferenceValidationTo100Pp": 12.5,
-    "pytorchCompactStudentDraftValidationTo100Pp": 12.5,
-    "compactStudentDraftPairValidationTo100Pp": 12.5,
-    "jsRuntimeDraftPairValidationTo100Pp": 12.5,
+    "unitPreferenceValidationTo100Pp": 38.65,
+    "compactStudentUnitPairValidationTo100Pp": 14.98,
+    "jsRuntimeUnitPairValidationTo100Pp": 14.98,
+    "teacherDraftPreferenceValidationTo100Pp": 0.0,
+    "pytorchCompactStudentDraftValidationTo100Pp": 0.0,
+    "compactStudentDraftPairValidationTo100Pp": 0.0,
+    "jsRuntimeDraftPairValidationTo100Pp": 0.0,
     "mode2DevMeanScoreTo1Pp": 0.0,
     "mode2HoldoutMeanScoreTo1Pp": 0.0,
     "mode2MeanCharReductionTo100Pp": 41.19,
     "mode2G1FailuresToZero": 0,
     "mode2G2FailuresToZero": 0,
     "parametersBelow100M": 2100586
+  },
+  "rulerReading": {
+    "note": "Headline accuracy keeps its historical definition (a tied pair scores 0) so gates stay comparable; lengthMatchedAccuracy restricts to pairs whose two Units differ by <= near_length_tokens tokens, where the lambda*tokenCount penalty cannot manufacture the win; wilsonLower95 is the one-sided-friendly 95% lower bound and is the honest number to compare against 90% on a 138/40-pair validation set.",
+    "candidateUnitTrain": {
+      "accuracy": 0.7761,
+      "correct": 312,
+      "total": 402,
+      "ties": 0,
+      "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+      "accuracyWithTiesHalfCredit": 0.7761,
+      "wilson95": {
+        "lower": 0.7329,
+        "upper": 0.8141
+      },
+      "wilsonLower95": 0.7329,
+      "lengthMatchedAccuracy": 0.7149,
+      "lengthMatchedCorrect": 163,
+      "lengthMatchedTotal": 228,
+      "lengthMatchedWilsonLower95": 0.6531,
+      "lengthMatchedShare": 0.5672,
+      "lengthStratified": {
+        "far": {
+          "correct": 131,
+          "total": 151,
+          "ties": 0,
+          "accuracy": 0.8675,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 0.8675,
+          "wilson95": {
+            "lower": 0.8043,
+            "upper": 0.9126
+          },
+          "wilsonLower95": 0.8043,
+          "wilsonLowerOneSided95": 0.8156
+        },
+        "matched": {
+          "correct": 163,
+          "total": 228,
+          "ties": 0,
+          "accuracy": 0.7149,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 0.7149,
+          "wilson95": {
+            "lower": 0.6531,
+            "upper": 0.7696
+          },
+          "wilsonLower95": 0.6531,
+          "wilsonLowerOneSided95": 0.6634
+        },
+        "near": {
+          "correct": 18,
+          "total": 23,
+          "ties": 0,
+          "accuracy": 0.7826,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 0.7826,
+          "wilson95": {
+            "lower": 0.581,
+            "upper": 0.9034
+          },
+          "wilsonLower95": 0.581,
+          "wilsonLowerOneSided95": 0.6158
+        }
+      },
+      "accuracyWithoutTokenPenalty": 0.7811
+    },
+    "candidateUnitValidation": {
+      "accuracy": 0.8502,
+      "correct": 176,
+      "total": 207,
+      "ties": 0,
+      "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+      "accuracyWithTiesHalfCredit": 0.8502,
+      "wilson95": {
+        "lower": 0.7953,
+        "upper": 0.8924
+      },
+      "wilsonLower95": 0.7953,
+      "lengthMatchedAccuracy": 0.8125,
+      "lengthMatchedCorrect": 65,
+      "lengthMatchedTotal": 80,
+      "lengthMatchedWilsonLower95": 0.7134,
+      "lengthMatchedShare": 0.3865,
+      "lengthStratified": {
+        "far": {
+          "correct": 81,
+          "total": 93,
+          "ties": 0,
+          "accuracy": 0.871,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 0.871,
+          "wilson95": {
+            "lower": 0.7879,
+            "upper": 0.9246
+          },
+          "wilsonLower95": 0.7879,
+          "wilsonLowerOneSided95": 0.8031
+        },
+        "matched": {
+          "correct": 65,
+          "total": 80,
+          "ties": 0,
+          "accuracy": 0.8125,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 0.8125,
+          "wilson95": {
+            "lower": 0.7134,
+            "upper": 0.8829
+          },
+          "wilsonLower95": 0.7134,
+          "wilsonLowerOneSided95": 0.7309
+        },
+        "near": {
+          "correct": 30,
+          "total": 34,
+          "ties": 0,
+          "accuracy": 0.8824,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 0.8824,
+          "wilson95": {
+            "lower": 0.7338,
+            "upper": 0.9533
+          },
+          "wilsonLower95": 0.7338,
+          "wilsonLowerOneSided95": 0.7623
+        }
+      },
+      "accuracyWithoutTokenPenalty": 0.8551
+    },
+    "productionUnitValidation": {
+      "accuracy": 0.6087,
+      "correct": 126,
+      "total": 207,
+      "ties": 0,
+      "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+      "accuracyWithTiesHalfCredit": 0.6087,
+      "wilson95": {
+        "lower": 0.5408,
+        "upper": 0.6726
+      },
+      "wilsonLower95": 0.5408,
+      "lengthMatchedAccuracy": 0.5,
+      "lengthMatchedCorrect": 40,
+      "lengthMatchedTotal": 80,
+      "lengthMatchedWilsonLower95": 0.393,
+      "lengthMatchedShare": 0.3865,
+      "lengthStratified": {
+        "far": {
+          "correct": 60,
+          "total": 93,
+          "ties": 0,
+          "accuracy": 0.6452,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 0.6452,
+          "wilson95": {
+            "lower": 0.5439,
+            "upper": 0.7349
+          },
+          "wilsonLower95": 0.5439,
+          "wilsonLowerOneSided95": 0.5605
+        },
+        "matched": {
+          "correct": 40,
+          "total": 80,
+          "ties": 0,
+          "accuracy": 0.5,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 0.5,
+          "wilson95": {
+            "lower": 0.393,
+            "upper": 0.607
+          },
+          "wilsonLower95": 0.393,
+          "wilsonLowerOneSided95": 0.4096
+        },
+        "near": {
+          "correct": 26,
+          "total": 34,
+          "ties": 0,
+          "accuracy": 0.7647,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 0.7647,
+          "wilson95": {
+            "lower": 0.6,
+            "upper": 0.8756
+          },
+          "wilsonLower95": 0.6,
+          "wilsonLowerOneSided95": 0.6284
+        }
+      },
+      "accuracyWithoutTokenPenalty": 0.6135
+    },
+    "candidateDraftTrain": {
+      "accuracy": 0.8462,
+      "correct": 22,
+      "total": 26,
+      "ties": 3,
+      "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+      "accuracyWithTiesHalfCredit": 0.9038,
+      "wilson95": {
+        "lower": 0.6647,
+        "upper": 0.9385
+      },
+      "wilsonLower95": 0.6647
+    },
+    "candidateDraftValidation": {
+      "accuracy": 1,
+      "correct": 12,
+      "total": 12,
+      "ties": 0,
+      "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+      "accuracyWithTiesHalfCredit": 1,
+      "wilson95": {
+        "lower": 0.7575,
+        "upper": 1
+      },
+      "wilsonLower95": 0.7575
+    },
+    "productionDraftValidation": {
+      "accuracy": 1,
+      "correct": 12,
+      "total": 12,
+      "ties": 0,
+      "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+      "accuracyWithTiesHalfCredit": 1,
+      "wilson95": {
+        "lower": 0.7575,
+        "upper": 1
+      },
+      "wilsonLower95": 0.7575
+    }
   },
   "parameters": {
     "total": 97899414,
@@ -149,7 +391,7 @@
     "fractionOfLimit": 0.978994
   },
   "training": {
-    "elapsedSeconds": 128.76,
+    "elapsedSeconds": 164.38,
     "sftAmpSkippedSteps": 3,
     "simpoAmpSkippedSteps": 0,
     "sftHistory": [
@@ -589,110 +831,110 @@
     "simpoHistory": [
       {
         "epoch": 1,
-        "loss": 1.18567,
-        "trainUnitPairAcc": 0.5634,
-        "validationUnitPairAcc": 0.5652,
-        "trainDraftPairAcc": 0.8409,
-        "validationDraftPairAcc": 0.875
+        "loss": 1.2993,
+        "trainUnitPairAcc": 0.5373,
+        "validationUnitPairAcc": 0.6135,
+        "trainDraftPairAcc": 0.8846,
+        "validationDraftPairAcc": 1.0
       },
       {
         "epoch": 2,
-        "loss": 1.23667,
-        "trainUnitPairAcc": 0.5634,
-        "validationUnitPairAcc": 0.5652,
-        "trainDraftPairAcc": 0.8523,
-        "validationDraftPairAcc": 0.875
+        "loss": 1.30011,
+        "trainUnitPairAcc": 0.5423,
+        "validationUnitPairAcc": 0.6135,
+        "trainDraftPairAcc": 0.8846,
+        "validationDraftPairAcc": 1.0
       },
       {
         "epoch": 3,
-        "loss": 1.20666,
-        "trainUnitPairAcc": 0.5634,
-        "validationUnitPairAcc": 0.5652,
-        "trainDraftPairAcc": 0.8523,
-        "validationDraftPairAcc": 0.875
+        "loss": 1.27387,
+        "trainUnitPairAcc": 0.5522,
+        "validationUnitPairAcc": 0.6135,
+        "trainDraftPairAcc": 0.8846,
+        "validationDraftPairAcc": 1.0
       },
       {
         "epoch": 4,
-        "loss": 1.2186,
-        "trainUnitPairAcc": 0.5672,
-        "validationUnitPairAcc": 0.5652,
-        "trainDraftPairAcc": 0.8523,
-        "validationDraftPairAcc": 0.875
+        "loss": 1.26344,
+        "trainUnitPairAcc": 0.5647,
+        "validationUnitPairAcc": 0.6135,
+        "trainDraftPairAcc": 0.8846,
+        "validationDraftPairAcc": 1.0
       },
       {
         "epoch": 5,
-        "loss": 1.21721,
+        "loss": 1.25469,
         "trainUnitPairAcc": 0.5672,
-        "validationUnitPairAcc": 0.5652,
-        "trainDraftPairAcc": 0.8523,
-        "validationDraftPairAcc": 0.875
+        "validationUnitPairAcc": 0.6135,
+        "trainDraftPairAcc": 0.8846,
+        "validationDraftPairAcc": 1.0
       },
       {
         "epoch": 6,
-        "loss": 1.21634,
-        "trainUnitPairAcc": 0.5709,
-        "validationUnitPairAcc": 0.5652,
-        "trainDraftPairAcc": 0.8523,
-        "validationDraftPairAcc": 0.875
+        "loss": 1.26418,
+        "trainUnitPairAcc": 0.5746,
+        "validationUnitPairAcc": 0.6135,
+        "trainDraftPairAcc": 0.8846,
+        "validationDraftPairAcc": 1.0
       },
       {
         "epoch": 7,
-        "loss": 1.3309,
-        "trainUnitPairAcc": 0.5784,
-        "validationUnitPairAcc": 0.5652,
-        "trainDraftPairAcc": 0.8523,
-        "validationDraftPairAcc": 0.875
+        "loss": 1.23555,
+        "trainUnitPairAcc": 0.5771,
+        "validationUnitPairAcc": 0.6135,
+        "trainDraftPairAcc": 0.8846,
+        "validationDraftPairAcc": 1.0
       },
       {
         "epoch": 8,
-        "loss": 1.2516,
-        "trainUnitPairAcc": 0.5821,
-        "validationUnitPairAcc": 0.5652,
-        "trainDraftPairAcc": 0.8523,
-        "validationDraftPairAcc": 0.875
+        "loss": 1.25236,
+        "trainUnitPairAcc": 0.5796,
+        "validationUnitPairAcc": 0.6135,
+        "trainDraftPairAcc": 0.8846,
+        "validationDraftPairAcc": 1.0
       },
       {
         "epoch": 9,
-        "loss": 1.20017,
-        "trainUnitPairAcc": 0.5821,
-        "validationUnitPairAcc": 0.5652,
-        "trainDraftPairAcc": 0.8523,
-        "validationDraftPairAcc": 0.875
+        "loss": 1.23646,
+        "trainUnitPairAcc": 0.5796,
+        "validationUnitPairAcc": 0.6135,
+        "trainDraftPairAcc": 0.8846,
+        "validationDraftPairAcc": 1.0
       },
       {
         "epoch": 10,
-        "loss": 1.25309,
-        "trainUnitPairAcc": 0.5858,
-        "validationUnitPairAcc": 0.5652,
-        "trainDraftPairAcc": 0.8523,
-        "validationDraftPairAcc": 0.875
+        "loss": 1.23464,
+        "trainUnitPairAcc": 0.5796,
+        "validationUnitPairAcc": 0.6135,
+        "trainDraftPairAcc": 0.8846,
+        "validationDraftPairAcc": 1.0
       },
       {
         "epoch": 11,
-        "loss": 1.25148,
-        "trainUnitPairAcc": 0.5896,
-        "validationUnitPairAcc": 0.5652,
-        "trainDraftPairAcc": 0.8523,
-        "validationDraftPairAcc": 0.875
+        "loss": 1.24079,
+        "trainUnitPairAcc": 0.5796,
+        "validationUnitPairAcc": 0.6135,
+        "trainDraftPairAcc": 0.8846,
+        "validationDraftPairAcc": 1.0
       },
       {
         "epoch": 12,
-        "loss": 1.19735,
-        "trainUnitPairAcc": 0.5896,
-        "validationUnitPairAcc": 0.5652,
-        "trainDraftPairAcc": 0.8523,
-        "validationDraftPairAcc": 0.875
+        "loss": 1.23141,
+        "trainUnitPairAcc": 0.5796,
+        "validationUnitPairAcc": 0.6135,
+        "trainDraftPairAcc": 0.8846,
+        "validationDraftPairAcc": 1.0
       }
     ],
     "simpoBestEpoch": 1,
-    "simpoTrainUnitPairAcc": 0.5634,
-    "simpoValidationUnitPairAcc": 0.5652,
-    "teacherValidationUnitPairAcc": 0.5652,
-    "teacherValidationDraftPairAcc": 0.875,
-    "compactStudentUnitTrainPairAcc": 0.7687,
-    "compactStudentUnitValidationPairAcc": 0.8623,
-    "compactStudentUnitTrainPairs": 268,
-    "compactStudentUnitValidationPairs": 138,
+    "simpoTrainUnitPairAcc": 0.5373,
+    "simpoValidationUnitPairAcc": 0.6135,
+    "teacherValidationUnitPairAcc": 0.6135,
+    "teacherValidationDraftPairAcc": 1.0,
+    "compactStudentUnitTrainPairAcc": 0.7761,
+    "compactStudentUnitValidationPairAcc": 0.8502,
+    "compactStudentUnitTrainPairs": 402,
+    "compactStudentUnitValidationPairs": 207,
     "compactStudentPairScorer": "src/compile-v5-local.js:extractUnitFeatures (dataset-built JS vectors) + scoreUnitWithWeights + scoreDraftPreferenceFeatures",
     "compactStudentPythonJsNumericalParity": {
       "status": "passed",
@@ -700,17 +942,23 @@
       "runtime": "src/compile-v5-local.js scoring functions on the candidate JSON weights",
       "tolerance": 0.001,
       "unitCases": 569,
-      "draftCases": 256,
-      "unitMaxAbsError": 5.044e-05,
+      "draftCases": 76,
+      "unitMaxAbsError": 5.063e-05,
       "unitSlotMismatches": 0,
       "unitGateMismatches": 0,
       "unitGateActiveCases": 110,
-      "draftMaxAbsError": 4.974e-05
+      "draftMaxAbsError": 4.615e-05
     },
     "jsRuntimePairEvaluation": {
-      "schema": "cfb.micro-js-pair-eval/3",
+      "schema": "cfb.micro-js-pair-eval/4",
       "runtimeScorer": "src/compile-v5-local.js:extractUnitFeatures (dataset-built JS vectors) + scoreUnitWithWeights + scoreDraftPreferenceFeatures",
       "unitPairRankScore": "pair accuracy compares scoreUnitWithWeights(...).v, including lambda * tokenCount; the same call applies EXCLUDED negative-priming gate to slot probabilities used by selection and reports gate counts",
+      "metricsPolicy": {
+        "ties": "strict (ties count 0) is the headline and gate-comparable metric; accuracyWithTiesHalfCredit is reported alongside",
+        "smallSampleStatistics": "Wilson 95% interval and one-sided 95% lower bound per metric; with 138/40 pairs a 4pp difference is inside noise, so gates must be read with the lower bound",
+        "lengthStratification": "unit pairs are bucketed by |delta token|; the matched bucket (length cannot explain the outcome) carries the load-bearing claim",
+        "tokenPenaltyDecoupling": "every unit metric is also computed with lambda*tokenCount added back, so conclusions cannot come from the length penalty alone"
+      },
       "weightsPath": "transfer/models/v5-micro-weights.candidate.json",
       "datasetPath": "transfer/models/micro-dev-dataset.json",
       "datasetSchema": "cfb.micro-dev-dataset/3",
@@ -722,12 +970,12 @@
         "sse-truncated"
       ],
       "unitPairEndpointAudit": {
-        "eligiblePairs": 406,
-        "uniqueEndpoints": 529,
-        "endpointReferences": 812,
-        "endpointsReused": 283,
-        "maxEndpointDegree": 2,
-        "cap": 2
+        "eligiblePairs": 609,
+        "uniqueEndpoints": 569,
+        "endpointReferences": 1218,
+        "endpointsReused": 396,
+        "maxEndpointDegree": 3,
+        "cap": 3
       },
       "validationFamily": "sse-truncated",
       "validationFamilyWasUsedForCheckpointSelection": true,
@@ -746,52 +994,324 @@
         "weightsDigest": "a3ddacc67139db0508e40eac59888c9acebbef04d8c8d1ee833a2fdf27f05bd7",
         "unitPairs": {
           "train": {
-            "correct": 150,
-            "total": 268,
-            "accuracy": 0.5597,
+            "correct": 209,
+            "total": 402,
             "ties": 0,
+            "accuracy": 0.5199,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 0.5199,
+            "wilson95": {
+              "lower": 0.4711,
+              "upper": 0.5683
+            },
+            "wilsonLower95": 0.4711,
+            "wilsonLowerOneSided95": 0.4789,
             "byFamily": {
               "flaky-timeout": {
-                "correct": 141,
-                "total": 240,
-                "accuracy": 0.5875
+                "correct": 196,
+                "total": 360,
+                "accuracy": 0.5444
               },
               "perf-regression": {
-                "correct": 9,
-                "total": 28,
-                "accuracy": 0.3214
+                "correct": 13,
+                "total": 42,
+                "accuracy": 0.3095
               }
             },
-            "maxEndpointDegree": 2,
-            "endpointReuseCap": 2,
+            "maxEndpointDegree": 3,
+            "endpointReuseCap": 3,
+            "lengthStratified": {
+              "far": {
+                "correct": 83,
+                "total": 151,
+                "ties": 0,
+                "accuracy": 0.5497,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.5497,
+                "wilson95": {
+                  "lower": 0.4701,
+                  "upper": 0.6268
+                },
+                "wilsonLower95": 0.4701,
+                "wilsonLowerOneSided95": 0.4828
+              },
+              "matched": {
+                "correct": 113,
+                "total": 228,
+                "ties": 0,
+                "accuracy": 0.4956,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.4956,
+                "wilson95": {
+                  "lower": 0.4313,
+                  "upper": 0.56
+                },
+                "wilsonLower95": 0.4313,
+                "wilsonLowerOneSided95": 0.4415
+              },
+              "near": {
+                "correct": 13,
+                "total": 23,
+                "ties": 0,
+                "accuracy": 0.5652,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.5652,
+                "wilson95": {
+                  "lower": 0.3681,
+                  "upper": 0.7437
+                },
+                "wilsonLower95": 0.3681,
+                "wilsonLowerOneSided95": 0.3974
+              }
+            },
+            "lengthStratumBounds": {
+              "matched": "|delta token| <= 3",
+              "near": "3 < |delta token| <= 8",
+              "far": "|delta token| > 8"
+            },
+            "lengthMatchedSubset": {
+              "correct": 113,
+              "total": 228,
+              "ties": 0,
+              "accuracy": 0.4956,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 0.4956,
+              "wilson95": {
+                "lower": 0.4313,
+                "upper": 0.56
+              },
+              "wilsonLower95": 0.4313,
+              "wilsonLowerOneSided95": 0.4415
+            },
+            "lengthMatchedShare": 0.5672,
+            "medianLengthGap": 3,
+            "lengthShortcutAudit": {
+              "note": "a longer winner means lambda*tokenCount works against the label; accuracy there cannot be a length shortcut",
+              "winnerLonger": {
+                "correct": 159,
+                "total": 300,
+                "ties": 0,
+                "accuracy": 0.53,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.53,
+                "wilson95": {
+                  "lower": 0.4735,
+                  "upper": 0.5857
+                },
+                "wilsonLower95": 0.4735,
+                "wilsonLowerOneSided95": 0.4825
+              },
+              "winnerShorter": {
+                "correct": 33,
+                "total": 72,
+                "ties": 0,
+                "accuracy": 0.4583,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.4583,
+                "wilson95": {
+                  "lower": 0.3483,
+                  "upper": 0.5726
+                },
+                "wilsonLower95": 0.3483,
+                "wilsonLowerOneSided95": 0.365
+              },
+              "equalLength": {
+                "correct": 17,
+                "total": 30,
+                "ties": 0,
+                "accuracy": 0.5667,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.5667,
+                "wilson95": {
+                  "lower": 0.392,
+                  "upper": 0.7262
+                },
+                "wilsonLower95": 0.392,
+                "wilsonLowerOneSided95": 0.4185
+              }
+            },
+            "scoreWithoutTokenPenalty": {
+              "rankScoreDefinition": "v + lambda*tokenCount (lambda*tokenCount removed from the compared score)",
+              "correct": 218,
+              "total": 402,
+              "ties": 0,
+              "accuracy": 0.5423,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 0.5423,
+              "wilson95": {
+                "lower": 0.4934,
+                "upper": 0.5904
+              },
+              "wilsonLower95": 0.4934,
+              "wilsonLowerOneSided95": 0.5013,
+              "agreementWithFullScore": 0.9677
+            },
             "scoreAudit": {
-              "uniqueEndpointsScored": 366,
+              "uniqueEndpointsScored": 406,
               "tokenLengthPenaltyIncludedInRankScore": true,
-              "tokenPenaltyMean": 0.060499,
+              "tokenPenaltyDecoupledMetricReported": true,
+              "tokenPenaltyCoupledMetricRole": "headline accuracy stays on the production rank score v; scoreWithoutTokenPenalty reports the same pairs with lambda*tokenCount removed",
+              "tokenPenaltyMean": 0.055811,
               "tokenPenaltyMin": 0.0076,
               "tokenPenaltyMax": 0.2508,
-              "excludedGateActiveEndpoints": 57,
+              "excludedGateActiveEndpoints": 71,
               "scoredAsExcludedAfterGate": 0,
-              "scoredAsNoiseAfterGate": 38
+              "scoredAsNoiseAfterGate": 47
             }
           },
           "validation": {
-            "correct": 78,
-            "total": 138,
-            "accuracy": 0.5652,
+            "correct": 126,
+            "total": 207,
             "ties": 0,
+            "accuracy": 0.6087,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 0.6087,
+            "wilson95": {
+              "lower": 0.5408,
+              "upper": 0.6726
+            },
+            "wilsonLower95": 0.5408,
+            "wilsonLowerOneSided95": 0.5518,
             "byFamily": {
               "sse-truncated": {
-                "correct": 78,
-                "total": 138,
-                "accuracy": 0.5652
+                "correct": 126,
+                "total": 207,
+                "accuracy": 0.6087
               }
             },
-            "maxEndpointDegree": 2,
-            "endpointReuseCap": 2,
+            "maxEndpointDegree": 3,
+            "endpointReuseCap": 3,
+            "lengthStratified": {
+              "far": {
+                "correct": 60,
+                "total": 93,
+                "ties": 0,
+                "accuracy": 0.6452,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.6452,
+                "wilson95": {
+                  "lower": 0.5439,
+                  "upper": 0.7349
+                },
+                "wilsonLower95": 0.5439,
+                "wilsonLowerOneSided95": 0.5605
+              },
+              "matched": {
+                "correct": 40,
+                "total": 80,
+                "ties": 0,
+                "accuracy": 0.5,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.5,
+                "wilson95": {
+                  "lower": 0.393,
+                  "upper": 0.607
+                },
+                "wilsonLower95": 0.393,
+                "wilsonLowerOneSided95": 0.4096
+              },
+              "near": {
+                "correct": 26,
+                "total": 34,
+                "ties": 0,
+                "accuracy": 0.7647,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.7647,
+                "wilson95": {
+                  "lower": 0.6,
+                  "upper": 0.8756
+                },
+                "wilsonLower95": 0.6,
+                "wilsonLowerOneSided95": 0.6284
+              }
+            },
+            "lengthStratumBounds": {
+              "matched": "|delta token| <= 3",
+              "near": "3 < |delta token| <= 8",
+              "far": "|delta token| > 8"
+            },
+            "lengthMatchedSubset": {
+              "correct": 40,
+              "total": 80,
+              "ties": 0,
+              "accuracy": 0.5,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 0.5,
+              "wilson95": {
+                "lower": 0.393,
+                "upper": 0.607
+              },
+              "wilsonLower95": 0.393,
+              "wilsonLowerOneSided95": 0.4096
+            },
+            "lengthMatchedShare": 0.3865,
+            "medianLengthGap": 8,
+            "lengthShortcutAudit": {
+              "note": "a longer winner means lambda*tokenCount works against the label; accuracy there cannot be a length shortcut",
+              "winnerLonger": {
+                "correct": 117,
+                "total": 176,
+                "ties": 0,
+                "accuracy": 0.6648,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.6648,
+                "wilson95": {
+                  "lower": 0.5922,
+                  "upper": 0.7303
+                },
+                "wilsonLower95": 0.5922,
+                "wilsonLowerOneSided95": 0.6041
+              },
+              "winnerShorter": {
+                "correct": 5,
+                "total": 16,
+                "ties": 0,
+                "accuracy": 0.3125,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.3125,
+                "wilson95": {
+                  "lower": 0.1416,
+                  "upper": 0.556
+                },
+                "wilsonLower95": 0.1416,
+                "wilsonLowerOneSided95": 0.1613
+              },
+              "equalLength": {
+                "correct": 4,
+                "total": 15,
+                "ties": 0,
+                "accuracy": 0.2667,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.2667,
+                "wilson95": {
+                  "lower": 0.109,
+                  "upper": 0.5195
+                },
+                "wilsonLower95": 0.109,
+                "wilsonLowerOneSided95": 0.1258
+              }
+            },
+            "scoreWithoutTokenPenalty": {
+              "rankScoreDefinition": "v + lambda*tokenCount (lambda*tokenCount removed from the compared score)",
+              "correct": 127,
+              "total": 207,
+              "ties": 0,
+              "accuracy": 0.6135,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 0.6135,
+              "wilson95": {
+                "lower": 0.5457,
+                "upper": 0.6772
+              },
+              "wilsonLower95": 0.5457,
+              "wilsonLowerOneSided95": 0.5567,
+              "agreementWithFullScore": 0.9952
+            },
             "scoreAudit": {
               "uniqueEndpointsScored": 163,
               "tokenLengthPenaltyIncludedInRankScore": true,
+              "tokenPenaltyDecoupledMetricReported": true,
+              "tokenPenaltyCoupledMetricRole": "headline accuracy stays on the production rank score v; scoreWithoutTokenPenalty reports the same pairs with lambda*tokenCount removed",
               "tokenPenaltyMean": 0.0456,
               "tokenPenaltyMin": 0.0076,
               "tokenPenaltyMax": 0.1444,
@@ -803,33 +1323,49 @@
         },
         "draftPairs": {
           "train": {
-            "correct": 74,
-            "total": 88,
-            "accuracy": 0.8409,
+            "correct": 22,
+            "total": 26,
             "ties": 3,
+            "accuracy": 0.8462,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 0.9038,
+            "wilson95": {
+              "lower": 0.6647,
+              "upper": 0.9385
+            },
+            "wilsonLower95": 0.6647,
+            "wilsonLowerOneSided95": 0.698,
             "byFamily": {
               "flaky-timeout": {
-                "correct": 45,
-                "total": 51,
-                "accuracy": 0.8824
+                "correct": 13,
+                "total": 16,
+                "accuracy": 0.8125
               },
               "perf-regression": {
-                "correct": 29,
-                "total": 37,
-                "accuracy": 0.7838
+                "correct": 9,
+                "total": 10,
+                "accuracy": 0.9
               }
             }
           },
           "validation": {
-            "correct": 35,
-            "total": 40,
-            "accuracy": 0.875,
-            "ties": 1,
+            "correct": 12,
+            "total": 12,
+            "ties": 0,
+            "accuracy": 1,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 1,
+            "wilson95": {
+              "lower": 0.7575,
+              "upper": 1
+            },
+            "wilsonLower95": 0.7575,
+            "wilsonLowerOneSided95": 0.816,
             "byFamily": {
               "sse-truncated": {
-                "correct": 35,
-                "total": 40,
-                "accuracy": 0.875
+                "correct": 12,
+                "total": 12,
+                "accuracy": 1
               }
             }
           }
@@ -837,93 +1373,381 @@
       },
       "candidate": {
         "schema": "cfb.v5-micro-weights/3-distilled-pretrained",
-        "weightsDigest": "26375f701b86feddfd4962b62ffedeb85932506d15d23408d1d990815df6c8fa",
+        "weightsDigest": "7f4a23b6a55eb5417ea3d06a8d4985fea3ab1f5ab4cfe16efe4e16b45b2689cc",
         "unitPairs": {
           "train": {
-            "correct": 206,
-            "total": 268,
-            "accuracy": 0.7687,
+            "correct": 312,
+            "total": 402,
             "ties": 0,
+            "accuracy": 0.7761,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 0.7761,
+            "wilson95": {
+              "lower": 0.7329,
+              "upper": 0.8141
+            },
+            "wilsonLower95": 0.7329,
+            "wilsonLowerOneSided95": 0.7401,
             "byFamily": {
               "flaky-timeout": {
-                "correct": 183,
-                "total": 240,
-                "accuracy": 0.7625
+                "correct": 276,
+                "total": 360,
+                "accuracy": 0.7667
               },
               "perf-regression": {
-                "correct": 23,
-                "total": 28,
-                "accuracy": 0.8214
+                "correct": 36,
+                "total": 42,
+                "accuracy": 0.8571
               }
             },
-            "maxEndpointDegree": 2,
-            "endpointReuseCap": 2,
+            "maxEndpointDegree": 3,
+            "endpointReuseCap": 3,
+            "lengthStratified": {
+              "far": {
+                "correct": 131,
+                "total": 151,
+                "ties": 0,
+                "accuracy": 0.8675,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.8675,
+                "wilson95": {
+                  "lower": 0.8043,
+                  "upper": 0.9126
+                },
+                "wilsonLower95": 0.8043,
+                "wilsonLowerOneSided95": 0.8156
+              },
+              "matched": {
+                "correct": 163,
+                "total": 228,
+                "ties": 0,
+                "accuracy": 0.7149,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.7149,
+                "wilson95": {
+                  "lower": 0.6531,
+                  "upper": 0.7696
+                },
+                "wilsonLower95": 0.6531,
+                "wilsonLowerOneSided95": 0.6634
+              },
+              "near": {
+                "correct": 18,
+                "total": 23,
+                "ties": 0,
+                "accuracy": 0.7826,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.7826,
+                "wilson95": {
+                  "lower": 0.581,
+                  "upper": 0.9034
+                },
+                "wilsonLower95": 0.581,
+                "wilsonLowerOneSided95": 0.6158
+              }
+            },
+            "lengthStratumBounds": {
+              "matched": "|delta token| <= 3",
+              "near": "3 < |delta token| <= 8",
+              "far": "|delta token| > 8"
+            },
+            "lengthMatchedSubset": {
+              "correct": 163,
+              "total": 228,
+              "ties": 0,
+              "accuracy": 0.7149,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 0.7149,
+              "wilson95": {
+                "lower": 0.6531,
+                "upper": 0.7696
+              },
+              "wilsonLower95": 0.6531,
+              "wilsonLowerOneSided95": 0.6634
+            },
+            "lengthMatchedShare": 0.5672,
+            "medianLengthGap": 3,
+            "lengthShortcutAudit": {
+              "note": "a longer winner means lambda*tokenCount works against the label; accuracy there cannot be a length shortcut",
+              "winnerLonger": {
+                "correct": 250,
+                "total": 300,
+                "ties": 0,
+                "accuracy": 0.8333,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.8333,
+                "wilson95": {
+                  "lower": 0.787,
+                  "upper": 0.8712
+                },
+                "wilsonLower95": 0.787,
+                "wilsonLowerOneSided95": 0.795
+              },
+              "winnerShorter": {
+                "correct": 44,
+                "total": 72,
+                "ties": 0,
+                "accuracy": 0.6111,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.6111,
+                "wilson95": {
+                  "lower": 0.4956,
+                  "upper": 0.7153
+                },
+                "wilsonLower95": 0.4956,
+                "wilsonLowerOneSided95": 0.5142
+              },
+              "equalLength": {
+                "correct": 18,
+                "total": 30,
+                "ties": 0,
+                "accuracy": 0.6,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.6,
+                "wilson95": {
+                  "lower": 0.4232,
+                  "upper": 0.7541
+                },
+                "wilsonLower95": 0.4232,
+                "wilsonLowerOneSided95": 0.4506
+              }
+            },
+            "scoreWithoutTokenPenalty": {
+              "rankScoreDefinition": "v + lambda*tokenCount (lambda*tokenCount removed from the compared score)",
+              "correct": 314,
+              "total": 402,
+              "ties": 0,
+              "accuracy": 0.7811,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 0.7811,
+              "wilson95": {
+                "lower": 0.7381,
+                "upper": 0.8188
+              },
+              "wilsonLower95": 0.7381,
+              "wilsonLowerOneSided95": 0.7454,
+              "agreementWithFullScore": 0.995
+            },
             "scoreAudit": {
-              "uniqueEndpointsScored": 366,
+              "uniqueEndpointsScored": 406,
               "tokenLengthPenaltyIncludedInRankScore": true,
-              "tokenPenaltyMean": 0.060499,
+              "tokenPenaltyDecoupledMetricReported": true,
+              "tokenPenaltyCoupledMetricRole": "headline accuracy stays on the production rank score v; scoreWithoutTokenPenalty reports the same pairs with lambda*tokenCount removed",
+              "tokenPenaltyMean": 0.055811,
               "tokenPenaltyMin": 0.0076,
               "tokenPenaltyMax": 0.2508,
-              "excludedGateActiveEndpoints": 57,
+              "excludedGateActiveEndpoints": 71,
               "scoredAsExcludedAfterGate": 3,
-              "scoredAsNoiseAfterGate": 311
+              "scoredAsNoiseAfterGate": 346
             }
           },
           "validation": {
-            "correct": 119,
-            "total": 138,
-            "accuracy": 0.8623,
+            "correct": 176,
+            "total": 207,
             "ties": 0,
+            "accuracy": 0.8502,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 0.8502,
+            "wilson95": {
+              "lower": 0.7953,
+              "upper": 0.8924
+            },
+            "wilsonLower95": 0.7953,
+            "wilsonLowerOneSided95": 0.8049,
             "byFamily": {
               "sse-truncated": {
-                "correct": 119,
-                "total": 138,
-                "accuracy": 0.8623
+                "correct": 176,
+                "total": 207,
+                "accuracy": 0.8502
               }
             },
-            "maxEndpointDegree": 2,
-            "endpointReuseCap": 2,
+            "maxEndpointDegree": 3,
+            "endpointReuseCap": 3,
+            "lengthStratified": {
+              "far": {
+                "correct": 81,
+                "total": 93,
+                "ties": 0,
+                "accuracy": 0.871,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.871,
+                "wilson95": {
+                  "lower": 0.7879,
+                  "upper": 0.9246
+                },
+                "wilsonLower95": 0.7879,
+                "wilsonLowerOneSided95": 0.8031
+              },
+              "matched": {
+                "correct": 65,
+                "total": 80,
+                "ties": 0,
+                "accuracy": 0.8125,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.8125,
+                "wilson95": {
+                  "lower": 0.7134,
+                  "upper": 0.8829
+                },
+                "wilsonLower95": 0.7134,
+                "wilsonLowerOneSided95": 0.7309
+              },
+              "near": {
+                "correct": 30,
+                "total": 34,
+                "ties": 0,
+                "accuracy": 0.8824,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.8824,
+                "wilson95": {
+                  "lower": 0.7338,
+                  "upper": 0.9533
+                },
+                "wilsonLower95": 0.7338,
+                "wilsonLowerOneSided95": 0.7623
+              }
+            },
+            "lengthStratumBounds": {
+              "matched": "|delta token| <= 3",
+              "near": "3 < |delta token| <= 8",
+              "far": "|delta token| > 8"
+            },
+            "lengthMatchedSubset": {
+              "correct": 65,
+              "total": 80,
+              "ties": 0,
+              "accuracy": 0.8125,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 0.8125,
+              "wilson95": {
+                "lower": 0.7134,
+                "upper": 0.8829
+              },
+              "wilsonLower95": 0.7134,
+              "wilsonLowerOneSided95": 0.7309
+            },
+            "lengthMatchedShare": 0.3865,
+            "medianLengthGap": 8,
+            "lengthShortcutAudit": {
+              "note": "a longer winner means lambda*tokenCount works against the label; accuracy there cannot be a length shortcut",
+              "winnerLonger": {
+                "correct": 149,
+                "total": 176,
+                "ties": 0,
+                "accuracy": 0.8466,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.8466,
+                "wilson95": {
+                  "lower": 0.786,
+                  "upper": 0.8924
+                },
+                "wilsonLower95": 0.786,
+                "wilsonLowerOneSided95": 0.7967
+              },
+              "winnerShorter": {
+                "correct": 14,
+                "total": 16,
+                "ties": 0,
+                "accuracy": 0.875,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.875,
+                "wilson95": {
+                  "lower": 0.6398,
+                  "upper": 0.965
+                },
+                "wilsonLower95": 0.6398,
+                "wilsonLowerOneSided95": 0.6838
+              },
+              "equalLength": {
+                "correct": 13,
+                "total": 15,
+                "ties": 0,
+                "accuracy": 0.8667,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.8667,
+                "wilson95": {
+                  "lower": 0.6212,
+                  "upper": 0.9626
+                },
+                "wilsonLower95": 0.6212,
+                "wilsonLowerOneSided95": 0.6664
+              }
+            },
+            "scoreWithoutTokenPenalty": {
+              "rankScoreDefinition": "v + lambda*tokenCount (lambda*tokenCount removed from the compared score)",
+              "correct": 177,
+              "total": 207,
+              "ties": 0,
+              "accuracy": 0.8551,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 0.8551,
+              "wilson95": {
+                "lower": 0.8006,
+                "upper": 0.8966
+              },
+              "wilsonLower95": 0.8006,
+              "wilsonLowerOneSided95": 0.8102,
+              "agreementWithFullScore": 0.9952
+            },
             "scoreAudit": {
               "uniqueEndpointsScored": 163,
               "tokenLengthPenaltyIncludedInRankScore": true,
+              "tokenPenaltyDecoupledMetricReported": true,
+              "tokenPenaltyCoupledMetricRole": "headline accuracy stays on the production rank score v; scoreWithoutTokenPenalty reports the same pairs with lambda*tokenCount removed",
               "tokenPenaltyMean": 0.0456,
               "tokenPenaltyMin": 0.0076,
               "tokenPenaltyMax": 0.1444,
               "excludedGateActiveEndpoints": 39,
               "scoredAsExcludedAfterGate": 4,
-              "scoredAsNoiseAfterGate": 139
+              "scoredAsNoiseAfterGate": 133
             }
           }
         },
         "draftPairs": {
           "train": {
-            "correct": 74,
-            "total": 88,
-            "accuracy": 0.8409,
+            "correct": 22,
+            "total": 26,
             "ties": 3,
+            "accuracy": 0.8462,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 0.9038,
+            "wilson95": {
+              "lower": 0.6647,
+              "upper": 0.9385
+            },
+            "wilsonLower95": 0.6647,
+            "wilsonLowerOneSided95": 0.698,
             "byFamily": {
               "flaky-timeout": {
-                "correct": 45,
-                "total": 51,
-                "accuracy": 0.8824
+                "correct": 13,
+                "total": 16,
+                "accuracy": 0.8125
               },
               "perf-regression": {
-                "correct": 29,
-                "total": 37,
-                "accuracy": 0.7838
+                "correct": 9,
+                "total": 10,
+                "accuracy": 0.9
               }
             }
           },
           "validation": {
-            "correct": 35,
-            "total": 40,
-            "accuracy": 0.875,
-            "ties": 1,
+            "correct": 12,
+            "total": 12,
+            "ties": 0,
+            "accuracy": 1,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 1,
+            "wilson95": {
+              "lower": 0.7575,
+              "upper": 1
+            },
+            "wilsonLower95": 0.7575,
+            "wilsonLowerOneSided95": 0.816,
             "byFamily": {
               "sse-truncated": {
-                "correct": 35,
-                "total": 40,
-                "accuracy": 0.875
+                "correct": 12,
+                "total": 12,
+                "accuracy": 1
               }
             }
           }
@@ -935,307 +1759,342 @@
         "runtime": "src/compile-v5-local.js scoring functions on the candidate JSON weights",
         "tolerance": 0.001,
         "unitCases": 569,
-        "draftCases": 256,
-        "unitMaxAbsError": 5.044e-05,
+        "draftCases": 76,
+        "unitMaxAbsError": 5.063e-05,
         "unitSlotMismatches": 0,
         "unitGateMismatches": 0,
         "unitGateActiveCases": 110,
-        "draftMaxAbsError": 4.974e-05
+        "draftMaxAbsError": 4.615e-05
       }
     },
-    "jsRuntimeValidationUnitPairAcc": 0.8623,
-    "compactStudentDraftTrainPairAcc": 0.8409,
-    "compactStudentDraftValidationPairAcc": 0.875,
-    "compactStudentDraftTrainPairs": 88,
-    "compactStudentDraftValidationPairs": 40,
-    "jsRuntimeValidationDraftPairAcc": 0.875,
-    "productionJsRuntimeValidationUnitPairAcc": 0.5652,
-    "productionJsRuntimeValidationDraftPairAcc": 0.875,
-    "simpoTrainDraftPairAcc": 0.8409,
-    "simpoValidationDraftPairAcc": 0.875,
+    "jsRuntimeValidationUnitPairAcc": 0.8502,
+    "compactStudentDraftTrainPairAcc": 0.8462,
+    "compactStudentDraftValidationPairAcc": 1,
+    "compactStudentDraftTrainPairs": 26,
+    "compactStudentDraftValidationPairs": 12,
+    "jsRuntimeValidationDraftPairAcc": 1,
+    "productionJsRuntimeValidationUnitPairAcc": 0.6087,
+    "productionJsRuntimeValidationDraftPairAcc": 1,
+    "simpoTrainDraftPairAcc": 0.8846,
+    "simpoValidationDraftPairAcc": 1.0,
     "pytorchStudentUnitTrain": {
-      "slotAcc": 0.6133,
-      "slotMacroF1": 0.1951,
+      "slotAcc": 0.6158,
+      "slotMacroF1": 0.199,
       "slotF1": {
         "MECHANISM": 0.0,
         "EXCLUDED": 0.0952,
-        "DECIDED": 0.2989,
+        "DECIDED": 0.3182,
         "ACCEPT": 0.0,
         "OPEN": 0.0,
-        "NOISE": 0.7767
+        "NOISE": 0.7806
       },
-      "loss": 1.55269,
-      "multiTaskLoss": 0.84462,
-      "unitPairwiseLoss": 0.70806,
-      "unitPairAccReference": 0.7687,
-      "unitPairCount": 268,
+      "loss": 2.01269,
+      "multiTaskLoss": 0.84607,
+      "unitPairwiseLoss": 1.16662,
+      "unitPairAccReference": 0.7761,
+      "unitPairObjective": "listwise",
+      "unitPairCount": 402,
       "unitPairLossWeight": 1.0,
-      "valueMae": 0.33901,
+      "valueMae": 0.33239,
       "samples": 406
     },
     "pytorchStudentUnitValidation": {
-      "slotAcc": 0.4356,
-      "slotMacroF1": 0.161,
+      "slotAcc": 0.4417,
+      "slotMacroF1": 0.1718,
       "slotF1": {
         "MECHANISM": 0.0,
         "EXCLUDED": 0.1538,
-        "DECIDED": 0.0625,
+        "DECIDED": 0.1081,
         "ACCEPT": 0.1053,
         "OPEN": 0.0,
-        "NOISE": 0.6442
+        "NOISE": 0.6634
       },
-      "loss": 1.61827,
-      "multiTaskLoss": 1.05185,
-      "unitPairwiseLoss": 0.56641,
-      "unitPairAccReference": 0.8623,
-      "unitPairCount": 138,
+      "loss": 2.02057,
+      "multiTaskLoss": 1.05355,
+      "unitPairwiseLoss": 0.96702,
+      "unitPairAccReference": 0.8502,
+      "unitPairObjective": "listwise",
+      "unitPairCount": 207,
       "unitPairLossWeight": 1.0,
-      "valueMae": 0.2487,
+      "valueMae": 0.2287,
       "samples": 163
     },
-    "pytorchStudentDraftTrainPairAcc": 0.8409091234207153,
-    "pytorchStudentDraftValidationPairAcc": 0.875,
+    "pytorchStudentDraftTrainPairAcc": 0.8461538553237915,
+    "pytorchStudentDraftValidationPairAcc": 1.0,
     "studentPreferenceHistory": [
       {
         "epoch": 1,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43636
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38488
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30379
+          "pairAcc": 1.0,
+          "loss": 0.06401
         }
       },
       {
         "epoch": 2,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43622
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38453
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30368
+          "pairAcc": 1.0,
+          "loss": 0.06365
         }
       },
       {
         "epoch": 3,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43608
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38423
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30362
+          "pairAcc": 1.0,
+          "loss": 0.06335
         }
       },
       {
         "epoch": 4,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43593
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38394
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30359
+          "pairAcc": 1.0,
+          "loss": 0.06311
         }
       },
       {
         "epoch": 5,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43579
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38365
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30358
+          "pairAcc": 1.0,
+          "loss": 0.06291
         }
       },
       {
         "epoch": 6,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43565
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38335
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30355
+          "pairAcc": 1.0,
+          "loss": 0.06274
         }
       },
       {
         "epoch": 7,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43552
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38304
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30352
+          "pairAcc": 1.0,
+          "loss": 0.0626
         }
       },
       {
         "epoch": 8,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43538
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38273
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30349
+          "pairAcc": 1.0,
+          "loss": 0.06247
         }
       },
       {
         "epoch": 9,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43524
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38241
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30347
+          "pairAcc": 1.0,
+          "loss": 0.06237
         }
       },
       {
         "epoch": 10,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43511
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38209
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30345
+          "pairAcc": 1.0,
+          "loss": 0.06229
         }
       },
       {
         "epoch": 11,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43498
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38178
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30345
+          "pairAcc": 1.0,
+          "loss": 0.06222
         }
       },
       {
         "epoch": 12,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43485
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38146
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30347
+          "pairAcc": 1.0,
+          "loss": 0.06218
         }
       },
       {
         "epoch": 13,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43472
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38115
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30349
+          "pairAcc": 1.0,
+          "loss": 0.06216
         }
       },
       {
         "epoch": 14,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43459
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38085
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30353
+          "pairAcc": 1.0,
+          "loss": 0.06216
         }
       },
       {
         "epoch": 15,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43446
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38054
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30357
+          "pairAcc": 1.0,
+          "loss": 0.06218
         }
       },
       {
         "epoch": 16,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43434
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.38025
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30362
+          "pairAcc": 1.0,
+          "loss": 0.0622
         }
       },
       {
         "epoch": 17,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43422
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.37995
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30368
+          "pairAcc": 1.0,
+          "loss": 0.06224
         }
       },
       {
         "epoch": 18,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43409
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.37966
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30375
+          "pairAcc": 1.0,
+          "loss": 0.06228
         }
       },
       {
         "epoch": 19,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43398
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.37936
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30384
+          "pairAcc": 1.0,
+          "loss": 0.06233
         }
       },
       {
         "epoch": 20,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43386
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.37907
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30394
+          "pairAcc": 1.0,
+          "loss": 0.06238
         }
       },
       {
         "epoch": 21,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43374
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.37878
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30406
+          "pairAcc": 1.0,
+          "loss": 0.06244
         }
       },
       {
         "epoch": 22,
         "train": {
-          "pairAcc": 0.8409091234207153,
-          "loss": 0.43363
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.37849
         },
         "validation": {
-          "pairAcc": 0.875,
-          "loss": 0.30418
+          "pairAcc": 1.0,
+          "loss": 0.0625
+        }
+      },
+      {
+        "epoch": 23,
+        "train": {
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.3782
+        },
+        "validation": {
+          "pairAcc": 1.0,
+          "loss": 0.06257
+        }
+      },
+      {
+        "epoch": 24,
+        "train": {
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.37791
+        },
+        "validation": {
+          "pairAcc": 1.0,
+          "loss": 0.06265
+        }
+      },
+      {
+        "epoch": 25,
+        "train": {
+          "pairAcc": 0.8461538553237915,
+          "loss": 0.37762
+        },
+        "validation": {
+          "pairAcc": 1.0,
+          "loss": 0.06275
         }
       }
     ]
@@ -1254,23 +2113,23 @@
       "validationUnitSamples": 163,
       "sftAmpSkippedSteps": 3,
       "simpoAmpSkippedSteps": 0,
-      "devUnitStepPairs": 406,
-      "devDraftPreferencePairs": 155,
-      "trainEligibleDraftPreferencePairs": 128,
-      "draftPreferencePairsNeedsReview": 27,
+      "devUnitStepPairs": 609,
+      "devDraftPreferencePairs": 71,
+      "trainEligibleDraftPreferencePairs": 38,
+      "draftPreferencePairsNeedsReview": 33,
       "unitPairEndpointReuse": {
-        "maxDegree": 2,
-        "uniqueEndpoints": 529,
-        "endpointReferences": 812,
-        "endpointsReused": 283,
-        "reuseFraction": 0.535,
+        "maxDegree": 3,
+        "uniqueEndpoints": 569,
+        "endpointReferences": 1218,
+        "endpointsReused": 396,
+        "reuseFraction": 0.696,
         "degreeHistogram": {
-          "1": 246,
-          "2": 283,
-          "3": 0,
+          "1": 173,
+          "2": 143,
+          "3": 253,
           "4": 0
         },
-        "cap": 2
+        "cap": 3
       },
       "lastSftTrain": {
         "slotAcc": 0.1823,
@@ -1321,69 +2180,72 @@
         "samples": 163
       },
       "simpoBestEpoch": 1,
-      "simpoTrainUnitPairAcc": 0.5634,
-      "simpoValidationUnitPairAcc": 0.5652,
-      "simpoTrainDraftPairAcc": 0.8409,
-      "simpoValidationDraftPairAcc": 0.875,
+      "simpoTrainUnitPairAcc": 0.5373,
+      "simpoValidationUnitPairAcc": 0.6135,
+      "simpoTrainDraftPairAcc": 0.8846,
+      "simpoValidationDraftPairAcc": 1,
       "studentUnitTrain": {
-        "slotAcc": 0.6133,
-        "slotMacroF1": 0.1951,
+        "slotAcc": 0.6158,
+        "slotMacroF1": 0.199,
         "slotF1": {
           "MECHANISM": 0,
           "EXCLUDED": 0.0952,
-          "DECIDED": 0.2989,
+          "DECIDED": 0.3182,
           "ACCEPT": 0,
           "OPEN": 0,
-          "NOISE": 0.7767
+          "NOISE": 0.7806
         },
-        "loss": 1.55269,
-        "multiTaskLoss": 0.84462,
-        "unitPairwiseLoss": 0.70806,
-        "unitPairAccReference": 0.7687,
-        "unitPairCount": 268,
+        "loss": 2.01269,
+        "multiTaskLoss": 0.84607,
+        "unitPairwiseLoss": 1.16662,
+        "unitPairAccReference": 0.7761,
+        "unitPairObjective": "listwise",
+        "unitPairCount": 402,
         "unitPairLossWeight": 1,
-        "valueMae": 0.33901,
+        "valueMae": 0.33239,
         "samples": 406
       },
       "studentUnitValidation": {
-        "slotAcc": 0.4356,
-        "slotMacroF1": 0.161,
+        "slotAcc": 0.4417,
+        "slotMacroF1": 0.1718,
         "slotF1": {
           "MECHANISM": 0,
           "EXCLUDED": 0.1538,
-          "DECIDED": 0.0625,
+          "DECIDED": 0.1081,
           "ACCEPT": 0.1053,
           "OPEN": 0,
-          "NOISE": 0.6442
+          "NOISE": 0.6634
         },
-        "loss": 1.61827,
-        "multiTaskLoss": 1.05185,
-        "unitPairwiseLoss": 0.56641,
-        "unitPairAccReference": 0.8623,
-        "unitPairCount": 138,
+        "loss": 2.02057,
+        "multiTaskLoss": 1.05355,
+        "unitPairwiseLoss": 0.96702,
+        "unitPairAccReference": 0.8502,
+        "unitPairObjective": "listwise",
+        "unitPairCount": 207,
         "unitPairLossWeight": 1,
-        "valueMae": 0.2487,
+        "valueMae": 0.2287,
         "samples": 163
       },
-      "compactStudentUnitTrainPairs": 268,
-      "compactStudentUnitValidationPairs": 138,
+      "compactStudentUnitTrainPairs": 402,
+      "compactStudentUnitValidationPairs": 207,
       "compactStudentUnitPairLossWeight": 1,
       "compactStudentUnitPairBeta": 0.85,
       "compactStudentUnitPairMarginSource": "gammaStep from audited Unit preference pairs",
-      "compactStudentUnitTrainPairwiseLoss": 0.70806,
-      "compactStudentUnitValidationPairwiseLoss": 0.56641,
-      "compactStudentUnitTrainPairAccPreSerialization": 0.7687,
-      "compactStudentUnitValidationPairAccPreSerialization": 0.8623,
-      "pytorchStudentDraftTrainPairAcc": 0.8409091234207153,
-      "pytorchStudentDraftValidationPairAcc": 0.875,
-      "compactStudentUnitTrainPairAcc": 0.7687,
-      "compactStudentUnitValidationPairAcc": 0.8623,
-      "compactStudentDraftTrainPairAcc": 0.8409,
-      "compactStudentDraftValidationPairAcc": 0.875,
-      "compactStudentDraftTrainPairs": 88,
-      "compactStudentDraftValidationPairs": 40,
-      "productionJsRuntimeValidationUnitPairAcc": 0.5652,
-      "productionJsRuntimeValidationDraftPairAcc": 0.875,
+      "compactStudentUnitPairObjective": "listwise",
+      "compactStudentUnitTrainPairwiseLoss": 1.16662,
+      "compactStudentUnitValidationPairwiseLoss": 0.96702,
+      "compactStudentUnitTrainPairAccPreSerialization": 0.7761,
+      "compactStudentUnitValidationPairAccPreSerialization": 0.8502,
+      "pytorchStudentDraftTrainPairAcc": 0.8461538553237915,
+      "pytorchStudentDraftValidationPairAcc": 1,
+      "compactStudentUnitTrainPairAcc": 0.7761,
+      "compactStudentUnitValidationPairAcc": 0.8502,
+      "compactStudentDraftTrainPairAcc": 0.8462,
+      "compactStudentDraftValidationPairAcc": 1,
+      "compactStudentDraftTrainPairs": 26,
+      "compactStudentDraftValidationPairs": 12,
+      "productionJsRuntimeValidationUnitPairAcc": 0.6087,
+      "productionJsRuntimeValidationDraftPairAcc": 1,
       "jsRuntimeScorer": "src/compile-v5-local.js:extractUnitFeatures (dataset-built JS vectors) + scoreUnitWithWeights + scoreDraftPreferenceFeatures",
       "jsRuntimeWeightsSchema": "cfb.v5-micro-weights/3-distilled-pretrained",
       "pythonJsNumericalParity": {
@@ -1392,12 +2254,12 @@
         "runtime": "src/compile-v5-local.js scoring functions on the candidate JSON weights",
         "tolerance": 0.001,
         "unitCases": 569,
-        "draftCases": 256,
-        "unitMaxAbsError": 5.044e-05,
+        "draftCases": 76,
+        "unitMaxAbsError": 5.063e-05,
         "unitSlotMismatches": 0,
         "unitGateMismatches": 0,
         "unitGateActiveCases": 110,
-        "draftMaxAbsError": 4.974e-05
+        "draftMaxAbsError": 4.615e-05
       }
     },
     "summary": {
@@ -1415,16 +2277,16 @@
       "meanSplicedChars": 1816.2,
       "meanSplicedToRawRatio": 0.4119,
       "meanCharReductionPct": 58.81,
-      "meanMs": 13.94,
-      "maxMs": 30.54,
-      "heapDeltaKB": 8157.3
+      "meanMs": 12.03,
+      "maxMs": 28.78,
+      "heapDeltaKB": 7954.7
     },
     "rows": [
       {
         "id": "eacces-config_decoy-s0-r3",
         "family": "eacces-config",
         "split": "holdout",
-        "ms": 30.54,
+        "ms": 28.78,
         "rawChars": 2906,
         "draftChars": 1017,
         "splicedChars": 1343,
@@ -1450,7 +2312,7 @@
         "id": "eacces-config_long-horizon-s0-r5",
         "family": "eacces-config",
         "split": "holdout",
-        "ms": 10.42,
+        "ms": 9.51,
         "rawChars": 3027,
         "draftChars": 1113,
         "splicedChars": 1571,
@@ -1476,7 +2338,7 @@
         "id": "flaky-timeout_long-horizon-s0-r4",
         "family": "flaky-timeout",
         "split": "dev",
-        "ms": 26.25,
+        "ms": 22.13,
         "rawChars": 19626,
         "draftChars": 1241,
         "splicedChars": 1636,
@@ -1502,7 +2364,7 @@
         "id": "flaky-timeout-s0-r4",
         "family": "flaky-timeout",
         "split": "dev",
-        "ms": 16.98,
+        "ms": 16.36,
         "rawChars": 28774,
         "draftChars": 1337,
         "splicedChars": 1647,
@@ -1528,7 +2390,7 @@
         "id": "flaky-timeout-s0-r5",
         "family": "flaky-timeout",
         "split": "dev",
-        "ms": 17.03,
+        "ms": 11.2,
         "rawChars": 11086,
         "draftChars": 1305,
         "splicedChars": 2380,
@@ -1554,7 +2416,7 @@
         "id": "perf-regression-s0-r6",
         "family": "perf-regression",
         "split": "dev",
-        "ms": 8.37,
+        "ms": 7.88,
         "rawChars": 4113,
         "draftChars": 1262,
         "splicedChars": 1792,
@@ -1580,7 +2442,7 @@
         "id": "sse-truncated_decoy-s0-r3",
         "family": "sse-truncated",
         "split": "dev",
-        "ms": 9.69,
+        "ms": 7.61,
         "rawChars": 3358,
         "draftChars": 1458,
         "splicedChars": 1870,
@@ -1606,7 +2468,7 @@
         "id": "sse-truncated_long-horizon-s0-r5",
         "family": "sse-truncated",
         "split": "dev",
-        "ms": 8.64,
+        "ms": 7.93,
         "rawChars": 5195,
         "draftChars": 1528,
         "splicedChars": 2219,
@@ -1632,7 +2494,7 @@
         "id": "sse-truncated-s0-r5",
         "family": "sse-truncated",
         "split": "dev",
-        "ms": 10.15,
+        "ms": 7.91,
         "rawChars": 4198,
         "draftChars": 1375,
         "splicedChars": 2117,
@@ -1658,7 +2520,7 @@
         "id": "wrong-model_decoy-s0-r4",
         "family": "wrong-model",
         "split": "holdout",
-        "ms": 5.97,
+        "ms": 5.36,
         "rawChars": 1787,
         "draftChars": 1124,
         "splicedChars": 1558,
@@ -1684,7 +2546,7 @@
         "id": "wrong-model_long-horizon-s0-r4",
         "family": "wrong-model",
         "split": "holdout",
-        "ms": 9.3,
+        "ms": 7.63,
         "rawChars": 4631,
         "draftChars": 1254,
         "splicedChars": 1845,
@@ -1715,23 +2577,23 @@
     "fullEncoderOnnxTempPath": "/kaggle/working/cfb-micro-97m-multilingual.int8.onnx",
     "compactOnnxBytes": 12002,
     "fullOnnxBytes": 98688445,
-    "compactCpuMsBatch36": 0.0956,
-    "fullCpuMsBatch2Seq256": 179.451,
+    "compactCpuMsBatch36": 0.0855,
+    "fullCpuMsBatch2Seq256": 169.001,
     "fullOnnxSmoke": "passed",
     "fullOnnxError": null,
     "tokenizerRevision": "835ad14087e140460703cf0fae09f97d469d65c2",
-    "fullEncoderCandidateReleaseUrl": "https://github.com/liaocr/cfb/releases/download/cfb-micro-97m-candidate-20261004081525/cfb-micro-97m-multilingual.int8.onnx",
-    "fullEncoderCandidateReleaseTag": "cfb-micro-97m-candidate-20261004081525"
+    "fullEncoderCandidateReleaseUrl": "https://github.com/liaocr/cfb/releases/download/cfb-micro-97m-candidate-20261004112021/cfb-micro-97m-multilingual.int8.onnx",
+    "fullEncoderCandidateReleaseTag": "cfb-micro-97m-candidate-20261004112021"
   },
   "gates": {
     "under01B": true,
     "strictDevOnly": true,
     "unitPreferenceValidationAtLeast90": false,
-    "teacherDraftPreferenceValidationAtLeast90": false,
+    "teacherDraftPreferenceValidationAtLeast90": true,
     "compactStudentUnitPairValidationAtLeast90": false,
     "jsRuntimeUnitPairValidationAtLeast90": false,
-    "draftPreferenceStudentValidationAtLeast90": false,
-    "jsRuntimeDraftPairValidationAtLeast90": false,
+    "draftPreferenceStudentValidationAtLeast90": true,
+    "jsRuntimeDraftPairValidationAtLeast90": true,
     "mode2G1AllPass": true,
     "mode2G2AllPass": true,
     "fullOnnxSmokePassed": true,
@@ -1741,6 +2603,14 @@
   "accepted": false,
   "promotionEligible": false,
   "promoted": false,
+  "scope": {
+    "roundScope": "student-only",
+    "teacherRetrained": false,
+    "teacherNumbersCarriedOver": true,
+    "studentPairObjective": "listwise",
+    "datasetNegStrategy": "hardened",
+    "note": "This round fixes the compact student, the training dataset construction and the evaluation ruler. The teacher path is untouched; teacher-derived metrics in this report are the previous run's values."
+  },
   "notes": [
     "Mode 2 metrics are parsed from tools/train-v5-micro.mjs --eval-json.",
     "The synchronous JS compiler consumes the compact symbolic student; the full encoder ONNX is a separate optional artifact.",
@@ -1748,6 +2618,11 @@
     "The selected dev validation family is excluded from gradient updates and used for early stopping/checkpoint selection; Gold holdout is excluded from fitting and selection and is only a fixed Mode 2 safety gate.",
     "The four existing Gold holdout cases were already evaluated in the prior run; they are not a fresh blind set.",
     "Training-corpus Unit and preference labels carry deterministic audit provenance; rows flagged needs-review are excluded from fitting. The separate final family, if supplied, must carry per-item semantic review provenance.",
+    "Round scope: compact student + dataset + evaluation ruler only; the teacher (ModernBERT SFT/SimPO path) is deliberately unchanged this round and its numbers are carried over from the previous run, not retrained here.",
+    "Unit preference pairs are mined with the hardened strategy: negatives are ordered by length match (|delta token| <= near_length_tokens) first, then by current production model score (hardest for the model), then by lexical hardness; endpoint degree cap is raised so that far more positive Units receive supervision.",
+    "Persisted flywheel pairs are rejected as supervision when their stored scores are a degenerate constant placeholder set (all pairs share <= 2 distinct score pairs); such batches are marked needs-review instead of being fitted as if they were real margins.",
+    "The compact student Unit objective is a listwise softmax over each positive's negative group (fallback: --student-pair-objective ranknet). Reported Unit pair accuracy is the strict delta>0 rate; the JS ruler additionally reports length-stratified and token-penalty-free accuracy with Wilson lower bounds.",
+    "Gate reading: the 90% gates stay on the historical strict point estimate for comparability, but on 138/40-pair sets a point estimate carries roughly a +/-4pp interval; rulerReading.candidateUnitValidation.lengthMatchedAccuracy (with its Wilson lower bound) is the load-bearing number, because there the length penalty cannot decide the winner. A candidate that only clears 90% on the far-length stratum has not demonstrated the underlying ability.",
     "Promotion remains blocked until one genuinely new, independently reviewed family is evaluated after checkpoint selection; current training corpus has only three eligible dev families."
   ]
 }
