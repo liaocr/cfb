@@ -1,0 +1,202 @@
+{
+  "schema": "cfb.micro-65m-training-report/1",
+  "completedAt": "2026-10-04T06:12:46Z",
+  "device": "cuda (Tesla T4, count=2)",
+  "totalParameters": 60854837,
+  "parameterBillion": 0.0609,
+  "under01BLimit": true,
+  "holdoutTouched": false,
+  "sftHistory": [
+    {
+      "epoch": 1,
+      "loss": 1.6042,
+      "slotAcc": 0.5689
+    },
+    {
+      "epoch": 2,
+      "loss": 1.557,
+      "slotAcc": 0.578
+    },
+    {
+      "epoch": 3,
+      "loss": 1.8866,
+      "slotAcc": 0.6027
+    },
+    {
+      "epoch": 4,
+      "loss": 12.5568,
+      "slotAcc": 0.7302
+    },
+    {
+      "epoch": 5,
+      "loss": 5.3122,
+      "slotAcc": 0.7913
+    },
+    {
+      "epoch": 6,
+      "loss": 3.407,
+      "slotAcc": 0.8381
+    },
+    {
+      "epoch": 7,
+      "loss": 9.5397,
+      "slotAcc": 0.8466
+    },
+    {
+      "epoch": 8,
+      "loss": 9.0645,
+      "slotAcc": 0.8674
+    },
+    {
+      "epoch": 9,
+      "loss": 19.4451,
+      "slotAcc": 0.8856
+    },
+    {
+      "epoch": 10,
+      "loss": 30.9916,
+      "slotAcc": 0.9031
+    },
+    {
+      "epoch": 11,
+      "loss": 33.8101,
+      "slotAcc": 0.7659
+    },
+    {
+      "epoch": 12,
+      "loss": 2.3414,
+      "slotAcc": 0.6866
+    },
+    {
+      "epoch": 13,
+      "loss": 1.1081,
+      "slotAcc": 0.7328
+    },
+    {
+      "epoch": 14,
+      "loss": 0.8063,
+      "slotAcc": 0.7653
+    },
+    {
+      "epoch": 15,
+      "loss": 0.7005,
+      "slotAcc": 0.7809
+    },
+    {
+      "epoch": 16,
+      "loss": 0.6511,
+      "slotAcc": 0.79
+    },
+    {
+      "epoch": 17,
+      "loss": 0.6259,
+      "slotAcc": 0.7926
+    },
+    {
+      "epoch": 18,
+      "loss": 0.616,
+      "slotAcc": 0.7945
+    }
+  ],
+  "stepSimpoHistory": [
+    {
+      "epoch": 1,
+      "loss": 0.7051,
+      "unitPairAcc": 0.9927,
+      "draftPairAcc": 0.8065
+    },
+    {
+      "epoch": 2,
+      "loss": 0.6051,
+      "unitPairAcc": 1.0,
+      "draftPairAcc": 0.8065
+    },
+    {
+      "epoch": 3,
+      "loss": 0.5908,
+      "unitPairAcc": 1.0,
+      "draftPairAcc": 0.8065
+    },
+    {
+      "epoch": 4,
+      "loss": 0.5835,
+      "unitPairAcc": 1.0,
+      "draftPairAcc": 0.8194
+    },
+    {
+      "epoch": 5,
+      "loss": 0.5774,
+      "unitPairAcc": 1.0,
+      "draftPairAcc": 0.8194
+    },
+    {
+      "epoch": 6,
+      "loss": 0.5719,
+      "unitPairAcc": 1.0,
+      "draftPairAcc": 0.8194
+    },
+    {
+      "epoch": 7,
+      "loss": 0.5668,
+      "unitPairAcc": 1.0,
+      "draftPairAcc": 0.8194
+    },
+    {
+      "epoch": 8,
+      "loss": 0.5621,
+      "unitPairAcc": 1.0,
+      "draftPairAcc": 0.8194
+    },
+    {
+      "epoch": 9,
+      "loss": 0.5577,
+      "unitPairAcc": 1.0,
+      "draftPairAcc": 0.8194
+    },
+    {
+      "epoch": 10,
+      "loss": 0.5537,
+      "unitPairAcc": 1.0,
+      "draftPairAcc": 0.8258
+    },
+    {
+      "epoch": 11,
+      "loss": 0.55,
+      "unitPairAcc": 1.0,
+      "draftPairAcc": 0.8258
+    },
+    {
+      "epoch": 12,
+      "loss": 0.5466,
+      "unitPairAcc": 1.0,
+      "draftPairAcc": 0.8258
+    },
+    {
+      "epoch": 13,
+      "loss": 0.5434,
+      "unitPairAcc": 1.0,
+      "draftPairAcc": 0.8258
+    },
+    {
+      "epoch": 14,
+      "loss": 0.5404,
+      "unitPairAcc": 1.0,
+      "draftPairAcc": 0.8258
+    }
+  ],
+  "onnx": {
+    "compactOnnxPath": "transfer/models/cfb-micro-neural.onnx",
+    "compactOnnxSizeKB": 7.6,
+    "cpuInferenceLatencyMs": 0.086
+  },
+  "mode2GoldEval": {
+    "totalItems": 11,
+    "devItems": 7,
+    "holdoutItems": 4,
+    "devMeanScore": 1.0,
+    "holdoutMeanScore": 1.0,
+    "generalizationGap": 0.0,
+    "g1Pass": "11/11",
+    "g2Pass": "11/11"
+  }
+}
