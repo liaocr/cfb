@@ -786,5 +786,129 @@
         "selectedOps": 8
       }
     }
+  ],
+  "aggregateAfterW2": {
+    "note": "W2（2026-10-04）：只做一件——原文里模型自己写出的字面 old_text/new_text 三方组，规范成同款形态落进「改法」位（逐字有出处）。通用「同键两值 / 改法句」挖掘已实测撤回（提错对、留出集死路复活）。",
+    "items": 7,
+    "distanceScore": 0.3929,
+    "keepCoverage": 0.215,
+    "dropNoise": 0.041,
+    "meanChars": 1043,
+    "meanPrefScore": 10.228,
+    "decisionsAtFullCredit": 2,
+    "verdicts": {
+      "decision-differs": 4,
+      "resurrected-dead-end": 1,
+      "lost-exclusions": 1,
+      "partial": 1
+    },
+    "lossShare": {
+      "decision": 0.424,
+      "excludedRecall": 0.323,
+      "acceptOk": 0.107,
+      "openRecall": 0.109,
+      "anchorPrecision": 0,
+      "lengthOk": 0.036
+    }
+  },
+  "itemsAfterW2": [
+    {
+      "id": "flaky-timeout_long-horizon-s0-r4",
+      "family": "flaky-timeout",
+      "goldChars": 1554,
+      "chars": 1259,
+      "distanceScore": 0.2,
+      "distanceVerdict": "decision-differs",
+      "decision": 0,
+      "excludedRecall": 0,
+      "g2": true,
+      "prefScore": 9.817,
+      "keepCoverage": 0.1185,
+      "dropNoise": 0.0513
+    },
+    {
+      "id": "flaky-timeout-s0-r4",
+      "family": "flaky-timeout",
+      "goldChars": 1361,
+      "chars": 1655,
+      "distanceScore": 0.325,
+      "distanceVerdict": "resurrected-dead-end",
+      "decision": 0,
+      "excludedRecall": 0.5,
+      "g2": true,
+      "prefScore": 9.398,
+      "keepCoverage": 0.0896,
+      "dropNoise": 0.0128
+    },
+    {
+      "id": "flaky-timeout-s0-r5",
+      "family": "flaky-timeout",
+      "goldChars": 1589,
+      "chars": 898,
+      "distanceScore": 0.525,
+      "distanceVerdict": "lost-exclusions",
+      "decision": 1,
+      "excludedRecall": 0,
+      "g2": true,
+      "prefScore": 10.81,
+      "keepCoverage": 0.0588,
+      "dropNoise": 0
+    },
+    {
+      "id": "perf-regression-s0-r6",
+      "family": "perf-regression",
+      "goldChars": 1704,
+      "chars": 1096,
+      "distanceScore": 0.767,
+      "distanceVerdict": "partial",
+      "decision": 1,
+      "excludedRecall": 0.667,
+      "g2": true,
+      "prefScore": 9.817,
+      "keepCoverage": 0.4,
+      "dropNoise": 0
+    },
+    {
+      "id": "sse-truncated_decoy-s0-r3",
+      "family": "sse-truncated",
+      "goldChars": 1506,
+      "chars": 965,
+      "distanceScore": 0.472,
+      "distanceVerdict": "decision-differs",
+      "decision": 0,
+      "excludedRecall": 0.5,
+      "g2": true,
+      "prefScore": 11.246,
+      "keepCoverage": 0.3333,
+      "dropNoise": 0
+    },
+    {
+      "id": "sse-truncated_long-horizon-s0-r5",
+      "family": "sse-truncated",
+      "goldChars": 1564,
+      "chars": 817,
+      "distanceScore": 0.278,
+      "distanceVerdict": "decision-differs",
+      "decision": 0,
+      "excludedRecall": 0,
+      "g2": true,
+      "prefScore": 12.182,
+      "keepCoverage": 0.2941,
+      "dropNoise": 0
+    },
+    {
+      "id": "sse-truncated-s0-r5",
+      "family": "sse-truncated",
+      "goldChars": 1447,
+      "chars": 611,
+      "distanceScore": 0.183,
+      "distanceVerdict": "decision-differs",
+      "decision": 0,
+      "excludedRecall": 0,
+      "g2": true,
+      "prefScore": 8.323,
+      "keepCoverage": 0.2105,
+      "dropNoise": 0.0588
+    }
   ]
 }

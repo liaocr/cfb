@@ -741,6 +741,25 @@ function compileDefVsCallerForwarding(g) {
   return [mech, ex, dec, acc, open].join('\n\n')
 }
 
+// ── 2026-10-04 W2 决定保全：原文自己给出的「改法」要原样带到下一轮 ─────────────────
+// 依据（活轨迹回放 + 11 条金标拆解）：最终分的 42% 漏在「决定保全」——金标的改法位是
+// `old_text 是 `X` 改成 new_text 是 `Y`` 或整行代码的 old→new，而兜底稿此前只放叙述句。
+// 本挖掘器只从**原文/ctx 逐字存在**的跨度里造改法句，绝不发明：
+//   1) 原文已写成 old_text/new_text 的字面三方组 → 原样规范化；
+//   2) 同一键出现两个值：旧值取带大括号的赋值跨度，新值取改动语境窗口里的那个 → 组成 old/new；
+//   3) 原文自己的改法句（含代码跨度 + 改动动词，取结论区靠后的）→ 直接携带。
+const CHANGE_VERB_RE = /改成|改为|改回|换成|替换|去掉|收成|落定|回滚|应该|需要|增大|放大|调大|加大|调小|减小|revert|change\b|\bset\b[^\n]{0,40}\bto\b|should (?:be|only|not)|don'?t synthesize|不再合成|Fix\s*[:：]|the fix\b|root cause\b|根因|\bI'll\b|let'?s (?:pick|use|go)|\bmake\b[^\n]{0,40}(?:large|larger|bigger|deterministic|safe)/i
+function mineDecidedBlock(hay, units) {
+  // 1) 字面三方组
+  for (const m of hay.matchAll(/old_text\s*(?:是|为|[:：])?\s*`([^`\n]{1,220})`[^`]{0,200}?new_text\s*(?:是|为|[:：])?\s*`([^`\n]{1,220})`/g)) {
+    const o = m[1].trim(), n = m[2].trim()
+    if (o && n && o !== n) return `old_text 是 \`${o}\` 改成 new_text 是 \`${n}\``
+  }
+  // 2)（2026-10-04 撤回）通用「同键两值」与「改法句」挖掘：在 7 条 dev + 4 条留出上实测会提错对
+  //    （v3h:250-450 → 250-1800 方向反了），并在 eacces 两条留出上把金标排除的 CFB_REAL_DSH_HOME 路线
+  //    又当成改法提出来（死路复活）。精度不够的挖掘器 = 产品伤害，一律不要：只留第 1 条。
+  return ''
+}
 function compileGeneralDiscourseGraph(g, weights = V5_MICRO_WEIGHTS) {
   const { raw, ctx } = g
   const units = splitDiscourseUnits(raw)
@@ -812,8 +831,12 @@ function compileGeneralDiscourseGraph(g, weights = V5_MICRO_WEIGHTS) {
   const tripleish = (s) => /`[^`\n]+`/.test(s) && /(?:old_text|new_text|改成|改为|换成|替换|删掉|去掉|替换掉|instead of|change .{0,40} to|set .{0,40} to)/i.test(s)
   const codeish = (s) => /`[^`\n]+`/.test(s)
   const decidedPool = bySlot.DECIDED.filter((x) => !DECIDED_HOSTILE.test(x))
+  // W2：先试「原文自己的改法」挖掘（逐字有出处），再退回槽位选材
+  const mined = mineDecidedBlock(String(raw) + '\n' + String(ctx || ''), units.map(clean))
+  if (mined) parts.push('改法只落一个：' + mined + '。')
   const d0 = decidedPool.find(tripleish) || decidedPool.find(codeish)
-  if (d0) parts.push(/^改法/.test(d0) ? d0 : '改法只落一个：' + d0)
+  if (mined) { /* 已由挖掘器落定，槽位选材不再重复占位 */ }
+  else if (d0) parts.push(/^改法/.test(d0) ? d0 : '改法只落一个：' + d0)
   else if (ihlLive.length) {
     parts.push(`改法只落一个：针对 \`${ihlLive[0].span}\` 落定最小改动，可以直接当 edit_file 的 old_text，看到结果后不用再读文件。`)
   } else if (decidedPool.length) {
