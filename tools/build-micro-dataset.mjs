@@ -216,13 +216,13 @@ export function buildMicroDataset() {
   const unitStepPairs = []
 
   const buildDocUnitPairs = (docId, fam, docUnits) => {
-    const positives = docUnits.filter((u) => u.slot !== 'NOISE' && u.yVal >= 0.55)
-    const negatives = docUnits.filter((u) => u.slot === 'NOISE' || u.yVal <= 0.15)
+    const positives = docUnits.filter((u) => (u.slot !== 'NOISE' && u.yVal >= 0.75) || (u.slot === 'MECHANISM' && u.features[1] >= 0.7))
+    const negatives = docUnits.filter((u) => u.slot === 'NOISE' && u.yVal <= 0.10)
     for (const pos of positives) {
-      // 每个正例匹配最多 4 个同文档困难负例（优先挑长噪音或低诱惑休眠句）
+      // 每个高价值槽位正例匹配最多 4 个同文档困难负例
       const sortedNegs = [...negatives].sort((a, b) => b.text.length - a.text.length).slice(0, 4)
       for (const neg of sortedNegs) {
-        const gammaStep = +Math.max(0.35, Math.min(1.2, pos.yVal - neg.yVal)).toFixed(4)
+        const gammaStep = +Math.max(0.35, Math.min(1.0, pos.yVal - neg.yVal)).toFixed(4)
         unitStepPairs.push({
           sourceId: docId,
           family: fam,
@@ -317,11 +317,13 @@ export function buildMicroDataset() {
     }))
   }
 
-  // 3. 合并飞轮真实偏好对（严格仅取 dev 家族）
+  // 3. 合并飞轮真实偏好对（严格仅取 dev 家族；优先读 .cfb-offline/train/pairs.jsonl，回退读 transfer/models/dev-flywheel-pairs.json）
   const fwPath = path.join(ROOT, '.cfb-offline/train/pairs.jsonl')
-  const fwLines = fs.existsSync(fwPath) ? fs.readFileSync(fwPath, 'utf8').trim().split('\n').filter(Boolean) : []
-  for (const l of fwLines) {
-    const p = JSON.parse(l)
+  const fwFallbackPath = path.join(ROOT, 'transfer/models/dev-flywheel-pairs.json')
+  const rawFwItems = fs.existsSync(fwPath)
+    ? fs.readFileSync(fwPath, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
+    : (fs.existsSync(fwFallbackPath) ? JSON.parse(fs.readFileSync(fwFallbackPath, 'utf8')) : [])
+  for (const p of rawFwItems) {
     const fam = String(p.task || p.taskId || p.family || '').split(':')[0].replace(/_(?:decoy|long-horizon).*$/, '')
     if (p.split === 'holdout' || isHoldout(fam)) continue
     const cText = p.chosenText || (typeof p.chosen === 'string' ? p.chosen : p.chosen?.draft)
