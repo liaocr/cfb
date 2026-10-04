@@ -87,6 +87,18 @@ def is_holdout_family(value) -> bool:
     return family_key(value) in HOLDOUT_FAMILIES
 
 
+def fit_prior_vector(vec, dim: int, device) -> "torch.Tensor":
+    """2026-10-04：先验权重只有 19 维；符号特征扩展到 19+buckets 后，
+    前 19 维原样、新特征块置 0、过长则截断，供初始化与 L2-to-prior 正则共用。"""
+    v = torch.tensor(vec, dtype=torch.float32, device=device)
+    dim = int(dim)
+    if v.numel() == dim:
+        return v
+    if v.numel() > dim:
+        return v[:dim]
+    return torch.cat([v, torch.zeros(dim - v.numel(), dtype=torch.float32, device=device)])
+
+
 def load_preregistration(args) -> dict:
     """2026-10-04：预注册 = 训练前把「本轮唯一变量 + 判定规则」写进仓库里的机器可读文件；
     运行时逐键比对，任何不一致直接拒绝启动训练（防止看结果改口径）。"""
@@ -530,8 +542,8 @@ def stage1_sft(args, dp_model, model, tokenizer, dataset, device, use_amp):
         span_ids = span_masks = span_start_t = span_end_t = span_label_t = None
 
     prior = json.loads(PRODUCTION_WEIGHTS_PATH.read_text(encoding="utf-8"))
-    prior_val = torch.tensor(prior["valueWeights"], dtype=torch.float32, device=device)
-    prior_slot = torch.tensor([prior["slotWeights"][s] for s in SLOT_NAMES], dtype=torch.float32, device=device)
+    prior_val = fit_prior_vector(prior["valueWeights"], model.sym_dim, device)
+    prior_slot = torch.stack([fit_prior_vector(prior["slotWeights"][s], model.sym_dim, device) for s in SLOT_NAMES])
     train_slots = slots[torch.tensor(train_indices, dtype=torch.long, device=device)]
     class_counts = torch.bincount(train_slots, minlength=len(SLOT_NAMES)).float().clamp(min=1.0)
     class_weights = (class_counts.sum() / (len(SLOT_NAMES) * class_counts)).sqrt()
@@ -652,7 +664,7 @@ def stage2_simpo(args, dp_model, model, tokenizer, dataset, sft, device, use_amp
         )
 
     tok = json.loads(PRODUCTION_WEIGHTS_PATH.read_text(encoding="utf-8"))
-    prior_val = torch.tensor(tok["valueWeights"], dtype=torch.float32, device=device)
+    prior_val = fit_prior_vector(tok["valueWeights"], model.sym_dim, device)
     prior_pref = torch.tensor([tok["prefWeights"][k] for k in PREF_KEYS], dtype=torch.float32, device=device)
     pair_encoder_params = list(model.encoder.parameters())
     encoder_ids = {id(p) for p in pair_encoder_params}
