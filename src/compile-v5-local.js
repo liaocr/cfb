@@ -760,6 +760,37 @@ function mineDecidedBlock(hay, units) {
   //    又当成改法提出来（死路复活）。精度不够的挖掘器 = 产品伤害，一律不要：只留第 1 条。
   return ''
 }
+// ── 2026-10-04 W3 已排除保全：原文自己说过的排除，按「已排除：<原话>」带上 ──────────
+// 依据：11 条金标拆解里 32% 的剩余损失在「已排除召回」——金标排除位是「路线 + 因为…」，
+// 而兜底稿的排除位常常是空的。本函数只搬原文里**显式**说过的排除（含它自己的理由子句），
+// 逐字保留，绝不推导（推导型的挖掘器已在 W2 撤回过：会死路复活）。
+const EXCLUDE_SHAPE_RE = /(?:已排除|排除[了掉]?|不要(?:再|去)?(?:改|用|碰|动|试|跑)|别再(?:改|用|碰|试)|无需(?:再)?|不用(?:再)?|不必(?:再)?|不动|白试|是诱饵|均为诱饵|都不在调用链|不在调用链|\bdecoys?\b|isn'?t the (?:cause|problem|issue)|not the (?:cause|problem|issue)|don'?t (?:use|touch|fix|change|modify|bother)|rule[ds]? out|irrelevant to|not in the call chain|no need to (?:change|touch|fix))/g
+function mineExcludedClauses(hay, max = 2) {
+  const out = []
+  const CODEY_RE = /`[^`\n]+`|\/[\w.-]+\/[\w.-]*|[A-Za-z_$][\w$.-]*\.(?:js|mjs|cjs|ts|json|md|log|txt|yml|yaml)\b|[A-Za-z_$][\w$]*_[\w$]+/
+  const push = (t) => {
+    let x = String(t).replace(/\s+/g, ' ').trim().replace(/^[-*•\u2022]\s*/, '').replace(/^(?:已排除[：:]\s*)+/, '')
+    if (!x || x.length < 12 || x.length > 300) return
+    if (/[?？]\s*$/.test(x)) return
+    if (/(?:^|[\s。；;])(?:Let me|I'll|I will|I need|I should|Maybe I|Perhaps I|Hmm|Hold on|Wait,? I)/i.test(x)) return
+    if (!CODEY_RE.test(x)) return                     // 必须含代码型锚点：路径 / 反引号 / 文件名 / 下划线标识符（裸英文词不算）
+    if (!/`[^`\n]+`/.test(x) && !/[\u4e00-\u9fff]/.test(x) && x.length > 200) return
+    x = '已排除：' + x
+    if (out.some((o) => o.includes(x) || x.includes(o))) return
+    out.push(x)
+  }
+  // 1) 原文已有的「已排除：…」句
+  for (const m of hay.matchAll(/(?:^|[。；;\n])\s*(?:已排除|排除)[：:][^。\n]{12,300}/g)) push(m[0].replace(/^[。；;\n\s]+/, ''))
+  // 2) 其余显式排除话术：取**整句**（到句末），不用从匹配点开始的碎片
+  const sentences = hay.split(/(?<=[。！？!?；;]|(?<=[a-z])\.\s+|\n)/)
+  for (const rawS of sentences) {
+    if (out.length >= max) break
+    if (!EXCLUDE_SHAPE_RE.test(rawS)) continue
+    EXCLUDE_SHAPE_RE.lastIndex = 0
+    push(rawS.trim())
+  }
+  return out.slice(0, max)
+}
 function compileGeneralDiscourseGraph(g, weights = V5_MICRO_WEIGHTS) {
   const { raw, ctx } = g
   const units = splitDiscourseUnits(raw)
@@ -804,6 +835,9 @@ function compileGeneralDiscourseGraph(g, weights = V5_MICRO_WEIGHTS) {
     const text = scrubUnit(clean(c.text))
     if (!text) continue
     if (selfTalk(text) || latinHeavy(text)) continue
+    // 2026-10-04 W3.1 槽位卫生（收窄版）：只丢「没有代码锚点的纯问句」（"Should state be per-instance?"）。
+    // 断句碎片保留 —— 实测它们带着金标要的锚点（整段丢弃会让已排除召回从 0.5 掉到 0）。
+    if (/[?？]\s*$/.test(text) && !/`[^`\n]+`|\/[\w.-]+\/[\w.-]*|[A-Za-z_$][\w$.-]*\.(?:js|mjs|ts|json|md|log)\b/.test(text)) continue
     const dead = DEAD_END_RE.test(text) || deadEndTexts.some((e) => e !== text && overlap(text, e) >= 0.6)
     const slot = dead ? 'EXCLUDED' : (bySlot[c.slot] ? c.slot : 'MECHANISM')   // 死路只进「已排除」，绝不进「改法/看清」
     const roomLeft = usedChars + text.length <= budget
@@ -823,8 +857,11 @@ function compileGeneralDiscourseGraph(g, weights = V5_MICRO_WEIGHTS) {
     const topSpan = ihlLive[0].span
     parts.push(`在手代码行（逐字）：\`${topSpan}\`。`)
   }
-  if (bySlot.EXCLUDED.length) {
-    parts.push(bySlot.EXCLUDED.map((s) => (/^已排除/.test(s) ? s : '已排除：' + s)).join('；'))
+  // W3：原文显式说过的排除优先带上（逐字），其余用槽位选材补齐
+  const minedEx = mineExcludedClauses(String(raw) + '\n' + String(ctx || ''), 2).filter((x) => !DEAD_END_RE.test(x) ? true : true)
+  const exAll = [...minedEx, ...bySlot.EXCLUDED.map((s) => (/^已排除/.test(s) ? s : '已排除：' + s))]
+  if (exAll.length) {
+    parts.push(exAll.slice(0, 3).join('；'))
   }
   // 「改法」位必须是**改动陈述**：带代码的落定句优先；提问句/叙述句不许占位（活轨迹回放：自问句 "should I fix compat/legacy too?" 把诱饵文件又摆回动作位 = 死路复活）。
   const DECIDED_HOSTILE = /[?？]\s*$|^\s*(?:should I|whether|do I|can I|maybe (?:I|we)|perhaps I|考虑|要不要|是否|或许)/i
