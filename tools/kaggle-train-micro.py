@@ -2207,7 +2207,9 @@ def main():
     print(f"   actual compact CPU latency (batch=36): {export_result['compactBatch36CpuMs']} ms")
 
     if args.push_back:
-        push_back(report, accepted, COMPACT_CANDIDATE_PATH, FULL_WORKING_PATH, TOKENIZER_DIR)
+        report.setdefault("training", {})
+    report["training"]["validationFamily"] = sft_result["validationFamily"]
+    push_back(report, accepted, COMPACT_CANDIDATE_PATH, FULL_WORKING_PATH, TOKENIZER_DIR)
 
     print("\n✅ Kaggle fine-tuning, grouped preference validation, ONNX smoke tests and Mode 2 evaluation completed.")
     print(f"   acceptance={'PASS' if accepted else 'CANDIDATE ONLY'}; holdout excluded from training and used only for Mode 2 evaluation")

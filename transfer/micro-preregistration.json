@@ -15,7 +15,7 @@
     "unit_pair_degree_cap": 4,
     "unit_pairs_per_positive": 4,
     "near_length_tokens": 3,
-    "neg_judge_weights": "transfer/models/v5-micro-weights.candidate.json",
+    "neg_judge_weights": "transfer/models/v5-micro-weights.judge-4764fd2.json",
     "unit_review_file": "transfer/models/unit-label-review.json"
   },
   "datasetBuilder": {
@@ -24,8 +24,13 @@
     "expectedFeatureDim": 275,
     "unitLabelReviewFile": "transfer/models/unit-label-review.json"
   },
-  "folds": ["flaky-timeout", "perf-regression", "sse-truncated"],
+  "folds": [
+    "flaky-timeout",
+    "perf-regression",
+    "sse-truncated"
+  ],
   "decisionRule": "Read rulerReading.candidateUnitValidation per fold. Decide on matched-bucket mean across 3 folds >= 0.93 AND worst-fold matched >= 0.90; also require point-estimate mean >= 0.94 and report Wilson LCBs. No per-fold hyperparameter changes: one recipe, three folds.",
   "expectedSelectionGapNote": "Measured once: dev 0.9189 -> blind family unit 0.8333 (gap 8.6pp) and matched bucket is the load-bearing reading. Any new independent family is expected to land 3-8pp below the fold mean; a family will only be authorized when fold mean minus that gap stays >= 0.90.",
-  "whyOneVariable": "This run changes exactly one modelling variable versus 4764fd2: symbolic features gain the 256-bucket text-hash block (19 -> 275 dims). mlp hidden widens 32 -> 96 because the input block grew; everything else is frozen from 4764fd2."
+  "whyOneVariable": "This run changes exactly one modelling variable versus 4764fd2: symbolic features gain the 256-bucket text-hash block (19 -> 275 dims). mlp hidden widens 32 -> 96 because the input block grew; everything else is frozen from 4764fd2.",
+  "frozenJudgeNote": "Negative-mining judge is pinned to the 4764fd2 candidate so the mined pair set cannot drift across folds when each fold pushes its own candidate."
 }
