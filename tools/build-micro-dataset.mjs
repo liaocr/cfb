@@ -20,7 +20,16 @@ import { productionContext } from './helpers/candidates.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const HOLDOUT_FAMS = new Set(['eacces-config', 'wrong-model'])
-const isHoldout = (fam) => HOLDOUT_FAMS.has(String(fam || '').split(':')[0].replace(/_(?:decoy|long-horizon).*$/, ''))
+const familyKey = (value) => String(value || '').replace(/^pool:/, '').split(':', 1)[0].replace(/_(?:decoy|long-horizon).*$/, '')
+const isHoldout = (family) => HOLDOUT_FAMS.has(familyKey(family))
+const countBy = (rows, keyOf) => {
+  const counts = new Map()
+  for (const row of rows) {
+    const key = keyOf(row) || 'unknown'
+    counts.set(key, (counts.get(key) || 0) + 1)
+  }
+  return Object.fromEntries([...counts].sort(([a], [b]) => a.localeCompare(b)))
+}
 
 function loadAllGold(root = ROOT) {
   return loadGold(path.join(root, 'transfer', 'gold')).map((g) => ({
@@ -30,50 +39,91 @@ function loadAllGold(root = ROOT) {
   }))
 }
 
-function labelUnitMultiTask(unit, idx, total, feat, goldSlots, raw, ctx) {
+function labelUnitMultiTask(unit, feat, goldSlots) {
   const uIds = extractAnchorsV5(unit)
   const overlapWith = (lines) => {
     const gIds = extractAnchorsV5((lines || []).join('\n'))
-    if (!gIds.size || !uIds.size) return 0
-    let hit = 0
-    for (const id of uIds) if (gIds.has(id)) hit++
-    return hit / Math.max(1, Math.min(uIds.size, gIds.size))
+    const matched = [...uIds].filter((id) => gIds.has(id)).sort()
+    return {
+      score: !gIds.size || !uIds.size ? 0 : matched.length / Math.max(1, Math.min(uIds.size, gIds.size)),
+      matchedAnchors: matched,
+      unitCoverage: uIds.size ? matched.length / uIds.size : 0,
+      goldCoverage: gIds.size ? matched.length / gIds.size : 0,
+      goldAnchorCount: gIds.size,
+    }
   }
-  const sDec = overlapWith([...goldSlots.decided, ...goldSlots.triples.map((t) => t.oldText + ' ' + t.newText)])
-  const sEx = overlapWith(goldSlots.excluded)
-  const sAcc = overlapWith(goldSlots.accept)
-  const sOp = overlapWith(goldSlots.open)
+  const overlap = {
+    DECIDED: overlapWith([...goldSlots.decided, ...goldSlots.triples.map((t) => t.oldText + ' ' + t.newText)]),
+    EXCLUDED: overlapWith(goldSlots.excluded),
+    ACCEPT: overlapWith(goldSlots.accept),
+    OPEN: overlapWith(goldSlots.open),
+  }
+  const sDec = overlap.DECIDED.score
+  const sEx = overlap.EXCLUDED.score
+  const sAcc = overlap.ACCEPT.score
+  const sOp = overlap.OPEN.score
+  const cue = {
+    DECIDED: /(?:改法只落|改法分|old_text|new_text|edit_file|改成|改为|改回)/.test(unit),
+    EXCLUDED: /(?:已排除|排除|诱饵|legacy|compat|不用改|不改|不是.*原因|repro\.tmp)/.test(unit),
+    ACCEPT: /(?:验收|预期|不算证据|若.*仍|如果输出跟这两种都不像)/.test(unit),
+    OPEN: /(?:未解|回放过了之后|汇总.*收工|确认.*通过)/.test(unit),
+  }
 
   let slot = 'NOISE'
   let yVal = 0.05
   let yTempt = feat.temptationT || 0.05
+  let labelRule = 'no-slot-cue-or-gold-anchor'
 
-  if (/(?:改法只落|改法分|old_text|new_text|edit_file|改成|改为|改回)/.test(unit) && sDec >= 0.25) {
-    slot = 'DECIDED'; yVal = 1.0; yTempt = 0.10
-  } else if (/(?:已排除|排除|诱饵|legacy|compat|不用改|不改|不是.*原因|repro\.tmp)/.test(unit) && sEx >= 0.2) {
-    slot = 'EXCLUDED'; yVal = 0.90; yTempt = Math.max(0.75, feat.temptationT)
-  } else if (/(?:验收|预期|不算证据|若.*仍|如果输出跟这两种都不像)/.test(unit) && sAcc >= 0.2) {
-    slot = 'ACCEPT'; yVal = 0.86; yTempt = 0.12
-  } else if (/(?:未解|回放过了之后|汇总.*收工|确认.*通过)/.test(unit) && sOp >= 0.2) {
-    slot = 'OPEN'; yVal = 0.80; yTempt = 0.10
+  if (cue.DECIDED && sDec >= 0.25) {
+    slot = 'DECIDED'; yVal = 1.0; yTempt = 0.10; labelRule = 'decision-cue-plus-gold-overlap'
+  } else if (cue.EXCLUDED && sEx >= 0.2) {
+    slot = 'EXCLUDED'; yVal = 0.90; yTempt = Math.max(0.75, feat.temptationT); labelRule = 'excluded-cue-plus-gold-overlap'
+  } else if (cue.ACCEPT && sAcc >= 0.2) {
+    slot = 'ACCEPT'; yVal = 0.86; yTempt = 0.12; labelRule = 'acceptance-cue-plus-gold-overlap'
+  } else if (cue.OPEN && sOp >= 0.2) {
+    slot = 'OPEN'; yVal = 0.80; yTempt = 0.10; labelRule = 'open-cue-plus-gold-overlap'
   } else if (sDec >= 0.45) {
-    slot = 'DECIDED'; yVal = 0.92; yTempt = 0.12
+    slot = 'DECIDED'; yVal = 0.92; yTempt = 0.12; labelRule = 'gold-overlap-decided'
   } else if (sEx >= 0.40) {
-    slot = 'EXCLUDED'; yVal = 0.84; yTempt = Math.max(0.72, feat.temptationT)
+    slot = 'EXCLUDED'; yVal = 0.84; yTempt = Math.max(0.72, feat.temptationT); labelRule = 'gold-overlap-excluded'
   } else if (sAcc >= 0.40) {
-    slot = 'ACCEPT'; yVal = 0.80; yTempt = 0.10
+    slot = 'ACCEPT'; yVal = 0.80; yTempt = 0.10; labelRule = 'gold-overlap-acceptance'
   } else if (sOp >= 0.40) {
-    slot = 'OPEN'; yVal = 0.75; yTempt = 0.10
+    slot = 'OPEN'; yVal = 0.75; yTempt = 0.10; labelRule = 'gold-overlap-open'
   } else if (uIds.size >= 2 && unit.length >= 18 && !/^\s*(?:Let me|Hmm|Wait,\s*$)/i.test(unit)) {
-    slot = 'MECHANISM'; yVal = 0.58; yTempt = Math.min(0.35, feat.temptationT)
+    slot = 'MECHANISM'; yVal = 0.58; yTempt = Math.min(0.35, feat.temptationT); labelRule = 'mechanism-heuristic-only'
   }
 
-  // 反激活（Negative Priming）硬监督：若提到 ctx 中的休眠文件但未在 goldSlots.excluded 中出现，压低 yTempt
-  if (slot !== 'EXCLUDED' && /(?:verify\.mjs|package\.json|README\.md)/.test(unit) && sEx < 0.15) {
-    yTempt = 0.02
-  }
+  // 反激活（Negative Priming）硬监督：仅保留原规则，不把上下文里未被 hand 标为排除的文件误标为疫苗。
+  if (slot !== 'EXCLUDED' && /(?:verify\.mjs|package\.json|README\.md)/.test(unit) && sEx < 0.15) yTempt = 0.02
 
-  return { slot, slotIdx: SLOT_NAMES.indexOf(slot), yVal: +yVal.toFixed(4), yTempt: +yTempt.toFixed(4) }
+  const ranked = Object.entries(overlap).sort((a, b) => b[1].score - a[1].score)
+  const supported = overlap[slot]
+  const otherSupported = ranked.filter(([name, v]) => name !== slot && v.score >= 0.2)
+  const flags = []
+  if (slot === 'MECHANISM') flags.push('mechanism-heuristic-no-direct-gold-slot')
+  if (slot === 'NOISE' && Object.values(overlap).some((v) => v.score >= 0.2)) flags.push('noise-label-has-gold-overlap')
+  if (slot === 'NOISE' && Object.values(cue).some(Boolean)) flags.push('noise-label-has-actionable-cue')
+  if (['DECIDED', 'EXCLUDED', 'ACCEPT', 'OPEN'].includes(slot) && (!supported || supported.score < 0.2 || supported.matchedAnchors.length === 0)) flags.push('weak-gold-anchor-support')
+  if (otherSupported.some(([, v]) => !supported || Math.abs(v.score - supported.score) <= 0.10)) flags.push('competing-slot-overlap')
+  const labelConfidence = flags.length ? 'review' : 'rule-supported'
+
+  return {
+    slot,
+    slotIdx: SLOT_NAMES.indexOf(slot),
+    yVal: +yVal.toFixed(4),
+    yTempt: +yTempt.toFixed(4),
+    trainingEligible: labelConfidence === 'rule-supported',
+    labelAudit: {
+      source: 'deterministic-gold-slot-anchor-rules',
+      labelRule,
+      status: labelConfidence,
+      flags,
+      cue,
+      overlap,
+      unitAnchorCount: uIds.size,
+    },
+  }
 }
 
 function extractSpanPointers(raw, ctx, hand) {
@@ -148,6 +198,8 @@ function buildStepSimpoCounterfactuals(item) {
     // 动态奖励间隔 γ_dd ∈ [0.35, 1.25]
     const rawMargin = Math.max(0.35, (baseDd.score - dd.score) + (gate.ok ? 0 : 0.35))
     const gammaDd = +Math.min(1.25, rawMargin).toFixed(4)
+    const scoreMargin = baseDd.score - dd.score
+    const trainingEligible = !gate.ok && scoreMargin > 1e-6
     pairs.push({
       id: `${id}::${negType}`,
       sourceId: id,
@@ -159,6 +211,14 @@ function buildStepSimpoCounterfactuals(item) {
       chosenScore: +baseDd.score.toFixed(4),
       rejectedScore: +dd.score.toFixed(4),
       rejectedGateOk: gate.ok,
+      trainingEligible,
+      labelAudit: {
+        status: trainingEligible ? 'rule-supported' : 'needs-review',
+        source: 'gold-vs-deterministic-counterfactual',
+        scoreMargin: +scoreMargin.toFixed(4),
+        gateRejected: !gate.ok,
+        reason: trainingEligible ? null : (gate.ok ? 'rejected-draft-passes-hard-gate' : 'no-positive-distance-margin'),
+      },
       gammaDd,
       chosenPref: basePref,
       rejectedPref: rejPref,
@@ -215,13 +275,40 @@ export function buildMicroDataset() {
   const stepSimpoPairs = []
   const unitStepPairs = []
 
+  const UNIT_PAIR_MAX_ENDPOINT_DEGREE = 2
+  const UNIT_PAIR_MAX_PER_POSITIVE = 2
+  const anchorJaccard = (a, b) => {
+    const aa = extractAnchorsV5(a)
+    const bb = extractAnchorsV5(b)
+    if (!aa.size || !bb.size) return 0
+    let intersection = 0
+    for (const id of aa) if (bb.has(id)) intersection++
+    return intersection / (aa.size + bb.size - intersection)
+  }
+  const pairDegree = new Map()
   const buildDocUnitPairs = (docId, fam, docUnits) => {
-    const positives = docUnits.filter((u) => (u.slot !== 'NOISE' && u.yVal >= 0.75) || (u.slot === 'MECHANISM' && u.features[1] >= 0.7))
-    const negatives = docUnits.filter((u) => u.slot === 'NOISE' && u.yVal <= 0.10)
-    for (const pos of positives) {
-      // 每个高价值槽位正例匹配最多 4 个同文档困难负例
-      const sortedNegs = [...negatives].sort((a, b) => b.text.length - a.text.length).slice(0, 4)
-      for (const neg of sortedNegs) {
+    const positives = docUnits.filter((u) => u.trainingEligible && ((u.slot !== 'NOISE' && u.yVal >= 0.75) || (u.slot === 'MECHANISM' && u.features[1] >= 0.7)))
+    const negatives = docUnits.filter((u) => u.trainingEligible && u.slot === 'NOISE' && u.yVal <= 0.10)
+    const localDegree = new Map()
+    const degree = (idx) => localDegree.get(idx) || 0
+    const candidatesFor = (pos) => negatives
+      .filter((neg) => degree(neg.globalIdx) < UNIT_PAIR_MAX_ENDPOINT_DEGREE)
+      .map((neg) => {
+        const semanticOverlap = anchorJaccard(pos.text, neg.text)
+        const lengthSimilarity = Math.exp(-Math.abs(Math.log((pos.text.length + 1) / (neg.text.length + 1))))
+        return { neg, hardness: 0.75 * semanticOverlap + 0.25 * lengthSimilarity }
+      })
+      .sort((a, b) => degree(a.neg.globalIdx) - degree(b.neg.globalIdx)
+        || b.hardness - a.hardness
+        || a.neg.globalIdx - b.neg.globalIdx)
+    let pairCount = 0
+    for (let round = 0; round < UNIT_PAIR_MAX_PER_POSITIVE; round++) {
+      const ordered = [...positives].sort((a, b) => degree(a.globalIdx) - degree(b.globalIdx) || a.globalIdx - b.globalIdx)
+      for (const pos of ordered) {
+        if (degree(pos.globalIdx) >= UNIT_PAIR_MAX_ENDPOINT_DEGREE) continue
+        const candidate = candidatesFor(pos)[0]
+        if (!candidate) continue
+        const { neg, hardness } = candidate
         const gammaStep = +Math.max(0.35, Math.min(1.0, pos.yVal - neg.yVal)).toFixed(4)
         unitStepPairs.push({
           sourceId: docId,
@@ -231,9 +318,23 @@ export function buildMicroDataset() {
           winSlot: pos.slot,
           loseSlot: neg.slot,
           gammaStep,
+          hardness: +hardness.toFixed(4),
+          trainingEligible: true,
+          labelAudit: {
+            status: 'rule-supported',
+            source: 'audited-unit-endpoints',
+            winRule: pos.labelAudit.labelRule,
+            loseRule: neg.labelAudit.labelRule,
+          },
         })
+        localDegree.set(pos.globalIdx, degree(pos.globalIdx) + 1)
+        localDegree.set(neg.globalIdx, degree(neg.globalIdx) + 1)
+        pairDegree.set(pos.globalIdx, (pairDegree.get(pos.globalIdx) || 0) + 1)
+        pairDegree.set(neg.globalIdx, (pairDegree.get(neg.globalIdx) || 0) + 1)
+        pairCount++
       }
     }
+    return { positiveCandidates: positives.length, negativeCandidates: negatives.length, pairs: pairCount }
   }
 
   // 1. 从 devGold 提取多任务单元样本、跨度指针样本与 5 类反事实偏好对
@@ -245,7 +346,7 @@ export function buildMicroDataset() {
     const docUnits = []
     units.forEach((u, i) => {
       const feat = extractUnitFeatures(u, i, units.length, ctxInfo)
-      const lbl = labelUnitMultiTask(u, i, units.length, feat, goldSlots, g.raw, g.ctx)
+      const lbl = labelUnitMultiTask(u, feat, goldSlots)
       const item = {
         globalIdx: unitSamples.length,
         sourceId: g.id,
@@ -254,10 +355,14 @@ export function buildMicroDataset() {
         totalUnits: units.length,
         text: u.slice(0, 360),
         features: feat.vec,
+        tokenCount: feat.tok,
+        temptationT: feat.temptationT,
         slot: lbl.slot,
         slotIdx: lbl.slotIdx,
         yVal: lbl.yVal,
         yTempt: lbl.yTempt,
+        trainingEligible: lbl.trainingEligible,
+        labelAudit: lbl.labelAudit,
       }
       unitSamples.push(item)
       docUnits.push(item)
@@ -284,7 +389,7 @@ export function buildMicroDataset() {
     const docUnits = []
     units.forEach((u, i) => {
       const feat = extractUnitFeatures(u, i, units.length, ctxInfo)
-      const lbl = labelUnitMultiTask(u, i, units.length, feat, goldSlots, rawText, ctxText)
+      const lbl = labelUnitMultiTask(u, feat, goldSlots)
       const item = {
         globalIdx: unitSamples.length,
         sourceId: `pool:${t.id}`,
@@ -293,10 +398,14 @@ export function buildMicroDataset() {
         totalUnits: units.length,
         text: u.slice(0, 360),
         features: feat.vec,
+        tokenCount: feat.tok,
+        temptationT: feat.temptationT,
         slot: lbl.slot,
         slotIdx: lbl.slotIdx,
         yVal: lbl.yVal,
         yTempt: lbl.yTempt,
+        trainingEligible: lbl.trainingEligible,
+        labelAudit: lbl.labelAudit,
       }
       unitSamples.push(item)
       docUnits.push(item)
@@ -331,6 +440,20 @@ export function buildMicroDataset() {
     if (!cText || !rText) continue
     const chosenPref = extractDraftPrefFeatures(cText, '', '')
     const rejectedPref = extractDraftPrefFeatures(rText, '', '')
+    const pairedScores = p.scores || {}
+    let chosenScore = Number.isFinite(p.chosenScore) ? p.chosenScore : null
+    let rejectedScore = Number.isFinite(p.rejectedScore) ? p.rejectedScore : null
+    if (chosenScore == null || rejectedScore == null) {
+      const candidateScore = Number(pairedScores.candidate)
+      const controlScore = Number(pairedScores.control)
+      if (Number.isFinite(candidateScore) && Number.isFinite(controlScore)) {
+        if (p.chosen === 'candidate') { chosenScore = candidateScore; rejectedScore = controlScore }
+        else if (p.chosen === 'control') { chosenScore = controlScore; rejectedScore = candidateScore }
+        else { chosenScore = Math.max(candidateScore, controlScore); rejectedScore = Math.min(candidateScore, controlScore) }
+      }
+    }
+    const scoreMargin = chosenScore == null || rejectedScore == null ? null : chosenScore - rejectedScore
+    const trainingEligible = scoreMargin != null && scoreMargin >= 0.05
     stepSimpoPairs.push({
       id: `flywheel::${stepSimpoPairs.length}`,
       sourceId: p.task || fam || 'dev-flywheel',
@@ -339,17 +462,28 @@ export function buildMicroDataset() {
       description: '飞轮真实胜负偏好对',
       chosenText: cText,
       rejectedText: rText,
-      chosenScore: p.chosenScore ?? 0.92,
-      rejectedScore: p.rejectedScore ?? 0.45,
+      chosenScore,
+      rejectedScore,
       rejectedGateOk: false,
-      gammaDd: +Math.max(0.35, Math.min(1.2, (p.chosenScore ?? 0.92) - (p.rejectedScore ?? 0.45))).toFixed(4),
+      trainingEligible,
+      labelAudit: {
+        status: trainingEligible ? 'reviewed-pair-with-margin' : 'needs-review',
+        source: 'persisted-flywheel-pair-scores',
+        scoreMargin: scoreMargin == null ? null : +scoreMargin.toFixed(4),
+        reason: trainingEligible ? null : (scoreMargin == null ? 'missing-paired-scores' : 'paired-score-margin-below-0.05'),
+      },
+      gammaDd: +Math.max(0.35, Math.min(1.2, (scoreMargin ?? 0.35))).toFixed(4),
       chosenPref,
       rejectedPref,
     })
   }
 
+  const devFamilies = [...new Set(unitSamples.map((u) => familyKey(u.family)))].sort()
+  const eligibleFamilyCounts = Object.fromEntries(
+    devFamilies.map((family) => [family, unitSamples.filter((u) => u.trainingEligible && familyKey(u.family) === family).length]),
+  )
   const dataset = {
-    schema: 'cfb.micro-dev-dataset/2',
+    schema: 'cfb.micro-dev-dataset/3',
     createdAt: new Date().toISOString(),
     holdoutFamiliesExcluded: [...HOLDOUT_FAMS],
     holdoutTouched: false,
@@ -362,6 +496,58 @@ export function buildMicroDataset() {
       totalSpanPointers: spanSamples.reduce((s, x) => s + x.spans.length, 0),
       unitStepPairsCount: unitStepPairs.length,
       stepSimpoPairsCount: stepSimpoPairs.length,
+      trainEligibleUnitSamples: unitSamples.filter((u) => u.trainingEligible).length,
+      unitLabelNeedsReview: unitSamples.filter((u) => !u.trainingEligible).length,
+      unitLabelRuleCounts: countBy(unitSamples, (unit) => unit.labelAudit?.labelRule || 'missing-rule'),
+      eligibleUnitLabelRuleCounts: countBy(
+        unitSamples.filter((unit) => unit.trainingEligible),
+        (unit) => unit.labelAudit?.labelRule || 'missing-rule',
+      ),
+      trainEligibleStepSimpoPairs: stepSimpoPairs.filter((pair) => pair.trainingEligible).length,
+      stepSimpoLabelsNeedsReview: stepSimpoPairs.filter((pair) => !pair.trainingEligible).length,
+      draftPairNegTypeCounts: countBy(stepSimpoPairs, (pair) => pair.negType || 'unknown'),
+      eligibleDraftPairSourceCounts: countBy(
+        stepSimpoPairs.filter((pair) => pair.trainingEligible),
+        (pair) => pair.labelAudit?.source || 'missing-source',
+      ),
+      needsReviewDraftReasons: countBy(
+        stepSimpoPairs.filter((pair) => !pair.trainingEligible),
+        (pair) => pair.labelAudit?.reason || 'missing-score-or-margin',
+      ),
+      draftPairReviewStatusCounts: countBy(
+        stepSimpoPairs,
+        (pair) => pair.labelAudit?.status || 'missing-status',
+      ),
+      devFamilyCount: devFamilies.length,
+      devFamilyNames: devFamilies,
+      devFamilyUnitCounts: countBy(unitSamples, (unit) => familyKey(unit.family)),
+      eligibleDevFamilyUnitCounts: eligibleFamilyCounts,
+      unitPairEndpointReuse: (() => {
+        const refs = [...pairDegree.values()]
+        const histogram = Object.fromEntries([1, 2, 3, 4].map((d) => [String(d), refs.filter((n) => n === d).length]))
+        return {
+          maxDegree: refs.length ? Math.max(...refs) : 0,
+          uniqueEndpoints: refs.length,
+          endpointReferences: unitStepPairs.length * 2,
+          endpointsReused: refs.filter((n) => n > 1).length,
+          reuseFraction: refs.length ? +(refs.filter((n) => n > 1).length / refs.length).toFixed(4) : 0,
+          degreeHistogram: histogram,
+          cap: UNIT_PAIR_MAX_ENDPOINT_DEGREE,
+        }
+      })(),
+      labelAudit: {
+        unitSamples: unitSamples.length,
+        trainEligibleUnitSamples: unitSamples.filter((u) => u.trainingEligible).length,
+        needsSemanticReviewUnitSamples: unitSamples.filter((u) => !u.trainingEligible).length,
+        unitFlags: countBy(
+          unitSamples.flatMap((unit) => unit.labelAudit?.flags || []),
+          (flag) => flag,
+        ),
+        preferencePairs: stepSimpoPairs.length,
+        trainEligiblePreferencePairs: stepSimpoPairs.filter((p) => p.trainingEligible).length,
+        needsReviewPreferencePairs: stepSimpoPairs.filter((p) => !p.trainingEligible).length,
+        reviewStatus: 'deterministic-screen-only; LLM/human semantic review not run',
+      },
     },
     slotNames: SLOT_NAMES,
     unitSamples,

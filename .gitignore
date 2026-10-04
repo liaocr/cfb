@@ -36,3 +36,6 @@ __pycache__/
 
 # 离线层运行时产物（语料/候选/规划；可再生，不进交付清单）
 .cfb-offline/
+
+# Rebuilt from dev Gold/Pool by the free Kaggle micro-training pipeline.
+micro-dev-dataset.json

@@ -133,25 +133,43 @@ npm run traj:lite
 ### 6.1 两条明确分开的推理路径
 
 1. **完整教师编码器（高能力、可选部署）**：双向 ModernBERT 编码 + 槽位、价值/诱惑度、跨度和草稿偏好头；导出完整 INT8 ONNX。它支持跨语种和代码语义表示。当前训练把输入截到 `256` 个 tokenizer tokens；不要把模型卡的长上下文上限误报为本次训练/验收长度。
-2. **紧凑学生（当前生产快速路径）**：将教师在 `dev` 上的信号蒸馏到 19 维符号特征 MLP 和偏好小头。同步、无外部运行时依赖的 `compileV5Local` 使用这个学生权重；**它不会在 JS 调用中执行完整 97M Transformer**。紧凑 ONNX 延迟仅代表学生，不代表完整编码器。
+2. **紧凑学生（当前生产快速路径）**：将教师在 `dev` 上的信号蒸馏到 19 维符号特征 MLP 和偏好小头。同步、无外部运行时依赖的 `compileV5Local` 从唯一生产文件 `transfer/models/v5-micro-weights.json` 加载并校验权重，不保留第二份手写常量；`meta.promptVersion` 与 `meta.weightsDigest` 标识实际计分权重。**它不会在 JS 调用中执行完整 97M Transformer**。紧凑 ONNX 延迟仅代表学生，不代表完整编码器。`test/micro-runtime.selftest.mjs` 覆盖 JSON 加载、schema/特征顺序、token 惩罚、EXCLUDED 门控和默认编译路径。
 
 这样保留插件已有的低开销、可审计和原文落点守门路径，同时把完整神经编码器作为独立候选产物；不以固定 Gold 得分冒充教师模型的泛化证据。
 
 ### 6.2 严格隔离的数据与真实规模
 
-运行 `node tools/build-micro-dataset.mjs` 会写出临时文件 `transfer/models/micro-dev-dataset.json`，训练脚本结束后删除。当前数据规模以生成器输出为准：
+运行 `node tools/build-micro-dataset.mjs` 会写出临时文件 `transfer/models/micro-dev-dataset.json`，训练脚本结束后删除。2026-10-04 的生成结果如下；今后以每次构建器实际 JSON 报告为准：
 
-| 数据 | 当前计数 | 用途 |
+| 数据/审核项 | 当前计数 | 说明 |
 |---|---:|---|
-| dev Gold | 7 | 话语单元、跨度、反事实样本 |
-| dev Pool | 3 | 补充单元与反事实样本 |
-| 单元样本 | 1,538 | Head A/B/C 监督 |
+| dev Gold / dev Pool | 7 / 3 | 话语单元、跨度、反事实来源 |
+| Unit 原始样本 | 1,538 | 全量分母；三个 family：`flaky-timeout`、`perf-regression`、`sse-truncated` |
+| Unit 可训练 / needs-review | 569 / 969 | 可训练 37.0%；仅确定性规则筛选，未做 LLM/人工语义仲裁 |
 | 跨度指针 | 57 | 文件、代码片段和验收命令 |
-| Unit Step-SimPO | 2,452 对 | 单元级正负偏好 |
-| Draft Step-SimPO | 155 对 | 反事实 + 过滤后的 dev 飞轮偏好 |
-| 原保留 Gold holdout | 4 | `eacces-config`、`wrong-model` 不进训练数据；这 4 条已在此前运行中评测过，因此后续报告按固定安全门禁处理，不冒称全新盲测 |
+| Unit pair | 406 对 | 对比旧构造 2,452 对减少 83.44%；仅由可训练端点构成，端点最多复用 2 次 |
+| Unit pair 端点 | 529 个唯一端点 / 812 次引用 | 283 个端点各复用一次；复用端点占唯一端点 53.5%，度数上限为 2 |
+| Draft pair 原始 / 可训练 / needs-review | 155 / 118 / 37 | 可训练真实飞轮偏好须有成对分数且 margin `>=0.05`；其余不参与拟合 |
+| 原保留 Gold holdout | 4 | `eacces-config`、`wrong-model` 不进训练；已在此前评测，不是全新盲测 |
 
-SFT 和两类偏好数据采用**按 family 分组**的确定性 dev train/validation 切分；同一 family 不跨两边。验证 family 仅按样本数选择，尽量接近预先设定的 20% 验证比例，不按标签或得分挑选；每次报告会写出实际 `validationFamily`、样本比例、样本数和训练/验证胜率。验证集规模有限，因此它是分组 dev 验证，不替代更多任务家族上的外部泛化测试。
+标签审计当前是**规则支持筛选，不是语义审核完成**。Unit 的 969 条待审样本主要包含 `mechanism-heuristic-no-direct-gold-slot` 817、`competing-slot-overlap` 411、`noise-label-has-gold-overlap` 33、`noise-label-has-actionable-cue` 22（旗标可以重叠）；37 条 Draft pair 也被排除。训练脚本只使用 `trainingEligible=true` 的标签与 pair，并在数据文件保留逐条来源、依据、旗标和分母。
+
+Unit 标签生成规则计数（“eligible”列是实际可训练数）：
+
+| 规则 | 全量 | eligible |
+|---|---:|---:|
+| `gold-overlap-decided` | 150 | 91 |
+| `gold-overlap-excluded` | 89 | 75 |
+| `gold-overlap-acceptance` | 50 | 35 |
+| `gold-overlap-open` | 30 | 29 |
+| `decision-cue-plus-gold-overlap` | 14 | 12 |
+| `excluded-cue-plus-gold-overlap` | 14 | 7 |
+| `no-slot-cue-or-gold-anchor` | 374 | 320 |
+| `mechanism-heuristic-only` | 817 | 0 |
+
+Draft 可训练 pair 的来源为 112 条已有飞轮成对评分与 6 条 Gold 对确定性反事实；37 条待审原因为 margin `<0.05`（10）、被拒稿仍通过硬门（26）、无正向距离 margin（1）。这表明规则只保留有直接锚点/真实偏好依据的子集；需人工/LLM 逐条确认后才能称作语义审校完成。
+
+SFT 和两类偏好数据采用**按 family 分组**的确定性 dev train/validation 切分；`_decoy` / `_long-horizon` 只归并到源 family，不能制造独立样本族。验证 family 仅按可训练 Unit 数量选择，尽量接近预设 20%，SHA-256 用作平局决胜，不按标签或分数挑选。当前可训练 Unit family 分母为 `flaky-timeout=367`、`perf-regression=39`、`sse-truncated=163`；实际选中 `sse-truncated`，占可训练 Unit `163/569=28.65%`（占全部 Unit `163/1538=10.60%`）。它已用于旧 checkpoint 选择，**绝不是最终盲测**。
 
 ### 6.3 Kaggle 免费 GPU 操作
 
@@ -171,16 +189,22 @@ repo_url = f"https://x-access-token:{pat}@github.com/liaocr/cfb.git"
 !pip install -q "transformers==4.56.2" safetensors onnx onnxruntime requests
 
 %cd /kaggle/working/cfb
-!python3 tools/kaggle-train-micro.py --epochs-sft 12 --epochs-simpo 12 --push-back
+# 若尚无新 family 盲测文件，省略 --final-test-dataset；脚本会报告 blocked 且绝不晋级生产权重。
+# 新 family 文件需先独立语义审核，并作为 Kaggle Dataset 输入挂载：
+!python3 tools/kaggle-train-micro.py --epochs-sft 12 --epochs-simpo 12 \
+  --final-test-dataset /kaggle/input/cfb-final-family/micro-final-test.json --push-back
 ```
 
 训练使用低 encoder 学习率、warmup + cosine scheduler、梯度裁剪 `1.0`、按分组验证早停；双卡时启用 `DataParallel([0, 1])`。为避免 ModernBERT 内部 `torch.compile` 与 DataParallel 的 FX tracing 冲突，显式设 `reference_compile=False`；AMP 溢出跳过的优化器步会计数，scheduler 只在优化器实际更新后前进。日志只说明双卡并行已配置，不宣称 GPU 一直满载。
 
 ### 6.4 机器可读验收与晋级规则
 
-- 每轮都在**完整 train 与 family-held-out validation** 上重新计算 pair win rate，不再累计更新前的训练批次分数。
+- Teacher 与 compact student 指标分列；紧凑学生 Unit/Draft pair 指标在候选权重序列化后，通过 `tools/eval-micro-js-pairs.mjs` 调用 `src/compile-v5-local.js` 的实际 JS scorer 计算。Unit pair 比较 `scoreUnitWithWeights(...).v`（含 `lambda × tokenCount` 惩罚）；同一 scorer 同时执行 EXCLUDED 门控并报告门控审计数。特征向量来自数据构建器调用的生产 `extractUnitFeatures`，端点、family 和复用上限在 evaluator 再校验。
+- 训练脚本另外在可训练真实 Unit 与 Draft 特征上比较 PyTorch compact student、六位小数候选 JSON 和实际 JS scorer：最大绝对数值误差 `<=0.001`，并要求 Unit slot 与 EXCLUDED 门控判定一致。随机 ONNX 输入 smoke 只证明导出文件可运行，**不算 Python/JS 数值 parity**。
+- 每轮都在**完整 train 与 family-held-out validation** 上重新计算 pair win rate，不再累计更新前的训练批次分数。报告分别列 Teacher、PyTorch compact head 和部署 JS 权重的分数与精确分母。
 - `tools/train-v5-micro.mjs --eval-json <path>` 把实际 11 条 Mode 2 逐项结果和汇总写成 JSON；报告不再把 `1.0` 或 `11/11` 写死。
-- 只有以下条件全部满足，才将 candidate 晋级为生产权重：总参数 `<100M`、Unit validation `>=90%`、紧凑学生 Draft validation `>=90%`、Mode 2 的 G1/G2 全通过、完整 INT8 ONNX 导出及 ORT smoke test 成功。否则只发布候选报告/权重/紧凑学生 ONNX；成功导出的完整编码器 ONNX 仍会持久化为候选文件或 GitHub prerelease asset，**不会覆盖**当前生产权重。
+- 最终盲测只能在 checkpoint、代码、生产 JS 权重字段、训练目标、dev 数据和 split 冻结后，用 `--final-test-dataset <独立文件>` 对**一个此前未见、语义审核完成的新 family**执行一次。文件必须是 `cfb.micro-dev-dataset/3`，声明 `finalBlind: true`、`holdoutTouched: false`、`semanticReview.status: "completed"` 和逐类审核分母；每条 Unit/pair 的 `labelAudit` 必须保留来源/规则，并有 `semanticReview: { status: "confirmed", reviewer, rationale }`。顶层 `lineageReview` 要记录审核人/时间/新 family 理由；`knownFamiliesReviewed` 和 `knownSourceIdsReviewed` 必须与全部训练 lineage 精确匹配，`independentSourceIds` 必须与文件中的新 `sourceId` 完全一致且不与训练 source 重叠。Unit/pair 的每条 `sourceId` 都须能追溯到该新 family，Unit pair 不可跨 source；端点上限必须 `<=2`。`_decoy` / `_long-horizon` 变体和旧 `sse-truncated` validation 均会被拒绝。最终 Unit 与 Draft pair 也都要求 `>=90%`，结果只用于评估，不用于调参。
+- 只有以下条件全部满足，才将 candidate 晋级为生产权重：总参数 `<100M`、Teacher Unit 与 Draft validation 各 `>=90%`、compact student **JS Unit pair** 与 **JS Draft pair** validation 各 `>=90%`、PyTorch→JSON→JS 数值 parity 通过、Mode 2 的 G1/G2 全通过、完整 INT8 ONNX 导出及 ORT smoke test 成功、独立新 family 最终评估通过。缺少新 family 时 gate 明确为 blocked，不降低阈值、不拿旧 holdout 冒充；否则只发布候选报告/权重/紧凑学生 ONNX，**不会覆盖**当前生产权重。
 - 产物报告：`transfer/models/cfb-micro-97m-report.json`。报告分别记录完整编码器 ONNX 与紧凑学生 ONNX 的尺寸、实测延迟、train/validation 胜率、Gold dev/holdout 分数及精确参数余量。完整 ONNX 大于普通 Git blob 安全阈值时，训练脚本会改发 GitHub prerelease asset；具体 URL 写入报告。推送需要 Notebook Secret `GITHUB_PAT`；大文件 release 还需要该 token 有创建 release/上传 asset 的权限。
 
 快速本地复核已晋级的 JS 学生权重：

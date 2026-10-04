@@ -44,6 +44,10 @@ FULL_WORKING_PATH = Path("/kaggle/working/cfb-micro-97m-multilingual.int8.onnx")
 FULL_CANDIDATE_PATH = MODELS_DIR / "cfb-micro-97m-multilingual.int8.candidate.onnx"
 FULL_PRODUCTION_PATH = MODELS_DIR / "cfb-micro-97m-multilingual.int8.onnx"
 MODE2_JSON_PATH = Path("/kaggle/working/cfb-micro-mode2-eval.json")
+JS_PAIR_EVAL_PATH = Path("/kaggle/working/cfb-micro-js-pair-eval.json")
+JS_PARITY_FIXTURES_PATH = Path("/kaggle/working/cfb-micro-js-parity-fixtures.json")
+FINAL_TEST_EVAL_PATH = Path("/kaggle/working/cfb-micro-final-family-eval.json")
+FINAL_TEST_LEDGER_PATH = MODELS_DIR / "cfb-micro-final-test-ledger.json"
 
 SLOT_NAMES = ["MECHANISM", "EXCLUDED", "DECIDED", "ACCEPT", "OPEN", "NOISE"]
 SPAN_TYPES = ["target_file", "old_text", "new_text", "verify_cmd"]
@@ -84,10 +88,11 @@ def is_holdout_family(value) -> bool:
 
 
 def choose_validation_family(unit_samples: list[dict]) -> str:
-    families = sorted({family_key(u.get("family")) for u in unit_samples if not is_holdout_family(u.get("family"))})
+    eligible = [u for u in unit_samples if u.get("trainingEligible", True) and not is_holdout_family(u.get("family"))]
+    families = sorted({family_key(u.get("family")) for u in eligible})
     if len(families) < 2:
-        raise RuntimeError(f"需要至少两个 dev family 才能做 group holdout，当前只有: {families}")
-    counts = {family: sum(family_key(u.get("family")) == family for u in unit_samples) for family in families}
+        raise RuntimeError(f"需要至少两个有审核标签的 dev family 才能做 group holdout，当前只有: {families}")
+    counts = {family: sum(family_key(u.get("family")) == family for u in eligible) for family in families}
     total = sum(counts.values())
     # Choose by group size alone (never scores/labels) to keep validation near 20% without sibling leakage.
     return min(
@@ -297,7 +302,7 @@ class CompactSymbolicStudent(nn.Module):
             self.pref_mlp2.bias.copy_(teacher.pref_mlp2.bias)
 
     def forward_units(self, sym_feats: torch.Tensor):
-        h = F.gelu(self.fc1(sym_feats))
+        h = F.gelu(self.fc1(sym_feats), approximate="tanh")
         val_logit = self.linear_val(sym_feats).squeeze(-1) + 0.25 * self.val_out(h).squeeze(-1)
         tempt_logit = self.tempt_out(h).squeeze(-1)
         tempt = torch.clamp(0.7 * sym_feats[:, 9] + 0.3 * torch.sigmoid(tempt_logit), 0.0, 1.0)
@@ -311,6 +316,13 @@ class CompactSymbolicStudent(nn.Module):
     def forward(self, sym_feats: torch.Tensor, pref_feats: torch.Tensor):
         slot_logits, _, value, temptation = self.forward_units(sym_feats)
         return value, temptation, F.softmax(slot_logits, dim=-1), self.forward_pref(pref_feats)
+
+
+def compact_unit_runtime_score(student: CompactSymbolicStudent, sym_feats: torch.Tensor,
+                                token_counts: torch.Tensor, lambda_weight: float) -> torch.Tensor:
+    """Differentiable PyTorch equivalent of the production JS Unit rank score."""
+    _, value_logit, _, _ = student.forward_units(sym_feats)
+    return value_logit - float(lambda_weight) * token_counts
 
 
 class FullEncoderONNXWrapper(nn.Module):
@@ -432,8 +444,10 @@ def encode_draft_pairs(tokenizer, pairs, device):
 def stage1_sft(args, dp_model, model, tokenizer, dataset, device, use_amp):
     units = dataset["unitSamples"]
     val_family = choose_validation_family(units)
-    train_indices = [i for i, u in enumerate(units) if family_key(u.get("family")) != val_family]
-    val_indices = [i for i, u in enumerate(units) if family_key(u.get("family")) == val_family]
+    train_indices = [i for i, u in enumerate(units) if u.get("trainingEligible", True)
+                     and family_key(u.get("family")) != val_family]
+    val_indices = [i for i, u in enumerate(units) if u.get("trainingEligible", True)
+                   and family_key(u.get("family")) == val_family]
     if not train_indices or not val_indices:
         raise RuntimeError("grouped SFT split produced an empty train/validation partition")
 
@@ -584,8 +598,10 @@ def stage1_sft(args, dp_model, model, tokenizer, dataset, device, use_amp):
 
 
 def stage2_simpo(args, dp_model, model, tokenizer, dataset, sft, device, use_amp):
-    unit_train, unit_val = split_by_family(dataset["unitStepPairs"], sft["validationFamily"])
-    draft_train, draft_val = split_by_family(dataset["stepSimpoPairs"], sft["validationFamily"])
+    audited_unit_pairs = [p for p in dataset["unitStepPairs"] if p.get("trainingEligible", True)]
+    audited_draft_pairs = [p for p in dataset["stepSimpoPairs"] if p.get("trainingEligible", True)]
+    unit_train, unit_val = split_by_family(audited_unit_pairs, sft["validationFamily"])
+    draft_train, draft_val = split_by_family(audited_draft_pairs, sft["validationFamily"])
     if not unit_train or not unit_val or not draft_train or not draft_val:
         raise RuntimeError(
             f"grouped SimPO split empty: unit={len(unit_train)}/{len(unit_val)}, "
@@ -752,7 +768,7 @@ def teacher_unit_targets(dp_model, sft, device, use_amp, batch_size):
     return torch.cat(slot_logits), torch.cat(values), torch.cat(temptations)
 
 
-def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, device, use_amp):
+def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, device, use_amp, prior_weights):
     print("\n[Stage 4/6] Distilling the compact symbolic student for synchronous JavaScript inference...")
     student = CompactSymbolicStudent(teacher).to(device)
     teacher_slots, teacher_values, teacher_tempt = teacher_unit_targets(dp_model, sft, device, use_amp, args.eval_batch_size)
@@ -761,6 +777,24 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
     values = sft["values"]
     temptations = sft["temptations"]
     features = sft["features"]
+    unit_features = torch.tensor(
+        [row["features"] for row in dataset["unitSamples"]], dtype=torch.float32, device=device,
+    )
+    unit_token_counts = torch.tensor(
+        [row["tokenCount"] for row in dataset["unitSamples"]], dtype=torch.float32, device=device,
+    )
+    audited_unit_pairs = [pair for pair in dataset["unitStepPairs"] if pair.get("trainingEligible", True)]
+    unit_train_pairs = [pair for pair in audited_unit_pairs if family_key(pair.get("family")) != sft["validationFamily"]]
+    unit_val_pairs = [pair for pair in audited_unit_pairs if family_key(pair.get("family")) == sft["validationFamily"]]
+    if not unit_train_pairs or not unit_val_pairs:
+        raise RuntimeError(f"compact student Unit-pair split empty: {len(unit_train_pairs)}/{len(unit_val_pairs)}")
+    for pair in unit_train_pairs + unit_val_pairs:
+        if not math.isfinite(float(pair.get("gammaStep", float("nan")))):
+            raise RuntimeError(f"audited Unit pair missing finite gammaStep: {pair.get('sourceId')}")
+    lambda_weight = float(prior_weights.get("lambda", 0.0038))
+    pair_loss_weight = float(args.student_unit_pair_loss_weight)
+    if not math.isfinite(pair_loss_weight) or pair_loss_weight <= 0:
+        raise ValueError("--student-unit-pair-loss-weight must be finite and positive")
     temperature = 2.0
     optimizer = torch.optim.AdamW(student.parameters(), lr=args.student_lr, weight_decay=1e-4)
     history = []
@@ -768,7 +802,22 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
     best_loss = float("inf")
     stale = 0
 
-    def student_eval(selected):
+    def unit_pair_metrics(pairs):
+        win_idx = torch.tensor([pair["winIdx"] for pair in pairs], dtype=torch.long, device=device)
+        lose_idx = torch.tensor([pair["loseIdx"] for pair in pairs], dtype=torch.long, device=device)
+        margins = torch.tensor([float(pair["gammaStep"]) for pair in pairs], dtype=torch.float32, device=device)
+        win_score = compact_unit_runtime_score(
+            student, unit_features[win_idx], unit_token_counts[win_idx], lambda_weight,
+        )
+        lose_score = compact_unit_runtime_score(
+            student, unit_features[lose_idx], unit_token_counts[lose_idx], lambda_weight,
+        )
+        delta = win_score - lose_score
+        rank_loss = -F.logsigmoid(args.beta_simpo * (delta - margins)).mean()
+        accuracy = float((delta > 0).float().mean().item())
+        return rank_loss, accuracy
+
+    def student_eval(selected, pairs):
         if not selected:
             return {"loss": None, "slotAcc": None, "slotMacroF1": None}
         student.eval()
@@ -780,9 +829,17 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
             distill_loss = F.kl_div(F.log_softmax(logits / temperature, dim=-1), teacher_prob, reduction="batchmean") * temperature**2
             value_loss = F.huber_loss(pred_values, 0.5 * values[ix] + 0.5 * teacher_values[ix], delta=0.15)
             tempt_loss = F.huber_loss(pred_tempt, 0.5 * temptations[ix] + 0.5 * teacher_tempt[ix], delta=0.15)
+            pair_loss, pair_accuracy = unit_pair_metrics(pairs)
+            multitask_loss = 0.55 * hard_loss + 0.45 * distill_loss + value_loss + 0.6 * tempt_loss
+            total_loss = multitask_loss + pair_loss_weight * pair_loss
             metrics = classification_stats(logits, labels[ix])
             metrics.update({
-                "loss": round(float((0.55 * hard_loss + 0.45 * distill_loss + value_loss + 0.6 * tempt_loss).item()), 5),
+                "loss": round(float(total_loss.item()), 5),
+                "multiTaskLoss": round(float(multitask_loss.item()), 5),
+                "unitPairwiseLoss": round(float(pair_loss.item()), 5),
+                "unitPairAccReference": round(pair_accuracy, 4),
+                "unitPairCount": len(pairs),
+                "unitPairLossWeight": pair_loss_weight,
                 "valueMae": round(float((pred_values - values[ix]).abs().mean().item()), 5),
                 "samples": len(selected),
             })
@@ -806,15 +863,28 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
             torch.nn.utils.clip_grad_norm_(student.parameters(), 1.0)
             optimizer.step()
 
-        train_metrics = student_eval(train_indices)
-        val_metrics = student_eval(val_indices)
+        # Optimize the scalar JS Unit rank score with audited, family-grouped preference pairs.
+        student.train()
+        optimizer.zero_grad(set_to_none=True)
+        pair_loss, _ = unit_pair_metrics(unit_train_pairs)
+        weighted_pair_loss = pair_loss_weight * pair_loss
+        if not torch.isfinite(weighted_pair_loss):
+            raise FloatingPointError(f"non-finite compact Unit pair loss at epoch {epoch}")
+        weighted_pair_loss.backward()
+        torch.nn.utils.clip_grad_norm_(student.parameters(), 1.0)
+        optimizer.step()
+
+        train_metrics = student_eval(train_indices, unit_train_pairs)
+        val_metrics = student_eval(val_indices, unit_val_pairs)
         record = {"epoch": epoch, "train": train_metrics, "validation": val_metrics}
         history.append(record)
         if epoch == 1 or epoch % 10 == 0 or epoch == args.student_epochs:
             print(
                 f"   [Student {epoch:02d}/{args.student_epochs:02d}] "
-                f"train_acc={train_metrics['slotAcc']*100:.2f}% val_acc={val_metrics['slotAcc']*100:.2f}% "
-                f"val_macroF1={val_metrics['slotMacroF1']*100:.2f}%"
+                f"train_slot={train_metrics['slotAcc']*100:.2f}% val_slot={val_metrics['slotAcc']*100:.2f}% "
+                f"train_unit_pair={train_metrics['unitPairAccReference']*100:.2f}% "
+                f"val_unit_pair={val_metrics['unitPairAccReference']*100:.2f}% "
+                f"val_pair_loss={val_metrics['unitPairwiseLoss']:.4f}"
             )
         if val_metrics["loss"] < best_loss - 1e-5:
             best_loss = val_metrics["loss"]
@@ -828,8 +898,9 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
         student.load_state_dict(best_state)
 
     # Distill the full-text draft reward into a 12-feature nonlinear head for JS inference.
-    draft_train = [p for p in dataset["stepSimpoPairs"] if family_key(p.get("family")) != sft["validationFamily"]]
-    draft_val = [p for p in dataset["stepSimpoPairs"] if family_key(p.get("family")) == sft["validationFamily"]]
+    audited_draft_pairs = [p for p in dataset["stepSimpoPairs"] if p.get("trainingEligible", True)]
+    draft_train = [p for p in audited_draft_pairs if family_key(p.get("family")) != sft["validationFamily"]]
+    draft_val = [p for p in audited_draft_pairs if family_key(p.get("family")) == sft["validationFamily"]]
     all_draft_pairs = draft_train + draft_val
     (chosen_ids, chosen_masks, rejected_ids, rejected_masks, chosen_feats, rejected_feats, gammas) = encode_draft_pairs(
         tokenizer, all_draft_pairs, device,
@@ -903,11 +974,20 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
 
     compact_train_pair_acc = pref_eval(pair_indices_train)["pairAcc"]
     compact_val_pair_acc = pref_eval(pair_indices_val)["pairAcc"]
-    student_val_metrics = student_eval(val_indices)
+    unit_train_metrics = student_eval(train_indices, unit_train_pairs)
+    student_val_metrics = student_eval(val_indices, unit_val_pairs)
     return student, {
         "unitHistory": history,
-        "unitTrain": student_eval(train_indices),
+        "unitTrain": unit_train_metrics,
         "unitValidation": student_val_metrics,
+        "unitPairLossWeight": pair_loss_weight,
+        "unitPairBeta": float(args.beta_simpo),
+        "unitPairMarginSource": "gammaStep from audited Unit preference pairs",
+        # Final Unit-pair accuracy is filled only after serialized JSON is scored by actual JS.
+        "unitTrainPairAcc": None,
+        "unitValidationPairAcc": None,
+        "unitTrainPairs": len(unit_train_pairs),
+        "unitValidationPairs": len(unit_val_pairs),
         "prefHistory": pref_history,
         "prefTrainPairAcc": compact_train_pair_acc,
         "prefValidationPairAcc": compact_val_pair_acc,
@@ -975,12 +1055,17 @@ def serialize_candidate(prior_weights: dict, student: CompactSymbolicStudent,
             "devGoldCount": dataset["stats"]["devGoldItems"],
             "devPoolCount": dataset["stats"]["devPoolItems"],
             "devUnitSamples": dataset["stats"]["unitSamplesCount"],
+            "devTrainEligibleUnitSamples": dataset["stats"]["trainEligibleUnitSamples"],
+            "devUnitLabelsNeedsReview": dataset["stats"]["unitLabelNeedsReview"],
             "trainUnitSamples": len(sft_result["trainIndices"]),
             "validationUnitSamples": len(sft_result["validationIndices"]),
             "sftAmpSkippedSteps": sft_result["ampSkippedSteps"],
             "simpoAmpSkippedSteps": simpo_result["ampSkippedSteps"],
             "devUnitStepPairs": dataset["stats"]["unitStepPairsCount"],
             "devDraftPreferencePairs": dataset["stats"]["stepSimpoPairsCount"],
+            "trainEligibleDraftPreferencePairs": dataset["stats"]["trainEligibleStepSimpoPairs"],
+            "draftPreferencePairsNeedsReview": dataset["stats"]["stepSimpoLabelsNeedsReview"],
+            "unitPairEndpointReuse": dataset["stats"]["unitPairEndpointReuse"],
             "lastSftTrain": sft_result["history"][-1]["train"],
             "lastSftValidation": sft_result["history"][-1]["validation"],
             "bestSftValidation": min(sft_result["history"], key=lambda x: x["validation"]["loss"])["validation"],
@@ -991,14 +1076,114 @@ def serialize_candidate(prior_weights: dict, student: CompactSymbolicStudent,
             "simpoValidationDraftPairAcc": simpo_result["validationDraftPairAcc"],
             "studentUnitTrain": student_stats["unitTrain"],
             "studentUnitValidation": student_stats["unitValidation"],
-            "studentDraftTrainPairAcc": student_stats["prefTrainPairAcc"],
-            "studentDraftValidationPairAcc": student_stats["prefValidationPairAcc"],
+            "compactStudentUnitTrainPairs": student_stats["unitTrainPairs"],
+            "compactStudentUnitValidationPairs": student_stats["unitValidationPairs"],
+            "compactStudentUnitPairLossWeight": student_stats["unitPairLossWeight"],
+            "compactStudentUnitPairBeta": student_stats["unitPairBeta"],
+            "compactStudentUnitPairMarginSource": student_stats["unitPairMarginSource"],
+            "compactStudentUnitTrainPairwiseLoss": student_stats["unitTrain"]["unitPairwiseLoss"],
+            "compactStudentUnitValidationPairwiseLoss": student_stats["unitValidation"]["unitPairwiseLoss"],
+            "compactStudentUnitTrainPairAccPreSerialization": student_stats["unitTrain"]["unitPairAccReference"],
+            "compactStudentUnitValidationPairAccPreSerialization": student_stats["unitValidation"]["unitPairAccReference"],
+            "pytorchStudentDraftTrainPairAcc": student_stats["prefTrainPairAcc"],
+            "pytorchStudentDraftValidationPairAcc": student_stats["prefValidationPairAcc"],
         },
         "valueWeights": value_weights,
         "slotWeights": slot_weights,
         "prefWeights": pref_weights,
         "mlpHead": unit_mlp,
         "prefMlpHead": pref_mlp,
+    }
+
+
+def build_runtime_parity_fixtures(student: CompactSymbolicStudent, dataset: dict, weights: dict) -> dict:
+    """Compare the trained PyTorch student with its serialized production-JS scoring semantics."""
+    student.eval()
+    unit_rows = [
+        (index, row) for index, row in enumerate(dataset["unitSamples"])
+        if row.get("trainingEligible", True)
+    ]
+    if not unit_rows:
+        raise RuntimeError("no audited unit rows available for Python/JS parity")
+
+    unit_x = torch.tensor([row["features"] for _, row in unit_rows], dtype=torch.float32)
+    unit_tok = torch.tensor([row["tokenCount"] for _, row in unit_rows], dtype=torch.float32)
+    unit_temptation = torch.tensor(
+        [row.get("temptationT", row["features"][9]) for _, row in unit_rows],
+        dtype=torch.float32,
+    )
+    unit_cue_excluded = unit_x[:, 15]
+    lambda_weight = float(weights.get("lambda") or 0.0038)
+    temptation_min = float(weights.get("temptationMin", 0.18))
+    with torch.no_grad():
+        hidden = F.gelu(student.fc1(unit_x), approximate="tanh")
+        value = compact_unit_runtime_score(student, unit_x, unit_tok, lambda_weight)
+        raw_temptation = student.tempt_out(hidden).squeeze(-1)
+        temptation = torch.clamp(
+            0.7 * unit_temptation + 0.3 * torch.sigmoid(raw_temptation), 0.0, 1.0,
+        )
+        logits = student.linear_slot(unit_x) + 0.25 * student.slot_out(hidden)
+        gate_active = (temptation < temptation_min) & (unit_cue_excluded < 0.9)
+        logits[:, SLOT_NAMES.index("EXCLUDED")] -= 0.65 * gate_active.float()
+        probabilities = torch.softmax(logits, dim=-1)
+        rounded_probabilities = torch.floor(probabilities * 10000 + 0.5) / 10000
+        predicted = rounded_probabilities.argmax(dim=-1)
+
+    unit_fixtures = []
+    for (dataset_index, row), value_score, temptation_score, probs, slot_idx, gate in zip(
+        unit_rows,
+        value.cpu().tolist(),
+        temptation.cpu().tolist(),
+        probabilities.cpu().tolist(),
+        predicted.cpu().tolist(),
+        gate_active.cpu().tolist(),
+    ):
+        unit_fixtures.append({
+            "datasetIndex": dataset_index,
+            "sourceId": row.get("sourceId"),
+            "features": [float(x) for x in row["features"]],
+            "tokenCount": float(row["tokenCount"]),
+            "temptationT": float(row.get("temptationT", row["features"][9])),
+            "cueExcluded": float(row["features"][15]),
+            "expected": {
+                "v": float(value_score),
+                "temptationPred": float(temptation_score),
+                "probs": {slot: float(probs[i]) for i, slot in enumerate(SLOT_NAMES)},
+                "slot": SLOT_NAMES[slot_idx],
+                "excludedGateActive": bool(gate),
+            },
+        })
+
+    draft_feature_rows = []
+    for pair in dataset["stepSimpoPairs"]:
+        if not pair.get("trainingEligible", True):
+            continue
+        for side in ("chosen", "rejected"):
+            pref = pair.get(f"{side}Pref")
+            if not isinstance(pref, dict) or any(key not in pref for key in PREF_KEYS):
+                raise RuntimeError(f"missing audited draft feature vector: {pair.get('id')}:{side}")
+            draft_feature_rows.append((pair.get("id"), side, pref))
+    if not draft_feature_rows:
+        raise RuntimeError("no audited draft rows available for Python/JS parity")
+
+    draft_x = torch.tensor(
+        [[float(pref[key]) for key in PREF_KEYS] for _, _, pref in draft_feature_rows],
+        dtype=torch.float32,
+    )
+    with torch.no_grad():
+        draft_scores = student.forward_pref(draft_x).cpu().tolist()
+    draft_fixtures = [
+        {"pairId": pair_id, "side": side, "features": pref, "expected": float(score)}
+        for (pair_id, side, pref), score in zip(draft_feature_rows, draft_scores)
+    ]
+    return {
+        "schema": "cfb.micro-runtime-parity-fixtures/1",
+        "source": "actual audited dataset feature vectors created by the JS dataset builder",
+        "reference": "PyTorch CompactSymbolicStudent full-precision parameters recomputed with the JS scorer equations, before six-decimal JSON quantization",
+        "weightSchema": weights["schema"],
+        "tolerance": 0.001,
+        "unit": unit_fixtures,
+        "draft": draft_fixtures,
     }
 
 
@@ -1206,6 +1391,8 @@ def push_back(report: dict, promoted: bool, compact_path: Path, full_path: Path 
 
     save_json(REPORT_JSON_PATH, report)
     staged = ["transfer/models/cfb-micro-97m-report.json"]
+    if FINAL_TEST_LEDGER_PATH.exists():
+        staged.append(str(FINAL_TEST_LEDGER_PATH.relative_to(ROOT)))
     if CANDIDATE_WEIGHTS_PATH.exists():
         staged.append("transfer/models/v5-micro-weights.candidate.json")
     if promoted:
@@ -1234,11 +1421,165 @@ def push_back(report: dict, promoted: bool, compact_path: Path, full_path: Path 
     commit_message = (
         f"feat(micro-97m): {'promote' if promoted else 'record candidate'} multilingual encoder "
         f"(val unit={report['training']['simpoValidationUnitPairAcc']}, "
-        f"draft={report['training']['studentDraftValidationPairAcc']})"
+        f"draft={report['training']['compactStudentDraftValidationPairAcc']})"
     )
     subprocess.run(["git", "commit", "-m", commit_message], cwd=str(ROOT), check=True)
     subprocess.run(["git", "push", "origin", "main"], cwd=str(ROOT), check=True)
     print("✓ Report and eligible artifacts pushed to origin/main.")
+
+
+
+def run_final_family_evaluation(
+    args,
+    candidate_weights_path: Path,
+    known_families: list[str],
+    known_source_ids: list[str],
+) -> dict:
+    if not args.final_test_dataset:
+        return {
+            "status": "blocked-no-new-independent-family",
+            "passed": False,
+            "reason": "--final-test-dataset was not supplied; existing sse-truncated validation and Gold holdouts are not blind",
+        }
+    final_path = Path(args.final_test_dataset).expanduser().resolve()
+    if not final_path.is_file():
+        return {
+            "status": "blocked-final-dataset-not-found",
+            "passed": False,
+            "datasetPath": str(final_path),
+        }
+    final_data = json.loads(final_path.read_text(encoding="utf-8"))
+    families = sorted({family_key(row.get("family")) for row in final_data.get("unitSamples", [])})
+    if len(families) != 1:
+        return {
+            "status": "blocked-final-dataset-must-contain-one-family",
+            "passed": False,
+            "families": families,
+            "datasetPath": str(final_path),
+        }
+    family = families[0]
+    dataset_sha256 = hashlib.sha256(final_path.read_bytes()).hexdigest()
+    ledger = json.loads(FINAL_TEST_LEDGER_PATH.read_text(encoding="utf-8")) if FINAL_TEST_LEDGER_PATH.exists() else {
+        "schema": "cfb.micro-final-test-ledger/1",
+        "entries": [],
+    }
+    consumed = [entry for entry in ledger.get("entries", []) if entry.get("family") == family or entry.get("datasetSha256") == dataset_sha256]
+    if consumed:
+        return {
+            "status": "blocked-final-family-already-consumed",
+            "passed": False,
+            "family": family,
+            "datasetPath": str(final_path),
+            "datasetSha256": dataset_sha256,
+            "previousEvaluation": consumed[-1],
+            "ledgerPath": str(FINAL_TEST_LEDGER_PATH.relative_to(ROOT)),
+        }
+    command = [
+        "node", str(ROOT / "tools" / "eval-micro-js-pairs.mjs"),
+        "--dataset", str(final_path),
+        "--weights", str(candidate_weights_path),
+        "--validation-family", family,
+        "--known-families", ",".join(known_families),
+        "--known-source-ids", json.dumps(known_source_ids, separators=(",", ":")),
+        "--must-be-new-family",
+        "--final-blind-test",
+        "--report", str(FINAL_TEST_EVAL_PATH),
+    ]
+    try:
+        proc = subprocess.run(command, cwd=str(ROOT), capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as exc:
+        return {
+            "status": "blocked-final-dataset-audit-or-split-check-failed",
+            "passed": False,
+            "family": family,
+            "datasetPath": str(final_path),
+            "datasetSha256": dataset_sha256,
+            "error": (exc.stderr or exc.stdout or str(exc))[-4000:],
+        }
+    print("\n[Final blind family] Independent JS evaluation completed after candidate checkpoint selection.")
+    print(proc.stdout)
+    evaluation = json.loads(FINAL_TEST_EVAL_PATH.read_text(encoding="utf-8"))
+    unit = evaluation["candidate"]["unitPairs"]["validation"]
+    draft = evaluation["candidate"]["draftPairs"]["validation"]
+    passed = (
+        unit["total"] > 0 and draft["total"] > 0
+        and unit["accuracy"] is not None and unit["accuracy"] >= 0.90
+        and draft["accuracy"] is not None and draft["accuracy"] >= 0.90
+    )
+    ledger_entry = {
+        "family": family,
+        "datasetSha256": dataset_sha256,
+        "candidateWeightsDigest": evaluation["candidate"]["weightsDigest"],
+        "evaluatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "status": "passed" if passed else "evaluated-below-90-percent-gates",
+        "unitPairs": unit["total"],
+        "unitPairAccuracy": unit["accuracy"],
+        "draftPairs": draft["total"],
+        "draftPairAccuracy": draft["accuracy"],
+    }
+    ledger.setdefault("entries", []).append(ledger_entry)
+    save_json(FINAL_TEST_LEDGER_PATH, ledger)
+    return {
+        "status": "passed" if passed else "evaluated-below-90-percent-gates",
+        "passed": passed,
+        "family": family,
+        "datasetPath": str(final_path),
+        "datasetSha256": dataset_sha256,
+        "ledgerPath": str(FINAL_TEST_LEDGER_PATH.relative_to(ROOT)),
+        "semanticReview": final_data.get("semanticReview"),
+        "lineageReviewSummary": {
+            "status": final_data.get("lineageReview", {}).get("status"),
+            "reviewer": final_data.get("lineageReview", {}).get("reviewer"),
+            "knownFamiliesReviewed": len(final_data.get("lineageReview", {}).get("knownFamiliesReviewed", [])),
+            "knownTrainingSourceIdsReviewed": len(final_data.get("lineageReview", {}).get("knownSourceIdsReviewed", [])),
+            "independentSourceIdsReviewed": len(final_data.get("lineageReview", {}).get("independentSourceIds", [])),
+            "knownTrainingSourceIds": len(known_source_ids),
+            "sourceOverlap": 0,
+        },
+        "denominators": {
+            "unitSamples": len(final_data.get("unitSamples", [])),
+            "unitPairs": unit["total"],
+            "draftPairs": draft["total"],
+            "uniqueUnitPairEndpoints": unit["scoreAudit"]["uniqueEndpointsScored"],
+        },
+        "candidateMetrics": {
+            "unitPairAccuracy": unit["accuracy"],
+            "unitPairTo100Pp": None if unit["accuracy"] is None else round((1.0 - unit["accuracy"]) * 100, 2),
+            "draftPairAccuracy": draft["accuracy"],
+            "draftPairTo100Pp": None if draft["accuracy"] is None else round((1.0 - draft["accuracy"]) * 100, 2),
+        },
+        "productionBaseline": {
+            "unitPairAccuracy": evaluation["production"]["unitPairs"]["validation"]["accuracy"],
+            "draftPairAccuracy": evaluation["production"]["draftPairs"]["validation"]["accuracy"],
+        },
+        "candidateWeightsDigest": evaluation["candidate"]["weightsDigest"],
+        "validationFamilyWasUsedForCheckpointSelection": evaluation["validationFamilyWasUsedForCheckpointSelection"],
+        "evaluation": evaluation,
+    }
+
+
+def frozen_evaluation_record(training_dataset_sha256: str, candidate_weights_digest: str,
+                             validation_family: str) -> dict:
+    source_paths = [
+        ROOT / "src" / "compile-v5-local.js",
+        ROOT / "tools" / "build-micro-dataset.mjs",
+        ROOT / "tools" / "eval-micro-js-pairs.mjs",
+        ROOT / "tools" / "kaggle-train-micro.py",
+    ]
+    try:
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(ROOT), text=True).strip()
+    except Exception:
+        commit = None
+    return {
+        "frozenAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "codeCommit": commit,
+        "sourceSha256": {str(item.relative_to(ROOT)): hashlib.sha256(item.read_bytes()).hexdigest() for item in source_paths},
+        "trainingDatasetSha256": training_dataset_sha256,
+        "candidateScoringWeightsSha256": candidate_weights_digest,
+        "candidateWeightsPath": str(CANDIDATE_WEIGHTS_PATH.relative_to(ROOT)),
+        "validationFamily": validation_family,
+        "trainingObjective": "grouped SFT multi-task + teacher SimPO-inspired margin pair loss + compact-student JS-aligned Unit gammaStep pair loss + compact-student draft reward distillation; final candidate Unit/Draft scores use the production JS scorer",
+    }
 
 
 def main():
@@ -1258,12 +1599,16 @@ def main():
     parser.add_argument("--student-lr", type=float, default=2e-3)
     parser.add_argument("--pref-student-lr", type=float, default=1e-3)
     parser.add_argument("--student-epochs", type=int, default=80)
+    parser.add_argument("--student-unit-pair-loss-weight", type=float, default=1.0,
+                        help="weight for the compact student's audited Unit pairwise ranking loss")
     parser.add_argument("--pref-student-epochs", type=int, default=100)
     parser.add_argument("--student-batch-size", type=int, default=128)
     parser.add_argument("--student-patience", type=int, default=12)
     parser.add_argument("--patience", type=int, default=4)
     parser.add_argument("--beta-simpo", type=float, default=0.85)
     parser.add_argument("--draft-loss-weight", type=float, default=1.2)
+    parser.add_argument("--final-test-dataset", type=str, default=None,
+                        help="Separate, semantically reviewed, single-new-family dataset used only after checkpoint selection")
     parser.add_argument("--push-back", action="store_true")
     args = parser.parse_args()
 
@@ -1309,7 +1654,8 @@ def main():
     print("\n[Stage 1/6] Building strict dev-only training data...")
     subprocess.run(["node", str(ROOT / "tools" / "build-micro-dataset.mjs")], check=True, cwd=str(ROOT))
     dataset = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
-    if dataset.get("schema") != "cfb.micro-dev-dataset/2":
+    training_dataset_sha256 = hashlib.sha256(DATASET_PATH.read_bytes()).hexdigest()
+    if dataset.get("schema") != "cfb.micro-dev-dataset/3":
         raise RuntimeError(f"unsupported dataset schema: {dataset.get('schema')}")
     if dataset.get("holdoutTouched") is not False:
         raise RuntimeError("dataset holdoutTouched must be false")
@@ -1334,7 +1680,9 @@ def main():
 
     sft_result = stage1_sft(args, dp_model, model, tokenizer, dataset, device, use_amp)
     simpo_result = stage2_simpo(args, dp_model, model, tokenizer, dataset, sft_result, device, use_amp)
-    student, student_stats = train_compact_student(args, model, dp_model, tokenizer, dataset, sft_result, device, use_amp)
+    student, student_stats = train_compact_student(
+        args, model, dp_model, tokenizer, dataset, sft_result, device, use_amp, prior_weights,
+    )
 
     print("\n[Stage 5/6] Exporting and smoke-testing compact student + full quantized encoder ONNX...")
     export_result = export_models(model, student, tokenizer)
@@ -1345,6 +1693,51 @@ def main():
         total_params, trainable_params, f"{device} ({'; '.join(gpu_names) if gpu_names else 'CPU'}, count={gpu_count})",
     )
     CANDIDATE_WEIGHTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    save_json(CANDIDATE_WEIGHTS_PATH, weights_candidate)
+    parity_fixtures = build_runtime_parity_fixtures(student, dataset, weights_candidate)
+    save_json(JS_PARITY_FIXTURES_PATH, parity_fixtures)
+
+    print("\n[Stage 5.5/6] Checking PyTorch→JSON→actual JS numerical parity and scoring audited Unit/Draft pairs...")
+    js_pair_proc = subprocess.run(
+        [
+            "node", str(ROOT / "tools" / "eval-micro-js-pairs.mjs"),
+            "--dataset", str(DATASET_PATH),
+            "--weights", str(CANDIDATE_WEIGHTS_PATH),
+            "--validation-family", sft_result["validationFamily"],
+            "--parity-fixtures", str(JS_PARITY_FIXTURES_PATH),
+            "--report", str(JS_PAIR_EVAL_PATH),
+        ],
+        cwd=str(ROOT), capture_output=True, text=True, check=True,
+    )
+    print(js_pair_proc.stdout)
+    js_pair_eval = json.loads(JS_PAIR_EVAL_PATH.read_text(encoding="utf-8"))
+    if js_pair_eval.get("numericalParity", {}).get("status") != "passed":
+        raise RuntimeError("compact student PyTorch→JSON→JS numerical parity did not pass")
+    js_train_unit = js_pair_eval["candidate"]["unitPairs"]["train"]
+    js_val_unit = js_pair_eval["candidate"]["unitPairs"]["validation"]
+    js_train_draft = js_pair_eval["candidate"]["draftPairs"]["train"]
+    js_val_draft = js_pair_eval["candidate"]["draftPairs"]["validation"]
+    js_prod_val_unit = js_pair_eval["production"]["unitPairs"]["validation"]
+    js_prod_val_draft = js_pair_eval["production"]["draftPairs"]["validation"]
+    if js_train_unit["total"] != student_stats["unitTrainPairs"] or js_val_unit["total"] != student_stats["unitValidationPairs"]:
+        raise RuntimeError("JS runtime Unit-pair denominator disagrees with audited grouped split")
+    student_stats["unitTrainPairAcc"] = js_train_unit["accuracy"]
+    student_stats["unitValidationPairAcc"] = js_val_unit["accuracy"]
+    weights_candidate["trainingStats"].update({
+        "compactStudentUnitTrainPairAcc": js_train_unit["accuracy"],
+        "compactStudentUnitValidationPairAcc": js_val_unit["accuracy"],
+        "compactStudentUnitTrainPairs": js_train_unit["total"],
+        "compactStudentUnitValidationPairs": js_val_unit["total"],
+        "compactStudentDraftTrainPairAcc": js_train_draft["accuracy"],
+        "compactStudentDraftValidationPairAcc": js_val_draft["accuracy"],
+        "compactStudentDraftTrainPairs": js_train_draft["total"],
+        "compactStudentDraftValidationPairs": js_val_draft["total"],
+        "productionJsRuntimeValidationUnitPairAcc": js_prod_val_unit["accuracy"],
+        "productionJsRuntimeValidationDraftPairAcc": js_prod_val_draft["accuracy"],
+        "jsRuntimeScorer": js_pair_eval["runtimeScorer"],
+        "jsRuntimeWeightsSchema": js_pair_eval["candidate"]["schema"],
+        "pythonJsNumericalParity": js_pair_eval["numericalParity"],
+    })
     save_json(CANDIDATE_WEIGHTS_PATH, weights_candidate)
     if DATASET_PATH.exists():
         DATASET_PATH.unlink()
@@ -1360,25 +1753,63 @@ def main():
     print(eval_proc.stdout)
     mode2 = json.loads(MODE2_JSON_PATH.read_text(encoding="utf-8"))
     summary = mode2["summary"]
+    freeze_record = frozen_evaluation_record(
+        training_dataset_sha256,
+        js_pair_eval["candidate"]["weightsDigest"],
+        sft_result["validationFamily"],
+    )
+    final_family_eval = run_final_family_evaluation(
+        args,
+        CANDIDATE_WEIGHTS_PATH,
+        dataset["stats"]["devFamilyNames"],
+        sorted({
+            str(row.get("sourceId"))
+            for collection_name in ("unitSamples", "unitStepPairs", "stepSimpoPairs")
+            for row in dataset.get(collection_name, [])
+            if row.get("sourceId")
+        }),
+    )
     simpo_val_unit = simpo_result["validationUnitPairAcc"]
-    simpo_val_draft_student = student_stats["prefValidationPairAcc"]
+    simpo_val_draft_teacher = simpo_result["validationDraftPairAcc"]
+    compact_val_unit = student_stats["unitValidationPairAcc"]
+    compact_val_draft = js_val_draft["accuracy"]
+    pytorch_student_val_draft = student_stats["prefValidationPairAcc"]
+    js_val_unit_accuracy = js_val_unit["accuracy"]
+    js_val_draft_accuracy = js_val_draft["accuracy"]
     target_unit = simpo_val_unit is not None and simpo_val_unit >= 0.90
-    target_draft = simpo_val_draft_student is not None and simpo_val_draft_student >= 0.90
+    target_teacher_draft = simpo_val_draft_teacher is not None and simpo_val_draft_teacher >= 0.90
+    target_compact_unit = compact_val_unit is not None and compact_val_unit >= 0.90
+    target_js_unit = js_val_unit_accuracy is not None and js_val_unit_accuracy >= 0.90
+    target_draft = compact_val_draft is not None and compact_val_draft >= 0.90
+    target_js_draft = js_val_draft_accuracy is not None and js_val_draft_accuracy >= 0.90
+    # Existing Gold families have already participated in earlier evaluation; only the separate new-family test can open this gate.
+    fresh_independent_test_passed = final_family_eval["passed"]
     gates = {
         "under01B": total_params < 100_000_000,
         "strictDevOnly": weights_candidate["holdoutTouched"] is False,
         "unitPreferenceValidationAtLeast90": target_unit,
+        "teacherDraftPreferenceValidationAtLeast90": target_teacher_draft,
+        "compactStudentUnitPairValidationAtLeast90": target_compact_unit,
+        "jsRuntimeUnitPairValidationAtLeast90": target_js_unit,
         "draftPreferenceStudentValidationAtLeast90": target_draft,
+        "jsRuntimeDraftPairValidationAtLeast90": target_js_draft,
         "mode2G1AllPass": summary["g1PassCount"] == summary["totalItems"],
         "mode2G2AllPass": summary["g2PassCount"] == summary["totalItems"],
         "fullOnnxSmokePassed": export_result["fullOnnxSmoke"] == "passed",
+        "pythonJsNumericalParityPassed": js_pair_eval["numericalParity"]["status"] == "passed",
+        "freshIndependentNewFamilyTestPassed": fresh_independent_test_passed,
     }
     accepted = all(gates.values())
     best_sft_val = min(sft_result["history"], key=lambda row: row["validation"]["loss"])["validation"]
     ceiling_distances = {
         "sftValidationSlotAccTo100Pp": round((1.0 - best_sft_val["slotAcc"]) * 100, 2),
         "unitPreferenceValidationTo100Pp": None if simpo_val_unit is None else round((1.0 - simpo_val_unit) * 100, 2),
-        "draftPreferenceValidationTo100Pp": None if simpo_val_draft_student is None else round((1.0 - simpo_val_draft_student) * 100, 2),
+        "compactStudentUnitPairValidationTo100Pp": None if compact_val_unit is None else round((1.0 - compact_val_unit) * 100, 2),
+        "jsRuntimeUnitPairValidationTo100Pp": None if js_val_unit_accuracy is None else round((1.0 - js_val_unit_accuracy) * 100, 2),
+        "teacherDraftPreferenceValidationTo100Pp": None if simpo_val_draft_teacher is None else round((1.0 - simpo_val_draft_teacher) * 100, 2),
+        "pytorchCompactStudentDraftValidationTo100Pp": None if pytorch_student_val_draft is None else round((1.0 - pytorch_student_val_draft) * 100, 2),
+        "compactStudentDraftPairValidationTo100Pp": None if compact_val_draft is None else round((1.0 - compact_val_draft) * 100, 2),
+        "jsRuntimeDraftPairValidationTo100Pp": None if js_val_draft_accuracy is None else round((1.0 - js_val_draft_accuracy) * 100, 2),
         "mode2DevMeanScoreTo1Pp": round((1.0 - summary["devMeanScore"]) * 100, 2),
         "mode2HoldoutMeanScoreTo1Pp": round((1.0 - summary["holdoutMeanScore"]) * 100, 2),
         "mode2MeanCharReductionTo100Pp": round(100 - summary["meanCharReductionPct"], 2),
@@ -1387,23 +1818,52 @@ def main():
         "parametersBelow100M": 100_000_000 - total_params,
     }
     report = {
-        "schema": "cfb.micro-97m-training-report/2",
+        "schema": "cfb.micro-97m-training-report/3",
         "completedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "model": {"id": MODEL_ID, "revision": MODEL_REVISION, "license": MODEL_LICENSE},
         "device": {"kind": str(device), "gpus": gpu_names, "gpuCount": gpu_count, "dataParallelConfigured": gpu_count > 1},
         "dataset": {
             "holdoutTouchedDuringTraining": False,
             "holdoutEvaluatedForMode2": True,
-            "holdoutFreshBlindSet": False,
+            "holdoutFreshBlindSet": final_family_eval["status"] in {"passed", "evaluated-below-90-percent-gates"},
+            "freshIndependentNewFamilyTest": {
+                **final_family_eval,
+                "eligibleFamiliesInCurrentMicroCorpus": dataset["stats"]["devFamilyNames"],
+                "requiredNext": None if final_family_eval["passed"] else "supply a genuinely new, semantically reviewed family after code/data/split/checkpoint freeze; never relabel _decoy/_long-horizon variants",
+            },
+            "finalEvaluationFreeze": freeze_record,
             "holdoutFamiliesExcluded": sorted(HOLDOUT_FAMILIES),
             "validationFamily": sft_result["validationFamily"],
             "validationUnitFractionTarget": VALIDATION_UNIT_FRACTION,
-            "validationUnitFractionActual": round(len(sft_result["validationIndices"]) / max(1, dataset["stats"]["unitSamplesCount"]), 4),
+            "validationUnitFractionActual": round(len(sft_result["validationIndices"]) / max(1, dataset["stats"]["trainEligibleUnitSamples"]), 4),
+            "validationUnitFractionOfAllRows": round(len(sft_result["validationIndices"]) / max(1, dataset["stats"]["unitSamplesCount"]), 4),
+            "eligibleTrainUnitCount": len(sft_result["trainIndices"]),
+            "eligibleValidationUnitCount": len(sft_result["validationIndices"]),
             "devGoldItems": dataset["stats"]["devGoldItems"],
             "devPoolItems": dataset["stats"]["devPoolItems"],
             "unitSamples": dataset["stats"]["unitSamplesCount"],
             "unitPairs": dataset["stats"]["unitStepPairsCount"],
             "draftPairs": dataset["stats"]["stepSimpoPairsCount"],
+            "trainEligibleUnitSamples": dataset["stats"]["trainEligibleUnitSamples"],
+            "unitLabelNeedsReview": dataset["stats"]["unitLabelNeedsReview"],
+            "trainEligibleDraftPairs": dataset["stats"]["trainEligibleStepSimpoPairs"],
+            "draftPairLabelsNeedsReview": dataset["stats"]["stepSimpoLabelsNeedsReview"],
+            "unitPairEndpointReuse": dataset["stats"]["unitPairEndpointReuse"],
+            "uniqueUnitPairEndpoints": dataset["stats"]["unitPairEndpointReuse"]["uniqueEndpoints"],
+            "familyCount": dataset["stats"]["devFamilyCount"],
+            "familyNames": dataset["stats"]["devFamilyNames"],
+            "familyUnitCounts": dataset["stats"]["devFamilyUnitCounts"],
+            "eligibleFamilyUnitCounts": dataset["stats"]["eligibleDevFamilyUnitCounts"],
+            "labelAudit": dataset["stats"]["labelAudit"],
+            "splitAndCheckpointRules": {
+                "grouping": "familyKey; no family crosses train/validation; _decoy/_long-horizon suffixes normalize to the source family",
+                "validationFamilySelection": "closest eligible-unit family size to 20%; deterministic SHA-256 tie-break; no label or score optimization",
+                "sftCheckpoint": "minimum grouped validation loss",
+                "teacherPreferenceCheckpoint": "maximum unweighted mean of grouped validation Unit-pair and Draft-pair accuracy",
+                "compactUnitHeadCheckpoint": "minimum grouped validation distillation/classification loss; Unit-pair score is reported only through actual JS runtime after serialization",
+                "compactDraftHeadCheckpoint": "maximum grouped validation pair accuracy; lower distillation/ranking loss breaks ties",
+                "freshNewFamilyTest": "run after the frozen candidate if --final-test-dataset is supplied; never enters fitting or checkpoint selection",
+            },
             "unitPairTrainCount": simpo_result["unitTrainCount"],
             "unitPairValidationCount": simpo_result["unitValidationCount"],
             "draftPairTrainCount": simpo_result["draftTrainCount"],
@@ -1427,12 +1887,29 @@ def main():
             "simpoBestEpoch": simpo_result["bestEpoch"],
             "simpoTrainUnitPairAcc": simpo_result["trainUnitPairAcc"],
             "simpoValidationUnitPairAcc": simpo_val_unit,
+            "teacherValidationUnitPairAcc": simpo_val_unit,
+            "teacherValidationDraftPairAcc": simpo_val_draft_teacher,
+            "compactStudentUnitTrainPairAcc": student_stats["unitTrainPairAcc"],
+            "compactStudentUnitValidationPairAcc": compact_val_unit,
+            "compactStudentUnitTrainPairs": student_stats["unitTrainPairs"],
+            "compactStudentUnitValidationPairs": student_stats["unitValidationPairs"],
+            "compactStudentPairScorer": js_pair_eval["runtimeScorer"],
+            "compactStudentPythonJsNumericalParity": js_pair_eval["numericalParity"],
+            "jsRuntimePairEvaluation": js_pair_eval,
+            "jsRuntimeValidationUnitPairAcc": js_val_unit_accuracy,
+            "compactStudentDraftTrainPairAcc": js_train_draft["accuracy"],
+            "compactStudentDraftValidationPairAcc": compact_val_draft,
+            "compactStudentDraftTrainPairs": js_train_draft["total"],
+            "compactStudentDraftValidationPairs": js_val_draft["total"],
+            "jsRuntimeValidationDraftPairAcc": js_val_draft_accuracy,
+            "productionJsRuntimeValidationUnitPairAcc": js_prod_val_unit["accuracy"],
+            "productionJsRuntimeValidationDraftPairAcc": js_prod_val_draft["accuracy"],
             "simpoTrainDraftPairAcc": simpo_result["trainDraftPairAcc"],
             "simpoValidationDraftPairAcc": simpo_result["validationDraftPairAcc"],
-            "studentUnitTrain": student_stats["unitTrain"],
-            "studentUnitValidation": student_stats["unitValidation"],
-            "studentDraftTrainPairAcc": student_stats["prefTrainPairAcc"],
-            "studentDraftValidationPairAcc": simpo_val_draft_student,
+            "pytorchStudentUnitTrain": student_stats["unitTrain"],
+            "pytorchStudentUnitValidation": student_stats["unitValidation"],
+            "pytorchStudentDraftTrainPairAcc": student_stats["prefTrainPairAcc"],
+            "pytorchStudentDraftValidationPairAcc": pytorch_student_val_draft,
             "studentPreferenceHistory": student_stats["prefHistory"],
         },
         "mode2GoldEval": mode2,
@@ -1456,8 +1933,12 @@ def main():
         "notes": [
             "Mode 2 metrics are parsed from tools/train-v5-micro.mjs --eval-json.",
             "The synchronous JS compiler consumes the compact symbolic student; the full encoder ONNX is a separate optional artifact.",
+            "Full INT8 ONNX ORT smoke is an export/runtime check on fixed synthetic inputs only; it is not Python-to-JS numerical parity.",
             "The selected dev validation family is excluded from gradient updates and used for early stopping/checkpoint selection; Gold holdout is excluded from fitting and selection and is only a fixed Mode 2 safety gate.",
             "The four existing Gold holdout cases were already evaluated in the prior run; they are not a fresh blind set.",
+            "Training-corpus Unit and preference labels carry deterministic audit provenance; rows flagged needs-review are excluded from fitting. The separate final family, if supplied, must carry per-item semantic review provenance.",
+            ("Independent new-family final evaluation passed." if final_family_eval["passed"] else
+             "Promotion remains blocked until one genuinely new, independently reviewed family is evaluated after checkpoint selection; current training corpus has only three eligible dev families."),
         ],
     }
     report["training"]["elapsedSeconds"] = round(time.time() - t_start, 2)

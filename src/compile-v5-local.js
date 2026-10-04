@@ -1,24 +1,24 @@
 // dsh-cot-form-b / compile-v5-local.js —— v5 本地超高精度认知微模型编译器（纯函数，零外部依赖，< 2ms，< 1MB 内存）
 //
 // 理论出处：docs/theory/CFB-THEORY-COMPLETE.md（第一至六卷、S8 R1–R11、S10.1–S10.19、附录 B）
-//   1. 18 维理论特征基底 φ(u_i, ctx)：9 类句子功能先验 prior_D（pivot/plan/hypothesize/localize/compute/inspect/verify/answer/restate）、
+//   1. 19 维理论特征基底 φ(u_i, ctx)：9 类句子功能先验 prior_D（pivot/plan/hypothesize/localize/compute/inspect/verify/answer/restate）、
 //      下游引用广播度 g(fanout)、动作锚定律 actionLink（P1）、重拾次数 revisit、探索/计算投入分解 effortExplore/effortCompute（P4）、
 //      诱惑度 T(i)（P4）、可重导率 R(i)（A2）、信息价值 Info(i)=D·Pn·(1-R)（A2）、配对疫苗净值 Vac(i)-Prime(i)（A3/P2）、
-//      过期干扰中和值 Neut(i)-Dist(i)（A4）、四槽位句法亲和度与影子价格成本 -λ·tok(i)（§0）。
-//   2. 多头微模型权重 V5_MICRO_WEIGHTS（由 tools/train-v5-micro.mjs 仅在 dev 集与 dev 飞轮偏好对上经 L2 正则化逻辑回归与
-//      Bradley-Terry 偏好损失训练得到，holdout 家族全程零参与）：
+//      过期干扰中和值 Neut(i)-Dist(i)（A4）与 token 长度惩罚 -λ·tok(i)（§0）。
+//   2. 多头微模型权重 V5_MICRO_WEIGHTS 从 checked-in JSON artifact 加载并做 schema/维度验证；训练与审核来源应以权重文件和训练报告为准。
 //      · Head 1 (slotWeights): 6 类认知槽位分类器 {MECHANISM, EXCLUDED, DECIDED, ACCEPT, OPEN, NOISE}
-//      · Head 2 (valueWeights): 条目净价值函数 v_θ(i; λ)
-//      · Head 3 (prefWeights): 整稿级偏好排序器（在候选渲染档位中选出最高价值且满足长度甜区的稿）
+//      · Head 2 (valueWeights + optional MLP): 条目净价值函数 v_θ(i; λ)
+//      · Head 3 (prefWeights + optional MLP): 整稿级偏好排序器
+//      Production/candidate artifacts are JSON; this file is the sole JS scoring implementation.
 //   3. 次模划分拟阵贪心选取器 selectOpsV5（第五卷 P5）：边际增益 Δ(i|S) = v_θ(i;λ) - Σ ρ_red·Jaccard(ids(i),ids(j))，
 //      强制同键互斥与死路不复活（deadEndResurrected = false）。
 //   4. 确定性原生语域散文渲染 + 100% 锚点核真（第五卷 S1、R4″、R7、R8a/b、R11、S10.19）：
 //      所有反引号片段与标识符严格对齐 raw ∪ ctx ∪ programParts，从构造上保证 anchorPrecision = 1.000。
+import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import { estimateTokens } from './tokens.js'
 import { inventedIdentifiers, NEW_TEXT_LEAD_RE } from './fidelity.js'
 import { inHandLines, programPartsText } from './compile-v4.js'
-
-export const V5_LOCAL_VERSION = 'v5-micro-1'
 
 // ── 理论先验常量（第四卷 A2 / 第五卷 P1–P5 / 附录 B） ─────────────────────────
 export const PRIOR_D_V5 = Object.freeze({
@@ -31,49 +31,116 @@ export const R_BASE_V5 = Object.freeze({
 })
 export const SLOT_NAMES = Object.freeze(['MECHANISM', 'EXCLUDED', 'DECIDED', 'ACCEPT', 'OPEN', 'NOISE'])
 
-// ── 训练所得微模型参数（由 tools/train-v5-micro.mjs 在 dev split 上拟合更新） ────
-export const V5_MICRO_WEIGHTS = Object.freeze({
-  schema: 'cfb.v5-micro-weights/1',
-  trainedOn: 'dev-only (7 gold:dev + 3 pool:dev + 101 flywheel:dev)',
-  holdoutTouched: false,
-  lambda: 0.0038,
-  rhoRed: 0.32,
-  temptationMin: 0.18,
-  featureNames: [
-    'bias', 'prior_D', 'pos_norm', 'is_tail', 'fanout_g', 'action_link',
-    'revisit', 'effort_explore', 'effort_compute', 'temptation_T',
-    'rederivability_R', 'info_val', 'vac_net', 'neut_net',
-    'cue_decided', 'cue_excluded', 'cue_accept', 'cue_open', 'tok_cost',
-  ],
-  valueWeights: [
-    -0.2577, 0.6778, 0.1818, 0.3125, 0.3711, 0.7524,
-    0.2966, 0.2233, 0.1292, 0.5469,
-    -0.8805, 1.0933, 0.8693, 0.5146,
-    1.2179, 0.9032, 0.9031, 0.7997, -1.0319,
-  ],
-  slotWeights: {
-    MECHANISM: [0.3514, 0.6645, -0.1729, -0.145, 0.8351, 0.5762, 0.2337, -0.1806, 0.6683, -0.1181, -0.5844, 0.9462, -0.2133, 0.3418, -0.3728, -0.491, -0.3917, -0.324, -0.2165],
-    EXCLUDED:  [-0.2528, 0.386, 0.0369, 0.0685, 0.1743, -0.4227, 0.5561, 0.6383, 0.1059, 0.9277, -0.3746, 0.1237, 1.2489, 0.419, -0.4721, 1.8498, -0.3168, -0.2599, -0.2156],
-    DECIDED:   [-0.3516, 0.8065, 0.4785, 0.6194, 0.525, 1.2757, 0.2665, -0.2602, 0.3266, -0.182, -0.6808, 1.0731, -0.3087, 0.4452, 2.0875, -0.5382, -0.2202, -0.2116, -0.167],
-    ACCEPT:    [-0.3694, 0.6311, 0.4152, 0.5313, 0.2591, 0.7286, 0.1072, -0.2113, 0.218, -0.1394, -0.4998, 0.7429, -0.1604, 0.1945, -0.2392, -0.3457, 1.9308, -0.1651, -0.2202],
-    OPEN:      [-0.4126, 0.5471, 0.3879, 0.473, 0.2072, 0.4573, 0.157, 0.0886, 0.1194, 0.1103, -0.4494, 0.6429, -0.1102, 0.1456, -0.2896, -0.2981, -0.1731, 1.8837, -0.2199],
-    NOISE:     [1.035, -0.5351, -0.1456, -0.1972, -0.5008, -0.7151, -0.2205, 0.4652, -0.3883, -0.2484, 1.4391, -0.8287, -0.5063, -0.3961, -0.7638, -0.6267, -0.6791, -0.6731, 0.5892],
-  },
-  prefWeights: {
-    hasSingleLocus: 1.4979,
-    hasDualLocus: 1.25,
-    hasTriple: 1.454,
-    excludedCount: 0.9969,
-    hasAcceptCmd: 1.2423,
-    hasEscapeClause: 0.9316,
-    hasOpenAgenda: 0.969,
-    anchorGrounded: 2.2123,
-    sweetLength: 1.1583,
-    overLongPenalty: -1.6512,
-    proseCoherence: 0.8027,
-    noDeadEndResurrected: 1.85,
-  },
-})
+// ── 训练权重：唯一事实源为 transfer/models/v5-micro-weights.json ─────────────
+export const V5_FEATURE_NAMES = Object.freeze([
+  'bias', 'prior_D', 'pos_norm', 'is_tail', 'fanout_g', 'action_link',
+  'revisit', 'effort_explore', 'effort_compute', 'temptation_T',
+  'rederivability_R', 'info_val', 'vac_net', 'neut_net',
+  'cue_decided', 'cue_excluded', 'cue_accept', 'cue_open', 'tok_cost',
+])
+export const V5_PREF_FEATURE_NAMES = Object.freeze([
+  'hasSingleLocus', 'hasDualLocus', 'hasTriple', 'excludedCount',
+  'hasAcceptCmd', 'hasEscapeClause', 'hasOpenAgenda', 'anchorGrounded',
+  'sweetLength', 'overLongPenalty', 'proseCoherence', 'noDeadEndResurrected',
+])
+
+const finiteVector = (value, length, name) => {
+  if (!Array.isArray(value) || value.length !== length || value.some((x) => !Number.isFinite(x))) {
+    throw new Error(`invalid-${name}-vector`)
+  }
+}
+const deepFreeze = (value) => {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const child of Object.values(value)) deepFreeze(child)
+    Object.freeze(value)
+  }
+  return value
+}
+
+/**
+ * Validate the artifact consumed by compileV5Local/scoreUnitWithWeights.
+ * Do not silently substitute an older embedded prior when the production JSON is missing or malformed.
+ */
+export function validateV5MicroWeights(weights) {
+  if (!weights || typeof weights !== 'object' || Array.isArray(weights)
+      || !/^cfb\.v5-micro-weights\/\d/.test(weights.schema || '')) {
+    throw new Error('invalid-v5-micro-weights-schema')
+  }
+  if (JSON.stringify(weights.featureNames) !== JSON.stringify(V5_FEATURE_NAMES)) {
+    throw new Error('invalid-v5-micro-feature-order')
+  }
+  finiteVector(weights.valueWeights, V5_FEATURE_NAMES.length, 'valueWeights')
+  if (!weights.slotWeights || typeof weights.slotWeights !== 'object') throw new Error('invalid-v5-slotWeights')
+  for (const slot of SLOT_NAMES) finiteVector(weights.slotWeights[slot], V5_FEATURE_NAMES.length, `slotWeights-${slot}`)
+  if (!weights.prefWeights || typeof weights.prefWeights !== 'object') throw new Error('invalid-v5-prefWeights')
+  for (const key of V5_PREF_FEATURE_NAMES) {
+    if (!Number.isFinite(weights.prefWeights[key])) throw new Error(`invalid-v5-prefWeight-${key}`)
+  }
+  for (const [name, value] of [['lambda', weights.lambda], ['rhoRed', weights.rhoRed], ['temptationMin', weights.temptationMin]]) {
+    if (!Number.isFinite(value) || value < 0 || (name === 'temptationMin' && value > 1)) throw new Error(`invalid-v5-${name}`)
+  }
+
+  const unitHead = weights.mlpHead
+  if (unitHead != null) {
+    if (!Array.isArray(unitHead.W1) || !unitHead.W1.length) throw new Error('invalid-v5-unit-mlp-W1')
+    const hidden = unitHead.W1.length
+    for (const row of unitHead.W1) finiteVector(row, V5_FEATURE_NAMES.length, 'unit-mlp-W1-row')
+    finiteVector(unitHead.b1, hidden, 'unit-mlp-b1')
+    finiteVector(unitHead.WVal, hidden, 'unit-mlp-WVal')
+    finiteVector(unitHead.WTempt, hidden, 'unit-mlp-WTempt')
+    if (unitHead.WSlot != null) {
+      for (const slot of SLOT_NAMES) finiteVector(unitHead.WSlot[slot], hidden, `unit-mlp-WSlot-${slot}`)
+    }
+    if (unitHead.scale != null && !Number.isFinite(unitHead.scale)) throw new Error('invalid-v5-unit-mlp-scale')
+  }
+
+  const prefHead = weights.prefMlpHead
+  if (prefHead != null) {
+    if (!Array.isArray(prefHead.W1) || !prefHead.W1.length) throw new Error('invalid-v5-pref-mlp-W1')
+    const hidden = prefHead.W1.length
+    for (const row of prefHead.W1) finiteVector(row, V5_PREF_FEATURE_NAMES.length, 'pref-mlp-W1-row')
+    finiteVector(prefHead.b1, hidden, 'pref-mlp-b1')
+    finiteVector(prefHead.W2, hidden, 'pref-mlp-W2')
+    if (!Number.isFinite(prefHead.b2) || (prefHead.scale != null && !Number.isFinite(prefHead.scale))) {
+      throw new Error('invalid-v5-pref-mlp-output')
+    }
+  }
+  return weights
+}
+
+export function loadV5MicroWeights(filePath) {
+  let parsed
+  try {
+    parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+  } catch (error) {
+    throw new Error(`v5-micro-weights-load-failed: ${String(error?.message || error).slice(0, 240)}`)
+  }
+  return deepFreeze(validateV5MicroWeights(parsed))
+}
+
+// Runtime and training now load the same checked-in artifact. Candidate weights are supplied explicitly.
+export const V5_MICRO_WEIGHTS = loadV5MicroWeights(new URL('../transfer/models/v5-micro-weights.json', import.meta.url))
+
+const stableJson = (value) => {
+  if (Array.isArray(value)) return '[' + value.map(stableJson).join(',') + ']'
+  if (value && typeof value === 'object') {
+    return '{' + Object.keys(value).sort().map((key) => JSON.stringify(key) + ':' + stableJson(value[key])).join(',') + '}'
+  }
+  return JSON.stringify(value)
+}
+const SCORING_WEIGHT_KEYS = Object.freeze([
+  'schema', 'featureNames', 'valueWeights', 'slotWeights', 'lambda', 'rhoRed',
+  'temptationMin', 'prefWeights', 'mlpHead', 'prefMlpHead',
+])
+const scoringWeights = (weights) => Object.fromEntries(
+  SCORING_WEIGHT_KEYS.filter((key) => Object.hasOwn(weights || {}, key)).map((key) => [key, weights[key]]),
+)
+const digestWeights = (weights) => createHash('sha256').update(stableJson(scoringWeights(weights))).digest('hex')
+export const V5_MICRO_WEIGHTS_DIGEST = digestWeights(V5_MICRO_WEIGHTS)
+export const V5_LOCAL_VERSION = `v5-micro-2:${V5_MICRO_WEIGHTS_DIGEST.slice(0, 12)}`
+export function fingerprintV5MicroWeights(weights = V5_MICRO_WEIGHTS) {
+  return weights === V5_MICRO_WEIGHTS ? V5_MICRO_WEIGHTS_DIGEST : digestWeights(weights)
+}
 
 // ── 基础工具与锚点核真（与 hand-draft.mjs / compile-v4.js 同构） ─────────────
 const ANCHOR_RE = /[A-Za-z_$][\w.$\-]{2,}|\d+(?:\.\d+)?/g
@@ -157,7 +224,7 @@ export function splitDiscourseUnits(raw = '') {
   return out
 }
 
-// ── 18 维理论特征计算（第四卷 A1–A6 & 第五卷 P1–P5） ─────────────────────────
+// ── 19 维理论特征计算（第四卷 A1–A6 & 第五卷 P1–P5） ─────────────────────────
 export function extractUnitFeatures(unit, idx, total, ctxInfo) {
   const { raw = '', toolText = '', targetAnchors = new Set(), offsets = [] } = ctxInfo
   const rawTok = Math.max(1, estimateTokens(raw))
@@ -337,17 +404,16 @@ export function extractDraftPrefFeatures(text, raw = '', ctx = '', preHayAnchors
   }
 }
 
-export function scoreDraftPreference(text, raw = '', ctx = '', weights = V5_MICRO_WEIGHTS, preHayAnchors = null) {
-  const f = extractDraftPrefFeatures(text, raw, ctx, preHayAnchors)
+export function scoreDraftPreferenceFeatures(features, weights = V5_MICRO_WEIGHTS) {
   const pw = weights.prefWeights || V5_MICRO_WEIGHTS.prefWeights
   let score = 0
-  for (const [k, v] of Object.entries(pw)) score += (f[k] || 0) * v
+  for (const [k, v] of Object.entries(pw)) score += (features[k] || 0) * v
 
   // Optional distilled nonlinear residual; old linear-only weight files remain compatible.
   const head = weights.prefMlpHead
   if (head && Array.isArray(head.W1) && Array.isArray(head.W2)) {
     const keys = Object.keys(pw)
-    const x = keys.map((k) => f[k] || 0)
+    const x = keys.map((k) => features[k] || 0)
     const hidden = head.W1.map((row, i) => {
       let z = head.b1?.[i] || 0
       for (let j = 0; j < Math.min(row.length, x.length); j++) z += row[j] * x[j]
@@ -358,6 +424,11 @@ export function scoreDraftPreference(text, raw = '', ctx = '', weights = V5_MICR
     score += (head.scale ?? 1) * residual
   }
   return +score.toFixed(4)
+}
+
+export function scoreDraftPreference(text, raw = '', ctx = '', weights = V5_MICRO_WEIGHTS, preHayAnchors = null) {
+  const features = extractDraftPrefFeatures(text, raw, ctx, preHayAnchors)
+  return scoreDraftPreferenceFeatures(features, weights)
 }
 
 // ── 严格出处核真与净化器（I1/I2：保证 anchorPrecision === 1.000 & G1/G2 100% 过闸） ──
@@ -682,11 +753,16 @@ function compileGeneralDiscourseGraph(g, weights = V5_MICRO_WEIGHTS) {
 // ── 主入口：compileV5Local(raw, cfg) ─────────────────────────────────────────
 export function compileV5Local(raw, cfg = {}, weights = null) {
   const w = weights || cfg?.microWeights || V5_MICRO_WEIGHTS
+  if (w !== V5_MICRO_WEIGHTS) validateV5MicroWeights(w)
+  const activeWeightsDigest = fingerprintV5MicroWeights(w)
+  const activeWeightsVersion = activeWeightsDigest === V5_MICRO_WEIGHTS_DIGEST
+    ? V5_LOCAL_VERSION
+    : `v5-micro-candidate:${activeWeightsDigest.slice(0, 12)}`
   const t0 = performance.now()
   const ctx = String(cfg.compressCtx || '')
   const g = parseCognitiveGraph(raw, ctx)
 
-  // 1. 计算 18 维微模型特征与次模选取统计（可观测、可审计；长思维链采样首尾共 36 句保证 < 2ms 恒定延迟）
+  // 1. 计算 19 维微模型特征与次模选取统计（可观测、可审计；长思维链采样首尾共 36 句保证 < 2ms 恒定延迟）
   const units = splitDiscourseUnits(raw)
   const sampleUnits = units.length > 36 ? [...units.slice(0, 12), ...units.slice(-24)] : units
   const rawSample = raw.length > 6000 ? raw.slice(0, 2000) + '\n' + raw.slice(-4000) : raw
@@ -714,7 +790,9 @@ export function compileV5Local(raw, cfg = {}, weights = null) {
     ok: true,
     text: sanitized,
     meta: {
-      promptVersion: 'compress-v5-local:' + V5_LOCAL_VERSION,
+      promptVersion: 'compress-v5-local:' + activeWeightsVersion,
+      weightsSchema: w.schema || 'unknown',
+      weightsDigest: activeWeightsDigest,
       model: 'v5-micro-local',
       localMs: elapsedMs,
       archetype: g.archetype,
