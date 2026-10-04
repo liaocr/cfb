@@ -151,7 +151,7 @@ npm run traj:lite
 | Draft Step-SimPO | 155 对 | 反事实 + 过滤后的 dev 飞轮偏好 |
 | 原保留 Gold holdout | 4 | `eacces-config`、`wrong-model` 不进训练数据；这 4 条已在此前运行中评测过，因此后续报告按固定安全门禁处理，不冒称全新盲测 |
 
-SFT 和两类偏好数据采用**按 family 分组**的确定性 dev train/validation 切分；同一 family 不跨两边。每次报告会写出实际 `validationFamily`、样本数、训练/验证胜率。验证集规模有限，因此它是分组 dev 验证，不替代更多任务家族上的外部泛化测试。
+SFT 和两类偏好数据采用**按 family 分组**的确定性 dev train/validation 切分；同一 family 不跨两边。验证 family 仅按样本数选择，尽量接近预先设定的 20% 验证比例，不按标签或得分挑选；每次报告会写出实际 `validationFamily`、样本比例、样本数和训练/验证胜率。验证集规模有限，因此它是分组 dev 验证，不替代更多任务家族上的外部泛化测试。
 
 ### 6.3 Kaggle 免费 GPU 操作
 
@@ -174,7 +174,7 @@ repo_url = f"https://x-access-token:{pat}@github.com/liaocr/cfb.git"
 !python3 tools/kaggle-train-micro.py --epochs-sft 12 --epochs-simpo 12 --push-back
 ```
 
-训练使用低 encoder 学习率、warmup + cosine scheduler、梯度裁剪 `1.0`、按分组验证早停；双卡时启用 `DataParallel([0, 1])`。日志只说明双卡并行已配置，不宣称 GPU 一直满载。
+训练使用低 encoder 学习率、warmup + cosine scheduler、梯度裁剪 `1.0`、按分组验证早停；双卡时启用 `DataParallel([0, 1])`。为避免 ModernBERT 内部 `torch.compile` 与 DataParallel 的 FX tracing 冲突，显式设 `reference_compile=False`；AMP 溢出跳过的优化器步会计数，scheduler 只在优化器实际更新后前进。日志只说明双卡并行已配置，不宣称 GPU 一直满载。
 
 ### 6.4 机器可读验收与晋级规则
 

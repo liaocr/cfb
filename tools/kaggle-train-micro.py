@@ -57,6 +57,7 @@ MAX_SEQ_LEN = 256
 UNIT_MAX_TOKENS = 128
 DRAFT_MAX_TOKENS = 256
 SPAN_MAX_TOKENS = 64
+VALIDATION_UNIT_FRACTION = 0.20
 GITHUB_REPO = "liaocr/cfb"
 GITHUB_LARGE_ASSET_THRESHOLD = 90_000_000
 GITHUB_MAX_FILE_BYTES = 100_000_000
@@ -86,8 +87,16 @@ def choose_validation_family(unit_samples: list[dict]) -> str:
     families = sorted({family_key(u.get("family")) for u in unit_samples if not is_holdout_family(u.get("family"))})
     if len(families) < 2:
         raise RuntimeError(f"需要至少两个 dev family 才能做 group holdout，当前只有: {families}")
-    # Deterministic family-level holdout prevents sibling pairs from leaking across splits.
-    return min(families, key=lambda f: hashlib.sha256(("cfb-micro-pref-val-v2:" + f).encode()).hexdigest())
+    counts = {family: sum(family_key(u.get("family")) == family for u in unit_samples) for family in families}
+    total = sum(counts.values())
+    # Choose by group size alone (never scores/labels) to keep validation near 20% without sibling leakage.
+    return min(
+        families,
+        key=lambda f: (
+            abs(counts[f] / max(1, total) - VALIDATION_UNIT_FRACTION),
+            hashlib.sha256(("cfb-micro-pref-val-v3:" + f).encode()).hexdigest(),
+        ),
+    )
 
 
 def split_by_family(rows: list[dict], validation_family: str):
@@ -489,13 +498,17 @@ def stage1_sft(args, dp_model, model, tokenizer, dataset, device, use_amp):
     steps_per_epoch = math.ceil(len(train_indices) / args.batch_size)
     scheduler = make_warmup_cosine_scheduler(optimizer, steps_per_epoch * args.epochs_sft)
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+    amp_skipped_steps = 0
     clip_params = [p for group in optimizer.param_groups for p in group["params"]]
     history = []
     best_state = None
     best_val_loss = float("inf")
     stale = 0
 
-    print(f"\n[Stage 2/6] Granite 97M multi-task SFT: train={len(train_indices)} val={len(val_indices)} validation_family={val_family}")
+    print(
+        f"\n[Stage 2/6] Granite 97M multi-task SFT: train={len(train_indices)} val={len(val_indices)} "
+        f"validation_family={val_family} val_fraction={len(val_indices)/len(units):.3f} target={VALIDATION_UNIT_FRACTION:.2f}"
+    )
     print(f"   optimizer: encoder_lr={args.encoder_lr:g}, head_lr={args.lr:g}, warmup+cosine, grad_clip=1.0")
     for epoch in range(1, args.epochs_sft + 1):
         dp_model.train()
@@ -531,9 +544,13 @@ def stage1_sft(args, dp_model, model, tokenizer, dataset, device, use_amp):
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(clip_params, max_norm=1.0)
+            scale_before = scaler.get_scale()
             scaler.step(optimizer)
             scaler.update()
-            scheduler.step()
+            if scaler.get_scale() < scale_before:
+                amp_skipped_steps += 1
+            else:
+                scheduler.step()
             total_loss += float(loss.detach().item()) * len(idx)
             seen += len(idx)
 
@@ -559,9 +576,11 @@ def stage1_sft(args, dp_model, model, tokenizer, dataset, device, use_amp):
 
     if best_state is not None:
         model.load_state_dict(best_state)
-    return {"history": history, "validationFamily": val_family, "trainIndices": train_indices,
-            "validationIndices": val_indices, "ids": ids, "masks": masks, "features": feats,
-            "slots": slots, "values": values, "temptations": temptations}
+    if amp_skipped_steps:
+        print(f"   AMP skipped optimizer steps after overflow: {amp_skipped_steps}")
+    return {"history": history, "validationFamily": val_family, "ampSkippedSteps": amp_skipped_steps,
+            "trainIndices": train_indices, "validationIndices": val_indices, "ids": ids, "masks": masks,
+            "features": feats, "slots": slots, "values": values, "temptations": temptations}
 
 
 def stage2_simpo(args, dp_model, model, tokenizer, dataset, sft, device, use_amp):
@@ -597,6 +616,7 @@ def stage2_simpo(args, dp_model, model, tokenizer, dataset, sft, device, use_amp
     total_steps = unit_steps * args.epochs_simpo
     scheduler = make_warmup_cosine_scheduler(optimizer, total_steps, warmup_ratio=0.05)
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+    amp_skipped_steps = 0
     clip_params = [p for group in optimizer.param_groups for p in group["params"]]
 
     all_ids, all_masks, all_features = sft["ids"], sft["masks"], sft["features"]
@@ -655,9 +675,13 @@ def stage2_simpo(args, dp_model, model, tokenizer, dataset, sft, device, use_amp
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(clip_params, max_norm=1.0)
+            scale_before = scaler.get_scale()
             scaler.step(optimizer)
             scaler.update()
-            scheduler.step()
+            if scaler.get_scale() < scale_before:
+                amp_skipped_steps += 1
+            else:
+                scheduler.step()
             total_loss += float(loss.detach().item()) * len(batch)
             seen += len(batch)
 
@@ -695,8 +719,11 @@ def stage2_simpo(args, dp_model, model, tokenizer, dataset, sft, device, use_amp
 
     if best_state is not None:
         model.load_state_dict(best_state)
+    if amp_skipped_steps:
+        print(f"   AMP skipped optimizer steps after overflow: {amp_skipped_steps}")
     return {
         "history": history,
+        "ampSkippedSteps": amp_skipped_steps,
         "bestEpoch": best_epoch,
         "validationFamily": sft["validationFamily"],
         "trainUnitPairAcc": evaluate_unit_pairs(dp_model, unit_train, all_ids, all_masks, all_features, args.eval_batch_size, use_amp),
@@ -950,6 +977,8 @@ def serialize_candidate(prior_weights: dict, student: CompactSymbolicStudent,
             "devUnitSamples": dataset["stats"]["unitSamplesCount"],
             "trainUnitSamples": len(sft_result["trainIndices"]),
             "validationUnitSamples": len(sft_result["validationIndices"]),
+            "sftAmpSkippedSteps": sft_result["ampSkippedSteps"],
+            "simpoAmpSkippedSteps": simpo_result["ampSkippedSteps"],
             "devUnitStepPairs": dataset["stats"]["unitStepPairsCount"],
             "devDraftPreferencePairs": dataset["stats"]["stepSimpoPairsCount"],
             "lastSftTrain": sft_result["history"][-1]["train"],
@@ -1239,7 +1268,7 @@ def main():
     args = parser.parse_args()
 
     try:
-        from transformers import AutoModel, AutoTokenizer
+        from transformers import AutoConfig, AutoModel, AutoTokenizer
     except ImportError as exc:
         raise RuntimeError('missing dependency: run pip install "transformers==4.56.2" safetensors') from exc
 
@@ -1258,12 +1287,23 @@ def main():
 
     print("\n[Stage 0/6] Loading pinned pretrained encoder/tokenizer from Hugging Face...")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, revision=MODEL_REVISION, use_fast=True)
+    hf_config = AutoConfig.from_pretrained(
+        MODEL_ID,
+        revision=MODEL_REVISION,
+        reference_compile=False,
+    )
+    if hasattr(hf_config, "reference_compile"):
+        hf_config.reference_compile = False
     encoder = AutoModel.from_pretrained(
         MODEL_ID,
         revision=MODEL_REVISION,
+        config=hf_config,
         attn_implementation="eager",
-        torch_dtype=torch.float32,
+        dtype=torch.float32,
     )
+    if hasattr(encoder.config, "reference_compile"):
+        encoder.config.reference_compile = False
+    print("   ✓ ModernBERT reference_compile=False (safe with DataParallel)")
     prior_weights = json.loads(PRODUCTION_WEIGHTS_PATH.read_text(encoding="utf-8"))
 
     print("\n[Stage 1/6] Building strict dev-only training data...")
@@ -1357,6 +1397,8 @@ def main():
             "holdoutFreshBlindSet": False,
             "holdoutFamiliesExcluded": sorted(HOLDOUT_FAMILIES),
             "validationFamily": sft_result["validationFamily"],
+            "validationUnitFractionTarget": VALIDATION_UNIT_FRACTION,
+            "validationUnitFractionActual": round(len(sft_result["validationIndices"]) / max(1, dataset["stats"]["unitSamplesCount"]), 4),
             "devGoldItems": dataset["stats"]["devGoldItems"],
             "devPoolItems": dataset["stats"]["devPoolItems"],
             "unitSamples": dataset["stats"]["unitSamplesCount"],
@@ -1378,6 +1420,8 @@ def main():
         },
         "training": {
             "elapsedSeconds": round(time.time() - t_start, 2),
+            "sftAmpSkippedSteps": sft_result["ampSkippedSteps"],
+            "simpoAmpSkippedSteps": simpo_result["ampSkippedSteps"],
             "sftHistory": sft_result["history"],
             "simpoHistory": simpo_result["history"],
             "simpoBestEpoch": simpo_result["bestEpoch"],
