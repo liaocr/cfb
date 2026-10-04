@@ -1,0 +1,17 @@
+{
+  "schema": "cfb.micro-cv-baseline/1",
+  "createdAt": "2026-10-04T00:00:00.000Z",
+  "purpose": "no-regression guard for gate policy v2: per-family length-matched accuracy of the PREVIOUS candidate",
+  "candidateWeights": "transfer/models/v5-micro-weights.judge-4764fd2.json",
+  "candidateNote": "previous candidate = 19-dim symbolic student recorded in 4764fd2; measured locally with tools/eval-micro-js-pairs.mjs on the same dev dataset (275-dim features, judge-frozen pair set), one fold per --validation-family",
+  "matched": {
+    "flaky-timeout": 0.6976,
+    "perf-regression": 0.8000,
+    "sse-truncated": 0.8571
+  },
+  "matchedCounts": {
+    "flaky-timeout": 572,
+    "perf-regression": 30,
+    "sse-truncated": 98
+  }
+}

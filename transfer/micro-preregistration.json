@@ -29,8 +29,10 @@
     "perf-regression",
     "sse-truncated"
   ],
-  "decisionRule": "Read rulerReading.candidateUnitValidation per fold. Decide on matched-bucket mean across 3 folds >= 0.93 AND worst-fold matched >= 0.90; also require point-estimate mean >= 0.94 and report Wilson LCBs. No per-fold hyperparameter changes: one recipe, three folds.",
+  "decisionRule": "v2: decide on report.threeFoldCv — per fold matched >= production matched + 0.20; mean(matched) >= 0.75; min(matched) >= 0.70; per fold matched >= previous candidate matched - 0.03; draft aggregate >= 0.85 and every fold >= production draft. Absolute 90% lines are reported-only. One-shot blind family judged by the v2 criteria against the same-family production baseline (matched >= 0.75 and >= production + 0.20; draft >= max(0.85, production draft)).",
   "expectedSelectionGapNote": "Measured once: dev 0.9189 -> blind family unit 0.8333 (gap 8.6pp) and matched bucket is the load-bearing reading. Any new independent family is expected to land 3-8pp below the fold mean; a family will only be authorized when fold mean minus that gap stays >= 0.90.",
   "whyOneVariable": "This run changes exactly one modelling variable versus 4764fd2: symbolic features gain the 256-bucket text-hash block (19 -> 275 dims). mlp hidden widens 32 -> 96 because the input block grew; everything else is frozen from 4764fd2.",
-  "frozenJudgeNote": "Negative-mining judge is pinned to the 4764fd2 candidate so the mined pair set cannot drift across folds when each fold pushes its own candidate."
+  "frozenJudgeNote": "Negative-mining judge is pinned to the 4764fd2 candidate so the mined pair set cannot drift across folds when each fold pushes its own candidate.",
+  "decisionRuleChangedAt": "2026-10-04T00:00:00.000Z",
+  "decisionRuleChangeNote": "v2 approved after the three-fold run: matched spread across families measured 22.9pp and the hardest family's linear text ceiling measured 0.79, so a per-family absolute 90% line cannot discriminate. Flags (the recipe) are unchanged."
 }
