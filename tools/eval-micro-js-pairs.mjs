@@ -26,6 +26,9 @@ const parityFixturesPath = value('--parity-fixtures')
   ? path.resolve(ROOT, value('--parity-fixtures'))
   : null
 const finalBlindTest = args.includes('--final-blind-test')
+// --validate-dataset-only：只跑 final-blind 的结构/血缘/审核校验，不打任何分数、不写报告。
+// 用途：一次性盲测集在启用前做预检，且预检过程不可能泄露任何模型分数给调参者。
+const validateDatasetOnly = args.includes('--validate-dataset-only')
 const mustBeNewFamily = args.includes('--must-be-new-family')
 const SLOT_NAMES = ['MECHANISM', 'EXCLUDED', 'DECIDED', 'ACCEPT', 'OPEN', 'NOISE']
 const familyKey = (v) => String(v || '').replace(/^pool:/, '').split(':', 1)[0].replace(/_(?:decoy|long-horizon).*$/, '')
@@ -420,6 +423,35 @@ if (finalBlindTest) {
   if (actualFamilies.length !== 1) throw new Error(`final-test-must-have-exactly-one-family:${actualFamilies.length}`)
   if ([...actualFamilies].some((family) => knownFamilies.has(family))) throw new Error('final-test-family-overlaps-training-families')
   if (validationFamily !== actualFamilies[0]) throw new Error('final-test-validation-family-must-be-the-new-family')
+}
+if (validateDatasetOnly) {
+  const endpointSummary = dataset.stats?.unitPairEndpointReuse || {}
+  console.log(JSON.stringify({
+    status: 'dataset-structure-valid',
+    schema: dataset.schema,
+    finalBlind: dataset.finalBlind === true,
+    family: actualFamilies,
+    validationFamily,
+    unitSamples: dataset.unitSamples.length,
+    unitStepPairs: dataset.unitStepPairs.length,
+    draftPairs: dataset.stepSimpoPairs.length,
+    endpointCap: endpointSummary.cap ?? null,
+    maxEndpointDegree: endpointSummary.maxDegree ?? null,
+    semanticReview: {
+      status: dataset.semanticReview?.status,
+      units: dataset.semanticReview?.unitSamplesReviewed,
+      unitPairs: dataset.semanticReview?.unitPairsReviewed,
+      draftPairs: dataset.semanticReview?.draftPairsReviewed,
+    },
+    lineageReview: {
+      status: dataset.lineageReview?.status,
+      knownFamilies: dataset.lineageReview?.knownFamiliesReviewed?.length ?? null,
+      knownSourceIds: dataset.lineageReview?.knownSourceIdsReviewed?.length ?? null,
+      independentSourceIds: dataset.lineageReview?.independentSourceIds?.length ?? null,
+    },
+    note: 'structure only: no scoring was performed, so no accuracy can leak into candidate tuning',
+  }, null, 2))
+  process.exit(0)
 }
 const report = {
   schema: 'cfb.micro-js-pair-eval/4',
