@@ -650,7 +650,9 @@ export function buildMicroDataset() {
       if (s0.gate && s0.gate.ok === false) gateFail++
       if (prodFail) productionFail++
       if (s0.revision) revisions++
-      const g = allGold.find((x) => x.id === s0.task) || null
+      const g = allGold
+        .filter((x) => x.id === s0.task || x.task === s0.task || x.family === s0.task)
+        .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))[0] || null
       let distance = null
       if (g) {
         try {
@@ -663,7 +665,7 @@ export function buildMicroDataset() {
         } catch { distance = null }
       }
       const rev = s0.revision ? { prevId: s0.revision.prevId, added: (s0.revision.added || []).slice(0, 8), removed: (s0.revision.removed || []).slice(0, 8), addedChars: s0.revision.addedChars, removedChars: s0.revision.removedChars } : null
-      items.push({ id: s0.id, traj: s0.traj, task: s0.task, sample: s0.sample, round: s0.round, at: s0.at, rawChars: s0.rawChars, draftChars: s0.draftChars, gate: s0.gate || null, production: s0.production || null, revision: rev, distance })
+      items.push({ id: s0.id, traj: s0.traj, task: s0.task, sample: s0.sample, round: s0.round, at: s0.at, rawChars: s0.rawChars, draftChars: s0.draftChars, outChars: s0.outChars ?? null, draftFile: s0.draftFile || null, pendingFile: s0.pendingFile || null, draft: draftText, gate: s0.gate || null, production: s0.production || null, revision: rev, distance })
     }
     const mean = (a) => (a.length ? +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(3) : null)
     return { files, samples: samples.length, withDraft, gateOk, gateFail, productionFail, revisions, distances, distanceMean: Object.fromEntries(Object.entries(distBy).map(([k, v]) => [k, mean(v)])), items: items.slice(-200) }
