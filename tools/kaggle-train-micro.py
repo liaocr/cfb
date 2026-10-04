@@ -800,6 +800,7 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
     history = []
     best_state = None
     best_loss = float("inf")
+    best_pair_acc = -1.0
     stale = 0
 
     def unit_pair_metrics(pairs):
@@ -869,6 +870,17 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
             })
         return metrics
 
+    # 2026-10-04 杠杆B：类别平衡 CE（sqrt 逆频率，clamp[0.5,3.0]）+ label smoothing 0.05。
+    # 诊断：NOISE 占候选主体，稀有槽位（MECHANISM/ACCEPT/OPEN）槽位 F1=0 被压制。
+    _label_counts = torch.bincount(
+        labels[torch.tensor(train_indices, dtype=torch.long, device=device)],
+        minlength=len(SLOT_NAMES),
+    ).float().clamp(min=1.0)
+    _sqrt_inv = torch.sqrt(_label_counts.sum() / (len(SLOT_NAMES) * _label_counts))
+    unit_class_weights = (_sqrt_inv / _sqrt_inv.mean()).clamp(0.5, 3.0).to(device)
+    print("   [Student] class-balanced CE weights (sqrt-inv-freq, clamp 0.5-3.0): "
+          + ", ".join(f"{name}={float(w):.3f}" for name, w in zip(SLOT_NAMES, unit_class_weights)))
+
     for epoch in range(1, args.student_epochs + 1):
         student.train()
         order = torch.tensor(train_indices, dtype=torch.long, device=device)
@@ -877,12 +889,13 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
             ix = order[start:start + args.student_batch_size]
             optimizer.zero_grad(set_to_none=True)
             logits, _, pred_values, pred_tempt = student.forward_units(features[ix])
-            hard_loss = F.cross_entropy(logits, labels[ix])
+            hard_loss = F.cross_entropy(logits, labels[ix], weight=unit_class_weights, label_smoothing=0.05)
             teacher_prob = F.softmax(teacher_slots[ix] / temperature, dim=-1)
             distill_loss = F.kl_div(F.log_softmax(logits / temperature, dim=-1), teacher_prob, reduction="batchmean") * temperature**2
             value_loss = F.huber_loss(pred_values, 0.5 * values[ix] + 0.5 * teacher_values[ix], delta=0.15)
             tempt_loss = F.huber_loss(pred_tempt, 0.5 * temptations[ix] + 0.5 * teacher_tempt[ix], delta=0.15)
-            loss = 0.55 * hard_loss + 0.45 * distill_loss + value_loss + 0.6 * tempt_loss
+            # 杠杆B：KL 权重 0.45→0.15（教师弱于学生时，45% 的槽位监督在教错误答案）
+            loss = 0.55 * hard_loss + 0.15 * distill_loss + value_loss + 0.6 * tempt_loss
             loss.backward()
             torch.nn.utils.clip_grad_norm_(student.parameters(), 1.0)
             optimizer.step()
@@ -910,7 +923,13 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
                 f"val_unit_pair={val_metrics['unitPairAccReference']*100:.2f}% "
                 f"val_pair_loss={val_metrics['unitPairwiseLoss']:.4f}"
             )
-        if val_metrics["loss"] < best_loss - 1e-5:
+        # 杠杆B：按「验证集 Unit 对胜率」选检查点（部署目标），val loss 仅作平手 tiebreak。
+        _val_pair_acc = float(val_metrics.get("unitPairAccReference") or 0.0)
+        _improved = _val_pair_acc > best_pair_acc + 1e-9 or (
+            abs(_val_pair_acc - best_pair_acc) <= 1e-9 and val_metrics["loss"] < best_loss - 1e-5
+        )
+        if _improved:
+            best_pair_acc = max(best_pair_acc, _val_pair_acc)
             best_loss = val_metrics["loss"]
             best_state = freeze_copy_state(student)
             stale = 0
@@ -1624,14 +1643,20 @@ def main():
     parser.add_argument("--pref-lr", type=float, default=5e-4)
     parser.add_argument("--student-lr", type=float, default=2e-3)
     parser.add_argument("--pref-student-lr", type=float, default=1e-3)
-    parser.add_argument("--student-epochs", type=int, default=80)
+    parser.add_argument("--student-epochs", type=int, default=160)
     parser.add_argument("--student-pair-objective", choices=["listwise", "ranknet"], default="listwise",
                         help="compact student Unit pair objective; listwise = softmax over each positive's negative group (default), ranknet = pairwise margin sigmoid")
+    parser.add_argument("--neg-judge-weights", type=str,
+                        default="transfer/models/v5-micro-weights.candidate.json",
+                        help="dataset builder CFB_MICRO_NEG_JUDGE_WEIGHTS; empty string = production weights")
+    parser.add_argument("--unit-review-file", type=str,
+                        default="transfer/models/unit-label-review.json",
+                        help="dataset builder CFB_MICRO_UNIT_REVIEW_FILE; empty string = rule labels only")
     parser.add_argument("--dataset-neg-strategy", choices=["hardened", "legacy"], default="hardened",
                         help="dataset negative-mining strategy: hardened = length-matched + model-hard negatives (default)")
-    parser.add_argument("--unit-pair-degree-cap", type=int, default=3,
+    parser.add_argument("--unit-pair-degree-cap", type=int, default=4,
                         help="max preference-pair endpoints per Unit (dataset builder CFB_MICRO_PAIR_DEGREE_CAP)")
-    parser.add_argument("--unit-pairs-per-positive", type=int, default=3,
+    parser.add_argument("--unit-pairs-per-positive", type=int, default=4,
                         help="max preference pairs generated per positive Unit (dataset builder CFB_MICRO_PAIR_PER_POSITIVE)")
     parser.add_argument("--near-length-tokens", type=int, default=3,
                         help="|delta token| threshold counted as a length-matched negative (dataset builder CFB_MICRO_NEAR_LENGTH_TOKENS)")
@@ -1639,7 +1664,7 @@ def main():
                         help="weight for the compact student's audited Unit pairwise ranking loss")
     parser.add_argument("--pref-student-epochs", type=int, default=100)
     parser.add_argument("--student-batch-size", type=int, default=128)
-    parser.add_argument("--student-patience", type=int, default=12)
+    parser.add_argument("--student-patience", type=int, default=20)
     parser.add_argument("--patience", type=int, default=4)
     parser.add_argument("--beta-simpo", type=float, default=0.85)
     parser.add_argument("--draft-loss-weight", type=float, default=1.2)
@@ -1694,6 +1719,8 @@ def main():
         "CFB_MICRO_PAIR_DEGREE_CAP": str(args.unit_pair_degree_cap),
         "CFB_MICRO_PAIR_PER_POSITIVE": str(args.unit_pairs_per_positive),
         "CFB_MICRO_NEAR_LENGTH_TOKENS": str(args.near_length_tokens),
+        "CFB_MICRO_NEG_JUDGE_WEIGHTS": str(args.neg_judge_weights or ""),
+        "CFB_MICRO_UNIT_REVIEW_FILE": str(args.unit_review_file or ""),
     })
     subprocess.run(["node", str(ROOT / "tools" / "build-micro-dataset.mjs")], check=True, cwd=str(ROOT), env=dataset_env)
     print(f"   ✓ pair construction: strategy={args.dataset_neg_strategy}, degree_cap={args.unit_pair_degree_cap}, "

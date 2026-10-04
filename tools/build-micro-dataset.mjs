@@ -7,11 +7,13 @@
 //   2. stepSimpoPairs: Step-DPO × SimPO 步级反事实偏好对（5类困难负例 + 飞轮真实偏好对 + 动态奖励间隔 γ_dd）
 //   3. spanSamples: GLiNER 式并行跨度指针样本（target_file / old_text / new_text / verify_cmd 原文精确切片区间 [start, end]）
 import fs from 'node:fs'
+import crypto from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   SLOT_NAMES, extractAnchorsV5, splitDiscourseUnits,
   extractUnitFeatures, extractDraftPrefFeatures, buildGroundedHay, scoreUnitWithWeights,
+  loadV5MicroWeights,
 } from '../src/compile-v5-local.js'
 import { slotsOf, draftDistance, handDraftGate } from './helpers/hand-draft.mjs'
 import { loadGold } from './helpers/three-mode.mjs'
@@ -25,9 +27,99 @@ const isHoldout = (family) => HOLDOUT_FAMS.has(familyKey(family))
 // v14.20 数据集构造策略（可用环境变量覆盖；默认 = hardened 困难负例，见 docs/TRAINING-AND-BENCHMARK.md §6.2）
 //   hardened：负例优先「与正例长度接近」+「当前生产打分最高（模型最难）」；legacy：仅按旧 hardness 排序。
 const NEG_STRATEGY = process.env.CFB_MICRO_NEG_STRATEGY || 'hardened'
-const UNIT_PAIR_MAX_ENDPOINT_DEGREE = Number(process.env.CFB_MICRO_PAIR_DEGREE_CAP || 3)
-const UNIT_PAIR_MAX_PER_POSITIVE = Number(process.env.CFB_MICRO_PAIR_PER_POSITIVE || 3)
+// 2026-10-04 杠杆C：端点度上限/每正例对数 3→4（覆盖密度 609→1000+ 对；长度优先挖掘保持不变）
+const UNIT_PAIR_MAX_ENDPOINT_DEGREE = Number(process.env.CFB_MICRO_PAIR_DEGREE_CAP || 4)
+const UNIT_PAIR_MAX_PER_POSITIVE = Number(process.env.CFB_MICRO_PAIR_PER_POSITIVE || 4)
 const NEAR_LENGTH_TOKENS = Number(process.env.CFB_MICRO_NEAR_LENGTH_TOKENS || 3)
+// 2026-10-04 杠杆C：困难负例裁判改用「新候选权重」（缺省 74f690c 产出的 v5-micro-weights.candidate.json,
+// dev val unit=0.8502），而非生产权重（0.6087）；缺失/加载失败时回落到生产权重并如实记录。
+const NEG_JUDGE_WEIGHTS_PATH = (process.env.CFB_MICRO_NEG_JUDGE_WEIGHTS ?? 'transfer/models/v5-micro-weights.candidate.json').trim()
+let NEG_JUDGE_WEIGHTS = null
+let NEG_JUDGE_LABEL = 'production(v5-micro-weights.json)'
+if (NEG_JUDGE_WEIGHTS_PATH) {
+  const resolvedJudge = path.resolve(ROOT, NEG_JUDGE_WEIGHTS_PATH)
+  if (fs.existsSync(resolvedJudge)) {
+    try {
+      NEG_JUDGE_WEIGHTS = loadV5MicroWeights(resolvedJudge)
+      NEG_JUDGE_LABEL = NEG_JUDGE_WEIGHTS_PATH
+      console.log(`[builder] neg-judge weights = ${NEG_JUDGE_WEIGHTS_PATH}`)
+    } catch (error) {
+      console.warn(`[builder] neg-judge weights load failed: ${String(error?.message || error).slice(0, 160)}`)
+    }
+  } else {
+    console.warn(`[builder] neg-judge weights not found: ${resolvedJudge}; falling back to production weights`)
+  }
+}
+// ── 2026-10-04 杠杆A：独立 LLM 单元标签复核整合（tools/review-unit-labels.mjs 产出）──────────
+// 口径：high/medium 置信度复核结论优先于规则标签，可把 trainingEligible=false 提升为 true；
+//       NOISE 一律 clamp yVal ≤ 0.10；low/缺失置信度保留规则标签；逐条按内容指纹(sourceId+unitIdx+text)校验。
+const UNIT_REVIEW_PATH = (process.env.CFB_MICRO_UNIT_REVIEW_FILE ?? 'transfer/models/unit-label-review.json').trim()
+const reviewState = {
+  path: UNIT_REVIEW_PATH, sha256: null, datasetSha256AtReview: null,
+  loaded: 0, applied: 0, promoted: 0, relabeled: 0, noiseClamped: 0,
+  lowConfidenceKeptRule: 0, digestMismatch: 0,
+  slots: {}, byDigest: new Map(), byKey: new Map(),
+}
+if (UNIT_REVIEW_PATH) {
+  const resolvedReview = path.resolve(ROOT, UNIT_REVIEW_PATH)
+  if (fs.existsSync(resolvedReview)) {
+    try {
+      const raw = fs.readFileSync(resolvedReview)
+      const parsed = JSON.parse(raw.toString('utf8'))
+      if (!/^cfb\.unit-label-review\/\d/.test(String(parsed.schema || ''))) throw new Error(`bad schema: ${parsed.schema}`)
+      reviewState.sha256 = crypto.createHash('sha256').update(raw).digest('hex')
+      reviewState.datasetSha256AtReview = parsed.datasetSha256AtReview || null
+      for (const row of parsed.items || []) {
+        if (row && row.digest) reviewState.byDigest.set(row.digest, row)
+        if (row) reviewState.byKey.set(`${row.sourceId}#${row.unitIdx}`, row)
+      }
+      reviewState.loaded = reviewState.byDigest.size
+      console.log(`[builder] unit-label review loaded: ${reviewState.loaded} items (${UNIT_REVIEW_PATH})`)
+    } catch (error) {
+      console.warn(`[builder] unit-label review load failed: ${String(error?.message || error).slice(0, 160)}`)
+    }
+  } else {
+    console.log(`[builder] unit-label review absent (${UNIT_REVIEW_PATH}); rule labels only`)
+  }
+}
+const reviewDigestOf = (sourceId, unitIdx, text) => crypto.createHash('sha256')
+  .update(JSON.stringify({ sourceId, unitIdx, text })).digest('hex')
+function applyUnitLabelReview(lbl, { sourceId, unitIdx, text }) {
+  if (!reviewState.byDigest.size) return lbl
+  const row = reviewState.byDigest.get(reviewDigestOf(sourceId, unitIdx, text))
+  if (!row) {
+    if (reviewState.byKey.has(`${sourceId}#${unitIdx}`)) reviewState.digestMismatch++
+    return lbl
+  }
+  reviewState.applied++
+  const conf = String(row.confidence || '').toLowerCase()
+  const audit = { ...(lbl.labelAudit || {}) }
+  audit.review = {
+    source: 'llm-independent-review', confidence: conf,
+    rationale: String(row.rationale || '').slice(0, 300),
+    ruleSlot: lbl.slot, ruleYVal: lbl.yVal, reviewSlot: row.slot, reviewYVal: row.yVal,
+    applied: conf === 'high' || conf === 'medium',
+  }
+  if (conf !== 'high' && conf !== 'medium') { reviewState.lowConfidenceKeptRule++; lbl.labelAudit = audit; return lbl }
+  const prevEligible = lbl.trainingEligible
+  const slot = SLOT_NAMES.includes(String(row.slot)) ? String(row.slot) : lbl.slot
+  let yVal = Number(row.yVal)
+  if (!Number.isFinite(yVal)) yVal = lbl.yVal
+  if (slot === 'NOISE') { if (yVal > 0.10) reviewState.noiseClamped++; yVal = Math.min(yVal, 0.10) }
+  yVal = Math.max(0, Math.min(1, yVal))
+  const yTemptRaw = Number(row.yTempt)
+  const yTempt = Number.isFinite(yTemptRaw) ? Math.max(0, Math.min(1, yTemptRaw)) : lbl.yTempt
+  lbl.slot = slot
+  lbl.slotIdx = SLOT_NAMES.indexOf(slot)
+  lbl.yVal = +yVal.toFixed(5)
+  lbl.yTempt = +yTempt.toFixed(5)
+  lbl.trainingEligible = true
+  lbl.labelAudit = audit
+  reviewState.relabeled++
+  if (!prevEligible) reviewState.promoted++
+  reviewState.slots[slot] = (reviewState.slots[slot] || 0) + 1
+  return lbl
+}
 const countBy = (rows, keyOf) => {
   const counts = new Map()
   for (const row of rows) {
@@ -306,7 +398,7 @@ export function buildMicroDataset() {
           tok: Number.isFinite(neg.tokenCount) ? neg.tokenCount : 0,
           temptationT: neg.temptationT ?? neg.features[9],
           cueExcluded: neg.features[15],
-        }).v
+        }, NEG_JUDGE_WEIGHTS || undefined).v
       } catch { score = 0 }
       negScoreCache.set(neg.globalIdx, score)
       return score
@@ -387,6 +479,7 @@ export function buildMicroDataset() {
     units.forEach((u, i) => {
       const feat = extractUnitFeatures(u, i, units.length, ctxInfo)
       const lbl = labelUnitMultiTask(u, feat, goldSlots)
+      applyUnitLabelReview(lbl, { sourceId: g.id, unitIdx: i, text: u.slice(0, 360) })
       const item = {
         globalIdx: unitSamples.length,
         sourceId: g.id,
@@ -430,6 +523,7 @@ export function buildMicroDataset() {
     units.forEach((u, i) => {
       const feat = extractUnitFeatures(u, i, units.length, ctxInfo)
       const lbl = labelUnitMultiTask(u, feat, goldSlots)
+      applyUnitLabelReview(lbl, { sourceId: `pool:${t.id}`, unitIdx: i, text: u.slice(0, 360) })
       const item = {
         globalIdx: unitSamples.length,
         sourceId: `pool:${t.id}`,
@@ -576,12 +670,26 @@ export function buildMicroDataset() {
       devFamilyNames: devFamilies,
       devFamilyUnitCounts: countBy(unitSamples, (unit) => familyKey(unit.family)),
       eligibleDevFamilyUnitCounts: eligibleFamilyCounts,
+      unitLabelReview: {
+        file: reviewState.loaded ? UNIT_REVIEW_PATH : null,
+        fileSha256: reviewState.sha256,
+        datasetSha256AtReview: reviewState.datasetSha256AtReview,
+        reviewedItemsLoaded: reviewState.loaded,
+        matchedInDataset: reviewState.applied,
+        promotedToEligible: reviewState.promoted,
+        relabeledByReview: reviewState.relabeled,
+        noiseYValClamped: reviewState.noiseClamped,
+        lowConfidenceKeptRuleLabel: reviewState.lowConfidenceKeptRule,
+        digestMismatchSkipped: reviewState.digestMismatch,
+        reviewSlotCounts: reviewState.slots,
+      },
       pairConstruction: {
         strategy: NEG_STRATEGY,
         endpointDegreeCap: UNIT_PAIR_MAX_ENDPOINT_DEGREE,
         maxPairsPerPositive: UNIT_PAIR_MAX_PER_POSITIVE,
         nearLengthTokens: NEAR_LENGTH_TOKENS,
-        note: 'hardened = length-matched + model-hard negatives first; legacy = hardness only',
+        negJudgeWeights: NEG_JUDGE_LABEL,
+        note: 'hardened = length-matched + model-hard negatives first (judge = negJudgeWeights); legacy = hardness only',
       },
       flywheelSourcePath,
       flywheelSourceSchema,
