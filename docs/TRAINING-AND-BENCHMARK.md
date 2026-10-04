@@ -1,4 +1,4 @@
-# 统一科学训练闭环与官方基准指南（v14.18 合一版）
+# 统一科学训练闭环与官方基准指南（v14.20 合一版）
 
 > 本文档整合了原先分散的 `CLOSED-LOOP-V2/V3/V4.md`、`CONTINUOUS-TRAINING-ARCHITECTURE.md`、`OFFLINE-ARCHITECTURE.md` 与 `RUNBOOK-*.md`，是 **训练压缩器、运行官方基准与执行省钱评测** 的唯一权威操作指南。
 
@@ -133,7 +133,7 @@ npm run traj:lite
 ### 6.1 两条明确分开的推理路径
 
 1. **完整教师编码器（高能力、可选部署）**：双向 ModernBERT 编码 + 槽位、价值/诱惑度、跨度和草稿偏好头；导出完整 INT8 ONNX。它支持跨语种和代码语义表示。当前训练把输入截到 `256` 个 tokenizer tokens；不要把模型卡的长上下文上限误报为本次训练/验收长度。
-2. **紧凑学生（当前生产快速路径）**：将教师在 `dev` 上的信号蒸馏到 19 维符号特征 MLP 和偏好小头。同步、无外部运行时依赖的 `compileV5Local` 从唯一生产文件 `transfer/models/v5-micro-weights.json` 加载并校验权重，不保留第二份手写常量；`meta.promptVersion` 与 `meta.weightsDigest` 标识实际计分权重。**它不会在 JS 调用中执行完整 97M Transformer**。紧凑 ONNX 延迟仅代表学生，不代表完整编码器。`test/micro-runtime.selftest.mjs` 覆盖 JSON 加载、schema/特征顺序、token 惩罚、EXCLUDED 门控和默认编译路径。
+2. **紧凑学生（当前生产快速路径）**：将教师在 `dev` 上的信号蒸馏到 19 维符号特征 MLP 和偏好小头。同步、无外部运行时依赖的 `compileV5Local` 从唯一生产文件 `transfer/models/v5-micro-weights.json` 加载并校验权重，不保留第二份手写常量；`meta.promptVersion` 与 `meta.weightsDigest` 标识实际计分权重。**它不会在 JS 调用中执行完整 97M Transformer**。紧凑 ONNX 延迟仅代表学生，不代表完整编码器。`test/micro-runtime.selftest.mjs` 覆盖 JSON 加载、schema/特征顺序、token 惩罚、EXCLUDED 门控和默认编译路径；`test/micro-ruler.selftest.mjs` 覆盖长度分层读数自洽、Wilson 边界关系、去 token 惩罚指标、飞轮对非退化与构建器端点上限声明。
 
 这样保留插件已有的低开销、可审计和原文落点守门路径，同时把完整神经编码器作为独立候选产物；不以固定 Gold 得分冒充教师模型的泛化证据。
 
@@ -147,9 +147,10 @@ npm run traj:lite
 | Unit 原始样本 | 1,538 | 全量分母；三个 family：`flaky-timeout`、`perf-regression`、`sse-truncated` |
 | Unit 可训练 / needs-review | 569 / 969 | 可训练 37.0%；仅确定性规则筛选，未做 LLM/人工语义仲裁 |
 | 跨度指针 | 57 | 文件、代码片段和验收命令 |
-| Unit pair | 406 对 | 对比旧构造 2,452 对减少 83.44%；仅由可训练端点构成，端点最多复用 2 次 |
-| Unit pair 端点 | 529 个唯一端点 / 812 次引用 | 283 个端点各复用一次；复用端点占唯一端点 53.5%，度数上限为 2 |
-| Draft pair 原始 / 可训练 / needs-review | 155 / 118 / 37 | 可训练真实飞轮偏好须有成对分数且 margin `>=0.05`；其余不参与拟合 |
+| Unit pair | 609 对 | 仅由可训练端点构成；端点度数上限 **3**，每个正例最多 3 对 |
+| Unit pair 端点 | 569 个唯一端点 / 1,218 次引用 | 396 个端点被复用，占唯一端点 69.6%；实测最大度数 3 = 声明上限 |
+| Unit pair 长度匹配率 | 308/609 = 50.6% | `|Δtoken| <= 3` 的对；困难负例挖掘见 6.2.1 |
+| Draft pair 原始 / 可训练 / needs-review | 71 / 38 / 33 | 可训练 = 32 条真实飞轮对 + 6 条 Gold 对确定性反事实；其余 33 条不参与拟合 |
 | 原保留 Gold holdout | 4 | `eacces-config`、`wrong-model` 不进训练；已在此前评测，不是全新盲测 |
 
 标签审计当前是**规则支持筛选，不是语义审核完成**。Unit 的 969 条待审样本主要包含 `mechanism-heuristic-no-direct-gold-slot` 817、`competing-slot-overlap` 411、`noise-label-has-gold-overlap` 33、`noise-label-has-actionable-cue` 22（旗标可以重叠）；37 条 Draft pair 也被排除。训练脚本只使用 `trainingEligible=true` 的标签与 pair，并在数据文件保留逐条来源、依据、旗标和分母。
@@ -167,7 +168,13 @@ Unit 标签生成规则计数（“eligible”列是实际可训练数）：
 | `no-slot-cue-or-gold-anchor` | 374 | 320 |
 | `mechanism-heuristic-only` | 817 | 0 |
 
-Draft 可训练 pair 的来源为 112 条已有飞轮成对评分与 6 条 Gold 对确定性反事实；37 条待审原因为 margin `<0.05`（10）、被拒稿仍通过硬门（26）、无正向距离 margin（1）。这表明规则只保留有直接锚点/真实偏好依据的子集；需人工/LLM 逐条确认后才能称作语义审校完成。
+Draft 33 条待审原因为被拒稿仍通过硬门（26）、配对分数 margin `<0.05`（6）、无正向距离 margin（1）。
+
+#### 6.2.1 v14.20 数据构造与判定修复
+
+1. **困难负例 = 长度匹配优先 + 模型最难优先**（`CFB_MICRO_NEG_STRATEGY=hardened`，默认）：候选负例先按 `|Δtoken| <= CFB_MICRO_NEAR_LENGTH_TOKENS`（默认 3）是否长度匹配排序，再按**当前生产打分最高的负例**（对模型最难）排序，最后才是旧的词面 hardness。旧行为等价于 `legacy`，保留为可选值以复现历史结论。端点上限与每正例对数可用 `CFB_MICRO_PAIR_DEGREE_CAP` / `CFB_MICRO_PAIR_PER_POSITIVE` 覆盖（默认 3 / 3）。
+2. **常数占位分数不再被当成监督**：若飞轮来源里所有 pair 共享 ≤2 种分数对（历史版本是 122 条全部 `0.92 / 0.45`），整批降级为 `needs-review` 且不进入拟合，判定写入 `stats.flywheelScoresDegenerate`。
+3. **真实飞轮对落库**：`tools/promote-flywheel-pairs.mjs` 把本地采集的 `.cfb-offline/train/pairs.jsonl` 过滤 holdout、保留分数与文本哈希来源后写成 `transfer/models/dev-flywheel-pairs.json`（schema `cfb.dev-flywheel-pairs/2`，当前 38 条 dev、6 种分数对）。Kaggle checkout 没有 gitignored 的 jsonl，过去只能读到常数占位文件，于是出现**本机 71/38 与 Kaggle 155/118 两套口径**；落库后两条路径都得到同一批 38 条真实对。这表明规则只保留有直接锚点/真实偏好依据的子集；需人工/LLM 逐条确认后才能称作语义审校完成。
 
 SFT 和两类偏好数据采用**按 family 分组**的确定性 dev train/validation 切分；`_decoy` / `_long-horizon` 只归并到源 family，不能制造独立样本族。验证 family 仅按可训练 Unit 数量选择，尽量接近预设 20%，SHA-256 用作平局决胜，不按标签或分数挑选。当前可训练 Unit family 分母为 `flaky-timeout=367`、`perf-regression=39`、`sse-truncated=163`；实际选中 `sse-truncated`，占可训练 Unit `163/569=28.65%`（占全部 Unit `163/1538=10.60%`）。它已用于旧 checkpoint 选择，**绝不是最终盲测**。
 
@@ -192,17 +199,24 @@ repo_url = f"https://x-access-token:{pat}@github.com/liaocr/cfb.git"
 # 若尚无新 family 盲测文件，省略 --final-test-dataset；脚本会报告 blocked 且绝不晋级生产权重。
 # 新 family 文件需先独立语义审核，并作为 Kaggle Dataset 输入挂载：
 !python3 tools/kaggle-train-micro.py --epochs-sft 12 --epochs-simpo 12 \
-  --final-test-dataset /kaggle/input/cfb-final-family/micro-final-test.json --push-back
+  --student-pair-objective listwise --dataset-neg-strategy hardened \
+  --unit-pair-degree-cap 3 --unit-pairs-per-positive 3 --near-length-tokens 3 \
+  --push-back
+# 已有审核完成的独立新 family 时才追加：
+#   --final-test-dataset /kaggle/input/cfb-final-family/micro-final-test.json
 ```
+
+新增/变更的开关（可省略，省略即默认值）：`--student-pair-objective listwise|ranknet`（默认 `listwise`：对每个正例的负例组做 softmax 交叉熵，γ 仍按对保留；`ranknet` 为旧的成对 sigmoid）、`--dataset-neg-strategy hardened|legacy`、`--unit-pair-degree-cap`、`--unit-pairs-per-positive`、`--near-length-tokens`。后四个数据开关会作为 `CFB_MICRO_*` 环境变量传给 `tools/build-micro-dataset.mjs`，构造成果（策略、上限、长度匹配率、飞轮是否退化、数据集 SHA-256）都写进报告的 `data` 段。
 
 训练使用低 encoder 学习率、warmup + cosine scheduler、梯度裁剪 `1.0`、按分组验证早停；双卡时启用 `DataParallel([0, 1])`。为避免 ModernBERT 内部 `torch.compile` 与 DataParallel 的 FX tracing 冲突，显式设 `reference_compile=False`；AMP 溢出跳过的优化器步会计数，scheduler 只在优化器实际更新后前进。日志只说明双卡并行已配置，不宣称 GPU 一直满载。
 
 ### 6.4 机器可读验收与晋级规则
 
-- Teacher 与 compact student 指标分列；紧凑学生 Unit/Draft pair 指标在候选权重序列化后，通过 `tools/eval-micro-js-pairs.mjs` 调用 `src/compile-v5-local.js` 的实际 JS scorer 计算。Unit pair 比较 `scoreUnitWithWeights(...).v`（含 `lambda × tokenCount` 惩罚）；同一 scorer 同时执行 EXCLUDED 门控并报告门控审计数。特征向量来自数据构建器调用的生产 `extractUnitFeatures`，端点、family 和复用上限在 evaluator 再校验。
+- Teacher 与 compact student 指标分列；紧凑学生 Unit/Draft pair 指标在候选权重序列化后，通过 `tools/eval-micro-js-pairs.mjs` 调用 `src/compile-v5-local.js` 的实际 JS scorer 计算。Unit pair 比较 `scoreUnitWithWeights(...).v`（含 `lambda × tokenCount` 惩罚）；同一 scorer 同时执行 EXCLUDED 门控并报告门控审计数。**v14.20 起报告 schema 为 `cfb.micro-js-pair-eval/4`**，在历史口径（并列计 0 的严格点估计）之外还给出：① 并列半分口径；② 每个比例的二项 Wilson 95% 区间与 95% 下界；③ **长度分层**（`matched` = `|Δtoken| <= 3`、`near`、`far`）与**长度匹配子集**的准确率及下界；④ 把 `lambda × tokenCount` 加回后的**去长度惩罚分数**准确率，证明结论不是长度捷径；⑤ 「胜者更长 / 更短 / 等长」三组准确率。特征向量来自数据构建器调用的生产 `extractUnitFeatures`，端点、family 和复用上限在 evaluator 再校验。
 - 训练脚本另外在可训练真实 Unit 与 Draft 特征上比较 PyTorch compact student、六位小数候选 JSON 和实际 JS scorer：最大绝对数值误差 `<=0.001`，并要求 Unit slot 与 EXCLUDED 门控判定一致。随机 ONNX 输入 smoke 只证明导出文件可运行，**不算 Python/JS 数值 parity**。
 - 每轮都在**完整 train 与 family-held-out validation** 上重新计算 pair win rate，不再累计更新前的训练批次分数。报告分别列 Teacher、PyTorch compact head 和部署 JS 权重的分数与精确分母。
 - `tools/train-v5-micro.mjs --eval-json <path>` 把实际 11 条 Mode 2 逐项结果和汇总写成 JSON；报告不再把 `1.0` 或 `11/11` 写死。
+- **闸门读数**：90% 闸门仍按历史严格点估计判定（保持可比），但 138/40 对的规模上点估计自带约 ±4pp 区间；`report.rulerReading.*.lengthMatchedAccuracy` 及其 Wilson 下界才是承重读数——在那里长度惩罚无法决定胜负。只在 `far` 层过线、`matched` 层不过线的候选，不能声称具备排序能力。
 - 最终盲测只能在 checkpoint、代码、生产 JS 权重字段、训练目标、dev 数据和 split 冻结后，用 `--final-test-dataset <独立文件>` 对**一个此前未见、语义审核完成的新 family**执行一次。文件必须是 `cfb.micro-dev-dataset/3`，声明 `finalBlind: true`、`holdoutTouched: false`、`semanticReview.status: "completed"` 和逐类审核分母；每条 Unit/pair 的 `labelAudit` 必须保留来源/规则，并有 `semanticReview: { status: "confirmed", reviewer, rationale }`。顶层 `lineageReview` 要记录审核人/时间/新 family 理由；`knownFamiliesReviewed` 和 `knownSourceIdsReviewed` 必须与全部训练 lineage 精确匹配，`independentSourceIds` 必须与文件中的新 `sourceId` 完全一致且不与训练 source 重叠。Unit/pair 的每条 `sourceId` 都须能追溯到该新 family，Unit pair 不可跨 source；端点上限必须 `<=2`。`_decoy` / `_long-horizon` 变体和旧 `sse-truncated` validation 均会被拒绝。最终 Unit 与 Draft pair 也都要求 `>=90%`，结果只用于评估，不用于调参。
 - 只有以下条件全部满足，才将 candidate 晋级为生产权重：总参数 `<100M`、Teacher Unit 与 Draft validation 各 `>=90%`、compact student **JS Unit pair** 与 **JS Draft pair** validation 各 `>=90%`、PyTorch→JSON→JS 数值 parity 通过、Mode 2 的 G1/G2 全通过、完整 INT8 ONNX 导出及 ORT smoke test 成功、独立新 family 最终评估通过。缺少新 family 时 gate 明确为 blocked，不降低阈值、不拿旧 holdout 冒充；否则只发布候选报告/权重/紧凑学生 ONNX，**不会覆盖**当前生产权重。
 - 产物报告：`transfer/models/cfb-micro-97m-report.json`。报告分别记录完整编码器 ONNX 与紧凑学生 ONNX 的尺寸、实测延迟、train/validation 胜率、Gold dev/holdout 分数及精确参数余量。完整 ONNX 大于普通 Git blob 安全阈值时，训练脚本会改发 GitHub prerelease asset；具体 URL 写入报告。推送需要 Notebook Secret `GITHUB_PAT`；大文件 release 还需要该 token 有创建 release/上传 asset 的权限。

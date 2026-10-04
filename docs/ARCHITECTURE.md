@@ -11,7 +11,7 @@
 
 | 平面 | 入口 | 职责 | 守恒纪律 |
 |---|---|---|---|
-| **① 生产插件核心** | `index.js` → `src/`（22 个零依赖 ESM 模块） | 在宿主流 `llm/stream` 内拦截 `reasoning` 块，完成 CAS 归档 + 副模型认知编译 + 程序门核真（`compileV4Direct`）+ 程序部件拼接（`spliceProgramParts`）+ 六道放行门（`birthAccept`） | 267 份历史稿逐字回归 + 30 套 selftest 零失败 |
+| **① 生产插件核心** | `index.js` → `src/`（22 个零依赖 ESM 模块） | 在宿主流 `llm/stream` 内拦截 `reasoning` 块，完成 CAS 归档 + 副模型认知编译 + 程序门核真（`compileV4Direct`）+ 程序部件拼接（`spliceProgramParts`）+ 六道放行门（`birthAccept`） | 267 份历史稿逐字回归 + 31 套 selftest 零失败 |
 | **② 统一科学训练闭环与双轨裁判** | `tools/cfb-cycle.mjs` + `tools/cfb-judge.mjs` + `tools/bench-run.mjs` + `tools/traj-run.mjs` | 三模式闭环（手写探顶 → 金标基准 → 影子分叉轨迹）+ 四维全空间策略搜索 + 双轨（确定性规则 × LLM 语义）交叉验证与岭回归校准 + 五大国际官方基准成绩单 | 零污染客观锚点 + 跨计划 CAS 缓存 + 序贯 $e$-value 安全晋升 |
 | **③ 有界 API 账本与训练数据核** | `tools/effect-ready.mjs` + `tools/bounded-ab.mjs` + `src/training-core.js` | 双平面预占 API 预算（一 scope 一冻结批准，收据入库 `transfer/`）+ 5 家族连通组严格隔离的 SFT / DPO / In-Context DPO 导出 | 严禁跨家族泄漏与未批准真实扣费 |
 
@@ -117,16 +117,16 @@ birthTransform(inner, deps)
 | 修改闭环评测或官方基准公式 | `tools/helpers/ruler.mjs`（`passAtK` / `passHatK` / `arenaElo` / `industryScorecard`）+ `tools/cfb-cycle.mjs` |
 | 修改双轨语义裁判或校准器 | `tools/helpers/judge-layer.mjs` + `tools/cfb-judge.mjs` |
 | 新增自测套件 | `test/<name>.selftest.mjs`（末尾打印 `PASS=n FAIL=m`），加入 `verify.mjs` 的 `ORDER` |
-| 修改任何入库文件后 | 运行 `npm run manifest` 更新 `MANIFEST.sha256`，再跑 `npm run verify:offline` 确认 `30 套 / 909 pass / 0 fail / 1 skip` |
+| 修改任何入库文件后 | 运行 `npm run manifest` 更新 `MANIFEST.sha256`，再跑 `npm run verify:offline` 确认 `31 套 / 916 pass / 0 fail / 1 skip` |
 
 ---
 
-## 5. 自测套件矩阵（`30` 套，`909 pass / 0 fail / 1 skip`）
+## 5. 自测套件矩阵（`31` 套，`916 pass / 0 fail / 1 skip`）
 
-运行 `npm run verify:offline` 并发执行全部 30 套自检（每个套件使用独立临时 `DSH_HOME`）：
+运行 `npm run verify:offline` 并发执行全部 31 套自检（每个套件使用独立临时 `DSH_HOME`）：
 
 | 类别 | 套件名称 | 覆盖范围 |
 |---|---|---|
 | **生产核心与运行时（14 套）** | `provider-endpoint`, `core`, `compress`, `v4`, `v4-live`, `birth`, `robustness`, `hedge`, `hook-wiring`, `hardening`, `concurrency`, `protocol`, `branches`, `v12` | 端点解析、配置归一化、编译与流式路径、并发隔离、硬化及兼容性 |
 | **科学闭环与评测（12 套）** | `api-budget`, `effect-eval`, `eval-ready`, `eval-ready-v2`, `eval-visible-v3`, `eval-reasoning-v8`, `offline-lab`, `judge-calibration`, `closed-loop`, `closed-loop-v3`, `closed-loop-v4`, `training-ready` | 预算、效果/推理评估、离线闭环、双轨裁判校准、训练准备度 |
-| **完整性与审计（4 套）** | `manifest-ignore`, `audit-2026-09-27`, `micro-runtime`, `evidence-program` | 清单忽略规则、历史审计、生产 JSON 权重加载/JS scorer、类型化证据程序 |
+| **完整性与审计（5 套）** | `manifest-ignore`, `audit-2026-09-27`, `micro-runtime`, `micro-ruler`, `evidence-program` | 清单忽略规则、历史审计、生产 JSON 权重加载/JS scorer、微模型评测尺子与数据回归、类型化证据程序 |

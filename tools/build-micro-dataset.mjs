@@ -11,7 +11,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   SLOT_NAMES, extractAnchorsV5, splitDiscourseUnits,
-  extractUnitFeatures, extractDraftPrefFeatures, buildGroundedHay,
+  extractUnitFeatures, extractDraftPrefFeatures, buildGroundedHay, scoreUnitWithWeights,
 } from '../src/compile-v5-local.js'
 import { slotsOf, draftDistance, handDraftGate } from './helpers/hand-draft.mjs'
 import { loadGold } from './helpers/three-mode.mjs'
@@ -22,6 +22,12 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const HOLDOUT_FAMS = new Set(['eacces-config', 'wrong-model'])
 const familyKey = (value) => String(value || '').replace(/^pool:/, '').split(':', 1)[0].replace(/_(?:decoy|long-horizon).*$/, '')
 const isHoldout = (family) => HOLDOUT_FAMS.has(familyKey(family))
+// v14.20 数据集构造策略（可用环境变量覆盖；默认 = hardened 困难负例，见 docs/TRAINING-AND-BENCHMARK.md §6.2）
+//   hardened：负例优先「与正例长度接近」+「当前生产打分最高（模型最难）」；legacy：仅按旧 hardness 排序。
+const NEG_STRATEGY = process.env.CFB_MICRO_NEG_STRATEGY || 'hardened'
+const UNIT_PAIR_MAX_ENDPOINT_DEGREE = Number(process.env.CFB_MICRO_PAIR_DEGREE_CAP || 3)
+const UNIT_PAIR_MAX_PER_POSITIVE = Number(process.env.CFB_MICRO_PAIR_PER_POSITIVE || 3)
+const NEAR_LENGTH_TOKENS = Number(process.env.CFB_MICRO_NEAR_LENGTH_TOKENS || 3)
 const countBy = (rows, keyOf) => {
   const counts = new Map()
   for (const row of rows) {
@@ -275,8 +281,6 @@ export function buildMicroDataset() {
   const stepSimpoPairs = []
   const unitStepPairs = []
 
-  const UNIT_PAIR_MAX_ENDPOINT_DEGREE = 2
-  const UNIT_PAIR_MAX_PER_POSITIVE = 2
   const anchorJaccard = (a, b) => {
     const aa = extractAnchorsV5(a)
     const bb = extractAnchorsV5(b)
@@ -291,16 +295,48 @@ export function buildMicroDataset() {
     const negatives = docUnits.filter((u) => u.trainingEligible && u.slot === 'NOISE' && u.yVal <= 0.10)
     const localDegree = new Map()
     const degree = (idx) => localDegree.get(idx) || 0
+    // 困难负例策略：长度接近（|Δtoken| 小）优先 → 生产打分最高的负例（模型最难）→ 旧 hardness。
+    const negScoreCache = new Map()
+    const modelScoreOf = (neg) => {
+      if (negScoreCache.has(neg.globalIdx)) return negScoreCache.get(neg.globalIdx)
+      let score = 0
+      try {
+        score = scoreUnitWithWeights({
+          vec: neg.features,
+          tok: Number.isFinite(neg.tokenCount) ? neg.tokenCount : 0,
+          temptationT: neg.temptationT ?? neg.features[9],
+          cueExcluded: neg.features[15],
+        }).v
+      } catch { score = 0 }
+      negScoreCache.set(neg.globalIdx, score)
+      return score
+    }
     const candidatesFor = (pos) => negatives
       .filter((neg) => degree(neg.globalIdx) < UNIT_PAIR_MAX_ENDPOINT_DEGREE)
       .map((neg) => {
         const semanticOverlap = anchorJaccard(pos.text, neg.text)
         const lengthSimilarity = Math.exp(-Math.abs(Math.log((pos.text.length + 1) / (neg.text.length + 1))))
-        return { neg, hardness: 0.75 * semanticOverlap + 0.25 * lengthSimilarity }
+        const lengthGap = Math.abs((pos.tokenCount || 0) - (neg.tokenCount || 0))
+        return {
+          neg,
+          hardness: 0.75 * semanticOverlap + 0.25 * lengthSimilarity,
+          lengthGap,
+          lengthMatch: lengthGap <= NEAR_LENGTH_TOKENS ? 1 : 0,
+          modelScore: modelScoreOf(neg),
+        }
       })
-      .sort((a, b) => degree(a.neg.globalIdx) - degree(b.neg.globalIdx)
-        || b.hardness - a.hardness
-        || a.neg.globalIdx - b.neg.globalIdx)
+      .sort((a, b) => {
+        if (NEG_STRATEGY === 'legacy') {
+          return degree(a.neg.globalIdx) - degree(b.neg.globalIdx)
+            || b.hardness - a.hardness
+            || a.neg.globalIdx - b.neg.globalIdx
+        }
+        return degree(a.neg.globalIdx) - degree(b.neg.globalIdx)
+          || b.lengthMatch - a.lengthMatch
+          || b.modelScore - a.modelScore
+          || b.hardness - a.hardness
+          || a.neg.globalIdx - b.neg.globalIdx
+      })
     let pairCount = 0
     for (let round = 0; round < UNIT_PAIR_MAX_PER_POSITIVE; round++) {
       const ordered = [...positives].sort((a, b) => degree(a.globalIdx) - degree(b.globalIdx) || a.globalIdx - b.globalIdx)
@@ -308,7 +344,7 @@ export function buildMicroDataset() {
         if (degree(pos.globalIdx) >= UNIT_PAIR_MAX_ENDPOINT_DEGREE) continue
         const candidate = candidatesFor(pos)[0]
         if (!candidate) continue
-        const { neg, hardness } = candidate
+        const { neg, hardness, lengthGap, lengthMatch, modelScore } = candidate
         const gammaStep = +Math.max(0.35, Math.min(1.0, pos.yVal - neg.yVal)).toFixed(4)
         unitStepPairs.push({
           sourceId: docId,
@@ -319,6 +355,10 @@ export function buildMicroDataset() {
           loseSlot: neg.slot,
           gammaStep,
           hardness: +hardness.toFixed(4),
+          hardnessMode: NEG_STRATEGY,
+          lengthGap,
+          lengthMatch: lengthMatch === 1,
+          modelScore: +Number(modelScore).toFixed(4),
           trainingEligible: true,
           labelAudit: {
             status: 'rule-supported',
@@ -429,9 +469,20 @@ export function buildMicroDataset() {
   // 3. 合并飞轮真实偏好对（严格仅取 dev 家族；优先读 .cfb-offline/train/pairs.jsonl，回退读 transfer/models/dev-flywheel-pairs.json）
   const fwPath = path.join(ROOT, '.cfb-offline/train/pairs.jsonl')
   const fwFallbackPath = path.join(ROOT, 'transfer/models/dev-flywheel-pairs.json')
+  const flywheelSourcePath = fs.existsSync(fwPath) ? path.relative(ROOT, fwPath) : (fs.existsSync(fwFallbackPath) ? path.relative(ROOT, fwFallbackPath) : null)
+  // 兼容两种回退形状：旧版裸数组，或 tools/promote-flywheel-pairs.mjs 生成的 {schema, pairs[]} 文档
+  const fallbackDoc = fs.existsSync(fwFallbackPath) ? JSON.parse(fs.readFileSync(fwFallbackPath, 'utf8')) : null
+  const flywheelSourceSchema = fs.existsSync(fwPath) ? 'jsonl' : (Array.isArray(fallbackDoc) ? 'array/legacy' : (fallbackDoc?.schema || null))
   const rawFwItems = fs.existsSync(fwPath)
     ? fs.readFileSync(fwPath, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
-    : (fs.existsSync(fwFallbackPath) ? JSON.parse(fs.readFileSync(fwFallbackPath, 'utf8')) : [])
+    : (Array.isArray(fallbackDoc) ? fallbackDoc : (fallbackDoc?.pairs || []))
+  // v14.20：占位式常数分数（如全部 0.92/0.45）不构成偏好监督 ⇒ 整批降级为 needs-review，绝不当成真实 margin 训练。
+  const distinctScorePairs = new Set(rawFwItems.map((item) => {
+    const c = Number.isFinite(item.chosenScore) ? item.chosenScore : item.scores?.candidate
+    const r = Number.isFinite(item.rejectedScore) ? item.rejectedScore : item.scores?.control
+    return `${c}|${r}`
+  }))
+  const flywheelScoresDegenerate = rawFwItems.length >= 20 && distinctScorePairs.size <= 2
   for (const p of rawFwItems) {
     const fam = String(p.task || p.taskId || p.family || '').split(':')[0].replace(/_(?:decoy|long-horizon).*$/, '')
     if (p.split === 'holdout' || isHoldout(fam)) continue
@@ -453,7 +504,7 @@ export function buildMicroDataset() {
       }
     }
     const scoreMargin = chosenScore == null || rejectedScore == null ? null : chosenScore - rejectedScore
-    const trainingEligible = scoreMargin != null && scoreMargin >= 0.05
+    const trainingEligible = !flywheelScoresDegenerate && scoreMargin != null && scoreMargin >= 0.05
     stepSimpoPairs.push({
       id: `flywheel::${stepSimpoPairs.length}`,
       sourceId: p.task || fam || 'dev-flywheel',
@@ -470,7 +521,10 @@ export function buildMicroDataset() {
         status: trainingEligible ? 'reviewed-pair-with-margin' : 'needs-review',
         source: 'persisted-flywheel-pair-scores',
         scoreMargin: scoreMargin == null ? null : +scoreMargin.toFixed(4),
-        reason: trainingEligible ? null : (scoreMargin == null ? 'missing-paired-scores' : 'paired-score-margin-below-0.05'),
+        reason: trainingEligible ? null
+          : (flywheelScoresDegenerate ? 'paired-scores-degenerate-placeholder-set'
+          : (scoreMargin == null ? 'missing-paired-scores' : 'paired-score-margin-below-0.05')),
+        degenerateScoreSet: flywheelScoresDegenerate ? true : undefined,
       },
       gammaDd: +Math.max(0.35, Math.min(1.2, (scoreMargin ?? 0.35))).toFixed(4),
       chosenPref,
@@ -484,7 +538,7 @@ export function buildMicroDataset() {
   )
   const dataset = {
     schema: 'cfb.micro-dev-dataset/3',
-    createdAt: new Date().toISOString(),
+    createdAt: process.env.CFB_DATASET_FIXED_TIME || new Date().toISOString(),
     holdoutFamiliesExcluded: [...HOLDOUT_FAMS],
     holdoutTouched: false,
     stats: {
@@ -522,6 +576,17 @@ export function buildMicroDataset() {
       devFamilyNames: devFamilies,
       devFamilyUnitCounts: countBy(unitSamples, (unit) => familyKey(unit.family)),
       eligibleDevFamilyUnitCounts: eligibleFamilyCounts,
+      pairConstruction: {
+        strategy: NEG_STRATEGY,
+        endpointDegreeCap: UNIT_PAIR_MAX_ENDPOINT_DEGREE,
+        maxPairsPerPositive: UNIT_PAIR_MAX_PER_POSITIVE,
+        nearLengthTokens: NEAR_LENGTH_TOKENS,
+        note: 'hardened = length-matched + model-hard negatives first; legacy = hardness only',
+      },
+      flywheelSourcePath,
+      flywheelSourceSchema,
+      flywheelScoresDegenerate,
+      flywheelDistinctScorePairs: distinctScorePairs.size,
       unitPairEndpointReuse: (() => {
         const refs = [...pairDegree.values()]
         const histogram = Object.fromEntries([1, 2, 3, 4].map((d) => [String(d), refs.filter((n) => n === d).length]))

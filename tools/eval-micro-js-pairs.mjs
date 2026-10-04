@@ -41,6 +41,39 @@ try {
 const knownSourceIds = new Set(knownSourceList.map((id) => String(id).trim()).filter(Boolean))
 const mean = (rows) => rows.length ? rows.reduce((s, r) => s + r.correct, 0) / rows.length : null
 const meanNumber = (values) => values.length ? values.reduce((s, x) => s + x, 0) / values.length : null
+// ── 小样本评测统计（v14.20）：二项比例的 Wilson 区间，避免 138/40 对样本上直接比较点估计
+const wilsonInterval = (successes, total, z = 1.96) => {
+  if (!total) return null
+  const phat = successes / total
+  const denom = 1 + (z * z) / total
+  const center = (phat + (z * z) / (2 * total)) / denom
+  const half = (z * Math.sqrt((phat * (1 - phat)) / total + (z * z) / (4 * total * total))) / denom
+  return { lower: +Math.max(0, center - half).toFixed(4), upper: +Math.min(1, center + half).toFixed(4) }
+}
+const pairStats = (rows) => {
+  const total = rows.length
+  const correct = rows.reduce((s, r) => s + r.correct, 0)
+  const ties = rows.filter((r) => r.tie).length
+  const halfCredit = correct + 0.5 * ties
+  return {
+    correct,
+    total,
+    ties,
+    accuracy: total ? +(correct / total).toFixed(4) : null,
+    tiesPolicy: 'strict: a tied pair scores 0 (headline metric, gate-comparable)',
+    accuracyWithTiesHalfCredit: total ? +(halfCredit / total).toFixed(4) : null,
+    wilson95: wilsonInterval(correct, total),
+    wilsonLower95: wilsonInterval(correct, total)?.lower ?? null,
+    wilsonLowerOneSided95: wilsonInterval(correct, total, 1.645)?.lower ?? null,
+  }
+}
+const groupStats = (rows, keyOf) => {
+  const out = {}
+  for (const key of [...new Set(rows.map(keyOf))].sort()) {
+    out[key] = pairStats(rows.filter((r) => keyOf(r) === key))
+  }
+  return out
+}
 
 const dataset = JSON.parse(fs.readFileSync(datasetPath, 'utf8'))
 if (dataset.schema !== 'cfb.micro-dev-dataset/3') throw new Error(`unsupported-dataset-schema:${dataset.schema}`)
@@ -74,6 +107,15 @@ const unitPairEndpointAudit = {
   cap: declaredEndpointCap,
 }
 const validationFamily = validationFamilyArg == null ? null : familyKey(validationFamilyArg)
+// 长度分层阈值：matched = |delta token| <= NEAR（与数据集构造的 near-length 口径一致），near = 次近，far = 明显不同长度
+const NEAR_LENGTH_TOKENS = Number(process.env.CFB_MICRO_NEAR_LENGTH_TOKENS || dataset.stats?.pairConstruction?.nearLengthTokens || 3)
+const NEAR_LENGTH_BAND = Number(process.env.CFB_MICRO_NEAR_LENGTH_BAND || 8)
+const lengthStratumOf = (deltaTok) => {
+  const abs = Math.abs(deltaTok)
+  if (abs <= NEAR_LENGTH_TOKENS) return 'matched'
+  if (abs <= NEAR_LENGTH_BAND) return 'near'
+  return 'far'
+}
 const candidateWeights = loadV5MicroWeights(weightsPath)
 const productionWeights = V5_MICRO_WEIGHTS
 
@@ -100,7 +142,7 @@ function unitMetric(weights, split) {
     const result = scoreUnitWithWeights(feat, weights)
     const tokenPenalty = (weights.lambda || 0.0038) * feat.tok
     const excludedGateActive = result.temptationPred < (weights.temptationMin ?? 0.18) && feat.cueExcluded < 0.9
-    const scored = { ...result, tokenPenalty, excludedGateActive }
+    const scored = { ...result, tok: feat.tok, tokenPenalty, excludedGateActive }
     scoreCache.set(index, scored)
     return scored
   }
@@ -123,7 +165,24 @@ function unitMetric(weights, split) {
     const lose = getScore(pair.loseIdx)
     const correct = win.v > lose.v ? 1 : 0
     if (win.v === lose.v) ties++
-    rows.push({ family, sourceId: pair.sourceId, correct })
+    // 与 λ·tok 解耦的纯排序分数：v 已扣除 lambda*tok，加回后即「不依赖长度惩罚」的名次分
+    const rankOnlyWin = +(win.v + win.tokenPenalty).toFixed(6)
+    const rankOnlyLose = +(lose.v + lose.tokenPenalty).toFixed(6)
+    const deltaTok = +(win.tok - lose.tok).toFixed(4)
+    if (!Number.isFinite(deltaTok)) {
+      throw new Error(`unit-pair-token-delta-non-finite:${pair.sourceId}`)
+    }
+    rows.push({
+      family,
+      sourceId: pair.sourceId,
+      correct,
+      tie: win.v === lose.v,
+      lengthGap: Math.abs(deltaTok),
+      lengthStratum: lengthStratumOf(deltaTok),
+      tokenDelta: deltaTok,
+      rankOnlyCorrect: rankOnlyWin > rankOnlyLose ? 1 : 0,
+      rankOnlyTie: rankOnlyWin === rankOnlyLose,
+    })
     degrees.set(pair.winIdx, (degrees.get(pair.winIdx) || 0) + 1)
     degrees.set(pair.loseIdx, (degrees.get(pair.loseIdx) || 0) + 1)
   }
@@ -147,6 +206,8 @@ function unitMetric(weights, split) {
   const scoreAudit = {
     uniqueEndpointsScored: endpointScores.length,
     tokenLengthPenaltyIncludedInRankScore: true,
+    tokenPenaltyDecoupledMetricReported: true,
+    tokenPenaltyCoupledMetricRole: 'headline accuracy stays on the production rank score v; scoreWithoutTokenPenalty reports the same pairs with lambda*tokenCount removed',
     tokenPenaltyMean: meanNumber(tokenPenalties) == null ? null : +meanNumber(tokenPenalties).toFixed(6),
     tokenPenaltyMin: tokenPenalties.length ? +Math.min(...tokenPenalties).toFixed(6) : null,
     tokenPenaltyMax: tokenPenalties.length ? +Math.max(...tokenPenalties).toFixed(6) : null,
@@ -154,14 +215,42 @@ function unitMetric(weights, split) {
     scoredAsExcludedAfterGate: endpointScores.filter((score) => score.slot === 'EXCLUDED').length,
     scoredAsNoiseAfterGate: endpointScores.filter((score) => score.slot === 'NOISE').length,
   }
+  const stats = pairStats(rows)
+  const rankOnlyRows = rows.map((r) => ({ correct: r.rankOnlyCorrect, tie: r.rankOnlyTie }))
+  const lengthStratified = groupStats(rows, (r) => r.lengthStratum)
+  const longerWinner = rows.filter((r) => r.tokenDelta > 0)
+  const shorterWinner = rows.filter((r) => r.tokenDelta < 0)
+  const equalLength = rows.filter((r) => r.tokenDelta === 0)
   return {
-    correct: rows.reduce((s, r) => s + r.correct, 0),
-    total: rows.length,
-    accuracy: mean(rows) == null ? null : +mean(rows).toFixed(4),
+    ...stats,
     ties,
     byFamily,
     maxEndpointDegree,
     endpointReuseCap: configuredCap ?? null,
+    // 长度分层：matched 子集是「长度不能解释胜负」的最强证据；far 子集暴露长度捷径
+    lengthStratified,
+    lengthStratumBounds: {
+      matched: `|delta token| <= ${NEAR_LENGTH_TOKENS}`,
+      near: `${NEAR_LENGTH_TOKENS} < |delta token| <= ${NEAR_LENGTH_BAND}`,
+      far: `|delta token| > ${NEAR_LENGTH_BAND}`,
+    },
+    lengthMatchedSubset: lengthStratified.matched ?? { correct: 0, total: 0, accuracy: null, wilson95: null },
+    lengthMatchedShare: rows.length ? +((lengthStratified.matched?.total ?? 0) / rows.length).toFixed(4) : null,
+    medianLengthGap: rows.length ? +rows.map((r) => r.lengthGap).sort((a, b) => a - b)[Math.floor(rows.length / 2)].toFixed(4) : null,
+    lengthShortcutAudit: {
+      note: 'a longer winner means lambda*tokenCount works against the label; accuracy there cannot be a length shortcut',
+      winnerLonger: pairStats(longerWinner),
+      winnerShorter: pairStats(shorterWinner),
+      equalLength: pairStats(equalLength),
+    },
+    // 与 λ·tok 解耦的名次分：两套分数必须给出同一结论，否则结论来自长度惩罚而非排序能力
+    scoreWithoutTokenPenalty: {
+      rankScoreDefinition: 'v + lambda*tokenCount (lambda*tokenCount removed from the compared score)',
+      ...pairStats(rankOnlyRows),
+      agreementWithFullScore: rows.length
+        ? +(rows.filter((r) => (r.correct === 1) === (r.rankOnlyCorrect === 1)).length / rows.length).toFixed(4)
+        : null,
+    },
     scoreAudit,
   }
 }
@@ -178,7 +267,7 @@ function draftMetric(weights, split) {
     const rejected = scoreDraftPreferenceFeatures(pair.rejectedPref, weights)
     const correct = chosen > rejected ? 1 : 0
     if (chosen === rejected) ties++
-    rows.push({ family, correct })
+    rows.push({ family, correct, tie: chosen === rejected })
   }
   const byFamily = {}
   for (const family of [...new Set(rows.map((r) => r.family))].sort()) {
@@ -190,9 +279,7 @@ function draftMetric(weights, split) {
     }
   }
   return {
-    correct: rows.reduce((s, r) => s + r.correct, 0),
-    total: rows.length,
-    accuracy: mean(rows) == null ? null : +mean(rows).toFixed(4),
+    ...pairStats(rows),
     ties,
     byFamily,
   }
@@ -335,9 +422,15 @@ if (finalBlindTest) {
   if (validationFamily !== actualFamilies[0]) throw new Error('final-test-validation-family-must-be-the-new-family')
 }
 const report = {
-  schema: 'cfb.micro-js-pair-eval/3',
+  schema: 'cfb.micro-js-pair-eval/4',
   runtimeScorer: 'src/compile-v5-local.js:extractUnitFeatures (dataset-built JS vectors) + scoreUnitWithWeights + scoreDraftPreferenceFeatures',
   unitPairRankScore: 'pair accuracy compares scoreUnitWithWeights(...).v, including lambda * tokenCount; the same call applies EXCLUDED negative-priming gate to slot probabilities used by selection and reports gate counts',
+  metricsPolicy: {
+    ties: 'strict (ties count 0) is the headline and gate-comparable metric; accuracyWithTiesHalfCredit is reported alongside',
+    smallSampleStatistics: 'Wilson 95% interval and one-sided 95% lower bound per metric; with 138/40 pairs a 4pp difference is inside noise, so gates must be read with the lower bound',
+    lengthStratification: 'unit pairs are bucketed by |delta token|; the matched bucket (length cannot explain the outcome) carries the load-bearing claim',
+    tokenPenaltyDecoupling: 'every unit metric is also computed with lambda*tokenCount added back, so conclusions cannot come from the length penalty alone',
+  },
   weightsPath: path.relative(ROOT, weightsPath),
   datasetPath: path.relative(ROOT, datasetPath),
   datasetSchema: dataset.schema,

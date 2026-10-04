@@ -803,6 +803,17 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
     stale = 0
 
     def unit_pair_metrics(pairs):
+        """Compact student Unit objective over audited preference pairs.
+
+        listwise (default): for every positive endpoint, build the candidate set
+        [positive - mean(gammaStep)] + [its negatives] and take softmax cross-entropy with the
+        positive as the single relevant item (Softmax/ListNet-style listwise loss). The required
+        margin stays per-pair inside each group; a positive reused across groups contributes once
+        per group. ranknet: legacy pairwise -log sigmoid(beta * (delta - margin)).
+        Returns (loss, strict_pair_accuracy, group_count); strict accuracy counts delta > 0 only.
+        """
+        if not pairs:
+            return torch.zeros((), device=device), None, 0
         win_idx = torch.tensor([pair["winIdx"] for pair in pairs], dtype=torch.long, device=device)
         lose_idx = torch.tensor([pair["loseIdx"] for pair in pairs], dtype=torch.long, device=device)
         margins = torch.tensor([float(pair["gammaStep"]) for pair in pairs], dtype=torch.float32, device=device)
@@ -813,9 +824,21 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
             student, unit_features[lose_idx], unit_token_counts[lose_idx], lambda_weight,
         )
         delta = win_score - lose_score
-        rank_loss = -F.logsigmoid(args.beta_simpo * (delta - margins)).mean()
         accuracy = float((delta > 0).float().mean().item())
-        return rank_loss, accuracy
+        if args.student_pair_objective == "ranknet":
+            rank_loss = -F.logsigmoid(args.beta_simpo * (delta - margins)).mean()
+            return rank_loss, accuracy, len(pairs)
+        grouped = {}
+        for position, pair in enumerate(pairs):
+            grouped.setdefault(int(pair["winIdx"]), []).append(position)
+        group_losses = []
+        for members in grouped.values():
+            member_ix = torch.tensor(members, dtype=torch.long, device=device)
+            anchor = win_score[member_ix][0] - margins[member_ix].mean()
+            candidates = torch.cat([anchor.reshape(1), lose_score[member_ix]])
+            group_losses.append(torch.logsumexp(candidates, dim=0) - anchor)
+        list_loss = torch.stack(group_losses).mean()
+        return list_loss, accuracy, len(grouped)
 
     def student_eval(selected, pairs):
         if not selected:
@@ -829,7 +852,7 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
             distill_loss = F.kl_div(F.log_softmax(logits / temperature, dim=-1), teacher_prob, reduction="batchmean") * temperature**2
             value_loss = F.huber_loss(pred_values, 0.5 * values[ix] + 0.5 * teacher_values[ix], delta=0.15)
             tempt_loss = F.huber_loss(pred_tempt, 0.5 * temptations[ix] + 0.5 * teacher_tempt[ix], delta=0.15)
-            pair_loss, pair_accuracy = unit_pair_metrics(pairs)
+            pair_loss, pair_accuracy, _pair_groups = unit_pair_metrics(pairs)
             multitask_loss = 0.55 * hard_loss + 0.45 * distill_loss + value_loss + 0.6 * tempt_loss
             total_loss = multitask_loss + pair_loss_weight * pair_loss
             metrics = classification_stats(logits, labels[ix])
@@ -838,6 +861,7 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
                 "multiTaskLoss": round(float(multitask_loss.item()), 5),
                 "unitPairwiseLoss": round(float(pair_loss.item()), 5),
                 "unitPairAccReference": round(pair_accuracy, 4),
+                "unitPairObjective": args.student_pair_objective,
                 "unitPairCount": len(pairs),
                 "unitPairLossWeight": pair_loss_weight,
                 "valueMae": round(float((pred_values - values[ix]).abs().mean().item()), 5),
@@ -866,7 +890,7 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
         # Optimize the scalar JS Unit rank score with audited, family-grouped preference pairs.
         student.train()
         optimizer.zero_grad(set_to_none=True)
-        pair_loss, _ = unit_pair_metrics(unit_train_pairs)
+        pair_loss, _, _ = unit_pair_metrics(unit_train_pairs)
         weighted_pair_loss = pair_loss_weight * pair_loss
         if not torch.isfinite(weighted_pair_loss):
             raise FloatingPointError(f"non-finite compact Unit pair loss at epoch {epoch}")
@@ -982,6 +1006,7 @@ def train_compact_student(args, teacher, dp_model, tokenizer, dataset, sft, devi
         "unitValidation": student_val_metrics,
         "unitPairLossWeight": pair_loss_weight,
         "unitPairBeta": float(args.beta_simpo),
+        "unitPairObjective": args.student_pair_objective,
         "unitPairMarginSource": "gammaStep from audited Unit preference pairs",
         # Final Unit-pair accuracy is filled only after serialized JSON is scored by actual JS.
         "unitTrainPairAcc": None,
@@ -1081,6 +1106,7 @@ def serialize_candidate(prior_weights: dict, student: CompactSymbolicStudent,
             "compactStudentUnitPairLossWeight": student_stats["unitPairLossWeight"],
             "compactStudentUnitPairBeta": student_stats["unitPairBeta"],
             "compactStudentUnitPairMarginSource": student_stats["unitPairMarginSource"],
+            "compactStudentUnitPairObjective": student_stats["unitPairObjective"],
             "compactStudentUnitTrainPairwiseLoss": student_stats["unitTrain"]["unitPairwiseLoss"],
             "compactStudentUnitValidationPairwiseLoss": student_stats["unitValidation"]["unitPairwiseLoss"],
             "compactStudentUnitTrainPairAccPreSerialization": student_stats["unitTrain"]["unitPairAccReference"],
@@ -1599,6 +1625,16 @@ def main():
     parser.add_argument("--student-lr", type=float, default=2e-3)
     parser.add_argument("--pref-student-lr", type=float, default=1e-3)
     parser.add_argument("--student-epochs", type=int, default=80)
+    parser.add_argument("--student-pair-objective", choices=["listwise", "ranknet"], default="listwise",
+                        help="compact student Unit pair objective; listwise = softmax over each positive's negative group (default), ranknet = pairwise margin sigmoid")
+    parser.add_argument("--dataset-neg-strategy", choices=["hardened", "legacy"], default="hardened",
+                        help="dataset negative-mining strategy: hardened = length-matched + model-hard negatives (default)")
+    parser.add_argument("--unit-pair-degree-cap", type=int, default=3,
+                        help="max preference-pair endpoints per Unit (dataset builder CFB_MICRO_PAIR_DEGREE_CAP)")
+    parser.add_argument("--unit-pairs-per-positive", type=int, default=3,
+                        help="max preference pairs generated per positive Unit (dataset builder CFB_MICRO_PAIR_PER_POSITIVE)")
+    parser.add_argument("--near-length-tokens", type=int, default=3,
+                        help="|delta token| threshold counted as a length-matched negative (dataset builder CFB_MICRO_NEAR_LENGTH_TOKENS)")
     parser.add_argument("--student-unit-pair-loss-weight", type=float, default=1.0,
                         help="weight for the compact student's audited Unit pairwise ranking loss")
     parser.add_argument("--pref-student-epochs", type=int, default=100)
@@ -1652,7 +1688,16 @@ def main():
     prior_weights = json.loads(PRODUCTION_WEIGHTS_PATH.read_text(encoding="utf-8"))
 
     print("\n[Stage 1/6] Building strict dev-only training data...")
-    subprocess.run(["node", str(ROOT / "tools" / "build-micro-dataset.mjs")], check=True, cwd=str(ROOT))
+    dataset_env = os.environ.copy()
+    dataset_env.update({
+        "CFB_MICRO_NEG_STRATEGY": args.dataset_neg_strategy,
+        "CFB_MICRO_PAIR_DEGREE_CAP": str(args.unit_pair_degree_cap),
+        "CFB_MICRO_PAIR_PER_POSITIVE": str(args.unit_pairs_per_positive),
+        "CFB_MICRO_NEAR_LENGTH_TOKENS": str(args.near_length_tokens),
+    })
+    subprocess.run(["node", str(ROOT / "tools" / "build-micro-dataset.mjs")], check=True, cwd=str(ROOT), env=dataset_env)
+    print(f"   ✓ pair construction: strategy={args.dataset_neg_strategy}, degree_cap={args.unit_pair_degree_cap}, "
+          f"per_positive={args.unit_pairs_per_positive}, near_length_tokens={args.near_length_tokens}")
     dataset = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
     training_dataset_sha256 = hashlib.sha256(DATASET_PATH.read_bytes()).hexdigest()
     if dataset.get("schema") != "cfb.micro-dev-dataset/3":
@@ -1817,6 +1862,45 @@ def main():
         "mode2G2FailuresToZero": summary["totalItems"] - summary["g2PassCount"],
         "parametersBelow100M": 100_000_000 - total_params,
     }
+    def _pair_reading(unit: dict, length_sensitive: bool = True) -> dict:
+        matched = (unit.get("lengthMatchedSubset") or {}) if length_sensitive else {}
+        reading = {
+            "accuracy": unit.get("accuracy"),
+            "correct": unit.get("correct"),
+            "total": unit.get("total"),
+            "ties": unit.get("ties"),
+            "tiesPolicy": unit.get("tiesPolicy"),
+            "accuracyWithTiesHalfCredit": unit.get("accuracyWithTiesHalfCredit"),
+            "wilson95": unit.get("wilson95"),
+            "wilsonLower95": unit.get("wilsonLower95"),
+        }
+        if length_sensitive:
+            reading.update({
+                "lengthMatchedAccuracy": matched.get("accuracy"),
+                "lengthMatchedCorrect": matched.get("correct"),
+                "lengthMatchedTotal": matched.get("total"),
+                "lengthMatchedWilsonLower95": matched.get("wilsonLower95"),
+                "lengthMatchedShare": unit.get("lengthMatchedShare"),
+                "lengthStratified": unit.get("lengthStratified"),
+                "accuracyWithoutTokenPenalty": (unit.get("scoreWithoutTokenPenalty") or {}).get("accuracy"),
+            })
+        return reading
+
+    # 尺子读数：点估计之外同时给出「长度不能解释胜负」的子集与 Wilson 下界，避免用噪声当能力。
+    ruler_reading = {
+        "note": (
+            "Headline accuracy keeps its historical definition (a tied pair scores 0) so gates stay comparable; "
+            "lengthMatchedAccuracy restricts to pairs whose two Units differ by <= near_length_tokens tokens, where the "
+            "lambda*tokenCount penalty cannot manufacture the win; wilsonLower95 is the one-sided-friendly 95% lower bound "
+            "and is the honest number to compare against 90% on a 138/40-pair validation set."
+        ),
+        "candidateUnitTrain": _pair_reading(js_train_unit),
+        "candidateUnitValidation": _pair_reading(js_val_unit),
+        "productionUnitValidation": _pair_reading(js_prod_val_unit),
+        "candidateDraftTrain": _pair_reading(js_train_draft, length_sensitive=False),
+        "candidateDraftValidation": _pair_reading(js_val_draft, length_sensitive=False),
+        "productionDraftValidation": _pair_reading(js_prod_val_draft, length_sensitive=False),
+    }
     report = {
         "schema": "cfb.micro-97m-training-report/3",
         "completedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -1849,6 +1933,11 @@ def main():
             "trainEligibleDraftPairs": dataset["stats"]["trainEligibleStepSimpoPairs"],
             "draftPairLabelsNeedsReview": dataset["stats"]["stepSimpoLabelsNeedsReview"],
             "unitPairEndpointReuse": dataset["stats"]["unitPairEndpointReuse"],
+            "pairConstruction": dataset["stats"].get("pairConstruction"),
+            "flywheelSourcePath": dataset["stats"].get("flywheelSourcePath"),
+            "flywheelScoresDegenerate": dataset["stats"].get("flywheelScoresDegenerate"),
+            "flywheelDistinctScorePairs": dataset["stats"].get("flywheelDistinctScorePairs"),
+            "trainingDatasetSha256": training_dataset_sha256,
             "uniqueUnitPairEndpoints": dataset["stats"]["unitPairEndpointReuse"]["uniqueEndpoints"],
             "familyCount": dataset["stats"]["devFamilyCount"],
             "familyNames": dataset["stats"]["devFamilyNames"],
@@ -1860,7 +1949,7 @@ def main():
                 "validationFamilySelection": "closest eligible-unit family size to 20%; deterministic SHA-256 tie-break; no label or score optimization",
                 "sftCheckpoint": "minimum grouped validation loss",
                 "teacherPreferenceCheckpoint": "maximum unweighted mean of grouped validation Unit-pair and Draft-pair accuracy",
-                "compactUnitHeadCheckpoint": "minimum grouped validation distillation/classification loss; Unit-pair score is reported only through actual JS runtime after serialization",
+                "compactUnitHeadCheckpoint": "minimum grouped validation total loss = multitask (0.55*CE + 0.45*KL + huber(value) + 0.6*huber(temptation)) + unit_pair_loss_weight * Unit pair objective loss; the Unit-pair objective therefore participates in checkpoint selection",
                 "compactDraftHeadCheckpoint": "maximum grouped validation pair accuracy; lower distillation/ranking loss breaks ties",
                 "freshNewFamilyTest": "run after the frozen candidate if --final-test-dataset is supplied; never enters fitting or checkpoint selection",
             },
@@ -1870,6 +1959,7 @@ def main():
             "draftPairValidationCount": simpo_result["draftValidationCount"],
         },
         "ceilingDistances": ceiling_distances,
+        "rulerReading": ruler_reading,
         "parameters": {
             "total": total_params,
             "backbone": backbone_params,
@@ -1930,6 +2020,14 @@ def main():
         "accepted": accepted,
         "promotionEligible": accepted,
         "promoted": False,
+        "scope": {
+            "roundScope": "student-only",
+            "teacherRetrained": False,
+            "teacherNumbersCarriedOver": True,
+            "studentPairObjective": args.student_pair_objective,
+            "datasetNegStrategy": args.dataset_neg_strategy,
+            "note": "This round fixes the compact student, the training dataset construction and the evaluation ruler. The teacher path is untouched; teacher-derived metrics in this report are the previous run's values.",
+        },
         "notes": [
             "Mode 2 metrics are parsed from tools/train-v5-micro.mjs --eval-json.",
             "The synchronous JS compiler consumes the compact symbolic student; the full encoder ONNX is a separate optional artifact.",
@@ -1937,6 +2035,11 @@ def main():
             "The selected dev validation family is excluded from gradient updates and used for early stopping/checkpoint selection; Gold holdout is excluded from fitting and selection and is only a fixed Mode 2 safety gate.",
             "The four existing Gold holdout cases were already evaluated in the prior run; they are not a fresh blind set.",
             "Training-corpus Unit and preference labels carry deterministic audit provenance; rows flagged needs-review are excluded from fitting. The separate final family, if supplied, must carry per-item semantic review provenance.",
+            "Round scope: compact student + dataset + evaluation ruler only; the teacher (ModernBERT SFT/SimPO path) is deliberately unchanged this round and its numbers are carried over from the previous run, not retrained here.",
+            "Unit preference pairs are mined with the hardened strategy: negatives are ordered by length match (|delta token| <= near_length_tokens) first, then by current production model score (hardest for the model), then by lexical hardness; endpoint degree cap is raised so that far more positive Units receive supervision.",
+            "Persisted flywheel pairs are rejected as supervision when their stored scores are a degenerate constant placeholder set (all pairs share <= 2 distinct score pairs); such batches are marked needs-review instead of being fitted as if they were real margins.",
+            "The compact student Unit objective is a listwise softmax over each positive's negative group (fallback: --student-pair-objective ranknet). Reported Unit pair accuracy is the strict delta>0 rate; the JS ruler additionally reports length-stratified and token-penalty-free accuracy with Wilson lower bounds.",
+            "Gate reading: the 90% gates stay on the historical strict point estimate for comparability, but on 138/40-pair sets a point estimate carries roughly a +/-4pp interval; rulerReading.candidateUnitValidation.lengthMatchedAccuracy (with its Wilson lower bound) is the load-bearing number, because there the length penalty cannot decide the winner. A candidate that only clears 90% on the far-length stratum has not demonstrated the underlying ability.",
             ("Independent new-family final evaluation passed." if final_family_eval["passed"] else
              "Promotion remains blocked until one genuinely new, independently reviewed family is evaluated after checkpoint selection; current training corpus has only three eligible dev families."),
         ],

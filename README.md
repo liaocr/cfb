@@ -1,6 +1,6 @@
 # dsh-cot-form-b (`cfb`) — 思维链「出生即压缩」认知编译器
 
-> **当前版本：v14.19.0（2026-10-04）** · **零第三方依赖**（纯 Node.js ≥ 20/22 内置模块） · **自测：`29/29` 套件全绿（`885 pass / 0 fail / 1 skip`）**
+> **当前版本：v14.20.0（2026-10-04）** · **零第三方依赖**（纯 Node.js ≥ 20/22 内置模块） · **自测：`31/31` 套件全绿（`916 pass / 0 fail / 1 skip`）**
 > **核心定位**：Cordis 协议外部插件。在主模型每轮 `reasoning` 块**出生时（进入会话历史之前）**，同步完成 CAS 原文归档与认知编译压缩（支持**零 API 成本、~9ms 极速本地认知图微模型 `compressLocalModel: true`** 与副模型编译双路径）；通过 6 道确定性程序门（非空、零编造标识符、结构闭合、净省字符、token 必降、死路不复活）后原位替换，任何一步不达标或异常即 **100% 无损回退原文放行**。
 
 ---
@@ -8,10 +8,10 @@
 ## 1. 三十秒极速上手（人类 & AI 模型通用）
 
 ```bash
-# 1. 新克隆或跨环境恢复：重建可再生离线状态 → 校验完整性 → 真断网跑全量 29 套自检
+# 1. 新克隆或跨环境恢复：重建可再生离线状态 → 校验完整性 → 真断网跑全量 31 套自检
 npm run restore             # = node tools/cfb-cycle.mjs restore（从 transfer/cycle-state.json 恢复 .cfb-offline）
 npm run manifest:check      # = node manifest.mjs --check（校验 MANIFEST.sha256 零漂移）
-npm run verify:offline      # = node tools/verify-offline.mjs（真断网跑全部 29 套 selftest，约 10s）
+npm run verify:offline      # = node tools/verify-offline.mjs（真断网跑全部 31 套 selftest，约 30s）
 
 # 2. 查看闭环训练状态与五大国际官方基准综合成绩单（$0 API，1 秒出表）
 npm run cycle               # = node tools/cfb-cycle.mjs status（策略池、Pareto 前沿、飞轮、效度账本）
@@ -25,7 +25,7 @@ npm run next                # = node tools/cfb-cycle.mjs next（自动诊断瓶�
 
 | 场景 | 命令 (`npm run ...` 或 `node ...`) | API 成本 | 说明 |
 |---|---|---:|---|
-| **全量自检（断网）** | `npm run verify:offline` | `$0` | 在 Linux 网络隔离命名空间跑满 29 套 `test/*.selftest.mjs`（884 项断言） |
+| **全量自检（断网）** | `npm run verify:offline` | `$0` | 在 Linux 网络隔离命名空间跑满 31 套 `test/*.selftest.mjs`（916 项断言） |
 | **快速自检（并发）** | `npm test` / `node verify.mjs birth v4` | `$0` | 并发跑全部或指定关键字的自测套件 |
 | **官方基准总表（Tier 0）** | `npm run bench` | **`$0`** | 融合 SWE-bench Pro、TAU-bench `pass^k`、LMArena Elo、Artificial Analysis 与 LiveBench 的 L2+L1 成绩单 |
 | **零 API 预筛 + 析因** | `npm run prescreen` | **`$0`** | 在冻结金标上跑生产 `compileV4Direct + spliceProgramParts + birthAccept + ranker` 并做四维正交因子归因 |
@@ -73,7 +73,7 @@ dsh-cot-form-b/
 │   ├── analyze-trace.mjs / analyze-efficiency.mjs / phase0-report.mjs / cf-eval.mjs / v4-live.mjs / closure-check.mjs / draft-lint.mjs
 │   └── helpers/                 15 个内聚辅助模块（ruler / judge-layer / hand-draft / flywheel / proposer / gold-store 等）
 │
-├── test/                        29 套 *.selftest.mjs 套件 + fixtures/ 真机样本
+├── test/                        31 套 *.selftest.mjs 套件 + fixtures/ 真机样本
 ├── deploy/                      onboard.mjs 部署漂移体检 + eval-profile 配置模板 + probe/ 探针 + systemd/
 ├── docs/                        ③ 合一化文档体系（索引见 docs/README.md）
 │   ├── README.md                文档总目录与阅读路线图
