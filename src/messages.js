@@ -231,15 +231,18 @@ export function buildCompressCtx(messages, opts = {}) {
  *   代码算它能算的（P_t、C_t 状态），副模型只把本轮增量压进去；固定句式（v4d6）让稿机器可读，这是它的红利。
  *   只看**最后一条人类 user 之后**的消息（同一个任务）；每条 assistant 算一轮。返回 { rounds, edits, calls, decided, excluded, accept, open }。
  */
-const LEDGER_DECIDED_RE = /改法只落一个[^。！？\n]*[。！？]?/g
-const LEDGER_ACCEPT_RE = /[^。！？\n]*(?:验收|改完后|预期)[^。！？\n]*[。！？]?/g
-const LEDGER_OPEN_RE = /[^。！？\n]*(?:对不上|未解|不改变落点)[^。！？\n]*[。！？]?/g
-const LEDGER_REJECT_RE = /[^。！？\n]*(?:不选|已排除|排除[:：]|搁置|不动它|不走这条|治症状)[^。！？\n]*[。！？]?/g
+const LEDGER_DECIDED_RE = /(?:改法只落一个|改法只落|只改一处|只动一处|改法如下|落定[的了]?改法)[^。！？\n]*[。！？]?/g
+const LEDGER_ACCEPT_RE = /[^。！？\n]*(?:验收|验收口径|改完后|预期|怎么算修好|判定标准|通过条件)[^。！？\n]*[。！？]?/g
+const LEDGER_OPEN_RE = /[^。！？\n]*(?:对不上|未解|还没定|没定|待查|待定|没查清|没有结论|不改变落点)[^。！？\n]*[。！？]?/g
+const LEDGER_REJECT_RE = /[^。！？\n]*(?:不选|已排除|排除了|排除过|这条排除|排除[:：]|搁置|不动它|先不动|暂不动|不碰|别碰|不走这条|治症状)[^。！？\n]*[。！？]?/g
 // v14.10：上面三条「整句」正则在没有关键词的长句（代码块、命令输出）上是二次方回溯（每个起点都把句子扫到底再回退）。
 //   语义上一个匹配永远落在同一个 [。！？\n] 分段内，所以先按分段切、只对含关键词的分段跑原正则 ⇒ 结果逐字相同、复杂度线性。见 sentenceMatches。
-const LEDGER_ACCEPT_KW = /验收|改完后|预期/
-const LEDGER_OPEN_KW = /对不上|未解|不改变落点/
-const LEDGER_REJECT_KW = /不选|已排除|排除[:：]|搁置|不动它|不走这条|治症状/
+const LEDGER_ACCEPT_KW = /验收|改完后|预期|怎么算修好|判定标准|通过条件/
+const LEDGER_OPEN_KW = /对不上|未解|还没定|没定|待查|待定|没查清|没有结论|不改变落点/
+const LEDGER_REJECT_KW = /不选|已排除|排除了|排除过|这条排除|排除[:：]|搁置|不动它|先不动|暂不动|不碰|别碰|不走这条|治症状/
+/** v14.20.1：槽位引导词全集（各 *_KW 的并集，判分侧要认「槽位附近」时用它，别处不许另抄一份关键词表）。 */
+export const LEDGER_SLOT_LEAD_KW = /已排除|排除了|排除过|这条排除|排除[：:]|不选|搁置|不动它|先不动|暂不动|不碰|别碰|不走这条|治症状|未解|还没定|没定|待查|待定|没查清|没有结论|对不上|验收|改完后|预期|怎么算修好|判定标准|通过条件|改法只落|只改一处|只动一处|改法如下|落定[的了]?改法/
+
 /** 与 text.matchAll(re) 等价（re 不跨 [。！？\n]、不含锚点/后顾），但只在含 kw 的分段上跑 re。 */
 function* sentenceMatches(text, re, kw) {
   const s = String(text || '')

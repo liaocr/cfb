@@ -12,7 +12,8 @@ import { compareKeys, handDraftGate } from './hand-draft.mjs'
 import { auditMode1Gold, auditMode1Pair, isMode1GoldEligible } from './mode1-quality.mjs'
 
 /** draftDistance 公式版本：冻结进基准计划；改公式必须改版本号，不同版本的基准分不可比（指标在设计里冻结，不随结果调）。 */
-export const DRAFT_DISTANCE_VERSION = 'dd/1'
+// v14.20.1 dd/2：① 闸失败不再拿「原文回塞」的白送分（记 0 分，verdict refused:*）；② 槽位召回改为内容优先（同义措辞 / 分号并句不许改分，见 hand-draft 的 flattenClauses 与逐字回退）。
+export const DRAFT_DISTANCE_VERSION = 'dd/2'
 export const readResults = (file) => { const raw = fs.readFileSync(file, 'utf8').trim(); if (!raw) return []; return raw.startsWith('[') ? JSON.parse(raw) : raw.split('\n').filter(Boolean).map((l) => JSON.parse(l)) }
 /** 完成行：有 task、无 error、不是 hand 臂的「等待手写稿」暂停行。 */
 export const liveRows = (rows) => (rows || []).filter((r) => r && r.task && !r.error && r.status !== 'awaiting-draft')
@@ -259,11 +260,13 @@ const KEYS = ['decision', 'excludedRecall', 'acceptOk', 'openRecall', 'anchorPre
 /** 基准报告：每策略 × 切分的均值与判词分布；dev 项候选 vs base 的配对 e 值；holdout 只报告。best = promote 里 e 最大者。 */
 export function benchReport(rows, { baseline = 'base', alpha = DEFAULT_DESIGN_V4.alphaHoldout, factorial = null } = {}) {
   const live = (rows || []).filter((r) => r && r.policy && r.distance && r.gold)
+  const errored = {}
+  for (const r of rows || []) if (r && r.policy && r.gold && !r.distance && !r.dry) errored[r.policy] = (errored[r.policy] || 0) + 1
   const policies = [...new Set(live.map((r) => r.policy))]
   const table = []
   for (const p of policies) for (const s of ['dev', 'holdout']) {
     const rs = live.filter((r) => r.policy === p && r.split === s); if (!rs.length) continue
-    const row = { policy: p, split: s, n: rs.length, score: mean(rs.map((r) => r.distance.score)), gateFail: rs.filter((r) => !r.ok).length, verdicts: {} }
+    const row = { policy: p, split: s, n: rs.length, score: mean(rs.map((r) => r.distance.score)), gateFail: rs.filter((r) => !r.ok).length, errored: errored[p] || 0, verdicts: {} }
     for (const k of KEYS) row[k] = mean(rs.map((r) => r.distance[k]).filter((x) => x != null))
     for (const r of rs) row.verdicts[r.distance.verdict] = (row.verdicts[r.distance.verdict] || 0) + 1
     table.push(row)
@@ -282,15 +285,17 @@ export function benchReport(rows, { baseline = 'base', alpha = DEFAULT_DESIGN_V4
   const promoted = Object.entries(paired).filter(([, v]) => v.decision.startsWith('promote')).sort((a, b) => b[1].e - a[1].e)
   const best = promoted.length ? promoted[0][0] : null
   const fx = factorial ? factorialEffects(rows, factorial, { alpha }) : null
-  return { schema: 'cfb.bench-report/1', baseline, metric: DRAFT_DISTANCE_VERSION, policies, table, paired, best, threshold: +(1 / alpha).toFixed(1), ...(fx ? { factorial: fx } : {}),
+  const missing = policies.filter((p) => !table.some((t) => t.policy === p && t.split === 'dev'))
+  return { schema: 'cfb.bench-report/1', baseline, metric: DRAFT_DISTANCE_VERSION, policies, table, paired, best, ...(missing.length ? { unscored: missing } : {}), threshold: +(1 / alpha).toFixed(1), ...(fx ? { factorial: fx } : {}),
     next: best ? `plan-traj --arms raw,policy:${best}（模式 3 验收：基准分不采纳，只决定谁进轨迹）` : '没有策略在 dev 金标上显著优于 base：改策略（propose-policy）或先补金标（模式 1）' }
 }
 export function benchReportMd(rep, { title = '基准报告' } = {}) {
-  const L = [`# ${title}（${rep.metric}；基线 ${rep.baseline}；零 API）`, '', '| 策略 | 切分 | n | 分 | 决定 | 排除召回 | 验收 | 未解召回 | 锚点精度 | 长度 | 闸失败 | 判词 |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
-  for (const t of rep.table) L.push(`| ${t.policy} | ${t.split} | ${t.n} | ${t.score ?? '—'} | ${t.decision ?? '—'} | ${t.excludedRecall ?? '—'} | ${t.acceptOk ?? '—'} | ${t.openRecall ?? '—'} | ${t.anchorPrecision ?? '—'} | ${t.lengthOk ?? '—'} | ${t.gateFail} | ${Object.entries(t.verdicts).map(([k, v]) => `${k}×${v}`).join(' ')} |`)
+  const L = [`# ${title}（${rep.metric}；基线 ${rep.baseline}；零 API）`, '', '| 策略 | 切分 | n | 分 | 决定 | 排除召回 | 验收 | 未解召回 | 锚点精度 | 长度 | 闸失败 | 未计分(故障) | 判词 |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+  for (const t of rep.table) L.push(`| ${t.policy} | ${t.split} | ${t.n} | ${t.score ?? '—'} | ${t.decision ?? '—'} | ${t.excludedRecall ?? '—'} | ${t.acceptOk ?? '—'} | ${t.openRecall ?? '—'} | ${t.anchorPrecision ?? '—'} | ${t.lengthOk ?? '—'} | ${t.gateFail} | ${t.errored || 0} | ${Object.entries(t.verdicts).map(([k, v]) => `${k}×${v}`).join(' ')} |`)
   L.push('', '配对（dev 金标上候选 vs base，层级键：决定 → 排除召回 → 验收 → 未解召回 → 锚点精度 → 长度）：')
   for (const [p, v] of Object.entries(rep.paired)) L.push(`- ${p}: ${v.wins}胜 ${v.losses}负 ${v.ties}平（${v.families} 家族）e=${v.e} 「更差」e=${v.eReject} 阈 ${rep.threshold}；泛化差 ${v.generalizationGap ?? '—'} ⇒ **${v.decision}**`)
   if (!Object.keys(rep.paired).length) L.push('- （只有 base：没有候选可配对）')
+  if (rep.unscored?.length) L.push(`  未进表（全部行调用失败或超闸，无一条可计分）：${rep.unscored.join(' ')}`)
   if (rep.factorial) {
     const fx = rep.factorial
     L.push('', `主效应（因子设计 ${fx.kind} 2^${fx.k}${fx.kind === 'half' && fx.k === 3 ? '−1' : ''}，候选 ${fx.of} 的 ${fx.k} 条补丁各为一个因子；${fx.runs} 个臂 × dev 金标 ${fx.golds}；每个效应用全部臂估计、按金标配对）：`)

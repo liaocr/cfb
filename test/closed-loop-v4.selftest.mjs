@@ -469,7 +469,7 @@ try {
       calls = 0; const r = await TR.runOne({ o, task, variant: 'raw', sample: 0, chat, I, cred }); assert.equal(r.status, undefined); assert.equal(r.compile.length, 0); assert.equal(r.rounds, 2)
     } finally { process.chdir(cwd); fs.rmSync(tmp, { recursive: true, force: true }) }
   })
-  await test('A25 v4.6 模式 2 指标 draftDistance（dd/1）：金标自比全 1；丢排除句 ⇒ excludedRecall 0、判 lost-exclusions；改三元组 ⇒ decision 0；锚点不在原文∪ctx（照抄样例 / 发明）⇒ anchorPrecision < 1 且先于一切判 invented-anchors；层级键字典序；G2 闸拒发明决定 / 无依据排除', async () => {
+  await test('A25 v4.6 模式 2 指标 draftDistance（dd）：金标自比全 1；丢排除句 ⇒ excludedRecall 0、判 lost-exclusions；改三元组 ⇒ decision 0；锚点不在原文∪ctx（照抄样例 / 发明）⇒ anchorPrecision < 1 且先于一切判 invented-anchors；层级键字典序；G2 闸拒发明决定 / 无依据排除', async () => {
     const H = await import('../tools/helpers/hand-draft.mjs')
     const raw = '我们需要先确认 src/trace.js 里 home 的来源。看起来 dshHome() 读的是 process.env.HOME，所以测试会写到真实目录。不是权限问题：chown 需要 root，排除。改法：改 src/trace.js，old_text 是 `process.env.HOME` 改成 new_text 是 `opts.home`。下一步 read_file src/trace.js。还没确认 verify.mjs 里 env 怎么传。'
     const ctx = '【当前任务】EACCES trace.log'
@@ -536,7 +536,7 @@ try {
       fs.mkdirSync(path.join(tmp, 'offline', 'policies'), { recursive: true }); fs.writeFileSync(path.join(tmp, 'offline', 'policies', 'p-test1.json'), JSON.stringify({ id: 'p-test1', parent: 'base', status: 'proposed', patches: [{ op: 'append', section: 'rules', text: '测试规则：先逐字核对再编辑。' }] }))
       r = C.runCli(['plan-bench', '--policies', 'base', '--dry'], { dir: tmp }); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /× 金标 2（dev）= 2 次压缩 ≈ \$0.015/)
       r = C.runCli(['plan-bench', '--policies', 'base,p-test1', '--split', 'all'], { dir: tmp }); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /压缩调用 10（主模型 0 次）；\*\*期望实付 ≈ \$0.075/)
-      const bplan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime', 'b1', 'plan.json'), 'utf8')); assert.equal(bplan.gold.length, 5); assert.equal(bplan.metric, 'dd/1'); assert.ok(bplan.gold.every((g) => /^[0-9a-f]{16}$/.test(g.digest)))
+      const bplan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime', 'b1', 'plan.json'), 'utf8')); assert.equal(bplan.gold.length, 5); assert.equal(bplan.metric, (await import('../tools/helpers/three-mode.mjs')).DRAFT_DISTANCE_VERSION, '基准计划必须记下当时的标尺版本'); assert.ok(bplan.gold.every((g) => /^[0-9a-f]{16}$/.test(g.digest)))
       assert.match(C.runCli(['plan-bench', '--policies', 'base,p-test1', '--split', 'all'], { dir: tmp }).stdout, /同一设计的基准计划已存在：b1/)
       assert.equal(C.runCli(['plan-bench', '--policies', 'p-test1'], { dir: tmp }).status, 1, '没有 base 不建')
       // 6) bench-run --dry-run：金标自比全 1；金标被改 ⇒ 拒跑
@@ -1135,11 +1135,43 @@ try {
       }
       const dd = draftDistance(b.ok ? b.text : b.meta?.sideOutput || '', g.draft, { raw: g.raw, ctx: g.ctx })
       if (isBaseline) {
-        assert.equal(dd.score, 1, `${g.id} [${g.split}]: 已进基线的 gold，dd/1 必须仍为 1.000 (got ${dd.score}, key=${dd.key})`)
+        assert.equal(dd.score, 1, `${g.id} [${g.split}]: 已进基线的 gold，dd 必须仍为 1.000 (got ${dd.score}, key=${dd.key})`)
         assert.equal(dd.verdict, 'close', `${g.id}: 判词必须为 close (got ${dd.verdict})`)
       } else {
         console.log(`  新靶（未进基线）${g.id} [${g.split}]：G1 ${b.ok ? '✓' : b.why} · dd ${dd.score} · ${dd.verdict} · key=${dd.key.join(',')} —— 这就是模式 2 的活口`)
       }
+    }
+  })
+  await test('A41c 写法变体不许改分：同义引导词、并句拆句，分数必须仍 ≥0.95（内容没变，只是换个说法）', async () => {
+    const { loadGold } = await import('../tools/helpers/three-mode.mjs')
+    const { draftDistance, slotsOf } = await import('../tools/helpers/hand-draft.mjs')
+    const PAR = [[/改法只落一个/g, '只改一处'], [/已排除/g, '排除了'], [/未解/g, '还没定'], [/验收/g, '验收口径'], [/本轮增量/g, '这轮新东西'], [/；已排除：/g, '。排除了：']]
+    for (const g of loadGold(path.join(ROOT, 'transfer', 'gold'))) {
+      let d = g.draft
+      for (const [re, to] of PAR) d = d.replace(re, to)
+      assert.notEqual(d, g.draft, `${g.id}: 这份稿没被改写，测试对它无效`)
+      const para = draftDistance(d, g.draft, { raw: g.raw, ctx: g.ctx })
+      assert.ok(para.score >= 0.95, `${g.id}: 只换措辞/断句就掉分（${g.draft.length} 字稿 → ${para.score}，key=${para.key.join(',')}）⇒ 标尺在奖励句式而不是内容`)
+      // 反证：把某个槽位里真实存在的一条内容整条删掉 ⇒ 那一项召回必须掉下来（不看句式、只认内容，那内容没了就必须扣分）
+      const G = slotsOf(g.draft)
+      // 排除/未解是按条计召回 ⇒ 删掉一条必须掉分；验收是「有没有写验收」的整体判词 ⇒ 要全删才判 0（这是标尺的既有语义，不是漏洞）
+      // 负控不在这里：丢内容 ⇒ A25 已钉（lost-exclusions），空壳引导词 ⇒ A41d 已钉
+    }
+  })
+  await test('A41d 空洞模板不给分：只写引导词不写内容 ⇒ 三项判 0；同样的引导词配上内容照旧满分（模板本身仍是奖励）', async () => {
+    const { loadGold } = await import('../tools/helpers/three-mode.mjs')
+    const { draftDistance, slotsOf } = await import('../tools/helpers/hand-draft.mjs')
+    const HOLLOW = '本轮增量：机理照旧，问题还是那条链路。\n\n改法只落一个：\n已排除：\n验收：\n未解：\n'
+    const S0 = slotsOf(HOLLOW)
+    assert.equal(S0.excluded.length, 0, `空「已排除：」不该抽出一条排除（got ${JSON.stringify(S0.excluded)}）`)
+    assert.equal(S0.open.length, 0, `空「未解：」不该抽出一条未解`)
+    assert.equal(S0.accept.length, 0, `空「验收：」不该抽出一条验收`)
+    assert.equal(S0.decided.length, 0, `空「改法只落一个：」不该算落定`)
+    for (const g of loadGold(path.join(ROOT, 'transfer', 'gold'))) {
+      const r = draftDistance(HOLLOW, g.draft, { raw: g.raw, ctx: g.ctx })
+      assert.ok((r.excludedRecall ?? 0) === 0 && (r.openRecall ?? 0) === 0 && (r.acceptOk ?? 0) === 0, `${g.id}: 空壳稿三项必须全 0（got 排除 ${r.excludedRecall} / 未解 ${r.openRecall} / 验收 ${r.acceptOk}）`)
+      assert.ok(r.score < 0.45, `${g.id}: 空壳稿总分 ${r.score} 太高 ⇒ 是在给格式送分`)
+      assert.equal(draftDistance(g.draft, g.draft, { raw: g.raw, ctx: g.ctx }).score, 1, `${g.id}: 同一批引导词配上内容必须仍是 1.000`)
     }
   })
   await test('A41b 天花板资格：比 raw 慢（vsRaw loss）不收、但不算越界，--include-loss 可强收', async () => {

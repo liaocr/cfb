@@ -128,7 +128,7 @@ if (CMD === 'replay' || CMD === 'stage') {
   console.log(JSON.stringify(report, null, 2))
   if (!res.ok) { console.log(`\n✗ 闸链未过（阶段 ${res.stage}）⇒ 继续改稿，不入库`); process.exit(2) }
   console.log(`\n✓ 离线全绿：G2 决策不变 ∧ compileV4Direct ∧ 程序部件 ∧ birthAccept ∧ 越界 lint（draft+stored）`)
-  console.log(`  与旧金标稿的 dd/1 = ${dd.score}（${dd.verdict}）：改稿只删越界句 ⇒ 应接近 1.000 / close`)
+  console.log(`  与旧金标稿的 dd = ${dd.score}（${dd.verdict}）：改稿只删越界句 ⇒ 应接近 1.000 / close`)
   console.log(`  stored ${(res.stored || '').length} 字（原 ${String(item.stored || '').length} 字）`)
   console.log('  ⚠ 这不等于金标：`outcome`（主模型读这份稿能否修好）必须重跑 Mode 1 真机单元。见 `next-cmds`。')
   if (CMD === 'stage') {
@@ -208,7 +208,7 @@ if (CMD === 'next-cmds') {
     for (const it of pend.items) {
       const draft = path.join('transfer', 'gold-repair', 'drafts', it.id + '.md')
       const home = path.join('.cfb-runtime', 'traj', it.plan)
-      console.log(`  # ${it.id}（${it.family}，${it.split}，原计划 ${it.plan}，稿 ${it.draftChars} 字，与旧稿 dd/1=${it.dd}）`)
+      console.log(`  # ${it.id}（${it.family}，${it.split}，原计划 ${it.plan}，稿 ${it.draftChars} 字，与旧稿 dd=${it.dd}）`)
       console.log(`  node tools/cfb-cycle.mjs plan-traj --arms raw,hand --scenarios ${it.family} --max-rounds <R> --dry   # 同设计已存在则直接续跑 ${it.plan}`)
       console.log(`  cp ${draft} ${home}/drafts/${it.id}.md      # 文件名 = 轨迹 id，traj-run 见稿即续跑那一轮`)
       console.log(`  node tools/traj-run.mjs --plan ${home}/plan.json --store-text --variants raw,hand --samples 1 --max-rounds <R>`)

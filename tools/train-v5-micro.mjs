@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // tools/train-v5-micro.mjs —— 严格在 dev 集（7 条 dev Gold + 3 条 dev Pool + dev 飞轮偏好对）上训练
 //   v5 本地认知微模型参数（Head 1 槽位分类 + Head 2 条目价值 + Head 3 偏好排序），
-//   全程 0 接触 holdout（eacces-config / wrong-model）进行拟合；完整尺子（dd/1 + G1 + G2）随后也检查既有 holdout，但它并非全新盲测。
+//   全程 0 接触 holdout（eacces-config / wrong-model）进行拟合；完整尺子（dd + G1 + G2）随后也检查既有 holdout，但它并非全新盲测。
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'

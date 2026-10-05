@@ -1739,7 +1739,7 @@ export function prescreenPolicies({ policyIds = null } = {}) {
 export function cmdPrescreen(args = []) {
   const ids = f(args, '--policies') ? f(args, '--policies').split(',') : null
   const rows = prescreenPolicies({ policyIds: ids })
-  const L = ['# 零 API 策略预筛榜（prescreen，$0 成本）', '', '| 策略 | 提示词Δ字 | 延续段 | 程序部件 | 提示裁剪 | 制度键 | 金标过闸 | 金标净省tok | 金标dd/1(距极限) | 池题过闸(R2/全轮) | 池题均省tok | 5题Oracle dd(距极限) | 真值分 | 密度效率分 | 排序器分 | 状态 |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+  const L = ['# 零 API 策略预筛榜（prescreen，$0 成本）', '', '| 策略 | 提示词Δ字 | 延续段 | 程序部件 | 提示裁剪 | 制度键 | 金标过闸 | 金标净省tok | 金标dd(距极限) | 池题过闸(R2/全轮) | 池题均省tok | 5题Oracle dd(距极限) | 真值分 | 密度效率分 | 排序器分 | 状态 |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
   for (const r of rows) {
     const status = !r.applicable ? '✗补丁不可用' : r.expandedBlocks > 0 ? `⚠逆向增补(${r.expandedBlocks}块变长)` : r.degenerate ? '⚠退化(同base)' : r.goldLive ? '✓已实测' : r.regime.length ? '制度候选(未实测)' : '调稿候选(未实测)'
     const goldDdStr = r.goldMeanScore != null ? `${r.goldMeanScore}${r.goldLive ? '[实测]' : '[预估]'} (-${r.goldGapToCeiling})` : '—'
@@ -1935,10 +1935,10 @@ export function cmdBenchmark() {
   }
   L.push(
     '',
-    '## 二、L1 认知编译器无污染客观基准（6 维无饱和 dd/1 × 5题人类 Oracle 极限 × AA 信息密度效率）',
+    '## 二、L1 认知编译器无污染客观基准（6 维无饱和 dd × 5题人类 Oracle 极限 × AA 信息密度效率）',
     '> 理论极限天花板（Gold / Oracle）= `1.000`；`[实测]` 为真实副模型 API 生成稿得分，`[预估]` 为 $0 静态结构预筛；括号内 `-0.xxx` 为距理论极限天花板的真实差距。',
     '',
-    '| 排名 | 策略 ID | 提示词Δ字 | 架构配置 | 金标过闸/净省 | 金标dd/1(距极限) | 池题全轮过闸 | 池题均省tok | 5题Oracle dd(距极限) | 真值分 | AA密度效率分 | 飞轮排序器分 |',
+    '| 排名 | 策略 ID | 提示词Δ字 | 架构配置 | 金标过闸/净省 | 金标dd(距极限) | 池题全轮过闸 | 池题均省tok | 5题Oracle dd(距极限) | 真值分 | AA密度效率分 | 飞轮排序器分 |',
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   )
   pre.slice(0, 8).forEach((r, idx) => {
@@ -1987,11 +1987,11 @@ const HELP = `cfb-cycle（闭环 v4：e 值采纳 + L2 结局确认 + 双轨评�
   gold add --plan N [--include-unsolved] [--include-loss] [--from-winners] [--replace]   v4.6：过闸且修好的手写稿 → 金标注册表 transfer/gold/<family>/；--replace = 改稿重挣后换稿（旧条目自动归档 transfer/gold-history/）；默认拒收 vsRaw loss（比主模型自己读原文还慢）——那是天花板资格不是越界
   gold audit | gold restore --id A,B [--apply] | gold replay|stage --id X --draft F                v14.20.1：隔离区复算 / 干净稿放回 / 改稿零 API 重测生产闸链（tools/cfb-gold-repair.mjs）                               v4.6：过闸且修好的手写稿 → 金标注册表 transfer/gold/<family>/（按家族 dev/holdout，落盘不改）
   plan-bench [--lite] [--policies base,p-x] [--split dev|holdout|all] [--dry] [--drop N] [--factors half|full]
-                                                                                 v4.6 模式 2：策略 × 金标 各一次压缩调用（--lite 极简模式：复用 base 缓存，仅跑 1 次 ≈ $0.004）；指标 dd/1 冻结；dev 配对选策略、holdout 只报告
+                                                                                 v4.6 模式 2：策略 × 金标 各一次压缩调用（--lite 极简模式：复用 base 缓存，仅跑 1 次 ≈ $0.004）；指标 dd 版本随计划冻结；dev 配对选策略、holdout 只报告
                                                                                  v4.7 --factors：候选的 k≤3 条补丁各为因子（half=2^(k−1) 含 base 不含全开 / full=2^k），bench-report 出每条补丁的主效应 ⇒ 知道该留哪条
   bench-report --plan N | --results FILE [--baseline base]                         v4.6：只接受已登记且 digest 匹配的冻结计划；文件模式需同目录 plan.json；不完整 job 不 promote / 不回灌飞轮
   snapshot / restore [--from FILE] [--force]                                     v4.5：闭环状态（history / champion / 策略 / 轨迹计划 / 证据包）↔ transfer/cycle-state.json（进仓库；新克隆先 restore）
-  prescreen [--policies base,p-x]                                                零 API（$0）：在冻结池 + 金标库上预筛所有策略（补丁开销 / 程序部件净省 tok / 过闸率 / dd/1 / 真值分 / 排序器分）
+  prescreen [--policies base,p-x]                                                零 API（$0）：在冻结池 + 金标库上预筛所有策略（补丁开销 / 程序部件净省 tok / 过闸率 / dd / 真值分 / 排序器分）
   benchmark                                                                      零 API（$0）：输出融合五大官方权威口径（SWE-bench Pro / TAU-bench pass^k / LMArena Elo / AA 性价比前沿）的基准记分卡与三档省钱测试菜单
   synthesize-policy [--parent ID] [--no-adaptive] [--contrastive]                零 API（$0）：合成帕累托复合极限策略（bounded 延续段 + compact 状态部件 + modular 裁剪 + 动态水位触发器）并过三道闸落盘
   flywheel [--harvest] [--no-direct]                                             查看偏好飞轮状态并训练 CPU 排序器；--harvest 自动从历史轨迹 / 基准 / direct 压缩稿回填高信号偏好对（含 SEER 式同真值极简对）

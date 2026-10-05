@@ -11,7 +11,10 @@
 //   (b) 槽位抽取 + draftDistance：按槽位的锚定事实（决策一致 → 已排除召回 → 验收 → 未解召回 → 锚点精确率 → 长度窗），
 //       不是 BLEU/ROUGE（表面重合奖励照抄，而 flash 恰恰爱照抄样例）；锚点精确率 < 1 直接判负，照抄别家族样例会在这里露馅。
 //       这把尺在驱动任何采纳前必须先在模式 3 里证明「召回高 ⇒ 结局好」（与 L1/L2 同一纪律），证不出就只当诊断。
-import { buildLedger } from '../../src/messages.js'
+import { buildLedger, LEDGER_SLOT_LEAD_KW } from '../../src/messages.js'
+
+/** 排除槽的引导词（写法变体都认；模板本身不变） */
+const REJECT_LEAD = /(?:已排除|排除了|排除过|这条排除|排除)/
 import { programPartsText } from '../../src/compile-v4.js'
 import { jaccard } from './candidates.mjs'
 
@@ -53,7 +56,7 @@ export function slotsOf(text) {
   for (const s of bodyNoInHand.split(/(?<=[。！？\n])\s*/)) {
     const t = norm(s)
     if (!t) continue
-    if (/(?:本轮直接发了|改法分[一二两三\d]+处|改法只落)/.test(t) && /(?:一处.*；.*另一处|①.*；.*②|old_text\s*是[\s\S]*?；\s*(?:同文件|另一处|第二处|②))/.test(t)) {
+    if (/(?:本轮直接发了|改法分[一二两三\d]+处|改法只落|只改一处|只动一处|改法如下)/.test(t) && /(?:一处.*；.*另一处|①.*；.*②|old_text\s*是[\s\S]*?；\s*(?:同文件|另一处|第二处|②))/.test(t)) {
       const head = (t.match(/^[^：:]+[：:]/) || [''])[0]
       const body = t.slice(head.length).trim()
       for (const cl of body.split(/；(?![^（(]*[）)])\s*(?=(?:另一处|第[二三]处|②|③|同文件|以及\s*edit_file))/)) {
@@ -65,13 +68,13 @@ export function slotsOf(text) {
   }
   if (extraDecided.length > 1) decided = extraDecided
   // 2. 抽取正文中的边界排除与伪证据排除（如「`done` 只留作标记不再参与」「`npm test` 的 PASS 不算证据」「`src/distill.js` 不动」），并把分号并列的「已排除：A；已排除：B」（含 >240 字被 buildLedger 跳过的长句）拆成独立条目（保证 gold 与 auto 对称）
-  for (const m of bodyNoInHand.matchAll(/(?:^|[。；\n])\s*((?:已排除|排除)[：:][^。；\n]+)/g)) {
+  for (const m of bodyNoInHand.matchAll(new RegExp('(?:^|[。；\\n])\\s*((' + REJECT_LEAD.source + ')[：:][^。；\\n]+)', 'g'))) {
     const c = norm(m[1])
     if (c && !excluded.some((e) => e.includes(c) || c.includes(e))) excluded.push(c)
   }
   for (let idx = 0; idx < excluded.length; idx++) {
-    if (/；\s*(?:已排除|排除)[：:]/.test(excluded[idx])) {
-      const parts = excluded[idx].split(/；\s*(?=(?:已排除|排除)[：:])/).map((x) => norm(x)).filter(Boolean)
+    if (/；\s*(?:已排除|排除了|排除过|这条排除|排除)[：:]/.test(excluded[idx])) {
+      const parts = excluded[idx].split(/；\s*(?=(?:已排除|排除了|排除过|这条排除|排除)[：:])/).map((x) => norm(x)).filter(Boolean)
       excluded.splice(idx, 1, ...parts)
       idx += parts.length - 1
     }
@@ -99,7 +102,19 @@ export function slotsOf(text) {
       for (const cl of body.split(/；\s*(?:以及)?/)) if (cl.trim()) open.push(cl.trim())
     }
   }
-  return { decided, excluded, accept, open, triples }
+  // v14.20.1 防空洞：只写引导词不写内容（「已排除：」「未解：见上文」）不算槽位内容 —— 它既不给分，也不能借旁边的句子蒙到分
+  const solid = (arr) => (arr || []).filter((x) => stripSlotLead(x).length >= 8)
+  decided = solid(decided)
+  const excl = solid(excluded), acpt = solid(accept), opn = solid(open)
+  // 判分只认「槽位内」或「紧邻上下文」：含槽位引导词的分段，连同前后各一段 —— 不是正文任何角落逐字命中就算召回
+  const segs = str.split(/(?<=[。！？\n])/)
+  const win = []
+  for (let i = 0; i < segs.length; i++) {
+    const cur = String(segs[i] || '')
+    if (!cur || !LEDGER_SLOT_LEAD_KW.test(cur)) continue
+    win.push(norm([segs[i - 1], cur, segs[i + 1]].filter(Boolean).join('')))
+  }
+  return { decided, excluded: excl, accept: acpt, open: opn, triples, slotWindow: [...new Set(win)].join('\n') }
 }
 
 /**
@@ -132,7 +147,16 @@ const leafAnchors = (text) => {
   const all = [...anchorsOf(text)]
   return all.filter((a) => (!/[./\-]/.test(a) && !/[a-z][A-Z]/.test(a)) || !all.some((b) => b !== a && a.includes(b)))
 }
-function recalled(goldSentence, candidates, fullBody = '') {
+function recalled(goldSentence, candidates, fullBody = '', window = '') {
+  // 内容优先（v14.20.1 / dd/2）：金标子句剥掉引导词后逐字出现在候选或正文里 ⇒ 算召回。
+  //   「已排除：A」/「A，这条排除了」/「排除了：A。排除了：B。」写成几种句式、并句还是拆句，都不改分；真没写才判 0。
+  //   为什么放在最前面：以前只看抽出来的槽位，超 220 字的并句会被台账丢掉 ⇒ 稿子换个写法就掉 0.25 分，那是在奖励模板。
+  //   会不会放水到「抄原文」？不会：抄原文过不了生产闸（净省不足 ⇒ refused ⇒ 记 0 分），长度比也只给 1.6 倍空间。
+  const core = stripSlotLead(goldSentence)
+  if (core.length >= 8) {
+    if (candidates && candidates.length && candidates.map(stripSlotLead).some((c) => c.includes(core))) return true
+    if (window && window.includes(core)) return true
+  }
   if (!candidates || !candidates.length) return false
   const as = leafAnchors(goldSentence)
   if (as.length) {
@@ -155,13 +179,26 @@ function recalled(goldSentence, candidates, fullBody = '') {
     return false
   }
   if (candidates.some((c) => jaccard(goldSentence, c) >= 0.5)) return true
-  const stripSlot = (x) => norm(x).replace(/^(?:已排除|未解|待解|未定|决定|已定|改法(?:只落一个)?)[：:]\s*/, '').replace(/[`'"]/g, '').replace(/\bPASS\s+[\w./-]+/g, 'PASS').replace(/\s*的\s*/g, ' ').replace(/\s+/g, ' ').replace(/[。；\s]+$/, '')
+  const stripSlot = (x) => norm(x).replace(/^(?:已排除|排除了|排除过|这条排除|未解|还没定|没定|待解|待定|未定|决定|已定|验收(?:口径|标准)?|改法(?:只落一个|只落|如下)?|只改一处|只动一处)[：:]\s*/, '').replace(/[`'"]/g, '').replace(/\bPASS\s+[\w./-]+/g, 'PASS').replace(/\s*的\s*/g, ' ').replace(/\s+/g, ' ').replace(/[。；\s]+$/, '')
   const gClauses = stripSlot(goldSentence).split(/[、；，]+/).map((s) => s.trim()).filter((s) => s.length >= 4)
   if (!gClauses.length) return false
   const cJoined = candidates.map(stripSlot).join('；')
   return gClauses.some((cl) => cJoined.includes(cl))
 }
-const recall = (goldList, candList, fullBody = '') => goldList.length ? +(goldList.filter((g) => recalled(g, candList, fullBody)).length / goldList.length).toFixed(3) : null
+/** 剥掉槽位引导词与引号：比对内容用，与句式无关（已排除 / 排除了 / 还没定 … 同族）。 */
+export const stripSlotLead = (x) => norm(String(x)).replace(/^(?:已排除|排除了|排除过|这条排除|未解|还没定|没定|待解|待定|未定|决定|已定|验收(?:口径|标准)?|改法(?:只落一个|只落|如下)?|只改一处|只动一处)[：:]\s*/, '').replace(/[`'"]/g, '').replace(/\s*的\s*/g, ' ').replace(/\s+/g, ' ').replace(/[。；\s]+$/, '')
+// v14.20.1：同义措辞 / 分号并列不许改分。稿子里「已排除：A；已排除：B。」写成一句还是两句、写「已排除」还是「排除了」，
+//   都不该让同一个内容掉 0.25 分 —— 所以比对前把候选按句读摊平成子句（只加候选，不放水：gold 子句仍必须逐字落在候选里）。
+const flattenClauses = (list) => {
+  const out = []
+  for (const x of list || []) {
+    const s = String(x)
+    out.push(s)
+    for (const cl of s.split(/[；;。]/)) { const t = cl.trim(); if (t.length >= 8 && t !== s) out.push(t) }
+  }
+  return out
+}
+const recall = (goldList, candList, fullBody = '', window = '') => goldList.length ? +(goldList.filter((g) => recalled(g, flattenClauses(candList), fullBody, window)).length / goldList.length).toFixed(3) : null
 
 /**
  * draftDistance(auto, gold, {raw, ctx})：两段稿按槽位比对。层级键（与 GPC 同样的字典序比较）：
@@ -203,9 +240,9 @@ export function draftDistance(auto, gold, { raw = '', ctx = '', calls = [] } = {
     decision = tOk ? 1 : (!A.triples.length && G.decided.length && A.decided.length ? +(0.5 * recall(gDecClean, A.decided, fullAutoText)).toFixed(3) : 0)
   }
   else if (G.decided.length) decision = recall(gDecClean, A.decided.length ? A.decided : [bodyNoInHand], fullAutoText)
-  const excludedRecall = recall(G.excluded, A.excluded, fullAutoText)
+  const excludedRecall = recall(G.excluded, A.excluded, fullAutoText, A.slotWindow || '')
   const acceptOk = G.accept.length ? (A.accept.length ? recall(G.accept, [bodyNoInHand]) : 0) : null
-  const openRecall = recall(G.open, A.open, fullAutoText)
+  const openRecall = recall(G.open, A.open, fullAutoText, A.slotWindow || '')
   const lengthRatio = gold.length ? +(String(auto).length / String(gold).length).toFixed(2) : null
   const lengthOk = lengthRatio == null ? null : (lengthRatio >= 0.6 && lengthRatio <= 1.6 ? 1 : 0)
   const key = [decision ?? 1, excludedRecall ?? 1, acceptOk ?? 1, openRecall ?? 1, anchorPrecision, lengthOk ?? 1]

@@ -193,15 +193,15 @@
   "mode2Bench2026_10_05": {
     "at": "2026-10-05",
     "model": "deepseek-v4.1-flash",
+    "metric": "dd/2",
     "plans": [
       {
         "id": "b10",
         "digest": "f52ad1b26426a291",
         "calls": 15,
-        "cachedHits": 0,
         "usd": 0.09,
-        "gateFails": 10,
-        "note": "注册表 7 项时跑的 dev 3 × 5 策略"
+        "valid": false,
+        "why_invalid": "dd/1 口径 + 8 行通道超时被计成分"
       },
       {
         "id": "b11",
@@ -209,19 +209,69 @@
         "calls": 5,
         "cachedHits": 10,
         "usd": 0.03,
-        "gateFails": 10,
-        "note": "换稿后重建；未变条目由兄弟缓存免付"
+        "valid": false,
+        "why_invalid": "同上"
+      },
+      {
+        "id": "b12",
+        "digest": "（dd/2 重算，0 调用）",
+        "calls": 0,
+        "cachedHits": 15,
+        "usd": 0.0,
+        "valid": false,
+        "why_invalid": "故障行仍来自 b11 缓存，未重跑"
+      },
+      {
+        "id": "b13",
+        "digest": "e038c105593041ca",
+        "calls": 7,
+        "cachedHits": 8,
+        "usd": 0.052,
+        "errors": 0,
+        "gateFails": 6,
+        "rows": 15,
+        "valid": true,
+        "timeoutMs": 150000
       }
     ],
     "scores": {
-      "base": 0.519,
-      "p-55a320e0f8": 0.519,
+      "base": 0.3,
+      "p-082d742f60": 0.56,
+      "p-55a320e0f8": 0.579,
       "p-08bdbc7561": 0.62,
-      "p-082d742f60": 0.727,
-      "p-1490eefcdf": 0.833
+      "p-1490eefcdf": 0.667
     },
-    "pairing": "全部 undetermined（最高 p-1490eefcdf：2胜0负1平 e=2.333 阈 10）⇒ 没有策略可晋升",
-    "reading": "15 行里 10 行连生产闸门都没过（no-gain）：侧模型现在的问题是「压不出」，不是「压不准」；新金标 sse_decoy 自比 1.000 但对微模型 no-gain ⇒ 它是模式 2 的真活口",
-    "next": "要动 micro 模型的训练闸（freshIndependentNewFamilyTestPassed / 5 家族 R3 fixtures，$0），不是再烧 bench"
+    "pairing": {
+      "p-08bdbc7561": "2胜0负1平 e=2.333",
+      "p-1490eefcdf": "2胜0负1平 e=2.333",
+      "p-082d742f60": "1胜1负1平 e=0.667",
+      "p-55a320e0f8": "1胜1负1平 e=0.667",
+      "decision": "全 undetermined ⇒ 无可晋升策略"
+    },
+    "channelFinding": {
+      "fact": "10 行「闸失败」里 8 行 reason=timeout 22000ms（不是模型压不出）",
+      "fix": "bench-run 新增 --timeout-ms（本次 150000）；故障行不计分、不进缓存、自动重试",
+      "lesson": "先把「通道故障」与「能力不足」分开，否则会把基建问题读成训练结论"
+    },
+    "rulerChange": {
+      "to": "dd/2",
+      "rules": [
+        "闸失败 ⇒ 0 分，原文分数留 distanceOnRaw",
+        "调用失败 ⇒ 不计分 + 自动重试 + 回执 errors",
+        "同义引导词/并句拆句不改分（比对限「槽位内 + 前后一段」）",
+        "空壳引导词 ⇒ 三项判 0（A41d）",
+        "金标自比必须 1.000（A41）",
+        "续跑剔掉结构不全的行，避免同键两行被一起判废"
+      ],
+      "keptUntouched": "固定句式模板本身照旧受奖励 —— 用户判定：模板是给主模型与台账用的接口协议，不是缺陷",
+      "tests": [
+        "A41c 写法变体不改分",
+        "A41d 空壳不给分 + 配内容仍 1.000"
+      ]
+    },
+    "spend": {
+      "mode2Usd": 0.172,
+      "note": "b10 0.090 + b11 0.030 + b12 0.000 + b13 0.052"
+    }
   }
 }

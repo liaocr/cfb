@@ -179,7 +179,7 @@ function cmdAuditBench(args) {
     items.push({ policy: r.policy, gold: r.gold, family: r.family, ok: !!r.ok, text: r.text || '', raw: g?.raw || '', verdict: r.distance.verdict, score: r.distance.score, prompt })
   }
   console.log(`Mode 2 基准双轨语义复核：${items.length} 项待语义裁决（裁决集：${BENCH_SEMANTIC_VERDICTS.join(' | ')}）`)
-  for (const it of items) console.log(`  ${it.policy} × ${it.gold} [${it.family}]：dd/1 verdict=${it.verdict} score=${it.score}`)
+  for (const it of items) console.log(`  ${it.policy} × ${it.gold} [${it.family}]：dd verdict=${it.verdict} score=${it.score}`)
   return items
 }
 async function cmdAuditBenchLive(args) {
