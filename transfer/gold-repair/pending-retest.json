@@ -1,0 +1,103 @@
+{
+  "schema": "cfb.gold-repair-pending/1",
+  "at": "2026-10-05T04:45:00.000Z",
+  "items": [
+    {
+      "id": "flaky-timeout-s0-r3",
+      "family": "flaky-timeout",
+      "split": "dev",
+      "plan": "t22",
+      "stagedAt": "2026-10-05T04:02:58.163Z",
+      "draftChars": 1138,
+      "dd": 0.993,
+      "why": "改稿后 outcome 作废，须重跑模式 1 单元（同 plan/同样本/同轮次）才恢复金标身份",
+      "retest": {
+        "plan": "t16",
+        "at": "2026-10-05",
+        "status": "measured-not-gold",
+        "note": "真机复测完成但量出不合格：t16 第 3 轮按当轮原文重写的 1128 字稿过闸链（G2→lint→compile→birthAccept），主模型读稿修好@8；同组 raw 臂修好@7 ⇒ vsRaw loss。天花板稿至少要跟 raw 一样快 ⇒ 不入 active 注册表，稿+整单元结果移入 transfer/gold-repair/measured/flaky-timeout-s0-r3.json。归因：r3 那轮原文还没落定「改哪个文件」，G2 不许稿子替主模型下决定 ⇒ 只能带机理＋排除，模型自己补一步 ⇒ 多花 1 轮。这是天花板量法的性质，不是稿写坏。本地微模型对这条稿 dd=0.818（key 1,1,0,1,1,1：验收槽没召回）⇒ 留作模式 2 靶子。"
+      }
+    },
+    {
+      "id": "flaky-timeout-s0-r4",
+      "family": "flaky-timeout",
+      "split": "dev",
+      "plan": "t10",
+      "stagedAt": "2026-10-05T04:02:58.325Z",
+      "draftChars": 1295,
+      "dd": 1,
+      "why": "改稿后 outcome 作废，须重跑模式 1 单元（同 plan/同样本/同轮次）才恢复金标身份",
+      "retest": {
+        "plan": "t15/t16",
+        "at": "2026-10-05T04:45:00.000Z",
+        "status": "blocked-on-this-channel",
+        "note": "t15/t16 两臂在 7–9 轮内都未修好（raw 0 edits）⇒ 本通道测不出手稿增益，outcome 无法复评。修订稿留在 drafts-proposed/，须回原通道复测。"
+      }
+    },
+    {
+      "id": "flaky-timeout-s0-r5",
+      "family": "flaky-timeout",
+      "split": "dev",
+      "plan": "t10",
+      "stagedAt": "2026-10-05T04:02:58.488Z",
+      "draftChars": 1570,
+      "dd": 1,
+      "why": "改稿后 outcome 作废，须重跑模式 1 单元（同 plan/同样本/同轮次）才恢复金标身份",
+      "retest": {
+        "plan": "t15/t16",
+        "at": "2026-10-05T04:45:00.000Z",
+        "status": "blocked-on-this-channel",
+        "note": "同上：t16 hand 臂修好@8 但那是 r3 稿的功劳，r5 轮没有独立可评的 outcome；raw 与 hand 在 t15 均未修好。"
+      }
+    },
+    {
+      "id": "flaky-timeout_long-horizon-s0-r4",
+      "family": "flaky-timeout",
+      "split": "dev",
+      "plan": "t14",
+      "stagedAt": "2026-10-05T04:02:58.646Z",
+      "draftChars": 1544,
+      "dd": 1,
+      "why": "改稿后 outcome 作废，须重跑模式 1 单元（同 plan/同样本/同轮次）才恢复金标身份",
+      "retest": {
+        "plan": "t15/t16",
+        "at": "2026-10-05T04:45:00.000Z",
+        "status": "blocked-on-this-channel",
+        "note": "t15：我把旧轨迹的改稿预置到新一轮，被 G2 判 invented-triple / invented-decision ⇒ 说明改稿必须按当轮原文重derive；重写的 r4 稿过闸但两臂都未修好（该场景在 7 轮内主模型不产出 edit）。"
+      }
+    },
+    {
+      "id": "perf-regression-s0-r6",
+      "family": "perf-regression",
+      "split": "dev",
+      "plan": "t10",
+      "stagedAt": "2026-10-05T04:02:58.785Z",
+      "draftChars": 1687,
+      "dd": 1,
+      "why": "改稿后 outcome 作废，须重跑模式 1 单元（同 plan/同样本/同轮次）才恢复金标身份",
+      "retest": {
+        "plan": "t15/t16",
+        "at": "2026-10-05T04:45:00.000Z",
+        "status": "blocked-on-this-channel",
+        "note": "t15：按当轮原文重写的 r5 稿过闸（净省 1569 tok），但两臂都未修好（raw 也 0 edits）⇒ 无信号。perf 家族的短 reasoning 轮（raw 1328 字）压到 stored 仍需 ≤ raw−50，程序部件占 ~600 字 ⇒ 稿只能留 ~700 字，这是本通道下的硬约束。"
+      }
+    },
+    {
+      "id": "sse-truncated_decoy-s0-r3",
+      "family": "sse-truncated",
+      "split": "dev",
+      "plan": "t11",
+      "stagedAt": "2026-10-05T04:02:58.929Z",
+      "draftChars": 1484,
+      "dd": 1,
+      "why": "改稿后 outcome 作废，须重跑模式 1 单元（同 plan/同样本/同轮次）才恢复金标身份",
+      "retest": {
+        "plan": "t15",
+        "at": "2026-10-05",
+        "status": "re-earned-on-t15, re-drafted-on-t17",
+        "note": "真机复测完成：t15 第 4 轮（fork 挑中的那一轮，故新 id 是 …_decoy-s0-r4 而非 r3 —— 金标 id 编码轮次，名字对不上是正常的）按当轮 raw 重写 662 字稿，过闸 0 拒，主模型修好@5 vs raw 未修好 ⇒ vsRaw win，已入 transfer/gold/sse-truncated/（digest a3994e70dabdbedc）。旧 r3 隔离条目留档不动。（2026-10-05 补：A41 复算发现旧稿含 harness 词 ctx ⇒ 自比 dd 0.974，按规矩改稿重挣 —— t17 用 --fork-from 复用 t15 的 raw 轨迹，3 次主调用，新稿 666 字过闸 0 拒，修好@5 与 raw 同轮但省 33.6% token ⇒ vsRaw tie，gold add --plan 17 --replace 换稿入库，旧条目归档 transfer/gold-history/sse-truncated/。）"
+      }
+    }
+  ],
+  "summary": "6 条待复测：1 条真机挣回并在册（sse-truncated_decoy-s0-r4）、1 条量出 vsRaw loss 转 measured（flaky-timeout-s0-r3）、4 条 blocked-on-this-channel（本通道两臂同败，没有归因信号，修订稿留 drafts-proposed/ 待原通道）。复测单位成本 ≈$0.11（Plan A 严格口径：真机轨迹重跑），t15+t16 实花 $0.676 / 54 次主调用 / 0 错误。"
+}

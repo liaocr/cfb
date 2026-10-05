@@ -35,6 +35,23 @@ Mode 3: 影子分叉多轮轨迹验证 (plan-traj → traj-run → review → co
    在 5 主池 + 5 留出池真实沙箱上跑主模型多轮排障，分歧前零主调用（Shadow-Forking），序贯 e-value 门禁晋升
 ```
 
+### 2.0 金标回收：改稿 → 离线重测 → 换稿（`tools/cfb-gold-repair.mjs`，v14.20.1）
+
+金标被装置话术（越界）审计判死时，**正确动作是改稿，不是丢数据**：条目里真正值钱的是 `raw`/`ctx`/`calls` 与真机 `outcome`，越界只是稿子里的几句话。
+
+```bash
+node tools/cfb-gold-repair.mjs audit                    # active + 隔离区全量复算（$0）
+#   RESTORABLE（稿子本就干净）→ 字节级放回，digest 不变 ⇒ 冻结的基准计划照旧可用
+node tools/cfb-gold-repair.mjs restore --id A,B --apply
+#   NEEDS-REWRITE → 只删越界句、保留归因/已排除/验收/未解槽位，然后 $0 复跑生产同一条闸链
+node tools/cfb-gold-repair.mjs replay --id X --draft transfer/gold-repair/drafts-proposed/X.md
+node tools/cfb-gold-repair.mjs stage  --id X --draft ...   # 全绿才暂存并登记 pending-retest.json
+node tools/cfb-gold-repair.mjs next-cmds                   # 打印每条待复测的确切真机命令
+# 真机复测过了才入库：node tools/cfb-cycle.mjs gold add --plan N --replace（旧条目自动归档 transfer/gold-history/）
+```
+
+定罪口径：`auditMode1Gold` = `draft ∪ stored`，但只定**作者自己写的主张**的罪；命中片段若整句、或「…」/`…` 定界引用内原样出现在 `raw ∪ ctx` ⇒ 判为报告观测、免检（记在 `qualityAudit.exempted[]`）。铁律不变：**离线全绿 ≠ 金标**，`outcome` 只能由模式 1 真机轨迹决定。
+
 ### 2.1 零 API 离线飞轮四步曲（日常迭代首选，`$0` 成本）
 
 ```bash

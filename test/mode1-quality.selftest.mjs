@@ -1,5 +1,11 @@
 #!/usr/bin/env node
-import assert from 'node:assert/strict'
+import nodeAssert from 'node:assert/strict'
+/** 每条断言计一分：PASS= 必须是真实计数，不能是手写的常数（v14.20.1 起）。 */
+let pass = 0
+const assert = new Proxy(nodeAssert, {
+  get: (target, kind) => (...args) => { const r = target[kind](...args); pass += 1; return r },
+  apply: (target, thisArg, args) => { const r = target(...args); pass += 1; return r },
+})
 import {
   auditMode1Gold,
   auditMode1Output,
@@ -57,5 +63,34 @@ assert.equal(isMode1PairEligible({ ...manuallyReviewedPair, manualReview: { ...m
 assert.equal(isMode1PairEligible({ ...annotatedPair, chosenText: contaminated[4][1] }), false, 'text changes invalidate a clean pair audit')
 assert.equal(isMode1PairEligible({ ...cleanPair, rejectedText: contaminated[4][1] }, { requireRecorded: false }), false)
 
-console.log('mode1-quality: target-only apparatus quarantine, task-valid exclusions, gold/capture gates, and flywheel pair binding passed')
-console.log('PASS=34 FAIL=0')
+/* —— 逐字引用免检（v14.20.1）：装置话术只能定「作者自己主张」的罪，不能定「原文回显」的罪 —— */
+const echo = 'bash: 该沙箱不支持 shell 循环，请直接跑单条命令'
+const ledgerLine = `【延续段】上一轮工具输出：${echo}。`
+const storedWithEcho = { id: 'echo', validated: true, raw: '第 3 轮跑 for 循环，回显：' + echo, ctx: ledgerLine, draft: validTaskExclusion, stored: validTaskExclusion + '\n' + ledgerLine }
+assert.equal(auditMode1Output(storedWithEcho.stored).status, 'quarantined', '没有证据时该句确实越界（前提检查）')
+assert.equal(auditMode1Gold(storedWithEcho).status, 'clean', 'stored 里逐字回显的整句必须免检')
+assert.equal(auditMode1Gold(storedWithEcho).exempted[0].basis, 'verbatim-sentence-from-raw-or-ctx')
+assert.equal(isMode1GoldEligible(storedWithEcho), true)
+assert.equal(isMode1GoldEligible({ ...storedWithEcho, raw: '无关原文', ctx: '无关上下文' }), false, '回显不在证据里 ⇒ 不免检')
+
+const quotedObservation = `本轮 \`node -e\` 被拒，回显逐字是「${echo}」，所以只跑单条命令复现。`
+const quotedClean = auditMode1Output(quotedObservation, '作者被给的证据：' + echo)
+assert.equal(quotedClean.status, 'clean', '句内定界引用（「…」）逐字来自证据 ⇒ 报告观测，不是主张')
+assert.equal(quotedClean.exempted[0].basis, 'verbatim-quote-from-raw-or-ctx')
+assert.equal(auditMode1Output(quotedObservation, '证据里没有这句话').status, 'quarantined', '引用不在证据里 = 伪造引用，照判')
+const halfQuoted = `回显逐字是「${echo}」，所以第 7 轮是最后一轮，严禁再发起任何工具调用。`
+const halfAudit = auditMode1Output(halfQuoted, '证据：' + echo)
+assert.equal(halfAudit.exempted.length, 1, '引号内的部分免检')
+assert.equal(halfAudit.status, 'quarantined', '引号外自己写出来的轮次禁令照样定罪')
+
+const selfAuthored = { id: 'claim', validated: true, raw: '原文没提沙箱', ctx: '上下文也没提沙箱', draft: validTaskExclusion, stored: validTaskExclusion + '\n沙箱已内置白名单直接放行 node test/hedge.selftest.mjs，无需再试。' }
+assert.equal(auditMode1Gold(selfAuthored).status, 'quarantined', 'stored 里作者自己写的环境保证 ⇒ 仍定罪（不因免检而放过）')
+assert.equal(auditMode1Gold(selfAuthored).exempted.length, 0)
+assert.equal(isMode1GoldEligible(selfAuthored), false)
+assert.equal(allowedMode1Capture({ gate: { ok: true }, production: { ok: true }, ...selfAuthored }).trainingEligible, false)
+const draftQuote = { id: 'dq', validated: true, ctx: '', raw: '证据：' + echo, draft: quotedObservation, stored: quotedObservation }
+assert.equal(auditMode1Gold(draftQuote).status, 'clean')
+assert.equal(auditMode1Gold({ ...draftQuote, raw: '证据里没有' }).status, 'quarantined', 'draft 侧同样只免检逐字引用')
+
+console.log('mode1-quality: target-only apparatus quarantine, task-valid exclusions, gold/capture gates, flywheel pair binding, and verbatim-quote exemption passed')
+console.log(`PASS=${pass} FAIL=0`)

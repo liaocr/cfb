@@ -1,0 +1,227 @@
+{
+  "schema": "cfb.mode1-gold-quarantine-amendments/1",
+  "at": "2026-10-05T04:20:00.000Z",
+  "amends": "transfer/gold-rejected/audit.json",
+  "policy": "隔离区是台账，不是垃圾桶：条目先按新口径复算，干净的放回、越界句改稿重挣，不改写历史记录本身。",
+  "auditLinterChange": {
+    "at": "2026-10-05",
+    "summary": "装置话术审计（cfb.mode1-content-audit/1）定罪口径改为「逐字引用免检」：draft 与 stored 都只定作者自己主张的罪，命中片段若整句、或落在「…」/`…` 定界引用内且原样出现在 raw ∪ ctx，判为报告观测而非主张，免检并记入 qualityAudit.exempted。",
+    "files": [
+      "tools/helpers/mode1-quality.mjs",
+      "tools/helpers/mode1_quality.py",
+      "tools/traj-run.mjs",
+      "tools/helpers/hand-draft.mjs"
+    ],
+    "tests": [
+      "test/mode1-quality.selftest.mjs",
+      "test/mode1-quality-parity.selftest.mjs"
+    ]
+  },
+  "scanDiscrepancies": [
+    {
+      "kind": "missing-action",
+      "detail": "transfer/gold-rejected/flaky-timeout-s0-r3.json 存在于隔离区，但 audit.json 的 actions 里没有对应条目（10 条 quarantine action + 1 条 retain-active，磁盘上却有 11 份条目文件）。",
+      "extra": "该文件还放在隔离区根目录而非 flaky-timeout/ 子目录，与 transfer/gold-rejected/README.md 写的 <family>/<id>.json 布局不一致。",
+      "resolution": "不回填历史 actions（那是当时的扫描记录）；在此登记复算结果：draft 命中 environment-permission-assertion + executor-tool-or-check-prohibition ⇒ NEEDS-REWRITE，修订稿见 transfer/gold-repair/staged/flaky-timeout-s0-r3.json，等真机复测。"
+    },
+    {
+      "kind": "timeline",
+      "detail": "audit.json 的 at = 2026-10-04T18:37:19Z，而 source 字段写「user-directed manual audit communicated 2026-10-05」（= HEAD 提交日）。两处时间对不上，本次不改写任何一方，仅登记。"
+    }
+  ],
+  "restoredActive": [
+    {
+      "id": "eacces-config_decoy-s0-r3",
+      "digest": "44e98a467a097a2e",
+      "basis": "新口径下 draft/stored 均无主张性命中"
+    },
+    {
+      "id": "eacces-config_long-horizon-s0-r5",
+      "digest": "5f3963b4b8f8744a",
+      "basis": "新口径下 draft/stored 均无主张性命中"
+    },
+    {
+      "id": "sse-truncated-s0-r5",
+      "digest": "f84dc9988494f31e",
+      "basis": "新口径下 draft/stored 均无主张性命中"
+    },
+    {
+      "id": "wrong-model_decoy-s0-r4",
+      "digest": "d1f253f227aecb50",
+      "basis": "stored 命中只是工具回显的逐字引用 ⇒ 免检"
+    },
+    {
+      "id": "wrong-model_long-horizon-s0-r4",
+      "digest": "0acaac13997bf072",
+      "basis": "stored 命中只是工具回显的逐字引用 ⇒ 免检"
+    }
+  ],
+  "restoredNote": "restore 为字节级放回（digest 不变 ⇒ 冻结的基准计划 b1–b9 仍可用），隔离区原文件保留作审计轨迹；执行时刻见 audit.json 各 action 的 restoredAt。",
+  "stagedPendingRetest": {
+    "ledger": "transfer/gold-repair/pending-retest.json",
+    "ids": [
+      "flaky-timeout-s0-r3",
+      "flaky-timeout-s0-r4",
+      "flaky-timeout-s0-r5",
+      "flaky-timeout_long-horizon-s0-r4",
+      "perf-regression-s0-r6",
+      "sse-truncated_decoy-s0-r3"
+    ],
+    "why": "这 6 条的 outcome 来自旧稿的真机单元；改稿之后旧 outcome 不再描述这份稿子，所以只算「暂存待测」，不进注册表。必须重跑模式 1 单元（同 plan / 同样本 / 同轮次）才恢复金标身份。",
+    "offlineEvidence": "每条都已过 $0 离线闸链：G2 决策不变 ∧ compileV4Direct ∧ 程序部件 ∧ birthAccept ∧ 装置话术 lint（draft+stored），且与旧金标稿 dd/1 ≥ 0.993。",
+    "status": "2 条已真机复测并挣回金标（sse-truncated_decoy-s0-r4 于 t15、flaky-timeout-s0-r3 于 t16），4 条在本通道测不出信号 ⇒ 继续隔离、修订稿留在 transfer/gold-repair/drafts-proposed/"
+  },
+  "liveRerun2026_10_05": {
+    "at": "2026-10-05",
+    "channel": {
+      "model": "deepseek-v4.1-flash",
+      "base": "https://api.a6api.com/v1",
+      "fp": null
+    },
+    "units": {
+      "t15": {
+        "families": 4,
+        "maxRounds": 7,
+        "mainCalls": 39,
+        "usd": 0.488,
+        "promptTok": 125643,
+        "completionTok": 18165
+      },
+      "t16": {
+        "families": 1,
+        "maxRounds": 9,
+        "mainCalls": 15,
+        "usd": 0.188,
+        "promptTok": 119561,
+        "completionTok": 28966
+      }
+    },
+    "drafts": {
+      "attempted": 4,
+      "accepted": 5,
+      "rejected": 0,
+      "gate": {
+        "tries": 4,
+        "pass": 5,
+        "rejected": 0,
+        "belowFloorNoCompress": 28
+      }
+    },
+    "compression": {
+      "rawAvg": 5186.2,
+      "draftAvg": 1027.6,
+      "storedAvg": 1648,
+      "ratio": 0.318
+    },
+    "ceiling": {
+      "plan": 16,
+      "designDigest": "26f7f9e811777a71",
+      "pairs": 5,
+      "win": 2,
+      "loss": 1,
+      "tie": 2,
+      "e": 2.333,
+      "eWorse": 0.333,
+      "threshold": 10,
+      "verdict": "undetermined",
+      "note": "分不出 ⇒ 不当天花板用；写盘 .cfb-offline/ruler/ceiling-2.json，效度账本 +10，飞轮偏好对 +1"
+    },
+    "goldEarned": [
+      "sse-truncated_decoy-s0-r4 (662字, vsRaw win, digest a3994e70dabdbedc —— 后因稿里带 harness 词 ctx 使标尺自比 0.974，已换稿)"
+    ],
+    "measuredNotGold": [
+      "flaky-timeout-s0-r3 (1128字, 7447→1128, 修好@8 vs raw@7 ⇒ vsRaw loss ⇒ transfer/gold-repair/measured/；本地微模型 dd=0.818 留作模式 2 靶)"
+    ],
+    "blockedOnThisChannel": [
+      "flaky-timeout-s0-r4",
+      "flaky-timeout-s0-r5",
+      "flaky-timeout_long-horizon-s0-r4",
+      "perf-regression-s0-r6"
+    ],
+    "registry": {
+      "before": 6,
+      "after": 7,
+      "families": 3,
+      "allClean": true,
+      "allSolved": true
+    },
+    "policyChange": {
+      "rule": "saveGold 默认拒收 vsRaw loss（天花板稿至少要跟 raw 一样快）；--include-loss 才强收；这类跳过不计为越界、不进隔离区",
+      "test": "test/closed-loop-v4.selftest.mjs::A41b",
+      "a41Restated": "A41 改为显式基线 6 条防回归，新入库硬靶只打印 G1/dd（旧口径等于宣布标尺饱和，与补更难金标互相矛盾）"
+    },
+    "lessons": [
+      "稿子必须按当轮 raw 重写：旧轨迹结论搬过来必被判 invented-decision/invented-triple",
+      "短 raw 轮：stored = 稿 + 程序部件(~600字) ⇒ 稿 ≤700 字才可能有净省，先跑 tools/hand-preflight.mjs 再花钱",
+      "只在 calls 里出现（不在 raw/ctx）的标识符按发明算 —— 例如 fakeServer、工具回显的命令名要用白话写，别打反引号",
+      "本通道 flash 在 flaky-timeout/perf-regression 上常 0 edits ⇒ 两臂同败的单元不是证据，别当复测失败改稿子"
+    ],
+    "redraft": {
+      "plan": "t17",
+      "at": "2026-10-05",
+      "why": "标尺自洽：金标稿对自己必须 dd=1.000；旧稿的「验收照 ctx」把 harness 词写进正文 ⇒ anchorPrecision 0.974 ⇒ 这条天花板谁都够不着",
+      "channel": "deepseek-v4.1-flash，--fork-from 复用 t15 raw 轨迹（非同期对照，同一模型 id、同日 47 分钟窗口内）",
+      "mainCalls": 3,
+      "draftChars": 666,
+      "storedChars": 1222,
+      "rawChars": 1518,
+      "outcome": {
+        "hand": "修好@5 · 7 轮 · 16 调用 · 13197 tok · 验收 ● · 声明 none · 相称 ●",
+        "raw(复用)": "修好@5 · 7 轮 · 18 调用 · 19882 tok · 验收 ● · 声明 none",
+        "vsRaw": "tie（轮数同）",
+        "tokenDelta": "-33.6%"
+      },
+      "ceiling17": {
+        "pairs": 6,
+        "e": 2.333,
+        "eWorse": 0.333,
+        "threshold": 10,
+        "verdict": "undetermined",
+        "gate": {
+          "tries": 5,
+          "pass": 6,
+          "rejected": 0,
+          "belowFloorNoCompress": 34
+        },
+        "compressionRatio": 0.345,
+        "wrote": ".cfb-offline/ruler/ceiling-3.json"
+      },
+      "registered": "gold add --plan 17 --replace ⇒ 换稿 1（旧 a3994e70dabdbedc → transfer/gold-history/sse-truncated/）",
+      "selfDd": 1.0
+    }
+  },
+  "mode2Bench2026_10_05": {
+    "at": "2026-10-05",
+    "model": "deepseek-v4.1-flash",
+    "plans": [
+      {
+        "id": "b10",
+        "digest": "f52ad1b26426a291",
+        "calls": 15,
+        "cachedHits": 0,
+        "usd": 0.09,
+        "gateFails": 10,
+        "note": "注册表 7 项时跑的 dev 3 × 5 策略"
+      },
+      {
+        "id": "b11",
+        "digest": "e6022e86da6ff1e5",
+        "calls": 5,
+        "cachedHits": 10,
+        "usd": 0.03,
+        "gateFails": 10,
+        "note": "换稿后重建；未变条目由兄弟缓存免付"
+      }
+    ],
+    "scores": {
+      "base": 0.519,
+      "p-55a320e0f8": 0.519,
+      "p-08bdbc7561": 0.62,
+      "p-082d742f60": 0.727,
+      "p-1490eefcdf": 0.833
+    },
+    "pairing": "全部 undetermined（最高 p-1490eefcdf：2胜0负1平 e=2.333 阈 10）⇒ 没有策略可晋升",
+    "reading": "15 行里 10 行连生产闸门都没过（no-gain）：侧模型现在的问题是「压不出」，不是「压不准」；新金标 sse_decoy 自比 1.000 但对微模型 no-gain ⇒ 它是模式 2 的真活口",
+    "next": "要动 micro 模型的训练闸（freshIndependentNewFamilyTestPassed / 5 家族 R3 fixtures，$0），不是再烧 bench"
+  }
+}

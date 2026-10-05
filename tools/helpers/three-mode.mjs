@@ -131,12 +131,17 @@ export function loadGold(dir) {
   }
   return out.sort((a, b) => (a.family + a.id).localeCompare(b.family + b.id))
 }
-/** 落盘：<dir>/<family>/<id>.json；不覆盖已存在金标。疑似装置话术永不入 active registry，可选归档到 rejectedDir。 */
-export function saveGold(dir, items, { includeUnsolved = false, rejectedDir = null, auditReviewer = 'mode1-output-lint/1' } = {}) {
-  const added = [], skipped = [], quarantined = []
+/** 落盘：<dir>/<family>/<id>.json；默认不覆盖已存在金标（`replaceExisting` 时旧条目先归档到 historyDir 留痕）。疑似装置话术永不入 active registry，可选归档到 rejectedDir。 */
+/** 注册表硬条件用的常量：金标 = 至少不比 raw 慢的稿（vsRaw loss 不收，--include-loss 才强收）。 */
+export const GOLD_REJECT_LOSS = true
+
+export function saveGold(dir, items, { includeUnsolved = false, includeLoss = false, rejectedDir = null, auditReviewer = 'mode1-output-lint/1', replaceExisting = false, historyDir = null, revisionNote = null } = {}) {
+  const added = [], skipped = [], quarantined = [], replaced = []
   for (const g of items) {
     if (g.missing) { skipped.push({ id: g.id, why: g.why }); continue }
     if (!g.validated && !includeUnsolved) { skipped.push({ id: g.id, why: '主模型读后未修好（--include-unsolved 才收）' }); continue }
+    // 天花板资格（2026-10-05 真机复测定）：与「越界」无关，是**这条稿当天花板不够格** —— 所以不收，但也不当垃圾扔：稿连同整单元结果留在 transfer/gold-repair/measured/ 里当模式 2 素材
+    if (!includeLoss && g.outcome && g.outcome.vsRaw === 'loss') { skipped.push({ id: g.id, why: '比主模型自己读原文还慢（vsRaw loss）：天花板稿至少要跟 raw 一样快（--include-loss 才收）' }); continue }
     const qualityAudit = auditMode1Gold(g, { reviewer: auditReviewer })
     if (qualityAudit.status !== 'clean') {
       const archived = { ...g, qualityAudit, quarantine: { reason: 'mode1-apparatus-language', at: new Date().toISOString(), source: 'tools/helpers/three-mode.mjs::saveGold' }, digest: goldDigest(g) }
@@ -147,19 +152,43 @@ export function saveGold(dir, items, { includeUnsolved = false, rejectedDir = nu
         archiveFile = fs.existsSync(base) ? path.join(rejectedDir, `${g.id}-${safeId(g.plan || Date.now())}.json`) : base
         fs.writeFileSync(archiveFile, JSON.stringify({ ...archived, archiveFile: path.relative(path.dirname(rejectedDir), archiveFile) }, null, 2) + '\n')
       }
-      quarantined.push({ id: g.id, categories: [...new Set(qualityAudit.issues.map((x) => x.category))], file: archiveFile })
+      quarantined.push({ id: g.id, categories: [...new Set(qualityAudit.issues.map((x) => x.category))], issues: qualityAudit.issues, file: archiveFile })
       skipped.push({ id: g.id, why: '装置话术检查未通过；已隔离，不进入金标注册表' })
       continue
     }
     const file = path.join(dir, g.family, g.id + '.json')
-    if (fs.existsSync(file)) { skipped.push({ id: g.id, why: '已存在' }); continue }
-    const saved = { ...g, qualityAudit, digest: goldDigest(g) }
+    if (fs.existsSync(file)) {
+      if (!replaceExisting) { skipped.push({ id: g.id, why: '已存在（改稿重挣后要用 gold add --replace 才换）' }); continue }
+      const previous = readJsonMaybe(file) || {}
+      const stamp = safeId((previous.digest || 'unknown') + '@' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-'))
+      const hFile = path.join(historyDir || path.join(dir, '..', 'gold-history'), g.family, g.id + '.' + stamp + '.json')
+      fs.mkdirSync(path.dirname(hFile), { recursive: true })
+      fs.writeFileSync(hFile, JSON.stringify({ ...previous, supersededBy: { at: new Date().toISOString(), digest: goldDigest(g), note: revisionNote || 'gold add --replace' }, digest: previous.digest || goldDigest(previous) }, null, 2) + '\n')
+      replaced.push({ id: g.id, historyFile: path.relative(path.dirname(path.resolve(dir)), hFile), previousDigest: previous.digest || goldDigest(previous) })
+    }
+    const saved = { ...g, qualityAudit, digest: goldDigest(g), ...(replaced.some((r) => r.id === g.id) ? { revision: { at: new Date().toISOString(), note: revisionNote || 'edited draft', by: 'gold add --replace' } } : {}) }
     fs.mkdirSync(path.dirname(file), { recursive: true })
     fs.writeFileSync(file, JSON.stringify(saved, null, 2) + '\n')
-    added.push(g.id)
+    if (replaceExisting) added.push(g.id); else added.push(g.id)
   }
-  return { added, skipped, quarantined }
+  return { added, skipped, quarantined, replaced }
 }
+/** 从隔离区读回归档条目（只读，不改两处目录）；用于 `gold restore` 与离线回放。 */
+export function loadArchivedGold(rejectedDir) {
+  if (!fs.existsSync(rejectedDir)) return []
+  const out = []
+  for (const entry of fs.readdirSync(rejectedDir).sort()) {
+    const p = path.join(rejectedDir, entry)
+    if (fs.statSync(p).isDirectory()) { out.push(...loadArchivedGold(p)); continue }
+    if (entry === 'audit.json' || !entry.endsWith('.json')) continue
+    const g = readJsonMaybe(p)
+    if (!g || g.schema !== 'cfb.gold/1') continue
+    const qualityAudit = auditMode1Gold(g, { reviewer: 'restore-preflight/1' })
+    out.push({ ...g, qualityAudit, archiveFile: p, digest: goldDigest(g), validated: g.validated === true })
+  }
+  return out.sort((a, b) => (a.family + a.id).localeCompare(b.family + b.id))
+}
+
 
 // ── 模式 2：压缩器基准 ──────────────────────────────────────────────────────
 /** v4.7 因子设计（DOE）：一个候选策略的 k ≤ 3 条补丁各当一个二水平因子。

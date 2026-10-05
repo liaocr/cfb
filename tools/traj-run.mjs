@@ -469,7 +469,11 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         const cfg0 = I.offlineBirthConfig({ model: o.model || 'hand', baseUrl: o.baseUrl || 'http://127.0.0.1:1', credentialsPath: cred, policy: handPolicy, normalizeConfig: I.normalizeConfig })
         const cfg = handCompact ? { ...cfg0, birthMinSavedChars: Math.min(cfg0.birthMinSavedChars || 50, Math.max(20, Math.floor(reasoning.length * 0.05))), ...(reasoning.length < 2600 ? { birthTokenGate: false } : {}) } : cfg0
         const draft = fs.existsSync(draftFile) ? fs.readFileSync(draftFile, 'utf8').trim() : null
-        let violations = null, b = null, quality = draft ? auditMode1Output(draft) : null, storedQuality = null
+        // v14.20.1: the lint judges what the writer authored. `reasoning + ctx` is the evidence it was
+        // shown, so a sentence copied verbatim from a tool echo (the program's 【延续段】 quoting
+        // 「bash: 该沙箱不支持 shell 循环…」) is exempt; only the writer's own claims can block the round.
+        const handEvidence = reasoning + '\n' + ctx
+        let violations = null, b = null, quality = draft ? auditMode1Output(draft, handEvidence) : null, storedQuality = null
         if (draft) {
           const g2 = handDraftGate(reasoning, draft, ctx)
           if (!g2.ok) violations = g2.violations
@@ -483,7 +487,7 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
             } })
             if (!b.ok) { violations = [{ kind: 'production-gate:' + b.why, detail: String(b.reason || JSON.stringify(b.info || null)).slice(0, 200) }]; rec.compile.push({ ok: false, path: 'hand', why: b.why, info: b.info || null, rawChars: reasoning.length, draftChars: draft.length, round, budget: compressBudget(I, { ctx, calls, raw: reasoning, out: null, draft }) }) }   // v14.12.3：被生产闸拒的手写稿也记一条（预算分解可见）
             else {
-              storedQuality = auditMode1Output(b.text)
+              storedQuality = auditMode1Output(b.text, handEvidence)
               if (storedQuality.status !== 'clean') {
                 quality = { ...quality, issues: [...quality.issues, ...storedQuality.issues.map((v) => ({ ...v, field: 'stored' }))] }
                 violations = storedQuality.issues.map((v) => ({ kind: 'mode1-quality:stored:' + v.category, detail: v.excerpt }))

@@ -1107,21 +1107,55 @@ try {
 
     const allGold = loadGold(path.join(ROOT, 'transfer', 'gold'))
     assert.ok(allGold.length >= 1, `至少有当前人工批准且 clean 的 active gold（got ${allGold.length}）`)
+    // 显式基线 = 已确认「本地微模型已经追上」的条目，防回归；新入库的硬靶不自动进基线（否则加一条难稿就等于改断言）
+    const BASELINE = ['eacces-config_decoy-s0-r3', 'eacces-config_long-horizon-s0-r5', 'sse-truncated-s0-r5', 'sse-truncated_long-horizon-s0-r5', 'wrong-model_decoy-s0-r4', 'wrong-model_long-horizon-s0-r4']
+    const seen = new Set(allGold.map((g) => g.id))
+    assert.ok(BASELINE.every((id) => seen.has(id)), `基线条目不许从注册表里漂走：${BASELINE.filter((id) => !seen.has(id)).join(' ')}`)
     for (const g of allGold) {
+      assert.notEqual(g.outcome?.vsRaw, 'loss', `${g.id}: 比 raw 还慢的稿不能当天花板（应留在 transfer/gold-repair/measured/）`)
+      assert.equal(g.qualityAudit?.status, 'clean', `${g.id}: active 金标必须 clean`)
+      // 标尺自洽：金标稿对自己必须 1.000，否则这条天花板根本够不着（稿里有原文 / ctx 没有的锚点，如 harness 词 ctx / raw）
+      const self = draftDistance(g.draft, g.draft, { raw: g.raw, ctx: g.ctx, calls: g.calls || [] })
+      assert.equal(self.score, 1, `${g.id}: 金标稿自比 dd 必须 1.000（got ${self.score}, key=${self.key.join(',')}）—— 先把稿里的 harness 词换成原文里的证据`)
       const cfg = g.raw.length < 3100
         ? { ...cfg0, birthMinSavedChars: Math.min(cfg0.birthMinSavedChars || 50, Math.max(20, Math.floor(g.raw.length * 0.05))), ...(g.raw.length < 2600 ? { birthTokenGate: false } : {}) }
         : cfg0
       const t0 = performance.now()
+      const REFUSE = ['no-gain', 'no-token-gain', 'empty-candidate', 'condensed', 'condensed-partial']
       const b = await I.birthOffline({ raw: g.raw, ctx: g.ctx, calls: g.calls || [], cfg, gate: true })
       const ms = performance.now() - t0
-      assert.equal(b.ok, true, `${g.id}: G1 生产闸门必须通过 (why=${b.why})`)
+      const isBaseline = BASELINE.includes(g.id)
+      // 基线条目：闸门必须过。新入库的硬靶：允许「压不出」这类拒绝（本地微模型能力不足 = 模式 2 的活口），但不许被判成越界
+      if (isBaseline) assert.equal(b.ok, true, `${g.id}: 基线条目的 G1 生产闸门必须通过 (why=${b.why})`)
+      else assert.ok(b.ok || REFUSE.includes(b.why), `${g.id}: 新靶只许被「压不出」挡下（got why=${b.why}）`)
       assert.ok(ms < 100, `${g.id}: 本地微模型单次编译耗时 ${ms.toFixed(1)}ms (<100ms)`)
-      const g2 = handDraftGate({ draft: b.meta?.sideOutput || b.text, raw: g.raw, ctx: g.ctx, calls: g.calls || [], cfg })
-      assert.equal(g2.ok, true, `${g.id}: G2 手写稿防奖励黑客闸门必须通过 (${JSON.stringify(g2.violations)})`)
-      const dd = draftDistance(b.text, g.draft, { raw: g.raw, ctx: g.ctx })
-      assert.equal(dd.score, 1, `${g.id} [${g.split}]: dd/1 标尺得分必须为 1.000 (got ${dd.score}, key=${dd.key})`)
-      assert.equal(dd.verdict, 'close', `${g.id}: 判词必须为 close (got ${dd.verdict})`)
+      if (b.ok) {
+        const g2 = handDraftGate({ draft: b.meta?.sideOutput || b.text, raw: g.raw, ctx: g.ctx, calls: g.calls || [], cfg })
+        assert.equal(g2.ok, true, `${g.id}: G2 手写稿防奖励黑客闸门必须通过 (${JSON.stringify(g2.violations)})`)
+      }
+      const dd = draftDistance(b.ok ? b.text : b.meta?.sideOutput || '', g.draft, { raw: g.raw, ctx: g.ctx })
+      if (isBaseline) {
+        assert.equal(dd.score, 1, `${g.id} [${g.split}]: 已进基线的 gold，dd/1 必须仍为 1.000 (got ${dd.score}, key=${dd.key})`)
+        assert.equal(dd.verdict, 'close', `${g.id}: 判词必须为 close (got ${dd.verdict})`)
+      } else {
+        console.log(`  新靶（未进基线）${g.id} [${g.split}]：G1 ${b.ok ? '✓' : b.why} · dd ${dd.score} · ${dd.verdict} · key=${dd.key.join(',')} —— 这就是模式 2 的活口`)
+      }
     }
+  })
+  await test('A41b 天花板资格：比 raw 慢（vsRaw loss）不收、但不算越界，--include-loss 可强收', async () => {
+    const TM = await import('../tools/helpers/three-mode.mjs')
+    const all = TM.loadGold(path.join(ROOT, 'transfer', 'gold'))
+    assert.ok(all.length >= 1, '要有可复用的 active gold 作夹具')
+    const base = all[0]
+    const loss = { ...base, id: base.id + '-loss', outcome: { ...base.outcome, vsRaw: 'loss' }, qualityAudit: undefined }
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gold-elig-'))
+    const r1 = TM.saveGold(dir, [loss], {})
+    assert.deepEqual(r1.added, [], `比 raw 慢的稿不该入库（got ${JSON.stringify(r1.added)}）`)
+    assert.equal(r1.quarantined.length, 0, '天花板资格问题不是「越界」，不该被隔离进 rejected')
+    assert.match(r1.skipped[0]?.why || '', /vsRaw loss/, `跳过理由要点名 vsRaw loss（got ${JSON.stringify(r1.skipped)}）`)
+    const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'gold-elig2-'))
+    const r2 = TM.saveGold(dir2, [loss], { includeLoss: true })
+    assert.deepEqual(r2.added, [loss.id], '显式 --include-loss 时同样的稿要能入库')
   })
 } finally {
   console.log(`\n=== closed-loop-v4 selftest: ${pass} pass / ${fail} fail ===`)

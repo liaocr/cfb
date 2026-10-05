@@ -26,7 +26,11 @@
         "textSha256": "8751e7609888fadfa67013b39d5969224185f66c8e9509e61dc606557a7c82c7",
         "issues": []
       },
-      "rationale": "not the sole item approved by the user manual audit"
+      "rationale": "not the sole item approved by the user manual audit",
+      "status": "restored-active",
+      "restoredAt": "2026-10-05T04:03:02.082Z",
+      "restoredTo": "transfer/gold/eacces-config/eacces-config_decoy-s0-r3.json",
+      "restoredBasis": "draft-only apparatus audit + verbatim-quote exemption（见 00-README.md）"
     },
     {
       "id": "eacces-config_long-horizon-s0-r5",
@@ -46,7 +50,11 @@
         "textSha256": "cc0e33c611a6b44ef13b38532b188eed25b94af2d348d94810d83eb84705f022",
         "issues": []
       },
-      "rationale": "not the sole item approved by the user manual audit"
+      "rationale": "not the sole item approved by the user manual audit",
+      "status": "restored-active",
+      "restoredAt": "2026-10-05T04:03:02.082Z",
+      "restoredTo": "transfer/gold/eacces-config/eacces-config_long-horizon-s0-r5.json",
+      "restoredBasis": "draft-only apparatus audit + verbatim-quote exemption（见 00-README.md）"
     },
     {
       "id": "flaky-timeout-s0-r4",
@@ -235,7 +243,11 @@
         "textSha256": "adc12e825f9ce14e2d48695d3c42e0e2681fdcadb04fd0457fb3ee6d389a627b",
         "issues": []
       },
-      "rationale": "not the sole item approved by the user manual audit"
+      "rationale": "not the sole item approved by the user manual audit",
+      "status": "restored-active",
+      "restoredAt": "2026-10-05T04:03:02.082Z",
+      "restoredTo": "transfer/gold/sse-truncated/sse-truncated-s0-r5.json",
+      "restoredBasis": "draft-only apparatus audit + verbatim-quote exemption（见 00-README.md）"
     },
     {
       "id": "sse-truncated_decoy-s0-r3",
@@ -312,7 +324,11 @@
           }
         ]
       },
-      "rationale": "apparatus-language detected in draft/stored"
+      "rationale": "apparatus-language detected in draft/stored",
+      "status": "restored-active",
+      "restoredAt": "2026-10-05T04:03:02.082Z",
+      "restoredTo": "transfer/gold/wrong-model/wrong-model_decoy-s0-r4.json",
+      "restoredBasis": "draft-only apparatus audit + verbatim-quote exemption（见 00-README.md）"
     },
     {
       "id": "wrong-model_long-horizon-s0-r4",
@@ -338,7 +354,11 @@
           }
         ]
       },
-      "rationale": "apparatus-language detected in draft/stored"
+      "rationale": "apparatus-language detected in draft/stored",
+      "status": "restored-active",
+      "restoredAt": "2026-10-05T04:03:02.082Z",
+      "restoredTo": "transfer/gold/wrong-model/wrong-model_long-horizon-s0-r4.json",
+      "restoredBasis": "draft-only apparatus audit + verbatim-quote exemption（见 00-README.md）"
     }
   ],
   "counts": {

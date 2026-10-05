@@ -26,3 +26,6 @@
 | [`proposals/`](proposals/) | 预注册策略补丁 JSON（`p1-multi-site.json`、`p-f6-bounded-path.json`、`p-regime-augment.json`，供闭环自测 `A21`/`A33` 与离线复现使用） |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | 逐版本演进记录（最新在上） |
 | [`../transfer/gold/`](../transfer/gold/) | 经真实多轮轨迹验证（`hand.fixed && (!raw.fixed || hand.rounds < raw.rounds)`）的金标库 |
+| [`../transfer/gold-rejected/`](../transfer/gold-rejected/) | 被装置话术审计隔离的条目原文件（字节不变的历史副本）+ `audit.json` 台账 + `audit-amendments.json` 复算与放回记录 |
+| [`../transfer/gold-repair/`](../transfer/gold-repair/) | 金标「改稿 → $0 离线重测 → 换稿」通道的工作区：`drafts-proposed/`（修订稿）、`drafts/`+`staged/`（过闸暂存）、`pending-retest.json`（等真机复测的账） |
+| [`../transfer/gold-history/`](../transfer/gold-history/) | `gold add --replace` 换稿时被归档的旧条目（带 `supersededBy`） |

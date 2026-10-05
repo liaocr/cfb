@@ -1,0 +1,102 @@
+{
+  "schema": "cfb.gold/1",
+  "id": "flaky-timeout-s0-r3",
+  "family": "flaky-timeout",
+  "task": "flaky-timeout",
+  "sample": 0,
+  "round": 3,
+  "plan": "t16",
+  "split": "dev",
+  "at": "2026-10-05T04:27:38.836Z",
+  "raw": "Let me analyze the race condition.\n\nThe test: primaryDelayMs=1500, hedgeAfterMs=1600. So primary should return 200 at t=1500ms, before hedge timer fires at t=1600ms. So hedgeStartedAt should be null.\n\nThe bug: `primary.then(() => { primarySettled = true })` sets primarySettled only after the promise resolves. But there's a race: the timer fires at 1600ms, primary resolves at 1500ms. Normally the `.then` callback runs in a microtask right after fetch resolves at ~1500ms. So primarySettled=true before 1600ms. So no hedge. Should pass.\n\nBut wait — the timer callback checks `!primarySettled`. There's a subtle issue: `clearTimeout(timer)` happens after `await primary.catch(...)`. But that's after resolution.\n\nActually the real race: `server.listen(0)` then `server.address().port` — the listen is async! `server.listen(0)` doesn't block; `server.address()` may return null before listening completes. Actually in Node, `server.listen(0)` starts listening asynchronously but `address()` returns... hmm. Actually `listen` is async but address() immediately after may throw or return null. In practice on fast machines it works? Actually no — this is a common bug. But let's think about the timing.\n\nHmm, but the key difference: 2 cores vs 16 cores. Under load / scheduling delays, the timing between the 1500ms response and 1600ms timer is only 100ms margin. On a loaded 2-core CI machine, the event loop might be busy, causing the primary's `.then` microtask to be delayed? Actually microtasks run immediately after.\n\nWait, more important: the `startHedge` sets `meta.hedgeStartedAt = Date.now() - t0`. The test expects null. The failure shows got 1712 and 1698 — meaning the timer fired at ~1700ms relative to t0, not 1600. That means t0 = Date.now() at the start, and the hedge started 100-170ms after the 1600 timer should fire. Hmm, 1712 > 1600 means the timer fired late due to event loop lag. And primarySettled was still false at that point.\n\nWhy would primarySettled be false at 1712ms when the response came at 1500ms? Because of event loop congestion: the response handling and the timer both delayed. If the event loop is blocked/slow, the response callback at 1500ms and the timer at 1600ms... The timer fires when the event loop gets to it. If the fetch response is delayed too...\n\nActually the crux: on a slow machine the fetch's internal processing (socket read, promise resolution) may be delayed more than the timer, so at the moment the timer fires, primarySettled is still false.\n\nHmm but actually there's a more fundamental logic bug. Let me reconsider: `primarySettled` is set in `.then`. The timer checks it. The design intends: hedge should not start after primary settles. But the margin is only 100ms.\n\nActually wait — let's think about the real race more carefully. The intended semantics: hedgeAfterMs=1600 > primaryDelayMs=1500, so hedge should never start. The test is deterministic in intent. The flakiness is a timing race.\n\nBut there might be a deeper bug: the test asserts hedgeStartedAt must be null because hedgeAfterMs > primary delay. The implementation relies on wall-clock timing with only 100ms margin. On 2 cores under CI load, Node's timer can fire late (1712 vs 1600), and the fetch response may not have been processed yet.\n\nHmm, but actually the real issue: is the timer's start time measured from t0? t0 = Date.now() before fetch. The timer is set with setTimeout(1600). But the server delay is 1500ms from when the request arrives at the server. Plus network + fetch setup overhead. On a slow machine, connection setup could take 100-200ms, so the response arrives at t0+1700ms, while timer fires at t0+1600ms → hedge starts. That's the race!\n\nSo: primary response arrives at t0 + (connect overhead) + 1500. Timer fires at t0 + 1600. If connect overhead > 100ms, hedge fires. On 16-core local, overhead is ~0ms. On 2-core CI, overhead can exceed 100ms.\n\nSo the root cause is a genuine race condition in the test: the margin between hedgeAfterMs (1600) and primaryDelayMs (1500) is only 100ms, which is not robust against connection/scheduling overhead on slow machines.\n\nNow, how to fix? The task says \"find the cause and fix it\". We could fix either the test or the implementation. The implementation's logic seems correct-ish for the semantics. But there's also a subtle bug in the implementation: `primary.then(() => { primarySettled = true })` — this creates a floating promise and the `primarySettled` flag is set in a microtask. Actually that's fine.\n\nHmm, but wait. Let me reconsider whether the implementation has a real bug independent of timing. Consider: `setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`. The intent: if the primary hasn't settled by hedgeAfterMs, start hedge. That's correct hedging logic. The `clearTimeout` after await prevents... well it's redundant-ish but prevents late hedge.\n\nActually the flag+clearTimeout is the standard pattern. But note: the flag is set asynchronously. There's an edge: if primary settles exactly around the timer, ordering matters. But for a robust test, we shouldn't rely on it.\n\nI think the right fix: make the test deterministic by not depending on a 100ms wall-clock margin. But the task says \"fix it\" — presumably the test file. However, maybe the better fix is to make the test's timing margin large (e.g., primaryDelayMs 200, hedgeAfterMs 2000) so overhead can't flip it. But that still has a race in theory, though a huge margin makes it practically deterministic.\n\nAlternatively, the more principled fix: the test should control timing deterministically. But let me think about what the \"intended\" fix is.\n\nHmm, let me reconsider. Let me re-read: \"§4 对冲在主请求 200 之后不得再发\" — the requirement: after the primary returns 200, the hedge must not be sent. This is a correctness requirement. The implementation should guarantee that once the primary settles successfully, no hedge starts — even if the timer fires later. The current implementation DOES clearTimeout after await, and sets primarySettled. So logically after primary settles, timer is cleared. But the race is that the timer fires BEFORE the primary settles (because of overhead), which is legitimately \"hedge starts because primary was slow\" — that's actually correct hedging behavior! The hedgeAfterMs is measured from t0, and the primary hasn't settled by 1600ms.\n\nWait, so is the failure actually a correct behavior? If the primary genuinely hasn't settled by 1600ms, hedging is correct. The test's assumption that primary settles by 1500ms is violated by machine overhead. So it's a test flakiness issue.\n\nSo the fix is in the test: make it robust. Options:\n1. Increase margin dramatically (primaryDelayMs=200, hedgeAfterMs=5000). Still a race but negligible.\n2. Better: don't measure from t0. Actually the semantic is \"hedgeAfterMs after the primary request starts\". The overhead affects both.\n\nHmm, the cleanest deterministic fix: the hedge delay should be measured relative to when the request was actually sent, and the test should ensure the primary response is received well before. But the fundamental issue remains: real network overhead.\n\nActually, I think the intended answer is different. Let me look for other clues. Let me check if there's a git repo, more files, verify.mjs.\n\nLet me look around more.\n\nActually package.json test = \"node verify.mjs\" but there's no verify.mjs listed. Let me check.\n\nLet me explore more thoroughly.",
+  "ctx": "CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次，本地从不失败。CI 机器 2 核，本地 16 核。最近 5 次 CI 日志在 ci/last5.log。请找出原因并修好，修好后说明依据。\n\n【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）\n- 已走过的路：（共 3 条调用，详见下方【延续段】；曾涉 ci/last5.log dev/null 200 1712 test/hedge.selftest.mjs assert/strict src/distill.js test/helpers.mjs package.json）\n\n【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）\n已走过的路：第 1 轮 bash `ls -la; echo ---; cat ci/last5.log 2>/dev/null | head -200` → 「$ ls -la … run 2: FAIL  §4 对冲在主请求 200 之后不得再发  expected hedgeStartedAt=null, got 1712」；第 1 轮 bash `cat test/hedge.selftest.mjs 2>/dev/null` → 「import assert from 'node:assert/strict'」；第 2 轮 bash `cat src/distill.js; echo ---; ls src; echo ---; cat test/helpers.mjs; echo ---; cat package.json; echo ---; ls test` → 「$ cat src/distill.js」；这些不再重跑，除非中间改过东西。",
+  "calls": [
+    {
+      "name": "bash",
+      "args": "{\"command\": \"pwd; ls -la; echo ---; find . -type f | head -50; echo ---; git log --oneline 2>/dev/null | head -20; echo ---gitstatus; git status 2>/dev/null; echo ---; cat ci/last5.log\"}"
+    },
+    {
+      "name": "bash",
+      "args": "{\"command\": \"node --version; nproc; echo ---; for i in 1 2 3 4 5; do node test/hedge.selftest.mjs && echo PASS || echo FAIL; done\"}"
+    },
+    {
+      "name": "bash",
+      "args": "{\"command\":\"cd /; ls -la; echo ---; find / -name 'verify.mjs' 2>/dev/null; echo ---; cd / && find . -path ./proc -prune -o -name '*.mjs' -print 2>/dev/null | head; echo ---; git log --oneline 2>/dev/null | head; git status 2>/dev/null\"}"
+    }
+  ],
+  "draft": "本轮增量：机理坐实到一句话——`timer` 是从 `t0`（`fetch` 之前）起算 `cfg.hedgeAfterMs` 的 1600ms，而主请求的 200 是服务端**收到请求后**再延 1500ms 才回；连接建立与调度开销全算在 primary 那侧，两边只差 100ms。`got 1712`、`1698` 正是事件循环把 timer 推迟到 1600 之后才跑、而那一刻 `primarySettled` 还是假。\n\n已坐实的第二条：这不是产品逻辑错。原文自己推出——到 1600ms 主请求确实还没结算时，发出对冲本来就是正确的对冲行为；被违反的是测试那句假设（以为 1500ms 一定回）。所以问题落在 `test/hedge.selftest.mjs` 的时间裕量，不在 `src/distill.js`。\n\n已排除：动 `src/distill.js` 的标志位或 `clearTimeout(timer)` 这条路——原文推演过 flag 加 clearTimeout 是标准写法，`primary.then` 在微任务里置真也正常。已排除：怀疑 `server.listen(0)` 之后 `address()` 取不到端口——本地这条自测跑得出结果，也没打出这类失败形态。\n\n改法方向有两条、都还开着，本轮没有选定：把 `primaryDelayMs` 与 `hedgeAfterMs` 的差拉到开销吃不掉（原文举的是 200 与 5000）；或者让测试不再依赖墙钟、把计时确定化。原文还留了一句更狠的疑问：`hedgeAfterMs` 该不该从请求真正发出的时刻起算——这条要连着 `test/helpers.mjs` 里的假服务实现一起看，不是现在能拍的板。\n\n本轮已发出三条探查：看仓库与 git 状态、看 node 版本与核数、外加 5 次重复跑同一条自测、以及翻找 `verify.mjs`（`package.json` 的 test 指向它，但目录里没见到这个文件）。等这三条的输出回来再定改法。\n\n如果 5 次重复跑本地全过，说明这条自测在 16 核上根本不复现，改法只能落在把裕量拉开到连接开销吃不掉；如果打出不稳定，再回到 `hedgeAfterMs` 与 `primaryDelayMs` 的差值上量一遍够不够盖住连接开销。如果翻到 `verify.mjs` 里另有断言口径，先按它的口径校准验收条件再动手。\n\n现在能说的：成因已收窄到「测试的 100ms 墙钟裕量」这一条，两条排除项已落地；还不能说修好——修好要三件事都在手：改动落地的回执、改后重复跑同一条自测的观察、以及这条观察确实是改后产生的。",
+  "stored": "已走过的路：第 1 轮 bash `ls -la; echo ---; cat ci/last5.log 2>/dev/null | head -200` → 「$ ls -la … run 2: FAIL §4 对冲在主请求 200 之后不得再发 expected hedgeStartedAt=null, got 1712」；第 1 轮 bash `cat test/hedge.selftest.mjs 2>/dev/null` → 「import assert from 'node:assert/strict'」；第 2 轮 bash `cat src/distill.js; echo ---; ls src; echo ---; cat test/helpers.mjs; echo ---; cat package.json; echo ---; ls test` → 「$ cat src/distill.js」；这些不再重跑，除非中间改过东西。\n\n本轮增量：机理坐实到一句话——`timer` 是从 `t0`（`fetch` 之前）起算 `cfg.hedgeAfterMs` 的 1600ms，而主请求的 200 是服务端**收到请求后**再延 1500ms 才回；连接建立与调度开销全算在 primary 那侧，两边只差 100ms。`got 1712`、`1698` 正是事件循环把 timer 推迟到 1600 之后才跑、而那一刻 `primarySettled` 还是假。\n\n已坐实的第二条：这不是产品逻辑错。原文自己推出——到 1600ms 主请求确实还没结算时，发出对冲本来就是正确的对冲行为；被违反的是测试那句假设（以为 1500ms 一定回）。所以问题落在 `test/hedge.selftest.mjs` 的时间裕量，不在 `src/distill.js`。\n\n已排除：动 `src/distill.js` 的标志位或 `clearTimeout(timer)` 这条路——原文推演过 flag 加 clearTimeout 是标准写法，`primary.then` 在微任务里置真也正常。已排除：怀疑 `server.listen(0)` 之后 `address()` 取不到端口——本地这条自测跑得出结果，也没打出这类失败形态。\n\n改法方向有两条、都还开着，本轮没有选定：把 `primaryDelayMs` 与 `hedgeAfterMs` 的差拉到开销吃不掉（原文举的是 200 与 5000）；或者让测试不再依赖墙钟、把计时确定化。原文还留了一句更狠的疑问：`hedgeAfterMs` 该不该从请求真正发出的时刻起算——这条要连着 `test/helpers.mjs` 里的假服务实现一起看，不是现在能拍的板。\n\n本轮已发出三条探查：看仓库与 git 状态、看 node 版本与核数、外加 5 次重复跑同一条自测、以及翻找 `verify.mjs`（`package.json` 的 test 指向它，但目录里没见到这个文件）。等这三条的输出回来再定改法。\n\n如果 5 次重复跑本地全过，说明这条自测在 16 核上根本不复现，改法只能落在把裕量拉开到连接开销吃不掉；如果打出不稳定，再回到 `hedgeAfterMs` 与 `primaryDelayMs` 的差值上量一遍够不够盖住连接开销。如果翻到 `verify.mjs` 里另有断言口径，先按它的口径校准验收条件再动手。\n\n现在能说的：成因已收窄到「测试的 100ms 墙钟裕量」这一条，两条排除项已落地；还不能说修好——修好要三件事都在手：改动落地的回执、改后重复跑同一条自测的观察、以及这条观察确实是改后产生的。",
+  "gates": {
+    "v4": {
+      "outputChars": 1128,
+      "inventedSpans": 0,
+      "chars": 1562,
+      "closeLoop": false,
+      "provenance": false,
+      "register": true,
+      "ctxChars": 810,
+      "continuation": 1
+    },
+    "accept": {
+      "netSaved": 5885,
+      "minSaved": 50,
+      "tokens": {
+        "rawTokensEst": 2238,
+        "outTokensEst": 669,
+        "netSavedTokensEst": 1569,
+        "unit": "estimate-not-tokenizer"
+      }
+    },
+    "draftChars": 1128,
+    "outChars": 1562,
+    "rawChars": 7447
+  },
+  "outcome": {
+    "solved": true,
+    "roundsToFix": 8,
+    "falseClaim": false,
+    "rawSolved": true,
+    "rawRoundsToFix": 7,
+    "vsRaw": "loss"
+  },
+  "validated": true,
+  "qualityAudit": {
+    "schema": "cfb.mode1-content-audit/1",
+    "status": "clean",
+    "reviewer": "mode1-writer+apparatus-lint/1",
+    "reviewedAt": null,
+    "checkedFields": [
+      "draft",
+      "stored"
+    ],
+    "textSha256": "87d3911e1c7abc292f3b4034dc541fa94707b8222bef9a753afc973276c9aec9",
+    "issues": [],
+    "exempted": []
+  },
+  "digest": "398f2db1865ac77c",
+  "notGold": {
+    "reason": "vsRaw loss：主模型读这份稿后第 8 轮修好，自己读原文第 7 轮就修好了 —— 天花板稿至少要跟 raw 一样快，所以它不入 active 注册表",
+    "at": "2026-10-05",
+    "evidence": {
+      "plan": "t16",
+      "round": 3,
+      "rawChars": 7447,
+      "draftChars": 1128,
+      "outChars": 1562,
+      "netSaved": 5885,
+      "handRoundsToFix": 8,
+      "rawRoundsToFix": 7,
+      "localCompressorDd": 0.818,
+      "localCompressorKey": "1,1,0,1,1,1",
+      "whyItLost": "G2 只许写这一轮 raw 里已经落定的东西：r3 那轮主模型还没决定「改哪个文件」，所以稿只能给机制＋排除，模型要自己补一步决定 ⇒ 多花 1 轮。这是天花板量法的性质，不是稿写坏了。",
+      "ceilingPair": {
+        "e": 2.333,
+        "pairs": 5,
+        "verdict": "undetermined（分不出，别当天花板用）"
+      },
+      "reusable": "模式 2 风格靶子 / 飞轮偏好对：稿与拼接后 prompt 都在，未作废"
+    },
+    "keptAs": "measured（真机量过、有结局，只是不够格当天花板）",
+    "auditStatus": "clean"
+  }
+}

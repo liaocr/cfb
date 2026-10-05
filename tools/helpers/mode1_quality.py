@@ -32,6 +32,63 @@ def mode1_apparatus_issues(text):
     return [str(i) for i, pattern in enumerate(MODE1_APPARATUS_PATTERNS) if pattern.search(value)]
 
 
+def _squeeze(value):
+    return "".join(str(value or "").split())
+
+
+RULE_PATTERN_RANGES = [(0, 5), (5, 11), (11, 16)]   # environment-permission / round-budget / tool-prohibition
+_SENTENCE_SPLIT = re.compile(r"(?<=[。！？；;])|(?<=\n)")
+# 定界引用（「…」/“…”/`…`）——只有被这样框住、且在证据里原样出现的片段才算「报告观测」
+QUOTE_RES = [re.compile(r"「([^」]{6,400})」"), re.compile(r"“([^”]{6,400})”"), re.compile(r"`([^`\n]{6,400})`")]
+
+
+def _split_sentences(value):
+    return [x.strip() for x in _SENTENCE_SPLIT.split(str(value or "")) if x.strip()]
+
+
+def mode1_output_issues(text, evidence_text=None):
+    """Number of apparatus categories a produced target is guilty of.
+
+    Mirrors the JS reference linter exactly: one hit per category (first matching pattern wins).
+    With `evidence_text` (raw ∪ ctx) a hit is exempt when the whole sentence carrying it already
+    appears verbatim in the evidence shown to the writer — that is the program echoing a tool result
+    back (e.g. 「bash: 该沙箱不支持 shell 循环…」 inside 【延续段】), not a claim made by the drafter.
+    """
+    value = str(text or "")
+    evidence = _squeeze(evidence_text) if evidence_text else ""
+    sentences = _split_sentences(value) if evidence else []
+    kept = 0
+    for lo, hi in RULE_PATTERN_RANGES:
+        matched = None
+        host = None
+        for idx in range(lo, hi):
+            m = MODE1_APPARATUS_PATTERNS[idx].search(value)
+            if m:
+                matched = m
+                break
+        if matched is None:
+            continue
+        if evidence:
+            for sentence in sentences:
+                if matched.group(0) in sentence:
+                    host = sentence
+                    break
+            if host is not None and _squeeze(host) in evidence:
+                continue
+            # 逐字引用免检：命中片段落在「…」/“…”/`…` 引号内，且引号内容原样出现在给作者的证据里
+            if host is not None:
+                at = host.find(matched.group(0))
+                quoted = []
+                for rx in QUOTE_RES:
+                    for m in rx.finditer(host):
+                        if m.start() <= at < m.end() and len(m.group(1)) >= 6:
+                            quoted.append(m.group(1))
+                if any(_squeeze(q) in evidence for q in quoted):
+                    continue
+        kept += 1
+    return kept
+
+
 def mode1_apparatus_categories(text):
     """Return the same deduplicated category names as the JS reference linter."""
     hits = {int(i) for i in mode1_apparatus_issues(text)}
@@ -99,7 +156,8 @@ def mode1_capture_quality_audit_valid(sample):
     stored = sample.get("stored")
     if not isinstance(draft, str) or not isinstance(stored, str) or not draft.strip() or not stored.strip():
         return False
-    if mode1_apparatus_issues(draft) or mode1_apparatus_issues(stored):
+    evidence = (sample.get("raw") or "") + "\n" + (sample.get("ctx") or "")
+    if mode1_output_issues(draft, evidence) or mode1_output_issues(stored, evidence):
         return False
     expected_hash = _compact_utf8_json_sha256({"draft": draft, "stored": stored})
     audit = sample.get("qualityAudit")

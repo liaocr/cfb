@@ -30,6 +30,19 @@ const cases = [
   '已改未验证；同等条件 50/50 通过之前不能说修好了。',
 ]
 
+/* 证据感知：同一段话，逐字引用给作者的证据 ⇒ 免检；作者自己主张 ⇒ 定罪。JS 与 Python 必须同判。 */
+const ECHO = 'bash: 该沙箱不支持 shell 循环，请直接跑单条命令'
+const evidenceCases = [
+  { text: `【延续段】上一轮工具输出：${ECHO}。`, evidence: `第 3 轮跑 for 循环，回显：${ECHO}` },
+  { text: `本轮 \`node -e\` 被拒，回显逐字是「${ECHO}」，所以只跑单条命令复现。`, evidence: `作者看到的证据：${ECHO}` },
+  { text: `本轮 \`node -e\` 被拒，回显逐字是「${ECHO}」，所以只跑单条命令复现。`, evidence: '证据里没有这句话' },
+  { text: `回显逐字是「${ECHO}」，所以第 7 轮是最后一轮，严禁再发起任何工具调用。`, evidence: `证据：${ECHO}` },
+  { text: '沙箱已内置白名单直接放行 node test/hedge.selftest.mjs，无需再试。', evidence: `无关原文 ${ECHO}` },
+  { text: '沙箱已内置白名单直接放行 node test/hedge.selftest.mjs，无需再试。', evidence: '' },
+  { text: '下一轮是第 6 轮，严禁再重读文件或跑探针，必须在第 6 轮同一轮按顺序直接发出两条调用。', evidence: '与轮次无关的原文' },
+]
+assert.equal(auditMode1Output(evidenceCases[0].text).status, 'quarantined', '同一文本无证据时定罪（前提检查）')
+
 const pairRows = [
   { chosenText: '核对“src/transport.js”中的 finish_reason；随后运行 npm test。', rejectedText: '只有 [DONE] 不能证明内容完整。' },
   { chosenText: '保持任务范围：不要改 legacy.js。', rejectedText: '先检查 src/compiler.js，再验证调用链。\n' },
@@ -55,10 +68,10 @@ const captureRows = [
   { ...captureBase, stored: captureBase.stored + ' ' , trainingEligible: true, qualityAudit: captureAudit.qualityAudit },
 ]
 
-const pySource = `import json, sys\nsys.path.insert(0, 'tools')\nfrom helpers.mode1_quality import mode1_apparatus_categories, mode1_pair_text_sha256, mode1_pair_content_audit_valid, mode1_capture_quality_audit_valid\ndata = json.load(sys.stdin)\nprint(json.dumps({\n  'categories': [mode1_apparatus_categories(x) for x in data['texts']],\n  'pairHashes': [mode1_pair_text_sha256(p['chosenText'], p['rejectedText']) for p in data['pairs']],\n  'pairValid': [mode1_pair_content_audit_valid(p) for p in data['pairCases']],\n  'captureValid': [mode1_capture_quality_audit_valid(s) for s in data['captures']],\n}, ensure_ascii=False))\n`
+const pySource = `import json, sys\nsys.path.insert(0, 'tools')\nfrom helpers.mode1_quality import mode1_apparatus_categories, mode1_output_issues, mode1_pair_text_sha256, mode1_pair_content_audit_valid, mode1_capture_quality_audit_valid\ndata = json.load(sys.stdin)\nprint(json.dumps({\n  'categories': [mode1_apparatus_categories(x) for x in data['texts']],\n  'pairHashes': [mode1_pair_text_sha256(p['chosenText'], p['rejectedText']) for p in data['pairs']],\n  'pairValid': [mode1_pair_content_audit_valid(p) for p in data['pairCases']],\n  'captureValid': [mode1_capture_quality_audit_valid(s) for s in data['captures']],\n  'evidenceCounts': [mode1_output_issues(c['text'], c['evidence']) for c in data['evidenceCases']],\n}, ensure_ascii=False))\n`
 const proc = spawnSync('python3', ['-c', pySource], {
   cwd: process.cwd(),
-  input: JSON.stringify({ texts: cases, pairs: auditedPairs, pairCases, captures: captureRows }),
+  input: JSON.stringify({ texts: cases, pairs: auditedPairs, pairCases, captures: captureRows, evidenceCases }),
   encoding: 'utf8',
 })
 assert.equal(proc.status, 0, proc.stderr || 'Python parity helper failed')
@@ -73,4 +86,5 @@ for (let i = 0; i < auditedPairs.length; i++) {
 }
 assert.deepEqual(pairCases.map((pair) => isMode1PairEligible(pair)), python.pairValid, 'JS/Python exact-pair audit-gate parity')
 assert.deepEqual(captureRows.map((sample) => isMode1CaptureAuditEligible(sample)), python.captureValid, 'JS/Python exact capture-audit parity')
-console.log(`mode1-quality JS/Python parity: ${cases.length} curated category cases, ${auditedPairs.length} exact-pair digests, ${pairCases.length} pair gates, and ${captureRows.length} capture gates passed`)
+assert.deepEqual(evidenceCases.map((c) => auditMode1Output(c.text, c.evidence).issues.length), python.evidenceCounts, 'JS/Python verbatim-quote exemption parity (per rule group)')
+console.log(`mode1-quality JS/Python parity: ${cases.length} curated category cases, ${evidenceCases.length} evidence-aware exemption cases, ${auditedPairs.length} exact-pair digests, ${pairCases.length} pair gates, and ${captureRows.length} capture gates passed`)

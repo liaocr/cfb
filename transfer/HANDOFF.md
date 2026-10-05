@@ -1,4 +1,4 @@
-# AI 模型与开发者一页交接卡（`transfer/HANDOFF.md`，v14.18）
+# AI 模型与开发者一页交接卡（`transfer/HANDOFF.md`，v14.20.1）
 
 > 本文件替代了原先分散的 `MIGRATION.md`、`LIVE-MEMORY.md`、`MEMORY.md`、`NEXT-MODEL-PROMPT.md` 与 `SUMMARY-2026-10-02.md`。
 > 接手本项目的 AI 模型或人类开发者只需读完本页即可 **30 秒内零盲区开工**。请始终使用**中文**回复。
@@ -13,7 +13,7 @@ npm run restore             # = node tools/cfb-cycle.mjs restore
 
 # 2. 校验 SHA-256 清单并在断网命名空间跑满 29 套自检（要求 Node.js >= 22）
 npm run manifest:check      # = node manifest.mjs --check（0 缺失 / 0 失配）
-npm run verify:offline      # = node tools/verify-offline.mjs（29/29 套件全绿，884 pass / 0 fail / 1 skip）
+npm run verify:offline      # = node tools/verify-offline.mjs（33/33 套件全绿，967 pass / 0 fail / 1 skip）
 
 # 3. 一屏查看当前闭环状态、五大官方基准成绩单与智能下一步建议
 npm run cycle               # = node tools/cfb-cycle.mjs status
@@ -29,12 +29,22 @@ npm run next                # = node tools/cfb-cycle.mjs next
 
 ## 2. 当前仓库状态与最优策略基线
 
-- **分支与版本**：`arena/01a0f127-cfb`（`v14.18.0`），`29/29` 套件全绿（`884 pass / 0 fail / 1 skip`）。
+- **分支与版本**：`main`（`v14.20.1`），`33/33` 套件全绿（`967 pass / 0 fail / 1 skip`），`manifest.mjs --check` 0 漂移。
 - **核心架构**：100% 纯净的思维链出生即压缩（`birth` + `compile-v4`），已彻底剥离 DSH 外部宿主混入层与冗余旁路。
 - **当前 Pareto 冠军策略**：**`p-e62a037097`**（四维满配：`continuationPath: 'bounded'` + `statePartsMode: 'compact'` + `modularPromptPrune: true` + `birthAdaptiveFloor: true`，提示词净减 `-1037` 字）：
   - **L1 金标基准（8/8 全过闸）**：金标省 `454 tok`（较基线 `247 tok` **+83.8%**），全池均省 `437 tok`，真值均值 `0.762`，AA 密度效率 `0.6986`。
   - **L2 多轮轨迹基线（`transfer/traj1..3`）**：`auto` 臂 SWE 严苛解决率 **`85.7%`**（伪修好水分 **`0.0%`**，而只挂台账的 `ledger` 臂含 **`16.7%` 伪修好**），平均轮次 **`-13.7%`**，思维链字符 **`-27.4%`**，**LMArena Elo `1110`**（胜过 `raw` `1000` 与 `ledger` `951`）。
 - **飞轮与排序器**：`train/pairs.jsonl` 已积累 56 对跨 5 家族偏好对，CPU 排序器 LOO-CV 达 **`92.9%`**，`npm run train:export` 随时可按 5 家族严格组隔离导出 SFT/DPO 数据与 In-Context DPO 范例。
+
+### 2′. 金标注册表现状与「改稿重挣」通道（v14.20.1，接手必读）
+
+- **注册表现状**：`transfer/gold/` 活跃 **7 项 / 3 家族**（`sse-truncated` 3、`eacces-config` 2、`wrong-model` 2；`dev 3 + holdout 4`），全部 `[clean]` + 修好 + **自比 dd=1.000**（`A41` 钉）。其中 `sse-truncated_decoy-s0-r4` 是 2026-10-05 真机挣回又换过稿的（t15 win → t17 换稿 tie、hand 比 raw 省 33.6% token），本地微模型对它仍 `no-gain`⇒ 模式 2 的靶子就照它排。其余待办登记在 `transfer/gold-repair/pending-retest.json`：1 条改好的稿量出 vsRaw loss ⇒ 进 `measured/`（素材，不当天花板）、4 条 `blocked-on-this-channel`（本通道两臂都修不好 ⇒ 没有归因信号，须回原通道复测）；`outcome` 来自旧稿真机单元者一律**改稿即作废**，必须重跑模式 1 单元才算金标（不许拿离线绿当金标）。
+- **模式 2 已有实测基线**：`b11`（dev 3 项 × 5 策略）`base 0.519 / p-1490eefcdf 0.833`，配对全 `undetermined`（e 远未到 10），15 行里 10 行卡在 `no-gain` ⇒ 侧模型离金标还差整段距离，要练的是**压得出**再谈压得好；注册表摘要一变，旧计划按设计 `gold-changed` 拒跑，`plan-bench` 重建即可，未变条目靠 `--out` 同目录的兄弟缓存免付调用。
+- **天花板资格先于越界**：`gold add` 有三道拒收 —— 未修好、`vsRaw loss`（比主模型自己读原文还慢）、`missing`；前两道是「不够格」，只有 lint 那道才叫「越界」并进隔离区。判据写在 `saveGold`，`A41b` 钉住。稿子被拒后**不删**：连同单元结果落 `transfer/gold-repair/measured/`。
+- **改稿两条铁规矩（被真机教出来的）**：① 只能照当轮 `pending/<id>.json` 的 `raw + ctx` 写，别把旧轨迹的结论搬过来（`invented-decision`/`invented-triple`）；原文还没下决定时，稿子只许带机理＋排除，不许替主模型落定。② 花钱前先 `node tools/hand-preflight.mjs <plan> [--only id]`（$0 复跑同一条闸链）；短 raw 的轮次要算上程序部件（~600 字），稿得压到 ~700 字以内才可能有净省。
+- **审计口径**：装置话术（越界）只定**作者自己写的主张**的罪；整句或「…」/`…` 定界引用若原样出现在 `raw ∪ ctx` ⇒ 报告观测，免检（`qualityAudit.exempted[]` 带 `basis`）。`auditMode1Gold` = `draft ∪ stored` 都过免检。
+- **被隔离 ≠ 报废**：`node tools/cfb-gold-repair.mjs audit` 复算隔离区（active + `transfer/gold-rejected`）⇒ `RESTORABLE` 用 `restore --id … --apply` 字节级放回（digest 不变 ⇒ 冻结的 `b1`–`b9` 仍可用）；`NEEDS-REWRITE` 改稿后 `replay --id X --draft F`（$0 复跑 G2 → `compileV4Direct` → 程序部件 → `birthAccept` → lint，并打印逐槽差 = 归因账）⇒ 全绿 `stage`。
+- **换稿入库**：真机复测过后 `node tools/cfb-cycle.mjs gold add --plan N --replace` —— 旧条目自动归档 `transfer/gold-history/<family>/`，新条目打 `revision` 戳。金标摘要一变，旧基准计划按设计 `gold-changed` 拒跑 ⇒ 必须 `plan-bench` 重建。
 
 ---
 

@@ -21,6 +21,7 @@
 // 纪律：收据不追溯重评；每轮一个 scope、逐轮批准；真值维度与付费判据同源（next / avoid / falseDone 正则）。
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { evidenceDigest } from '../src/evidence-program.js'
 import * as I from '../index.js'
@@ -941,17 +942,24 @@ function cmdCeiling(args) {
   fs.writeFileSync(path.join(home, 'ceiling.md'), L.join('\n') + '\n'); console.log(L.join('\n'))
   return r
 }
-/** 金标注册表：add --plan N [--include-unsolved] [--from-winners] / list。金标 = 过闸的手写稿或胜出压缩稿 + 原文 + ctx + 结局；按家族切分（池的 dev / holdout），落盘后不改。 */
+/** 金标注册表：add --plan N [--include-unsolved] [--from-winners] [--replace] / list。金标 = 过闸的手写稿或胜出压缩稿 + 原文 + ctx + 结局；按家族切分（池的 dev / holdout），落盘后不改（改稿重挣要显式 --replace，旧条目自动归档 transfer/gold-history/）。 */
 function cmdGold(args) {
   const sub = args[0]
   if (sub === 'add') {
     const { planN, home, rows } = resultsArg(args.slice(1))
     const pool = loadPool()
     const items = goldItemsFromTraj({ home, rows, planId: planN ? 't' + planN : null, split: pool.split, fromWinners: args.includes('--from-winners') })
-    const r = saveGold(GOLD_DIR(), items, { includeUnsolved: args.includes('--include-unsolved'), rejectedDir: path.join(ROOT, 'transfer', 'gold-rejected'), auditReviewer: 'mode1-writer+apparatus-lint/1' })
-    console.log(`金标 +${r.added.length}（${path.relative(ROOT, GOLD_DIR())}）` + (r.added.length ? '：' + r.added.join(' ') : '') + (r.quarantined?.length ? `\n装置话术隔离 ${r.quarantined.length}：` + r.quarantined.map((x) => `${x.id}[${x.categories.join(',')}]`).join(' ') : '') + (r.skipped.length ? '\n跳过：' + r.skipped.map((x) => `${x.id}(${x.why})`).join(' ') : ''))
+    const replace = args.includes('--replace')
+    // 天花板资格：比 raw 慢的稿默认不收（--include-loss 才强收）—— 它是「不够格」不是「越界」
+    const r = saveGold(GOLD_DIR(), items, { includeUnsolved: args.includes('--include-unsolved'), includeLoss: args.includes('--include-loss'), rejectedDir: path.join(ROOT, 'transfer', 'gold-rejected'), auditReviewer: 'mode1-writer+apparatus-lint/1',
+      replaceExisting: replace, historyDir: path.join(ROOT, 'transfer', 'gold-history'), revisionNote: replace ? `gold add --replace（改稿重挣，t${planN ?? '?'}）` : null })
+    console.log(`金标 +${r.added.length}（${path.relative(ROOT, GOLD_DIR())}）` + (r.added.length ? '：' + r.added.join(' ') : '') + (r.replaced?.length ? `\n换稿 ${r.replaced.length}：` + r.replaced.map((x) => `${x.id}（旧 ${x.previousDigest} → ${path.relative(ROOT, x.historyFile)}）`).join('；') : '') + (r.quarantined?.length ? `\n装置话术隔离 ${r.quarantined.length}：` + r.quarantined.map((x) => `${x.id}[${x.categories.join(',')}]`).join(' ') : '') + (r.skipped.length ? '\n跳过：' + r.skipped.map((x) => `${x.id}(${x.why})`).join(' ') : ''))
     if (r.added.length) console.log(`下一步: node tools/cfb-cycle.mjs plan-bench --policies base,<候选>   # 模式 2：压缩器对金标的召回基准（每项 1 次压缩调用 ≈ $${TRAJ_UNIT.compressUsd}）`)
     return r
+  }
+  if (sub === 'restore' || sub === 'replay' || sub === 'stage' || sub === 'audit' || sub === 'repair') {
+    const p = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'cfb-gold-repair.mjs'), sub, ...args.slice(1)], { stdio: 'inherit' })
+    process.exit(p.status ?? 0)
   }
   const gold = loadGold(GOLD_DIR())
   console.log(`金标注册表 ${path.relative(ROOT, GOLD_DIR())}：${gold.length} 项` + (gold.length ? '' : '（空：先跑模式 1 —— plan-traj --arms raw,hand → traj-run → ceiling → gold add）'))
@@ -1976,7 +1984,8 @@ const HELP = `cfb-cycle（闭环 v4：e 值采纳 + L2 结局确认 + 双轨评�
                                                                                  --all 五家族；--dry 只算不落盘；同设计未执行的计划不重复建（--force 重建 / --drop 撤销 / --supersede 作废）
   review --plan N | --results FILE [--draft-chars 700] [--judge-prompts]         v4.5：读一个单元的结果 → review.md（分歧轮、各臂结局、分歧处压缩稿原文、闸门、代理旗标、双轨分歧归因）
   ceiling --plan N | --results FILE [--map hand=hand,raw=raw]                      v4.6 模式 1：hand（助手手写稿）vs raw 的 L2 天花板 → ruler/ceiling-k.json + 效度账本；不碰 champion
-  gold add --plan N [--include-unsolved] | gold list                               v4.6：过闸且修好的手写稿 → 金标注册表 transfer/gold/<family>/（按家族 dev/holdout，落盘不改）
+  gold add --plan N [--include-unsolved] [--include-loss] [--from-winners] [--replace]   v4.6：过闸且修好的手写稿 → 金标注册表 transfer/gold/<family>/；--replace = 改稿重挣后换稿（旧条目自动归档 transfer/gold-history/）；默认拒收 vsRaw loss（比主模型自己读原文还慢）——那是天花板资格不是越界
+  gold audit | gold restore --id A,B [--apply] | gold replay|stage --id X --draft F                v14.20.1：隔离区复算 / 干净稿放回 / 改稿零 API 重测生产闸链（tools/cfb-gold-repair.mjs）                               v4.6：过闸且修好的手写稿 → 金标注册表 transfer/gold/<family>/（按家族 dev/holdout，落盘不改）
   plan-bench [--lite] [--policies base,p-x] [--split dev|holdout|all] [--dry] [--drop N] [--factors half|full]
                                                                                  v4.6 模式 2：策略 × 金标 各一次压缩调用（--lite 极简模式：复用 base 缓存，仅跑 1 次 ≈ $0.004）；指标 dd/1 冻结；dev 配对选策略、holdout 只报告
                                                                                  v4.7 --factors：候选的 k≤3 条补丁各为因子（half=2^(k−1) 含 base 不含全开 / full=2^k），bench-report 出每条补丁的主效应 ⇒ 知道该留哪条

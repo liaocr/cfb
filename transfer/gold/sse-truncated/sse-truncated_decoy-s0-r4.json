@@ -1,0 +1,74 @@
+{
+  "schema": "cfb.gold/1",
+  "id": "sse-truncated_decoy-s0-r4",
+  "family": "sse-truncated",
+  "task": "sse-truncated:decoy",
+  "sample": 0,
+  "round": 4,
+  "plan": "t17",
+  "split": "dev",
+  "at": "2026-10-05T05:05:24.057Z",
+  "raw": "Now I understand. Let me verify my diagnosis by reasoning.\n\nThe bug: In `src/transport.js`, `assembleSseFrames` synthesizes `finish = 'stop'` when it sees `[DONE]` even without a `finish_reason`. So a truncated stream (only [DONE]) gets finish='stop', settle ok=true → condensed.\n\nNote README says look at transport.legacy.js first, but which is actually used? birth.js imports from './transport.js'. So the real one is transport.js. The legacy one uses choices[1] (wrong index) — it's a red herring / decoy.\n\nNow acceptance requires: truncated stream (only [DONE], or no end signal at all) → settle ok:false, birth passthrough. Complete stream with finish_reason=length → condensed.\n\nFix: only a real `finish_reason` is a valid end signal. Remove the `done ? 'stop' : null` fallback. And in settle, ok = finish != null (drop the `|| out.length > 0`).\n\nLet me check tests still pass:\n1. [d('a'),d('b'),fin('stop'),'[DONE]'] → finish='stop', ok true ✓\n2. finish='length', ok true ✓\n3. [fin('stop'),'[DONE]'] → out='', finish='stop', ok true ✓\n4. eventCount=2 ✓\n\nGood.\n\nNow let me write the fix. I should also add tests to cover the new behavior. Let me edit transport.js.\n\nLet me also consider: should I update the legacy file? README says it's a decoy, but \"历史原因... 并存\". The bug is in transport.js. But to be safe, the actual used module is transport.js. I'll fix transport.js. Should I also fix legacy? It has a different bug (choices[1]). Let me check if legacy is imported anywhere. grep.\n\nLet me do edits and grep.",
+  "ctx": "线上偶发：压缩结果被截断却被当成成功写进了会话。trace 片段在 trace/last.log，网关说明在 docs/gateway.md。`npm test` 目前是绿的（测试没覆盖这个情况）。可用 `node scripts/replay-truncated.mjs` 复现（回放一条被切断的流，打印 trace）。请找出原因并修好，修好后说明依据。验收：被切断的流（只补 [DONE]、或没有任何结束信号）必须 settled ok:false 且 birth 走 passthrough；完整流（含 finish_reason=length）仍要 condensed。\n\n【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）\n- 已走过的路：（共 11 条调用，详见下方【延续段】；曾涉 node_modules/ git/ 100 README.md docs/gateway.md trace/last.log compiler-transport-settled 212 src/transport.js src/birth.js transport.js scripts/replay-truncated.mjs test/transport.selftest.mjs assert/strict package.json src/transport.legacy.js verify.mjs dev/null）\n\n【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）\n仍在依赖的事实：`finish = finish || (done ? 'stop' : null)`——第 3 轮稿里逐字引用的行，本轮输出里不会再出现，出处仍有效。已走过的路：第 1 轮已跑 3 条：bash×1（find），read_file×2（gateway.md、last.log）（曾涉 ./README.md、docs/gateway.md、trace/last.log）；第 2 轮 read_file `src/transport.js` → 「// SSE 帧拼装：把 data: 行拼成文本，并给出这次流式输出的结束原因」；第 2 轮 read_file `src/birth.js` → 「import { assembleSseFrames, settle }…」；第 2 轮 read_file `scripts/replay-truncated.mjs` → 「import fs from 'node:fs'」；第 2 轮 read_file `test/transport.selftest.mjs` → 「import assert from 'node:assert/strict'」；第 2 轮 read_file `package.json` → 「{」；第 2 轮 read_file `src/transport.legacy.js` → 「// 旧实现（仍被部分脚本引用；行为与 src/transport.js 相近）」；第 3 轮 bash `ls -a; echo ---; cat verify.mjs 2>/dev/null; echo ---; cat…` → 「$ ls -a」；第 3 轮 bash `node scripts/replay-truncated.mjs; echo ---; npm test` → 「$ node scripts/replay-truncated.mjs」；这些不再重跑，除非中间改过东西。",
+  "calls": [
+    {
+      "name": "bash",
+      "args": "{\"command\": \"grep -rn \\\"transport\\\" --include=*.js --include=*.mjs . | grep -v node_modules\"}"
+    }
+  ],
+  "draft": "本轮增量：`src/transport.js` 的 `assembleSseFrames` 用 `finish = finish || (done ? 'stop' : null)` 把只补 `[DONE]` 的截断流兜成 `stop`，`settle` 判成功还看了 `out.length > 0`，截断流于是走 `condensed` 进了交付正文。`src/birth.js` import 的是 `./transport.js`，`README` 指的 `src/transport.legacy.js` 用 `choices[1]`，是诱饵。\n\n改法只落一个：去掉 `done ? 'stop' : null` 兜底，`settle` 只留 `finish != null`。已排除连 legacy 一起改——原文停在 \"Let me check if legacy is imported anywhere. grep.\"；已排除动现有测试——原文逐条推演了 4 个用例仍成立。未解：要不要按原文说的 \"add tests to cover the new behavior\"。\n\n验收看这条：`node scripts/replay-truncated.mjs` 回放被切断的流要 `ok:false`、birth 走 passthrough，`npm test` 仍绿、完整流仍 `condensed`。若 replay 还打 `condensed`，先看清 `assembleSseFrames` 的返回值再说。",
+  "stored": "仍在依赖的事实：`finish = finish || (done ? 'stop' : null)`（第 3 轮引，出处有效）。已走过的路：第 1 轮已跑 3 条：bash×1（find），read_file×2（gateway.md、last.log）（曾涉 ./README.md、docs/gateway.md、trace/last.log）；第 2 轮 read_file `src/transport.js`；第 2 轮 read_file `src/birth.js`；第 2 轮 read_file `scripts/replay-truncated.mjs`；第 2 轮 read_file `test/transport.selftest.mjs`；第 2 轮 read_file `package.json`；第 2 轮 read_file `src/transport.legacy.js`；第 3 轮 bash `ls -a; echo ---; cat verify.mjs 2>/dev/null; echo ---; cat…`；第 3 轮 bash `node scripts/replay-truncated.mjs; echo ---; npm test`（不再重跑）。\n\n本轮增量：`src/transport.js` 的 `assembleSseFrames` 用 `finish = finish || (done ? 'stop' : null)` 把只补 `[DONE]` 的截断流兜成 `stop`，`settle` 判成功还看了 `out.length > 0`，截断流于是走 `condensed` 进了交付正文。`src/birth.js` import 的是 `./transport.js`，`README` 指的 `src/transport.legacy.js` 用 `choices[1]`，是诱饵。\n\n改法只落一个：去掉 `done ? 'stop' : null` 兜底，`settle` 只留 `finish != null`。已排除连 legacy 一起改——原文停在 \"Let me check if legacy is imported anywhere. grep.\"；已排除动现有测试——原文逐条推演了 4 个用例仍成立。未解：要不要按原文说的 \"add tests to cover the new behavior\"。\n\n验收看这条：`node scripts/replay-truncated.mjs` 回放被切断的流要 `ok:false`、birth 走 passthrough，`npm test` 仍绿、完整流仍 `condensed`。若 replay 还打 `condensed`，先看清 `assembleSseFrames` 的返回值再说。",
+  "gates": {
+    "v4": {
+      "outputChars": 666,
+      "inventedSpans": 0,
+      "chars": 1222,
+      "closeLoop": false,
+      "provenance": false,
+      "register": false,
+      "ctxChars": 1551,
+      "continuation": 1
+    },
+    "accept": {
+      "netSaved": 296,
+      "minSaved": 50,
+      "tokens": {
+        "rawTokensEst": 458,
+        "outTokensEst": 434,
+        "netSavedTokensEst": 24,
+        "unit": "estimate-not-tokenizer"
+      }
+    },
+    "draftChars": 666,
+    "outChars": 1222,
+    "rawChars": 1518
+  },
+  "outcome": {
+    "solved": true,
+    "roundsToFix": 5,
+    "falseClaim": false,
+    "rawSolved": true,
+    "rawRoundsToFix": 5,
+    "vsRaw": "tie"
+  },
+  "validated": true,
+  "qualityAudit": {
+    "schema": "cfb.mode1-content-audit/1",
+    "status": "clean",
+    "reviewer": "mode1-writer+apparatus-lint/1",
+    "reviewedAt": null,
+    "checkedFields": [
+      "draft",
+      "stored"
+    ],
+    "textSha256": "cc8f50672d11f3bfb283d5e26d35a090dbe23dffc80b5d24a563b873d9e03383",
+    "issues": [],
+    "exempted": []
+  },
+  "digest": "2001f3fefa932faa",
+  "revision": {
+    "at": "2026-10-05T05:06:30.752Z",
+    "note": "gold add --replace（改稿重挣，t17）",
+    "by": "gold add --replace"
+  }
+}

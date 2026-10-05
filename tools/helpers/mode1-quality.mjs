@@ -38,12 +38,50 @@ const RULES = [
 
 const sha256 = (text) => crypto.createHash('sha256').update(String(text)).digest('hex')
 
+/** Sentence-level split used for the quoted-evidence exemption (keeps the terminator with the sentence). */
+const splitSentences = (value) => String(value || '').split(/(?<=[。！？；;])|(?<=\n)/).map((s) => s.trim()).filter(Boolean)
+const squeeze = (value) => String(value || '').replace(/\s+/g, '')
+/** Delimited quotations inside a produced target: 「…」, "…", `…`. These are the only spans allowed to launder evidence. */
+const QUOTE_RES = [/「([^」]{6,400})」/g, /“([^”]{6,400})”/g, /`([^`\n]{6,400})`/g]
+/**
+ * A produced target may quote text that the writer was actually shown — either the program's ledger
+ * echo of the previous round's tool output (【延续段】/【台账】 quoting `bash: 该沙箱不支持 shell 循环…`)
+ * or an explicit 「…」/`…` citation of that observation. Such text is a **report**, not a claim, and
+ * HAND_PROTOCOL requires reporting the observation without extrapolating an environment guarantee.
+ * So a flagged span is exempt iff either
+ *   (a) the whole sentence carrying it appears verbatim in `evidenceText` (= raw ∪ ctx), or
+ *   (b) the flagged span sits inside a delimited quote whose content appears verbatim in `evidenceText`.
+ * Anything the drafter asserted in its own voice is never exempt.
+ */
+export function exemptQuotedIssues(value, issues, evidenceText) {
+  const found = (issues || []).length ? issues : []
+  const evidence = squeeze(evidenceText || '')
+  if (!evidence || !found.length) return { issues: found, exempted: [] }
+  const sentences = splitSentences(value)
+  const kept = [], exempted = []
+  for (const issue of found) {
+    const excerpt = String(issue.excerpt || '')
+    if (!excerpt) { kept.push(issue); continue }
+    const host = sentences.find((s) => s.includes(excerpt))
+    if (!host) { kept.push(issue); continue }
+    if (evidence.includes(squeeze(host))) { exempted.push({ ...issue, sentence: host.slice(0, 160), basis: 'verbatim-sentence-from-raw-or-ctx' }); continue }
+    const at = host.indexOf(excerpt)
+    const quoted = []
+    for (const re of QUOTE_RES) { re.lastIndex = 0; for (const m of host.matchAll(re)) if (m.index <= at && at < m.index + m[0].length) quoted.push(m[1]) }
+    const hit = quoted.find((q) => q.length >= 6 && evidence.includes(squeeze(q)))
+    if (hit) { exempted.push({ ...issue, sentence: host.slice(0, 160), basis: 'verbatim-quote-from-raw-or-ctx', quote: hit.slice(0, 140) }); continue }
+    kept.push(issue)
+  }
+  return { issues: kept, exempted }
+}
+
 /**
  * Detect only the three experiment-apparatus leak classes identified in the gold audit.
  * The source transcript (raw/context) is deliberately not scanned: only produced targets
  * (draft/stored) can become training labels or be presented as the reusable gold standard.
+ * Pass `evidenceText` (raw ∪ ctx) to exempt sentences that merely quote the evidence back.
  */
-export function auditMode1Output(text) {
+export function auditMode1Output(text, evidenceText = null) {
   const value = String(text || '')
   const issues = []
   for (const rule of RULES) {
@@ -55,7 +93,9 @@ export function auditMode1Output(text) {
       }
     }
   }
-  return { status: issues.length ? 'quarantined' : 'clean', issues }
+  if (!evidenceText) return { status: issues.length ? 'quarantined' : 'clean', issues, exempted: [] }
+  const exemptedResult = exemptQuotedIssues(value, issues, evidenceText)
+  return { status: exemptedResult.issues.length ? 'quarantined' : 'clean', issues: exemptedResult.issues, exempted: exemptedResult.exempted }
 }
 
 export function auditMode1Pair(item, { reviewer = 'deterministic-mode1-audit/1', reviewedAt = null } = {}) {
@@ -95,9 +135,17 @@ export function isMode1PairEligible(item, { requireRecorded = true, requireManua
     && manual?.pairTextSha256 === computed.textSha256
 }
 
+/**
+ * Gold eligibility audits **what the writer authored**. `stored` is the program-spliced artifact
+ * (draft + 【延续段】/【状态部件】/【在手行】), so a flagged sentence there is judged on the same terms
+ * as a draft sentence: it counts only when the writer claimed it, not when the program copied the
+ * evidence back verbatim (the old behaviour convicted two clean hand drafts on a `bash: 该沙箱不支持…`
+ * tool echo). `textSha256` still binds both byte-for-byte, so nothing can be swapped in silently.
+ */
 export function auditMode1Gold(item, { reviewer = 'deterministic-mode1-audit/1', reviewedAt = null } = {}) {
-  const draftAudit = auditMode1Output(item?.draft ?? item?.gold ?? item?.hand ?? '')
-  const storedAudit = item?.stored == null ? { status: 'not-present', issues: [] } : auditMode1Output(item.stored)
+  const evidence = String(item?.raw ?? '') + '\n' + String(item?.ctx ?? '')
+  const draftAudit = auditMode1Output(item?.draft ?? item?.gold ?? item?.hand ?? '', evidence)
+  const storedAudit = item?.stored == null ? { status: 'not-present', issues: [], exempted: [] } : auditMode1Output(item.stored, evidence)
   const issues = [
     ...draftAudit.issues.map((issue) => ({ ...issue, field: 'draft' })),
     ...storedAudit.issues.map((issue) => ({ ...issue, field: 'stored' })),
@@ -111,6 +159,7 @@ export function auditMode1Gold(item, { reviewer = 'deterministic-mode1-audit/1',
     checkedFields: item?.stored == null ? ['draft'] : ['draft', 'stored'],
     textSha256,
     issues,
+    exempted: [...draftAudit.exempted.map((e) => ({ ...e, field: 'draft' })), ...storedAudit.exempted.map((e) => ({ ...e, field: 'stored' }))],
   }
 }
 
@@ -126,8 +175,11 @@ export function isMode1GoldEligible(item) {
 }
 
 export function allowedMode1Capture(sample) {
-  const draftAudit = auditMode1Output(sample?.draft ?? '')
-  const storedAudit = sample?.stored == null ? { status: 'not-present', issues: [] } : auditMode1Output(sample.stored)
+  const evidence = String(sample?.raw ?? '') + '\n' + String(sample?.ctx ?? '')
+  const draftAudit = auditMode1Output(sample?.draft ?? '', evidence)
+  const storedAudit = sample?.stored == null ? { status: 'not-present', issues: [], exempted: [] } : auditMode1Output(sample.stored, evidence)
+  // A capture becomes a training label, so both authored targets must be clean; the quoted-evidence
+  // exemption above is what keeps a program-spliced tool echo from disqualifying an otherwise good round.
   const issues = [
     ...draftAudit.issues.map((issue) => ({ ...issue, field: 'draft' })),
     ...storedAudit.issues.map((issue) => ({ ...issue, field: 'stored' })),
@@ -142,6 +194,7 @@ export function allowedMode1Capture(sample) {
       checkedFields: sample?.stored == null ? ['draft'] : ['draft', 'stored'],
       textSha256: sha256(JSON.stringify({ draft: sample?.draft ?? '', stored: sample?.stored ?? null })),
       issues,
+      exempted: [...draftAudit.exempted.map((e) => ({ ...e, field: 'draft' })), ...storedAudit.exempted.map((e) => ({ ...e, field: 'stored' }))],
     },
   }
 }
