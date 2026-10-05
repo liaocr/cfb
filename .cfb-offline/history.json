@@ -1,0 +1,726 @@
+{
+  "schema": "cfb.closed-loop/2",
+  "hypotheses": {},
+  "rounds": [
+    {
+      "round": 1,
+      "at": "2026-10-02T07:44:02.999Z",
+      "status": "planned",
+      "key": "A/A=control@bbb939e0",
+      "lever": "A/A",
+      "value": "control",
+      "champion": {
+        "bind": "on",
+        "kItems": "on",
+        "closing": "on",
+        "deadEnd": "paired",
+        "selection": "keepAll",
+        "layout": "state-first"
+      },
+      "tasks": [
+        "eacces-config",
+        "flaky-timeout",
+        "wrong-model",
+        "perf-regression",
+        "sse-truncated"
+      ],
+      "planDigest": "5cdfdc4a351dca4af6043db88e217770da559c87aadaf6fce435d3c696ac7f38",
+      "scope": "cfb.candidate-replay.2026-10-02.r1",
+      "reservedUsd": null,
+      "expectedUsd": null
+    }
+  ],
+  "generations": [
+    {
+      "gen": 1,
+      "at": "2026-10-02T10:21:12.544Z",
+      "role": "propose",
+      "status": "pack",
+      "label": "propose(assistant) ← base",
+      "planDigest": "1e804252487571ba",
+      "by": "assistant"
+    },
+    {
+      "gen": 2,
+      "at": "2026-10-02T10:24:30.442Z",
+      "role": "propose",
+      "status": "ingested",
+      "label": "propose(assistant) ← base",
+      "planDigest": "ed7dd486332280e7",
+      "by": "assistant",
+      "policy": "p-5d92393440"
+    }
+  ],
+  "trajPlans": [
+    {
+      "n": 2,
+      "at": "2026-10-02T10:25:56.527Z",
+      "status": "superseded",
+      "digest": "47a7dbe18d7e6740",
+      "expectedUsd": 0.925,
+      "capUsd": 2.086,
+      "note": "v4.5：auto 臂已与 policy:base 同构（对等性由构造保证），五家族并跑的信息读不完 —— 改为单家族顺序单元"
+    },
+    {
+      "n": 3,
+      "at": "2026-10-02T10:25:56.630Z",
+      "status": "superseded",
+      "digest": "87cb47cdbc701eb3",
+      "expectedUsd": 0.925,
+      "capUsd": 2.086,
+      "note": "v4.5：候选 #1 等 base 的 v4d9 失败证据到手后再排（同上改为单家族单元）"
+    },
+    {
+      "n": 4,
+      "at": "2026-10-02T11:13:15.996Z",
+      "status": "superseded",
+      "digest": "8e14e8b501991371",
+      "design": "3c530cd2949f05e3",
+      "expectedUsd": 0.15,
+      "capUsd": 0.372,
+      "note": "v14.11：改为模式 1 手写稿单元（raw vs hand）先量天花板"
+    },
+    {
+      "n": 5,
+      "at": "2026-10-02T12:04:28.239Z",
+      "status": "superseded",
+      "digest": "f033dcf7534fdb42",
+      "design": "230de285e9327ec1",
+      "expectedUsd": 0.113,
+      "capUsd": 0.315,
+      "note": "v14.12：成本模型改为影子分叉（跟随臂分歧前不发主调用），按新模型重排为 t6（同设计、同命令）"
+    },
+    {
+      "n": 6,
+      "at": "2026-10-02T12:26:24.236Z",
+      "status": "ceiling",
+      "digest": "e4794bc22a6d7167",
+      "design": "230de285e9327ec1",
+      "expectedUsd": 0.088,
+      "capUsd": 0.315,
+      "ceiling": {
+        "k": 1,
+        "verdict": "insufficient",
+        "pairs": 1,
+        "e": 1,
+        "headroom": 0
+      }
+    },
+    {
+      "n": 7,
+      "at": "2026-10-02T13:17:08.897Z",
+      "status": "ceiling",
+      "digest": "acb79ea7bf735553",
+      "design": "8a40d8267fa215b2",
+      "expectedUsd": 0.075,
+      "capUsd": 0.21,
+      "ceiling": {
+        "k": 2,
+        "verdict": "insufficient",
+        "pairs": 1,
+        "e": 1,
+        "headroom": 0
+      }
+    },
+    {
+      "n": 8,
+      "at": "2026-10-02T15:41:13.407Z",
+      "status": "ceiling",
+      "digest": "dd271474458d902e",
+      "design": "1b4109787b7bebfd",
+      "expectedUsd": 0.163,
+      "capUsd": 0.525,
+      "ceiling": {
+        "k": 3,
+        "verdict": "insufficient",
+        "pairs": 1,
+        "e": 1,
+        "headroom": 0
+      }
+    },
+    {
+      "n": 9,
+      "at": "2026-10-02T16:23:52.331Z",
+      "status": "confirmed",
+      "digest": "ea1d4edccbfb28bf",
+      "design": "0ea4d023a3d18f33",
+      "expectedUsd": 0.148,
+      "capUsd": 0.336,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-29d7400346",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-1.json"
+      }
+    },
+    {
+      "n": 10,
+      "at": "2026-10-03T14:37:22.656Z",
+      "status": "ceiling",
+      "digest": "0120086adc955f50",
+      "design": "151d0ad4fbed70c7",
+      "expectedUsd": 0.275,
+      "capUsd": 0.91,
+      "ceiling": {
+        "k": 1,
+        "verdict": "insufficient",
+        "pairs": 2,
+        "e": 2.333,
+        "headroom": 0.5
+      }
+    },
+    {
+      "n": 11,
+      "at": "2026-10-03T16:42:42.008Z",
+      "status": "ceiling",
+      "digest": "c10fccf3d5857dea",
+      "design": "08b8050a84ae9e83",
+      "expectedUsd": 0.275,
+      "capUsd": 0.91,
+      "ceiling": {
+        "k": 3,
+        "verdict": "undetermined",
+        "pairs": 4,
+        "e": 6.2,
+        "headroom": 0.25
+      }
+    },
+    {
+      "n": 12,
+      "at": "2026-10-03T16:52:31.789Z",
+      "status": "ceiling",
+      "digest": "4141ef37c5f10fd1",
+      "design": "009481ab81797267",
+      "expectedUsd": 0.138,
+      "capUsd": 0.455,
+      "ceiling": {
+        "k": 6,
+        "verdict": "hand-better",
+        "pairs": 5,
+        "e": 10.5,
+        "headroom": 0.4
+      }
+    },
+    {
+      "n": 13,
+      "at": "2026-10-03T18:22:50.310Z",
+      "status": "ceiling",
+      "digest": "2d741a47d425106b",
+      "design": "6a29cd4f2f70a21e",
+      "expectedUsd": 0.275,
+      "capUsd": 0.91,
+      "ceiling": {
+        "k": 7,
+        "verdict": "hand-better",
+        "pairs": 7,
+        "e": 10.5,
+        "headroom": 0.286
+      }
+    },
+    {
+      "n": 14,
+      "at": "2026-10-03T18:50:39.873Z",
+      "status": "ceiling",
+      "digest": "2ee905c88b888ef7",
+      "design": "c18c74afefaca07c",
+      "expectedUsd": 0.275,
+      "capUsd": 0.91,
+      "ceiling": {
+        "k": 9,
+        "verdict": "hand-better",
+        "pairs": 9,
+        "e": 31.875,
+        "headroom": 0.333
+      }
+    },
+    {
+      "n": 15,
+      "at": "2026-10-05T04:17:32.097Z",
+      "status": "ceiling",
+      "digest": "4ffce2ed195fe77a",
+      "design": "dbd6d92f38836a2e",
+      "expectedUsd": 0.55,
+      "capUsd": 1.82,
+      "ceiling": {
+        "k": 1,
+        "verdict": "undetermined",
+        "pairs": 4,
+        "e": 1.5,
+        "headroom": 0
+      }
+    },
+    {
+      "n": 16,
+      "at": "2026-10-05T04:25:17.777Z",
+      "status": "ceiling",
+      "digest": "0b6d4f175ef333b2",
+      "design": "495be0e8777d95aa",
+      "expectedUsd": 0.188,
+      "capUsd": 0.595,
+      "ceiling": {
+        "k": 2,
+        "verdict": "undetermined",
+        "pairs": 5,
+        "e": 2.333,
+        "headroom": 0
+      }
+    },
+    {
+      "n": 17,
+      "at": "2026-10-05T05:05:07.716Z",
+      "status": "ceiling",
+      "digest": "ff3ddf878d5d3ebd",
+      "design": "59e79050ccde1ab1",
+      "expectedUsd": 0.05,
+      "capUsd": 0.21,
+      "ceiling": {
+        "k": 3,
+        "verdict": "undetermined",
+        "pairs": 6,
+        "e": 2.333,
+        "headroom": 0
+      }
+    },
+    {
+      "n": 91,
+      "at": "2026-10-05T08:33:18.509Z",
+      "status": "planned",
+      "digest": "22e2b1bfd1222992",
+      "design": "d8fb9e4bab068b2c",
+      "expectedUsd": 0.1,
+      "capUsd": 0.42
+    },
+    {
+      "n": 92,
+      "at": "2026-10-05T08:49:22.697Z",
+      "status": "ceiling",
+      "digest": "26a9129ccc62a3b7",
+      "design": "27d47837b1d44d48",
+      "expectedUsd": 0.063,
+      "capUsd": 0.175,
+      "ceiling": {
+        "k": 4,
+        "verdict": "undetermined",
+        "pairs": 9,
+        "e": 2.333,
+        "headroom": 0
+      }
+    },
+    {
+      "n": 93,
+      "at": "2026-10-05T08:52:05.053Z",
+      "status": "ceiling",
+      "digest": "a2b1da3caddd0336",
+      "design": "e02036d23be44007",
+      "expectedUsd": 0.163,
+      "capUsd": 0.455,
+      "ceiling": {
+        "k": 5,
+        "verdict": "undetermined",
+        "pairs": 10,
+        "e": 2.333,
+        "headroom": -0.1
+      }
+    },
+    {
+      "n": 94,
+      "at": "2026-10-05T08:55:04.126Z",
+      "status": "ceiling",
+      "digest": "ec0a10ac06f73a26",
+      "design": "f2f9cf874e520dbd",
+      "expectedUsd": 0.088,
+      "capUsd": 0.245,
+      "ceiling": {
+        "k": 6,
+        "verdict": "undetermined",
+        "pairs": 11,
+        "e": 2.333,
+        "headroom": -0.091
+      }
+    },
+    {
+      "n": 95,
+      "at": "2026-10-05T09:15:43.470Z",
+      "status": "ceiling",
+      "digest": "5b80d89852958fce",
+      "design": "f2f9cf874e520dbd",
+      "expectedUsd": 0.088,
+      "capUsd": 0.245,
+      "ceiling": {
+        "k": 7,
+        "verdict": "undetermined",
+        "pairs": 12,
+        "e": 3.75,
+        "headroom": 0
+      }
+    },
+    {
+      "n": 96,
+      "at": "2026-10-05T09:17:52.020Z",
+      "status": "ceiling",
+      "digest": "078d7f0d9b5f5fea",
+      "design": "5c6b5f9b1b50004c",
+      "expectedUsd": 0.113,
+      "capUsd": 0.315,
+      "ceiling": {
+        "k": 8,
+        "verdict": "undetermined",
+        "pairs": 13,
+        "e": 3.75,
+        "headroom": 0
+      }
+    },
+    {
+      "n": 97,
+      "at": "2026-10-05T11:22:57.279Z",
+      "status": "planned",
+      "digest": "66a5a79170f65af1",
+      "design": "3e924350c3fef72c",
+      "expectedUsd": 0.163,
+      "capUsd": 0.525
+    }
+  ],
+  "benchPlans": [
+    {
+      "n": 1,
+      "at": "2026-10-03T12:53:14.027Z",
+      "status": "reported",
+      "digest": "69e33caef84314af",
+      "design": "d2fed09f5e0dc939",
+      "policies": [
+        "base",
+        "p-5d92393440",
+        "p-e62a037097",
+        "p-08bdbc7561"
+      ],
+      "gold": 1,
+      "split": "dev",
+      "expectedUsd": 0.03,
+      "capUsd": 0.046,
+      "best": null,
+      "paired": {
+        "p-5d92393440": {
+          "e": 1.5,
+          "n": 1,
+          "decision": "undetermined"
+        },
+        "p-e62a037097": {
+          "e": 1.5,
+          "n": 1,
+          "decision": "undetermined"
+        },
+        "p-08bdbc7561": {
+          "e": 1.5,
+          "n": 1,
+          "decision": "undetermined"
+        }
+      }
+    },
+    {
+      "n": 2,
+      "at": "2026-10-03T13:13:42.310Z",
+      "status": "reported",
+      "digest": "3b9e9741a51b74f2",
+      "design": "eafba39d7b0d5b10",
+      "policies": [
+        "base",
+        "p-db7e910189"
+      ],
+      "gold": 1,
+      "split": "dev",
+      "expectedUsd": 0.015,
+      "capUsd": 0.023,
+      "best": null,
+      "paired": {
+        "p-db7e910189": {
+          "e": 1.5,
+          "n": 1,
+          "decision": "undetermined"
+        }
+      }
+    },
+    {
+      "n": 3,
+      "at": "2026-10-03T14:03:37.235Z",
+      "status": "reported",
+      "digest": "0deddf8dd2e62901",
+      "design": "3c5b35e017f9498a",
+      "policies": [
+        "base",
+        "p-55a320e0f8"
+      ],
+      "gold": 1,
+      "split": "all",
+      "expectedUsd": 0.015,
+      "capUsd": 0.023,
+      "best": null,
+      "paired": {
+        "p-55a320e0f8": {
+          "e": 1.5,
+          "n": 1,
+          "decision": "undetermined"
+        }
+      }
+    },
+    {
+      "n": 4,
+      "at": "2026-10-03T15:39:24.178Z",
+      "status": "reported",
+      "digest": "be2320fee9115194",
+      "design": "78a8c8adc87ba720",
+      "policies": [
+        "base",
+        "p-55a320e0f8"
+      ],
+      "gold": 4,
+      "split": "dev",
+      "expectedUsd": 0.06,
+      "capUsd": 0.091,
+      "best": null,
+      "paired": {
+        "p-55a320e0f8": {
+          "e": 0.533,
+          "n": 4,
+          "decision": "undetermined"
+        }
+      }
+    },
+    {
+      "n": 7,
+      "at": "2026-10-03T16:13:41.495Z",
+      "status": "reported",
+      "digest": "b55a98d40c3333ed",
+      "design": "752f5b2c50093947",
+      "policies": [
+        "base",
+        "p-8943e331e6"
+      ],
+      "gold": 4,
+      "split": "dev",
+      "expectedUsd": 0.06,
+      "capUsd": 0.091,
+      "best": null,
+      "paired": {
+        "p-8943e331e6": {
+          "e": 6.2,
+          "n": 4,
+          "decision": "undetermined"
+        }
+      }
+    },
+    {
+      "n": 8,
+      "at": "2026-10-03T17:09:23.722Z",
+      "status": "reported",
+      "digest": "5193dcd48bdb6369",
+      "design": "22e5a4610ac6ee9e",
+      "policies": [
+        "base",
+        "p-8943e331e6"
+      ],
+      "gold": 7,
+      "split": "all",
+      "expectedUsd": 0.105,
+      "capUsd": 0.16,
+      "best": "p-8943e331e6",
+      "paired": {
+        "p-8943e331e6": {
+          "e": 10.5,
+          "n": 5,
+          "decision": "promote"
+        }
+      }
+    },
+    {
+      "n": 9,
+      "at": "2026-10-03T20:23:31.541Z",
+      "status": "reported",
+      "digest": "9ce5e67ce74428dd",
+      "design": "8c522cdffa0bf992",
+      "policies": [
+        "base",
+        "p-8943e331e6",
+        "p-1490eefcdf"
+      ],
+      "gold": 11,
+      "split": "all",
+      "expectedUsd": 0.247,
+      "capUsd": 0.376,
+      "best": null,
+      "paired": {
+        "p-8943e331e6": {
+          "e": 4.411,
+          "n": 7,
+          "decision": "undetermined"
+        }
+      }
+    },
+    {
+      "n": 10,
+      "at": "2026-10-05T04:40:46.458Z",
+      "status": "reported",
+      "digest": "f52ad1b26426a291",
+      "design": "71284ef46d531716",
+      "policies": [
+        "base",
+        "p-082d742f60",
+        "p-08bdbc7561",
+        "p-1490eefcdf",
+        "p-55a320e0f8"
+      ],
+      "gold": 3,
+      "split": "dev",
+      "expectedUsd": 0.112,
+      "capUsd": 0.171,
+      "best": null,
+      "paired": {
+        "p-082d742f60": {
+          "e": 2.333,
+          "n": 3,
+          "decision": "undetermined"
+        },
+        "p-08bdbc7561": {
+          "e": 1.5,
+          "n": 3,
+          "decision": "undetermined"
+        },
+        "p-1490eefcdf": {
+          "e": 2.333,
+          "n": 3,
+          "decision": "undetermined"
+        },
+        "p-55a320e0f8": {
+          "e": 1,
+          "n": 3,
+          "decision": "undetermined"
+        }
+      }
+    },
+    {
+      "n": 11,
+      "at": "2026-10-05T05:06:38.342Z",
+      "status": "reported",
+      "digest": "e6022e86da6ff1e5",
+      "design": "34e71d92eae21f27",
+      "policies": [
+        "base",
+        "p-082d742f60",
+        "p-08bdbc7561",
+        "p-1490eefcdf",
+        "p-55a320e0f8"
+      ],
+      "gold": 3,
+      "split": "dev",
+      "expectedUsd": 0.112,
+      "capUsd": 0.171,
+      "best": null,
+      "paired": {
+        "p-082d742f60": {
+          "e": 2.333,
+          "n": 3,
+          "decision": "undetermined"
+        },
+        "p-08bdbc7561": {
+          "e": 1.5,
+          "n": 3,
+          "decision": "undetermined"
+        },
+        "p-1490eefcdf": {
+          "e": 2.333,
+          "n": 3,
+          "decision": "undetermined"
+        },
+        "p-55a320e0f8": {
+          "e": 1,
+          "n": 3,
+          "decision": "undetermined"
+        }
+      }
+    },
+    {
+      "n": 12,
+      "at": "2026-10-05T06:31:21.886Z",
+      "status": "reported",
+      "digest": "588bb6cacdf25e3f",
+      "design": "f10c929ddc678a6d",
+      "policies": [
+        "base",
+        "p-082d742f60",
+        "p-08bdbc7561",
+        "p-1490eefcdf",
+        "p-55a320e0f8"
+      ],
+      "gold": 3,
+      "split": "dev",
+      "expectedUsd": 0.112,
+      "capUsd": 0.171,
+      "best": null,
+      "paired": {
+        "p-082d742f60": {
+          "e": 1,
+          "n": 0,
+          "decision": "undetermined"
+        },
+        "p-08bdbc7561": {
+          "e": 1,
+          "n": 0,
+          "decision": "undetermined"
+        },
+        "p-1490eefcdf": {
+          "e": 1,
+          "n": 0,
+          "decision": "undetermined"
+        }
+      }
+    },
+    {
+      "n": 13,
+      "at": "2026-10-05T06:33:03.463Z",
+      "status": "reported",
+      "digest": "e038c105593041ca",
+      "design": "f10c929ddc678a6d",
+      "policies": [
+        "base",
+        "p-082d742f60",
+        "p-08bdbc7561",
+        "p-1490eefcdf",
+        "p-55a320e0f8"
+      ],
+      "gold": 3,
+      "split": "dev",
+      "expectedUsd": 0.112,
+      "capUsd": 0.171,
+      "best": null,
+      "paired": {
+        "p-082d742f60": {
+          "e": 0.667,
+          "n": 3,
+          "decision": "undetermined"
+        },
+        "p-08bdbc7561": {
+          "e": 2.333,
+          "n": 3,
+          "decision": "undetermined"
+        },
+        "p-1490eefcdf": {
+          "e": 2.333,
+          "n": 3,
+          "decision": "undetermined"
+        },
+        "p-55a320e0f8": {
+          "e": 0.667,
+          "n": 3,
+          "decision": "undetermined"
+        }
+      }
+    }
+  ],
+  "policies": []
+}

@@ -1,0 +1,23 @@
+{
+  "schema": "cfb.policy/1",
+  "parent": "base",
+  "base": "compress-v4d9",
+  "patches": [],
+  "config": {
+    "continuationPath": "bounded",
+    "programParts": "compact",
+    "promptMode": "modular",
+    "birthAdaptiveFloor": true
+  },
+  "rationale": "帕累托极限合成策略：bounded 延续段（带台账标识符溯源与去重）+ compact 极简工程状态部件（消除双倍叠加与冗长说教）+ modular 按轮次动态提示词裁剪（节省 ~260 input tok/轮）+ birthAdaptiveFloor 动态水位触发器",
+  "prediction": "金标与任务池全轮（8/8）100% 过闸、0 逆向增补，单轮净省 Token 与真值密度效率分（truthEfficiency）同时达到帕累托全局最优",
+  "origin": {
+    "by": "synthesizer",
+    "parent": "base",
+    "contrastive": false
+  },
+  "status": "proposed",
+  "sides": {},
+  "id": "p-e62a037097",
+  "at": "2026-10-03T11:22:15.601Z"
+}

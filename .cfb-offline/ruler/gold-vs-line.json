@@ -1,0 +1,186 @@
+{
+  "schema": "cfb.gold-vs-line/1",
+  "at": "2026-10-05T11:26:21.491Z",
+  "goldDir": "transfer/gold",
+  "policy": {
+    "id": "p-v5-local-micro",
+    "patches": [],
+    "config": {
+      "compressLocalModel": true,
+      "continuationPath": "bounded",
+      "programParts": "compact"
+    }
+  },
+  "weightsDigest": null,
+  "note": "金标 C6 判据的线：金标 stored 必须 ≤ 这里记录的 lineChars（产线同题稿实测，不是拍脑袋阈值）",
+  "lines": {
+    "eacces-config_decoy-s0-r3": {
+      "family": "eacces-config",
+      "split": "holdout",
+      "rawChars": 2906,
+      "lineChars": 1343,
+      "lineRatio": 0.4621,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 50.11,
+      "at": "2026-10-05T11:26:21.331Z"
+    },
+    "eacces-config_long-horizon-s0-r5": {
+      "family": "eacces-config",
+      "split": "holdout",
+      "rawChars": 3027,
+      "lineChars": 1571,
+      "lineRatio": 0.519,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 13.86,
+      "at": "2026-10-05T11:26:21.347Z"
+    },
+    "perf-regression-s0-r7": {
+      "family": "perf-regression",
+      "split": "dev",
+      "rawChars": 4112,
+      "lineChars": 1692,
+      "lineRatio": 0.4115,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 23.17,
+      "at": "2026-10-05T11:26:21.370Z"
+    },
+    "sse-truncated_decoy-s0-r4": {
+      "family": "sse-truncated",
+      "split": "dev",
+      "rawChars": 1518,
+      "lineChars": 1978,
+      "lineRatio": 1.303,
+      "g1Ok": false,
+      "g1Why": "no-gain",
+      "g2Ok": true,
+      "ms": 28.14,
+      "at": "2026-10-05T11:26:21.398Z"
+    },
+    "sse-truncated_long-horizon-s0-r5": {
+      "family": "sse-truncated",
+      "split": "dev",
+      "rawChars": 5195,
+      "lineChars": 2219,
+      "lineRatio": 0.4271,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 21.23,
+      "at": "2026-10-05T11:26:21.420Z"
+    },
+    "sse-truncated-s0-r5": {
+      "family": "sse-truncated",
+      "split": "dev",
+      "rawChars": 4198,
+      "lineChars": 2117,
+      "lineRatio": 0.5043,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 13.6,
+      "at": "2026-10-05T11:26:21.433Z"
+    },
+    "wrong-model_decoy-s0-r4": {
+      "family": "wrong-model",
+      "split": "holdout",
+      "rawChars": 1787,
+      "lineChars": 1558,
+      "lineRatio": 0.8719,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 10.29,
+      "at": "2026-10-05T11:26:21.444Z"
+    },
+    "wrong-model_long-horizon-s0-r4": {
+      "family": "wrong-model",
+      "split": "holdout",
+      "rawChars": 4631,
+      "lineChars": 1845,
+      "lineRatio": 0.3984,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 14.25,
+      "at": "2026-10-05T11:26:21.458Z"
+    },
+    "flaky-timeout_long-horizon-s0-r4": {
+      "family": "flaky-timeout",
+      "split": "dev",
+      "rawChars": 19626,
+      "lineChars": 1636,
+      "lineRatio": 0.0834,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 42.03,
+      "at": "2026-10-05T11:15:51.370Z"
+    },
+    "flaky-timeout-s0-r4": {
+      "family": "flaky-timeout",
+      "split": "dev",
+      "rawChars": 28774,
+      "lineChars": 1647,
+      "lineRatio": 0.0572,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 32.02,
+      "at": "2026-10-05T11:15:51.402Z"
+    },
+    "flaky-timeout-s0-r5": {
+      "family": "flaky-timeout",
+      "split": "dev",
+      "rawChars": 11086,
+      "lineChars": 2380,
+      "lineRatio": 0.2147,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 25.5,
+      "at": "2026-10-05T11:15:51.427Z"
+    },
+    "perf-regression-s0-r6": {
+      "family": "perf-regression",
+      "split": "dev",
+      "rawChars": 4113,
+      "lineChars": 1792,
+      "lineRatio": 0.4357,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 11.79,
+      "at": "2026-10-05T11:15:51.439Z"
+    },
+    "sse-truncated_decoy-s0-r3": {
+      "family": "sse-truncated",
+      "split": "dev",
+      "rawChars": 3358,
+      "lineChars": 1870,
+      "lineRatio": 0.5569,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 12.91,
+      "at": "2026-10-05T11:15:51.452Z"
+    },
+    "flaky-timeout-s0-r3": {
+      "family": "flaky-timeout",
+      "split": null,
+      "rawChars": 16861,
+      "lineChars": 1419,
+      "lineRatio": 0.0842,
+      "g1Ok": false,
+      "g1Why": "invented-identifier",
+      "g2Ok": true,
+      "ms": 32.67,
+      "at": "2026-10-05T11:26:21.491Z"
+    }
+  }
+}

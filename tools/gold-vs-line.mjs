@@ -35,6 +35,9 @@ const weights = loadV5MicroWeights(path.join(ROOT, 'transfer', 'models', 'v5-mic
 const baseCfg = { ...offlineBirthConfig({ model: 'v5-micro-local', baseUrl: 'local://v5-micro', policy: LOCAL_POLICY, normalizeConfig }), captureSideOutput: true, microWeights: weights }
 
 const gold = loadGold(goldDir).filter((g) => !g.missing)
+// --pending <file>：把「真机刚写出来的待稿轮」也当条目算线（改稿重挣时 raw 是新轨迹的，不能沿用旧条目的对照）
+const pendFile = f('--pending')
+if (pendFile) { const pp = JSON.parse(fs.readFileSync(path.resolve(ROOT, pendFile), 'utf8')); gold.push({ id: pp.id, family: pp.task, split: null, raw: pp.raw, ctx: pp.ctx || '', calls: pp.calls || [], qualityAudit: { status: 'clean' } }) }
 const prev = fs.existsSync(out) ? JSON.parse(fs.readFileSync(out, 'utf8')) : null
 const lines = { ...(prev && prev.schema === 'cfb.gold-vs-line/1' ? prev.lines : {}) }
 const targets = onlyIds.length ? gold.filter((g) => onlyIds.includes(g.id)) : gold

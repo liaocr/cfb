@@ -1,5 +1,16 @@
 # Changelog — dsh-cot-form-b
 
+## v14.22.1（2026-10-05，上限线的三条配套工具 + 两条从真机学到的结构规矩）
+
+**工具（全 $0）**：`tools/gold-triage.mjs`（把在册+隔离区 19 条逐条按 C1–C6 量化缺口，含「能不能 replay / 能不能读到真机行」⇒ 结论：19/19 可 replay、19/19 有真机行、**C2 闭合判读 19/19 全缺**）；`tools/gold-forge.mjs`（只删**审计自己报出的** excerpt 所在整句 + 把真机跑过的命令/读数摊成证据文件；**不代写验收段**——代写就是把金标写成银标）；`tools/gold-check.mjs`（拿**生产真实 stored** 跑 §0A，支持 `--pending` 判还没入册的真机新轨迹；口径对齐生产：G2/越界以 replay 宣告为准，`new_text` 里的目标值不算发明锚点）。`tools/gold-vs-line.mjs` 加 `--pending`：改稿重挣时线必须按**新轨迹的 raw** 现算，不能沿用旧条目的对照。
+
+**两条结构规矩（真机撞出来的，不是拍的）**：
+1. **两臂同败的格子不能用来挣金标**：`flaky-timeout` 在当前通道下 raw 8 轮未修好、按 §0A 写的新稿（803→791 字，stored 1407 ≤ 产线 1419，$0 判据全过）hand 臂同样 8 轮未修好 ⇒ `vsRaw` 无从产生 ⇒ 记为「测不出信号」，与 v14.21 记过的「4 条测不出信号（两臂同败）」同一现象。
+2. **晚轮格子被 C6 结构性封死**：C6 比的是 `stored`（= 生产延续段 + 稿），而 r6/r7 那种轮次光是「已走过的路」台账就有 1.6k 字 ⇒ 例如 `perf-regression-s0-r7` 前缀 ≈1628 字、产线线 1692 字 ⇒ 稿只剩 64 字预算。**结论：挣金标要落在 r2–r4 的早轮分歧**（与 C4 `roundsToFix ≤ 6` 天然一致）。
+
+**真机记录（`.cfb-offline/ruler/gold-triage.json`）**：t97 `flaky-timeout-s0-r3` —— 稿被接受（`pending/` 只剩 `done`），但主模型 r6 把 edit 落在 `src/distill.js` + `test/helpers.mjs`，**没有落我指的 `test/hedge.selftest.mjs`**，`verifiedAfterFix false` ⇒ 归因为「稿的落点没咬住」：只写 `old_text` 片段不足以防它改错文件，要把「哪一行不是目标」也写清（下一版稿的方向）。花费：≈$0.138（raw 8 轮 + hand 分歧后各轮；两次暂停不花钱）。
+
+
 ## v14.22.0（2026-10-05）：金标上限线——尺子不得低于产品（`goldCeiling` C1–C6 + 产线对照，硬闸）
 
 **缘起（实测，不是审美）**：侧模型自评比金标好。同 raw 对照（`node tools/gold-vs-line.mjs`，$0）：产线本地稿 过 G2 **8/8**、过 G1 7/8、压缩比 **0.612**；金标稿 过 G2 2/8、过 G1 2/8、压缩比 0.670（最差 0.97）。`ceiling-6.json` 本就写着「champion 不能是 hand 臂」——我们把探针当上限用了。⇒ 标尺比产品松，「追上金标」曾是假指标。

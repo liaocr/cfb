@@ -1,0 +1,21 @@
+{
+  "schema": "cfb.policy/1",
+  "parent": "base",
+  "base": "compress-v4d9",
+  "patches": [],
+  "config": {
+    "continuationPath": "bounded",
+    "programParts": "compact",
+    "birthAdaptiveFloor": true
+  },
+  "rationale": "帕累托极限合成策略：bounded 延续段（带台账标识符溯源，消除跨轮线性膨胀）+ compact 极简工程状态部件（消除冗长说教诱导的主模型过度思考）+ birthAdaptiveFloor 动态水位与打转感知触发器",
+  "prediction": "金标与任务池 100% 过闸、0 逆向增补，单轮净省 Token 最大化且保持 100% 真值复合分",
+  "origin": {
+    "by": "synthesizer",
+    "parent": "base"
+  },
+  "status": "proposed",
+  "sides": {},
+  "id": "p-c5207358c8",
+  "at": "2026-10-03T08:43:16.653Z"
+}

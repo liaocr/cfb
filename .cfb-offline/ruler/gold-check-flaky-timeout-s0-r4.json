@@ -1,0 +1,25 @@
+{
+  "warns": [
+    "inventedSpans=1（生产闸判过：stored 逐字回显免检那一类，见 mode1-quality 的 exemptQuotedIssues）"
+  ],
+  "id": "flaky-timeout-s0-r4",
+  "source": "transfer/gold-rejected/flaky-timeout/flaky-timeout-s0-r4.json",
+  "use": "ruler",
+  "draftChars": 818,
+  "rawChars": 28774,
+  "storedReal": 1639,
+  "ratio": 0.057,
+  "line": {
+    "lineChars": 1647,
+    "lineRatio": 0.0572,
+    "g2Ok": true,
+    "差": -8
+  },
+  "closedRead": true,
+  "g2Unchanged": true,
+  "verdict": "partial",
+  "replayGreen": true,
+  "fails": [],
+  "ok": true,
+  "at": "2026-10-05T11:22:26.327Z"
+}

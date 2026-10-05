@@ -1,0 +1,500 @@
+{
+  "schema": "cfb.ceiling/1",
+  "at": "2026-10-05T04:30:36.568Z",
+  "map": {
+    "hand": "hand",
+    "raw": "raw"
+  },
+  "cmp": {
+    "previous": {
+      "n": 5,
+      "solved": 0.4,
+      "meanRoundsToFix": 6,
+      "falseClaims": 0,
+      "verified": 2,
+      "repeats": 0
+    },
+    "champion": {
+      "n": 5,
+      "solved": 0.4,
+      "meanRoundsToFix": 6.5,
+      "falseClaims": 0,
+      "verified": 2,
+      "repeats": 1
+    },
+    "pairs": [
+      {
+        "task": "flaky-timeout:long-horizon",
+        "unit": "flaky-timeout:long-horizon",
+        "sample": 0,
+        "outcome": "tie",
+        "champion": {
+          "solved": false,
+          "roundsToFix": null,
+          "rounds": 7,
+          "startRound": 1,
+          "fromState": null,
+          "calls": 17,
+          "repeats": 1,
+          "falseClaim": false,
+          "verifiedAfterFix": false,
+          "claimJustified": true,
+          "cleanFinish": false,
+          "promptTokens": 16961
+        },
+        "previous": {
+          "solved": false,
+          "roundsToFix": null,
+          "rounds": 7,
+          "startRound": 1,
+          "fromState": null,
+          "calls": 12,
+          "repeats": 0,
+          "falseClaim": false,
+          "verifiedAfterFix": false,
+          "claimJustified": true,
+          "cleanFinish": false,
+          "promptTokens": 26783
+        }
+      },
+      {
+        "task": "flaky-timeout",
+        "unit": "flaky-timeout",
+        "sample": 0,
+        "outcome": "tie",
+        "champion": {
+          "solved": false,
+          "roundsToFix": null,
+          "rounds": 7,
+          "startRound": 1,
+          "fromState": null,
+          "calls": 11,
+          "repeats": 0,
+          "falseClaim": false,
+          "verifiedAfterFix": false,
+          "claimJustified": true,
+          "cleanFinish": false,
+          "promptTokens": 11461
+        },
+        "previous": {
+          "solved": false,
+          "roundsToFix": null,
+          "rounds": 7,
+          "startRound": 1,
+          "fromState": null,
+          "calls": 13,
+          "repeats": 0,
+          "falseClaim": false,
+          "verifiedAfterFix": false,
+          "claimJustified": true,
+          "cleanFinish": false,
+          "promptTokens": 17506
+        }
+      },
+      {
+        "task": "perf-regression",
+        "unit": "perf-regression",
+        "sample": 0,
+        "outcome": "tie",
+        "champion": {
+          "solved": false,
+          "roundsToFix": null,
+          "rounds": 7,
+          "startRound": 1,
+          "fromState": null,
+          "calls": 14,
+          "repeats": 0,
+          "falseClaim": false,
+          "verifiedAfterFix": false,
+          "claimJustified": true,
+          "cleanFinish": false,
+          "promptTokens": 6743
+        },
+        "previous": {
+          "solved": false,
+          "roundsToFix": null,
+          "rounds": 7,
+          "startRound": 1,
+          "fromState": null,
+          "calls": 15,
+          "repeats": 0,
+          "falseClaim": false,
+          "verifiedAfterFix": false,
+          "claimJustified": true,
+          "cleanFinish": false,
+          "promptTokens": 12717
+        }
+      },
+      {
+        "task": "sse-truncated:decoy",
+        "unit": "sse-truncated:decoy",
+        "sample": 0,
+        "outcome": "win",
+        "champion": {
+          "solved": true,
+          "roundsToFix": 5,
+          "rounds": 7,
+          "startRound": 1,
+          "fromState": null,
+          "calls": 17,
+          "repeats": 0,
+          "falseClaim": false,
+          "verifiedAfterFix": true,
+          "claimJustified": true,
+          "cleanFinish": true,
+          "promptTokens": 13590
+        },
+        "previous": {
+          "solved": true,
+          "roundsToFix": 5,
+          "rounds": 7,
+          "startRound": 1,
+          "fromState": null,
+          "calls": 18,
+          "repeats": 0,
+          "falseClaim": false,
+          "verifiedAfterFix": true,
+          "claimJustified": true,
+          "cleanFinish": false,
+          "promptTokens": 19882
+        }
+      },
+      {
+        "task": "flaky-timeout",
+        "unit": "flaky-timeout",
+        "sample": 0,
+        "outcome": "win",
+        "champion": {
+          "solved": true,
+          "roundsToFix": 8,
+          "rounds": 9,
+          "startRound": 1,
+          "fromState": null,
+          "calls": 22,
+          "repeats": 0,
+          "falseClaim": false,
+          "verifiedAfterFix": true,
+          "claimJustified": true,
+          "cleanFinish": false,
+          "promptTokens": 58522
+        },
+        "previous": {
+          "solved": false,
+          "roundsToFix": null,
+          "rounds": 7,
+          "startRound": 1,
+          "fromState": null,
+          "calls": 13,
+          "repeats": 0,
+          "falseClaim": false,
+          "verifiedAfterFix": false,
+          "claimJustified": true,
+          "cleanFinish": false,
+          "promptTokens": 17506
+        }
+      }
+    ],
+    "e": 2.333,
+    "eReject": 0.333,
+    "winRatio": null,
+    "netBenefit": 0.4,
+    "method": "hierarchical-GPC(solved>roundsToFix>falseClaim>verified)"
+  },
+  "perGroup": [
+    {
+      "task": "flaky-timeout:long-horizon",
+      "sample": 0,
+      "outcome": "tie",
+      "hand": {
+        "solved": false,
+        "roundsToFix": null,
+        "rounds": 7,
+        "startRound": 1,
+        "fromState": null,
+        "calls": 17,
+        "repeats": 1,
+        "falseClaim": false,
+        "verifiedAfterFix": false,
+        "claimJustified": true,
+        "cleanFinish": false,
+        "promptTokens": 16961
+      },
+      "raw": {
+        "solved": false,
+        "roundsToFix": null,
+        "rounds": 7,
+        "startRound": 1,
+        "fromState": null,
+        "calls": 12,
+        "repeats": 0,
+        "falseClaim": false,
+        "verifiedAfterFix": false,
+        "claimJustified": true,
+        "cleanFinish": false,
+        "promptTokens": 26783
+      }
+    },
+    {
+      "task": "flaky-timeout",
+      "sample": 0,
+      "outcome": "tie",
+      "hand": {
+        "solved": false,
+        "roundsToFix": null,
+        "rounds": 7,
+        "startRound": 1,
+        "fromState": null,
+        "calls": 11,
+        "repeats": 0,
+        "falseClaim": false,
+        "verifiedAfterFix": false,
+        "claimJustified": true,
+        "cleanFinish": false,
+        "promptTokens": 11461
+      },
+      "raw": {
+        "solved": false,
+        "roundsToFix": null,
+        "rounds": 7,
+        "startRound": 1,
+        "fromState": null,
+        "calls": 13,
+        "repeats": 0,
+        "falseClaim": false,
+        "verifiedAfterFix": false,
+        "claimJustified": true,
+        "cleanFinish": false,
+        "promptTokens": 17506
+      }
+    },
+    {
+      "task": "perf-regression",
+      "sample": 0,
+      "outcome": "tie",
+      "hand": {
+        "solved": false,
+        "roundsToFix": null,
+        "rounds": 7,
+        "startRound": 1,
+        "fromState": null,
+        "calls": 14,
+        "repeats": 0,
+        "falseClaim": false,
+        "verifiedAfterFix": false,
+        "claimJustified": true,
+        "cleanFinish": false,
+        "promptTokens": 6743
+      },
+      "raw": {
+        "solved": false,
+        "roundsToFix": null,
+        "rounds": 7,
+        "startRound": 1,
+        "fromState": null,
+        "calls": 15,
+        "repeats": 0,
+        "falseClaim": false,
+        "verifiedAfterFix": false,
+        "claimJustified": true,
+        "cleanFinish": false,
+        "promptTokens": 12717
+      }
+    },
+    {
+      "task": "sse-truncated:decoy",
+      "sample": 0,
+      "outcome": "win",
+      "hand": {
+        "solved": true,
+        "roundsToFix": 5,
+        "rounds": 7,
+        "startRound": 1,
+        "fromState": null,
+        "calls": 17,
+        "repeats": 0,
+        "falseClaim": false,
+        "verifiedAfterFix": true,
+        "claimJustified": true,
+        "cleanFinish": true,
+        "promptTokens": 13590
+      },
+      "raw": {
+        "solved": true,
+        "roundsToFix": 5,
+        "rounds": 7,
+        "startRound": 1,
+        "fromState": null,
+        "calls": 18,
+        "repeats": 0,
+        "falseClaim": false,
+        "verifiedAfterFix": true,
+        "claimJustified": true,
+        "cleanFinish": false,
+        "promptTokens": 19882
+      }
+    },
+    {
+      "task": "flaky-timeout",
+      "sample": 0,
+      "outcome": "win",
+      "hand": {
+        "solved": true,
+        "roundsToFix": 8,
+        "rounds": 9,
+        "startRound": 1,
+        "fromState": null,
+        "calls": 22,
+        "repeats": 0,
+        "falseClaim": false,
+        "verifiedAfterFix": true,
+        "claimJustified": true,
+        "cleanFinish": false,
+        "promptTokens": 58522
+      },
+      "raw": {
+        "solved": false,
+        "roundsToFix": null,
+        "rounds": 7,
+        "startRound": 1,
+        "fromState": null,
+        "calls": 13,
+        "repeats": 0,
+        "falseClaim": false,
+        "verifiedAfterFix": false,
+        "claimJustified": true,
+        "cleanFinish": false,
+        "promptTokens": 17506
+      }
+    }
+  ],
+  "gate": {
+    "attempts": 4,
+    "accepted": 5,
+    "rejected": 0,
+    "belowFloor": 28,
+    "noContrast": 0,
+    "shadowRounds": 20,
+    "meanRawChars": 5186.2,
+    "meanDraftChars": 1027.6,
+    "meanStoredChars": 1648,
+    "compression": 0.318
+  },
+  "validity": [
+    {
+      "schema": "cfb.validity-pair/1",
+      "at": "2026-10-05T04:30:36.568Z",
+      "source": "ceiling",
+      "task": "flaky-timeout",
+      "arm": "previous",
+      "sample": 0,
+      "proxy": 1.571,
+      "outcome": 0,
+      "roundsToFix": null
+    },
+    {
+      "schema": "cfb.validity-pair/1",
+      "at": "2026-10-05T04:30:36.568Z",
+      "source": "ceiling",
+      "task": "perf-regression",
+      "arm": "previous",
+      "sample": 0,
+      "proxy": 1.714,
+      "outcome": 0,
+      "roundsToFix": null
+    },
+    {
+      "schema": "cfb.validity-pair/1",
+      "at": "2026-10-05T04:30:36.568Z",
+      "source": "ceiling",
+      "task": "sse-truncated:decoy",
+      "arm": "previous",
+      "sample": 0,
+      "proxy": 2,
+      "outcome": 1,
+      "roundsToFix": 5
+    },
+    {
+      "schema": "cfb.validity-pair/1",
+      "at": "2026-10-05T04:30:36.568Z",
+      "source": "ceiling",
+      "task": "flaky-timeout:long-horizon",
+      "arm": "previous",
+      "sample": 0,
+      "proxy": 1.857,
+      "outcome": 0,
+      "roundsToFix": null
+    },
+    {
+      "schema": "cfb.validity-pair/1",
+      "at": "2026-10-05T04:30:36.568Z",
+      "source": "ceiling",
+      "task": "flaky-timeout:long-horizon",
+      "arm": "champion",
+      "sample": 0,
+      "proxy": 1.714,
+      "outcome": 0,
+      "roundsToFix": null
+    },
+    {
+      "schema": "cfb.validity-pair/1",
+      "at": "2026-10-05T04:30:36.568Z",
+      "source": "ceiling",
+      "task": "flaky-timeout",
+      "arm": "champion",
+      "sample": 0,
+      "proxy": 1.571,
+      "outcome": 0,
+      "roundsToFix": null
+    },
+    {
+      "schema": "cfb.validity-pair/1",
+      "at": "2026-10-05T04:30:36.568Z",
+      "source": "ceiling",
+      "task": "perf-regression",
+      "arm": "champion",
+      "sample": 0,
+      "proxy": 1.714,
+      "outcome": 0,
+      "roundsToFix": null
+    },
+    {
+      "schema": "cfb.validity-pair/1",
+      "at": "2026-10-05T04:30:36.568Z",
+      "source": "ceiling",
+      "task": "sse-truncated:decoy",
+      "arm": "champion",
+      "sample": 0,
+      "proxy": 2,
+      "outcome": 1,
+      "roundsToFix": 5
+    },
+    {
+      "schema": "cfb.validity-pair/1",
+      "at": "2026-10-05T04:30:36.568Z",
+      "source": "ceiling",
+      "task": "flaky-timeout",
+      "arm": "previous",
+      "sample": 0,
+      "proxy": 1.833,
+      "outcome": 1,
+      "roundsToFix": 7
+    },
+    {
+      "schema": "cfb.validity-pair/1",
+      "at": "2026-10-05T04:30:36.568Z",
+      "source": "ceiling",
+      "task": "flaky-timeout",
+      "arm": "champion",
+      "sample": 0,
+      "proxy": 1.429,
+      "outcome": 1,
+      "roundsToFix": 8
+    }
+  ],
+  "verdict": "undetermined",
+  "headroom": 0,
+  "families": 3,
+  "note": "hand 臂永远不能当 champion：这里量的是 f(主模型 | 稿) 的上界（修好率差 = 余量点估计）与稿的内容规格；≥4 对、≥2 家族且 e ≥ 阈才算分得出",
+  "plan": "t16",
+  "source": ".cfb-runtime/traj/t16/results.jsonl"
+}
