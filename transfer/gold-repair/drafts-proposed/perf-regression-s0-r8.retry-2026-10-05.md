@@ -1,3 +1,8 @@
+<!-- ⚠ 已知嫌疑（t96）：这份稿是 t96 相对 t95 的唯一新增变量；收稿后 hand 从 r8 起 5086→10843 字膨胀、始终 0 edit。
+    机制不是派活，是「删掉了它已起的头」：r8 raw 里有 Let me check if there are git history，本稿一个 git 没提 ⇒ r9 重新起念
+    （I can't use git show. But git log -p might work?）、r10 真发 git show，edit 一直没发。
+    离线复跑：node tools/silver-shape.mjs <本文件> --id perf-regression-s0-r8 --plan t96 ⇒ L8 报 4 条未处置起念，L3/L4 亦 ✗。
+    留作反例对照，别当范例抄；数据不删。 -->
 第 8 轮没有新变量：So the fix: revert compressTargetMax to 450 这句你本轮写了好几遍，缺的从来不是结论。
 
 本轮唯一的动作：`edit_file` 把 `src/config.js` 里 `compressTargetMax: 1800,` 改成 `compressTargetMax: 450,`，同轮 `bash` 跑 `cat src/config.js` 看到 `compressTargetMax: 450,` 即写根因与依据收工。

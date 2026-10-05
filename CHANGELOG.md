@@ -3,6 +3,15 @@
 > 最新在上。每条的验证数字、开关与待办都是**当时**的记录，按原样保留、不回写；现状以最新条目和 [`README.md`](README.md) 为准。
 > 文档索引见 [`docs/README.md`](docs/README.md)；历史实验与审计合订见 [`docs/HISTORY-AND-EXPERIMENTS.md`](docs/HISTORY-AND-EXPERIMENTS.md)。
 
+## v14.21.5（2026-10-05，把「怎么挣金标」写成流程；顺着 t96 挖出第二种稿病：删掉了主模型已起的头）
+
+- **为什么要写这份文档**：用户点破两件事——①「你这应该早读啊，你不读这玩意你怎么做归因？」；② 这活后面还有人（含模型）要干，不能靠我脑内经验。⇒ 新增 **`docs/GOLD-WRITING-GUIDE.md`**（`docs/README.md` 已挂索引）：8 步标准流程，**第 1 步就是读目标轮 transcript 全文**，只找四样东西并逐字抄原句——结论定没定／卡住它的那一句／它起了哪些头／台账里哪些已定案；另含六段形状要求、归因到位三问、十条真机死法、提交前清单。
+- **你的推论查实结果：方向对，机制不是我原来说的那个。**「r7 没问题」成立——t95 里 r8 raw 只有 1274 字 < 地板 3100 ⇒ 那份 r8 稿在 t95 **根本没被用**（`压稿 1/9` 就是 r7 那一次），所以 t95 是纯 r7 稿的赢。「r8 有反作用」是头号嫌疑、机制明确：本稿 `git` 出现 0 次，而 r8 raw 已写 `Let me check if there are git history`、`Let me also check git log` ⇒ 我把它 7685 字压成 4159 字时，**把它已经起的头当噪音删掉了**，于是 r9 它自己重新起一遍（`I can't use git show. But git log -p might work?`）、r10 真发 `git show v11.9:src/config.js`，一路越查越长、edit 始终没发。**但**词面证据不支持我原先说的「悬念回注」（`reads actual config` 0 次、`cat /` 0 次），且 t96 的 **raw 臂同样 0 edit、也在 git 上漂**（r10 `cp src/config.js /tmp/config.bak`）⇒ 记为嫌疑立案，不记为定论（n=1）。
+- **判据加提示项 L8「起念的处置」**（`tools/silver-shape.mjs`）：从 raw 抽 `Let me / I should / maybe…` 且点名对象的句子，列出稿子没处置的那些。它**不参与裁决**——分不清「新意图」与「已定案」（`git log --oneline` 在台账里，而「翻历史找 v11.9 的 diff」是新的），硬判要么挡死所有稿要么漏判 ⇒ 只把账摆在写稿人面前，判定责任留给人。实测：t95 的 r7 稿 `17 句起念 / 0 条未处置` ✓；t96 的 r8 稿报出 `find / git history / git log / --steps llm` 四条未处置，与真机后续行为一一对应。**这套 $0 检查当时跑过，t96 那 $0.075 就不用花。**
+- **顺带抓到 r8 稿两处形状退步**：落点句写成 `改成`（判据只认规范三元组形式：`把 X: 1800, 改为 X: 450,`）⇒ L3 ✗；没交代待读读数的处置形态 ⇒ L4 ✗。已在该稿文件头加注记标为**反例**；并补离线复验夹具 `.cfb-runtime/traj/t96/pending/perf-regression-s0-r8.json`（真机 r8 raw + 由 transcript 重建的台账，**只用于离线检查，不能喂 traj-run**）。
+- **验证**：`node --check` 通过；`test/silver-shape.selftest.mjs` **15/15**；`npm run verify:offline` **1024 通过 / 0 失败 / 1 跳过（35/35 套件）**；`npm run manifest:check` 420 文件 **0 漂移 0 缺失**。本轮新增真机花费 **$0**。
+- **待办**：金标条目 `perf-regression-s0-r7` 仍是 1 win / 1 tie ⇒ 要当稳的尺子，同一份稿需重复 3–5 次（≈$0.05–0.08/次），并把 `--max-rounds` 留 ≥2 轮余量，让「提前动手 + 修完就验收」进入可测范围。
+
 ## v14.21.4（2026-10-05，`perf-regression` 第一次出金标：t95 $0.05 修好并守住，t96 $0.075 未复现，反证一起入库）
 
 - **公开撤回 v14.21.3 里那条判词**「`perf-regression` 不是稿能撬动的格子」——它是从我自己三次失败倒推的，不是这一格的性质。用户当场顶回来："你只因为你干不成就这样说吗"，并且拒绝我换到容易出金标的格子（那是在凑数量）。真机只花 $0.05 就把它证伪了。

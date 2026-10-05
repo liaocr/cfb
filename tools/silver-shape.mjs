@@ -95,6 +95,21 @@ function auditOne(draftFile, id) {
   }
   const lint = auditMode1Output(draft, ev)
   const estStored = draft.length + LEDGER_CHARS
+  // L8（提示项，不参与裁决）：raw 里主模型自己"起的头"（Let me / I should / maybe… 并点名某个对象），
+  // 稿子里一个没提的，列出来。真机教训 t96：我那份 r8 稿连一个 "git" 都没写，而 r8 原话里已有
+  //   「Let me check if there are git history」「Let me also check git log」⇒ 压缩把已起念的头删掉，
+  //   下一轮它自己重新起一遍（r9「I can't use git show. But git log -p might work?」→ r10 真发 git show v11.9:src/config.js），
+  //   于是越查越长、该发的 edit 一直没发。为什么不做成硬判据：分不清"新意图"与"已定案"
+  //   （`git log --oneline` 在台账里、"翻历史找 v11.9 的 diff"是新的），硬判要么挡死所有稿要么漏判 ⇒ 交给人。
+  const SEED_RE = /(?:let me|let's|i'll|i should|i can also|i might|maybe i|maybe we)[^.\n]{0,80}/gi
+  const CMD_RE = /\b(git\s+\w+|analyze-trace|readlink|npm\s+\w+|find|grep|cat|sed|ls -la|env)\b/g
+  const seeds = [...new Set(norm(raw).match(SEED_RE) || [])]
+  const seedTargets = new Set()
+  for (const sen of seeds) {
+    for (const t of sen.match(/`([^`]{2,26})`/g) || []) seedTargets.add(t.replace(/`/g, ''))
+    for (const t of sen.match(CMD_RE) || []) seedTargets.add(t.toLowerCase())
+  }
+  const droppedSeeds = [...seedTargets].filter((t) => !norm(draft).toLowerCase().includes(t.toLowerCase()))
   const layers = [
     ['L1 因果链（观测→结论，锚点落地）', causal.length > 0, `${causal.length} 句${causal.length ? '：「' + norm(causal[0]).slice(0, 46) + '」…' : '：稿里只有罗列，没有把证据连到结论'}`],
     ['L2 排除带理由', excl.length > 0 && hollow.length === 0, excl.length ? `${excl.length} 条排除，空洞/无理由 ${hollow.length} 条${hollow.length ? '：「' + hollow[0].slice(0, 40) + '」' : ''}` : '一条排除都没有 ⇒ 这不是归因，是摘要'],
@@ -102,14 +117,15 @@ function auditOne(draftFile, id) {
     ['L4 未到手材料的处置', branches.length > 0 || disposals.length > 0, branches.length ? `形态 a：${branches.length} 条预注册分叉「${norm(branches[0]).slice(0, 44)}」…` : disposals.length ? `形态 b：交代没有待读读数并点名欠的动作「${norm(disposals[0]).slice(0, 52)}」…` : '既没预注册分叉（形态 a），也没交代"没有待读读数 + 欠哪个动作"（形态 b）⇒ 下一轮拿到稿不知道该等什么'],
     ['L5 未解是收敛型', openItems.length > 0 && divergentOpen.length === 0, openItems.length ? (divergentOpen.length ? `${divergentOpen.length} 条把未解写成了下一个待办：「${norm(divergentOpen[0]).slice(0, 54)}」… ⇒ 稿只介入一次，这等于派活` : `${openItems.length} 条，都是收敛型（钉死成一个动作或明写不影响本轮）`) : '没留未解 ⇒ 要么真没未解（少见），要么把悬念藏进了别处'],
     ['L6 越界嫌疑句', sus.length === 0 && lint.status === 'clean', sus.length ? `未用定界符框住的嫌疑句 ${sus.length} 条：「${sus[0]}」` : lint.status === 'clean' ? 'lint clean，且环境类说法都在引号内' : `lint: ${lint.issues.map((i) => i.category).join(',')}`],
+    ['L8 起念的处置（提示）', droppedSeeds.length === 0, `raw 里 ${seeds.length} 句起念、点名 ${seedTargets.size} 个对象；稿里没提的 ${droppedSeeds.length} 个${droppedSeeds.length ? '：' + droppedSeeds.slice(0, 4).join(' / ') + ' ⇒ 被删掉的起念会在下一轮以新取证的形式还回来' : ''}`],
     ['L7 长度净省（估）', raw.length - estStored >= 50, `raw ${raw.length} → 稿 ${draft.length} ⇒ stored ≈ ${estStored}，净省 ${raw.length - estStored}（要 ≥ 50；台账按实测区间 459–554 的高端估，真数以闸链为准）`],
   ]
   // L7 是按估的台账长度算的提示项，不参与 verdict —— 权威门槛是闸链的 no-gain（真台账、真字符数）。
   // 让它拖住 verdict 会出现「形状检查说差一层、闸说全绿」的自相矛盾，工具反而添乱。
-  const SOFT = 'L7 长度净省（估）'
-  const bad = layers.filter(([n, ok]) => !ok && n !== SOFT)
+  const SOFT = new Set(['L7 长度净省（估）', 'L8 起念的处置（提示）'])
+  const bad = layers.filter(([n, ok]) => !ok && !SOFT.has(n))
   return { id, draftFile: path.relative(ROOT, draftFile), rawChars: raw.length, draftChars: draft.length, layers, verdict: bad.length ? 'needs-work' : 'silver-ok', missing: bad.map(([n]) => n),
-    hint: layers.filter(([n, ok]) => !ok && n === SOFT).map(([n]) => n) }
+    hint: layers.filter(([n, ok]) => !ok && SOFT.has(n)).map(([n]) => n) }
 }
 
 function die(msg) { console.log('✗ ' + msg); process.exit(2) }

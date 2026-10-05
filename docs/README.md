@@ -14,6 +14,7 @@
 | [`TRAINING-AND-BENCHMARK.md`](TRAINING-AND-BENCHMARK.md) | 训练与评测操作者 | **闭环、基准与 `<0.1B` 微模型训练指南**：三模式训练闭环（手写探顶→金标基准→影子分叉轨迹）、`<0.1B` 预训练双向编码器 + 紧凑学生出生压缩微模型完整训练流水线、规则×LLM 双轨裁判与五大国际官方基准 |
 | [`HISTORY-AND-EXPERIMENTS.md`](HISTORY-AND-EXPERIMENTS.md) | 审计者 / 研究者 | **历史实验与审计合一**：`birthMinChars=3100` 成本定律、`v11.5–v14.18` 关键里程碑、`effect-1..23` / `mr/run1..4` / `traj1..3` 实证结论、两制度分离定理与历史淘汰清单 |
 | [`theory/CFB-THEORY-COMPLETE.md`](theory/CFB-THEORY-COMPLETE.md) | 理论研究者 | **认知编译器六卷完整理论**：T1–T7 信息论基础、价值函数 $v(i;\lambda)$ 与 $\lambda$ 控制器、疫苗记忆（REFUTED）与宿主协议（C0–C3） |
+| [`GOLD-WRITING-GUIDE.md`](GOLD-WRITING-GUIDE.md) | 要写金标稿的人 / 模型 | **金标撰写的标准流程与要求**：第 1 步就是读真机 transcript（跳步＝拿钱换猜测）→ 病根一句话 → 六段形状 → $0 复验 → 预置全部过地板轮 → 真机单元 → 反证一起登记；附归因到位三问、十条真机死法、提交前清单 |
 
 ---
 
