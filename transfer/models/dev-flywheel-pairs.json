@@ -1,25 +1,30 @@
 {
   "schema": "cfb.dev-flywheel-pairs/2",
-  "note": "dev-only 真实飞轮偏好对（提升自 .cfb-offline/train/pairs.jsonl）。此前的常数占位版本（全部 0.92/0.45）已被替换：常数 margin 不构成偏好监督。",
+  "note": "dev-only 真实飞轮偏好对（提升自 .cfb-offline/train/pairs.jsonl）；仅允许白名单 dev 家族，并同时审查 chosen/rejected 两端的实验装置话术。此前常数占位版本不构成偏好监督。",
   "generatedBy": "tools/promote-flywheel-pairs.mjs",
   "sourceFile": ".cfb-offline/train/pairs.jsonl",
   "holdoutExcluded": true,
-  "pairCount": 38,
+  "pairCount": 34,
   "distinctScorePairs": 6,
   "byTask": {
-    "flaky-timeout": 14,
+    "flaky-timeout": 10,
     "perf-regression": 12,
     "sse-truncated": 12
   },
   "dropped": {
-    "holdoutRows": 22,
-    "incompleteRows": 0
+    "holdoutRows": 0,
+    "unknownFamilyRows": 0,
+    "nonDevSplitRows": 0,
+    "incompleteRows": 0,
+    "contaminatedRows": 0,
+    "unreviewedLegacyRows": 0
   },
   "pairs": [
     {
       "schema": "cfb.flywheel-pair/1",
       "task": "flaky-timeout",
       "family": "flaky-timeout",
+      "split": "dev",
       "round": 0,
       "source": "bon-concise:oracle-d2.json<auto-d2e-probe-final.json",
       "chosenArm": "oracle-d2.json",
@@ -28,9 +33,29 @@
       "rejectedScore": 0.917,
       "scoreMargin": 0.024,
       "trainingEligibleHint": false,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "6382e0209aef76352cf7040b3831e172e280b83fe926297b8e007a41c5d705a1",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "6382e0209aef76352cf7040b3831e172e280b83fe926297b8e007a41c5d705a1",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.467Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "5d76e40362b9fbc7",
         "rejectedTextSha256_16": "1de1e6f367959362"
       },
@@ -41,6 +66,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "flaky-timeout",
       "family": "flaky-timeout",
+      "split": "dev",
       "round": 0,
       "source": "bon-concise:oracle-d2.json<auto-d2e-probe.json",
       "chosenArm": "oracle-d2.json",
@@ -49,9 +75,29 @@
       "rejectedScore": 0.917,
       "scoreMargin": 0.024,
       "trainingEligibleHint": false,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "86a9cf954a652fd21de708f8cdca2f2cab29b0ee534b3b4d6cc5938497b93a04",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "86a9cf954a652fd21de708f8cdca2f2cab29b0ee534b3b4d6cc5938497b93a04",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.467Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "5d76e40362b9fbc7",
         "rejectedTextSha256_16": "9aad6320accc9632"
       },
@@ -62,27 +108,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "flaky-timeout",
       "family": "flaky-timeout",
-      "round": 0,
-      "source": "direct:auto-d2.json>direct-d4.json",
-      "chosenArm": "compress-v4d7:mr",
-      "rejectedArm": "compress-v4d4:ctx",
-      "chosenScore": 0.941,
-      "rejectedScore": 0.691,
-      "scoreMargin": 0.25,
-      "trainingEligibleHint": true,
-      "provenance": {
-        "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.467Z",
-        "chosenTextSha256_16": "e5171e26cab54eec",
-        "rejectedTextSha256_16": "86900901d1fe5465"
-      },
-      "chosenText": "上一轮已定：改法只落一个：改 test/hedge.selftest.mjs 的 `hedgeAfterMs: 1600` 这一行，把对冲触发时间拉到主请求 1500ms 之后足够远，状态是提议、未执行。已走过的路不再重走：taskset 两核跑 50 次得到 41 PASS / 9 FAIL，FAIL 全是 §4，got 1703、1711、1720、1698、1706、1709、1715、1702、1712，16 核全过——两核调度导致竞态已经复现，不需要再复现。手里有的代码（逐字）：read_file test/hedge.selftest.mjs §4 的值段 `hedgeAfterMs: 1600`，同节选 `assert.equal(meta.hedgeStartedAt, null)`；read_file src/distill.js hedgedDistill 节选的定义行 `const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)` 和调用行 `primary.then(() => { primarySettled = true })`。\n\n看起来主请求 1500ms 回 200、hedgeAfterMs 只有 1600，中间只有 100ms 余量；两核下事件循环延迟，1500 的响应要经 poll 阶段 resolve promise、再跑微任务置位 primarySettled，而 1600 的定时器可能在同一 timers 阶段紧接着就执行，读到的还是 false，于是 got 1700 左右，这就是 §4 偶发失败的原因。got 的 1698~1720 就是定时器实际触发时刻，和 1600 的差值全是事件循环延迟，不改变落点。改实现对响应到达做同步标记要动 hedgedDistill 那段、且响应到达本身就是异步的，不选；把 hedgeAfterMs 只调到 2000 余量仍偏紧，也不选。改法只落一个：改 test/hedge.selftest.mjs 的 `hedgeAfterMs: 1600`，让它变成 3000，主请求完成后有 1500ms 时间被处理，落点已经在手，src/distill.js 一行不动。\n\n所以下一步工具调用是 edit_file test/hedge.selftest.mjs。如果工具回执显示匹配并写入成功，那么假设坐实，看到这一点就够了，不用再读 src/distill.js、也不用再核 §4 的断言：old_text 是 `hedgeAfterMs: 1600`（上一轮 read_file test/hedge.selftest.mjs §4 的原样值段，这次回执里会原样出现它，不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`。如果回执报匹配到多处或报 no match，那么假设不成立：文件里这一行的实际写法跟节选片段不同，此时不要改 src/distill.js；下一条只写一条 bash grep -n \"hedgeAfterMs\" test/hedge.selftest.mjs，拿到带行号的原样行再重下 old_text。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n验收先写下：改完跑 bash taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do node test/hedge.selftest.mjs || break; done'，预期 50 PASS、不再出现 §4 与 got 数字；这条观察能证明是改后产生的，因为它是改完新起的 50 次两核任务、与上一轮 41/9 的计数不同。单次 PASS 不算证据，因为上一轮本来就 41/50 过。若结果仍是 FAIL §4：第一步只有一条，bash grep -n \"hedgeAfterMs\" test/hedge.selftest.mjs 确认改动落地；落地了就是「余量不足」这个解释错了、竞态另有来源，此时不要再改这个数字、不要再调 3000，下一条只写一条 read_file src/distill.js 的 hedgedDistill 全段。现在能说的：改动已定、未落地；改完跑完 50 次之前是已改未验证，不能说修复完成。",
-      "rejectedText": "CI 里 test/hedge.selftest.mjs §4 大约每 5 次失败 1 次，失败记录是 `expected hedgeStartedAt=null, got 1712` 和 `got 1698`。测试里的边界（逐字，来自 read_file test/hedge.selftest.mjs §4）：\n`server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600`\n`assert.equal(meta.hedgeStartedAt, null)`\n源码（逐字，来自 read_file src/distill.js hedgedDistill 节选）：\n`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`\n`primary.then(() => { primarySettled = true })`\n而 `nproc (CI) → 2`，`nproc (本地) → 16`。看起来这不是逻辑错误：1500 与 1600 只差 100ms，2 核 CI 上事件循环被阻塞时，server 的 1500ms 定时器和客户端的 1600ms 对冲定时器都积压到同一 timers 阶段（1712/1698 正好是延迟量），Node 先执行到期更早的 1500 回调发出响应，紧接着执行 1600 回调触发 hedge，而主请求的 HTTP 响应要到 poll 阶段才 resolve，`primary.then` 微任务还没跑，`primarySettled` 仍是 false；本地 16 核无负载，响应在 1600 之前就 settle 了。清除 timer 不解决问题（还没 settle 就触发了），先搁置；换成检查 primary 是否已 settled 也只是把同一个竞态挪个位置，没把握，不选；增大时间差是改动最小的候选，但落点（测试里那两行配置）这次没在手，不先动。所以下一步工具调用是 bash 限制双核并循环复现：\n`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`\n如果输出里出现 run N 后跟 got 1xxx 或 `expected hedgeStartedAt=null` 的 FAIL，那么就坐实了调度抖动，看到这一行就直接动手 edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（文件里原样的一整行，不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`，把余量从 100ms 拉到 1500ms，改完即停、严禁再用 read_file 或 sed 去确认那行上下文。如果循环 50 次全部 PASS（本地 16 核压不到 2 核的程度），那么说明瓶颈只出在 CI 的核数与负载，此时不要改 test/hedge.selftest.mjs 的 hedgeAfterMs，改去 CI 侧复现或直接给该测试加固定时钟注入。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
-    },
-    {
-      "schema": "cfb.flywheel-pair/1",
-      "task": "flaky-timeout",
-      "family": "flaky-timeout",
+      "split": "dev",
       "round": 0,
       "source": "direct:auto-d2.json>direct-d5a.json",
       "chosenArm": "compress-v4d7:mr",
@@ -91,9 +117,29 @@
       "rejectedScore": 0.441,
       "scoreMargin": 0.5,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "98ff1f037f22ef48e9ed314c63fa27f7021db72af2a5476c4a12aecb13dfe275",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "98ff1f037f22ef48e9ed314c63fa27f7021db72af2a5476c4a12aecb13dfe275",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.467Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "e5171e26cab54eec",
         "rejectedTextSha256_16": "21583a26fe9438c8"
       },
@@ -104,6 +150,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "flaky-timeout",
       "family": "flaky-timeout",
+      "split": "dev",
       "round": 0,
       "source": "direct:auto-d2.json>direct-d5c.json",
       "chosenArm": "compress-v4d7:mr",
@@ -112,9 +159,29 @@
       "rejectedScore": 0.691,
       "scoreMargin": 0.25,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "57192962d212a73737498fc6f9d649c1a04916abf8de547a756f646d0a822b7b",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "57192962d212a73737498fc6f9d649c1a04916abf8de547a756f646d0a822b7b",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.467Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "e5171e26cab54eec",
         "rejectedTextSha256_16": "8d973130917b7879"
       },
@@ -125,27 +192,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "flaky-timeout",
       "family": "flaky-timeout",
-      "round": 0,
-      "source": "direct:direct-d9a-r.json>direct-d4.json",
-      "chosenArm": "compress-v4d6:ctx",
-      "rejectedArm": "compress-v4d4:ctx",
-      "chosenScore": 0.941,
-      "rejectedScore": 0.691,
-      "scoreMargin": 0.25,
-      "trainingEligibleHint": true,
-      "provenance": {
-        "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.466Z",
-        "chosenTextSha256_16": "685bf2a1669320a8",
-        "rejectedTextSha256_16": "86900901d1fe5465"
-      },
-      "chosenText": "我们需要解释 CI 里 test/hedge.selftest.mjs 约每 5 次失败 1 次、本地从不失败。失败时 §4 报 `expected hedgeStartedAt=null, got 1712` 和 `got 1698`，而测试里主请求 1500ms 后回 200、`hedgeAfterMs: 1600`，两者只差 100ms。read_file test/hedge.selftest.mjs §4 里逐字有 `hedgeAfterMs: 1600`，read_file src/distill.js hedgedDistill 节选里逐字有 `const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)` 和 `primary.then(() => { primarySettled = true })`。看起来 CI 只有 2 核，事件循环在 1500–1600ms 窗口被阻塞时，server 的 1500ms 定时器和客户端的 1600ms 对冲定时器会积压到同一个 timers 阶段：先执行 server 1500 回调发出响应，紧接着执行 client 1600 回调，此时主请求的 HTTP 响应还没在 poll 阶段被处理，`primary.then` 微任务尚未把 `primarySettled` 置 true，于是 `startHedge()` 被调用，这就是 got 1712/1698 的原因；1712 和 1698 只是事件循环延迟量，不改变落点。改法只落一个：改 test/hedge.selftest.mjs 的 `hedgeAfterMs: 1600` 这一行，让它把对冲触发时间拉大到主请求 1500ms 之后足够远，落点已经在手。\n所以下一步工具调用是 bash `taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`。如果输出里出现 `expected hedgeStartedAt=null, got` 且 got 在 1600 以上，那么假设坐实，看到这一点就够了，不用再读 distill.js、也不用再核 nproc：直接 edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（上一轮 read_file test/hedge.selftest.mjs §4 的原样行，循环输出里没有它，照用；不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`。如果 50 次全 PASS，那么假设不成立：本地 16 核仍复现不出 2 核 CI 的调度抖动，此时不要改 hedgeAfterMs；能改的另一处只有 src/distill.js 的 `const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`，但主请求完成回调与定时器回调的实际先后还没分辨，先 bash node --trace-event-categories v8,node,node.async_hooks test/hedge.selftest.mjs，看 timers 阶段里 1500 和 1600 两个回调是否落在同一批。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
-      "rejectedText": "CI 里 test/hedge.selftest.mjs §4 大约每 5 次失败 1 次，失败记录是 `expected hedgeStartedAt=null, got 1712` 和 `got 1698`。测试里的边界（逐字，来自 read_file test/hedge.selftest.mjs §4）：\n`server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600`\n`assert.equal(meta.hedgeStartedAt, null)`\n源码（逐字，来自 read_file src/distill.js hedgedDistill 节选）：\n`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`\n`primary.then(() => { primarySettled = true })`\n而 `nproc (CI) → 2`，`nproc (本地) → 16`。看起来这不是逻辑错误：1500 与 1600 只差 100ms，2 核 CI 上事件循环被阻塞时，server 的 1500ms 定时器和客户端的 1600ms 对冲定时器都积压到同一 timers 阶段（1712/1698 正好是延迟量），Node 先执行到期更早的 1500 回调发出响应，紧接着执行 1600 回调触发 hedge，而主请求的 HTTP 响应要到 poll 阶段才 resolve，`primary.then` 微任务还没跑，`primarySettled` 仍是 false；本地 16 核无负载，响应在 1600 之前就 settle 了。清除 timer 不解决问题（还没 settle 就触发了），先搁置；换成检查 primary 是否已 settled 也只是把同一个竞态挪个位置，没把握，不选；增大时间差是改动最小的候选，但落点（测试里那两行配置）这次没在手，不先动。所以下一步工具调用是 bash 限制双核并循环复现：\n`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`\n如果输出里出现 run N 后跟 got 1xxx 或 `expected hedgeStartedAt=null` 的 FAIL，那么就坐实了调度抖动，看到这一行就直接动手 edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（文件里原样的一整行，不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`，把余量从 100ms 拉到 1500ms，改完即停、严禁再用 read_file 或 sed 去确认那行上下文。如果循环 50 次全部 PASS（本地 16 核压不到 2 核的程度），那么说明瓶颈只出在 CI 的核数与负载，此时不要改 test/hedge.selftest.mjs 的 hedgeAfterMs，改去 CI 侧复现或直接给该测试加固定时钟注入。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
-    },
-    {
-      "schema": "cfb.flywheel-pair/1",
-      "task": "flaky-timeout",
-      "family": "flaky-timeout",
+      "split": "dev",
       "round": 0,
       "source": "direct:direct-d9a-r.json>direct-d5a.json",
       "chosenArm": "compress-v4d6:ctx",
@@ -154,9 +201,29 @@
       "rejectedScore": 0.441,
       "scoreMargin": 0.5,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "a334c84f0f08a28727a9977887312a5454c32051e013022126b0bf1959a5848a",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "a334c84f0f08a28727a9977887312a5454c32051e013022126b0bf1959a5848a",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.466Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "685bf2a1669320a8",
         "rejectedTextSha256_16": "21583a26fe9438c8"
       },
@@ -167,6 +234,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "flaky-timeout",
       "family": "flaky-timeout",
+      "split": "dev",
       "round": 0,
       "source": "direct:direct-d9a-r.json>direct-d5c.json",
       "chosenArm": "compress-v4d6:ctx",
@@ -175,9 +243,29 @@
       "rejectedScore": 0.691,
       "scoreMargin": 0.25,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "ece7447c897dac62bae62711a12b64175b79ddc778e0cb08881f9d96d60e3c43",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "ece7447c897dac62bae62711a12b64175b79ddc778e0cb08881f9d96d60e3c43",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.466Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "685bf2a1669320a8",
         "rejectedTextSha256_16": "8d973130917b7879"
       },
@@ -188,27 +276,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "flaky-timeout",
       "family": "flaky-timeout",
-      "round": 0,
-      "source": "direct:direct-d9a.json>direct-d4.json",
-      "chosenArm": "compress-v4d6:ctx",
-      "rejectedArm": "compress-v4d4:ctx",
-      "chosenScore": 0.941,
-      "rejectedScore": 0.691,
-      "scoreMargin": 0.25,
-      "trainingEligibleHint": true,
-      "provenance": {
-        "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.466Z",
-        "chosenTextSha256_16": "c8fa5e19d12caa19",
-        "rejectedTextSha256_16": "86900901d1fe5465"
-      },
-      "chosenText": "我们需要解释 CI 里 test/hedge.selftest.mjs 约每 5 次失败 1 次、本地从不失败。失败时 §4 报 `expected hedgeStartedAt=null, got 1712` 和 `got 1698`，而测试里主请求 1500ms 后回 200、`hedgeAfterMs: 1600`，两者只差 100ms。read_file test/hedge.selftest.mjs §4 里逐字有 `hedgeAfterMs: 1600`，read_file src/distill.js hedgedDistill 节选里逐字有 `const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)` 和 `primary.then(() => { primarySettled = true })`。看起来 CI 只有 2 核，事件循环在 1500–1600ms 窗口被阻塞时，server 的 1500ms 定时器和客户端的 1600ms 对冲定时器会积压到同一个 timers 阶段：先执行 server 1500 回调发出响应，紧接着执行 client 1600 回调，此时主请求的 HTTP 响应还没在 poll 阶段被处理，`primary.then` 微任务尚未把 `primarySettled` 置 true，于是 `startHedge()` 被调用，这就是 got 1712/1698 的原因；1712 和 1698 只是事件循环延迟量，不改变落点。调大超时试过没用，不选：超时是连不上的结果不是原因。把 dial 换成连接池重试要动三处、那段代码没读过，不选。改法只落一个：改 test/hedge.selftest.mjs 的 `hedgeAfterMs: 1600` 这一行，让它把对冲触发时间拉大到主请求 1500ms 之后足够远，落点已经在手。\n所以下一步工具调用是 bash `taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`。如果输出里出现 `expected hedgeStartedAt=null, got` 且 got 在 1600 以上，那么假设坐实，看到这一点就够了，不用再读 distill.js、也不用再核 nproc：直接 edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（上一轮 read_file test/hedge.selftest.mjs §4 的原样行，循环输出里没有它，照用；不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`。如果 50 次全 PASS，那么假设不成立：本地 16 核仍复现不出 2 核 CI 的调度抖动，此时不要改 hedgeAfterMs；能改的另一处只有 src/distill.js 的 `const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`，但主请求完成回调与定时器回调的实际先后还没分辨，先 bash node --trace-event-categories v8,node,node.async_hooks test/hedge.selftest.mjs，看 timers 阶段里 1500 和 1600 两个回调是否落在同一批。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
-      "rejectedText": "CI 里 test/hedge.selftest.mjs §4 大约每 5 次失败 1 次，失败记录是 `expected hedgeStartedAt=null, got 1712` 和 `got 1698`。测试里的边界（逐字，来自 read_file test/hedge.selftest.mjs §4）：\n`server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600`\n`assert.equal(meta.hedgeStartedAt, null)`\n源码（逐字，来自 read_file src/distill.js hedgedDistill 节选）：\n`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`\n`primary.then(() => { primarySettled = true })`\n而 `nproc (CI) → 2`，`nproc (本地) → 16`。看起来这不是逻辑错误：1500 与 1600 只差 100ms，2 核 CI 上事件循环被阻塞时，server 的 1500ms 定时器和客户端的 1600ms 对冲定时器都积压到同一 timers 阶段（1712/1698 正好是延迟量），Node 先执行到期更早的 1500 回调发出响应，紧接着执行 1600 回调触发 hedge，而主请求的 HTTP 响应要到 poll 阶段才 resolve，`primary.then` 微任务还没跑，`primarySettled` 仍是 false；本地 16 核无负载，响应在 1600 之前就 settle 了。清除 timer 不解决问题（还没 settle 就触发了），先搁置；换成检查 primary 是否已 settled 也只是把同一个竞态挪个位置，没把握，不选；增大时间差是改动最小的候选，但落点（测试里那两行配置）这次没在手，不先动。所以下一步工具调用是 bash 限制双核并循环复现：\n`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`\n如果输出里出现 run N 后跟 got 1xxx 或 `expected hedgeStartedAt=null` 的 FAIL，那么就坐实了调度抖动，看到这一行就直接动手 edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（文件里原样的一整行，不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`，把余量从 100ms 拉到 1500ms，改完即停、严禁再用 read_file 或 sed 去确认那行上下文。如果循环 50 次全部 PASS（本地 16 核压不到 2 核的程度），那么说明瓶颈只出在 CI 的核数与负载，此时不要改 test/hedge.selftest.mjs 的 hedgeAfterMs，改去 CI 侧复现或直接给该测试加固定时钟注入。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
-    },
-    {
-      "schema": "cfb.flywheel-pair/1",
-      "task": "flaky-timeout",
-      "family": "flaky-timeout",
+      "split": "dev",
       "round": 0,
       "source": "direct:direct-d9a.json>direct-d5a.json",
       "chosenArm": "compress-v4d6:ctx",
@@ -217,9 +285,29 @@
       "rejectedScore": 0.441,
       "scoreMargin": 0.5,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "665cae96fb3b80660c4cbc42c8dc7922b4390403c49d437f196103ebb7ebedac",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "665cae96fb3b80660c4cbc42c8dc7922b4390403c49d437f196103ebb7ebedac",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.466Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "c8fa5e19d12caa19",
         "rejectedTextSha256_16": "21583a26fe9438c8"
       },
@@ -230,6 +318,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "flaky-timeout",
       "family": "flaky-timeout",
+      "split": "dev",
       "round": 0,
       "source": "direct:direct-d9a.json>direct-d5c.json",
       "chosenArm": "compress-v4d6:ctx",
@@ -238,9 +327,29 @@
       "rejectedScore": 0.691,
       "scoreMargin": 0.25,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "4250715baf5fd72b9f45a0ca7167f533630d904b625e4a82a819b5bb7988fffd",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "4250715baf5fd72b9f45a0ca7167f533630d904b625e4a82a819b5bb7988fffd",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.467Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "c8fa5e19d12caa19",
         "rejectedTextSha256_16": "8d973130917b7879"
       },
@@ -251,27 +360,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "flaky-timeout",
       "family": "flaky-timeout",
-      "round": 0,
-      "source": "direct:oracle-d2.json>direct-d4.json",
-      "chosenArm": "oracle-d2.json",
-      "rejectedArm": "compress-v4d4:ctx",
-      "chosenScore": 0.941,
-      "rejectedScore": 0.691,
-      "scoreMargin": 0.25,
-      "trainingEligibleHint": true,
-      "provenance": {
-        "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.467Z",
-        "chosenTextSha256_16": "5d76e40362b9fbc7",
-        "rejectedTextSha256_16": "86900901d1fe5465"
-      },
-      "chosenText": "上一轮已定：改 test/hedge.selftest.mjs 的 `hedgeAfterMs: 1600`（第 1 轮 read_file §4 节选里原样的几个字，唯一；这次循环输出里没有它，出处仍有效），把主请求 1500ms 与对冲触发之间的余量从 100ms 拉大。已排除：清除 timer / primary.finally 里置位（同一 timers 阶段里定时器先跑，换挂钩点解决不了）；fake timers（要重写测试计时，改动最大）；改 src/distill.js 的逻辑（不是逻辑错，是测试对时序太敏感）。\n\n限核复现坐实了机理：taskset -c 0,1 下 50 次 9 次 FAIL，got 全在 1698–1720，也就是阈值 1600 之后约 100ms；同一循环不限核 50/50 PASS。这就是 2 核把 server 的 1500 定时器和对冲的 1600 定时器压进同一 timers 阶段、主请求还没在 poll 阶段 resolve 就先触发了 hedge。改法只落一个：edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`，new_text 是 `hedgeAfterMs: 3000`，让主请求 1500ms 回来之后还有 1500ms 余量；src/distill.js 一行不动。\n\n验收先写下：验收必须在同等条件下做——再跑一遍 taskset -c 0,1 的 50 次循环，预期 50/50 PASS（改之前同条件是 9 FAIL）。不限核的 50/50 PASS 不算证据，因为改之前它就是 50/50 PASS；如果输出说 taskset 不可用、循环是不限核跑的，那这次通过没有信息量，得装 util-linux 或用 docker --cpus=2 / 加负载重跑，或者推到 CI 让它跑多次，最终以 CI 为准。如果同等条件下还是 FAIL、而且 got 紧贴新阈值（3000 出头），那「事件循环晚一拍」的解释就不成立了——一拍晚不了 1.5 s，说明那次运行里主请求根本没在 3 s 内 settle：不要再把 3000 调成 5000，先 grep -n hedgeAfterMs test/hedge.selftest.mjs 确认改动落地，再去取证主请求何时 settle（在测试里打印 settle 时刻，或看 server 的 1500 定时器是不是也被拖慢），到那一步才轮到 fake timers。现在能说的：机理已复现、改动待落地；同条件 50/50 通过之前是「已改未验证」，不能说修好了。",
-      "rejectedText": "CI 里 test/hedge.selftest.mjs §4 大约每 5 次失败 1 次，失败记录是 `expected hedgeStartedAt=null, got 1712` 和 `got 1698`。测试里的边界（逐字，来自 read_file test/hedge.selftest.mjs §4）：\n`server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600`\n`assert.equal(meta.hedgeStartedAt, null)`\n源码（逐字，来自 read_file src/distill.js hedgedDistill 节选）：\n`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`\n`primary.then(() => { primarySettled = true })`\n而 `nproc (CI) → 2`，`nproc (本地) → 16`。看起来这不是逻辑错误：1500 与 1600 只差 100ms，2 核 CI 上事件循环被阻塞时，server 的 1500ms 定时器和客户端的 1600ms 对冲定时器都积压到同一 timers 阶段（1712/1698 正好是延迟量），Node 先执行到期更早的 1500 回调发出响应，紧接着执行 1600 回调触发 hedge，而主请求的 HTTP 响应要到 poll 阶段才 resolve，`primary.then` 微任务还没跑，`primarySettled` 仍是 false；本地 16 核无负载，响应在 1600 之前就 settle 了。清除 timer 不解决问题（还没 settle 就触发了），先搁置；换成检查 primary 是否已 settled 也只是把同一个竞态挪个位置，没把握，不选；增大时间差是改动最小的候选，但落点（测试里那两行配置）这次没在手，不先动。所以下一步工具调用是 bash 限制双核并循环复现：\n`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`\n如果输出里出现 run N 后跟 got 1xxx 或 `expected hedgeStartedAt=null` 的 FAIL，那么就坐实了调度抖动，看到这一行就直接动手 edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（文件里原样的一整行，不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`，把余量从 100ms 拉到 1500ms，改完即停、严禁再用 read_file 或 sed 去确认那行上下文。如果循环 50 次全部 PASS（本地 16 核压不到 2 核的程度），那么说明瓶颈只出在 CI 的核数与负载，此时不要改 test/hedge.selftest.mjs 的 hedgeAfterMs，改去 CI 侧复现或直接给该测试加固定时钟注入。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
-    },
-    {
-      "schema": "cfb.flywheel-pair/1",
-      "task": "flaky-timeout",
-      "family": "flaky-timeout",
+      "split": "dev",
       "round": 0,
       "source": "direct:oracle-d2.json>direct-d5a.json",
       "chosenArm": "oracle-d2.json",
@@ -280,9 +369,29 @@
       "rejectedScore": 0.441,
       "scoreMargin": 0.5,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "c865099c8c053a83f2fa38f78fe2ff7e0f4292259003a32fe0391d1e652f8a02",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "c865099c8c053a83f2fa38f78fe2ff7e0f4292259003a32fe0391d1e652f8a02",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.467Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "5d76e40362b9fbc7",
         "rejectedTextSha256_16": "21583a26fe9438c8"
       },
@@ -293,6 +402,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "flaky-timeout",
       "family": "flaky-timeout",
+      "split": "dev",
       "round": 0,
       "source": "direct:oracle-d2.json>direct-d5c.json",
       "chosenArm": "oracle-d2.json",
@@ -301,9 +411,29 @@
       "rejectedScore": 0.691,
       "scoreMargin": 0.25,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "d2a5323f62cd02b3263b6c0a15f35c4e7ad72e8c311b73fc4ab7eda57bb93fdb",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "d2a5323f62cd02b3263b6c0a15f35c4e7ad72e8c311b73fc4ab7eda57bb93fdb",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.467Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "5d76e40362b9fbc7",
         "rejectedTextSha256_16": "8d973130917b7879"
       },
@@ -314,6 +444,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "perf-regression",
       "family": "perf-regression",
+      "split": "dev",
       "round": 0,
       "source": "bon-concise:oracle-d2.json<auto-d2e-probe-final.json",
       "chosenArm": "oracle-d2.json",
@@ -322,9 +453,29 @@
       "rejectedScore": 0.941,
       "scoreMargin": 0,
       "trainingEligibleHint": false,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "325d3ca32c49fe697e224d37b674c7214f05a6f156df4e46e938465849aed71f",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "325d3ca32c49fe697e224d37b674c7214f05a6f156df4e46e938465849aed71f",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "447ca74db7713799",
         "rejectedTextSha256_16": "d90fb839a7f1bc30"
       },
@@ -335,6 +486,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "perf-regression",
       "family": "perf-regression",
+      "split": "dev",
       "round": 0,
       "source": "bon-concise:oracle-d2.json<auto-d2e-probe.json",
       "chosenArm": "oracle-d2.json",
@@ -343,9 +495,29 @@
       "rejectedScore": 0.941,
       "scoreMargin": 0,
       "trainingEligibleHint": false,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "6c4b903889c6f6b8d2d7a9b4e7ef4c53cf05a09a041b68530809bfbbbb60d14e",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "6c4b903889c6f6b8d2d7a9b4e7ef4c53cf05a09a041b68530809bfbbbb60d14e",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "447ca74db7713799",
         "rejectedTextSha256_16": "c27e8b70cadb2969"
       },
@@ -356,6 +528,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "perf-regression",
       "family": "perf-regression",
+      "split": "dev",
       "round": 0,
       "source": "bon-concise:oracle-d2b.json<auto-d2e-probe-final.json",
       "chosenArm": "oracle-d2b.json",
@@ -364,9 +537,29 @@
       "rejectedScore": 0.941,
       "scoreMargin": 0,
       "trainingEligibleHint": false,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "c76c4c1b641bc3a6a08b3dfc211c1dfd6e0d8e9cd2487b9fba943de89b3886ba",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "c76c4c1b641bc3a6a08b3dfc211c1dfd6e0d8e9cd2487b9fba943de89b3886ba",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "dda27b10e57eca6f",
         "rejectedTextSha256_16": "d90fb839a7f1bc30"
       },
@@ -377,6 +570,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "perf-regression",
       "family": "perf-regression",
+      "split": "dev",
       "round": 0,
       "source": "bon-concise:oracle-d2b.json<auto-d2e-probe.json",
       "chosenArm": "oracle-d2b.json",
@@ -385,9 +579,29 @@
       "rejectedScore": 0.941,
       "scoreMargin": 0,
       "trainingEligibleHint": false,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "ab42bf191f041e7f5432411318c3b8ae96beb8ef3f874f672caf8d06acff089f",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "ab42bf191f041e7f5432411318c3b8ae96beb8ef3f874f672caf8d06acff089f",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "dda27b10e57eca6f",
         "rejectedTextSha256_16": "c27e8b70cadb2969"
       },
@@ -398,6 +612,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "perf-regression",
       "family": "perf-regression",
+      "split": "dev",
       "round": 0,
       "source": "direct:auto-d2.json>direct-d6a.json",
       "chosenArm": "compress-v4d7:mr",
@@ -406,9 +621,29 @@
       "rejectedScore": 0.476,
       "scoreMargin": 0.465,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "0d830581c507d6c0b821247bb0bcd8e25ed5a97463fed8fa5edf9109ef49c651",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "0d830581c507d6c0b821247bb0bcd8e25ed5a97463fed8fa5edf9109ef49c651",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "9961a86852bbf7b7",
         "rejectedTextSha256_16": "af2e4af62e787685"
       },
@@ -419,6 +654,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "perf-regression",
       "family": "perf-regression",
+      "split": "dev",
       "round": 0,
       "source": "direct:auto-d2.json>direct-d6b.json",
       "chosenArm": "compress-v4d7:mr",
@@ -427,9 +663,29 @@
       "rejectedScore": 0.476,
       "scoreMargin": 0.465,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "7f8cc97e2b443e26c362ea8a442890faa428b8352a1f40382f55a40131ebb814",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "7f8cc97e2b443e26c362ea8a442890faa428b8352a1f40382f55a40131ebb814",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "9961a86852bbf7b7",
         "rejectedTextSha256_16": "5f5e8eae6e233c60"
       },
@@ -440,6 +696,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "perf-regression",
       "family": "perf-regression",
+      "split": "dev",
       "round": 0,
       "source": "direct:auto-d2.json>direct-d6c.json",
       "chosenArm": "compress-v4d7:mr",
@@ -448,9 +705,29 @@
       "rejectedScore": 0.476,
       "scoreMargin": 0.465,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "61ca007e66e1ac41e3c264f11524c4a96f278ce6b767546911a920f4098fd26b",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "61ca007e66e1ac41e3c264f11524c4a96f278ce6b767546911a920f4098fd26b",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "9961a86852bbf7b7",
         "rejectedTextSha256_16": "9cec12dda0e6223f"
       },
@@ -461,6 +738,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "perf-regression",
       "family": "perf-regression",
+      "split": "dev",
       "round": 0,
       "source": "direct:auto-d2.json>direct-d7b.json",
       "chosenArm": "compress-v4d7:mr",
@@ -469,9 +747,29 @@
       "rejectedScore": 0.476,
       "scoreMargin": 0.465,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "5069b131785a81de1c668ea1a7e85786a03d48fa425eef02eae4bb677bdcf89a",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "5069b131785a81de1c668ea1a7e85786a03d48fa425eef02eae4bb677bdcf89a",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "9961a86852bbf7b7",
         "rejectedTextSha256_16": "37e03a85305085f4"
       },
@@ -482,6 +780,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "perf-regression",
       "family": "perf-regression",
+      "split": "dev",
       "round": 0,
       "source": "direct:auto-d2d-part-r.json>direct-d6a.json",
       "chosenArm": "compress-v4d8:mr",
@@ -490,9 +789,29 @@
       "rejectedScore": 0.476,
       "scoreMargin": 0.465,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "a0d23ff604ec279f03b857548e4b4c5f183b7b158e56a388a9db31faf49c1b79",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "a0d23ff604ec279f03b857548e4b4c5f183b7b158e56a388a9db31faf49c1b79",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "24f5eda8b1016589",
         "rejectedTextSha256_16": "af2e4af62e787685"
       },
@@ -503,6 +822,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "perf-regression",
       "family": "perf-regression",
+      "split": "dev",
       "round": 0,
       "source": "direct:auto-d2d-part-r.json>direct-d6b.json",
       "chosenArm": "compress-v4d8:mr",
@@ -511,9 +831,29 @@
       "rejectedScore": 0.476,
       "scoreMargin": 0.465,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "1c6524aeaa7b65d0642060d7e82f36455fe8b4c06fc31cc8ae0c13489e4298e9",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "1c6524aeaa7b65d0642060d7e82f36455fe8b4c06fc31cc8ae0c13489e4298e9",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "24f5eda8b1016589",
         "rejectedTextSha256_16": "5f5e8eae6e233c60"
       },
@@ -524,6 +864,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "perf-regression",
       "family": "perf-regression",
+      "split": "dev",
       "round": 0,
       "source": "direct:auto-d2d-part-r.json>direct-d6c.json",
       "chosenArm": "compress-v4d8:mr",
@@ -532,9 +873,29 @@
       "rejectedScore": 0.476,
       "scoreMargin": 0.465,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "05aba6997788aede5151a985c404c2ed4249033ae4c3ec996c072a5f0a924596",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "05aba6997788aede5151a985c404c2ed4249033ae4c3ec996c072a5f0a924596",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "24f5eda8b1016589",
         "rejectedTextSha256_16": "9cec12dda0e6223f"
       },
@@ -545,6 +906,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "perf-regression",
       "family": "perf-regression",
+      "split": "dev",
       "round": 0,
       "source": "direct:auto-d2d-part-r.json>direct-d7b.json",
       "chosenArm": "compress-v4d8:mr",
@@ -553,9 +915,29 @@
       "rejectedScore": 0.476,
       "scoreMargin": 0.465,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "74e0d8c07a362543fc6c4c0abe8337d8258c224808ac117fdf1c2a0f4694ec7f",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "74e0d8c07a362543fc6c4c0abe8337d8258c224808ac117fdf1c2a0f4694ec7f",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "24f5eda8b1016589",
         "rejectedTextSha256_16": "37e03a85305085f4"
       },
@@ -566,6 +948,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "sse-truncated",
       "family": "sse-truncated",
+      "split": "dev",
       "round": 0,
       "source": "direct:auto-d2c-r.json>direct-d5-first.json",
       "chosenArm": "compress-v4d8:mr",
@@ -574,9 +957,29 @@
       "rejectedScore": 0.357,
       "scoreMargin": 0.464,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "b438b716d87023d8a2f35d6413496aa0ca7d000b59f5ad3c9f72bd1ec8bcfecd",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "b438b716d87023d8a2f35d6413496aa0ca7d000b59f5ad3c9f72bd1ec8bcfecd",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "b355503035d88a97",
         "rejectedTextSha256_16": "87094c96f0c9dc5c"
       },
@@ -587,6 +990,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "sse-truncated",
       "family": "sse-truncated",
+      "split": "dev",
       "round": 0,
       "source": "direct:auto-d2c-r.json>direct-d5b.json",
       "chosenArm": "compress-v4d8:mr",
@@ -595,9 +999,29 @@
       "rejectedScore": 0.357,
       "scoreMargin": 0.464,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "87fbf196b62ae23526988ac0ff589be0065ebd6b8f9df718224aa295e4372d18",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "87fbf196b62ae23526988ac0ff589be0065ebd6b8f9df718224aa295e4372d18",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "b355503035d88a97",
         "rejectedTextSha256_16": "c47416a8051369c1"
       },
@@ -608,6 +1032,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "sse-truncated",
       "family": "sse-truncated",
+      "split": "dev",
       "round": 0,
       "source": "direct:auto-d2c-r.json>direct-d5c.json",
       "chosenArm": "compress-v4d8:mr",
@@ -616,9 +1041,29 @@
       "rejectedScore": 0.357,
       "scoreMargin": 0.464,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "ab2a38d4d1ddeefe0761d2e4157045dcf94f9cdbb6edbfb979ece846759f0b01",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "ab2a38d4d1ddeefe0761d2e4157045dcf94f9cdbb6edbfb979ece846759f0b01",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "b355503035d88a97",
         "rejectedTextSha256_16": "b1228b544c2ed41c"
       },
@@ -629,6 +1074,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "sse-truncated",
       "family": "sse-truncated",
+      "split": "dev",
       "round": 0,
       "source": "direct:auto-d2c-r.json>direct-d5d.json",
       "chosenArm": "compress-v4d8:mr",
@@ -637,9 +1083,29 @@
       "rejectedScore": 0.357,
       "scoreMargin": 0.464,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "90c130a4c0d60532e4c9fb0f4c92211b70363e1aeecf7d50d5103bdbe463cbc7",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "90c130a4c0d60532e4c9fb0f4c92211b70363e1aeecf7d50d5103bdbe463cbc7",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "b355503035d88a97",
         "rejectedTextSha256_16": "519def8d8e70d0c6"
       },
@@ -650,6 +1116,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "sse-truncated",
       "family": "sse-truncated",
+      "split": "dev",
       "round": 0,
       "source": "direct:oracle-d2.json>direct-d5-first.json",
       "chosenArm": "oracle-d2.json",
@@ -658,9 +1125,29 @@
       "rejectedScore": 0.357,
       "scoreMargin": 0.464,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "adf2ad8da22910bb6a23c47fe6fbb149ac03dfc84d12086b49a07bc7338f26ee",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "adf2ad8da22910bb6a23c47fe6fbb149ac03dfc84d12086b49a07bc7338f26ee",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "2b57005624db23c7",
         "rejectedTextSha256_16": "87094c96f0c9dc5c"
       },
@@ -671,6 +1158,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "sse-truncated",
       "family": "sse-truncated",
+      "split": "dev",
       "round": 0,
       "source": "direct:oracle-d2.json>direct-d5b.json",
       "chosenArm": "oracle-d2.json",
@@ -679,9 +1167,29 @@
       "rejectedScore": 0.357,
       "scoreMargin": 0.464,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "94259687279eb29fba41f7d04a3429c4908114319ae9c9d0142824afb90ea72d",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "94259687279eb29fba41f7d04a3429c4908114319ae9c9d0142824afb90ea72d",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "2b57005624db23c7",
         "rejectedTextSha256_16": "c47416a8051369c1"
       },
@@ -692,6 +1200,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "sse-truncated",
       "family": "sse-truncated",
+      "split": "dev",
       "round": 0,
       "source": "direct:oracle-d2.json>direct-d5c.json",
       "chosenArm": "oracle-d2.json",
@@ -700,9 +1209,29 @@
       "rejectedScore": 0.357,
       "scoreMargin": 0.464,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "b3c8fa44cfd0a3050bbd347e136245a6f1e2c223e4109d25e77c6624af34f8b9",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "b3c8fa44cfd0a3050bbd347e136245a6f1e2c223e4109d25e77c6624af34f8b9",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "2b57005624db23c7",
         "rejectedTextSha256_16": "b1228b544c2ed41c"
       },
@@ -713,6 +1242,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "sse-truncated",
       "family": "sse-truncated",
+      "split": "dev",
       "round": 0,
       "source": "direct:oracle-d2.json>direct-d5d.json",
       "chosenArm": "oracle-d2.json",
@@ -721,9 +1251,29 @@
       "rejectedScore": 0.357,
       "scoreMargin": 0.464,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "b99183a82caad9f77011ef1bfed55284caa182faf92bd71d6187b3383f28b611",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "b99183a82caad9f77011ef1bfed55284caa182faf92bd71d6187b3383f28b611",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "2b57005624db23c7",
         "rejectedTextSha256_16": "519def8d8e70d0c6"
       },
@@ -734,6 +1284,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "sse-truncated",
       "family": "sse-truncated",
+      "split": "dev",
       "round": 0,
       "source": "direct:oracle-d2b.json>direct-d5-first.json",
       "chosenArm": "oracle-d2b.json",
@@ -742,9 +1293,29 @@
       "rejectedScore": 0.357,
       "scoreMargin": 0.464,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "748f09fd5f4a63d84727d2d9059982082fc3d39cd9017d3675c77973622434f4",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "748f09fd5f4a63d84727d2d9059982082fc3d39cd9017d3675c77973622434f4",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "6916de3f00eb1240",
         "rejectedTextSha256_16": "87094c96f0c9dc5c"
       },
@@ -755,6 +1326,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "sse-truncated",
       "family": "sse-truncated",
+      "split": "dev",
       "round": 0,
       "source": "direct:oracle-d2b.json>direct-d5b.json",
       "chosenArm": "oracle-d2b.json",
@@ -763,9 +1335,29 @@
       "rejectedScore": 0.357,
       "scoreMargin": 0.464,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "636e8d807692509aec7c1e9fc96919382488dec8418fd6fdf51b14e827907f09",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "636e8d807692509aec7c1e9fc96919382488dec8418fd6fdf51b14e827907f09",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "6916de3f00eb1240",
         "rejectedTextSha256_16": "c47416a8051369c1"
       },
@@ -776,6 +1368,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "sse-truncated",
       "family": "sse-truncated",
+      "split": "dev",
       "round": 0,
       "source": "direct:oracle-d2b.json>direct-d5c.json",
       "chosenArm": "oracle-d2b.json",
@@ -784,9 +1377,29 @@
       "rejectedScore": 0.357,
       "scoreMargin": 0.464,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "fbdd5d69c31589dd2064e263dc17257106e01990b424c6305cc6ca1e79c378d7",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "fbdd5d69c31589dd2064e263dc17257106e01990b424c6305cc6ca1e79c378d7",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "6916de3f00eb1240",
         "rejectedTextSha256_16": "b1228b544c2ed41c"
       },
@@ -797,6 +1410,7 @@
       "schema": "cfb.flywheel-pair/1",
       "task": "sse-truncated",
       "family": "sse-truncated",
+      "split": "dev",
       "round": 0,
       "source": "direct:oracle-d2b.json>direct-d5d.json",
       "chosenArm": "oracle-d2b.json",
@@ -805,9 +1419,29 @@
       "rejectedScore": 0.357,
       "scoreMargin": 0.464,
       "trainingEligibleHint": true,
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "0542fb995fabbeaaf73078ab5dce1adee8c7a33b335db14c564fd99608af6019",
+        "issues": []
+      },
+      "manualReview": {
+        "schema": "cfb.mode1-manual-review/1",
+        "status": "clear-of-apparatus",
+        "reviewer": "agent-semantic-review/1",
+        "reviewedAt": "2026-10-04",
+        "pairTextSha256": "0542fb995fabbeaaf73078ab5dce1adee8c7a33b335db14c564fd99608af6019",
+        "method": "full-text contextual review of unique legacy targets; see document-level manualReview summary"
+      },
       "provenance": {
         "inputFile": ".cfb-offline/train/pairs.jsonl",
-        "collectedAt": "2026-10-04T08:50:18.468Z",
+        "collectedAt": null,
         "chosenTextSha256_16": "6916de3f00eb1240",
         "rejectedTextSha256_16": "519def8d8e70d0c6"
       },

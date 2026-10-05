@@ -18,13 +18,18 @@ import {
 import { slotsOf, draftDistance, handDraftGate } from './helpers/hand-draft.mjs'
 import { loadGold } from './helpers/three-mode.mjs'
 import { readHandSamples } from './helpers/hand-capture.mjs'
+import { allowedMode1Capture, auditMode1Output, auditMode1Pair, isMode1GoldEligible, isMode1PairEligible } from './helpers/mode1-quality.mjs'
 import { buildPool } from './helpers/tasks.mjs'
 import { productionContext } from './helpers/candidates.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+// Micro training is intentionally allowlisted: an unfamiliar/new family must never become
+// dev merely because it is absent from the holdout denylist.
+const DEV_FAMS = new Set(['flaky-timeout', 'perf-regression', 'sse-truncated'])
 const HOLDOUT_FAMS = new Set(['eacces-config', 'wrong-model'])
 const familyKey = (value) => String(value || '').replace(/^pool:/, '').split(':', 1)[0].replace(/_(?:decoy|long-horizon).*$/, '')
 const isHoldout = (family) => HOLDOUT_FAMS.has(familyKey(family))
+const isDevFamily = (family) => DEV_FAMS.has(familyKey(family))
 // v14.20 数据集构造策略（可用环境变量覆盖；默认 = hardened 困难负例，见 docs/TRAINING-AND-BENCHMARK.md §6.2）
 //   hardened：负例优先「与正例长度接近」+「当前生产打分最高（模型最难）」；legacy：仅按旧 hardness 排序。
 const NEG_STRATEGY = process.env.CFB_MICRO_NEG_STRATEGY || 'hardened'
@@ -35,9 +40,10 @@ const NEAR_LENGTH_TOKENS = Number(process.env.CFB_MICRO_NEAR_LENGTH_TOKENS || 3)
 // 2026-10-04：文本哈希特征块（char 2-4gram 定长桶）。默认 256；设为 0 即回到纯 19 维。
 const TEXT_HASH_BUCKETS = Math.max(0, Math.min(512, Math.floor(Number(process.env.CFB_MICRO_TEXT_HASH_BUCKETS ?? 256))))
 const FEATURE_OPTS = { textHashBuckets: TEXT_HASH_BUCKETS }
-// 2026-10-04 杠杆C：困难负例裁判改用「新候选权重」（缺省 74f690c 产出的 v5-micro-weights.candidate.json,
-// dev val unit=0.8502），而非生产权重（0.6087）；缺失/加载失败时回落到生产权重并如实记录。
-const NEG_JUDGE_WEIGHTS_PATH = (process.env.CFB_MICRO_NEG_JUDGE_WEIGHTS ?? 'transfer/models/v5-micro-weights.candidate.json').trim()
+// The training preregistration pins a frozen judge; the candidate is never its own default miner.
+// An explicit empty value selects the production weights. Missing/invalid pinned weights fail
+// closed in the training runner rather than silently changing the pair-construction recipe.
+const NEG_JUDGE_WEIGHTS_PATH = (process.env.CFB_MICRO_NEG_JUDGE_WEIGHTS ?? 'transfer/models/v5-micro-weights.judge-4764fd2.json').trim()
 let NEG_JUDGE_WEIGHTS = null
 let NEG_JUDGE_LABEL = 'production(v5-micro-weights.json)'
 if (NEG_JUDGE_WEIGHTS_PATH) {
@@ -57,12 +63,13 @@ if (NEG_JUDGE_WEIGHTS_PATH) {
 // ── 2026-10-04 杠杆A：独立 LLM 单元标签复核整合（tools/review-unit-labels.mjs 产出）──────────
 // 口径：high/medium 置信度复核结论优先于规则标签，可把 trainingEligible=false 提升为 true；
 //       NOISE 一律 clamp yVal ≤ 0.10；low/缺失置信度保留规则标签；逐条按内容指纹(sourceId+unitIdx+text)校验。
-const UNIT_REVIEW_PATH = (process.env.CFB_MICRO_UNIT_REVIEW_FILE ?? 'transfer/models/unit-label-review.json').trim()
+const UNIT_REVIEW_PATH = (process.env.CFB_MICRO_UNIT_REVIEW_FILE ?? 'transfer/models/unit-label-review-blind-v3.json').trim()
 const reviewState = {
   path: UNIT_REVIEW_PATH, sha256: null, datasetSha256AtReview: null,
+  reviewer: null, reviewerKind: null, reviewedAt: null,
   loaded: 0, applied: 0, promoted: 0, relabeled: 0, noiseClamped: 0,
   lowConfidenceKeptRule: 0, digestMismatch: 0,
-  slots: {}, byDigest: new Map(), byKey: new Map(),
+  slots: {}, protocolsLoaded: {}, protocolsApplied: {}, byDigest: new Map(), byKey: new Map(),
 }
 if (UNIT_REVIEW_PATH) {
   const resolvedReview = path.resolve(ROOT, UNIT_REVIEW_PATH)
@@ -73,12 +80,25 @@ if (UNIT_REVIEW_PATH) {
       if (!/^cfb\.unit-label-review\/\d/.test(String(parsed.schema || ''))) throw new Error(`bad schema: ${parsed.schema}`)
       reviewState.sha256 = crypto.createHash('sha256').update(raw).digest('hex')
       reviewState.datasetSha256AtReview = parsed.datasetSha256AtReview || null
+      reviewState.reviewer = parsed.reviewer || null
+      reviewState.reviewerKind = parsed.reviewerKind || 'legacy-unknown'
+      reviewState.reviewedAt = parsed.reviewedAt || null
+      const documentProtocol = parsed.reviewProtocol || 'rule-hints-visible-v1'
       for (const row of parsed.items || []) {
-        if (row && row.digest) reviewState.byDigest.set(row.digest, row)
-        if (row) reviewState.byKey.set(`${row.sourceId}#${row.unitIdx}`, row)
+        if (!row) continue
+        const normalized = {
+          ...row,
+          _reviewProtocol: row.reviewProtocol || documentProtocol,
+          _reviewer: row.reviewer || parsed.reviewer || null,
+        }
+        if (normalized.digest) {
+          reviewState.byDigest.set(normalized.digest, normalized)
+          reviewState.protocolsLoaded[normalized._reviewProtocol] = (reviewState.protocolsLoaded[normalized._reviewProtocol] || 0) + 1
+        }
+        reviewState.byKey.set(`${normalized.sourceId}#${normalized.unitIdx}`, normalized)
       }
       reviewState.loaded = reviewState.byDigest.size
-      console.log(`[builder] unit-label review loaded: ${reviewState.loaded} items (${UNIT_REVIEW_PATH})`)
+      console.log(`[builder] unit-label review loaded: ${reviewState.loaded} items (${UNIT_REVIEW_PATH}; ${documentProtocol})`)
     } catch (error) {
       console.warn(`[builder] unit-label review load failed: ${String(error?.message || error).slice(0, 160)}`)
     }
@@ -97,9 +117,16 @@ function applyUnitLabelReview(lbl, { sourceId, unitIdx, text }) {
   }
   reviewState.applied++
   const conf = String(row.confidence || '').toLowerCase()
+  const protocol = String(row._reviewProtocol || 'rule-hints-visible-v1')
+  const blindIndependent = protocol === 'blind-unit-label-v3'
+  reviewState.protocolsApplied[protocol] = (reviewState.protocolsApplied[protocol] || 0) + 1
   const audit = { ...(lbl.labelAudit || {}) }
   audit.review = {
-    source: 'llm-independent-review', confidence: conf,
+    source: blindIndependent ? 'llm-blind-independent-review' : 'llm-assisted-review',
+    protocol,
+    reviewer: row._reviewer || reviewState.reviewer,
+    independence: blindIndependent ? 'blind-independent' : 'rule-hint-visible-not-independent',
+    confidence: conf,
     rationale: String(row.rationale || '').slice(0, 300),
     ruleSlot: lbl.slot, ruleYVal: lbl.yVal, reviewSlot: row.slot, reviewYVal: row.yVal,
     applied: conf === 'high' || conf === 'medium',
@@ -134,11 +161,13 @@ const countBy = (rows, keyOf) => {
 }
 
 function loadAllGold(root = ROOT) {
-  return loadGold(path.join(root, 'transfer', 'gold')).map((g) => ({
-    ...g,
-    hand: g.draft || g.gold || g.hand || '',
-    split: g.split || (isHoldout(g.family) ? 'holdout' : 'dev'),
-  }))
+  return loadGold(path.join(root, 'transfer', 'gold')).map((g) => {
+    const family = familyKey(g.family)
+    const split = isHoldout(family)
+      ? 'holdout'
+      : (isDevFamily(family) && g.split !== 'holdout' ? 'dev' : 'unassigned')
+    return { ...g, hand: g.draft || g.gold || g.hand || '', split }
+  })
 }
 
 function labelUnitMultiTask(unit, feat, goldSlots) {
@@ -288,12 +317,13 @@ function extractSpanPointers(raw, ctx, hand) {
 function buildStepSimpoCounterfactuals(item) {
   const { id, family, raw, ctx, hand, calls = [] } = item
   const pairs = []
+  if (auditMode1Output(hand).status !== 'clean') return pairs
   const hay = buildGroundedHay(raw, ctx)
   const baseDd = draftDistance(hand, hand, { raw, ctx, calls })
   const basePref = extractDraftPrefFeatures(hand, raw, ctx, hay.anchors)
 
   const addPair = (negType, rejectedText, description) => {
-    if (!rejectedText || rejectedText === hand) return
+    if (!rejectedText || rejectedText === hand || auditMode1Output(rejectedText).status !== 'clean') return
     const dd = draftDistance(rejectedText, hand, { raw, ctx, calls })
     const gate = handDraftGate(raw, rejectedText, ctx)
     const rejPref = extractDraftPrefFeatures(rejectedText, raw, ctx, hay.anchors)
@@ -302,14 +332,18 @@ function buildStepSimpoCounterfactuals(item) {
     const gammaDd = +Math.min(1.25, rawMargin).toFixed(4)
     const scoreMargin = baseDd.score - dd.score
     const trainingEligible = !gate.ok && scoreMargin > 1e-6
+    const contentAudit = auditMode1Pair({ chosenText: hand, rejectedText }, { reviewer: 'micro-dataset-counterfactual-lint/1' })
+    if (contentAudit.status !== 'clean') return
     pairs.push({
       id: `${id}::${negType}`,
       sourceId: id,
       family,
+      split: 'dev',
       negType,
       description,
       chosenText: hand,
       rejectedText,
+      contentAudit,
       chosenScore: +baseDd.score.toFixed(4),
       rejectedScore: +dd.score.toFixed(4),
       rejectedGateOk: gate.ok,
@@ -362,15 +396,26 @@ function buildStepSimpoCounterfactuals(item) {
 
 export function buildMicroDataset() {
   const allGold = loadAllGold(ROOT)
-  const devGold = allGold.filter((g) => g.split === 'dev' && !isHoldout(g.family))
+  const cleanGold = allGold.filter((g) => isMode1GoldEligible(g) && g.qualityAudit?.status === 'clean')
+  const devGold = cleanGold.filter((g) => g.split === 'dev' && isDevFamily(g.family))
   const holdoutGold = allGold.filter((g) => g.split === 'holdout' || isHoldout(g.family))
+  const unassignedGoldCount = allGold.filter((g) => g.split === 'unassigned').length
+  const uncleanGoldExcluded = allGold.length - cleanGold.length
   const oracleD2c = JSON.parse(fs.readFileSync(path.join(ROOT, 'transfer/mr/oracle-d2c.json'), 'utf8'))
   const oracleM = JSON.parse(fs.readFileSync(path.join(ROOT, 'transfer/oracle/M.json'), 'utf8'))
   const oracleMap = new Map()
-  for (const r of oracleD2c.rows || []) if (r.id && r.text) oracleMap.set(r.id, r.text)
-  for (const r of oracleM.rows || []) if (r.id && r.text && !oracleMap.has(r.id)) oracleMap.set(r.id, r.text)
+  let contaminatedOracleTargetsDropped = 0
+  for (const r of oracleD2c.rows || []) if (r.id && r.text) {
+    if (auditMode1Output(r.text).status === 'clean') oracleMap.set(r.id, r.text)
+    else contaminatedOracleTargetsDropped++
+  }
+  for (const r of oracleM.rows || []) if (r.id && r.text && !oracleMap.has(r.id)) {
+    if (auditMode1Output(r.text).status === 'clean') oracleMap.set(r.id, r.text)
+    else contaminatedOracleTargetsDropped++
+  }
+  let contaminatedPoolTargetsDropped = 0
   const pool = buildPool()
-  const devPool = (pool.tasks || []).filter((t) => t.split === 'dev' && !isHoldout(t.id))
+  const devPool = (pool.tasks || []).filter((t) => t.split === 'dev' && isDevFamily(t.id))
 
   const unitSamples = []
   const spanSamples = []
@@ -519,6 +564,7 @@ export function buildMicroDataset() {
     const rawText = t.chain?.a2?.raw || t.raw || ''
     const ctxText = (t.chain ? productionContext(t.chain) : '') || t.ctx || ''
     if (!oracleText || !rawText) continue
+    if (auditMode1Output(oracleText).status !== 'clean') { contaminatedPoolTargetsDropped++; continue }
     const goldSlots = slotsOf(oracleText)
     const units = splitDiscourseUnits(rawText)
     const targetAnchors = extractAnchorsV5(rawText.slice(Math.floor(rawText.length * 0.65)))
@@ -564,26 +610,58 @@ export function buildMicroDataset() {
     }))
   }
 
-  // 3. 合并飞轮真实偏好对（严格仅取 dev 家族；优先读 .cfb-offline/train/pairs.jsonl，回退读 transfer/models/dev-flywheel-pairs.json）
+  // 3. 合并飞轮真实偏好对（严格仅取 dev 家族）：本地 JSONL 的新行须有字节绑定的静态审计；
+  // tracked legacy 回退文件还须有逐对语义复核，不能因静态 lint clean 就自动接纳。
   const fwPath = path.join(ROOT, '.cfb-offline/train/pairs.jsonl')
   const fwFallbackPath = path.join(ROOT, 'transfer/models/dev-flywheel-pairs.json')
-  const flywheelSourcePath = fs.existsSync(fwPath) ? path.relative(ROOT, fwPath) : (fs.existsSync(fwFallbackPath) ? path.relative(ROOT, fwFallbackPath) : null)
-  // 兼容两种回退形状：旧版裸数组，或 tools/promote-flywheel-pairs.mjs 生成的 {schema, pairs[]} 文档
   const fallbackDoc = fs.existsSync(fwFallbackPath) ? JSON.parse(fs.readFileSync(fwFallbackPath, 'utf8')) : null
-  const flywheelSourceSchema = fs.existsSync(fwPath) ? 'jsonl' : (Array.isArray(fallbackDoc) ? 'array/legacy' : (fallbackDoc?.schema || null))
-  const rawFwItems = fs.existsSync(fwPath)
+  const localFwItems = fs.existsSync(fwPath)
     ? fs.readFileSync(fwPath, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
-    : (Array.isArray(fallbackDoc) ? fallbackDoc : (fallbackDoc?.pairs || []))
-  // v14.20：占位式常数分数（如全部 0.92/0.45）不构成偏好监督 ⇒ 整批降级为 needs-review，绝不当成真实 margin 训练。
-  const distinctScorePairs = new Set(rawFwItems.map((item) => {
+    : []
+  const curatedFwItems = Array.isArray(fallbackDoc) ? fallbackDoc : (fallbackDoc?.pairs || [])
+  const flywheelSourcePath = [
+    localFwItems.length ? path.relative(ROOT, fwPath) : null,
+    curatedFwItems.length ? path.relative(ROOT, fwFallbackPath) : null,
+  ].filter(Boolean).join(' + ') || null
+  const flywheelSourceSchema = [
+    localFwItems.length ? 'jsonl' : null,
+    curatedFwItems.length ? (Array.isArray(fallbackDoc) ? 'array/legacy' : fallbackDoc?.schema || 'unknown-doc') : null,
+  ].filter(Boolean).join(' + ') || null
+  const flywheelTextOf = (item, side) => item[`${side}Text`] || (typeof item[side] === 'string' ? item[side] : item[side]?.draft) || ''
+  const pairKey = (item) => `${familyKey(item.task || item.taskId || item.family || '')}:${auditMode1Pair({
+    chosenText: flywheelTextOf(item, 'chosen'), rejectedText: flywheelTextOf(item, 'rejected'),
+  }).textSha256}`
+  const sourceItems = new Map()
+  for (const item of localFwItems) sourceItems.set(pairKey(item), { ...item, _manualReviewRequired: false })
+  for (const item of curatedFwItems) sourceItems.set(pairKey(item), { ...item, _manualReviewRequired: true })
+  const rawFwItems = [...sourceItems.values()]
+  const isAllowedFlywheelDev = (item) => {
+    const fam = familyKey(item.task || item.taskId || item.family || '')
+    return item.split === 'dev' && isDevFamily(fam)
+  }
+  const flywheelTextClean = (item) => isMode1PairEligible({
+    ...item,
+    chosenText: flywheelTextOf(item, 'chosen'),
+    rejectedText: flywheelTextOf(item, 'rejected'),
+  }, { requireRecorded: true, requireManualReview: item._manualReviewRequired === true })
+  const devFwItems = rawFwItems.filter((item) => isAllowedFlywheelDev(item) && flywheelTextClean(item))
+  const flywheelHoldoutRowsDropped = rawFwItems.filter((item) => item.split === 'holdout' || isHoldout(item.task || item.taskId || item.family || '')).length
+  const flywheelContaminatedRowsDropped = rawFwItems.filter((item) => isAllowedFlywheelDev(item) && !flywheelTextClean(item)).length
+  const flywheelNonDevSplitRowsDropped = rawFwItems.filter((item) => isDevFamily(item.task || item.taskId || item.family || '') && item.split !== 'dev').length
+  const flywheelUnknownFamilyRowsDropped = rawFwItems.filter((item) => {
+    const fam = familyKey(item.task || item.taskId || item.family || '')
+    return !DEV_FAMS.has(fam) && !HOLDOUT_FAMS.has(fam)
+  }).length
+  // Degenerate-score auditing is restricted to the same allowlisted dev rows as training;
+  // holdout/unknown-family scores cannot change whether dev supervision is enabled.
+  const distinctScorePairs = new Set(devFwItems.map((item) => {
     const c = Number.isFinite(item.chosenScore) ? item.chosenScore : item.scores?.candidate
     const r = Number.isFinite(item.rejectedScore) ? item.rejectedScore : item.scores?.control
     return `${c}|${r}`
   }))
-  const flywheelScoresDegenerate = rawFwItems.length >= 20 && distinctScorePairs.size <= 2
-  for (const p of rawFwItems) {
-    const fam = String(p.task || p.taskId || p.family || '').split(':')[0].replace(/_(?:decoy|long-horizon).*$/, '')
-    if (p.split === 'holdout' || isHoldout(fam)) continue
+  const flywheelScoresDegenerate = devFwItems.length >= 20 && distinctScorePairs.size <= 2
+  for (const p of devFwItems) {
+    const fam = familyKey(p.task || p.taskId || p.family || '')
     const cText = p.chosenText || (typeof p.chosen === 'string' ? p.chosen : p.chosen?.draft)
     const rText = p.rejectedText || (typeof p.rejected === 'string' ? p.rejected : p.rejected?.draft)
     if (!cText || !rText) continue
@@ -607,10 +685,13 @@ export function buildMicroDataset() {
       id: `flywheel::${stepSimpoPairs.length}`,
       sourceId: p.task || fam || 'dev-flywheel',
       family: fam || 'dev',
+      split: 'dev',
       negType: 'flywheel_real_pair',
       description: '飞轮真实胜负偏好对',
       chosenText: cText,
       rejectedText: rText,
+      contentAudit: p.contentAudit,
+      ...(p.manualReview ? { manualReview: p.manualReview } : {}),
       chosenScore,
       rejectedScore,
       rejectedGateOk: false,
@@ -634,42 +715,71 @@ export function buildMicroDataset() {
   const eligibleFamilyCounts = Object.fromEntries(
     devFamilies.map((family) => [family, unitSamples.filter((u) => u.trainingEligible && familyKey(u.family) === family).length]),
   )
-  // ── 模式 1 侧数据采集（$0）：示范对 / 修订差 / 闸门理由 / 距离向量 ──────────────────
+  // ── Mode 1 capture: only self-contained, clean, dev-only accepted samples become SimPO pairs. ──
   const handCapture = (() => {
     const { samples, files } = readHandSamples(ROOT)
     const distBy = { decision: [], excludedRecall: [], acceptOk: [], openRecall: [], anchorPrecision: [], lengthOk: [] }
     let withDraft = 0, gateOk = 0, gateFail = 0, productionFail = 0, revisions = 0, distances = 0
-    const items = []
+    let skippedNonDevSamples = 0, droppedQuality = 0, droppedNotSelfContained = 0
+    let captureGatesAccepted = 0, connectedToTrainingTarget = 0
+    const items = [], preferencePairs = []
     for (const s0 of samples) {
+      const captureFamily = familyKey(String(s0.task || '').replace(/-s\d+-r\d+.*$/, ''))
+      const captureSplit = pool.split?.[s0.task]
+      if (!isDevFamily(captureFamily) || captureSplit !== 'dev') { skippedNonDevSamples++; continue }
       const draftPath = s0.draftFile ? path.resolve(ROOT, s0.draftFile) : null
-      const draftText = draftPath && fs.existsSync(draftPath) ? fs.readFileSync(draftPath, 'utf8').trim() : null
+      const draftText = typeof s0.draft === 'string' ? s0.draft.trim() : (draftPath && fs.existsSync(draftPath) ? fs.readFileSync(draftPath, 'utf8').trim() : '')
       if (!draftText) continue
       withDraft++
+      const rawText = typeof s0.raw === 'string' ? s0.raw : ''
+      const ctxText = typeof s0.ctx === 'string' ? s0.ctx : ''
+      const storedText = typeof s0.stored === 'string' ? s0.stored.trim() : ''
+      const captureAudit = allowedMode1Capture({ ...s0, draft: draftText, stored: storedText || null })
+      const selfContained = rawText.trim().length > 0 && ctxText.trim().length > 0 && storedText.length > 0
+      const acceptedByCaptureGates = s0.trainingEligible === true && captureAudit.trainingEligible && selfContained
       const gateOkNow = !!(s0.gate && s0.gate.ok === true), prodFail = !!(s0.production && s0.production.ok === false)
       if (gateOkNow && !prodFail) gateOk++
       if (s0.gate && s0.gate.ok === false) gateFail++
       if (prodFail) productionFail++
       if (s0.revision) revisions++
-      const g = allGold
-        .filter((x) => x.id === s0.task || x.task === s0.task || x.family === s0.task)
+      if (!captureAudit.trainingEligible) droppedQuality++
+      if (captureAudit.trainingEligible && !selfContained) droppedNotSelfContained++
+      const g = cleanGold
+        .filter((x) => x.split === 'dev' && (x.id === s0.task || x.task === s0.task || x.family === captureFamily))
         .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))[0] || null
       let distance = null
-      if (g) {
+      if (g && acceptedByCaptureGates) {
         try {
-          const pendPath = s0.pendingFile ? path.resolve(ROOT, s0.pendingFile) : null
-          const pend = pendPath && fs.existsSync(pendPath) ? JSON.parse(fs.readFileSync(pendPath, 'utf8')) : null
-          const d = draftDistance(draftText, g.hand, { raw: pend?.raw || g.raw || '', ctx: pend?.ctx || g.ctx || '', calls: pend?.calls || [] })
+          const d = draftDistance(storedText, g.hand, { raw: rawText || g.raw || '', ctx: ctxText || g.ctx || '', calls: s0.callsThisRound || [] })
           distance = { decision: d.decision, excludedRecall: d.excludedRecall, acceptOk: d.acceptOk, openRecall: d.openRecall, anchorPrecision: d.anchorPrecision, lengthOk: d.lengthOk, score: d.score, verdict: d.verdict }
           distances++
           for (const k of Object.keys(distBy)) if (distance[k] != null) distBy[k].push(distance[k])
         } catch { distance = null }
       }
       const rev = s0.revision ? { prevId: s0.revision.prevId, added: (s0.revision.added || []).slice(0, 8), removed: (s0.revision.removed || []).slice(0, 8), addedChars: s0.revision.addedChars, removedChars: s0.revision.removedChars } : null
-      items.push({ id: s0.id, traj: s0.traj, task: s0.task, sample: s0.sample, round: s0.round, at: s0.at, rawChars: s0.rawChars, draftChars: s0.draftChars, outChars: s0.outChars ?? null, draftFile: s0.draftFile || null, pendingFile: s0.pendingFile || null, draft: draftText, gate: s0.gate || null, production: s0.production || null, revision: rev, distance })
+      let trainableTargetsAdded = 0
+      if (acceptedByCaptureGates) {
+        captureGatesAccepted++
+        const sourceId = `mode1-capture:${s0.traj || 'unknown'}:${s0.id}`
+        const generated = buildStepSimpoCounterfactuals({ id: sourceId, family: captureFamily, raw: rawText, ctx: ctxText, hand: storedText, calls: s0.callsThisRound || [] })
+        for (const pair of generated) {
+          if (auditMode1Output(pair.chosenText).status !== 'clean' || auditMode1Output(pair.rejectedText).status !== 'clean') continue
+          pair.split = 'dev'
+          pair.negType = `mode1_capture_${pair.negType}`
+          pair.labelAudit = { ...pair.labelAudit, source: 'mode1-accepted-capture-vs-deterministic-counterfactual', mode1CaptureStatus: 'accepted-by-hand-production-and-content-gates', noConfirmatoryClaim: true }
+          pair.provenance = { schema: s0.schema || null, task: s0.task, sample: s0.sample, round: s0.round, at: s0.at || null, gate: s0.gate, production: s0.production, qualityAudit: captureAudit.qualityAudit }
+          preferencePairs.push(pair)
+          if (pair.trainingEligible === true) trainableTargetsAdded++
+        }
+        if (trainableTargetsAdded > 0) connectedToTrainingTarget++
+      }
+      const trainingEligible = trainableTargetsAdded > 0
+      items.push({ id: s0.id, traj: s0.traj, task: s0.task, family: captureFamily, split: captureSplit, sample: s0.sample, round: s0.round, at: s0.at, rawChars: s0.rawChars, draftChars: s0.draftChars, outChars: s0.outChars ?? null, draftFile: s0.draftFile || null, pendingFile: s0.pendingFile || null, gateEligible: acceptedByCaptureGates, trainingEligible, trainableTargetsAdded, qualityAudit: captureAudit.qualityAudit, ...(acceptedByCaptureGates ? { raw: rawText, ctx: ctxText, draft: draftText, stored: storedText } : {}), gate: s0.gate || null, production: s0.production || null, revision: rev, distance })
     }
     const mean = (a) => (a.length ? +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(3) : null)
-    return { files, samples: samples.length, withDraft, gateOk, gateFail, productionFail, revisions, distances, distanceMean: Object.fromEntries(Object.entries(distBy).map(([k, v]) => [k, mean(v)])), items: items.slice(-200) }
+    return { files, samples: samples.length, withDraft, skippedNonDevSamples, gateOk, gateFail, productionFail, revisions, distances, droppedQuality, droppedNotSelfContained, captureGatesAccepted, connectedToTrainingTarget, preferencePairs, trainEligiblePreferencePairs: preferencePairs.filter((pair) => pair.trainingEligible === true).length, distanceMean: Object.fromEntries(Object.entries(distBy).map(([k, v]) => [k, mean(v)])), items: items.slice(-200) }
   })()
+  stepSimpoPairs.push(...handCapture.preferencePairs)
 
   const dataset = {
     schema: 'cfb.micro-dev-dataset/3',
@@ -679,6 +789,8 @@ export function buildMicroDataset() {
     stats: {
       devGoldItems: devGold.length,
       holdoutGoldItemsExcludedFromTraining: holdoutGold.length,
+      unassignedGoldItemsExcludedFromTraining: unassignedGoldCount,
+      devFamilyAllowlist: [...DEV_FAMS].sort(),
       devPoolItems: devPool.length,
       featureDim: unitSamples[0]?.features?.length ?? 0,
       textHashBuckets: TEXT_HASH_BUCKETS,
@@ -717,6 +829,9 @@ export function buildMicroDataset() {
         file: reviewState.loaded ? UNIT_REVIEW_PATH : null,
         fileSha256: reviewState.sha256,
         datasetSha256AtReview: reviewState.datasetSha256AtReview,
+        reviewer: reviewState.reviewer,
+        reviewerKind: reviewState.reviewerKind,
+        reviewedAt: reviewState.reviewedAt,
         reviewedItemsLoaded: reviewState.loaded,
         matchedInDataset: reviewState.applied,
         promotedToEligible: reviewState.promoted,
@@ -725,6 +840,9 @@ export function buildMicroDataset() {
         lowConfidenceKeptRuleLabel: reviewState.lowConfidenceKeptRule,
         digestMismatchSkipped: reviewState.digestMismatch,
         reviewSlotCounts: reviewState.slots,
+        protocolsLoaded: reviewState.protocolsLoaded,
+        protocolsApplied: reviewState.protocolsApplied,
+        blindIndependentApplied: reviewState.protocolsApplied['blind-unit-label-v3'] || 0,
       },
       pairConstruction: {
         strategy: NEG_STRATEGY,
@@ -737,6 +855,10 @@ export function buildMicroDataset() {
       flywheelSourcePath,
       flywheelSourceSchema,
       flywheelScoresDegenerate,
+      flywheelContaminatedRowsDropped,
+      flywheelNonDevSplitRowsDropped,
+      flywheelHoldoutRowsDropped,
+      flywheelUnknownFamilyRowsDropped,
       flywheelDistinctScorePairs: distinctScorePairs.size,
       unitPairEndpointReuse: (() => {
         const refs = [...pairDegree.values()]
@@ -764,7 +886,11 @@ export function buildMicroDataset() {
         needsReviewPreferencePairs: stepSimpoPairs.filter((p) => !p.trainingEligible).length,
         reviewStatus: 'deterministic-screen-only; LLM/human semantic review not run',
       },
-      handCapture: { files: handCapture.files, samples: handCapture.samples, withDraft: handCapture.withDraft, gateOk: handCapture.gateOk, gateFail: handCapture.gateFail, productionFail: handCapture.productionFail, revisions: handCapture.revisions, distances: handCapture.distances, distanceMean: handCapture.distanceMean, note: '模式 1 训练轮的侧数据（示范对/修订差/闸门理由/距离向量）；由 tools/traj-run.mjs 采集、本构建器读取' },
+      cleanGoldItemsEligible: cleanGold.length,
+      contaminatedOrUnreviewedGoldExcluded: uncleanGoldExcluded,
+      contaminatedOracleTargetsDropped,
+      contaminatedPoolTargetsDropped,
+      handCapture: { files: handCapture.files, samples: handCapture.samples, withDraft: handCapture.withDraft, gateOk: handCapture.gateOk, gateFail: handCapture.gateFail, productionFail: handCapture.productionFail, revisions: handCapture.revisions, distances: handCapture.distances, droppedQuality: handCapture.droppedQuality, droppedNotSelfContained: handCapture.droppedNotSelfContained, captureGatesAccepted: handCapture.captureGatesAccepted, connectedToTrainingTarget: handCapture.connectedToTrainingTarget, preferencePairsAddedToSimpo: handCapture.preferencePairs.length, trainEligiblePreferencePairs: handCapture.trainEligiblePreferencePairs, distanceMean: handCapture.distanceMean, note: '只有 self-contained、dev-only、生产闸通过且内容审计 clean 的 Mode 1 capture 才生成 stepSimpoPairs；仅 trainEligible pair 实际进入偏好训练；未训练权重、未做确认性结论' },
     },
     slotNames: SLOT_NAMES,
     handSamples: handCapture.items,

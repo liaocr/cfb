@@ -49,7 +49,11 @@ const dataset = {
   finalBlind: false,
   holdoutTouched: false,
   holdoutFamiliesExcluded: ['eacces-config', 'wrong-model'],
-  stats: { unitPairEndpointReuse: { cap: 3 }, pairConstruction: { nearLengthTokens: 3 } },
+  stats: {
+    devFamilyAllowlist: ['flaky-timeout', 'perf-regression', 'sse-truncated'],
+    unitPairEndpointReuse: { cap: 3 },
+    pairConstruction: { nearLengthTokens: 3 },
+  },
   unitSamples,
   unitStepPairs,
   stepSimpoPairs: [],

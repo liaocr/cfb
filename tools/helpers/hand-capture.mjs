@@ -12,7 +12,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const HAND_SAMPLE_SCHEMA = 'cfb.hand-sample/1'
+export const HAND_SAMPLE_SCHEMA = 'cfb.hand-sample/2'
 
 /** id 形如 <task>-s<sample>-r<round>（traj-run 的 safeId 规则）。 */
 export function parseHandId(id) {
@@ -45,14 +45,12 @@ export function draftDelta(prevText, nextText) {
   return { added, removed, addedChars: added.reduce((a, s) => a + s.length, 0), removedChars: removed.reduce((a, s) => a + s.length, 0) }
 }
 
-/** 追加一条 hand 采样记录（append-only；失败不抛，绝不打断训练轮）。 */
+/** 追加一条 hand 采样记录（append-only）。Mode 1 采集是本轮验收范围，写失败必须显式失败，不能静默丢数据。 */
 export function appendHandSample(outDir, rec) {
-  try {
-    if (!outDir) return false
-    fs.mkdirSync(outDir, { recursive: true })
-    fs.appendFileSync(path.join(outDir, 'hand-samples.jsonl'), JSON.stringify(rec) + '\n')
-    return true
-  } catch { return false }
+  if (!outDir) throw new Error('hand-sample-output-directory-required')
+  fs.mkdirSync(outDir, { recursive: true })
+  fs.appendFileSync(path.join(outDir, 'hand-samples.jsonl'), JSON.stringify(rec) + '\n')
+  return true
 }
 
 /** 读取全部 traj 目录下的 hand-samples.jsonl；按 id 去重（保留最后一条），按 at 排序。 */

@@ -1,23 +1,28 @@
 // tools/build-change-dataset.mjs —— 造「改动候选 → 金标方向」数据集（微模型判读头的监督出口，$0）
-// 用途：① 记录可用监督的真实规模（当前 11 条金标 → 19 正例 / 3 条可用条目）；
-//      ② 作为教师标注（副模型）与后续微模型训练的输入格式；③ 训练器/评估器的公共入口。
+// 用途：记录当前通过内容审计、且具备有效谱系的金标所能提供的方向监督规模；历史 11 条记录已被污染审计否定，不纳入训练或评估。
 // 用法：node tools/build-change-dataset.mjs [--out transfer/models/change-candidate-dataset.json]
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadGold } from './helpers/three-mode.mjs'
+import { isMode1GoldEligible } from './helpers/mode1-quality.mjs'
 import { slotsOf, anchorsOf } from './helpers/hand-draft.mjs'
 import { mineChangeCandidates, parseGoldDirections, candidateFeatures, CHANGE_FEATURE_NAMES } from './helpers/mine-change.mjs'
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
-const DEV_IDS = ['flaky-timeout_long-horizon-s0-r4','flaky-timeout-s0-r4','flaky-timeout-s0-r5','perf-regression-s0-r6','sse-truncated_decoy-s0-r3','sse-truncated_long-horizon-s0-r5','sse-truncated-s0-r5']
+const DEV_FAMS = new Set(['flaky-timeout', 'perf-regression', 'sse-truncated'])
 const argOut = process.argv.indexOf('--out')
 const OUT = path.resolve(ROOT, argOut >= 0 ? process.argv[argOut + 1] : 'transfer/models/change-candidate-dataset.json')
 
 const toks = (s) => new Set([...anchorsOf(s)].map((x) => x.toLowerCase()))
 const overlap = (a, b) => { const A = toks(a), B = toks(b); if (!A.size || !B.size) return 0; let h = 0; for (const x of A) if (B.has(x)) h++; return h / Math.min(A.size, B.size) }
 
-const gold = loadGold(path.join(ROOT, 'transfer/gold')).map((g) => ({ ...g, hand: g.draft || g.gold || g.hand || '' }))
+const activeGold = loadGold(path.join(ROOT, 'transfer/gold'))
+const contaminatedGoldExcluded = activeGold.filter((g) => !isMode1GoldEligible(g) || g.qualityAudit?.status !== 'clean').length
+const gold = activeGold.filter((g) => isMode1GoldEligible(g) && g.qualityAudit?.status === 'clean'
+  && ['dev', 'holdout'].includes(g.split)
+  && (g.split !== 'dev' || DEV_FAMS.has(String(g.family || '').replace(/^pool:/, '').split(':', 1)[0].replace(/_(?:decoy|long-horizon).*$/, ''))))
+  .map((g) => ({ ...g, hand: g.draft || g.gold || g.hand || '' }))
 const items = []
 for (const g of gold) {
   const hay = String(g.raw) + '\n' + String(g.ctx || '')
@@ -31,7 +36,7 @@ for (const g of gold) {
   })
   items.push({
     id: g.id, family: g.family,
-    split: DEV_IDS.includes(g.id) ? 'dev' : 'holdout',
+    split: g.split,
     goldDirections: dirs.map((d) => ({ from: d.from.slice(0, 200), to: d.to.slice(0, 200) })),
     candidates: rows.length, positives: rows.filter((r) => r.label).length, rows,
   })
@@ -40,9 +45,10 @@ const dev = items.filter((i) => i.split === 'dev'), hold = items.filter((i) => i
 const report = {
   schema: 'cfb.change-candidate-dataset/1',
   at: new Date().toISOString(),
-  purpose: '监督规模的真实记录：微模型要学「在候选改动里挑对方向」，当前 11 条金标能提供多少标注',
+  purpose: '仅对当前内容审计 clean、已验证、谱系允许的金标记录候选方向监督规模；报告是描述性数据，不构成效果或晋级证据',
   featureNames: CHANGE_FEATURE_NAMES,
   stats: {
+    activeGoldItems: activeGold.length, contaminatedOrUnreviewedGoldExcluded: contaminatedGoldExcluded,
     items: items.length, devItems: dev.length, holdoutItems: hold.length,
     candidates: items.reduce((a, x) => a + x.candidates, 0),
     positives: items.reduce((a, x) => a + x.positives, 0),
@@ -52,9 +58,8 @@ const report = {
     itemsWithNoCandidates: items.filter((x) => !x.candidates).length,
   },
   limitations: [
-    '可用监督只有 3 条条目 19 个正例；留出（4 条）正例为 0，无法在留出上评估方向挑选',
-    '按条目留一的实测：3 条里 2 条选对（其中 1 条 p=0.05，近似运气）⇒ 现有规模训不出可信判读头',
-    '4 条条目挖不到任何候选（eacces×2 / wrong-model_decoy / sse-r5）—— 候选挖掘本身在代码类改动上召回不足',
+    `当前经过本轮污染审计的金标仅 ${gold.length} 条；不足以支持跨家族结论或确认性评估`,
+    '历史 11 条金标及其旧基准结论已失效；只有重新独立采集的 clean 家族数据才可建立新的证据',
   ],
   items,
 }

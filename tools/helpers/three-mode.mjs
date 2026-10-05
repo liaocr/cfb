@@ -9,6 +9,7 @@ import path from 'node:path'
 import { evidenceDigest } from '../../src/evidence-program.js'
 import { outcomeComparison, episodeOutcome, eValueWins, DEFAULT_DESIGN_V4 } from './ruler.mjs'
 import { compareKeys, handDraftGate } from './hand-draft.mjs'
+import { auditMode1Gold, auditMode1Pair, isMode1GoldEligible } from './mode1-quality.mjs'
 
 /** draftDistance 公式版本：冻结进基准计划；改公式必须改版本号，不同版本的基准分不可比（指标在设计里冻结，不随结果调）。 */
 export const DRAFT_DISTANCE_VERSION = 'dd/1'
@@ -65,11 +66,15 @@ export function goldItemsFromTraj({ home, rows, planId = null, split = {}, fromW
       const pend = home ? readJsonMaybe(path.join(home, 'pending', 'done', id + '.json')) : null, draftFile = home ? path.join(home, 'drafts', id + '.md') : null
       if (!pend || !draftFile || !fs.existsSync(draftFile)) { items.push({ id, missing: true, why: !pend ? 'pending/done 缺' : 'drafts 缺' }); return }
       const family = String(r.task).split(':')[0]
-      items.push({ schema: 'cfb.gold/1', id, family, task: r.task, sample: r.sample ?? 0, round, plan: planId, split: split[family] || 'dev', at: pend.at || null,
-        raw: pend.raw, ctx: pend.ctx, calls: pend.calls || [], draft: fs.readFileSync(draftFile, 'utf8').trim(), stored: ((r.transcript || [])[round - 1] || {}).stored || null,
+      const draft = fs.readFileSync(draftFile, 'utf8').trim()
+      const stored = ((r.transcript || [])[round - 1] || {}).stored || null
+      const item = { schema: 'cfb.gold/1', id, family, task: r.task, sample: r.sample ?? 0, round, plan: planId, split: split[family] || 'unassigned', at: pend.at || null,
+        raw: pend.raw, ctx: pend.ctx, calls: pend.calls || [], draft, stored,
         gates: { v4: c.gate || null, accept: c.accept || null, draftChars: c.draftChars, outChars: c.outChars, rawChars: c.rawChars },
         outcome: { solved: !!o.solved, roundsToFix: o.roundsToFix || null, falseClaim: !!o.falseClaim, rawSolved: ro ? !!ro.solved : null, rawRoundsToFix: ro ? ro.roundsToFix || null : null, vsRaw },
-        validated: !!o.solved })
+        validated: !!o.solved }
+      item.qualityAudit = auditMode1Gold(item, { reviewer: 'mode1-output-lint/1' })
+      items.push(item)
     })
   }
   if (fromWinners) {
@@ -94,11 +99,13 @@ export function goldItemsFromTraj({ home, rows, planId = null, split = {}, fromW
         const id = `${safeId(r.task)}-s${r.sample ?? 0}-r${round}-${safeId(r.policy || r.variant)}`
         if (!g2.ok) { items.push({ id, missing: true, why: 'G2:' + g2.violations.map((v) => v.kind).join(',') }); return }
         const family = String(r.task).split(':')[0]
-        items.push({ schema: 'cfb.gold/1', id, family, task: r.task, sample: r.sample ?? 0, round, plan: planId, source: 'winner-traj', policy: r.policy || r.variant, split: split[family] || 'dev', at: r.at || new Date().toISOString(),
+        const item = { schema: 'cfb.gold/1', id, family, task: r.task, sample: r.sample ?? 0, round, plan: planId, source: 'winner-traj', policy: r.policy || r.variant, split: split[family] || 'unassigned', at: r.at || new Date().toISOString(),
           raw: rawText, ctx: ctxText, calls: t.calls || [], draft: draftText, stored: storedText,
           gates: { v4: c.gate || null, accept: c.accept || null, draftChars: draftText.length, outChars: storedText.length, rawChars: rawText.length },
           outcome: { solved: true, roundsToFix: o.roundsToFix || null, falseClaim: !!o.falseClaim, rawSolved: ro ? !!ro.solved : null, rawRoundsToFix: ro ? ro.roundsToFix || null : null, vsRaw: vsRaw || 'win' },
-          validated: true })
+          validated: true }
+        item.qualityAudit = auditMode1Gold(item, { reviewer: 'mode1-output-lint/1' })
+        items.push(item)
       })
     }
   }
@@ -107,20 +114,51 @@ export function goldItemsFromTraj({ home, rows, planId = null, split = {}, fromW
 export function loadGold(dir) {
   if (!fs.existsSync(dir)) return []
   const out = []
-  for (const fam of fs.readdirSync(dir)) { const fd = path.join(dir, fam); if (!fs.statSync(fd).isDirectory()) continue; for (const f of fs.readdirSync(fd)) if (f.endsWith('.json')) { const g = readJsonMaybe(path.join(fd, f)); if (g && g.schema === 'cfb.gold/1') out.push({ ...g, file: path.join(fd, f), digest: goldDigest(g) }) } }
+  for (const fam of fs.readdirSync(dir)) {
+    const fd = path.join(dir, fam)
+    if (!fs.statSync(fd).isDirectory()) continue
+    for (const f of fs.readdirSync(fd)) if (f.endsWith('.json')) {
+      const g = readJsonMaybe(path.join(fd, f))
+      if (!g || g.schema !== 'cfb.gold/1') continue
+      const computed = auditMode1Gold(g)
+      const recorded = g.qualityAudit
+      const recordMatches = recorded?.schema === computed.schema && recorded?.textSha256 === computed.textSha256
+      const qualityAudit = recordMatches
+        ? { ...computed, ...recorded, issues: computed.issues }
+        : { ...computed, ...(recorded ? { recordedAuditStatus: recorded.status, recordedAuditMismatch: true } : {}) }
+      out.push({ ...g, qualityAudit, file: path.join(fd, f), digest: goldDigest(g) })
+    }
+  }
   return out.sort((a, b) => (a.family + a.id).localeCompare(b.family + b.id))
 }
-/** 落盘：<dir>/<family>/<id>.json；已存在的不覆盖（金标一经引用就冻结，重跑同一单元也不改）；缺件 / 未修好（除非 includeUnsolved）跳过。 */
-export function saveGold(dir, items, { includeUnsolved = false } = {}) {
-  const added = [], skipped = []
+/** 落盘：<dir>/<family>/<id>.json；不覆盖已存在金标。疑似装置话术永不入 active registry，可选归档到 rejectedDir。 */
+export function saveGold(dir, items, { includeUnsolved = false, rejectedDir = null, auditReviewer = 'mode1-output-lint/1' } = {}) {
+  const added = [], skipped = [], quarantined = []
   for (const g of items) {
     if (g.missing) { skipped.push({ id: g.id, why: g.why }); continue }
     if (!g.validated && !includeUnsolved) { skipped.push({ id: g.id, why: '主模型读后未修好（--include-unsolved 才收）' }); continue }
+    const qualityAudit = auditMode1Gold(g, { reviewer: auditReviewer })
+    if (qualityAudit.status !== 'clean') {
+      const archived = { ...g, qualityAudit, quarantine: { reason: 'mode1-apparatus-language', at: new Date().toISOString(), source: 'tools/helpers/three-mode.mjs::saveGold' }, digest: goldDigest(g) }
+      let archiveFile = null
+      if (rejectedDir) {
+        fs.mkdirSync(rejectedDir, { recursive: true })
+        const base = path.join(rejectedDir, g.id + '.json')
+        archiveFile = fs.existsSync(base) ? path.join(rejectedDir, `${g.id}-${safeId(g.plan || Date.now())}.json`) : base
+        fs.writeFileSync(archiveFile, JSON.stringify({ ...archived, archiveFile: path.relative(path.dirname(rejectedDir), archiveFile) }, null, 2) + '\n')
+      }
+      quarantined.push({ id: g.id, categories: [...new Set(qualityAudit.issues.map((x) => x.category))], file: archiveFile })
+      skipped.push({ id: g.id, why: '装置话术检查未通过；已隔离，不进入金标注册表' })
+      continue
+    }
     const file = path.join(dir, g.family, g.id + '.json')
     if (fs.existsSync(file)) { skipped.push({ id: g.id, why: '已存在' }); continue }
-    fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify({ ...g, digest: goldDigest(g) }, null, 2) + '\n'); added.push(g.id)
+    const saved = { ...g, qualityAudit, digest: goldDigest(g) }
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, JSON.stringify(saved, null, 2) + '\n')
+    added.push(g.id)
   }
-  return { added, skipped }
+  return { added, skipped, quarantined }
 }
 
 // ── 模式 2：压缩器基准 ──────────────────────────────────────────────────────
@@ -173,7 +211,7 @@ export function factorialEffects(rows, factorial, { alpha = DEFAULT_DESIGN_V4.al
 }
 
 export function buildBenchPlan({ n, policies = ['base'], gold, split = 'dev', pricing, purpose = null, planRel, homeRel, now = new Date().toISOString(), factorial = null }) {
-  const items = gold.filter((g) => !g.missing && g.validated && (split === 'all' || g.split === split))
+  const items = gold.filter((g) => !g.missing && g.validated && g.qualityAudit?.status === 'clean' && isMode1GoldEligible(g) && (split === 'all' || g.split === split))
   if (!items.length) throw new Error(`no-gold:${split}（注册表里没有可用金标；先跑模式 1：plan-traj --arms raw,hand → traj-run → ceiling → gold add）`)
   if (!policies.includes('base')) throw new Error('bench-needs-base（基准必须含 base：候选只按「对 base 的配对胜负」选，不看绝对分）')
   const calls = policies.length * items.length
@@ -266,18 +304,20 @@ export function flywheelPairsFromTraj(rows, { split = {}, source = 'traj', round
         const wDraft = tw.stored || tw.reasoning || null
         const lDraft = tl.stored || tl.reasoning || null
         if (!wDraft || !lDraft || wDraft === lDraft) continue
+        if (auditMode1Gold({ draft: wDraft }).status !== 'clean' || auditMode1Gold({ draft: lDraft }).status !== 'clean') continue
         const fam = String(win.task).split(':')[0]
         out.push({
           schema: 'cfb.flywheel-pair/1',
           at: now,
           round: roundNum || rIdx + 1,
           task: fam,
-          split: split[fam] || 'dev',
+          split: split[fam] || null,
           source,
           chosenArm: winArm,
           rejectedArm: loseArm,
           chosenText: wDraft,
           rejectedText: lDraft,
+          contentAudit: auditMode1Pair({ chosenText: wDraft, rejectedText: lDraft }, { reviewer: 'mode1-flywheel-lint/1' }),
           scores: { candidate: Math.max(sa, sb), control: Math.min(sa, sb) },
         })
       }
@@ -297,15 +337,16 @@ export function flywheelPairsFromBench(rows, { gold = [], split = {}, source = '
   const out = []
   for (const [gid, rs] of Object.entries(byGold)) {
     const g = goldMap[gid]
+    if (g && !isMode1GoldEligible(g)) continue
     const fam = rs[0]?.family || g?.family || String(gid).split('-s')[0]
-    const sp = rs[0]?.split || g?.split || split[fam] || 'dev'
+    const sp = rs[0]?.split || g?.split || split[fam] || null
     for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) {
       const a = rs[i], b = rs[j]
       if (a.text === b.text) continue
       const c = compareKeys(a.distance.key, b.distance.key)
       if (c === 0) continue
       const win = c > 0 ? a : b, lose = c > 0 ? b : a
-      if (!win.ok) continue
+      if (!win.ok || auditMode1Gold({ draft: win.text }).status !== 'clean' || auditMode1Gold({ draft: lose.text }).status !== 'clean') continue
       out.push({
         schema: 'cfb.flywheel-pair/1',
         at: now,
@@ -318,6 +359,7 @@ export function flywheelPairsFromBench(rows, { gold = [], split = {}, source = '
         rejectedArm: 'policy:' + lose.policy,
         chosenText: win.text,
         rejectedText: lose.text,
+        contentAudit: auditMode1Pair({ chosenText: win.text, rejectedText: lose.text }, { reviewer: 'mode1-flywheel-lint/1' }),
         scores: { candidate: +(win.distance.score ?? 1), control: +(lose.distance.score ?? 0) },
       })
     }
@@ -336,6 +378,7 @@ export function flywheelPairsFromBench(rows, { gold = [], split = {}, source = '
           rejectedArm: 'policy:' + r.policy,
           chosenText: g.draft,
           rejectedText: r.text,
+          contentAudit: auditMode1Pair({ chosenText: g.draft, rejectedText: r.text }, { reviewer: 'mode1-flywheel-lint/1' }),
           scores: { candidate: 1, control: +(r.distance.score ?? 0) },
         })
       }

@@ -15,6 +15,7 @@ import { API_APPROVAL_SCOPES_GEN, KNOWN_API_SCOPES, SCOPE_MAX_REQUESTS } from '.
 import { prepareEvaluation, reportEvaluation, loadPrepared } from '../tools/helpers/eval-workflow.mjs'
 import { generateCandidates, BASELINE_KNOBS } from '../tools/helpers/candidates.mjs'
 import * as cyc from '../tools/cfb-cycle.mjs'
+import { auditMode1Pair } from '../tools/helpers/mode1-quality.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 let pass = 0, fail = 0
@@ -216,13 +217,42 @@ try {
       const i3 = cli('ingest', '--round', '3', '--report', rep(3, plan(3), all)); assert.ok(/判定：continue/.test(i3.stdout) && /留出题：4 对/.test(i3.stdout) && /e 值.*留出 6\.2/.test(i3.stdout), i3.stdout)
       cli('plan'); const i4 = cli('ingest', '--round', '4', '--report', rep(4, plan(4), all)); assert.ok(/判定：adopt-provisional/.test(i4.stdout) && /留出题：6 对/.test(i4.stdout) && /临时/.test(i4.stdout), i4.stdout)
       const champ = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/champion.json'), 'utf8')); assert.equal(champ.knobs.closing, 'off'); assert.equal(champ.policy, 'base'); assert.equal(champ.adopted[0].holdoutPWin, 0.9922); assert.equal(champ.adoption, 'provisional'); assert.equal(champ.previous.knobs.closing, BASELINE_KNOBS.closing)
-      assert.equal(fs.readFileSync(path.join(tmp, 'offline/train/pairs.jsonl'), 'utf8').trim().split('\n').length, 15)
+      const flywheelRows = fs.readFileSync(path.join(tmp, 'offline/train/pairs.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line))
+      assert.ok(flywheelRows.every((row) => row.split === 'dev' && row.contentAudit?.status === 'clean'), '飞轮中任何已接纳记录都必须是显式 dev 且带精确目标文本审计')
       const ex = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/ruler/exposure.json'), 'utf8')); assert.deepEqual(Object.values(ex.tasks).map((e) => e.n), [1, 1], '采纳判定让 2 道留出题各曝光 1 次')
       const pr0 = cli('propose'); assert.notEqual(pr0.status, 0); assert.ok(/champion-provisional/.test(pr0.stderr + pr0.stdout), 'provisional 不出生产 diff')
       const pr1 = cli('propose', '--allow-provisional'); assert.equal(pr1.status, 0, pr1.stdout + pr1.stderr)
       const st = cli('status'); assert.ok(/仪器校准: r1/.test(st.stdout) && /calibrated/.test(st.stdout) && /采纳状态 provisional/.test(st.stdout), st.stdout)
       const dr = cli('doctor'); assert.ok(/PASS 任务池可构建/.test(dr.stdout) && /PASS v3 判定/.test(dr.stdout), dr.stdout)
     } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
+  })
+  test('E1b 飞轮追加：要求显式 dev 切分和与 chosen/rejected 字节绑定的 clean 审计', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-fw-gate-'))
+    const previous = cyc.cycleDir()
+    try {
+      cyc.setCycleDir(tmp)
+      const base = {
+        schema: 'cfb.pref-pair/1', task: 'flaky-timeout', split: 'dev',
+        chosenText: '先读 src/compiler.js 核对真实调用链，再运行 node test/compiler.selftest.mjs。',
+        rejectedText: '只凭旧日志宣布修复完成。',
+      }
+      const valid = { ...base, contentAudit: auditMode1Pair(base) }
+      const missingAudit = { ...base, chosenText: '先检查目标文件并验证具体行为。' }
+      const staleAudit = { ...valid, chosenText: valid.chosenText + ' 改动后复核。' }
+      const missingSplit = { ...valid, split: undefined }
+      const holdout = { ...valid, task: 'wrong-model', split: 'holdout' }
+      const result = cyc.appendFlywheelPairs([valid, missingAudit, staleAudit, missingSplit, holdout])
+      assert.equal(result.added, 1)
+      assert.equal(result.qualityRejected, 2)
+      assert.equal(result.scopeRejected, 2)
+      const rows = cyc.loadFlywheel()
+      assert.equal(rows.length, 1)
+      assert.equal(rows[0].split, 'dev')
+      assert.equal(rows[0].contentAudit.textSha256, auditMode1Pair(rows[0]).textSha256)
+    } finally {
+      cyc.setCycleDir(previous)
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
   })
   test('E2 生成层：泄漏提案被拒 → 合法提案落策略 → compile 全覆盖 → plan 自动把策略当假设 → 留出采纳 → control 换成策略稿 → propose 给提示词补丁', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-v3g-'))
@@ -281,7 +311,7 @@ try {
       const pr = cli('propose'); assert.equal(pr.status, 0, pr.stdout + pr.stderr); const proposal = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/proposal.json'), 'utf8'))
       assert.equal(proposal.promptPatch.policy, pid); assert.equal(proposal.promptPatch.patches.length, 1); assert.match(proposal.promptPatch.where, /src\/prompts\.js/)
       const pp2 = cli('propose-policy'); assert.ok(pp2.stdout.includes('父策略：' + pid), '下一次提议从采纳的策略出发'); assert.equal(JSON.parse(fs.readFileSync(path.join(tmp, 'offline/gen-5.pack.json'), 'utf8')).parent.patches.length, 1)
-      const ls = cli('policies'); assert.ok(ls.stdout.includes(pid) && /adopted/.test(ls.stdout) && /飞轮偏好对：15/.test(ls.stdout))
+      const ls = cli('policies'); assert.ok(ls.stdout.includes(pid) && /adopted/.test(ls.stdout))
     } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
   })
   test('E3 铸造：mint a → 人补 u2 → mint b → compile --mint r1 → side → task.json 进池（6 题、留出 ≥2、轮换跳过缺 side 的题）', () => {

@@ -21,6 +21,7 @@ import { DIMENSIONS, DIMS_BY_RATER, judgeCapacity, binaryCeiling, judgeLadPrompt
 import { episodeOutcome } from './helpers/ruler.mjs'
 import { toRow, fitWeights, rankAgreement, missingDimensionSignal, activeSelect } from './helpers/calibration.mjs'
 import { loadGold } from './helpers/three-mode.mjs'
+import { auditMode1Output, isMode1GoldEligible } from './helpers/mode1-quality.mjs'
 import { loadFrozenTasks } from './helpers/candidates.mjs'
 import { truthDimensions } from './helpers/truth-dims.mjs'
 
@@ -135,6 +136,7 @@ function cmdAuditTraj(args) {
       }
       if (!div || div < 2) continue
       const rawT = (raw.transcript || [])[div - 2], compT = (r.transcript || [])[div - 2]
+      if (auditMode1Output(compT?.stored || '').status !== 'clean') continue
       const code = codeDimensions(compT?.stored || '', rawT?.reasoning || '')
       const prompt = trajDivergenceJudgePrompt({
         task: g.task,
@@ -157,8 +159,10 @@ function cmdAuditBench(args) {
   const file = f(args, '--results') || (planN ? path.join(ROOT, '.cfb-runtime', 'bench', 'b' + planN, 'results.jsonl') : null)
   if (!file || !fs.existsSync(file)) { console.log('需要 --results <bench results.jsonl> 或 --plan N'); process.exitCode = 1; return }
   const goldDir = f(args, '--gold-dir') || path.join(ROOT, 'transfer', 'gold')
-  const goldMap = new Map(loadGold(goldDir).map((g) => [g.id, g]))
-  const rows = fs.readFileSync(path.resolve(file), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => !r.dry && r.policy && r.gold && r.distance)
+  const goldMap = new Map(loadGold(goldDir).filter((g) => isMode1GoldEligible(g) && g.qualityAudit?.status === 'clean').map((g) => [g.id, g]))
+  const rawRows = fs.readFileSync(path.resolve(file), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+  const rows = rawRows.filter((r) => !r.dry && r.policy && r.gold && r.distance && goldMap.has(r.gold)
+    && (typeof r.text !== 'string' || auditMode1Output(r.text).status === 'clean'))
   const items = []
   for (const r of rows) {
     if (r.distance.verdict === 'close' && !args.includes('--all')) continue
@@ -210,7 +214,9 @@ function cmdCalibrate(args) {
     const loadDraftMap = (p) => {
       if (!fs.existsSync(p)) return new Map()
       const j = readJson(p)
-      return new Map((Array.isArray(j) ? j : j.rows || []).map((r) => [r.id, r.text]))
+      return new Map((Array.isArray(j) ? j : j.rows || [])
+        .filter((r) => r && r.id && typeof r.text === 'string' && auditMode1Output(r.text).status === 'clean')
+        .map((r) => [r.id, r.text]))
     }
     const mrDir = path.join(ROOT, 'transfer', 'mr')
     const mapByVar = {

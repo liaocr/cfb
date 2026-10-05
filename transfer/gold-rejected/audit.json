@@ -1,0 +1,351 @@
+{
+  "schema": "cfb.mode1-gold-quarantine/1",
+  "at": "2026-10-04T18:37:19.329Z",
+  "source": "user-directed manual audit: only sse_long is clean; static apparatus-language checks cover draft/stored targets only",
+  "activeRegistry": "transfer/gold",
+  "archive": "transfer/gold-rejected",
+  "approvedActiveIds": [
+    "sse-truncated_long-horizon-s0-r5"
+  ],
+  "actions": [
+    {
+      "id": "eacces-config_decoy-s0-r3",
+      "action": "quarantine",
+      "originalFile": "transfer/gold/eacces-config/eacces-config_decoy-s0-r3.json",
+      "archiveFile": "transfer/gold-rejected/eacces-config/eacces-config_decoy-s0-r3.json",
+      "sourceSha256": "c826432c82b9aaf6502e49a4268a9c9b0d768874b002a498f99937f2d67f2311",
+      "staticAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "user-directed-manual-audit+mode1-quality-lint/1",
+        "reviewedAt": "2026-10-04T18:37:19.329Z",
+        "checkedFields": [
+          "draft",
+          "stored"
+        ],
+        "textSha256": "8751e7609888fadfa67013b39d5969224185f66c8e9509e61dc606557a7c82c7",
+        "issues": []
+      },
+      "rationale": "not the sole item approved by the user manual audit"
+    },
+    {
+      "id": "eacces-config_long-horizon-s0-r5",
+      "action": "quarantine",
+      "originalFile": "transfer/gold/eacces-config/eacces-config_long-horizon-s0-r5.json",
+      "archiveFile": "transfer/gold-rejected/eacces-config/eacces-config_long-horizon-s0-r5.json",
+      "sourceSha256": "90deee543906fb4f61de77441a26a66d711f855502982e1691cdbfb322909749",
+      "staticAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "user-directed-manual-audit+mode1-quality-lint/1",
+        "reviewedAt": "2026-10-04T18:37:19.329Z",
+        "checkedFields": [
+          "draft",
+          "stored"
+        ],
+        "textSha256": "cc0e33c611a6b44ef13b38532b188eed25b94af2d348d94810d83eb84705f022",
+        "issues": []
+      },
+      "rationale": "not the sole item approved by the user manual audit"
+    },
+    {
+      "id": "flaky-timeout-s0-r4",
+      "action": "quarantine",
+      "originalFile": "transfer/gold/flaky-timeout/flaky-timeout-s0-r4.json",
+      "archiveFile": "transfer/gold-rejected/flaky-timeout/flaky-timeout-s0-r4.json",
+      "sourceSha256": "c1ae2370efeb9a105c9a48d26d655330e51474622a09382cf486d90470c13078",
+      "staticAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "quarantined",
+        "reviewer": "user-directed-manual-audit+mode1-quality-lint/1",
+        "reviewedAt": "2026-10-04T18:37:19.329Z",
+        "checkedFields": [
+          "draft",
+          "stored"
+        ],
+        "textSha256": "cd2aa8332e60b609190b3cb6817f3b824884fb1db6ce5c46b50b7c9fda5f2c06",
+        "issues": [
+          {
+            "category": "environment-permission-assertion",
+            "excerpt": "沙箱白名单拦截完全符合预期；沙箱已内置白名单直接放行",
+            "field": "draft"
+          },
+          {
+            "category": "experiment-round-or-budget-control",
+            "excerpt": "下一轮是第 5 轮，不要先试跑测试，必须",
+            "field": "draft"
+          },
+          {
+            "category": "executor-tool-or-check-prohibition",
+            "excerpt": "严禁再发起任何工具调用",
+            "field": "draft"
+          },
+          {
+            "category": "environment-permission-assertion",
+            "excerpt": "沙箱白名单拦截完全符合预期；沙箱已内置白名单直接放行",
+            "field": "stored"
+          },
+          {
+            "category": "experiment-round-or-budget-control",
+            "excerpt": "下一轮是第 5 轮，不要先试跑测试，必须",
+            "field": "stored"
+          },
+          {
+            "category": "executor-tool-or-check-prohibition",
+            "excerpt": "严禁再发起任何工具调用",
+            "field": "stored"
+          }
+        ]
+      },
+      "rationale": "apparatus-language detected in draft/stored"
+    },
+    {
+      "id": "flaky-timeout-s0-r5",
+      "action": "quarantine",
+      "originalFile": "transfer/gold/flaky-timeout/flaky-timeout-s0-r5.json",
+      "archiveFile": "transfer/gold-rejected/flaky-timeout/flaky-timeout-s0-r5.json",
+      "sourceSha256": "fe1e6121896f7f8ba8d288dfad4f5a7bb89546036a94f6bbad2ae66d40d74970",
+      "staticAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "quarantined",
+        "reviewer": "user-directed-manual-audit+mode1-quality-lint/1",
+        "reviewedAt": "2026-10-04T18:37:19.329Z",
+        "checkedFields": [
+          "draft",
+          "stored"
+        ],
+        "textSha256": "67f900a57fabdd2f1830223cd2a2762fa2859e2ea3199c1b1685c90b06b388de",
+        "issues": [
+          {
+            "category": "experiment-round-or-budget-control",
+            "excerpt": "下一轮是第 6 轮，严禁再重读文件或跑探针，必须",
+            "field": "draft"
+          },
+          {
+            "category": "executor-tool-or-check-prohibition",
+            "excerpt": "严禁再重读文件",
+            "field": "draft"
+          },
+          {
+            "category": "environment-permission-assertion",
+            "excerpt": "沙箱不支持新建脚本文件或循环，无需",
+            "field": "stored"
+          },
+          {
+            "category": "experiment-round-or-budget-control",
+            "excerpt": "下一轮是第 6 轮，严禁再重读文件或跑探针，必须",
+            "field": "stored"
+          },
+          {
+            "category": "executor-tool-or-check-prohibition",
+            "excerpt": "严禁再重读文件",
+            "field": "stored"
+          }
+        ]
+      },
+      "rationale": "apparatus-language detected in draft/stored"
+    },
+    {
+      "id": "flaky-timeout_long-horizon-s0-r4",
+      "action": "quarantine",
+      "originalFile": "transfer/gold/flaky-timeout/flaky-timeout_long-horizon-s0-r4.json",
+      "archiveFile": "transfer/gold-rejected/flaky-timeout/flaky-timeout_long-horizon-s0-r4.json",
+      "sourceSha256": "1365f9b1579d8c794d7133e5fa5c7e7485c0f18951081e2f5cdfb049a3ef5cf7",
+      "staticAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "quarantined",
+        "reviewer": "user-directed-manual-audit+mode1-quality-lint/1",
+        "reviewedAt": "2026-10-04T18:37:19.329Z",
+        "checkedFields": [
+          "draft",
+          "stored"
+        ],
+        "textSha256": "37fe02c308973d36c52e921cbb5c1bd51767fef7d55dc8624d12ef5cb4e2776d",
+        "issues": [
+          {
+            "category": "environment-permission-assertion",
+            "excerpt": "沙箱禁止新建脚本和 shell 循环，无需",
+            "field": "draft"
+          },
+          {
+            "category": "experiment-round-or-budget-control",
+            "excerpt": "下一轮是第 5 轮，严禁再写复现脚本或只读探查，必须",
+            "field": "draft"
+          },
+          {
+            "category": "environment-permission-assertion",
+            "excerpt": "沙箱不支持",
+            "field": "stored"
+          },
+          {
+            "category": "experiment-round-or-budget-control",
+            "excerpt": "下一轮是第 5 轮，严禁再写复现脚本或只读探查，必须",
+            "field": "stored"
+          }
+        ]
+      },
+      "rationale": "apparatus-language detected in draft/stored"
+    },
+    {
+      "id": "perf-regression-s0-r6",
+      "action": "quarantine",
+      "originalFile": "transfer/gold/perf-regression/perf-regression-s0-r6.json",
+      "archiveFile": "transfer/gold-rejected/perf-regression/perf-regression-s0-r6.json",
+      "sourceSha256": "0457614c50647a923647d5e0e0c5e78c7e1796ad3f606c9f0bbd677d9b3db5b9",
+      "staticAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "quarantined",
+        "reviewer": "user-directed-manual-audit+mode1-quality-lint/1",
+        "reviewedAt": "2026-10-04T18:37:19.329Z",
+        "checkedFields": [
+          "draft",
+          "stored"
+        ],
+        "textSha256": "2973b83aa77024dea54cc1a98dd02acde066e42f0853c82f82a3565e6fd929a5",
+        "issues": [
+          {
+            "category": "experiment-round-or-budget-control",
+            "excerpt": "下一轮是第 7 轮（最后一轮，没有第 8 轮），绝不能只发一条 edit_file 等下一轮，也不要再跑任何 --compare 或找文件，必须",
+            "field": "draft"
+          },
+          {
+            "category": "experiment-round-or-budget-control",
+            "excerpt": "下一轮是第 7 轮（最后一轮，没有第 8 轮），绝不能只发一条 edit_file 等下一轮，也不要再跑任何 --compare 或找文件，必须",
+            "field": "stored"
+          }
+        ]
+      },
+      "rationale": "apparatus-language detected in draft/stored"
+    },
+    {
+      "id": "sse-truncated-s0-r5",
+      "action": "quarantine",
+      "originalFile": "transfer/gold/sse-truncated/sse-truncated-s0-r5.json",
+      "archiveFile": "transfer/gold-rejected/sse-truncated/sse-truncated-s0-r5.json",
+      "sourceSha256": "045e762e154aff466b11993149565402d2e3672e04ffd7220c548ac660d374bd",
+      "staticAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "user-directed-manual-audit+mode1-quality-lint/1",
+        "reviewedAt": "2026-10-04T18:37:19.329Z",
+        "checkedFields": [
+          "draft",
+          "stored"
+        ],
+        "textSha256": "adc12e825f9ce14e2d48695d3c42e0e2681fdcadb04fd0457fb3ee6d389a627b",
+        "issues": []
+      },
+      "rationale": "not the sole item approved by the user manual audit"
+    },
+    {
+      "id": "sse-truncated_decoy-s0-r3",
+      "action": "quarantine",
+      "originalFile": "transfer/gold/sse-truncated/sse-truncated_decoy-s0-r3.json",
+      "archiveFile": "transfer/gold-rejected/sse-truncated/sse-truncated_decoy-s0-r3.json",
+      "sourceSha256": "7b2e8a27c3e3434cc49d0591006a80e5e19011d1799504dfa9ca43773c616a13",
+      "staticAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "quarantined",
+        "reviewer": "user-directed-manual-audit+mode1-quality-lint/1",
+        "reviewedAt": "2026-10-04T18:37:19.329Z",
+        "checkedFields": [
+          "draft",
+          "stored"
+        ],
+        "textSha256": "b865b0f2527fa9f074c7850ad44fe32abdb3b42dd5e889381edec8c5e4e73dc2",
+        "issues": [
+          {
+            "category": "experiment-round-or-budget-control",
+            "excerpt": "下一轮是第 4 轮，必须",
+            "field": "draft"
+          },
+          {
+            "category": "experiment-round-or-budget-control",
+            "excerpt": "下一轮是第 4 轮，必须",
+            "field": "stored"
+          }
+        ]
+      },
+      "rationale": "apparatus-language detected in draft/stored"
+    },
+    {
+      "id": "sse-truncated_long-horizon-s0-r5",
+      "action": "retain-active",
+      "originalFile": "transfer/gold/sse-truncated/sse-truncated_long-horizon-s0-r5.json",
+      "sourceSha256": "b1bd52ebcafd4122eda9e09f6b7c679d18e2deadc86dad78945756f2326e76f9",
+      "shorthand": "sse_long",
+      "manualApproval": "user-specified sole clean item",
+      "qualityAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "clean",
+        "reviewer": "user-directed-manual-audit+mode1-quality-lint/1",
+        "reviewedAt": "2026-10-04T18:37:19.329Z",
+        "checkedFields": [
+          "draft",
+          "stored"
+        ],
+        "textSha256": "8107d16cc8afa27acf956d3758be822e40a1ccc455a6f44bee200c2103b50e6a",
+        "issues": []
+      }
+    },
+    {
+      "id": "wrong-model_decoy-s0-r4",
+      "action": "quarantine",
+      "originalFile": "transfer/gold/wrong-model/wrong-model_decoy-s0-r4.json",
+      "archiveFile": "transfer/gold-rejected/wrong-model/wrong-model_decoy-s0-r4.json",
+      "sourceSha256": "d406208adf9d917a842400491e71194c25db1ef50ede3a74fd2b49f73c97afa5",
+      "staticAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "quarantined",
+        "reviewer": "user-directed-manual-audit+mode1-quality-lint/1",
+        "reviewedAt": "2026-10-04T18:37:19.329Z",
+        "checkedFields": [
+          "draft",
+          "stored"
+        ],
+        "textSha256": "d27a50c3f0aa754a9d99e497a1c835d295a85eb870da27b8a7d834ea89957577",
+        "issues": [
+          {
+            "category": "environment-permission-assertion",
+            "excerpt": "沙箱不支持",
+            "field": "stored"
+          }
+        ]
+      },
+      "rationale": "apparatus-language detected in draft/stored"
+    },
+    {
+      "id": "wrong-model_long-horizon-s0-r4",
+      "action": "quarantine",
+      "originalFile": "transfer/gold/wrong-model/wrong-model_long-horizon-s0-r4.json",
+      "archiveFile": "transfer/gold-rejected/wrong-model/wrong-model_long-horizon-s0-r4.json",
+      "sourceSha256": "83ef85e1eda9fc7a49b0597076c1fd8cba68526f2141d30c869c5d89354b2d07",
+      "staticAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "quarantined",
+        "reviewer": "user-directed-manual-audit+mode1-quality-lint/1",
+        "reviewedAt": "2026-10-04T18:37:19.329Z",
+        "checkedFields": [
+          "draft",
+          "stored"
+        ],
+        "textSha256": "7a0418192b64c82171b478cb2d1e09f82ea4af8c66fc9c19a508bcf013a140a1",
+        "issues": [
+          {
+            "category": "environment-permission-assertion",
+            "excerpt": "沙箱不支持",
+            "field": "stored"
+          }
+        ]
+      },
+      "rationale": "apparatus-language detected in draft/stored"
+    }
+  ],
+  "counts": {
+    "scanned": 11,
+    "retained": 1,
+    "quarantined": 10,
+    "staticLintMatches": 7,
+    "manualAuditOnlyQuarantines": 3
+  }
+}

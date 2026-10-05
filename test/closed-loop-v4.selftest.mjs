@@ -22,6 +22,7 @@ import * as tr from '../tools/traj-run.mjs'
 import * as cyc from '../tools/cfb-cycle.mjs'
 import { materialize } from '../tools/traj-fixtures.mjs'
 import { perturbExposure } from '../tools/helpers/perturb-check.mjs'
+import { auditMode1Pair } from '../tools/helpers/mode1-quality.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 let pass = 0, fail = 0
@@ -177,7 +178,9 @@ try {
       assert.equal(cli('policy-from-flywheel').status, 2)
       fs.mkdirSync(path.join(tmp, 'offline/train'), { recursive: true })
       const generic = '上一轮已把保存路径改到用户可写目录；先逐字核对被改文件的 old_text 是否仍存在，再跑一次验收命令确认报错消失；若仍 EACCES，下一步查目录 owner 而不是再改代码。'.repeat(3)
-      fs.writeFileSync(path.join(tmp, 'offline/train/pairs.jsonl'), JSON.stringify({ schema: 'cfb.pref-pair/1', round: 2, task: 'flaky-timeout', split: 'dev', chosenText: generic, rejectedText: '也许修好了。', scores: { candidate: 2, control: 0 } }) + '\n')
+      const policyPair = { schema: 'cfb.pref-pair/1', round: 2, task: 'flaky-timeout', split: 'dev', chosenText: generic, rejectedText: '也许修好了。', scores: { candidate: 2, control: 0 } }
+      policyPair.contentAudit = auditMode1Pair(policyPair)
+      fs.writeFileSync(path.join(tmp, 'offline/train/pairs.jsonl'), JSON.stringify(policyPair) + '\n')
       const pf = cli('policy-from-flywheel'); assert.equal(pf.status, 0, pf.stdout + pf.stderr); assert.match(pf.stdout, /op exemplar/)
       const pols = fs.readdirSync(path.join(tmp, 'offline/policies')); assert.equal(pols.length, 1); const pol = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/policies', pols[0]), 'utf8')); assert.equal(pol.patches[0].op, 'exemplar'); assert.equal(pol.origin.source, 'flywheel-exemplar'); assert.equal(pol.status, 'proposed')
       const ru = cli('ruler'); assert.ok(/效度.*valid  n=24/.test(ru.stdout) && /L1 角色判定：\*\*prescreen\*\*/.test(ru.stdout) && /脚注：轨迹级/.test(ru.stdout) && /天花板率（结构分=2）0\.827/.test(ru.stdout), ru.stdout)
@@ -486,7 +489,7 @@ try {
     assert.equal(H.handDraftGate(raw, gold, ctx).ok, true)
   })
 
-  await test('A26 v4.6 三模式闭环（零 API，临时目录）：plan-traj --arms raw,hand（压缩 0 次、三臂拒）→ 两家族 hand 单元步进（假主模型：hand 修好、raw 假宣称；status 显示等稿）→ ceiling（hand-better，5 对 2 家族，不碰 champion）→ gold add（按家族 dev/holdout、落盘不改、重复不收）→ plan-bench（策略 × 金标，设计含金标摘要，重复不建）→ bench-run --dry-run（金标自比全 1、金标被改 ⇒ 拒）→ bench-report（dev 配对 e 值 promote、holdout 只报告、下一步 plan-traj）→ 快照含基准计划', async () => {
+  await test('A26 v4.6 三模式闭环（零 API，临时目录）：plan-traj --arms raw,hand（压缩 0 次、三臂拒）→ 两家族 hand 单元步进 → gold add / 冻结 bench 计划 → bench-report 排除未登记的新家族，禁止追溯性 promote；holdout 只报告 → 快照含基准计划', async () => {
     const C = await import('../tools/cfb-cycle.mjs'); const TR = await import('../tools/traj-run.mjs'); const B = await import('../tools/bench-run.mjs'); const { TRAJ_TASKS } = await import('../tools/traj-fixtures.mjs'); const I = await import('../index.js')
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-')); const cwd = process.cwd(); process.chdir(tmp)
     try {
@@ -541,19 +544,31 @@ try {
       assert.equal(br.dry, true); assert.equal(br.rows.length, 10); assert.ok(br.rows.filter((x) => x.policy === 'self(gold)').every((x) => x.distance.key.every((v) => v === 1)), '金标自比全 1'); assert.ok(!fs.existsSync(path.join(tmp, 'runtime', 'b1', 'receipt.json')))
       const gf = path.join(tmp, 'gold', 'flaky-timeout', 'flaky-timeout-s0-r1.json'); const g0 = fs.readFileSync(gf, 'utf8'); fs.writeFileSync(gf, g0.replace('已排除', '已经排除'))
       await assert.rejects(B.benchRun({ plan: path.join(tmp, 'runtime', 'b1', 'plan.json'), out: path.join(tmp, 'runtime', 'b1'), dryRun: true, goldDir: path.join(tmp, 'gold'), policyDir: path.join(tmp, 'offline', 'policies') }, { I }), /gold-changed/); fs.writeFileSync(gf, g0)
-      // 7) 假压缩结果 → bench-report：base = 原文放行；p-test1 = 命中金标；再补一个 dev 家族（perf-regression）两行 ⇒ 5 胜 2 家族 e=10.5 ⇒ promote
+      // 7) 假结果 → bench-report：只用冻结计划内金标；临时追加的 perf-regression 结果未登记在计划，必须被排除，不能追溯性凑成跨家族 promote
       const H = await import('../tools/helpers/hand-draft.mjs'); const G = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime', 'b1', 'plan.json'), 'utf8')).gold.map((g) => JSON.parse(fs.readFileSync(path.join(tmp, 'gold', g.family, g.id + '.json'), 'utf8')))
       const fake = []
       const strip = (d) => { const { slots, ...rest } = d; return rest }
-      for (const g of G) { fake.push({ schema: 'cfb.bench-row/1', plan: 'b1', policy: 'base', gold: g.id, family: g.family, split: g.split, ok: false, why: 'birth-accept', distance: strip(H.draftDistance(g.raw, g.draft, { raw: g.raw, ctx: g.ctx })) }); fake.push({ schema: 'cfb.bench-row/1', plan: 'b1', policy: 'p-test1', gold: g.id, family: g.family, split: g.split, ok: true, distance: strip(H.draftDistance(g.draft, g.draft, { raw: g.raw, ctx: g.ctx })) }) }
+      for (const g of G) { fake.push({ schema: 'cfb.bench-row/1', plan: 'b1', policy: 'base', gold: g.id, family: g.family, split: g.split, ok: false, why: 'birth-accept', distance: strip(H.draftDistance(g.raw, g.draft, { raw: g.raw, ctx: g.ctx })) }); fake.push({ schema: 'cfb.bench-row/1', plan: 'b1', policy: 'p-test1', gold: g.id, family: g.family, split: g.split, ok: true, text: g.draft, distance: strip(H.draftDistance(g.draft, g.draft, { raw: g.raw, ctx: g.ctx })) }) }
       for (let k = 0; k < 3; k++) { fake.push({ schema: 'cfb.bench-row/1', plan: 'b1', policy: 'base', gold: 'perf-' + k, family: 'perf-regression', split: 'dev', ok: true, distance: { decision: 0, excludedRecall: 1, acceptOk: null, openRecall: 1, anchorPrecision: 1, lengthOk: 1, key: [0, 1, 1, 1, 1, 1], score: 0.5, verdict: 'decision-differs' } }); fake.push({ schema: 'cfb.bench-row/1', plan: 'b1', policy: 'p-test1', gold: 'perf-' + k, family: 'perf-regression', split: 'dev', ok: true, distance: { decision: 1, excludedRecall: 1, acceptOk: null, openRecall: 1, anchorPrecision: 1, lengthOk: 1, key: [1, 1, 1, 1, 1, 1], score: 1, verdict: 'close' } }) }
       fs.writeFileSync(path.join(tmp, 'runtime', 'b1', 'results.jsonl'), fake.map((x) => JSON.stringify(x)).join('\n') + '\n')
       r = C.runCli(['bench-report', '--plan', '1'], { dir: tmp }); assert.equal(r.status, 0, r.stderr)
-      assert.match(r.stdout, /p-test1: 5胜 0负 0平（2 家族）e=10.5/); assert.match(r.stdout, /\*\*promote\*\*/); assert.match(r.stdout, /下一步: plan-traj --arms raw,policy:p-test1/)
-      assert.match(r.stdout, /\| base \| holdout \| 3 \|/); assert.match(r.stdout, /\| p-test1 \| dev \| 5 \|/)
-      const rep = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime', 'b1', 'report.json'), 'utf8')); assert.equal(rep.best, 'p-test1'); assert.equal(rep.paired['p-test1'].n, 5, 'holdout 项不进配对')
+      assert.match(r.stdout, /p-test1: 2胜 0负 0平（1 家族）e=2.333/); assert.match(r.stdout, /\*\*undetermined\*\*/); assert.doesNotMatch(r.stdout, /\*\*promote\*\*/)
+      assert.match(r.stdout, /\| base \| holdout \| 3 \|/); assert.match(r.stdout, /\| p-test1 \| dev \| 2 \|/); assert.match(r.stdout, /污染\/谱系闸：排除 6 条结果/)
+      const rep = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime', 'b1', 'report.json'), 'utf8')); assert.equal(rep.best, null); assert.equal(rep.paired['p-test1'].n, 2, '只计冻结计划的 dev 金标；临时追加行不进配对')
       assert.ok(!fs.existsSync(path.join(tmp, 'offline', 'champion.json')), 'bench-report 不写 champion')
-      assert.match(C.runCli(['status'], { dir: tmp }).stdout, /基准计划: b1 reported base vs p-test1 × 5 ≈\$0.075 best=p-test1/)
+      assert.match(C.runCli(['status'], { dir: tmp }).stdout, /基准计划: b1 reported base vs p-test1 × 5 ≈\$0.075/)
+      // 无相邻冻结计划的结果文件不能晋升或回灌。
+      const orphanDir = path.join(tmp, 'orphan-bench'); fs.mkdirSync(orphanDir, { recursive: true })
+      const orphanRows = path.join(orphanDir, 'results.jsonl'); fs.writeFileSync(orphanRows, fake.map((x) => JSON.stringify(x)).join('\n') + '\n')
+      const orphanReport = C.runCli(['bench-report', '--results', orphanRows], { dir: tmp })
+      assert.notEqual(orphanReport.status, 0); assert.match(orphanReport.stderr + orphanReport.stdout, /bench-report-requires-frozen-plan-json/)
+      // 同一冻结 job 重复两次时，两条重复记录一起排除；计划不完整则关闭 promote 与飞轮。
+      const resultsFile = path.join(tmp, 'runtime', 'b1', 'results.jsonl'); const cleanResults = fs.readFileSync(resultsFile, 'utf8')
+      fs.appendFileSync(resultsFile, JSON.stringify(fake[0]) + '\n')
+      const duplicateReport = C.runCli(['bench-report', '--plan', '1'], { dir: tmp }); assert.equal(duplicateReport.status, 0, duplicateReport.stderr)
+      const duplicateRep = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime', 'b1', 'report.json'), 'utf8'))
+      assert.equal(duplicateRep.preregistration.complete, false); assert.equal(duplicateRep.preregistration.eligibleJobs, 9); assert.equal(duplicateRep.flywheel.withheldForIncompletePlan, true)
+      fs.writeFileSync(resultsFile, cleanResults)
       // 8) 快照含基准计划（不写仓库文件：只调库函数）
       const prev = C.cycleDir(); C.setCycleDir(tmp); try { const snap = C.cycleSnapshot(); assert.equal(snap.benchPlans.length, 1); assert.equal(snap.benchPlans[0].plan.id, 'b1'); assert.equal(snap.trajPlans.length, 1) } finally { C.setCycleDir(prev) }
     } finally { process.chdir(cwd); fs.rmSync(tmp, { recursive: true, force: true }) }
@@ -614,7 +629,7 @@ try {
       assert.notEqual(C.runCli(['plan-bench', '--policies', 'base,p-fx,p-fx.f011', '--factors', 'half'], { dir: tmp }).status, 0, '因子设计只能一个候选')
       // 假结果：补丁 2（bit 1）开 ⇒ 分 +0.3、决定 1；其余补丁无效果（b1：base=000, f011, f101, f110 ⇒ 补丁 2 开的臂：f011、f110）
       const dist = (on) => ({ decision: on ? 1 : 0, excludedRecall: 1, acceptOk: 1, openRecall: 1, anchorPrecision: 1, lengthOk: 1, key: [on ? 1 : 0, 1, 1, 1, 1, 1], score: on ? 0.9 : 0.6, verdict: on ? 'match' : 'decision-differs' })
-      const rows = []; for (const g of golds) for (const a of plan.factorial.arms) rows.push({ schema: 'cfb.bench-row/1', plan: 'b1', policy: a.id, gold: g.id, family: g.family, split: 'dev', ok: true, distance: dist(!!(a.mask & 2)) })
+      const rows = []; for (const g of golds) for (const a of plan.factorial.arms) rows.push({ schema: 'cfb.bench-row/1', plan: 'b1', policy: a.id, gold: g.id, family: g.family, split: 'dev', ok: true, text: g.draft, distance: dist(!!(a.mask & 2)) })
       fs.writeFileSync(path.join(tmp, 'runtime', 'b1', 'results.jsonl'), rows.map((x) => JSON.stringify(x)).join('\n') + '\n')
       fs.rmSync(path.join(tmp, 'offline', 'policies', 'p-fx.f010.json'))   // full 设计写过它；删掉以证明 bench-report 自己会落
       r = C.runCli(['bench-report', '--plan', '1'], { dir: tmp }); assert.equal(r.status, 0, r.stderr)
@@ -864,7 +879,7 @@ try {
     const g0 = gAll.find((g) => g.id.startsWith('sse-truncated-')) || gAll[0]
     const boundedCtx = I.applyCtxContinuationPolicy(g0.ctx, 'bounded')
     assert.ok(boundedCtx.length < g0.ctx.length, 'bounded ctx 比 full ctx 更短')
-    assert.ok(boundedCtx.includes('第 1–2 轮已跑 4 条') && boundedCtx.includes('曾涉') && boundedCtx.includes('src/birth.js'), 'bounded ctx 压缩旧轮次同时保留曾涉标识符供 I2 核真')
+    assert.ok(boundedCtx.includes('曾涉') && boundedCtx.includes('src/birth.js'), 'bounded ctx 保留曾涉标识符供 I2 核真；不绑定某个已隔离 gold 的具体台账文本')
     const spAll = I.spliceProgramParts('正文。', g0.ctx, { programParts: 'all' })
     const spCont = I.spliceProgramParts('正文。', g0.ctx, { programParts: 'continuation-only' })
     const spNone = I.spliceProgramParts('正文。', g0.ctx, { programParts: 'none' })
@@ -1074,7 +1089,7 @@ try {
     assert.match(tLite.stdout, /≤4 轮/)
   })
 
-  await test('A41 理论驱动本地认知图微模型编译器（compile-v5-local：18维特征 + 次模拟阵选取 + 11/11 Gold 标尺 1.000 满分 + 零 API 极速过闸）', async () => {
+  await test('A41 compile-v5-local 对当前唯一人工批准的 clean Gold 做零 API 安全回归（单样本仅作本地功能检查，不作泛化/晋升证据）', async () => {
     const I = await import('../index.js')
     const { loadGold } = await import('../tools/helpers/three-mode.mjs')
     const { draftDistance, handDraftGate } = await import('../tools/helpers/hand-draft.mjs')
@@ -1091,7 +1106,7 @@ try {
     assert.equal(I.effectiveLocalModel(cfg0), true)
 
     const allGold = loadGold(path.join(ROOT, 'transfer', 'gold'))
-    assert.ok(allGold.length >= 11, `金标库至少 11 项 (got ${allGold.length})`)
+    assert.ok(allGold.length >= 1, `至少有当前人工批准且 clean 的 active gold（got ${allGold.length}）`)
     for (const g of allGold) {
       const cfg = g.raw.length < 3100
         ? { ...cfg0, birthMinSavedChars: Math.min(cfg0.birthMinSavedChars || 50, Math.max(20, Math.floor(g.raw.length * 0.05))), ...(g.raw.length < 2600 ? { birthTokenGate: false } : {}) }

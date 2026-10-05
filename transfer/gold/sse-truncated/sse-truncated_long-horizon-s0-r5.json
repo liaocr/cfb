@@ -58,5 +58,24 @@
   },
   "validated": true,
   "digest": "2876ba54e4f80ad9",
-  "file": "transfer/gold/sse-truncated/sse-truncated_long-horizon-s0-r5.json"
+  "file": "transfer/gold/sse-truncated/sse-truncated_long-horizon-s0-r5.json",
+  "qualityAudit": {
+    "schema": "cfb.mode1-content-audit/1",
+    "status": "clean",
+    "reviewer": "user-directed-manual-audit+mode1-quality-lint/1",
+    "reviewedAt": "2026-10-04T18:37:19.329Z",
+    "checkedFields": [
+      "draft",
+      "stored"
+    ],
+    "textSha256": "8107d16cc8afa27acf956d3758be822e40a1ccc455a6f44bee200c2103b50e6a",
+    "issues": []
+  },
+  "manualAuditApproval": {
+    "decision": "retain-active",
+    "shorthand": "sse_long",
+    "source": "user-directed manual audit communicated 2026-10-05",
+    "scope": "draft/stored target text; historical score/benchmark claims remain invalidated",
+    "at": "2026-10-04T18:37:19.329Z"
+  }
 }

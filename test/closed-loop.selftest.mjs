@@ -16,6 +16,7 @@ import { API_APPROVAL_SCOPES_V9, KNOWN_API_SCOPES } from '../tools/helpers/api-w
 import { prepareEvaluation, reportEvaluation, DEFAULT_HOME_V9, PUBLIC_RECEIPT_V9 } from '../tools/helpers/eval-workflow.mjs'
 import { readyMain } from '../tools/effect-ready.mjs'
 import * as cyc from '../tools/cfb-cycle.mjs'
+import { isMode1PairEligible } from '../tools/helpers/mode1-quality.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 let pass = 0, fail = 0
@@ -302,7 +303,9 @@ try {
       assert.ok(/判定：(reject|continue)/.test(i2.stdout), i2.stdout)
       const hist = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/history.json'), 'utf8'))
       assert.equal(hist.rounds.length, 4); assert.equal(hist.rounds[2].decision, 'adopt-provisional'); assert.equal(hist.rounds[3].status, 'ingested')
-      assert.equal(fs.readFileSync(path.join(tmp, 'offline/train/pairs.jsonl'), 'utf8').trim().split('\n').length, 20, '飞轮：4 轮 × 5 个非平局配对')
+      const flywheel = fs.readFileSync(path.join(tmp, 'offline/train/pairs.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line))
+      assert.equal(flywheel.length, 6, '仅干净、显式 dev 且位于训练 family allowlist 的历史配对进入飞轮')
+      assert.ok(flywheel.every((pair) => pair.split === 'dev' && ['flaky-timeout', 'perf-regression', 'sse-truncated'].includes(pair.task) && isMode1PairEligible(pair, { requireRecorded: true })))
       const pr = cli('propose', '--allow-provisional'); assert.equal(pr.status, 0, pr.stdout + pr.stderr)
       const proposal = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/proposal.json'), 'utf8'))
       assert.equal(proposal.needsSrcChange.length, 1); assert.equal(proposal.needsSrcChange[0].knob, 'kItems'); assert.deepEqual(proposal.configDiff, {})

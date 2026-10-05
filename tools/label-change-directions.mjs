@@ -14,6 +14,7 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { loadGold } from './helpers/three-mode.mjs'
+import { isMode1GoldEligible } from './helpers/mode1-quality.mjs'
 import { slotsOf, anchorsOf } from './helpers/hand-draft.mjs'
 import { mineChangeCandidates, parseGoldDirections } from './helpers/mine-change.mjs'
 
@@ -41,7 +42,10 @@ const SYSTEM = [
   '只输出 JSON，不要多余文字：{"items":[{"id":"<原样回填>","pick":<候选下标或null>,"reason":"一句话中文理由","confidence":"high|medium|low"}]}',
 ].join('\n')
 
-const gold = loadGold(path.join(REPO, 'transfer/gold')).map((g) => ({ ...g, hand: g.draft || g.gold || g.hand || '' }))
+const DEV_FAMS = new Set(['flaky-timeout', 'perf-regression', 'sse-truncated'])
+const gold = loadGold(path.join(REPO, 'transfer/gold')).filter((g) => isMode1GoldEligible(g)
+  && g.qualityAudit?.status === 'clean' && g.split === 'dev' && DEV_FAMS.has(String(g.family || '').replace(/^pool:/, '').split(':', 1)[0].replace(/_(?:decoy|long-horizon).*$/, '')))
+  .map((g) => ({ ...g, hand: g.draft || g.gold || g.hand || '' }))
 const items = gold.map((g) => {
   const hay = String(g.raw) + '\n' + String(g.ctx || '')
   const cands = mineChangeCandidates(hay).slice(0, MAXC).map((c, i) => ({ i, old: c.old.slice(0, 100), new: c.nw.slice(0, 100), kind: c.kind }))

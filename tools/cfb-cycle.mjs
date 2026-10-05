@@ -42,6 +42,7 @@ import { TRAJ_TASKS } from './traj-fixtures.mjs'
 import { trainRanker, scoreText } from './helpers/ranker.mjs'
 import { retroValidity } from './helpers/traj-proxy.mjs'
 import { draftDistance } from './helpers/hand-draft.mjs'
+import { auditMode1Output, auditMode1Pair, isMode1GoldEligible, isMode1PairEligible } from './helpers/mode1-quality.mjs'
 import { ceilingFrom, goldItemsFromTraj, loadGold, saveGold, buildBenchPlan, benchReport, benchReportMd, readResults, derivePolicies, maskBits, flywheelPairsFromTraj, flywheelPairsFromBench } from './helpers/three-mode.mjs'
 
 // 目录：默认仓库里的 .cfb-offline / .cfb-runtime/bounded-ab-v9/rN / transfer 收据；自测用 CFB_CYCLE_DIR 整体改道（不碰真实轮次）。
@@ -49,6 +50,15 @@ import { ceilingFrom, goldItemsFromTraj, loadGold, saveGold, buildBenchPlan, ben
 let BASE = process.env.CFB_CYCLE_DIR ? path.resolve(process.env.CFB_CYCLE_DIR) : null
 export let OFFLINE, HISTORY, CHAMPION, POLICIES, TASKS_DIR, TRAIN_PAIRS, RULER_DIR, STATES_DIR, DESIGN_FILE, VALIDITY, EXPOSURE, PARITY
 export const HOLDOUT_MAX_EXPOSURE = 3
+const TRAIN_DEV_FAMS = new Set(['flaky-timeout', 'perf-regression', 'sse-truncated'])
+const familyKey = (value) => String(value || '').replace(/^pool:/, '').split(':', 1)[0].replace(/_(?:decoy|long-horizon).*$/, '')
+const cleanDevFlywheelPair = (p) => {
+  const family = familyKey(p?.task || p?.family || '')
+  return p?.split === 'dev' && TRAIN_DEV_FAMS.has(family)
+    && typeof p?.chosenText === 'string' && typeof p?.rejectedText === 'string'
+    && isMode1PairEligible(p, { requireRecorded: true })
+}
+
 export const homeFor = (round) => (BASE ? path.join(BASE, 'runtime', 'r' + Number(round)) : DEFAULT_HOME_V9(round))
 export const receiptFor = (round) => (BASE ? path.join(BASE, 'receipts', 'v9-r' + Number(round) + '.watermark.json') : PUBLIC_RECEIPT_V9(round))
 export const trajHomeFor = (n) => (BASE ? path.join(BASE, 'runtime', 't' + Number(n)) : path.join(ROOT, '.cfb-runtime', 'traj', 't' + Number(n)))
@@ -77,14 +87,18 @@ const readJsonl = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8')
 export const loadFlywheel = () => readJsonl(TRAIN_PAIRS)
 /** 幂等追加偏好对到飞轮（pairs.jsonl）：按 (task, chosenText, rejectedText) 内容摘要去重。 */
 export function appendFlywheelPairs(pairs) {
-  if (!Array.isArray(pairs) || !pairs.length) return { added: 0, total: loadFlywheel().length }
+  if (!Array.isArray(pairs) || !pairs.length) return { added: 0, total: loadFlywheel().length, qualityRejected: 0, scopeRejected: 0 }
   const existing = loadFlywheel()
   const keyOf = (p) => evidenceDigest({ task: p.task || '', chosenText: String(p.chosenText || '').trim(), rejectedText: String(p.rejectedText || '').trim() })
   const seen = new Set(existing.map(keyOf))
   const fresh = []
+  let qualityRejected = 0, scopeRejected = 0
   for (const p of pairs) {
     if (!p || typeof p.chosenText !== 'string' || typeof p.rejectedText !== 'string') continue
     if (!p.chosenText.trim() || !p.rejectedText.trim() || p.chosenText.trim() === p.rejectedText.trim()) continue
+    const family = String(p.task || p.family || '').replace(/^pool:/, '').split(':', 1)[0].replace(/_(?:decoy|long-horizon).*$/, '')
+    if (p.split !== 'dev' || !TRAIN_DEV_FAMS.has(family)) { scopeRejected++; continue }
+    if (!isMode1PairEligible(p, { requireRecorded: true })) { qualityRejected++; continue }
     const k = keyOf(p)
     if (seen.has(k)) continue
     seen.add(k)
@@ -94,13 +108,13 @@ export function appendFlywheelPairs(pairs) {
     ensure(path.dirname(TRAIN_PAIRS))
     fs.appendFileSync(TRAIN_PAIRS, fresh.map((p) => JSON.stringify(p)).join('\n') + '\n')
   }
-  return { added: fresh.length, total: existing.length + fresh.length }
+  return { added: fresh.length, total: existing.length + fresh.length, qualityRejected, scopeRejected }
 }
 export const loadValidity = () => readJsonl(VALIDITY)
 export const loadExposure = () => readJson(EXPOSURE) || { schema: 'cfb.exposure/1', tasks: {} }
 function bumpExposure(tasks, split, round, decision) {
   const ex = loadExposure()
-  for (const t of new Set(tasks)) { if ((split[t] || 'dev') !== 'holdout') continue; const e = ex.tasks[t] || { n: 0, rounds: [] }; e.n += 1; e.rounds.push({ round, decision }); ex.tasks[t] = e }
+  for (const t of new Set(tasks)) { if (split[t] !== 'holdout') continue; const e = ex.tasks[t] || { n: 0, rounds: [] }; e.n += 1; e.rounds.push({ round, decision }); ex.tasks[t] = e }
   ensure(RULER_DIR); writeJson(EXPOSURE, ex); return ex
 }
 export const exposureWarnings = (ex = loadExposure()) => Object.entries(ex.tasks).filter(([, e]) => e.n >= HOLDOUT_MAX_EXPOSURE).map(([t, e]) => `留出题 ${t} 已参与 ${e.n} 次判定（≥${HOLDOUT_MAX_EXPOSURE}）：应退役为 dev，换新题进留出（mint / 自铸）`)
@@ -322,7 +336,7 @@ function cmdPlan(args) {
   let rankerLine = ''
   if (r.ok) { const ec = rulerEconomics({ validity: rulerValidity(loadValidity().map((x) => ({ proxy: x.proxy, outcome: x.outcome }))) }); rankerLine += `\nL1 角色：${ec.role}${ec.role === 'diagnostic' ? '（效度未证：这一轮 ≈$' + ec.l1.usd + ' 只买到 ≈' + ec.l1.informativePairs + ' 个非平局对、不计入采纳；推荐先 `plan-traj`）' : ''}` }
   if (r.ok && r.hypothesis.lever !== 'A/A') {
-    const rk = trainRanker(loadFlywheel())
+    const rk = trainRanker(loadFlywheel().filter(cleanDevFlywheelPair))
     if (rk.status === 'ready') { const m = r.pairs.map((p) => { const v = r.plan.variants[p.task]; return v ? scoreText(rk, v.candidate) - scoreText(rk, v.control) : 0 }); rankerLine = `\n排序器预判（CPU，${rk.pairs} 对飞轮，留一 CV ${rk.cvAcc}）：candidate − control 平均 ${(m.reduce((a, b) => a + b, 0) / Math.max(1, m.length)).toFixed(3)}（只是预判，不替代评委；为负时考虑换假设省这一轮）` } else rankerLine = `\n排序器：${rk.status}（${rk.note}）`
   }
   fs.writeFileSync(path.join(OFFLINE, 'round-' + round + '.plan.md'), md + rankerLine + '\n')
@@ -344,13 +358,15 @@ export function ingestRound({ round, report = null, history = loadHistory(), now
   const pairs = pairResults(results, { arms: plan.arms }).filter((p) => p.outcome === 'win' || p.outcome === 'loss' || p.outcome === 'tie')
   if (!pairs.length) throw new Error('no-paired-results（账本里还没有两臂齐全、判据完整的样本；先 run --live 或用 --report 导入）')
   const isAA = plan.hypothesis.lever === 'A/A'
-  const split = plan.hypothesis.split || Object.fromEntries(plan.tasks.map((t) => [t, loadPool().split[t] || 'dev']))
+  const poolSplit = loadPool().split
+  const split = plan.hypothesis.split || Object.fromEntries(plan.tasks.map((t) => [t, poolSplit[t]]))
+  for (const task of plan.tasks) if (!['dev', 'holdout'].includes(split?.[task])) throw new Error(`plan-split-missing-or-invalid:${task}:${split?.[task] ?? 'missing'}`)
   const key = hypothesisKey(plan.hypothesis.lever, plan.hypothesis.value, plan.hypothesis.champion)
   const hyp = history.hypotheses[key] || { key, lever: plan.hypothesis.lever, value: plan.hypothesis.value, champion: plan.hypothesis.champion, kind: plan.hypothesis.kind, ...(plan.hypothesis.policy ? { policy: plan.hypothesis.policy } : {}), outcomes: [], decision: 'continue', rounds: [] }
   if (hyp.decision !== 'continue') throw new Error('hypothesis-already-decided:' + key)
-  for (const p of pairs) hyp.outcomes.push({ round, task: p.task, split: split[p.task] || 'dev', sample: p.sample, outcome: p.outcome, candidate: p.candidate, control: p.control, candidateAction: p.candidateAction, controlAction: p.controlAction })
+  for (const p of pairs) hyp.outcomes.push({ round, task: p.task, split: split[p.task], sample: p.sample, outcome: p.outcome, candidate: p.candidate, control: p.control, candidateAction: p.candidateAction, controlAction: p.controlAction })
   hyp.rounds.push(round)
-  const allSplit = Object.fromEntries(hyp.outcomes.map((o) => [o.task, o.split || 'dev']))
+  const allSplit = Object.fromEntries(hyp.outcomes.map((o) => [o.task, o.split]))
   const design = loadDesign()
   const d3 = decideV4({ pairs: hyp.outcomes, split: allSplit, aa: isAA, design })
   d3.gap = generalizationGap({ dev: d3.dev, holdout: d3.holdout }); d3.iccSource = design.iccSource; d3.icc = design.icc
@@ -368,12 +384,14 @@ export function ingestRound({ round, report = null, history = loadHistory(), now
     if (p.outcome === 'tie' || isAA) continue
     const v = plan.variants?.[p.task]; if (!v) continue
     const win = p.outcome === 'win'
-    flywheel.push({ schema: 'cfb.pref-pair/1', at: now, round, task: p.task, split: split[p.task] || 'dev', lever: hyp.lever, value: hyp.value, policy: plan.hypothesis.policy || null, chosen: win ? 'candidate' : 'control', chosenText: win ? v.candidate : v.control, rejectedText: win ? v.control : v.candidate, scores: { candidate: p.candidate, control: p.control }, planDigest: evidenceDigest(plan) })
+    const chosenText = win ? v.candidate : v.control
+    const rejectedText = win ? v.control : v.candidate
+    flywheel.push({ schema: 'cfb.pref-pair/1', at: now, round, task: p.task, split: split[p.task], lever: hyp.lever, value: hyp.value, policy: plan.hypothesis.policy || null, chosen: win ? 'candidate' : 'control', chosenText, rejectedText, contentAudit: auditMode1Pair({ chosenText, rejectedText }, { reviewer: 'mode1-flywheel-lint/1' }), scores: { candidate: p.candidate, control: p.control }, planDigest: evidenceDigest(plan) })
   }
-  if (flywheel.length) { ensure(path.dirname(TRAIN_PAIRS)); fs.appendFileSync(TRAIN_PAIRS, flywheel.map((x) => JSON.stringify(x)).join('\n') + '\n') }
+  const flywheelAppend = appendFlywheelPairs(flywheel)
   const watermark = readWatermark(receiptPath)
   const roundEntry = { round, at: now, status: 'ingested', key, lever: hyp.lever, value: hyp.value, champion: hyp.champion, tasks: plan.tasks, planDigest: evidenceDigest(plan), scope: planScope(plan),
-    pairs: pairs.length, outcomes: pairs.map((p) => ({ task: p.task, split: split[p.task] || 'dev', outcome: p.outcome, candidate: p.candidate, control: p.control })), decision: d3.decision, pWin: seq.pWin, holdoutPWin: d3.holdout?.pWin ?? null, flywheelPairs: flywheel.length,
+    pairs: pairs.length, outcomes: pairs.map((p) => ({ task: p.task, split: split[p.task], outcome: p.outcome, candidate: p.candidate, control: p.control })), decision: d3.decision, pWin: seq.pWin, holdoutPWin: d3.holdout?.pWin ?? null, flywheelPairs: flywheelAppend.added, flywheelQualityRejected: flywheelAppend.qualityRejected, flywheelScopeRejected: flywheelAppend.scopeRejected,
     reservedUsd: watermark ? +(watermark.reservedNano / 1e9).toFixed(4) : (rep.reservedUsd ?? null), requestsReserved: watermark?.requests ?? rep.requestsReserved ?? null, rejected: rep.requestsRejected || [], ingestedFrom: report ? 'report-file' : 'ledger', complete: !!rep.complete }
   history.rounds = history.rounds.filter((r) => r.round !== round).concat([roundEntry]).sort((a, b) => a.round - b.round)
   let championChange = null
@@ -389,7 +407,7 @@ export function ingestRound({ round, report = null, history = loadHistory(), now
     history.champion = next
   } else if (d3.decision === 'reject' && hyp.lever === 'policy') { const pf = path.join(POLICIES, hyp.value + '.json'), pol = readJson(pf); if (pol) writeJson(pf, { ...pol, status: 'rejected', rejectedRound: round }) }
   writeJson(HISTORY, history)
-  const out = { round, key, pairs: pairs.map((p) => ({ ...p, split: split[p.task] || 'dev' })), posterior: hyp.posterior, v3: hyp.v3, decision: d3.decision, calibration: isAA ? history.calibration : null, championChange, flywheelPairs: flywheel.length, reservedUsd: roundEntry.reservedUsd, ingestedFrom: roundEntry.ingestedFrom, complete: roundEntry.complete }
+  const out = { round, key, pairs: pairs.map((p) => ({ ...p, split: split[p.task] })), posterior: hyp.posterior, v3: hyp.v3, decision: d3.decision, calibration: isAA ? history.calibration : null, championChange, flywheelPairs: flywheel.length, reservedUsd: roundEntry.reservedUsd, ingestedFrom: roundEntry.ingestedFrom, complete: roundEntry.complete }
   writeJson(path.join(OFFLINE, 'round-' + round + '.result.json'), { schema: 'cfb.cycle-result/3', at: now, ...out })
   return out
 }
@@ -641,7 +659,7 @@ function cmdConfirm(args) {
 export function rulerReport({ validity = loadValidity(), exposure = loadExposure(), flywheel = loadFlywheel(), trajDirs = ['traj1', 'traj2', 'traj3'] } = {}) {
   const v = rulerValidity(validity.map((x) => ({ proxy: x.proxy, outcome: x.outcome })))
   const pol = adoptionPolicy(v)
-  const rk = trainRanker(flywheel)
+  const rk = trainRanker((flywheel || []).filter(cleanDevFlywheelPair))
   const trajRows = trajDirs.flatMap((d) => readJsonl(path.join(ROOT, 'transfer', d, 'results.jsonl')).map((r) => ({ ...r, dir: d })))
   const baseline = trajRows.length ? outcomeComparison(trajRows.map((r) => ({ ...r, arm: r.variant === 'auto' ? 'champion' : r.variant === 'raw' ? 'previous' : null, sample: `${r.dir}#${r.sample ?? 0}` })).filter((r) => r.arm)) : null
   const retro = trajRows.length ? retroValidity(trajRows) : null
@@ -855,9 +873,10 @@ function cmdPlanTraj(args) {
 }
 /** 零 API 生成候选：从飞轮里挑一条赢稿做【风格样例】槽（GEPA/DSPy 式 bootstrapped demo）；过补丁预算 + 泄漏闸才落为策略。 */
 export function exemplarPolicyFromFlywheel({ flywheel = loadFlywheel(), parent = null, pool = loadPool() } = {}) {
+  flywheel = (flywheel || []).filter(cleanDevFlywheelPair)
   if (!parent) { try { parent = loadChampionPolicy() } catch { parent = BASE_POLICY } }
   const dev = pool.tasks.filter((t) => t.split === 'dev')
-  const cands = flywheel.filter((p) => p.split !== 'holdout' && typeof p.chosenText === 'string' && p.chosenText.length >= 200 && p.chosenText.length <= PATCH_LIMITS.maxExemplarChars)
+  const cands = flywheel.filter((p) => p.split === 'dev' && typeof p.chosenText === 'string' && p.chosenText.length >= 200 && p.chosenText.length <= PATCH_LIMITS.maxExemplarChars)
     .map((p) => ({ ...p, margin: (p.scores?.candidate ?? 0) - (p.scores?.control ?? 0) })).sort((a, b) => Math.abs(b.margin) - Math.abs(a.margin))
   if (!cands.length) return { ok: false, why: '飞轮里没有 200–' + PATCH_LIMITS.maxExemplarChars + ' 字、非留出题的赢稿' }
   const tried = []
@@ -929,15 +948,15 @@ function cmdGold(args) {
     const { planN, home, rows } = resultsArg(args.slice(1))
     const pool = loadPool()
     const items = goldItemsFromTraj({ home, rows, planId: planN ? 't' + planN : null, split: pool.split, fromWinners: args.includes('--from-winners') })
-    const r = saveGold(GOLD_DIR(), items, { includeUnsolved: args.includes('--include-unsolved') })
-    console.log(`金标 +${r.added.length}（${path.relative(ROOT, GOLD_DIR())}）` + (r.added.length ? '：' + r.added.join(' ') : '') + (r.skipped.length ? '\n跳过：' + r.skipped.map((x) => `${x.id}(${x.why})`).join(' ') : ''))
+    const r = saveGold(GOLD_DIR(), items, { includeUnsolved: args.includes('--include-unsolved'), rejectedDir: path.join(ROOT, 'transfer', 'gold-rejected'), auditReviewer: 'mode1-writer+apparatus-lint/1' })
+    console.log(`金标 +${r.added.length}（${path.relative(ROOT, GOLD_DIR())}）` + (r.added.length ? '：' + r.added.join(' ') : '') + (r.quarantined?.length ? `\n装置话术隔离 ${r.quarantined.length}：` + r.quarantined.map((x) => `${x.id}[${x.categories.join(',')}]`).join(' ') : '') + (r.skipped.length ? '\n跳过：' + r.skipped.map((x) => `${x.id}(${x.why})`).join(' ') : ''))
     if (r.added.length) console.log(`下一步: node tools/cfb-cycle.mjs plan-bench --policies base,<候选>   # 模式 2：压缩器对金标的召回基准（每项 1 次压缩调用 ≈ $${TRAJ_UNIT.compressUsd}）`)
     return r
   }
   const gold = loadGold(GOLD_DIR())
   console.log(`金标注册表 ${path.relative(ROOT, GOLD_DIR())}：${gold.length} 项` + (gold.length ? '' : '（空：先跑模式 1 —— plan-traj --arms raw,hand → traj-run → ceiling → gold add）'))
   const fams = [...new Set(gold.map((g) => g.family))]
-  for (const fam of fams) { const gs = gold.filter((g) => g.family === fam); console.log(`  ${fam} [${gs[0].split}] ${gs.length} 项（修好 ${gs.filter((g) => g.validated).length}）：` + gs.map((g) => `${g.id} r${g.round} ${g.draft.length}字 ${g.outcome.vsRaw ? 'vs raw ' + g.outcome.vsRaw : ''}`).join('；')) }
+  for (const fam of fams) { const gs = gold.filter((g) => g.family === fam); console.log(`  ${fam} [${gs[0].split}] ${gs.length} 项（修好 ${gs.filter((g) => g.validated).length}；内容合格 ${gs.filter((g) => g.qualityAudit?.status === 'clean').length}）：` + gs.map((g) => `${g.id} r${g.round} ${g.draft.length}字 [${g.qualityAudit?.status || 'unreviewed'}] ${g.outcome?.vsRaw ? 'vs raw ' + g.outcome.vsRaw : ''}`).join('；')) }
   return gold
 }
 /** 模式 2 计划：策略 × 金标项，每项一次压缩调用；设计摘要含金标摘要（金标改了 ⇒ 计划作废）。 */
@@ -977,12 +996,58 @@ function cmdPlanBench(args) {
 function cmdBenchReport(args) {
   const { planN, home, rows } = resultsArg(args, 'bench')
   const bplan = readJson(path.join(home, 'plan.json'))
-  const rep = benchReport(rows.filter((r) => !r.dry), { baseline: f(args, '--baseline') || 'base', factorial: bplan?.factorial || null })
+  if (!bplan || bplan.schema !== 'cfb.bench-plan/1' || !Array.isArray(bplan.gold) || !Array.isArray(bplan.policies)) {
+    throw new Error('bench-report-requires-frozen-plan-json')
+  }
+  const planNumber = Number(String(bplan.id || '').replace(/^b/, ''))
+  const { digest: declaredDigest, command: _command, ...digestPayload } = bplan
+  const designDigest = evidenceDigest({ policies: bplan.policies, metric: bplan.metric, split: bplan.split, gold: bplan.gold.map((g) => `${g.id}:${g.digest}`) }).slice(0, 16)
+  if (!Number.isInteger(planNumber) || planNumber < 1 || bplan.id !== 'b' + planNumber
+      || (planN && Number(planN) !== planNumber)
+      || declaredDigest !== evidenceDigest(digestPayload).slice(0, 16)
+      || bplan.design !== designDigest) throw new Error('bench-plan-digest-or-id-mismatch')
+  const history = loadHistory()
+  const registration = (history.benchPlans || []).find((p) => p.n === planNumber)
+  if (!registration || registration.digest !== declaredDigest || registration.design !== bplan.design
+      || registration.gold !== bplan.gold.length || JSON.stringify(registration.policies) !== JSON.stringify(bplan.policies)
+      || registration.split !== bplan.split) throw new Error('bench-plan-not-registered-or-history-mismatch')
+  const goldById = new Map(loadGold(GOLD_DIR()).map((g) => [g.id, g]))
+  const plannedGold = new Map(bplan.gold.map((g) => [g.id, g]))
+  if (plannedGold.size !== bplan.gold.length || !bplan.policies.includes('base')
+      || new Set(bplan.policies).size !== bplan.policies.length) throw new Error('bench-plan-invalid-job-set')
+  const expectedKeys = new Set(bplan.policies.flatMap((policy) => bplan.gold.map((g) => `${policy}|${g.id}`)))
+  const resultKey = (r) => `${r?.policy || ''}|${r?.gold || ''}`
+  const counts = new Map()
+  for (const r of rows.filter((x) => !x?.dry)) counts.set(resultKey(r), (counts.get(resultKey(r)) || 0) + 1)
+  const eligibleRows = rows.filter((r) => {
+    if (r.dry || r.schema !== 'cfb.bench-row/1' || r.plan !== bplan.id || !expectedKeys.has(resultKey(r))
+        || counts.get(resultKey(r)) !== 1 || typeof r.ok !== 'boolean'
+        || !r.distance || !Array.isArray(r.distance.key) || r.distance.key.length !== 6) return false
+    const g = goldById.get(r.gold), planned = plannedGold.get(r.gold)
+    if (!g || !isMode1GoldEligible(g) || g.qualityAudit?.status !== 'clean') return false
+    // Bind every scored result to the exact frozen job: no post-hoc gold, family,
+    // split, policy, digest, duplicate, or result-file plan can create a promotion.
+    if (planned.digest !== g.digest || planned.family !== g.family || planned.split !== g.split
+        || r.family !== planned.family || r.split !== planned.split) return false
+    if (r.ok && typeof r.text !== 'string') return false
+    return typeof r.text !== 'string' || auditMode1Output(r.text).status === 'clean'
+  })
+  const eligibleKeys = new Set(eligibleRows.map(resultKey))
+  const planComplete = eligibleRows.length === expectedKeys.size && [...expectedKeys].every((k) => eligibleKeys.has(k))
+  const rep = benchReport(eligibleRows, { baseline: f(args, '--baseline') || 'base', factorial: bplan.factorial || null })
+  if (!planComplete) {
+    rep.best = null
+    for (const paired of Object.values(rep.paired)) paired.decision = 'undetermined'
+    rep.next = `冻结计划 b${planNumber} 的有效结果不完整（${eligibleRows.length}/${expectedKeys.size} 个唯一 job）；不得晋升或回灌，补齐有效结果后再报告`
+  }
+  rep.preregistration = { plan: bplan.id, digest: declaredDigest, registered: true, expectedJobs: expectedKeys.size, eligibleJobs: eligibleRows.length, complete: planComplete }
   // 因子设计归因出「只留部分补丁」时，把那个子集落成现成策略（幂等；与 plan-bench --factors 派生的同名同内容），好直接进 plan-traj --arms raw,policy:<id>
   if (rep.factorial?.keepId) { const d = derivePolicies(loadPolicy(rep.factorial.of), 'full'); const a = d.arms.find((x) => x.id === rep.factorial.keepId); if (a?.policy) { ensure(POLICIES); const pf = path.join(POLICIES, a.id + '.json'); if (!readJson(pf)) writeJson(pf, a.policy) } }
-  const fw = appendFlywheelPairs(flywheelPairsFromBench(rows, { gold: loadGold(GOLD_DIR()), split: loadPool().split, source: planN ? 'b' + planN : 'bench', roundNum: Number(planN) || 0 }))
-  rep.flywheel = fw
-  const md = benchReportMd(rep, { title: `基准 ${planN ? 'b' + planN : path.basename(home)}` }) + (fw.added ? `\n\n飞轮偏好对 +${fw.added}（累计 ${fw.total} 对 → ${path.relative(ROOT, TRAIN_PAIRS)}）` : '')
+  const fw = planComplete
+    ? appendFlywheelPairs(flywheelPairsFromBench(eligibleRows, { gold: loadGold(GOLD_DIR()), split: loadPool().split, source: bplan.id, roundNum: planNumber }))
+    : appendFlywheelPairs([])
+  rep.flywheel = { ...fw, withheldForIncompletePlan: !planComplete }
+  const md = benchReportMd(rep, { title: `基准 ${bplan.id}` }) + (eligibleRows.length < rows.filter((r) => !r.dry).length ? `\n\n污染/谱系闸：排除 ${rows.filter((r) => !r.dry).length - eligibleRows.length} 条结果（金标/目标稿无效、超出冻结计划、切分/摘要不匹配、重复 job、策略未声明或目标文本不 clean）；这些结果不构成本轮证据。` : '') + (!planComplete ? '\n\n冻结计划有效 job 未完整：晋升结论与飞轮回灌均已关闭。' : '') + (fw.added ? `\n\n飞轮偏好对 +${fw.added}（累计 ${fw.total} 对 → ${path.relative(ROOT, TRAIN_PAIRS)}）` : '')
   fs.writeFileSync(path.join(home, 'report.md'), md + '\n'); writeJson(path.join(home, 'report.json'), rep)
   if (planN) { const h = loadHistory(); const t = (h.benchPlans || []).find((x) => x.n === Number(planN)); if (t) { t.status = 'reported'; t.best = rep.best; t.paired = Object.fromEntries(Object.entries(rep.paired).map(([k, v]) => [k, { e: v.e, n: v.n, decision: v.decision }])); writeJson(HISTORY, h) } }
   console.log(md)
@@ -1019,9 +1084,10 @@ function cmdStatus() {
   if (pend.length) console.log('等待手写稿: ' + pend.map((p) => `t${p.n} ${p.task} 第 ${p.round} 轮 → 读 ${p.pending}，写 ${p.draftFile}` + (p.violations ? `（上一稿被拒：${p.violations.map((v) => v.kind).join(',')}）` : '')).join('；') + '；写完再跑同一条 traj-run 命令')
   const gold = loadGold(GOLD_DIR()); const bp = h.benchPlans || []
   console.log(`金标: ${gold.length} 项` + (gold.length ? `（${[...new Set(gold.map((g) => g.family))].map((fam) => fam + '=' + gold.filter((g) => g.family === fam).length).join(' ')}）` : '（模式 1 之后才有）') + '；基准计划: ' + (bp.length ? bp.map((b) => `b${b.n} ${b.status} ${b.policies.join(' vs ')} × ${b.gold} ≈$${b.expectedUsd}` + (b.best ? ` best=${b.best}` : '')).join('；') : '无'))
-  const fwPairs = readJsonl(TRAIN_PAIRS)
+  const rawFwPairs = readJsonl(TRAIN_PAIRS)
+  const fwPairs = rawFwPairs.filter(cleanDevFlywheelPair)
   const rk = trainRanker(fwPairs)
-  console.log(`飞轮: ${fwPairs.length} 对偏好；CPU 排序器: ${rk.status}${rk.cvAcc != null ? `（LOO-CV=${rk.cvAcc}）` : ''}`)
+  console.log(`飞轮: ${fwPairs.length}/${rawFwPairs.length} 对通过 dev/内容闸；CPU 排序器: ${rk.status}${rk.cvAcc != null ? `（LOO-CV=${rk.cvAcc}）` : ''}`)
   const planned = tp.find((t) => t.status === 'planned')
   const plannedCmd = planned ? (readJson(path.join(trajHomeFor(planned.n), 'plan.json'))?.command || `node tools/traj-run.mjs --plan ${path.relative(ROOT, path.join(trajHomeFor(planned.n), 'plan.json'))} …（见 plan.md）`) : null
   const plannedPlan = planned ? readJson(path.join(trajHomeFor(planned.n), 'plan.json')) : null
@@ -1336,8 +1402,9 @@ export function cmdJudge(args = []) {
 /** export-train：用 src/training-core.js 纯内核把金标（SFT）与飞轮偏好对（DPO）按连通分量（family/lineage/input/target）无泄漏切分并导出。 */
 export function cmdExportTrain(args = []) {
   const outDir = path.resolve(ROOT, f(args, '--out') || path.join(OFFLINE, 'train', 'export'))
-  const gold = loadGold(GOLD_DIR())
-  const pairs = loadFlywheel()
+  const gold = loadGold(GOLD_DIR()).filter((g) => g.split === 'dev' && TRAIN_DEV_FAMS.has(familyKey(g.family))
+    && isMode1GoldEligible(g) && g.qualityAudit?.status === 'clean')
+  const pairs = loadFlywheel().filter(cleanDevFlywheelPair)
   const examples = []
   for (const g of gold) {
     const promptText = g.prompt || (g.raw ? I.buildCompressPromptV4Direct(g.raw, { compressCtx: g.ctx || '' }) : '')
@@ -1424,6 +1491,7 @@ export function harvestHistoricalFlywheel({ includeDirect = true } = {}) {
       const j = readJson(path.join(dir, fn))
       for (const r of j?.rows || []) {
         if (!r || !r.id || typeof r.text !== 'string' || r.text.length < 120) continue
+        if (auditMode1Output(r.text).status !== 'clean') continue
         const t = taskMap.get(r.id); if (!t) continue
         const tc = truthComposite(truthDimensions(r.text, t.chain, t.spec)).score ?? 0
         const isOk = r.why === 'condensed' || /^oracle/.test(fn)
@@ -1448,13 +1516,14 @@ export function harvestHistoricalFlywheel({ includeDirect = true } = {}) {
           at: new Date().toISOString(),
           round: 0,
           task: tid,
-          split: pool.split[tid] || 'dev',
+          split: pool.split[tid] || null,
           source: `direct:${w.file}>${l.file}`,
           chosenArm: w.promptVersion,
           rejectedArm: l.promptVersion,
           prompt,
           chosenText: w.text,
           rejectedText: l.text,
+          contentAudit: auditMode1Pair({ chosenText: w.text, rejectedText: l.text }, { reviewer: 'mode1-flywheel-lint/1' }),
           scores: { candidate: +w.score.toFixed(3), control: +l.score.toFixed(3) },
         })
       }
@@ -1467,13 +1536,14 @@ export function harvestHistoricalFlywheel({ includeDirect = true } = {}) {
           at: new Date().toISOString(),
           round: 0,
           task: tid,
-          split: pool.split[tid] || 'dev',
+          split: pool.split[tid] || null,
           source: `bon-concise:${shortW.file}<${longL.file}`,
           chosenArm: shortW.promptVersion,
           rejectedArm: longL.promptVersion,
           prompt,
           chosenText: shortW.text,
           rejectedText: longL.text,
+          contentAudit: auditMode1Pair({ chosenText: shortW.text, rejectedText: longL.text }, { reviewer: 'mode1-flywheel-lint/1' }),
           scores: { candidate: +shortW.score.toFixed(3), control: +longL.score.toFixed(3), savedChars: longL.text.length - shortW.text.length },
         })
       }
@@ -1484,11 +1554,12 @@ export function harvestHistoricalFlywheel({ includeDirect = true } = {}) {
 export function cmdFlywheel(args = []) {
   let hRes = null
   if (args.includes('--harvest')) hRes = harvestHistoricalFlywheel({ includeDirect: !args.includes('--no-direct') })
-  const pairs = loadFlywheel()
+  const allPairs = loadFlywheel()
+  const pairs = allPairs.filter(cleanDevFlywheelPair)
   const rk = trainRanker(pairs)
   const byFam = {}
   for (const p of pairs) byFam[p.task] = (byFam[p.task] || 0) + 1
-  console.log(`飞轮偏好对（${path.relative(ROOT, TRAIN_PAIRS)}）：共 ${pairs.length} 对` + (hRes ? `（本次回填 +${hRes.added}）` : '') + (Object.keys(byFam).length ? `；按家族：${Object.entries(byFam).map(([k, v]) => `${k}=${v}`).join(' ')}` : ''))
+  console.log(`飞轮偏好对（${path.relative(ROOT, TRAIN_PAIRS)}）：通过内容/dev 闸 ${pairs.length}/${allPairs.length} 对` + (hRes ? `（本次回填 +${hRes.added}）` : '') + (Object.keys(byFam).length ? `；按家族：${Object.entries(byFam).map(([k, v]) => `${k}=${v}`).join(' ')}` : ''))
   console.log(`CPU 排序器（ranker）：${rk.status}（pairs=${rk.pairs}，cvAcc=${rk.cvAcc ?? '—'}）${rk.top ? '；top 特征：' + rk.top.map((t) => `${t.name}:${t.w}`).join(', ') : ''} — ${rk.note}`)
   return { pairs: pairs.length, added: hRes?.added ?? 0, byFamily: byFam, ranker: rk }
 }
@@ -1498,8 +1569,8 @@ export function cmdFlywheel(args = []) {
  *  ③ 生产闸门通过率（birthAccept）；④ 金标距离（draftDistance）与真值复合分（truthComposite）及 CPU 排序器分（ranker）。 */
 export function prescreenPolicies({ policyIds = null } = {}) {
   const pool = loadPool()
-  const gold = loadGold(GOLD_DIR()).filter((g) => !g.missing && g.validated)
-  const rk = trainRanker(loadFlywheel())
+  const gold = loadGold(GOLD_DIR()).filter((g) => !g.missing && isMode1GoldEligible(g) && g.qualityAudit?.status === 'clean')
+  const rk = trainRanker(loadFlywheel().filter(cleanDevFlywheelPair))
   const allPols = [BASE_POLICY, ...listPolicies()]
   const want = policyIds ? allPols.filter((p) => policyIds.includes(p.id)) : allPols
   const basePrompt = promptHead(pool.tasks[0])
@@ -1521,7 +1592,7 @@ export function prescreenPolicies({ policyIds = null } = {}) {
   const oracleFile = path.join(ROOT, 'transfer', 'mr', 'oracle-d2c.json')
   try {
     const oj = readJson(oracleFile)
-    for (const r of oj?.rows || []) if (r.id && r.text) oracleMap.set(r.id, r.text)
+    for (const r of oj?.rows || []) if (r.id && r.text && auditMode1Output(r.text).status === 'clean') oracleMap.set(r.id, r.text)
   } catch {}
   const results = []
   for (const pol of want) {
@@ -1674,6 +1745,7 @@ export function cmdPrescreen(args = []) {
 /** 从飞轮偏好对（winner vs loser）蒸馏零泄漏的上下文内对比示范补丁（In-Context DPO Contrastive Exemplar）。
  *  仅使用基础提示词白名单内的规范锚点（src/pool.js、8123、5432、cfg.port、done），确保 100% 过 leakCheck 闸。 */
 export function distillFlywheelContrastivePatch(pairs = loadFlywheel()) {
+  pairs = (pairs || []).filter(cleanDevFlywheelPair)
   const n = Math.max(1, pairs.length)
   let wSingle = 0, lMulti = 0, wChars = 0, lChars = 0
   for (const p of pairs) {
@@ -1796,7 +1868,7 @@ export function nextAction() {
     const pj = readJson(path.join(trajHomeFor(plannedTraj.n), 'plan.json'))
     return { stage: 'traj-planned', priority: 'P1', reason: `轨迹计划 t${plannedTraj.n} 已冻结待执行（跑完用 ingest-traj --plan ${plannedTraj.n} 一键回灌）`, command: pj?.command || `node tools/traj-run.mjs --plan .cfb-runtime/traj/t${plannedTraj.n}/plan.json`, estimatedUsd: plannedTraj.expectedUsd }
   }
-  const gold = loadGold(GOLD_DIR()).filter((g) => !g.missing && g.validated)
+  const gold = loadGold(GOLD_DIR()).filter((g) => !g.missing && isMode1GoldEligible(g) && g.qualityAudit?.status === 'clean')
   const goldFamilies = new Set(gold.map((g) => g.family)).size
   if (goldFamilies < 2) {
     const cov = familyCoverage()
@@ -1908,7 +1980,7 @@ const HELP = `cfb-cycle（闭环 v4：e 值采纳 + L2 结局确认 + 双轨评�
   plan-bench [--lite] [--policies base,p-x] [--split dev|holdout|all] [--dry] [--drop N] [--factors half|full]
                                                                                  v4.6 模式 2：策略 × 金标 各一次压缩调用（--lite 极简模式：复用 base 缓存，仅跑 1 次 ≈ $0.004）；指标 dd/1 冻结；dev 配对选策略、holdout 只报告
                                                                                  v4.7 --factors：候选的 k≤3 条补丁各为因子（half=2^(k−1) 含 base 不含全开 / full=2^k），bench-report 出每条补丁的主效应 ⇒ 知道该留哪条
-  bench-report --plan N | --results FILE [--baseline base]                         v4.6：基准报告 → report.md；promote 的策略进 plan-traj（模式 3）验收，基准分不采纳 champion
+  bench-report --plan N | --results FILE [--baseline base]                         v4.6：只接受已登记且 digest 匹配的冻结计划；文件模式需同目录 plan.json；不完整 job 不 promote / 不回灌飞轮
   snapshot / restore [--from FILE] [--force]                                     v4.5：闭环状态（history / champion / 策略 / 轨迹计划 / 证据包）↔ transfer/cycle-state.json（进仓库；新克隆先 restore）
   prescreen [--policies base,p-x]                                                零 API（$0）：在冻结池 + 金标库上预筛所有策略（补丁开销 / 程序部件净省 tok / 过闸率 / dd/1 / 真值分 / 排序器分）
   benchmark                                                                      零 API（$0）：输出融合五大官方权威口径（SWE-bench Pro / TAU-bench pass^k / LMArena Elo / AA 性价比前沿）的基准记分卡与三档省钱测试菜单

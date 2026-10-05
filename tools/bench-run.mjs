@@ -12,6 +12,7 @@ import { pathToFileURL } from 'node:url'
 import { BASE_POLICY } from './helpers/generation.mjs'
 import { loadPolicyFor } from './traj-run.mjs'
 import { draftDistance } from './helpers/hand-draft.mjs'
+import { isMode1GoldEligible } from './helpers/mode1-quality.mjs'
 import { loadGold, DRAFT_DISTANCE_VERSION, benchReport, benchReportMd } from './helpers/three-mode.mjs'
 import { evidenceDigest } from '../src/evidence-program.js'
 
@@ -65,7 +66,13 @@ export async function benchRun(o, { I = null, compile = null, now = () => new Da
   if (plan.metric !== DRAFT_DISTANCE_VERSION) throw new Error(`metric-mismatch: 计划 ${plan.metric} ≠ 本机 ${DRAFT_DISTANCE_VERSION}（公式改过，这个计划不能再跑）`)
   const goldDir = o.goldDir || (process.env.CFB_CYCLE_DIR ? path.join(path.resolve(process.env.CFB_CYCLE_DIR), 'gold') : path.join(ROOT, 'transfer', 'gold'))
   const gold = new Map(loadGold(goldDir).map((g) => [g.id, g]))
-  const items = plan.gold.map((p) => { const g = gold.get(p.id); if (!g) throw new Error('gold-missing:' + p.id + '（' + goldDir + '）'); if (g.digest !== p.digest) throw new Error(`gold-changed:${p.id}（计划 ${p.digest} ≠ 现在 ${g.digest}：金标被改过，计划作废）`); return { ...g, split: p.split } })
+  const items = plan.gold.map((p) => {
+    const g = gold.get(p.id)
+    if (!g) throw new Error('gold-missing:' + p.id + '（' + goldDir + '）')
+    if (!isMode1GoldEligible(g) || g.qualityAudit?.status !== 'clean') throw new Error(`gold-quality-rejected:${p.id}（内容审计/谱系未通过；旧计划作废）`)
+    if (g.digest !== p.digest) throw new Error(`gold-changed:${p.id}（计划 ${p.digest} ≠ 现在 ${g.digest}：金标被改过，计划作废）`)
+    return { ...g, split: p.split }
+  })
   const policies = plan.policies.map((id) => ({ id, policy: id === 'base' ? BASE_POLICY : loadPolicyFor('policy:' + id, o.policyDir) }))
   fs.mkdirSync(o.out, { recursive: true })
   const resPath = path.join(o.out, 'results.jsonl')

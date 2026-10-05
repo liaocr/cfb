@@ -14,6 +14,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import crypto from 'node:crypto'
+import { auditMode1Pair, isMode1PairEligible } from './helpers/mode1-quality.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const inputPath = process.argv[2]
@@ -23,6 +24,8 @@ const outputPath = process.argv[3]
   ? path.resolve(process.argv[3])
   : path.join(ROOT, 'transfer/models/dev-flywheel-pairs.json')
 const HOLDOUT_FAMS = new Set(['eacces-config', 'wrong-model'])
+const DEV_FAMS = new Set(['flaky-timeout', 'perf-regression', 'sse-truncated'])
+const MANUAL_REVIEW_ARCHIVE = path.join(ROOT, 'transfer/models/rejected/dev-flywheel-pairs-mode1-apparatus.json')
 const familyKey = (value) => String(value || '').replace(/^pool:/, '').split(':', 1)[0].replace(/_(?:decoy|long-horizon).*$/, '')
 const sha = (text) => crypto.createHash('sha256').update(String(text)).digest('hex').slice(0, 16)
 
@@ -33,13 +36,22 @@ if (!fs.existsSync(inputPath)) {
 const rawRows = fs.readFileSync(inputPath, 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line))
 const kept = []
 let droppedHoldout = 0
+let droppedUnknownFamily = 0
+let droppedNonDevSplit = 0
 let droppedIncomplete = 0
+let droppedContaminated = 0
+let droppedUnreviewedLegacy = 0
 for (const row of rawRows) {
   const family = familyKey(row.task || row.family || '')
   if (row.split === 'holdout' || HOLDOUT_FAMS.has(family)) { droppedHoldout++; continue }
+  if (!DEV_FAMS.has(family)) { droppedUnknownFamily++; continue }
+  if (row.split !== 'dev') { droppedNonDevSplit++; continue }
   const chosenText = row.chosenText || (typeof row.chosen === 'string' ? row.chosen : row.chosen?.draft)
   const rejectedText = row.rejectedText || (typeof row.rejected === 'string' ? row.rejected : row.rejected?.draft)
   if (!chosenText || !rejectedText) { droppedIncomplete++; continue }
+  const normalizedPair = { ...row, chosenText, rejectedText }
+  if (!row.contentAudit) { droppedUnreviewedLegacy++; continue }
+  if (!isMode1PairEligible(normalizedPair, { requireRecorded: true, requireManualReview: Boolean(row.manualReview) })) { droppedContaminated++; continue }
   let chosenScore = Number.isFinite(row.chosenScore) ? row.chosenScore : null
   let rejectedScore = Number.isFinite(row.rejectedScore) ? row.rejectedScore : null
   if (chosenScore == null || rejectedScore == null) {
@@ -56,6 +68,7 @@ for (const row of rawRows) {
     schema: 'cfb.flywheel-pair/1',
     task: family,
     family,
+    split: 'dev',
     round: Number.isFinite(row.round) ? row.round : null,
     source: row.source || null,
     chosenArm: row.chosenArm ?? null,
@@ -64,6 +77,8 @@ for (const row of rawRows) {
     rejectedScore,
     scoreMargin,
     trainingEligibleHint: scoreMargin != null && scoreMargin >= 0.05,
+    contentAudit: auditMode1Pair({ chosenText, rejectedText }, { reviewer: 'mode1-flywheel-lint/1' }),
+    ...(row.manualReview ? { manualReview: row.manualReview } : {}),
     provenance: {
       inputFile: path.relative(ROOT, inputPath),
       collectedAt: row.at || null,
@@ -81,16 +96,25 @@ kept.sort((a, b) => String(a.task).localeCompare(String(b.task))
 const distinctScorePairs = new Set(kept.map((row) => `${row.chosenScore}|${row.rejectedScore}`))
 const byTask = {}
 for (const row of kept) byTask[row.task] = (byTask[row.task] || 0) + 1
+let manualReviewSummary = null
+if (fs.existsSync(MANUAL_REVIEW_ARCHIVE)) {
+  try {
+    const archive = JSON.parse(fs.readFileSync(MANUAL_REVIEW_ARCHIVE, 'utf8'))
+    if (archive.manualReview?.schema === 'cfb.mode1-manual-review/1'
+        && archive.manualReview.status === 'reviewed-active-rows-only') manualReviewSummary = archive.manualReview
+  } catch { /* malformed historical summary is not promoted */ }
+}
 const document = {
   schema: 'cfb.dev-flywheel-pairs/2',
-  note: 'dev-only 真实飞轮偏好对（提升自 .cfb-offline/train/pairs.jsonl）。此前的常数占位版本（全部 0.92/0.45）已被替换：常数 margin 不构成偏好监督。',
+  note: 'dev-only 真实飞轮偏好对（提升自 .cfb-offline/train/pairs.jsonl）；仅接受显式 split=dev 的白名单家族，且 chosen/rejected 两端均须有精确文本绑定的 clean contentAudit。此前常数占位版本不构成偏好监督。',
   generatedBy: 'tools/promote-flywheel-pairs.mjs',
   sourceFile: path.relative(ROOT, inputPath),
   holdoutExcluded: true,
   pairCount: kept.length,
   distinctScorePairs: distinctScorePairs.size,
   byTask,
-  dropped: { holdoutRows: droppedHoldout, incompleteRows: droppedIncomplete },
+  dropped: { holdoutRows: droppedHoldout, unknownFamilyRows: droppedUnknownFamily, nonDevSplitRows: droppedNonDevSplit, incompleteRows: droppedIncomplete, contaminatedRows: droppedContaminated, unreviewedLegacyRows: droppedUnreviewedLegacy },
+  ...(manualReviewSummary ? { manualReview: manualReviewSummary } : {}),
   pairs: kept,
 }
 fs.mkdirSync(path.dirname(outputPath), { recursive: true })

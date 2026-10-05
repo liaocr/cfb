@@ -29,6 +29,7 @@ import { stepFlags } from './helpers/traj-proxy.mjs'
 import { outcomeComparison } from './helpers/ruler.mjs'
 import { BASE_POLICY, applyPolicyToPrompt, PRODUCTION_COMPRESSOR } from './helpers/generation.mjs'
 import { handDraftGate, HAND_PROTOCOL } from './helpers/hand-draft.mjs'
+import { auditMode1Output } from './helpers/mode1-quality.mjs'
 import { appendHandSample, previousDraft, draftDelta, HAND_SAMPLE_SCHEMA } from './helpers/hand-capture.mjs'   // 模式 1 侧数据采集（$0，训练金标时顺手产出）
 
 export const DISPLAY_ROOT = '/home/u/work/repo'
@@ -468,10 +469,11 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
         const cfg0 = I.offlineBirthConfig({ model: o.model || 'hand', baseUrl: o.baseUrl || 'http://127.0.0.1:1', credentialsPath: cred, policy: handPolicy, normalizeConfig: I.normalizeConfig })
         const cfg = handCompact ? { ...cfg0, birthMinSavedChars: Math.min(cfg0.birthMinSavedChars || 50, Math.max(20, Math.floor(reasoning.length * 0.05))), ...(reasoning.length < 2600 ? { birthTokenGate: false } : {}) } : cfg0
         const draft = fs.existsSync(draftFile) ? fs.readFileSync(draftFile, 'utf8').trim() : null
-        let violations = null, b = null
+        let violations = null, b = null, quality = draft ? auditMode1Output(draft) : null, storedQuality = null
         if (draft) {
           const g2 = handDraftGate(reasoning, draft, ctx)
           if (!g2.ok) violations = g2.violations
+          else if (quality.status !== 'clean') violations = quality.issues.map((v) => ({ kind: 'mode1-quality:' + v.category, detail: v.excerpt }))
           else {
             b = await I.birthOffline({ raw: reasoning, ctx, calls, cfg, gate: !o.noGate, compile: async (rawText, c) => {
               const v = o.noGate ? { ok: true, text: draft, stats: null } : I.compileV4Direct(draft, rawText, c)
@@ -480,11 +482,20 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
               return { text: v.text || draft, meta: { promptVersion: pv, v4: v.stats } }
             } })
             if (!b.ok) { violations = [{ kind: 'production-gate:' + b.why, detail: String(b.reason || JSON.stringify(b.info || null)).slice(0, 200) }]; rec.compile.push({ ok: false, path: 'hand', why: b.why, info: b.info || null, rawChars: reasoning.length, draftChars: draft.length, round, budget: compressBudget(I, { ctx, calls, raw: reasoning, out: null, draft }) }) }   // v14.12.3：被生产闸拒的手写稿也记一条（预算分解可见）
+            else {
+              storedQuality = auditMode1Output(b.text)
+              if (storedQuality.status !== 'clean') {
+                quality = { ...quality, issues: [...quality.issues, ...storedQuality.issues.map((v) => ({ ...v, field: 'stored' }))] }
+                violations = storedQuality.issues.map((v) => ({ kind: 'mode1-quality:stored:' + v.category, detail: v.excerpt }))
+                b = { ...b, ok: false, why: 'mode1-quality-stored', reason: storedQuality.issues.map((v) => v.category).join(',') }
+                rec.compile.push({ ok: false, path: 'hand', why: b.why, rawChars: reasoning.length, draftChars: draft.length, outChars: b.text.length, round, qualityAudit: quality })
+              }
+            }
           }
         }
         if (b && b.ok) {
           stored = b.text
-          compileInfo = { ok: true, path: 'hand', ms: b.ms, rawChars: reasoning.length, outChars: stored.length, draftChars: draft.length, policy: 'hand', promptVersion: b.promptVersion, gate: b.v4 || null, spliced: b.spliced || null, accept: b.accept || null, draftFile: path.relative(process.cwd(), draftFile), budget: compressBudget(I, { ctx, calls, raw: reasoning, out: stored, draft }) }
+          compileInfo = { ok: true, path: 'hand', ms: b.ms, rawChars: reasoning.length, outChars: stored.length, draftChars: draft.length, policy: 'hand', promptVersion: b.promptVersion, gate: b.v4 || null, spliced: b.spliced || null, accept: b.accept || null, qualityAudit: { draft: quality, stored: storedQuality }, draftFile: path.relative(process.cwd(), draftFile), budget: compressBudget(I, { ctx, calls, raw: reasoning, out: stored, draft }) }
           rec.compile.push(compileInfo)
           if (fs.existsSync(pendingFile)) { fs.mkdirSync(path.join(o.out, 'pending', 'done'), { recursive: true }); fs.renameSync(pendingFile, path.join(o.out, 'pending', 'done', id + '.json')) }
           { // 采集 (a)(b)：pending→draft 示范对 + 跨轮修订差；失败不打断训练轮
@@ -492,12 +503,12 @@ export async function runOne({ o, task, variant, sample, chat, I, cred, forkMess
             const prev = previousDraft(o.out, safeId, sample, round)
             const prevText = prev && fs.existsSync(prev.file) ? fs.readFileSync(prev.file, 'utf8') : ''
             const delta = prevText ? draftDelta(prevText, draft) : null
-            appendHandSample(o.out, { schema: HAND_SAMPLE_SCHEMA, id, task: task.id, sample, round, at: new Date().toISOString(), draftFile: path.relative(process.cwd(), draftFile), pendingFile: fs.existsSync(donePath) ? path.relative(process.cwd(), donePath) : null, rawChars: reasoning.length, draftChars: draft.length, outChars: stored.length, gate: { ok: true, violations: [] }, production: { ok: true, promptVersion: b.promptVersion, accept: b.accept || null, spliced: b.spliced || null, budget: compileInfo.budget || null }, revision: prev ? { prevId: `${safeId}-s${sample}-r${prev.round}`, prevDraftFile: path.relative(process.cwd(), prev.file), added: delta.added, removed: delta.removed, addedChars: delta.addedChars, removedChars: delta.removedChars } : null, callsThisRound: calls.map((c) => ({ name: c.name, args: String(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)).slice(0, 300) })) })
+            appendHandSample(o.out, { schema: HAND_SAMPLE_SCHEMA, id, task: task.id, sample, round, at: new Date().toISOString(), draftFile: path.relative(process.cwd(), draftFile), pendingFile: fs.existsSync(donePath) ? path.relative(process.cwd(), donePath) : null, raw: reasoning, ctx, draft, stored, rawChars: reasoning.length, draftChars: draft.length, outChars: stored.length, gate: { ok: true, violations: [] }, production: { ok: true, promptVersion: b.promptVersion, accept: b.accept || null, spliced: b.spliced || null, budget: compileInfo.budget || null }, qualityAudit: { schema: 'cfb.mode1-content-audit/1', status: 'clean', draft: quality, stored: storedQuality }, trainingEligible: true, revision: prev ? { prevId: `${safeId}-s${sample}-r${prev.round}`, prevDraftFile: path.relative(process.cwd(), prev.file), added: delta.added, removed: delta.removed, addedChars: delta.addedChars, removedChars: delta.removedChars } : null, callsThisRound: calls.map((c) => ({ name: c.name, args: String(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)).slice(0, 300) })) })
           }
         } else {
           if (draft) { // 采集 (c)：G2/生产闸拒稿的理由文本（结构负例）
             const prod = violations && violations.some((v) => String(v.kind || '').startsWith('production-gate:'))
-            appendHandSample(o.out, { schema: HAND_SAMPLE_SCHEMA, id, task: task.id, sample, round, at: new Date().toISOString(), draftFile: path.relative(process.cwd(), draftFile), pendingFile: null, rawChars: reasoning.length, draftChars: draft.length, outChars: null, gate: prod ? { ok: true, violations: [] } : { ok: false, violations: (violations || []).map((v) => ({ kind: v.kind, detail: String(v.detail || '').slice(0, 200) })) }, production: prod ? { ok: false, why: String(violations[0].kind).replace('production-gate:', ''), reason: String(violations[0].detail || '').slice(0, 200) } : null, revision: null, callsThisRound: calls.map((c) => ({ name: c.name, args: String(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)).slice(0, 300) })) })
+            appendHandSample(o.out, { schema: HAND_SAMPLE_SCHEMA, id, task: task.id, sample, round, at: new Date().toISOString(), draftFile: path.relative(process.cwd(), draftFile), pendingFile: null, raw: reasoning, ctx, draft, stored: null, rawChars: reasoning.length, draftChars: draft.length, outChars: null, gate: prod ? { ok: true, violations: [] } : { ok: false, violations: (violations || []).map((v) => ({ kind: v.kind, detail: String(v.detail || '').slice(0, 200) })) }, production: prod ? { ok: false, why: String(violations[0].kind).replace('production-gate:', ''), reason: String(violations[0].detail || '').slice(0, 200) } : null, qualityAudit: { schema: 'cfb.mode1-content-audit/1', status: quality?.status || 'not-checked', draft: quality, stored: storedQuality }, trainingEligible: false, revision: null, callsThisRound: calls.map((c) => ({ name: c.name, args: String(typeof c.args === 'string' ? c.args : JSON.stringify(c.args)).slice(0, 300) })) })
           }
           fs.mkdirSync(path.dirname(pendingFile), { recursive: true }); fs.mkdirSync(path.dirname(stateFile), { recursive: true }); fs.mkdirSync(path.join(o.out, 'drafts'), { recursive: true })
           const prompt = I.compressPromptFor({ ...cfg, compressCtx: ctx }, reasoning)

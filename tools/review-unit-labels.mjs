@@ -1,15 +1,13 @@
 #!/usr/bin/env node
 /**
- * review-unit-labels.mjs — independent LLM semantic review of deterministic unit labels.
+ * review-unit-labels.mjs — semantic unit review with suggestions/flags hidden from the reviewer.
  *
- * Reads the dev training dataset (cfb.micro-dev-dataset/3), selects units whose deterministic
- * screen left them trainingEligible=false, asks an independent model for slot/value/temptation
- * with a rationale, and writes cfb.unit-label-review/1 bound to the dataset hash.
- * The builder consumes this file to promote confirmed labels (never touches the blind family).
+ * Reads the dev dataset, selects units left unresolved by the deterministic screen, and sends
+ * only family/document/position/text to the reviewer—never the rule slot, target value, rule name
+ * or audit flags. The v3 blind protocol is pinned in cfb.unit-label-review/2 and bound to the
+ * dataset hash. Historical rule-hint-visible labels are not relabeled as blind by resume.
  *
- * Usage:
- *   DEEPSEEK_API_KEY=... node tools/review-unit-labels.mjs [--dataset <path>] [--out <path>]
- *     [--limit N] [--batch 8] [--concurrency 4] [--resume]
+ * This script can call an external paid LLM; it is never run without explicit authorization.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -22,7 +20,7 @@ const argValue = (name, fallback = null) => {
 const HERE = path.dirname(new URL(import.meta.url).pathname)
 const REPO = path.resolve(HERE, '..')
 const DATASET = path.resolve(argValue('--dataset', path.join(REPO, 'transfer/models/micro-dev-dataset.json')))
-const OUT = path.resolve(argValue('--out', path.join(REPO, 'transfer/models/unit-label-review.json')))
+const OUT = path.resolve(argValue('--out', path.join(REPO, 'transfer/models/unit-label-review-blind-v3.json')))
 const LIMIT = Number(argValue('--limit', '0')) || 0
 const BATCH = Number(argValue('--batch', '8')) || 8
 const CONCURRENCY = Number(argValue('--concurrency', '4')) || 4
@@ -80,22 +78,27 @@ console.log(`[review] dataset=${path.relative(REPO, DATASET)} sha=${datasetSha.s
 let prior = { items: [] }
 if (RESUME && fs.existsSync(OUT)) {
   prior = JSON.parse(fs.readFileSync(OUT, 'utf8'))
-  console.log(`[review] resume: ${prior.items?.length || 0} items already reviewed`)
+  const before = prior.items?.length || 0
+  const sameFrozenDataset = prior.schema === 'cfb.unit-label-review/2'
+    && prior.reviewProtocol === 'blind-unit-label-v3'
+    && prior.reviewerKind === 'blind-llm-no-rule-suggestions'
+    && prior.datasetSha256AtReview === datasetSha
+  prior.items = sameFrozenDataset
+    ? (prior.items || []).filter((row) => row.reviewProtocol === 'blind-unit-label-v3')
+    : []
+  console.log(`[review] resume: ${prior.items.length} v3 blind items retained; ${before - prior.items.length} legacy, unknown-protocol, or different-dataset labels are not treated as blind`)
 }
 const byId = new Map((prior.items || []).map((row) => [row.id, row]))
 
 const itemId = (u) => `u${u.globalIdx}`
 const digestOf = (u) => sha256(JSON.stringify({ sourceId: u.sourceId, unitIdx: u.unitIdx, text: u.text }))
+// Blind review: deliberately omit rule slot/value/temptation suggestions, rule names and audit flags.
 const promptItem = (u) => ({
   id: itemId(u),
   family: u.family,
   document: u.sourceId,
   position: `${u.unitIdx + 1}/${u.totalUnits}`,
   text: u.text,
-  ruleSuggestion: {
-    slot: u.slot, yVal: u.yVal, yTempt: u.yTempt,
-    labelRule: u.labelAudit?.labelRule, flags: u.labelAudit?.flags || [],
-  },
 })
 
 const todo = selected.filter((u) => !byId.has(itemId(u)))
@@ -167,9 +170,10 @@ async function callModel(items) {
 function writeOut(counts) {
   const items = [...byId.values()].sort((a, b) => a.globalIdx - b.globalIdx)
   const payload = {
-    schema: 'cfb.unit-label-review/1',
+    schema: 'cfb.unit-label-review/2',
+    reviewProtocol: 'blind-unit-label-v3',
     reviewer: REVIEWER,
-    reviewerKind: 'independent-llm',
+    reviewerKind: 'blind-llm-no-rule-suggestions',
     reviewedAt: REVIEWED_AT,
     datasetPath: path.relative(REPO, DATASET),
     datasetSha256AtReview: datasetSha,
@@ -192,7 +196,7 @@ async function worker(queue) {
       for (const row of rows) {
         const u = byLocal.get(row.id)
         if (!u) continue
-        byId.set(row.id, { ...row, globalIdx: u.globalIdx, sourceId: u.sourceId, unitIdx: u.unitIdx, digest: digestOf(u) })
+        byId.set(row.id, { ...row, reviewProtocol: 'blind-unit-label-v3', globalIdx: u.globalIdx, sourceId: u.sourceId, unitIdx: u.unitIdx, digest: digestOf(u) })
       }
       done++
       if (done % 5 === 0 || queue.length === 0) {

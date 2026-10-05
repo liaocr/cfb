@@ -11,6 +11,7 @@ import {
   scoreUnitWithWeights,
   scoreDraftPreferenceFeatures,
 } from '../src/compile-v5-local.js'
+import { isMode1PairEligible, isMode1CaptureAuditEligible } from './helpers/mode1-quality.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
@@ -31,6 +32,7 @@ const finalBlindTest = args.includes('--final-blind-test')
 const validateDatasetOnly = args.includes('--validate-dataset-only')
 const mustBeNewFamily = args.includes('--must-be-new-family')
 const SLOT_NAMES = ['MECHANISM', 'EXCLUDED', 'DECIDED', 'ACCEPT', 'OPEN', 'NOISE']
+const DEV_FAMILIES = new Set(['flaky-timeout', 'perf-regression', 'sse-truncated'])
 const familyKey = (v) => String(v || '').replace(/^pool:/, '').split(':', 1)[0].replace(/_(?:decoy|long-horizon).*$/, '')
 const knownFamilies = new Set((value('--known-families', '') || '').split(',').map((v) => familyKey(v)).filter(Boolean))
 const knownSourceArg = value('--known-source-ids', '') || ''
@@ -83,6 +85,36 @@ if (dataset.schema !== 'cfb.micro-dev-dataset/3') throw new Error(`unsupported-d
 if (dataset.holdoutTouched !== false) throw new Error('refusing-dataset-with-holdout-touch')
 if (!Array.isArray(dataset.unitSamples) || !Array.isArray(dataset.unitStepPairs) || !Array.isArray(dataset.stepSimpoPairs)) {
   throw new Error('micro-pair-eval-missing-arrays')
+}
+const expectedPairSplit = finalBlindTest ? 'final-blind' : 'dev'
+const devFamilyAllowlist = new Set((dataset.stats?.devFamilyAllowlist || []).map((family) => familyKey(family)))
+if (!finalBlindTest && (devFamilyAllowlist.size !== DEV_FAMILIES.size
+    || [...DEV_FAMILIES].some((family) => !devFamilyAllowlist.has(family)))) {
+  throw new Error('dataset-dev-family-allowlist-mismatch')
+}
+for (const [index, pair] of dataset.stepSimpoPairs.entries()) {
+  if (pair?.split !== expectedPairSplit) {
+    throw new Error(`draft-pair-split-missing-or-invalid:${index}:${pair?.split ?? 'missing'}`)
+  }
+  if (!finalBlindTest && !devFamilyAllowlist.has(familyKey(pair?.family))) {
+    throw new Error(`draft-pair-family-not-in-dev-allowlist:${index}:${pair?.family ?? 'missing'}`)
+  }
+  if (!isMode1PairEligible(pair, { requireRecorded: true })) {
+    throw new Error(`draft-pair-missing-clean-exact-text-bound-audit:${index}`)
+  }
+}
+for (const [index, sample] of (dataset.handSamples || []).entries()) {
+  if (sample?.trainingEligible !== true) continue
+  if (!isMode1CaptureAuditEligible(sample)) {
+    throw new Error(`positive-capture-missing-clean-exact-text-bound-audit-or-self-contained-target:${index}`)
+  }
+  const expectedSourceId = `mode1-capture:${sample.traj || 'unknown'}:${sample.id}`
+  const linked = dataset.stepSimpoPairs.filter((pair) => pair.sourceId === expectedSourceId)
+  const linkedTrainable = linked.filter((pair) => pair.trainingEligible === true)
+  if (linkedTrainable.length !== sample.trainableTargetsAdded
+      || linkedTrainable.some((pair) => pair.provenance?.qualityAudit?.textSha256 !== sample.qualityAudit?.textSha256)) {
+    throw new Error(`positive-capture-not-connected-to-exact-training-target:${index}`)
+  }
 }
 const unitEndpointDegrees = new Map()
 let unitEndpointReferences = 0

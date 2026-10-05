@@ -37,6 +37,10 @@ MODELS_DIR = ROOT / "transfer" / "models"
 DATASET_PATH = MODELS_DIR / "micro-dev-dataset.json"
 sys.path.insert(0, str(ROOT / "tools"))
 import micro_cv  # noqa: E402  (torch-free three-fold CV gate logic, unit-tested locally)
+from helpers.mode1_quality import (  # noqa: E402
+    mode1_pair_content_audit_valid,
+    mode1_capture_quality_audit_valid,
+)
 
 PRODUCTION_WEIGHTS_PATH = MODELS_DIR / "v5-micro-weights.json"
 CANDIDATE_WEIGHTS_PATH = MODELS_DIR / "v5-micro-weights.candidate.json"
@@ -61,6 +65,7 @@ PREF_KEYS = [
     "sweetLength", "overLongPenalty", "proseCoherence", "noDeadEndResurrected",
 ]
 HOLDOUT_FAMILIES = {"eacces-config", "wrong-model"}
+DEV_FAMILIES = {"flaky-timeout", "perf-regression", "sse-truncated"}
 MAX_SEQ_LEN = 256
 UNIT_MAX_TOKENS = 128
 DRAFT_MAX_TOKENS = 256
@@ -104,16 +109,28 @@ def fit_prior_vector(vec, dim: int, device) -> "torch.Tensor":
 
 
 def load_preregistration(args) -> dict:
-    """2026-10-04：预注册 = 训练前把「本轮唯一变量 + 判定规则」写进仓库里的机器可读文件；
-    运行时逐键比对，任何不一致直接拒绝启动训练（防止看结果改口径）。"""
+    """Require a prospective, explicitly locked protocol and exact recipe match; missing or retrospective files fail closed."""
     path = Path(args.preregistration)
     if not path.is_absolute():
         path = ROOT / path
     if not path.is_file():
-        return {"file": None, "matched": None, "reason": "no-preregistration-file"}
+        raise RuntimeError(f"prospective preregistration missing (refusing to train): {path}")
     raw = path.read_bytes()
     data = json.loads(raw.decode("utf-8"))
-    declared = data.get("flags") or {}
+    if data.get("schema") != "cfb.micro-preregistration/2":
+        raise RuntimeError(f"unsupported/retrospective preregistration schema (refusing to train): {data.get('schema')}")
+    if data.get("status") != "locked" or data.get("confirmatoryEligible") is not True:
+        raise RuntimeError("preregistration is not an active prospective lock; retrospective thresholds cannot authorize confirmatory training")
+    if data.get("decisionRuleChangedAt") or data.get("decisionRuleChangeNote"):
+        raise RuntimeError("post-result decision-rule change detected; preregistration is exploratory and cannot authorize confirmation")
+    folds = data.get("folds")
+    if not isinstance(folds, list) or len(folds) != 3 or len(set(folds)) != 3:
+        raise RuntimeError("preregistration must freeze exactly three unique family folds")
+    if not re.fullmatch(r"[0-9a-f]{64}", str(data.get("trainingDataFingerprint", ""))):
+        raise RuntimeError("prospective preregistration must pin the content fingerprint of the frozen dataset")
+    declared = data.get("flags")
+    if not isinstance(declared, dict) or not declared:
+        raise RuntimeError("preregistration flags missing (refusing to train)")
     actual = {key: getattr(args, key, None) for key in declared}
     diffs = {key: {"declared": value, "actual": actual.get(key)} for key, value in declared.items() if actual.get(key) != value}
     if diffs:
@@ -122,6 +139,9 @@ def load_preregistration(args) -> dict:
         "file": str(path.relative_to(ROOT)) if str(path).startswith(str(ROOT)) else str(path),
         "sha256": hashlib.sha256(raw).hexdigest(),
         "matched": True,
+        "confirmatoryEligible": True,
+        "folds": folds,
+        "trainingDataFingerprint": data["trainingDataFingerprint"],
         "declaredFlagCount": len(declared),
         "decisionRule": data.get("decisionRule"),
         "datasetBuilder": data.get("datasetBuilder"),
@@ -149,6 +169,30 @@ def split_by_family(rows: list[dict], validation_family: str):
     train = [r for r in rows if family_key(r.get("family")) != validation_family]
     valid = [r for r in rows if family_key(r.get("family")) == validation_family]
     return train, valid
+
+
+def compute_training_data_fingerprint(dataset: dict) -> str:
+    """Content fingerprint for fold equivalence; ignore only the non-semantic build timestamp."""
+    canonical = dict(dataset)
+    canonical.pop("createdAt", None)
+    encoded = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def verify_preregistration_dataset(prereg_info: dict, dataset: dict, args) -> None:
+    declared = prereg_info.get("datasetBuilder") or {}
+    actual_fp = compute_training_data_fingerprint(dataset)
+    if prereg_info.get("trainingDataFingerprint") != actual_fp:
+        raise RuntimeError("preregistration training-data fingerprint mismatch (refusing to train)")
+    if declared.get("schema") != dataset.get("schema"):
+        raise RuntimeError("preregistration dataset schema mismatch (refusing to train)")
+    if declared.get("unitLabelReviewFile") != args.unit_review_file:
+        raise RuntimeError("preregistration unit-label review provenance mismatch (refusing to train)")
+    if declared.get("textHashBuckets") != dataset.get("stats", {}).get("textHashBuckets"):
+        raise RuntimeError("preregistration feature recipe mismatch (refusing to train)")
+    actual_families = dataset.get("stats", {}).get("devFamilyNames") or []
+    if sorted(prereg_info.get("folds") or []) != sorted(actual_families):
+        raise RuntimeError("preregistration family folds do not exactly match the audited dataset families")
 
 
 def freeze_copy_state(model: nn.Module) -> dict[str, torch.Tensor]:
@@ -1476,6 +1520,7 @@ def refresh_manifest():
 
 
 def push_back(report: dict, promoted: bool, compact_path: Path, full_path: Path | None, tokenizer_dir: Path):
+    report["publicationAuthorized"] = True
     full_exists = full_path is not None and full_path.exists()
     full_in_production = False
 
@@ -1501,7 +1546,7 @@ def push_back(report: dict, promoted: bool, compact_path: Path, full_path: Path 
             report["artifacts"]["fullEncoderReleaseTag"] = tag
         report["promoted"] = True
     else:
-        print("\n[GitHub] Quality gates not met: preserving production weights and publishing candidate artifacts only.")
+        print("\n[GitHub] Promotion not authorized or gates incomplete: preserving production weights and publishing candidate artifacts only (explicit --push-back supplied).")
         report["promoted"] = False
         if full_exists:
             full_bytes = full_path.stat().st_size
@@ -1740,14 +1785,22 @@ def run_final_family_evaluation(
     }
 
 
-def frozen_evaluation_record(training_dataset_sha256: str, candidate_weights_digest: str,
-                             validation_family: str) -> dict:
+def frozen_evaluation_record(training_dataset_sha256: str, data_fingerprint: str,
+                             candidate_weights_digest: str, validation_family: str) -> dict:
     source_paths = [
         ROOT / "src" / "compile-v5-local.js",
         ROOT / "tools" / "build-micro-dataset.mjs",
+        ROOT / "tools" / "helpers" / "three-mode.mjs",
+        ROOT / "tools" / "helpers" / "mode1-quality.mjs",
+        ROOT / "tools" / "helpers" / "hand-capture.mjs",
+        ROOT / "tools" / "helpers" / "hand-draft.mjs",
         ROOT / "tools" / "eval-micro-js-pairs.mjs",
         ROOT / "tools" / "micro_cv.py",
         ROOT / "tools" / "kaggle-train-micro.py",
+        ROOT / "tools" / "train-v5-micro.mjs",
+        ROOT / "tools" / "review-unit-labels.mjs",
+        ROOT / "tools" / "bench-run.mjs",
+        ROOT / "transfer" / "micro-preregistration.json",
     ]
     try:
         commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(ROOT), text=True).strip()
@@ -1758,6 +1811,7 @@ def frozen_evaluation_record(training_dataset_sha256: str, candidate_weights_dig
         "codeCommit": commit,
         "sourceSha256": {str(item.relative_to(ROOT)): hashlib.sha256(item.read_bytes()).hexdigest() for item in source_paths},
         "trainingDatasetSha256": training_dataset_sha256,
+        "trainingDataFingerprint": data_fingerprint,
         "candidateScoringWeightsSha256": candidate_weights_digest,
         "candidateWeightsPath": str(CANDIDATE_WEIGHTS_PATH.relative_to(ROOT)),
         "validationFamily": validation_family,
@@ -1794,7 +1848,7 @@ def main():
                         default="transfer/models/v5-micro-weights.candidate.json",
                         help="dataset builder CFB_MICRO_NEG_JUDGE_WEIGHTS; empty string = production weights")
     parser.add_argument("--unit-review-file", type=str,
-                        default="transfer/models/unit-label-review.json",
+                        default="transfer/models/unit-label-review-blind-v3.json",
                         help="dataset builder CFB_MICRO_UNIT_REVIEW_FILE; empty string = rule labels only")
     parser.add_argument("--dataset-neg-strategy", choices=["hardened", "legacy"], default="hardened",
                         help="dataset negative-mining strategy: hardened = length-matched + model-hard negatives (default)")
@@ -1816,8 +1870,11 @@ def main():
     parser.add_argument("--draft-loss-weight", type=float, default=1.2)
     parser.add_argument("--final-test-dataset", type=str, default=None,
                         help="Separate, semantically reviewed, single-new-family dataset used only after checkpoint selection")
-    parser.add_argument("--push-back", action="store_true")
+    parser.add_argument("--push-back", action="store_true", help="publish candidate artifacts/report to origin; explicit authorization required")
+    parser.add_argument("--authorize-promotion", action="store_true", help="explicitly authorize replacing production weights when every blocking gate passes")
     args = parser.parse_args()
+    if args.authorize_promotion and not args.push_back:
+        parser.error("--authorize-promotion requires explicit --push-back")
 
     try:
         from transformers import AutoConfig, AutoModel, AutoTokenizer
@@ -1878,18 +1935,51 @@ def main():
           f"per_positive={args.unit_pairs_per_positive}, near_length_tokens={args.near_length_tokens}")
     dataset = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
     training_dataset_sha256 = hashlib.sha256(DATASET_PATH.read_bytes()).hexdigest()
+    training_data_fingerprint = compute_training_data_fingerprint(dataset)
+    verify_preregistration_dataset(prereg_info, dataset, args)
     if dataset.get("schema") != "cfb.micro-dev-dataset/3":
         raise RuntimeError(f"unsupported dataset schema: {dataset.get('schema')}")
     if dataset.get("holdoutTouched") is not False:
         raise RuntimeError("dataset holdoutTouched must be false")
     if set(dataset.get("holdoutFamiliesExcluded", [])) != HOLDOUT_FAMILIES:
         raise RuntimeError("unexpected holdout family boundary")
+    dataset_stats = dataset.get("stats", {})
+    if set(dataset_stats.get("devFamilyAllowlist", [])) != DEV_FAMILIES:
+        raise RuntimeError("dataset dev-family allowlist mismatch (refusing non-fail-closed split lineage)")
     for row in dataset["unitSamples"]:
-        if is_holdout_family(row.get("family")):
+        family = family_key(row.get("family"))
+        if is_holdout_family(family):
             raise RuntimeError("holdout unit entered the training dataset")
-    for pair in dataset["unitStepPairs"] + dataset["stepSimpoPairs"]:
-        if is_holdout_family(pair.get("family")) or pair.get("split") == "holdout":
-            raise RuntimeError("holdout preference pair entered the training dataset")
+        if family not in DEV_FAMILIES:
+            raise RuntimeError(f"unassigned/non-dev unit entered the training dataset: {family}")
+    for pair in dataset["unitStepPairs"]:
+        family = family_key(pair.get("family"))
+        if is_holdout_family(family) or family not in DEV_FAMILIES:
+            raise RuntimeError("holdout or unassigned unit pair entered the training dataset")
+    for index, pair in enumerate(dataset["stepSimpoPairs"]):
+        family = family_key(pair.get("family"))
+        if is_holdout_family(family) or family not in DEV_FAMILIES or pair.get("split") != "dev":
+            raise RuntimeError(f"holdout or non-dev draft pair entered the training dataset: {index}")
+        if not mode1_pair_content_audit_valid(pair):
+            raise RuntimeError(f"draft pair lacks a clean exact-text-bound contentAudit: {index}")
+    for index, sample in enumerate(dataset.get("handSamples", [])):
+        if sample.get("trainingEligible") is True:
+            family = family_key(sample.get("family"))
+            if family not in DEV_FAMILIES or sample.get("split") != "dev":
+                raise RuntimeError(f"holdout or non-dev positive capture entered the training dataset: {index}")
+            if not mode1_capture_quality_audit_valid(sample):
+                raise RuntimeError(f"positive capture lacks a clean exact-text-bound qualityAudit: {index}")
+            expected_source_id = f"mode1-capture:{sample.get('traj') or 'unknown'}:{sample.get('id')}"
+            linked_trainable = [
+                pair for pair in dataset["stepSimpoPairs"]
+                if pair.get("sourceId") == expected_source_id and pair.get("trainingEligible") is True
+            ]
+            if len(linked_trainable) != sample.get("trainableTargetsAdded") or any(
+                (pair.get("provenance", {}).get("qualityAudit", {}).get("textSha256")
+                 != sample.get("qualityAudit", {}).get("textSha256"))
+                for pair in linked_trainable
+            ):
+                raise RuntimeError(f"positive capture is not linked to its exact trainable draft pair: {index}")
 
     SYM_DIM = int(len(dataset["unitSamples"][0]["features"]))
     TEXT_HASH_BUCKETS = int(dataset.get("stats", {}).get("textHashBuckets", 0) or 0)
@@ -1992,6 +2082,7 @@ def main():
     summary = mode2["summary"]
     freeze_record = frozen_evaluation_record(
         training_dataset_sha256,
+        training_data_fingerprint,
         js_pair_eval["candidate"]["weightsDigest"],
         sft_result["validationFamily"],
     )
@@ -2040,22 +2131,77 @@ def main():
         },
     }
     dev_families = list(dataset["stats"]["devFamilyNames"])
+    preregistration_sha256 = prereg_info.get("sha256")
+    expected_source_sha256 = freeze_record.get("sourceSha256")
     per_fold_cv = {}
+    fold_compatibility_rows = {}
     for family in dev_families:
         if family == sft_result["validationFamily"]:
+            current_reasons = []
+            if family not in prereg_info.get("folds", []):
+                current_reasons.append("current-family-not-frozen-in-preregistration")
+            if prereg_info.get("trainingDataFingerprint") != training_data_fingerprint:
+                current_reasons.append("current-training-data-fingerprint-not-frozen")
+            if not preregistration_sha256 or not expected_source_sha256:
+                current_reasons.append("current-preregistration-or-source-lineage-missing")
+            fold_compatibility_rows[family] = {"compatible": not current_reasons, "reasons": current_reasons, "source": "current-run"}
             per_fold_cv[family] = current_fold_entry
             continue
         fold_report_path = MODELS_DIR / f"cfb-micro-97m-report.fold-{family}.json"
-        if fold_report_path.is_file():
-            try:
-                per_fold_cv[family] = micro_cv.fold_metrics_from_report(
-                    json.loads(fold_report_path.read_text(encoding="utf-8"))
-                )
-            except Exception as exc:  # 报告损坏不应阻断训练，但要在汇总里可见（缺折会被判 incomplete）
-                print(f"   [CV] fold report unreadable ({family}): {exc}")
+        if not fold_report_path.is_file():
+            fold_compatibility_rows[family] = {"compatible": False, "reasons": ["fold-report-missing"]}
+            continue
+        try:
+            fold_report = json.loads(fold_report_path.read_text(encoding="utf-8"))
+            compatibility = micro_cv.fold_report_compatibility(
+                fold_report,
+                family,
+                training_data_fingerprint=training_data_fingerprint,
+                preregistration_sha256=preregistration_sha256,
+                source_sha256=expected_source_sha256,
+                expected_families=dev_families,
+            )
+            fold_compatibility_rows[family] = compatibility
+            if compatibility["compatible"]:
+                per_fold_cv[family] = micro_cv.fold_metrics_from_report(fold_report)
+            else:
+                print(f"   [CV] excluding incompatible fold {family}: {', '.join(compatibility['reasons'])}")
+        except Exception as exc:
+            fold_compatibility_rows[family] = {"compatible": False, "reasons": ["fold-report-unreadable:" + str(exc)[:160]]}
+            print(f"   [CV] fold report unreadable ({family}): {exc}")
+    fold_lineage = {
+        "allCompatible": set(fold_compatibility_rows) == set(dev_families)
+            and all(row.get("compatible") is True for row in fold_compatibility_rows.values()),
+        "families": fold_compatibility_rows,
+    }
     baseline_path = ROOT / "transfer" / "micro-cv-baseline.json"
-    cv_baseline = json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path.is_file() else None
-    three_fold_cv = micro_cv.summarize(dev_families, per_fold_cv, baseline=cv_baseline)
+    baseline_raw = json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path.is_file() else None
+    baseline_compatibility = micro_cv.baseline_report_compatibility(
+        baseline_raw,
+        training_data_fingerprint=training_data_fingerprint,
+        preregistration_sha256=preregistration_sha256,
+        source_sha256=expected_source_sha256,
+        expected_families=dev_families,
+    )
+    cv_baseline = baseline_raw if baseline_compatibility["compatible"] else None
+    baseline_status = None if baseline_compatibility["compatible"] else "baseline-lineage-incompatible:" + ",".join(baseline_compatibility["reasons"])
+    confirmatory_eligible = bool(prereg_info.get("confirmatoryEligible") and fold_lineage["allCompatible"] and baseline_compatibility["compatible"])
+    confirmatory_reason = "prospective lock plus exact fold/baseline lineage verified" if confirmatory_eligible else (
+        "fold-lineage-incompatible-or-missing; " + str(baseline_status or "baseline-invalid")
+    )
+    three_fold_cv = micro_cv.summarize(
+        dev_families,
+        per_fold_cv,
+        baseline=cv_baseline,
+        confirmatory_eligible=confirmatory_eligible,
+        confirmatory_reason=confirmatory_reason,
+        baseline_status=baseline_status,
+        fold_compatibility=fold_lineage,
+        expected_data_fingerprint=training_data_fingerprint,
+        expected_source_sha256=expected_source_sha256,
+        expected_preregistration_sha256=preregistration_sha256,
+        expected_families=dev_families,
+    )
     three_fold_cv_gates = {name: bool(gate["passed"]) for name, gate in three_fold_cv["gates"].items()}
     print("\n[CV v2] 三折家族交叉验证（matched 桶，承重读数）:")
     for family, row in three_fold_cv["perFold"].items():
@@ -2249,6 +2395,7 @@ def main():
             "flywheelScoresDegenerate": dataset["stats"].get("flywheelScoresDegenerate"),
             "flywheelDistinctScorePairs": dataset["stats"].get("flywheelDistinctScorePairs"),
             "trainingDatasetSha256": training_dataset_sha256,
+            "trainingDataFingerprint": training_data_fingerprint,
             "uniqueUnitPairEndpoints": dataset["stats"]["unitPairEndpointReuse"]["uniqueEndpoints"],
             "familyCount": dataset["stats"]["devFamilyCount"],
             "familyNames": dataset["stats"]["devFamilyNames"],
@@ -2360,8 +2507,12 @@ def main():
         ],
     }
     report["training"]["elapsedSeconds"] = round(time.time() - t_start, 2)
-    if accepted:
-        print("\n✅ All promotion-blocking gates passed; candidate is eligible for promotion.")
+    promotion_authorized = bool(accepted and args.authorize_promotion)
+    report["promotionAuthorized"] = bool(args.authorize_promotion)
+    if accepted and not args.authorize_promotion:
+        print("\n✅ Blocking gates passed, but promotion is NOT authorized; production weights remain unchanged.")
+    elif accepted:
+        print("\n✅ Blocking gates passed and explicit promotion authorization was supplied.")
         if not target_unit:
             print("   (reported-only, non-blocking: unitPreferenceValidationAtLeast90 below 0.90 — see report.gatePolicy)")
     else:
@@ -2383,13 +2534,18 @@ def main():
     print(f"   compact JS student ONNX: {export_result['compactTempPath']} ({export_result['compactBytes'] / 1024:.1f} KB)")
     print(f"   actual compact CPU latency (batch=36): {export_result['compactBatch36CpuMs']} ms")
 
-    if args.push_back:
-        report.setdefault("training", {})
+    report.setdefault("training", {})
     report["training"]["validationFamily"] = sft_result["validationFamily"]
-    push_back(report, accepted, COMPACT_CANDIDATE_PATH, FULL_WORKING_PATH, TOKENIZER_DIR)
+    if args.push_back:
+        push_back(report, promotion_authorized, COMPACT_CANDIDATE_PATH, FULL_WORKING_PATH, TOKENIZER_DIR)
+    else:
+        report["promoted"] = False
+        report["publicationAuthorized"] = False
+        save_json(REPORT_JSON_PATH, report)
+        print("   Publication skipped: pass --push-back only after separate explicit authorization.")
 
     print("\n✅ Kaggle fine-tuning, grouped preference validation, ONNX smoke tests and Mode 2 evaluation completed.")
-    print(f"   acceptance={'PASS' if accepted else 'CANDIDATE ONLY'}; holdout excluded from training and used only for Mode 2 evaluation")
+    print(f"   acceptance={'PASS' if accepted else 'CANDIDATE ONLY'}; promotionAuthorized={promotion_authorized}; holdout excluded from training and used only for Mode 2 evaluation")
 
 
 if __name__ == "__main__":

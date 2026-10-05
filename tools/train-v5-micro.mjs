@@ -13,16 +13,19 @@ import { birthOffline, offlineBirthConfig } from '../src/offline-birth.js'
 import { normalizeConfig } from '../src/config.js'
 import { slotsOf, draftDistance, handDraftGate } from './helpers/hand-draft.mjs'
 import { loadGold } from './helpers/three-mode.mjs'
+import { auditMode1Output, isMode1GoldEligible, isMode1PairEligible } from './helpers/mode1-quality.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const HOLDOUT_FAMS = new Set(['eacces-config', 'wrong-model'])
-const isHoldout = (fam) => HOLDOUT_FAMS.has(String(fam || '').split(':')[0].replace(/_(?:decoy|long-horizon).*$/, ''))
+const DEV_FAMS = new Set(['flaky-timeout', 'perf-regression', 'sse-truncated'])
+const familyKey = (value) => String(value || '').replace(/^pool:/, '').split(':', 1)[0].replace(/_(?:decoy|long-horizon).*$/, '')
+const isHoldout = (fam) => HOLDOUT_FAMS.has(familyKey(fam))
 
 function loadAllGold(root = ROOT) {
-  return loadGold(path.join(root, 'transfer', 'gold')).map((g) => ({
+  return loadGold(path.join(root, 'transfer', 'gold')).filter((g) => isMode1GoldEligible(g) && g.qualityAudit?.status === 'clean').map((g) => ({
     ...g,
     hand: g.draft || g.gold || g.hand || '',
-    split: g.split || (isHoldout(g.family) ? 'holdout' : 'dev'),
+    split: g.split || (isHoldout(g.family) ? 'holdout' : 'unassigned'),
   }))
 }
 
@@ -57,10 +60,10 @@ function labelUnitByGoldSlots(unit, goldSlots) {
 
 function trainMicroModelOnDev() {
   const allGold = loadAllGold(ROOT)
-  const devGold = allGold.filter((g) => g.split === 'dev' && !isHoldout(g.family))
+  const devGold = allGold.filter((g) => g.split === 'dev' && DEV_FAMS.has(familyKey(g.family)) && !isHoldout(g.family))
   const oracleD2c = JSON.parse(fs.readFileSync(path.join(ROOT, 'transfer/mr/oracle-d2c.json'), 'utf8'))
   const pack = JSON.parse(fs.readFileSync(path.join(ROOT, '.cfb-offline/gen-2.pack.json'), 'utf8'))
-  const devPool = (pack.pool?.tasks || []).filter((t) => !isHoldout(t.id))
+  const devPool = (pack.pool?.tasks || []).filter((t) => t.split === 'dev' && DEV_FAMS.has(familyKey(t.id)) && !isHoldout(t.id))
 
   // 1. 构造 dev 句子级训练样本（严格只用 devGold + devPool）
   const unitSamples = []
@@ -77,7 +80,7 @@ function trainMicroModelOnDev() {
   }
   for (const t of devPool) {
     const o = oracleD2c.tasks?.[t.id]?.rounds?.[2]
-    if (!o?.oracle) continue
+    if (!o?.oracle || auditMode1Output(o.oracle).status !== 'clean') continue
     const goldSlots = slotsOf(o.oracle)
     const units = splitDiscourseUnits(t.raw)
     const targetAnchors = extractAnchorsV5(t.raw.slice(Math.floor(t.raw.length * 0.65)))
@@ -128,9 +131,12 @@ function trainMicroModelOnDev() {
   // 3. 在 dev 飞轮偏好对（过滤掉 holdout 家族）上训练 Head 3 偏好排序权重
   const fwPath = path.join(ROOT, '.cfb-offline/train/pairs.jsonl')
   const fwLines = fs.existsSync(fwPath) ? fs.readFileSync(fwPath, 'utf8').trim().split('\n').filter(Boolean) : []
+  const flywheelText = (p, side) => p[`${side}Text`] || (typeof p[side] === 'string' ? p[side] : p[side]?.draft) || ''
   const devPairs = fwLines.map((l) => JSON.parse(l)).filter((p) => {
-    const fam = String(p.task || p.taskId || p.family || '').split(':')[0].replace(/_(?:decoy|long-horizon).*$/, '')
-    return p.split !== 'holdout' && !isHoldout(fam) && (p.chosenText || p.chosen?.draft || p.chosen) && (p.rejectedText || p.rejected?.draft || p.rejected)
+    const fam = familyKey(p.task || p.taskId || p.family || '')
+    const chosen = flywheelText(p, 'chosen'), rejected = flywheelText(p, 'rejected')
+    return p.split === 'dev' && !isHoldout(fam) && DEV_FAMS.has(fam)
+      && chosen && rejected && isMode1PairEligible({ ...p, chosenText: chosen, rejectedText: rejected }, { requireRecorded: true })
   })
 
   const prefKeys = Object.keys(V5_MICRO_WEIGHTS.prefWeights)

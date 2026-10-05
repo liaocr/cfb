@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import * as I from '../index.js'
 import { setCycleDir, cmdExportTrain, GOLD_DIR, TRAIN_PAIRS } from '../tools/cfb-cycle.mjs'
+import { auditMode1Pair } from '../tools/helpers/mode1-quality.mjs'
 
 let pass = 0, fail = 0
 async function test(name, fn) {
@@ -85,7 +86,7 @@ try {
 
   await test('cfb-cycle export-train：从金标注册表与飞轮偏好对直接无泄漏导出 train/selection/test.jsonl', () => {
     setCycleDir(tmp)
-    for (const [fam, id] of [['fam-a', 'ga'], ['fam-b', 'gb'], ['fam-c', 'gc'], ['fam-d', 'gd']]) {
+    for (const [fam, id] of [['flaky-timeout', 'ga'], ['perf-regression', 'gb'], ['sse-truncated', 'gc']]) {
       const dir = path.join(GOLD_DIR(), fam)
       fs.mkdirSync(dir, { recursive: true })
       fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({
@@ -94,13 +95,13 @@ try {
       }))
     }
     fs.mkdirSync(path.dirname(TRAIN_PAIRS), { recursive: true })
-    fs.writeFileSync(TRAIN_PAIRS, JSON.stringify({
-      round: 1, task: 'fam-e', chosenText: '赢稿 E', rejectedText: '输稿 E', hypothesis: { lever: 'policy', value: 'p1' },
-    }) + '\n')
+    const pair = { round: 1, task: 'sse-truncated', split: 'dev', chosenText: '赢稿 E：逐步核验后再提交。', rejectedText: '输稿 E：只凭旧日志直接下结论。', hypothesis: { lever: 'policy', value: 'p1' } }
+    pair.contentAudit = auditMode1Pair(pair)
+    fs.writeFileSync(TRAIN_PAIRS, JSON.stringify(pair) + '\n')
     const outDir = path.join(tmp, 'exported')
     const res = cmdExportTrain(['--out', outDir])
     assert.equal(res.ok, true)
-    assert.equal(res.examples, 5)
+    assert.equal(res.examples, 4, '3 个 dev Gold + 1 个绑定 clean 审计的 dev 飞轮目标')
     assert.ok(fs.existsSync(path.join(outDir, 'train.jsonl')))
     assert.ok(fs.existsSync(path.join(outDir, 'selection.jsonl')))
     assert.ok(fs.existsSync(path.join(outDir, 'test.jsonl')))
