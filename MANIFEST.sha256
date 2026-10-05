@@ -305,12 +305,16 @@ fe1e6121896f7f8ba8d288dfad4f5a7bb89546036a94f6bbad2ae66d40d74970  transfer/gold-
 7b2e8a27c3e3434cc49d0591006a80e5e19011d1799504dfa9ca43773c616a13  transfer/gold-rejected/sse-truncated/sse-truncated_decoy-s0-r3.json
 d406208adf9d917a842400491e71194c25db1ef50ede3a74fd2b49f73c97afa5  transfer/gold-rejected/wrong-model/wrong-model_decoy-s0-r4.json
 83ef85e1eda9fc7a49b0597076c1fd8cba68526f2141d30c869c5d89354b2d07  transfer/gold-rejected/wrong-model/wrong-model_long-horizon-s0-r4.json
+43ad9a5aa0877d5f631e828f88a2e141c3eeaae75ccd8731e1239983cfbfe7ba  transfer/gold-repair/drafts-proposed/README.md
 2db43bb25484a9adff25c1621cfe79489c86d97f875d5d7329c68e7597914866  transfer/gold-repair/drafts-proposed/flaky-timeout-s0-r3.md
 84c0b57e2f9fec4f38f2ac0f495b60b24e1bd8f288732822425ab574337e65db  transfer/gold-repair/drafts-proposed/flaky-timeout-s0-r4.md
+baccdc8a34af422114d511e4a0581b49895601c51a4fad7cef958009e9a690f8  transfer/gold-repair/drafts-proposed/flaky-timeout-s0-r4.retry-2026-10-05.md
 84e152251784af600162748da2af79b2e8cfaa324fcbe150a76f0c04ab3f0446  transfer/gold-repair/drafts-proposed/flaky-timeout-s0-r5.md
 1281355532d85dd8e94851e448fcea9c0702df881e67dbe7ead99c18fd33b260  transfer/gold-repair/drafts-proposed/flaky-timeout_long-horizon-s0-r4.md
+cea2adf72c19ba25875e9d8025972b5c836c8e1bf51e3c5088c3e2b4dc8f022d  transfer/gold-repair/drafts-proposed/perf-regression-s0-r5.retry-2026-10-05.md
 729a5a5cb23cc09d86cbc0dee853995815dedce1b7747afcf5b55f40609dafe3  transfer/gold-repair/drafts-proposed/perf-regression-s0-r6.md
 d5c91910493e7539f70e356cbafb19b4a66f4659959d242ab9cc0b7dc0e745b1  transfer/gold-repair/drafts-proposed/sse-truncated_decoy-s0-r3.md
+c4b6d22b34d07a4caa4185c9f52490da8d731a438b46565e0066b9a049092e31  transfer/gold-repair/drafts-proposed/sse-truncated_decoy-s0-r4.retry-2026-10-05.md
 2db43bb25484a9adff25c1621cfe79489c86d97f875d5d7329c68e7597914866  transfer/gold-repair/drafts/flaky-timeout-s0-r3.md
 84c0b57e2f9fec4f38f2ac0f495b60b24e1bd8f288732822425ab574337e65db  transfer/gold-repair/drafts/flaky-timeout-s0-r4.md
 84e152251784af600162748da2af79b2e8cfaa324fcbe150a76f0c04ab3f0446  transfer/gold-repair/drafts/flaky-timeout-s0-r5.md

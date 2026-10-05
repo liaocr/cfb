@@ -1,0 +1,26 @@
+# 提议稿（drafts-proposed）
+
+这里是**还没挣到金标**的手写稿：每份都必须先过 `node tools/hand-preflight.mjs <plan>` 的六项离线闸链
+（G2 决策不变 ∧ draft 越界 lint ∧ `compileV4Direct` ∧ `birthAccept` ∧ stored lint ∧ 与自身逐字比对 dd）。
+**离线全绿 ≠ 金标** —— `outcome`（主模型读这份稿能否真修好）只能由模式 1 真机轨迹决定。
+
+命名：`<id>.md` = 该单元该轮的稿；带 `.retry-<date>.md` 后缀的是同一 id 的**重写版**（不覆盖旧记录，旧稿留在 git 历史里）。
+
+## 2026-10-05 三份（全部预检全绿）
+
+| 稿 | raw→稿→stored | 状态 | 处置判断 |
+|---|---|---|---|
+| `flaky-timeout-s0-r4.retry-2026-10-05.md` | 5096→1431→2306 | 六项全绿，自比 dd 0.989→修锚点后绿 | **值得真机续跑**：flaky-timeout 家族当前 0 条金标，此稿是新增条目，不与现役冲突 |
+| `perf-regression-s0-r5.retry-2026-10-05.md` | 1328→810→1269 | 六项全绿 | **值得真机续跑**：perf-regression 家族当前 0 条金标，同上 |
+| `sse-truncated_decoy-s0-r4.retry-2026-10-05.md` | 1518→913→1467 | 六项全绿 | **不重跑、不 replace**：与现役金标比对 `cfb-gold-repair replay` 得 dd 0.65（`excludedRecall 0` / `openRecall 0`），属"内容侧重不同"而非"修掉越界句"（工具口径：只删越界句应接近 1.000）。现役那条在 b13 上让 5 个策略全部得 0.000，是**最有区分度**的一格标尺，换掉是净损失 |
+
+## 写作红线（每份稿都按这套来，缺一项就被闸挡回）
+
+1. **只压缩上一轮已经发生的事**：raw 里没有落定句、也没有改法意图时，稿里出现"改法只落…/改成…"即判 `invented-decision`（`flaky-timeout-s0-r4` 上一稿就死在这里，它把没做的 `{ hedgeAfterMs: 1600 } → 5000` 写成了决定）。
+2. **三元组的 old_text 必须逐字在 raw∪ctx 里**，否则 `invented-triple`；new_text 的每个锚点也要在证据里。
+3. **锚点按逐字形态算**：raw 里是 `rejects`/`settled`，写 `reject`/`settle` 就算发明（实测被 `anchorPrecision 0.959` 抓住）。
+4. **引用回显只能用 `「…」` / `“…”` / 反引号框**，且内容原样出现在证据里 ⇒ 免检；转述成一般性保证即判 `environment-permission-assertion`。ASCII 双引号**不在**免检通道。
+5. **不写实验元语**：轮数上限、预算、停止条件、"沙箱必然如何" 都是定罪项；`prompt` 这类元称也不在证据锚点里。
+6. **排除项必须带理由**（金标的价值就在这儿）：光写"已排除：X" 是空洞模板，A41d 判 0。
+7. **长度是硬约束**：`netSaved = raw − stored ≥ 50`，而 stored = 稿 + 程序台账（实测约 460 字）⇒ 短 raw 的单元要把稿压到 `raw − 510` 以下；`flaky` 那条宽松，`perf`/`sse_decoy` 各被 `no-gain` 挡回三次才收敛。
+8. **已走过的路不许复活**：台账里的调用不能写成下一步（`deadEndResurrected`）。
