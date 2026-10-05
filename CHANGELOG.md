@@ -3,6 +3,16 @@
 > 最新在上。每条的验证数字、开关与待办都是**当时**的记录，按原样保留、不回写；现状以最新条目和 [`README.md`](README.md) 为准。
 > 文档索引见 [`docs/README.md`](docs/README.md)；历史实验与审计合订见 [`docs/HISTORY-AND-EXPERIMENTS.md`](docs/HISTORY-AND-EXPERIMENTS.md)。
 
+## v14.21.4（2026-10-05，`perf-regression` 第一次出金标：t95 $0.05 修好并守住，t96 $0.075 未复现，反证一起入库）
+
+- **公开撤回 v14.21.3 里那条判词**「`perf-regression` 不是稿能撬动的格子」——它是从我自己三次失败倒推的，不是这一格的性质。用户当场顶回来："你只因为你干不成就这样说吗"，并且拒绝我换到容易出金标的格子（那是在凑数量）。真机只花 $0.05 就把它证伪了。
+- **病根从真机 transcript 里读出来的**：t94 的 raw 臂第 8 轮 7567 字，结论早已写完（`So the fix: revert compressTargetMax to 450` 反复出现），卡住它的是它一边写 `the tool reads historical trace data, not config`、一边还想"改完跑 analyze-trace 看读数变不变"——**它在等一个不存在的确认**。⇒ 稿的作用不是再补一遍归因，是**把验收换成可完成的那个**（同轮 `cat src/config.js` 看到 450 即收工），外加防回滚条款（t93 raw 在 r12 把 1800 改回去过）。
+- **结果**：`ceiling` 合并 raw 0.308 / hand 0.308，e=3.75（阈 10）；perf 家族 6 对 = 5 tie + 1 **win**。t95：hand `fixed=true@r9`、`edit_file` ok、`finalFiles` 是 `compressTargetMax: 450`，raw 同条件 19 调用 0 edit；t96（10 轮）：两臂 `edits=0`、`finalFiles` 空，raw 自己也漂在取证上 ⇒ **未复现**。
+- **金标 7 → 8 项、家族 3 → 4**：`gold add --plan 95` 写入 `transfer/gold/perf-regression/perf-regression-s0-r7.json`（`use:'ruler'`、draft 1236 → stored 2864、净省 1248、`qualityAudit: clean`；`gates.v4.inventedSpans` 3 落在老金标 0–6 的带内）。覆盖率矩阵 perf 由 0/8 → **1/7**（`tools/coverage-plan.mjs` 重生）。**弱点写进条目本身**：新增 `replay`（t95 win / t96 tie）与 `knownWeakness`（修好发生在轮数上限、修好后未验收、n=2 未过显著性阈）——不留着一句"已解决"误导后人。
+- **判据加一条真机教训**：`tools/silver-shape.mjs` 的 L5 改成"未解必须带**完成判据**"，禁令（"不阻断本轮、不要再回到取证"）不再算收敛——05b 版就是靠这种句子蒙过旧判据、真机仍不动手；`test/silver-shape.selftest.mjs` +3 条（发散型必须挡、带禁令的发散仍要挡、有完成判据要放行）。
+- **我自己另外两个错，记在这里**：① 写 r7 稿时把 **r8** 的原句（`= 2290`、`historical trace`）搬进来了，被 `invented-anchors` 当场抓住——锚点必须来自**本轮** raw∪ctx，跨轮引用就是发明；② 我一行诊断打印读 `transcript.calls[].ok`，而 calls 只有 `{name,args}` ⇒ 满屏假 `✗`，差点被我念成"调用全失败"。
+- **验证**：`npm run verify:offline` **1024 通过 / 0 失败 / 1 跳过（35/35 套件）**；`npm run manifest:check` 419 文件 0 漂移 0 缺失；`hand-preflight t95` 预检全绿；花费 t95 $0.05 + t96 $0.075 = **$0.125**，`gateFails 0`。**待办**：同一份稿重复 3–5 次（≈$0.05–0.08/次）才谈得上"这把尺子稳了"；要覆盖到"提前动手 + 修完就验收"，下一批把 `--max-rounds` 留 2 轮余量。
+
 ## v14.21.3（2026-10-05，第一次按"金标只认真机"跑起来：t91–t94 真机单元 $0.301，结论是这批稿停在银标）
 
 - **为什么跑**：上一轮定了层级——金标只认真机 `outcome`。用户批准「开始！」后跑模式 1 真机单元：`plan-traj --n 9x --arms raw,hand` → `traj-run --variants raw,hand` → `ceiling`（hand 臂不花压缩钱，raw 复用历史轨迹）。四段花费 t91 $0.063 / t92 $0.025 / t93 $0.125 / t94 $0.088 = **$0.301**，`gateFails 0`。

@@ -130,6 +130,7 @@ dsh-cot-form-b/
   - **`auto`（`birth` 出生即压缩）**：SWE 严苛解决率 **`85.7%`**（伪修好水分 **`0.0%`**），`pass@1 = 0.889`，TAU 稳定性 `pass^2 = 0.778`，平均步数 **`4.86` 轮（较原文 `-23.5%`）**，思维链字符 **`-27.4%`**，**LMArena Elo `1114`**（较 `raw` `1000` 净胜 `+114` 分，较 `ledger` `954` 净胜 `+160` 分）。
 - **L1 零污染金标基准（`b9` 冠军 `p-1490eefcdf` 在当时的全量 11 条 Gold 标尺 `7 dev + 4 holdout` 上实测）**：
   - **注册表现状（v14.20.1 复算后）**：`transfer/gold/` 活跃 6 项（`sse-truncated` / `eacces-config` / `wrong-model`，`dev 2 + holdout 4`，全部 `[clean]`），另有 6 条改好的修订稿在 `transfer/gold-repair/staged/` 等模式 1 真机复测（`pending-retest.json`）。`b9` 的 `1.000` 是 11 项在册时测的历史成绩；条目集变了就按计划重建（`gold-changed` 会拒跑旧计划）。
+  - **注册表现状（v14.21.4，2026-10-05 复算）**：`transfer/gold/` 活跃 **8 项 / 4 个家族**（`sse-truncated` 3 · `eacces-config` 2 · `wrong-model` 2 · **`perf-regression` 1**，`dev 4 + holdout 4`，全部 `[clean]`）。`perf-regression` 那条是**按「只认真机」新入的第一条**：t95 真机 `hand fixed=true@r9`、`finalFiles` 守住 `compressTargetMax: 450`、raw 同条件 0 edit ⇒ `gold add --plan 95`；同批把 t96 的**未复现**（两臂 0 edit）与「修好发生在轮数上限、修完未验收、n=2 未过阈」一起写进条目 `replay.knownWeakness`。银标侧另存四份改写稿 + 本轮两份（`transfer/gold-repair/drafts-proposed/`），数据不删。
   - **本地认知图微模型 `p-1490eefcdf`**：在 **11/11 条 Gold 标尺（含 4 条盲测留出题与 4 条 `:long-horizon` 多跳长程题）** 上取得 **`1.000 [实测]` 满分**（`dev = 1.000`，`holdout = 1.000`，泛化差 `0.000`，`G1 = 11/11`，`G2 = 11/11`，`e = 31.875 >= 10.0` ⇒ `promote`），金标均省 **`1,753 tok`**，5 题池全轮 `8/8` 过闸（均省 **`482 tok`**，5 题 Oracle `dd = 0.908`），单次编译平均耗时 **`9.38 ms`**，副模型 API 成本 **`$0.00`**。
 
 ---

@@ -47,7 +47,7 @@
 
 三条只有真机才能给的结论（写下来，别靠聪明猜）：
 
-1. **`perf-regression` 这格不是压缩稿能撬动的**：raw 臂要 11 轮才动手、还守不住（改完又改回）。⇒ 该格 0/8 的覆盖缺口不是"我没写好"，而是**任务结构决定了"停止取证"这一维在 ≤9 轮的预算里测不出来**；要测就得改 fixture（那是动数据，另议）。数据与轨迹全留，不删。
+1. ~~**`perf-regression` 这格不是压缩稿能撬动的**~~ **（此条已被 t95 推翻，见下一节；保留原文，因为它记录的是一次错误归因的过程）**：raw 臂要 11 轮才动手、还守不住（改完又改回）。⇒ 该格 0/8 的覆盖缺口不是"我没写好"，而是**任务结构决定了"停止取证"这一维在 ≤9 轮的预算里测不出来**；要测就得改 fixture（那是动数据，另议）。数据与轨迹全留，不删。
 2. **离线判据管不了落地行为**。我把 old→new、同轮 edit_file、验收读数、收工条件全写进稿、六道闸全绿，模型仍连着 5 轮只做 bash ⇒ 形状检查器只配当银标质检，**它的"齐"不代表有用**。
 3. **r8 那类"稿 ✗"要预先堵**：同一条轨迹里凡过地板的轮都会要稿，只预置一轮的稿 ⇒ 下一轮直接不压（`压稿成功 50%`）。续跑前先数一下还剩几轮会过地板。
 
@@ -59,3 +59,22 @@
 - 但**形状齐 ≠ 金标**：金标只认真机 outcome。判据（`silver-shape`）的用途是让下一批银标成批量时不掺水，不是给金标发凭据。
 - 教训（同一天的我自己）：因为现役稿里有「若 A 就…／若 B 就…」，我就给 `perf`、`sse` 各缝了一句形状相同的。`perf` 那句把**改完后的验收读数**当成了那两条取证 bash 的读数（写的是「回落到 280 ⇒ 就照 450 落地」，可 280 是改动**前**的旧值、`--last 5` 读的是历史版本，不会「回落」）；`sse` 那句写「落地后仍打 `condensed` 就先看清 `assembleSseFrames` 的返回值」，而那正是被改的东西。两处都删了，换成从原文长出来的：`perf` 的分支挂在 raw 自己那句 `Let me check what the analyze-trace data source is`——脚本若显示 contentSpanMs 是从 outputChars 推算的，它就跟着长度一起涨、不能当独立证据；`sse` 那格没有待读读数，改成形态 b：欠的是把已定改法写出去（原文「Let me do edits and grep.」两样都没发）。
 - 判据也跟着改了：原来硬要求每格都有分支句，那等于逼写稿人造句子。现在形态 a（预注册分叉）/ 形态 b（交代没有待读读数 + 点名欠的动作）任选，`test/silver-shape.selftest.mjs` 的 E-b、E-c 把两头钉住：形态 b 要放行，光写一句「这块没查」要挡住。
+
+## t95 / t96（$0.125，gateFails 0）：上一节第 1 点作废——这一格撬开了，但只赢一次
+
+**先说清病根**（读 t94 真机 transcript 得到的，不是猜）：raw 臂第 8 轮那 7567 字里，结论早就写完了 —— `So the fix: revert compressTargetMax to 450` 反复出现；卡住它的是**去找一个不存在的验收**：它自己既写了 `the tool reads historical trace data, not config`、`Changing config won't change the historical trace`，又接着说 `Let me test by changing config and re-running… that's a good experiment`，最后一句是 `Actually, I already spent many rounds. Let me just check for any hidden files/dirs` ⇒ 它没在犹豫改哪个值，它在等一个不会来的确认。
+
+**所以稿子的活不是再补一遍归因，是把验收换成可完成的那个**：`edit_file` 同轮 `cat src/config.js` 看到 `compressTargetMax: 450,` 即收工；并把"那条验证不存在"挑明；再加防回滚条款（t93 的 raw 改完 r12 又改回 1800 ⇒ 明写"读数不回落不构成把 1800 改回去的证据"）。两份稿：`perf-regression-s0-r7.retry-2026-10-05c.md`（真机用的就是它）与 `perf-regression-s0-r8.retry-2026-10-05.md`（同轨迹第二份，预置好，堵掉 t94 那种「稿 ✗」）。
+
+| 单元 | 轮数 | raw 臂 | hand 臂（05c 那份稿） |
+|---|---|---|---|
+| t95 | 9 | 未修好 · 19 调用 · **edit 0** | **修好@9** · `edit_file` ok · `finalFiles` = `compressTargetMax: 450` · 稿 1236→stored 2864（净省 1248）· 重复 0 · 压稿 1/9 |
+| t96 | 10 | 未修好 · edit 0 · r10 还在 `git show v11.9:src/config.js` | **未复现** · edit 0 · `finalFiles` 空（r8 那份稿被收了 `稿 4159 ✓`，仍没动手） |
+
+合并进 `ceiling`：raw 0.308 / hand 0.308，e=3.75（阈 10）⇒ 总体仍「分不出」；perf 家族 6 对 = **5 tie + 1 win**。金标按「过闸且修好」入了一条（`gold add --plan 95`），t96 的反证写进了条目的 `replay.knownWeakness`，不当它已确证。
+
+三条新的硬教训：
+
+1. **"我干不动"不是"格子干不动"**。上一节第 1 点是从 t91/t93/t94 三次失败倒推出来的，把工具没找到杠杆当成了杠杆不存在。真机的反驳只花了 $0.05。
+2. **未解句不能给主模型派活**。每条轨迹只压被挑中的那一轮，稿里写「下一轮就查…」等于让它去查而不改（t93/t94：hand 臂 r8+ 提 `birthFinishWaitMs` 8 次 vs raw 3 次）。`tools/silver-shape.mjs` 的 L5 现只认**完成判据**（"…即收工 / 确认…落地 / 未解原样写进结论"），"不阻断本轮、不要再回到取证"这类**禁令不算收敛** —— 05b 版就是靠禁令蒙过了旧判据、真机仍不动手。
+3. **n=1 的赢不能当结论**。t95 赢在最后一轮（`maxRounds=8` 就不成立）、改完没验收；t96 连 raw 都漂在取证上。要把它当尺子，得同一份稿重复 3–5 次（每次 ≈$0.05–0.08）。

@@ -76,8 +76,16 @@ function auditOne(draftFile, id) {
   const dLines = draft.split(/\n+/).map((l) => norm(l)).filter(Boolean)
   const branches = dLines.filter((x) => (BRANCH_RE.test(x) || DUAL_RE.test(x)) && (FORWARD_RE.test(x) || /下一轮|回显|读数|拿到|到手|先读/.test(x)))
   const disposals = dLines.filter((x) => DISPOSAL_RE.test(x))
-  // L5 未解与待办
+  // L5 未解与待办 —— 必须**收敛型**
+  // 真机证据（2026-10-05 t93/t94，perf-regression）：每条轨迹只压挑中的那一轮 ⇒ 稿只介入一次。
+  //   我在稿里写「未解：`birthFinishWaitMs` …就查有没有第二处设定」，等于给主模型**新增一项调查任务**：
+  //   分叉后 hand 臂提到它的次数 8 vs raw 3、回滚词 8 vs 3，且 12 轮 edits=0。
+  //   老金标那份 fixed@5 的未解是「确认同轮完成两处修改并跑 X，看到这两项输出即验收完成…收工」⇒ 钉死成一个动作。
+  //   所以这里挡的不是「不许留未解」，而是「不许把未解写成下一个待办」。
+  const CONVERGED_RE = /(?:即收工|即算好|即交付|看到[^。；\n]{0,40}(?:即|就算)(?:算|完成|收工)|确认[^。；\n]{0,30}(?:完成|写好|落地)|原样写进[^。；\n]{0,12}(?:结论|未解段))/   // 只认「完成判据」；「不再取证/不许回滚」是禁令，不算收敛（05b 就是这样蒙过判据、真机仍失败）
+  const DIVERGENT_RE = /(?:就查|再查|待查|先查|再取证|继续查|再看[^。；\n]{0,16}(?:查|核|确认)|够不够没底|够不够仍未定|没底)/
   const openItems = D.open.map((x) => norm(x)).filter((x) => x.replace(LEAD_RE, '').length >= 8)
+  const divergentOpen = openItems.filter((x) => DIVERGENT_RE.test(x.replace(LEAD_RE, '')) && !CONVERGED_RE.test(x))
   // 越界嫌疑：写了环境类断言词但没进免检定界符
   const sus = []
   for (const s of dSent) {
@@ -92,7 +100,7 @@ function auditOne(draftFile, id) {
     ['L2 排除带理由', excl.length > 0 && hollow.length === 0, excl.length ? `${excl.length} 条排除，空洞/无理由 ${hollow.length} 条${hollow.length ? '：「' + hollow[0].slice(0, 40) + '」' : ''}` : '一条排除都没有 ⇒ 这不是归因，是摘要'],
     ['L3 落点与原文一致', intent ? (leadSent.length + triplesInDraft > 0) : (leadSent.length === 0 && triplesInDraft === 0), intent ? `原文有改法意图 ⇒ 稿需落点句（有 ${leadSent.length} 句、三元组 ${triplesInDraft} 条）` : `原文没下决定 ⇒ 稿里不许出现落点句（当前 ${leadSent.length + triplesInDraft} 处，须为 0）`],
     ['L4 未到手材料的处置', branches.length > 0 || disposals.length > 0, branches.length ? `形态 a：${branches.length} 条预注册分叉「${norm(branches[0]).slice(0, 44)}」…` : disposals.length ? `形态 b：交代没有待读读数并点名欠的动作「${norm(disposals[0]).slice(0, 52)}」…` : '既没预注册分叉（形态 a），也没交代"没有待读读数 + 欠哪个动作"（形态 b）⇒ 下一轮拿到稿不知道该等什么'],
-    ['L5 未解与待办', openItems.length > 0, `${openItems.length} 条${openItems.length ? '：「' + openItems[0].slice(0, 46) + '」…' : ''}`],
+    ['L5 未解是收敛型', openItems.length > 0 && divergentOpen.length === 0, openItems.length ? (divergentOpen.length ? `${divergentOpen.length} 条把未解写成了下一个待办：「${norm(divergentOpen[0]).slice(0, 54)}」… ⇒ 稿只介入一次，这等于派活` : `${openItems.length} 条，都是收敛型（钉死成一个动作或明写不影响本轮）`) : '没留未解 ⇒ 要么真没未解（少见），要么把悬念藏进了别处'],
     ['L6 越界嫌疑句', sus.length === 0 && lint.status === 'clean', sus.length ? `未用定界符框住的嫌疑句 ${sus.length} 条：「${sus[0]}」` : lint.status === 'clean' ? 'lint clean，且环境类说法都在引号内' : `lint: ${lint.issues.map((i) => i.category).join(',')}`],
     ['L7 长度净省（估）', raw.length - estStored >= 50, `raw ${raw.length} → 稿 ${draft.length} ⇒ stored ≈ ${estStored}，净省 ${raw.length - estStored}（要 ≥ 50；台账按实测区间 459–554 的高端估，真数以闸链为准）`],
   ]

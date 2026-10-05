@@ -78,7 +78,15 @@ assert.ok(names(run(mechOnly)).includes('L4 未到手材料的处置'), '只在�
 
 // G. 未解为空 ⇒ 挡。注意首行「本轮只取证，没定怎么动…」本身就会被 slotsOf 记成 open 槽，
 //    所以要连那句免责一起摘掉，否则测的是「有未解」而不是「没未解」。
-assert.ok(names(run(mechOnly.split('\n').filter((l) => !/^还没定/.test(l) && !/^本轮只取证/.test(l)).join('\n'))).includes('L5 未解与待办'), '没留未解 ⇒ L5 挡')
+assert.ok(names(run(mechOnly.split('\n').filter((l) => !/^还没定/.test(l) && !/^本轮只取证/.test(l)).join('\n'))).includes('L5 未解是收敛型'), '没留未解 ⇒ L5 挡')
+// G2. 未解被写成「下一个待办」⇒ 必须挡。真机 t93/t94：每条轨迹只压挑中那一轮 ⇒ 稿只介入一次，
+//     而我在那一次里派了活 ⇒ hand 臂 r8+ 提 birthFinishWaitMs 8 次 vs raw 3 次、回滚词 8 vs 3、12 轮 edits=0。
+assert.ok(names(run(good.replace(/还没定：[^\n]*/, '还没定：`birthFinishWaitMs` 1500 对不上 2400，够不够没底，下一轮就查有没有第二处设定。'))).includes('L5 未解是收敛型'), '发散型未解必须被 L5 挡')
+// G3. 禁令不等于完成判据 ⇒ 仍要挡（perf 的 05b 版就是写了「不要再回到 bash 取证」蒙过旧判据、真机仍不动手）
+//     测的是「禁令不能豁免派活」：旧 CONVERGED_RE 把「不阻断本轮」当收敛放过，真机 05b 版正是这样蒙过去的
+assert.ok(names(run(good.replace(/还没定：[^\n]*/, '还没定：`birthFinishWaitMs` 与 2400 并存这条不阻断本轮，但读数没回落就查有没有第二处设定。'))).includes('L5 未解是收敛型'), '带禁令的发散型未解仍要挡')
+// G4. 带完成判据的收敛写法 ⇒ 放行
+assert.ok(!names(run(good.replace(/还没定：[^\n]*/, '还没定：`birthFinishWaitMs` 与 2400 并存这条本轮不查——确认 450 已落地、验收两项读数回落即收工，未解原样写进结论。'))).includes('L5 未解是收敛型'), '有完成判据要放行')
 
 // H. 定罪词裸奔（"必然"）要被 L6 挡，哪怕内容本身没错
 assert.ok(names(run(good + '\n负载一重定时器就迟到，这是必然的。\n')).includes('L6 越界嫌疑句'), '"必然"不在定界符内 ⇒ L6 挡')
