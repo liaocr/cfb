@@ -19,7 +19,7 @@
 - 下游未塌：`plan-bench --dry` dev 2 条 / `--split all` 4 条（设计 `867c3e2162e192fe` → `d6f2fab74ab5f417`）；`train-v5-micro --eval-only` 自检 7 → **4 项**，`g2PassCount 4/4`、score 0.500–0.833、四项 `dec=null` ⇒ 「微模型没复现闭合判读」的结论不变，但现在比的是真标尺。
 - P2 真机趟 `t103`（3 格）：全数停机、零新样本，成本 $0；`gold-campaign --dry` 估算 3 条 episode ≈ $0.21。通道当时不可用 ⇒ P2 挂起，恢复后一条命令 `node tools/gold-campaign.mjs`。
 
-**检查**：`node verify.mjs gold-` → 192 通过 / 0 失败（`gold-use-split` 52 + `gold-standard` 79 + `gold-attest` 61）；`npm run verify:offline` → **1186 通过 / 0 失败 / 1 跳过（38/38 套件，26.9s）**；`gold-score --dedup`、`gold-study`、`coverage-plan` 均已重跑；`npm run manifest:check` → 467 个文件、漂移 0、缺失 0。
+**检查**：`node verify.mjs gold-` → 192 通过 / 0 失败（`gold-use-split` 52 + `gold-standard` 79 + `gold-attest` 61）；`npm run verify:offline` → **1186 通过 / 0 失败 / 1 跳过（38/38 套件，26.9s）**；`gold-score --dedup`、`gold-study`、`coverage-plan` 均已重跑；`npm run manifest:check` → 466 个文件、漂移 0、缺失 0（盖章工件 `.cfb-offline/ruler/gold-attest.json` 按仓库约定属本地产物，不入库）。
 
 ## v14.24.0（2026-10-05，把「金标水平」变成一把可复算的尺子：12 轴 + 逐字回放，顺手抓到我自己 5 处测量错误）
 
