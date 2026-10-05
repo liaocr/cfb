@@ -22,24 +22,35 @@
 
 **这一步交出来的就是目标 ① 的验收线**，之后每次改模式 2 都只报这个数。
 
-## P1 · 给条目盖章 + 清掉尺子的两处脏（$0）
+## P1 · 给条目盖章 + 清掉尺子的两处脏（$0）—— ✅ 已完成（v14.24.1）
 
-- `tools/gold-attest.mjs`：把尺子结论写进条目字段 `goldStandard: { version, status, gap, margin, at, home }`，**只改元数据、不动 `draft`**（动稿即失分）。
-- 下游改判据：`goldUse()`／`buildBenchPlan`／`build-micro-dataset` 一律优先取 `goldStandard.status==='gold'`；`ceiling.ok`（旧字段）降级为「注册时快照」，不再作为可用性依据。
-- 修尺子两处：批量模式重复 id（在册 + rejected 旧副本）⇒ `--dedup` 且分母只数唯一 id；`countSamples` 排除 `*-resume` 里的同趟复写（resume 不算独立样本）。
-- 判据：`node tools/gold-score.mjs` 与 `--dedup` 两份读数差异可解释；`npm run verify:offline` 全绿；受影响套件（`gold-use-split` b13、`closed-loop-v4` A41）若变红，把期望钉回当届稿/现行判据，不回退稿子。
+- `tools/gold-attest.mjs` 落账：`goldStandard: { version, status, gap, margin, drift, home, at, stampDigest }`，**只加元数据、不碰 `draft`**（动稿即失分），并写 `.cfb-offline/ruler/gold-attest.json`（逐条 from→to + 缺章/过期清单）。幂等：重跑第二次 `0 处变更`。
+- 下游全部改读章（8 个消费点，逐个实测）：`three-mode` 的 `goldRulerOk/goldBenchOk/goldTrainOk` · `traj-corpus.rulerIdSet` · `cfb-judge` · `coverage-plan` · `bench-run.gold-use-mismatch` · `buildBenchPlan`（比对靶） · `build-micro-dataset` / `build-change-dataset`（拟合料） · `train-v5-micro`（devGold + `--eval-only` 自检）。
+- 尺子两处脏已清：`gold-score --dedup`（24 行 → **19 个唯一 id**，重复副本不重复计票，已是默认口径写进文档）；`countSamples` 排除 `-resume` 同趟复写，并且**只数真消费过稿的趟**（`hand-samples.jsonl` 有同 task+sample 行、跳过带 `error` 的行）。
+- 后果（实测）：标尺侧 `goldRulerOk` **17 → 4**，训练侧 **6 → 19**（降级不删数据）；`gold-study` 同步改 dedup ⇒ 24 → 19 个唯一 id。
+- 顺手抓到一个真 bug：`gold-attest --check` 报出 `wrong-model_decoy-s0-r4` 状态由 not-gold 翻成 gold —— 根因是 t103 那趟被停机保护掐掉、`results.jsonl` 仍留 hand 行，被当成"第二次独立样本"。收紧 R2 后重盖章，假 gold 撤掉（`gold 4 · not-gold 19`）。
+- 判据全绿：`npm run verify:offline` **1168 通过 / 0 失败 / 1 跳过（38/38 套件）**；三套金标自测 **192 条**（`gold-use-split` 52 + `gold-standard` 79 + `gold-attest` 61，含"真注册表章必须新鲜"活体检查）。
 
-## P2 · 转正 5 格：把标尺池从 4 条做到 ≥8 条（≤$0.5，通道恢复才开）
+## P2 · 转正缺口：把标尺池从 4 条做到 ≥8 条（≤$0.5，通道恢复才开）—— ⏸ 已武装，等 API
 
-**先探测再掏钱**：`node tools/traj-run.mjs --preflight-only …` 看到 `fp=非null` 且「思考 N 字」N>0 才起 run；不通就 $0 复验，绝不硬跑。
+**先探测再掏钱**：预检要看到 `fp=非null` 且「思考 N 字」N>0、正文非空，才起 run；不通就 $0 复验，绝不硬跑。
+一切真机花费必须过编排器：`node tools/gold-campaign.mjs`（`--dry` 零请求打印计划+估算；预检不合格直接 exit 3，不起轨迹）。
 
-- 待补清单（差什么就补什么，不重跑已达线的）：
-  1. `wrong-model_decoy-s0-r4`、`wrong-model_long-horizon-s0-r4` —— 只差 **R2**：同 task+sample 再跑**一趟独立**（不是 resume）。
-  2. `sse-truncated_decoy-s0-r4` —— 只差 **E1+R1**：现注册稿 750 字 ≠ 台账所发 662 字 ⇒ 用现稿重跑该格，跑完即自动对齐。
-  3. `eacces-config-s0-r5` —— 只差 **M8**：先把稿改成「改法句恰 1 条」当**候选稿**，然后跑那一格（跑完才有资格用）。
-  4. `eacces-config_decoy-s0-r3`/`sse-truncated-s0-r5`/`sse-truncated_decoy-s0-r3`/`perf-regression-s0-r6` —— 台账无 id：跑完按新 id 正常入册，旧条目 `use:'train'` 保留不删。
-- 判据：`gold-score` 里 **每个家族 ≥2 条 gold 且 R2 全过**；`node tools/gold-vs-line.mjs` 有新读数（M2 不再未测）；每条都带趟名，无「自报」。
-- 失败回退：任一格没过闸 ⇒ 该格只登记 `use:'train'`，不进标尺池；**不删数据、不改阈值凑数**。
+- 待补清单（按 `gold-score --dedup` 的 gap 升序，2026-10-06 实测）：
+
+| 条目 | gap | 还缺 | 补法 |
+|---|---:|---|---|
+| `sse-truncated_decoy-s0-r4` | 0.2 | E1 + R1 | 现注册稿 750 字 ≠ 台账所发 662 字 ⇒ 用现稿重跑该格，跑完自动对齐 |
+| `wrong-model_decoy-s0-r4` | 0.5 | R2 | 同 task+sample 再跑**一趟独立**（不能是 resume，也不能是空跑） |
+| `wrong-model_long-horizon-s0-r4` | 0.5 | R2 | 同上 |
+| `eacces-config-s0-r5` | 1.0 | M8 | 先把改法句压到恰 1 条当**候选稿** —— 注意：改稿即章过期 ⇒ 那一格必须重跑才能把 E1/R1 重新挣回来 |
+| `eacces-config_long-horizon-s0-r5` | 1.7 | M8 + E1/R1/R2 | 改稿 + 重跑 + 补第二趟 |
+| 其余 10 条（gap 2.8–7.8） | — | M3/M4/M5/M6 + E1/R1(±E2/R2) | 属"重写稿"而非"补凭据"，别为凑数动它们；`use:'train'` 保留 |
+
+- 4 条**台账里没有 id**（`eacces-config_decoy-s0-r3`、`perf-regression-s0-r6`、`sse-truncated-s0-r5`、`sse-truncated_decoy-s0-r3`）⇒ 不可回放，只能作训练料；转正唯一办法是按新 id 重跑入册。
+- 判据：`gold-score` 里 **每个家族 ≥2 条 gold 且 R2 全过**；`node tools/gold-vs-line.mjs` 有新读数（M2 不再未测）；`gold-attest --check` 全新鲜；每条都带趟名，无「自报」。
+- 失败回退：任一格没过闸 ⇒ 只登记 `use:'train'`，不进标尺池；**不删数据、不改阈值凑数**（本仓库既有纪律，别为了跑通放宽谓词）。
+- 通道实测（2026-10-06）：三次预检 `preflight-failed:notClaude` / `fp=null`（思考 47 字、正文 1 字）/ `fp=vllm-…无放行依据` + `request-timeout`；唯一成功的那条 t103 三格全部 `upstream-no-reasoning` 停机（rounds 0/4/3），零新样本。⇒ 通道恢复前 P2 保持挂起，不再花钱重试。
 
 ## P3 · 一次花钱买两个目标：`auto` 臂上尺（≤$1）
 

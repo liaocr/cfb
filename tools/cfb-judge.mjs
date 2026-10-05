@@ -20,7 +20,7 @@ import { pathToFileURL } from 'node:url'
 import { DIMENSIONS, DIMS_BY_RATER, judgeCapacity, binaryCeiling, judgeLadPrompt, parseJudgeLad, compositeScore, DEFAULT_WEIGHTS, raterAgreement, ruleLlmDisagreement, pairedBootstrap, pairedEffectSize, codeDimensions, trajDivergenceJudgePrompt, CAUSAL_ATTRIBUTIONS, benchJudgePrompt, parseBenchJudge, BENCH_SEMANTIC_VERDICTS } from './helpers/judge-layer.mjs'
 import { episodeOutcome } from './helpers/ruler.mjs'
 import { toRow, fitWeights, rankAgreement, missingDimensionSignal, activeSelect } from './helpers/calibration.mjs'
-import { loadGold, goldUse } from './helpers/three-mode.mjs'
+import { loadGold, goldUse, goldRulerOk } from './helpers/three-mode.mjs'
 import { auditMode1Output, isMode1GoldEligible } from './helpers/mode1-quality.mjs'
 import { loadFrozenTasks } from './helpers/candidates.mjs'
 import { truthDimensions } from './helpers/truth-dims.mjs'
@@ -160,7 +160,7 @@ function cmdAuditBench(args) {
   if (!file || !fs.existsSync(file)) { console.log('需要 --results <bench results.jsonl> 或 --plan N'); process.exitCode = 1; return }
   const goldDir = f(args, '--gold-dir') || path.join(ROOT, 'transfer', 'gold')
   // 用途隔离：use=train 的条目是训练料，不得充当评审参照（v14.21.0）
-  const goldMap = new Map(loadGold(goldDir).filter((g) => goldUse(g) !== 'train' && isMode1GoldEligible(g) && g.qualityAudit?.status === 'clean').map((g) => [g.id, g]))
+  const goldMap = new Map(loadGold(goldDir).filter((g) => goldRulerOk(g) && isMode1GoldEligible(g) && g.qualityAudit?.status === 'clean').map((g) => [g.id, g]))
   const rawRows = fs.readFileSync(path.resolve(file), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
   const rows = rawRows.filter((r) => !r.dry && r.policy && r.gold && r.distance && goldMap.has(r.gold)
     && (typeof r.text !== 'string' || auditMode1Output(r.text).status === 'clean'))

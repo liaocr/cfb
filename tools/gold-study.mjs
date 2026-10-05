@@ -38,8 +38,10 @@ const feats = (d, raw, full = '') => {
 }
 
 const items = []
+const seenIds = new Set()   // 与 gold-score --dedup 同口径：同 id 在两条池各存一份 ⇒ 只计一次（在册那份优先）
 for (const base of ['gold', 'gold-rejected']) for (const f of walk(path.join(ROOT, 'transfer', base))) {
-  const j = JSON.parse(fs.readFileSync(f, 'utf8')); if (!j?.id || !j.draft) continue
+  const j = JSON.parse(fs.readFileSync(f, 'utf8')); if (!j?.id || !j.draft || seenIds.has(j.id)) continue
+  seenIds.add(j.id)
   const m = measureGold(j, { lineRow: lines[j.id] || null })
   const cell = locateCell(j.id)
   items.push({ where: base, id: j.id, item: j, m, f: feats(j.draft, String(j.raw || ''), String(cell?.ledger?.raw || '')), fails: AXES.filter((a) => m.axes[a.id].pass === false).map((a) => a.id) })
@@ -65,7 +67,7 @@ const buckets = {
 function arch0(id) { const H = path.join(ROOT, 'transfer', 'gold-history'); if (!fs.existsSync(H)) return null
   for (const fam of fs.readdirSync(H)) for (const f of fs.readdirSync(path.join(H, fam))) { if (!f.endsWith('_reharden.json') || !f.startsWith(id + '.')) continue
     const j = JSON.parse(fs.readFileSync(path.join(H, fam, f), 'utf8')); return j } return null }
-const md = ['# 金标写法研究（GOLD-STANDARD v1 附录，全部由工具现算）', '', `样本 ${items.length} 条（在册 ${items.filter((x) => x.where === 'gold').length} + 隔离区 ${items.filter((x) => x.where === 'gold-rejected').length}）· 12 轴全过 ${items.filter((x) => x.m.pass).length} 条`, '', '## 1. 每条写法约束的判别力（按特征分组，看「12 轴全过率」）', '', '| 特征分组 | n | 全过 | 过率 | 最常缺的轴 |', '|---|---:|---:|---:|---|']
+const md = ['# 金标写法研究（GOLD-STANDARD v1 附录，全部由工具现算）', '', `样本 ${items.length} 个唯一 id（在册 ${items.filter((x) => x.where === 'gold').length} + 只在隔离区 ${items.filter((x) => x.where === 'gold-rejected').length}；同 id 双池副本已合并，不重复计票）· 12 轴全过 ${items.filter((x) => x.m.pass).length} 条`, '', '## 1. 每条写法约束的判别力（按特征分组，看「12 轴全过率」）', '', '| 特征分组 | n | 全过 | 过率 | 最常缺的轴 |', '|---|---:|---:|---:|---|']
 for (const [name, fn] of Object.entries(buckets)) {
   const groups = {}
   for (const x of items) { const k = fn(x); (groups[k] = groups[k] || []).push(x) }

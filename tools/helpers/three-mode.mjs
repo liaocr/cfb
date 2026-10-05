@@ -62,6 +62,24 @@ export function goldUse(g) {
   const u = g && g.use
   return u === 'train' || u === 'both' ? u : 'ruler'
 }
+/** 尺子（cfb.gold-standard/1）盖在条目上的章。三枚谓词的分工：
+ *   goldRulerOk  = 能当**判分标尺**（难度/达线判定）：必须是盖章 gold，或未盖章时沿用旧口径；
+ *   goldBenchOk  = 能当**模式 2 的比对靶**：gold 或 provisional-gold（靶子只要稿本身达标；独立复现次数决定的是"能不能当判据"）；
+ *   goldTrainOk  = 能进拟合：use 是 train/both，**或**被尺子判 not-gold 的条目（降级 ≠ 删除，料还在）。
+ * 关键性质：盖章只能降级、不能升级——没章 ⇒ 沿用 use；有章说不行 ⇒ 谁都不能靠改 use 把它抬回标尺。 */
+export function goldRulerOk(g) {
+  if (goldUse(g) === 'train') return false
+  const st = g && g.goldStandard ? g.goldStandard.status : null
+  if (!st) return true
+  return st === 'gold'
+}
+export function goldBenchOk(g) {
+  if (goldUse(g) === 'train') return false
+  const st = g && g.goldStandard ? g.goldStandard.status : null
+  if (!st) return true
+  return st === 'gold' || st === 'provisional-gold'
+}
+export function goldTrainOk(g) { return goldUse(g) !== 'ruler' || goldRulerOk(g) === false }
 /** want='ruler' → 可当标尺；want='train' → 可进拟合。want 拼错直接抛，绝不静默放行。 */
 export function filterGoldByUse(items, want) {
   if (want !== 'ruler' && want !== 'train') throw new Error('gold-use-want-unknown:' + want)
@@ -297,10 +315,10 @@ export function factorialEffects(rows, factorial, { alpha = DEFAULT_DESIGN_V4.al
 }
 
 export function buildBenchPlan({ n, policies = ['base'], gold, split = 'dev', pricing, purpose = null, planRel, homeRel, now = new Date().toISOString(), factorial = null }) {
-  const items = gold.filter((g) => !g.missing && g.validated && g.qualityAudit?.status === 'clean' && isMode1GoldEligible(g) && goldUse(g) !== 'train' && (split === 'all' || g.split === split))
+  const items = gold.filter((g) => !g.missing && g.validated && g.qualityAudit?.status === 'clean' && isMode1GoldEligible(g) && goldBenchOk(g) && (split === 'all' || g.split === split))
   if (!items.length) throw new Error(gold.length
     ? `no-gold:${split}（注册表里有 ${gold.length} 条，但过滤 use 之后标尺为空 ⇒ 它们都被登记成训练料了。` +
-      `要么「gold use --id … --set ruler」放回，要么按 docs/GOLD-WRITING-GUIDE.md §0A 的上限线重挣金标；不要绕过滤镜跑基准）`
+      `要么「gold use --id … --set ruler」放回，要么按 docs/GOLD-STANDARD.md 看差哪几轴（node tools/gold-score.mjs）、真机重跑转正后用 node tools/gold-attest.mjs 重盖章；不要绕过滤镜跑基准）`
     : `no-gold:${split}（注册表里没有可用金标；先跑模式 1：plan-traj --arms raw,hand → traj-run → ceiling → gold add）`)
   if (!policies.includes('base')) throw new Error('bench-needs-base（基准必须含 base：候选只按「对 base 的配对胜负」选，不看绝对分）')
   const calls = policies.length * items.length

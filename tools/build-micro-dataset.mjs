@@ -16,7 +16,7 @@ import {
   loadV5MicroWeights,
 } from '../src/compile-v5-local.js'
 import { slotsOf, draftDistance, handDraftGate } from './helpers/hand-draft.mjs'
-import { loadGold, goldUse } from './helpers/three-mode.mjs'
+import { loadGold, goldUse, goldTrainOk } from './helpers/three-mode.mjs'
 import { readHandSamples } from './helpers/hand-capture.mjs'
 import { allowedMode1Capture, auditMode1Output, auditMode1Pair, isMode1GoldEligible, isMode1PairEligible } from './helpers/mode1-quality.mjs'
 import { buildPool } from './helpers/tasks.mjs'
@@ -398,7 +398,7 @@ export function buildMicroDataset() {
   const allGold = loadAllGold(ROOT)
   const cleanGold = allGold.filter((g) => isMode1GoldEligible(g) && g.qualityAudit?.status === 'clean')
   // 用途隔离（v14.21.0）：被策略当标尺挑过的条目（use=ruler）绝不进拟合 —— 否则「micro 追平」是自证
-  const devGold = cleanGold.filter((g) => g.split === 'dev' && isDevFamily(g.family) && goldUse(g) !== 'ruler')
+  const devGold = cleanGold.filter((g) => g.split === 'dev' && isDevFamily(g.family) && goldTrainOk(g))
   const holdoutGold = allGold.filter((g) => g.split === 'holdout' || isHoldout(g.family))
   const unassignedGoldCount = allGold.filter((g) => g.split === 'unassigned').length
   const uncleanGoldExcluded = allGold.length - cleanGold.length

@@ -81,5 +81,75 @@
     "at": "2026-10-05T12:59:53.472Z"
   },
   "use": "ruler",
-  "digest": "48a5ee138c7c436d"
+  "digest": "48a5ee138c7c436d",
+  "goldStandard": {
+    "schema": "cfb.gold-standard/1",
+    "version": "cfb.gold-standard/1",
+    "at": "2026-10-05T16:27:46.680Z",
+    "status": "gold",
+    "gap": 0,
+    "margin": 0.8097,
+    "unmeasured": [],
+    "drift": [],
+    "home": "t100-resume",
+    "draftChars": 569,
+    "baseRawChars": 2213,
+    "thresholds": {
+      "ratioMax": 0.6,
+      "lineMax": 1,
+      "rtfMax": 6,
+      "minSamples": 2
+    },
+    "stampDigest": "48a5ee138c7c436d",
+    "axes": {
+      "M1": {
+        "v": 0.2571,
+        "ok": true
+      },
+      "M2": {
+        "v": 0.3554,
+        "ok": true
+      },
+      "M3": {
+        "v": 1,
+        "ok": true
+      },
+      "M4": {
+        "v": 1,
+        "ok": true
+      },
+      "M5": {
+        "v": 1,
+        "ok": true
+      },
+      "M6": {
+        "v": 1,
+        "ok": true
+      },
+      "M7": {
+        "v": 1,
+        "ok": true
+      },
+      "M8": {
+        "v": 1,
+        "ok": true
+      },
+      "E1": {
+        "v": 6,
+        "ok": true
+      },
+      "E2": {
+        "v": "tie",
+        "ok": true
+      },
+      "R1": {
+        "v": 1,
+        "ok": true
+      },
+      "R2": {
+        "v": 2,
+        "ok": true
+      }
+    }
+  }
 }

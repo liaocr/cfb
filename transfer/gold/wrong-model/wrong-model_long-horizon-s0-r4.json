@@ -90,5 +90,75 @@
     "at": "2026-10-05T13:13:55.068Z",
     "note": "gold add --replace（改稿重挣，t101）",
     "by": "gold add --replace"
+  },
+  "goldStandard": {
+    "schema": "cfb.gold-standard/1",
+    "version": "cfb.gold-standard/1",
+    "at": "2026-10-05T16:27:46.608Z",
+    "status": "not-gold",
+    "gap": 0.5,
+    "margin": 0.7981,
+    "unmeasured": [],
+    "drift": [],
+    "home": "t101",
+    "draftChars": 494,
+    "baseRawChars": 3185,
+    "thresholds": {
+      "ratioMax": 0.6,
+      "lineMax": 1,
+      "rtfMax": 6,
+      "minSamples": 2
+    },
+    "stampDigest": "635e83f9efba14d9",
+    "axes": {
+      "M1": {
+        "v": 0.1551,
+        "ok": true
+      },
+      "M2": {
+        "v": 0.3313,
+        "ok": true
+      },
+      "M3": {
+        "v": 1,
+        "ok": true
+      },
+      "M4": {
+        "v": 1,
+        "ok": true
+      },
+      "M5": {
+        "v": 1,
+        "ok": true
+      },
+      "M6": {
+        "v": 1,
+        "ok": true
+      },
+      "M7": {
+        "v": 1,
+        "ok": true
+      },
+      "M8": {
+        "v": 1,
+        "ok": true
+      },
+      "E1": {
+        "v": 5,
+        "ok": true
+      },
+      "E2": {
+        "v": "tie",
+        "ok": true
+      },
+      "R1": {
+        "v": 1,
+        "ok": true
+      },
+      "R2": {
+        "v": 1,
+        "ok": false
+      }
+    }
   }
 }

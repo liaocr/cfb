@@ -75,5 +75,79 @@
     "draftChars": 1288,
     "lineChars": 1491,
     "at": "2026-10-05T13:31:05.940Z"
+  },
+  "goldStandard": {
+    "schema": "cfb.gold-standard/1",
+    "version": "cfb.gold-standard/1",
+    "at": "2026-10-05T16:27:47.438Z",
+    "status": "not-gold",
+    "gap": 0.7,
+    "margin": 0.6857,
+    "unmeasured": [],
+    "drift": [
+      "draft≠台账所发(1288/494 字) ⇒ 这轮的 4–6 轮分数是旧稿挣的",
+      "raw 是两份文本(注册 4631/台账 3185 互不包含)",
+      "raw 长度与台账不符(注册 4631/台账 3185) ⇒ M1 已按台账算"
+    ],
+    "home": "t101",
+    "draftChars": 1288,
+    "baseRawChars": 4631,
+    "thresholds": {
+      "ratioMax": 0.6,
+      "lineMax": 1,
+      "rtfMax": 6,
+      "minSamples": 2
+    },
+    "stampDigest": "1cd63720b83f084e",
+    "axes": {
+      "M1": {
+        "v": 0.4044,
+        "ok": true
+      },
+      "M2": {
+        "v": 0.8638,
+        "ok": true
+      },
+      "M3": {
+        "v": 1,
+        "ok": true
+      },
+      "M4": {
+        "v": 1,
+        "ok": true
+      },
+      "M5": {
+        "v": 1,
+        "ok": true
+      },
+      "M6": {
+        "v": 1,
+        "ok": true
+      },
+      "M7": {
+        "v": 1,
+        "ok": true
+      },
+      "M8": {
+        "v": 1,
+        "ok": true
+      },
+      "E1": {
+        "v": 5,
+        "ok": false
+      },
+      "E2": {
+        "v": "tie",
+        "ok": true
+      },
+      "R1": {
+        "v": 0.8,
+        "ok": false
+      },
+      "R2": {
+        "v": 1,
+        "ok": false
+      }
+    }
   }
 }

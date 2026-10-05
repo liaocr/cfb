@@ -10,7 +10,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { loadGold, goldUse } from './helpers/three-mode.mjs'
+import { loadGold, goldUse, goldRulerOk } from './helpers/three-mode.mjs'
 import { loadTrajTrainingSamples, rulerIdSet } from './helpers/traj-corpus.mjs'
 import { TRAJ_TASKS } from './traj-fixtures.mjs'
 import { evidenceDigest } from '../src/evidence-program.js'
@@ -36,8 +36,8 @@ const roundOf = (g) => Number(String(g.id).match(/-r(\d+)$/)?.[1] ?? g.round ?? 
 const famOf = (g) => String(g.family || '').replace(/^pool:/, '').split(':')[0].replace(/_(?:decoy|long-horizon).*$/, '')
 
 const gold = loadGold(path.join(ROOT, 'transfer', 'gold'))
-const ruler = gold.filter((g) => goldUse(g) !== 'train')
-const trainScoped = gold.filter((g) => goldUse(g) === 'train')
+const ruler = gold.filter(goldRulerOk)
+const trainScoped = gold.filter((g) => !goldRulerOk(g))
 const traj = loadTrajTrainingSamples({ root: ROOT, rulerIds: rulerIdSet(gold) })
 
 const cells = []

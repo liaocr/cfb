@@ -72,5 +72,77 @@
     "draftChars": 1548,
     "lineChars": 2117,
     "at": "2026-10-05T13:21:58.816Z"
+  },
+  "goldStandard": {
+    "schema": "cfb.gold-standard/1",
+    "version": "cfb.gold-standard/1",
+    "at": "2026-10-05T16:27:47.305Z",
+    "status": "not-gold",
+    "gap": 2.8,
+    "margin": 0.6378,
+    "unmeasured": [],
+    "drift": [
+      "无真机结局行可回放 ⇒ rtf 只是自报"
+    ],
+    "home": null,
+    "draftChars": 1548,
+    "baseRawChars": 4198,
+    "thresholds": {
+      "ratioMax": 0.6,
+      "lineMax": 1,
+      "rtfMax": 6,
+      "minSamples": 2
+    },
+    "stampDigest": "3e7d1333c012f1ad",
+    "axes": {
+      "M1": {
+        "v": 0.3687,
+        "ok": true
+      },
+      "M2": {
+        "v": 0.7312,
+        "ok": true
+      },
+      "M3": {
+        "v": 1,
+        "ok": true
+      },
+      "M4": {
+        "v": 1,
+        "ok": true
+      },
+      "M5": {
+        "v": 1,
+        "ok": true
+      },
+      "M6": {
+        "v": 1,
+        "ok": true
+      },
+      "M7": {
+        "v": 1,
+        "ok": true
+      },
+      "M8": {
+        "v": 3,
+        "ok": false
+      },
+      "E1": {
+        "v": 5,
+        "ok": false
+      },
+      "E2": {
+        "v": "tie",
+        "ok": true
+      },
+      "R1": {
+        "v": 0.2,
+        "ok": false
+      },
+      "R2": {
+        "v": 4,
+        "ok": true
+      }
+    }
   }
 }

@@ -85,5 +85,77 @@
     "draftChars": 750,
     "lineChars": 1978,
     "at": "2026-10-05T13:18:04.745Z"
+  },
+  "goldStandard": {
+    "schema": "cfb.gold-standard/1",
+    "version": "cfb.gold-standard/1",
+    "at": "2026-10-05T16:27:46.102Z",
+    "status": "not-gold",
+    "gap": 0.2,
+    "margin": 0.7553,
+    "unmeasured": [],
+    "drift": [
+      "draft≠台账所发(750/662 字) ⇒ 这轮的 4–6 轮分数是旧稿挣的"
+    ],
+    "home": "t15",
+    "draftChars": 750,
+    "baseRawChars": 1518,
+    "thresholds": {
+      "ratioMax": 0.6,
+      "lineMax": 1,
+      "rtfMax": 6,
+      "minSamples": 2
+    },
+    "stampDigest": "e0a968e962324d50",
+    "axes": {
+      "M1": {
+        "v": 0.4941,
+        "ok": true
+      },
+      "M2": {
+        "v": 0.3792,
+        "ok": true
+      },
+      "M3": {
+        "v": 1,
+        "ok": true
+      },
+      "M4": {
+        "v": 1,
+        "ok": true
+      },
+      "M5": {
+        "v": 1,
+        "ok": true
+      },
+      "M6": {
+        "v": 1,
+        "ok": true
+      },
+      "M7": {
+        "v": 1,
+        "ok": true
+      },
+      "M8": {
+        "v": 1,
+        "ok": true
+      },
+      "E1": {
+        "v": 5,
+        "ok": false
+      },
+      "E2": {
+        "v": "tie",
+        "ok": true
+      },
+      "R1": {
+        "v": 0.8,
+        "ok": false
+      },
+      "R2": {
+        "v": 3,
+        "ok": true
+      }
+    }
   }
 }

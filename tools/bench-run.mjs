@@ -13,7 +13,7 @@ import { BASE_POLICY } from './helpers/generation.mjs'
 import { loadPolicyFor } from './traj-run.mjs'
 import { draftDistance } from './helpers/hand-draft.mjs'
 import { isMode1GoldEligible } from './helpers/mode1-quality.mjs'
-import { loadGold, goldUse, DRAFT_DISTANCE_VERSION, benchReport, benchReportMd } from './helpers/three-mode.mjs'
+import { loadGold, goldUse, goldRulerOk, DRAFT_DISTANCE_VERSION, benchReport, benchReportMd } from './helpers/three-mode.mjs'
 import { evidenceDigest } from '../src/evidence-program.js'
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
@@ -73,12 +73,12 @@ export async function benchRun(o, { I = null, compile = null, now = () => new Da
   const allGold = loadGold(goldDir)
   const gold = new Map(allGold.map((g) => [g.id, g]))
   // 用途隔离（v14.21.0）：use=train 的条目只为训练料存在，出现在标尺计划里 = 泄漏，直接拒跑而不是悄悄跳过
-  const trainScoped = allGold.filter((g) => goldUse(g) === 'train')
+  const trainScoped = allGold.filter((g) => !goldRulerOk(g))   // 训练侧 = 非有效标尺（含被尺子降级的）
   if (trainScoped.length) console.log(`  用途隔离：注册表里 ${trainScoped.length} 条 use=train 不进标尺（只作 micro 训练料）`)
   const items = plan.gold.map((p) => {
     const g = gold.get(p.id)
     if (!g) throw new Error('gold-missing:' + p.id + '（' + goldDir + '）')
-    if (goldUse(g) === 'train') throw new Error(`gold-use-mismatch:${p.id}（use=train 只能当训练料，不得充当标尺；要进标尺请 gold use --set ruler）`)
+    if (!goldRulerOk(g)) throw new Error(`gold-use-mismatch:${p.id}（train-only：use=train 或被尺子判 not-gold ⇒ 只能当训练料。要进标尺得真机重跑到线，再 node tools/gold-attest.mjs 重盖章）`)
     if (!isMode1GoldEligible(g) || g.qualityAudit?.status !== 'clean') throw new Error(`gold-quality-rejected:${p.id}（内容审计/谱系未通过；旧计划作废）`)
     if (g.digest !== p.digest) throw new Error(`gold-changed:${p.id}（计划 ${p.digest} ≠ 现在 ${g.digest}：金标被改过，计划作废）`)
     return { ...g, split: p.split }

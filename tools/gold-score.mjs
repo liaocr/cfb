@@ -16,7 +16,7 @@ import path from 'node:path'
 import { GOLD_STANDARD_VERSION, THRESHOLDS, AXES, measureGold, strokeLineIndex } from './helpers/gold-standard.mjs'
 import { goldCeiling } from './helpers/three-mode.mjs'
 
-const ROOT = path.resolve(import.meta.dirname, '..')
+const ROOT = process.env.CFB_ROOT ? path.resolve(process.env.CFB_ROOT) : path.resolve(import.meta.dirname, '..')   // 自测用 CFB_ROOT 指到临时根，绝不动真注册表
 const arg = (k, d = null) => { const i = process.argv.indexOf(k); return i > 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : ((process.argv.find((a) => a.startsWith(k + '=')) || '').slice(k.length + 1) || d) }
 const has = (k) => process.argv.includes(k) || process.argv.some((a) => a.startsWith(k + '='))
 const SYM = (a) => a.pass === null ? '·' : a.pass ? '✓' : '✗'
@@ -43,6 +43,7 @@ if (arg('--pending', null)) {
   if (!targets.length) { console.error('没有可量的条目（--dirs 指向的目录里没有带 draft 的 json）'); process.exit(2) }
 }
 
+const DEDUP = process.argv.includes('--dedup')
 const rows = []
 for (const t of targets) {
   const m = measureGold(t.item, { draft: t.draft, lineRow: lines[t.item.id] || null, home })
@@ -73,8 +74,18 @@ for (const r of rows) {
     console.log(`      ${a.id} ${a.name}：value=${JSON.stringify(x.value)} gap=${x.gap} margin=${x.margin}${x.note ? '（' + x.note + '）' : ''} ⇒ 复算：${a.how}`)
   }
 }
+let shown = rows
+if (DEDUP) {
+  const rank = { gold: 3, 'provisional-gold': 2, 'not-gold': 1 }
+  const best = new Map()
+  for (const r of rows) { const cur = best.get(r.id); if (!cur || (r.where === 'gold' ? 1 : 0) + rank[r.status] > (cur.where === 'gold' ? 1 : 0) + rank[cur.status]) best.set(r.id, r) }
+  shown = [...best.values()]
+  console.log(`（--dedup：${rows.length} 行 → ${shown.length} 个唯一 id；同格在两条池里各存一份属正常，重复行不重复计票）`)
+  rows.length = 0; rows.push(...shown)
+}
 const gold = rows.filter((r) => r.status === 'gold'), prov = rows.filter((r) => r.status === 'provisional-gold')
-console.log(`\n合计 ${rows.length}：gold ${gold.length} · provisional-gold ${prov.length} · not-gold ${rows.length - gold.length - prov.length}`)
+const uniq = new Set(rows.map((r) => r.id)).size
+console.log(`\n合计 ${rows.length} 行 / ${uniq} 个唯一 id：gold ${gold.length} · provisional-gold ${prov.length} · not-gold ${rows.length - gold.length - prov.length}`)
 console.log(`轴通过率：` + AXES.map((a) => `${a.id} ${rows.filter((r) => r.axes[a.id].pass).length}/${rows.length}`).join(' · '))
 if (prov.length) console.log(`provisional（稿侧达标、凭据待补）：${prov.map((r) => r.id).join(', ')}`)
 if (gold.length) console.log(`可当标尺（gold）：${gold.map((r) => r.id).join(', ')}`)

@@ -12,7 +12,7 @@ import {
 import { birthOffline, offlineBirthConfig } from '../src/offline-birth.js'
 import { normalizeConfig } from '../src/config.js'
 import { slotsOf, draftDistance, handDraftGate } from './helpers/hand-draft.mjs'
-import { loadGold, goldUse } from './helpers/three-mode.mjs'
+import { loadGold, goldUse, goldTrainOk, goldBenchOk } from './helpers/three-mode.mjs'
 import { loadTrajTrainingSamples, rulerIdSet } from './helpers/traj-corpus.mjs'
 import { auditMode1Output, isMode1GoldEligible, isMode1PairEligible } from './helpers/mode1-quality.mjs'
 
@@ -62,7 +62,8 @@ function labelUnitByGoldSlots(unit, goldSlots) {
 function trainMicroModelOnDev() {
   const allGold = loadAllGold(ROOT)
   // 用途隔离（v14.21.0）：use=ruler 的条目只做标尺，不进拟合；训练料改由 traj 手稿通道（loadTrajTrainingSamples）供
-  const devGold = allGold.filter((g) => g.split === 'dev' && DEV_FAMS.has(familyKey(g.family)) && !isHoldout(g.family) && goldUse(g) !== 'ruler')
+  // v14.24.1：训练侧改读「尺子盖章」——被判 not-gold 的条目照样可当拟合料（降级 ≠ 丢数据），但不再冒充标尺
+  const devGold = allGold.filter((g) => g.split === 'dev' && DEV_FAMS.has(familyKey(g.family)) && !isHoldout(g.family) && goldTrainOk(g))
   const oracleD2c = JSON.parse(fs.readFileSync(path.join(ROOT, 'transfer/mr/oracle-d2c.json'), 'utf8'))
   const pack = JSON.parse(fs.readFileSync(path.join(ROOT, '.cfb-offline/gen-2.pack.json'), 'utf8'))
   const devPool = (pack.pool?.tasks || []).filter((t) => t.split === 'dev' && DEV_FAMS.has(familyKey(t.id)) && !isHoldout(t.id))
@@ -220,8 +221,8 @@ function trainMicroModelOnDev() {
 async function evaluateWithRuler(trained) {
   // v14.22.0：标尺侧只读 use≠train 的条目 —— 降级出去的东西已经在 devGold 里进过拟合，
   //   再拿它当尺子就是「在自己训过的数据上打满分」（goldUse 的分家原则同样适用于自检通道，不只是 build-micro-dataset）。
-  const allGold = loadAllGold(ROOT).filter((g) => goldUse(g) !== 'train')
-  if (!allGold.length) throw new Error('no-ruler-for-eval（注册表里没有标尺侧条目：它们都被登记成训练料了 ⇒ 自检无尺子可打。按 docs/GOLD-WRITING-GUIDE.md §0A 上限线重挣，别拿训练料冒充尺子）')
+  const allGold = loadAllGold(ROOT).filter(goldBenchOk)
+  if (!allGold.length) throw new Error('no-ruler-for-eval（标尺侧为空：要么都被登记成训练料，要么被尺子判 not-gold ⇒ 自检无尺子可打。按 docs/GOLD-STANDARD.md 看差哪几轴、真机重跑转正后 node tools/gold-attest.mjs 重盖章，别拿不达标的稿冒充尺子）')
   const localPolicy = {
     id: 'p-v5-local-micro',
     patches: [],

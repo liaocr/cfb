@@ -23,6 +23,8 @@ not-gold        ⟺  任一已测轴为假
 - `gap = Σ gapᵢ`（每条未过轴的距离之和，0 = 刚好达阈）⇒ 用来**排序/选稿**：先补 gap 小的。
 - `margin = 已测轴余量的均值 ∈ [0,1]` ⇒ 用来给模式 2 **分难度**：margin 高 = 副模型照着做也稳；margin 低 = 贴着阈值，别当教材。
 - `status` 由 `tools/gold-score.mjs` 输出，人话读数与 `why` 同源；不要用「我觉得这条挺好」替代它。
+- **未测 ≠ 通过，也未测 ≠ 不合格**：已测轴全过、但 E1/E2/M2/R1 这类需要凭据的轴还没测到 ⇒ `provisional-gold`（稿侧达标、凭据待补）；任一已测轴为假 ⇒ `not-gold`。
+- 结论要落进条目才算下游可见：`node tools/gold-attest.mjs` 把 `{version,status,gap,margin,drift,home,stampDigest}` 写进 `goldStandard` 键（**只加元数据，绝不碰 `draft`** ⇒ `digest` 不变）。见 §3.5。
 
 ```bash
 node tools/gold-score.mjs                        # 两条池批量：逐项轴 + 轴通过率汇总
@@ -48,7 +50,7 @@ node tools/gold-score.mjs --json > /tmp/gold.json          # 机器可读
 | **E1** 真机效率（复算） | `results.jsonl` 同格 hand 行的 `fixedAtRound`（经 `episodeOutcome`） | ≤ **6** 且该行判「修好」 | 同格 raw 一般 7–8 轮；≤6 = 确实省了轮数。**自报数字不作数** | `episodeOutcome(row)` |
 | **E2** 不输 raw | `vsRaw` | `win`，或 `tie ∧ rtf ≤ rawRtf` | C5 | `outcome.vsRaw` |
 | **R1** 溯源闭合 | 五件齐 ∧ drift=∅ | 全真 | 见下节——这一轴是本轮新增的，因为它才是「可测量」的地基 | `locateCell(id)` |
-| **R2** 可复现样本 | 同 task+sample 的**独立趟**数 | ≥ **2** | 实测：同格同稿 t98 修好@6、t99 0 edit/8 轮 ⇒ 单趟必然骗人 | `countSamples()` |
+| **R2** 可复现样本 | 同 task+sample 的**独立趟**数（该趟须真消费过稿：`hand-samples.jsonl` 有行；`-resume` 续跑算同一趟） | ≥ **2** | 实测两课：① 同格同稿 t98 修好@6、t99 0 edit/8 轮 ⇒ 单趟必然骗人；② t103 三格被 `upstream-no-reasoning` 停机保护掐掉，`results.jsonl` 里照样留了 hand 行——**空跑不是第二次证据**（当时一条 not-gold 差点自己翻成 gold） | `countSamples()` |
 
 **M6 只管 `draft`**；当天 `stored` 里的话术计入审计但**不可由改稿消除**（它已经是真机记录，不许篡改）。本轮 5 条被它挡住的格子就永久停在隔离区，这是记录不是缺陷。
 
@@ -73,6 +75,24 @@ node tools/gold-score.mjs --json > /tmp/gold.json          # 机器可读
 - `outcome 自报 X 轮 / 真机 Y 轮` —— 以真机为准，自报作废；
 - `无真机结局行可回放 ⇒ rtf 只是自报`；
 - `按全文重算 ratio > 0.60` —— 拿截断 raw 凑出来的压缩率不算。
+
+---
+
+## 3.5 盖章（`gold-attest`）：结论要能被下游读到，且只能降级
+
+尺子读数只在命令行的话，工具链就只能继续读 `use` 字段和注册当时的 `ceiling.ok` —— 那两个都会随改稿过期。所以：
+
+| 谓词（`tools/helpers/three-mode.mjs`） | 含义 | 谁在用 |
+|---|---|---|
+| `goldRulerOk` | 能当**判分标尺**（须盖章 `gold`） | `traj-corpus.rulerIdSet` · `cfb-judge` · `coverage-plan` · `bench-run` 的 `gold-use-mismatch` |
+| `goldBenchOk` | 能当**模式 2 比对靶**（`gold`/`provisional-gold`） | `buildBenchPlan` · `train-v5-micro` 的 `--eval-only` 自检 |
+| `goldTrainOk` | 能进拟合（`use=train/both` **或**被判 `not-gold`） | `build-micro-dataset` · `build-change-dataset` · `train-v5-micro` 的 devGold |
+
+三条性质，都由 `test/gold-attest.selftest.mjs` 钉住：
+1. **只降级不升级**：`use:'ruler'` 抬不回一张 `not-gold` 的章（防"改个字段就当标尺"）；
+2. **章会过期**：`stampDigest` 钉的是盖章当时那份稿；稿一改 digest 变 ⇒ `--check` 立刻红 ⇒ 必须真机重测再重盖章，分数不许跟着稿子飘；标准升版同样判过期；
+3. **未盖章沿用旧口径**：新工具不许一夜之间把标尺池清空。
+`test/gold-attest.selftest.mjs` 第 7 节是活体检查：真注册表里若有"改过稿没重盖章"的条目，全量验证就会红。
 
 ---
 
@@ -109,32 +129,38 @@ R2 可复现样本：value=1 ⇒ n=1 ⇒ provisional，不得当尺子用
 
 ---
 
-## 6. 当前水位（本文写作时用尺子实测；跑 `node tools/gold-score.mjs` 应得同一份数）
+## 6. 当前水位（`node tools/gold-score.mjs --dedup` + `node tools/gold-study.mjs` 实测，19 个唯一 id）
 
 ```
-合计 24（在册 13 + 隔离区 11）：gold 4 · provisional-gold 0 · not-gold 20
-轴通过率：M1 23/24 · M2 24/24 · M3 18/24 · M4 16/24 · M5 20/24 · M6 18/24 · M7 24/24
-          M8 8/24 · E1 7/24 · E2 23/24 · R1 8/24 · R2 15/24
-gap 排序（越靠前越接近达线）：
-  gold(0)     sse-truncated-s0-r4 · sse-truncated-s1-r3 · wrong-model-s0-r6 · wrong-model-s1-r5
-  0.2         sse-truncated_decoy-s0-r4        （E1+R1：台账稿 662 字 ≠ 现注册稿 750 字 ⇒ 改过稿，分数不继承）
-  0.5         wrong-model_decoy-s0-r4 · wrong-model_long-horizon-s0-r4 （只差 R2：再独立跑一趟）
-  1.0         eacces-config-s0-r5              （只差 M8：改法句 2 条）
-  1.7–3.7     其余 5 条在册（M4/M8 + E1/R1/R2 叠加）
-  4.4–7.8     隔离区 6 条 flaky/perf（M3/M4/M6 + 台账对不上）
-未过项分布：E1×17 · M8×16 · R1×16 · R2×9 · M4×8 · M3×6 · M6×6 · M5×4 · E2×1 · M1×1
+gold 4 · provisional-gold 0 · not-gold 15
+轴通过率：M1 19/19 · M2 19/19 · M3 13/19 · M4 11/19 · M5 16/19 · M6 13/19 · M7 19/19
+          M8 7/19 · E1 7/19 · E2 18/19 · R1 8/19 · R2 14/19
+缺项分布（gold-study 实测）：M8×12 · E1×12 · R1×11 · M4×8 · M3×6 · M6×6 · R2×5 · M5×3 · E2×1
+计数口径：gold-score --dedup 按唯一 id ⇒ 19 条（gold 4 · not-gold 15）；gold-attest 按文件 ⇒ 23 条（在册 13 + 隔离区 10，gold 4 · not-gold 19）
+可当标尺：sse-truncated-s0-r4(dev) · sse-truncated-s1-r3(dev) · wrong-model-s0-r6(holdout) · wrong-model-s1-r5(holdout)
 ```
 
-- 每条 `gap` 都是「差多少」的可复算距离，不是打分：先补 gap 小的，一次只动一处，改完立刻重测。
-- 4 条在册条目**台账里根本没有 id**（`eacces-config_decoy-s0-r3`、`perf-regression-s0-r6`、`sse-truncated-s0-r5`、`sse-truncated_decoy-s0-r3`）⇒ 按本标准它们不可当尺子用，只能作 `use:'train'` 素材，转正唯一办法是重跑。
-- `M1 23/24` 唯一不过的是 rejected 里的旧副本（它的 `raw` 本身被截断到 594 字）——记录保留，不删数据。
-- 与 §0A 的关系：`goldCeiling`（C1–C6）仍是**注册闸**；GOLD-STANDARD 是**评价尺**。`gold-score` 每次跑都做一致性对照，**只抓一个方向**：尺子说 C 轴全过而生产闸不收 ⇒ ⚠ + exit 1（尺子比闸严不报警，那是取严）。
+盖章后的下游后果（全部实测，不是推算）：
 
-### 6.1 转正缺口的实测进度（同日，别把通道问题记在稿子头上）
+| 面 | 变化 | 说明 |
+|---|---|---|
+| 标尺侧 `goldRulerOk` | 在册 **17 → 4** | 13 条里只有 4 条能当判分标尺；其余 9 条降级为训练料，**一条没删** |
+| 训练侧 `goldTrainOk` | **6 → 19** | 降级的条目全部落到训练侧（降级 ≠ 作废） |
+| `plan-bench --dry` | dev **2** 条 / `--split all` **4** 条 ≈ $0.03 | 模式 2 基准没被抽空（`goldBenchOk` 允许 provisional），但靶子现在只剩达标的稿 |
+| `train-v5-micro --eval-only` | 自检 **7 → 4** 项，`g2PassCount 4/4`，四项 `dec=null` | 微模型仍一条闭合判读都没复现 ⇒ 训练余量结论不变，且现在比的是真标尺而非"注册过的稿" |
 
-- 已试：`node tools/traj-run.mjs --variants hand --samples 1 --max-rounds 8 --only wrong-model,sse-truncated --out .cfb-runtime/traj/t102 --base-url "$DEEPSEEK_BASE_URL" --model "$DEEPSEEK_MODEL"`
-- 结果：两臂分别到 r2/r3 时连续 3 次 `upstream-no-reasoning`（可信指纹在、思维链为空）⇒ 运行器按制度停机；`t102/results.jsonl` 只有 2 条错误行，没产出新 hand 样本。
-- 结论：R2/E1/R1 的缺口今天补不了，但不是稿的问题——同一天同一通道跑出的 `sse-truncated-s0-r4`、`wrong-model-s0-r6` 等 4 条就是 gap=0 的明证。通道恢复后重跑上面这条命令（每格 ≈ $0.05–0.3），跑完 `node tools/gold-score.mjs` 复核，达线才登记。
+- 唯一一条 `M1` 不过：隔离区里的 `wrong-model_decoy-s0-r4` 旧副本（它的 `raw` 本身被截断到 594 字）——记录保留，不删数据。
+- 4 条在册条目**台账里根本没有 id**（`eacces-config_decoy-s0-r3`、`perf-regression-s0-r6`、`sse-truncated-s0-r5`、`sse-truncated_decoy-s0-r3`）⇒ 不可当尺子用，只能作 `use:'train'` 素材，转正唯一办法是重跑。
+- 与 §0A 的关系：`goldCeiling`（C1–C6）仍是**注册闸**；GOLD-STANDARD 是**评价尺**；`gold-score` 每次跑都做单向一致性对照（尺子乐观而闸不收 ⇒ exit 1），当前 **0 处不一致**。
+
+---
+
+### 6.1 转正的通道现状与「战役」一条命令
+
+- 预检三次实测：① `preflight-failed:notClaude`；② `fp=null`、思考 47 字/正文 1 字；③ `fp=vllm-…（无放行依据）`、思考 103 字/正文 147 字、携带 `request-timeout`。
+- 据 ③ 起过真机趟 `t103`（`--only eacces-config,wrong-model,sse-truncated --perturb decoy`）：三行 results 全是 `upstream-no-reasoning：可信指纹但思维链为空已连续 3 次 ⇒ 停`，rounds 0/4/3，**没产生 pending ⇒ 零新样本**。这一趟反而教会我收紧 R2（见上表）。
+- 从此不再盲跑：`node tools/gold-campaign.mjs`（战役编排器）先做 N 次预检、合格率 ≥2/3 才起轨迹；然后自动投放「已知最好的那一版稿」（`tools/gold-place-drafts.mjs`：同 id 逐字，否则同家族同样本里章上 gap 最小；都没有就不放）→ 续跑 → 收尾 `gold-vs-line → gold-attest → gold-score --dedup`。
+  `node tools/gold-campaign.mjs --dry` 零请求，只打印计划与花费估算（默认 3 家族 × decoy ≈ $0.21，按 t101 实测 $1.40/20 条折算）。
 
 ---
 
@@ -143,4 +169,6 @@ gap 排序（越靠前越接近达线）：
 1. **金标是尺子，不是饲料。** 只有 `gold` 状态的条目可当难度/成功判据；`provisional-gold` 只能当训练素材（`use:'train'`），不得用于「达标」判定。
 2. 任何「我把它改好了」的说法，必须附 `gold-score` 的轴表 + 真机趟名；没有趟名 = 没改。
 3. 阈值只能改代码 + 改本文 + 加自测一起改（`test/gold-standard.selftest.mjs`：每轴一个通过 fixture、一个失败 fixture，含缺线 fail-closed 与 n=1 provisional）。改一处不改测试，视为未改。
-4. 标准升版 ⇒ `GOLD_STANDARD_VERSION` 递增，历史条目按旧版判定的结论同时作废，重测后才算数。
+4. 标准升版 ⇒ `GOLD_STANDARD_VERSION` 递增，历史条目按旧版判定的结论同时作废，重测后才算数（`gold-attest --check` 会把过期章抓出来）。
+5. 真机重跑到线之后，顺序固定：`gold-campaign` → `gold-vs-line` → `gold-attest`（重盖章）→ `gold-score --dedup` 复核 ⇒ 少一步就会出现"分数是旧稿挣的"那种假账。
+6. `R2` 只数**真消费过稿**的趟：`results.jsonl` 里有 hand 行但台账没有对应样本 = 空跑，一条都不算。

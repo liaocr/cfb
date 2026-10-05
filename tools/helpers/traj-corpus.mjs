@@ -15,6 +15,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { goldRulerOk } from './three-mode.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 export const CORPUS_ROOT = path.resolve(HERE, '..', '..')
@@ -90,5 +91,6 @@ export function loadTrajTrainingSamples({ root = CORPUS_ROOT, dirs = null, ruler
 
 /** 给标尺侧的 id 全集（含 use=ruler / both —— 后者是"允许当标尺"，一旦当标尺就不能再当训练料）。 */
 export function rulerIdSet(goldItems) {
-  return new Set(goldItems.filter((g) => g.use !== 'train').map((g) => g.id))
+  // v14.24.1：从「use 字段」升级到「尺子盖章」——被判 not-gold 的条目不再是标尺（哪怕 use 还写着 ruler）
+  return new Set(goldItems.filter(goldRulerOk).map((g) => g.id))
 }

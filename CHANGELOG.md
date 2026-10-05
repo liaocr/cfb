@@ -1,4 +1,26 @@
 # Changelog — dsh-cot-form-b
+## v14.24.1（2026-10-06，把尺子的结论盖进条目：下游改读「章」；顺手抓到一条会自己翻成 gold 的假证据）
+
+**为什么做**：v14.24.0 的尺子只活在命令行里 —— 工具链仍在读 `use` 字段和注册当时的 `ceiling.ok`，那两个都会随改稿过期 ⇒ 「被判 not-gold 的稿」照样进标尺池、照样当比对靶。
+
+**做了什么（全部 $0，零 API 花费）**
+- 新增 `tools/gold-attest.mjs`：把 `goldStandard: { version, status, gap, margin, drift, home, at, stampDigest }` 写进 `transfer/gold/**` 条目（**只加元数据、不碰 `draft`** ⇒ `digest` 不变），产出 `.cfb-offline/ruler/gold-attest.json`（逐条 from→to + 缺章/过期清单）。三条语义：只降级不升级、`stampDigest` 让章随稿子过期、未盖章沿用旧口径。幂等（第二次 0 处变更）；`--check` 可当闸。
+- `tools/helpers/three-mode.mjs` 加三谓词并接线到 8 个消费点：`goldRulerOk`（`traj-corpus.rulerIdSet` · `cfb-judge` · `coverage-plan` · `bench-run` 的 `gold-use-mismatch`）· `goldBenchOk`（`buildBenchPlan` · `train-v5-micro --eval-only`）· `goldTrainOk`（`build-micro-dataset` · `build-change-dataset` · `train-v5-micro` devGold）。**降级 ≠ 丢数据**：不过标的稿全部落到训练侧。
+- 尺子两处脏已清：`gold-score --dedup`（24 行 → 19 个唯一 id，同格双池副本不重复计票）；`countSamples` 排除 `-resume` 复写，且只数**真消费过稿**的趟（台账 `hand-samples.jsonl` 有同 task+sample 行、跳过带 `error` 的行）。`gold-study` 同步改 dedup。
+- 新增 `tools/gold-campaign.mjs`（金标战役编排器）：预检闸（`--probes/--healthy`，不合格 exit 3 不起轨迹）→ run → `tools/gold-place-drafts.mjs` 投放「已知最好的那一版稿」（同 id 逐字 / 否则同家族同样本章上 gap 最小 / 都没有就不放）→ 续跑 → `gold-vs-line`→`gold-attest`→`gold-score --dedup`。`--dry` 零请求只报计划与估算。
+- `gold-attest`/`gold-score`/`gold-standard` 接受 `CFB_ROOT` 注入 ⇒ 自测全程在 `mkdtemp` 临时根跑，绝不动真注册表。
+- `docs/GOLD-STANDARD.md` 新增 §3.5（盖章/章过期/三谓词谁在用）+ R2 定义收紧 + §6 水位换成实测；`docs/ROADMAP-GOLD.md` P1 结项、P2 标为「已武装、等通道」。
+
+**尺子先量出的一个真错（已改，不藏）**：`gold-attest --check` 报出 `gold/wrong-model_decoy-s0-r4` 状态 not-gold → gold。根因：R2 把 t103 那趟**空跑**（被 `upstream-no-reasoning` 停机保护掐掉、`results.jsonl` 留了 hand 行但没消费任何稿）算成「第二次独立样本」⇒ 不达标的稿自己给自己转正。收紧后重盖章，假 gold 撤掉。教训写成纪律：**任何「样本数」计数都必须要求消费凭据**，否则失败趟也在累积证据。
+
+**实测（盖章前后）**
+- 按文件 23 条 ⇒ `gold 4 · provisional-gold 0 · not-gold 19`；按唯一 id 19 条 ⇒ `gold 4 · not-gold 15`；轴通过率 M1 19/19 · M2 19/19 · M3 13/19 · M4 11/19 · M5 16/19 · M6 13/19 · M7 19/19 · M8 7/19 · E1 7/19 · E2 18/19 · R1 8/19 · R2 14/19。
+- 可当标尺的 4 条：`sse-truncated-s0-r4`/`-s1-r3`（dev）· `wrong-model-s0-r6`/`-s1-r5`（holdout）。标尺侧 17 → 4、训练侧 6 → 19。
+- 下游未塌：`plan-bench --dry` dev 2 条 / `--split all` 4 条（设计 `867c3e2162e192fe` → `d6f2fab74ab5f417`）；`train-v5-micro --eval-only` 自检 7 → **4 项**，`g2PassCount 4/4`、score 0.500–0.833、四项 `dec=null` ⇒ 「微模型没复现闭合判读」的结论不变，但现在比的是真标尺。
+- P2 真机趟 `t103`（3 格）：全数停机、零新样本，成本 $0；`gold-campaign --dry` 估算 3 条 episode ≈ $0.21。通道当时不可用 ⇒ P2 挂起，恢复后一条命令 `node tools/gold-campaign.mjs`。
+
+**检查**：`node verify.mjs gold-` → 192 通过 / 0 失败（`gold-use-split` 52 + `gold-standard` 79 + `gold-attest` 61）；`npm run verify:offline` → **1186 通过 / 0 失败 / 1 跳过（38/38 套件，26.9s）**；`gold-score --dedup`、`gold-study`、`coverage-plan` 均已重跑；`npm run manifest:check` → 467 个文件、漂移 0、缺失 0。
+
 ## v14.24.0（2026-10-05，把「金标水平」变成一把可复算的尺子：12 轴 + 逐字回放，顺手抓到我自己 5 处测量错误）
 
 **做了什么**

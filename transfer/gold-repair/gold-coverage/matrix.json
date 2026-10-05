@@ -1,32 +1,29 @@
 {
   "schema": "cfb.gold-coverage/1",
-  "fingerprint": "b4309d64a18d4fe8",
+  "fingerprint": "90abc37bef69db7f",
   "cells": 30,
   "target": 40,
-  "rulerItems": 8,
-  "trainScopedItems": 0,
-  "trajTrainDocs": 5,
-  "trajSkippedAsRuler": 7,
+  "rulerItems": 4,
+  "trainScopedItems": 9,
+  "trajTrainDocs": 26,
+  "trajSkippedAsRuler": 10,
   "perFamily": [
     {
       "family": "eacces-config",
-      "have": 2,
+      "have": 0,
       "target": 8,
-      "gap": 6,
+      "gap": 8,
       "byBand": {
         "early": 0,
-        "mid": 2,
+        "mid": 0,
         "late": 0
       },
       "byLen": {
         "<2k": 0,
-        "2–5k": 2,
+        "2–5k": 0,
         ">5k": 0
       },
-      "split": [
-        "holdout",
-        "holdout"
-      ]
+      "split": []
     },
     {
       "family": "flaky-timeout",
@@ -47,25 +44,43 @@
     },
     {
       "family": "perf-regression",
-      "have": 1,
+      "have": 0,
       "target": 8,
-      "gap": 7,
+      "gap": 8,
       "byBand": {
         "early": 0,
         "mid": 0,
+        "late": 0
+      },
+      "byLen": {
+        "<2k": 0,
+        "2–5k": 0,
+        ">5k": 0
+      },
+      "split": []
+    },
+    {
+      "family": "wrong-model",
+      "have": 2,
+      "target": 8,
+      "gap": 6,
+      "byBand": {
+        "early": 0,
+        "mid": 1,
         "late": 1
       },
       "byLen": {
         "<2k": 0,
         "2–5k": 1,
-        ">5k": 0
+        ">5k": 1
       },
       "split": [
-        "dev"
+        "holdout",
+        "holdout"
       ]
     },
     {
-      "family": "wrong-model",
+      "family": "sse-truncated",
       "have": 2,
       "target": 8,
       "gap": 6,
@@ -75,43 +90,22 @@
         "late": 0
       },
       "byLen": {
-        "<2k": 1,
-        "2–5k": 1,
+        "<2k": 0,
+        "2–5k": 2,
         ">5k": 0
       },
       "split": [
-        "holdout",
-        "holdout"
-      ]
-    },
-    {
-      "family": "sse-truncated",
-      "have": 3,
-      "target": 8,
-      "gap": 5,
-      "byBand": {
-        "early": 0,
-        "mid": 3,
-        "late": 0
-      },
-      "byLen": {
-        "<2k": 1,
-        "2–5k": 1,
-        ">5k": 1
-      },
-      "split": [
-        "dev",
         "dev",
         "dev"
       ]
     }
   ],
-  "gap": 32,
+  "gap": 36,
   "commands": [
-    "node tools/cfb-cycle.mjs plan-traj --arms raw,hand --scenarios eacces-config --samples 1 --round-band early --min-raw-chars 800 --max-rounds 9 --stop --cap-usd 0.15 --purpose \"扩量批次：eacces-config 缺口 6 条（当前档 early/<2k）\"",
+    "node tools/cfb-cycle.mjs plan-traj --arms raw,hand --scenarios eacces-config --samples 1 --round-band early --min-raw-chars 800 --max-rounds 9 --stop --cap-usd 0.15 --purpose \"扩量批次：eacces-config 缺口 8 条（当前档 early/<2k）\"",
     "node tools/cfb-cycle.mjs plan-traj --arms raw,hand --scenarios flaky-timeout --samples 1 --round-band early --min-raw-chars 800 --max-rounds 9 --stop --cap-usd 0.15 --purpose \"扩量批次：flaky-timeout 缺口 8 条（当前档 early/<2k）\"",
-    "node tools/cfb-cycle.mjs plan-traj --arms raw,hand --scenarios perf-regression --samples 1 --round-band early --min-raw-chars 800 --max-rounds 9 --stop --cap-usd 0.15 --purpose \"扩量批次：perf-regression 缺口 7 条（当前档 early/<2k）\"",
-    "node tools/cfb-cycle.mjs plan-traj --arms raw,hand --scenarios wrong-model --samples 1 --round-band early --min-raw-chars 800 --max-rounds 9 --stop --cap-usd 0.15 --purpose \"扩量批次：wrong-model 缺口 6 条（当前档 early/>5k）\"",
-    "node tools/cfb-cycle.mjs plan-traj --arms raw,hand --scenarios sse-truncated --samples 1 --round-band early --min-raw-chars 800 --max-rounds 9 --stop --cap-usd 0.15 --purpose \"扩量批次：sse-truncated 缺口 5 条（当前档 early/<2k）\""
+    "node tools/cfb-cycle.mjs plan-traj --arms raw,hand --scenarios perf-regression --samples 1 --round-band early --min-raw-chars 800 --max-rounds 9 --stop --cap-usd 0.15 --purpose \"扩量批次：perf-regression 缺口 8 条（当前档 early/<2k）\"",
+    "node tools/cfb-cycle.mjs plan-traj --arms raw,hand --scenarios wrong-model --samples 1 --round-band early --min-raw-chars 800 --max-rounds 9 --stop --cap-usd 0.15 --purpose \"扩量批次：wrong-model 缺口 6 条（当前档 early/<2k）\"",
+    "node tools/cfb-cycle.mjs plan-traj --arms raw,hand --scenarios sse-truncated --samples 1 --round-band early --min-raw-chars 800 --max-rounds 9 --stop --cap-usd 0.15 --purpose \"扩量批次：sse-truncated 缺口 6 条（当前档 early/<2k）\""
   ]
 }

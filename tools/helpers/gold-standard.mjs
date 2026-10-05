@@ -20,7 +20,7 @@ import { auditMode1Gold } from './mode1-quality.mjs'
 import { episodeOutcome } from './ruler.mjs'
 import { programPartsText } from '../../src/compile-v4.js'
 
-const ROOT = path.resolve(import.meta.dirname, '../..')
+const ROOT = process.env.CFB_ROOT ? path.resolve(process.env.CFB_ROOT) : path.resolve(import.meta.dirname, '../..')
 export const GOLD_STANDARD_VERSION = 'cfb.gold-standard/1'
 export const THRESHOLDS = { ratioMax: 0.60, lineMax: 1.0, rtfMax: 6, minSamples: 2 }
 
@@ -36,7 +36,7 @@ export const AXES = [
   { id: 'E1', name: '真机效率（复算）', unit: '轮', how: 'results.jsonl 同格 hand 行 fixedAtRound ≤ 6（自报不作数）' },
   { id: 'E2', name: '不输 raw', unit: 'win/tie/loss', how: 'outcome.vsRaw' },
   { id: 'R1', name: '溯源闭合（五件+逐字回放）', unit: '0/1', how: 'hand-samples 行 + raw/draft 逐字 + 草稿落盘 + 结局行 + receipt/plan' },
-  { id: 'R2', name: '可复现样本数', unit: 'n', how: '同家族同轮在 traj 目录里独立样本数 ≥ 2' }
+  { id: 'R2', name: '可复现样本数', unit: 'n', how: '独立趟数 ≥2（该趟须真消费过稿：hand-samples 台账有行；空跑/停机不算）' }
 ]
 
 const clamp01 = (x) => Math.max(0, Math.min(1, x))
@@ -249,13 +249,18 @@ export function countSamples(home, family, task = null, sample = null, root = RO
   if (!family) return 0
   const seen = new Set()
   for (const H of trajHomes(root)) {
+    // 「独立样本」= 这一趟真的把某份稿喂给主模型跑过 ⇒ 台账 hand-samples.jsonl 里必须有同 task+sample 的行。
+    //   t103 实测教训：三格被 upstream-no-reasoning 停机保护掐掉，results 里照样留了 hand 行；
+    //   那是零证据的空跑，若算成第二趟，一条 not-gold 会自己翻成 gold（本轮真的发生了）。
+    const consumed = new Set(readJsonl(path.join(H, 'hand-samples.jsonl')).map((r) => `${r.task}|${r.sample ?? 0}`))
     for (const l of fs.readFileSync(path.join(H, 'results.jsonl'), 'utf8').split('\n').filter(Boolean)) {
       let r; try { r = JSON.parse(l) } catch { continue }
-      if (r.variant !== 'hand' || r.status === 'awaiting-draft') continue
+      if (r.variant !== 'hand' || r.status === 'awaiting-draft' || r.error) continue
       const fam = String(r.task || '').split(':')[0]
       if (fam !== family) continue
       if (task && r.task !== task) continue
-      seen.add(`${path.basename(H)}|${r.task}|${r.sample ?? 0}`)
+      if (!consumed.has(`${r.task}|${r.sample ?? 0}`)) continue
+      seen.add(`${path.basename(H).replace(/-resume$/, '')}|${r.task}|${r.sample ?? 0}`)   // 续跑 = 同一趟，不算独立证据
     }
   }
   return seen.size

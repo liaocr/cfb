@@ -112,5 +112,75 @@
     "at": "2026-10-05T10:40:06.799Z",
     "note": "v14.22.0 上限闸判定 0/8 合格 ⇒ 降级为训练料/负样本（数据不删）：C2 闭合判读 8/8 缺；6/8 条 stored 比产线同题稿长（tools/gold-vs-line.mjs 实测，如 perf 2864 vs 1692）；wrong_decoy 净省仅 51 字（1787→1736）；perf 另叠加 C4 第 9 轮才修好。要回标尺必须按 docs/GOLD-WRITING-GUIDE.md §0 上限线重挣（含真机）。",
     "by": "gold use"
+  },
+  "goldStandard": {
+    "schema": "cfb.gold-standard/1",
+    "version": "cfb.gold-standard/1",
+    "at": "2026-10-05T16:27:46.042Z",
+    "status": "not-gold",
+    "gap": 5.5,
+    "margin": 0.6265,
+    "unmeasured": [],
+    "drift": [],
+    "home": "t95",
+    "draftChars": 1236,
+    "baseRawChars": 4112,
+    "thresholds": {
+      "ratioMax": 0.6,
+      "lineMax": 1,
+      "rtfMax": 6,
+      "minSamples": 2
+    },
+    "stampDigest": "f0f3637bc23e63dc",
+    "axes": {
+      "M1": {
+        "v": 0.3006,
+        "ok": true
+      },
+      "M2": {
+        "v": 0.7305,
+        "ok": true
+      },
+      "M3": {
+        "v": 0,
+        "ok": false
+      },
+      "M4": {
+        "v": 0.5,
+        "ok": false
+      },
+      "M5": {
+        "v": 1,
+        "ok": true
+      },
+      "M6": {
+        "v": 1,
+        "ok": true
+      },
+      "M7": {
+        "v": 1,
+        "ok": true
+      },
+      "M8": {
+        "v": 4,
+        "ok": false
+      },
+      "E1": {
+        "v": 9,
+        "ok": false
+      },
+      "E2": {
+        "v": "win",
+        "ok": true
+      },
+      "R1": {
+        "v": 1,
+        "ok": true
+      },
+      "R2": {
+        "v": 10,
+        "ok": true
+      }
+    }
   }
 }

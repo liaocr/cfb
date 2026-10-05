@@ -58,5 +58,80 @@
   },
   "validated": true,
   "digest": "e711251379735954",
-  "file": "transfer/gold/flaky-timeout/flaky-timeout-s0-r4.json"
+  "file": "transfer/gold/flaky-timeout/flaky-timeout-s0-r4.json",
+  "goldStandard": {
+    "schema": "cfb.gold-standard/1",
+    "version": "cfb.gold-standard/1",
+    "at": "2026-10-05T16:27:47.045Z",
+    "status": "not-gold",
+    "gap": 4.4,
+    "margin": 0.4707,
+    "unmeasured": [],
+    "drift": [
+      "draft≠台账所发(1361/1094 字) ⇒ 这轮的 4–6 轮分数是旧稿挣的",
+      "raw 是两份文本(注册 28774/台账 5096 互不包含)",
+      "raw 长度与台账不符(注册 28774/台账 5096) ⇒ M1 已按台账算",
+      "无真机结局行可回放 ⇒ rtf 只是自报"
+    ],
+    "home": "t15",
+    "draftChars": 1361,
+    "baseRawChars": 28774,
+    "thresholds": {
+      "ratioMax": 0.6,
+      "lineMax": 1,
+      "rtfMax": 6,
+      "minSamples": 2
+    },
+    "stampDigest": "e711251379735954",
+    "axes": {
+      "M1": {
+        "v": 0.2671,
+        "ok": true
+      },
+      "M2": {
+        "v": 0.9728,
+        "ok": true
+      },
+      "M3": {
+        "v": 0,
+        "ok": false
+      },
+      "M4": {
+        "v": 0,
+        "ok": false
+      },
+      "M5": {
+        "v": 1,
+        "ok": true
+      },
+      "M6": {
+        "v": 0,
+        "ok": false
+      },
+      "M7": {
+        "v": 1,
+        "ok": true
+      },
+      "M8": {
+        "v": 2,
+        "ok": false
+      },
+      "E1": {
+        "v": 5,
+        "ok": false
+      },
+      "E2": {
+        "v": "win",
+        "ok": true
+      },
+      "R1": {
+        "v": 0.6,
+        "ok": false
+      },
+      "R2": {
+        "v": 7,
+        "ok": true
+      }
+    }
+  }
 }
