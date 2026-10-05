@@ -43,7 +43,9 @@ Mode 3: 影子分叉多轮轨迹验证 (plan-traj → traj-run → review → co
 node tools/cfb-gold-repair.mjs audit                    # active + 隔离区全量复算（$0）
 #   RESTORABLE（稿子本就干净）→ 字节级放回，digest 不变 ⇒ 冻结的基准计划照旧可用
 node tools/cfb-gold-repair.mjs restore --id A,B --apply
-#   NEEDS-REWRITE → 只删越界句、保留归因/已排除/验收/未解槽位，然后 $0 复跑生产同一条闸链
+#   NEEDS-REWRITE → 重写到位（不是只删越界句）：越界句必须去掉，归因/已排除/验收/未解要按原文事实写全写对，
+#     然后 $0 复跑生产同一条闸链。replay 报的「与旧稿 dd」只是差异账、用来看归因有没有丢，**不是合格线**：
+#     修订稿像不像旧稿从不作判据（v14.21.1 起该口径已从代码里删除）。
 node tools/cfb-gold-repair.mjs replay --id X --draft transfer/gold-repair/drafts-proposed/X.md
 node tools/cfb-gold-repair.mjs stage  --id X --draft ...   # 全绿才暂存并登记 pending-retest.json
 node tools/cfb-gold-repair.mjs next-cmds                   # 打印每条待复测的确切真机命令

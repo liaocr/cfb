@@ -3,6 +3,15 @@
 > 最新在上。每条的验证数字、开关与待办都是**当时**的记录，按原样保留、不回写；现状以最新条目和 [`README.md`](README.md) 为准。
 > 文档索引见 [`docs/README.md`](docs/README.md)；历史实验与审计合订见 [`docs/HISTORY-AND-EXPERIMENTS.md`](docs/HISTORY-AND-EXPERIMENTS.md)。
 
+## v14.21.1（2026-10-05，废除「改稿只删越界句 ⇒ 与旧稿 dd 应接近 1.000」这条错误口径）
+
+- **为什么是错的**：它把「和旧稿像不像」当成修订稿的质量标准 ⇒ 谁把归因改写得更对更全、分数反而更低。金标的修订目标是把因果、排除理由、落点、分歧预注册写到位，**不是复刻旧稿**；旧稿本身也只是当时的一个版本。这是上一轮改动留下的烂摊子，按用户裁决删除。
+- **`tools/cfb-gold-repair.mjs`**：删掉那句判语；字段 `againstOldGoldDraft` → `diffVsCurrentGold`，语义改成「与现稿的差异账，不是质量分」。现在它输出的是可操作的审计：`⚠ 旧稿里有 N 条槽位内容在你这版里找不到了（改写允许，但要确认是有意取舍、不是漏写归因）`，逐条列出 dropped 的 excluded / accept / open / decision / triples 句子。`pending-retest.json` 里的 `dd` 键改名 `diffVsGold`，并写明「仅记录，不作门槛」。
+- **`docs/TRAINING-AND-BENCHMARK.md`**：同一病根那句「NEEDS-REWRITE → 只删越界句、保留……槽位」改为「重写到位（不是只删越界句）：越界句必须去掉，归因/已排除/验收/未解按原文事实写全写对」，并注明 replay 的旧稿 dd 不是合格线。
+- **顺带纠正我上一轮的判断**：曾用 `dd 0.65` 论证「新稿不该替换 `sse-truncated_decoy-s0-r4`」——分数依据无效。用新差异账重看，结论方向不变但理由换成内容：现役稿多一条分歧预注册（「若 replay 还打 `condensed`，先看清 `assembleSseFrames` 的返回值再说」）和一行明确落点句「改法只落一个」，我那版没有，且它在 b13 上让 5 个策略全部得 0.000、是最有区分度的一格 ⇒ 不该换。`transfer/gold-repair/drafts-proposed/README.md` 已按此改写，并写下金标门槛：因果链 / 排除带理由 / 明确落点句 / 分歧预注册 / 未解与待办，缺一样就不算金标的样子。
+- 历史 `transfer/gold-repair/staged/*.json` 里的 `againstOldGoldDraft` 键**不回写**（旧记录按原样保留，与 CHANGELOG 顶部约定一致）。
+- 验证：`verify:offline` 1009 通过 / 0 失败 / 1 跳过（34/34）、`manifest:check` 0 漂移、`replay` 实测新输出如上述（零 API）。
+
 ## v14.21.0（2026-10-05，金标「用途隔离」落地：标尺与训练料分家 + 覆盖矩阵对账器）
 
 - **`use` 字段（`tools/helpers/three-mode.mjs` 新增 `GOLD_USES` / `goldUse` / `filterGoldByUse`）**：每条金标只许挑一样用途 —— `ruler`（只做标尺/评审参照）、`train`（只做 micro 拟合料）、`both`（仅显式批准的历史条目）。**缺省 `ruler`**：漏登记只会当标尺，绝不会溜进训练。`saveGold` 落盘时写死该字段。改 `use` 不动 `raw/ctx/draft` ⇒ `goldDigest` 不变 ⇒ 既有基准计划不作废（实测 7 条 digest 逐字未变）。

@@ -124,11 +124,16 @@ if (CMD === 'replay' || CMD === 'stage') {
     originalDraftHits: auditMode1Output(item.draft || '').issues, revision: { oldDraftChars: (item.draft || '').length, newDraftChars: draft.length },
     gate: { stage: res.stage, ok: res.ok, violations: res.violations || null, why: res.why || null, reason: res.reason || null, v4: res.v4 || null, accept: res.accept || null, outChars: (res.stored || '').length },
     slots: slotDiff(item.draft, draft),
-    againstOldGoldDraft: { score: dd.score, verdict: dd.verdict, decision: dd.decision, excludedRecall: dd.excludedRecall, acceptOk: dd.acceptOk, openRecall: dd.openRecall, anchorPrecision: dd.anchorPrecision, lengthRatio: dd.lengthRatio, lengthOk: dd.lengthOk } }
+    // 与现稿的差异账，**不是质量分**：修订稿本来就该重写得更对更全，跟旧稿不像不是缺陷。
+    //   它唯一的正当用途是 dropped/added —— 看清这次改写把旧稿里的哪些归因弄丢了、又添了哪些。
+    diffVsCurrentGold: { score: dd.score, verdict: dd.verdict, decision: dd.decision, excludedRecall: dd.excludedRecall, acceptOk: dd.acceptOk, openRecall: dd.openRecall, anchorPrecision: dd.anchorPrecision, lengthRatio: dd.lengthRatio, lengthOk: dd.lengthOk } }
   console.log(JSON.stringify(report, null, 2))
   if (!res.ok) { console.log(`\n✗ 闸链未过（阶段 ${res.stage}）⇒ 继续改稿，不入库`); process.exit(2) }
   console.log(`\n✓ 离线全绿：G2 决策不变 ∧ compileV4Direct ∧ 程序部件 ∧ birthAccept ∧ 越界 lint（draft+stored）`)
-  console.log(`  与旧金标稿的 dd = ${dd.score}（${dd.verdict}）：改稿只删越界句 ⇒ 应接近 1.000 / close`)
+  {
+    const lost = ['excluded', 'accept', 'open', 'decision', 'triples'].flatMap((k) => (report.slots?.[k]?.dropped || []).map((x) => `[${k}] ${x}`))
+    console.log(lost.length ? `  ⚠ 旧稿里有 ${lost.length} 条槽位内容在你这版里找不到了（改写允许，但要确认是有意取舍、不是漏写归因）：\n    ${lost.slice(0, 6).join('\n    ')}` : '  差异账：旧稿各槽位内容在新稿里都在（改写幅度不必趋近 0，只要归因没丢）')
+  }
   console.log(`  stored ${(res.stored || '').length} 字（原 ${String(item.stored || '').length} 字）`)
   console.log('  ⚠ 这不等于金标：`outcome`（主模型读这份稿能否修好）必须重跑 Mode 1 真机单元。见 `next-cmds`。')
   if (CMD === 'stage') {
@@ -143,7 +148,8 @@ if (CMD === 'replay' || CMD === 'stage') {
     const pendFile = path.join(REPAIR, 'pending-retest.json')
     const pend = readJson(pendFile) || { schema: 'cfb.gold-repair-pending/1', at: now(), items: [] }
     pend.items = (pend.items || []).filter((x) => x.id !== id)
-    pend.items.push({ id, family: item.family, split: item.split, plan: item.plan, stagedAt: now(), draftChars: draft.length, dd: report.againstOldGoldDraft?.score, why: '改稿后 outcome 作废，须重跑模式 1 单元（同 plan/同样本/同轮次）才恢复金标身份' })
+    // diffVsGold 只作记录，不作门槛：修订稿合格与否看闸链与归因，不看它像不像旧稿
+    pend.items.push({ id, family: item.family, split: item.split, plan: item.plan, stagedAt: now(), draftChars: draft.length, diffVsGold: report.diffVsCurrentGold?.score, why: '改稿后 outcome 作废，须重跑模式 1 单元（同 plan/同样本/同轮次）才恢复金标身份' })
     pend.at = now()
     writeJson(pendFile, pend)
     console.log('已暂存 → ' + path.relative(ROOT, staged) + '（并登记 ' + path.relative(ROOT, pendFile) + '：等真机重测）')
