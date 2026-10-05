@@ -67,5 +67,8 @@ node tools/eval-micro-js-pairs.mjs --validate-dataset-only \
 
 ## 6. 已知未修（本轮上下文耗尽，别当成已完成）
 
-1. `tools/cfb-cycle.mjs` 的飞轮写分有两处**量纲不一致**：`:390` 与 `:1577/1597` 都往 `scores.candidate/control` 里写，但 `:390` 那条沿用了 `p.candidate` 原值 —— 现存 `pairs.jsonl` 里有 `93|0`、`93|92` 这种**明显不是 0–1 判分**的行（应是字符数泄漏）。后果：`promote-flywheel-pairs` 后构建器按 `distinctScorePairs ≤2` 判退化 ⇒ draft pair 从 105/59 掉到 42/4。修法：写盘前校验 `Number.isFinite && 0 ≤ x ≤ 1`，不合格留 `null` 并计数 `droppedUnscored`；**不许**为了过退化闸去放宽 `CARRY`/`0.05 margin` 判据。
-2. 本轮已把 `transfer/models/dev-flywheel-pairs.json` 与 `.cfb-offline/train/pairs.jsonl` **还原到提交态**（`git checkout`），因为不能把没解释清楚的倒退留在主干。
+1. **飞轮分数量纲未定（已定位到定义，不是猜测）**：`tools/helpers/experiment.mjs:75-77` 的 `structuralScore` 返回的是**旗标计数之和**（`v('next') + v('avoid') - v('falseDone') - v('bump') - v('reEdit') - v('repeat')`），而 `pairResults`（`:95`）把它塞进 `scores.candidate/control`，`cfb-cycle.mjs:390` 原样写盘 ⇒ `pairs.jsonl` 里出现 `93|0` 这类**不是 0–1 判分**的值。后果有两侧：
+   - 构建器的可训练判据是 `chosenScore - rejectedScore >= 0.05`（`build-micro-dataset.mjs:684`），拿计数当判分 ⇒ 该闸门被计数尺度**平凡满足**；
+   - 同时 `distinctScorePairs <= 2` 的退化判定（`:663`）又因重复计数值把整批降级 ⇒ 实测 draft pair 105/59 → 42/4。
+   两条可选修法（**都需要你点头，因为会动冻结裁判/闸门语义**）：a) 在 harvest 侧把 tally 名次化（rank→[0,1] 线性映射）后再写 `chosenScore/rejectedScore`，并在行内标 `scoreKind:'tally-rank'`；b) 让构建器按 `scoreKind` 分派阈值（tally 走 `margin>=2`，judge 走 `>=0.05`）。**不建议**第三种：把 `0.05` 改成按分数自适应——那是给闸门松绑。
+2. 本轮已把 `transfer/models/dev-flywheel-pairs.json` 与 `.cfb-offline/train/pairs.jsonl` 还原到提交态（`git checkout`），不把没解释清楚的倒退留在主干；`micro-dev-dataset.json` 未被改动。

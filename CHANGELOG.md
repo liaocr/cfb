@@ -12,7 +12,7 @@
 
 **检查**：两族 `dataset-structure-valid`（32/12/0，cap 2=maxDegree 2）；`node verify.mjs micro` 全部通过；工作区 0 脏、`manifest:check` 漂移 0。
 
-**下一轮**（仍未做，别当成已完成）：`tools/cfb-cycle.mjs` 飞轮写分的量纲混入（`:390` 用 `p.candidate` 原值，出现 `93|0` 这类字符数 ⇒ 触发构建器退化判定，draft pair 105/59→42/4），修法是写盘前 `Number.isFinite && 0≤x≤1`、不合格留 null 并计 `droppedUnscored`。
+**下一轮**（仍未做，别当成已完成）：飞轮分数量纲——`structuralScore`（`tools/helpers/experiment.mjs:75-77`）返回**旗标计数和**，被 `pairResults:95` 当 `scores.candidate/control` 写盘（`cfb-cycle.mjs:390`），于是构建器的 `margin>=0.05`（`build-micro-dataset.mjs:684`）被计数尺度平凡满足、`distinctScorePairs<=2`（`:663`）又反复整批降级（实测 105/59→42/4）。两条正解（tally 名次化 / 构建器按 `scoreKind` 分派阈值）都要动冻结裁判语义，见 `docs/KAGGLE-MICRO-RUN.md` §6，需签字后再改。
 
 ## v14.24.2（2026-10-06，微模型数据侧 M0：247 条 needs-review 逐条盲审 + 120 条规则负例复核）
 
