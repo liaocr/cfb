@@ -130,6 +130,12 @@ gap 排序（越靠前越接近达线）：
 - `M1 23/24` 唯一不过的是 rejected 里的旧副本（它的 `raw` 本身被截断到 594 字）——记录保留，不删数据。
 - 与 §0A 的关系：`goldCeiling`（C1–C6）仍是**注册闸**；GOLD-STANDARD 是**评价尺**。`gold-score` 每次跑都做一致性对照，**只抓一个方向**：尺子说 C 轴全过而生产闸不收 ⇒ ⚠ + exit 1（尺子比闸严不报警，那是取严）。
 
+### 6.1 转正缺口的实测进度（同日，别把通道问题记在稿子头上）
+
+- 已试：`node tools/traj-run.mjs --variants hand --samples 1 --max-rounds 8 --only wrong-model,sse-truncated --out .cfb-runtime/traj/t102 --base-url "$DEEPSEEK_BASE_URL" --model "$DEEPSEEK_MODEL"`
+- 结果：两臂分别到 r2/r3 时连续 3 次 `upstream-no-reasoning`（可信指纹在、思维链为空）⇒ 运行器按制度停机；`t102/results.jsonl` 只有 2 条错误行，没产出新 hand 样本。
+- 结论：R2/E1/R1 的缺口今天补不了，但不是稿的问题——同一天同一通道跑出的 `sse-truncated-s0-r4`、`wrong-model-s0-r6` 等 4 条就是 gap=0 的明证。通道恢复后重跑上面这条命令（每格 ≈ $0.05–0.3），跑完 `node tools/gold-score.mjs` 复核，达线才登记。
+
 ---
 
 ## 7. 使用约束（写给模式 2，也写给未来的我）
