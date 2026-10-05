@@ -218,7 +218,10 @@ function trainMicroModelOnDev() {
 }
 
 async function evaluateWithRuler(trained) {
-  const allGold = loadAllGold(ROOT)
+  // v14.22.0：标尺侧只读 use≠train 的条目 —— 降级出去的东西已经在 devGold 里进过拟合，
+  //   再拿它当尺子就是「在自己训过的数据上打满分」（goldUse 的分家原则同样适用于自检通道，不只是 build-micro-dataset）。
+  const allGold = loadAllGold(ROOT).filter((g) => goldUse(g) !== 'train')
+  if (!allGold.length) throw new Error('no-ruler-for-eval（注册表里没有标尺侧条目：它们都被登记成训练料了 ⇒ 自检无尺子可打。按 docs/GOLD-WRITING-GUIDE.md §0A 上限线重挣，别拿训练料冒充尺子）')
   const localPolicy = {
     id: 'p-v5-local-micro',
     patches: [],

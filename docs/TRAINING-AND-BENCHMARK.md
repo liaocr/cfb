@@ -54,6 +54,13 @@ node tools/cfb-gold-repair.mjs next-cmds                   # 打印每条待复�
 
 定罪口径：`auditMode1Gold` = `draft ∪ stored`，但只定**作者自己写的主张**的罪；命中片段若整句、或「…」/`…` 定界引用内原样出现在 `raw ∪ ctx` ⇒ 判为报告观测、免检（记在 `qualityAudit.exempted[]`）。铁律不变：**离线全绿 ≠ 金标**，`outcome` 只能由模式 1 真机轨迹决定。
 
+> **v14.22.0 起，「有金标」不再等于「能跑分」。** `gold add` 会跑上限线（C1–C6，见 `docs/GOLD-WRITING-GUIDE.md` §0A）：不达线的条目自动降成 `use:'train'`，于是——
+> - `plan-bench` 在标尺侧为空时**拒跑**（`no-gold:dev`），不再拿训练料冒充尺子；
+> - `train-v5-micro` 自检只读标尺侧，为空时报 `no-ruler-for-eval`；上面 2.0 那次 `dd 1.000` 只是「金标和自己比」的自证，不是成绩；
+> - `export-train` 把 `use:'ruler'` 剔出 SFT。
+>
+> ⇒ 判读 Mode 2 进度前先看 `gold status` 的标尺条数。尺子变硬（例如 dd 从 0.906 掉到 <1、或 `--eval-only` 直接报 `no-ruler-for-eval`）**不是退步**，是之前的分虚高。要恢复跑分只有两条路：按 §0A 重挣达线条目（要 API），或显式 `gold use --id … --set ruler` 把旧条目放回标尺（工具会警告这是「明知不达标还当尺子」）。
+
 ### 2.1 零 API 离线飞轮四步曲（日常迭代首选，`$0` 成本）
 
 ```bash

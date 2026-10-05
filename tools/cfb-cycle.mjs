@@ -959,7 +959,7 @@ function cmdGold(args) {
     const items = goldItemsFromTraj({ home, rows, planId: planN ? 't' + planN : null, split: pool.split, fromWinners: args.includes('--from-winners') })
     const replace = args.includes('--replace')
     // 天花板资格：比 raw 慢的稿默认不收（--include-loss 才强收）—— 它是「不够格」不是「越界」
-    const r = saveGold(GOLD_DIR(), items, { includeUnsolved: args.includes('--include-unsolved'), includeLoss: args.includes('--include-loss'), rejectedDir: path.join(ROOT, 'transfer', 'gold-rejected'), auditReviewer: 'mode1-writer+apparatus-lint/1',
+    const r = saveGold(GOLD_DIR(), items, { includeUnsolved: args.includes('--include-unsolved'), includeLoss: args.includes('--include-loss'), legacyFloor: args.includes('--legacy-floor'), rejectedDir: path.join(ROOT, 'transfer', 'gold-rejected'), auditReviewer: 'mode1-writer+apparatus-lint/1',
       replaceExisting: replace, historyDir: path.join(ROOT, 'transfer', 'gold-history'), revisionNote: replace ? `gold add --replace（改稿重挣，t${planN ?? '?'}）` : null })
     console.log(`金标 +${r.added.length}（${path.relative(ROOT, GOLD_DIR())}）` + (r.added.length ? '：' + r.added.join(' ') : '') + (r.replaced?.length ? `\n换稿 ${r.replaced.length}：` + r.replaced.map((x) => `${x.id}（旧 ${x.previousDigest} → ${path.relative(ROOT, x.historyFile)}）`).join('；') : '') + (r.quarantined?.length ? `\n装置话术隔离 ${r.quarantined.length}：` + r.quarantined.map((x) => `${x.id}[${x.categories.join(',')}]`).join(' ') : '') + (r.skipped.length ? '\n跳过：' + r.skipped.map((x) => `${x.id}(${x.why})`).join(' ') : ''))
     if (r.added.length) console.log(`下一步: node tools/cfb-cycle.mjs plan-bench --policies base,<候选>   # 模式 2：压缩器对金标的召回基准（每项 1 次压缩调用 ≈ $${TRAJ_UNIT.compressUsd}）`)
@@ -985,7 +985,9 @@ function cmdGold(args) {
         const before = g.use || 'ruler'
         const out = {}
         for (const k of Object.keys(g)) { out[k] = g[k]; if (k === 'split') out.use = want }
-        if (!('use' in out)) out.use = want
+        out.use = want
+        const note = (args.includes('--note') ? args[args.indexOf('--note') + 1] : '').trim() || null
+        if (note) out.useNote = { at: new Date().toISOString(), note, by: 'gold use' }
         if (out.digest !== g.digest) throw new Error('gold-use-digest-drift:' + g.id)
         if (before !== want && !dry) { fs.writeFileSync(p, JSON.stringify(out, null, 2) + '\n'); changed++ }
         console.log(`  ${g.id.padEnd(38)} ${before} → ${dry ? want + '（dry-run）' : want}`)
@@ -1448,8 +1450,10 @@ export function cmdJudge(args = []) {
 /** export-train：用 src/training-core.js 纯内核把金标（SFT）与飞轮偏好对（DPO）按连通分量（family/lineage/input/target）无泄漏切分并导出。 */
 export function cmdExportTrain(args = []) {
   const outDir = path.resolve(ROOT, f(args, '--out') || path.join(OFFLINE, 'train', 'export'))
+  // v14.22.0：这条口漏了 use 隔离（其余四个读取口都接了）⇒ use:'ruler' 的金标会被当 SFT target 导出，
+//   等于「选择题的选项」和「答案」同源。分家原则：标尺不进拟合，要放行得显式 gold use --set train。
   const gold = loadGold(GOLD_DIR()).filter((g) => g.split === 'dev' && TRAIN_DEV_FAMS.has(familyKey(g.family))
-    && isMode1GoldEligible(g) && g.qualityAudit?.status === 'clean')
+    && isMode1GoldEligible(g) && g.qualityAudit?.status === 'clean' && ['train', 'both'].includes(g.use || 'ruler'))
   const pairs = loadFlywheel().filter(cleanDevFlywheelPair)
   const examples = []
   for (const g of gold) {
@@ -2022,7 +2026,7 @@ const HELP = `cfb-cycle（闭环 v4：e 值采纳 + L2 结局确认 + 双轨评�
                                                                                  --all 五家族；--dry 只算不落盘；同设计未执行的计划不重复建（--force 重建 / --drop 撤销 / --supersede 作废）
   review --plan N | --results FILE [--draft-chars 700] [--judge-prompts]         v4.5：读一个单元的结果 → review.md（分歧轮、各臂结局、分歧处压缩稿原文、闸门、代理旗标、双轨分歧归因）
   ceiling --plan N | --results FILE [--map hand=hand,raw=raw]                      v4.6 模式 1：hand（助手手写稿）vs raw 的 L2 天花板 → ruler/ceiling-k.json + 效度账本；不碰 champion
-  gold add --plan N [--include-unsolved] [--include-loss] [--from-winners] [--replace]   v4.6：过闸且修好的手写稿 → 金标注册表 transfer/gold/<family>/；--replace = 改稿重挣后换稿（旧条目自动归档 transfer/gold-history/）；默认拒收 vsRaw loss（比主模型自己读原文还慢）——那是天花板资格不是越界
+  gold add --plan N [--include-unsolved] [--include-loss] [--from-winners] [--replace] [--legacy-floor]   v4.6：过闸且修好的手写稿 → 金标注册表 transfer/gold/<family>/；--replace = 改稿重挣后换稿（旧条目自动归档 transfer/gold-history/）；默认拒收 vsRaw loss（比主模型自己读原文还慢）——那是天花板资格不是越界
   gold audit | gold restore --id A,B [--apply] | gold replay|stage --id X --draft F | gold use --id A,B --set ruler|train|both [--dry-run]                v14.20.1：隔离区复算 / 干净稿放回 / 改稿零 API 重测生产闸链（tools/cfb-gold-repair.mjs）                               v4.6：过闸且修好的手写稿 → 金标注册表 transfer/gold/<family>/（按家族 dev/holdout，落盘不改）
   plan-bench [--lite] [--policies base,p-x] [--split dev|holdout|all] [--dry] [--drop N] [--factors half|full]
                                                                                  v4.6 模式 2：策略 × 金标 各一次压缩调用（--lite 极简模式：复用 base 缓存，仅跑 1 次 ≈ $0.004）；指标 dd 版本随计划冻结；dev 配对选策略、holdout 只报告

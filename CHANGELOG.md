@@ -1,5 +1,22 @@
 # Changelog — dsh-cot-form-b
 
+## v14.22.0（2026-10-05）：金标上限线——尺子不得低于产品（`goldCeiling` C1–C6 + 产线对照，硬闸）
+
+**缘起（实测，不是审美）**：侧模型自评比金标好。同 raw 对照（`node tools/gold-vs-line.mjs`，$0）：产线本地稿 过 G2 **8/8**、过 G1 7/8、压缩比 **0.612**；金标稿 过 G2 2/8、过 G1 2/8、压缩比 0.670（最差 0.97）。`ceiling-6.json` 本就写着「champion 不能是 hand 臂」——我们把探针当上限用了。⇒ 标尺比产品松，「追上金标」曾是假指标。
+
+**实现**：
+- `tools/helpers/three-mode.mjs` 新增 `goldCeiling(g, line)`（C1 压缩力度 `stored/raw ≤ 0.60` 或净省 ≥40%；C2 闭合判读三元组（`hasClosedRead` 口径）；C3 可执行验收（命令 + 读数）；C4 提前量 `roundsToFix ≤ 6` 且 `≤ raw`；C5 `vsRaw=win` 或 `tie ∧ 不比 raw 慢`；C6 **不劣于产线同题稿**（stored ≤ 产线 `splicedChars`，产线过 G2 时金标必须也过）；缺产线读数 = fail-closed「判不了就是不合格」）与 `loadLineStats()`；`saveGold` 接入：不达线 ⇒ 不入库、自动 `use:'train'` + `ceiling` 读数、条目内原因可读，新增 `opts.legacyFloor`（历史夹具专用，不判内容）。
+- `tools/gold-vs-line.mjs`（**$0**）：复用 `birthOffline` + 与 `train-v5-micro` 同一套权重/策略，对每条金标 raw 现场生成产线稿 ⇒ `ceiling --gold` 判 C1–C6 ⇒ `--write` 落 `.cfb-offline/ruler/gold-vs-line.json`。
+- `tools/silver-shape.mjs`：**L9 缺闭合判读三元组**（计入 verdict，银标闸从「看着像」变「能判卷」）；`silver:score` L5 地板改 `max(50, min(200, floor(raw*0.30)))`（只动地板、不动模板，旧 50 字地板正是 0.97 那条的成因）。
+- 泄漏封堵（降级后"既进拟合又当尺子"必须一起堵）：`cmdExportTrain` 把 `use:'ruler'` 剔出 SFT；`tools/train-v5-micro.mjs` 的 `evaluateWithRuler` 只读标尺侧，为空 ⇒ `no-ruler-for-eval` 明确拒绝打分；`plan-bench` 的 `no-gold` 报错改写成因与出路。
+
+**数据处置（不删任何一条）**：8 条上限线判定 **0/8 通过**（最好 5/6：两条 eacces；我的 perf-r7 2/6；wrong_decoy 3/6）⇒ 全部降 `use:'train'`；6 条比产线同题稿长 30–43%（004 只长 12 字，最接近达线）。标尺条数 **8 → 0**：这是设计后果，不是故障——要恢复跑分只有按 §0A 重挣（≈$0.55/家族，未批）或显式放回（工具警告）。
+
+**验证**：`node test/gold-use-split.selftest.mjs` `PASS=52 FAIL=0`（新增第 5 组 13 条：挡松软稿 / 收达线稿并留 `ceiling.ok` / 缺产线对照 fail-closed）；`test/silver-shape.selftest.mjs` 绿（含 L9 用例）；`test/closed-loop-v4.selftest.mjs` 45/0（A26 前置断言「不带 `--legacy-floor` ⇒ 金标 +0 / 不够上限」，A40 `--lite` 双分支：标尺为空必须明确失败）；`test/training-ready.selftest.mjs` 4/0（夹具显式 `use:'train'` + 新增「改回 ruler ⇒ 导出少 1 条」）；`npm run verify:offline` 全绿。`manifest.mjs` 重签。
+
+**文档**：`docs/GOLD-WRITING-GUIDE.md` §0A（上限线全表 + 对撞证据 + 三条后果）；`docs/TRAINING-AND-BENCHMARK.md` §2.0 末注（尺子变硬不是退步）。
+
+
 > 最新在上。每条的验证数字、开关与待办都是**当时**的记录，按原样保留、不回写；现状以最新条目和 [`README.md`](README.md) 为准。
 > 文档索引见 [`docs/README.md`](docs/README.md)；历史实验与审计合订见 [`docs/HISTORY-AND-EXPERIMENTS.md`](docs/HISTORY-AND-EXPERIMENTS.md)。
 

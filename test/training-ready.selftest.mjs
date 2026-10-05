@@ -92,6 +92,7 @@ try {
       fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({
         schema: 'cfb.gold/1', id, family: fam, split: 'dev', plan: 't1', validated: true,
         raw: `raw reasoning for ${fam}`, ctx: `ctx for ${fam}`, draft: `draft for ${fam}`,
+        use: 'train',   // v14.22.0：标尺（缺省 use:'ruler'）绝不进拟合 ⇒ 要当训练料得显式放行
       }))
     }
     fs.mkdirSync(path.dirname(TRAIN_PAIRS), { recursive: true })
@@ -101,7 +102,11 @@ try {
     const outDir = path.join(tmp, 'exported')
     const res = cmdExportTrain(['--out', outDir])
     assert.equal(res.ok, true)
-    assert.equal(res.examples, 4, '3 个 dev Gold + 1 个绑定 clean 审计的 dev 飞轮目标')
+    assert.equal(res.examples, 4, '3 条放行的 dev Gold + 1 个绑定 clean 审计的 dev 飞轮对')
+    // 用途隔离：把其中一条改回标尺 ⇒ 它必须从导出里消失（「答案」不能同时当「选项」）
+    const gbFile = path.join(GOLD_DIR(), 'perf-regression', 'gb.json')
+    fs.writeFileSync(gbFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(gbFile, 'utf8')), use: 'ruler' }) + '\n')
+    assert.equal(cmdExportTrain(['--out', path.join(tmp, 'exported2')]).examples, 3, 'use=ruler 的金标被剔出 SFT ⇒ 少 1 条')
     assert.ok(fs.existsSync(path.join(outDir, 'train.jsonl')))
     assert.ok(fs.existsSync(path.join(outDir, 'selection.jsonl')))
     assert.ok(fs.existsSync(path.join(outDir, 'test.jsonl')))

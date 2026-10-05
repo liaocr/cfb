@@ -13,7 +13,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { slotsOf, anchorsOf, hasFixIntentIn } from './helpers/hand-draft.mjs'
+import { slotsOf, anchorsOf, hasFixIntentIn, hasClosedRead } from './helpers/hand-draft.mjs'
 import { auditMode1Output } from './helpers/mode1-quality.mjs'
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
@@ -110,6 +110,10 @@ function auditOne(draftFile, id) {
     for (const t of sen.match(CMD_RE) || []) seedTargets.add(t.toLowerCase())
   }
   const droppedSeeds = [...seedTargets].filter((t) => !norm(draft).toLowerCase().includes(t.toLowerCase()))
+// L9 的来由：产线 compileV4Direct 把「判读分支必须闭合」当硬门（src/compile-v4.js:599 同一口径），
+//   而金标准入从不要求 ⇒ 2026-10-05 实测在册 8 条**全部**没写（goldCeiling 的 C2 命中 8/8）。
+//   「如果读数 X 就 Y」是主模型能不能一步落子的分水岭（effect 表：raw 5.0 / v4d6 8.5-8.6 / oI 8.9）。
+  const CLOSE_READ_HINT = '稿里没有「读数 ⇒ 结论」/「如果…就…」这类闭合判读分支 ⇒ 主模型读完仍要自己决定怎么判读（产线 compileV4Direct 硬要求，标尺侧 8/8 缺，见 docs/GOLD-WRITING-GUIDE.md §0A）'
   const layers = [
     ['L1 因果链（观测→结论，锚点落地）', causal.length > 0, `${causal.length} 句${causal.length ? '：「' + norm(causal[0]).slice(0, 46) + '」…' : '：稿里只有罗列，没有把证据连到结论'}`],
     ['L2 排除带理由', excl.length > 0 && hollow.length === 0, excl.length ? `${excl.length} 条排除，空洞/无理由 ${hollow.length} 条${hollow.length ? '：「' + hollow[0].slice(0, 40) + '」' : ''}` : '一条排除都没有 ⇒ 这不是归因，是摘要'],
@@ -118,6 +122,7 @@ function auditOne(draftFile, id) {
     ['L5 未解是收敛型', openItems.length > 0 && divergentOpen.length === 0, openItems.length ? (divergentOpen.length ? `${divergentOpen.length} 条把未解写成了下一个待办：「${norm(divergentOpen[0]).slice(0, 54)}」… ⇒ 稿只介入一次，这等于派活` : `${openItems.length} 条，都是收敛型（钉死成一个动作或明写不影响本轮）`) : '没留未解 ⇒ 要么真没未解（少见），要么把悬念藏进了别处'],
     ['L6 越界嫌疑句', sus.length === 0 && lint.status === 'clean', sus.length ? `未用定界符框住的嫌疑句 ${sus.length} 条：「${sus[0]}」` : lint.status === 'clean' ? 'lint clean，且环境类说法都在引号内' : `lint: ${lint.issues.map((i) => i.category).join(',')}`],
     ['L8 起念的处置（提示）', droppedSeeds.length === 0, `raw 里 ${seeds.length} 句起念、点名 ${seedTargets.size} 个对象；稿里没提的 ${droppedSeeds.length} 个${droppedSeeds.length ? '：' + droppedSeeds.slice(0, 4).join(' / ') + ' ⇒ 被删掉的起念会在下一轮以新取证的形式还回来' : ''}`],
+    ['L9 闭合判读三元组', hasClosedRead(draft), CLOSE_READ_HINT],
     ['L7 长度净省（估）', raw.length - estStored >= 50, `raw ${raw.length} → 稿 ${draft.length} ⇒ stored ≈ ${estStored}，净省 ${raw.length - estStored}（要 ≥ 50；台账按实测区间 459–554 的高端估，真数以闸链为准）`],
   ]
   // L7 是按估的台账长度算的提示项，不参与 verdict —— 权威门槛是闸链的 no-gain（真台账、真字符数）。

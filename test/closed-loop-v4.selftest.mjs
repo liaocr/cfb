@@ -528,7 +528,11 @@ try {
       assert.ok(!fs.existsSync(path.join(tmp, 'offline', 'champion.json')), 'ceiling 不写 champion')
       assert.match(C.runCli(['status'], { dir: tmp }).stdout, /t1 ceiling/)
       // 4) gold add：5 项（eacces-config 留出家族 ⇒ holdout；flaky-timeout ⇒ dev）；再加一次 0 项
-      r = C.runCli(['gold', 'add', '--plan', '1'], { dir: tmp }); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /金标 \+5/)
+      // v14.22.0 上限闸：A26 的夹具稿没跑过产线对照 ⇒ 默认拒收（判不了就是不合格），先钉住这条
+      const blocked = C.runCli(['gold', 'add', '--plan', '1'], { dir: tmp }); assert.equal(blocked.status, 0, blocked.stderr)
+      assert.match(blocked.stdout, /金标 \+0/, '缺 ceiling 读数 + 内容不达线 ⇒ 一条都不能入册'); assert.match(blocked.stdout, /不够上限（v14.22.0 上限闸）/)
+      // 本例只验三模式闭环的管路（入册/冻结计划/报告/快照），内容上限另在 gold-use-split 第 5 组里钉 ⇒ 走 --legacy-floor
+      r = C.runCli(['gold', 'add', '--plan', '1', '--legacy-floor'], { dir: tmp }); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /金标 \+5/)
       const gold = JSON.parse(fs.readFileSync(path.join(tmp, 'gold', 'flaky-timeout', 'flaky-timeout-s0-r1.json'), 'utf8')); assert.equal(gold.split, 'dev'); assert.equal(gold.draft, drafts['flaky-timeout']); assert.ok(gold.raw.startsWith(raws['flaky-timeout'].slice(0, 50))); assert.equal(gold.outcome.vsRaw, 'win'); assert.equal(gold.validated, true); assert.ok(gold.stored && gold.stored.length > 0, '拼接后的稿也存了')
       assert.equal(JSON.parse(fs.readFileSync(path.join(tmp, 'gold', 'eacces-config', 'eacces-config-s0-r1.json'), 'utf8')).split, 'holdout')
       assert.match(C.runCli(['gold', 'add', '--plan', '1'], { dir: tmp }).stdout, /金标 \+0/); assert.match(C.runCli(['gold', 'list'], { dir: tmp }).stdout, /5 项/)
@@ -914,7 +918,7 @@ try {
     // 4. Pillar 4：bench-run 跨计划内容寻址缓存（第二个计划复用 base 结果，0 重复调用）
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-p4-'))
     try {
-      const goldDir = path.join(tmp, 'gold'); TM.saveGold(goldDir, winGold)
+      const goldDir = path.join(tmp, 'gold'); TM.saveGold(goldDir, winGold, { legacyFloor: true })   // 闭环管路用例，夹具稿不追内容上限
       const polDir = path.join(tmp, 'policies'); fs.mkdirSync(polDir, { recursive: true })
       fs.writeFileSync(path.join(polDir, polCfg.id + '.json'), JSON.stringify(polCfg))
       const b1Dir = path.join(tmp, 'bench', 'b1'), b2Dir = path.join(tmp, 'bench', 'b2')
@@ -1079,9 +1083,10 @@ try {
     assert.match(bm.stdout, /pass\^2\(可靠性\)/)
     assert.match(bm.stdout, /三、个人开发者「极简省钱」三档官方测试菜单/)
 
+    // 真实注册表若没有标尺侧条目（v14.22.0 降级后就是这样），--lite 必须**明确失败**而不是绕过滤镜
     const bLite = cyc.runCli(['plan-bench', '--lite', '--dry'])
-    assert.equal(bLite.status, 0, bLite.stdout + bLite.stderr)
-    assert.match(bLite.stdout, /策略 base vs p-/)
+    if (/no-gold/.test(bLite.stdout + bLite.stderr)) assert.match(bLite.stdout + bLite.stderr, /no-gold:dev（注册表里有 \d+ 条，但过滤 use 之后标尺为空/, '标尺为空时要指名成因与出路（gold use --set ruler 或按上限线重挣）')
+    else { assert.equal(bLite.status, 0, bLite.stdout + bLite.stderr); assert.match(bLite.stdout, /策略 base vs p-/) }
 
     const tLite = cyc.runCli(['plan-traj', '--lite', '--dry'])
     assert.equal(tLite.status, 0, tLite.stdout + tLite.stderr)
@@ -1186,7 +1191,7 @@ try {
     assert.equal(r1.quarantined.length, 0, '天花板资格问题不是「越界」，不该被隔离进 rejected')
     assert.match(r1.skipped[0]?.why || '', /vsRaw loss/, `跳过理由要点名 vsRaw loss（got ${JSON.stringify(r1.skipped)}）`)
     const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'gold-elig2-'))
-    const r2 = TM.saveGold(dir2, [loss], { includeLoss: true })
+    const r2 = TM.saveGold(dir2, [loss], { includeLoss: true, legacyFloor: true })   // 本例只测 loss 的处置；内容上限另有 gold-use-split 第 5 组 / A26 前置断言
     assert.deepEqual(r2.added, [loss.id], '显式 --include-loss 时同样的稿要能入库')
   })
 } finally {

@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { evidenceDigest } from '../../src/evidence-program.js'
 import { outcomeComparison, episodeOutcome, eValueWins, DEFAULT_DESIGN_V4 } from './ruler.mjs'
-import { compareKeys, handDraftGate } from './hand-draft.mjs'
+import {compareKeys, handDraftGate, hasClosedRead} from './hand-draft.mjs'
 import { auditMode1Gold, auditMode1Pair, isMode1GoldEligible } from './mode1-quality.mjs'
 
 /** draftDistance 公式版本：冻结进基准计划；改公式必须改版本号，不同版本的基准分不可比（指标在设计里冻结，不随结果调）。 */
@@ -155,7 +155,35 @@ export function loadGold(dir) {
 /** 注册表硬条件用的常量：金标 = 至少不比 raw 慢的稿（vsRaw loss 不收，--include-loss 才强收）。 */
 export const GOLD_REJECT_LOSS = true
 
-export function saveGold(dir, items, { includeUnsolved = false, includeLoss = false, rejectedDir = null, auditReviewer = 'mode1-output-lint/1', replaceExisting = false, historyDir = null, revisionNote = null } = {}) {
+// ── v14.22.0 上限闸：金标必须配当「上限」────────────────────────────────────────────
+// 为什么加：saveGold 过去只卡「槽位齐 ∧ 真机修好 ∧ 不输 raw ∧ 审计 clean」，没有一条问「这算不算极限」⇒
+//   在册 8 条里 wrong-model_decoy-s0-r4 把 1787 字「压」到 1736 字（净省 51 字，比 0.97）也当尺子用；
+//   而同一份 raw 交给生产路径（本地 v5-micro + 程序门）平均压到 0.61 且 G2 8/8 过闸 ⇒ 上限低于产线。
+//   尺子低于产品 ⇒ 模式 2 追的是松靶子（p-1490eefcdf 的「dd=0.906 距极限 0.094」就是这么虚高出来的）。
+// C1/C4 的阈值不是拍的：C6 直接拿 tools/gold-vs-line.mjs 的**同题产线稿实测长度**当线，逐条比。
+const CEILING_RATIO_MAX = 0.60
+const CEILING_ROUNDS_MAX = 6
+const ACCEPT_CMD_RE = /`[^`]*(?:node|npm|cat|git|grep|sed|ls|pytest|analyze-trace|verify)[^`]*`|--steps|--last|--file/
+export function goldCeiling(g, lineRow) {
+  const raw = String(g.raw || ''), draft = String(g.draft || ''), stored = String(g.stored || draft)
+  const ratio = stored.length / Math.max(1, raw.length)
+  const fails = []
+  if (ratio > CEILING_RATIO_MAX) fails.push(`C1 压缩力度：stored/raw=${ratio.toFixed(2)}（要 ≤${CEILING_RATIO_MAX} ⇒ 至少净省 40%）`)
+  if (!hasClosedRead(draft)) fails.push('C2 闭合判读三元组：稿里没有「读数 ⇒ 结论」/「如果…就…」这类闭合判读分支 ⇒ 产线 compileV4Direct 硬要求它（口径见 hand-draft.mjs 的 hasClosedRead），标尺侧 8/8 缺')
+  const at = draft.search(/验收|读数|即收工|看到/)
+  if (at < 0 || !ACCEPT_CMD_RE.test(draft.slice(at, at + 400))) fails.push('C3 可执行验收：验收段没写「跑哪条命令、看到什么读数即算完」⇒ 本项目自己的结论是改完不验证 = 伪修好（ledger 臂 16.7%）')
+  const o = g.outcome || {}
+  if ((o.roundsToFix ?? 99) > CEILING_ROUNDS_MAX) fails.push(`C4 提前量：第 ${o.roundsToFix ?? '?'} 轮才修好（要 ≤${CEILING_ROUNDS_MAX}；贴着轮数上限的赢法测不出「停止取证」这一维）`)
+  if (o.vsRaw === 'tie' && !((o.roundsToFix ?? 99) <= (o.rawRoundsToFix ?? 99))) fails.push(`C5 不输 raw：vsRaw=tie 且不比 raw 快（hand r${o.roundsToFix ?? '-'} vs raw r${o.rawRoundsToFix ?? '-'}）`)
+  if (!lineRow) fails.push('C6 缺产线对照读数 ⇒ 先跑 node tools/gold-vs-line.mjs（$0，约 10 ms/条）；判不了按不合格算，不默认放行')
+  else if (lineRow.lineChars != null && stored.length > lineRow.lineChars) fails.push(`C6 不劣于产线：金标 stored ${stored.length} 字 > 产线同题稿 ${lineRow.lineChars} 字（线长比 ${lineRow.lineRatio}）⇒ 上限不能比产品松`)
+  return { ok: fails.length === 0, fails, ratio: +ratio.toFixed(4), lineChars: lineRow?.lineChars ?? null, at: new Date().toISOString() }
+}
+
+export function saveGold(dir, items, { includeUnsolved = false, includeLoss = false, rejectedDir = null, auditReviewer = 'mode1-output-lint/1', replaceExisting = false, historyDir = null, revisionNote = null, legacyFloor = false, lineFile = null } = {}) {
+  const goldDir = path.resolve(dir)
+  const linePath = lineFile ? path.resolve(lineFile) : path.join(goldDir, '..', '..', '.cfb-offline', 'ruler', 'gold-vs-line.json')
+  const lineIndex = legacyFloor ? {} : (fs.existsSync(linePath) ? (readJsonMaybe(linePath)?.lines || {}) : {})
   const added = [], skipped = [], quarantined = [], replaced = []
   for (const g of items) {
     if (g.missing) { skipped.push({ id: g.id, why: g.why }); continue }
@@ -175,6 +203,12 @@ export function saveGold(dir, items, { includeUnsolved = false, includeLoss = fa
       quarantined.push({ id: g.id, categories: [...new Set(qualityAudit.issues.map((x) => x.category))], issues: qualityAudit.issues, file: archiveFile })
       skipped.push({ id: g.id, why: '装置话术检查未通过；已隔离，不进入金标注册表' })
       continue
+    }
+    // v14.22.0 上限闸（金标=上限，不是「能过闸的修好稿」）；--legacy-floor 只用于重放历史条目
+    if (!legacyFloor) {
+      const c = goldCeiling(g, lineIndex[g.id])
+      if (!c.ok) { skipped.push({ id: g.id, why: '不够上限（v14.22.0 上限闸）：' + c.fails.join('；') }); continue }
+      g.ceiling = c
     }
     const file = path.join(dir, g.family, g.id + '.json')
     if (fs.existsSync(file)) {
@@ -261,7 +295,10 @@ export function factorialEffects(rows, factorial, { alpha = DEFAULT_DESIGN_V4.al
 
 export function buildBenchPlan({ n, policies = ['base'], gold, split = 'dev', pricing, purpose = null, planRel, homeRel, now = new Date().toISOString(), factorial = null }) {
   const items = gold.filter((g) => !g.missing && g.validated && g.qualityAudit?.status === 'clean' && isMode1GoldEligible(g) && goldUse(g) !== 'train' && (split === 'all' || g.split === split))
-  if (!items.length) throw new Error(`no-gold:${split}（注册表里没有可用金标；先跑模式 1：plan-traj --arms raw,hand → traj-run → ceiling → gold add）`)
+  if (!items.length) throw new Error(gold.length
+    ? `no-gold:${split}（注册表里有 ${gold.length} 条，但过滤 use 之后标尺为空 ⇒ 它们都被登记成训练料了。` +
+      `要么「gold use --id … --set ruler」放回，要么按 docs/GOLD-WRITING-GUIDE.md §0A 的上限线重挣金标；不要绕过滤镜跑基准）`
+    : `no-gold:${split}（注册表里没有可用金标；先跑模式 1：plan-traj --arms raw,hand → traj-run → ceiling → gold add）`)
   if (!policies.includes('base')) throw new Error('bench-needs-base（基准必须含 base：候选只按「对 base 的配对胜负」选，不看绝对分）')
   const calls = policies.length * items.length
   const plan = { schema: 'cfb.bench-plan/1', id: 'b' + n, at: now, policies, split, metric: DRAFT_DISTANCE_VERSION,

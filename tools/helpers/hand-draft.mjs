@@ -24,6 +24,15 @@ const CLI_ALLOW = new Set(['chmod', 'chown', 'sudo', 'mkdir', 'rm', 'ls', 'stat'
 const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim()
 /** 文本里的锚点：标识符 / 路径 / 数字（去掉工具协议词与极常见的语言关键字）。
  *  带点 / 斜杠 / 连字符的词同时登记它的各段（`process.env.CFB_REAL_DSH_HOME` ⇒ 也有 `CFB_REAL_DSH_HOME`、`env`）：稿里单提子标识符不算发明。两边同一规则，比对才对称。 */
+
+// ── 闭合判读（closed read）：唯一口径，供 goldCeiling C2 与 silver-shape L9 共用 ──────────
+// 「上限稿」必须把"看到什么读数 ⇒ 得出什么结论"写死，否则主模型读完还要自己决定怎么判读。
+// 产线侧由 compileV4Direct 的判读分支闭合门硬保证（src/compile-v4.js:599 的「如果…就…」是同一件事的
+// 一种措辞）；这里比它宽一点：`X ⇒ 说明/就是/意味着 Y` 这种带结论的条件句同样算闭合，
+// 因为真机上让模型落子的是"读数→结论"，不是某个连词。
+const CLOSED_READ_RE = /(?:如果|若|一旦)[^。？\n]{1,90}[，,]?\s*(?:那么|就|则)|\bif\b[^.\n]{1,90}[,，]?\s*(?:then|,)|[^。\n]{4,90}\s*(?:⇒|=>)\s*(?:说明|就是|即|意味着|不能|得换|要)/
+export function hasClosedRead(text) { return CLOSED_READ_RE.test(String(text || '')) }
+
 export function anchorsOf(text) {
   const out = new Set()
   const add = (a) => { if (a.length < 3 && !/^\d{2,}/.test(a)) return; if (STOP.has(a) || /^[.\-$]+$/.test(a)) return; out.add(a) }

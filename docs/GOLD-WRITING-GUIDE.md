@@ -8,6 +8,36 @@
 
 ---
 
+## 0A. 上限线：金标不得低于产品自己（v14.22.0，硬闸）
+
+这条线是**测出来的**，不是审美。起因：侧模型自评比金标好。同 raw 上把产线自己的本地稿（`src/offline-birth.js` 的 `birthOffline`，读数 = `splicedChars` / `g2Ok`）和金标稿对撞（`node tools/gold-vs-line.mjs`，$0，约 10 ms/条，落 `.cfb-offline/ruler/gold-vs-line.json`）：
+
+| 项 | raw | 产线稿 | 标尺侧 8 条 |
+|---|---|---|---|
+| 过 G2 | 0/8 | **8/8** | 2/8 |
+| 过 G1 | 0/8 | **7/8** | 2/8 |
+| 压缩比 | 1.000 | **0.612** | 0.670（最差 0.97） |
+
+⇒ 尺子比产品松，所以「模型追上金标」是假指标。`ceiling-6.json` 早就写着「champion 不能是 hand 臂」——我们把探针当上限用了。
+
+**六条硬判据**（`goldCeiling` in `tools/helpers/three-mode.mjs`；`gold add` / `gold audit` 都跑；不达标 ⇒ 降 `use:'train'`，**不删数据**）：
+
+| 条 | 口径 | 为什么 |
+|---|---|---|
+| C1 压缩力度 | `stored/raw ≤ 0.60`（或净省 ≥40%） | 短 raw 的绝对字数地板只有 50 字（`src/birth.js:553`），曾放过硬标 `stored 51 / ratio 0.97` |
+| C2 闭合判读三元组 | 稿里要有「读数 ⇒ 结论」或「如果…就…」（口径唯一化在 `hand-draft.mjs` 的 `hasClosedRead`） | 产线 `compileV4Direct` 硬要求它；标尺侧 8/8 缺 |
+| C3 可执行验收 | 验收段要写「跑哪条命令、看到什么读数即算完」 | 本项目自己的结论：改完不验证 = 伪修好（ledger 臂 16.7% 假完） |
+| C4 提前量 | `roundsToFix ≤ 6` 且 `≤ rawRoundsToFix` | 贴着 9 轮上限的赢法测不出「停止取证」这一维 |
+| C5 结果 | `vsRaw=win`，或 `tie ∧ roundsToFix ≤ raw` | 没比 raw 快的稿不当尺子 |
+| C6 不劣于产线 | `stored ≤` 同 raw 产线稿 `splicedChars`；产线过 G2 时金标必须也过 | 尺子不得比产品松。**缺 `gold-vs-line.json` 读数 = 不合格（fail-closed）** |
+| 附加 装置话术 | 原 `auditMode1Draft` 照跑（`inventedSpans` 等） | 防编造锚点 |
+
+**三条后果（已经生效）：** ① `export-train` 把 `use:'ruler'` 剔出 SFT（此前 3 条标尺原文被直抄成答案）；② `train-v5-micro` 自检只读标尺侧，标尺为空 ⇒ `no-ruler-for-eval` 拒绝对"自己训过的数据"打满分；③ `plan-bench` 标尺为空 ⇒ `no-gold:dev` 拒跑。
+
+**`--legacy-floor`** 只给"只验管路、不追内容上限"的历史夹具（`test/closed-loop-v4` 的 A26/A41b 就是这么标的）；新写的金标不许用它蒙混。
+
+**重挣（要 API，一次一个假设）：** 读 transcript 全文 → 按 §1–§8 修稿 → `ceiling --traj <dir>` → `gold add --plan N`（自动跑本节）→ `train-v5-micro --eval-only` 确认尺子变硬 → 侧模型重测。
+
 ## 0. 三条不可动摇的口径
 
 1. **金标只认真机。** 判据是 `traj-run` 跑出的 `outcome`：`hand.fixed && (!raw.fixed || hand.rounds < raw.rounds)`。
