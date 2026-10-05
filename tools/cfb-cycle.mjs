@@ -824,6 +824,12 @@ function cmdPlanTraj(args) {
   // --lite 极简省钱模式：自动选 $0 预筛 #1 策略 vs raw、最高 Fisher 信息量单题、4 轮上限、影子分叉 + $0.08 熔断早停（期望 ≈ $0.068）
   const cov = familyCoverage()
   const scenarios = f(args, '--scenarios') ? f(args, '--scenarios').split(',') : args.includes('--all') ? TRAJ_TASKS.map((t) => t.id) : [nextFamily(cov)]
+  // v14.21.0 覆盖矩阵选料（docs/GOLD-EXPANSION-PROGRAM.md §3）：只决定「起草哪个轮位、要多长的原文」，不改任何闸值
+  const roundBand = f(args, '--round-band')
+  if (roundBand && !['early', 'mid', 'late'].includes(roundBand)) throw new Error('round-band-unknown:' + roundBand + '（可选 early|mid|late）')
+  const minRawChars = f(args, '--min-raw-chars') ? Number(f(args, '--min-raw-chars')) : null
+  if (minRawChars != null && (!Number.isFinite(minRawChars) || minRawChars < 0)) throw new Error('min-raw-chars-numeric:' + f(args, '--min-raw-chars'))
+  const bandMaxRounds = roundBand ? (roundBand === 'early' ? 3 : roundBand === 'late' ? 7 : 5) : null   // 未指定档 ⇒ null，绝不能顶掉 --lite 的 4 轮上限（A40 钉着）
   const topPol = isLite && !f(args, '--arms') ? (prescreenPolicies().find((r) => r.policy !== 'base' && r.applicable && r.expandedBlocks === 0)?.policy || 'base') : 'base'
   const arms = (f(args, '--arms') || `raw,policy:${topPol}`).split(',').map((a) => (a === 'auto' ? 'policy:base' : a))   // v4.5：auto ≡ policy:base（生产 birth 同构体），不再是独立的臂
   if (new Set(arms).size !== arms.length) throw new Error('duplicate-arms:' + arms.join(','))
@@ -846,8 +852,10 @@ function cmdPlanTraj(args) {
   const calHist = costCalibration(h)   // v4.7.3：有回执就按实测 divergeRound / floorShare 再算一遍期望（常数那份照旧写进计划，校准那份并排给操作者看）
   const wantStop = args.includes('--stop') || isLite
   const stopCap = Number(f(args, '--cap-usd')) > 0 ? Number(f(args, '--cap-usd')) : (isLite ? 0.08 : null)
-  const plan = buildTrajPlan({ n, arms, reuseRaw, scenarios: perturb ? scenarios.map((x) => x + ':' + perturb) : scenarios, samples: Number(f(args, '--samples') || 1), maxRounds: Number(f(args, '--max-rounds') || (isLite ? 4 : 5)), fork: !args.includes('--no-fork'), purpose: f(args, '--purpose') || (isLite ? `极简省钱微基准（--lite）：自动挑 $0 预筛 #1 策略（${topPol}）与最高 Fisher 信息量场景（${scenarios.join(',')}），4 轮上限 + 影子分叉 + $0.08 硬顶早停` : hasHand ? '模式 1 天花板：hand 臂 = 助手代替副模型手写稿（同一提示词、同一闸链 + G2 决策不变闸）vs raw；量 f(主模型 | 稿) 的上界与「稿该写什么」；hand 永远不采纳为 champion，过闸且修好的稿进金标注册表（gold add）作模式 2 标准' : fromStates ? `子状态续跑（Math-Shepherd 式蒙特卡洛状态价值）：同一分叉点两臂续跑的修好率 / 到修好轮数之差 = 该轮压缩稿价值的原则性定义；${fromStates.count} 个状态来自家族 ${fromStates.families.join('、')}，扩的是家族内配对数，不计入留出家族数` : perturb ? `加难场景（${perturb}：诱饵同名文件 + README 误导，两臂同扰动）：正确下一步不再唯一，考压缩稿能否保住排除项与证据而不是只保住「下一步」` : null), fromStates, stop: wantStop ? (stopCap ? { capUsd: stopCap, ...(isLite ? { minPairs: 2 } : {}) } : {}) : null })
+  const plan = buildTrajPlan({ n, arms, reuseRaw, scenarios: perturb ? scenarios.map((x) => x + ':' + perturb) : scenarios, samples: Number(f(args, '--samples') || 1), maxRounds: Number(f(args, '--max-rounds') || (bandMaxRounds || (isLite ? 4 : 5))), fork: !args.includes('--no-fork'), purpose: f(args, '--purpose') || (isLite ? `极简省钱微基准（--lite）：自动挑 $0 预筛 #1 策略（${topPol}）与最高 Fisher 信息量场景（${scenarios.join(',')}），4 轮上限 + 影子分叉 + $0.08 硬顶早停` : hasHand ? '模式 1 天花板：hand 臂 = 助手代替副模型手写稿（同一提示词、同一闸链 + G2 决策不变闸）vs raw；量 f(主模型 | 稿) 的上界与「稿该写什么」；hand 永远不采纳为 champion，过闸且修好的稿进金标注册表（gold add）作模式 2 标准' : fromStates ? `子状态续跑（Math-Shepherd 式蒙特卡洛状态价值）：同一分叉点两臂续跑的修好率 / 到修好轮数之差 = 该轮压缩稿价值的原则性定义；${fromStates.count} 个状态来自家族 ${fromStates.families.join('、')}，扩的是家族内配对数，不计入留出家族数` : perturb ? `加难场景（${perturb}：诱饵同名文件 + README 误导，两臂同扰动）：正确下一步不再唯一，考压缩稿能否保住排除项与证据而不是只保住「下一步」` : null), fromStates, stop: wantStop ? (stopCap ? { capUsd: stopCap, ...(isLite ? { minPairs: 2 } : {}) } : {}) : null })
   for (const sc of plan.scenarios) { const [id, kind] = sc.split(':'); if (!TRAJ_TASKS.some((t) => t.id === id)) throw new Error('unknown-scenario:' + sc); if (kind && !['decoy', 'long-horizon'].includes(kind)) throw new Error('unknown-perturb:' + kind) }
+  if (roundBand || minRawChars != null) plan.coverage = { ...(roundBand ? { roundBand, targetRounds: roundBand === 'early' ? [1, 2] : roundBand === 'mid' ? [3, 4] : [5, 6] } : {}), ...(minRawChars != null ? { minRawChars } : {}), note: '选料约束（起草哪一轮 / 原文长度门槛），不参与判定，也不改闸值' }
+  for (const sc of plan.scenarios) { const [id] = sc.split(':'); const t = TRAJ_TASKS.find((x) => x.id === id); if (minRawChars != null && t && String(t.prompt || '').length > minRawChars * 4) console.log(`  ⓘ ${id}：题面 prompt ${String(t.prompt).length} 字已超门槛 ${minRawChars}（原文实际规模要到 run 里按 transcript 定，起草时按 plan.coverage.minRawChars 筛轮）`) }
   plan.design = designDigest(plan)
   if (calHist.receipts.length && plan.cost.shadow) {
     // 校准份：同一设计、常数换成回执实测（divergeRound 取中位数、floorShare 取均值）；只做展示与记录，不改上界
@@ -957,6 +965,36 @@ function cmdGold(args) {
     if (r.added.length) console.log(`下一步: node tools/cfb-cycle.mjs plan-bench --policies base,<候选>   # 模式 2：压缩器对金标的召回基准（每项 1 次压缩调用 ≈ $${TRAJ_UNIT.compressUsd}）`)
     return r
   }
+  if (sub === 'use') {
+    // v14.21.0 用途裁决：标尺（ruler）/ 训练料（train）/ 两者（both，需显式）。改 use 不动 raw/ctx/draft ⇒ digest 不变，既有基准计划不作废。
+    const dir = GOLD_DIR()
+    const ids = String(f(args, '--id') || '').split(',').map((x) => x.trim()).filter(Boolean)
+    const want = f(args, '--set')
+    if (!ids.length || !['ruler', 'train', 'both'].includes(want)) throw new Error('用法：gold use --id A,B --set ruler|train|both [--dry-run]')
+    if (args.includes('--explain-both') || want === 'both') console.log('  ⚠ use=both：同一条既被策略挑又被 micro 拟合 ⇒ 「micro 追平」的读数不成立，仅限已显式批准的历史条目')
+    const dry = args.includes('--dry-run')
+    let changed = 0
+    for (const fam of fs.readdirSync(dir).sort()) {
+      const fd = path.join(dir, fam)
+      if (!fs.statSync(fd).isDirectory()) continue
+      for (const file of fs.readdirSync(fd).sort()) {
+        if (!file.endsWith('.json')) continue
+        const p = path.join(fd, file)
+        const g = JSON.parse(fs.readFileSync(p, 'utf8'))
+        if (!ids.includes(g.id)) continue
+        const before = g.use || 'ruler'
+        const out = {}
+        for (const k of Object.keys(g)) { out[k] = g[k]; if (k === 'split') out.use = want }
+        if (!('use' in out)) out.use = want
+        if (out.digest !== g.digest) throw new Error('gold-use-digest-drift:' + g.id)
+        if (before !== want && !dry) { fs.writeFileSync(p, JSON.stringify(out, null, 2) + '\n'); changed++ }
+        console.log(`  ${g.id.padEnd(38)} ${before} → ${dry ? want + '（dry-run）' : want}`)
+      }
+    }
+    if (!changed && !dry) throw new Error('gold-use-nothing-changed（id 对不对？已为目标用途？）')
+    console.log(dry ? `（dry-run：将改 ${ids.length} 条）` : `已改 ${changed} 条用途。下一步：node tools/cfb-cycle.mjs gold status && npm run verify:offline`)
+    return { changed, ids, want }
+  }
   if (sub === 'restore' || sub === 'replay' || sub === 'stage' || sub === 'audit' || sub === 'repair') {
     const p = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'cfb-gold-repair.mjs'), sub, ...args.slice(1)], { stdio: 'inherit' })
     process.exit(p.status ?? 0)
@@ -964,7 +1002,7 @@ function cmdGold(args) {
   const gold = loadGold(GOLD_DIR())
   console.log(`金标注册表 ${path.relative(ROOT, GOLD_DIR())}：${gold.length} 项` + (gold.length ? '' : '（空：先跑模式 1 —— plan-traj --arms raw,hand → traj-run → ceiling → gold add）'))
   const fams = [...new Set(gold.map((g) => g.family))]
-  for (const fam of fams) { const gs = gold.filter((g) => g.family === fam); console.log(`  ${fam} [${gs[0].split}] ${gs.length} 项（修好 ${gs.filter((g) => g.validated).length}；内容合格 ${gs.filter((g) => g.qualityAudit?.status === 'clean').length}）：` + gs.map((g) => `${g.id} r${g.round} ${g.draft.length}字 [${g.qualityAudit?.status || 'unreviewed'}] ${g.outcome?.vsRaw ? 'vs raw ' + g.outcome.vsRaw : ''}`).join('；')) }
+  for (const fam of fams) { const gs = gold.filter((g) => g.family === fam); console.log(`  ${fam} [${gs[0].split}/${[...new Set(gs.map((g) => g.use || 'ruler'))].join('+')}] ${gs.length} 项（修好 ${gs.filter((g) => g.validated).length}；内容合格 ${gs.filter((g) => g.qualityAudit?.status === 'clean').length}）：` + gs.map((g) => `${g.id} r${g.round} ${g.draft.length}字 [${g.qualityAudit?.status || 'unreviewed'}] ${g.outcome?.vsRaw ? 'vs raw ' + g.outcome.vsRaw : ''}`).join('；')) }
   return gold
 }
 /** 模式 2 计划：策略 × 金标项，每项一次压缩调用；设计摘要含金标摘要（金标改了 ⇒ 计划作废）。 */
@@ -1985,7 +2023,7 @@ const HELP = `cfb-cycle（闭环 v4：e 值采纳 + L2 结局确认 + 双轨评�
   review --plan N | --results FILE [--draft-chars 700] [--judge-prompts]         v4.5：读一个单元的结果 → review.md（分歧轮、各臂结局、分歧处压缩稿原文、闸门、代理旗标、双轨分歧归因）
   ceiling --plan N | --results FILE [--map hand=hand,raw=raw]                      v4.6 模式 1：hand（助手手写稿）vs raw 的 L2 天花板 → ruler/ceiling-k.json + 效度账本；不碰 champion
   gold add --plan N [--include-unsolved] [--include-loss] [--from-winners] [--replace]   v4.6：过闸且修好的手写稿 → 金标注册表 transfer/gold/<family>/；--replace = 改稿重挣后换稿（旧条目自动归档 transfer/gold-history/）；默认拒收 vsRaw loss（比主模型自己读原文还慢）——那是天花板资格不是越界
-  gold audit | gold restore --id A,B [--apply] | gold replay|stage --id X --draft F                v14.20.1：隔离区复算 / 干净稿放回 / 改稿零 API 重测生产闸链（tools/cfb-gold-repair.mjs）                               v4.6：过闸且修好的手写稿 → 金标注册表 transfer/gold/<family>/（按家族 dev/holdout，落盘不改）
+  gold audit | gold restore --id A,B [--apply] | gold replay|stage --id X --draft F | gold use --id A,B --set ruler|train|both [--dry-run]                v14.20.1：隔离区复算 / 干净稿放回 / 改稿零 API 重测生产闸链（tools/cfb-gold-repair.mjs）                               v4.6：过闸且修好的手写稿 → 金标注册表 transfer/gold/<family>/（按家族 dev/holdout，落盘不改）
   plan-bench [--lite] [--policies base,p-x] [--split dev|holdout|all] [--dry] [--drop N] [--factors half|full]
                                                                                  v4.6 模式 2：策略 × 金标 各一次压缩调用（--lite 极简模式：复用 base 缓存，仅跑 1 次 ≈ $0.004）；指标 dd 版本随计划冻结；dev 配对选策略、holdout 只报告
                                                                                  v4.7 --factors：候选的 k≤3 条补丁各为因子（half=2^(k−1) 含 base 不含全开 / full=2^k），bench-report 出每条补丁的主效应 ⇒ 知道该留哪条

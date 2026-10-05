@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { loadGold } from './helpers/three-mode.mjs'
+import { loadGold, goldUse } from './helpers/three-mode.mjs'
 import { isMode1GoldEligible } from './helpers/mode1-quality.mjs'
 import { slotsOf, anchorsOf } from './helpers/hand-draft.mjs'
 import { mineChangeCandidates, parseGoldDirections, candidateFeatures, CHANGE_FEATURE_NAMES } from './helpers/mine-change.mjs'
@@ -17,7 +17,8 @@ const OUT = path.resolve(ROOT, argOut >= 0 ? process.argv[argOut + 1] : 'transfe
 const toks = (s) => new Set([...anchorsOf(s)].map((x) => x.toLowerCase()))
 const overlap = (a, b) => { const A = toks(a), B = toks(b); if (!A.size || !B.size) return 0; let h = 0; for (const x of A) if (B.has(x)) h++; return h / Math.min(A.size, B.size) }
 
-const activeGold = loadGold(path.join(ROOT, 'transfer/gold'))
+// 用途隔离（v14.21.0）：金标注册表默认全是标尺料（use=ruler），这里只能吃显式放行成 train/both 的条目
+const activeGold = loadGold(path.join(ROOT, 'transfer/gold')).filter((g) => goldUse(g) !== 'ruler')
 const contaminatedGoldExcluded = activeGold.filter((g) => !isMode1GoldEligible(g) || g.qualityAudit?.status !== 'clean').length
 const gold = activeGold.filter((g) => isMode1GoldEligible(g) && g.qualityAudit?.status === 'clean'
   && ['dev', 'holdout'].includes(g.split)

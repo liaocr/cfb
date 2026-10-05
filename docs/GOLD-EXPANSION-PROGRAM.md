@@ -24,14 +24,26 @@
 
 ## 1. 先分家：标尺 ≠ 训练料（这条最要紧，不做后面全白干）
 
-现在 `transfer/gold/` 一个目录同时当两件事用：模式 2 用它选策略、训练想拿它当标签。**同一批数据既当选择题的选项又当答案，就是泄漏**，之后任何"微模型追上金标"的读数都不作数。
+`transfer/gold/` 一个目录过去同时当两件事用：模式 2 用它选策略、训练拿它当标签。**同一批数据既当选择题的选项又当答案，就是泄漏**，之后任何「微模型追上金标」的读数都不作数。
 
-- `transfer/gold/`（标尺）：≤12 项，按家族切 `dev` / `holdout`；**只用来判分，永不进训练**。
-- `transfer/train-corpus/`（训练料，新增）：所有过闸真机稿都收，包括 `tie` 与被拒的 `measured/`；每条带 `split: train | eval`、`outcome`、`gates`、`draft/stored/raw/ctx`。
-- 硬规矩（待实现，$0）：
-  1. `saveGold` 落 active 时同步往 `train-corpus/` 写一条，并打 `inRuler: true/false`；
-  2. `train-v5-micro` 只许读 `inRuler: false` 的条目 ⇒ 训练脚本里加断言，读到标尺条目直接报错退出；
-  3. `holdout` 家族同时禁止进 `train-corpus`（现在是靠 `unassigned` 挡，太软）。
+**v14.21.0 已落地（$0，本节从「计划」改成「事实 + 记录」）**：不新建第二份目录，改为条目级用途字段 —— 避免两处真相漂移。
+
+- `use: 'ruler' | 'train' | 'both'`（`tools/helpers/three-mode.mjs` 的 `goldUse` / `filterGoldByUse`）；**缺省 = `ruler`**：没登记的条目一律只当标尺，绝不因为漏登记就溜进训练侧。
+- 改 `use` **不会作废既有基准计划**：`goldDigest` 只 hash `raw/ctx/draft`（`three-mode.mjs:50`），实测 7 条加字段后 digest 全部逐字不变。
+- 五个读取口全部接线（逐个核实过行号，别再漏）：
+  | 读取口 | 侧 | 过滤 |
+  |---|---|---|
+  | `tools/helpers/three-mode.mjs` `buildBenchPlan` | 标尺计划生成 | `goldUse(g) !== 'train'` |
+  | `tools/bench-run.mjs` | 打分 | 命中 train 条目 ⇒ 抛 `gold-use-mismatch:<id>` |
+  | `tools/cfb-judge.mjs` | 评审 | `goldUse(g) !== 'train'` |
+  | `tools/build-micro-dataset.mjs` / `tools/train-v5-micro.mjs` | 拟合 | `goldUse(g) !== 'ruler'` |
+  | `tools/build-change-dataset.mjs` / `tools/label-change-directions.mjs` | 判读头料 | 同上 |
+- 训练料改由新通道供给：`tools/helpers/traj-corpus.mjs` 读 `.cfb-runtime/traj/*/hand-samples.jsonl`，只收 `trainingEligible === true` 且 `qualityAudit.status === 'clean'`；同 id 多版取最新当标签、旧版进 `pairs`（现成的 rejected/chosen）。命中标尺 id ⇒ **整条剔除并报出 id**（`onRulerId:'throw'` 可升级成硬失败）。剔除而非抛，是因为金标本来就是 `goldItemsFromTraj` 从这些轨迹里 add 进去的，两通道必然有 id 交集：抛 = 永远跑不动，静默丢 = 看不见漏了多少。兜底是 `train-v5-micro` 训练前的结果级断言 `ruler-leakage-into-train`。
+- 验收：`test/gold-use-split.selftest.mjs`（PASS=39，含 b13 实测稿逐分逐位复算 9/9 一致 ⇒ 证明分家没动尺子）。
+
+实测基线（`node tools/train-v5-micro.mjs`，$0）：分家前 `devGoldCount: 3 / devUnitSamples: 236 / devPairwiseAccuracy: 0.4`；分家后 `devGoldCount: 0（7 条全归标尺）+ traj:train 4 / devUnitSamples: 381 / devPairwiseAccuracy: 0.7`。**训练料不降反升**，且标尺侧 7 条读数的每一项、每一位都不变。
+
+遗留一条（本轮只报不改，因为改它会移动训练结果）：`train-v5-micro.mjs:66` 读 `pack.pool?.tasks`，而 `.cfb-offline/gen-2.pack.json` 顶层是 `devTasks` / `trajEvidence` / `evidence`，**没有 `pool` 键** ⇒ `devPoolCount` 恒为 0，是结构错配被 `?.` 吞成空，不是数据为空。现已改成显式打印告警；要真正修得先决定 `devTasks`（无 split 字段）怎么并入拟合，属于重训范畴，留待批准后单独做。
 
 ## 2. 第二作者与一致率（没有它，dd 差值都是自欺）
 
@@ -70,9 +82,10 @@
 3  作者 A 照当轮 raw+ctx 写 drafts/<id>.md      ← 禁止搬旧轨迹结论（G2 判 invented-decision）
 4  node tools/hand-preflight.mjs <plan>           ← $0：G2 ∧ lint ∧ compile ∧ birthAccept ∧ stored-lint ∧ 自比 dd
 5  重跑第 1 步那条命令（自动续跑，接受稿子）
-6  作者 B：B-离线重写一遍 / B-异源出稿 → gold agreement（先算噪声底）
+6  作者 B：B-离线重写一遍 / B-异源出稿 → gold agreement（先算噪声底）  ← ⏸ T0.2 按裁决未开工，此步暂无工具，跳过
 7  node tools/cfb-cycle.mjs ceiling --plan N
-8  node tools/cfb-cycle.mjs gold add --plan N [--replace]     ← 自动挡 vsRaw loss；被挡的进 train-corpus 不进标尺
+8  node tools/cfb-cycle.mjs gold add --plan N [--replace]     ← 自动挡 vsRaw loss；入册条目默认 use=ruler（只当标尺）
+   8b node tools/cfb-cycle.mjs gold use --id A,B --set train [--dry-run]  ← 显式放行成训练料才进拟合；v14.21.0
 9  node tools/cfb-cycle.mjs plan-bench && node tools/bench-run.mjs --plan ... --timeout-ms 150000   ← 见 §6
 ```
 
@@ -105,11 +118,15 @@
 
 不含微模型正式训练本身（那是 `train-v5-micro` 的 Kaggle 侧，另算）。
 
-## 8. 现在就能开工（全部 $0）
+## 8. T0 的收支（v14.21.0 已执行，按用户裁决收口）
 
-1. 落 §1 的 `inRuler` 隔离 + `train-v5-micro` 的读料断言（防泄漏，先于一切）；
-2. 落 §2 的 `gold agreement` + `author`/`reviewProtocol`（沿用 `blind-unit-label-v3` 语义，不新造），并对现有 7 项跑一次 **B-离线** 一致率（不花一分钱，先看到噪声底有多大）；
-3. 落 §3 的 `--round-band` / `--min-raw-chars`（只影响挑轮，不动闸），把 40 个格子实例化成 5 份预注册计划 JSON；
-4. §6 的两处通道适配：压缩调用 `max_tokens ≥ 600` 的地板、回执里记网关 `cost`。
+| 步骤 | 内容 | 状态 |
+|---|---|---|
+| T0.1 | §1 用途隔离 + 读料断言 + 训练料换通道 | ✅ 已落地（`use` 字段 / 5 个读取口 / `traj-corpus` / 自测 39 断言 / `gold use` 子命令） |
+| T0.3 | §3 `--round-band` / `--min-raw-chars` + 覆盖矩阵对账 | ✅ 已落地（`tools/coverage-plan.mjs` → `transfer/gold-repair/gold-coverage/matrix.{md,json}`，30 格 / 目标 40 / 当前缺口 33，并直接输出每家族的下一批预注册命令） |
+| T0.2 | §2 第二作者与一致率 | ⏸ **按用户裁决不做**：「t0.2 我上哪给你找双作者，先不要」。一致率仍是 K4 硬判据，缺它则 dd 差值只能当方向性参考，不得对外称噪声可控。恢复条件：真出现第二位起草者。 |
+| T0.4 | §6 通道适配（`max_tokens` 地板、回执记网关 `cost`、探针转正） | ⏸ **按用户裁决不做**：「没必要，没啥用，能训练就行」。已知风险照此承担：`max_tokens` 过小会被 thinking 吃空 ⇒ 空 body 记成可重试 `error`；预算对账只能继续用 `estimatedUsd`，不采信网关 `cost`。 |
 
-这四项做完，T1 才值得花钱——否则补回来的金标还是同一把有噪声、没分家的尺子。
+T0.2 不做带来的直接后果要记在账上：**噪声底没有实测值**，所以 §5 的「配对差 > 一致率噪声」这条判据暂时只能用 A41c 的 ≥0.95 措辞相似度兜着。这不影响 T1 起草（仍是 $0），但影响 T3 敢不敢用 dd 差值下结论。
+
+这两项做完，T1 才值得花钱——否则补回来的金标还是同一把没分家的尺子。（分家已完成，所以 T1 的前置已满足。）

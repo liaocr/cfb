@@ -13,7 +13,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { loadGold } from './helpers/three-mode.mjs'
+import { loadGold, goldUse } from './helpers/three-mode.mjs'
 import { isMode1GoldEligible } from './helpers/mode1-quality.mjs'
 import { slotsOf, anchorsOf } from './helpers/hand-draft.mjs'
 import { mineChangeCandidates, parseGoldDirections } from './helpers/mine-change.mjs'
@@ -43,7 +43,7 @@ const SYSTEM = [
 ].join('\n')
 
 const DEV_FAMS = new Set(['flaky-timeout', 'perf-regression', 'sse-truncated'])
-const gold = loadGold(path.join(REPO, 'transfer/gold')).filter((g) => isMode1GoldEligible(g)
+const gold = loadGold(path.join(REPO, 'transfer/gold')).filter((g) => goldUse(g) !== 'ruler' && isMode1GoldEligible(g)
   && g.qualityAudit?.status === 'clean' && g.split === 'dev' && DEV_FAMS.has(String(g.family || '').replace(/^pool:/, '').split(':', 1)[0].replace(/_(?:decoy|long-horizon).*$/, '')))
   .map((g) => ({ ...g, hand: g.draft || g.gold || g.hand || '' }))
 const items = gold.map((g) => {

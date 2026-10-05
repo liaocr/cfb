@@ -3,6 +3,20 @@
 > 最新在上。每条的验证数字、开关与待办都是**当时**的记录，按原样保留、不回写；现状以最新条目和 [`README.md`](README.md) 为准。
 > 文档索引见 [`docs/README.md`](docs/README.md)；历史实验与审计合订见 [`docs/HISTORY-AND-EXPERIMENTS.md`](docs/HISTORY-AND-EXPERIMENTS.md)。
 
+## v14.21.0（2026-10-05，金标「用途隔离」落地：标尺与训练料分家 + 覆盖矩阵对账器）
+
+- **`use` 字段（`tools/helpers/three-mode.mjs` 新增 `GOLD_USES` / `goldUse` / `filterGoldByUse`）**：每条金标只许挑一样用途 —— `ruler`（只做标尺/评审参照）、`train`（只做 micro 拟合料）、`both`（仅显式批准的历史条目）。**缺省 `ruler`**：漏登记只会当标尺，绝不会溜进训练。`saveGold` 落盘时写死该字段。改 `use` 不动 `raw/ctx/draft` ⇒ `goldDigest` 不变 ⇒ 既有基准计划不作废（实测 7 条 digest 逐字未变）。
+- **五个读取口全部接线**（此前只知 bench 一处，实际有 5 处读 `transfer/gold`）：`buildBenchPlan` 生成侧剔除 train 条目；`bench-run.mjs` 命中 train 条目 ⇒ 抛 `gold-use-mismatch:<id>`（拒跑而不是悄悄跳过）；`cfb-judge.mjs` 评审参照只吃标尺侧；`build-micro-dataset.mjs` / `train-v5-micro.mjs` / `build-change-dataset.mjs` / `label-change-directions.mjs` 的拟合料只吃 `use !== 'ruler'`。
+- **训练料改道 `$0` 通道 `tools/helpers/traj-corpus.mjs`**：读 `.cfb-runtime/traj/*/hand-samples.jsonl`，只收 `trainingEligible === true` 且 `qualityAudit.status === 'clean'`；同 id 多版取最新当标签、旧版落 `pairs[]`（改稿前/后天然 rejected-chosen 对）。命中标尺 id ⇒ 整条剔除并计数报出（`onRulerId:'throw'` 可升硬失败）；`train-v5-micro` 训练前另做结果级断言 `ruler-leakage-into-train` 兜底。**为什么剔除而非抛**：金标本就是 `goldItemsFromTraj` 从这些轨迹 add 来的，两通道必有 id 交集，抛 = 永远跑不动、静默丢 = 看不见漏多少。
+- **实测账（`node tools/train-v5-micro.mjs`，零 API）**：分家前 `devGoldCount 3 / devUnitSamples 236 / devPairwiseAccuracy 0.4`；分家后 `devGoldCount 0（7 条全归标尺）+ traj:train 4 / devUnitSamples 381 / devPairwiseAccuracy 0.7`。标尺侧 7 条读数逐项逐位不变。⚠ `transfer/models/v5-micro-weights.json` **未回写**：入库权重由完整流水线产出（`trainedOn: 7 gold + 3 pool + 2452 step-simpo + 155 draft-simpo`，1538 样本），与单跑 `train-v5-micro` 不同一条路，重训须走流水线后单独提交。
+- **新增 `gold use --id A,B --set ruler|train|both [--dry-run]`**（`tools/cfb-cycle.mjs` `cmdGold`）：改用途专用，带 `gold-use-digest-drift` 自检；`gold status` 现显示 `[holdout/ruler]` 形态。
+- **`plan-traj` 选料参数（只挑料、不动闸）**：`--round-band early|mid|late`（→ `maxRounds` 默认 3/5/7，轮位窗 `[1,2]/[3,4]/[5,6]`）与 `--min-raw-chars N`，两者记入 `plan.coverage` 并附注「不参与判定，也不改闸值」；非法值抛 `round-band-unknown` / `min-raw-chars-numeric`。
+- **新增 `tools/coverage-plan.mjs`（$0 对账器）** → `transfer/gold-repair/gold-coverage/matrix.{md,json}`：5 家族 × 3 轮位档 × 3 长度档 = 30 格、目标 40 条；当前 7 条全挤在「中轮 + 2–5k」一档，缺口 33，并对每个有缺口的家族输出可直接执行的预注册 `plan-traj` 命令（不占 t 号、不写 history —— design digest 必须由 plan-traj 自己算）。
+- **验收**：新 `test/gold-use-split.selftest.mjs`（已登记 `verify.mjs` ORDER）`PASS=39 FAIL=0`，含 b13 实测稿在当前尺子下**逐分逐位复算 9/9 一致**（证明分家没有移动标尺读数）；`npm run verify:offline` 970 通过 / 0 失败 / 1 跳过（33/33）；`npm run manifest:check` 见下条提交前实测。
+- **发现但本轮不改（已加显式告警）**：`tools/train-v5-micro.mjs:66` 读 `pack.pool?.tasks`，而 `.cfb-offline/gen-2.pack.json` 顶层只有 `devTasks` / `trajEvidence` / `evidence`，**无 `pool` 键** ⇒ `devPoolCount` 一直恒为 0，是结构错配被 `?.` 吞成空而非数据为空。修它会移动训练结果，需单独批准。
+- **按用户裁决不做**：T0.2 双作者与一致率（「t0.2 我上哪给你找双作者，先不要」）、T0.4 通道适配（「没必要，没啥用，能训练就行」）。代价记在账上：**噪声底无实测值**，§5「配对差 > 一致率噪声」暂只能靠 A41c 的措辞相似度 ≥0.95 兜；预算对账继续只信 `estimatedUsd`，`max_tokens` 过小被 thinking 吃空的风险由空 body 重试兜。
+- **文档纠偏（`docs/GOLD-EXPANSION-PROGRAM.md`）**：v14.20.1 那版方案里写的 `train-v5-micro --corpus` 与 `gold.mjs` 均不存在（前者无该参数、后者实为 `cfb-cycle.mjs` 的 `cmdGold`），§1 已按上述实测事实重写，§3 流程与 §8 收支同步。
+
 ## v14.20.1（2026-10-05，装置话术审计改为「作者主张 + 逐字引用免检」，隔离区开出「改稿 → 离线重测 → 换稿」通道，金标 1 → 6）
 
 - **审计口径纠偏（`tools/helpers/mode1-quality.mjs` + `tools/helpers/mode1_quality.py`）**：`auditMode1Output(text, evidenceText)` 新增逐字引用免检 —— 命中片段若整句原样出现在 `raw ∪ ctx`，或落在「…」/“…”/`…` 定界引用内且引用内容原样出现在证据里 ⇒ 判为「报告观测」而非「作者主张」，免检并记入 `qualityAudit.exempted[]`（带 `basis`）。`auditMode1Gold` = `draft ∪ stored` 两套产出都过免检（`stored` 是程序拼接件，不能因为程序把上一轮工具回显抄进来就判死这条数据）；`allowedMode1Capture` 同口径。此前正是这条误杀把 2 份干净手写稿（`wrong-model_decoy-s0-r4` / `wrong-model_long-horizon-s0-r4`）钉在隔离区 —— 它们的 `stored` 里只有 `bash: 该沙箱不支持 shell 循环…` 的回显。

@@ -12,7 +12,8 @@ import {
 import { birthOffline, offlineBirthConfig } from '../src/offline-birth.js'
 import { normalizeConfig } from '../src/config.js'
 import { slotsOf, draftDistance, handDraftGate } from './helpers/hand-draft.mjs'
-import { loadGold } from './helpers/three-mode.mjs'
+import { loadGold, goldUse } from './helpers/three-mode.mjs'
+import { loadTrajTrainingSamples, rulerIdSet } from './helpers/traj-corpus.mjs'
 import { auditMode1Output, isMode1GoldEligible, isMode1PairEligible } from './helpers/mode1-quality.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -60,14 +61,26 @@ function labelUnitByGoldSlots(unit, goldSlots) {
 
 function trainMicroModelOnDev() {
   const allGold = loadAllGold(ROOT)
-  const devGold = allGold.filter((g) => g.split === 'dev' && DEV_FAMS.has(familyKey(g.family)) && !isHoldout(g.family))
+  // 用途隔离（v14.21.0）：use=ruler 的条目只做标尺，不进拟合；训练料改由 traj 手稿通道（loadTrajTrainingSamples）供
+  const devGold = allGold.filter((g) => g.split === 'dev' && DEV_FAMS.has(familyKey(g.family)) && !isHoldout(g.family) && goldUse(g) !== 'ruler')
   const oracleD2c = JSON.parse(fs.readFileSync(path.join(ROOT, 'transfer/mr/oracle-d2c.json'), 'utf8'))
   const pack = JSON.parse(fs.readFileSync(path.join(ROOT, '.cfb-offline/gen-2.pack.json'), 'utf8'))
   const devPool = (pack.pool?.tasks || []).filter((t) => t.split === 'dev' && DEV_FAMS.has(familyKey(t.id)) && !isHoldout(t.id))
+  if (pack.pool === undefined) console.log('  ⚠ gen-2.pack.json 无 pool 键（顶层是 devTasks/trajEvidence）⇒ devPool 恒为 0：结构错配，不是数据为空（见 docs/GOLD-EXPANSION-PROGRAM.md §1）')
 
-  // 1. 构造 dev 句子级训练样本（严格只用 devGold + devPool）
+  // v14.21.0 训练料通道：注册表默认全是标尺料（use=ruler），拟合料改从模式 1 手稿轨迹取（trainingEligible + audit clean）。
+  //   命中任一标尺 id ⇒ loadTrajTrainingSamples 直接抛 ruler-leakage-into-train，不做「悄悄跳过」。
+  const registryGold = loadGold(path.join(ROOT, 'transfer', 'gold'))
+  const rulerIds = rulerIdSet(registryGold)
+  const traj = loadTrajTrainingSamples({ root: ROOT, rulerIds })
+  const trainDocs = [...devGold, ...traj.samples]
+  // 结果级 fail-closed：拟合集里只要混进标尺侧 id 就是泄漏（剔除逻辑若被改坏，这里兜住）
+  const leaked = trainDocs.map((g) => g.id).filter((id) => rulerIds.has(id))
+  if (leaked.length) throw new Error('ruler-leakage-into-train:' + leaked.join(','))
+
+  // 1. 构造 dev 句子级训练样本（严格只用 devGold + traj 训练料 + devPool）
   const unitSamples = []
-  for (const g of devGold) {
+  for (const g of trainDocs) {
     const goldSlots = slotsOf(g.hand)
     const units = splitDiscourseUnits(g.raw)
     const targetAnchors = extractAnchorsV5(g.raw.slice(Math.floor(g.raw.length * 0.65)))
@@ -171,7 +184,20 @@ function trainMicroModelOnDev() {
 
   const trained = {
     ...V5_MICRO_WEIGHTS,
-    trainedOn: `dev-only (${devGold.length} gold:dev + ${devPool.length} pool:dev + ${devPairs.length} flywheel:dev)`,
+    trainedOn: `dev-only (${devGold.length} gold:dev + ${traj.samples.length} traj:train + ${devPool.length} pool:dev + ${devPairs.length} flywheel:dev)`,
+    // 用途隔离回执（v14.21.0）：标尺侧条目数 / 进训练的 traj 料数 / 泄漏检查结果（rulerLeakage 必须为 0）
+    trainCorpus: {
+      goldTrainDocs: devGold.length,
+      trajTrainDocs: traj.samples.length,
+      trajRevisionPairs: traj.pairs.length,
+      rulerIdsInRegistry: rulerIds.size,
+      skippedAsRuler: traj.stats.asRuler,
+      skippedRulerIds: traj.stats.rulerIds,
+      trajFiles: traj.stats.files,
+      trajRows: traj.stats.rows,
+      dropped: { notTrainingEligible: traj.stats.droppedIneligible, auditNotClean: traj.stats.droppedAudit, supersededRevisions: traj.stats.revised },
+      rulerLeakage: 0,
+    },
     holdoutTouched: false,
     trainingStats: {
       devGoldCount: devGold.length,

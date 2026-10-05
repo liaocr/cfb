@@ -48,6 +48,25 @@ export function ceilingFrom({ rows, map = { hand: 'hand', raw: 'raw' }, alpha = 
 
 // ── 金标注册表 ──────────────────────────────────────────────────────────────
 export const goldDigest = (g) => evidenceDigest({ raw: g.raw, ctx: g.ctx, draft: g.draft }).slice(0, 16)
+/**
+ * 用途裁决（v14.21.0，扩量前置）：一条数据**只能挑一样**。
+ *   'ruler' —— 只做标尺/评审（策略在它上面被挑出来）；
+ *   'train' —— 只做 micro 的拟合料；
+ *   'both'  —— 仅历史条目在显式批准后使用，新条目不给。
+ * 为什么：同一份条目既被策略反复挑（选择压）又被 micro 当标签拟合，那"micro 追平标尺"就是自证，
+ * 读数不成立（docs/GOLD-EXPANSION-PROGRAM.md §1）。缺省取 'ruler' —— 保守方向 = 没登记用途的条目绝不进训练。
+ * 注意：digest 只 hash raw/ctx/draft，所以加/改 use 字段不会让既有 bench 计划作废（不触发 gold-changed）。
+ */
+export const GOLD_USES = ['ruler', 'train', 'both']
+export function goldUse(g) {
+  const u = g && g.use
+  return u === 'train' || u === 'both' ? u : 'ruler'
+}
+/** want='ruler' → 可当标尺；want='train' → 可进拟合。want 拼错直接抛，绝不静默放行。 */
+export function filterGoldByUse(items, want) {
+  if (want !== 'ruler' && want !== 'train') throw new Error('gold-use-want-unknown:' + want)
+  return items.filter((g) => { const u = goldUse(g); return u === 'both' || u === want })
+}
 /** 从一个轨迹单元提取金标候选：
  *  - 默认：hand 臂过闸的手写稿 + 原文 / ctx（pending/done）+ L2 结局；
  *  - fromWinners=true：同时提取非 raw/hand 的胜出压缩臂（轨迹修好、且比同组 raw 更快修好或 raw 未修好）在分歧轮过生产闸 + G2 闸的真实压缩稿，解决金标饥饿。 */
@@ -167,7 +186,7 @@ export function saveGold(dir, items, { includeUnsolved = false, includeLoss = fa
       fs.writeFileSync(hFile, JSON.stringify({ ...previous, supersededBy: { at: new Date().toISOString(), digest: goldDigest(g), note: revisionNote || 'gold add --replace' }, digest: previous.digest || goldDigest(previous) }, null, 2) + '\n')
       replaced.push({ id: g.id, historyFile: path.relative(path.dirname(path.resolve(dir)), hFile), previousDigest: previous.digest || goldDigest(previous) })
     }
-    const saved = { ...g, qualityAudit, digest: goldDigest(g), ...(replaced.some((r) => r.id === g.id) ? { revision: { at: new Date().toISOString(), note: revisionNote || 'edited draft', by: 'gold add --replace' } } : {}) }
+    const saved = { ...g, use: goldUse(g), qualityAudit, digest: goldDigest(g), ...(replaced.some((r) => r.id === g.id) ? { revision: { at: new Date().toISOString(), note: revisionNote || 'edited draft', by: 'gold add --replace' } } : {}) }
     fs.mkdirSync(path.dirname(file), { recursive: true })
     fs.writeFileSync(file, JSON.stringify(saved, null, 2) + '\n')
     if (replaceExisting) added.push(g.id); else added.push(g.id)
@@ -241,7 +260,7 @@ export function factorialEffects(rows, factorial, { alpha = DEFAULT_DESIGN_V4.al
 }
 
 export function buildBenchPlan({ n, policies = ['base'], gold, split = 'dev', pricing, purpose = null, planRel, homeRel, now = new Date().toISOString(), factorial = null }) {
-  const items = gold.filter((g) => !g.missing && g.validated && g.qualityAudit?.status === 'clean' && isMode1GoldEligible(g) && (split === 'all' || g.split === split))
+  const items = gold.filter((g) => !g.missing && g.validated && g.qualityAudit?.status === 'clean' && isMode1GoldEligible(g) && goldUse(g) !== 'train' && (split === 'all' || g.split === split))
   if (!items.length) throw new Error(`no-gold:${split}（注册表里没有可用金标；先跑模式 1：plan-traj --arms raw,hand → traj-run → ceiling → gold add）`)
   if (!policies.includes('base')) throw new Error('bench-needs-base（基准必须含 base：候选只按「对 base 的配对胜负」选，不看绝对分）')
   const calls = policies.length * items.length

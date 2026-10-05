@@ -13,7 +13,7 @@ import { BASE_POLICY } from './helpers/generation.mjs'
 import { loadPolicyFor } from './traj-run.mjs'
 import { draftDistance } from './helpers/hand-draft.mjs'
 import { isMode1GoldEligible } from './helpers/mode1-quality.mjs'
-import { loadGold, DRAFT_DISTANCE_VERSION, benchReport, benchReportMd } from './helpers/three-mode.mjs'
+import { loadGold, goldUse, DRAFT_DISTANCE_VERSION, benchReport, benchReportMd } from './helpers/three-mode.mjs'
 import { evidenceDigest } from '../src/evidence-program.js'
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
@@ -70,10 +70,15 @@ export async function benchRun(o, { I = null, compile = null, now = () => new Da
   if (plan.schema !== 'cfb.bench-plan/1') throw new Error('bench-plan-schema')
   if (plan.metric !== DRAFT_DISTANCE_VERSION) throw new Error(`metric-mismatch: 计划 ${plan.metric} ≠ 本机 ${DRAFT_DISTANCE_VERSION}（公式改过，这个计划不能再跑）`)
   const goldDir = o.goldDir || (process.env.CFB_CYCLE_DIR ? path.join(path.resolve(process.env.CFB_CYCLE_DIR), 'gold') : path.join(ROOT, 'transfer', 'gold'))
-  const gold = new Map(loadGold(goldDir).map((g) => [g.id, g]))
+  const allGold = loadGold(goldDir)
+  const gold = new Map(allGold.map((g) => [g.id, g]))
+  // 用途隔离（v14.21.0）：use=train 的条目只为训练料存在，出现在标尺计划里 = 泄漏，直接拒跑而不是悄悄跳过
+  const trainScoped = allGold.filter((g) => goldUse(g) === 'train')
+  if (trainScoped.length) console.log(`  用途隔离：注册表里 ${trainScoped.length} 条 use=train 不进标尺（只作 micro 训练料）`)
   const items = plan.gold.map((p) => {
     const g = gold.get(p.id)
     if (!g) throw new Error('gold-missing:' + p.id + '（' + goldDir + '）')
+    if (goldUse(g) === 'train') throw new Error(`gold-use-mismatch:${p.id}（use=train 只能当训练料，不得充当标尺；要进标尺请 gold use --set ruler）`)
     if (!isMode1GoldEligible(g) || g.qualityAudit?.status !== 'clean') throw new Error(`gold-quality-rejected:${p.id}（内容审计/谱系未通过；旧计划作废）`)
     if (g.digest !== p.digest) throw new Error(`gold-changed:${p.id}（计划 ${p.digest} ≠ 现在 ${g.digest}：金标被改过，计划作废）`)
     return { ...g, split: p.split }

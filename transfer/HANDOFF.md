@@ -64,3 +64,8 @@ npm run next                # = node tools/cfb-cycle.mjs next
 1. **禁止删减双轨语义能力**：确定性规则（`draftDistance`）与 LLM 语义裁判（`tools/cfb-judge.mjs`）、LLM 提议器（`proposer.mjs`）、正交因子归因、Pareto 池与岭回归校准缺一不可。
 2. **禁止重新混入 DSH 宿主工具面**：`cfb` 只做思维链出生即压缩与认知编译，不接管宿主工具定义。
 3. **修改文件必更清单**：改动任何入库文件后，若修改了 `.cfb-offline` 状态需先跑 `npm run snapshot`，随后必须执行 `npm run manifest` 与 `npm run verify:offline` 确保 0 漂移、0 失败。
+
+## v14.21.0（2026-10-05）：标尺 / 训练料已分家 —— 从此 `use` 字段裁决
+
+`transfer/gold/` 里每条现在带 `use`（`ruler` / `train` / `both`，缺省 `ruler`）。**7 条现有金标全部 `use=ruler`：只当标尺，不再进任何拟合。** micro 的训练料改从 `tools/helpers/traj-corpus.mjs`（读 `.cfb-runtime/traj/*/hand-samples.jsonl`，只收 `trainingEligible && clean`）。要放行某条进训练：`node tools/cfb-cycle.mjs gold use --id X --set train` —— 但这等于亲手制造泄漏，除非你明确接受。
+扩量对账：`node tools/coverage-plan.mjs`（$0）→ `transfer/gold-repair/gold-coverage/matrix.md`，当前 30 格 / 缺口 33，命令已备好。双作者一致率与通道适配按用户裁决**不做**，所以噪声底没有实测值。详见 `docs/GOLD-EXPANSION-PROGRAM.md` §1/§8 与 CHANGELOG v14.21.0。
