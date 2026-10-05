@@ -1,5 +1,18 @@
 # Changelog — dsh-cot-form-b
 
+## v14.22.2（2026-10-05，真机挣金标第一次全力冲刺的结果：两条 $0 达线 + 一个必须先修的闸缺陷）
+
+**做到**：19 条（在册 8 + 隔离区 11）逐条量化缺口（`tools/gold-triage.mjs`：19/19 可 replay、19/19 有真机行、**C2 闭合判读 19/19 全缺**）；`tools/gold-forge.mjs` 只删审计自己报出的句子、并把真机跑过的命令摊成证据文件（**不代写验收段**）；`tools/gold-check.mjs` 用生产真实 stored 判 C1–C6，并加了「反引号片段必须逐字在证据里」前置检查（这条当场逮到我自己的两个错：`src/distill.js` 整行、`mtime` 都是证据外锚点）。
+
+**两条稿在 $0 口径下真达线**：`flaky-timeout-s0-r4`（ratio 0.058，stored 1639 ≤ 产线 1647）、`eacces-config-s0-r5`（新轨迹 r5，ratio 0.253，stored 881 ≤ 产线 1650，闭合判读/可执行验收/接地全过）。
+
+**真机给的两条硬结论**：① `t97` `flaky-timeout` raw 8 轮未修好、hand 同样 8 轮未修好，且 hand 的 edit 落在 `src/distill.js` + `test/helpers.mjs`（不是我指的测试文件）⇒ **两臂同败的格子挣不了金标**，`vsRaw` 无从产生（与 v14.21「4 条测不出信号」同一现象，已在 `GOLD-WRITING-GUIDE` §0A.1 立规）。② `t98` 那份达线稿被 `production-gate:invented-identifier` **连拒 6 次**：实测 `inventedIdentifiers(raw, draft)` 与 `inventedIdentifiers(raw, 台账+draft)` 都是**空**（没有证据外锚点），拒因是 `compileV4Direct` 重排后的产物让 `gateTokens` 的「反引号按顺序配对」跨过中文散文，把「 拉起的这个套件。若不再报…」整段中文当成标识符（`src/fidelity.js:87` 的注释自陈 v12.7 为同类问题改过一次，只修了抽取器、没修编译器重排后的配对）⇒ **中文稿在这个闸下会被系统性误杀**，不是我的引用不实。诊断与证据：`.cfb-offline/ruler/t98-gate-diagnosis.json`。
+
+**花费**：t97 ≈$0.138 + t98 ≈$0.110；两次暂停/被拒均不计费。会话累计 ≈$0.68。
+
+**没有做的**：没有为了「让它通过」去放宽任何一条判据；`gold add` 一条也没写（两条都没拿到合法真机读数 ⇒ 不达标就不登记，按 §0A 它们仍是 `use:'train'`）。下一步唯一阻塞项是修那处配对（让编译器产物按行/句配对），属 $0 改动，但它会动生产闸 ⇒ 需你点头，因为历史 dd/基准读数口径会随之漂移。
+
+
 ## v14.22.1（2026-10-05，上限线的三条配套工具 + 两条从真机学到的结构规矩）
 
 **工具（全 $0）**：`tools/gold-triage.mjs`（把在册+隔离区 19 条逐条按 C1–C6 量化缺口，含「能不能 replay / 能不能读到真机行」⇒ 结论：19/19 可 replay、19/19 有真机行、**C2 闭合判读 19/19 全缺**）；`tools/gold-forge.mjs`（只删**审计自己报出的** excerpt 所在整句 + 把真机跑过的命令/读数摊成证据文件；**不代写验收段**——代写就是把金标写成银标）；`tools/gold-check.mjs`（拿**生产真实 stored** 跑 §0A，支持 `--pending` 判还没入册的真机新轨迹；口径对齐生产：G2/越界以 replay 宣告为准，`new_text` 里的目标值不算发明锚点）。`tools/gold-vs-line.mjs` 加 `--pending`：改稿重挣时线必须按**新轨迹的 raw** 现算，不能沿用旧条目的对照。

@@ -39,7 +39,7 @@ if (!draft) die('稿是空的')
 // 1) 真实 stored
 let storedReal = 0, replayGreen = false, g2Unchanged = false, verdict = '?', inventedSpans = null
 if (pendFile) {
-  const m = String(g.ctx || '').match(/已走过的路：[\s\S]*$/)
+  const m = String(g.ctx || '').match(/^- 已走过的路：.*$/m)   // 生产原样拼在稿首的就是这一行；提示语「已走过的路不重走…」不进稿，别算进来
   storedReal = (m ? m[0].length : 0) + draft.length           // 生产把延续段原样拼在稿首
   const gate = handDraftGate(String(g.raw), draft, String(g.ctx))
   replayGreen = !!gate.ok; g2Unchanged = !!gate.ok; verdict = gate.verdict || (gate.ok ? 'gate-ok' : 'gate-rejected')
@@ -67,6 +67,10 @@ else if (!g2Unchanged && !pendFile) fails.push('G2 决策不变未通过')
 if (verdict === 'invented-anchors') fails.push('越界 lint：verdict=invented-anchors ⇒ 稿里有证据外锚点，那是银标不是金标')
 else if (inventedSpans) warns.push(`inventedSpans=${inventedSpans}（stored 逐字回显免检那一类，生产闸判过）`)
 const ev = String(g.raw) + '\n' + String(g.ctx)
+// 反引号片段逐字接地检查（生产闸真判这个 ⇒ 先自己查，省一次白跑）：new_text/协议词除外
+const ticks = [...draft.matchAll(/`([^`]+)`/g)].map((m) => m[1])
+const ungrounded = ticks.filter((x) => !ev.includes(x) && !/old_text|new_text/.test(x) && !/\{[^}]*\}/.test(x))
+if (ungrounded.length) fails.push('反引号片段不在证据里逐字出现（会被生产闸判 invented-identifier）⇒ ' + JSON.stringify(ungrounded.slice(0, 4)))
 const all = [...anchorsOf(draft)].filter((a) => !anchorsOf(ev).has(a))
 const inventedLocal = all.filter((a) => !/^[-+]?\d+(?:\.\d+)?$/.test(a))   // 纯数字多是 new_text 里的目标值（属"决定"，由 G2/newTextSpans 管）⇒ 只提示不判死
 if (all.length !== inventedLocal.length) warns.push('差集里的纯数字按 new_text 处理：' + JSON.stringify(all.filter((a) => !inventedLocal.includes(a))))
