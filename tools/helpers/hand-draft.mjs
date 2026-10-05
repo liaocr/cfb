@@ -123,10 +123,18 @@ export function slotsOf(text) {
  *   invented-decision  原文没有落定句（改法只落一个…），稿里却有
  *   ungrounded:<slot>  稿里某条落定 / 已排除 / 验收 / 未解句的锚点一个都不在原文 ∪ ctx 里（有锚点才查；无锚点的句子放过）
  */
+/** 「原文里有没有改法意图」的唯一口径（handDraftGate 与 tools/silver-shape.mjs 共用，防两处正则漂移）。
+ *  注意它决定的是「稿里能不能出现落点句」：原文没下决定时写出改法 = 替主模型下决定 = invented-decision。 */
+export const FIX_INTENT_RE = /(?:edit_file|str_replace|apply_patch|改法|改成|改为|改回|回滚|替换)|\b(?:Fix|the fix|proper fix|clean fix)\s*[:：]|\brevert\s+\w+\s+to\b|\blet me write the edits\b/i
+export function hasFixIntentIn(evidenceText, slots) {
+  const R = slots || slotsOf(evidenceText)
+  return R.decided.length > 0 || R.triples.length > 0 || FIX_INTENT_RE.test(evidenceText)
+}
+
 export function handDraftGate(raw, draft, ctx = '') {
   const R = slotsOf(String(raw) + '\n' + String(ctx)), D = slotsOf(draft)
   const rawCtxNorm = norm(String(raw) + '\n' + String(ctx))
-  const hasFixIntent = R.decided.length > 0 || R.triples.length > 0 || /(?:edit_file|str_replace|apply_patch|改法|改成|改为|改回|回滚|替换)|\b(?:Fix|the fix|proper fix|clean fix)\s*[:：]|\brevert\s+\w+\s+to\b|\blet me write the edits\b/i.test(String(raw) + '\n' + String(ctx))
+  const hasFixIntent = hasFixIntentIn(String(raw) + '\n' + String(ctx), R)
   const hay = anchorsOf(String(raw) + '\n' + String(ctx) + '\n' + programPartsText(ctx, { programParts: 'full' }) + '\n' + programPartsText(ctx, { programParts: 'compact' }))
   const violations = []
   const validTriple = (t) => R.triples.some((r) => r.oldText === t.oldText && r.newText === t.newText) ||
