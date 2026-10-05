@@ -1,4 +1,19 @@
 # Changelog — dsh-cot-form-b
+## v14.24.3（2026-10-06，M1：两个新家族的一次性盲测集，标签只从可执行 fixture 派生）
+
+**为什么**：晋级闸的三折 CV 与部署检查都能判，唯一必然 `blocked` 的是「一次性独立新 family 盲测」——仓库里没有合法盲测文件。造它，且不让我自己的观感进标签。
+
+**做了什么**
+- 新增 `tools/make-blind-test-dataset.mjs`：生成 `transfer/micro-blind/{encoding-mojibake,lock-contention}/<taskId>/`（`src/loader.cjs` + `src/repair.cjs` + 永不加载的 `src/loader.alt.cjs` + `test/run.cjs` + `data/sample.txt`），跑测试并从 `require.cache` 读「测试到底加载了什么」；标签完全由这些运行时事实派生（已加载=有锚点 MECHANISM/DECIDED，仅引用未加载文件=EXCLUDED，含 `node test/run.cjs`=ACCEPT，显式未确认=OPEN，无锚点复述=NOISE 不入集）。
+- 产物两份、每份**只含一个家族**（校验器与 Kaggle 脚本都硬要求单家族）：`micro-blindtest-{encoding-mojibake,lock-contention}-v1.json`，各 32 单元 / 12 排序对 / 端点复用实测 2（cap 2）/ `droppedUncertainUnits 4`；`holdoutTouched:false`、`finalBlind:true`、逐条 `semanticReview.status:"confirmed"` + `lineageReview`（`knownSourceIdsReviewed` 精确等于训练 sourceId 全集、`independentSourceIds` 与数据一致且零重叠）。
+- 编码 fixture 有个真坑值得记：mojibake 样本必须以 **latin1 落盘**，否则 `'Ã'` 会被再 UTF-8 编码一次 ⇒ 故障从"双重编码"变"三重损坏"，锚点不再成立。生成器用 `bugReproduced` 断言把这条钉住（不满足直接抛 `fixture-runtime-fact-unusable`）。
+- `stepSimpoPairs` 留空是设计：盲测只测单元排序，不测起草偏好；`draftPairsReviewed:0` 与分母自洽。
+- **只跑了 `--validate-dataset-only` 结构校验（0 错），没有打任何分数** —— 一次性盲测一旦在本轮被评分就作废。
+
+**检查**：两族 `dataset-structure-valid`（32/12/0，cap 2=maxDegree 2）；`node verify.mjs micro` 全部通过；工作区 0 脏、`manifest:check` 漂移 0。
+
+**下一轮**（仍未做，别当成已完成）：`tools/cfb-cycle.mjs` 飞轮写分的量纲混入（`:390` 用 `p.candidate` 原值，出现 `93|0` 这类字符数 ⇒ 触发构建器退化判定，draft pair 105/59→42/4），修法是写盘前 `Number.isFinite && 0≤x≤1`、不合格留 null 并计 `droppedUnscored`。
+
 ## v14.24.2（2026-10-06，微模型数据侧 M0：247 条 needs-review 逐条盲审 + 120 条规则负例复核）
 
 **为什么做**：Kaggle 训练线卡住的不是算力，是数据前提——542 个单元里 247 条被确定性规则丢进 `needs-review`（可训练 295/542），而 `transfer/models/unit-label-review-blind-v3.json` 根本不存在，文档里"标签审计完成"这句话就没资格写。API 通道不可用 ⇒ 走人工盲审。
