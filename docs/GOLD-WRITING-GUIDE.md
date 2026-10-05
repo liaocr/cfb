@@ -1,4 +1,7 @@
 # 金标撰写指引（标准流程与要求）
+> **本文是「怎么写」；判定「达没达标」以 `docs/GOLD-STANDARD.md` + `tools/helpers/gold-standard.mjs` 为唯一权威**（`node tools/gold-score.mjs` 可逐轴复算）。
+> 两文冲突时以 GOLD-STANDARD 为准，本文需随之修订。
+
 
 > 谁该读：任何要给 `transfer/gold/` 添条目、或要把一条轨迹的推理压成"金标稿"的人/模型。
 > 这份文档不是形式规范——形式规范在 `tools/silver-shape.mjs` 和闸链里。这里写的是**为什么**、

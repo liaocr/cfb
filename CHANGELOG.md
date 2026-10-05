@@ -1,4 +1,25 @@
 # Changelog — dsh-cot-form-b
+## v14.24.0（2026-10-05，把「金标水平」变成一把可复算的尺子：12 轴 + 逐字回放，顺手抓到我自己 5 处测量错误）
+
+**做了什么**
+- 新增 `tools/helpers/gold-standard.mjs`（`GOLD_STANDARD_VERSION=cfb.gold-standard/1`）：**达标 ⟺ 金标水平**的可量化等价定义 = 12 轴全过 ∧ 无漂移。
+  12 轴：M1 ratio≤.60（分母取较短那份原文）· M2 不劣于同格产线稿（缺读数=fail-closed 未测）· M3 闭合判读 · M4 窗内逐字命令+≥2 分支 · M5 接地（与生产 `invented-identifier` 同口径：token 级核 + 「…」引用可截断分段核）· M6 话术 clean · M7 G2 决策不变 · M8 改法句恰 1（`「…」`内引用免检、裸引思考流判缺）· E1 真机 rtf≤6（**从 `results.jsonl` 经 `episodeOutcome` 复算，自报不作数**）· E2 不输 raw · R1 溯源闭合 · R2 独立样本≥2。
+- 新增 `tools/gold-score.mjs`（批量/单条/`--pending --draft` 预判/`--json`/`--md`）与 `tools/gold-study.mjs`（把「怎么改是好的」做成 24 条分组的判别力统计，写 `.cfb-offline/ruler/gold-standard*.md`）。
+- `docs/GOLD-STANDARD.md`：每轴阈值+复算命令+为什么是这个数；R1 五件与三条漂移判据；**5 条量化共性**（含每条的过率与 n）。
+- `test/gold-standard.selftest.mjs` 79 条断言：每轴都有「恰好通过」与「恰好不通过」两个 fixture，外加 fail-closed、改稿即失分、副本 padding 撑长、n=1 不升格。已登记 `verify.mjs` ORDER。
+
+**尺子先量出的 5 个我自己的错（都已改，不藏）**
+1. R1/R2 把 `home` 指到注册表目录 ⇒ 溯源恒为 0；2. M8 误用 `slotsOf.decided` ⇒ 改法句恒为 0；3. 路径回退把 `pending/done/` 丢了一层 ⇒ 6 条被误判「缺草稿」；4. M5 原来要求反引号片段整段逐字 ⇒ 把 `改成 <新代码>` 这种指令判成编造（生产不这么判）；5. 用弱键 `task#s0` 索引轨迹 ⇒ 把 rtf=4 的格子错配到 rtf=7 的行。
+- 另修：`tools/gold-score.mjs` 一次 python 补丁把文件写成 0 字节 ⇒ 当场重写并跑通。
+
+**实测结论（`node tools/gold-score.mjs`，24 条 = 在册 13 + 隔离区 11）**
+- `gold 4 · provisional 0 · not-gold 20`；轴通过率 M1 23/24 · M2 24/24 · M3 18 · M4 16 · M5 20 · M6 18 · M7 24 · M8 8 · E1 7 · E2 23 · R1 8 · R2 15。
+- 4 条 gap=0：`sse-truncated-s0-r4` · `sse-truncated-s1-r3` · `wrong-model-s0-r6` · `wrong-model-s1-r5`——**恰好都是本轮没被我动过稿的那几条**。
+- 三条定律（都是计数，不是感想）：**改稿即失分**（原稿组 36% vs 改过稿组 0%）；**没台账不是金标**（可回放 50% vs 回放不起 0%）；**声明「只有一处」不等于只有一处**（写了声明 0% vs 没写 29% ⇒ 标准只数行不数话）。
+- 6 条在册条目只差 1–2 轴且**不能靠改稿补**：`wrong-model_decoy-s0-r4`/`wrong-model_long-horizon-s0-r4` 只差 R2（再独立跑一趟），`sse-truncated_decoy-s0-r4` 只差 E1+R1（台账稿与现稿不同 ⇒ 需重跑），4 条台账无 id 的（`eacces-config_decoy-s0-r3`/`perf-regression-s0-r6`/`sse-truncated-s0-r5`/`sse-truncated_decoy-s0-r3`）同理。
+
+**检查**：`node verify.mjs gold-standard` → 79/0；`npm run verify:offline` 见下行（全量套件）。
+
 
 ## v14.23.1（2026-10-05，一次性把 19 项推上上限线：**12/13 在册金标达线**，标尺侧 7 项且微模型一条都复现不了）
 

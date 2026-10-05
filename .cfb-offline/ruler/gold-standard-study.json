@@ -1,0 +1,2438 @@
+{
+  "schema": "cfb.gold-study/1",
+  "at": "2026-10-05T15:57:53.523Z",
+  "rows": [
+    {
+      "where": "gold",
+      "id": "eacces-config-s0-r5",
+      "pass": false,
+      "fails": [
+        "M8"
+      ],
+      "feats": {
+        "chars": 354,
+        "rawShare": 0.102,
+        "quoteN": 3,
+        "quoteGrounded": 3,
+        "quoteShare": 0.29,
+        "ticks": 1,
+        "narration": 0,
+        "fixLines": 0,
+        "declaresUnique": 0,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 4,
+        "banWords": 0,
+        "sandboxTalk": 2
+      },
+      "axes": {
+        "M1": {
+          "value": 0.1017,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M2": {
+          "value": 0.2145,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "1 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "改法句 0 条 · 排除 0 · 验收 1"
+        },
+        "E1": {
+          "value": 6,
+          "pass": true,
+          "gap": 0,
+          "note": "真机行 6 轮 · 修好即验 ✓（注册表自报 6 已弃用）"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "钉在 t98：真机 6 轮 · 编辑 2 处 · 生产闸 ok"
+        },
+        "R2": {
+          "value": 4,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        }
+      }
+    },
+    {
+      "where": "gold",
+      "id": "eacces-config_decoy-s0-r3",
+      "pass": false,
+      "fails": [
+        "M4",
+        "M8",
+        "E1",
+        "R1",
+        "R2"
+      ],
+      "feats": {
+        "chars": 966,
+        "rawShare": 0.332,
+        "quoteN": 0,
+        "quoteGrounded": 0,
+        "quoteShare": 0,
+        "ticks": 30,
+        "narration": 0,
+        "fixLines": 2,
+        "declaresUnique": 1,
+        "branches": 0,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 13,
+        "linesN": 5,
+        "banWords": 0,
+        "sandboxTalk": 1
+      },
+      "axes": {
+        "M1": {
+          "value": 0.3321,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M2": {
+          "value": 0.7185,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 0.5,
+          "pass": false,
+          "gap": 0.5,
+          "note": "13 个逐字命令片段 · 0 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "稿里没有需核实的符号/引用 ⇒ 无可核项"
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 2,
+          "pass": false,
+          "gap": 1,
+          "note": "改法句 2 条 · 排除 3 · 验收 3"
+        },
+        "E1": {
+          "value": 4,
+          "pass": false,
+          "gap": 0,
+          "note": "漂移：无真机结局行可回放 ⇒ rtf 只是自报 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.2,
+          "pass": false,
+          "gap": 0.8,
+          "note": "真机台账（hand-samples.jsonl）里没有 id=eacces-config_decoy-s0-r3 这一行 ⇒ 无法回放"
+        },
+        "R2": {
+          "value": 1,
+          "pass": false,
+          "gap": 0.5,
+          "note": "n=1 ⇒ provisional，不得当尺子用"
+        }
+      }
+    },
+    {
+      "where": "gold",
+      "id": "eacces-config_long-horizon-s0-r5",
+      "pass": false,
+      "fails": [
+        "M8",
+        "E1",
+        "R1",
+        "R2"
+      ],
+      "feats": {
+        "chars": 912,
+        "rawShare": 0.301,
+        "quoteN": 0,
+        "quoteGrounded": 0,
+        "quoteShare": 0,
+        "ticks": 33,
+        "narration": 0,
+        "fixLines": 0,
+        "declaresUnique": 0,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 8,
+        "banWords": 0,
+        "sandboxTalk": 2
+      },
+      "axes": {
+        "M1": {
+          "value": 0.3013,
+          "pass": true,
+          "gap": 0,
+          "note": "分母取较短那份（3027 字；注册表副本 3027／台账 5295）⇒ 副本被撑长时不许算超额压缩"
+        },
+        "M2": {
+          "value": 0.5805,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "1 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "稿里没有需核实的符号/引用 ⇒ 无可核项"
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "改法句 0 条 · 排除 2 · 验收 1"
+        },
+        "E1": {
+          "value": 6,
+          "pass": false,
+          "gap": 0,
+          "note": "漂移：draft≠台账所发(912/358 字) ⇒ 这轮的 4–6 轮分数是旧稿挣的 · raw 是两份文本(注册 3027/台账 5295 互不包含) · raw 长度与台账不符(注册 3027/台账 5295) ⇒ M1 已按台账算 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.8,
+          "pass": false,
+          "gap": 0.2,
+          "note": "缺 逐字对齐"
+        },
+        "R2": {
+          "value": 1,
+          "pass": false,
+          "gap": 0.5,
+          "note": "n=1 ⇒ provisional，不得当尺子用"
+        }
+      }
+    },
+    {
+      "where": "gold",
+      "id": "perf-regression-s0-r7",
+      "pass": false,
+      "fails": [
+        "M3",
+        "M4",
+        "M8",
+        "E1"
+      ],
+      "feats": {
+        "chars": 1236,
+        "rawShare": 0.301,
+        "quoteN": 1,
+        "quoteGrounded": 0,
+        "quoteShare": 0.05,
+        "ticks": 20,
+        "narration": 0,
+        "fixLines": 4,
+        "declaresUnique": 0,
+        "branches": 0,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 7,
+        "linesN": 7,
+        "banWords": 0,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.3006,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M2": {
+          "value": 0.7305,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": ""
+        },
+        "M4": {
+          "value": 0.5,
+          "pass": false,
+          "gap": 0.5,
+          "note": "6 个逐字命令片段 · 0 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 4,
+          "pass": false,
+          "gap": 3,
+          "note": "改法句 4 条 · 排除 2 · 验收 0"
+        },
+        "E1": {
+          "value": 9,
+          "pass": false,
+          "gap": 1,
+          "note": "真机行 9 轮 · 修好即验 ✓（注册表自报 9 已弃用）"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "钉在 t95：真机 9 轮 · 编辑 1 处 · 生产闸 ok"
+        },
+        "R2": {
+          "value": 10,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        }
+      }
+    },
+    {
+      "where": "gold",
+      "id": "sse-truncated-s0-r4",
+      "pass": true,
+      "fails": [],
+      "feats": {
+        "chars": 435,
+        "rawShare": 0.111,
+        "quoteN": 3,
+        "quoteGrounded": 1,
+        "quoteShare": 0.56,
+        "ticks": 1,
+        "narration": 0,
+        "fixLines": 1,
+        "declaresUnique": 0,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 4,
+        "banWords": 0,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.1112,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M2": {
+          "value": 0.2292,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "1 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "改法句 1 条 · 排除 0 · 验收 1"
+        },
+        "E1": {
+          "value": 4,
+          "pass": true,
+          "gap": 0,
+          "note": "真机行 4 轮 · 修好即验 ✓（注册表自报 4 已弃用）"
+        },
+        "E2": {
+          "value": "tie",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "钉在 t100-resume：真机 4 轮 · 编辑 4 处 · 生产闸 ok"
+        },
+        "R2": {
+          "value": 4,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        }
+      }
+    },
+    {
+      "where": "gold",
+      "id": "sse-truncated-s0-r5",
+      "pass": false,
+      "fails": [
+        "M4",
+        "M8",
+        "E1",
+        "R1"
+      ],
+      "feats": {
+        "chars": 1532,
+        "rawShare": 0.365,
+        "quoteN": 0,
+        "quoteGrounded": 0,
+        "quoteShare": 0,
+        "ticks": 12,
+        "narration": 0,
+        "fixLines": 3,
+        "declaresUnique": 0,
+        "branches": 0,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 3,
+        "linesN": 4,
+        "banWords": 0,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.3649,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M2": {
+          "value": 0.7237,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 0.5,
+          "pass": false,
+          "gap": 0.5,
+          "note": "3 个逐字命令片段 · 0 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "稿里没有需核实的符号/引用 ⇒ 无可核项"
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 3,
+          "pass": false,
+          "gap": 2,
+          "note": "改法句 3 条 · 排除 2 · 验收 4"
+        },
+        "E1": {
+          "value": 5,
+          "pass": false,
+          "gap": 0,
+          "note": "漂移：无真机结局行可回放 ⇒ rtf 只是自报 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "tie",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.2,
+          "pass": false,
+          "gap": 0.8,
+          "note": "真机台账（hand-samples.jsonl）里没有 id=sse-truncated-s0-r5 这一行 ⇒ 无法回放"
+        },
+        "R2": {
+          "value": 4,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        }
+      }
+    },
+    {
+      "where": "gold",
+      "id": "sse-truncated-s1-r3",
+      "pass": true,
+      "fails": [],
+      "feats": {
+        "chars": 405,
+        "rawShare": 0.11,
+        "quoteN": 3,
+        "quoteGrounded": 1,
+        "quoteShare": 0.5,
+        "ticks": 1,
+        "narration": 0,
+        "fixLines": 1,
+        "declaresUnique": 0,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 4,
+        "banWords": 0,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.1098,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M2": {
+          "value": 0.2288,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "1 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "改法句 1 条 · 排除 0 · 验收 1"
+        },
+        "E1": {
+          "value": 4,
+          "pass": true,
+          "gap": 0,
+          "note": "真机行 4 轮 · 修好即验 ✓（注册表自报 4 已弃用）"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "钉在 t100-resume：真机 4 轮 · 编辑 4 处 · 生产闸 ok"
+        },
+        "R2": {
+          "value": 4,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        }
+      }
+    },
+    {
+      "where": "gold",
+      "id": "sse-truncated_decoy-s0-r4",
+      "pass": false,
+      "fails": [
+        "E1",
+        "R1"
+      ],
+      "feats": {
+        "chars": 750,
+        "rawShare": 0.494,
+        "quoteN": 0,
+        "quoteGrounded": 0,
+        "quoteShare": 0,
+        "ticks": 23,
+        "narration": 0,
+        "fixLines": 1,
+        "declaresUnique": 1,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 7,
+        "linesN": 4,
+        "banWords": 0,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.4941,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M2": {
+          "value": 0.3792,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "7 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "稿里没有需核实的符号/引用 ⇒ 无可核项"
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "改法句 1 条 · 排除 1 · 验收 2"
+        },
+        "E1": {
+          "value": 5,
+          "pass": false,
+          "gap": 0,
+          "note": "漂移：draft≠台账所发(750/662 字) ⇒ 这轮的 4–6 轮分数是旧稿挣的 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "tie",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.8,
+          "pass": false,
+          "gap": 0.2,
+          "note": "缺 逐字对齐"
+        },
+        "R2": {
+          "value": 3,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        }
+      }
+    },
+    {
+      "where": "gold",
+      "id": "sse-truncated_long-horizon-s0-r5",
+      "pass": false,
+      "fails": [
+        "M8",
+        "E1",
+        "E2",
+        "R1",
+        "R2"
+      ],
+      "feats": {
+        "chars": 626,
+        "rawShare": 0.121,
+        "quoteN": 0,
+        "quoteGrounded": 0,
+        "quoteShare": 0,
+        "ticks": 16,
+        "narration": 0,
+        "fixLines": 0,
+        "declaresUnique": 0,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 6,
+        "banWords": 0,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.1233,
+          "pass": true,
+          "gap": 0,
+          "note": "分母取较短那份（5078 字；注册表副本 5195／台账 5078）⇒ 副本被撑长时不许算超额压缩"
+        },
+        "M2": {
+          "value": 0.2821,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "1 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "稿里没有需核实的符号/引用 ⇒ 无可核项"
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "改法句 0 条 · 排除 1 · 验收 1"
+        },
+        "E1": {
+          "value": 8,
+          "pass": false,
+          "gap": 1,
+          "note": "漂移：draft≠台账所发(626/409 字) ⇒ 这轮的 4–6 轮分数是旧稿挣的 · raw 是两份文本(注册 5195/台账 5078 互不包含) · raw 长度与台账不符(注册 5195/台账 5078) ⇒ M1 已按台账算 · outcome 自报 6 轮 / 真机 8 轮 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "tie",
+          "pass": false,
+          "gap": 1,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.8,
+          "pass": false,
+          "gap": 0.2,
+          "note": "缺 逐字对齐"
+        },
+        "R2": {
+          "value": 1,
+          "pass": false,
+          "gap": 0.5,
+          "note": "n=1 ⇒ provisional，不得当尺子用"
+        }
+      }
+    },
+    {
+      "where": "gold",
+      "id": "wrong-model-s0-r6",
+      "pass": true,
+      "fails": [],
+      "feats": {
+        "chars": 569,
+        "rawShare": 0.257,
+        "quoteN": 3,
+        "quoteGrounded": 2,
+        "quoteShare": 0.65,
+        "ticks": 1,
+        "narration": 0,
+        "fixLines": 1,
+        "declaresUnique": 0,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 4,
+        "banWords": 0,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.2571,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M2": {
+          "value": 0.3554,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "1 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "改法句 1 条 · 排除 0 · 验收 1"
+        },
+        "E1": {
+          "value": 6,
+          "pass": true,
+          "gap": 0,
+          "note": "真机行 6 轮 · 修好即验 ✓（注册表自报 6 已弃用）"
+        },
+        "E2": {
+          "value": "tie",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "钉在 t100-resume：真机 6 轮 · 编辑 2 处 · 生产闸 ok"
+        },
+        "R2": {
+          "value": 2,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        }
+      }
+    },
+    {
+      "where": "gold",
+      "id": "wrong-model-s1-r5",
+      "pass": true,
+      "fails": [],
+      "feats": {
+        "chars": 413,
+        "rawShare": 0.082,
+        "quoteN": 3,
+        "quoteGrounded": 1,
+        "quoteShare": 0.52,
+        "ticks": 1,
+        "narration": 0,
+        "fixLines": 1,
+        "declaresUnique": 0,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 4,
+        "banWords": 0,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.0822,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M2": {
+          "value": 0.2806,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "1 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "改法句 1 条 · 排除 0 · 验收 1"
+        },
+        "E1": {
+          "value": 6,
+          "pass": true,
+          "gap": 0,
+          "note": "真机行 6 轮 · 修好即验 ✓（注册表自报 6 已弃用）"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "钉在 t100-resume：真机 6 轮 · 编辑 1 处 · 生产闸 ok"
+        },
+        "R2": {
+          "value": 2,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        }
+      }
+    },
+    {
+      "where": "gold",
+      "id": "wrong-model_decoy-s0-r4",
+      "pass": false,
+      "fails": [
+        "R2"
+      ],
+      "feats": {
+        "chars": 375,
+        "rawShare": 0.261,
+        "quoteN": 2,
+        "quoteGrounded": 2,
+        "quoteShare": 0.5,
+        "ticks": 1,
+        "narration": 0,
+        "fixLines": 1,
+        "declaresUnique": 0,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 4,
+        "banWords": 0,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.2611,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M2": {
+          "value": 0.279,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "1 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "改法句 1 条 · 排除 0 · 验收 1"
+        },
+        "E1": {
+          "value": 4,
+          "pass": true,
+          "gap": 0,
+          "note": "真机行 4 轮 · 修好即验 ✓（注册表自报 4 已弃用）"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "钉在 t101：真机 4 轮 · 编辑 1 处 · 生产闸 ok"
+        },
+        "R2": {
+          "value": 1,
+          "pass": false,
+          "gap": 0.5,
+          "note": "n=1 ⇒ provisional，不得当尺子用"
+        }
+      }
+    },
+    {
+      "where": "gold",
+      "id": "wrong-model_long-horizon-s0-r4",
+      "pass": false,
+      "fails": [
+        "R2"
+      ],
+      "feats": {
+        "chars": 494,
+        "rawShare": 0.155,
+        "quoteN": 3,
+        "quoteGrounded": 2,
+        "quoteShare": 0.59,
+        "ticks": 1,
+        "narration": 0,
+        "fixLines": 1,
+        "declaresUnique": 0,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 4,
+        "banWords": 0,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.1551,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M2": {
+          "value": 0.3313,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "1 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "改法句 1 条 · 排除 0 · 验收 1"
+        },
+        "E1": {
+          "value": 5,
+          "pass": true,
+          "gap": 0,
+          "note": "真机行 5 轮 · 修好即验 ✓（注册表自报 5 已弃用）"
+        },
+        "E2": {
+          "value": "tie",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "钉在 t101：真机 5 轮 · 编辑 1 处 · 生产闸 ok"
+        },
+        "R2": {
+          "value": 1,
+          "pass": false,
+          "gap": 0.5,
+          "note": "n=1 ⇒ provisional，不得当尺子用"
+        }
+      }
+    },
+    {
+      "where": "gold-rejected",
+      "id": "eacces-config_decoy-s0-r3",
+      "pass": false,
+      "fails": [
+        "M5",
+        "M8",
+        "E1",
+        "R1",
+        "R2"
+      ],
+      "feats": {
+        "chars": 968,
+        "rawShare": 0.333,
+        "quoteN": 0,
+        "quoteGrounded": 0,
+        "quoteShare": 0,
+        "ticks": 30,
+        "narration": 0,
+        "fixLines": 2,
+        "declaresUnique": 1,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 5,
+        "banWords": 0,
+        "sandboxTalk": 1
+      },
+      "axes": {
+        "M1": {
+          "value": 0.3328,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M2": {
+          "value": 0.72,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "1 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "cated"
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 2,
+          "pass": false,
+          "gap": 1,
+          "note": "改法句 2 条 · 排除 3 · 验收 3"
+        },
+        "E1": {
+          "value": 4,
+          "pass": false,
+          "gap": 0,
+          "note": "漂移：无真机结局行可回放 ⇒ rtf 只是自报 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.2,
+          "pass": false,
+          "gap": 0.8,
+          "note": "真机台账（hand-samples.jsonl）里没有 id=eacces-config_decoy-s0-r3 这一行 ⇒ 无法回放"
+        },
+        "R2": {
+          "value": 1,
+          "pass": false,
+          "gap": 0.5,
+          "note": "n=1 ⇒ provisional，不得当尺子用"
+        }
+      }
+    },
+    {
+      "where": "gold-rejected",
+      "id": "eacces-config_long-horizon-s0-r5",
+      "pass": false,
+      "fails": [
+        "M8",
+        "E1",
+        "R1",
+        "R2"
+      ],
+      "feats": {
+        "chars": 912,
+        "rawShare": 0.301,
+        "quoteN": 0,
+        "quoteGrounded": 0,
+        "quoteShare": 0,
+        "ticks": 33,
+        "narration": 0,
+        "fixLines": 0,
+        "declaresUnique": 0,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 8,
+        "banWords": 0,
+        "sandboxTalk": 2
+      },
+      "axes": {
+        "M1": {
+          "value": 0.3013,
+          "pass": true,
+          "gap": 0,
+          "note": "分母取较短那份（3027 字；注册表副本 3027／台账 5295）⇒ 副本被撑长时不许算超额压缩"
+        },
+        "M2": {
+          "value": 0.5805,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "1 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "稿里没有需核实的符号/引用 ⇒ 无可核项"
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "改法句 0 条 · 排除 2 · 验收 1"
+        },
+        "E1": {
+          "value": 6,
+          "pass": false,
+          "gap": 0,
+          "note": "漂移：draft≠台账所发(912/358 字) ⇒ 这轮的 4–6 轮分数是旧稿挣的 · raw 是两份文本(注册 3027/台账 5295 互不包含) · raw 长度与台账不符(注册 3027/台账 5295) ⇒ M1 已按台账算 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.8,
+          "pass": false,
+          "gap": 0.2,
+          "note": "缺 逐字对齐"
+        },
+        "R2": {
+          "value": 1,
+          "pass": false,
+          "gap": 0.5,
+          "note": "n=1 ⇒ provisional，不得当尺子用"
+        }
+      }
+    },
+    {
+      "where": "gold-rejected",
+      "id": "flaky-timeout-s0-r4",
+      "pass": false,
+      "fails": [
+        "M3",
+        "M4",
+        "M6",
+        "M8",
+        "E1",
+        "R1"
+      ],
+      "feats": {
+        "chars": 1361,
+        "rawShare": 0.047,
+        "quoteN": 0,
+        "quoteGrounded": 0,
+        "quoteShare": 0,
+        "ticks": 10,
+        "narration": 0,
+        "fixLines": 2,
+        "declaresUnique": 1,
+        "branches": 0,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 3,
+        "banWords": 1,
+        "sandboxTalk": 6
+      },
+      "axes": {
+        "M1": {
+          "value": 0.2671,
+          "pass": true,
+          "gap": 0,
+          "note": "分母取较短那份（5096 字；注册表副本 28774／台账 5096）⇒ 副本被撑长时不许算超额压缩"
+        },
+        "M2": {
+          "value": 0.9728,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": ""
+        },
+        "M4": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "窗内没有逐字存在的命令"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "稿里没有需核实的符号/引用 ⇒ 无可核项"
+        },
+        "M6": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "environment-permission-assertion+experiment-round-or-budget-control+executor-tool-or-check-prohibition（稿3/存3）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 2,
+          "pass": false,
+          "gap": 1,
+          "note": "改法句 2 条 · 排除 2 · 验收 2"
+        },
+        "E1": {
+          "value": 5,
+          "pass": false,
+          "gap": 0,
+          "note": "漂移：draft≠台账所发(1361/1094 字) ⇒ 这轮的 4–6 轮分数是旧稿挣的 · raw 是两份文本(注册 28774/台账 5096 互不包含) · raw 长度与台账不符(注册 28774/台账 5096) ⇒ M1 已按台账算 · 无真机结局行可回放 ⇒ rtf 只是自报 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.6,
+          "pass": false,
+          "gap": 0.4,
+          "note": "缺 逐字对齐/结局行"
+        },
+        "R2": {
+          "value": 7,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        }
+      }
+    },
+    {
+      "where": "gold-rejected",
+      "id": "flaky-timeout-s0-r5",
+      "pass": false,
+      "fails": [
+        "M3",
+        "M4",
+        "M6",
+        "M8",
+        "E1",
+        "R1"
+      ],
+      "feats": {
+        "chars": 1589,
+        "rawShare": 0.143,
+        "quoteN": 0,
+        "quoteGrounded": 0,
+        "quoteShare": 0,
+        "ticks": 13,
+        "narration": 0,
+        "fixLines": 2,
+        "declaresUnique": 1,
+        "branches": 0,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 3,
+        "linesN": 4,
+        "banWords": 1,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.1433,
+          "pass": true,
+          "gap": 0,
+          "note": "分母取较短那份（11086 字；注册表副本 11086／台账 29547）⇒ 副本被撑长时不许算超额压缩"
+        },
+        "M2": {
+          "value": 0.6676,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": ""
+        },
+        "M4": {
+          "value": 0.5,
+          "pass": false,
+          "gap": 0.5,
+          "note": "3 个逐字命令片段 · 0 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "稿里没有需核实的符号/引用 ⇒ 无可核项"
+        },
+        "M6": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "experiment-round-or-budget-control+executor-tool-or-check-prohibition（稿2/存2）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 2,
+          "pass": false,
+          "gap": 1,
+          "note": "改法句 2 条 · 排除 2 · 验收 4"
+        },
+        "E1": {
+          "value": 7,
+          "pass": false,
+          "gap": 1,
+          "note": "漂移：draft≠台账所发(1589/419 字) ⇒ 这轮的 4–6 轮分数是旧稿挣的 · raw 是两份文本(注册 11086/台账 29547 互不包含) · raw 长度与台账不符(注册 11086/台账 29547) ⇒ M1 已按台账算 · outcome 自报 6 轮 / 真机 7 轮 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.8,
+          "pass": false,
+          "gap": 0.2,
+          "note": "缺 逐字对齐"
+        },
+        "R2": {
+          "value": 7,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        }
+      }
+    },
+    {
+      "where": "gold-rejected",
+      "id": "flaky-timeout_long-horizon-s0-r4",
+      "pass": false,
+      "fails": [
+        "M3",
+        "M4",
+        "M5",
+        "M6",
+        "M8",
+        "E1",
+        "R1"
+      ],
+      "feats": {
+        "chars": 1554,
+        "rawShare": 0.079,
+        "quoteN": 1,
+        "quoteGrounded": 0,
+        "quoteShare": 0.02,
+        "ticks": 46,
+        "narration": 0,
+        "fixLines": 2,
+        "declaresUnique": 1,
+        "branches": 0,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 6,
+        "linesN": 5,
+        "banWords": 2,
+        "sandboxTalk": 2
+      },
+      "axes": {
+        "M1": {
+          "value": 0.1474,
+          "pass": true,
+          "gap": 0,
+          "note": "分母取较短那份（10542 字；注册表副本 19626／台账 10542）⇒ 副本被撑长时不许算超额压缩"
+        },
+        "M2": {
+          "value": 0.9499,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": ""
+        },
+        "M4": {
+          "value": 0.5,
+          "pass": false,
+          "gap": 0.5,
+          "note": "2 个逐字命令片段 · 0 个分支"
+        },
+        "M5": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "hedge.selftest, 伪引:本地 16 核从不失败、CI 2 核每 "
+        },
+        "M6": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "environment-permission-assertion+experiment-round-or-budget-control（稿2/存1）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 2,
+          "pass": false,
+          "gap": 1,
+          "note": "改法句 2 条 · 排除 2 · 验收 2"
+        },
+        "E1": {
+          "value": 7,
+          "pass": false,
+          "gap": 1,
+          "note": "漂移：draft≠台账所发(1554/1544 字) ⇒ 这轮的 4–6 轮分数是旧稿挣的 · raw 是两份文本(注册 19626/台账 10542 互不包含) · raw 长度与台账不符(注册 19626/台账 10542) ⇒ M1 已按台账算 · 无真机结局行可回放 ⇒ rtf 只是自报 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.6,
+          "pass": false,
+          "gap": 0.4,
+          "note": "缺 逐字对齐/结局行"
+        },
+        "R2": {
+          "value": 2,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        }
+      }
+    },
+    {
+      "where": "gold-rejected",
+      "id": "flaky-timeout-s0-r3",
+      "pass": false,
+      "fails": [
+        "M3",
+        "M4",
+        "M5",
+        "M6",
+        "M8",
+        "E1",
+        "R1"
+      ],
+      "feats": {
+        "chars": 1198,
+        "rawShare": 0.058,
+        "quoteN": 0,
+        "quoteGrounded": 0,
+        "quoteShare": 0,
+        "ticks": 7,
+        "narration": 0,
+        "fixLines": 3,
+        "declaresUnique": 1,
+        "branches": 0,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 0,
+        "linesN": 5,
+        "banWords": 0,
+        "sandboxTalk": 2
+      },
+      "axes": {
+        "M1": {
+          "value": 0.1609,
+          "pass": true,
+          "gap": 0,
+          "note": "分母取较短那份（7447 字；注册表副本 20773／台账 7447）⇒ 副本被撑长时不许算超额压缩"
+        },
+        "M2": {
+          "value": 0.8502,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": ""
+        },
+        "M4": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "窗内没有逐字存在的命令"
+        },
+        "M5": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "taskset, URL, reject"
+        },
+        "M6": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "environment-permission-assertion+executor-tool-or-check-prohibition（稿2/存2）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 3,
+          "pass": false,
+          "gap": 2,
+          "note": "改法句 3 条 · 排除 2 · 验收 4"
+        },
+        "E1": {
+          "value": 8,
+          "pass": false,
+          "gap": 1,
+          "note": "漂移：draft≠台账所发(1198/1128 字) ⇒ 这轮的 4–6 轮分数是旧稿挣的 · raw 是两份文本(注册 20773/台账 7447 互不包含) · raw 长度与台账不符(注册 20773/台账 7447) ⇒ M1 已按台账算 · outcome 自报 5 轮 / 真机 8 轮 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.8,
+          "pass": false,
+          "gap": 0.2,
+          "note": "缺 逐字对齐"
+        },
+        "R2": {
+          "value": 7,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        }
+      }
+    },
+    {
+      "where": "gold-rejected",
+      "id": "perf-regression-s0-r6",
+      "pass": false,
+      "fails": [
+        "M3",
+        "M4",
+        "M5",
+        "M6",
+        "M8",
+        "E1",
+        "R1"
+      ],
+      "feats": {
+        "chars": 1704,
+        "rawShare": 0.414,
+        "quoteN": 0,
+        "quoteGrounded": 0,
+        "quoteShare": 0,
+        "ticks": 3,
+        "narration": 0,
+        "fixLines": 3,
+        "declaresUnique": 1,
+        "branches": 0,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 4,
+        "banWords": 0,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.4143,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M2": {
+          "value": 0.9509,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": ""
+        },
+        "M4": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "窗内没有逐字存在的命令"
+        },
+        "M5": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "DEFAULTS"
+        },
+        "M6": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "experiment-round-or-budget-control（稿1/存1）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 3,
+          "pass": false,
+          "gap": 2,
+          "note": "改法句 3 条 · 排除 3 · 验收 4"
+        },
+        "E1": {
+          "value": 7,
+          "pass": false,
+          "gap": 1,
+          "note": "漂移：无真机结局行可回放 ⇒ rtf 只是自报 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.2,
+          "pass": false,
+          "gap": 0.8,
+          "note": "真机台账（hand-samples.jsonl）里没有 id=perf-regression-s0-r6 这一行 ⇒ 无法回放"
+        },
+        "R2": {
+          "value": 10,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        }
+      }
+    },
+    {
+      "where": "gold-rejected",
+      "id": "sse-truncated-s0-r5",
+      "pass": false,
+      "fails": [
+        "M8",
+        "E1",
+        "R1"
+      ],
+      "feats": {
+        "chars": 1548,
+        "rawShare": 0.369,
+        "quoteN": 0,
+        "quoteGrounded": 0,
+        "quoteShare": 0,
+        "ticks": 12,
+        "narration": 0,
+        "fixLines": 3,
+        "declaresUnique": 0,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 4,
+        "banWords": 0,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.3687,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M2": {
+          "value": 0.7312,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "1 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "稿里没有需核实的符号/引用 ⇒ 无可核项"
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 3,
+          "pass": false,
+          "gap": 2,
+          "note": "改法句 3 条 · 排除 2 · 验收 4"
+        },
+        "E1": {
+          "value": 5,
+          "pass": false,
+          "gap": 0,
+          "note": "漂移：无真机结局行可回放 ⇒ rtf 只是自报 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "tie",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.2,
+          "pass": false,
+          "gap": 0.8,
+          "note": "真机台账（hand-samples.jsonl）里没有 id=sse-truncated-s0-r5 这一行 ⇒ 无法回放"
+        },
+        "R2": {
+          "value": 4,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        }
+      }
+    },
+    {
+      "where": "gold-rejected",
+      "id": "sse-truncated_decoy-s0-r3",
+      "pass": false,
+      "fails": [
+        "M6",
+        "M8",
+        "E1",
+        "R1"
+      ],
+      "feats": {
+        "chars": 383,
+        "rawShare": 0.114,
+        "quoteN": 0,
+        "quoteGrounded": 0,
+        "quoteShare": 0,
+        "ticks": 14,
+        "narration": 0,
+        "fixLines": 0,
+        "declaresUnique": 0,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 2,
+        "banWords": 0,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.1141,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M2": {
+          "value": 0.2048,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "1 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "稿里没有需核实的符号/引用 ⇒ 无可核项"
+        },
+        "M6": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "experiment-round-or-budget-control（稿0/存1）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 0,
+          "pass": false,
+          "gap": 1,
+          "note": "改法句 0 条 · 排除 0 · 验收 1"
+        },
+        "E1": {
+          "value": 4,
+          "pass": false,
+          "gap": 0,
+          "note": "漂移：无真机结局行可回放 ⇒ rtf 只是自报 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.2,
+          "pass": false,
+          "gap": 0.8,
+          "note": "真机台账（hand-samples.jsonl）里没有 id=sse-truncated_decoy-s0-r3 这一行 ⇒ 无法回放"
+        },
+        "R2": {
+          "value": 3,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        }
+      }
+    },
+    {
+      "where": "gold-rejected",
+      "id": "wrong-model_decoy-s0-r4",
+      "pass": false,
+      "fails": [
+        "M1",
+        "M8",
+        "E1",
+        "R1",
+        "R2"
+      ],
+      "feats": {
+        "chars": 908,
+        "rawShare": 0.508,
+        "quoteN": 0,
+        "quoteGrounded": 0,
+        "quoteShare": 0,
+        "ticks": 29,
+        "narration": 0,
+        "fixLines": 2,
+        "declaresUnique": 1,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 5,
+        "banWords": 0,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.6316,
+          "pass": false,
+          "gap": 0.0527,
+          "note": "分母取较短那份（1436 字；注册表副本 1787／台账 1436）⇒ 副本被撑长时不许算超额压缩"
+        },
+        "M2": {
+          "value": 0.6749,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "1 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "稿里没有需核实的符号/引用 ⇒ 无可核项"
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 2,
+          "pass": false,
+          "gap": 1,
+          "note": "改法句 2 条 · 排除 3 · 验收 3"
+        },
+        "E1": {
+          "value": 4,
+          "pass": false,
+          "gap": 0,
+          "note": "漂移：draft≠台账所发(907/375 字) ⇒ 这轮的 4–6 轮分数是旧稿挣的 · raw 是两份文本(注册 1787/台账 1436 互不包含) · raw 长度与台账不符(注册 1787/台账 1436) ⇒ M1 已按台账算 · outcome 自报 5 轮 / 真机 4 轮 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "win",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.8,
+          "pass": false,
+          "gap": 0.2,
+          "note": "缺 逐字对齐"
+        },
+        "R2": {
+          "value": 1,
+          "pass": false,
+          "gap": 0.5,
+          "note": "n=1 ⇒ provisional，不得当尺子用"
+        }
+      }
+    },
+    {
+      "where": "gold-rejected",
+      "id": "wrong-model_long-horizon-s0-r4",
+      "pass": false,
+      "fails": [
+        "E1",
+        "R1",
+        "R2"
+      ],
+      "feats": {
+        "chars": 1288,
+        "rawShare": 0.278,
+        "quoteN": 0,
+        "quoteGrounded": 0,
+        "quoteShare": 0,
+        "ticks": 45,
+        "narration": 0,
+        "fixLines": 1,
+        "declaresUnique": 1,
+        "branches": 2,
+        "hasAcceptWord": 1,
+        "cmdInWindow": 1,
+        "linesN": 9,
+        "banWords": 0,
+        "sandboxTalk": 0
+      },
+      "axes": {
+        "M1": {
+          "value": 0.4044,
+          "pass": true,
+          "gap": 0,
+          "note": "分母取较短那份（3185 字；注册表副本 4631／台账 3185）⇒ 副本被撑长时不许算超额压缩"
+        },
+        "M2": {
+          "value": 0.8638,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M3": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "M4": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "1 个逐字命令片段 · 2 个分支"
+        },
+        "M5": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "稿里没有需核实的符号/引用 ⇒ 无可核项"
+        },
+        "M6": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "（稿0/存0）"
+        },
+        "M7": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "gate-ok"
+        },
+        "M8": {
+          "value": 1,
+          "pass": true,
+          "gap": 0,
+          "note": "改法句 1 条 · 排除 2 · 验收 1"
+        },
+        "E1": {
+          "value": 5,
+          "pass": false,
+          "gap": 0,
+          "note": "漂移：draft≠台账所发(1288/494 字) ⇒ 这轮的 4–6 轮分数是旧稿挣的 · raw 是两份文本(注册 4631/台账 3185 互不包含) · raw 长度与台账不符(注册 4631/台账 3185) ⇒ M1 已按台账算 ⇒ 分数不属于这份稿"
+        },
+        "E2": {
+          "value": "tie",
+          "pass": true,
+          "gap": 0,
+          "note": ""
+        },
+        "R1": {
+          "value": 0.8,
+          "pass": false,
+          "gap": 0.2,
+          "note": "缺 逐字对齐"
+        },
+        "R2": {
+          "value": 1,
+          "pass": false,
+          "gap": 0.5,
+          "note": "n=1 ⇒ provisional，不得当尺子用"
+        }
+      }
+    }
+  ]
+}
