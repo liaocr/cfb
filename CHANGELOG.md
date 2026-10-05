@@ -1,4 +1,17 @@
 # Changelog — dsh-cot-form-b
+## v14.24.2（2026-10-06，微模型数据侧 M0：247 条 needs-review 逐条盲审 + 120 条规则负例复核）
+
+**为什么做**：Kaggle 训练线卡住的不是算力，是数据前提——542 个单元里 247 条被确定性规则丢进 `needs-review`（可训练 295/542），而 `transfer/models/unit-label-review-blind-v3.json` 根本不存在，文档里"标签审计完成"这句话就没资格写。API 通道不可用 ⇒ 走人工盲审。
+
+**做了什么**
+- 新增 `tools/review-unit-labels-manual.mjs`：`tools/review-unit-labels.mjs` 的人工孪生（那份硬依赖付费 LLM，缺 key 直接 exit 2）。**同协议同 schema**（`blind-unit-label-v3` / `cfb.unit-label-review/2`），工作表只给 family/文档/位置/正文——规则槽位、目标值、旗标、规则名一律不进表，防止审核者被规则锚定。子命令 `dump | print | apply`，量表逐字照抄 v3 协议。
+- 审了多少：**348 条**（247 条 needs-review 里 245 条 + 103 条原判 NOISE 的负例复核）。抽样先行：从未审负例里按 `sha256(seed+id)` 确定性抽 15 条，误标 2 条 = **13.3%** ⇒ 超阈值 ⇒ 按纪律整批复核（不靠"看起来没问题"）。
+- 结果（构建器实测）：可训练单元 **295 → 538**（needs-review 247 → 4），`relabeledByReview 341`、`promotedToEligible 243`、`noiseYValClamped 21`（NOISE 的 yVal 一律压到 ≤0.10）、`lowConfidenceKeptRuleLabel 7`（我标 low 的不回灌）、`digestMismatchSkipped 0`；unit pair 424 → 536。
+- 我给自己记一笔：**第一版 apply 用「数据集 sha 相同」当继承闸**，而回灌本身会改变数据集 ⇒ 一次 apply 把已完成的 245 条整批判废。改成「单元 digest 是否仍存活」后重建，旧判定正确继承、改正文的单元自动丢弃。这个坑写成了 `test/micro-label-review.selftest.mjs`（5 组断言，已登记 `verify.mjs` ORDER）。
+- 溯源如实记在审核文件里：`reviewer: arena-agent（人工逐条盲读；非生产模型、非规则复述）`、`reviewerKind: blind-human-agent-no-rule-suggestions`——不冒充独立 LLM，也不冒充人工语义审校的第三方。
+
+**检查**：`node verify.mjs micro` 3 套 32 通过 / 0 失败；`npm run verify:offline` → **1186 通过 / 0 失败 / 1 跳过（39/39 套件）**；`npm run manifest:check` → 469 个文件、漂移 0。
+
 ## v14.24.1（2026-10-06，把尺子的结论盖进条目：下游改读「章」；顺手抓到一条会自己翻成 gold 的假证据）
 
 **为什么做**：v14.24.0 的尺子只活在命令行里 —— 工具链仍在读 `use` 字段和注册当时的 `ceiling.ok`，那两个都会随改稿过期 ⇒ 「被判 not-gold 的稿」照样进标尺池、照样当比对靶。
