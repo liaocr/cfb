@@ -5,7 +5,7 @@
 - 水位：24 条中 **gold 4**（`sse-truncated-s0-r4`、`sse-truncated-s1-r3`、`wrong-model-s0-r6`、`wrong-model-s1-r5`），not-gold 20；轴通过率 M8 8/24 · E1 7/24 · R1 8/24 · R2 15/24。
 - 定律一（改稿即失分）⇒ 差额**不能靠改稿补**，只能重跑那一格。
 - 通道现状：`upstream-no-reasoning`（连续 3 次）会让 `traj-run` 停机（t102 已实测，2 行错误记录）。
-- 模式 2 靶子现状：微模型 `train-v5-micro --eval-only` 七项 `G1✓G2✓ prec=1` 但 **closeCount 0/7**；`plan-bench --dry` 显示 dev 侧金标 2 条。
+- 模式 2 靶子现状：微模型 `node tools/train-v5-micro.mjs --eval-only` 七项 `G1✓G2✓ prec=1` 但 **closeCount 0/7**；`node tools/cfb-cycle.mjs plan-bench --dry` 报「策略 base × 金标 2（dev）= 2 次压缩 ≈ $0.015」。
 
 目标顺序沿用你的排法：**① 模式 2 侧模型银标稳定达金标水平 → ② 模式 3 真机证明 → ③ 银标扩量 → ④ 喂微模型**。下面每一段都只服务其中一件事。
 
@@ -38,7 +38,7 @@
   2. `sse-truncated_decoy-s0-r4` —— 只差 **E1+R1**：现注册稿 750 字 ≠ 台账所发 662 字 ⇒ 用现稿重跑该格，跑完即自动对齐。
   3. `eacces-config-s0-r5` —— 只差 **M8**：先把稿改成「改法句恰 1 条」当**候选稿**，然后跑那一格（跑完才有资格用）。
   4. `eacces-config_decoy-s0-r3`/`sse-truncated-s0-r5`/`sse-truncated_decoy-s0-r3`/`perf-regression-s0-r6` —— 台账无 id：跑完按新 id 正常入册，旧条目 `use:'train'` 保留不删。
-- 判据：`gold-score` 里 **每个家族 ≥2 条 gold 且 R2 全过**；`gold-vs-line` 有新读数（M2 不再未测）；每条都带趟名，无「自报」。
+- 判据：`gold-score` 里 **每个家族 ≥2 条 gold 且 R2 全过**；`node tools/gold-vs-line.mjs` 有新读数（M2 不再未测）；每条都带趟名，无「自报」。
 - 失败回退：任一格没过闸 ⇒ 该格只登记 `use:'train'`，不进标尺池；**不删数据、不改阈值凑数**。
 
 ## P3 · 一次花钱买两个目标：`auto` 臂上尺（≤$1）
@@ -52,13 +52,13 @@
 ## P4 · 微模型只喂达标的（$0 训练 + 本地评估）
 
 - 教师料按 `margin` 分层：margin≥0.7 的 gold 做示范对，0.4–0.7 做偏好对的「优」侧，<0.4 不进训练。
-- 判据：`train-v5-micro --eval-only` 的 **closeCount 从 0/7 起先到 ≥3/7**，且 `prec=1` 不退；到不了就先回 P0 看银标缺口，别扩数据量（你要的是质量先于数量）。
-- `build-micro-dataset` 的 `gold-overlap` 口径改为「按 `goldStandard.status`」，`open/no-slot-cue` 计数进 CHANGELOG 当回归哨兵。
+- 判据：`node tools/train-v5-micro.mjs --eval-only` 的 **closeCount 从 0/7 起先到 ≥3/7**，且 `prec=1` 不退；到不了就先回 P0 看银标缺口，别扩数据量（你要的是质量先于数量）。
+- `node tools/build-micro-dataset.mjs` 的 `gold-overlap` 口径改为「按 `goldStandard.status`」，`open/no-slot-cue` 计数进 CHANGELOG 当回归哨兵。
 
 ## P5 · 银标扩量 → 反哺微模型（你的目标 ③④）
 
 - 只在 P3 达标后启动：同家族 × 多样本 × decoy/long-horizon 矩阵扩跑；每批先 `silver-score` 判缺口再谈注册。
-- 每批硬指标：批内 gold 级比例、rtf 分布、vsRaw 胜率、成本/条；`plan-bench` 的预算先行（`--dry` 出「≈$X」才开跑）。
+- 每批硬指标：批内 gold 级比例、rtf 分布、vsRaw 胜率、成本/条；`node tools/cfb-cycle.mjs plan-bench --dry` 的预算先行（出「≈$X」才开跑）。
 
 ---
 
