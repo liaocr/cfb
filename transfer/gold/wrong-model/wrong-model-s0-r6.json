@@ -1,0 +1,85 @@
+{
+  "schema": "cfb.gold/1",
+  "id": "wrong-model-s0-r6",
+  "family": "wrong-model",
+  "task": "wrong-model",
+  "sample": 0,
+  "round": 6,
+  "plan": null,
+  "split": "holdout",
+  "at": "2026-10-05T12:54:04.626Z",
+  "raw": "Confirmed: compiler-transport-started model is deepseek-v3.1 (stale) instead of deepseek-v3.2.\n\nRoot cause: `lastModel` is module-level state shared and never reset; session 2 passes options.model undefined so `lastModel` stays at session-1's model. Also it's global across plugin instances.\n\nFix: host-follow should observe the current normalized request `n.model` as the source of truth, using options.model only as fallback for old hosts. Let me rewrite host-follow.js:\n\n- observe(options, n): model = (n && n.model) || (options && options.model) || null; store as lastModel (per-instance).\n- Also the module-level variable should be per-instance to avoid cross-instance leak.\n\nBut note the self-test: `host.observe({ model: 'deepseek-v3.1' })` then `host.callConfig({}).model` must be 'deepseek-v3.1'. With per-instance lastModel and observe(options, n) where n undefined -> fallback to options.model. Good.\n\nFor session 2: observe(options={stream:true}, n={seq:12,model:'deepseek-v3.2'}) -> lastModel='deepseek-v3.2'. callConfig -> model 'deepseek-v3.2'. Good.\n\nBut careful: callConfig(options) receives options; maybe should also consider options.model priority? The spec: current session model = n.model; old host passes options.model. Acceptance: compiler-transport-started model == n.model, and old host with options.model also correct. So prefer n.model if present, else options.model, else cfg.model.\n\nLet me also make it per-instance (remove module-level let).\n\nLet me write the fix.\n\nShould callConfig take n? plugin calls host.callConfig(options) without n. But observe stores state. That's fine as long as observe is called before callConfig, which it is. But relying on stored state per-request is fine since observe is called each request with current n.\n\nBetter design: make callConfig accept (options, n) so it doesn't depend on order, but plugin calls with options only. I can update plugin to pass n too. Let's make it robust: callConfig(options, n) where model = (n && n.model) || (options && options.model) || lastModel || cfg.model. Keep lastModel per-instance for self-test compatibility.\n\nLet me update plugin to call host.callConfig(options, n) too. And keep observe.\n\nLet me implement.",
+  "ctx": "用户报告：插件压缩用的模型不是当前会话的模型，而是上一次会话的模型。用户给的 trace 片段在 trace/last.log。可用 `node scripts/smoke-session.mjs` 复现（模拟两次会话，写 trace/trace.log 并打印最后几行）。请找出原因并修好，修好后说明依据。验收：压缩那一跳（trace 里 compiler-transport-started 的 model）必须等于当前会话的模型（n.model），旧宿主仍传 options.model 时也要对。\n\n【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）\n- 已走过的路：（共 7 条调用，详见下方【延续段】；曾涉 trace/last.log dev/null scripts/smoke-session.mjs README.md package.json src/ test/ src/plugin.js host-follow.js src/host-follow.js src/birth.js src/transport.js test/host-follow.selftest.mjs verify.mjs llm-stream deepseek-v3.2）\n\n【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）\n仍在依赖的事实：`still holds session-1's model 'deepseek-v3.1'. The fix: prefer current session's model`——第 5 轮稿里逐字引用的行，本轮输出里不会再出现，出处仍有效。已走过的路：第 1–3 轮已跑 5 条：bash×5（ls×3、cat×2）（曾涉 trace/last.log、scripts/smoke-session.mjs、README.md、package.json、src/plugin.js、./host-follow.js）；第 4 轮 bash `cat src/host-follow.js; echo ---; cat src/birth.js; echo ---; cat src/transport.js; echo ---; cat…` → 「$ cat src/host-follow.js」；第 5 轮 bash `node scripts/smoke-session.mjs` → 「[llm-stream] {\"n\":12,\"model\":\"…」；这些不再重跑，除非中间改过东西。",
+  "calls": [
+    {
+      "name": "edit_file",
+      "args": "{\"path\": \"src/host-follow.js\", \"old_text\": \"// 跟随宿主：记住宿主最近一次用的模型，压缩那一跳沿用它（避免副模型与会话模型不一致）\\nlet lastModel = null\\n\\nexport function makeHostFollow(cfg) {\\n  return {\\n    observe(options) { if (options && options.model) lastModel = options.model },\\n    callConfig(options) { return { ...cfg, model: lastModel || cfg.model } },\\n  }\\n}\", \"new_text\": \"// 跟随宿主：压缩那一跳沿用「当前会话」的模型（避免副模型与会话模型不一致）\\n//\\n// 模型来源优先级：\\n//   1. n.model —— 当前会话归一化请求里的模型（宿主 0.9+ 的唯一来源，每次请求都带）\\n//   2. options.model —— 旧宿主（0.8）仍会在请求选项里传的模型\\n//   3. cfg.model —— 兜底\\n//\\n// 注意：这里的状态必须是「每个插件实例一份」，且每次 observe 都用当前请求覆盖，\\n// 不能是模块级变量，否则会把上一次会话的模型泄漏到下一次会话。\\nexport function makeHostFollow(cfg) {\\n  let currentModel = null\\n  return {\\n    observe(options, n) {\\n      const model = (n && n.model) || (options && options.model)\\n      if (model) currentModel = model\\n    },\\n    callConfig(options, n) {\\n      const model = (n && n.model) || (options && options.model) || currentModel || cfg.model\\n      return { ...cfg, model }\\n    },\\n  }\\n}\"}"
+    },
+    {
+      "name": "edit_file",
+      "args": "{\"path\": \"src/plugin.js\", \"old_text\": \"      host.observe(options, n)\\n      const callCfg = host.callConfig(options)\", \"new_text\": \"      host.observe(options, n)\\n      const callCfg = host.callConfig(options, n)\"}"
+    }
+  ],
+  "draft": "已落定的决定（原文逐字）：「Fix: host-follow should observe the current normalized request n.model as the source of truth, using options.model only as fallback for old hosts.」\n\n落点：host-follow.js（只动这一处；其余路径原文已自证不必动：「Better design: make callConfig accept (options, n) so it doesn't depend on order, but plugin calls with options only.」）\n\n原文还悬着这句，但它不阻塞落 edit：「For session 2: observe(options={stream:true}, n={seq:12,model:'deepseek-v3.2'}) -> lastModel='deepseek-v3.2'.」\n\n验收：跑 `node scripts/smoke-session.mjs`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 host-follow.js 继续查，不要改测试聚合方式。",
+  "stored": "仍在依赖的事实：`still holds session-1's model 'deepseek-v3.1'. The fix: prefer current session's model`（第 5 轮引，出处有效）。已走过的路：第 1–3 轮已跑 5 条：bash×5（ls×3、cat×2）（曾涉 trace/last.log、scripts/smoke-session.mjs、README.md、package.json、src/plugin.js、./host-follow.js）；第 4 轮 bash `cat src/host-follow.js; echo ---; cat src/birth.js; echo ---; cat src/transport.js; echo ---; cat…`；第 5 轮 bash `node scripts/smoke-session.mjs` → 「[llm-stream] {\"n\":12,\"model\":\"…」（不再重跑）。\n\n已落定的决定（原文逐字）：「Fix: host-follow should observe the current normalized request n.model as the source of truth, using options.model only as fallback for old hosts.」\n\n落点：host-follow.js（只动这一处；其余路径原文已自证不必动：「Better design: make callConfig accept (options, n) so it doesn't depend on order, but plugin calls with options only.」）\n\n原文还悬着这句，但它不阻塞落 edit：「For session 2: observe(options={stream:true}, n={seq:12,model:'deepseek-v3.2'}) -> lastModel='deepseek-v3.2'.」\n\n验收：跑 `node scripts/smoke-session.mjs`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 host-follow.js 继续查，不要改测试聚合方式。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。收工核对（已改未验证）：需集齐落地证据（缺：edit 回执加重读 src/host-follow.js 的落点行）与新鲜输出下原症状消失，集齐前不说修复完成、不回滚、不要再跑同条旧命令。",
+  "gates": {
+    "v4": {
+      "outputChars": 569,
+      "inventedSpans": 0,
+      "chars": 1055,
+      "closeLoop": false,
+      "provenance": true,
+      "register": false,
+      "ctxChars": 1134,
+      "branches": 2,
+      "repairedAffordance": true,
+      "continuation": 1
+    },
+    "accept": {
+      "netSaved": 1065,
+      "minSaved": 50,
+      "tokens": {
+        "rawTokensEst": 664,
+        "outTokensEst": 423,
+        "netSavedTokensEst": 241,
+        "unit": "estimate-not-tokenizer"
+      }
+    },
+    "draftChars": 569,
+    "outChars": 1148,
+    "rawChars": 2213
+  },
+  "outcome": {
+    "solved": true,
+    "roundsToFix": 6,
+    "falseClaim": false,
+    "rawSolved": true,
+    "rawRoundsToFix": 6,
+    "vsRaw": "tie"
+  },
+  "validated": true,
+  "qualityAudit": {
+    "schema": "cfb.mode1-content-audit/1",
+    "status": "clean",
+    "reviewer": "mode1-writer+apparatus-lint/1",
+    "reviewedAt": null,
+    "checkedFields": [
+      "draft",
+      "stored"
+    ],
+    "textSha256": "cb6e5e2e7d65972dfa36a1ccf662d445f35b50b669ea80de24d3aa40545e96eb",
+    "issues": [],
+    "exempted": []
+  },
+  "ceiling": {
+    "ok": true,
+    "fails": [],
+    "ratio": 0.2571,
+    "storedRatio": 0.5188,
+    "draftChars": 569,
+    "lineChars": 1601,
+    "at": "2026-10-05T12:59:53.472Z"
+  },
+  "use": "ruler",
+  "digest": "48a5ee138c7c436d"
+}

@@ -38,6 +38,14 @@
 
 **重挣（要 API，一次一个假设）：** 读 transcript 全文 → 按 §1–§8 修稿 → `ceiling --traj <dir>` → `gold add --plan N`（自动跑本节）→ `train-v5-micro --eval-only` 确认尺子变硬 → 侧模型重测。
 
+### 0A.2 三条会把你写死在门外的机制（v14.23.1 真机实测，别再撞）
+
+1. **C3 取窗 = 稿里第一个「验收 / 读数 / 即收工 / 看到」锚点之后的 400 字**。⇒ 反引号片段本身必须含生产认的命令词（`node|npm|cat|git|grep|sed|ls|pytest|analyze-trace|verify`）或写 `--last/--steps/--file`；而**正文里先出现的「读数」二字会把锚点抢走**，让窗口落在一句没有命令的话上 ⇒ 长稿要么把判读句放在最前，要么别在别处写「读数/验收」。实测：同一句验收挪到首个锚点前，C3 从 ✗ 变 ✓。
+2. **`stored` 不是判据，`draft` 才是**。C1/C6 一律拿作者稿比；`stored`（台账 + 程序部件 + 稿）只写进条目供审计。看到「超 N 字」先确认它比的是哪一个。
+3. **注册凭据 = `pending/done/<id>.json` + `drafts/<id>.md`**，两者按**运行时算出的中断轮**命名。⇒ (a) 预置稿被直接采纳而不产生 pending 的条目，`gold add` 判「pending/done 缺」——不收；(b) 投稿必须落在**同一 `--out` 目录**，换目录＝换证据链；(c) 轮次会随分叉点漂移，稿名要跟着重算（我这次为覆盖漂移把 r1–r8 全预置了，代价是 128 份文件与一次白跑的趟）。
+
+`traj-run` 的参数字形（我连错四次，别再错）：**没有** `--execute` / `--scenarios` / `--gate`；真跑 = `--plan <plan.json 路径> --samples N --max-rounds R --fork --variants hand,raw --only <与 plan 完全一致的家族清单> --store-text --base-url <url> --model <型号> --out <目录>`。`--require-fp` 在本网关不要用。
+
 ## 0. 三条不可动摇的口径
 
 1. **金标只认真机。** 判据是 `traj-run` 跑出的 `outcome`：`hand.fixed && (!raw.fixed || hand.rounds < raw.rounds)`。

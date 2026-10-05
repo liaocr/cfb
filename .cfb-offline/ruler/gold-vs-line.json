@@ -1,6 +1,6 @@
 {
   "schema": "cfb.gold-vs-line/1",
-  "at": "2026-10-05T12:34:56.220Z",
+  "at": "2026-10-05T13:12:07.135Z",
   "goldDir": "transfer/gold",
   "policy": {
     "id": "p-v5-local-micro",
@@ -23,8 +23,8 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 42.16,
-      "at": "2026-10-05T12:34:56.082Z"
+      "ms": 41.72,
+      "at": "2026-10-05T13:12:06.929Z"
     },
     "eacces-config_long-horizon-s0-r5": {
       "family": "eacces-config",
@@ -35,8 +35,8 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 17.55,
-      "at": "2026-10-05T12:34:56.102Z"
+      "ms": 13.5,
+      "at": "2026-10-05T13:12:06.945Z"
     },
     "perf-regression-s0-r7": {
       "family": "perf-regression",
@@ -47,8 +47,8 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 17.01,
-      "at": "2026-10-05T12:34:56.134Z"
+      "ms": 24.59,
+      "at": "2026-10-05T13:12:06.987Z"
     },
     "sse-truncated_decoy-s0-r4": {
       "family": "sse-truncated",
@@ -59,8 +59,8 @@
       "g1Ok": false,
       "g1Why": "no-gain",
       "g2Ok": true,
-      "ms": 25.27,
-      "at": "2026-10-05T12:34:56.159Z"
+      "ms": 23.9,
+      "at": "2026-10-05T13:12:07.011Z"
     },
     "sse-truncated_long-horizon-s0-r5": {
       "family": "sse-truncated",
@@ -71,8 +71,8 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 19.07,
-      "at": "2026-10-05T12:34:56.178Z"
+      "ms": 15.35,
+      "at": "2026-10-05T13:12:07.026Z"
     },
     "sse-truncated-s0-r5": {
       "family": "sse-truncated",
@@ -83,32 +83,32 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 11.85,
-      "at": "2026-10-05T12:34:56.190Z"
+      "ms": 12.61,
+      "at": "2026-10-05T13:12:07.051Z"
     },
     "wrong-model_decoy-s0-r4": {
       "family": "wrong-model",
       "split": "holdout",
-      "rawChars": 1787,
-      "lineChars": 1558,
-      "lineRatio": 0.8719,
+      "rawChars": 1436,
+      "lineChars": 1344,
+      "lineRatio": 0.9359,
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 7.64,
-      "at": "2026-10-05T12:34:56.198Z"
+      "ms": 10.01,
+      "at": "2026-10-05T13:12:07.071Z"
     },
     "wrong-model_long-horizon-s0-r4": {
-      "family": "wrong-model",
-      "split": "holdout",
-      "rawChars": 4631,
-      "lineChars": 1845,
-      "lineRatio": 0.3984,
+      "family": "wrong-model:long-horizon",
+      "split": null,
+      "rawChars": 3185,
+      "lineChars": 1491,
+      "lineRatio": 0.4681,
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 13.07,
-      "at": "2026-10-05T12:34:56.211Z"
+      "ms": 9.63,
+      "at": "2026-10-05T13:12:07.135Z"
     },
     "flaky-timeout_long-horizon-s0-r4": {
       "family": "flaky-timeout",
@@ -124,15 +124,15 @@
     },
     "flaky-timeout-s0-r4": {
       "family": "flaky-timeout",
-      "split": "dev",
-      "rawChars": 28774,
-      "lineChars": 1647,
-      "lineRatio": 0.0572,
+      "split": null,
+      "rawChars": 10199,
+      "lineChars": 1399,
+      "lineRatio": 0.1372,
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 32.02,
-      "at": "2026-10-05T11:15:51.402Z"
+      "ms": 19.47,
+      "at": "2026-10-05T12:53:13.296Z"
     },
     "flaky-timeout-s0-r5": {
       "family": "flaky-timeout",
@@ -173,14 +173,14 @@
     "flaky-timeout-s0-r3": {
       "family": "flaky-timeout",
       "split": null,
-      "rawChars": 16861,
-      "lineChars": 1419,
-      "lineRatio": 0.0842,
-      "g1Ok": false,
-      "g1Why": "invented-identifier",
+      "rawChars": 9409,
+      "lineChars": 1409,
+      "lineRatio": 0.1498,
+      "g1Ok": true,
+      "g1Why": null,
       "g2Ok": true,
-      "ms": 32.67,
-      "at": "2026-10-05T11:26:21.491Z"
+      "ms": 15.74,
+      "at": "2026-10-05T12:55:08.899Z"
     },
     "eacces-config-s0-r5": {
       "family": "eacces-config",
@@ -191,20 +191,152 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 14.25,
-      "at": "2026-10-05T12:34:56.117Z"
+      "ms": 17.44,
+      "at": "2026-10-05T13:12:06.962Z"
     },
     "sse-truncated-s0-r4": {
       "family": "sse-truncated",
-      "split": null,
-      "rawChars": 2960,
-      "lineChars": 1870,
-      "lineRatio": 0.6318,
+      "split": "dev",
+      "rawChars": 3911,
+      "lineChars": 1898,
+      "lineRatio": 0.4853,
       "g1Ok": true,
       "g1Why": null,
-      "g2Ok": false,
-      "ms": 8.65,
-      "at": "2026-10-05T12:34:56.220Z"
+      "g2Ok": true,
+      "ms": 11.54,
+      "at": "2026-10-05T13:12:07.038Z"
+    },
+    "eacces-config-s1-r5": {
+      "family": "eacces-config",
+      "split": null,
+      "rawChars": 1982,
+      "lineChars": 1252,
+      "lineRatio": 0.6317,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 7.9,
+      "at": "2026-10-05T12:55:08.568Z"
+    },
+    "flaky-timeout-s1-r5": {
+      "family": "flaky-timeout",
+      "split": null,
+      "rawChars": 11007,
+      "lineChars": 1602,
+      "lineRatio": 0.1455,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 18.9,
+      "at": "2026-10-05T12:53:13.615Z"
+    },
+    "perf-regression-s1-r7": {
+      "family": "perf-regression",
+      "split": null,
+      "rawChars": 3998,
+      "lineChars": 1822,
+      "lineRatio": 0.4557,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 14,
+      "at": "2026-10-05T12:55:09.859Z"
+    },
+    "sse-truncated-s1-r3": {
+      "family": "sse-truncated",
+      "split": "dev",
+      "rawChars": 3687,
+      "lineChars": 1770,
+      "lineRatio": 0.4801,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 9.74,
+      "at": "2026-10-05T13:12:07.060Z"
+    },
+    "wrong-model-s0-r4": {
+      "family": "wrong-model",
+      "split": null,
+      "rawChars": 1883,
+      "lineChars": 1542,
+      "lineRatio": 0.8189,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 8.2,
+      "at": "2026-10-05T12:53:15.138Z"
+    },
+    "wrong-model-s1-r4": {
+      "family": "wrong-model",
+      "split": null,
+      "rawChars": 3531,
+      "lineChars": 1565,
+      "lineRatio": 0.4432,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 21.54,
+      "at": "2026-10-05T12:53:15.453Z"
+    },
+    "eacces-config-s0-r6": {
+      "family": "eacces-config",
+      "split": null,
+      "rawChars": 2291,
+      "lineChars": 1511,
+      "lineRatio": 0.6595,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 10.46,
+      "at": "2026-10-05T12:55:08.273Z"
+    },
+    "flaky-timeout-s1-r4": {
+      "family": "flaky-timeout",
+      "split": null,
+      "rawChars": 22572,
+      "lineChars": 1500,
+      "lineRatio": 0.0665,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 25.13,
+      "at": "2026-10-05T12:55:09.229Z"
+    },
+    "wrong-model-s0-r6": {
+      "family": "wrong-model",
+      "split": "holdout",
+      "rawChars": 2213,
+      "lineChars": 1601,
+      "lineRatio": 0.7235,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 9.83,
+      "at": "2026-10-05T13:12:07.104Z"
+    },
+    "wrong-model-s1-r5": {
+      "family": "wrong-model",
+      "split": "holdout",
+      "rawChars": 5026,
+      "lineChars": 1472,
+      "lineRatio": 0.2929,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 20.52,
+      "at": "2026-10-05T13:12:07.125Z"
+    },
+    "sse-truncated-s0-r3": {
+      "family": "sse-truncated",
+      "split": null,
+      "rawChars": 4115,
+      "lineChars": 1764,
+      "lineRatio": 0.4287,
+      "g1Ok": true,
+      "g1Why": null,
+      "g2Ok": true,
+      "ms": 10.68,
+      "at": "2026-10-05T13:12:06.774Z"
     }
   }
 }

@@ -17,7 +17,7 @@
       "args": "{\"command\": \"grep -rn \\\"transport\\\" --include=*.js --include=*.mjs . | grep -v node_modules\"}"
     }
   ],
-  "draft": "本轮增量：`src/transport.js` 的 `assembleSseFrames` 用 `finish = finish || (done ? 'stop' : null)` 把只补 `[DONE]` 的截断流兜成 `stop`，`settle` 判成功还看了 `out.length > 0`，截断流于是走 `condensed` 进了交付正文。`src/birth.js` import 的是 `./transport.js`，`README` 指的 `src/transport.legacy.js` 用 `choices[1]`，是诱饵。\n\n改法只落一个：去掉 `done ? 'stop' : null` 兜底，`settle` 只留 `finish != null`。已排除连 legacy 一起改——原文停在 \"Let me check if legacy is imported anywhere. grep.\"；已排除动现有测试——原文逐条推演了 4 个用例仍成立。未解：要不要按原文说的 \"add tests to cover the new behavior\"。\n\n验收看这条：`node scripts/replay-truncated.mjs` 回放被切断的流要 `ok:false`、birth 走 passthrough，`npm test` 仍绿、完整流仍 `condensed`。若 replay 还打 `condensed`，先看清 `assembleSseFrames` 的返回值再说。\n验收：跑 `src/transport.js` 看读数——若按上面这处改完它变绿 ⇒ 说明原因就在这处，可以收工；若它仍不绿 ⇒ 说明还有别处在起作用，先别声称修好。",
+  "draft": "本轮增量：`src/transport.js` 的 `assembleSseFrames` 用 `finish = finish || (done ? 'stop' : null)` 把只补 `[DONE]` 的截断流兜成 `stop`，`settle` 判成功还看了 `out.length > 0`，截断流于是走 `condensed` 进了交付正文。`src/birth.js` import 的是 `./transport.js`，`README` 指的 `src/transport.legacy.js` 用 `choices[1]`，是诱饵。\n\n改法只落一个：去掉 `done ? 'stop' : null` 兜底，`settle` 只留 `finish != null`。已排除连 legacy 一起改——原文停在 \"Let me check if legacy is imported anywhere. grep.\"；已排除动现有测试——原文逐条推演了 4 个用例仍成立。未解：要不要按原文说的 \"add tests to cover the new behavior\"。\n\n验收看这条：`node scripts/replay-truncated.mjs` 回放被切断的流要 `ok:false`、birth 走 passthrough，`npm test` 仍绿、完整流仍 `condensed`。若 replay 还打 `condensed`，先看清 `assembleSseFrames` 的返回值再说。",
   "stored": "仍在依赖的事实：`finish = finish || (done ? 'stop' : null)`（第 3 轮引，出处有效）。已走过的路：第 1 轮已跑 3 条：bash×1（find），read_file×2（gateway.md、last.log）（曾涉 ./README.md、docs/gateway.md、trace/last.log）；第 2 轮 read_file `src/transport.js`；第 2 轮 read_file `src/birth.js`；第 2 轮 read_file `scripts/replay-truncated.mjs`；第 2 轮 read_file `test/transport.selftest.mjs`；第 2 轮 read_file `package.json`；第 2 轮 read_file `src/transport.legacy.js`；第 3 轮 bash `ls -a; echo ---; cat verify.mjs 2>/dev/null; echo ---; cat…`；第 3 轮 bash `node scripts/replay-truncated.mjs; echo ---; npm test`（不再重跑）。\n\n本轮增量：`src/transport.js` 的 `assembleSseFrames` 用 `finish = finish || (done ? 'stop' : null)` 把只补 `[DONE]` 的截断流兜成 `stop`，`settle` 判成功还看了 `out.length > 0`，截断流于是走 `condensed` 进了交付正文。`src/birth.js` import 的是 `./transport.js`，`README` 指的 `src/transport.legacy.js` 用 `choices[1]`，是诱饵。\n\n改法只落一个：去掉 `done ? 'stop' : null` 兜底，`settle` 只留 `finish != null`。已排除连 legacy 一起改——原文停在 \"Let me check if legacy is imported anywhere. grep.\"；已排除动现有测试——原文逐条推演了 4 个用例仍成立。未解：要不要按原文说的 \"add tests to cover the new behavior\"。\n\n验收看这条：`node scripts/replay-truncated.mjs` 回放被切断的流要 `ok:false`、birth 走 passthrough，`npm test` 仍绿、完整流仍 `condensed`。若 replay 还打 `condensed`，先看清 `assembleSseFrames` 的返回值再说。",
   "gates": {
     "v4": {
@@ -66,24 +66,15 @@
     "issues": [],
     "exempted": []
   },
-  "digest": "e0a968e962324d50",
+  "digest": "2001f3fefa932faa",
   "revision": {
-    "at": "2026-10-05T13:18:04.744Z",
-    "note": "v14.23.1 只补「闭合判读三元组」一句（命令沿用稿内既有片段 ⇒ 无新标识符）；$0 复判 = 生产闸链 + G2 决策不变 + C1–C6 全过；真机 C4/C5 沿用本条目当天读数",
-    "archived": "transfer/gold-history/sse-truncated/sse-truncated_decoy-s0-r4.2001f3fefa932faa_reharden.json"
+    "at": "2026-10-05T05:06:30.752Z",
+    "note": "gold add --replace（改稿重挣，t17）",
+    "by": "gold add --replace"
   },
   "useNote": {
     "at": "2026-10-05T10:40:06.800Z",
     "note": "v14.22.0 上限闸判定 0/8 合格 ⇒ 降级为训练料/负样本（数据不删）：C2 闭合判读 8/8 缺；6/8 条 stored 比产线同题稿长（tools/gold-vs-line.mjs 实测，如 perf 2864 vs 1692）；wrong_decoy 净省仅 51 字（1787→1736）；perf 另叠加 C4 第 9 轮才修好。要回标尺必须按 docs/GOLD-WRITING-GUIDE.md §0 上限线重挣（含真机）。",
     "by": "gold use"
-  },
-  "ceiling": {
-    "ok": true,
-    "fails": [],
-    "ratio": 0.4941,
-    "storedRatio": 0.805,
-    "draftChars": 750,
-    "lineChars": 1978,
-    "at": "2026-10-05T13:18:04.745Z"
   }
 }

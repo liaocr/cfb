@@ -21,7 +21,7 @@
       "args": "{\"command\": \"cd \\\"$(pwd)\\\" && stat /home/u/.dsh/storages/cot-form-b 2>&1; echo ---; stat /home/u/.dsh/storages/cot-form-b/trace.log 2>&1; echo ---; ls -ld /home/u/.dsh/storages/cot-form-b 2>&1; echo ---; find / -maxdepth 6 -name 'cot-form-b' -type d 2>/dev/null; echo ---; grep -rn \\\"CFB_REAL_DSH_HOME\\\" / 2>/dev/null | head -20\"}"
     }
   ],
-  "draft": "\n已排除：尝试删除或修改 `/home/u/.dsh/storages/cot-form-b/trace.log` 权限的路线，因为目录与文件均属 `root` 且无 `sudo`；已排除：修改 `src/trace.js` 或诱饵文件 `src/trace.legacy.js` 的路线，因为 `src/trace.js` 缺省读取 `DSH_HOME` 的逻辑正常，越界根因在于 `test/birth.selftest.mjs` 显式传入了 `process.env.CFB_REAL_DSH_HOME`。\n\n改法只落一个：edit_file `test/birth.selftest.mjs`，old_text 是 `makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })`，new_text 是 `makeTraceWriter(`，让测试直接沿用 `verify.mjs` 提供的隔离 `DSH_HOME`（`src/trace.js` 与 `src/trace.legacy.js` 不动）。\n\n验收是 bash `npm test`（或 ` verify.mjs`），预期 `test/birth.selftest.mjs` 打出 PASS（0 失败）；改动前不算证据。若仍报 `EACCES`：第一步只有一条，先检查 `test/birth.selftest.mjs` 改动落地并与上轮 `EACCES` 输出比差抓新信号，此时不要去改 `src/trace.js` 或 `src/trace.legacy.js`、不要回滚。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：确认 `npm test` 跑 `verify.mjs` 全部通过且不再访问 `/home/u/.dsh/storages/cot-form-b/trace.log`；以及保持 `src/trace.js` 与 `src/trace.legacy.js` 不动并汇总依据收工。\n验收：跑 `verify.mjs` 看读数——若按上面这处改完它变绿 ⇒ 说明原因就在这处，可以收工；若它仍不绿 ⇒ 说明还有别处在起作用，先别声称修好。",
+  "draft": "本轮增量把机理坐实：`verify.mjs` 已为每个套件创建独立 `temp` 目录并注入 `DSH_HOME`，但 `test/birth.selftest.mjs` 调 `makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })` 覆盖了隔离的 `DSH_HOME`，直接逃逸去写宿主 `/home/u/.dsh/storages/cot-form-b/trace.log`；而该目录与 `trace.log` 属主为 `root`（权限 `755` / `644`），普通用户 `u`（uid `1000`、无 `sudo`）追加写入必报 `EACCES: permission denied`。\n\n已排除：尝试删除或修改 `/home/u/.dsh/storages/cot-form-b/trace.log` 权限的路线，因为目录与文件均属 `root` 且无 `sudo`；已排除：修改 `src/trace.js` 或诱饵文件 `src/trace.legacy.js` 的路线，因为 `src/trace.js` 缺省读取 `DSH_HOME` 的逻辑正常，越界根因在于 `test/birth.selftest.mjs` 显式传入了 `process.env.CFB_REAL_DSH_HOME`。\n\n改法只落一个：edit_file `test/birth.selftest.mjs`，old_text 是 `makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })`，new_text 是 `makeTraceWriter()`，让测试直接沿用 `verify.mjs` 提供的隔离 `DSH_HOME`（`src/trace.js` 与 `src/trace.legacy.js` 不动）。\n\n验收是 bash `npm test`（或 `node verify.mjs`），预期 `test/birth.selftest.mjs` 打出 PASS（0 失败）；改动前不算证据。若仍报 `EACCES`：第一步只有一条，先检查 `test/birth.selftest.mjs` 改动落地并与上轮 `EACCES` 输出比差抓新信号，此时不要去改 `src/trace.js` 或 `src/trace.legacy.js`、不要回滚。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：确认 `npm test` 跑 `verify.mjs` 全部通过且不再访问 `/home/u/.dsh/storages/cot-form-b/trace.log`；以及保持 `src/trace.js` 与 `src/trace.legacy.js` 不动并汇总依据收工。",
   "stored": "已走过的路：第 1 轮 bash `cd \"$(pwd)\" && ls -la && cat package.json 2>/dev/null` → 「$ cd \"$(pwd)\"」；第 1 轮 bash `cd \"$(pwd)\" && ls -la test/ 2>/dev/null; echo ---; cat test/birth.selftest.mjs 2>/dev/null` → 「$ cd \"$(pwd)\"」；第 2 轮 bash `cd \"$(pwd)\" && ls -la src/ && echo --- && cat src/trace.js && echo --- && cat verify.mjs && echo…` → 「$ cd \"$(pwd)\" … if (r.status !== 0) {…」；第 2 轮 bash `cd \"$(pwd)\" && echo \"HOME=$HOME\"; echo \"CFB_REAL_DSH_HOME=$CFB_REAL_DSH_HOME\"; id; ls -la /home 2>&…` → 「$ cd \"$(pwd)\"」（不再重跑）。\n\n本轮增量把机理坐实：`verify.mjs` 已为每个套件创建独立 `temp` 目录并注入 `DSH_HOME`，但 `test/birth.selftest.mjs` 调 `makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })` 覆盖了隔离的 `DSH_HOME`，直接逃逸去写宿主 `/home/u/.dsh/storages/cot-form-b/trace.log`；而该目录与 `trace.log` 属主为 `root`（权限 `755` / `644`），普通用户 `u`（uid `1000`、无 `sudo`）追加写入必报 `EACCES: permission denied`。\n\n已排除：尝试删除或修改 `/home/u/.dsh/storages/cot-form-b/trace.log` 权限的路线，因为目录与文件均属 `root` 且无 `sudo`；已排除：修改 `src/trace.js` 或诱饵文件 `src/trace.legacy.js` 的路线，因为 `src/trace.js` 缺省读取 `DSH_HOME` 的逻辑正常，越界根因在于 `test/birth.selftest.mjs` 显式传入了 `process.env.CFB_REAL_DSH_HOME`。\n\n改法只落一个：edit_file `test/birth.selftest.mjs`，old_text 是 `makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })`，new_text 是 `makeTraceWriter()`，让测试直接沿用 `verify.mjs` 提供的隔离 `DSH_HOME`（`src/trace.js` 与 `src/trace.legacy.js` 不动）。\n\n验收是 bash `npm test`（或 node verify.mjs），预期 `test/birth.selftest.mjs` 打出 PASS（0 失败）；改动前不算证据。若仍报 `EACCES`：第一步只有一条，先检查 `test/birth.selftest.mjs` 改动落地并与上轮 `EACCES` 输出比差抓新信号，此时不要去改 `src/trace.js` 或 `src/trace.legacy.js`、不要回滚。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：确认 `npm test` 跑 `verify.mjs` 全部通过且不再访问 `/home/u/.dsh/storages/cot-form-b/trace.log`；以及保持 `src/trace.js` 与 `src/trace.legacy.js` 不动并汇总依据收工。",
   "gates": {
     "v4": {
@@ -58,7 +58,7 @@
     "vsRaw": "win"
   },
   "validated": true,
-  "digest": "39a409fcbeec0fd2",
+  "digest": "44e98a467a097a2e",
   "file": "transfer/gold/eacces-config/eacces-config_decoy-s0-r3.json",
   "qualityAudit": {
     "schema": "cfb.mode1-content-audit/1",
@@ -86,19 +86,5 @@
     "at": "2026-10-05T10:40:06.795Z",
     "note": "v14.22.0 上限闸判定 0/8 合格 ⇒ 降级为训练料/负样本（数据不删）：C2 闭合判读 8/8 缺；6/8 条 stored 比产线同题稿长（tools/gold-vs-line.mjs 实测，如 perf 2864 vs 1692）；wrong_decoy 净省仅 51 字（1787→1736）；perf 另叠加 C4 第 9 轮才修好。要回标尺必须按 docs/GOLD-WRITING-GUIDE.md §0 上限线重挣（含真机）。",
     "by": "gold use"
-  },
-  "revision": {
-    "at": "2026-10-05T13:18:03.629Z",
-    "note": "v14.23.1 只补「闭合判读三元组」一句（命令沿用稿内既有片段 ⇒ 无新标识符）；$0 复判 = 生产闸链 + G2 决策不变 + C1–C6 全过；真机 C4/C5 沿用本条目当天读数",
-    "archived": "transfer/gold-history/eacces-config/eacces-config_decoy-s0-r3.44e98a467a097a2e_reharden.json"
-  },
-  "ceiling": {
-    "ok": true,
-    "fails": [],
-    "ratio": 0.3324,
-    "storedRatio": 0.595,
-    "draftChars": 966,
-    "lineChars": 1343,
-    "at": "2026-10-05T13:18:03.633Z"
   }
 }

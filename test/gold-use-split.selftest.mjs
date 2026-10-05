@@ -89,15 +89,25 @@ if (goldReal.length) {
   if (fs.existsSync(b13)) {
     const { draftDistance } = await import('../tools/helpers/hand-draft.mjs')
     const rows = fs.readFileSync(b13, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
-    let same = 0, diff = 0
+    // b13 量的是**当时那份稿**：金标稿后来被合法修订（改稿重挣 ⇒ 旧稿归档 gold-history）后，
+    // 拿今天的稿去复现当天的分数是错的。⇒ 按 r.draftChars 在「在册 + 归档」里挑出当届那份，只复现 draftDistance。
+    const hist = path.resolve(import.meta.dirname, '..', 'transfer/gold-history')
+    const versionsOf = (id) => { const out = []; for (const g of goldReal) if (g.id === id) out.push(g.draft)
+      if (fs.existsSync(hist)) for (const fam of fs.readdirSync(hist)) { const d = path.join(hist, fam); if (!fs.statSync(d).isDirectory()) continue
+        for (const f of fs.readdirSync(d)) { if (!f.startsWith(id + '.') || !f.endsWith('.json')) continue
+          try { const j = JSON.parse(fs.readFileSync(path.join(d, f), 'utf8')); if (j?.draft) out.push(j.draft) } catch { /* 归档坏了就跳过 */ } } }
+      return out }
+    let same = 0, diff = 0, unpinned = 0
     for (const r of rows) {
       if (!r.distance || typeof r.text !== 'string') continue
       const g = goldReal.find((x) => x.id === r.gold)
       if (!g) continue
-      const d = draftDistance(r.text, g.draft, { raw: g.raw, ctx: g.ctx })
+      const draft = versionsOf(r.gold).find((x) => x.length === r.draftChars)
+      if (!draft) { unpinned++; continue }
+      const d = draftDistance(r.text, draft, { raw: g.raw, ctx: g.ctx })
       if (Math.abs(d.score - r.distance.score) < 1e-9 && JSON.stringify(d.key) === JSON.stringify(r.distance.key)) same++; else diff++
     }
-    assert.ok(same > 0 && diff === 0, `b13 实测稿在分家后必须逐分逐位复现（同 ${same} / 异 ${diff}）`)
+    assert.ok(same > 0 && diff === 0, `b13 实测稿在分家后必须逐分逐位复现（同 ${same} / 异 ${diff} / 无当届稿 ${unpinned}）`)
     pass += same
   } else { skipped = 1 }
 } else { skipped = 1 }

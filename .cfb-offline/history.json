@@ -385,6 +385,63 @@
       "design": "3e924350c3fef72c",
       "expectedUsd": 0.163,
       "capUsd": 0.525
+    },
+    {
+      "n": 98,
+      "at": "2026-10-05T11:32:22.005Z",
+      "status": "ceiling",
+      "digest": "de792e95065dec8f",
+      "design": "acb7a44933fc7622",
+      "expectedUsd": 0.113,
+      "capUsd": 0.385,
+      "ceiling": {
+        "k": 9,
+        "verdict": "undetermined",
+        "pairs": 15,
+        "e": 6.2,
+        "headroom": 0.066
+      }
+    },
+    {
+      "n": 99,
+      "at": "2026-10-05T12:31:21.305Z",
+      "status": "planned",
+      "digest": "c9a2991544dad1ab",
+      "design": "a94d133c1737924b",
+      "expectedUsd": 0.225,
+      "capUsd": 0.77
+    },
+    {
+      "n": 100,
+      "at": "2026-10-05T12:41:41.597Z",
+      "status": "ceiling",
+      "digest": "1259c34cc7175f29",
+      "design": "9b4850366e8aba70",
+      "expectedUsd": 1.625,
+      "capUsd": 5.25,
+      "ceiling": {
+        "k": 11,
+        "verdict": "undetermined",
+        "pairs": 17,
+        "e": 1.9,
+        "headroom": -0.113
+      }
+    },
+    {
+      "n": 101,
+      "at": "2026-10-05T13:01:36.917Z",
+      "status": "ceiling",
+      "digest": "fe33351a8d1db3da",
+      "design": "d21ac7860f35af0f",
+      "expectedUsd": 1.625,
+      "capUsd": 5.25,
+      "ceiling": {
+        "k": 12,
+        "verdict": "undetermined",
+        "pairs": 27,
+        "e": 0.564,
+        "headroom": -0.07
+      }
     }
   ],
   "benchPlans": [

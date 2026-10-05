@@ -1,25 +1,28 @@
 {
-  "warns": [
-    "inventedSpans=1（生产闸判过：stored 逐字回显免检那一类，见 mode1-quality 的 exemptQuotedIssues）"
-  ],
   "id": "flaky-timeout-s0-r4",
   "source": "transfer/gold-rejected/flaky-timeout/flaky-timeout-s0-r4.json",
+  "pending": false,
   "use": "ruler",
-  "draftChars": 818,
+  "draftChars": 1403,
   "rawChars": 28774,
-  "storedReal": 1639,
-  "ratio": 0.057,
+  "storedReal": null,
+  "ratio": null,
   "line": {
-    "lineChars": 1647,
-    "lineRatio": 0.0572,
+    "lineChars": 1399,
+    "lineRatio": 0.1372,
     "g2Ok": true,
-    "差": -8
+    "over": 4
   },
   "closedRead": true,
-  "g2Unchanged": true,
-  "verdict": "partial",
-  "replayGreen": true,
-  "fails": [],
-  "ok": true,
-  "at": "2026-10-05T11:22:26.327Z"
+  "replayGreen": false,
+  "g2Unchanged": false,
+  "verdict": "close",
+  "warns": [],
+  "fails": [
+    "C6 不劣于产线：金标稿 1403 字 > 产线同题稿 1399 字（线长比 0.1372）⇒ 上限不能比产品松",
+    "生产闸未全绿（见 handDraftGate / replay 输出）",
+    "本地锚点差集非空（证据外标识符）⇒ [\"hedge.selftest\"]"
+  ],
+  "ok": false,
+  "at": "2026-10-05T13:21:57.733Z"
 }

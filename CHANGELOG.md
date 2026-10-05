@@ -1,5 +1,24 @@
 # Changelog — dsh-cot-form-b
 
+## v14.23.1（2026-10-05，一次性把 19 项推上上限线：**12/13 在册金标达线**，标尺侧 7 项且微模型一条都复现不了）
+
+**真机挣到的（当天轨迹 + 当天读数，`gold add` 无豁免入册）**：
+- t100（5 家族 × 2 样本）⇒ **+4**：`sse-truncated-s0-r4`（稿 435 字，draft/raw **0.111**，线 1898，真机 tie@4）、`sse-truncated-s1-r3`（405 字 / 0.110，线 1770，**win**@4<raw@5）、`wrong-model-s0-r6`（569 / 0.257，线 1601，tie@6=raw@6）、`wrong-model-s1-r5`（413 / 0.082，线 1472，**win**）。
+- t101（10 家族格 × 1 样本，逐字锻造稿预置 r1–r8）⇒ **+2 换稿转正**：`wrong-model_decoy-s0-r4`（375 字，win@4）、`wrong-model_long-horizon-s0-r4`（494 字，tie@5）——两条原先都在 `gold-rejected`，这次是**改了稿再上真机重挣回来**的（旧稿归档 `transfer/gold-history/`）。
+- 在册 13 项 ⇒ 逐项按生产判据 `goldCeiling` 现算（新工具 `tools/gold-ceiling-audit.mjs`，$0）：**12 项 `ceiling.ok:true`**。唯一不达标的是 `perf-regression-s0-r7`：真机 **rtf=9 > 6** ⇒ C4 提前量不成立 ⇒ 保持 `use:'train'`，不删。
+- `gold-rejected` 11 条旧稿里 **3 条**经同一条链复判转绿（含 `sse-truncated_decoy-s0-r3` 1506→**383** 字 / ratio 0.114），其余 8 条逐条给出的是真原因：flaky 两条 + perf-s0-r6 是 **rtf 7 > 6**、`flaky-timeout-s0-r4` 超线 4 字、`flaky-s0-r3` 原文里没有一条可执行验收命令、三条是本地锚点差集非空（稿里有证据外标识符）。
+
+**改稿用的新工具（都 $0，不碰真机读数）**：`tools/gold-forge2.mjs`（只从该项 raw 里抽**逐字存在**的决定句/排除句/落点/命令，自截到 `min(0.55·raw, 线)`，shell 出去调 `gold-check` 复判）+ `tools/gold-reharden.mjs`（在册条目缺判读时补一句，且补的句子必须命中 C3 的取窗）。**判定收紧**：只有 `闸链 ✓ · G2 决策不变 ✓ · 闭合判读 ✓` + `不劣于产线` + 输出里**一个「仍缺」都没有**才写回；我第一版用「✓」正则，被自己的日志骗了一次（「只差真机读数」也带 ✓），删了重做。
+
+**修掉一处口径不一致**：`tools/gold-check.mjs` 的 C6 打印与 `res.line.over` 还在拿 `stored` 比产线，而生产判据 `goldCeiling` 已改成拿**稿**比 ⇒ 1302≤1343 明明过线却报「✗ 超 283 字」。现两处同为 `draft vs lineChars`，`stored` 只作审计。**教训**：打印与判定不同口径，比口径错本身更糟——它会让人以为自己在放松标准。
+
+**测试口径清理（dd 相似度已废 ⇒ 不再当判据）**：`test/closed-loop-v4.selftest.mjs` A41 原先钉「基线条目 `dd.score` 必须 1.000」，A41d 钉「空壳稿总分 < 0.45」——都是拿**与某份稿的相似度**当质量分（2026-10-05 已裁定废止）。现 A41 基线改钉 `C1 ratio ≤ 0.60` + 必须仍带闭合判读；A41c/A41d 的槽位断言（空壳三项全 0）保留——它们测的是解析器不是相似度。`gold-use-split` 的 b13 回归改为**按 `r.draftChars` 取当届那份稿**再复现分数：改稿是合法动作，回归针只该钉「`draftDistance` 本身别改坏」。verify ORDER 补登记 `gate-cjk-pairing`。`verify:offline`：**1046 通过 / 0 失败 / 1 跳过，36/36 套件**。
+
+**标尺不是训练粮，这轮把它量出来了**：`train-v5-micro --eval-only` 标尺侧 **7 项**（5 holdout + 2 dev），`G1 ✓ G2 ✓` 全过，但 `closeCount 0/7`、单项分 0.500–0.833 全是 `partial` ⇒ 当前 <0.1B 微模型**一条都复现不了**这套金标。这就是模式 2 的真实余量（此前 8/8 都是自我参照的读数，等于没有尺子）。
+
+**成本**：t100 + t101 共 40 条轨迹，含 raw 臂对照；`receipt.json` 落 `.cfb-runtime/traj/t100/`、`t101/`。压缩调用 0 次（hand 不花钱），实付全部是主调用。
+
+**我没做到的一条，写在这儿而不是藏起来**：t100/t101 里 8 条 hand 臂「读了稿但主模型仍未修好」——flaky-timeout 家族两臂同败（raw 8 轮 0 edit），这是格子性质，不是稿写得好坏；`gold-forge2` 对 `perf-regression-s0-r7` 抽不到逐字命令（该 raw 全程没有 runner）。这些条目按规则留在 `use:'train'`/rejected，不进标尺。
 ## v14.23.0（2026-10-05，修了两个真 bug + 纠正 C1/C6 的不对称口径 ⇒ 上限闸上线后第一条达线金标入册）
 
 **先说成果**：`transfer/gold/eacces-config/eacces-config-s0-r5.json` —— 手写稿 354 字，真机 `修好@6 / rawSolved false / vsRaw win`，`ceiling.ok: true`（draft/raw **0.1017**，同 raw 产线稿 **1650 字** ⇒ 金标稿比产线还短 78%），闭合判读 ✓、可执行验收 ✓、`clean`、G2 决策不变。**这是 v14.22.0 上限闸生效后唯一一条自己走完全程入册的金标**（`gold add --plan 98 --replace` 判的，没带 `--legacy-floor`、没带 `--include-unsolved`、没带 `--include-loss`）。

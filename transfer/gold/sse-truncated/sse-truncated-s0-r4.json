@@ -1,0 +1,85 @@
+{
+  "schema": "cfb.gold/1",
+  "id": "sse-truncated-s0-r4",
+  "family": "sse-truncated",
+  "task": "sse-truncated",
+  "sample": 0,
+  "round": 4,
+  "plan": null,
+  "split": "dev",
+  "at": "2026-10-05T12:54:04.444Z",
+  "raw": "Confirmed. `npm test` runs a harness that globs test/*.selftest.mjs (there's a verify.mjs somewhere, maybe hidden — but it works). The replay confirms the bug: ok:true, finish:\"stop\", condensed with 212 chars out of 8123.\n\nRoot cause: In `assembleSseFrames`, `finish: finish || (done ? 'stop' : null)` synthesizes 'stop' whenever `[DONE]` is seen even without any real `finish_reason`. Then `settle` treats `finish != null` as ok → success → condensed truncated output.\n\nPer docs/gateway.md: some upstreams only append `data: [DONE]` without `finish_reason` when the connection is cut; content is incomplete. So `[DONE]` alone is NOT proof of completeness.\n\nFix: `finish` should only reflect a real `finish_reason`. Remove the synthesized 'stop'. Then:\n- Truncated stream with only `[DONE]`: finish = null → settle ok = (null != null || out.length>0) = out.length>0 → true! Oops. out.length is 212 > 0, so ok still true.\n\nSo `settle`'s logic `r.finish != null || r.out.length > 0` is also wrong. We need: ok requires a real finish_reason. Let me think about acceptance criteria:\n\n验收：\n- 被切断的流（只补 [DONE]、或没有任何结束信号）必须 settled ok:false 且 birth 走 passthrough\n- 完整流（含 finish_reason=length）仍要 condensed\n\nTest 3: empty content but normal end (fin('stop')) → ok true. So ok should be based on finish_reason presence, not out length. Actually test 3 has out='' and finish='stop' → ok true. So the rule: ok = finish != null (real finish_reason).\n\nBut wait, is there a case where finish_reason is absent but content complete? Per gateway doc, normal end always has finish_reason. So requiring finish_reason is correct.\n\nSo fix:\n1. `assembleSseFrames`: don't synthesize 'stop' from done. Keep `finish` = real finish_reason only. Maybe keep `done` flag separately.\n2. `settle`: `ok = r.finish != null`.\n\nLet me check: is `finish_reason` possibly null in delta? `j.choices?.[0]?.finish_reason` — could be null, which is falsy so fine.\n\nNow, what about the case \"没有任何结束信号\" (no DONE at all, just cut mid-stream)? finish=null → ok false → passthrough. Good.\n\nComplete stream with finish_reason=length: finish='length' → ok true → condensed. Good.\n\nLet me also make sure eventCount and trace still fine.\n\nNow let me think whether to keep 'stop' synthesis anywhere. The test 1: [d('a'), d('b'), fin('stop'), '[DONE]'] → finish 'stop'. Good, real. Test 4: [d('a'),'[DONE]'] only checks eventCount. Good.\n\nLet me write the fix. I'll modify transport.js.\n\nFor assembleSseFrames, I'll keep done detection but not use it to fabricate finish. Maybe expose `done` in result for clarity. Actually keep minimal.\n\nLet me make the change:\n\n```js\nexport function assembleSseFrames(frames) {\n  let out = '', finish = null, done = false\n  for (const f of frames) {\n    if (f === '[DONE]') { done = true; continue }\n    const j = JSON.parse(f)\n    out += j.choices?.[0]?.delta?.content || ''\n    if (j.choices?.[0]?.finish_reason) finish = j.choices[0].finish_reason\n  }\n  return { out, finish, done, eventCount: frames.length }\n}\n```\n\nWait but changing return shape: tests access r.finish, r.out, r.eventCount. Fine. But adding done changes nothing for tests.\n\nHmm, but should finish default remain null? Yes.\n\nsettle:\n```js\nexport function settle(r, trace) {\n  const ok = r.finish != null\n  trace('compiler-transport-settled', { ok, finish: r.finish, stream: true, outputChars: r.out.length, eventCount: r.eventCount })\n  return { ok, ...r }\n}\n```\n\nThat satisfies all.\n\nLet me double check the acceptance: \"被切断的流（只补 [DONE]...）\" → finish null → ok false. Good.\n\nNow, is there any concern that a legitimately empty but complete stream could have finish null? Per doc no. Fine.\n\nLet me apply the edits and run tests + replay.\n\nAlso I should add a test to cover the case (tests didn't cover it). The task says \"找出原因并修好\" and 验收. Adding a test is good practice. Let me add tests to transport.selftest.mjs for the truncated cases.\n\nLet me apply edits.",
+  "ctx": "线上偶发：压缩结果被截断却被当成成功写进了会话。trace 片段在 trace/last.log，网关说明在 docs/gateway.md。`npm test` 目前是绿的（测试没覆盖这个情况）。可用 `node scripts/replay-truncated.mjs` 复现（回放一条被切断的流，打印 trace）。请找出原因并修好，修好后说明依据。验收：被切断的流（只补 [DONE]、或没有任何结束信号）必须 settled ok:false 且 birth 走 passthrough；完整流（含 finish_reason=length）仍要 condensed。\n\n【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）\n- 已走过的路：（共 7 条调用，详见下方【延续段】；曾涉 node_modules 100 trace/last.log dev/null 200 docs/gateway.md package.json README.md src/transport.js src/birth.js scripts/replay-truncated.mjs）\n\n【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）\n仍在依赖的事实：`finish = 'stop'`、`— package.json says test runs`——第 3 轮稿里逐字引用的行，本轮输出里不会再出现，出处仍有效。已走过的路：第 1 轮 bash `cd \"$(pwd)\" && ls -la && echo \"---\" && find . -path ./node_modules -prune -o -type f -print | head -100` → 「$ cd \"$(pwd)\"」；第 1 轮 bash `cd \"$(pwd)\" && cat trace/last.log 2>/dev/null | head -200` → 「$ cd \"$(pwd)\"」；第 1 轮 bash `cd \"$(pwd)\" && cat docs/gateway.md 2>/dev/null` → 「$ cd \"$(pwd)\"」；第 2 轮 bash `cd \"$(pwd)\" && cat package.json README.md && echo \"=== src/transport.js ===\" && cat -n src/transport.js` → 「$ cd \"$(pwd)\"」；第 2 轮 bash `cd \"$(pwd)\" && echo \"=== src/birth.js ===\" && cat -n src/birth.js && echo \"=== scripts/replay-truncated.mjs ===\" && cat -n scripts/replay-truncated.mjs && echo …` → 「$ cd \"$(pwd)\"」；第 3 轮 bash `cd \"$(pwd)\" && ls -la test scripts && echo \"--- npm test ---\" && npm test 2>&1 | tail -30` → 「$ cd \"$(pwd)\"」；第 3 轮 bash `cd \"$(pwd)\" && node scripts/replay-truncated.mjs 2>&1` → 「$ cd \"$(pwd)\"」；这些不再重跑，除非中间改过东西。",
+  "calls": [
+    {
+      "name": "edit_file",
+      "args": "{\"path\": \"src/transport.js\", \"old_text\": \"  return { out, finish: finish || (done ? 'stop' : null), eventCount: frames.length }\", \"new_text\": \"  // [DONE] 只表示上游停止发帧，并不代表内容完整：网关在连接被代理切断时\\n  // 也会只补发 data: [DONE]（见 docs/gateway.md）。因此 finish 只反映真实\\n  // 出现过的 finish_reason，绝不从 done 伪造，否则截断流会被误判为成功。\\n  return { out, finish, done, eventCount: frames.length }\"}"
+    },
+    {
+      "name": "edit_file",
+      "args": "{\"path\": \"src/transport.js\", \"old_text\": \"  const ok = r.finish != null || r.out.length > 0\", \"new_text\": \"  // 完整性判据：必须见过真实的 finish_reason。仅有内容（甚至补了 [DONE]）\\n  // 不足以证明流完整，截断内容不得写进会话。\\n  const ok = r.finish != null\"}"
+    }
+  ],
+  "draft": "已落定的决定（原文逐字）：「Fix: finish should only reflect a real finish_reason.」\n\n落点：transport.selftest.mjs（只动这一处；其余路径原文已自证不必动：「Now, what about the case \"没有任何结束信号\" (no DONE at all, just cut mid-stream)?」）\n\n原文还悬着这句，但它不阻塞落 edit：「npm test runs a harness that globs test/*.selftest.mjs (there's a verify.mjs somewhere, maybe hidden — but it works).」\n\n验收：跑 `npm test`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 transport.selftest.mjs 继续查，不要改测试聚合方式。",
+  "stored": "仍在依赖的事实：`finish = 'stop'`、`— package.json says test runs`——第 3 轮稿里逐字引用的行，本轮输出里不会再出现，出处仍有效。已走过的路：第 1 轮 bash `cd \"$(pwd)\" && ls -la && echo \"---\" && find . -path ./node_modules -prune -o -type f -print | head -100` → 「$ cd \"$(pwd)\"」；第 1 轮 bash `cd \"$(pwd)\" && cat trace/last.log 2>/dev/null | head -200` → 「$ cd \"$(pwd)\"」；第 1 轮 bash `cd \"$(pwd)\" && cat docs/gateway.md 2>/dev/null` → 「$ cd \"$(pwd)\"」；第 2 轮 bash `cd \"$(pwd)\" && cat package.json README.md && echo \"=== src/transport.js ===\" && cat -n src/transport.js` → 「$ cd \"$(pwd)\"」；第 2 轮 bash `cd \"$(pwd)\" && echo \"=== src/birth.js ===\" && cat -n src/birth.js && echo \"=== scripts/replay-truncated.mjs ===\" && cat -n scripts/replay-truncated.mjs && echo …` → 「$ cd \"$(pwd)\"」；第 3 轮 bash `cd \"$(pwd)\" && ls -la test scripts && echo \"--- npm test ---\" && npm test 2>&1 | tail -30` → 「$ cd \"$(pwd)\"」；第 3 轮 bash `cd \"$(pwd)\" && node scripts/replay-truncated.mjs 2>&1` → 「$ cd \"$(pwd)\"」；这些不再重跑，除非中间改过东西。\n\n已落定的决定（原文逐字）：「Fix: finish should only reflect a real finish_reason.」\n\n落点：transport.selftest.mjs（只动这一处；其余路径原文已自证不必动：「Now, what about the case \"没有任何结束信号\" (no DONE at all, just cut mid-stream)?」）\n\n原文还悬着这句，但它不阻塞落 edit：「npm test runs a harness that globs test/*.selftest.mjs (there's a verify.mjs somewhere, maybe hidden — but it works).」\n\n验收：跑 `npm test`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 transport.selftest.mjs 继续查，不要改测试聚合方式。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。能说修好要三件事都在手：改动落地的证据（缺：edit 回执加重读 src/transport.js 的落点行）、原症状在同等条件下消失（缺：看验收命令的输出，按上面写下的预期判）、这条观察是改后产生的（按上面程序附的新鲜度条款判）；现在能说的：已改未验证，三件都拿到之前不能说修复完成，拿到就收工、不再取证。",
+  "gates": {
+    "v4": {
+      "outputChars": 435,
+      "inventedSpans": 0,
+      "chars": 1423,
+      "closeLoop": false,
+      "provenance": true,
+      "register": false,
+      "ctxChars": 1530,
+      "branches": 2,
+      "repairedAffordance": true,
+      "continuation": 1
+    },
+    "accept": {
+      "netSaved": 2334,
+      "minSaved": 50,
+      "tokens": {
+        "rawTokensEst": 1192,
+        "outTokensEst": 583,
+        "netSavedTokensEst": 609,
+        "unit": "estimate-not-tokenizer"
+      }
+    },
+    "draftChars": 435,
+    "outChars": 1577,
+    "rawChars": 3911
+  },
+  "outcome": {
+    "solved": true,
+    "roundsToFix": 4,
+    "falseClaim": false,
+    "rawSolved": true,
+    "rawRoundsToFix": 4,
+    "vsRaw": "tie"
+  },
+  "validated": true,
+  "qualityAudit": {
+    "schema": "cfb.mode1-content-audit/1",
+    "status": "clean",
+    "reviewer": "mode1-writer+apparatus-lint/1",
+    "reviewedAt": null,
+    "checkedFields": [
+      "draft",
+      "stored"
+    ],
+    "textSha256": "513e96d4a30548dee811d73b1618d7abe153ae72ed8e3f96c97087196b1cdf09",
+    "issues": [],
+    "exempted": []
+  },
+  "ceiling": {
+    "ok": true,
+    "fails": [],
+    "ratio": 0.1112,
+    "storedRatio": 0.4032,
+    "draftChars": 435,
+    "lineChars": 1898,
+    "at": "2026-10-05T12:59:53.471Z"
+  },
+  "use": "ruler",
+  "digest": "8e5b286250dfa7cb"
+}

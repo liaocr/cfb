@@ -46,7 +46,7 @@ const filters = args.filter((a, i) => !a.startsWith('-') && !(jIdx >= 0 && i ===
 const ORDER = [
   'provider-endpoint', 'core', 'compress', 'v4', 'v4-live', 'effect-eval', 'api-budget', 'eval-ready', 'eval-ready-v2', 'eval-visible-v3', 'eval-reasoning-v8', 'offline-lab', 'judge-calibration', 'closed-loop', 'closed-loop-v3', 'closed-loop-v4', 'manifest-ignore', 'training-ready', 'birth', 'robustness', 'hedge',
   'hook-wiring', 'hardening', 'concurrency', 'protocol', 'branches',
-  'audit-2026-09-27', 'micro-runtime', 'micro-ruler', 'mode1-quality', 'mode1-quality-parity', 'gold-use-split', 'silver-shape', 'v12', 'evidence-program',
+  'audit-2026-09-27', 'micro-runtime', 'micro-ruler', 'mode1-quality', 'mode1-quality-parity', 'gold-use-split', 'gate-cjk-pairing', 'silver-shape', 'v12', 'evidence-program',
 ]
 
 const found = fs.readdirSync(TEST_DIR).filter((f) => f.endsWith(SUFFIX)).map((f) => f.slice(0, -SUFFIX.length))

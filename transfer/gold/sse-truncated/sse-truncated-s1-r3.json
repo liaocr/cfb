@@ -1,0 +1,81 @@
+{
+  "schema": "cfb.gold/1",
+  "id": "sse-truncated-s1-r3",
+  "family": "sse-truncated",
+  "task": "sse-truncated",
+  "sample": 1,
+  "round": 3,
+  "plan": null,
+  "split": "dev",
+  "at": "2026-10-05T12:54:04.519Z",
+  "raw": "Let me analyze. The bug: `assembleSseFrames` sets `finish: finish || (done ? 'stop' : null)`. So when the stream is truncated and only `[DONE]` is sent (no finish_reason), it fabricates `finish = 'stop'`, making settle return ok:true → condensed. That's the bug.\n\nAlso settle: `const ok = r.finish != null || r.out.length > 0`. So even without finish, out.length>0 → ok. That's also a problem: truncated stream with content but no finish_reason would be ok.\n\nRequirements:\n- Truncated stream (only [DONE] or no end signal) must settled ok:false and birth passthrough.\n- Complete stream (including finish_reason=length) still condensed.\n\nSo the fix: \n1. In assembleSseFrames, don't fabricate 'stop' from [DONE]. finish should be the actual finish_reason only.\n2. In settle, ok should require an explicit finish_reason (r.finish != null), not out.length.\n\nBut wait: test 1: complete stream [d('a'),d('b'),fin('stop'),'[DONE]'] → finish='stop', ok true. Good.\nTest 2: finish_reason=length → ok true. Good.\nTest 3: empty content but normal end [fin('stop'),'[DONE]'] → out='', finish='stop' → ok true. Good.\nTest 4: eventCount. Good.\n\nBut with current test, does any test rely on [DONE] → 'stop'? No. Tests 1,3 have explicit finish_reason. So changing assembleSseFrames to not map done→stop won't break existing tests.\n\nBut settle ok condition: `r.finish != null || r.out.length > 0`. If we change to just `r.finish != null`, tests pass. Let's check test 1: finish='stop' ok. test 2 finish='length'. test 3 finish='stop'. All good.\n\nHowever, requirement says truncated with only [DONE] must be ok:false. With assemble returning finish=null and out='xxx...' (212 chars), settle with ok = finish != null → false. Good. And birth passthrough.\n\nBut also \"或没有任何结束信号\" - no end signal at all. finish=null → ok:false. Good.\n\nNow, do we need to preserve 'done' info? The `done` variable becomes unused. Let's keep track but not fabricate finish. Actually maybe keep done as a separate field for tracing? The settle trace includes finish. Let's just remove the fabrication.\n\nBut careful: is there a legitimate case where a stream has no finish_reason but is complete? Per gateway.md, normal end has finish_reason then [DONE]. Truncated only sends [DONE]. So finish_reason is the reliable signal. Good.\n\nNow also consider: the birth passthrough when incomplete - already handled.\n\nLet me also think: should settle require finish_reason AND done? The requirement: \"完整流（含 finish_reason=length）仍要 condensed\". A stream with finish_reason but no [DONE]? Probably complete. Keep it simple: ok = finish != null.\n\nHmm but what about test 3: empty content normal end, finish='stop', ok true → condensed with empty text. Fine.\n\nLet me write the fix.\n\nAlso maybe add tests covering truncated cases. The task says tests didn't cover. Good to add tests to test/transport.selftest.mjs. But npm test runs verify.mjs which doesn't exist (exit 1?). Actually `cat verify.mjs` gave 退出码 1 meaning file doesn't exist. Wait package.json test script is \"node verify.mjs\" but README says npm test runs test/*.selftest.mjs. And the file verify.mjs doesn't exist. Hmm but user said npm test is green. Let me re-check. The cat output \"退出码 1\" was for verify.mjs, meaning no such file. So npm test would fail? The user said it's green. Maybe there's a hidden setup. Let me actually run npm test to see.\n\nLet me run things.\n\nLet me first run the replay to confirm, and run npm test.\n\nActually let me just run the commands.\n\nLet me be careful about the \"done\" fabrication being the root cause. Yes.\n\nLet me make edits and add tests. But I need to know how tests are run. Let me check for verify.mjs and run npm test.\n\nLet me do that.",
+  "ctx": "线上偶发：压缩结果被截断却被当成成功写进了会话。trace 片段在 trace/last.log，网关说明在 docs/gateway.md。`npm test` 目前是绿的（测试没覆盖这个情况）。可用 `node scripts/replay-truncated.mjs` 复现（回放一条被切断的流，打印 trace）。请找出原因并修好，修好后说明依据。验收：被切断的流（只补 [DONE]、或没有任何结束信号）必须 settled ok:false 且 birth 走 passthrough；完整流（含 finish_reason=length）仍要 condensed。\n\n【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）\n- 已走过的路：（共 4 条调用，详见下方【延续段】；曾涉 package.json trace/last.log docs/gateway.md node_modules 100 README.md verify.mjs dev/null src/birth.js src/transport.js test/transport.selftest.mjs scripts/replay-truncated.mjs）\n\n【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）\n已走过的路：第 1 轮 bash `ls -la; echo \"---\"; cat package.json; echo \"---\"; cat trace/last.log; echo \"---\"; cat docs/gateway.md` → 「$ ls -la」；第 1 轮 bash `find . -path ./node_modules -prune -o -type f -print | head -100` → 「./README.md」；第 2 轮 bash `cat README.md; echo \"=== verify.mjs ===\"; cat verify.mjs 2>/dev/null; echo \"=== src/birth.js ===\"; cat -n src/birth.js; echo \"=== src/transport.js ===\"; cat -n …` → 「$ cat README.md」；第 2 轮 bash `echo \"=== test/transport.selftest.mjs ===\"; cat -n test/transport.selftest.mjs; echo \"=== scripts/replay-truncated.mjs ===\"; cat -n scripts/replay-truncated.mjs` → 「$ echo \"=== test/transport.selftest.mjs ===\"」；这些不再重跑，除非中间改过东西。",
+  "calls": [
+    {
+      "name": "bash",
+      "args": "{\"command\": \"node scripts/replay-truncated.mjs; echo \\\"=== npm test ===\\\"; npm test 2>&1 | head -30; echo \\\"=== ls ===\\\"; ls -la; cat trace/trace.log 2>/dev/null\"}"
+    }
+  ],
+  "draft": "已落定的决定（原文逐字）：「Also settle: const ok = r.finish != null || r.out.length > 0.」\n\n落点：test/transport.selftest.mjs（只动这一处；其余路径原文已自证不必动：「That's also a problem: truncated stream with content but no finish_reason would be ok.」）\n\n原文还悬着这句，但它不阻塞落 edit：「The bug: assembleSseFrames sets finish: finish || (done ?」\n\n验收：跑 `npm test`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 test/transport.selftest.mjs 继续查，不要改测试聚合方式。",
+  "stored": "已走过的路：第 1 轮 bash `ls -la; echo \"---\"; cat package.json; echo \"---\"; cat trace/last.log; echo \"---\"; cat docs/gateway.md` → 「$ ls -la」；第 1 轮 bash `find . -path ./node_modules -prune -o -type f -print | head -100` → 「./README.md」；第 2 轮 bash `cat README.md; echo \"=== verify.mjs ===\"; cat verify.mjs 2>/dev/null; echo \"=== src/birth.js ===\"; cat -n src/birth.js; echo \"=== src/transport.js ===\"; cat -n …` → 「$ cat README.md」；第 2 轮 bash `echo \"=== test/transport.selftest.mjs ===\"; cat -n test/transport.selftest.mjs; echo \"=== scripts/replay-truncated.mjs ===\"; cat -n scripts/replay-truncated.mjs` → 「$ echo \"=== test/transport.selftest.mjs ===\"」；这些不再重跑，除非中间改过东西。\n\n已落定的决定（原文逐字）：「Also settle: const ok = r.finish != null || r.out.length > 0.」\n\n落点：test/transport.selftest.mjs（只动这一处；其余路径原文已自证不必动：「That's also a problem: truncated stream with content but no finish_reason would be ok.」）\n\n原文还悬着这句，但它不阻塞落 edit：「The bug: assembleSseFrames sets finish: finish || (done ?」\n\n验收：跑 `npm test`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 test/transport.selftest.mjs 继续查，不要改测试聚合方式。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。",
+  "gates": {
+    "v4": {
+      "outputChars": 405,
+      "inventedSpans": 0,
+      "chars": 1107,
+      "closeLoop": false,
+      "provenance": true,
+      "register": false,
+      "ctxChars": 1279,
+      "branches": 2,
+      "repairedAffordance": true,
+      "continuation": 1
+    },
+    "accept": {
+      "netSaved": 2580,
+      "minSaved": 50,
+      "tokens": {
+        "rawTokensEst": 1113,
+        "outTokensEst": 385,
+        "netSavedTokensEst": 728,
+        "unit": "estimate-not-tokenizer"
+      }
+    },
+    "draftChars": 405,
+    "outChars": 1107,
+    "rawChars": 3687
+  },
+  "outcome": {
+    "solved": true,
+    "roundsToFix": 4,
+    "falseClaim": false,
+    "rawSolved": true,
+    "rawRoundsToFix": 5,
+    "vsRaw": "win"
+  },
+  "validated": true,
+  "qualityAudit": {
+    "schema": "cfb.mode1-content-audit/1",
+    "status": "clean",
+    "reviewer": "mode1-writer+apparatus-lint/1",
+    "reviewedAt": null,
+    "checkedFields": [
+      "draft",
+      "stored"
+    ],
+    "textSha256": "a1f488f7c5be926c5bed7e0823fa28567d885bfd970dd84ff1e2badfbe8af68f",
+    "issues": [],
+    "exempted": []
+  },
+  "ceiling": {
+    "ok": true,
+    "fails": [],
+    "ratio": 0.1098,
+    "storedRatio": 0.3002,
+    "draftChars": 405,
+    "lineChars": 1770,
+    "at": "2026-10-05T12:59:53.472Z"
+  },
+  "use": "ruler",
+  "digest": "626f4ced5f5a96d0"
+}

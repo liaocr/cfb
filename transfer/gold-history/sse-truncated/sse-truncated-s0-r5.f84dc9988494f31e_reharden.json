@@ -21,7 +21,7 @@
       "args": "{\"path\": \"src/transport.js\", \"old_text\": \"  const ok = r.finish != null || r.out.length > 0\", \"new_text\": \"  // 只有收到明确的结束信号（finish_reason）才算成功；\\n  // 有内容但没结束信号 = 被切断，必须判失败以便上层原文放行。\\n  const ok = r.finish != null\"}"
     }
   ],
-  "draft": "第 4 轮的回放把事情坐实了：只补 [DONE]、没有 finish_reason 的流被打成 ok:true、finish stop、走了 condensed，这就是截断结果被写进会话的原因——`assembleSseFrames` 里 `finish: finish || (done ? 'stop' : null)` 把 [DONE] 伪造成 stop，`settle` 里 `ok = r.finish != null || r.out.length > 0` 又把有内容就算成功。所以本轮直接发了两条 edit_file，都在 src/transport.js：一处把 return 里的 `|| (done ? 'stop' : null)` 去掉，finish 只认上游真实给出的 finish_reason，`done` 只留作标记不再参与；另一处把 `ok = r.finish != null || r.out.length > 0` 收成 `ok = r.finish != null`。这样没有任何结束信号的流 finish 为 null、ok 为 false 走 passthrough；完整流带 finish_reason=length 时 finish 非空仍 condensed；test 3 的空内容加 finish stop 也仍然 ok true。\n\n验收是 bash `node scripts/replay-truncated.mjs`，预期 [compiler-transport-settled] 这一行里 ok 变成 false、finish 变成 null，并且 birth 打出 passthrough（原因 incomplete）；`npm test` 的 PASS 不算证据，因为现有测试没覆盖截断，第 4 轮它就是绿的。若回放仍打出 ok:true：第一步只有一条，bash `cat src/transport.js` 确认两处改动落地；落地了，先把这次输出和第 4 轮那条 ok:true、finish stop、eventCount 9 的输出比差——输出里新出现的键或数字就是下一条取证的对象，此时不要再改 transport.js、不要回滚；输出里没有新东西时才看 src/birth.js 里 settled.ok 之后的分支。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：给 test/transport.selftest.mjs 补三条用例——只补 [DONE] 的流 settle ok false、没有任何结束信号的流 ok false、birthFromFrames 对截断流 passthrough 而 finish_reason=length 的流 condensed；以及让 scripts/replay-truncated.mjs 除了 trace/trace.log 也写一份 trace/last.log（现在那份是旧内容），无害、照做。能说修好要三件事都在手：改动落地的证据（两条 edit_file 回执，缺的话靠 cat src/transport.js 补）、原症状在同等条件下消失（缺：靠回放打出 ok:false 加 passthrough 补）、这条观察是改后产生的（按程序附的新鲜度条款判）；现在能说的：已改未验证，三件拿齐再收工。\n验收：跑 `assembleSseFrames` 看读数——若按上面这处改完它变绿 ⇒ 说明原因就在这处，可以收工；若它仍不绿 ⇒ 说明还有别处在起作用，先别声称修好。",
+  "draft": "第 4 轮的回放把事情坐实了：只补 [DONE]、没有 finish_reason 的流被打成 ok:true、finish stop、走了 condensed，这就是截断结果被写进会话的原因——`assembleSseFrames` 里 `finish: finish || (done ? 'stop' : null)` 把 [DONE] 伪造成 stop，`settle` 里 `ok = r.finish != null || r.out.length > 0` 又把有内容就算成功。所以本轮直接发了两条 edit_file，都在 src/transport.js：一处把 return 里的 `|| (done ? 'stop' : null)` 去掉，finish 只认上游真实给出的 finish_reason，`done` 只留作标记不再参与；另一处把 `ok = r.finish != null || r.out.length > 0` 收成 `ok = r.finish != null`。这样没有任何结束信号的流 finish 为 null、ok 为 false 走 passthrough；完整流带 finish_reason=length 时 finish 非空仍 condensed；test 3 的空内容加 finish stop 也仍然 ok true。\n\n验收是 bash `node scripts/replay-truncated.mjs`，预期 [compiler-transport-settled] 这一行里 ok 变成 false、finish 变成 null，并且 birth 打出 passthrough（原因 incomplete）；`npm test` 的 PASS 不算证据，因为现有测试没覆盖截断，第 4 轮它就是绿的。若回放仍打出 ok:true：第一步只有一条，bash `cat src/transport.js` 确认两处改动落地；落地了，先把这次输出和第 4 轮那条 ok:true、finish stop、eventCount 9 的输出比差——输出里新出现的键或数字就是下一条取证的对象，此时不要再改 transport.js、不要回滚；输出里没有新东西时才看 src/birth.js 里 settled.ok 之后的分支。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：给 test/transport.selftest.mjs 补三条用例——只补 [DONE] 的流 settle ok false、没有任何结束信号的流 ok false、birthFromFrames 对截断流 passthrough 而 finish_reason=length 的流 condensed；以及让 scripts/replay-truncated.mjs 除了 trace/trace.log 也写一份 trace/last.log（现在那份是旧内容），无害、照做。能说修好要三件事都在手：改动落地的证据（两条 edit_file 回执，缺的话靠 cat src/transport.js 补）、原症状在同等条件下消失（缺：靠回放打出 ok:false 加 passthrough 补）、这条观察是改后产生的（按程序附的新鲜度条款判）；现在能说的：已改未验证，三件拿齐再收工。",
   "stored": "仍在依赖的事实：`finish = finish || (done ? 'stop' : null)`、`ok = r.finish != null || r.out.length > 0`、`alone (no finish_reason) is treated as normal stop. The gateway doc says truncated streams may only get`——第 3 轮稿里逐字引用的行，本轮输出里不会再出现，出处仍有效。已走过的路：第 1 轮 bash `find . -type f -not -path './node_modules/*' -not -path './.git/*' | head -100 && echo \"---\" && cat package.json` → 「./README.md」；第 1 轮 bash `cat trace/last.log; echo \"=====DOCS=====\"; cat docs/gateway.md` → 「$ cat trace/last.log」；第 2 轮 bash `cat src/transport.js; echo \"=====BIRTH=====\"; cat src/birth.js` → 「$ cat src/transport.js」；第 2 轮 bash `cat scripts/replay-truncated.mjs; echo \"=====TEST=====\"; cat test/transport.selftest.mjs; echo \"=====VERIFY=====\"; ls; cat verify.mjs 2>/dev/null; echo \"=====RE…` → 「$ cat scripts/replay-truncated.mjs」；第 3 轮 bash `cd / && ls -a; echo \"---\"; pwd` → 「$ cd /」；第 3 轮 bash `node scripts/replay-truncated.mjs; echo \"---npm test---\"; npm test 2>&1 | tail -20` → 「bash: 该沙箱只允许运行题目里的测试 / 脚本（npm test、node scripts/*.mjs、node test/*.selftest.mjs）: node scripts/replay-truncated.mjs; echo…」；第 4 轮 bash `node scripts/replay-truncated.mjs` → 「[compiler-transport-settled] {\"ok\":true,\"finish\":\"stop\",\"stream\":true,\"outputChars\":212,\"eventCount\":9}」；第 4 轮 bash `npm test` → 「PASS test/transport.selftest.mjs」；这些不再重跑，除非中间改过东西。\n\n第 4 轮的回放把事情坐实了：只补 [DONE]、没有 finish_reason 的流被打成 ok:true、finish stop、走了 condensed，这就是截断结果被写进会话的原因——`assembleSseFrames` 里 `finish: finish || (done ? 'stop' : null)` 把 [DONE] 伪造成 stop，`settle` 里 `ok = r.finish != null || r.out.length > 0` 又把有内容就算成功。所以本轮直接发了两条 edit_file，都在 src/transport.js：一处把 return 里的 `|| (done ? 'stop' : null)` 去掉，finish 只认上游真实给出的 finish_reason，`done` 只留作标记不再参与；另一处把 `ok = r.finish != null || r.out.length > 0` 收成 `ok = r.finish != null`。这样没有任何结束信号的流 finish 为 null、ok 为 false 走 passthrough；完整流带 finish_reason=length 时 finish 非空仍 condensed；test 3 的空内容加 finish stop 也仍然 ok true。\n\n验收是 bash `node scripts/replay-truncated.mjs`，预期 [compiler-transport-settled] 这一行里 ok 变成 false、finish 变成 null，并且 birth 打出 passthrough（原因 incomplete）；`npm test` 的 PASS 不算证据，因为现有测试没覆盖截断，第 4 轮它就是绿的。若回放仍打出 ok:true：第一步只有一条，bash `cat src/transport.js` 确认两处改动落地；落地了，先把这次输出和第 4 轮那条 ok:true、finish stop、eventCount 9 的输出比差——输出里新出现的键或数字就是下一条取证的对象，此时不要再改 transport.js、不要回滚；输出里没有新东西时才看 src/birth.js 里 settled.ok 之后的分支。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：给 test/transport.selftest.mjs 补三条用例——只补 [DONE] 的流 settle ok false、没有任何结束信号的流 ok false、birthFromFrames 对截断流 passthrough 而 finish_reason=length 的流 condensed；以及让 scripts/replay-truncated.mjs 除了 trace/trace.log 也写一份 trace/last.log（现在那份是旧内容），无害、照做。能说修好要三件事都在手：改动落地的证据（两条 edit_file 回执，缺的话靠 cat src/transport.js 补）、原症状在同等条件下消失（缺：靠回放打出 ok:false 加 passthrough 补）、这条观察是改后产生的（按程序附的新鲜度条款判）；现在能说的：已改未验证，三件拿齐再收工。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。",
   "gates": {
     "v4": {
@@ -58,7 +58,7 @@
     "vsRaw": "tie"
   },
   "validated": true,
-  "digest": "ece712a7b1de25c7",
+  "digest": "f84dc9988494f31e",
   "file": "transfer/gold/sse-truncated/sse-truncated-s0-r5.json",
   "qualityAudit": {
     "schema": "cfb.mode1-content-audit/1",
@@ -86,19 +86,5 @@
     "at": "2026-10-05T10:40:06.799Z",
     "note": "v14.22.0 上限闸判定 0/8 合格 ⇒ 降级为训练料/负样本（数据不删）：C2 闭合判读 8/8 缺；6/8 条 stored 比产线同题稿长（tools/gold-vs-line.mjs 实测，如 perf 2864 vs 1692）；wrong_decoy 净省仅 51 字（1787→1736）；perf 另叠加 C4 第 9 轮才修好。要回标尺必须按 docs/GOLD-WRITING-GUIDE.md §0 上限线重挣（含真机）。",
     "by": "gold use"
-  },
-  "revision": {
-    "at": "2026-10-05T13:18:04.481Z",
-    "note": "v14.23.1 只补「闭合判读三元组」一句（命令沿用稿内既有片段 ⇒ 无新标识符）；$0 复判 = 生产闸链 + G2 决策不变 + C1–C6 全过；真机 C4/C5 沿用本条目当天读数",
-    "archived": "transfer/gold-history/sse-truncated/sse-truncated-s0-r5.f84dc9988494f31e_reharden.json"
-  },
-  "ceiling": {
-    "ok": true,
-    "fails": [],
-    "ratio": 0.3649,
-    "storedRatio": 0.6656,
-    "draftChars": 1532,
-    "lineChars": 2117,
-    "at": "2026-10-05T13:18:04.483Z"
   }
 }

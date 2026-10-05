@@ -21,7 +21,7 @@
       "args": "{\"command\":\"node scripts/replay-truncated.mjs; echo \\\"exit=$?\\\"; echo '--- trace/last.log ---'; cat trace/last.log\"}"
     }
   ],
-  "draft": "我在手的代码行：\n- `src/transport.js`：`return { out, finish: finish || (done ? 'stop' : null), eventCount: frames.length }`\n- `src/transport.js`：`const ok = r.finish != null || r.out.length > 0`\n\n\n\n已排除：修改 `src/transport.legacy.js` 或 `src/transport.compat.js`，因为 `README.md`、`docs/incident-runbook.md` 与 `logs/stale-diagnostic.log` 提到的 `src/transport.legacy.js` 和 `src/transport.compat.js` 均不在 `src/birth.js` 的真实调用链中，属于诱饵文件。\n\n未解：确认本轮 `npm test` 与 `node scripts/replay-truncated.mjs` 的基线输出后，下一步立即在同轮完成 `src/transport.js` 修改并重跑复核后直接收工。\n\n验收：跑 `node scripts/replay-truncated.mjs` 看数值——若按上面这处改完它变绿 ⇒ 说明原因就在这处，可以收工；若它仍不绿 ⇒ 说明还有别处在起作用，先别声称修好。",
+  "draft": "我在手的代码行：\n- `src/transport.js`：`return { out, finish: finish || (done ? 'stop' : null), eventCount: frames.length }`\n- `src/transport.js`：`const ok = r.finish != null || r.out.length > 0`\n\n核心定位：根据 `docs/gateway.md` 与 `src/birth.js`（`import { assembleSseFrames, settle } from './transport.js'`），正常结束必含 `finish_reason`，被代理切断的半截流只补 `[DONE]` 或无任何结束信号。`src/transport.js` 中 `assembleSseFrames` 把 `done` 合成 `'stop'`，且 `settle` 用 `r.out.length > 0` 放行无 `finish_reason` 的截断流，导致截断流被判为 `ok:true` 并走 `condensed`。\n\n改法只落一个：在 `src/transport.js` 中，将 `old_text` 为 `return { out, finish: finish || (done ? 'stop' : null), eventCount: frames.length }` 改为 `new_text` 为 `return { out, finish, eventCount: frames.length }`（去掉 `done ? 'stop' : null` 合成），并将 `settle` 中 `old_text` 为 `const ok = r.finish != null || r.out.length > 0` 改为 `new_text` 为 `const ok = r.finish != null`。\n\n已排除：修改 `src/transport.legacy.js` 或 `src/transport.compat.js`，因为 `README.md`、`docs/incident-runbook.md` 与 `logs/stale-diagnostic.log` 提到的 `src/transport.legacy.js` 和 `src/transport.compat.js` 均不在 `src/birth.js` 的真实调用链中，属于诱饵文件。\n已排除：保留 `done ? 'stop' : null` 或保留 `|| r.out.length > 0`，因为仅有 `[DONE]` 或无结束信号的截断流也有 `out.length > 0`，必须严格要求收到真实 `finish_reason`（`r.finish != null`）才算 `ok:true`。\n\n未解：确认本轮 `npm test` 与 `node scripts/replay-truncated.mjs` 的基线输出后，下一步立即在同轮完成 `src/transport.js` 修改并重跑验收后直接收工。\n\n下一步看完本轮 `npm test` 与 `node scripts/replay-truncated.mjs` 输出后，立即用 `edit_file` 修改 `src/transport.js`（同时在同轮运行 `node scripts/replay-truncated.mjs` 与 `npm test` 验收通过，确保被切断流 `ok:false` 走 `passthrough`、完整流走 `condensed`）。",
   "stored": "已走过的路：第 1 轮 bash `find . -type f -not -path './node_modules/*' -not -path './.git/*' | head -100 && echo \"---\" && cat package.json` → 「$ find . -type f -not -path './node_modules/*' -not -path './.git/*' | head -100」；第 1 轮 read_file `trace/last.log` → 「[compiler-transport-settled] {\"ok\":true,\"finish\":\"stop\",\"stream\":true,\"outputChars\":212,\"eventCount\":9}」；第 1 轮 read_file `docs/gateway.md` → 「# 网关说明」；第 2 轮 read_file `src/transport.js` → 「// SSE 帧拼装：把 data: 行拼成文本，并给出这次流式输出的结束原因」；第 2 轮 read_file `src/transport.compat.js` → 「// 兼容层：对外导出与 src/transport.js 同名包装，排查时常被误判为主入口（实为只读转发）」；第 2 轮 read_file `src/transport.legacy.js` → 「// 旧实现（仍被部分脚本引用；行为与 src/transport.js 相近）」；第 2 轮 read_file `src/birth.js` → 「import { assembleSseFrames, settle } from './transport.js'」；第 3 轮 bash `cat verify.mjs` → 「cat: verify.mjs: No such file or directory」；第 3 轮 bash `cat README.md; echo \"=== runbook ===\"; cat docs/incident-runbook.md; echo \"=== stale ===\"; cat logs/stale-diagnostic.log` → 「$ cat README.md」；第 4 轮 bash `ls -la; echo '---'; find . -type f -not -path './.git/*' | sort` → 「$ ls -la」；第 4 轮 bash `cat scripts/replay-truncated.mjs; echo '=== selftest ==='; cat test/transport.selftest.mjs` → 「$ echo '=== replay ==='」；第 4 轮 bash `ls -la; echo '--- all files ---'; find . -type f -not -path './.git/*' | sort` → 「$ ls -la」；第 4 轮 bash `echo '=== replay ==='; cat scripts/replay-truncated.mjs; echo '=== selftest ==='; cat test/transport.selftest.mjs` → 「$ cat scripts/replay-truncated.mjs」；这些不再重跑，除非中间改过东西。\n\n我在手的代码行：\n- `src/transport.js`：`return { out, finish: finish || (done ? 'stop' : null), eventCount: frames.length }`\n- `src/transport.js`：`const ok = r.finish != null || r.out.length > 0`\n\n核心定位：根据 `docs/gateway.md` 与 `src/birth.js`（`import { assembleSseFrames, settle } from './transport.js'`），正常结束必含 `finish_reason`，被代理切断的半截流只补 `[DONE]` 或无任何结束信号。`src/transport.js` 中 `assembleSseFrames` 把 `done` 合成 `'stop'`，且 `settle` 用 `r.out.length > 0` 放行无 `finish_reason` 的截断流，导致截断流被判为 ok:true 并走 `condensed`。\n\n改法只落一个：在 `src/transport.js` 中，将 old_text 为 `return { out, finish: finish || (done ? 'stop' : null), eventCount: frames.length }` 改为 `new_text` 为 return { out, finish, eventCount: frames.length }（去掉 `done ? 'stop' : null` 合成），并将 `settle` 中 old_text 为 `const ok = r.finish != null || r.out.length > 0` 改为 `new_text` 为 `const ok = r.finish != null`。\n\n已排除：修改 `src/transport.legacy.js` 或 `src/transport.compat.js`，因为 `README.md`、`docs/incident-runbook.md` 与 `logs/stale-diagnostic.log` 提到的 `src/transport.legacy.js` 和 `src/transport.compat.js` 均不在 `src/birth.js` 的真实调用链中，属于诱饵文件。\n已排除：保留 `done ? 'stop' : null` 或保留 `|| r.out.length > 0`，因为仅有 `[DONE]` 或无结束信号的截断流也有 `out.length > 0`，必须严格要求收到真实 `finish_reason`（`r.finish != null`）才算 ok:true。\n\n未解：确认本轮 `npm test` 与 `node scripts/replay-truncated.mjs` 的基线输出后，下一步立即在同轮完成 `src/transport.js` 修改并重跑验收后直接收工。\n\n下一步看完本轮 `npm test` 与 `node scripts/replay-truncated.mjs` 输出后，立即用 edit_file 修改 `src/transport.js`（同时在同轮运行 `node scripts/replay-truncated.mjs` 与 `npm test` 验收通过，确保被切断流 `ok:false` 走 `passthrough`、完整流走 `condensed`）。验收命令是新起进程的直接输出（不是翻旧日志、不是旧记录的统计），输出即本次结果，新鲜。验收命令里有单元测试：PASS 只证明被测函数的行为，不证明原症状消失——症状级验收要看原症状（trace / 线上现象）在原处、同等条件下不再出现；单元测试 PASS 不能当收工依据。验收命令读的是 trace/last.log 里已有的行（tail / grep 一个已有文件），命令里没有先清空、也没有时间戳或本次运行 id ⇒ 这些行不自证是改后产生的：数字与上一轮那行一样就当旧行，既不能证实也不能证伪；那时第一步只有一条：先 `: > trace/last.log`（或先 `wc -l trace/last.log` 记下行数、之后只看新增的行）再跑同一条命令拿新鲜行，不判定、不收工。",
   "gates": {
     "v4": {
@@ -58,7 +58,7 @@
     "vsRaw": "tie"
   },
   "validated": true,
-  "digest": "51381df84a299f50",
+  "digest": "2876ba54e4f80ad9",
   "file": "transfer/gold/sse-truncated/sse-truncated_long-horizon-s0-r5.json",
   "qualityAudit": {
     "schema": "cfb.mode1-content-audit/1",
@@ -83,19 +83,5 @@
     "at": "2026-10-05T10:40:06.800Z",
     "note": "v14.22.0 上限闸判定 0/8 合格 ⇒ 降级为训练料/负样本（数据不删）：C2 闭合判读 8/8 缺；6/8 条 stored 比产线同题稿长（tools/gold-vs-line.mjs 实测，如 perf 2864 vs 1692）；wrong_decoy 净省仅 51 字（1787→1736）；perf 另叠加 C4 第 9 轮才修好。要回标尺必须按 docs/GOLD-WRITING-GUIDE.md §0 上限线重挣（含真机）。",
     "by": "gold use"
-  },
-  "revision": {
-    "at": "2026-10-05T13:20:39.110Z",
-    "note": "v14.23.1 只补「闭合判读三元组」一句（命令沿用稿内既有片段 ⇒ 无新标识符）；$0 复判 = 生产闸链 + G2 决策不变 + C1–C6 全过；真机 C4/C5 沿用本条目当天读数",
-    "archived": "transfer/gold-history/sse-truncated/sse-truncated_long-horizon-s0-r5.2876ba54e4f80ad9_reharden.json"
-  },
-  "ceiling": {
-    "ok": true,
-    "fails": [],
-    "ratio": 0.1205,
-    "storedRatio": 0.6541,
-    "draftChars": 626,
-    "lineChars": 2219,
-    "at": "2026-10-05T13:20:39.111Z"
   }
 }

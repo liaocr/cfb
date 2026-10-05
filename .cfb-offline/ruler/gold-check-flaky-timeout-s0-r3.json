@@ -1,27 +1,29 @@
 {
   "id": "flaky-timeout-s0-r3",
-  "source": ".cfb-runtime/traj/t97/pending/flaky-timeout-s0-r3.json",
-  "pending": true,
+  "source": "transfer/gold-rejected/flaky-timeout-s0-r3.json",
+  "pending": false,
   "use": "ruler",
-  "draftChars": 791,
-  "rawChars": 16861,
-  "storedReal": 1407,
-  "ratio": 0.083,
+  "draftChars": 1237,
+  "rawChars": 20773,
+  "storedReal": null,
+  "ratio": null,
   "line": {
-    "lineChars": 1419,
-    "lineRatio": 0.0842,
+    "lineChars": 1409,
+    "lineRatio": 0.1498,
     "g2Ok": true,
-    "over": -12
+    "over": -172
   },
   "closedRead": true,
-  "replayGreen": true,
-  "g2Unchanged": true,
-  "verdict": "gate-ok",
-  "warns": [
-    "差集里的纯数字按 new_text 处理：[\"5000\"]",
-    "C4/C5（提前量与 vsRaw）只能由真机给 ⇒ C4"
+  "replayGreen": false,
+  "g2Unchanged": false,
+  "verdict": "invented-anchors",
+  "warns": [],
+  "fails": [
+    "C3 可执行验收：验收段没写「跑哪条命令、看到什么读数即算完」⇒ 本项目自己的结论是改完不验证 = 伪修好（ledger 臂 16.7%）",
+    "生产闸未全绿（见 handDraftGate / replay 输出）",
+    "越界 lint：verdict=invented-anchors ⇒ 稿里有证据外锚点，那是银标不是金标",
+    "本地锚点差集非空（证据外标识符）⇒ [\"URL\",\"reject\",\"taskset\"]"
   ],
-  "fails": [],
-  "ok": true,
-  "at": "2026-10-05T11:28:32.085Z"
+  "ok": false,
+  "at": "2026-10-05T13:21:57.074Z"
 }

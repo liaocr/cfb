@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // tools/gold-check.mjs —— 一条改完的金标稿，到底达没达上限线？（$0）
+// v14.23.1：C6 与生产判据同口径 = 稿 vs 产线稿（stored 只作审计，不再当判据）。
 // 与 replay 的分工：cfb-gold-repair replay 跑**生产闸链**（G2/compileV4Direct/birthAccept/越界 lint）并给出**真实 stored**；
 // 本脚本拿那个真实 stored 去跑 §0A 的 C1–C6。长度不许自己估：生产拼接的延续段有 600–900 字，估了就是假达标。
 // 用法：
@@ -104,11 +105,11 @@ if (!g.outcome) {
   const pending = fails.filter((x) => x.startsWith('C4') || x.startsWith('C5'))
   if (pending.length) { fails.splice(0, fails.length, ...fails.filter((x) => !pending.includes(x))); warns.push('C4/C5（提前量与 vsRaw）只能由真机给 ⇒ ' + pending.map((x) => x.slice(0, 2)).join('/')) }
 }
-const res = { id: registryId, source, pending: !!pendFile, use: g.use ?? goldUse(g), draftChars: draft.length, rawChars, storedReal: storedReal || null, ratio: storedReal ? +(storedReal / rawChars).toFixed(3) : null, line: row ? { lineChars: row.lineChars, lineRatio: row.lineRatio, g2Ok: row.g2Ok, over: storedReal - row.lineChars } : null, closedRead: hasClosedRead(draft), replayGreen, g2Unchanged, verdict, warns, fails, ok: fails.length === 0 }
+const res = { id: registryId, source, pending: !!pendFile, use: g.use ?? goldUse(g), draftChars: draft.length, rawChars, storedReal: storedReal || null, ratio: storedReal ? +(storedReal / rawChars).toFixed(3) : null, line: row ? { lineChars: row.lineChars, lineRatio: row.lineRatio, g2Ok: row.g2Ok, over: draft.length - row.lineChars } : null, closedRead: hasClosedRead(draft), replayGreen, g2Unchanged, verdict, warns, fails, ok: fails.length === 0 }
 const jf = arg('--json', path.join(ROOT, '.cfb-offline', 'ruler', `gold-check-${registryId}.json`))
 fs.mkdirSync(path.dirname(jf), { recursive: true })
 fs.writeFileSync(jf, JSON.stringify({ ...res, at: new Date().toISOString() }, null, 2) + '\n')
-console.log(`${registryId}  稿 ${draft.length} → 真实 stored ${storedReal}（raw ${rawChars} ⇒ ratio ${res.ratio ?? '-'}）  产线 ${row ? row.lineChars : '缺对照'} ⇒ ${row ? (storedReal <= row.lineChars ? '✓ 不劣于产线' : '✗ 超 ' + (storedReal - row.lineChars) + ' 字') : '—'}`)
+console.log(`${registryId}  稿 ${draft.length} → 真实 stored ${storedReal}（raw ${rawChars} ⇒ ratio ${res.ratio ?? '-'}）  产线 ${row ? row.lineChars : '缺对照'} ⇒ ${row ? (draft.length <= row.lineChars ? '✓ 不劣于产线' : '✗ 超 ' + (draft.length - row.lineChars) + ' 字') : '—'}`)
 if (storedNote) console.log('stored 口径：' + storedNote)
 console.log(`闸链 ${replayGreen ? '✓' : '✗'} · G2 决策不变 ${g2Unchanged ? '✓' : '✗'} · 闭合判读 ${res.closedRead ? '✓' : '✗'} · verdict ${verdict}`)
 if (warns.length) console.log('提示：' + warns.join('；'))
