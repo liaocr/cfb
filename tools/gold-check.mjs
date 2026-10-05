@@ -22,8 +22,17 @@ const from = arg('--from', 'transfer/gold,transfer/gold-rejected').split(',').ma
 
 const walk = (d) => (fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : e.name.endsWith('.json') ? [path.join(d, e.name)] : [])) : [])
 let g, source, registryId = id0
+const pendPath = (() => {
+  if (!pendFile) return null
+  if (fs.existsSync(pendFile)) return pendFile
+  const dir = path.dirname(pendFile), base = path.basename(pendFile)
+  const alt = [path.join(dir, 'done', base), path.join(path.dirname(dir), 'pending', 'done', base)]
+  const hit = alt.find((x) => fs.existsSync(x))
+  if (!hit) die(`pending 文件不存在（也找不到 done/ 里的归档）：${path.relative(ROOT, pendFile)}`)
+  return hit
+})()
 if (pendFile) {
-  const p = JSON.parse(fs.readFileSync(pendFile, 'utf8'))
+  const p = JSON.parse(fs.readFileSync(pendPath, 'utf8'))
   g = { id: p.id, family: p.task, split: 'dev', raw: p.raw, ctx: p.ctx || '', calls: p.calls || [], draft: '', stored: '', outcome: null }
   source = path.relative(ROOT, pendFile); registryId = p.id
 } else {
@@ -37,10 +46,26 @@ const draft = fs.readFileSync(path.resolve(draftFile), 'utf8').trim()
 if (!draft) die('稿是空的')
 
 // 1) 真实 stored
-let storedReal = 0, replayGreen = false, g2Unchanged = false, verdict = '?', inventedSpans = null
+let storedNote = '', storedReal = 0, replayGreen = false, g2Unchanged = false, verdict = '?', inventedSpans = null
 if (pendFile) {
-  const m = String(g.ctx || '').match(/^- 已走过的路：.*$/m)   // 生产原样拼在稿首的就是这一行；提示语「已走过的路不重走…」不进稿，别算进来
-  storedReal = (m ? m[0].length : 0) + draft.length           // 生产把延续段原样拼在稿首
+    // v14.23.0：真机跑过的轮次以**生产实际写出的 stored** 为准（hand-samples.jsonl 里有），别用台账估——
+  //   t98 实测：估 768、真机存 3114（程序部件 + 整段台账都进 stored），差了 4 倍 ⇒ 「$0 达线」必须是真机口径的达线。
+  let real = 0
+  try {
+    const dir = path.dirname(path.dirname(pendFile))
+    for (const f of ['hand-samples.jsonl', 'results.jsonl']) {
+      const fp = path.join(dir, f)
+      if (!fs.existsSync(fp)) continue
+      for (const l of fs.readFileSync(fp, 'utf8').split('\n').filter(Boolean)) {
+        let r; try { r = JSON.parse(l) } catch { continue }
+        const cand = [r, ...(Array.isArray(r?.compile) ? r.compile : [])]
+        for (const c of cand) { const t = c && (c.storedChars ?? (c.stored ? String(c.stored).length : null)); if (t && (c.round === g.round || c.id === registryId || r.id === registryId)) real = Math.max(real, Number(t)) }
+      }
+    }
+  } catch { /* 还没跑过真机 ⇒ 用估算 */ }
+  const m = String(g.ctx || '').match(/^- 已走过的路：.*$/m)
+  storedReal = real || ((m ? m[0].length : 0) + draft.length)
+  if (real) storedNote = `生产实存 ${real} 字（估 ${(m ? m[0].length : 0) + draft.length}）`           // 生产把延续段原样拼在稿首
   const gate = handDraftGate(String(g.raw), draft, String(g.ctx))
   replayGreen = !!gate.ok; g2Unchanged = !!gate.ok; verdict = gate.verdict || (gate.ok ? 'gate-ok' : 'gate-rejected')
 } else {
@@ -84,6 +109,7 @@ const jf = arg('--json', path.join(ROOT, '.cfb-offline', 'ruler', `gold-check-${
 fs.mkdirSync(path.dirname(jf), { recursive: true })
 fs.writeFileSync(jf, JSON.stringify({ ...res, at: new Date().toISOString() }, null, 2) + '\n')
 console.log(`${registryId}  稿 ${draft.length} → 真实 stored ${storedReal}（raw ${rawChars} ⇒ ratio ${res.ratio ?? '-'}）  产线 ${row ? row.lineChars : '缺对照'} ⇒ ${row ? (storedReal <= row.lineChars ? '✓ 不劣于产线' : '✗ 超 ' + (storedReal - row.lineChars) + ' 字') : '—'}`)
+if (storedNote) console.log('stored 口径：' + storedNote)
 console.log(`闸链 ${replayGreen ? '✓' : '✗'} · G2 决策不变 ${g2Unchanged ? '✓' : '✗'} · 闭合判读 ${res.closedRead ? '✓' : '✗'} · verdict ${verdict}`)
 if (warns.length) console.log('提示：' + warns.join('；'))
 if (fails.length) console.log('仍缺：\n  - ' + fails.join('\n  - '))

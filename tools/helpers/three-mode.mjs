@@ -166,9 +166,12 @@ const CEILING_ROUNDS_MAX = 6
 const ACCEPT_CMD_RE = /`[^`]*(?:node|npm|cat|git|grep|sed|ls|pytest|analyze-trace|verify)[^`]*`|--steps|--last|--file/
 export function goldCeiling(g, lineRow) {
   const raw = String(g.raw || ''), draft = String(g.draft || ''), stored = String(g.stored || draft)
-  const ratio = stored.length / Math.max(1, raw.length)
+  // v14.23.0 口径纠正：比的是**压缩器写出的稿**（draft），不是 stored。stored = 台账 + 稿，台账由生产写、
+  //   不由作者写 ⇒ 拿 stored 比线，等于替产线免掉了它自己也要付的那段台账 ⇒ 晚轮条目数学上全灭（t98/t99 实测：
+  //   稿 354 字 vs 产线稿 1650 字，明明更狠，却因 stored 3114 > 1650 判不合格）。stored 仍然记进返回值，供审计。
+  const ratio = draft.length / Math.max(1, raw.length)
   const fails = []
-  if (ratio > CEILING_RATIO_MAX) fails.push(`C1 压缩力度：stored/raw=${ratio.toFixed(2)}（要 ≤${CEILING_RATIO_MAX} ⇒ 至少净省 40%）`)
+  if (ratio > CEILING_RATIO_MAX) fails.push(`C1 压缩力度：draft/raw=${ratio.toFixed(2)}（要 ≤${CEILING_RATIO_MAX} ⇒ 至少净省 40%；台账由生产拼接，不计入作者稿）`)
   if (!hasClosedRead(draft)) fails.push('C2 闭合判读三元组：稿里没有「读数 ⇒ 结论」/「如果…就…」这类闭合判读分支 ⇒ 产线 compileV4Direct 硬要求它（口径见 hand-draft.mjs 的 hasClosedRead），标尺侧 8/8 缺')
   const at = draft.search(/验收|读数|即收工|看到/)
   if (at < 0 || !ACCEPT_CMD_RE.test(draft.slice(at, at + 400))) fails.push('C3 可执行验收：验收段没写「跑哪条命令、看到什么读数即算完」⇒ 本项目自己的结论是改完不验证 = 伪修好（ledger 臂 16.7%）')
@@ -176,8 +179,8 @@ export function goldCeiling(g, lineRow) {
   if ((o.roundsToFix ?? 99) > CEILING_ROUNDS_MAX) fails.push(`C4 提前量：第 ${o.roundsToFix ?? '?'} 轮才修好（要 ≤${CEILING_ROUNDS_MAX}；贴着轮数上限的赢法测不出「停止取证」这一维）`)
   if (o.vsRaw === 'tie' && !((o.roundsToFix ?? 99) <= (o.rawRoundsToFix ?? 99))) fails.push(`C5 不输 raw：vsRaw=tie 且不比 raw 快（hand r${o.roundsToFix ?? '-'} vs raw r${o.rawRoundsToFix ?? '-'}）`)
   if (!lineRow) fails.push('C6 缺产线对照读数 ⇒ 先跑 node tools/gold-vs-line.mjs（$0，约 10 ms/条）；判不了按不合格算，不默认放行')
-  else if (lineRow.lineChars != null && stored.length > lineRow.lineChars) fails.push(`C6 不劣于产线：金标 stored ${stored.length} 字 > 产线同题稿 ${lineRow.lineChars} 字（线长比 ${lineRow.lineRatio}）⇒ 上限不能比产品松`)
-  return { ok: fails.length === 0, fails, ratio: +ratio.toFixed(4), lineChars: lineRow?.lineChars ?? null, at: new Date().toISOString() }
+  else if (lineRow.lineChars != null && draft.length > lineRow.lineChars) fails.push(`C6 不劣于产线：金标稿 ${draft.length} 字 > 产线同题稿 ${lineRow.lineChars} 字（线长比 ${lineRow.lineRatio}）⇒ 上限不能比产品松`)
+  return { ok: fails.length === 0, fails, ratio: +ratio.toFixed(4), storedRatio: +(stored.length / Math.max(1, raw.length)).toFixed(4), draftChars: draft.length, lineChars: lineRow?.lineChars ?? null, at: new Date().toISOString() }
 }
 
 export function saveGold(dir, items, { includeUnsolved = false, includeLoss = false, rejectedDir = null, auditReviewer = 'mode1-output-lint/1', replaceExisting = false, historyDir = null, revisionNote = null, legacyFloor = false, lineFile = null } = {}) {

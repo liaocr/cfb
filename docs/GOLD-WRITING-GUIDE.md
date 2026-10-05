@@ -24,12 +24,12 @@
 
 | 条 | 口径 | 为什么 |
 |---|---|---|
-| C1 压缩力度 | `stored/raw ≤ 0.60`（或净省 ≥40%） | 短 raw 的绝对字数地板只有 50 字（`src/birth.js:553`），曾放过硬标 `stored 51 / ratio 0.97` |
+| C1 压缩力度 | **`draft/raw ≤ 0.60`**（v14.23.0 口径纠正：台账由生产拼接、不是作者写的，不计入；`storedRatio` 仍留档）（或净省 ≥40%） | 短 raw 的绝对字数地板只有 50 字（`src/birth.js:553`），曾放过硬标 `stored 51 / ratio 0.97` |
 | C2 闭合判读三元组 | 稿里要有「读数 ⇒ 结论」或「如果…就…」（口径唯一化在 `hand-draft.mjs` 的 `hasClosedRead`） | 产线 `compileV4Direct` 硬要求它；标尺侧 8/8 缺 |
 | C3 可执行验收 | 验收段要写「跑哪条命令、看到什么读数即算完」 | 本项目自己的结论：改完不验证 = 伪修好（ledger 臂 16.7% 假完） |
 | C4 提前量 | `roundsToFix ≤ 6` 且 `≤ rawRoundsToFix` | 贴着 9 轮上限的赢法测不出「停止取证」这一维 |
 | C5 结果 | `vsRaw=win`，或 `tie ∧ roundsToFix ≤ raw` | 没比 raw 快的稿不当尺子 |
-| C6 不劣于产线 | `stored ≤` 同 raw 产线稿 `splicedChars`；产线过 G2 时金标必须也过 | 尺子不得比产品松。**缺 `gold-vs-line.json` 读数 = 不合格（fail-closed）** |
+| C6 不劣于产线 | **`draft ≤` 同 raw 产线稿 `splicedChars`**（两边都只算压缩器写出的内容，否则产线白免一段台账）；产线过 G2 时金标必须也过 | 尺子不得比产品松。**缺 `gold-vs-line.json` 读数 = 不合格（fail-closed）** |
 | 附加 装置话术 | 原 `auditMode1Draft` 照跑（`inventedSpans` 等） | 防编造锚点 |
 
 **三条后果（已经生效）：** ① `export-train` 把 `use:'ruler'` 剔出 SFT（此前 3 条标尺原文被直抄成答案）；② `train-v5-micro` 自检只读标尺侧，标尺为空 ⇒ `no-ruler-for-eval` 拒绝对"自己训过的数据"打满分；③ `plan-bench` 标尺为空 ⇒ `no-gold:dev` 拒跑。

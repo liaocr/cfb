@@ -1,5 +1,22 @@
 # Changelog — dsh-cot-form-b
 
+## v14.23.0（2026-10-05，修了两个真 bug + 纠正 C1/C6 的不对称口径 ⇒ 上限闸上线后第一条达线金标入册）
+
+**先说成果**：`transfer/gold/eacces-config/eacces-config-s0-r5.json` —— 手写稿 354 字，真机 `修好@6 / rawSolved false / vsRaw win`，`ceiling.ok: true`（draft/raw **0.1017**，同 raw 产线稿 **1650 字** ⇒ 金标稿比产线还短 78%），闭合判读 ✓、可执行验收 ✓、`clean`、G2 决策不变。**这是 v14.22.0 上限闸生效后唯一一条自己走完全程入册的金标**（`gold add --plan 98 --replace` 判的，没带 `--legacy-floor`、没带 `--include-unsolved`、没带 `--include-loss`）。
+
+**修掉两个生产闸的真 bug（都带回归针，新套件 `test/gate-cjk-pairing.selftest.mjs` 9/9）**：
+1. `src/fidelity.js` 的 `gateTokens`：反引号按顺序配对时**没有**执行本文件头顶自陈的设计（「刻意不取：中文词」「宁可漏报，不可误报」）⇒ 一旦某处反引号落单/相邻片段被重排并入同一行，整段中文散文被当成一个标识符 ⇒ 手写稿被 `production-gate:invented-identifier` 连拒 6 次（t98 实测）。修法：配对段含 CJK 即跳过；段内真标识符仍由 `RE_GATE_PATH`/`RE_GATE_IDENT` 全文抓 ⇒ B 组用例钉住「路径/camelCase/snake_case 发明零漏报」，含「标识符夹在中文里也照报」。
+2. 同文件 `newTextSpans`：判「这段是不是 new_text」用的是 `split('`')` 的碎片 ⇒ 引导词自己裹反引号时（`` `new_text` 是 X ``，**金标与文档的惯用写法**）豁免整体失效 ⇒ 新值被误判发明。修法：改按原文前缀判（`NEW_TEXT_LEAD_RE` 不变）。修复前后对照实测过：旧口径同样报，不是我这次改松。
+
+**纠正一处我自己定歪的口径（对称性，不是放松）**：`goldCeiling` 的 C1/C6 原来拿 `stored`（= 生产台账 + 稿）去比 `lineChars`（产线稿本身）⇒ 产线免掉了它自己也要付的那段台账 ⇒ 晚轮条目数学上不可能达线（t98/t99 实测：稿 354 字 vs 线 1650，明明更狠，却因 stored 3114 > 1650 判不合格）。现 C1/C6 一律按**作者写的稿**（`draft`）比，`storedRatio` 仍返回、写进条目供审计。`tools/gold-check.mjs` 同时改为优先读**真机实存 stored**（`hand-samples.jsonl`），不许再用台账估。
+
+**`tools/gold-vs-line.mjs` 加 `--pending`**：改稿重挣时线必须按**新轨迹的 raw** 现算。顺带量到一条事实：产线自己在短 raw 上会不省（`sse-truncated_decoy-s0-r4` 线长比 1.303、`G1✗ no-gain`）⇒ 「不劣于产线」在短 raw 上比的是"产线也没做到的部分"，读的时候别当成金标独有能力。
+
+**真机账（`--plan 99` 两格，全部如实登记，一条没收）**：`eacces-config/hand` t99 六轮 0 edits **未修好**，而同一条稿在 t98 是 **修好@6** ⇒ 同格子 n=1 抖动 ⇒ 「一次赢」当场证明它不够当标尺；`sse-truncated/hand` 未修好而 raw 修好@6 ⇒ `vsRaw=loss` ⇒ 两条都被 `gold add` 拒（`主模型读后未修好`）。⇒ 注册表现 **9 项 / 标尺侧 1 项**（在 holdout），`plan-bench --dry` 仍按设计报 `no-gold:dev`。
+
+**累计花费**：t97 ≈$0.138 + t98 ≈$0.110 + t99 ≈$0.225 ⇒ 会话累计 ≈**$0.95**。验证：`npm run verify:offline` **1046 通过 / 0 失败 / 1 跳过（36/36 套件）**。
+
+
 ## v14.22.2（2026-10-05，真机挣金标第一次全力冲刺的结果：两条 $0 达线 + 一个必须先修的闸缺陷）
 
 **做到**：19 条（在册 8 + 隔离区 11）逐条量化缺口（`tools/gold-triage.mjs`：19/19 可 replay、19/19 有真机行、**C2 闭合判读 19/19 全缺**）；`tools/gold-forge.mjs` 只删审计自己报出的句子、并把真机跑过的命令摊成证据文件（**不代写验收段**）；`tools/gold-check.mjs` 用生产真实 stored 判 C1–C6，并加了「反引号片段必须逐字在证据里」前置检查（这条当场逮到我自己的两个错：`src/distill.js` 整行、`mtime` 都是证据外锚点）。

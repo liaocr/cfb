@@ -114,8 +114,8 @@ console.log(`gold-use-split: 用途隔离（缺省保守 / 两侧互斥 / digest
     + '已排除：`maxOutputTokens`——260 < 850、1150 < 4096，上限从没咬过人。'
   const okCase = goldCeiling({ raw, draft: goodDraft, stored: 'w'.repeat(380), outcome: { vsRaw: 'win', roundsToFix: 5 } }, { lineChars: 400, lineRatio: 0.4 })
   assert.ok(okCase.ok, '达线稿要放行：' + JSON.stringify(okCase.fails))
-  const soft = goldCeiling({ raw, draft: '已排除：A——因为 B。', stored: 'y'.repeat(900), outcome: { vsRaw: 'win', roundsToFix: 5 } }, { lineChars: 400, lineRatio: 0.4 })
-  assert.ok(soft.fails.some((x) => x.startsWith('C1')) && soft.fails.some((x) => x.startsWith('C2')) && soft.fails.some((x) => x.startsWith('C6')), '松软稿必须被 C1 压缩力度 / C2 闭合判读 / C6 不劣于产线 三条同时挡')
+  const soft = goldCeiling({ raw, draft: 'x'.repeat(900) + '\n已排除：A——因为 B。', stored: 'y'.repeat(1200), outcome: { vsRaw: 'win', roundsToFix: 5 } }, { lineChars: 400, lineRatio: 0.4 })
+  assert.ok(soft.fails.some((x) => x.startsWith('C1')) && soft.fails.some((x) => x.startsWith('C2')) && soft.fails.some((x) => x.startsWith('C6')), '松软稿（900 字且无判读）必须被 C1 压缩力度 / C2 闭合判读 / C6 不劣于产线 三条同时挡（口径=draft，不含台账）')
   const noLine = goldCeiling({ raw, draft: goodDraft, stored: 'w'.repeat(380), outcome: { vsRaw: 'win', roundsToFix: 5 } }, null)
   assert.ok(!noLine.ok && noLine.fails.some((x) => x.startsWith('C6')), '缺产线对照 ⇒ fail-closed：判不了就是不合格，不默认放行')
   const slow = goldCeiling({ raw, draft: goodDraft, stored: 'w'.repeat(380), outcome: { vsRaw: 'win', roundsToFix: 9 } }, { lineChars: 400, lineRatio: 0.4 })
@@ -143,8 +143,8 @@ console.log(`gold-use-split: 用途隔离（缺省保守 / 两侧互斥 / digest
   const saved = JSON.parse(fs.readFileSync(path.join(r5('g-b'), 'f-c', 'c1.json'), 'utf8'))
   assert.equal(saved.ceiling?.ok, true, '入册条目要带 ceiling.ok（尺子的合格凭据留在数据里，不靠人记）')
   // 5c 比产线松 ⇒ 挡（这是「上限低于产品」的直接防线）
-  const looser = saveGold(r5('g-c'), [mk('c1', 'f-c', { draft: hardDraft, stored: 'x'.repeat(900), raw: 'r'.repeat(1000), outcome: { vsRaw: 'win', roundsToFix: 5 } })], { includeLoss: true, lineFile })
-  assert.equal(looser.added.length, 0, 'stored 比产线同题稿长的不能当标尺')
+  const looser = saveGold(r5('g-c'), [mk('c1', 'f-c', { draft: hardDraft + '\n' + 'y'.repeat(600), stored: 'x'.repeat(900), raw: 'r'.repeat(1000), outcome: { vsRaw: 'win', roundsToFix: 5 } })], { includeLoss: true, lineFile })
+  assert.equal(looser.added.length, 0, '稿比产线同题稿长的不能当标尺（口径=draft：台账两边同付，不算作者写的东西）')
   assert.ok(looser.skipped[0].why.includes('C6'), looser.skipped[0].why)
 }
 

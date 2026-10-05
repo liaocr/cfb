@@ -94,7 +94,15 @@ function gateTokens(text) {
   // v12.7：反引号按顺序配对（split），不再用「≤80 字的 `…`」正则——长片段（R2″ 落点行、直写稿里 80–220 字的逐字行）会让正则
   //   把上一个片段的闭合反引号和下一个片段的开头配成一对，把中间的散文当成「代码」报发明（compile-direct accept 抓到）。
   const parts = s.split('`')
-  for (let i = 1; i < parts.length; i += 2) { const seg = parts[i]; if (seg.length >= 2 && seg.length <= 300 && !seg.includes('\n')) add(seg) }
+  for (let i = 1; i < parts.length; i += 2) {
+    const seg = parts[i]
+    if (seg.length < 2 || seg.length > 300 || seg.includes('\n')) continue
+    // v14.23.0：含中文的配对段不当「标识符」——本文件头顶就写着「刻意不取：中文词」，但配对这段漏了这层过滤：
+    //   重排后若某处反引号落单（或相邻片段被并入同一行），中间那句中文散文会被整段当成代码 ⇒ 白扔一次压缩（t98 实测连拒 6 次）。
+    //   不放水：段内真标识符（src/x.js、fooBar、snake_case）仍由下面 RE_GATE_PATH / RE_GATE_IDENT 全文抓到，漏报面 = 0。
+    if (/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(seg)) continue
+    add(seg)
+  }
   RE_GATE_PATH.lastIndex = 0
   while ((m = RE_GATE_PATH.exec(s)) !== null) {
     const t = m[0]
@@ -126,11 +134,18 @@ const GATE_ALLOW = new Set(['edit_file', 'old_text', 'new_text', 'read_file', 'N
 export const NEW_TEXT_LEAD_RE = /(?:new_text\s*(?:是|为|=|：|:)|补上|补一句|补|加上|加入|加|改成|改为|换成|替换为|替换成|设为|设成|写成|变成|改写为|改写成|替换成为|改回)\s*$/
 /** 文本里按 new_text 引导词标出的反引号段（去重） */
 export function newTextSpans(text) {
-  const parts = String(text || '').split('`')
+  const s = String(text || '')
+  const parts = s.split('`')
   const out = []
+  // v14.23.0：判「前一段是不是引导词」要用**原文前缀**，不能用 split 出来的碎片 —— 引导词自己裹了反引号时
+  //（`new_text` 是 `X`，金标与文档的惯用写法）碎片只剩「 是 」，而旧实现按 parts[i-1] 取，遇到
+  //   「…`new_text` 是 `X`…」这种偶数个反引号时会取到「new_text」而非「 是 」⇒ 豁免整体失效 ⇒ 新值被误判发明。
+  let pos = 0
   for (let i = 1; i < parts.length; i += 2) {
     const seg = parts[i]
-    if (seg.length >= 2 && seg.length <= 300 && !seg.includes('\n') && NEW_TEXT_LEAD_RE.test(parts[i - 1].slice(-12))) out.push(seg)
+    const segStart = pos + parts[i - 1].length + 1
+    pos = segStart + seg.length + 1
+    if (seg.length >= 2 && seg.length <= 300 && !seg.includes('\n') && NEW_TEXT_LEAD_RE.test(s.slice(0, segStart).replace(/`/g, '').slice(-12))) out.push(seg)
   }
   return out
 }
