@@ -17,12 +17,22 @@ const plan = argv[0] && !argv[0].startsWith('--') ? argv[0] : 't15'
 const only = (() => { const i = argv.indexOf('--only'); return i >= 0 ? argv[i + 1] : null })()
 const HOME = path.join(ROOT, '.cfb-runtime', 'traj', plan)
 const pendDir = path.join(HOME, 'pending')
-if (!fs.existsSync(pendDir)) { console.log('无 pending 目录：' + path.relative(ROOT, pendDir)); process.exit(0) }
+const doneDir = path.join(pendDir, 'done')
+if (!fs.existsSync(pendDir) && !fs.existsSync(doneDir)) { console.log('无 pending 目录：' + path.relative(ROOT, pendDir)); process.exit(0) }
+/** 单元清单：活跃 pending/ 优先，收稿后归档进 pending/done/ 的也要能复验
+ *  （v14.21.3：之前只扫 pending/ ⇒ 真机收过稿的单元再也过不了这道复检，改稿重投时只能盲跑）*/
+const listUnits = () => {
+  const seen = new Map()
+  for (const dir of [pendDir, doneDir]) {
+    if (!fs.existsSync(dir)) continue
+    for (const x of fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort()) if (!seen.has(x.replace(/\.json$/, ''))) seen.set(x.replace(/\.json$/, ''), path.join(dir, x))
+  }
+  return [...seen.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))
+}
 let bad = 0
-for (const pf of fs.readdirSync(pendDir).filter((x) => x.endsWith('.json')).sort()) {
-  const id = pf.replace(/\.json$/, '')
+for (const [id, pjson] of listUnits()) {
   if (only && only !== id) continue
-  const p = JSON.parse(fs.readFileSync(path.join(pendDir, pf), 'utf8'))
+  const p = JSON.parse(fs.readFileSync(pjson, 'utf8'))
   const draftFile = path.join(HOME, 'drafts', id + '.md')
   if (!fs.existsSync(draftFile)) { console.log(`${id}: 还没稿（真跑到这一轮会暂停等写）`); continue }
   const draft = fs.readFileSync(draftFile, 'utf8').trim()
