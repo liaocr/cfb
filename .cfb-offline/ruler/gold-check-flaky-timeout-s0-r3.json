@@ -3,27 +3,25 @@
   "source": "transfer/gold-rejected/flaky-timeout-s0-r3.json",
   "pending": false,
   "use": "ruler",
-  "draftChars": 1237,
+  "draftChars": 415,
   "rawChars": 20773,
-  "storedReal": null,
-  "ratio": null,
+  "storedReal": 985,
+  "ratio": 0.047,
   "line": {
     "lineChars": 1409,
     "lineRatio": 0.1498,
     "g2Ok": true,
-    "over": -172
+    "over": -994
   },
   "closedRead": true,
-  "replayGreen": false,
-  "g2Unchanged": false,
+  "replayGreen": true,
+  "g2Unchanged": true,
   "verdict": "invented-anchors",
   "warns": [],
   "fails": [
-    "C3 可执行验收：验收段没写「跑哪条命令、看到什么读数即算完」⇒ 本项目自己的结论是改完不验证 = 伪修好（ledger 臂 16.7%）",
-    "生产闸未全绿（见 handDraftGate / replay 输出）",
     "越界 lint：verdict=invented-anchors ⇒ 稿里有证据外锚点，那是银标不是金标",
-    "本地锚点差集非空（证据外标识符）⇒ [\"URL\",\"reject\",\"taskset\"]"
+    "本地锚点差集非空（证据外标识符）⇒ [\"point\",\"output\",\"shows\",\"tool\",\"result\",\"formatting\"]"
   ],
   "ok": false,
-  "at": "2026-10-05T13:21:57.074Z"
+  "at": "2026-10-05T13:33:32.218Z"
 }
