@@ -680,8 +680,12 @@ export function buildMicroDataset() {
         else { chosenScore = Math.max(candidateScore, controlScore); rejectedScore = Math.min(candidateScore, controlScore) }
       }
     }
+    // 阈值按分数单位分派：judge-01 是 0–1 判分，最小可用差 0.05；structural-tally 是 ±1 旗标计数和，
+    // 差 1 只代表一个旗标 ⇒ 要求 ≥2 个旗标差才算「真的更好」。缺 scoreKind 一律按 judge-01（既有 dev 数据零变化）。
+    const scoreKind = String(p.scoreKind || 'judge-01')
+    const minScoreMargin = scoreKind === 'structural-tally' ? 2 : 0.05
     const scoreMargin = chosenScore == null || rejectedScore == null ? null : chosenScore - rejectedScore
-    const trainingEligible = !flywheelScoresDegenerate && scoreMargin != null && scoreMargin >= 0.05
+    const trainingEligible = !flywheelScoresDegenerate && scoreMargin != null && scoreMargin >= minScoreMargin
     stepSimpoPairs.push({
       id: `flywheel::${stepSimpoPairs.length}`,
       sourceId: p.task || fam || 'dev-flywheel',
@@ -701,6 +705,7 @@ export function buildMicroDataset() {
         status: trainingEligible ? 'reviewed-pair-with-margin' : 'needs-review',
         source: 'persisted-flywheel-pair-scores',
         scoreMargin: scoreMargin == null ? null : +scoreMargin.toFixed(4),
+        scoreKind, minScoreMargin,
         reason: trainingEligible ? null
           : (flywheelScoresDegenerate ? 'paired-scores-degenerate-placeholder-set'
           : (scoreMargin == null ? 'missing-paired-scores' : 'paired-score-margin-below-0.05')),

@@ -1,4 +1,17 @@
 # Changelog — dsh-cot-form-b
+## v14.24.5（2026-10-06，飞轮分数加单位 `scoreKind`，构建器按单位分派阈值）
+
+**决定**：两条正解里选 (b)「让消费端知道自己在读什么单位」，不选 (a)「tally 名次化到 0–1」——名次化会把裁判从没断言过的强度差（0.5 vs 1.0）编造出来，而且 4~5 个名次值会再次踩 `distinctScorePairs<=2` 的退化判定。
+
+**改了什么**
+- `tools/cfb-cycle.mjs`：三处写盘点标单位 —— A/B 腿（`:390`）写 `scoreKind:'structural-tally'`（它的 `p.candidate` 来自 `structuralScore`，即 `±1` 旗标计数和），直接判分腿（`:1577/1597`）写 `'judge-01'`。
+- `tools/promote-flywheel-pairs.mjs`：入库前按单位校验，`judge-01` 必须落在 [0,1]、`structural-tally` 只要求有限；**越界行直接不入库，不缩放、不猜**。
+- `tools/build-micro-dataset.mjs`：最小差值阈值按单位分派 —— `judge-01` 沿用 `0.05`，`structural-tally` 要求 `>=2`（差 1 只代表一个旗标，不足以证明更好）；**缺 `scoreKind` 一律按 `judge-01`** ⇒ 既有 dev 数据语义零变化。`scoreKind/minScoreMargin` 写进 `labelAudit` 可追溯。
+
+**端到端实测（不是估的）**：`flywheel --harvest` +51 行（42 行标 `judge-01`，38 行历史遗留无标）⇒ `promote` 单位闸 **入库 67/80、越界丢弃 13**（那 13 行就是 `93|92`、`93|0` 这类计数泄漏），`distinctScorePairs 13`（不再退化）⇒ `build-micro-dataset`：`stepSimpoPairs 42→55`、`trainEligibleStepSimpoPairs 4→17`、`flywheel_real_pair 13`。**对照修前基线 105/59：可训练 draft pair 掉到 17** —— 原 59 里有 13 行垃圾被 `margin>=0.05` 在计数尺度下平凡放行，这个难看数是保护机制生效的结果，不是回退。可训练 Unit 仍 538。
+
+**检查**：三处 `node --check` 通过；`npm run verify:offline` 见下；`manifest:check` 漂移 0。
+
 ## v14.24.4（2026-006 复核）：盲测集三处过度声称入账并逐条改口
 
 独立审计脚本（对磁盘重测、不复述我的说法）：**18 项通过，每族 3 项失败** —— 每族 32 单元只有 11 种不同正文；12 对只有 8 对真落在 matched 层（max |Δtok|=21）；`EXCLUDED` 的 `cueExcluded` 实测 0。

@@ -387,7 +387,7 @@ export function ingestRound({ round, report = null, history = loadHistory(), now
     const win = p.outcome === 'win'
     const chosenText = win ? v.candidate : v.control
     const rejectedText = win ? v.control : v.candidate
-    flywheel.push({ schema: 'cfb.pref-pair/1', at: now, round, task: p.task, split: split[p.task], lever: hyp.lever, value: hyp.value, policy: plan.hypothesis.policy || null, chosen: win ? 'candidate' : 'control', chosenText, rejectedText, contentAudit: auditMode1Pair({ chosenText, rejectedText }, { reviewer: 'mode1-flywheel-lint/1' }), scores: { candidate: p.candidate, control: p.control }, planDigest: evidenceDigest(plan) })
+    flywheel.push({ schema: 'cfb.pref-pair/1', at: now, round, task: p.task, split: split[p.task], lever: hyp.lever, value: hyp.value, policy: plan.hypothesis.policy || null, chosen: win ? 'candidate' : 'control', chosenText, rejectedText, contentAudit: auditMode1Pair({ chosenText, rejectedText }, { reviewer: 'mode1-flywheel-lint/1' }), scores: { candidate: p.candidate, control: p.control }, scoreKind: 'structural-tally', planDigest: evidenceDigest(plan) })
   }
   const flywheelAppend = appendFlywheelPairs(flywheel)
   const watermark = readWatermark(receiptPath)
@@ -1574,7 +1574,7 @@ export function harvestHistoricalFlywheel({ includeDirect = true } = {}) {
           chosenText: w.text,
           rejectedText: l.text,
           contentAudit: auditMode1Pair({ chosenText: w.text, rejectedText: l.text }, { reviewer: 'mode1-flywheel-lint/1' }),
-          scores: { candidate: +w.score.toFixed(3), control: +l.score.toFixed(3) },
+          scores: { candidate: +w.score.toFixed(3), control: +l.score.toFixed(3) }, scoreKind: 'judge-01',
         })
       }
       // 4) Best-of-N 同真值极简偏好对（SEER 2509.14093 范式）：在同样高真值且过闸的候选中，选最短无废话稿击败冗长稿
@@ -1594,7 +1594,7 @@ export function harvestHistoricalFlywheel({ includeDirect = true } = {}) {
           chosenText: shortW.text,
           rejectedText: longL.text,
           contentAudit: auditMode1Pair({ chosenText: shortW.text, rejectedText: longL.text }, { reviewer: 'mode1-flywheel-lint/1' }),
-          scores: { candidate: +shortW.score.toFixed(3), control: +longL.score.toFixed(3), savedChars: longL.text.length - shortW.text.length },
+          scores: { candidate: +shortW.score.toFixed(3), control: +longL.score.toFixed(3), savedChars: longL.text.length - shortW.text.length }, scoreKind: 'judge-01',
         })
       }
     }

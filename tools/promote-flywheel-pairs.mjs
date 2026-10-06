@@ -75,6 +75,7 @@ for (const row of rawRows) {
     rejectedArm: row.rejectedArm ?? null,
     chosenScore,
     rejectedScore,
+    scoreKind: row.scoreKind || 'judge-01',
     scoreMargin,
     trainingEligibleHint: scoreMargin != null && scoreMargin >= 0.05,
     contentAudit: auditMode1Pair({ chosenText, rejectedText }, { reviewer: 'mode1-flywheel-lint/1' }),
@@ -93,6 +94,20 @@ kept.sort((a, b) => String(a.task).localeCompare(String(b.task))
   || (a.round ?? 0) - (b.round ?? 0)
   || String(a.source || '').localeCompare(String(b.source || ''))
   || a.provenance.chosenTextSha256_16.localeCompare(b.provenance.chosenTextSha256_16))
+// 单位一致性闸：judge-01 必须落在 [0,1]；structural-tally 只要求有限数（它是旗标计数和，量纲本就不同）。
+// 越界一律不入库 —— 不缩放、不猜、不把计数当判分用。
+const keptBeforeRange = kept.length
+const droppedOutOfRange = []
+for (let i = kept.length - 1; i >= 0; i--) {
+  const r = kept[i]
+  const kind = String(r.scoreKind || 'judge-01')
+  const finite = Number.isFinite(r.chosenScore) && Number.isFinite(r.rejectedScore)
+  const inUnit = kind === 'structural-tally'
+    ? finite
+    : finite && r.chosenScore >= 0 && r.chosenScore <= 1 && r.rejectedScore >= 0 && r.rejectedScore <= 1
+  if (!inUnit) { droppedOutOfRange.push({ id: r.id ?? null, scoreKind: kind, chosenScore: r.chosenScore ?? null, rejectedScore: r.rejectedScore ?? null }); kept.splice(i, 1) }
+}
+console.log(`单位闸：入库 ${kept.length}/${keptBeforeRange}，越界丢弃 ${droppedOutOfRange.length}`)
 const distinctScorePairs = new Set(kept.map((row) => `${row.chosenScore}|${row.rejectedScore}`))
 const byTask = {}
 for (const row of kept) byTask[row.task] = (byTask[row.task] || 0) + 1
