@@ -32,6 +32,7 @@
 | [`EVIDENCE-PROGRAM.md`](EVIDENCE-PROGRAM.md) | 宿主显式类型化证据程序（`src/evidence-program.js` + `src/evidence-store.js`，默认关闭、opt-in）接口规范；可运行入口见该文档 §7（与 `package.json` 的 scripts 逐字对齐） |
 | [`INSTALL.md`](INSTALL.md) | Cordis 插件注册机制、两层 patch 铁律、部署体检（`npm run onboard`）与故障排查 |
 | [`HANDOFF-2026-10-06.md`](HANDOFF-2026-10-06.md) | **沙箱迁移交接备忘**：五分钟上手顺序、用户"宪法"、环境坑表、流程经验、量纲决策记录、待办与"别做"清单 |
+| [`STATUS-2026-10-07.md`](STATUS-2026-10-07.md) | **2026-10-07 全仓现状总结（只读快照）**：三线现状（微模型 8/10 · 金标 4/19 · 通用压缩器探针已跑通）、问题清单 P1–P16、困境 D1–D9、未决决策与读数陷阱 |
 | [`reports/CFB-MICRO-READINESS-2026-10-04.md`](reports/CFB-MICRO-READINESS-2026-10-04.md) | 2026-10-04 微模型就绪度快照（读数快照，不回改） |
 | [`reports/CFB-MICRO-HANDOFF-2026-10-04.md`](reports/CFB-MICRO-HANDOFF-2026-10-04.md) | 同日微模型交接件：候选权重、闸门状态、下一步（读数快照，不回改） |
 | [`proposals/`](proposals/) | 预注册策略补丁 JSON（`p1-multi-site.json`、`p-f6-bounded-path.json`、`p-regime-augment.json`，供闭环自测 `A21`/`A33` 与离线复现使用） |
@@ -46,4 +47,5 @@
 | [`../transfer/gold-repair/`](../transfer/gold-repair/) | 金标「改稿 → $0 离线重测 → 换稿」通道的工作区：`drafts-proposed/`（修订稿）、`drafts/`+`staged/`（过闸暂存）、`pending-retest.json`（等真机复测的账） |
 | [`../transfer/gold-history/`](../transfer/gold-history/) | `gold add --replace` 换稿时被归档的旧条目（带 `supersededBy`） |
 | [`../transfer/models/`](../transfer/models/) | 微模型产物与判决账本：`v5-micro-weights.json`（**生产权重，任何一轮都不得覆盖**）、`v5-micro-weights.candidate.json`（候选）、`cfb-micro-97m-report*.json`（闸门）、`cfb-micro-final-test-ledger.json`（**一次性盲测消耗记录，不许重跑**）、`micro-gap-map.json`（原型命中 vs 真实用户路径） |
+| [`../transfer/probes-2026-10-07/`](../transfer/probes-2026-10-07/) | 通用压缩器探针资产（2026-10-07 入库）：92 篇任意文本选择器对打、标注金标（GSM8K 链式中间量 / HotpotQA 支撑句）、ground-check 覆盖/幻觉读数；含 README 索引、依赖顺序与陷阱清单 |
 | [`../transfer/watermark.json`](../transfer/watermark.json) | 文档水位的记账文件（结构计数 + 隔离内/联网两态自测读数）；由 `node tools/doc-watermark.mjs --record` 生成，`test/doc-watermark.selftest.mjs` 钉住 |
