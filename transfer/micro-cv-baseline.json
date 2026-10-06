@@ -1,7 +1,7 @@
 {
   "schema": "cfb.micro-cv-baseline/2",
   "trainingDataFingerprint": "cf380bbb6b82b21a891828d5e4e21cb8c03ed5561e51a9c1c99b9d06b86081d9",
-  "preregistrationSha256": "37213668581f5c6db03086f5dc4c3dca0905edd731b4a2e75434aade1f550494",
+  "preregistrationSha256": "084ddbe6a1a65373197df729b8e754d592137b3bfd921c1947058f8853993847",
   "sourceSha256": {
     "src/compile-v5-local.js": "0e6ee939e6ab0ae598b2a365f5d669640e6028771c7ac09206a6afe7e255a3ad",
     "tools/build-micro-dataset.mjs": "037adf8246ca10b46d6c9ecc118304092a600391fc14b66b9a1002f30243622c",
@@ -32,5 +32,5 @@
     "perf-regression": 0.5128,
     "sse-truncated": 0.2784
   },
-  "note": "同血统无回退基准：matched/productionMatched 为 06c 轮候选三折读数（flaky 0.7576 / perf 0.8462 / sse 0.6907）。06f 换的是 draft 侧可训练集（19 条 prefDegenerate 排除），unitSamples/unitStepPairs 与 06c 逐字节一致 ⇒ 上述 matched 读数仍是同口径对照；stamp 已随 06f 更新（数据指纹与 builder 哈希、锁 sha）。baseline 不含 draft 读数，draft 门用的是逐折生产读数，无需回溯。"
+  "note": "同血统无回退基准：matched/productionMatched 为 06c 轮候选三折读数（flaky 0.7576 / perf 0.8462 / sse 0.6907）；06f 起数据指纹换为 cf380bbb（19 条 prefDegenerate 排除，单元对逐字节未变），06g 只追加两个 draft-only 配方旗标；stamp 已随 06g 更新。"
 }

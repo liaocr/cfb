@@ -1,0 +1,53 @@
+{
+  "schema": "cfb.micro-preregistration/2",
+  "status": "locked",
+  "confirmatoryEligible": true,
+  "createdAt": "2026-10-07T18:00:00.000Z",
+  "purpose": "2026-10-07 微模型 06g 轮（3 折家族 CV）。**单变量 = draft 头的优化预算**，只动两个 draft-only 旗标：pref_lr 5e-4→5e-2、draft_every 3→1（其余 14 旗标与 06c/06f 逐字相同；数据沿用 06f 的 c f380bbb 冻结指纹）。 根因链（全部离线复现、零 Kaggle 成本）：① 教师 draft 头**几乎没被优化过**——Stage 3 SimPO 每 epoch 只有 ceil(436/96)=5 步，draft 损失每 3 步才加一次 ⇒ 全程只有 2 次/epoch×12=24 次 draft 更新、每次 24 对、pref_lr=5e-4（Adam 每步位移≈lr），总位移≈0.012，而先验权重幅度 0.4–2.5 ⇒ 教师 draft 分数停在生产先验上。离线按同参数重放得到 train 0.6525 / flaky 0.5593，与实测上报（0.6596 / 0.5593）逐位吻合；报告本身也显示 SimPO draft val 在 12 个 epoch 恒为 55.93%（冻结）。 ② 学生 draft 头被这个未训练的教师**锚住**：loss=0.65·MSE(绝对分)+rank，且学生 pref 权重在 __init__ 里整份拷贝教师（pref_linear/pref_mlp1/pref_mlp2，:393-397）⇒ 学生复刻教师。 ③ 目标函数与特征没问题：同一 12 维特征、同 141 条训练对，把预算给足（60 步 × lr 5e-2）即达 train 133/141=0.943、留出家族 flaky 49/59=0.831，学生继承后 50/59=0.847。预算曲线：位移≈0.012→0.559（=先验）；≈1.2→0.63；≈3→0.83（平台）。 两旗标均为 draft-only：pref_lr 只作用于 SimPO 的 pref_* 参数组（:723-729），draft_every 只控制 draft 分支（:784-792），单元路径/单元对/编码器主学习率不变，matched 读数保持同口径可比。",
+  "flags": {
+    "dataset_neg_strategy": "hardened",
+    "draft_every": 1,
+    "epochs_sft": 12,
+    "epochs_simpo": 12,
+    "matched_bucket_loss_weight": 1.5,
+    "micro_mlp_hidden": 96,
+    "near_length_tokens": 3,
+    "neg_judge_weights": "transfer/models/v5-micro-weights.judge-4764fd2.json",
+    "pref_lr": 0.05,
+    "student_epochs": 260,
+    "student_pair_objective": "listwise",
+    "student_patience": 30,
+    "student_unit_pair_loss_weight": 1.0,
+    "unit_pair_degree_cap": 4,
+    "unit_pairs_per_positive": 4,
+    "unit_review_file": "transfer/models/unit-label-review-blind-v3.json"
+  },
+  "datasetBuilder": {
+    "schema": "cfb.micro-dev-dataset/3",
+    "textHashBuckets": 256,
+    "expectedFeatureDim": 275,
+    "unitLabelReviewFile": "transfer/models/unit-label-review-blind-v3.json",
+    "builderSha256AtLock": "037adf8246ca10b46d6c9ecc118304092a600391fc14b66b9a1002f30243622c"
+  },
+  "folds": [
+    "flaky-timeout",
+    "perf-regression",
+    "sse-truncated"
+  ],
+  "trainingDataFingerprint": "cf380bbb6b82b21a891828d5e4e21cb8c03ed5561e51a9c1c99b9d06b86081d9",
+  "decisionRule": "v2: decide on report.threeFoldCv — per fold matched >= production matched + 0.20; mean(matched) >= 0.75; min(matched) >= 0.70; per fold matched >= previous candidate matched - 0.03; draft aggregate >= 0.85 and every fold >= production draft. Absolute 90% lines are reported-only. One-shot blind family judged by the v2 criteria against the same-family production baseline (matched >= 0.75 and >= production + 0.20; draft >= max(0.85, production draft)).",
+  "whyOneVariable": "只动 draft 头的优化预算，不碰单元对、数据、架构与其它配方；数据沿用 06f 冻结指纹 cf380bbb（本轮与 06f 的唯一差异就是这两个旗标），可直接与 06f 首折（draft 34/59=0.5763、matched 0.7576）对读。",
+  "priorAttemptNote": "登记可审计性：06f（锁 3721366858…，数据卫生轮）首折 flaky：matched 0.7576（生产 0.7273，未漂移）✓、候选 draft 34/59=0.5763（生产 33/59=0.5593）——触发预注册止损（<0.6104）并中止后两折。 06e（配方轮）首折止损：SFT val slotAcc 0.375<0.45，离线归因证明槽位标注跨家族不可迁移（线性探针 0.232/0.284/0.390，低于常数基线 0.458），与本次 draft 问题不同源。 本次两个旗标的调整发生在任何 06g 读数之前。",
+  "frozenJudgeNote": "Negative-mining judge is pinned to the 4764fd2 candidate so the mined pair set cannot drift across folds when each fold pushes its own candidate.",
+  "expectedSelectionGapNote": "draft 聚合门（≥0.85，n=200，需 170 对）：按每折留出家族上限（flaky 0.831 / perf ~0.95 / sse ~0.93 预估）聚合 ≈0.90；即使 flaky 只到 0.75，也需 perf+sse ≥0.885 才够线。 注意：19 条 prefDegenerate 的排除是**必要**的——即便 draft 头修好，旧分母 219 下聚合也仅 ≈(49+40+92)/219=0.826<0.85。 单元侧 +20pp 门（flaky 需 31/33，候选 06c/06d/06e 三连停在 25/33）本轮不动：其瓶颈是家族条件化标签（no-slot-cue 判 NOISE 的比例 flaky 45% / sse 72% / perf 88%）与 4 条争议对，属结构性问题，待 draft 门兑现后单独处理。",
+  "datasetContentsNote": {
+    "draftPairsTotal": 303,
+    "draftPairsTrainEligible": 200,
+    "draftPairsExcludedDegenerate": 19,
+    "unitSamples": 542,
+    "trainEligibleUnitSamples": 538,
+    "prefDegenerateEligible": 0,
+    "note": "19 条 prefDegenerate 对被排除的原因已写入每条 labelAudit.reason='degenerate-draft-feature-identical'；handSamples 中 4 个样本 trainableTargetsAdded 5→3 已同步。"
+  },
+  "falsifiablePredictionNote": "首折即判定：教师 SimPO draft val ≥0.72（预测 ~0.83，=49-50/59）；学生/候选 draft val ≥0.72；教师 SimPO draft train ≥0.90（现 0.66）；matched 保持 0.7576±0.01（单元路径未动）。 止损：候选 draft val <0.68 → 两个 draft-only 旗标不足以兑现，立即停，不要在凑第三折；此时处方是把教师 draft 优化改成独立循环（代码），而不是再加预算。 反向判据：若 matched 发生 >0.02 漂移，说明 draft_every=1 经 pref_ctx→encoder 的梯度产生了单元侧副作用，需回退并改走“冻结 ctx 通路”路线。"
+}
