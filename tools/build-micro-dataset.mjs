@@ -900,7 +900,18 @@ export function buildMicroDataset() {
     if (!a || !b || typeof a !== 'object' || typeof b !== 'object') continue
     let l1 = 0
     for (const key of Object.keys(a)) l1 += Math.abs(Number(a[key]) - Number(b[key] ?? 0))
-    if (l1 < 1e-9) pair.labelAudit = { ...(pair.labelAudit || {}), prefDegenerate: true }
+    if (l1 < 1e-9) {
+      pair.labelAudit = { ...(pair.labelAudit || {}), prefDegenerate: true }
+      // 2026-10-07 微模型 06f：退化对（两侧 12 维特征逐维全同，l1=0）在任何模型下都是必输平局，
+      // 严格口径记 0 分却全额占住 draft 聚合门槛的分母 ⇒ 从可训练集排除；行与旗标保留，可审计。
+      // 只减不增：联动计数在下面按「最终可训练集」重算（见下一段注释），trainer 侧
+      // len(linked_trainable) === trainableTargetsAdded 的恒等式仍成立。
+      if (pair.trainingEligible === true) {
+        pair.trainingEligible = false
+        pair.labelAudit.status = 'needs-review'
+        pair.labelAudit.reason = 'degenerate-draft-feature-identical'
+      }
+    }
   }
   // 联动计数按「最终可训练集」重算，保证 :1977 的 len(linked_trainable) === trainableTargetsAdded 恒成立。
   for (const sample of handCapture.items) {
@@ -1018,7 +1029,7 @@ export function buildMicroDataset() {
       contaminatedOrUnreviewedGoldExcluded: uncleanGoldExcluded,
       contaminatedOracleTargetsDropped,
       contaminatedPoolTargetsDropped,
-      handCapture: { files: handCapture.files, samples: handCapture.samples, withDraft: handCapture.withDraft, gateOk: handCapture.gateOk, gateFail: handCapture.gateFail, productionFail: handCapture.productionFail, revisions: handCapture.revisions, distances: handCapture.distances, droppedQuality: handCapture.droppedQuality, droppedNotSelfContained: handCapture.droppedNotSelfContained, captureGatesAccepted: handCapture.captureGatesAccepted, connectedToTrainingTarget: handCapture.connectedToTrainingTarget, preferencePairsAddedToSimpo: handCapture.preferencePairs.length, trainEligiblePreferencePairs: handCapture.trainEligiblePreferencePairs, pairwiseCapturePairs: handCapture.pairwiseCapturePairs, distanceMean: handCapture.distanceMean, note: '只有 self-contained、dev-only、生产闸通过且内容审计 clean 的 Mode 1 capture 才生成 stepSimpoPairs；仅 trainEligible pair 实际进入偏好训练；未训练权重、未做确认性结论' },
+      handCapture: { files: handCapture.files, samples: handCapture.samples, withDraft: handCapture.withDraft, gateOk: handCapture.gateOk, gateFail: handCapture.gateFail, productionFail: handCapture.productionFail, revisions: handCapture.revisions, distances: handCapture.distances, droppedQuality: handCapture.droppedQuality, droppedNotSelfContained: handCapture.droppedNotSelfContained, captureGatesAccepted: handCapture.captureGatesAccepted, connectedToTrainingTarget: handCapture.connectedToTrainingTarget, preferencePairsAddedToSimpo: handCapture.preferencePairs.length, trainEligiblePreferencePairs: handCapture.preferencePairs.filter((p) => p.trainingEligible === true).length, pairwiseCapturePairs: handCapture.pairwiseCapturePairs, distanceMean: handCapture.distanceMean, note: '只有 self-contained、dev-only、生产闸通过且内容审计 clean 的 Mode 1 capture 才生成 stepSimpoPairs；仅 trainEligible pair 实际进入偏好训练；未训练权重、未做确认性结论' },
     },
     slotNames: SLOT_NAMES,
     handSamples: handCapture.items,

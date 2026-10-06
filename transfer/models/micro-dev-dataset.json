@@ -1,6 +1,6 @@
 {
   "schema": "cfb.micro-dev-dataset/3",
-  "createdAt": "2026-10-06T09:13:04.186Z",
+  "createdAt": "2026-10-06T17:36:50.137Z",
   "holdoutFamiliesExcluded": [
     "eacces-config",
     "wrong-model"
@@ -45,8 +45,8 @@
       "mechanism-heuristic-only": 181,
       "no-slot-cue-or-gold-anchor": 152
     },
-    "trainEligibleStepSimpoPairs": 219,
-    "stepSimpoLabelsNeedsReview": 84,
+    "trainEligibleStepSimpoPairs": 200,
+    "stepSimpoLabelsNeedsReview": 103,
     "draftPairNegTypeCounts": {
       "flywheel_real_pair": 84,
       "invented_edit_triple": 7,
@@ -75,20 +75,21 @@
       "ungrounded_open_anchor_v3": 7
     },
     "eligibleDraftPairSourceCounts": {
-      "gold-vs-deterministic-counterfactual": 42,
-      "mode1-accepted-capture-vs-deterministic-counterfactual": 97,
+      "gold-vs-deterministic-counterfactual": 32,
+      "mode1-accepted-capture-vs-deterministic-counterfactual": 89,
       "mode1-capture-pairwise-local-dd": 2,
-      "persisted-flywheel-pair-scores": 78
+      "persisted-flywheel-pair-scores": 77
     },
     "needsReviewDraftReasons": {
+      "degenerate-draft-feature-identical": 19,
       "no-positive-distance-margin": 1,
       "paired-score-margin-below-0.05": 6,
       "rejected-draft-passes-hard-gate": 77
     },
     "draftPairReviewStatusCounts": {
-      "needs-review": 84,
-      "reviewed-pair-with-margin": 80,
-      "rule-supported": 139
+      "needs-review": 103,
+      "reviewed-pair-with-margin": 79,
+      "rule-supported": 121
     },
     "devFamilyCount": 3,
     "devFamilyNames": [
@@ -177,8 +178,8 @@
         "noise-label-has-gold-overlap": 13
       },
       "preferencePairs": 303,
-      "trainEligiblePreferencePairs": 219,
-      "needsReviewPreferencePairs": 84,
+      "trainEligiblePreferencePairs": 200,
+      "needsReviewPreferencePairs": 103,
       "reviewStatus": "deterministic-screen-only; LLM/human semantic review not run"
     },
     "cleanGoldItemsEligible": 13,
@@ -218,7 +219,7 @@
       "captureGatesAccepted": 32,
       "connectedToTrainingTarget": 18,
       "preferencePairsAddedToSimpo": 151,
-      "trainEligiblePreferencePairs": 99,
+      "trainEligiblePreferencePairs": 91,
       "pairwiseCapturePairs": 2,
       "distanceMean": {
         "decision": 0.846,
@@ -1160,7 +1161,7 @@
       "pendingFile": ".cfb-runtime/traj/t97/pending/done/flaky-timeout-s0-r3.json",
       "gateEligible": true,
       "trainingEligible": true,
-      "trainableTargetsAdded": 5,
+      "trainableTargetsAdded": 3,
       "qualityAudit": {
         "schema": "cfb.mode1-content-audit/1",
         "status": "clean",
@@ -2164,7 +2165,7 @@
       "pendingFile": null,
       "gateEligible": true,
       "trainingEligible": true,
-      "trainableTargetsAdded": 5,
+      "trainableTargetsAdded": 3,
       "qualityAudit": {
         "schema": "cfb.mode1-content-audit/1",
         "status": "clean",
@@ -2232,7 +2233,7 @@
       "pendingFile": null,
       "gateEligible": true,
       "trainingEligible": true,
-      "trainableTargetsAdded": 5,
+      "trainableTargetsAdded": 3,
       "qualityAudit": {
         "schema": "cfb.mode1-content-audit/1",
         "status": "clean",
@@ -2447,7 +2448,7 @@
       "pendingFile": null,
       "gateEligible": true,
       "trainingEligible": true,
-      "trainableTargetsAdded": 5,
+      "trainableTargetsAdded": 3,
       "qualityAudit": {
         "schema": "cfb.mode1-content-audit/1",
         "status": "clean",
@@ -205111,13 +205112,13 @@
       "chosenScore": 0.977,
       "rejectedScore": 0.618,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "gold-vs-deterministic-counterfactual",
         "scoreMargin": 0.359,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "prefDegenerate": true
       },
       "gammaDd": 0.709,
@@ -205299,13 +205300,13 @@
       "chosenScore": 0.977,
       "rejectedScore": 0.973,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "gold-vs-deterministic-counterfactual",
         "scoreMargin": 0.004,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "prefDegenerate": true
       },
       "gammaDd": 0.354,
@@ -205424,13 +205425,13 @@
       "chosenScore": 0.977,
       "rejectedScore": 0.973,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "gold-vs-deterministic-counterfactual",
         "scoreMargin": 0.004,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "prefDegenerate": true
       },
       "gammaDd": 0.354,
@@ -205549,13 +205550,13 @@
       "chosenScore": 0.977,
       "rejectedScore": 0.973,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "gold-vs-deterministic-counterfactual",
         "scoreMargin": 0.004,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "prefDegenerate": true
       },
       "gammaDd": 0.354,
@@ -205612,13 +205613,13 @@
       "chosenScore": 0.977,
       "rejectedScore": 0.966,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "gold-vs-deterministic-counterfactual",
         "scoreMargin": 0.011,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "prefDegenerate": true
       },
       "gammaDd": 0.361,
@@ -205737,13 +205738,13 @@
       "chosenScore": 0.982,
       "rejectedScore": 0.624,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "gold-vs-deterministic-counterfactual",
         "scoreMargin": 0.358,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "prefDegenerate": true
       },
       "gammaDd": 0.708,
@@ -205925,13 +205926,13 @@
       "chosenScore": 0.982,
       "rejectedScore": 0.978,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "gold-vs-deterministic-counterfactual",
         "scoreMargin": 0.004,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "prefDegenerate": true
       },
       "gammaDd": 0.354,
@@ -206050,13 +206051,13 @@
       "chosenScore": 0.982,
       "rejectedScore": 0.978,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "gold-vs-deterministic-counterfactual",
         "scoreMargin": 0.004,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "prefDegenerate": true
       },
       "gammaDd": 0.354,
@@ -206175,13 +206176,13 @@
       "chosenScore": 0.982,
       "rejectedScore": 0.976,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "gold-vs-deterministic-counterfactual",
         "scoreMargin": 0.006,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "prefDegenerate": true
       },
       "gammaDd": 0.356,
@@ -206238,13 +206239,13 @@
       "chosenScore": 0.982,
       "rejectedScore": 0.972,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "gold-vs-deterministic-counterfactual",
         "scoreMargin": 0.01,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "prefDegenerate": true
       },
       "gammaDd": 0.36,
@@ -208632,14 +208633,14 @@
       "chosenScore": 92,
       "rejectedScore": 0,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "reviewed-pair-with-margin",
+        "status": "needs-review",
         "source": "persisted-flywheel-pair-scores",
         "scoreMargin": 92,
         "scoreKind": "judge-01",
         "minScoreMargin": 0.05,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "prefDegenerate": true
       },
       "gammaDd": 1.2,
@@ -216203,13 +216204,13 @@
       "chosenScore": 1,
       "rejectedScore": 0.992,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "mode1-accepted-capture-vs-deterministic-counterfactual",
         "scoreMargin": 0.008,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "mode1CaptureStatus": "accepted-by-hand-production-and-content-gates",
         "noConfirmatoryClaim": true,
         "prefDegenerate": true
@@ -216422,13 +216423,13 @@
       "chosenScore": 1,
       "rejectedScore": 0.992,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "mode1-accepted-capture-vs-deterministic-counterfactual",
         "scoreMargin": 0.008,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "mode1CaptureStatus": "accepted-by-hand-production-and-content-gates",
         "noConfirmatoryClaim": true,
         "prefDegenerate": true
@@ -223244,13 +223245,13 @@
       "chosenScore": 0.959,
       "rejectedScore": 0.941,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "mode1-accepted-capture-vs-deterministic-counterfactual",
         "scoreMargin": 0.018,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "mode1CaptureStatus": "accepted-by-hand-production-and-content-gates",
         "noConfirmatoryClaim": true,
         "prefDegenerate": true
@@ -223463,13 +223464,13 @@
       "chosenScore": 0.959,
       "rejectedScore": 0.941,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "mode1-accepted-capture-vs-deterministic-counterfactual",
         "scoreMargin": 0.018,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "mode1CaptureStatus": "accepted-by-hand-production-and-content-gates",
         "noConfirmatoryClaim": true,
         "prefDegenerate": true
@@ -224120,13 +224121,13 @@
       "chosenScore": 0.979,
       "rejectedScore": 0.966,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "mode1-accepted-capture-vs-deterministic-counterfactual",
         "scoreMargin": 0.013,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "mode1CaptureStatus": "accepted-by-hand-production-and-content-gates",
         "noConfirmatoryClaim": true,
         "prefDegenerate": true
@@ -224339,13 +224340,13 @@
       "chosenScore": 0.979,
       "rejectedScore": 0.966,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "mode1-accepted-capture-vs-deterministic-counterfactual",
         "scoreMargin": 0.013,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "mode1CaptureStatus": "accepted-by-hand-production-and-content-gates",
         "noConfirmatoryClaim": true,
         "prefDegenerate": true
@@ -226760,13 +226761,13 @@
       "chosenScore": 0.969,
       "rejectedScore": 0.957,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "mode1-accepted-capture-vs-deterministic-counterfactual",
         "scoreMargin": 0.012,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "mode1CaptureStatus": "accepted-by-hand-production-and-content-gates",
         "noConfirmatoryClaim": true,
         "prefDegenerate": true
@@ -226983,13 +226984,13 @@
       "chosenScore": 0.969,
       "rejectedScore": 0.957,
       "rejectedGateOk": false,
-      "trainingEligible": true,
+      "trainingEligible": false,
       "labelAudit": {
-        "status": "rule-supported",
+        "status": "needs-review",
         "source": "mode1-accepted-capture-vs-deterministic-counterfactual",
         "scoreMargin": 0.012,
         "gateRejected": true,
-        "reason": null,
+        "reason": "degenerate-draft-feature-identical",
         "mode1CaptureStatus": "accepted-by-hand-production-and-content-gates",
         "noConfirmatoryClaim": true,
         "prefDegenerate": true
