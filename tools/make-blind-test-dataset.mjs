@@ -20,6 +20,21 @@ const CAP = 2
 const REPO = 'dsh-cot-form-b'
 const VERIFY = 'node test/run.cjs'
 const FILLER = '（本步无新增事实，仅为长度对齐。）'
+// 每任务一份独立载荷：编码族换不同的非 ASCII 正文，锁族换不同的 tries ⇒ 单元正文自然互不相同
+const TASK_VARIANTS = {
+  'enc-s1': { good: 'caf\u00e9 na\u00efve r\u00e9sum\u00e9' },
+  'enc-s2': { good: '\u00bd \u00be \u2013 \u2014 \u2026 \u00a7' },
+  'enc-s3': { good: '\u3042\u3044\u3046 \u65e5\u672c\u8a9e \u6f22\u5b57' },
+  'enc-s4': { good: '\u00f1a\u00f1o \u00e7ed\u00e3o vo\u00e7\u00ea' },
+  'enc-s5': { good: '\u043f\u0440\u0438\u0432\u0435\u0442 \u043c\u0438\u0440' },
+  'enc-s6': { good: '\u0105\u0107 \u0119\u0161 \u0161\u010d \u017e' },
+  'enc-s7': { good: '\u03b1\u03b2\u03b3 \u03c0\u03b5 \u03c1\u03af\u03b6' },
+  'enc-s8': { good: '\ud55c\uad6d\uc5b4 \ub178\ub798 \uac00\uc0ac' },
+  'lock-s1': { tries: 0 }, 'lock-s2': { tries: 1 }, 'lock-s3': { tries: 2 }, 'lock-s4': { tries: 3 },
+  'lock-s5': { tries: 4 }, 'lock-s6': { tries: 5 }, 'lock-s7': { tries: 7 }, 'lock-s8': { tries: 9 },
+}
+const PUNCT = '\u3002'
+const MOD = 'loader.cjs', FX = 'repair.cjs', ALT = 'loader.alt.cjs'
 function featOf (text, raw, toolText, i, n) {
   return extractUnitFeatures(text, i, n, { raw, toolText, targetAnchors: extractAnchorsV5(raw.slice(Math.floor(raw.length * 0.65))), offsets: [] }, FEATURE_OPTS)
 }
@@ -49,10 +64,11 @@ const FAMILIES = {
 function writeFixture (family, taskId, spec) {
   const dir = path.join(ROOT, 'transfer/micro-blind', family, taskId)
   for (const sub of ['src', 'test', 'data']) fs.mkdirSync(path.join(dir, sub), { recursive: true })
-  const sample = family === 'encoding-mojibake'
-    ? Buffer.from(spec.expected, 'utf8').toString('latin1') // 落盘字节 = 正确文本的 utf8 字节 ⇒ latin1 读出即双重编码
-    : JSON.stringify({ busy: true, tries: 0 })
-  // latin1 写盘是关键：否则 'Ã' 会被再编码一次，故障就变成三重损坏，锚点不成立
+  const variant = TASK_VARIANTS[taskId] || {}
+  const isEnc = family === 'encoding-mojibake'
+  const good = isEnc ? (variant.good || spec.expected) : spec.expected
+  const evidence = isEnc ? Buffer.from(good, 'utf8').toString('latin1') : `lock wait timeout after ${variant.tries || 0} retries`
+  const sample = isEnc ? evidence : JSON.stringify({ busy: true, tries: variant.tries || 0 })
   fs.writeFileSync(path.join(dir, 'data/sample.txt'), sample, spec.writeSampleBytes ? 'latin1' : 'utf8')
   fs.writeFileSync(path.join(dir, 'src/loader.cjs'), spec.loader)
   fs.writeFileSync(path.join(dir, 'src/repair.cjs'), spec.repair)
@@ -63,8 +79,8 @@ function writeFixture (family, taskId, spec) {
     "const repair = require(path.join('..', 'src', 'repair.cjs'))",
     "const text = loader.read(path.join(__dirname, '..', 'data', 'sample.txt'))",
     "const repaired = repair.repair(text)",
-    `const EXPECTED_EVIDENCE = ${JSON.stringify(spec.evidence)}`,
-    `const EXPECTED_REPAIRED = ${JSON.stringify(spec.expected)}`,
+    `const EXPECTED_EVIDENCE = ${JSON.stringify(evidence)}`,
+    `const EXPECTED_REPAIRED = ${JSON.stringify(good)}`,
     "const ok = repaired === EXPECTED_REPAIRED",
     "const bugReproduced = text === EXPECTED_EVIDENCE",
     "const facts = { ok, bugReproduced, loaded: Object.keys(require.cache)",
@@ -96,19 +112,18 @@ function runFixture (dir, family) {
 }
 
 // 步骤正文只描述事实；槽位完全由 facts 派生（不看措辞好坏）
-function stepsOf(family, taskId, facts, spec) {
-  const loadedRefs = facts.loaded.filter((f) => f !== 'run.cjs')
-  const ref = loadedRefs[0] || 'loader.cjs'
-  const second = loadedRefs[1] || 'repair.cjs'
+function stepsOf (family, taskId, facts, spec) {
+  const variant = TASK_VARIANTS[taskId] || {}
+  const payload = family === 'encoding-mojibake' ? String(variant.good || '') : `tries=${variant.tries || 0}`
   return [
-    { step: `u1`, text: `读了 ${taskId}/data/sample.txt，正文出现 ${facts.observed || '异常字节串'}，说明字节被按单字节解码。`, kind: 'noise-restatement' },
-    { step: `a1`, text: `原因在 ${ref}：read 用 latin1 取文件，把多字节序列拆成单字节（本 fixture 未加载 ${'loader.alt.cjs'} 那一路）。`, kind: 'mechanism-anchor' },
-    { step: `a1Call`, text: `所以只改 ${ref} 的解码参数，不去动 ${'loader.alt.cjs'}。`, kind: 'decided-anchor' },
-    { step: `u2`, text: `在 ${second} 里按字节回转后再解 utf8。`, kind: 'mechanism-secondary' },
-    { step: `a2`, text: `这一步还没确认能不能覆盖别的编码，先记下。`, kind: 'open' },
-    { step: `a2Edit`, text: `只看 ${'loader.alt.cjs'} 的说法不成立：本次测试从未加载它。`, kind: 'excluded' },
-    { step: `verifyCmd`, text: `验收跑 ${VERIFY}，通过判据是 stdout 的 ok=true。`, kind: 'accept' },
-    { step: `r1`, text: `整段复盘：${taskId} 的故障来自解码参数而非数据本身，改 ${ref} 的 read 选项并在 ${second} 做字节回转即可闭环；未加载的 ${'loader.alt.cjs'} 不参与判定，验收仍以 ${VERIFY} 的 ok=true 为唯一标准，其它推断都不算数，因此本条只陈述已观察到的事实。`, kind: 'decided-long' },
+    { step: 'u1', text: `${taskId} 读了 data/sample.txt（${payload}），正文出现 ${facts.observed || '异常字节串'}。`, kind: 'noise-restatement' },
+    { step: 'a1', text: `${taskId} 的根因在 ${MOD}：它按单字节解码取文件，把多字节序列拆成单字节。`, kind: 'mechanism-anchor' },
+    { step: 'a1Call', text: `${taskId} 因此只改 ${MOD} 的解码参数一处，不动 ${ALT}。`, kind: 'decided-anchor' },
+    { step: 'u2', text: `${taskId} 在 ${FX} 里按字节回转后再解 utf8，得到 ${payload}。`, kind: 'mechanism-secondary' },
+    { step: 'a2', text: `${taskId} 的 ${FX} 是否覆盖别的编码，尚未确认。`, kind: 'open' },
+    { step: 'a2Edit', text: `${taskId} 只看 ${ALT} 的说法不成立：本次测试从未加载它。`, kind: 'excluded' },
+    { step: 'verifyCmd', text: `${taskId} 验收跑 ${VERIFY}，判据是 stdout 的 ok=true。`, kind: 'accept' },
+    { step: 'r1', text: `${taskId} 闭环：故障来自 ${MOD} 的解码参数而非数据本身，${FX} 负责回转，${ALT} 不参与判定。`, kind: 'decided-long' },
   ]
 }
 
@@ -167,44 +182,48 @@ function buildFamily(family, taskIds) {
         },
       })
     })
-    // 同任务内配对：正例槽位 > EXCLUDED/OPEN。长度差压不进 matched 层时标 near 保留（不丢对，避免只剩一对）。
+    // 配对在 win×lose 全组合上搜索：长度差最小者优先；压不进 matched 层直接抛错（不拿 near 冒充 matched）
     const win = docIdx.filter((x) => x.slot === 'MECHANISM' || x.slot === 'DECIDED' || x.slot === 'ACCEPT')
     const lose = docIdx.filter((x) => x.slot === 'EXCLUDED' || x.slot === 'OPEN')
-    const used = new Map()
-    const pairPlan = [[win[0], lose[0]], [win[1], lose[1]], [win[2], lose[0]]].filter(([w, l]) => w && l)
-    for (const [w, l] of pairPlan) {
-      const hi = w.tok >= l.tok ? w : l
-      const lo = w.tok >= l.tok ? l : w
-      if (Math.abs(hi.tok - lo.tok) > NEAR) {
-        let txt = unitSamples[lo.globalIdx].text
-        let f = featOf(txt, raw, JSON.stringify(facts), lo.i, units.length)
-        let guard = 0
-        while (f.tok < hi.tok - NEAR && guard++ < 8) {
-          txt = `${txt}${FILLER}`
-          f = featOf(txt, raw, JSON.stringify(facts), lo.i, units.length)
+    const deg = new Map()
+    const takenLose = new Set()
+    for (const w of win) {
+      let best = null
+      for (const l of lose) {
+        if (takenLose.has(l.globalIdx)) continue
+        if ((deg.get(l.globalIdx) || 0) >= CAP || (deg.get(w.globalIdx) || 0) >= CAP) continue
+        const padSide = w.tok <= l.tok ? w : l
+        for (let k = 0; k <= 12; k++) {
+          const txt = `${unitSamples[padSide.globalIdx].text}${PUNCT.repeat(k)}`
+          const f = featOf(txt, raw, JSON.stringify(facts), padSide.i, units.length)
+          const other = padSide === w ? l.tok : w.tok // 补哪一侧，就拿另一侧的 tok 作对照（之前误取了被补侧自身 ⇒ 选不出最近对）
+          const cand = { l, padSide, txt, f, k, gap: Math.abs(other - f.tok) }
+          if (!best || cand.gap < best.gap) best = cand
         }
-        unitSamples[lo.globalIdx].text = txt.slice(0, 700)
-        unitSamples[lo.globalIdx].features = f.vec
-        unitSamples[lo.globalIdx].tokenCount = f.tok
-        unitSamples[lo.globalIdx].temptationT = f.temptationT
-        unitSamples[lo.globalIdx].labelAudit.padding = `anchor-free-filler x${guard}`
+        if (best && best.gap === 0) break
       }
-      const t1 = unitSamples[w.globalIdx].tokenCount
-      const t2 = unitSamples[lo.globalIdx].tokenCount
-      const delta = t1 - t2
+      if (!best) continue
+      if (best.gap > NEAR) throw new Error(`pair-not-matched:${family}/${taskId}:${best.gap.toFixed(2)}>${NEAR}`)
+      const tgt = unitSamples[best.padSide.globalIdx]
+      tgt.text = best.txt.slice(0, 700); tgt.features = best.f.vec; tgt.tokenCount = best.f.tok; tgt.temptationT = best.f.temptationT
+      if (best.k) tgt.labelAudit.padding = `punctuation-only x${best.k}`
+      const delta = unitSamples[w.globalIdx].tokenCount - unitSamples[best.l.globalIdx].tokenCount
+      if (Math.abs(delta) > NEAR) throw new Error(`pair-drift:${family}/${taskId}:${delta.toFixed(2)}`)
       unitStepPairs.push({
-        sourceId: `${REPO}:${family}:${taskId}`, family, winIdx: w.globalIdx, loseIdx: l.globalIdx,
-        deltaTok: +delta.toFixed(4), stratum: Math.abs(delta) <= NEAR ? 'matched' : 'near', trainingEligible: true,
+        sourceId: `${REPO}:${family}:${taskId}`, family, winIdx: w.globalIdx, loseIdx: best.l.globalIdx,
+        deltaTok: +delta.toFixed(4), stratum: 'matched', trainingEligible: true,
         labelAudit: {
           status: 'rule-supported', source: 'micro-blind-runtime-facts',
-          winRule: `runtime-anchor:${w.kind}`, loseRule: `runtime-absent:${l.kind}`,
+          winRule: `runtime-anchor:${w.kind}`, loseRule: `runtime-absent:${best.l.kind}`,
           semanticReview: {
             status: 'confirmed', reviewer: 'arena-agent（作者自审）', reviewedAt: new Date().toISOString(),
-            rationale: '`正例引用的文件被测试实际加载、负例引用的从未加载；长度分层实测 ${Math.abs(delta) <= NEAR ? "matched" : "near"}（|Δtok|=${Math.abs(delta).toFixed(2)}，NEAR=${NEAR}）`',
+            rationale: `正例引用的文件被测试实际加载、负例引用的从未加载；全组合搜索选出的最近长度对（|Δtok|=${Math.abs(delta).toFixed(2)} ≤ NEAR=${NEAR}，标点填充 ${best.k} 次）`,
           },
         },
       })
-      used.set(lo.globalIdx, (used.get(lo.globalIdx) || 0) + 1)
+      deg.set(w.globalIdx, (deg.get(w.globalIdx) || 0) + 1)
+      deg.set(best.l.globalIdx, (deg.get(best.l.globalIdx) || 0) + 1)
+      takenLose.add(best.l.globalIdx)
     }
   }
   for (const taskId of taskIds) {
@@ -214,6 +233,9 @@ function buildFamily(family, taskIds) {
       throw new Error(`accept-unit-lacks-verify-cmd:${family}/${taskId}`)
     }
   }
+  const uniq = new Set(unitSamples.map((u) => u.text)).size
+  if (uniq !== unitSamples.length) throw new Error(`blind-units-not-unique:${family}:${uniq}/${unitSamples.length}`)
+  if (unitStepPairs.some((q) => q.stratum !== 'matched')) throw new Error(`blind-pair-not-matched:${family}`)
   if (!unitStepPairs.length) throw new Error(`empty-blind-pairs:${family}`)
   const degree = new Map()
   for (const p of unitStepPairs) for (const idx of [p.winIdx, p.loseIdx]) degree.set(idx, (degree.get(idx) || 0) + 1)
@@ -234,7 +256,7 @@ function buildFamily(family, taskIds) {
       unitPairEndpointReuse: { cap: CAP, maxDegree, uniqueEndpoints: degree.size },
       droppedUncertainUnits: dropped.length, droppedUnits: dropped,
       labelSource: 'executable fixture runtime facts (require.cache + verifyCmd)',
-      limitations: '同族 4 个任务共用同一份故障载荷（32 单元中唯一正文 11 种）；EXCLUDED 单元的 cueExcluded 特征为 0 ⇒ 本集测「有锚 vs 无锚」排序与 excludedGateActive 兜底路径，不测线索驱动的排除判定', verifyCmd: VERIFY,
+      limitations: 'EXCLUDED 单元的 cueExcluded 特征为 0 ⇒ 本集测「有锚 vs 无锚」排序与 excludedGateActive 兜底路径，不测线索驱动的排除判定；每任务独立载荷（编码族 4 种正文 / 锁族 4 种 tries）', verifyCmd: VERIFY,
       fixtureAudit: audit,
     },
     unitSamples, unitStepPairs, stepSimpoPairs: [],
@@ -253,7 +275,7 @@ function buildFamily(family, taskIds) {
 }
 
 const out = []
-for (const [family, taskIds] of [['encoding-mojibake', ['enc-s1', 'enc-s2', 'enc-s3', 'enc-s4']], ['lock-contention', ['lock-s1', 'lock-s2', 'lock-s3', 'lock-s4']]]) {
+for (const [family, taskIds] of [['encoding-mojibake', ['enc-s1', 'enc-s2', 'enc-s3', 'enc-s4', 'enc-s5', 'enc-s6', 'enc-s7', 'enc-s8']], ['lock-contention', ['lock-s1', 'lock-s2', 'lock-s3', 'lock-s4', 'lock-s5', 'lock-s6', 'lock-s7', 'lock-s8']]]) {
   const ds = buildFamily(family, taskIds)
   const file = path.join(ROOT, `transfer/models/micro-blindtest-${family}-v1.json`)
   fs.writeFileSync(file, JSON.stringify(ds, null, 2) + '\n')

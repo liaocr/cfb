@@ -83,3 +83,21 @@ node tools/eval-micro-js-pairs.mjs --validate-dataset-only \
 复核确认干净的：与训练 sourceId 零重叠；`micro-dev-dataset.json` 未混入 blind 内容（家族仍是训练三族）；构建器与任务池对 `micro-blind` 的静态引用为 0（不会自动进训练）；fixture 测试从不 require `loader.alt.cjs`；每对 win 的 yVal 严格大于 lose（违反 0）；端点度实算 max=2；语义审核分母自洽；manifest 覆盖 42 个盲测文件；`f671134` 未夹带 `.cfb-offline/`。
 
 **两条正解（都要动闸门口径，等你签字）**：a) 每任务换成真不同载荷（我试过：标点级填充的粒度与 `tok` 度量交互，个别对压不进 NEAR=3 ⇒ 会留 near 冒充 matched，已回滚未入库）；b) 判据改为"按唯一正文计 + 只用 matched 层的对"。第三种"把 NEAR 放宽"是给闸门松绑，不做。
+
+## 5.2 v14.24.6：§5.1 的两条已经真修掉了（不是改判据）
+
+选了「每任务换真载荷」而不是「按唯一正文重新计数」——动判据是给闸门松绑。实测（对磁盘文件复算）：
+
+| 读数 | 修前 | 修后 |
+|---|---|---|
+| 每族任务数 | 4 | **8** |
+| 单元数 / **唯一正文** | 32 / 11 | **56 / 56** |
+| 排序对 / 全在 matched 层 | 12 / 8 | **16 / 16**，max \|Δtok\| = 0.00 |
+| 端点最大复用 | 2 | **1**（每个单元至多进一对，不做端点复用） |
+| yVal 方向违规 | 0 | 0 |
+
+做法：编码族 8 份不同非 ASCII 载荷（latin1 落盘纪律不变），锁族 8 种 tries；配对改成在 win×lose **全组合**里搜「标点填充 k∈[0,12] 后长度差最小」的组合，`k` 次填充逐对写进 `rationale`（透明可查），压不进 `NEAR=3` 就直接抛 `pair-not-matched` / `pair-drift`；另加 `blind-units-not-unique` 硬闸，谁以后把复制体塞回盲测集就构建失败。
+
+**仍未消除的局限**：`cueExcluded` 特征实测 0 ⇒ 本集测「有锚 vs 无锚」排序与 `excludedGateActive` 兜底路径，**不测**线索驱动的排除判定。另外 16 对全为 matched 是靠标点填充对齐的（`Δtok=0`），别把它读成"自然长度分布"；它衡量的是同长度下的判别力，正是匹配桶该测的东西。
+
+结构校验复跑：两族 `dataset-structure-valid`（56/16，maxEndpointDegree 1）；`node verify.mjs micro` 50 通过 / 0 失败。**依旧没打任何分数** ⇒ 一次性盲测完好。

@@ -3,8 +3,8 @@ const loader = require(path.join('..', 'src', 'loader.cjs'))
 const repair = require(path.join('..', 'src', 'repair.cjs'))
 const text = loader.read(path.join(__dirname, '..', 'data', 'sample.txt'))
 const repaired = repair.repair(text)
-const EXPECTED_EVIDENCE = "cafÃ© naÃ¯ve rÃ©sumÃ©"
-const EXPECTED_REPAIRED = "café naïve résumé"
+const EXPECTED_EVIDENCE = "ããã æ¥æ¬èª æ¼¢å­"
+const EXPECTED_REPAIRED = "あいう 日本語 漢字"
 const ok = repaired === EXPECTED_REPAIRED
 const bugReproduced = text === EXPECTED_EVIDENCE
 const facts = { ok, bugReproduced, loaded: Object.keys(require.cache)

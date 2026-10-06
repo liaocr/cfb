@@ -3,7 +3,7 @@ const loader = require(path.join('..', 'src', 'loader.cjs'))
 const repair = require(path.join('..', 'src', 'repair.cjs'))
 const text = loader.read(path.join(__dirname, '..', 'data', 'sample.txt'))
 const repaired = repair.repair(text)
-const EXPECTED_EVIDENCE = "lock wait timeout after 0 retries"
+const EXPECTED_EVIDENCE = "lock wait timeout after 3 retries"
 const EXPECTED_REPAIRED = "lock acquired"
 const ok = repaired === EXPECTED_REPAIRED
 const bugReproduced = text === EXPECTED_EVIDENCE
