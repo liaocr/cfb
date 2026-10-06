@@ -1,7 +1,7 @@
 {
   "schema": "cfb.micro-cv-baseline/2",
   "trainingDataFingerprint": "56a211c27cec8eead5176baf2de184ebcb18324ebf33a211615ee2e6ccb5e38a",
-  "preregistrationSha256": "3dbc8fb8a154489d6f1b03d7566fe4e88bc6ac659aeb3ed495d35a45ea5b9dd6",
+  "preregistrationSha256": "95cf11c828063a23c1c289c0af854782cdbb03cb9b224960995cfecfd9ddc8cf",
   "sourceSha256": {
     "src/compile-v5-local.js": "0e6ee939e6ab0ae598b2a365f5d669640e6028771c7ac09206a6afe7e255a3ad",
     "tools/build-micro-dataset.mjs": "9b3d96e7671dbfd681cf864a0ec8981ecd6f1476f69ec40523d5b8487aa2b154",
@@ -32,5 +32,5 @@
     "perf-regression": 0.5128,
     "sse-truncated": 0.2784
   },
-  "note": "同血统无回退基准（06c 轮候选自读，v14.25.x）"
+  "note": "同血统无回退基准：matched/productionMatched 为 06c 轮候选三折读数（flaky 0.7576 / perf 0.8462 / sse 0.6907）；stamp 已更到 06d 锁以满足每锁血缘校验（数据指纹与 13 血统文件哈希均未变）。"
 }
