@@ -200,7 +200,7 @@ function buildFamily(family, taskIds) {
           winRule: `runtime-anchor:${w.kind}`, loseRule: `runtime-absent:${l.kind}`,
           semanticReview: {
             status: 'confirmed', reviewer: 'arena-agent（作者自审）', reviewedAt: new Date().toISOString(),
-            rationale: '正例引用的文件被测试实际加载；负例引用的文件从未加载；长度差已压进 matched 层',
+            rationale: '`正例引用的文件被测试实际加载、负例引用的从未加载；长度分层实测 ${Math.abs(delta) <= NEAR ? "matched" : "near"}（|Δtok|=${Math.abs(delta).toFixed(2)}，NEAR=${NEAR}）`',
           },
         },
       })
@@ -233,7 +233,8 @@ function buildFamily(family, taskIds) {
       pairConstruction: { nearLengthTokens: NEAR, endpointCap: CAP },
       unitPairEndpointReuse: { cap: CAP, maxDegree, uniqueEndpoints: degree.size },
       droppedUncertainUnits: dropped.length, droppedUnits: dropped,
-      labelSource: 'executable fixture runtime facts (require.cache + verifyCmd)', verifyCmd: VERIFY,
+      labelSource: 'executable fixture runtime facts (require.cache + verifyCmd)',
+      limitations: '同族 4 个任务共用同一份故障载荷（32 单元中唯一正文 11 种）；EXCLUDED 单元的 cueExcluded 特征为 0 ⇒ 本集测「有锚 vs 无锚」排序与 excludedGateActive 兜底路径，不测线索驱动的排除判定', verifyCmd: VERIFY,
       fixtureAudit: audit,
     },
     unitSamples, unitStepPairs, stepSimpoPairs: [],

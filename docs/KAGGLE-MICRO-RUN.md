@@ -72,3 +72,14 @@ node tools/eval-micro-js-pairs.mjs --validate-dataset-only \
    - 同时 `distinctScorePairs <= 2` 的退化判定（`:663`）又因重复计数值把整批降级 ⇒ 实测 draft pair 105/59 → 42/4。
    两条可选修法（**都需要你点头，因为会动冻结裁判/闸门语义**）：a) 在 harvest 侧把 tally 名次化（rank→[0,1] 线性映射）后再写 `chosenScore/rejectedScore`，并在行内标 `scoreKind:'tally-rank'`；b) 让构建器按 `scoreKind` 分派阈值（tally 走 `margin>=2`，judge 走 `>=0.05`）。**不建议**第三种：把 `0.05` 改成按分数自适应——那是给闸门松绑。
 2. 本轮已把 `transfer/models/dev-flywheel-pairs.json` 与 `.cfb-offline/train/pairs.jsonl` 还原到提交态（`git checkout`），不把没解释清楚的倒退留在主干；`micro-dev-dataset.json` 未被改动。
+
+## 5.1 复核（2026-10-06）：盲测集够格当结构闸，不够格单独撑晋级
+
+独立审计脚本逐条对磁盘重测：18 项通过、每族 3 项失败。
+1. **每族 32 单元里只有 11 种不同正文** —— 4 个任务共用同一份故障载荷 ⇒ 按 32 计样本量会低估方差（已写进 `stats.uniqueUnitTexts`）。
+2. **12 对里只有 8 对落在 matched 层**（最大 |Δtok|=21）⇒ 匹配桶只在 8 对上说话；pair 的 rationale 已改为如实标注 `matched/near`（原先那句"已压进 matched 层"与数据不符，是我的过度声称）。
+3. **EXCLUDED 单元 `cueExcluded` 特征实测 0（4/4）** ⇒ 本集测「有锚 vs 无锚」+ `excludedGateActive` 兜底路径，**不测**线索驱动的排除判定。
+
+复核确认干净的：与训练 sourceId 零重叠；`micro-dev-dataset.json` 未混入 blind 内容（家族仍是训练三族）；构建器与任务池对 `micro-blind` 的静态引用为 0（不会自动进训练）；fixture 测试从不 require `loader.alt.cjs`；每对 win 的 yVal 严格大于 lose（违反 0）；端点度实算 max=2；语义审核分母自洽；manifest 覆盖 42 个盲测文件；`f671134` 未夹带 `.cfb-offline/`。
+
+**两条正解（都要动闸门口径，等你签字）**：a) 每任务换成真不同载荷（我试过：标点级填充的粒度与 `tok` 度量交互，个别对压不进 NEAR=3 ⇒ 会留 near 冒充 matched，已回滚未入库）；b) 判据改为"按唯一正文计 + 只用 matched 层的对"。第三种"把 NEAR 放宽"是给闸门松绑，不做。

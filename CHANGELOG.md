@@ -1,4 +1,10 @@
 # Changelog — dsh-cot-form-b
+## v14.24.4（2026-006 复核）：盲测集三处过度声称入账并逐条改口
+
+独立审计脚本（对磁盘重测、不复述我的说法）：**18 项通过，每族 3 项失败** —— 每族 32 单元只有 11 种不同正文；12 对只有 8 对真落在 matched 层（max |Δtok|=21）；`EXCLUDED` 的 `cueExcluded` 实测 0。
+其中第 2 条还揪出**数据文件里的一句不实陈述**：pair 的 `semanticReview.rationale` 写着"长度差已压进 matched 层"。已按 `unitSamples` 的真实 tokenCount 重算每对分层、改写 rationale，并把 `uniqueUnitTexts` / `pairStrata` / `limitations` 写进 `stats`；生成器里同源的那句也一并改掉，防止下次重建又长出假话。
+正面修（每任务换载荷 + 标点级填充压长度差）试过但达不到 matched ⇒ **回滚未入库**：宁可留局限入账，不用 `near` 冒充 `matched`，也不放宽 `NEAR`。复核同时确认了零重叠、dev 未被污染、构建器不引用 `micro-blind`、alt 从不被加载、yVal 方向 0 违反、端点度 2、分母自洽、manifest 覆盖 42 文件。
+
 ## v14.24.3（2026-10-06，M1：两个新家族的一次性盲测集，标签只从可执行 fixture 派生）
 
 **为什么**：晋级闸的三折 CV 与部署检查都能判，唯一必然 `blocked` 的是「一次性独立新 family 盲测」——仓库里没有合法盲测文件。造它，且不让我自己的观感进标签。

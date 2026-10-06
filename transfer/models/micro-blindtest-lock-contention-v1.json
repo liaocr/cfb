@@ -109,7 +109,13 @@
         "altLoaded": false,
         "repairedOk": true
       }
-    ]
+    ],
+    "limitations": "同族 4 个任务共用同一份故障载荷（32 单元中唯一正文 11 种）；EXCLUDED 的 cueExcluded=0 ⇒ 测「有锚 vs 无锚」+ excludedGateActive 兜底路径，不测线索驱动的排除判定",
+    "uniqueUnitTexts": 11,
+    "pairStrata": {
+      "matched": 8,
+      "near": 4
+    }
   },
   "unitSamples": [
     {
@@ -10087,7 +10093,7 @@
           "status": "confirmed",
           "reviewer": "arena-agent（作者自审）",
           "reviewedAt": "2026-10-05T18:05:35.636Z",
-          "rationale": "正例引用的文件被测试实际加载；负例引用的文件从未加载；长度差已压进 matched 层"
+          "rationale": "正例引用的文件被测试实际加载、负例引用的从未加载；长度分层实测 matched（|Δtok|=0.00，NEAR=3）"
         }
       }
     },
@@ -10108,7 +10114,7 @@
           "status": "confirmed",
           "reviewer": "arena-agent（作者自审）",
           "reviewedAt": "2026-10-05T18:05:35.636Z",
-          "rationale": "正例引用的文件被测试实际加载；负例引用的文件从未加载；长度差已压进 matched 层"
+          "rationale": "正例引用的文件被测试实际加载、负例引用的从未加载；长度分层实测 matched（|Δtok|=0.00，NEAR=3）"
         }
       }
     },
@@ -10117,8 +10123,8 @@
       "family": "lock-contention",
       "winIdx": 2,
       "loseIdx": 3,
-      "deltaTok": 0,
-      "stratum": "matched",
+      "deltaTok": -21,
+      "stratum": "near",
       "trainingEligible": true,
       "labelAudit": {
         "status": "rule-supported",
@@ -10129,7 +10135,7 @@
           "status": "confirmed",
           "reviewer": "arena-agent（作者自审）",
           "reviewedAt": "2026-10-05T18:05:35.636Z",
-          "rationale": "正例引用的文件被测试实际加载；负例引用的文件从未加载；长度差已压进 matched 层"
+          "rationale": "正例引用的文件被测试实际加载、负例引用的从未加载；长度分层实测 near（|Δtok|=21.00，NEAR=3）"
         }
       }
     },
@@ -10150,7 +10156,7 @@
           "status": "confirmed",
           "reviewer": "arena-agent（作者自审）",
           "reviewedAt": "2026-10-05T18:05:35.639Z",
-          "rationale": "正例引用的文件被测试实际加载；负例引用的文件从未加载；长度差已压进 matched 层"
+          "rationale": "正例引用的文件被测试实际加载、负例引用的从未加载；长度分层实测 matched（|Δtok|=0.00，NEAR=3）"
         }
       }
     },
@@ -10171,7 +10177,7 @@
           "status": "confirmed",
           "reviewer": "arena-agent（作者自审）",
           "reviewedAt": "2026-10-05T18:05:35.639Z",
-          "rationale": "正例引用的文件被测试实际加载；负例引用的文件从未加载；长度差已压进 matched 层"
+          "rationale": "正例引用的文件被测试实际加载、负例引用的从未加载；长度分层实测 matched（|Δtok|=0.00，NEAR=3）"
         }
       }
     },
@@ -10180,8 +10186,8 @@
       "family": "lock-contention",
       "winIdx": 10,
       "loseIdx": 11,
-      "deltaTok": 0,
-      "stratum": "matched",
+      "deltaTok": -21,
+      "stratum": "near",
       "trainingEligible": true,
       "labelAudit": {
         "status": "rule-supported",
@@ -10192,7 +10198,7 @@
           "status": "confirmed",
           "reviewer": "arena-agent（作者自审）",
           "reviewedAt": "2026-10-05T18:05:35.639Z",
-          "rationale": "正例引用的文件被测试实际加载；负例引用的文件从未加载；长度差已压进 matched 层"
+          "rationale": "正例引用的文件被测试实际加载、负例引用的从未加载；长度分层实测 near（|Δtok|=21.00，NEAR=3）"
         }
       }
     },
@@ -10213,7 +10219,7 @@
           "status": "confirmed",
           "reviewer": "arena-agent（作者自审）",
           "reviewedAt": "2026-10-05T18:05:35.641Z",
-          "rationale": "正例引用的文件被测试实际加载；负例引用的文件从未加载；长度差已压进 matched 层"
+          "rationale": "正例引用的文件被测试实际加载、负例引用的从未加载；长度分层实测 matched（|Δtok|=0.00，NEAR=3）"
         }
       }
     },
@@ -10234,7 +10240,7 @@
           "status": "confirmed",
           "reviewer": "arena-agent（作者自审）",
           "reviewedAt": "2026-10-05T18:05:35.641Z",
-          "rationale": "正例引用的文件被测试实际加载；负例引用的文件从未加载；长度差已压进 matched 层"
+          "rationale": "正例引用的文件被测试实际加载、负例引用的从未加载；长度分层实测 matched（|Δtok|=0.00，NEAR=3）"
         }
       }
     },
@@ -10243,8 +10249,8 @@
       "family": "lock-contention",
       "winIdx": 18,
       "loseIdx": 19,
-      "deltaTok": 0,
-      "stratum": "matched",
+      "deltaTok": -21,
+      "stratum": "near",
       "trainingEligible": true,
       "labelAudit": {
         "status": "rule-supported",
@@ -10255,7 +10261,7 @@
           "status": "confirmed",
           "reviewer": "arena-agent（作者自审）",
           "reviewedAt": "2026-10-05T18:05:35.641Z",
-          "rationale": "正例引用的文件被测试实际加载；负例引用的文件从未加载；长度差已压进 matched 层"
+          "rationale": "正例引用的文件被测试实际加载、负例引用的从未加载；长度分层实测 near（|Δtok|=21.00，NEAR=3）"
         }
       }
     },
@@ -10276,7 +10282,7 @@
           "status": "confirmed",
           "reviewer": "arena-agent（作者自审）",
           "reviewedAt": "2026-10-05T18:05:35.644Z",
-          "rationale": "正例引用的文件被测试实际加载；负例引用的文件从未加载；长度差已压进 matched 层"
+          "rationale": "正例引用的文件被测试实际加载、负例引用的从未加载；长度分层实测 matched（|Δtok|=0.00，NEAR=3）"
         }
       }
     },
@@ -10297,7 +10303,7 @@
           "status": "confirmed",
           "reviewer": "arena-agent（作者自审）",
           "reviewedAt": "2026-10-05T18:05:35.644Z",
-          "rationale": "正例引用的文件被测试实际加载；负例引用的文件从未加载；长度差已压进 matched 层"
+          "rationale": "正例引用的文件被测试实际加载、负例引用的从未加载；长度分层实测 matched（|Δtok|=0.00，NEAR=3）"
         }
       }
     },
@@ -10306,8 +10312,8 @@
       "family": "lock-contention",
       "winIdx": 26,
       "loseIdx": 27,
-      "deltaTok": 0,
-      "stratum": "matched",
+      "deltaTok": -21,
+      "stratum": "near",
       "trainingEligible": true,
       "labelAudit": {
         "status": "rule-supported",
@@ -10318,7 +10324,7 @@
           "status": "confirmed",
           "reviewer": "arena-agent（作者自审）",
           "reviewedAt": "2026-10-05T18:05:35.644Z",
-          "rationale": "正例引用的文件被测试实际加载；负例引用的文件从未加载；长度差已压进 matched 层"
+          "rationale": "正例引用的文件被测试实际加载、负例引用的从未加载；长度分层实测 near（|Δtok|=21.00，NEAR=3）"
         }
       }
     }
