@@ -176,6 +176,8 @@ npm run traj:lite
 这样保留插件已有的低开销、可审计和原文落点守门路径，同时把完整神经编码器作为独立候选产物；不以固定 Gold 得分冒充教师模型的泛化证据。
 
 ### 6.2 严格隔离的数据与真实规模
+> ⚠️ 本节数字已被 §6.2bis（文件末尾同编号块）取代；保留原文只为留痕。
+
 
 运行 `node tools/build-micro-dataset.mjs` 会写出临时文件 `transfer/models/micro-dev-dataset.json`，训练脚本结束后删除。2026-10-04 的生成结果如下；今后以每次构建器实际 JSON 报告为准：
 
@@ -270,4 +272,15 @@ node tools/train-v5-micro.mjs --eval-only \
   --weights-path transfer/models/v5-micro-weights.json \
   --eval-json /tmp/cfb-micro-mode2.json
 ```
+
+### 6.2bis 当前水位（2026-10-06，由脚本从产物文件直接读取生成 ⇒ 上方 §6.2 的旧数以此块为准）
+
+- 单元标签盲审：`transfer/models/unit-label-review-blind-v3.json` 共 **348 条**已确认（blind-human-agent-no-rule-suggestions）；构建器审计块：载入 348、匹配 348、抬为可训练 243、改判 341、NOISE 压分 21、低置信保留规则标签 7、digest 不符丢弃 0。
+- 训练集：`unitSamples 542 / 可训练 538 / 待审 4`；`unitStepPairsCount 536`；draft 偏好 `stepSimpoPairsCount 55 / 可训练 17`（`flywheel_real_pair None`）；`devGoldItems 4`、holdout 排除 ['eacces-config', 'wrong-model']、`nearLengthTokens 3`。
+- 飞轮分数量纲（v14.24.5）：`scoreKind` 已入数据侧，阈值按单位分派 —— `judge-01` 用 0.05、`structural-tally` 用 ≥2 旗标差；promote 侧越界不入库。可训练 draft pair 从被垃圾放行的 59 降到 **17**，这是保护生效后的真数。
+- 一次性盲测集（每族一个文件，标签只来自 fixture 运行时事实）：
+  - `encoding-mojibake`：任务 8 个、单元 56（唯一正文 56）、排序对 16（全部 matched 层 16，max|Δtok|=0.00）
+  - `lock-contention`：任务 8 个、单元 56（唯一正文 56）、排序对 16（全部 matched 层 16，max|Δtok|=0.00）
+
+盲测集残余局限（如实）：`cueExcluded` 实测 0 ⇒ 只测「有锚 vs 无锚」排序与 `excludedGateActive` 兜底路径，不测线索驱动的排除判定；matched 层靠标点填充对齐，读作同长度判别力。**盲测尚未打过任何分数** ⇒ 一次性测量完好。
 

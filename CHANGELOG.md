@@ -1,4 +1,7 @@
 # Changelog — dsh-cot-form-b
+## v14.24.7（2026-10-06，把水位文档接上真数）
+
+`docs/TRAINING-AND-BENCHMARK.md` 新增 §6.2bis：M0 盲审审计计数、dev 数据集可训练量、draft 偏好可训练量、飞轮单位分派后的真数、两个盲测文件的任务/单元/唯一正文/配对/matched 读数，全部**由脚本从产物文件直接读出**（不是手抄 ⇒ 不会再和文件打架）；旧的 §6.2 顶部加了指向说明。本轮按"推进为主、验证最少"执行：只跑一次 `npm run manifest` + `manifest:check` 作为一致性检查，未新增自测。
 ## v14.24.6（2026-10-06 自主决定：盲测集按 (a) 真修，不动闸门口径）
 
 复核暴露的两条（32 单元只有 11 种正文；12 对只有 8 对 matched）用**加强 fixture** 的方式消掉，而不是改判据：每族任务 4→8、编码族 8 种不同非 ASCII 载荷、锁族 8 种 tries；配对从"固定相邻"改成 win×lose 全组合搜索 + 标点级细粒度填充（k∈[0,12] 取 |Δtok| 最小），压不进 `NEAR=3` 直接抛 `pair-not-matched`/`pair-drift`，再加 `blind-units-not-unique` 硬闸。
