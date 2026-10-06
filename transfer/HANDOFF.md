@@ -1,4 +1,4 @@
-# AI 模型与开发者一页交接卡（`transfer/HANDOFF.md`，v14.20.1）
+# AI 模型与开发者一页交接卡（`transfer/HANDOFF.md`，v14.25.1）
 
 > 本文件替代了原先分散的 `MIGRATION.md`、`LIVE-MEMORY.md`、`MEMORY.md`、`NEXT-MODEL-PROMPT.md` 与 `SUMMARY-2026-10-02.md`。
 > 接手本项目的 AI 模型或人类开发者只需读完本页即可 **30 秒内零盲区开工**。请始终使用**中文**回复。
@@ -11,9 +11,10 @@
 # 1. 从入库快照重建 gitignored 的可再生闭环状态 (.cfb-offline)
 npm run restore             # = node tools/cfb-cycle.mjs restore
 
-# 2. 校验 SHA-256 清单并在断网命名空间跑满 29 套自检（要求 Node.js >= 22）
+# 2. 校验 SHA-256 清单并在断网命名空间跑满全部自检（Node >= 20 即可；本仓库在 v20.20.2 上验证通过）
 npm run manifest:check      # = node manifest.mjs --check（0 缺失 / 0 失配）
-npm run verify:offline      # = node tools/verify-offline.mjs（33/33 套件全绿，967 pass / 0 fail / 1 skip）
+npm run verify:offline      # = node tools/verify-offline.mjs（读数见下面的水位块，勿手抄）
+npm run watermark:check     # = node tools/doc-watermark.mjs --check（文档水位与磁盘一致？）
 
 # 3. 一屏查看当前闭环状态、五大官方基准成绩单与智能下一步建议
 npm run cycle               # = node tools/cfb-cycle.mjs status
@@ -21,7 +22,16 @@ npm run bench               # = node tools/cfb-cycle.mjs benchmark
 npm run next                # = node tools/cfb-cycle.mjs next
 ```
 
-> **沙盒环境提示**：若当前容器 Node < 22，可一行升级至 `/usr/local`：
+<!-- watermark:begin 由 node tools/doc-watermark.mjs --write 生成，勿手抄 -->
+- **当前版本：v14.25.1** · **零第三方依赖**（纯 Node.js ≥ 20/22 内置模块）
+- **自测（本块由 `node tools/doc-watermark.mjs --write` 生成，勿手抄）**
+- 验收口径 `npm run verify:offline`（真断网 Linux 命名空间）：40/40 套件全绿 · `1207 通过 / 0 失败 / 1 跳过`
+- 快速自检 `npm test`（联网机上跑，需要隔离的那条断言按设计跳过）：41/41 套件全绿 · `1216 通过 / 0 失败 / 2 跳过`
+- 用时与记账时刻**不进文档**（每次 `--record` 都会变 ⇒ 写进文档就永远在漂），要查 `transfer/watermark.json` 的 `seconds` / `at`。
+- **规模**：`src/` 23 个零依赖模块 · `tools/` 60 个脚本 + 29 个 helpers · `test/` 41 套自测 · `transfer/gold/` 13 条（4 个家族）
+<!-- watermark:end -->
+
+> **沙盒环境提示**：`package.json` **没有** `engines` 字段 ⇒ 版本要求只写在文档里、不作硬闸；实测 Node 20.20.2 全绿。若容器 Node < 20，可一行升级至 `/usr/local`：
 > `curl -fsSL https://nodejs.org/dist/v22.21.1/node-v22.21.1-linux-x64.tar.xz | sudo tar -xJ -C /usr/local --strip-components=1`
 > 真实 API 密钥（如需要跑线上评测）存放在工作区外 `~/.secrets/keys.env`（`chmod 600`，**永不入库、永不打印**）。
 
@@ -29,17 +39,22 @@ npm run next                # = node tools/cfb-cycle.mjs next
 
 ## 2. 当前仓库状态与最优策略基线
 
-- **分支与版本**：`main`（`v14.20.1`），`33/33` 套件全绿（`967 pass / 0 fail / 1 skip`），`manifest.mjs --check` 0 漂移。
+- **分支与版本**：`main`，版本与自测读数全部见上面的水位块（由 `--record` 记账 ⇒ 本文件不再抄一遍旧数）。
 - **核心架构**：100% 纯净的思维链出生即压缩（`birth` + `compile-v4`），已彻底剥离 DSH 外部宿主混入层与冗余旁路。
-- **当前 Pareto 冠军策略**：**`p-e62a037097`**（四维满配：`continuationPath: 'bounded'` + `statePartsMode: 'compact'` + `modularPromptPrune: true` + `birthAdaptiveFloor: true`，提示词净减 `-1037` 字）：
-  - **L1 金标基准（8/8 全过闸）**：金标省 `454 tok`（较基线 `247 tok` **+83.8%**），全池均省 `437 tok`，真值均值 `0.762`，AA 密度效率 `0.6986`。
-  - **L2 多轮轨迹基线（`transfer/traj1..3`）**：`auto` 臂 SWE 严苛解决率 **`85.7%`**（伪修好水分 **`0.0%`**，而只挂台账的 `ledger` 臂含 **`16.7%` 伪修好**），平均轮次 **`-13.7%`**，思维链字符 **`-27.4%`**，**LMArena Elo `1110`**（胜过 `raw` `1000` 与 `ledger` `951`）。
-- **飞轮与排序器**：`train/pairs.jsonl` 已积累 56 对跨 5 家族偏好对，CPU 排序器 LOO-CV 达 **`92.9%`**，`npm run train:export` 随时可按 5 家族严格组隔离导出 SFT/DPO 数据与 In-Context DPO 范例。
+- **`npm run bench` 第二表榜首**：**`p-1490eefcdf`**（四维满配：`continuationPath: 'bounded'` + `statePartsMode: 'compact'` + `modularPromptPrune: true` + `birthAdaptiveFloor: true`，提示词净减 `-1037` 字）。
+  **注意榜首 ≠ 已采纳**：`npm run cycle` 里 `champion 策略: base`、`champion 采纳状态 baseline` ⇒ 榜首只是当前尺子上的第一名，闭环仍按 `base` 生产。
+  - **L1 金标基准（`npm run bench` 实测，2026-10-06）**：金标过闸 **12/13**（净省 `431 tok`），距离分 **`dd = 0.724 [实测]`**（距理论极限 `-0.276`），池题全轮 `8/8`、均省 `482 tok`，5 题 Oracle `dd = 0.908`，真值分 `0.781`，AA 密度效率 `0.7234`，飞轮排序器 `-0.792`。旧版本在册 11 项时的 `1.000` 只作历史成绩看（CHANGELOG）。
+  - **L2 多轮轨迹基线（`transfer/traj1..3`）**：`auto` 臂 SWE 严苛解决率 **`85.7%`**（伪修好水分 **`0.0%`**，而只挂台账的 `ledger` 臂含 **`16.7%` 伪修好**），平均轮次 **`-13.7%`**，思维链字符 **`-27.4%`**，**LMArena Elo `1110`，95% CI `[926, 1345]`**（CI 跨过 `raw` 的 1000 ⇒ 这张表不足以单独宣称稳赢；`ledger` `951`）。
+- **飞轮与排序器**（`npm run cycle`，2026-10-06 实测）：飞轮 **80/80 对**通过 dev/内容闸；CPU 排序器 `ready`，**LOO-CV = 0.762**；效度尺子 `valid (n=259)`。`npm run train:export` 随时可按 5 家族严格组隔离导出 SFT/DPO 数据与 In-Context DPO 范例。
+  ⚠ 本页此前写的 LOO-CV **`92.9%`** 在当前实现下复现不出来（现值 `0.762`），**差异原因未查** ⇒ 引用前先 `npm run cycle` 重跑，别拿旧数当现状。
 
-### 2′. 金标注册表现状与「改稿重挣」通道（v14.20.1，接手必读）
+### 2′. 金标注册表现状与「改稿重挣」通道（v14.25.1 复核，接手必读）
 
-- **注册表现状**：`transfer/gold/` 活跃 **7 项 / 3 家族**（`sse-truncated` 3、`eacces-config` 2、`wrong-model` 2；`dev 3 + holdout 4`），全部 `[clean]` + 修好 + **自比 dd=1.000**（`A41` 钉）。其中 `sse-truncated_decoy-s0-r4` 是 2026-10-05 真机挣回又换过稿的（t15 win → t17 换稿 tie、hand 比 raw 省 33.6% token），本地微模型对它仍 `no-gain`⇒ 模式 2 的靶子就照它排。其余待办登记在 `transfer/gold-repair/pending-retest.json`：1 条改好的稿量出 vsRaw loss ⇒ 进 `measured/`（素材，不当天花板）、4 条 `blocked-on-this-channel`（本通道两臂都修不好 ⇒ 没有归因信号，须回原通道复测）；`outcome` 来自旧稿真机单元者一律**改稿即作废**，必须重跑模式 1 单元才算金标（不许拿离线绿当金标）。
-- **模式 2 实测基线（只认 `b13`，别再引 `b10`/`b11`）**：dev 3 项 × 5 策略、`dd/2` ⇒ `base 0.300`、`p-082d742f60 0.560`、`p-55a320e0f8 0.579`、`p-08bdbc7561 0.620`、`p-1490eefcdf 0.667`；配对全 `undetermined`（e 最高 2.333 < 10 —— dev 只有 3 项，本来就量不到 10）。`b10`/`b11` 那个 `base 0.519` 是**假数字**：15 行里 8 行是通道 `timeout 22000ms`，而 dd/1 又把「调用失败 ⇒ 原文回塞」当成稿来计分。跑法必须带 `--timeout-ms 150000`；真 `no-gain` 只有 6 行 ⇒ 侧模型的瓶颈先是**压不出**，再谈压得好。标尺口径（含「模板照旧受奖励」的判定）见 `docs/TRAINING-AND-BENCHMARK.md` §3.1；注册表摘要一变，旧计划按设计 `gold-changed` 拒跑，`plan-bench` 重建即可，未变条目靠 `--out` 同目录的兄弟缓存免付调用。
+- **注册表现状（2026-10-06 现算，条数同步在 `../README.md` 文首水位块）**：`transfer/gold/` 在册 **13 条 / 4 家族**（`sse-truncated` 5 · `wrong-model` 4 · `eacces-config` 3 · `perf-regression` 1；`dev 6 + holdout 7`）。
+  尺子判词按 `cfb.gold-standard/1` 逐条现算：**4 条 `gold` / 9 条 `not-gold`**（`tools/gold-attest.mjs` 只降不升，条目 `goldStandard.stampDigest` 一变即过期）。
+  `ceiling.ok`：**12/13 达标**，唯一不达标是 `perf-regression-s0-r7`（真机 `roundsToFix 9 > 6` ⇒ C4 提前量不成立 ⇒ 按 fail-closed 保持 `use:'train'`，不删）。
+- **用途隔离现状（v14.21.0 起，v14.24.x 改了默认走向）**：13 条里 **`use:'ruler'` 7 条 / `use:'train'` 6 条** —— **不是**"全部只当标尺"。`train` 那 6 条是 `goldCeiling` 不达线被 fail-closed **降级**下来的（降级 ≠ 丢数据：不进标尺、不删条目），要复核就 `node tools/gold-ceiling-audit.mjs`（$0）。
+- **模式 2 实测基线（只认 `b13`，别再引 `b10`/`b11`）**：⚠ `b13` 跑在旧的 7 项 dev 集上，注册表现已 13 条 ⇒ 重跑前别把它当现状。dev 3 项 × 5 策略、`dd/2` ⇒ `base 0.300`、`p-082d742f60 0.560`、`p-55a320e0f8 0.579`、`p-08bdbc7561 0.620`、`p-1490eefcdf 0.667`；配对全 `undetermined`（e 最高 2.333 < 10 —— dev 只有 3 项，本来就量不到 10）。`b10`/`b11` 那个 `base 0.519` 是**假数字**：15 行里 8 行是通道 `timeout 22000ms`，而 dd/1 又把「调用失败 ⇒ 原文回塞」当成稿来计分。跑法必须带 `--timeout-ms 150000`；真 `no-gain` 只有 6 行 ⇒ 侧模型的瓶颈先是**压不出**，再谈压得好。标尺口径（含「模板照旧受奖励」的判定）见 `docs/TRAINING-AND-BENCHMARK.md` §3.1；注册表摘要一变，旧计划按设计 `gold-changed` 拒跑，`plan-bench` 重建即可，未变条目靠 `--out` 同目录的兄弟缓存免付调用。
 - **扩标方案（要补金标先读这份）**：`docs/GOLD-EXPANSION-PROGRAM.md` —— 40 项 / 5 家族的判据、标尺与训练料分家、双作者一致率（复用 `blind-unit-label-v3`）、覆盖矩阵与三档预算；里面 §6 记了 2026-10-05 换上游后的通道事实（`temperature 0` 不再逐字确定、400 tok 只要 2.0–2.2 s、小 `max_tokens` 会被思考吃满 ⇒ 压缩调用下限 600、`--timeout-ms 150000`）。
 - **天花板资格先于越界**：`gold add` 有三道拒收 —— 未修好、`vsRaw loss`（比主模型自己读原文还慢）、`missing`；前两道是「不够格」，只有 lint 那道才叫「越界」并进隔离区。判据写在 `saveGold`，`A41b` 钉住。稿子被拒后**不删**：连同单元结果落 `transfer/gold-repair/measured/`。
 - **改稿两条铁规矩（被真机教出来的）**：① 只能照当轮 `pending/<id>.json` 的 `raw + ctx` 写，别把旧轨迹的结论搬过来（`invented-decision`/`invented-triple`）；原文还没下决定时，稿子只许带机理＋排除，不许替主模型落定。② 花钱前先 `node tools/hand-preflight.mjs <plan> [--only id]`（$0 复跑同一条闸链）；短 raw 的轮次要算上程序部件（~600 字），稿得压到 ~700 字以内才可能有净省。
@@ -68,4 +83,4 @@ npm run next                # = node tools/cfb-cycle.mjs next
 ## v14.21.0（2026-10-05）：标尺 / 训练料已分家 —— 从此 `use` 字段裁决
 
 `transfer/gold/` 里每条现在带 `use`（`ruler` / `train` / `both`，缺省 `ruler`）。**7 条现有金标全部 `use=ruler`：只当标尺，不再进任何拟合。** micro 的训练料改从 `tools/helpers/traj-corpus.mjs`（读 `.cfb-runtime/traj/*/hand-samples.jsonl`，只收 `trainingEligible && clean`）。要放行某条进训练：`node tools/cfb-cycle.mjs gold use --id X --set train` —— 但这等于亲手制造泄漏，除非你明确接受。
-扩量对账：`node tools/coverage-plan.mjs`（$0）→ `transfer/gold-repair/gold-coverage/matrix.md`，当前 30 格 / 缺口 33，命令已备好。双作者一致率与通道适配按用户裁决**不做**，所以噪声底没有实测值。详见 `docs/GOLD-EXPANSION-PROGRAM.md` §1/§8 与 CHANGELOG v14.21.0。
+扩量对账：`node tools/coverage-plan.mjs`（$0）→ `transfer/gold-repair/gold-coverage/matrix.md`（输入指纹 `90abc37bef69db7f`）：格 = 5 家族 ×（3 轮位档 + 3 长度档）= **30 格**，逐格"差 N"合计 **36**（旧文档写的 33 是上一轮读数）。两根轴是同一批条目的两种投影（各加总 = 目标 40 条），不是交叉相乘。双作者一致率与通道适配按用户裁决**不做**，所以噪声底没有实测值。详见 `docs/GOLD-EXPANSION-PROGRAM.md` §1/§8 与 CHANGELOG v14.21.0。

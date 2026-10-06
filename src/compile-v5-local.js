@@ -1,4 +1,7 @@
-// dsh-cot-form-b / compile-v5-local.js —— v5 本地超高精度认知微模型编译器（纯函数，零外部依赖，< 2ms，< 1MB 内存）
+// dsh-cot-form-b / compile-v5-local.js —— v5 本地认知图微模型编译器（纯函数，零外部依赖）
+//   延迟口径（v14.25.1 实测，别再写 "<2ms"）：真金标 13 条 × 每条 20 次 warm 复测（n=260，raw 均值 3.4k 字）
+//     ⇒ 三次独立复测的均值 4.1 / 6.3 / 7.4 ms（同一沙箱、负载不同），p50 5.3–6.1 ms，p95 14.6–20.5 ms。
+//     权重文件 18.6 KB（`transfer/models/v5-micro-weights.json`）；未单独测本模块的增量驻留 ⇒ 内存只说"权重 <20 KB"，不说"<1MB"。
 //
 // 理论出处：docs/theory/CFB-THEORY-COMPLETE.md（第一至六卷、S8 R1–R11、S10.1–S10.19、附录 B）
 //   1. 19 维理论特征基底 φ(u_i, ctx)：9 类句子功能先验 prior_D（pivot/plan/hypothesize/localize/compute/inspect/verify/answer/restate）、

@@ -16,8 +16,9 @@ import { simulateReadyEvaluation } from '../tools/helpers/eval-simulate.mjs'
 import { canSymlink } from './helpers/platform.mjs'
 import { offlineNamespaceVerifiable } from '../tools/verify-offline.mjs'
 
-let pass = 0, fail = 0
-const test = async (name, fn) => { try { await fn(); pass++; console.log('PASS ' + name) } catch (e) { fail++; console.log('FAIL ' + name + '\n' + e.stack) } }
+let pass = 0, fail = 0, skip = 0
+// fn 返回 'skip' ⇒ 记为跳过，**既不计通过也不计失败**（`verify.mjs` 靠 stdout 里的 SKIP=n 分开统计）
+const test = async (name, fn) => { try { const r = await fn(); if (r === 'skip') { skip++; console.log('SKIP ' + name) } else { pass++; console.log('PASS ' + name) } } catch (e) { fail++; console.log('FAIL ' + name + '\n' + e.stack) } }
 const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-eval-ready-'))
 const NOW = Date.parse('2026-09-30T12:00:00Z'), KEY = 'offline-key-fixture-not-a-secret', PASS = 'offline-fixture-checkpoint-passphrase'
 const PRICING = { inputUsdPerMillion: 0.01, outputUsdPerMillion: 0.05, requestFeeUsd: 0, source: 'https://prices.vendor.test/rates', verifiedAt: '2026-09-30' }
@@ -266,12 +267,13 @@ try {
   })
   await test('38 整链本机HTTP：13请求、第5请求断点/丢仓/加密恢复、9故障无重发', async () => {
     // simulateReadyEvaluation 先断言「只有 loopback 的 Linux 网络命名空间」（证据来自 /proc/net/route）。
-    // 非 Linux 拿不到该证据 ⇒ 显式跳过，不删断网证明换取绿灯。
-    if (!offlineNamespaceVerifiable()) { console.log('  (跳过整链本机HTTP：需要 Linux 网络命名空间证据，当前平台 ' + process.platform + ')'); return }
+    // 拿不到该证据就显式跳过（**含联网的 Linux** —— v14.25.1 起判据与 assertOfflineNamespace 同源，
+    // 不再出现「联网 Linux 上必红一项」），且跳过不计通过：全量验收仍是 `npm run verify:offline`。
+    if (!offlineNamespaceVerifiable()) { console.log('  (跳过整链本机HTTP：需要「只有 lo、零外部路由」的隔离证据；请在 `npm run verify:offline` 内跑，当前平台 ' + process.platform + ')'); return 'skip' }
     const r = await simulateReadyEvaluation(); assert.equal(r.externalApiCalls, 0); assert.equal(r.paidCostUsd, 0)
     assert.equal(r.healthy.loopbackRequests, 13); assert.equal(r.healthy.restoredRequests, 5); assert.equal(r.healthy.repeatRequests, 0)
     assert.equal(r.faults.length, 9); assert.ok(r.faults.every((f) => f.extraRequestsOnResume === 0))
   })
 } finally { fs.rmSync(ROOT, { recursive: true, force: true }) }
-console.log(`\n合计: ${pass} 通过 / ${fail} 失败`)
+console.log(`\n合计: ${pass} 通过 / ${fail} 失败` + (skip ? ` / 跳过 ${skip}` : '') + `\nSKIP=${skip}`)
 if (fail) process.exitCode = 1

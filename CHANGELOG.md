@@ -1,4 +1,19 @@
 # Changelog — dsh-cot-form-b
+## v14.25.4（2026-10-06，文档与代码脱节的**结构性**修法：取消手抄）
+
+**症状**：`README.md` / `docs/ARCHITECTURE.md` / `transfer/HANDOFF.md` 里的规模数与自测读数是**逐版本手抄**下来的旧数（`22 个模块`、`31 套自检`、`916 pass / 0 fail`、`v14.20.0`、`11/11 1.000`、`LOO-CV 92.9%`、冠军 `p-e62a037097`）。代码一路加到 `src/` 23 模块、40 套自检、13 条金标，文档一行没回改 ⇒ 越写越像小说。**逐条改对数字没用，下一版照样漂**。
+
+**改了什么（单一事实来源 + 一道会咬人的闸）**
+- 新增 `tools/doc-watermark.mjs`：结构计数（`src/*.js`、`test/*.selftest.mjs`、`tools/*.mjs`、`tools/helpers/*.mjs`、`transfer/gold/*/*.json`）与**六道收网门清单**全部现场重算后渲染；`--record` 跑 `verify.mjs --json`，把**隔离内 / 联网两态**的 `套件 / 通过 / 失败 / 跳过 / 用时` 写进 `transfer/watermark.json`（任一套件非 PASS ⇒ `record-refused`，跳过项单列）；`--write` 只替换 `<!-- watermark:begin … -->` 区（标记位置归人，数字归脚本）；`--check` 逐字节比对，并额外扫"水位区**外**的手抄读数"。`package.json` 加 `watermark` / `watermark:check` / `watermark:record`，`verify.mjs` 的 `ORDER` 登记 `doc-watermark`。
+- `README.md` 文首 + §4.1、`docs/ARCHITECTURE.md` §2.1、`transfer/HANDOFF.md` §1 的水位区改由脚本生成；门禁清单两处文档同源 ⇒ **不可能各写一套**。README §5 的实测基线整段按当前账本重算（`npm run bench` / `npm run cycle` / `node tools/gold-standard` 侧现算），并**明写榜首 ≠ 已采纳**（bench 第一是 `p-1490eefcdf`，`npm run cycle` 里 champion 仍是 `base`）。
+- 新增 `test/doc-watermark.selftest.mjs`（12 条，其中 **5 条是负例夹具**：篡改水位区 / 区外手抄 / 拆标记 / `package.json` 与 CHANGELOG 不一致 / 加套件不记账，逐条断言 `--check` 非零退出）。正向断言只能证明"现在刚好一致"，**负例才证明漂了会被发现**。
+- 顺带修的三个真问题：① `tools/verify-offline.mjs` 的 `offlineNamespaceVerifiable()` 只判"平台有没有 `unshare` 能力"，于是**联网 Linux 上 `npm test` 必红**（`offline-namespace-required`）⇒ 改为实测该命名空间里确实无网（`probeOfflineNamespace()`），两条错误文案逐字不变；② `test/eval-ready.selftest.mjs` 的 `test()` 助手把"按设计早退"记成 PASS ⇒ 现在认 `skip` 并打 `SKIP=n`，跳过项显式可见而不是伪装成通过；③ `src/compile-v5-local.js` 头注释的 `< 2ms / < 1MB` 换成有口径的实测（真金标 13 条 × 20 次 warm 复测，三次独立复测均值 4.1 / 6.3 / 7.4 ms，权重 18.6 KB；增量驻留未单独测 ⇒ 不再宣称 `<1MB`）。
+- 文档里指向**从未存在之物**的命令全部纠正：`docs/EVIDENCE-PROGRAM.md` §7 的 `tools/replay-evidence.mjs`、`tools/evidence-demo.mjs` 与 `npm run evidence:replay|demo`（`git log --all` 证实这四个路径从未入过库）改指向 `node verify.mjs evidence-program`；`test/helpers/evidence-fixtures.mjs` 那批 R3 夹具的真实落点是 `test/evidence-program.selftest.mjs`（现 5 条断言）；`docs/GOLD-EXPANSION-PROGRAM.md` 同步并加"现状更新"横幅；`docs/README.md` 索引补齐 `GOLD-STANDARD` / `GOLD-EXPANSION-PROGRAM` / `ROADMAP-GOLD` / `KAGGLE-MICRO-RUN` / `HANDOFF-2026-10-06` / `reports/*`，且**索引不再写规模数**。
+- 金标侧现状写清（不改判据、不改数据）：13 条 / 4 家族，`dev 6 + holdout 7`；尺子判词 **4 `gold` / 9 `not-gold`**；`use` **7 `ruler` / 6 `train`** —— 后 6 条是 `goldCeiling` fail-closed 降级所得（降级 ≠ 丢数据），**不是**旧文档写的"全部只当标尺"；`pending-retest.json` 6 条待复测；覆盖矩阵 30 格 / 缺口合计 36。
+
+**检查**：`node verify.mjs` 与 `npm run verify:offline` 均 **40/40 套件通过**（断言数、跳过数、用时以 `transfer/watermark.json` 与 README 文首水位块为准，同一轮 `--record` 产出 ⇒ 本条不重复抄一遍）；`node tools/doc-watermark.mjs --check` 全绿；`node manifest.mjs --check` 0 漂移。
+
+**没做的事**：没碰生产权重 `transfer/models/v5-micro-weights.json`；没为让任何一道门变绿而动阈值或判据；一次性盲测集未复评（`case-fold-collision` 那条 `evaluated-below-90-percent-gates` 保持原样）；CHANGELOG / ROADMAP 里**当时的**历史读数一律不回改 —— 它们是记录，不是现状。
 ## v14.25.3（2026-10-06，迁移抢救：把"删了就没了"的资产全部入库）
 
 **漏了什么**：`.gitignore` 的三条目录级忽略把**不可再生**的东西一起挡了。

@@ -391,6 +391,26 @@ function buildStepSimpoCounterfactuals(item) {
     .replace(/直接发两条调用|本轮一起发出的/g, '本轮只看文件暂不修改，留到后续轮次再考虑')
   addPair('split_turn_and_no_escape', splitTurnDraft, '拆散同轮 edit_file+bash 闭合动作并丢弃反事实逃生分支')
 
+  // 类型 6：锚点掏空负例（Ungrounded-Slot Anchor / Invented Triple）—— 2026-10-06，用户批准「1+2+3 一次性做完」
+  //   为什么加：类型 1–5 的负例「语义更差但机械闸照样过」⇒ 被上面的 trainingEligible = !gate.ok && margin > 0
+  //   全数隔离（实测 57 对里 42 对死在这条上，eligible 只剩 19）。这里**不改判据、不改任何闸值**，
+  //   只把「变异方式」换成确实会触发 handDraftGate 违规的那一类：往稿子里塞一条**锚点全无出处**的槽位句
+  //   （ungrounded:excluded / ungrounded:open）或一个原文里不存在的三元组改动（invented-triple）。
+  //   已知代价（必须写在这里）：这类对是「送分题」，margin 由闸违规保证，学不到细粒度判别 ⇒
+  //   读数一律按 negType 分栏看，不与 1–5 类的难对合并成一个数。用 CFB_MICRO_GATEBREAK_NEG=0 可整块关掉做 A/B。
+  if (process.env.CFB_MICRO_GATEBREAK_NEG !== '0') {
+    const UNGROUNDED = ['zz_ungrounded_probe_9182.js', 'phantom_export_slot_7741.js', 'ungrounded_dead_loop_helper.mjs']
+    UNGROUNDED.forEach((sym, k) => {
+      const tag = k ? `_v${k + 1}` : ''
+      addPair(`ungrounded_excluded_anchor${tag}`, `${hand}\n已排除：${sym} 的超时分支也排除了，本次台账里没有它的日志行。`,
+        `新增一条锚点全无出处的排除项，触发 handDraftGate 的 ungrounded:excluded`)
+      addPair(`ungrounded_open_anchor${tag}`, `${hand}\n待定：${sym} 的导出接口是否改过名，这条还没定。`,
+        `新增一条锚点全无出处的跨轮待办，触发 handDraftGate 的 ungrounded:open`)
+    })
+    addPair('invented_edit_triple', `${hand}\n改法只落一个：old_text 是 \`const zzAbsentGate = 4171\`，new_text 是 \`const zzAbsentGate = 7741\``,
+      '编造原文中不存在的三元组改动，触发 handDraftGate 的 invented-triple')
+  }
+
   return pairs
 }
 
@@ -728,7 +748,7 @@ export function buildMicroDataset() {
     let withDraft = 0, gateOk = 0, gateFail = 0, productionFail = 0, revisions = 0, distances = 0
     let skippedNonDevSamples = 0, droppedQuality = 0, droppedNotSelfContained = 0
     let captureGatesAccepted = 0, connectedToTrainingTarget = 0
-    const items = [], preferencePairs = []
+    const items = [], preferencePairs = [], pairwiseCandidates = []
     for (const s0 of samples) {
       const captureFamily = familyKey(String(s0.task || '').replace(/-s\d+-r\d+.*$/, ''))
       const captureSplit = pool.split?.[s0.task]
@@ -762,6 +782,17 @@ export function buildMicroDataset() {
           for (const k of Object.keys(distBy)) if (distance[k] != null) distBy[k].push(distance[k])
         } catch { distance = null }
       }
+      // 同一真值的可比稿池（2026-10-06，用户批准的「第 3 步」扩量）：没生产闸的那一份也测 dd 分数，但只允许当**败者**候选；
+      // 胜者必须是 self-contained + 闸过 + 内容审计 clean 的那一份。判分口径不变：还是同一个 draftDistance(stored, gold.hand)，
+      // 门槛还是同一个 0.05，平手与「败者分数更高」一律不签。
+      if (g && storedText && !acceptedByCaptureGates) {
+        try {
+          const dl = draftDistance(storedText, g.hand, { raw: rawText || g.raw || '', ctx: ctxText || g.ctx || '', calls: s0.callsThisRound || [] })
+          if (Number.isFinite(dl.score)) pairwiseCandidates.push({ id: s0.id, task: s0.task, round: s0.round, family: captureFamily, stored: storedText, gateOk: !!(s0.gate && s0.gate.ok === true), accepted: false, score: dl.score })
+        } catch { /* 稿子不可解析 ⇒ 不进配对池 */ }
+      } else if (g && storedText && acceptedByCaptureGates && distance && Number.isFinite(distance.score)) {
+        pairwiseCandidates.push({ id: s0.id, task: s0.task, round: s0.round, family: captureFamily, stored: storedText, gateOk: gateOkNow, accepted: true, score: distance.score })
+      }
       const rev = s0.revision ? { prevId: s0.revision.prevId, added: (s0.revision.added || []).slice(0, 8), removed: (s0.revision.removed || []).slice(0, 8), addedChars: s0.revision.addedChars, removedChars: s0.revision.removedChars } : null
       let trainableTargetsAdded = 0
       if (acceptedByCaptureGates) {
@@ -783,7 +814,52 @@ export function buildMicroDataset() {
       items.push({ id: s0.id, traj: s0.traj, task: s0.task, family: captureFamily, split: captureSplit, sample: s0.sample, round: s0.round, at: s0.at, rawChars: s0.rawChars, draftChars: s0.draftChars, outChars: s0.outChars ?? null, draftFile: s0.draftFile || null, pendingFile: s0.pendingFile || null, gateEligible: acceptedByCaptureGates, trainingEligible, trainableTargetsAdded, qualityAudit: captureAudit.qualityAudit, ...(acceptedByCaptureGates ? { raw: rawText, ctx: ctxText, draft: draftText, stored: storedText } : {}), gate: s0.gate || null, production: s0.production || null, revision: rev, distance })
     }
     const mean = (a) => (a.length ? +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(3) : null)
-    return { files, samples: samples.length, withDraft, skippedNonDevSamples, gateOk, gateFail, productionFail, revisions, distances, droppedQuality, droppedNotSelfContained, captureGatesAccepted, connectedToTrainingTarget, preferencePairs, trainEligiblePreferencePairs: preferencePairs.filter((pair) => pair.trainingEligible === true).length, distanceMean: Object.fromEntries(Object.entries(distBy).map(([k, v]) => [k, mean(v)])), items: items.slice(-200) }
+  // 同一真值的多次手写稿 ⇒ 用现成本地 dd 分数定向配对（2026-10-06，用户批准「1+2+3」里的第 3 项）
+  //   这不是新造判分口径：分数就是上面已经用来给每条 capture 打 distance 的同一个 draftDistance(stored, gold.hand)，
+  //   门槛沿用飞轮真对的 judge-01 单位阈值 0.05（同文件 :685），低于阈值的平手对一律不签。
+  //   只用 self-contained + 生产闸通过 + 内容审计 clean 的稿子，且必须属于同一 task 同一轮（同一真值）。
+  const pairwiseCapturePairs = []
+  if (process.env.CFB_MICRO_CAPTURE_PAIRS !== '0') {
+    const groups = new Map()
+    for (const it of pairwiseCandidates) {
+      const key = `${it.task || it.family}:${it.round ?? '?'}`
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key).push(it)
+    }
+    const seen = new Set()
+    for (const rows of groups.values()) {
+      const uniq = [...new Map(rows.map((r) => [r.stored.trim(), r])).values()]
+      for (const a of uniq) for (const b of uniq) {
+        if (a === b || !a.accepted) continue
+        const margin = +(a.score - b.score).toFixed(4)
+        if (!(margin >= 0.05)) continue
+        const audit = auditMode1Pair({ chosenText: a.stored, rejectedText: b.stored }, { reviewer: 'micro-dataset-pairwise-capture/1' })
+        if (audit.status !== 'clean') continue
+        const dk = `${a.id}>${b.id}`
+        if (seen.has(dk)) continue
+        seen.add(dk)
+        pairwiseCapturePairs.push({
+          id: `pairwise::${a.id}>${b.id}`, sourceId: a.id, family: a.family, split: 'dev',
+          negType: 'pairwise_capture_real',
+          description: '同一 task 同一轮的两次手写稿，按本地 draftDistance 分数定向（胜者须过生产闸且内容审计 clean）',
+          chosenText: a.stored, rejectedText: b.stored, contentAudit: audit,
+          chosenScore: a.score, rejectedScore: b.score, scoreMargin: margin,
+          rejectedGateOk: !!b.gateOk,
+          trainingEligible: true,
+          labelAudit: {
+            status: 'reviewed-pair-with-margin', source: 'mode1-capture-pairwise-local-dd',
+            scoreMargin: margin, minScoreMargin: 0.05, scoreKind: 'dd-01',
+            winnerGateOk: !!a.gateOk, loserAcceptedByCaptureGates: !!b.accepted,
+            noConfirmatoryClaim: true, apparatusCleared: true,
+          },
+          provenance: { chosen: { id: a.id, accepted: a.accepted }, rejected: { id: b.id, accepted: b.accepted } },
+        })
+      }
+    }
+    preferencePairs.push(...pairwiseCapturePairs)
+  }
+
+    return { files, samples: samples.length, withDraft, skippedNonDevSamples, gateOk, gateFail, productionFail, revisions, distances, droppedQuality, droppedNotSelfContained, captureGatesAccepted, connectedToTrainingTarget, preferencePairs, trainEligiblePreferencePairs: preferencePairs.filter((pair) => pair.trainingEligible === true).length, pairwiseCapturePairs: pairwiseCapturePairs.length, distanceMean: Object.fromEntries(Object.entries(distBy).map(([k, v]) => [k, mean(v)])), items: items.slice(-200) }
   })()
   stepSimpoPairs.push(...handCapture.preferencePairs)
 
@@ -896,7 +972,7 @@ export function buildMicroDataset() {
       contaminatedOrUnreviewedGoldExcluded: uncleanGoldExcluded,
       contaminatedOracleTargetsDropped,
       contaminatedPoolTargetsDropped,
-      handCapture: { files: handCapture.files, samples: handCapture.samples, withDraft: handCapture.withDraft, gateOk: handCapture.gateOk, gateFail: handCapture.gateFail, productionFail: handCapture.productionFail, revisions: handCapture.revisions, distances: handCapture.distances, droppedQuality: handCapture.droppedQuality, droppedNotSelfContained: handCapture.droppedNotSelfContained, captureGatesAccepted: handCapture.captureGatesAccepted, connectedToTrainingTarget: handCapture.connectedToTrainingTarget, preferencePairsAddedToSimpo: handCapture.preferencePairs.length, trainEligiblePreferencePairs: handCapture.trainEligiblePreferencePairs, distanceMean: handCapture.distanceMean, note: '只有 self-contained、dev-only、生产闸通过且内容审计 clean 的 Mode 1 capture 才生成 stepSimpoPairs；仅 trainEligible pair 实际进入偏好训练；未训练权重、未做确认性结论' },
+      handCapture: { files: handCapture.files, samples: handCapture.samples, withDraft: handCapture.withDraft, gateOk: handCapture.gateOk, gateFail: handCapture.gateFail, productionFail: handCapture.productionFail, revisions: handCapture.revisions, distances: handCapture.distances, droppedQuality: handCapture.droppedQuality, droppedNotSelfContained: handCapture.droppedNotSelfContained, captureGatesAccepted: handCapture.captureGatesAccepted, connectedToTrainingTarget: handCapture.connectedToTrainingTarget, preferencePairsAddedToSimpo: handCapture.preferencePairs.length, trainEligiblePreferencePairs: handCapture.trainEligiblePreferencePairs, pairwiseCapturePairs: handCapture.pairwiseCapturePairs, distanceMean: handCapture.distanceMean, note: '只有 self-contained、dev-only、生产闸通过且内容审计 clean 的 Mode 1 capture 才生成 stepSimpoPairs；仅 trainEligible pair 实际进入偏好训练；未训练权重、未做确认性结论' },
     },
     slotNames: SLOT_NAMES,
     handSamples: handCapture.items,

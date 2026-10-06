@@ -59,7 +59,7 @@ function labelUnitByGoldSlots(unit, goldSlots) {
   return { slot: 'NOISE', yVal: 0.05 }
 }
 
-function trainMicroModelOnDev() {
+function trainMicroModelOnDev(outFile) {
   const allGold = loadAllGold(ROOT)
   // 用途隔离（v14.21.0）：use=ruler 的条目只做标尺，不进拟合；训练料改由 traj 手稿通道（loadTrajTrainingSamples）供
   // v14.24.1：训练侧改读「尺子盖章」——被判 not-gold 的条目照样可当拟合料（降级 ≠ 丢数据），但不再冒充标尺
@@ -212,9 +212,13 @@ function trainMicroModelOnDev() {
     prefWeights: Object.fromEntries(prefKeys.map((k, i) => [k, +prefVec[i].toFixed(4)])),
   }
 
-  const outDir = path.join(ROOT, 'transfer/models')
-  fs.mkdirSync(outDir, { recursive: true })
-  fs.writeFileSync(path.join(outDir, 'v5-micro-weights.json'), JSON.stringify(trained, null, 2) + '\n')
+  // v14.25.1 安全闸：训练默认**不许**原地覆盖生产权重。要覆盖必须显式带 --allow-production-overwrite。
+  const prod = path.join(ROOT, 'transfer/models/v5-micro-weights.json')
+  if (path.resolve(outFile) === prod && !process.argv.includes('--allow-production-overwrite')) {
+    throw new Error('refuse-overwrite-production-weights: 生产权重只能由晋级流程写盘；本地实验请加 --out transfer/models/v5-micro-weights.candidate.json')
+  }
+  fs.mkdirSync(path.dirname(outFile), { recursive: true })
+  fs.writeFileSync(outFile, JSON.stringify(trained, null, 2) + '\n')
   return trained
 }
 
@@ -334,9 +338,11 @@ const evalJsonPath = argValue('--eval-json')
 if (evalOnly && !fs.existsSync(weightsPath)) {
   throw new Error(`--eval-only weights file not found: ${weightsPath}`)
 }
+const outPath = path.resolve(ROOT, argValue('--out', 'transfer/models/v5-micro-weights.candidate.json'))
 const trained = evalOnly
   ? JSON.parse(fs.readFileSync(weightsPath, 'utf8'))
-  : trainMicroModelOnDev()
+  : trainMicroModelOnDev(outPath)
+if (!evalOnly) console.log(`\n   ✓ 候选权重已写到: ${path.relative(ROOT, outPath)}（生产权重未动）`)
 const evalReport = await evaluateWithRuler(trained)
 if (evalJsonPath) {
   const target = path.resolve(evalJsonPath)

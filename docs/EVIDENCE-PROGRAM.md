@@ -78,7 +78,7 @@
 
 `createEvidenceArchive.beginCycle` → `consider` → `finalize`；全拒绝允许关闭周期但不读盲测。已消耗的盲测族不能换 cycle ID 再搜索。通过才入 active；不过门进有界、多样性的拒绝缓冲；同适用格的新候选不因“对裸基线有提升”替换旧技能（还需要成对消融，当前拒绝）。`retrieve` 最多 **k=1**，避免未经验证的技能组合交互；指纹改变、触发缺失、过期或 `retire` 后不检索。失败/拒绝正文只留档，不回灌模型。
 
-本轮 `test/helpers/evidence-fixtures.mjs` 是 **24 条宿主协议合成夹具（本次实现编写） / 6 族 / 8:8:8**，覆盖新鲜度、条件、落地、终止、修订和身份。仅测试留出门、泄漏防护、符号归档和拒绝机制；它不是未来 S0 的主模型任务集，也没有给 LLM 技能带来收益的证据。真实档案仍需真实的独立留出任务，不能把合成工程门当泛化证明。R3 自测 12/0；全量 674/0/1，N1–N7 全零。
+> **现状更新（v14.25.1，2026-10-06）**：本节写的 `test/helpers/evidence-fixtures.mjs` **在本仓库全部 git 历史里从未存在**（`git log --all -- 该路径` 为空）；那批宿主协议合成夹具实际落在 **`test/evidence-program.selftest.mjs`** 内（现 **5 条断言、`PASS=5 FAIL=0`**，83 行，不是一份独立夹具文件）。下面的 "R3 自测 12/0；全量 674/0/1" 是**当轮读数快照**，与当前规模不同步 ⇒ 现状以 `../README.md` 文首水位块为准。原判断本身不变：**它只测留出门、泄漏防护、符号归档与拒绝机制，不是 S0 主模型任务集，也没有 LLM 技能收益的证据**；真实档案仍需真实独立留出任务，不能把合成工程门当泛化证明。
 
 ## 6. 无损块仓、检查点与有界控制链（R4）
 
@@ -109,15 +109,14 @@
 ### 零成本复现（不加载钥匙）
 
 ```sh
-node tools/replay-evidence.mjs
-node tools/evidence-demo.mjs
-node verify.mjs evidence-program active-checks effect-archive evidence-runtime
-node tools/audit-noninferiority.mjs
+node verify.mjs evidence-program            # 唯一在册的证据程序套件（临时目录里真跑：CAS 块仓、篡改检测、乐观锁、谓词三值）
+node tools/audit-noninferiority.mjs         # N1–N7 非劣性审计
 node manifest.mjs --check
-# 等价快捷命令：npm run evidence:replay / npm run evidence:demo
 ```
 
-演示在专用临时工作区进行真实文件编辑与联合恢复，最后删除**演示自己的临时目录**；不改当前仓库文件或 Git。`--out .cfb-runtime/demo.json` 可留报告（忽略目录），没有在线模式。
+> ⚠ 本节此前写的 `node tools/replay-evidence.mjs`、`node tools/evidence-demo.mjs` 与 `npm run evidence:replay` / `npm run evidence:demo` **都不是本仓库的入口**：两个脚本从未存在，`package.json` 里也没有这两条 script（`npm run` 会直接 `Missing script`）。宿主侧完整执行链从包入口 import（见下），不存在独立的 replay/demo CLI。
+
+`test/evidence-program.selftest.mjs` 在 `os.tmpdir()` 里开专用工作区做真实文件编辑与联合恢复，跑完删除**它自己的临时目录**；不改当前仓库文件或 Git（`verify.mjs` 还会给每个套件套一个独立临时 `DSH_HOME`）。仓库内没有 `--out .cfb-runtime/demo.json` 这种演示报告开关。
 
 ### 宿主调用（完整执行链）
 
@@ -153,7 +152,7 @@ const result = await runtime.runRound(program, { roundId: 'round-1', raw: origin
 // 只有 result.ok / status=verified 可收工；其余读取 modelView，错误正文不回灌。
 ```
 
-上面的宿主变量不是插件替你捏造的服务；完整、本地可直接执行的装配见 `tools/evidence-demo.mjs`。公共接口、结构与可选能力全部在 `index.d.ts`，JS 中还有运行时 schema/权限校验。本项目仍无 TypeScript 构建依赖；类型声明登记自测不代替 `tsc` 全项目类型检查。
+上面的宿主变量不是插件替你捏造的服务；可本地执行的装配见 **`test/evidence-program.selftest.mjs`**（`node verify.mjs evidence-program` 即可跑）——本仓库不提供独立 demo CLI。公共接口、结构与可选能力全部在 `index.d.ts`，JS 中还有运行时 schema/权限校验。本项目仍无 TypeScript 构建依赖；类型声明登记自测不代替 `tsc` 全项目类型检查。
 
 ### DSH 侧车（默认关闭）
 

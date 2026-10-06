@@ -1,4 +1,4 @@
-# 生产插件与认知编译器架构（v14.18，开发者视角）
+# 生产插件与认知编译器架构（v14.25.1 复核，开发者视角）
 
 > 面向改代码的开发者与 AI 模型：模块怎么分、数据怎么流、哪些不变式不能碰、加功能该改哪里。
 > 快速上手见根目录 [`README.md`](../README.md)；闭环训练与官方基准见 [`TRAINING-AND-BENCHMARK.md`](TRAINING-AND-BENCHMARK.md)；历史实验与成本定律见 [`HISTORY-AND-EXPERIMENTS.md`](HISTORY-AND-EXPERIMENTS.md)。
@@ -11,7 +11,7 @@
 
 | 平面 | 入口 | 职责 | 守恒纪律 |
 |---|---|---|---|
-| **① 生产插件核心** | `index.js` → `src/`（22 个零依赖 ESM 模块） | 在宿主流 `llm/stream` 内拦截 `reasoning` 块，完成 CAS 归档 + 副模型认知编译 + 程序门核真（`compileV4Direct`）+ 程序部件拼接（`spliceProgramParts`）+ 六道放行门（`birthAccept`） | 267 份历史稿逐字回归 + 31 套 selftest 零失败 |
+| **① 生产插件核心** | `index.js` → `src/`（零依赖 ESM 模块，数量见 `../README.md` 文首水位块） | 在宿主流 `llm/stream` 内拦截 `reasoning` 块，完成 CAS 归档 + 副模型认知编译 + 程序门核真（`compileV4Direct`）+ 程序部件拼接（`spliceProgramParts`）+ 六道收网门（`birthFinish` → `birthAccept`，清单见 §2.1） | 历史稿逐字回归 + 全量 selftest（读数见 §5） |
 | **② 统一科学训练闭环与双轨裁判** | `tools/cfb-cycle.mjs` + `tools/cfb-judge.mjs` + `tools/bench-run.mjs` + `tools/traj-run.mjs` | 三模式闭环（手写探顶 → 金标基准 → 影子分叉轨迹）+ 四维全空间策略搜索 + 双轨（确定性规则 × LLM 语义）交叉验证与岭回归校准 + 五大国际官方基准成绩单 | 零污染客观锚点 + 跨计划 CAS 缓存 + 序贯 $e$-value 安全晋升 |
 | **③ 有界 API 账本与训练数据核** | `tools/effect-ready.mjs` + `tools/bounded-ab.mjs` + `src/training-core.js` | 双平面预占 API 预算（一 scope 一冻结批准，收据入库 `transfer/`）+ 5 家族连通组严格隔离的 SFT / DPO / In-Context DPO 导出 | 严禁跨家族泄漏与未批准真实扣费 |
 
@@ -70,6 +70,19 @@ birthTransform(inner, deps)
                               任何一道未过 ⇒ birthCancelFlying 立即取消在途请求，100% 原文放行（passthrough）
 ```
 
+六道门的顺序、拒收码与"哪些要求不在这六道里"，由 `tools/doc-watermark.mjs` 从 `src/birth.js` 同源渲染，与 `../README.md` §4.1 逐字一致（漂移即 `--check` 报错）：
+
+<!-- watermark:begin 由 node tools/doc-watermark.mjs --write 生成，勿手抄 -->
+1. **归档成功** —— 拿不到可读回的 CAS 句柄 ⇒ 不换原文（`birth.js` 的 archive 结果先行判定）
+2. **编译非空** —— 空稿或纯空白 ⇒ `empty-candidate`，原文放行
+3. **无发明标识符** —— 稿里的路径 / 反引号代码 / camelCase / snake_case 必须逐字出自 `raw ∪ ctx ∪ 程序部件`，否则 `invented-identifier`
+4. **字符净省** —— `raw − candidate ≥ birthMinSavedChars`（默认 50），否则 `no-gain`
+5. **token 严格下降** —— 字符变短而 token 没降 ⇒ `no-token-gain`（估算按书写系统区分，不是真 tokenizer）
+6. **替换成功（condensed）** —— 以上全过才原位改写；任何一步不达标或异常 ⇒ 取消在途请求并原文放行
+
+> **结构闭合**（判读分支闭合、三元组 `new_text ≠ old_text`）与**死路不复活**是**编译阶段**的要求（`compileV4Direct` / `src/compile-v5-local.js`），不在上面这六道收网判定里 —— 两段别混成一条闸。
+<!-- watermark:end -->
+
 ### 2.2 `compile-v4`：两条认知编译通路（`src/compile-v4.js`）
 
 1. **`v4d6` 直写通路（`compressPrompt: 'v4', compressV4Direct: true`，当前主力）**：
@@ -117,16 +130,21 @@ birthTransform(inner, deps)
 | 修改闭环评测或官方基准公式 | `tools/helpers/ruler.mjs`（`passAtK` / `passHatK` / `arenaElo` / `industryScorecard`）+ `tools/cfb-cycle.mjs` |
 | 修改双轨语义裁判或校准器 | `tools/helpers/judge-layer.mjs` + `tools/cfb-judge.mjs` |
 | 新增自测套件 | `test/<name>.selftest.mjs`（末尾打印 `PASS=n FAIL=m`），加入 `verify.mjs` 的 `ORDER` |
-| 修改任何入库文件后 | 运行 `npm run manifest` 更新 `MANIFEST.sha256`，再跑 `npm run verify:offline` 确认 `31 套 / 916 pass / 0 fail / 1 skip` |
+| 修改任何入库文件后 | 运行 `npm run manifest` 更新 `MANIFEST.sha256`，再跑 `npm run verify:offline`；改了规模（加模块/套件/金标）或文档水位 ⇒ `npm run watermark:record && npm run watermark` |
 
 ---
 
-## 5. 自测套件矩阵（`31` 套，`916 pass / 0 fail / 1 skip`）
+## 5. 自测套件矩阵
 
-运行 `npm run verify:offline` 并发执行全部 31 套自检（每个套件使用独立临时 `DSH_HOME`）：
+套件总数、断言数与用时**不在本节手抄**：`../README.md` 文首水位块由 `node tools/doc-watermark.mjs --record` 记账生成（隔离内 / 联网两态各一组），`npm run watermark:check` 负责核对。
+运行 `npm run verify:offline` 在真断网 Linux 命名空间里并发执行全部套件（每个套件使用独立临时 `DSH_HOME`）；下表按类别列出**全部**套件 —— 新增套件必须同时进 `verify.mjs` 的 `ORDER` 与本表，`test/doc-watermark.selftest.mjs` 会核对磁盘与 `ORDER` 的登记数。
 
 | 类别 | 套件名称 | 覆盖范围 |
 |---|---|---|
 | **生产核心与运行时（14 套）** | `provider-endpoint`, `core`, `compress`, `v4`, `v4-live`, `birth`, `robustness`, `hedge`, `hook-wiring`, `hardening`, `concurrency`, `protocol`, `branches`, `v12` | 端点解析、配置归一化、编译与流式路径、并发隔离、硬化及兼容性 |
 | **科学闭环与评测（12 套）** | `api-budget`, `effect-eval`, `eval-ready`, `eval-ready-v2`, `eval-visible-v3`, `eval-reasoning-v8`, `offline-lab`, `judge-calibration`, `closed-loop`, `closed-loop-v3`, `closed-loop-v4`, `training-ready` | 预算、效果/推理评估、离线闭环、双轨裁判校准、训练准备度 |
+| **金标尺子与写稿纪律（5 套）** | `gold-standard`, `gold-attest`, `gold-use-split`, `gate-cjk-pairing`, `silver-shape` | `cfb.gold-standard/1` 十二轴判据本身、盖章与只降不升链路、标尺/训练料用途隔离、反引号配对段不得误杀中文散文、银标形状检查器 |
+| **模式 1 质量与标注（3 套）** | `mode1-quality`, `mode1-quality-parity`, `micro-label-review` | 模式 1 真机配对质量与 $0 判据平价、人工盲审工具（审核者看不到规则、坏行被拒、digest 存活） |
+| **微模型测量臂（1 套）** | `micro-general-arm` | 原型命中 vs 真实用户仓兜底路径的差（`micro-gap-map.json`）与 README 引用逐位对齐；`forceGeneralPath` 三处齐备；一次性盲测账本不被重跑；生产权重哈希可核 |
+| **完整性与审计（6 套）** | `manifest-ignore`, `audit-2026-09-27`, `micro-runtime`, `micro-ruler`, `evidence-program`, `doc-watermark` | 清单忽略规则、历史审计、生产 JSON 权重加载/JS scorer、微模型评测尺子与数据回归、类型化证据程序、文档水位（含 5 个负例夹具） |
 | **完整性与审计（5 套）** | `manifest-ignore`, `audit-2026-09-27`, `micro-runtime`, `micro-ruler`, `evidence-program` | 清单忽略规则、历史审计、生产 JSON 权重加载/JS scorer、微模型评测尺子与数据回归、类型化证据程序 |

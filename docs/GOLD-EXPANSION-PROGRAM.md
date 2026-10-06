@@ -1,4 +1,6 @@
-# 金标扩标方案（$0 起草，v14.20.1）
+# 金标扩标方案（$0 起草，v14.20.1 立项）
+
+> **现状更新（v14.25.1，2026-10-06）**：本文的判据、预算档与"不改判分公式"铁律照旧有效；**规模数以现场为准** —— `transfer/gold/` 现 **13 条 / 4 家族**（`dev 6 + holdout 7`），尺子判词 **4 `gold` / 9 `not-gold`**，`use` 分布 **7 `ruler` / 6 `train`**（后 6 条是 `goldCeiling` fail-closed 降级，不是人为放行），`pending-retest.json` 6 条待复测。逐条复算：`node tools/gold-ceiling-audit.mjs`（$0）与 `node tools/gold-score.mjs`。本文写于 7 条在册时期，文中"7 项/3 家族"一类数只作当时快照看。
 
 > 这份文档定"什么叫金标够了"，以及怎么把它做够。它不改判分公式、不改固定句式模板（模板是接口协议，见 `TRAINING-AND-BENCHMARK.md` §3.1）。
 > 现状：`transfer/gold/` 活跃 **7 项 / 3 家族**（`dev 3 + holdout 4`），全部 `[clean]` + 修好 + 自比 `dd=1.000`；隔离区 6 条（4 条是本通道测不出，不是稿子坏）。
@@ -58,7 +60,7 @@
   - `gold stage --reviewer <id> [--blind-to <digest>]`：登记作者与盲写依据，落 `author`/`reviewProtocol` 到条目；
   - `gold agreement --family X`：打印同轮两稿的逐槽一致率 + 差异句（复用 `draftDistance`，不做新公式）；
   - `pending-retest.json` 增加 `author` 字段，避免把 A 的复测算到 B 头上。
-- **新家族题的验收照旧走盲测闸**（`tools/eval-micro-js-pairs.mjs`）：`mustBeNewFamily` + `dataset.finalBlind:true` + `semanticReview{completed, reviewer, reviewedAt}` + `lineageReview{completed, newFamilyRationale, knownFamiliesReviewed/knownSourceIdsReviewed 必须精确覆盖全部训练家族与来源}`，任缺一条即 `final-test-requires-completed-family-lineage-audit`。注意：`test/helpers/evidence-fixtures.mjs` 那批 **R3 夹具是宿主协议合成件**（文档自己写明"不是未来 S0 的主模型任务集"），**不能**拿来当新家族。
+- **新家族题的验收照旧走盲测闸**（`tools/eval-micro-js-pairs.mjs`）：`mustBeNewFamily` + `dataset.finalBlind:true` + `semanticReview{completed, reviewer, reviewedAt}` + `lineageReview{completed, newFamilyRationale, knownFamiliesReviewed/knownSourceIdsReviewed 必须精确覆盖全部训练家族与来源}`，任缺一条即 `final-test-requires-completed-family-lineage-audit`。注意：`test/evidence-program.selftest.mjs` 里那批 **R3 宿主协议合成夹具**（`docs/EVIDENCE-PROGRAM.md` 自己写明"不是未来 S0 的主模型任务集"），**不能**拿来当新家族。（旧版本此处写的 `test/helpers/evidence-fixtures.mjs` 从未入库。）
 
 ## 3. 覆盖矩阵（先把格子排出来，再往里灌真机单元）
 

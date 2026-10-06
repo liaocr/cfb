@@ -7,22 +7,33 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 /**
- * 真断网验收：只有 loopback 的 Linux 网络命名空间。
+ * 断网证据的唯一判据：此刻这个进程是不是真的处在「只有 lo、零外部路由」的隔离里。
+ * 返回 { ok, why, interfaces, externalRoutes }，不抛 —— 抛不抛由调用方决定。
  *
- * 该证明依赖 /proc/net/route —— 这是 **Linux 独有**的证据。非 Linux 平台上拿不到同等强度的证据，
- * 因此必须**失败关闭**（fail closed）并给出可识别的错误码，而不是抛出 ENOENT 让调用方误以为是崩溃。
- * 调用方（测试/demo）据此显式跳过，绝不把「拿不到证据」当成「验证通过」。
+ * 该证据依赖 /proc/net/route —— 这是 **Linux 独有**的。非 Linux 平台拿不到同等强度的证据，
+ * 因此 assertOfflineNamespace 必须**失败关闭**并给出可识别的错误码，而不是抛出 ENOENT 让调用方误以为是崩溃。
  */
-export function assertOfflineNamespace() {
-  if (process.platform !== 'linux') throw new Error('offline-namespace-unverifiable-platform:' + process.platform)
-  const interfaces = Object.entries(os.networkInterfaces()).filter(([, rows]) => rows?.length).map(([name]) => name)
+function probeOfflineNamespace() {
+  if (process.platform !== 'linux') return { ok: false, why: 'unverifiable-platform:' + process.platform }
   let routes
-  try { routes = fs.readFileSync('/proc/net/route', 'utf8').trim().split('\n').slice(1) } catch { throw new Error('offline-namespace-unverifiable-platform:no-proc-net-route') }
-  if (!interfaces.length || interfaces.some((name) => name !== 'lo') || routes.length) throw new Error('offline-namespace-required')
-  return { isolation: 'linux-user-network-namespace', interfaces, externalRoutes: routes.length, externalApiCalls: 0 }
+  try { routes = fs.readFileSync('/proc/net/route', 'utf8').trim().split('\n').slice(1) } catch { return { ok: false, why: 'unverifiable-platform:no-proc-net-route' } }
+  const interfaces = Object.entries(os.networkInterfaces()).filter(([, rows]) => rows?.length).map(([name]) => name)
+  if (!interfaces.length || interfaces.some((name) => name !== 'lo') || routes.length) return { ok: false, why: 'required', interfaces, externalRoutes: routes.length }
+  return { ok: true, interfaces, externalRoutes: routes.length }
 }
-/** 平台是否具备断网证据能力（供调用方决定「跳过」还是「失败」）。 */
-export const offlineNamespaceVerifiable = () => process.platform === 'linux' && fs.existsSync('/proc/net/route')
+export function assertOfflineNamespace() {
+  const p = probeOfflineNamespace()
+  if (!p.ok) throw new Error('offline-namespace-' + p.why)
+  return { isolation: 'linux-user-network-namespace', interfaces: p.interfaces, externalRoutes: p.externalRoutes, externalApiCalls: 0 }
+}
+/**
+ * 调用方据此决定「跳过」还是「失败」。
+ * ★ v14.25.1 修正：判据从「本平台有没有能力取证」改成「此刻是否真在隔离里」，与 assertOfflineNamespace 同源。
+ *   旧写法在**联网的 Linux** 上恒为 true ⇒ `test/eval-ready.selftest.mjs` 第 38 项会去跑一条需要 lo-only 的
+ *   断言并当场抛 `offline-namespace-required` ⇒ `npm test` 在普通 Linux 上必红一项（`npm run verify:offline`
+ *   在 `unshare -Urn` 内全绿）。跳过与通过仍是两件事：套件必须打 `SKIP=n`，绝不把跳过计成通过。
+ */
+export const offlineNamespaceVerifiable = () => probeOfflineNamespace().ok
 function options(argv) {
   const result = { inside: false, suites: [], mode: 'all' }
   for (let i = 0; i < argv.length; i++) {
