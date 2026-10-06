@@ -1,4 +1,7 @@
 # Changelog — dsh-cot-form-b
+## v14.24.9（2026-10-06，迁移交接备忘）
+
+新增 `docs/HANDOFF-2026-10-06.md`：五分钟上手顺序、用户"宪法"（每阶段一 commit+manifest+push、逐条全审可双向改判、手写稿不打标、闸不放宽、权重不碰、P2/Mode1 已划掉）、环境坑表（沙箱重启丢 `.git/config` ⇒ remote 要重挂；`.gitignore` 吞新文件 ⇒ 显式 add；manifest 与 add 的先后；`verify.mjs` 靠 `PASS=N FAIL=0` 与裸 slug 登记；无 kaggle/torch/2CPU1GB）、流程经验（盲审 digest 存活而非数据集 sha；抽样→超阈才全审；排查脚本要排除已审 id；一文件一家族的两处硬闸；latin1 落盘；标点级填充与"对照组取未填充侧"；三条硬闸别拆；盲测只评一次分；别为指标做假特征）、量纲决策记录、gold `--ids` 不落盘的真相与后果链、水位重算脚本、待办与"别做"清单。
 ## v14.24.8（2026-10-06，gold 洞试过：结论是本地补不动，另加一键粘贴单元）
 
 **试了什么**：`tools/gold-forge2.mjs` 是 $0 锻造器（引用逐字取自条目 raw/ctx，抽不到就标 needs-manual，绝不代写）。对 19 条候选跑完 → **$0 达线 16 · 需人工 1 · 未过 2**（未过的判读是 `invented-anchors` 一类，被它自己的铁律拦住）。但 `--write` 两种模式都不落盘：`--ids` 是"预锻、不含真机读数"，按设计不能算金标；`--pending` 一次只吃一条且同样没写。`transfer/gold` 仍 5 个文件、`devGoldItems` 仍 4。
