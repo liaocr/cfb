@@ -16,6 +16,31 @@ const ROOT = new URL('..', import.meta.url).pathname
 const { carryCheck } = await import(pathToFileURL(ROOT + 'tools/traj-run.mjs').href)
 const { makeChat, TRUSTED_FP, responseText } = await import(pathToFileURL(ROOT + 'tools/effect-eval.mjs').href)
 
+if (process.argv.includes('--selftest')) {
+  const { carryCheck } = await import(pathToFileURL(ROOT + 'tools/traj-run.mjs').href)
+  const MS = [{ role: 'user', content: 'q' }, { role: 'assistant', content: '2', reasoning_content: 'x'.repeat(1200) }, { role: 'user', content: 'q2' }]
+  const chatFor = (spec) => async ({ messages }) => {
+    if (spec.throwOn && spec.throwOn(messages)) throw Object.assign(new Error('HTTP 400 upstream'), { status: 400 })
+    const r = messages.some((m) => m.reasoning_content) ? spec.a : spec.b
+    return { usage: { prompt_tokens: r }, fp: spec.fp || null }
+  }
+  const cases = [
+    ['官方直连 + tools（Δ 大）', { tools: [{ type: 'function' }], chat: chatFor({ a: 1500, b: 200 }), want: 'carried' }],
+    ['中转静默剥字段（带 tools，Δ=0，不报错）', { tools: [{ type: 'function' }], chat: chatFor({ a: 200, b: 200 }), want: 'stripped' }],
+    ['官方严格校验（省略历史思考 ⇒ 400）', { tools: [{ type: 'function' }], chat: chatFor({ a: 1500, throwOn: (m) => m.every((x) => !x.reasoning_content) }), want: 'contract-validated' }],
+    ['后端拒收入站思考字段（带 reasoning ⇒ 400）', { tools: [{ type: 'function' }], chat: chatFor({ a: 0, throwOn: (m) => m.some((x) => x.reasoning_content) }), want: 'rejects-inbound-field' }],
+    ['官方直连但请求不带 tools（Δ≈0 属契约行为）', { tools: null, chat: chatFor({ a: 200, b: 200 }), want: 'ignored-by-contract' }],
+  ]
+  let bad = 0
+  for (const [name, c] of cases) {
+    const r = await carryCheck({ chat: c.chat, o: { model: 'x' }, messages: MS, tools: c.tools })
+    const hit = r.verdict === c.want
+    if (!hit) bad++
+    console.log(`${hit ? 'OK  ' : 'FAIL'} ${name} ⇒ ${r.verdict}（ok=${r.ok}），期望 ${c.want}`)
+  }
+  console.log(bad ? `PASS=0 FAIL=${bad}` : `PASS=${cases.length} FAIL=0`)
+  process.exit(bad ? 1 : 0)
+}
 const o = { model: process.env.DEEPSEEK_MODEL || 'deepseek-v4.1-flash', baseUrl: process.env.DEEPSEEK_BASE_URL, apiKey: process.env.DEEPSEEK_API_KEY }
 if (!o.baseUrl || !o.apiKey) { console.error('缺 DEEPSEEK_BASE_URL / DEEPSEEK_API_KEY'); process.exit(2) }
 const chat = makeChat(o)
@@ -27,7 +52,9 @@ let fatal = null
 const carry = await carryCheck({ chat, o, messages: msgs(1, '2') }).catch((e) => { fatal = String(e?.message || e); return null })
 console.log(`通道 ${o.baseUrl}  模型 ${o.model}`)
 if (fatal) { console.log(`✗ 连不上：${fatal.slice(0, 160)}`); process.exit(1) }
-console.log(`① 历史思考放 reasoning_content：${FAKE.length} 字 → Δ ${carry.delta} tokens（需 ≥ ${carry.need}）⇒ ${carry.ok ? '携带 ✓' : '剥掉了 ✗'}`)
+console.log(`① 历史思考放 reasoning_content：${FAKE.length} 字 → Δ ${carry.delta} tokens（需 ≥ ${carry.need}）⇒ ${carry.verdict} ${carry.ok ? '✓' : '✗'}`)
+console.log(`   ${carry.note}`)
+if (!carry.toolsSent) console.log('   ⚠ 本次未带 tools：按官方口径，无 tools 时历史 reasoning_content 会被忽略 ⇒ 该臂只能作参考，不能据此换渠道')
 const withC = await tok(msgs(0, '2 ' + FAKE)), without = await tok(msgs(0, '2'))
 console.log(`② 对照组·同字数放 content：Δ ${withC - without} ⇒ ${withC - without >= carry.need ? '计量正常（所以 ① 的 0 是真剥字段）' : '连 content 也不算 ⇒ 这条通道没法用 Δ 判定'}`)
 if (process.argv.includes('--with-cot')) {

@@ -292,11 +292,33 @@ export const CARRY_MIN_RATIO = 0.12, CARRY_MIN_DELTA = 4, CARRY_MIN_HISTORY = 40
 export const stripReasoning = (messages) => messages.map((m) => (m.role === 'assistant' && m.reasoning_content ? { ...m, reasoning_content: '' } : m))
 export const historyReasoningChars = (messages) => messages.filter((m) => m.role === 'assistant').reduce((n, m) => n + String(m.reasoning_content || '').length, 0)
 export async function carryCheck({ chat, o, messages, tools = null, probe = null }) {
-  const L = historyReasoningChars(messages); const body = (ms) => ({ model: o.model, messages: ms, ...(tools ? { tools } : {}), thinking: { type: 'enabled' }, max_tokens: 1, stream: false })
-  const withR = probe || await chat(body(messages)); const without = await chat(body(stripReasoning(messages)))
-  const a = Number(withR.usage?.prompt_tokens), b = Number(without.usage?.prompt_tokens), delta = a - b
-  const ok = L > 0 && Number.isFinite(delta) && delta >= Math.max(CARRY_MIN_DELTA, CARRY_MIN_RATIO * L)
-  return { L, withReasoning: a, without: b, delta, ratio: L ? +(delta / L).toFixed(3) : null, need: Math.max(CARRY_MIN_DELTA, Math.ceil(CARRY_MIN_RATIO * L)), ok, fp: withR.fp || null }
+  // 官方口径（api-docs.deepseek.com/guides/thinking_mode，2026-08-27 重写）：
+  //   带 tools ⇒ 前几轮 reasoning_content 必须完整回传（漏了直接 400，且"没有调用工具的前轮也算"），且会拼进上下文；
+  //   不带 tools ⇒ 不需要回传，**回传也会被忽略、不进上下文**。
+  // 所以「Δprompt_tokens 有没有变大」只在**带 tools 的请求**上才是携带证据；无 tools 时 Δ≈0 是契约行为，
+  // 拿它判"渠道剥字段"就是假阴性（官方直连也会被拒）。这里按口径分派，并把 400 当正面证据用。
+  const L = historyReasoningChars(messages)
+  const body = (ms) => ({ model: o.model, messages: ms, ...(tools ? { tools } : {}), thinking: { type: 'enabled' }, max_tokens: 1, stream: false })
+  const grab = async (ms) => { try { return { r: await chat(body(ms)), err: null } } catch (e) { return { r: null, err: String(e?.status || e?.message || e) } }
+  }
+  const A = probe ? { r: probe, err: null } : await grab(messages)
+  const B = await grab(stripReasoning(messages))
+  const has400 = (t) => /\b400\b/.test(String(t || ''))
+  const a = Number(A.r?.usage?.prompt_tokens), b = Number(B.r?.usage?.prompt_tokens)
+  const delta = a - b
+  const need = Math.max(CARRY_MIN_DELTA, Math.ceil(CARRY_MIN_RATIO * L))
+  const carriedByDelta = L > 0 && Number.isFinite(delta) && delta >= need
+  const fp = A.r?.fp || B.r?.fp || null
+  let verdict, ok, note
+  if (has400(A.err)) { verdict = 'rejects-inbound-field'; ok = false; note = '带 reasoning_content 的请求被 400 拒 ⇒ 这条通道不认入站思考字段，模式 1 无从生效' }
+  else if (tools && has400(B.err)) { verdict = 'contract-validated'; ok = true; note = '省略历史思考被 400 ⇒ 校验器在场（官方直连行为），历史思考按契约必进上下文' }
+  else if (!tools) {
+    if (carriedByDelta) { verdict = 'spliced-without-tools'; ok = true; note = '无 tools 却仍拼进上下文 ⇒ 该后端比官方口径更宽，可用' }
+    else { verdict = 'ignored-by-contract'; ok = false; note = '无 tools 时官方口径本就忽略历史 reasoning_content ⇒ Δ≈0 不是"剥字段"。要跑模式 1：让请求带 tools，或把稿子放进 content（别换渠道，换了也一样）' }
+  }
+  else if (carriedByDelta) { verdict = 'carried'; ok = true; note = 'Δ 达阈 ⇒ 历史思考真进了上下文' }
+  else { verdict = 'stripped'; ok = false; note = '带 tools 仍无 Δ 且不报 400 ⇒ 典型中转静默丢字段：模型每轮重推，手写稿看不到' }
+  return { L, withReasoning: a, without: b, delta, ratio: L ? +(delta / L).toFixed(3) : null, need, ok, fp, toolsSent: !!tools, verdict, note }
 }
 export async function preflightUpstream({ chat, o }) {
   const t0 = Date.now(); let r = null, error = null
@@ -307,7 +329,7 @@ export async function preflightUpstream({ chat, o }) {
       const f = path.join(o.out, 'preflight.jsonl')
       if (!fs.existsSync(f)) return null
       const lines = fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
-      return lines.reverse().find((x) => x && x.carry && x.carry.ok) || null
+      return lines.reverse().find((x) => x && x.carry && x.carry.ok && x.carry.verdict) || null // 只信带 verdict 的新口径缓存（旧缓存是无 tools 假阴性写的）
     } catch { return null }
   })()
   if (priorPf && priorPf.ok) return { ...priorPf, at: new Date().toISOString(), ms: 0, cached: true }
@@ -326,7 +348,7 @@ export async function preflightUpstream({ chat, o }) {
     try {
       const fake = '这一段只是用来量通道有没有把历史思考送进模型：先确认 settled.ok 的来源，再看 parseSse 对半包的处理，排除权限路线，下一步读 src/sse.js。'.repeat(15).slice(0, 1200)
       const hist = [{ role: 'user', content: '1+1=?只答数字。' }, { role: 'assistant', content: '2', reasoning_content: fake }, { role: 'user', content: '再答一次。' }]
-      carry = await carryCheck({ chat, o, messages: hist })
+      carry = await carryCheck({ chat, o, messages: hist, tools: (o && o.textTools ? null : TOOLS) })
     } catch (e) { carry = { error: String(e?.message || e), ok: false } }
   }
   const fpTrusted = !!r && TRUSTED_FP.has(r.fp)

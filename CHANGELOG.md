@@ -1,4 +1,19 @@
 # Changelog — dsh-cot-form-b
+## v14.25.0（2026-10-06）：渠道探测闸按官方口径重写 —— 之前它在制造**假阴性**
+
+**先查证（官方 thinking 文档，2026-08-27 重写的那节）**：历史 `reasoning_content` 的回传规则**按请求是否带 `tools` 分档** —— 带 `tools` 时前几轮思考**必须完整回传**（漏了直接 400，"即使那一轮没调工具也算"），且会拼进上下文；**不带 `tools` 时不需要回传，回传也会被忽略、不进上下文**。官方 compat 三键另证：`supportsToolChoice:false`、`requiresReasoningContentForToolCalls:true`、`requiresAssistantContentForToolCalls:true`。
+
+**闸原来的错**：`preflightUpstream` 调 `carryCheck({ chat, o, messages: hist })` **不传 tools**，却拿「Δprompt_tokens ≥ 0.12×字数」当"渠道是否携带"的证据 ⇒ **官方直连必然 Δ≈0 ⇒ 被判"剥掉了 ✗"**，让人去换渠道（换了也一样）；而 `tools/probe-carry.mjs` 与预检共用同一实现，假阴性会扩散到 `traj-run` 的模式 1 开关。
+
+**改了什么（判据从"一个数"变成"分口径 + 用 400 当正面证据"）**
+- `carryCheck` 现返回 `verdict`：`carried` / `stripped`（带 tools 且无 Δ 且不报错 ⇒ 典型中转静默丢字段，真该换）/ `contract-validated`（**省略**历史思考被 400 ⇒ 校验器在场，按契约必进上下文，判 ✓）/ `rejects-inbound-field`（带 reasoning 就 400 ⇒ 后端不认该字段）/ `ignored-by-contract`（无 tools 且 Δ≈0 ⇒ **契约行为，不是渠道坏**，note 直指"带 tools 或把稿子放 content，别换渠道"）。
+- `preflightUpstream` 的探测**与生产同口径**：`tools: (o.textTools ? null : TOOLS)`，两边都不再各说各话。
+- 缓存复用收紧：只信带 `verdict` 的新口径记录 ⇒ 旧假阴性缓存会自动重探（每通道 2 个 `max_tokens:1` 请求）。
+- 探针打印 `verdict + note`，无 tools 那一臂显式标注"只能作参考，不能据此换渠道"。
+
+**副作用要知道**：`--text-tools` 模式（不带 tools）现在会被判 `ignored-by-contract` ⇒ 模式 1 的"替换历史思考"在该模式下**本就无效**（官方忽略），闸从"骗你说渠道坏"变成"告诉你这条路不成立"。默认路径带 `TOOLS`，不受影响。
+
+**检查**：`node tools/probe-carry.mjs --selftest` → **PASS=5 FAIL=0**（5 个合成通道逐一分派，跑的是生产 `carryCheck` 本体、不是复刻）；`node --check` 两文件通过。零 API 花费，未对真实通道发过请求。
 ## v14.24.9（2026-10-06，迁移交接备忘）
 
 新增 `docs/HANDOFF-2026-10-06.md`：五分钟上手顺序、用户"宪法"（每阶段一 commit+manifest+push、逐条全审可双向改判、手写稿不打标、闸不放宽、权重不碰、P2/Mode1 已划掉）、环境坑表（沙箱重启丢 `.git/config` ⇒ remote 要重挂；`.gitignore` 吞新文件 ⇒ 显式 add；manifest 与 add 的先后；`verify.mjs` 靠 `PASS=N FAIL=0` 与裸 slug 登记；无 kaggle/torch/2CPU1GB）、流程经验（盲审 digest 存活而非数据集 sha；抽样→超阈才全审；排查脚本要排除已审 id；一文件一家族的两处硬闸；latin1 落盘；标点级填充与"对照组取未填充侧"；三条硬闸别拆；盲测只评一次分；别为指标做假特征）、量纲决策记录、gold `--ids` 不落盘的真相与后果链、水位重算脚本、待办与"别做"清单。
