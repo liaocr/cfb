@@ -881,19 +881,32 @@ export function buildMicroDataset() {
   //   (2) 入集判据看的是硬闸，可学性看的是特征：两侧 pref 向量逐维相同（L1=0）的对，偏好头无论怎么训
   //       都分不开，留在训练集里只会把 γ_dd 目标压向 0 ⇒ 摘出可训练集（行保留、原因写进 labelAudit）。
   //   两条都只会**减少**可训练量，不可能把它灌大。
+  // 2026-10-06：Kaggle 首跑崩在 Stage 5 的复盘（第 2 次修正后重记）。
+  //   (1) 每条 train-eligible 对都必须带两侧「已审草稿特征向量」，否则 kaggle-train-micro.py:1336-1344
+  //       组不出 parity fixture ⇒ 整条链在 Stage 5 raise。缺向量的对一律不可训练（fail-closed）。
+  //   (2) 「两侧 pref 向量逐维相同（L1=0）」的对只打标记、**不摘可训练资格**：
+  //       kaggle-train-micro.py:1965-1981 要求每条 trainingEligible 的 handSamples 的正样本，
+  //       都能在 stepSimpoPairs 里按 sourceId 找到「条数恰好等于 trainableTargetsAdded」的可训练对。
+  //       上一版我把这类对摘出可训练集，直接把这个 1:1 联动计数打断 ⇒
+  //       `positive capture is not linked to its exact trainable draft pair: 11`。教训记在这里：
+  //       数据侧「只减不增」也不行，减了就必须同步重算联动计数。⇒ 下面两件事一起做。
   for (const pair of stepSimpoPairs) {
-    if (pair.trainingEligible !== true) continue
     const a = pair.chosenPref, b = pair.rejectedPref
-    if (!a || !b || typeof a !== 'object' || typeof b !== 'object') {
+    if (pair.trainingEligible === true && (!a || !b || typeof a !== 'object' || typeof b !== 'object')) {
       pair.trainingEligible = false
       pair.labelAudit = { ...(pair.labelAudit || {}), status: 'needs-review', reason: 'missing-audited-draft-feature-vector' }
       continue
     }
+    if (!a || !b || typeof a !== 'object' || typeof b !== 'object') continue
     let l1 = 0
     for (const key of Object.keys(a)) l1 += Math.abs(Number(a[key]) - Number(b[key] ?? 0))
-    if (l1 >= 1e-9) continue
-    pair.trainingEligible = false
-    pair.labelAudit = { ...(pair.labelAudit || {}), status: 'needs-review', reason: 'pref-vector-degenerate-no-visible-difference' }
+    if (l1 < 1e-9) pair.labelAudit = { ...(pair.labelAudit || {}), prefDegenerate: true }
+  }
+  // 联动计数按「最终可训练集」重算，保证 :1977 的 len(linked_trainable) === trainableTargetsAdded 恒成立。
+  for (const sample of handCapture.items) {
+    if (sample?.trainingEligible !== true) continue
+    const expected = `mode1-capture:${sample.traj || 'unknown'}:${sample.id}`
+    sample.trainableTargetsAdded = stepSimpoPairs.filter((p) => p.sourceId === expected && p.trainingEligible === true).length
   }
 
   const dataset = {
