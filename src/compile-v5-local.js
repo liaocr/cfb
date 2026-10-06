@@ -453,7 +453,10 @@ export function scoreDraftPreferenceFeatures(features, weights = V5_MICRO_WEIGHT
   // Optional distilled nonlinear residual; old linear-only weight files remain compatible.
   const head = weights.prefMlpHead
   if (head && Array.isArray(head.W1) && Array.isArray(head.W2)) {
-    const keys = Object.keys(pw)
+    // 2026-10-07 修复（顺序脆弱性）：MLP 输入顺序必须由编译期常量决定，禁止依赖权重文件里
+    // JSON 键的插入顺序。旧实现用 Object.keys(pw)：任何重排/规范化权重文件的工具都会让
+    // pref MLP 残差静默错位，而线性项按 key 求和不受影响 ⇒ 故障不可见。
+    const keys = V5_PREF_FEATURE_NAMES
     const x = keys.map((k) => features[k] || 0)
     const hidden = head.W1.map((row, i) => {
       let z = head.b1?.[i] || 0

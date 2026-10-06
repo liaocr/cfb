@@ -1714,16 +1714,26 @@ def run_final_family_evaluation(
         unit_rule_passed = matches["candidateAllPairs"] is not None and matches["candidateAllPairs"] >= 0.80
         unit_rule = "all-pairs>=0.80 (matched bucket had <10 pairs)"
     draft_floor = max(0.85, matches["productionDraft"] or 0.0)
-    draft_rule_passed = matches["candidateDraft"] is not None and matches["candidateDraft"] >= draft_floor
+    # 2026-10-07 修复：盲测资产若不携带 draft 对（stepSimpoPairs 为空），draft 条款是「不适用」
+    # 而不是必然失败。旧实现要求 draft["total"] > 0，导致任何一个无 draft 对的独立家族在
+    # unit 侧无论多好都恒判 passed=False（lock-contention 实测 16/16 仍被该条否决）。
+    draft_applicable = draft["total"] > 0
+    if draft_applicable:
+        draft_rule_passed = matches["candidateDraft"] is not None and matches["candidateDraft"] >= draft_floor
+        draft_rule = f"draft>=max(0.85, production_draft)={draft_floor:.4f}"
+    else:
+        draft_rule_passed = True
+        draft_rule = "not-applicable: blind asset carries no eligible draft pairs; only the unit clause is judged"
     passed = (
-        unit["total"] > 0 and draft["total"] > 0
+        unit["total"] > 0
         and unit_rule_passed and draft_rule_passed
     )
     criteria = {
         "policy": "v2 (2026-10-04): one-shot family judged against the same-family production baseline, not an absolute 90% line",
         "unitRule": unit_rule,
         "unitRulePassed": bool(unit_rule_passed),
-        "draftRule": f"draft>=max(0.85, production_draft)={draft_floor:.4f}",
+        "draftRule": draft_rule,
+        "draftRuleApplicable": bool(draft_applicable),
         "draftRulePassed": bool(draft_rule_passed),
         "measured": matches,
     }
