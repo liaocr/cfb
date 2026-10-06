@@ -338,7 +338,7 @@ function cmdPlan(args) {
   if (r.ok) { const ec = rulerEconomics({ validity: rulerValidity(loadValidity().map((x) => ({ proxy: x.proxy, outcome: x.outcome }))) }); rankerLine += `\nL1 角色：${ec.role}${ec.role === 'diagnostic' ? '（效度未证：这一轮 ≈$' + ec.l1.usd + ' 只买到 ≈' + ec.l1.informativePairs + ' 个非平局对、不计入采纳；推荐先 `plan-traj`）' : ''}` }
   if (r.ok && r.hypothesis.lever !== 'A/A') {
     const rk = trainRanker(loadFlywheel().filter(cleanDevFlywheelPair))
-    if (rk.status === 'ready') { const m = r.pairs.map((p) => { const v = r.plan.variants[p.task]; return v ? scoreText(rk, v.candidate) - scoreText(rk, v.control) : 0 }); rankerLine = `\n排序器预判（CPU，${rk.pairs} 对飞轮，留一 CV ${rk.cvAcc}）：candidate − control 平均 ${(m.reduce((a, b) => a + b, 0) / Math.max(1, m.length)).toFixed(3)}（只是预判，不替代评委；为负时考虑换假设省这一轮）` } else rankerLine = `\n排序器：${rk.status}（${rk.note}）`
+    if (rk.status === 'ready') { const m = (r.pairs || []).map((p) => { const v = r.plan?.variants?.[p.task]; return v ? scoreText(rk, v.candidate) - scoreText(rk, v.control) : 0 }); rankerLine = `\n排序器预判（CPU，${rk.pairs} 对飞轮，留一 CV ${rk.cvAcc}）：candidate − control 平均 ${(m.reduce((a, b) => a + b, 0) / Math.max(1, m.length)).toFixed(3)}（只是预判，不替代评委；为负时考虑换假设省这一轮）` } else rankerLine = `\n排序器：${rk.status}（${rk.note}）`
   }
   fs.writeFileSync(path.join(OFFLINE, 'round-' + round + '.plan.md'), md + rankerLine + '\n')
   console.log(md + rankerLine)
@@ -1827,6 +1827,7 @@ export function synthesizeUltimatePolicy({ parentId = 'base', includeAdaptive = 
   if (leaks.length) throw new Error('leak:' + leaks.join(','))
   const config = {
     ...(parent.config || {}),
+    compressLocalModel: true,   // v14.25.4：极限策略必须自带"启用部署微模型"键；此前父代=base 时子代不带此键 ⇒ 本地通道完全不压（实测 0/13 过闸、长度比 1.000）
     continuationPath: 'bounded',
     programParts: 'compact',
     ...(includeModular ? { promptMode: 'modular' } : {}),

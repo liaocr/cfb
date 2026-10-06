@@ -89,7 +89,7 @@
   "goldStandard": {
     "schema": "cfb.gold-standard/1",
     "version": "cfb.gold-standard/1",
-    "at": "2026-10-05T16:27:46.102Z",
+    "at": "2026-10-06T06:45:13.804Z",
     "status": "not-gold",
     "gap": 0.2,
     "margin": 0.7553,
@@ -153,7 +153,7 @@
         "ok": false
       },
       "R2": {
-        "v": 3,
+        "v": 4,
         "ok": true
       }
     }

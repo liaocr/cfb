@@ -1,11 +1,11 @@
 {
   "schema": "cfb.gold-coverage/1",
-  "fingerprint": "90abc37bef69db7f",
+  "fingerprint": "93adfe83756ef34f",
   "cells": 30,
   "target": 40,
   "rulerItems": 4,
   "trainScopedItems": 9,
-  "trajTrainDocs": 26,
+  "trajTrainDocs": 27,
   "trajSkippedAsRuler": 10,
   "perFamily": [
     {

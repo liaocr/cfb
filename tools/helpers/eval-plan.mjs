@@ -157,7 +157,7 @@ export function buildCandidateReplayPlanV9({ candidates, round, hypothesis, offl
   if (!Number.isSafeInteger(round) || round < 1 || round > 20) throw new Error('v9-round')
   if (!hypothesis || typeof hypothesis.lever !== 'string' || typeof hypothesis.value !== 'string' || !hypothesis.champion) throw new Error('v9-hypothesis')
   const { chains } = jsonFile(INPUT_FILES[0]), d1 = jsonFile(INPUT_FILES[1]).rows, specs = jsonFile(INPUT_FILES[3])
-  const probeBody = { model, stream: false, thinking: { type: 'enabled' }, max_tokens: 512, messages: [
+  const probeBody = { model, stream: false, thinking: { type: 'enabled' }, max_tokens: 2048, messages: [
     { role: 'user', content: '记住一个只在推理中保存的标记。' },
     { role: 'assistant', content: '标记已记住。', reasoning_content: '我只在这一轮推理里记住了标记 ' + canary + '，可见回答不含它。' },
     { role: 'user', content: '逐字返回上一轮推理中的标记。只输出标记，不猜测，不解释。' },

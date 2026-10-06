@@ -1,6 +1,6 @@
 {
   "schema": "cfb.gold-vs-line/1",
-  "at": "2026-10-05T13:12:07.135Z",
+  "at": "2026-10-06T07:53:59.461Z",
   "goldDir": "transfer/gold",
   "policy": {
     "id": "p-v5-local-micro",
@@ -23,8 +23,8 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 41.72,
-      "at": "2026-10-05T13:12:06.929Z"
+      "ms": 38.81,
+      "at": "2026-10-06T07:53:59.179Z"
     },
     "eacces-config_long-horizon-s0-r5": {
       "family": "eacces-config",
@@ -35,8 +35,8 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 13.5,
-      "at": "2026-10-05T13:12:06.945Z"
+      "ms": 19.65,
+      "at": "2026-10-06T07:53:59.201Z"
     },
     "perf-regression-s0-r7": {
       "family": "perf-regression",
@@ -47,8 +47,8 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 24.59,
-      "at": "2026-10-05T13:12:06.987Z"
+      "ms": 40.56,
+      "at": "2026-10-06T07:53:59.270Z"
     },
     "sse-truncated_decoy-s0-r4": {
       "family": "sse-truncated",
@@ -59,8 +59,8 @@
       "g1Ok": false,
       "g1Why": "no-gain",
       "g2Ok": true,
-      "ms": 23.9,
-      "at": "2026-10-05T13:12:07.011Z"
+      "ms": 61.14,
+      "at": "2026-10-06T07:53:59.331Z"
     },
     "sse-truncated_long-horizon-s0-r5": {
       "family": "sse-truncated",
@@ -71,8 +71,8 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 15.35,
-      "at": "2026-10-05T13:12:07.026Z"
+      "ms": 21.34,
+      "at": "2026-10-06T07:53:59.353Z"
     },
     "sse-truncated-s0-r5": {
       "family": "sse-truncated",
@@ -83,8 +83,8 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 12.61,
-      "at": "2026-10-05T13:12:07.051Z"
+      "ms": 17.46,
+      "at": "2026-10-06T07:53:59.389Z"
     },
     "wrong-model_decoy-s0-r4": {
       "family": "wrong-model",
@@ -95,20 +95,20 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 10.01,
-      "at": "2026-10-05T13:12:07.071Z"
+      "ms": 11.56,
+      "at": "2026-10-06T07:53:59.418Z"
     },
     "wrong-model_long-horizon-s0-r4": {
-      "family": "wrong-model:long-horizon",
-      "split": null,
+      "family": "wrong-model",
+      "split": "holdout",
       "rawChars": 3185,
       "lineChars": 1491,
       "lineRatio": 0.4681,
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 9.63,
-      "at": "2026-10-05T13:12:07.135Z"
+      "ms": 15.7,
+      "at": "2026-10-06T07:53:59.434Z"
     },
     "flaky-timeout_long-horizon-s0-r4": {
       "family": "flaky-timeout",
@@ -191,8 +191,8 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 17.44,
-      "at": "2026-10-05T13:12:06.962Z"
+      "ms": 27.71,
+      "at": "2026-10-06T07:53:59.229Z"
     },
     "sse-truncated-s0-r4": {
       "family": "sse-truncated",
@@ -203,8 +203,8 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 11.54,
-      "at": "2026-10-05T13:12:07.038Z"
+      "ms": 18.14,
+      "at": "2026-10-06T07:53:59.371Z"
     },
     "eacces-config-s1-r5": {
       "family": "eacces-config",
@@ -251,8 +251,8 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 9.74,
-      "at": "2026-10-05T13:12:07.060Z"
+      "ms": 17,
+      "at": "2026-10-06T07:53:59.406Z"
     },
     "wrong-model-s0-r4": {
       "family": "wrong-model",
@@ -311,8 +311,8 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 9.83,
-      "at": "2026-10-05T13:12:07.104Z"
+      "ms": 13.73,
+      "at": "2026-10-06T07:53:59.447Z"
     },
     "wrong-model-s1-r5": {
       "family": "wrong-model",
@@ -323,8 +323,8 @@
       "g1Ok": true,
       "g1Why": null,
       "g2Ok": true,
-      "ms": 20.52,
-      "at": "2026-10-05T13:12:07.125Z"
+      "ms": 12.89,
+      "at": "2026-10-06T07:53:59.460Z"
     },
     "sse-truncated-s0-r3": {
       "family": "sse-truncated",

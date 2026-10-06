@@ -1,6 +1,389 @@
 {
   "schema": "cfb.closed-loop/2",
-  "hypotheses": {},
+  "hypotheses": {
+    "policy=p-56e56fcd9c@bbb939e0": {
+      "key": "policy=p-56e56fcd9c@bbb939e0",
+      "lever": "policy",
+      "value": "p-56e56fcd9c",
+      "champion": {
+        "bind": "on",
+        "closing": "on",
+        "deadEnd": "paired",
+        "kItems": "on",
+        "layout": "state-first",
+        "selection": "keepAll"
+      },
+      "kind": "prompt",
+      "policy": "p-56e56fcd9c",
+      "outcomes": [
+        {
+          "round": 2,
+          "task": "eacces-config",
+          "split": "holdout",
+          "sample": 0,
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2,
+          "candidateAction": "grep",
+          "controlAction": "reread"
+        },
+        {
+          "round": 2,
+          "task": "flaky-timeout",
+          "split": "dev",
+          "sample": 0,
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2,
+          "candidateAction": "grep",
+          "controlAction": "grep"
+        },
+        {
+          "round": 2,
+          "task": "wrong-model",
+          "split": "holdout",
+          "sample": 0,
+          "outcome": "win",
+          "candidate": 2,
+          "control": 1,
+          "candidateAction": "fresh-rerun",
+          "controlAction": "grep"
+        },
+        {
+          "round": 2,
+          "task": "perf-regression",
+          "split": "dev",
+          "sample": 0,
+          "outcome": "win",
+          "candidate": 2,
+          "control": 1,
+          "candidateAction": "grep",
+          "controlAction": "grep"
+        },
+        {
+          "round": 2,
+          "task": "sse-truncated",
+          "split": "dev",
+          "sample": 0,
+          "outcome": "win",
+          "candidate": 2,
+          "control": 1,
+          "candidateAction": "grep",
+          "controlAction": "bash-other"
+        },
+        {
+          "round": 3,
+          "task": "eacces-config",
+          "split": "holdout",
+          "sample": 0,
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2,
+          "candidateAction": "text",
+          "controlAction": "grep"
+        },
+        {
+          "round": 3,
+          "task": "flaky-timeout",
+          "split": "dev",
+          "sample": 0,
+          "outcome": "win",
+          "candidate": 2,
+          "control": 1,
+          "candidateAction": "bash-other",
+          "controlAction": "instrument"
+        },
+        {
+          "round": 3,
+          "task": "wrong-model",
+          "split": "holdout",
+          "sample": 0,
+          "outcome": "win",
+          "candidate": 2,
+          "control": 1,
+          "candidateAction": "grep",
+          "controlAction": "grep"
+        },
+        {
+          "round": 3,
+          "task": "perf-regression",
+          "split": "dev",
+          "sample": 0,
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2,
+          "candidateAction": "grep",
+          "controlAction": "grep"
+        },
+        {
+          "round": 3,
+          "task": "sse-truncated",
+          "split": "dev",
+          "sample": 0,
+          "outcome": "loss",
+          "candidate": 1,
+          "control": 2,
+          "candidateAction": "grep",
+          "controlAction": "fresh-rerun"
+        },
+        {
+          "round": 4,
+          "task": "flaky-timeout",
+          "split": "dev",
+          "sample": 0,
+          "outcome": "loss",
+          "candidate": 1,
+          "control": 2,
+          "candidateAction": "grep",
+          "controlAction": "reread"
+        },
+        {
+          "round": 4,
+          "task": "wrong-model",
+          "split": "holdout",
+          "sample": 0,
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2,
+          "candidateAction": "grep",
+          "controlAction": "grep"
+        },
+        {
+          "round": 4,
+          "task": "perf-regression",
+          "split": "dev",
+          "sample": 0,
+          "outcome": "loss",
+          "candidate": 1,
+          "control": 2,
+          "candidateAction": "grep",
+          "controlAction": "grep"
+        },
+        {
+          "round": 4,
+          "task": "sse-truncated",
+          "split": "dev",
+          "sample": 0,
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2,
+          "candidateAction": "fresh-rerun",
+          "controlAction": "fresh-rerun"
+        },
+        {
+          "round": 5,
+          "task": "eacces-config",
+          "split": "holdout",
+          "sample": 0,
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2,
+          "candidateAction": "grep",
+          "controlAction": "grep"
+        },
+        {
+          "round": 5,
+          "task": "wrong-model",
+          "split": "holdout",
+          "sample": 0,
+          "outcome": "loss",
+          "candidate": 1,
+          "control": 2,
+          "candidateAction": "grep",
+          "controlAction": "grep"
+        },
+        {
+          "round": 5,
+          "task": "perf-regression",
+          "split": "dev",
+          "sample": 0,
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2,
+          "candidateAction": "grep",
+          "controlAction": "grep"
+        },
+        {
+          "round": 5,
+          "task": "sse-truncated",
+          "split": "dev",
+          "sample": 0,
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2,
+          "candidateAction": "fresh-rerun",
+          "controlAction": "fresh-rerun"
+        },
+        {
+          "round": 6,
+          "task": "eacces-config",
+          "split": "holdout",
+          "sample": 0,
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2,
+          "candidateAction": "text",
+          "controlAction": "reread"
+        },
+        {
+          "round": 6,
+          "task": "flaky-timeout",
+          "split": "dev",
+          "sample": 0,
+          "outcome": "tie",
+          "candidate": 1,
+          "control": 1,
+          "candidateAction": "grep",
+          "controlAction": "grep"
+        },
+        {
+          "round": 6,
+          "task": "wrong-model",
+          "split": "holdout",
+          "sample": 0,
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2,
+          "candidateAction": "grep",
+          "controlAction": "grep"
+        },
+        {
+          "round": 6,
+          "task": "perf-regression",
+          "split": "dev",
+          "sample": 0,
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2,
+          "candidateAction": "grep",
+          "controlAction": "grep"
+        },
+        {
+          "round": 6,
+          "task": "sse-truncated",
+          "split": "dev",
+          "sample": 0,
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2,
+          "candidateAction": "grep",
+          "controlAction": "fresh-rerun"
+        }
+      ],
+      "decision": "continue",
+      "rounds": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "e": {
+        "all": 0.506,
+        "holdout": 0.917,
+        "reject": 0.306
+      },
+      "posterior": {
+        "n": 23,
+        "wins": 5,
+        "losses": 4,
+        "ties": 14,
+        "pWin": 0.5806,
+        "mean": 0.52,
+        "ci95": [
+          0.3282,
+          0.7088
+        ],
+        "bitsBought": 0.0188,
+        "nextPairBits": 0.0178
+      },
+      "v3": {
+        "dev": {
+          "n": 14,
+          "wins": 3,
+          "losses": 3,
+          "ties": 8,
+          "alpha": 8,
+          "beta": 8,
+          "mean": 0.5,
+          "ci95": [
+            0.2659,
+            0.7341
+          ],
+          "pWin": 0.5,
+          "decision": "continue",
+          "design": {
+            "adoptAt": 0.95,
+            "rejectAt": 0.1,
+            "prior": [
+              1,
+              1
+            ],
+            "maxPairs": 25,
+            "pairsPerRound": 5
+          }
+        },
+        "holdout": {
+          "n": 9,
+          "wins": 2,
+          "losses": 1,
+          "ties": 6,
+          "alpha": 6,
+          "beta": 5,
+          "mean": 0.5455,
+          "ci95": [
+            0.2624,
+            0.8129
+          ],
+          "pWin": 0.623,
+          "decision": "continue",
+          "design": {
+            "adoptAt": 0.95,
+            "rejectAt": 0.1,
+            "prior": [
+              1,
+              1
+            ],
+            "maxPairs": 25,
+            "pairsPerRound": 5
+          }
+        },
+        "holdoutRecord": {
+          "tasks": 2,
+          "won": 1,
+          "lost": 0,
+          "even": 1
+        },
+        "nEff": 11.06,
+        "replicatesPerTask": [
+          4,
+          4,
+          5,
+          5,
+          5
+        ],
+        "why": "还缺：留出 e 值 0.917 < 10（还需连胜 ≈ 6 场留出）；全部 e 值 0.506 < 10",
+        "e": {
+          "all": 0.506,
+          "holdout": 0.917,
+          "reject": 0.306
+        },
+        "thresholds": {
+          "adopt": 10,
+          "reject": 10
+        },
+        "gap": {
+          "gap": -0.111,
+          "devNet": 0,
+          "holdoutNet": 0.111,
+          "flag": "ok",
+          "note": "Ladder（Blum–Hardt 2015）：留出只通过「采纳 / 否决」这一比特泄漏，更新次数 O(log k)；e 值已是显著性阶梯，这里只报 dev 过度乐观的迹象"
+        },
+        "icc": 0.3,
+        "iccSource": "default"
+      }
+    }
+  },
   "rounds": [
     {
       "round": 1,
@@ -28,6 +411,399 @@
       "scope": "cfb.candidate-replay.2026-10-02.r1",
       "reservedUsd": null,
       "expectedUsd": null
+    },
+    {
+      "round": 2,
+      "at": "2026-10-06T07:21:44.707Z",
+      "status": "ingested",
+      "key": "policy=p-56e56fcd9c@bbb939e0",
+      "lever": "policy",
+      "value": "p-56e56fcd9c",
+      "champion": {
+        "bind": "on",
+        "closing": "on",
+        "deadEnd": "paired",
+        "kItems": "on",
+        "layout": "state-first",
+        "selection": "keepAll"
+      },
+      "tasks": [
+        "eacces-config",
+        "flaky-timeout",
+        "wrong-model",
+        "perf-regression",
+        "sse-truncated"
+      ],
+      "planDigest": "d5260d6fc262b39b6df5d13fb8022b701435b628034a559540bfcc21a0adae74",
+      "scope": "cfb.candidate-replay.2026-10-02.r2",
+      "pairs": 5,
+      "outcomes": [
+        {
+          "task": "eacces-config",
+          "split": "holdout",
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2
+        },
+        {
+          "task": "flaky-timeout",
+          "split": "dev",
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2
+        },
+        {
+          "task": "wrong-model",
+          "split": "holdout",
+          "outcome": "win",
+          "candidate": 2,
+          "control": 1
+        },
+        {
+          "task": "perf-regression",
+          "split": "dev",
+          "outcome": "win",
+          "candidate": 2,
+          "control": 1
+        },
+        {
+          "task": "sse-truncated",
+          "split": "dev",
+          "outcome": "win",
+          "candidate": 2,
+          "control": 1
+        }
+      ],
+      "decision": "continue",
+      "pWin": 0.8906,
+      "holdoutPWin": 0.7122,
+      "flywheelPairs": 2,
+      "flywheelQualityRejected": 0,
+      "flywheelScopeRejected": 1,
+      "reservedUsd": 0.7131,
+      "requestsReserved": 11,
+      "rejected": [],
+      "ingestedFrom": "ledger",
+      "complete": true
+    },
+    {
+      "round": 3,
+      "at": "2026-10-06T07:24:19.008Z",
+      "status": "ingested",
+      "key": "policy=p-56e56fcd9c@bbb939e0",
+      "lever": "policy",
+      "value": "p-56e56fcd9c",
+      "champion": {
+        "bind": "on",
+        "closing": "on",
+        "deadEnd": "paired",
+        "kItems": "on",
+        "layout": "state-first",
+        "selection": "keepAll"
+      },
+      "tasks": [
+        "eacces-config",
+        "flaky-timeout",
+        "wrong-model",
+        "perf-regression",
+        "sse-truncated"
+      ],
+      "planDigest": "3b856795b5d62c010feb1481924cb8a7fbc0ef6eb3167cf53617a699bf42f027",
+      "scope": "cfb.candidate-replay.2026-10-02.r3",
+      "pairs": 5,
+      "outcomes": [
+        {
+          "task": "eacces-config",
+          "split": "holdout",
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2
+        },
+        {
+          "task": "flaky-timeout",
+          "split": "dev",
+          "outcome": "win",
+          "candidate": 2,
+          "control": 1
+        },
+        {
+          "task": "wrong-model",
+          "split": "holdout",
+          "outcome": "win",
+          "candidate": 2,
+          "control": 1
+        },
+        {
+          "task": "perf-regression",
+          "split": "dev",
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2
+        },
+        {
+          "task": "sse-truncated",
+          "split": "dev",
+          "outcome": "loss",
+          "candidate": 1,
+          "control": 2
+        }
+      ],
+      "decision": "continue",
+      "pWin": 0.8867,
+      "holdoutPWin": 0.8125,
+      "flywheelPairs": 2,
+      "flywheelQualityRejected": 0,
+      "flywheelScopeRejected": 1,
+      "reservedUsd": 0.7131,
+      "requestsReserved": 11,
+      "rejected": [],
+      "ingestedFrom": "ledger",
+      "complete": true
+    },
+    {
+      "round": 4,
+      "at": "2026-10-06T07:27:39.840Z",
+      "status": "ingested",
+      "key": "policy=p-56e56fcd9c@bbb939e0",
+      "lever": "policy",
+      "value": "p-56e56fcd9c",
+      "champion": {
+        "bind": "on",
+        "closing": "on",
+        "deadEnd": "paired",
+        "kItems": "on",
+        "layout": "state-first",
+        "selection": "keepAll"
+      },
+      "tasks": [
+        "eacces-config",
+        "flaky-timeout",
+        "wrong-model",
+        "perf-regression",
+        "sse-truncated"
+      ],
+      "planDigest": "499403f15a6da1255d2694897c1935ae14d9283f4f7ddba6a0106c8ffef5b3d5",
+      "scope": "cfb.candidate-replay.2026-10-02.r4",
+      "pairs": 4,
+      "outcomes": [
+        {
+          "task": "flaky-timeout",
+          "split": "dev",
+          "outcome": "loss",
+          "candidate": 1,
+          "control": 2
+        },
+        {
+          "task": "wrong-model",
+          "split": "holdout",
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2
+        },
+        {
+          "task": "perf-regression",
+          "split": "dev",
+          "outcome": "loss",
+          "candidate": 1,
+          "control": 2
+        },
+        {
+          "task": "sse-truncated",
+          "split": "dev",
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2
+        }
+      ],
+      "decision": "continue",
+      "pWin": 0.6964,
+      "holdoutPWin": 0.791,
+      "flywheelPairs": 2,
+      "flywheelQualityRejected": 0,
+      "flywheelScopeRejected": 0,
+      "reservedUsd": 0.7131,
+      "requestsReserved": 11,
+      "rejected": [
+        {
+          "key": "eacces-config|candidate|0",
+          "reason": "request-network-error"
+        }
+      ],
+      "ingestedFrom": "ledger",
+      "complete": false
+    },
+    {
+      "round": 5,
+      "at": "2026-10-06T07:29:12.451Z",
+      "status": "ingested",
+      "key": "policy=p-56e56fcd9c@bbb939e0",
+      "lever": "policy",
+      "value": "p-56e56fcd9c",
+      "champion": {
+        "bind": "on",
+        "closing": "on",
+        "deadEnd": "paired",
+        "kItems": "on",
+        "layout": "state-first",
+        "selection": "keepAll"
+      },
+      "tasks": [
+        "eacces-config",
+        "flaky-timeout",
+        "wrong-model",
+        "perf-regression",
+        "sse-truncated"
+      ],
+      "planDigest": "16590d920414fcece54e7dc9a148a2aae97f9d7906132d3662a24716ebc5d04e",
+      "scope": "cfb.candidate-replay.2026-10-02.r5",
+      "pairs": 4,
+      "outcomes": [
+        {
+          "task": "eacces-config",
+          "split": "holdout",
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2
+        },
+        {
+          "task": "wrong-model",
+          "split": "holdout",
+          "outcome": "loss",
+          "candidate": 1,
+          "control": 2
+        },
+        {
+          "task": "perf-regression",
+          "split": "dev",
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2
+        },
+        {
+          "task": "sse-truncated",
+          "split": "dev",
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2
+        }
+      ],
+      "decision": "continue",
+      "pWin": 0.5903,
+      "holdoutPWin": 0.6367,
+      "flywheelPairs": 0,
+      "flywheelQualityRejected": 0,
+      "flywheelScopeRejected": 1,
+      "reservedUsd": 0.7131,
+      "requestsReserved": 11,
+      "rejected": [
+        {
+          "key": "flaky-timeout|control|0",
+          "reason": "response-incomplete"
+        }
+      ],
+      "ingestedFrom": "ledger",
+      "complete": false
+    },
+    {
+      "round": 6,
+      "at": "2026-10-06T07:30:51.943Z",
+      "status": "ingested",
+      "key": "policy=p-56e56fcd9c@bbb939e0",
+      "lever": "policy",
+      "value": "p-56e56fcd9c",
+      "champion": {
+        "bind": "on",
+        "closing": "on",
+        "deadEnd": "paired",
+        "kItems": "on",
+        "layout": "state-first",
+        "selection": "keepAll"
+      },
+      "tasks": [
+        "eacces-config",
+        "flaky-timeout",
+        "wrong-model",
+        "perf-regression",
+        "sse-truncated"
+      ],
+      "planDigest": "5261b269a1deb307386660dec06e1db00a268bcb738c1444da72e826cab10b01",
+      "scope": "cfb.candidate-replay.2026-10-02.r6",
+      "pairs": 5,
+      "outcomes": [
+        {
+          "task": "eacces-config",
+          "split": "holdout",
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2
+        },
+        {
+          "task": "flaky-timeout",
+          "split": "dev",
+          "outcome": "tie",
+          "candidate": 1,
+          "control": 1
+        },
+        {
+          "task": "wrong-model",
+          "split": "holdout",
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2
+        },
+        {
+          "task": "perf-regression",
+          "split": "dev",
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2
+        },
+        {
+          "task": "sse-truncated",
+          "split": "dev",
+          "outcome": "tie",
+          "candidate": 2,
+          "control": 2
+        }
+      ],
+      "decision": "continue",
+      "pWin": 0.5806,
+      "holdoutPWin": 0.623,
+      "flywheelPairs": 0,
+      "flywheelQualityRejected": 0,
+      "flywheelScopeRejected": 0,
+      "reservedUsd": 0.7131,
+      "requestsReserved": 11,
+      "rejected": [],
+      "ingestedFrom": "ledger",
+      "complete": true
+    },
+    {
+      "round": 7,
+      "at": "2026-10-06T07:30:52.424Z",
+      "status": "planned",
+      "key": "policy=p-56e56fcd9c@bbb939e0",
+      "lever": "policy",
+      "value": "p-56e56fcd9c",
+      "champion": {
+        "bind": "on",
+        "kItems": "on",
+        "closing": "on",
+        "deadEnd": "paired",
+        "selection": "keepAll",
+        "layout": "state-first"
+      },
+      "tasks": [
+        "eacces-config",
+        "flaky-timeout",
+        "wrong-model",
+        "perf-regression",
+        "sse-truncated"
+      ],
+      "planDigest": "f9a690c6bfbc5f7f5fc3261bac352a3d9e79709553921943f83a6cb113df6bbc",
+      "scope": "cfb.candidate-replay.2026-10-02.r7",
+      "reservedUsd": 0.7704,
+      "expectedUsd": 0.387
     }
   ],
   "generations": [
@@ -49,6 +825,447 @@
       "planDigest": "ed7dd486332280e7",
       "by": "assistant",
       "policy": "p-5d92393440"
+    },
+    {
+      "gen": 3,
+      "at": "2026-10-06T04:21:49.162Z",
+      "role": "compile",
+      "status": "planned",
+      "label": "compile p-56e56fcd9c",
+      "planDigest": "b317d3965b958c133831e3f0ac2e1313036b8e87384e4f2a039e7ae62a89eced",
+      "scope": "cfb.generation.2026-10-02.g3",
+      "reservedUsd": null,
+      "expectedUsd": null,
+      "subject": {
+        "policy": {
+          "id": "p-56e56fcd9c",
+          "parent": "base",
+          "patches": [
+            {
+              "op": "exemplar",
+              "section": "contrastive",
+              "text": "基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 50% vs 落败稿多点发散/复述率 20%）的正反对比铁律：\n✗ 落败退化范式（禁止）：把原文中段讨论后放弃的第二文件或不改的相邻配置行塞进 old_text，或心算差值/把精确数字四舍五入凑整，或漏掉原文排除的具体代码分支/配置键与不重读目标文件的理由，或漏掉第四段「回放过了之后还有两件原文已经定下的事：…；以及…」及具体用例名/指标名/日志路径。\n✓ 胜出精炼范式（必须，总长控制在 750~1050 字）：「本轮增量把机理坐实：5432 open、8123 refused（数字全部逐字照抄原文，绝不心算或凑整）。已排除：调大 timeout 或另一配置键的路线，因为 30 s 是结果不是原因；已排除：改 net.yaml、新建临时复现脚本或用 cat/wc 重读 pool.js 的路线，因为第 1 轮已拿到完整文件且落点唯一。改法只落一个（仅当同一文件内末尾定下两处协同修改时写“改法分两处落地：① …（`done` 只留作标记不再参与）；② …”）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先确认改动落地并与上轮输出比差抓新信号，此时不要再改 pool.js、不要回滚；无新信号再跑预写取证。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。回放过了之后还有两件原文已经定下的事：确认验收命令跑改后全部目标指标（逐字写出各指标名与恢复数值）稳定恢复且未动已排除文件（若原文定了补测试则逐字写出测试文件路径与全部三条具体用例名）；以及保留不该动的配置键原值并汇总依据收工（若原文定了改脚本写日志则逐字写出脚本路径与两份日志路径落盘）。」"
+            }
+          ]
+        },
+        "tasks": [
+          "eacces-config",
+          "flaky-timeout",
+          "wrong-model",
+          "perf-regression",
+          "sse-truncated"
+        ]
+      }
+    },
+    {
+      "gen": 4,
+      "at": "2026-10-06T06:46:09.292Z",
+      "role": "compile",
+      "status": "planned",
+      "label": "compile p-56e56fcd9c",
+      "planDigest": "7ce198d01fa3f17e2ec90e40d258f687ce07426539f36598dbc7ecf5dfb770a0",
+      "scope": "cfb.generation.2026-10-02.g4",
+      "reservedUsd": 0.2491,
+      "expectedUsd": 0.1566,
+      "subject": {
+        "policy": {
+          "id": "p-56e56fcd9c",
+          "parent": "base",
+          "patches": [
+            {
+              "op": "exemplar",
+              "section": "contrastive",
+              "text": "基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 50% vs 落败稿多点发散/复述率 20%）的正反对比铁律：\n✗ 落败退化范式（禁止）：把原文中段讨论后放弃的第二文件或不改的相邻配置行塞进 old_text，或心算差值/把精确数字四舍五入凑整，或漏掉原文排除的具体代码分支/配置键与不重读目标文件的理由，或漏掉第四段「回放过了之后还有两件原文已经定下的事：…；以及…」及具体用例名/指标名/日志路径。\n✓ 胜出精炼范式（必须，总长控制在 750~1050 字）：「本轮增量把机理坐实：5432 open、8123 refused（数字全部逐字照抄原文，绝不心算或凑整）。已排除：调大 timeout 或另一配置键的路线，因为 30 s 是结果不是原因；已排除：改 net.yaml、新建临时复现脚本或用 cat/wc 重读 pool.js 的路线，因为第 1 轮已拿到完整文件且落点唯一。改法只落一个（仅当同一文件内末尾定下两处协同修改时写“改法分两处落地：① …（`done` 只留作标记不再参与）；② …”）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先确认改动落地并与上轮输出比差抓新信号，此时不要再改 pool.js、不要回滚；无新信号再跑预写取证。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。回放过了之后还有两件原文已经定下的事：确认验收命令跑改后全部目标指标（逐字写出各指标名与恢复数值）稳定恢复且未动已排除文件（若原文定了补测试则逐字写出测试文件路径与全部三条具体用例名）；以及保留不该动的配置键原值并汇总依据收工（若原文定了改脚本写日志则逐字写出脚本路径与两份日志路径落盘）。」"
+            }
+          ]
+        },
+        "tasks": [
+          "eacces-config",
+          "flaky-timeout",
+          "wrong-model"
+        ]
+      }
+    },
+    {
+      "gen": 5,
+      "at": "2026-10-06T06:49:08.987Z",
+      "role": "compile",
+      "status": "planned",
+      "label": "compile p-56e56fcd9c",
+      "planDigest": "a2ddd563aa4ff27a326d4a0317f718ef3e294bcd478fa531086ea41ab7df2f74",
+      "scope": "cfb.generation.2026-10-02.g5",
+      "reservedUsd": 0.2676,
+      "expectedUsd": 0.1566,
+      "subject": {
+        "policy": {
+          "id": "p-56e56fcd9c",
+          "parent": "base",
+          "patches": [
+            {
+              "op": "exemplar",
+              "section": "contrastive",
+              "text": "基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 50% vs 落败稿多点发散/复述率 20%）的正反对比铁律：\n✗ 落败退化范式（禁止）：把原文中段讨论后放弃的第二文件或不改的相邻配置行塞进 old_text，或心算差值/把精确数字四舍五入凑整，或漏掉原文排除的具体代码分支/配置键与不重读目标文件的理由，或漏掉第四段「回放过了之后还有两件原文已经定下的事：…；以及…」及具体用例名/指标名/日志路径。\n✓ 胜出精炼范式（必须，总长控制在 750~1050 字）：「本轮增量把机理坐实：5432 open、8123 refused（数字全部逐字照抄原文，绝不心算或凑整）。已排除：调大 timeout 或另一配置键的路线，因为 30 s 是结果不是原因；已排除：改 net.yaml、新建临时复现脚本或用 cat/wc 重读 pool.js 的路线，因为第 1 轮已拿到完整文件且落点唯一。改法只落一个（仅当同一文件内末尾定下两处协同修改时写“改法分两处落地：① …（`done` 只留作标记不再参与）；② …”）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先确认改动落地并与上轮输出比差抓新信号，此时不要再改 pool.js、不要回滚；无新信号再跑预写取证。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。回放过了之后还有两件原文已经定下的事：确认验收命令跑改后全部目标指标（逐字写出各指标名与恢复数值）稳定恢复且未动已排除文件（若原文定了补测试则逐字写出测试文件路径与全部三条具体用例名）；以及保留不该动的配置键原值并汇总依据收工（若原文定了改脚本写日志则逐字写出脚本路径与两份日志路径落盘）。」"
+            }
+          ]
+        },
+        "tasks": [
+          "eacces-config",
+          "flaky-timeout",
+          "wrong-model"
+        ]
+      }
+    },
+    {
+      "gen": 6,
+      "at": "2026-10-06T06:51:52.409Z",
+      "role": "compile",
+      "status": "planned",
+      "label": "compile p-56e56fcd9c",
+      "planDigest": "f73b6a24f47eeb151b7a40dd44d2761d3d21f872da8f6f9417619b4252841631",
+      "scope": "cfb.generation.2026-10-02.g6",
+      "reservedUsd": 0.2491,
+      "expectedUsd": 0.1566,
+      "subject": {
+        "policy": {
+          "id": "p-56e56fcd9c",
+          "parent": "base",
+          "patches": [
+            {
+              "op": "exemplar",
+              "section": "contrastive",
+              "text": "基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 50% vs 落败稿多点发散/复述率 20%）的正反对比铁律：\n✗ 落败退化范式（禁止）：把原文中段讨论后放弃的第二文件或不改的相邻配置行塞进 old_text，或心算差值/把精确数字四舍五入凑整，或漏掉原文排除的具体代码分支/配置键与不重读目标文件的理由，或漏掉第四段「回放过了之后还有两件原文已经定下的事：…；以及…」及具体用例名/指标名/日志路径。\n✓ 胜出精炼范式（必须，总长控制在 750~1050 字）：「本轮增量把机理坐实：5432 open、8123 refused（数字全部逐字照抄原文，绝不心算或凑整）。已排除：调大 timeout 或另一配置键的路线，因为 30 s 是结果不是原因；已排除：改 net.yaml、新建临时复现脚本或用 cat/wc 重读 pool.js 的路线，因为第 1 轮已拿到完整文件且落点唯一。改法只落一个（仅当同一文件内末尾定下两处协同修改时写“改法分两处落地：① …（`done` 只留作标记不再参与）；② …”）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先确认改动落地并与上轮输出比差抓新信号，此时不要再改 pool.js、不要回滚；无新信号再跑预写取证。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。回放过了之后还有两件原文已经定下的事：确认验收命令跑改后全部目标指标（逐字写出各指标名与恢复数值）稳定恢复且未动已排除文件（若原文定了补测试则逐字写出测试文件路径与全部三条具体用例名）；以及保留不该动的配置键原值并汇总依据收工（若原文定了改脚本写日志则逐字写出脚本路径与两份日志路径落盘）。」"
+            }
+          ]
+        },
+        "tasks": [
+          "eacces-config",
+          "flaky-timeout",
+          "wrong-model"
+        ]
+      }
+    },
+    {
+      "gen": 7,
+      "at": "2026-10-06T07:10:15.480Z",
+      "role": "compile",
+      "status": "ingested",
+      "label": "compile p-56e56fcd9c",
+      "planDigest": "eba1ac80d108c9c0197cfc09432bc13bf498fcedf8ca755fead9365fe0f0b8c6",
+      "scope": "cfb.generation.2026-10-02.g7",
+      "reservedUsd": 0.2381,
+      "expectedUsd": 0.1674,
+      "subject": {
+        "policy": {
+          "id": "p-56e56fcd9c",
+          "parent": "base",
+          "patches": [
+            {
+              "op": "exemplar",
+              "section": "contrastive",
+              "text": "基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 50% vs 落败稿多点发散/复述率 20%）的正反对比铁律：\n✗ 落败退化范式（禁止）：把原文中段讨论后放弃的第二文件或不改的相邻配置行塞进 old_text，或心算差值/把精确数字四舍五入凑整，或漏掉原文排除的具体代码分支/配置键与不重读目标文件的理由，或漏掉第四段「回放过了之后还有两件原文已经定下的事：…；以及…」及具体用例名/指标名/日志路径。\n✓ 胜出精炼范式（必须，总长控制在 750~1050 字）：「本轮增量把机理坐实：5432 open、8123 refused（数字全部逐字照抄原文，绝不心算或凑整）。已排除：调大 timeout 或另一配置键的路线，因为 30 s 是结果不是原因；已排除：改 net.yaml、新建临时复现脚本或用 cat/wc 重读 pool.js 的路线，因为第 1 轮已拿到完整文件且落点唯一。改法只落一个（仅当同一文件内末尾定下两处协同修改时写“改法分两处落地：① …（`done` 只留作标记不再参与）；② …”）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先确认改动落地并与上轮输出比差抓新信号，此时不要再改 pool.js、不要回滚；无新信号再跑预写取证。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。回放过了之后还有两件原文已经定下的事：确认验收命令跑改后全部目标指标（逐字写出各指标名与恢复数值）稳定恢复且未动已排除文件（若原文定了补测试则逐字写出测试文件路径与全部三条具体用例名）；以及保留不该动的配置键原值并汇总依据收工（若原文定了改脚本写日志则逐字写出脚本路径与两份日志路径落盘）。」"
+            }
+          ]
+        },
+        "tasks": [
+          "eacces-config",
+          "flaky-timeout",
+          "wrong-model"
+        ]
+      },
+      "written": [
+        ".cfb-offline/policies/p-56e56fcd9c.json"
+      ],
+      "rejected": [],
+      "policy": "p-56e56fcd9c",
+      "ingestedFrom": "ledger"
+    },
+    {
+      "gen": 8,
+      "at": "2026-10-06T07:10:26.216Z",
+      "role": "compile",
+      "status": "planned",
+      "label": "compile p-56e56fcd9c",
+      "planDigest": "97edefb92b2b966f3dc32d9063027a397386b2c7f21178d7bb3e353bfb44339c",
+      "scope": "cfb.generation.2026-10-02.g8",
+      "reservedUsd": 0.2882,
+      "expectedUsd": 0.1669,
+      "subject": {
+        "policy": {
+          "id": "p-56e56fcd9c",
+          "parent": "base",
+          "patches": [
+            {
+              "op": "exemplar",
+              "section": "contrastive",
+              "text": "基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 50% vs 落败稿多点发散/复述率 20%）的正反对比铁律：\n✗ 落败退化范式（禁止）：把原文中段讨论后放弃的第二文件或不改的相邻配置行塞进 old_text，或心算差值/把精确数字四舍五入凑整，或漏掉原文排除的具体代码分支/配置键与不重读目标文件的理由，或漏掉第四段「回放过了之后还有两件原文已经定下的事：…；以及…」及具体用例名/指标名/日志路径。\n✓ 胜出精炼范式（必须，总长控制在 750~1050 字）：「本轮增量把机理坐实：5432 open、8123 refused（数字全部逐字照抄原文，绝不心算或凑整）。已排除：调大 timeout 或另一配置键的路线，因为 30 s 是结果不是原因；已排除：改 net.yaml、新建临时复现脚本或用 cat/wc 重读 pool.js 的路线，因为第 1 轮已拿到完整文件且落点唯一。改法只落一个（仅当同一文件内末尾定下两处协同修改时写“改法分两处落地：① …（`done` 只留作标记不再参与）；② …”）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先确认改动落地并与上轮输出比差抓新信号，此时不要再改 pool.js、不要回滚；无新信号再跑预写取证。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。回放过了之后还有两件原文已经定下的事：确认验收命令跑改后全部目标指标（逐字写出各指标名与恢复数值）稳定恢复且未动已排除文件（若原文定了补测试则逐字写出测试文件路径与全部三条具体用例名）；以及保留不该动的配置键原值并汇总依据收工（若原文定了改脚本写日志则逐字写出脚本路径与两份日志路径落盘）。」"
+            }
+          ]
+        },
+        "tasks": [
+          "eacces-config",
+          "perf-regression",
+          "sse-truncated"
+        ]
+      }
+    },
+    {
+      "gen": 9,
+      "at": "2026-10-06T07:13:29.540Z",
+      "role": "compile",
+      "status": "ingested",
+      "label": "compile p-56e56fcd9c",
+      "planDigest": "636f38e82683aa79d433c8854eb058570ee174e89d4d6bfce04c0dde99faf66d",
+      "scope": "cfb.generation.2026-10-02.g9",
+      "reservedUsd": 0.237,
+      "expectedUsd": 0.1669,
+      "subject": {
+        "policy": {
+          "id": "p-56e56fcd9c",
+          "parent": "base",
+          "patches": [
+            {
+              "op": "exemplar",
+              "section": "contrastive",
+              "text": "基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 50% vs 落败稿多点发散/复述率 20%）的正反对比铁律：\n✗ 落败退化范式（禁止）：把原文中段讨论后放弃的第二文件或不改的相邻配置行塞进 old_text，或心算差值/把精确数字四舍五入凑整，或漏掉原文排除的具体代码分支/配置键与不重读目标文件的理由，或漏掉第四段「回放过了之后还有两件原文已经定下的事：…；以及…」及具体用例名/指标名/日志路径。\n✓ 胜出精炼范式（必须，总长控制在 750~1050 字）：「本轮增量把机理坐实：5432 open、8123 refused（数字全部逐字照抄原文，绝不心算或凑整）。已排除：调大 timeout 或另一配置键的路线，因为 30 s 是结果不是原因；已排除：改 net.yaml、新建临时复现脚本或用 cat/wc 重读 pool.js 的路线，因为第 1 轮已拿到完整文件且落点唯一。改法只落一个（仅当同一文件内末尾定下两处协同修改时写“改法分两处落地：① …（`done` 只留作标记不再参与）；② …”）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先确认改动落地并与上轮输出比差抓新信号，此时不要再改 pool.js、不要回滚；无新信号再跑预写取证。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。回放过了之后还有两件原文已经定下的事：确认验收命令跑改后全部目标指标（逐字写出各指标名与恢复数值）稳定恢复且未动已排除文件（若原文定了补测试则逐字写出测试文件路径与全部三条具体用例名）；以及保留不该动的配置键原值并汇总依据收工（若原文定了改脚本写日志则逐字写出脚本路径与两份日志路径落盘）。」"
+            }
+          ]
+        },
+        "tasks": [
+          "eacces-config",
+          "perf-regression",
+          "sse-truncated"
+        ]
+      },
+      "written": [
+        ".cfb-offline/policies/p-56e56fcd9c.json"
+      ],
+      "rejected": [],
+      "policy": "p-56e56fcd9c",
+      "ingestedFrom": "ledger"
+    },
+    {
+      "gen": 10,
+      "at": "2026-10-06T07:16:16.251Z",
+      "role": "compile",
+      "status": "ingested",
+      "label": "compile p-56e56fcd9c",
+      "planDigest": "32f04bc625725b184ba02f2cc23145416d6530ed7ac711adb08d21d388d720d2",
+      "scope": "cfb.generation.2026-10-02.g10",
+      "reservedUsd": 0.1887,
+      "expectedUsd": 0.1312,
+      "subject": {
+        "policy": {
+          "id": "p-56e56fcd9c",
+          "parent": "base",
+          "patches": [
+            {
+              "op": "exemplar",
+              "section": "contrastive",
+              "text": "基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 50% vs 落败稿多点发散/复述率 20%）的正反对比铁律：\n✗ 落败退化范式（禁止）：把原文中段讨论后放弃的第二文件或不改的相邻配置行塞进 old_text，或心算差值/把精确数字四舍五入凑整，或漏掉原文排除的具体代码分支/配置键与不重读目标文件的理由，或漏掉第四段「回放过了之后还有两件原文已经定下的事：…；以及…」及具体用例名/指标名/日志路径。\n✓ 胜出精炼范式（必须，总长控制在 750~1050 字）：「本轮增量把机理坐实：5432 open、8123 refused（数字全部逐字照抄原文，绝不心算或凑整）。已排除：调大 timeout 或另一配置键的路线，因为 30 s 是结果不是原因；已排除：改 net.yaml、新建临时复现脚本或用 cat/wc 重读 pool.js 的路线，因为第 1 轮已拿到完整文件且落点唯一。改法只落一个（仅当同一文件内末尾定下两处协同修改时写“改法分两处落地：① …（`done` 只留作标记不再参与）；② …”）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先确认改动落地并与上轮输出比差抓新信号，此时不要再改 pool.js、不要回滚；无新信号再跑预写取证。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。回放过了之后还有两件原文已经定下的事：确认验收命令跑改后全部目标指标（逐字写出各指标名与恢复数值）稳定恢复且未动已排除文件（若原文定了补测试则逐字写出测试文件路径与全部三条具体用例名）；以及保留不该动的配置键原值并汇总依据收工（若原文定了改脚本写日志则逐字写出脚本路径与两份日志路径落盘）。」"
+            }
+          ]
+        },
+        "tasks": [
+          "perf-regression",
+          "sse-truncated"
+        ]
+      },
+      "written": [
+        ".cfb-offline/policies/p-56e56fcd9c.json"
+      ],
+      "rejected": [],
+      "policy": "p-56e56fcd9c",
+      "ingestedFrom": "ledger"
+    },
+    {
+      "gen": 11,
+      "at": "2026-10-06T07:19:41.352Z",
+      "role": "compile",
+      "status": "ingested",
+      "label": "compile p-56e56fcd9c",
+      "planDigest": "6be6ef88636af88903e359ac7cde1ed6bbf6313733e7edcb5c3b6710473eba3c",
+      "scope": "cfb.generation.2026-10-02.g11",
+      "reservedUsd": 0.1122,
+      "expectedUsd": 0.097,
+      "subject": {
+        "policy": {
+          "id": "p-56e56fcd9c",
+          "parent": "base",
+          "patches": [
+            {
+              "op": "exemplar",
+              "section": "contrastive",
+              "text": "基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 50% vs 落败稿多点发散/复述率 20%）的正反对比铁律：\n✗ 落败退化范式（禁止）：把原文中段讨论后放弃的第二文件或不改的相邻配置行塞进 old_text，或心算差值/把精确数字四舍五入凑整，或漏掉原文排除的具体代码分支/配置键与不重读目标文件的理由，或漏掉第四段「回放过了之后还有两件原文已经定下的事：…；以及…」及具体用例名/指标名/日志路径。\n✓ 胜出精炼范式（必须，总长控制在 750~1050 字）：「本轮增量把机理坐实：5432 open、8123 refused（数字全部逐字照抄原文，绝不心算或凑整）。已排除：调大 timeout 或另一配置键的路线，因为 30 s 是结果不是原因；已排除：改 net.yaml、新建临时复现脚本或用 cat/wc 重读 pool.js 的路线，因为第 1 轮已拿到完整文件且落点唯一。改法只落一个（仅当同一文件内末尾定下两处协同修改时写“改法分两处落地：① …（`done` 只留作标记不再参与）；② …”）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先确认改动落地并与上轮输出比差抓新信号，此时不要再改 pool.js、不要回滚；无新信号再跑预写取证。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。回放过了之后还有两件原文已经定下的事：确认验收命令跑改后全部目标指标（逐字写出各指标名与恢复数值）稳定恢复且未动已排除文件（若原文定了补测试则逐字写出测试文件路径与全部三条具体用例名）；以及保留不该动的配置键原值并汇总依据收工（若原文定了改脚本写日志则逐字写出脚本路径与两份日志路径落盘）。」"
+            }
+          ]
+        },
+        "tasks": [
+          "sse-truncated"
+        ]
+      },
+      "written": [
+        ".cfb-offline/policies/p-56e56fcd9c.json"
+      ],
+      "rejected": [],
+      "policy": "p-56e56fcd9c",
+      "ingestedFrom": "ledger"
+    },
+    {
+      "gen": 12,
+      "at": "2026-10-06T07:38:56.392Z",
+      "role": "mint-a",
+      "status": "ingested",
+      "label": "mint-a env-pin-drift",
+      "planDigest": "2f104e2a67be5c731a1ffac19718a5e8838bc04fa69781f9489398087e7ab5f7",
+      "scope": "cfb.generation.2026-10-02.g12",
+      "reservedUsd": 0.0877,
+      "expectedUsd": 0.0914,
+      "subject": {
+        "scenario": {
+          "id": "env-pin-drift",
+          "u1": "仓库 `npm test` 在 `test/config.selftest.mjs` 上报 `AssertionError [ERR_ASSERTION]: expected timeout to be 30000, got undefined`。\n这个仓库上周把配置项从 `cfg.legacyTimeoutMs` 统一改名成 `cfg.requestTimeoutMs`，文档里也是新名字；但线上有人反馈请求确实没有超时保护。\n相关文件：\nsrc/config.js:\n```js\nexport function loadConfig(env = process.env) {\n  return {\n    requestTimeoutMs: Number(env.CFG_REQUEST_TIMEOUT_MS ?? 30000),\n    retries: Number(env.CFG_RETRIES ?? 2),\n  }\n}\n```\nsrc/client.js:\n```js\nimport { loadConfig } from './config.js'\nexport function makeClient({ cfg = loadConfig() } = {}) {\n  return { timeout: cfg.legacyTimeoutMs, retries: cfg.retries }\n}\n```\ntest/config.selftest.mjs:\n```js\nimport assert from 'node:assert/strict'\nimport { makeClient } from '../src/client.js'\nconst c = makeClient({ cfg: { legacyTimeoutMs: 30000, retries: 2 } })\nassert.equal(c.timeout, 30000, 'expected timeout to be 30000')\nconsole.log('config.selftest ok')\n```\n请找出原因并修好，修好后说明依据（哪个文件哪一行，为什么这样改）。不要新增依赖，不要顺手改无关配置。"
+        }
+      },
+      "written": [
+        ".cfb-offline/tasks/env-pin-drift.partial.json"
+      ],
+      "rejected": [],
+      "ingestedFrom": "ledger"
+    },
+    {
+      "gen": 13,
+      "at": "2026-10-06T07:39:15.296Z",
+      "role": "mint-b",
+      "status": "planned",
+      "label": "mint-b env-pin-drift",
+      "planDigest": "badc7a9950cb46fa7872f24ecafd7cb7f3193ac8348272e6264ac8ada3800d32",
+      "scope": "cfb.generation.2026-10-02.g13",
+      "reservedUsd": 0.1473,
+      "expectedUsd": 0.092,
+      "subject": {
+        "scenario": {
+          "id": "env-pin-drift",
+          "u1": "仓库 `npm test` 在 `test/config.selftest.mjs` 上报 `AssertionError [ERR_ASSERTION]: expected timeout to be 30000, got undefined`。\n这个仓库上周把配置项从 `cfg.legacyTimeoutMs` 统一改名成 `cfg.requestTimeoutMs`，文档里也是新名字；但线上有人反馈请求确实没有超时保护。\n相关文件：\nsrc/config.js:\n```js\nexport function loadConfig(env = process.env) {\n  return {\n    requestTimeoutMs: Number(env.CFG_REQUEST_TIMEOUT_MS ?? 30000),\n    retries: Number(env.CFG_RETRIES ?? 2),\n  }\n}\n```\nsrc/client.js:\n```js\nimport { loadConfig } from './config.js'\nexport function makeClient({ cfg = loadConfig() } = {}) {\n  return { timeout: cfg.legacyTimeoutMs, retries: cfg.retries }\n}\n```\ntest/config.selftest.mjs:\n```js\nimport assert from 'node:assert/strict'\nimport { makeClient } from '../src/client.js'\nconst c = makeClient({ cfg: { legacyTimeoutMs: 30000, retries: 2 } })\nassert.equal(c.timeout, 30000, 'expected timeout to be 30000')\nconsole.log('config.selftest ok')\n```\n请找出原因并修好，修好后说明依据（哪个文件哪一行，为什么这样改）。不要新增依赖，不要顺手改无关配置。",
+          "u2": "[tool: bash 结果]\n$ npm test 2>&1 | tail -n 4\n  FAIL test/config.selftest.mjs  AssertionError [ERR_ASSERTION]: expected timeout to be 30000, got undefined\n  合计: 0 通过 / 1 失败\n[tool: bash 结果]\n$ grep -rn \"legacyTimeoutMs\\|requestTimeoutMs\" src test README.md\nsrc/config.js:4:    requestTimeoutMs: Number(env.CFG_REQUEST_TIMEOUT_MS ?? 30000),\nsrc/client.js:4:  return { timeout: cfg.legacyTimeoutMs, retries: cfg.retries }\ntest/config.selftest.mjs:4:const c = makeClient({ cfg: { legacyTimeoutMs: 30000, retries: 2 } })\nREADME.md:7:`requestTimeoutMs` 是唯一对外名字；旧名 `legacyTimeoutMs` 自 v0.0.9 起不再导出。\n\n就按你刚才的判断落地：只改一处，把线上真正的超时保护接回去。改完告诉我你动的是哪个文件哪一行、old_text/new_text 各是什么，以及为什么不是 src/config.js 那边的问题（README 已经写死新名字）。不要动测试里的常量，也不要顺手加校验或改 retries。"
+        }
+      }
+    },
+    {
+      "gen": 14,
+      "at": "2026-10-06T07:40:02.092Z",
+      "role": "mint-b",
+      "status": "ingested",
+      "label": "mint-b env-pin-drift",
+      "planDigest": "e90c2802a677502d5e784dc34792e5c7011592cb5010dbba53c4d0be0a992347",
+      "scope": "cfb.generation.2026-10-02.g14",
+      "reservedUsd": 0.0899,
+      "expectedUsd": 0.092,
+      "subject": {
+        "scenario": {
+          "id": "env-pin-drift",
+          "u1": "仓库 `npm test` 在 `test/config.selftest.mjs` 上报 `AssertionError [ERR_ASSERTION]: expected timeout to be 30000, got undefined`。\n这个仓库上周把配置项从 `cfg.legacyTimeoutMs` 统一改名成 `cfg.requestTimeoutMs`，文档里也是新名字；但线上有人反馈请求确实没有超时保护。\n相关文件：\nsrc/config.js:\n```js\nexport function loadConfig(env = process.env) {\n  return {\n    requestTimeoutMs: Number(env.CFG_REQUEST_TIMEOUT_MS ?? 30000),\n    retries: Number(env.CFG_RETRIES ?? 2),\n  }\n}\n```\nsrc/client.js:\n```js\nimport { loadConfig } from './config.js'\nexport function makeClient({ cfg = loadConfig() } = {}) {\n  return { timeout: cfg.legacyTimeoutMs, retries: cfg.retries }\n}\n```\ntest/config.selftest.mjs:\n```js\nimport assert from 'node:assert/strict'\nimport { makeClient } from '../src/client.js'\nconst c = makeClient({ cfg: { legacyTimeoutMs: 30000, retries: 2 } })\nassert.equal(c.timeout, 30000, 'expected timeout to be 30000')\nconsole.log('config.selftest ok')\n```\n请找出原因并修好，修好后说明依据（哪个文件哪一行，为什么这样改）。不要新增依赖，不要顺手改无关配置。",
+          "u2": "[tool: bash 结果]\n$ npm test 2>&1 | tail -n 4\n  FAIL test/config.selftest.mjs  AssertionError [ERR_ASSERTION]: expected timeout to be 30000, got undefined\n  合计: 0 通过 / 1 失败\n[tool: bash 结果]\n$ grep -rn \"legacyTimeoutMs\\|requestTimeoutMs\" src test README.md\nsrc/config.js:4:    requestTimeoutMs: Number(env.CFG_REQUEST_TIMEOUT_MS ?? 30000),\nsrc/client.js:4:  return { timeout: cfg.legacyTimeoutMs, retries: cfg.retries }\ntest/config.selftest.mjs:4:const c = makeClient({ cfg: { legacyTimeoutMs: 30000, retries: 2 } })\nREADME.md:7:`requestTimeoutMs` 是唯一对外名字；旧名 `legacyTimeoutMs` 自 v0.0.9 起不再导出。\n\n就按你刚才的判断落地：只改一处，把线上真正的超时保护接回去。改完告诉我你动的是哪个文件哪一行、old_text/new_text 各是什么，以及为什么不是 src/config.js 那边的问题（README 已经写死新名字）。不要动测试里的常量，也不要顺手加校验或改 retries。"
+        }
+      },
+      "written": [
+        ".cfb-offline/tasks/env-pin-drift.partial.json"
+      ],
+      "rejected": [],
+      "ingestedFrom": "ledger"
+    },
+    {
+      "gen": 15,
+      "at": "2026-10-06T07:40:16.718Z",
+      "role": "compile",
+      "status": "planned",
+      "label": "compile mint env-pin-drift r1",
+      "planDigest": "c1a705d7808266c77982644e5deddaf8cf7b248831dc9c825dfc7d303dfb8ff7",
+      "scope": "cfb.generation.2026-10-02.g15",
+      "reservedUsd": 0.1417,
+      "expectedUsd": 0.0935,
+      "subject": {
+        "policy": {
+          "id": "base",
+          "parent": null,
+          "patches": []
+        },
+        "tasks": [
+          "env-pin-drift#r1"
+        ]
+      }
+    },
+    {
+      "gen": 16,
+      "at": "2026-10-06T07:40:44.775Z",
+      "role": "compile",
+      "status": "planned",
+      "label": "compile mint env-pin-drift r1",
+      "planDigest": "f2c775b235c23a0d02b24cbb0b02696f953091695d775955a3ccd3c206359b2f",
+      "scope": "cfb.generation.2026-10-02.g16",
+      "reservedUsd": 0.1417,
+      "expectedUsd": 0.0935,
+      "subject": {
+        "policy": {
+          "id": "base",
+          "parent": null,
+          "patches": []
+        },
+        "tasks": [
+          "env-pin-drift#r1"
+        ]
+      }
+    },
+    {
+      "gen": 17,
+      "at": "2026-10-06T07:42:05.141Z",
+      "role": "compile",
+      "status": "ingested",
+      "label": "compile mint env-pin-drift r1",
+      "planDigest": "6fa35dd26b44885d5f69a264c4bfba3763060da0ad2feaaaf1db56d38d6c1e5a",
+      "scope": "cfb.generation.2026-10-02.g17",
+      "reservedUsd": 0.0959,
+      "expectedUsd": 0.0935,
+      "subject": {
+        "policy": {
+          "id": "base",
+          "parent": null,
+          "patches": []
+        },
+        "tasks": [
+          "env-pin-drift#r1"
+        ]
+      },
+      "written": [
+        ".cfb-offline/tasks/env-pin-drift.partial.json"
+      ],
+      "rejected": [],
+      "ingestedFrom": "ledger"
+    },
+    {
+      "gen": 18,
+      "at": "2026-10-06T07:42:31.187Z",
+      "role": "compile",
+      "status": "ingested",
+      "label": "compile mint env-pin-drift side",
+      "planDigest": "be875249ad36fb18cd00d2230c348d6db76f550e66c52c6a9ff8473d25c15739",
+      "scope": "cfb.generation.2026-10-02.g18",
+      "reservedUsd": 0.1213,
+      "expectedUsd": 0.1001,
+      "subject": {
+        "policy": {
+          "id": "base",
+          "parent": null,
+          "patches": []
+        },
+        "tasks": [
+          "env-pin-drift#side"
+        ]
+      },
+      "written": [
+        ".cfb-offline/tasks/env-pin-drift.task.json"
+      ],
+      "rejected": [],
+      "ingestedFrom": "ledger"
     }
   ],
   "trajPlans": [
@@ -442,6 +1659,556 @@
         "e": 0.564,
         "headroom": -0.07
       }
+    },
+    {
+      "n": 102,
+      "at": "2026-10-06T03:49:04.337Z",
+      "status": "confirmed",
+      "digest": "b66d46bfb3d49ad2",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-1.json"
+      }
+    },
+    {
+      "n": 103,
+      "at": "2026-10-06T03:50:53.786Z",
+      "status": "confirmed",
+      "digest": "797a2c2b69d77b61",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-2.json"
+      }
+    },
+    {
+      "n": 104,
+      "at": "2026-10-06T03:51:17.437Z",
+      "status": "confirmed",
+      "digest": "7d02f1048782d69e",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-3.json"
+      }
+    },
+    {
+      "n": 105,
+      "at": "2026-10-06T03:52:00.254Z",
+      "status": "confirmed",
+      "digest": "ffa376fd2fc58b8f",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-4.json"
+      }
+    },
+    {
+      "n": 106,
+      "at": "2026-10-06T04:00:21.010Z",
+      "status": "confirmed",
+      "digest": "b6fee244b6a7027d",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-5.json"
+      }
+    },
+    {
+      "n": 107,
+      "at": "2026-10-06T04:05:08.705Z",
+      "status": "confirmed",
+      "digest": "dfc93eabe69bf585",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1.5,
+        "outcomes": [
+          "win"
+        ],
+        "file": ".cfb-offline/ruler/confirm-11.json"
+      }
+    },
+    {
+      "n": 108,
+      "at": "2026-10-06T04:06:10.640Z",
+      "status": "confirmed",
+      "digest": "3f0acacf36329dcc",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-7.json"
+      }
+    },
+    {
+      "n": 109,
+      "at": "2026-10-06T04:07:15.214Z",
+      "status": "confirmed",
+      "digest": "4744cac2ac2ff80e",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-8.json"
+      }
+    },
+    {
+      "n": 110,
+      "at": "2026-10-06T04:08:19.595Z",
+      "status": "confirmed",
+      "digest": "4ecba954d19a52ac",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-9.json"
+      }
+    },
+    {
+      "n": 111,
+      "at": "2026-10-06T04:10:04.878Z",
+      "status": "confirmed",
+      "digest": "f0102ea12ff8281e",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-10.json"
+      }
+    },
+    {
+      "n": 112,
+      "at": "2026-10-06T07:07:07.814Z",
+      "status": "confirmed",
+      "digest": "40228afd89f2d100",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-12.json"
+      }
+    },
+    {
+      "n": 113,
+      "at": "2026-10-06T07:07:18.265Z",
+      "status": "confirmed",
+      "digest": "374bc7227d516c32",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-13.json"
+      }
+    },
+    {
+      "n": 114,
+      "at": "2026-10-06T07:08:03.615Z",
+      "status": "confirmed",
+      "digest": "e32da78f42c99908",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-14.json"
+      }
+    },
+    {
+      "n": 115,
+      "at": "2026-10-06T07:09:17.631Z",
+      "status": "confirmed",
+      "digest": "3a2326bde41e68f2",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-15.json"
+      }
+    },
+    {
+      "n": 116,
+      "at": "2026-10-06T07:09:51.819Z",
+      "status": "confirmed",
+      "digest": "ee55e1ac658e99b1",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-16.json"
+      }
+    },
+    {
+      "n": 117,
+      "at": "2026-10-06T07:10:12.728Z",
+      "status": "confirmed",
+      "digest": "00cb9dcecc65c2ca",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-17.json"
+      }
+    },
+    {
+      "n": 118,
+      "at": "2026-10-06T07:10:48.814Z",
+      "status": "confirmed",
+      "digest": "b511016ef97f11fc",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-18.json"
+      }
+    },
+    {
+      "n": 119,
+      "at": "2026-10-06T07:11:05.927Z",
+      "status": "confirmed",
+      "digest": "7a1a2ac234ae4d63",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-19.json"
+      }
+    },
+    {
+      "n": 120,
+      "at": "2026-10-06T07:12:33.710Z",
+      "status": "confirmed",
+      "digest": "6e55d68483249dc1",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-20.json"
+      }
+    },
+    {
+      "n": 121,
+      "at": "2026-10-06T07:14:34.337Z",
+      "status": "confirmed",
+      "digest": "5effd13bddb5b2f9",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-21.json"
+      }
+    },
+    {
+      "n": 122,
+      "at": "2026-10-06T07:15:15.310Z",
+      "status": "confirmed",
+      "digest": "22d062ca6b2efc91",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-22.json"
+      }
+    },
+    {
+      "n": 123,
+      "at": "2026-10-06T07:16:15.260Z",
+      "status": "confirmed",
+      "digest": "e8101f0978042c1d",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-23.json"
+      }
+    },
+    {
+      "n": 124,
+      "at": "2026-10-06T07:16:46.871Z",
+      "status": "confirmed",
+      "digest": "affe7660713645e5",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-24.json"
+      }
+    },
+    {
+      "n": 125,
+      "at": "2026-10-06T07:17:24.655Z",
+      "status": "confirmed",
+      "digest": "9d397d9f125e3006",
+      "design": "9203abdfd6c4ddfc",
+      "expectedUsd": 0.118,
+      "capUsd": 0.291,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:p-1490eefcdf",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-25.json"
+      }
+    },
+    {
+      "n": 126,
+      "at": "2026-10-06T07:31:10.919Z",
+      "status": "confirmed",
+      "digest": "3c00ba75c6d84269",
+      "design": "96838878c46cac3f",
+      "expectedUsd": 0.103,
+      "capUsd": 0.372,
+      "confirm": {
+        "verdict": "report-only",
+        "map": {
+          "champion": "policy:base",
+          "previous": "raw"
+        },
+        "pairs": 1,
+        "e": 1,
+        "outcomes": [
+          "tie"
+        ],
+        "file": ".cfb-offline/ruler/confirm-26.json"
+      }
     }
   ],
   "benchPlans": [
@@ -774,6 +2541,60 @@
         "p-55a320e0f8": {
           "e": 0.667,
           "n": 3,
+          "decision": "undetermined"
+        }
+      }
+    },
+    {
+      "n": 14,
+      "at": "2026-10-06T03:48:41.026Z",
+      "status": "planned",
+      "digest": "45f4476420394ce0",
+      "design": "e946ac4510c6aec1",
+      "policies": [
+        "base",
+        "p-1490eefcdf"
+      ],
+      "gold": 2,
+      "split": "dev",
+      "expectedUsd": 0.03,
+      "capUsd": 0.046
+    },
+    {
+      "n": 15,
+      "at": "2026-10-06T03:56:14.894Z",
+      "status": "planned",
+      "digest": "312708661f69a231",
+      "design": "56376c542fe05dd8",
+      "policies": [
+        "base",
+        "p-56e56fcd9c",
+        "p-1490eefcdf"
+      ],
+      "gold": 2,
+      "split": "dev",
+      "expectedUsd": 0.045,
+      "capUsd": 0.068
+    },
+    {
+      "n": 16,
+      "at": "2026-10-06T04:32:48.374Z",
+      "status": "reported",
+      "digest": "7ec40be432dbba2c",
+      "design": "ac9908cd4b39c169",
+      "policies": [
+        "base",
+        "p-56e56fcd9c"
+      ],
+      "gold": 2,
+      "split": "dev",
+      "expectedUsd": 0.03,
+      "capUsd": 0.046,
+      "best": null,
+      "paired": {
+        "p-56e56fcd9c": {
+          "e": 1.5,
+          "n": 2,
           "decision": "undetermined"
         }
       }

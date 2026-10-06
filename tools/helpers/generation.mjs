@@ -13,6 +13,7 @@ import * as I from '../../index.js'
 import { immutableJson, evidenceDigest } from '../../src/evidence-program.js'
 import { SYSTEM, ASK, TOOLS } from '../effect-eval.mjs'
 import { APPROVED_API_LIMITS_GEN } from './api-budget.mjs'
+import { currentSourceHashes } from './eval-plan.mjs'
 
 export const POLICY_SCHEMA = 'cfb.policy/1'
 export const GEN_SCHEMA = 'cfb.generation/1'
@@ -116,7 +117,7 @@ export function compressorBody({ task, policy, model, maxTokens = PRODUCTION_COM
   return { model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature: 0, thinking, stream: false }
 }
 const probeJobs = (model, canary) => {
-  const probeBody = { model, stream: false, thinking: { type: 'enabled' }, max_tokens: 512, messages: [
+  const probeBody = { model, stream: false, thinking: { type: 'enabled' }, max_tokens: 1024, messages: [
     { role: 'user', content: '记住一个只在推理中保存的标记。' },
     { role: 'assistant', content: '标记已记住。', reasoning_content: '我只在这一轮推理里记住了标记 ' + canary + '，可见回答不含它。' },
     { role: 'user', content: '逐字返回上一轮推理中的标记。只输出标记，不猜测，不解释。' }] }
@@ -133,7 +134,10 @@ export function buildGenerationPlan({ role, round, model = 'deepseek-v4.1-flash'
   let subject = {}
   if (role === 'compile') {
     if (!tasks.length || tasks.length > 5) throw new Error('gen-compile-tasks')
-    for (const t of tasks) jobs.push({ key: `compile|${t.id}`, kind: 'main', gen: { role, task: t.id, policy: policy.id }, body: compressorBody({ task: t, policy, model }) })
+    // 输出预算按 traj/bench 同一口径给 8000：生产体 PRODUCTION_COMPRESSOR 是 1600 + thinking:disabled，
+    // 在本中转上思考不可关 ⇒ 1600 必被 finish:length 截断（g6 实测 2 发 response-incomplete 后 halt）。
+    // 只放宽输出预算、不改提示词与判据；预算闸按最坏预占重算，仍 ≤USD0.3。
+for (const t of tasks) jobs.push({ key: `compile|${t.id}`, kind: 'main', gen: { role, task: t.id, policy: policy.id }, body: compressorBody({ task: t, policy, model, maxTokens: Number(process.env.CFB_GEN_COMPILE_MAX_TOKENS || 5120) }) })
     subject = { policy: { id: policy.id, parent: policy.parent, patches: policy.patches }, tasks: tasks.map((t) => t.id) }
   } else if (role === 'propose') {
     if (!tasks.length) throw new Error('gen-propose-needs-dev-task')
@@ -149,7 +153,11 @@ export function buildGenerationPlan({ role, round, model = 'deepseek-v4.1-flash'
     jobs.push({ key: `mint-b|${scenario.id}`, kind: 'main', gen: { role, task: scenario.id }, body: { model, messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: scenario.u1 }, { role: 'assistant', content: scenario.a1.content, reasoning_content: scenario.a1.raw }, { role: 'user', content: scenario.u2 + ASK }], tools: TOOLS, thinking: { type: 'enabled' }, max_tokens: 8192, stream: false } })
     subject = { scenario: { id: scenario.id, u1: scenario.u1, u2: scenario.u2 } }
   }
+  // 源码摘要必须随计划冻结：doctor/run 的 source-current 读 plan.sourceHashes；缺它则整个 SOURCE_FILES
+  // 被判成漂移 ⇒ 生成轮（compile/propose/mint）永远开不了。只补记录，不改任何判据。（v14.20.2）
+  const sourceHashes = currentSourceHashes()
   return immutableJson({ schema: GEN_SCHEMA, approvalDate: '2026-10-02', round, role, model, baseUrl, pricing, canary, limits: APPROVED_API_LIMITS_GEN, jobs, subject,
+    sourceDigest: evidenceDigest(sourceHashes), sourceHashes,
     protocol: 'chat-completions-history-reasoning/1',
     preregistration: { purpose: role === 'compile' ? '按策略 ' + policy.id + ' 重压 side（候选稿的原料），不评分、不采纳' : role === 'propose' ? '提议器读 dev 题失败证据给出提示词补丁；补丁经预算 / 泄漏 / 可应用性三闸才成为策略' : '铸造新任务（扩池 / 留出），进池前须人工补 u2 / followup / spec',
       limitation: '生成请求不产生任何效果证据；效果只来自随后的 v9 配对回放（留出题采纳）。提议器输出可能平庸或违约，违约整份作废不重试。', retries: 0, judges: 0 } })
