@@ -101,3 +101,31 @@ node tools/eval-micro-js-pairs.mjs --validate-dataset-only \
 **仍未消除的局限**：`cueExcluded` 特征实测 0 ⇒ 本集测「有锚 vs 无锚」排序与 `excludedGateActive` 兜底路径，**不测**线索驱动的排除判定。另外 16 对全为 matched 是靠标点填充对齐的（`Δtok=0`），别把它读成"自然长度分布"；它衡量的是同长度下的判别力，正是匹配桶该测的东西。
 
 结构校验复跑：两族 `dataset-structure-valid`（56/16，maxEndpointDegree 1）；`node verify.mjs micro` 50 通过 / 0 失败。**依旧没打任何分数** ⇒ 一次性盲测完好。
+
+## 7. 一键粘贴（合并版：克隆 → 训练 → 两次盲测 → 打印闸门判决）
+
+把 §2/§3/§5 的三步并成一个 cell；训练与盲测的命令逐字同前，末尾的判决打印只是把 §4 的三组闸门读成一句话。
+
+```python
+%cd /kaggle/working
+import os, json, subprocess
+from kaggle_secrets import UserSecretsClient
+pat = UserSecretsClient().get_secret("GITHUB_PAT"); os.environ["GITHUB_PAT"] = pat
+!rm -rf /kaggle/working/cfb && !git clone --depth 1 -b main https://x-access-token:{pat}@github.com/liaocr/cfb.git /kaggle/working/cfb
+!pip install -q "transformers==4.56.2" safetensors onnx onnxruntime requests
+%cd /kaggle/working/cfb
+!python3 tools/kaggle-train-micro.py --epochs-sft 12 --epochs-simpo 12 \
+  --student-pair-objective listwise --dataset-neg-strategy hardened \
+  --unit-pair-degree-cap 3 --unit-pairs-per-positive 3 --near-length-tokens 3   # 不加 --push-back / --final-test-dataset
+for fam in ["encoding-mojibake", "lock-contention"]:                            # 每个家族一次，共两次一次性测量
+    subprocess.run(["node", "tools/train-v5-micro.mjs", "--eval-only",
+                    "--final-test-dataset", f"transfer/models/micro-blindtest-{fam}-v1.json"], check=False)
+r = json.load(open("transfer/models/cfb-micro-97m-report.json"))
+g = r.get("gates") or {}
+print("gate:", r.get("gate"), "| threeFold 均值:", (r.get("threeFoldCv") or {}).get("meanMatched"),
+      "最差折:", (r.get("threeFoldCv") or {}).get("worstMatched"),
+      "| parity:", (r.get("parity") or {}).get("maxAbsError"), "| 参数:", r.get("totalParameters"),
+      "| 盲测:", {k: v for k, v in g.items() if "blind" in k.lower() or "final" in k.lower()})
+```
+
+判读口径不变：三折 CV 与部署检查可判，盲测组**每族都要**匹配桶 ≥0.75 且 ≥同族生产 +20pp；缺任一 ⇒ `blocked`，不降阈值、不覆盖 `transfer/models/v5-micro-weights.json`。
