@@ -1,4 +1,12 @@
 # Changelog — dsh-cot-form-b
+## v14.25.2（2026-10-06）：补上 v14.25.0 漏掉的最后一环 —— 探针自己的请求形状
+
+v14.25.0 改了判据与 `preflightUpstream` 的调用点，但 `tools/probe-carry.mjs:52` 自己仍是 `carryCheck({ chat, o, messages })` —— **不带 tools**。按官方口径那条臂必然 Δ≈0 ⇒ 打印 `ignored-by-contract` 且 `process.exit(1)`：分类器修对了，**你实际敲的那条命令还是把官方直连判死**。
+- 现改为按生产形状发：默认带一个 no-op `__cfb_probe__` tool（只要 `tools` 参数在场即可，与具体工具无关），`DEEPSEEK_TEXT_TOOLS=1` 才走无 tools 臂（如实反映 textTools 变体下模式 1 失效）。
+- ② 对照组的 `tok()` 同样带上 `...PROBE_SHAPE` —— 否则 ① 有 tools、② 没有，Δ 口径不可比（这是我上一版没注意到的第二个隐藏错）。
+- 事故记录：本项补丁前一次尝试里我写了 `io.open(p,'w').write(...) if cond else None` —— `open(p,'w')` **先截断文件**再抛异常，把探针打成空文件（`node --check` 对空文件照样通过，差点蒙混过关）。已 `git checkout` 复原后重做。教训：先算好完整内容、最后一步才开文件写。
+
+**检查**：`node --check` 通过；`node tools/probe-carry.mjs --selftest` → **PASS=5 FAIL=0**（跑生产 `carryCheck` 本体）。仍未对真实通道发过请求（无 key 花费）。
 ## v14.25.1（2026-10-06）：探测闸补一条外部反证
 
 再核官方原文，结论与 v14.25.0 一致（带 `tools` 才回传/拼接，漏传按文档 400；不带 `tools` 回传也被忽略）。但 `withceleste/celeste-python#461` 报**真机 `deepseek-v4-flash` + tools 下文档承诺的 400 未复现** ⇒ 已把 `contract-validated` 明确降格为"加分证据、非必需路径"，主判据仍是**带 tools 的 Δ**；否则将来谁看到 400 不出现就以为闸坏了。判读一句话：`stripped` 才换渠道，`ignored-by-contract` 改请求形状。

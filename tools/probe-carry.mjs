@@ -46,10 +46,14 @@ if (!o.baseUrl || !o.apiKey) { console.error('缺 DEEPSEEK_BASE_URL / DEEPSEEK_A
 const chat = makeChat(o)
 const FAKE = '这一段只是用来量通道有没有把历史思考送进模型：先确认 settled.ok 的来源，再看 parseSse 对半包的处理，排除权限路线，下一步读 src/sse.js。'.repeat(15).slice(0, 1200)
 const msgs = (payload, text) => [{ role: 'user', content: '1+1=?只答数字。' }, { role: 'assistant', content: text, ...(payload ? { reasoning_content: FAKE } : {}) }, { role: 'user', content: '再答一次。' }]
-const tok = async (m) => { try { return Number((await chat({ model: o.model, messages: m, max_tokens: 1, stream: false })).usage?.prompt_tokens) } catch (e) { return NaN } }
+const tok = async (m) => { try { return Number((await chat({ model: o.model, messages: m, ...PROBE_SHAPE, max_tokens: 1, stream: false })).usage?.prompt_tokens) } catch (e) { return NaN } }
 
 let fatal = null
-const carry = await carryCheck({ chat, o, messages: msgs(1, '2') }).catch((e) => { fatal = String(e?.message || e); return null })
+// 官方只在请求**带 tools** 时把历史 reasoning_content 拼进上下文（不带 tools 时按契约忽略），
+// 所以探测必须按生产形状发：默认带一个 no-op tool；DEEPSEEK_TEXT_TOOLS=1 用于如实测 textTools 变体。
+const PROBE_TOOLS = [{ type: 'function', function: { name: '__cfb_probe__', description: 'no-op', parameters: { type: 'object', properties: {}, required: [] } } }]
+const PROBE_SHAPE = process.env.DEEPSEEK_TEXT_TOOLS ? {} : { tools: PROBE_TOOLS }
+const carry = await carryCheck({ chat, o, messages: msgs(1, '2'), tools: PROBE_SHAPE.tools || null }).catch((e) => { fatal = String(e?.message || e); return null })
 console.log(`通道 ${o.baseUrl}  模型 ${o.model}`)
 if (fatal) { console.log(`✗ 连不上：${fatal.slice(0, 160)}`); process.exit(1) }
 console.log(`① 历史思考放 reasoning_content：${FAKE.length} 字 → Δ ${carry.delta} tokens（需 ≥ ${carry.need}）⇒ ${carry.verdict} ${carry.ok ? '✓' : '✗'}`)
