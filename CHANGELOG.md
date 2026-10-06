@@ -1,4 +1,7 @@
 # Changelog — dsh-cot-form-b
+## v14.25.1（2026-10-06）：探测闸补一条外部反证
+
+再核官方原文，结论与 v14.25.0 一致（带 `tools` 才回传/拼接，漏传按文档 400；不带 `tools` 回传也被忽略）。但 `withceleste/celeste-python#461` 报**真机 `deepseek-v4-flash` + tools 下文档承诺的 400 未复现** ⇒ 已把 `contract-validated` 明确降格为"加分证据、非必需路径"，主判据仍是**带 tools 的 Δ**；否则将来谁看到 400 不出现就以为闸坏了。判读一句话：`stripped` 才换渠道，`ignored-by-contract` 改请求形状。
 ## v14.25.0（2026-10-06）：渠道探测闸按官方口径重写 —— 之前它在制造**假阴性**
 
 **先查证（官方 thinking 文档，2026-08-27 重写的那节）**：历史 `reasoning_content` 的回传规则**按请求是否带 `tools` 分档** —— 带 `tools` 时前几轮思考**必须完整回传**（漏了直接 400，"即使那一轮没调工具也算"），且会拼进上下文；**不带 `tools` 时不需要回传，回传也会被忽略、不进上下文**。官方 compat 三键另证：`supportsToolChoice:false`、`requiresReasoningContentForToolCalls:true`、`requiresAssistantContentForToolCalls:true`。
