@@ -1,0 +1,15 @@
+{
+  "schema": "cfb.offline-split/1",
+  "train": [
+    "eacces-config",
+    "flaky-timeout",
+    "perf-regression"
+  ],
+  "dev": [
+    "sse-truncated"
+  ],
+  "test": [
+    "wrong-model"
+  ],
+  "rule": "按任务 id 排序后 60/20/20，题不跨集"
+}

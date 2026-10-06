@@ -1,0 +1,7 @@
+纯算术演练（不写文件、不花钱）：真实胜率 0.7，每轮 5 对，最多 5 轮；每轮预计实付 ≈ USD 0.13（5 对 + 3 探针，按 v8 收据口径）
+  r1: n=5 W/L/T=2/2/1 P(p>0.5)=0.5 bits=0 ⇒ continue
+  r2: n=10 W/L/T=5/4/1 P(p>0.5)=0.6176 bits=0.0403 ⇒ continue
+  r3: n=15 W/L/T=6/7/2 P(p>0.5)=0.4018 bits=0.028 ⇒ continue
+  r4: n=20 W/L/T=10/8/2 P(p>0.5)=0.6682 bits=0.0832 ⇒ continue
+  r5: n=25 W/L/T=14/8/3 P(p>0.5)=0.8806 bits=0.4724 ⇒ stop-undecided
+运行特性（2000 次模拟，上限 25 对）：{"pTrue":0.7,"tieRate":0.1,"sims":2000,"cap":25,"medianPairs":12,"p90Pairs":25,"decisions":{"adopt":1411,"reject":72,"stop-undecided":517}}

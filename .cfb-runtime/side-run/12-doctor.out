@@ -1,0 +1,12 @@
+PASS 冻结任务可加载（chains / d1 / d2 / specs）  — 5/5
+PASS 任务池可构建、切分确定（holdout ≥ 2）  — 5 题 ea7512a4e43a；留出 eacces-config,wrong-model
+PASS champion 策略可加载  — base（= 生产 v4d9 提示词）
+PASS v3 判定：留出闸门 / A/A 校准
+PASS control（当前 champion 生产重编译）全部过生产闸门  — 5/5
+PASS 真值维度方向校验：生产稿 > 原文（与 v8 live 效应同向）  — 5/5 题
+PASS 至少一个杠杆可测（可用 ≥3 题）  — kItems=off:5 selection=balanced:4 selection=strict:4 deadEnd=shelved:5 deadEnd=none:5 closing=off:5 layout=conclusion-first:5
+PASS 退化臂已标出（不会混进打分）  — 全退化：bind=off
+PASS 实验算术：Beta 尾概率 / 序贯判定
+PASS 评测 profile 样例存在  — deploy/eval-profile.example.json
+FAIL live 运行时（Node ≥ 22；本机只影响 run --live，不影响 plan/ingest）  — 20.20.2
+PASS 历史 / champion 可读  — 1 轮，0 个假设

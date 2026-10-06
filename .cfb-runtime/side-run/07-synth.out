@@ -1,0 +1,3 @@
+已合成极限复合策略 p-8943e331e6（parent=base，patches=1）→ .cfb-offline/policies/p-8943e331e6.json
+  config: {"continuationPath":"bounded","programParts":"compact","promptMode":"modular","birthAdaptiveFloor":true}
+  $0 预筛: 金标过闸 11/13 · 金标净省 569 tok · dd/1=0.843 · 池题过闸 3/3 (8/8) · 池题均省 440 tok · 真值分=0.762 · 密度效率分=0.6991 · 逆向增补=0

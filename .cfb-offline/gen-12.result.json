@@ -1,0 +1,12 @@
+{
+  "schema": "cfb.gen-result/1",
+  "at": "2026-10-06T07:38:56.392Z",
+  "gen": 12,
+  "role": "mint-a",
+  "outputs": 1,
+  "written": [
+    ".cfb-offline/tasks/env-pin-drift.partial.json"
+  ],
+  "rejected": [],
+  "next": "人工在 .cfb-offline/tasks/env-pin-drift.partial.json 的 chain.u2 写第 2 轮用户话（观察 + 追问），再 mint --step b --id env-pin-drift"
+}

@@ -1,0 +1,560 @@
+{
+  "schema": "cfb.cycle-plan/3",
+  "at": "2026-10-06T07:30:52.424Z",
+  "ok": true,
+  "round": 7,
+  "key": "policy=p-56e56fcd9c@bbb939e0",
+  "hypothesis": {
+    "lever": "policy",
+    "value": "p-56e56fcd9c",
+    "champion": {
+      "bind": "on",
+      "kItems": "on",
+      "closing": "on",
+      "deadEnd": "paired",
+      "selection": "keepAll",
+      "layout": "state-first"
+    },
+    "championPolicy": "base",
+    "theory": "帕累托极限合成策略：bounded 延续段（带台账标识符溯源与去重）+ compact 极简工程状态部件（消除双倍叠加与冗长说教）+ modular 按轮次动态提示词裁剪（节省 ~260 input tok/轮）+ birthAdaptiveFloor 动态水位触发器 + 飞轮偏好对蒸馏正反对比示范（In-Context DPO）",
+    "kind": "prompt",
+    "split": {
+      "eacces-config": "holdout",
+      "flaky-timeout": "dev",
+      "wrong-model": "holdout",
+      "perf-regression": "dev",
+      "sse-truncated": "dev"
+    },
+    "policy": "p-56e56fcd9c"
+  },
+  "pool": {
+    "digest": "ea7512a4e43a",
+    "size": 5,
+    "holdout": [
+      "eacces-config",
+      "wrong-model"
+    ],
+    "rotation": [
+      "eacces-config",
+      "flaky-timeout",
+      "wrong-model",
+      "perf-regression",
+      "sse-truncated"
+    ],
+    "dropped": [],
+    "warnings": [],
+    "policy": "base"
+  },
+  "pairs": [
+    {
+      "task": "eacces-config",
+      "split": "holdout",
+      "controlChars": 1921,
+      "candidateChars": 2349
+    },
+    {
+      "task": "flaky-timeout",
+      "split": "dev",
+      "controlChars": 3076,
+      "candidateChars": 2733
+    },
+    {
+      "task": "wrong-model",
+      "split": "holdout",
+      "controlChars": 2621,
+      "candidateChars": 2913
+    },
+    {
+      "task": "perf-regression",
+      "split": "dev",
+      "controlChars": 2396,
+      "candidateChars": 2588
+    },
+    {
+      "task": "sse-truncated",
+      "split": "dev",
+      "controlChars": 3204,
+      "candidateChars": 2933
+    }
+  ],
+  "offline": {
+    "table": [
+      {
+        "task": "eacces-config",
+        "arm": "control",
+        "composite": 0.9191,
+        "chars": 1921,
+        "rawComposite": 0.8333,
+        "dims": {
+          "locusHit": 1,
+          "nextDerivable": 1,
+          "deadEndsCarried": 0.6,
+          "keyFactsCarried": 0.6667,
+          "avoidLeak": 0,
+          "claimRisk": 0
+        }
+      },
+      {
+        "task": "eacces-config",
+        "arm": "policy=p-56e56fcd9c",
+        "composite": 0.7048,
+        "chars": 2349,
+        "delta": {
+          "locusHit": 0,
+          "nextDerivable": 0,
+          "deadEndsCarried": 0,
+          "keyFactsCarried": 0,
+          "avoidLeak": -1,
+          "claimRisk": 0,
+          "composite": -0.2143
+        },
+        "dims": {
+          "locusHit": 1,
+          "nextDerivable": 1,
+          "deadEndsCarried": 0.6,
+          "keyFactsCarried": 0.6667,
+          "avoidLeak": 1,
+          "claimRisk": 0
+        }
+      },
+      {
+        "task": "flaky-timeout",
+        "arm": "control",
+        "composite": 0.9167,
+        "chars": 3076,
+        "rawComposite": 0.6548,
+        "dims": {
+          "locusHit": 1,
+          "nextDerivable": 1,
+          "deadEndsCarried": 0.75,
+          "keyFactsCarried": 0.3333,
+          "avoidLeak": 0,
+          "claimRisk": 0
+        }
+      },
+      {
+        "task": "flaky-timeout",
+        "arm": "policy=p-56e56fcd9c",
+        "composite": 0.9405,
+        "chars": 2733,
+        "delta": {
+          "locusHit": 0,
+          "nextDerivable": 0,
+          "deadEndsCarried": 0,
+          "keyFactsCarried": 0.3334,
+          "avoidLeak": 0,
+          "claimRisk": 0,
+          "composite": 0.0238
+        },
+        "dims": {
+          "locusHit": 1,
+          "nextDerivable": 1,
+          "deadEndsCarried": 0.75,
+          "keyFactsCarried": 0.6667,
+          "avoidLeak": 0,
+          "claimRisk": 0
+        }
+      },
+      {
+        "task": "wrong-model",
+        "arm": "control",
+        "composite": 0.9167,
+        "chars": 2621,
+        "rawComposite": 0.5238,
+        "dims": {
+          "locusHit": 1,
+          "nextDerivable": 1,
+          "deadEndsCarried": 0.75,
+          "keyFactsCarried": 0.3333,
+          "avoidLeak": 0,
+          "claimRisk": 0
+        }
+      },
+      {
+        "task": "wrong-model",
+        "arm": "policy=p-56e56fcd9c",
+        "composite": 0.9167,
+        "chars": 2913,
+        "delta": {
+          "locusHit": 0,
+          "nextDerivable": 0,
+          "deadEndsCarried": 0,
+          "keyFactsCarried": 0,
+          "avoidLeak": 0,
+          "claimRisk": 0,
+          "composite": 0
+        },
+        "dims": {
+          "locusHit": 1,
+          "nextDerivable": 1,
+          "deadEndsCarried": 0.75,
+          "keyFactsCarried": 0.3333,
+          "avoidLeak": 0,
+          "claimRisk": 0
+        }
+      },
+      {
+        "task": "perf-regression",
+        "arm": "control",
+        "composite": 0.9405,
+        "chars": 2396,
+        "rawComposite": 0.5952,
+        "dims": {
+          "locusHit": 1,
+          "nextDerivable": 1,
+          "deadEndsCarried": 0.75,
+          "keyFactsCarried": 0.6667,
+          "avoidLeak": 0,
+          "claimRisk": 0
+        }
+      },
+      {
+        "task": "perf-regression",
+        "arm": "policy=p-56e56fcd9c",
+        "composite": 0.9167,
+        "chars": 2588,
+        "delta": {
+          "locusHit": 0,
+          "nextDerivable": 0,
+          "deadEndsCarried": 0,
+          "keyFactsCarried": -0.3334,
+          "avoidLeak": 0,
+          "claimRisk": 0,
+          "composite": -0.0238
+        },
+        "dims": {
+          "locusHit": 1,
+          "nextDerivable": 1,
+          "deadEndsCarried": 0.75,
+          "keyFactsCarried": 0.3333,
+          "avoidLeak": 0,
+          "claimRisk": 0
+        }
+      },
+      {
+        "task": "sse-truncated",
+        "arm": "control",
+        "composite": 0.8214,
+        "chars": 3204,
+        "rawComposite": 0.6071,
+        "dims": {
+          "locusHit": 1,
+          "nextDerivable": 1,
+          "deadEndsCarried": 0.25,
+          "keyFactsCarried": 0,
+          "avoidLeak": 0,
+          "claimRisk": 0
+        }
+      },
+      {
+        "task": "sse-truncated",
+        "arm": "policy=p-56e56fcd9c",
+        "composite": 0.8214,
+        "chars": 2933,
+        "delta": {
+          "locusHit": 0,
+          "nextDerivable": 0,
+          "deadEndsCarried": 0,
+          "keyFactsCarried": 0,
+          "avoidLeak": 0,
+          "claimRisk": 0,
+          "composite": 0
+        },
+        "dims": {
+          "locusHit": 1,
+          "nextDerivable": 1,
+          "deadEndsCarried": 0.25,
+          "keyFactsCarried": 0,
+          "avoidLeak": 0,
+          "claimRisk": 0
+        }
+      }
+    ],
+    "verdict": {
+      "arm": "policy=p-56e56fcd9c",
+      "tasks": 5,
+      "usable": 5,
+      "usableTasks": [
+        "eacces-config",
+        "flaky-timeout",
+        "wrong-model",
+        "perf-regression",
+        "sse-truncated"
+      ],
+      "degenerate": 0,
+      "infeasible": 0,
+      "meanDelta": -0.0429,
+      "harm": [
+        "eacces-config"
+      ],
+      "safe": false
+    },
+    "why": "override（--lever policy=…）；⚠ 离线裁决不安全：{\"usable\":5,\"harm\":[\"eacces-config\"],\"meanDelta\":-0.0429}"
+  },
+  "arms": [
+    {
+      "arm": "control",
+      "lever": null,
+      "value": null,
+      "tasks": 5,
+      "feasible": 5,
+      "degenerate": 0,
+      "usable": 5,
+      "chars": 13218,
+      "avgChars": 2644
+    },
+    {
+      "arm": "kItems=off",
+      "lever": "kItems",
+      "value": "off",
+      "tasks": 5,
+      "feasible": 5,
+      "degenerate": 0,
+      "usable": 5,
+      "chars": 11433,
+      "avgChars": 2287
+    },
+    {
+      "arm": "selection=balanced",
+      "lever": "selection",
+      "value": "balanced",
+      "tasks": 5,
+      "feasible": 5,
+      "degenerate": 1,
+      "usable": 4,
+      "chars": 12843,
+      "avgChars": 2569
+    },
+    {
+      "arm": "selection=strict",
+      "lever": "selection",
+      "value": "strict",
+      "tasks": 5,
+      "feasible": 5,
+      "degenerate": 1,
+      "usable": 4,
+      "chars": 12715,
+      "avgChars": 2543
+    },
+    {
+      "arm": "deadEnd=shelved",
+      "lever": "deadEnd",
+      "value": "shelved",
+      "tasks": 5,
+      "feasible": 5,
+      "degenerate": 0,
+      "usable": 5,
+      "chars": 13273,
+      "avgChars": 2655
+    },
+    {
+      "arm": "deadEnd=none",
+      "lever": "deadEnd",
+      "value": "none",
+      "tasks": 5,
+      "feasible": 5,
+      "degenerate": 0,
+      "usable": 5,
+      "chars": 12797,
+      "avgChars": 2559
+    },
+    {
+      "arm": "closing=off",
+      "lever": "closing",
+      "value": "off",
+      "tasks": 5,
+      "feasible": 5,
+      "degenerate": 0,
+      "usable": 5,
+      "chars": 12499,
+      "avgChars": 2500
+    },
+    {
+      "arm": "layout=conclusion-first",
+      "lever": "layout",
+      "value": "conclusion-first",
+      "tasks": 5,
+      "feasible": 5,
+      "degenerate": 0,
+      "usable": 5,
+      "chars": 13228,
+      "avgChars": 2646
+    },
+    {
+      "arm": "bind=off",
+      "lever": "bind",
+      "value": "off",
+      "tasks": 5,
+      "feasible": 5,
+      "degenerate": 5,
+      "usable": 0,
+      "chars": 13218,
+      "avgChars": 2644
+    },
+    {
+      "arm": "policy=p-56e56fcd9c",
+      "lever": "policy",
+      "value": "p-56e56fcd9c",
+      "tasks": 5,
+      "feasible": 5,
+      "degenerate": 0,
+      "usable": 5,
+      "chars": 13516,
+      "avgChars": 2703
+    }
+  ],
+  "plan": {
+    "digest": "f9a690c6bfbc5f7f5fc3261bac352a3d9e79709553921943f83a6cb113df6bbc",
+    "scope": "cfb.candidate-replay.2026-10-02.r7",
+    "jobs": 13,
+    "home": ".cfb-runtime/bounded-ab-v9/r7",
+    "receipt": "transfer/api-budget-approval-v9-r7.watermark.json",
+    "sourceDigest": "6f831adfff313009b19ccb128c16bfa401c327088bb8d83e815a7ccee654f0ae"
+  },
+  "preflight": "live-preflight-ready",
+  "cost": {
+    "requests": 13,
+    "main": 10,
+    "reservedUsd": 0.7704,
+    "expectedUsd": 0.387,
+    "perJob": [
+      {
+        "key": "probe",
+        "inputTokensRough": 89,
+        "outputTokensExpected": 64,
+        "expectedUsd": 0.0203
+      },
+      {
+        "key": "probe-r1",
+        "inputTokensRough": 89,
+        "outputTokensExpected": 64,
+        "expectedUsd": 0.0203
+      },
+      {
+        "key": "probe-r2",
+        "inputTokensRough": 89,
+        "outputTokensExpected": 64,
+        "expectedUsd": 0.0203
+      },
+      {
+        "key": "eacces-config|control|0",
+        "inputTokensRough": 2180,
+        "outputTokensExpected": 2500,
+        "expectedUsd": 0.0322
+      },
+      {
+        "key": "eacces-config|candidate|0",
+        "inputTokensRough": 2319,
+        "outputTokensExpected": 2500,
+        "expectedUsd": 0.0323
+      },
+      {
+        "key": "flaky-timeout|candidate|0",
+        "inputTokensRough": 2449,
+        "outputTokensExpected": 2500,
+        "expectedUsd": 0.0324
+      },
+      {
+        "key": "flaky-timeout|control|0",
+        "inputTokensRough": 2631,
+        "outputTokensExpected": 2500,
+        "expectedUsd": 0.0326
+      },
+      {
+        "key": "wrong-model|control|0",
+        "inputTokensRough": 2632,
+        "outputTokensExpected": 2500,
+        "expectedUsd": 0.0326
+      },
+      {
+        "key": "wrong-model|candidate|0",
+        "inputTokensRough": 2712,
+        "outputTokensExpected": 2500,
+        "expectedUsd": 0.0327
+      },
+      {
+        "key": "perf-regression|candidate|0",
+        "inputTokensRough": 2715,
+        "outputTokensExpected": 2500,
+        "expectedUsd": 0.0327
+      },
+      {
+        "key": "perf-regression|control|0",
+        "inputTokensRough": 2673,
+        "outputTokensExpected": 2500,
+        "expectedUsd": 0.0327
+      },
+      {
+        "key": "sse-truncated|control|0",
+        "inputTokensRough": 2887,
+        "outputTokensExpected": 2500,
+        "expectedUsd": 0.0329
+      },
+      {
+        "key": "sse-truncated|candidate|0",
+        "inputTokensRough": 2784,
+        "outputTokensExpected": 2500,
+        "expectedUsd": 0.0328
+      }
+    ],
+    "note": "预占是账本锁定的上限（JSON 字节 + 4096 输入界 × 8192 输出界）；实付按既往收据的中位完成 token 估，二者差 5–10 倍是正常的"
+  },
+  "info": {
+    "pairs": 5,
+    "expectedBits": 0.0827,
+    "usdPerBit": 4.6796
+  },
+  "posteriorBefore": {
+    "n": 23,
+    "wins": 5,
+    "losses": 4,
+    "ties": 14,
+    "alpha": 13,
+    "beta": 12,
+    "mean": 0.52,
+    "ci95": [
+      0.3282,
+      0.7088
+    ],
+    "pWin": 0.5806,
+    "decision": "continue",
+    "design": {
+      "adoptAt": 0.95,
+      "rejectAt": 0.1,
+      "prior": [
+        1,
+        1
+      ],
+      "maxPairs": 25,
+      "pairsPerRound": 5
+    }
+  },
+  "horizon": {
+    "p07": {
+      "pTrue": 0.7,
+      "tieRate": 0.1,
+      "sims": 400,
+      "cap": 60,
+      "medianPairs": 12,
+      "p90Pairs": 43,
+      "decisions": {
+        "adopt": 375,
+        "reject": 9,
+        "stop-undecided": 16
+      }
+    },
+    "p08": {
+      "pTrue": 0.8,
+      "tieRate": 0.1,
+      "sims": 400,
+      "cap": 60,
+      "medianPairs": 8,
+      "p90Pairs": 22,
+      "decisions": {
+        "adopt": 397,
+        "reject": 3,
+        "stop-undecided": 0
+      }
+    }
+  }
+}

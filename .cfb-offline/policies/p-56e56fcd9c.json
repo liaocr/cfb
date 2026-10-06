@@ -1,0 +1,77 @@
+{
+  "schema": "cfb.policy/1",
+  "parent": "base",
+  "base": "compress-v4d9",
+  "patches": [
+    {
+      "op": "exemplar",
+      "section": "contrastive",
+      "text": "基于飞轮百余组真实轨迹偏好对（胜出稿单点落定率 50% vs 落败稿多点发散/复述率 20%）的正反对比铁律：\n✗ 落败退化范式（禁止）：把原文中段讨论后放弃的第二文件或不改的相邻配置行塞进 old_text，或心算差值/把精确数字四舍五入凑整，或漏掉原文排除的具体代码分支/配置键与不重读目标文件的理由，或漏掉第四段「回放过了之后还有两件原文已经定下的事：…；以及…」及具体用例名/指标名/日志路径。\n✓ 胜出精炼范式（必须，总长控制在 750~1050 字）：「本轮增量把机理坐实：5432 open、8123 refused（数字全部逐字照抄原文，绝不心算或凑整）。已排除：调大 timeout 或另一配置键的路线，因为 30 s 是结果不是原因；已排除：改 net.yaml、新建临时复现脚本或用 cat/wc 重读 pool.js 的路线，因为第 1 轮已拿到完整文件且落点唯一。改法只落一个（仅当同一文件内末尾定下两处协同修改时写“改法分两处落地：① …（`done` 只留作标记不再参与）；② …”）：edit_file src/pool.js，old_text 是 `const port = 8123 // 旧端口`，new_text 是 `const port = cfg.port`，net.yaml 不动。验收是 bash `node scripts/ping-db.mjs; tail -n 3 logs/pool.log`，预期直接打印 connected 5432；耗时 30 s 不算证据。若仍 timeout：第一步只有一条，先确认改动落地并与上轮输出比差抓新信号，此时不要再改 pool.js、不要回滚；无新信号再跑预写取证。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。回放过了之后还有两件原文已经定下的事：确认验收命令跑改后全部目标指标（逐字写出各指标名与恢复数值）稳定恢复且未动已排除文件（若原文定了补测试则逐字写出测试文件路径与全部三条具体用例名）；以及保留不该动的配置键原值并汇总依据收工（若原文定了改脚本写日志则逐字写出脚本路径与两份日志路径落盘）。」"
+    }
+  ],
+  "config": {
+    "compressLocalModel": true,
+    "continuationPath": "bounded",
+    "programParts": "compact",
+    "promptMode": "modular",
+    "birthAdaptiveFloor": true
+  },
+  "rationale": "帕累托极限合成策略：bounded 延续段（带台账标识符溯源与去重）+ compact 极简工程状态部件（消除双倍叠加与冗长说教）+ modular 按轮次动态提示词裁剪（节省 ~260 input tok/轮）+ birthAdaptiveFloor 动态水位触发器 + 飞轮偏好对蒸馏正反对比示范（In-Context DPO）",
+  "prediction": "金标与任务池全轮（8/8）100% 过闸、0 逆向增补，单轮净省 Token 与真值密度效率分（truthEfficiency）同时达到帕累托全局最优",
+  "origin": {
+    "by": "synthesizer",
+    "parent": "base",
+    "contrastive": true
+  },
+  "status": "compiled",
+  "sides": {
+    "flaky-timeout": {
+      "text": "2 核 CI 下第 1 轮复现的 41 PASS / 9 FAIL 与 got 1703、1711、1720、1698、1706、1709、1715、1702、1712 一起把假设坐实：hedgeAfterMs 1600 只比主请求 1500 多 100ms，事件循环延迟时 1600ms 定时器先跑，primarySettled 还没置位。nproc CI=2、本地=16 也支持这个解释。已排除：改 src/distill.js 的 `primary.then(() => { primarySettled = true })`，因为根因是测试的 1600 与 1500 只差 100ms，余量不足，改测试即可；已排除：重读 test/hedge.selftest.mjs 或 src/distill.js，因为第 1 轮已拿到完整落点行且落点唯一。改法只落一个：edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（read_file test/hedge.selftest.mjs §4 的原样行，本轮输出里没有它，照用；不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`，src/distill.js 不动。\n\n验收是本轮一起发出的 bash `taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done' 2>&1 | tail -n 4`，预期 50 PASS 且无 §4 FAIL；仅 41 PASS / 9 FAIL 不算证据，因为那是第 1 轮改前的结果。若仍是 §4 FAIL：第一步只有一条，bash `grep -n \"hedgeAfterMs: 3000\" test/hedge.selftest.mjs` 确认改动落地；落地了，先把这次输出和上一轮失败的输出比差——输出里新出现的 got 数字（比如 1703 之外的）就是下一条取证的对象，grep 它；此时不要再改 test/hedge.selftest.mjs、不要再调 hedgeAfterMs、不要回滚；输出里没有新东西时才走这条：再看 src/distill.js 的 `primary.then(() => { primarySettled = true })` 这一行。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：确认 taskset -c 0,1 跑 test/hedge.selftest.mjs 改后 50 次全 PASS 且未动 src/distill.js；以及核对 test/hedge.selftest.mjs 改动落盘后汇总根因与改法收工。能说修好要三件事都在手：改动落地的证据（edit 回执加那条 grep）、50 PASS 无 §4 FAIL（原症状在原处消失）、这条观察是改后产生的（按程序附的新鲜度条款判）；现在能说的：改动已发出、结果未回，三件都拿到之前是已改未验证，拿到就收工。",
+      "chars": 1365,
+      "gate": true,
+      "gateReason": null,
+      "compiledChars": 2733,
+      "gen": 7
+    },
+    "wrong-model": {
+      "text": "本轮增量把机理坐实：trace 里 n12 是 deepseek-v3.2、compiler-transport-started 是 deepseek-v3.1、n13 是 deepseek-v3.2，v3.1 只出现在压缩那一路，和 lastModel 被跨会话复用对得上，主 llm-stream 没被污染这一点不改变落点。已排除：prewarm 那条 `fetch(prewarmTargetUrl(cfg))`，因为第 1 轮已确认它吃的是原始 cfg、不是这里的 callCfg；已排除：改 observe 签名或逐个改调用者，因为要动多处，且重读 src/host-follow.js 只会拿到同一行、落点已唯一。改法只落一个：edit_file src/host-follow.js，old_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`（第 1 轮 read_file src/host-follow.js 的原样行，本轮输出里不会再出现，照用；不带行首缩进也能匹配），new_text 是 `observe(options, n) { if (n && n.model) lastModel = n.model; else if (options && options.model) lastModel = options.model }`，`callConfig(options) { return { ...cfg, model: lastModel || cfg.model } }` 与 src/transport.js 都不动。\n\n验收是本轮一起发出的 bash `bash -lc 'node scripts/smoke-session.mjs >/dev/null 2>&1; grep -E \"llm-stream|compiler-transport-started|compiler-cache\" ~/.dsh/trace.log | tail -n 3'`，预期 compiler-transport-started 打出的 model 变成 deepseek-v3.2；只有 llm-stream 两行仍是 deepseek-v3.2 不算证据，因为那两行改前就是 v3.2、跟这次改动无关。若 compiler-transport-started 仍是 deepseek-v3.1：第一步只有一条，bash `grep -n \"observe(options, n)\" src/host-follow.js` 确认改动落地；落地了，先把这次输出和上一轮的 trace 比差——多出来的事件名、键或数字就是下一条取证的对象，grep 它的名字；此时不要再改 host-follow.js、不要动 lastModel、不要回滚；输出里没有新东西才走这条：看 src/plugin.js 里 `host.observe(options, n)` 那一处 n 是从哪个字段取的。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：确认 src/host-follow.js 改后 compiler-transport-started 打出 deepseek-v3.2 且未动 src/transport.js 的 `fetch(prewarmTargetUrl(cfg))`；以及保留 callConfig 里 `lastModel || cfg.model` 的回退不动作依据收工。能说修好要三件事都在手：改动落地的证据（edit 回执加那条 grep）、compiler-transport-started 打出 deepseek-v3.2（原症状在原处消失）、这条观察是改后产生的（按程序附的新鲜度条款判）；现在能说的：改动已改未验证，三件都拿到就收工。",
+      "chars": 1683,
+      "gate": true,
+      "gateReason": null,
+      "compiledChars": 2913,
+      "gen": 7
+    },
+    "eacces-config": {
+      "text": "本轮增量把改法发出：edit_file verify.mjs 的 env 行加上 CFB_REAL_DSH_HOME: tmp，验收命令一并发出 npm test 2>&1 | tail -n 6。已排除：改 test/birth.selftest.mjs 让它改用 DSH_HOME，因为落点没看过，且 verify.mjs 才是定义隔离约定的地方；已排除：直接 sudo chown 或删 /home/u/.dsh/storages/cot-form-b/trace.log，因为要动真实 home、可能没 sudo，而且治的是症状。改法只落一个：edit_file verify.mjs，old_text 是 `const env = { ...process.env, DSH_HOME: tmp }`（read_file verify.mjs 节选的原样行，不带行首缩进也能匹配），new_text 是 `const env = { ...process.env, DSH_HOME: tmp, CFB_REAL_DSH_HOME: tmp }`。\n\n验收是 bash `npm test 2>&1 | tail -n 6`，预期不再出现 `Error: EACCES: permission denied, open '/home/u/.dsh/storages/cot-form-b/trace.log'`。npm test 退出 0 不算证据，因为 verify.mjs 可能没把 env 传给子进程，原文说过如果 env 未传递，修改后测试仍失败，但可以再排查。若结果仍是 EACCES 或测试仍失败：第一步只有一条，bash `grep -R \"CFB_REAL_DSH_HOME\" -n verify.mjs test src; echo \"CFB_REAL_DSH_HOME=${CFB_REAL_DSH_HOME:-<unset>}\"` 确认改动落地；落地了，先把这次输出和上一轮失败的输出比差——输出里新出现的错误码、文件或数字就是下一条取证的对象，grep 它的名字；此时不要再改 verify.mjs、不要再改 test/birth.selftest.mjs、不要回滚；输出里没有新东西才走这条：bash `grep -n \"CFB_REAL_DSH_HOME\" test/birth.selftest.mjs` 看测试是否仍显式用它。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：确认 verify.mjs 改后 npm test 不再报 EACCES 且未动 test/birth.selftest.mjs；以及保留 ~/.bashrc 第14行手动调试注释与 CFB_REAL_DSH_HOME 原值不动，核对 verify.mjs 改动干净后汇总根因收工。能说修好要三件事都在手：改动落地的证据（有：edit 回执，缺：靠 bash `grep -R \"CFB_REAL_DSH_HOME\" -n verify.mjs test src` 补）、原症状在同等条件下消失（缺：靠 npm test 2>&1 | tail -n 6 的输出来补）、这条观察是改后产生的（缺：按程序附的新鲜度条款判）；现在能说的：改动已发出、未验证，三件都拿到之前是已改未验证，拿到就收工。",
+      "chars": 1430,
+      "gate": true,
+      "gateReason": null,
+      "compiledChars": 2349,
+      "gen": 9
+    },
+    "perf-regression": {
+      "text": "本轮增量把机理坐实：升级后 contentSpanMs p50 从 280 涨到 1650、outputChars p50 从 390 涨到 1720，而 ttfbMs p50 只有 610 / 640，promptVersion 两边都是 compress-v3h:250-450，说明变长发生在压缩目标之后；git diff v11.9..v11.10 -- src/config.js 里 compressTargetMax: 450, 变 compressTargetMax: 1800,，README 回滚开关表说 compressTargetMax 只影响 v3 的长度目标，这就是收网等待从 900ms 涨到 2400ms 的原因。已排除：改 maxOutputTokens 的路线，因为 390 chars 远够不到 850 token 上限，截断假设没有数值支撑；已排除：改另一文件、新建临时复现脚本或用 cat/wc 重读 src/config.js 的路线，因为 README 已说 compressTargetMax 只影响 v3 的长度目标，第 1 轮已拿到完整落点行，落点唯一。改法只落一个：edit_file src/config.js，old_text 是 `compressTargetMax: 1800,`（第 1 轮 git diff v11.9..v11.10 -- src/config.js 的 + 行，已去掉加号；本轮输出里没有它，照用；不带行首缩进也能匹配），new_text 是 `compressTargetMax: 450,`，maxOutputTokens 不动。\n\n验收先写下：验收是本轮一起发出的 bash `analyze-trace --last 30 --steps birth --fields contentSpanMs,outputChars,promptVersion,finishWaitMs`，预期 contentSpanMs p50 回到 280、outputChars p50 回到 390、finishWaitMs 从 2400ms 回落到 900ms；promptVersion 仍是 compress-v3h:250-450 不算证据，因为台账里它是未解的对不上的量，可能硬编码或没从配置读。若结果是 contentSpanMs 仍 1650 或 outputChars 仍 1720（验收不过）：第一步只有一条，bash `grep -n \"compressTargetMax\" src/config.js` 确认改动落地；落地了，先把这次输出和上一轮失败的输出比差——输出里新出现的事件名、键、文件、数字就是下一条取证的对象，grep 它；此时不要再改 src/config.js、不要再调 maxOutputTokens、不要回滚；输出里没有新东西时才走这条：如果验收输出里 outputChars 回到 390 但 finishWaitMs 仍 2400，那么假设不成立：收网等待不由输出长度直接决定，此时不要改 maxOutputTokens；看这次输出里 finishWaitMs 和 contentSpanMs 的数字，分辨等待发生在哪一段。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：确认 analyze-trace 跑 src/config.js 改后 contentSpanMs p50 回到 280、outputChars p50 回到 390、finishWaitMs 回落且未动 maxOutputTokens；以及核对 src/config.js 改动落盘后汇总根因与改法收工。能说修好要三件事都在手：改动落地的证据（edit 回执加那条 grep）、contentSpanMs p50 280 且 outputChars p50 390（原症状在原处消失）、这条观察是改后产生的（analyze-trace 按程序附的新鲜度条款判）；现在能说的：改动已定、未落地，三件都拿到之前是已改未验证，拿到就收工。",
+      "chars": 1738,
+      "gate": true,
+      "gateReason": null,
+      "compiledChars": 2588,
+      "gen": 10
+    },
+    "sse-truncated": {
+      "text": "本轮已按第 1 轮定的改法落地 edit_file src/transport.js，并一起发出验收 bash。已排除：改 `src/birth.js` 的写会话分支，因为 `res.ok` 的 true 来自 `assembleSseFrames` 回退的 `finish`，改调用方要动多处且不治根；已排除：改 trace 的 `ok` 计算或重读 `src/transport.js`，因为 trace 的 `ok` 不决定写会话，且第 1 轮 read_file 已拿到完整落点行。改法只落一个：edit_file src/transport.js，old_text 是 `return { out, finish: finish || (done ? 'stop' : null) }`（第 1 轮 read_file src/transport.js 节选的原样行，本轮输出里没有它，照用；不带行首缩进也能匹配），new_text 是 `return { out, finish: finish || null }`，`src/birth.js` 不动。\n\n验收先写下：验收是本轮一起发出的 bash `node test/transport.selftest.mjs; grep -E \"compiler-transport-settled|birth-condensed|birth-passthrough\" ~/.dsh/trace.log | tail -n 2`，预期 `transport.selftest` 通过，grep 出的最新 `compiler-transport-settled` 行 `finish` 为 `null`，且不再出现因仅有 `[DONE]` 而写会话的 `birth-condensed`；trace 里 `ok:true` 不算证据，因为 `ok` 计算是 `r.finish != null || r.out.length > 0`，仅 `[DONE]` 时仍可能为 true。若结果是验收不过（仍出现 `birth-condensed` 且 `finish:null`）：第一步只有一条，`bash -lc 'grep -n \"finish || null\" src/transport.js'` 确认改动落地；落地了，先把这次输出和上一轮失败的输出比差——输出里新出现的事件名/键/文件/数字就是下一条取证的对象，grep 它；此时不要再改 `src/transport.js`、不要再调数字、不要回滚；输出里没有新东西时才走这条：看 `src/transport.js` 第 233 行的 `return { ok: r.finish === 'stop', text: r.out }` 是否还依赖 `'stop'`。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：确认 `src/transport.js` 改后 `assembleSseFrames` 对仅 `[DONE]` 返回 `finish:null` 且未动 `src/birth.js`；以及核对 `src/transport.js` 改动落盘并汇总根因与改法收工。能说修好要三件事都在手：改动落地的证据（edit 回执加那条 grep）、原症状在同等条件下消失（`birth-condensed` 不再在无真实 `finish_reason` 时写会话）、这条观察是改后产生的（按程序附的新鲜度条款判）；现在能说的：改动已发出、未验证，三件都拿到之前是已改未验证，拿到就收工。",
+      "chars": 1528,
+      "gate": true,
+      "gateReason": null,
+      "compiledChars": 2933,
+      "gen": 11
+    }
+  },
+  "id": "p-56e56fcd9c",
+  "at": "2026-10-06T03:56:07.687Z",
+  "compiled": {
+    "covered": 5,
+    "of": 5,
+    "poolDigest": "ea7512a4e43a",
+    "at": "2026-10-06T07:19:41.352Z"
+  }
+}

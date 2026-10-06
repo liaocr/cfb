@@ -1,0 +1,7 @@
+{
+  "inputUsdPerMillion": 1,
+  "outputUsdPerMillion": 4,
+  "requestFeeUsd": 0.02,
+  "source": "https://api.a6api.com/pricing",
+  "verifiedAt": "2026-10-06"
+}

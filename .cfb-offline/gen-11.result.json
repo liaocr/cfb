@@ -1,0 +1,35 @@
+{
+  "schema": "cfb.gen-result/1",
+  "at": "2026-10-06T07:19:41.352Z",
+  "gen": 11,
+  "role": "compile",
+  "outputs": 1,
+  "written": [
+    ".cfb-offline/policies/p-56e56fcd9c.json"
+  ],
+  "rejected": [],
+  "policy": "p-56e56fcd9c",
+  "sides": {
+    "flaky-timeout": {
+      "chars": 1365,
+      "gate": true
+    },
+    "wrong-model": {
+      "chars": 1683,
+      "gate": true
+    },
+    "eacces-config": {
+      "chars": 1430,
+      "gate": true
+    },
+    "perf-regression": {
+      "chars": 1738,
+      "gate": true
+    },
+    "sse-truncated": {
+      "chars": 1528,
+      "gate": true
+    }
+  },
+  "status": "compiled"
+}

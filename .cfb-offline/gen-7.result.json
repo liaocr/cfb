@@ -1,0 +1,23 @@
+{
+  "schema": "cfb.gen-result/1",
+  "at": "2026-10-06T07:10:15.480Z",
+  "gen": 7,
+  "role": "compile",
+  "outputs": 2,
+  "written": [
+    ".cfb-offline/policies/p-56e56fcd9c.json"
+  ],
+  "rejected": [],
+  "policy": "p-56e56fcd9c",
+  "sides": {
+    "flaky-timeout": {
+      "chars": 1365,
+      "gate": true
+    },
+    "wrong-model": {
+      "chars": 1683,
+      "gate": true
+    }
+  },
+  "status": "partial"
+}

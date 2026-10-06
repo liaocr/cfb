@@ -1,0 +1,23 @@
+{
+  "schema": "cfb.traj-receipt/1",
+  "plan": "t105",
+  "digest": "ffa376fd2fc58b8f",
+  "at": "2026-10-06T03:55:49.115Z",
+  "trajectories": 2,
+  "errors": 0,
+  "awaiting": 0,
+  "mainCalls": 4,
+  "compressCalls": 1,
+  "handDrafts": 0,
+  "shadowRounds": 4,
+  "noContrastGroups": 1,
+  "extended": 0,
+  "reusedRaw": 0,
+  "fpModes": {},
+  "preflights": 1,
+  "promptTokens": 9218,
+  "gateFails": 0,
+  "completionTokens": 5139,
+  "estimatedUsd": 0.058,
+  "stoppedEarly": "预算上界 $0.08 已到（估 $0.108）"
+}

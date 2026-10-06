@@ -1,0 +1,95 @@
+{
+  "schema": "cfb.confirm/1",
+  "at": "2026-10-06T04:06:08.718Z",
+  "source": ".cfb-runtime/traj/t107/results.jsonl",
+  "map": {
+    "champion": "policy:p-1490eefcdf",
+    "previous": "raw"
+  },
+  "cmp": {
+    "previous": {
+      "n": 1,
+      "solved": 0,
+      "meanRoundsToFix": null,
+      "falseClaims": 0,
+      "verified": 0,
+      "repeats": 0
+    },
+    "champion": {
+      "n": 1,
+      "solved": 1,
+      "meanRoundsToFix": 4,
+      "falseClaims": 0,
+      "verified": 1,
+      "repeats": 0
+    },
+    "pairs": [
+      {
+        "task": "flaky-timeout",
+        "unit": "flaky-timeout",
+        "sample": 0,
+        "outcome": "win",
+        "champion": {
+          "solved": true,
+          "roundsToFix": 4,
+          "rounds": 4,
+          "startRound": 1,
+          "fromState": null,
+          "calls": 9,
+          "repeats": 0,
+          "falseClaim": false,
+          "verifiedAfterFix": true,
+          "claimJustified": true,
+          "cleanFinish": false,
+          "promptTokens": 2548
+        },
+        "previous": {
+          "solved": false,
+          "roundsToFix": null,
+          "rounds": 4,
+          "startRound": 1,
+          "fromState": null,
+          "calls": 9,
+          "repeats": 0,
+          "falseClaim": false,
+          "verifiedAfterFix": false,
+          "claimJustified": true,
+          "cleanFinish": false,
+          "promptTokens": 6170
+        }
+      }
+    ],
+    "e": 1.5,
+    "eReject": 0.5,
+    "winRatio": null,
+    "netBenefit": 1,
+    "method": "hierarchical-GPC(solved>roundsToFix>falseClaim>verified)"
+  },
+  "validity": [
+    {
+      "schema": "cfb.validity-pair/1",
+      "at": "2026-10-06T04:06:08.717Z",
+      "task": "flaky-timeout",
+      "arm": "previous",
+      "sample": 0,
+      "proxy": 1.75,
+      "outcome": 0,
+      "roundsToFix": null
+    },
+    {
+      "schema": "cfb.validity-pair/1",
+      "at": "2026-10-06T04:06:08.717Z",
+      "task": "flaky-timeout",
+      "arm": "champion",
+      "sample": 0,
+      "proxy": 2,
+      "outcome": 1,
+      "roundsToFix": 4
+    }
+  ],
+  "verdict": "report-only",
+  "championBefore": null,
+  "championAfter": null,
+  "validityAppended": 2,
+  "validityDuplicates": 0
+}

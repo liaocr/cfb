@@ -1,0 +1,154 @@
+{
+  "schema": "cfb.cycle-result/3",
+  "at": "2026-10-06T07:29:12.451Z",
+  "round": 5,
+  "key": "policy=p-56e56fcd9c@bbb939e0",
+  "pairs": [
+    {
+      "task": "eacces-config",
+      "sample": 0,
+      "outcome": "tie",
+      "candidate": 2,
+      "control": 2,
+      "candidateAction": "grep",
+      "controlAction": "grep",
+      "split": "holdout"
+    },
+    {
+      "task": "wrong-model",
+      "sample": 0,
+      "outcome": "loss",
+      "candidate": 1,
+      "control": 2,
+      "candidateAction": "grep",
+      "controlAction": "grep",
+      "split": "holdout"
+    },
+    {
+      "task": "perf-regression",
+      "sample": 0,
+      "outcome": "tie",
+      "candidate": 2,
+      "control": 2,
+      "candidateAction": "grep",
+      "controlAction": "grep",
+      "split": "dev"
+    },
+    {
+      "task": "sse-truncated",
+      "sample": 0,
+      "outcome": "tie",
+      "candidate": 2,
+      "control": 2,
+      "candidateAction": "fresh-rerun",
+      "controlAction": "fresh-rerun",
+      "split": "dev"
+    }
+  ],
+  "posterior": {
+    "n": 18,
+    "wins": 5,
+    "losses": 4,
+    "ties": 9,
+    "pWin": 0.5903,
+    "mean": 0.525,
+    "ci95": [
+      0.3115,
+      0.7337
+    ],
+    "bitsBought": 0.0237,
+    "nextPairBits": 0.0221
+  },
+  "v3": {
+    "dev": {
+      "n": 11,
+      "wins": 3,
+      "losses": 3,
+      "ties": 5,
+      "alpha": 6.5,
+      "beta": 6.5,
+      "mean": 0.5,
+      "ci95": [
+        0.243,
+        0.757
+      ],
+      "pWin": 0.5,
+      "decision": "continue",
+      "design": {
+        "adoptAt": 0.95,
+        "rejectAt": 0.1,
+        "prior": [
+          1,
+          1
+        ],
+        "maxPairs": 25,
+        "pairsPerRound": 5
+      }
+    },
+    "holdout": {
+      "n": 7,
+      "wins": 2,
+      "losses": 1,
+      "ties": 4,
+      "alpha": 5,
+      "beta": 4,
+      "mean": 0.5556,
+      "ci95": [
+        0.2449,
+        0.843
+      ],
+      "pWin": 0.6367,
+      "decision": "continue",
+      "design": {
+        "adoptAt": 0.95,
+        "rejectAt": 0.1,
+        "prior": [
+          1,
+          1
+        ],
+        "maxPairs": 25,
+        "pairsPerRound": 5
+      }
+    },
+    "holdoutRecord": {
+      "tasks": 2,
+      "won": 1,
+      "lost": 0,
+      "even": 1
+    },
+    "nEff": 10.11,
+    "replicatesPerTask": [
+      3,
+      3,
+      4,
+      4,
+      4
+    ],
+    "why": "还缺：留出 e 值 0.917 < 10（还需连胜 ≈ 6 场留出）；全部 e 值 0.506 < 10",
+    "e": {
+      "all": 0.506,
+      "holdout": 0.917,
+      "reject": 0.306
+    },
+    "thresholds": {
+      "adopt": 10,
+      "reject": 10
+    },
+    "gap": {
+      "gap": -0.143,
+      "devNet": 0,
+      "holdoutNet": 0.143,
+      "flag": "ok",
+      "note": "Ladder（Blum–Hardt 2015）：留出只通过「采纳 / 否决」这一比特泄漏，更新次数 O(log k)；e 值已是显著性阶梯，这里只报 dev 过度乐观的迹象"
+    },
+    "icc": 0.3,
+    "iccSource": "default"
+  },
+  "decision": "continue",
+  "calibration": null,
+  "championChange": null,
+  "flywheelPairs": 1,
+  "reservedUsd": 0.7131,
+  "ingestedFrom": "ledger",
+  "complete": false
+}

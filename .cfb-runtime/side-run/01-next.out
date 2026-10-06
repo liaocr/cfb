@@ -1,0 +1,4 @@
+【智能导航 next】阶段：mode1-awaiting-draft（优先级 P0，预计花费 ≈ $0）
+  原因：有 10 份 Mode 1 手写稿等待完成（eacces-config#r5, eacces-config#r5, flaky-timeout#r4, flaky-timeout#r5, perf-regression#r7, perf-regression#r7, sse-truncated#r4, sse-truncated#r3, wrong-model#r4, wrong-model#r4）
+  执行：
+    node tools/traj-run.mjs --plan .cfb-runtime/traj/t100/plan.json --store-text --variants raw,hand --only eacces-config,sse-truncated,perf-regression,flaky-timeout,wrong-model --samples 2 --max-rounds 8 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t100
