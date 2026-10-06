@@ -1,0 +1,40 @@
+{
+  "authorityId": "6bf15af56d96aabdae158d45502fc1e6502d9a50e01b8f67b6f1ff04b6281fc4",
+  "digest": "e31aea527d23659dce7f8b55c3e3121ba70504153422d8e2c1b3538fd311a8da",
+  "halted": "api-sample-failure-budget",
+  "jobs": [
+    {
+      "key": "probe",
+      "kind": "probe",
+      "reservedNano": 28674000,
+      "status": "accepted"
+    },
+    {
+      "key": "compile|eacces-config",
+      "kind": "main",
+      "reservedNano": 71317000,
+      "status": "accepted"
+    },
+    {
+      "key": "compile|perf-regression",
+      "kind": "main",
+      "reason": "response-incomplete",
+      "reservedNano": 64990000,
+      "status": "rejected"
+    },
+    {
+      "key": "compile|sse-truncated",
+      "kind": "main",
+      "reason": "response-incomplete",
+      "reservedNano": 72040000,
+      "status": "rejected"
+    }
+  ],
+  "planDigest": "636f38e82683aa79d433c8854eb058570ee174e89d4d6bfce04c0dde99faf66d",
+  "requests": 4,
+  "reservedNano": 237021000,
+  "revision": "006c51fe706392f2e59365a51721ab7911397b5b322e1c98395e1389067e5dc6",
+  "schema": "cfb.api-watermark/1",
+  "scope": "cfb.generation.2026-10-02.g9",
+  "sequence": 9
+}

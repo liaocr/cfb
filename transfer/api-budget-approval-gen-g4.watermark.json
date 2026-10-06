@@ -1,0 +1,21 @@
+{
+  "authorityId": "c98a1db122f20a07b08caa45165128c4a1e42f0b1b549d19f715f7b62bf185ae",
+  "digest": "c689b49602de27d20fd768a5b1e015a1b7a5686fe17f467e9e78149502dce976",
+  "halted": "response-incomplete",
+  "jobs": [
+    {
+      "key": "probe",
+      "kind": "probe",
+      "reason": "response-incomplete",
+      "reservedNano": 26625000,
+      "status": "rejected"
+    }
+  ],
+  "planDigest": "7ce198d01fa3f17e2ec90e40d258f687ce07426539f36598dbc7ecf5dfb770a0",
+  "requests": 1,
+  "reservedNano": 26625000,
+  "revision": "9ecba57b277b961f13abfc229db14d7ec88590eae645a8cec2492dc0fbb56d2b",
+  "schema": "cfb.api-watermark/1",
+  "scope": "cfb.generation.2026-10-02.g4",
+  "sequence": 3
+}

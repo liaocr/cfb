@@ -1,0 +1,80 @@
+{
+  "authorityId": "b708339a306f7e81023ead730f7abdb6bb7e02ba00d854b2b768d48529279c13",
+  "digest": "93a779525796476af98a869e2bb1345a22c9c8e32c24daf84f9b33caf26ec958",
+  "halted": null,
+  "jobs": [
+    {
+      "key": "probe",
+      "kind": "probe",
+      "reservedNano": 28674000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|control|0",
+      "kind": "main",
+      "reservedNano": 66561000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|candidate|0",
+      "kind": "main",
+      "reservedNano": 67075000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|candidate|0",
+      "kind": "main",
+      "reservedNano": 68017000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|control|0",
+      "kind": "main",
+      "reservedNano": 68936000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|control|0",
+      "kind": "main",
+      "reservedNano": 68366000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|candidate|0",
+      "kind": "main",
+      "reservedNano": 68610000,
+      "status": "accepted"
+    },
+    {
+      "key": "perf-regression|candidate|0",
+      "kind": "main",
+      "reservedNano": 69244000,
+      "status": "accepted"
+    },
+    {
+      "key": "perf-regression|control|0",
+      "kind": "main",
+      "reservedNano": 69162000,
+      "status": "accepted"
+    },
+    {
+      "key": "sse-truncated|control|0",
+      "kind": "main",
+      "reservedNano": 69427000,
+      "status": "accepted"
+    },
+    {
+      "key": "sse-truncated|candidate|0",
+      "kind": "main",
+      "reservedNano": 68994000,
+      "status": "accepted"
+    }
+  ],
+  "planDigest": "3b856795b5d62c010feb1481924cb8a7fbc0ef6eb3167cf53617a699bf42f027",
+  "requests": 11,
+  "reservedNano": 713066000,
+  "revision": "1a0d8dd66476fa8e29310bbe0406522e1d562e8129b196c8f6253356fad406a7",
+  "schema": "cfb.api-watermark/1",
+  "scope": "cfb.candidate-replay.2026-10-02.r3",
+  "sequence": 23
+}
