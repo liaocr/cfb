@@ -785,13 +785,19 @@ export function buildMicroDataset() {
       // 同一真值的可比稿池（2026-10-06，用户批准的「第 3 步」扩量）：没生产闸的那一份也测 dd 分数，但只允许当**败者**候选；
       // 胜者必须是 self-contained + 闸过 + 内容审计 clean 的那一份。判分口径不变：还是同一个 draftDistance(stored, gold.hand)，
       // 门槛还是同一个 0.05，平手与「败者分数更高」一律不签。
+      const mkPairPref = (txt) => {
+        try {
+          const hy = buildGroundedHay(rawText || g.raw || '', ctxText || g.ctx || '')
+          return extractDraftPrefFeatures(txt, rawText || g.raw || '', ctxText || g.ctx || '', hy.anchors)
+        } catch { return null }
+      }
       if (g && storedText && !acceptedByCaptureGates) {
         try {
           const dl = draftDistance(storedText, g.hand, { raw: rawText || g.raw || '', ctx: ctxText || g.ctx || '', calls: s0.callsThisRound || [] })
-          if (Number.isFinite(dl.score)) pairwiseCandidates.push({ id: s0.id, task: s0.task, round: s0.round, family: captureFamily, stored: storedText, gateOk: !!(s0.gate && s0.gate.ok === true), accepted: false, score: dl.score })
+          if (Number.isFinite(dl.score)) pairwiseCandidates.push({ id: s0.id, task: s0.task, round: s0.round, family: captureFamily, stored: storedText, gateOk: !!(s0.gate && s0.gate.ok === true), accepted: false, score: dl.score, pref: mkPairPref(storedText) })
         } catch { /* 稿子不可解析 ⇒ 不进配对池 */ }
       } else if (g && storedText && acceptedByCaptureGates && distance && Number.isFinite(distance.score)) {
-        pairwiseCandidates.push({ id: s0.id, task: s0.task, round: s0.round, family: captureFamily, stored: storedText, gateOk: gateOkNow, accepted: true, score: distance.score })
+        pairwiseCandidates.push({ id: s0.id, task: s0.task, round: s0.round, family: captureFamily, stored: storedText, gateOk: gateOkNow, accepted: true, score: distance.score, pref: mkPairPref(storedText) })
       }
       const rev = s0.revision ? { prevId: s0.revision.prevId, added: (s0.revision.added || []).slice(0, 8), removed: (s0.revision.removed || []).slice(0, 8), addedChars: s0.revision.addedChars, removedChars: s0.revision.removedChars } : null
       let trainableTargetsAdded = 0
@@ -831,6 +837,9 @@ export function buildMicroDataset() {
       const uniq = [...new Map(rows.map((r) => [r.stored.trim(), r])).values()]
       for (const a of uniq) for (const b of uniq) {
         if (a === b || !a.accepted) continue
+        // 缺任一侧 pref 向量就不能入集：Python/JS parity（kaggle-train-micro.py:1336-1344）要求每条
+        // train-eligible 对都有两侧「已审草稿特征向量」，否则整条训练链在 Stage 5 直接 raise。
+        if (!a.pref || !b.pref) continue
         const margin = +(a.score - b.score).toFixed(4)
         if (!(margin >= 0.05)) continue
         const audit = auditMode1Pair({ chosenText: a.stored, rejectedText: b.stored }, { reviewer: 'micro-dataset-pairwise-capture/1' })
@@ -838,11 +847,14 @@ export function buildMicroDataset() {
         const dk = `${a.id}>${b.id}`
         if (seen.has(dk)) continue
         seen.add(dk)
+        const side = (t) => crypto.createHash('sha256').update(t).digest('hex').slice(0, 8)
         pairwiseCapturePairs.push({
-          id: `pairwise::${a.id}>${b.id}`, sourceId: a.id, family: a.family, split: 'dev',
+          // 同一 s0.id 的两次修订文本不同但 id 相同 ⇒ 必须带上两侧文本哈希，否则 pairwise::X>X 会撞 id
+          id: `pairwise::${a.id}>${b.id}#${side(a.stored)}-${side(b.stored)}`, sourceId: a.id, family: a.family, split: 'dev',
           negType: 'pairwise_capture_real',
           description: '同一 task 同一轮的两次手写稿，按本地 draftDistance 分数定向（胜者须过生产闸且内容审计 clean）',
           chosenText: a.stored, rejectedText: b.stored, contentAudit: audit,
+          chosenPref: a.pref, rejectedPref: b.pref,
           chosenScore: a.score, rejectedScore: b.score, scoreMargin: margin,
           rejectedGateOk: !!b.gateOk,
           trainingEligible: true,
@@ -862,6 +874,27 @@ export function buildMicroDataset() {
     return { files, samples: samples.length, withDraft, skippedNonDevSamples, gateOk, gateFail, productionFail, revisions, distances, droppedQuality, droppedNotSelfContained, captureGatesAccepted, connectedToTrainingTarget, preferencePairs, trainEligiblePreferencePairs: preferencePairs.filter((pair) => pair.trainingEligible === true).length, pairwiseCapturePairs: pairwiseCapturePairs.length, distanceMean: Object.fromEntries(Object.entries(distBy).map(([k, v]) => [k, mean(v)])), items: items.slice(-200) }
   })()
   stepSimpoPairs.push(...handCapture.preferencePairs)
+
+  // 2026-10-06：Kaggle 首跑崩在 Stage 5 之后的复盘补的两条硬约束。
+  //   (1) 每条 train-eligible 对都必须带两侧「已审草稿特征向量」，否则 kaggle-train-micro.py:1336-1344
+  //       组不出 parity fixture，整条链在 Stage 5 raise ⇒ 这里 fail-closed：缺向量的对一律不可训练。
+  //   (2) 入集判据看的是硬闸，可学性看的是特征：两侧 pref 向量逐维相同（L1=0）的对，偏好头无论怎么训
+  //       都分不开，留在训练集里只会把 γ_dd 目标压向 0 ⇒ 摘出可训练集（行保留、原因写进 labelAudit）。
+  //   两条都只会**减少**可训练量，不可能把它灌大。
+  for (const pair of stepSimpoPairs) {
+    if (pair.trainingEligible !== true) continue
+    const a = pair.chosenPref, b = pair.rejectedPref
+    if (!a || !b || typeof a !== 'object' || typeof b !== 'object') {
+      pair.trainingEligible = false
+      pair.labelAudit = { ...(pair.labelAudit || {}), status: 'needs-review', reason: 'missing-audited-draft-feature-vector' }
+      continue
+    }
+    let l1 = 0
+    for (const key of Object.keys(a)) l1 += Math.abs(Number(a[key]) - Number(b[key] ?? 0))
+    if (l1 >= 1e-9) continue
+    pair.trainingEligible = false
+    pair.labelAudit = { ...(pair.labelAudit || {}), status: 'needs-review', reason: 'pref-vector-degenerate-no-visible-difference' }
+  }
 
   const dataset = {
     schema: 'cfb.micro-dev-dataset/3',
