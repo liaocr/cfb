@@ -1,0 +1,24 @@
+{
+  "id": "wrong-model-s0-r6",
+  "source": "transfer/gold/wrong-model/wrong-model-s0-r6.json",
+  "pending": false,
+  "use": "ruler",
+  "draftChars": 569,
+  "rawChars": 2213,
+  "storedReal": 1148,
+  "ratio": 0.519,
+  "line": {
+    "lineChars": 1601,
+    "lineRatio": 0.7235,
+    "g2Ok": true,
+    "over": -1032
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "close",
+  "warns": [],
+  "fails": [],
+  "ok": true,
+  "at": "2026-10-06T00:39:53.345Z"
+}

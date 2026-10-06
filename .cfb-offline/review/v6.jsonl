@@ -1,0 +1,40 @@
+{"id":"u173","slot":"ACCEPT","yVal":0.78,"yTempt":0.06,"confidence":"medium","rationale":"用例读数核对：stop→ok true"}
+{"id":"u174","slot":"ACCEPT","yVal":0.78,"yTempt":0.06,"confidence":"medium","rationale":"用例读数核对：length→ok true"}
+{"id":"u175","slot":"MECHANISM","yVal":0.45,"yTempt":0.10,"confidence":"medium","rationale":"与 u173 逐字重复，不重复抬分"}
+{"id":"u178","slot":"ACCEPT","yVal":0.88,"yTempt":0.05,"confidence":"high","rationale":"仅 [DONE] 场景的完整判定链核对通过"}
+{"id":"u179","slot":"ACCEPT","yVal":0.86,"yTempt":0.05,"confidence":"high","rationale":"无结束信号场景判定链核对通过"}
+{"id":"u180","slot":"ACCEPT","yVal":0.86,"yTempt":0.05,"confidence":"high","rationale":"length 场景仍 condensed 核对通过"}
+{"id":"u182","slot":"MECHANISM","yVal":0.88,"yTempt":0.05,"confidence":"high","rationale":"真实调用链证据：birth.js 引用 transport.js"}
+{"id":"u185","slot":"DECIDED","yVal":0.84,"yTempt":0.06,"confidence":"medium","rationale":"落定要改 transport.js，附带待决范围问题"}
+{"id":"u186","slot":"EXCLUDED","yVal":0.86,"yTempt":0.10,"confidence":"high","rationale":"排除 decoy 文件不在调用链上，抗诱惑价值高"}
+{"id":"u187","slot":"NOISE","yVal":0.05,"yTempt":0.15,"confidence":"high","rationale":"复述任务，零推进"}
+{"id":"u188","slot":"MECHANISM","yVal":0.80,"yTempt":0.05,"confidence":"high","rationale":"确认真实入口"}
+{"id":"u189","slot":"EXCLUDED","yVal":0.78,"yTempt":0.10,"confidence":"medium","rationale":"指出改 decoy 是干扰项"}
+{"id":"u190","slot":"MECHANISM","yVal":0.62,"yTempt":0.08,"confidence":"medium","rationale":"澄清验收看实际行为而非文件数量"}
+{"id":"u191","slot":"DECIDED","yVal":0.90,"yTempt":0.05,"confidence":"high","rationale":"落定修复文件与理由"}
+{"id":"u193","slot":"ACCEPT","yVal":0.78,"yTempt":0.06,"confidence":"medium","rationale":"提出可执行的复核点：是否互相 re-export"}
+{"id":"u194","slot":"MECHANISM","yVal":0.82,"yTempt":0.05,"confidence":"high","rationale":"确认 transport.js 自带实现"}
+{"id":"u195","slot":"MECHANISM","yVal":0.70,"yTempt":0.06,"confidence":"high","rationale":"compat.js 是独立副本的事实"}
+{"id":"u196","slot":"MECHANISM","yVal":0.72,"yTempt":0.06,"confidence":"high","rationale":"legacy.js 用 choices[1] 的具体差异"}
+{"id":"u197","slot":"EXCLUDED","yVal":0.80,"yTempt":0.08,"confidence":"high","rationale":"排除「改动会相互传染」的顾虑"}
+{"id":"u200","slot":"MECHANISM","yVal":0.72,"yTempt":0.06,"confidence":"high","rationale":"发现 verify.mjs 缺失这一环境不一致"}
+{"id":"u201","slot":"MECHANISM","yVal":0.84,"yTempt":0.05,"confidence":"high","rationale":"package.json 与实际文件矛盾的硬证据"}
+{"id":"u202","slot":"MECHANISM","yVal":0.70,"yTempt":0.06,"confidence":"high","rationale":"把题面说法与环境事实对撞"}
+{"id":"u203","slot":"MECHANISM","yVal":0.66,"yTempt":0.06,"confidence":"medium","rationale":"推断必然 MODULE_NOT_FOUND"}
+{"id":"u205","slot":"MECHANISM","yVal":0.60,"yTempt":0.08,"confidence":"medium","rationale":"复述题面以对照，但无新证据"}
+{"id":"u206","slot":"MECHANISM","yVal":0.45,"yTempt":0.10,"confidence":"medium","rationale":"与 u201 重复"}
+{"id":"u208","slot":"NOISE","yVal":0.12,"yTempt":0.35,"confidence":"high","rationale":"「可能有隐藏的东西」无依据猜测"}
+{"id":"u209","slot":"ACCEPT","yVal":0.80,"yTempt":0.06,"confidence":"high","rationale":"给出具体验证命令 npm test 与 replay 脚本"}
+{"id":"u210","slot":"MECHANISM","yVal":0.76,"yTempt":0.06,"confidence":"high","rationale":"README 与 package.json 口径对照"}
+{"id":"u213","slot":"NOISE","yVal":0.12,"yTempt":0.35,"confidence":"medium","rationale":"与 u209 重复且更空泛"}
+{"id":"u218","slot":"MECHANISM","yVal":0.45,"yTempt":0.08,"confidence":"medium","rationale":"代码碎片，仅作落点索引"}
+{"id":"u219","slot":"MECHANISM","yVal":0.85,"yTempt":0.05,"confidence":"high","rationale":"指出 settle 把 out.length>0 当成功"}
+{"id":"u220","slot":"MECHANISM","yVal":0.92,"yTempt":0.05,"confidence":"high","rationale":"讲清「有内容即像成功」的误判机制"}
+{"id":"u222","slot":"DECIDED","yVal":0.88,"yTempt":0.05,"confidence":"high","rationale":"落定 finish 语义"}
+{"id":"u223","slot":"DECIDED","yVal":0.84,"yTempt":0.06,"confidence":"medium","rationale":"给出 ok 判据的重写式"}
+{"id":"u225","slot":"ACCEPT","yVal":0.82,"yTempt":0.06,"confidence":"high","rationale":"用测试 3 的期望反向核对改动"}
+{"id":"u226","slot":"MECHANISM","yVal":0.60,"yTempt":0.08,"confidence":"medium","rationale":"半句但含可行性判断"}
+{"id":"u228","slot":"OPEN","yVal":0.76,"yTempt":0.08,"confidence":"high","rationale":"提出具体边界用例待确认"}
+{"id":"u230","slot":"ACCEPT","yVal":0.78,"yTempt":0.06,"confidence":"medium","rationale":"回到需求原文确认 length 行为"}
+{"id":"u232","slot":"ACCEPT","yVal":0.80,"yTempt":0.06,"confidence":"high","rationale":"期望的失败路径判定结果"}
+{"id":"u234","slot":"ACCEPT","yVal":0.80,"yTempt":0.06,"confidence":"high","rationale":"引用需求条款作为验收依据"}

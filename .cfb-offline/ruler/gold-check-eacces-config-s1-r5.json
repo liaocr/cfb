@@ -1,0 +1,26 @@
+{
+  "id": "eacces-config-s1-r5",
+  "source": "traj/pending/eacces-config-s1-r5.json",
+  "pending": true,
+  "use": "ruler",
+  "draftChars": 439,
+  "rawChars": 1982,
+  "storedReal": 762,
+  "ratio": 0.384,
+  "line": {
+    "lineChars": 1252,
+    "lineRatio": 0.6317,
+    "g2Ok": true,
+    "over": -490
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "gate-ok",
+  "warns": [
+    "C4/C5（提前量与 vsRaw）只能由真机给 ⇒ C4"
+  ],
+  "fails": [],
+  "ok": true,
+  "at": "2026-10-05T12:55:11.471Z"
+}

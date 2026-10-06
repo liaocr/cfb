@@ -1,0 +1,26 @@
+{
+  "id": "flaky-timeout-s1-r4",
+  "source": "traj/pending/flaky-timeout-s1-r4.json",
+  "pending": true,
+  "use": "ruler",
+  "draftChars": 503,
+  "rawChars": 22572,
+  "storedReal": 662,
+  "ratio": 0.029,
+  "line": {
+    "lineChars": 1500,
+    "lineRatio": 0.0665,
+    "g2Ok": true,
+    "over": -838
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "gate-ok",
+  "warns": [
+    "C4/C5（提前量与 vsRaw）只能由真机给 ⇒ C4"
+  ],
+  "fails": [],
+  "ok": true,
+  "at": "2026-10-05T12:55:11.763Z"
+}

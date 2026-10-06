@@ -1,4 +1,15 @@
 # Changelog — dsh-cot-form-b
+## v14.25.3（2026-10-06，迁移抢救：把"删了就没了"的资产全部入库）
+
+**漏了什么**：`.gitignore` 的三条目录级忽略把**不可再生**的东西一起挡了。
+- `transfer/models/micro-dev-dataset.json`（**4.1MB，Kaggle 训练的实际输入**；`unit-label-review` 的 digest 继承也依赖它的 sha）——一直没进 git。
+- `.cfb-runtime/traj/**`（441 个文件：`results.jsonl` 真机轨迹读数、`hand-samples.jsonl` 模式 1 手写稿样本、`pending/*` 含 gold 锻造要吃的 13 条队列、`state/*`）——丢了只能重新花 API 跑。
+- `.cfb-runtime/bench/**`（33）、`.cfb-runtime/probe/**`（2：含通道 preflight 的携带记录）。
+- `.cfb-offline/ruler/**`（33：`gold-check-*.json` 金标读数、`ceiling-12.json` 天花板）、`.cfb-offline/review/**`（15：348 条盲审批次与工作表；上一轮只抢救了 14 个到 `transfer/models/unit-label-review-provenance/`）。
+
+**做法**：`git add -f` 上述路径（`scratch/` 纯临时，仍不入库）；`.gitignore` 就地写明"例外：这些不可再生 ⇒ 显式跟踪"，避免下一个人以为还能删。提交前先做密钥体检（`sk-…`/`api_key`/`Bearer` 三类正则扫 `.cfb-runtime`+`.cfb-offline`+数据集），命中即用 `:(exclude)` 剔掉 —— 本次命中 0，故无剔除。
+
+**为什么值得**：这些文件是"读数"而不是"产物"：数据集能重建但重建后的 sha 与审核记录就对不上；轨迹与金标读数在 API 坏着的现在**根本重造不出来**。
 ## v14.25.2（2026-10-06）：补上 v14.25.0 漏掉的最后一环 —— 探针自己的请求形状
 
 v14.25.0 改了判据与 `preflightUpstream` 的调用点，但 `tools/probe-carry.mjs:52` 自己仍是 `carryCheck({ chat, o, messages })` —— **不带 tools**。按官方口径那条臂必然 Δ≈0 ⇒ 打印 `ignored-by-contract` 且 `process.exit(1)`：分类器修对了，**你实际敲的那条命令还是把官方直连判死**。

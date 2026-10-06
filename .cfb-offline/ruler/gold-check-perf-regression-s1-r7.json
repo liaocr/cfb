@@ -1,0 +1,26 @@
+{
+  "id": "perf-regression-s1-r7",
+  "source": "traj/pending/perf-regression-s1-r7.json",
+  "pending": true,
+  "use": "ruler",
+  "draftChars": 221,
+  "rawChars": 3998,
+  "storedReal": 387,
+  "ratio": 0.097,
+  "line": {
+    "lineChars": 1822,
+    "lineRatio": 0.4557,
+    "g2Ok": true,
+    "over": -1435
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "gate-ok",
+  "warns": [
+    "C4/C5（提前量与 vsRaw）只能由真机给 ⇒ C4"
+  ],
+  "fails": [],
+  "ok": true,
+  "at": "2026-10-05T12:55:30.146Z"
+}

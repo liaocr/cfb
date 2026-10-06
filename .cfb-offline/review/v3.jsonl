@@ -1,0 +1,2 @@
+{"id":"u22","slot":"MECHANISM","yVal":0.45,"yTempt":0.15,"confidence":"medium","rationale":"推测「应回滚其中之一」，方向对但未落定也未给证据"}
+{"id":"u23","slot":"OPEN","yVal":0.80,"yTempt":0.08,"confidence":"high","rationale":"提出可核查的具体悬置问题：区分真凶与红鲱鱼"}

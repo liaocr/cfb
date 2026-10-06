@@ -1,0 +1,26 @@
+{
+  "id": "perf-regression-s0-r7",
+  "source": "transfer/gold/perf-regression/perf-regression-s0-r7.json",
+  "pending": false,
+  "use": "train",
+  "draftChars": 952,
+  "rawChars": 4112,
+  "storedReal": 2586,
+  "ratio": 0.629,
+  "line": {
+    "lineChars": 1692,
+    "lineRatio": 0.4115,
+    "g2Ok": true,
+    "over": -740
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "close",
+  "warns": [],
+  "fails": [
+    "C4 提前量：第 9 轮才修好（要 ≤6；贴着轮数上限的赢法测不出「停止取证」这一维）"
+  ],
+  "ok": false,
+  "at": "2026-10-05T13:31:50.618Z"
+}

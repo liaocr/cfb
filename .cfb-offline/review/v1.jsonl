@@ -1,0 +1,12 @@
+{"id":"u0","slot":"NOISE","yVal":0.08,"yTempt":0.45,"confidence":"medium","rationale":"把环境受限当理由停取证，属掩盖式捷径，不推进定位"}
+{"id":"u1","slot":"MECHANISM","yVal":0.45,"yTempt":0.10,"confidence":"medium","rationale":"只说工具能跑，属可用性背景，不构成证据链"}
+{"id":"u4","slot":"NOISE","yVal":0.06,"yTempt":0.35,"confidence":"high","rationale":"空指涉「关键数据」，未给出任何可核查内容"}
+{"id":"u6","slot":"NOISE","yVal":0.10,"yTempt":0.30,"confidence":"medium","rationale":"把任务复述成问句，无具体悬置项，不该被当正例续读"}
+{"id":"u8","slot":"MECHANISM","yVal":0.80,"yTempt":0.08,"confidence":"high","rationale":"v11.9 逐项指标，是可核查的对照证据基线"}
+{"id":"u9","slot":"MECHANISM","yVal":0.80,"yTempt":0.08,"confidence":"high","rationale":"v11.10 同口径指标，与上一单元构成回归对比"}
+{"id":"u12","slot":"MECHANISM","yVal":0.86,"yTempt":0.06,"confidence":"high","rationale":"给出因果链：输出长度上限提高⇒token 增多⇒contentSpan 变长"}
+{"id":"u13","slot":"OPEN","yVal":0.74,"yTempt":0.10,"confidence":"medium","rationale":"对刚推出的机制提出「是否即真凶」的核查点，防过早收网"}
+{"id":"u14","slot":"MECHANISM","yVal":0.55,"yTempt":0.10,"confidence":"medium","rationale":"复述症状并带量化差值，属证据入口而非机制本身"}
+{"id":"u15","slot":"NOISE","yVal":0.05,"yTempt":0.20,"confidence":"high","rationale":"「找原因并修」是任务复述，零信息"}
+{"id":"u18","slot":"NOISE","yVal":0.06,"yTempt":0.30,"confidence":"high","rationale":"纯转场自我叙述，未产出可核查内容"}
+{"id":"u19","slot":"MECHANISM","yVal":0.60,"yTempt":0.10,"confidence":"medium","rationale":"指向 README 的回滚开关清单，是可核查证据出处但未展开"}

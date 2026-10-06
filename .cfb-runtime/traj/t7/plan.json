@@ -1,0 +1,60 @@
+{
+  "schema": "cfb.traj-plan/1",
+  "id": "t7",
+  "at": "2026-10-02T13:17:08.897Z",
+  "variants": [
+    "raw",
+    "hand"
+  ],
+  "scenarios": [
+    "sse-truncated"
+  ],
+  "samples": 1,
+  "maxRounds": 8,
+  "fork": true,
+  "maxTokens": 8000,
+  "storeText": true,
+  "purpose": "模式 1 天花板：hand 臂 = 助手代替副模型手写稿（同一提示词、同一闸链 + G2 决策不变闸）vs raw；量 f(主模型 | 稿) 的上界与「稿该写什么」；hand 永远不采纳为 champion，过闸且修好的稿进金标注册表（gold add）作模式 2 标准",
+  "yield": {
+    "l1Pairs": 1,
+    "l2Pairs": 1,
+    "validityPairsApprox": 14,
+    "flywheelPairsApprox": 0,
+    "childStatesApprox": 12
+  },
+  "reuseRaw": {
+    "file": ".cfb-runtime/traj/t6/results.jsonl",
+    "rows": 1,
+    "byTask": {
+      "sse-truncated": 1
+    },
+    "at": null,
+    "digest": "a2dbad0bbaf004f3",
+    "extend": {
+      "rows": 1,
+      "from": 5,
+      "firstFloor": 5
+    }
+  },
+  "cost": {
+    "mains": 6,
+    "compresses": 0,
+    "expectedMains": 6,
+    "expectedCompresses": 0,
+    "expectedUsd": 0.075,
+    "capUsd": 0.21,
+    "pricing": {
+      "mainUsd": 0.0125,
+      "mainCapUsd": 0.035,
+      "compressUsd": 0.0075,
+      "compressCapUsd": 0.0114,
+      "divergeRound": 3,
+      "floorShare": 0.4
+    },
+    "shadow": true
+  },
+  "holdoutNote": "场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索",
+  "digest": "acb79ea7bf735553",
+  "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t7/plan.json --store-text --fork-from .cfb-runtime/traj/t6/results.jsonl --variants raw,hand --only sse-truncated --samples 1 --max-rounds 8 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t7",
+  "design": "8a40d8267fa215b2"
+}

@@ -1,0 +1,28 @@
+{
+  "schema": "cfb.gate-diagnosis/1",
+  "at": "2026-10-05T11:40:22.562831+00:00",
+  "conclusion": "t98 手写稿被 production-gate:invented-identifier 连续拒 6 次；实测不是稿引用了证据外锚点，而是 compileV4Direct 重排后的产物让 gateTokens 的「反引号按顺序配对」跨过了中文散文，把整段中文当成一个标识符 ⇒ 结构性误杀，任何中文稿都可能中招",
+  "evidence": {
+    "draftAlone_inventedIdentifiers": [],
+    "ledgerPlusDraft_inventedIdentifiers": [],
+    "draftBacktickCount": 2,
+    "rejectedSpanSample": " 拉起的这个套件。若不再报 EACCES ⇒ 说明写入回到临时目录，判已修好，可写结论。…",
+    "codePointer": "src/fidelity.js:87 gateTokens —— 注释自陈 v12.7 已为同类问题改过一次（长片段会让正则把上一片段的闭合反引号与下一片段开头配对）",
+    "stillSuspect": "traj-run 判的是编译产物 g.text（非 draft 原文）⇒ 重排把两个片段并入同一行 ⇒ split('`') 配对错位"
+  },
+  "cells": {
+    "t97/flaky-timeout-s0-r3": {
+      "$0": "全过（ratio 0.083，stored 1407 ≤ 产线 1419）",
+      "realMachine": "raw 8 轮未修好 / hand 8 轮未修好；hand 的 edits 落在 src/distill.js + test/helpers.mjs（未落稿指文件）⇒ 两臂同败 ⇒ 该格测不出信号"
+    },
+    "t98/eacces-config-s0-r5": {
+      "$0": "全过（ratio 0.253，stored 881 ≤ 产线 1650）",
+      "realMachine": "raw 6 轮未修好（0 edits、2 repeats）；hand 稿被 production-gate 误杀 6 次 ⇒ 未取得读数"
+    }
+  },
+  "spend": {
+    "t97": 0.138,
+    "t98": 0.11,
+    "cumulativeSession": 0.68
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "schema": "cfb.traj-plan/1",
+  "id": "t8",
+  "at": "2026-10-02T15:41:13.407Z",
+  "variants": [
+    "raw",
+    "hand"
+  ],
+  "scenarios": [
+    "perf-regression"
+  ],
+  "samples": 1,
+  "maxRounds": 8,
+  "fork": true,
+  "maxTokens": 8000,
+  "storeText": true,
+  "purpose": "模式 1 天花板：hand 臂 = 助手代替副模型手写稿（同一提示词、同一闸链 + G2 决策不变闸）vs raw；量 f(主模型 | 稿) 的上界与「稿该写什么」；hand 永远不采纳为 champion，过闸且修好的稿进金标注册表（gold add）作模式 2 标准",
+  "yield": {
+    "l1Pairs": 1,
+    "l2Pairs": 1,
+    "validityPairsApprox": 14,
+    "flywheelPairsApprox": 0,
+    "childStatesApprox": 12
+  },
+  "cost": {
+    "mains": 15,
+    "compresses": 0,
+    "expectedMains": 13,
+    "expectedCompresses": 0,
+    "expectedUsd": 0.163,
+    "capUsd": 0.525,
+    "pricing": {
+      "mainUsd": 0.0125,
+      "mainCapUsd": 0.035,
+      "compressUsd": 0.0075,
+      "compressCapUsd": 0.0114,
+      "divergeRound": 3,
+      "floorShare": 0.4
+    },
+    "shadow": true,
+    "calibrated": {
+      "receipts": 2,
+      "divergeRound": 5,
+      "floorShare": 0.17,
+      "expectedMains": 11,
+      "expectedCompresses": 0,
+      "expectedUsd": 0.138
+    }
+  },
+  "holdoutNote": "场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索",
+  "digest": "dd271474458d902e",
+  "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t8/plan.json --store-text --variants raw,hand --only perf-regression --samples 1 --max-rounds 8 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t8",
+  "design": "1b4109787b7bebfd"
+}

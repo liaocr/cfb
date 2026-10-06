@@ -1,0 +1,26 @@
+{
+  "id": "wrong-model-s1-r4",
+  "source": ".cfb-runtime/traj/t100/pending/wrong-model-s1-r4.json",
+  "pending": true,
+  "use": "ruler",
+  "draftChars": 422,
+  "rawChars": 3531,
+  "storedReal": 658,
+  "ratio": 0.186,
+  "line": {
+    "lineChars": 1565,
+    "lineRatio": 0.4432,
+    "g2Ok": true,
+    "over": -907
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "gate-ok",
+  "warns": [
+    "C4/C5（提前量与 vsRaw）只能由真机给 ⇒ C4"
+  ],
+  "fails": [],
+  "ok": true,
+  "at": "2026-10-05T12:53:16.254Z"
+}

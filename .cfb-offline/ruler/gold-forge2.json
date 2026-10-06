@@ -1,0 +1,15 @@
+{
+  "schema": "cfb.gold-forge2/1",
+  "at": "2026-10-06T00:40:08.015Z",
+  "ok": 1,
+  "rows": [
+    {
+      "id": "eacces-config-s0-r5",
+      "ok": true,
+      "draftChars": 454,
+      "cmd": "npm test",
+      "target": "/home/u/.dsh/storages/cot-form-b/trace.log",
+      "report": "eacces-config-s0-r5  稿 454 → 真实 stored 770（raw 1616 ⇒ ratio 0.476）  产线 1650 ⇒ ✓ 不劣于产线 | 闸链 ✓ · G2 决策不变 ✓ · 闭合判读 ✓ · verdict gate-ok | 提示：C4/C5（提前量与 vsRaw）只能由真机给 ⇒ C4 | ✓ $0 判据全过 ⇒ 可以续跑 traj-run 让真机给 C4/C5"
+    }
+  ]
+}

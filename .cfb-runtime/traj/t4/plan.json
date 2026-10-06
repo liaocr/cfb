@@ -1,0 +1,41 @@
+{
+  "schema": "cfb.traj-plan/1",
+  "id": "t4",
+  "at": "2026-10-02T11:13:15.996Z",
+  "variants": [
+    "raw",
+    "policy:base"
+  ],
+  "scenarios": [
+    "sse-truncated"
+  ],
+  "samples": 1,
+  "maxRounds": 5,
+  "fork": true,
+  "maxTokens": 8000,
+  "storeText": true,
+  "purpose": "第一次用真实数据检验尺子有效性：在线效度配对（执行器代理 ↔ 修好）+ raw vs 压缩稿的 L2 对 + 用真实回执校准单价常数。若效度仍 suspect / unvalidated，接受本机目前只能当记录仪，不开始按分搜索。",
+  "yield": {
+    "l1Pairs": 1,
+    "l2Pairs": 1,
+    "validityPairsApprox": 8,
+    "flywheelPairsApprox": 4,
+    "childStatesApprox": 6
+  },
+  "cost": {
+    "mains": 9,
+    "compresses": 5,
+    "expectedUsd": 0.15,
+    "capUsd": 0.372,
+    "pricing": {
+      "mainUsd": 0.0125,
+      "mainCapUsd": 0.035,
+      "compressUsd": 0.0075,
+      "compressCapUsd": 0.0114
+    }
+  },
+  "holdoutNote": "场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索",
+  "digest": "8e14e8b501991371",
+  "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t4/plan.json --store-text --variants raw --policy base --only sse-truncated --samples 1 --max-rounds 5 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t4",
+  "design": "3c530cd2949f05e3"
+}

@@ -1,0 +1,24 @@
+{
+  "id": "wrong-model_long-horizon-s0-r4",
+  "source": "transfer/gold/wrong-model/wrong-model_long-horizon-s0-r4.json",
+  "pending": false,
+  "use": "ruler",
+  "draftChars": 494,
+  "rawChars": 3185,
+  "storedReal": 1459,
+  "ratio": 0.458,
+  "line": {
+    "lineChars": 1491,
+    "lineRatio": 0.4681,
+    "g2Ok": true,
+    "over": -997
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "close",
+  "warns": [],
+  "fails": [],
+  "ok": true,
+  "at": "2026-10-06T00:39:54.120Z"
+}

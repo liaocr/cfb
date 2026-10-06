@@ -1,0 +1,66 @@
+{
+  "schema": "cfb.gold-reharden/1",
+  "at": "2026-10-05T13:33:33.320Z",
+  "apply": true,
+  "rows": [
+    {
+      "id": "eacces-config_decoy-s0-r3",
+      "why": "already-ok"
+    },
+    {
+      "id": "eacces-config_long-horizon-s0-r5",
+      "why": "already-ok"
+    },
+    {
+      "id": "flaky-timeout-s0-r3",
+      "ok": false,
+      "from": 1198,
+      "to": 415,
+      "line": "flaky-timeout-s0-r3  稿 415 → 真实 stored 985（raw 20773 ⇒ ratio 0.047）  产线 1409 ⇒ ✓ 不劣于产线"
+    },
+    {
+      "id": "flaky-timeout_long-horizon-s0-r4",
+      "ok": false,
+      "from": 1554,
+      "to": 430,
+      "line": "flaky-timeout_long-horizon-s0-r4  稿 430 → 真实 stored 1468（raw 19626 ⇒ ratio 0.075）  产线 1636 ⇒ ✓ 不劣于产线"
+    },
+    {
+      "id": "flaky-timeout-s0-r4",
+      "ok": false,
+      "from": 1361,
+      "to": 418,
+      "line": "flaky-timeout-s0-r4  稿 418 → 真实 stored 1197（raw 28774 ⇒ ratio 0.042）  产线 1399 ⇒ ✓ 不劣于产线"
+    },
+    {
+      "id": "flaky-timeout-s0-r5",
+      "ok": false,
+      "from": 1589,
+      "to": 339,
+      "line": "flaky-timeout-s0-r5  稿 339 → 真实 stored 2211（raw 11086 ⇒ ratio 0.199）  产线 2380 ⇒ ✓ 不劣于产线"
+    },
+    {
+      "id": "perf-regression-s0-r6",
+      "ok": false,
+      "from": 1704,
+      "to": 440,
+      "line": "perf-regression-s0-r6  稿 440 → 真实 stored 1043（raw 4113 ⇒ ratio 0.254）  产线 1792 ⇒ ✓ 不劣于产线"
+    },
+    {
+      "id": "sse-truncated_decoy-s0-r3",
+      "why": "already-ok"
+    },
+    {
+      "id": "sse-truncated-s0-r5",
+      "why": "already-ok"
+    },
+    {
+      "id": "wrong-model_decoy-s0-r4",
+      "why": "already-ok"
+    },
+    {
+      "id": "wrong-model_long-horizon-s0-r4",
+      "why": "already-ok"
+    }
+  ]
+}

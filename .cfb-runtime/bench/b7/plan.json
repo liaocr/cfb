@@ -1,0 +1,51 @@
+{
+  "schema": "cfb.bench-plan/1",
+  "id": "b7",
+  "at": "2026-10-03T16:13:41.495Z",
+  "policies": [
+    "base",
+    "p-8943e331e6"
+  ],
+  "split": "dev",
+  "metric": "dd/1",
+  "gold": [
+    {
+      "id": "flaky-timeout-s0-r4",
+      "family": "flaky-timeout",
+      "split": "dev",
+      "digest": "322e18be14742f63"
+    },
+    {
+      "id": "flaky-timeout-s0-r5",
+      "family": "flaky-timeout",
+      "split": "dev",
+      "digest": "39e1e6f4a5e9d8af"
+    },
+    {
+      "id": "perf-regression-s0-r6",
+      "family": "perf-regression",
+      "split": "dev",
+      "digest": "21b62369147d4cf2"
+    },
+    {
+      "id": "sse-truncated-s0-r5",
+      "family": "sse-truncated",
+      "split": "dev",
+      "digest": "f84dc9988494f31e"
+    }
+  ],
+  "cost": {
+    "calls": 8,
+    "expectedUsd": 0.06,
+    "capUsd": 0.091,
+    "pricing": {
+      "compressUsd": 0.0075,
+      "compressCapUsd": 0.0114
+    }
+  },
+  "purpose": "模式 2：压缩器（生产 birthOffline 同构体，关思考、temperature 0）在金标原文上出稿，与手写金标按 dd/1 比对；量的是 g(稿 | 策略, 原文) 到手写标准的召回，不量结局",
+  "selection": "dev 项：每个金标上候选 vs base 按层级键配对 → e 值（≥2 家族、e ≥ 阈 ⇒ promote）；holdout 项只报告，不参与选择；promote 的策略进 plan-traj（模式 3）验收，基准分本身不采纳 champion",
+  "design": "752f5b2c50093947",
+  "digest": "b55a98d40c3333ed",
+  "command": "node tools/bench-run.mjs --plan .cfb-runtime/bench/b7/plan.json --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/bench/b7"
+}

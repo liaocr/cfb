@@ -1,0 +1,24 @@
+{
+  "id": "sse-truncated_long-horizon-s0-r5",
+  "source": "transfer/gold/sse-truncated/sse-truncated_long-horizon-s0-r5.json",
+  "pending": false,
+  "use": "train",
+  "draftChars": 409,
+  "rawChars": 5195,
+  "storedReal": 1950,
+  "ratio": 0.375,
+  "line": {
+    "lineChars": 2219,
+    "lineRatio": 0.4271,
+    "g2Ok": true,
+    "over": -1810
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "lost-exclusions",
+  "warns": [],
+  "fails": [],
+  "ok": true,
+  "at": "2026-10-06T00:39:53.065Z"
+}

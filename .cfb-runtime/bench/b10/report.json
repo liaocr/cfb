@@ -1,0 +1,230 @@
+{
+  "schema": "cfb.bench-report/1",
+  "baseline": "base",
+  "metric": "dd/1",
+  "policies": [
+    "base",
+    "p-082d742f60",
+    "p-08bdbc7561",
+    "p-1490eefcdf",
+    "p-55a320e0f8"
+  ],
+  "table": [
+    {
+      "policy": "base",
+      "split": "dev",
+      "n": 3,
+      "score": 0.519,
+      "gateFail": 3,
+      "verdicts": {
+        "lost-exclusions": 3
+      },
+      "decision": 1,
+      "excludedRecall": 0,
+      "acceptOk": 0,
+      "openRecall": 0,
+      "anchorPrecision": 1,
+      "lengthOk": 0
+    },
+    {
+      "policy": "p-082d742f60",
+      "split": "dev",
+      "n": 3,
+      "score": 0.727,
+      "gateFail": 1,
+      "verdicts": {
+        "lost-exclusions": 1,
+        "close": 1,
+        "partial": 1
+      },
+      "decision": 1,
+      "excludedRecall": 0.333,
+      "acceptOk": 0.667,
+      "openRecall": 0.5,
+      "anchorPrecision": 1,
+      "lengthOk": 0.333
+    },
+    {
+      "policy": "p-08bdbc7561",
+      "split": "dev",
+      "n": 3,
+      "score": 0.62,
+      "gateFail": 2,
+      "verdicts": {
+        "close": 1,
+        "lost-exclusions": 2
+      },
+      "decision": 1,
+      "excludedRecall": 0.167,
+      "acceptOk": 0.333,
+      "openRecall": 0,
+      "anchorPrecision": 1,
+      "lengthOk": 0.333
+    },
+    {
+      "policy": "p-1490eefcdf",
+      "split": "dev",
+      "n": 3,
+      "score": 0.833,
+      "gateFail": 1,
+      "verdicts": {
+        "lost-exclusions": 1,
+        "close": 2
+      },
+      "decision": 1,
+      "excludedRecall": 0.667,
+      "acceptOk": 0.667,
+      "openRecall": 0.5,
+      "anchorPrecision": 1,
+      "lengthOk": 0.667
+    },
+    {
+      "policy": "p-55a320e0f8",
+      "split": "dev",
+      "n": 3,
+      "score": 0.519,
+      "gateFail": 3,
+      "verdicts": {
+        "lost-exclusions": 3
+      },
+      "decision": 1,
+      "excludedRecall": 0,
+      "acceptOk": 0,
+      "openRecall": 0,
+      "anchorPrecision": 1,
+      "lengthOk": 0
+    }
+  ],
+  "paired": {
+    "p-082d742f60": {
+      "n": 3,
+      "wins": 2,
+      "losses": 0,
+      "ties": 1,
+      "e": 2.333,
+      "eReject": 0.333,
+      "families": 1,
+      "generalizationGap": null,
+      "outcomes": [
+        {
+          "gold": "sse-truncated_decoy-s0-r4",
+          "family": "sse-truncated",
+          "outcome": "tie"
+        },
+        {
+          "gold": "sse-truncated-s0-r5",
+          "family": "sse-truncated",
+          "outcome": "win"
+        },
+        {
+          "gold": "sse-truncated_long-horizon-s0-r5",
+          "family": "sse-truncated",
+          "outcome": "win"
+        }
+      ],
+      "decision": "undetermined"
+    },
+    "p-08bdbc7561": {
+      "n": 3,
+      "wins": 1,
+      "losses": 0,
+      "ties": 2,
+      "e": 1.5,
+      "eReject": 0.5,
+      "families": 1,
+      "generalizationGap": null,
+      "outcomes": [
+        {
+          "gold": "sse-truncated_long-horizon-s0-r5",
+          "family": "sse-truncated",
+          "outcome": "win"
+        },
+        {
+          "gold": "sse-truncated_decoy-s0-r4",
+          "family": "sse-truncated",
+          "outcome": "tie"
+        },
+        {
+          "gold": "sse-truncated-s0-r5",
+          "family": "sse-truncated",
+          "outcome": "tie"
+        }
+      ],
+      "decision": "undetermined"
+    },
+    "p-1490eefcdf": {
+      "n": 3,
+      "wins": 2,
+      "losses": 0,
+      "ties": 1,
+      "e": 2.333,
+      "eReject": 0.333,
+      "families": 1,
+      "generalizationGap": null,
+      "outcomes": [
+        {
+          "gold": "sse-truncated_decoy-s0-r4",
+          "family": "sse-truncated",
+          "outcome": "tie"
+        },
+        {
+          "gold": "sse-truncated_long-horizon-s0-r5",
+          "family": "sse-truncated",
+          "outcome": "win"
+        },
+        {
+          "gold": "sse-truncated-s0-r5",
+          "family": "sse-truncated",
+          "outcome": "win"
+        }
+      ],
+      "decision": "undetermined"
+    },
+    "p-55a320e0f8": {
+      "n": 3,
+      "wins": 0,
+      "losses": 0,
+      "ties": 3,
+      "e": 1,
+      "eReject": 1,
+      "families": 0,
+      "generalizationGap": null,
+      "outcomes": [
+        {
+          "gold": "sse-truncated_decoy-s0-r4",
+          "family": "sse-truncated",
+          "outcome": "tie"
+        },
+        {
+          "gold": "sse-truncated_long-horizon-s0-r5",
+          "family": "sse-truncated",
+          "outcome": "tie"
+        },
+        {
+          "gold": "sse-truncated-s0-r5",
+          "family": "sse-truncated",
+          "outcome": "tie"
+        }
+      ],
+      "decision": "undetermined"
+    }
+  },
+  "best": null,
+  "threshold": 10,
+  "next": "没有策略在 dev 金标上显著优于 base：改策略（propose-policy）或先补金标（模式 1）",
+  "preregistration": {
+    "plan": "b10",
+    "digest": "f52ad1b26426a291",
+    "registered": true,
+    "expectedJobs": 15,
+    "eligibleJobs": 15,
+    "complete": true
+  },
+  "flywheel": {
+    "added": 7,
+    "total": 8,
+    "qualityRejected": 0,
+    "scopeRejected": 0,
+    "withheldForIncompletePlan": false
+  }
+}

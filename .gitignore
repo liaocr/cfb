@@ -35,7 +35,12 @@ __pycache__/
 /eval-profile.json
 
 # 离线层运行时产物（语料/候选/规划；可再生，不进交付清单）
+# 例外（2026-10-06 迁移抢救）：这些**不可再生**，已显式跟踪 ——
+#   .cfb-offline/ruler/*（金标与天花板的读数）、.cfb-offline/review/*（348 条盲审批次与工作表）
+#   .cfb-runtime/{traj,bench,probe}/*（真机轨迹读数/hand 样本/preflight 记录：没了就要花 API 才能重造）
+# 用 git add -f 纳入；scratch/ 仍不入库（纯临时）。
 .cfb-offline/
 
 # Rebuilt from dev Gold/Pool by the free Kaggle micro-training pipeline.
+# 例外：这是本轮 Kaggle 训练的**实际输入**，且 unit-label-review 的 digest 继承要看它的 sha ⇒ 必须入库留证。
 micro-dev-dataset.json

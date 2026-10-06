@@ -1,0 +1,12 @@
+{
+  "schema": "cfb.bench-receipt/1",
+  "plan": "b10",
+  "digest": "f52ad1b26426a291",
+  "at": "2026-10-05T05:04:33.039Z",
+  "rows": 15,
+  "callsThisRun": 15,
+  "cachedHits": 0,
+  "gateFails": 10,
+  "estimatedUsd": 0.09,
+  "best": null
+}
