@@ -1,0 +1,3544 @@
+{
+  "schema": "cfb.micro-97m-training-report/3",
+  "completedAt": "2026-10-06T15:56:16Z",
+  "model": {
+    "id": "ibm-granite/granite-embedding-97m-multilingual-r2",
+    "revision": "835ad14087e140460703cf0fae09f97d469d65c2",
+    "license": "Apache-2.0"
+  },
+  "device": {
+    "kind": "cuda",
+    "gpus": [
+      "Tesla T4",
+      "Tesla T4"
+    ],
+    "gpuCount": 2,
+    "dataParallelConfigured": true
+  },
+  "dataset": {
+    "holdoutTouchedDuringTraining": false,
+    "holdoutEvaluatedForMode2": true,
+    "holdoutFreshBlindSet": false,
+    "freshIndependentNewFamilyTest": {
+      "status": "blocked-no-new-independent-family",
+      "passed": false,
+      "reason": "--final-test-dataset was not supplied; existing sse-truncated validation and Gold holdouts are not blind",
+      "eligibleFamiliesInCurrentMicroCorpus": [
+        "flaky-timeout",
+        "perf-regression",
+        "sse-truncated"
+      ],
+      "requiredNext": "supply a genuinely new, semantically reviewed family after code/data/split/checkpoint freeze; never relabel _decoy/_long-horizon variants"
+    },
+    "finalEvaluationFreeze": {
+      "frozenAt": "2026-10-06T15:56:16Z",
+      "codeCommit": "c8820224ec5ca69591a20bb7fe9b2bf8bce2c836",
+      "sourceSha256": {
+        "src/compile-v5-local.js": "0e6ee939e6ab0ae598b2a365f5d669640e6028771c7ac09206a6afe7e255a3ad",
+        "tools/build-micro-dataset.mjs": "9b3d96e7671dbfd681cf864a0ec8981ecd6f1476f69ec40523d5b8487aa2b154",
+        "tools/helpers/three-mode.mjs": "90188c05c77171a67e897ed93d50c57059e710b49df01ae682d5038de4fefe48",
+        "tools/helpers/mode1-quality.mjs": "9ed41b9f1ed8a517bd5660e6e94540f465042675ea3f379eab4549c75ea67425",
+        "tools/helpers/hand-capture.mjs": "31539646563548fcdb51ccfb1fd4cb27f49a43a9d48636d802c5336d7c9a19e6",
+        "tools/helpers/hand-draft.mjs": "b713252563df13bb5464bd846339be6a761caffaa487bf93b1cc9319fe37ee98",
+        "tools/eval-micro-js-pairs.mjs": "1abbfbaac5d501cefc47f9d12f7372e897cefb117e0fbfea99752951e3b62354",
+        "tools/micro_cv.py": "9c3da7a041749fd55373ade24d80594566113cb201be4f523408eaa1b56c8a10",
+        "tools/kaggle-train-micro.py": "34bf49793203a2d3af6769deb4868e99872aa320f1c541dbc00617510404fc27",
+        "tools/train-v5-micro.mjs": "4faaa400aa3c80d839eb35c1b365d8513611e26ad584287f81992a71e1798d7b",
+        "tools/review-unit-labels.mjs": "5d4628da8746e6370e798de8e9d296df039435e53adec48f2502e0520c371f48",
+        "tools/bench-run.mjs": "b74b4f3913f3a00f2caa1edd6d82f10979e2e904f8e242839ebb72a45d29f546",
+        "transfer/micro-preregistration.json": "a229e0f367ef4730910680335bfbd30aeb29d51c2315bd930db747ed59fd2bda"
+      },
+      "trainingDatasetSha256": "3d15c9e6e3e576687b971f58ef63034b3e05b1f53ff07c4502cd063d48dcdbf8",
+      "trainingDataFingerprint": "56a211c27cec8eead5176baf2de184ebcb18324ebf33a211615ee2e6ccb5e38a",
+      "candidateScoringWeightsSha256": "d87508db774596f40af92c7ea7e95c6f533e60ac40d420219674223d9f5e585b",
+      "candidateWeightsPath": "transfer/models/v5-micro-weights.candidate.json",
+      "validationFamily": "sse-truncated",
+      "trainingObjective": "grouped SFT multi-task + teacher SimPO-inspired margin pair loss + compact-student JS-aligned Unit gammaStep pair loss + compact-student draft reward distillation; final candidate Unit/Draft scores use the production JS scorer"
+    },
+    "holdoutFamiliesExcluded": [
+      "eacces-config",
+      "wrong-model"
+    ],
+    "validationFamily": "sse-truncated",
+    "validationUnitFractionTarget": 0.2,
+    "validationUnitFractionActual": 0.6022,
+    "validationUnitFractionOfAllRows": 0.5978,
+    "eligibleTrainUnitCount": 214,
+    "eligibleValidationUnitCount": 324,
+    "devGoldItems": 4,
+    "devPoolItems": 3,
+    "unitSamples": 542,
+    "unitPairs": 536,
+    "draftPairs": 303,
+    "trainEligibleUnitSamples": 538,
+    "unitLabelNeedsReview": 4,
+    "trainEligibleDraftPairs": 219,
+    "draftPairLabelsNeedsReview": 84,
+    "unitPairEndpointReuse": {
+      "maxDegree": 4,
+      "uniqueEndpoints": 447,
+      "endpointReferences": 1072,
+      "endpointsReused": 329,
+      "reuseFraction": 0.736,
+      "degreeHistogram": {
+        "1": 118,
+        "2": 172,
+        "3": 18,
+        "4": 139
+      },
+      "cap": 4
+    },
+    "pairConstruction": {
+      "strategy": "hardened",
+      "endpointDegreeCap": 4,
+      "maxPairsPerPositive": 4,
+      "nearLengthTokens": 3,
+      "negJudgeWeights": "transfer/models/v5-micro-weights.judge-4764fd2.json",
+      "note": "hardened = length-matched + model-hard negatives first (judge = negJudgeWeights); legacy = hardness only"
+    },
+    "flywheelSourcePath": ".cfb-offline/train/pairs.jsonl + transfer/models/dev-flywheel-pairs.json",
+    "flywheelScoresDegenerate": false,
+    "flywheelDistinctScorePairs": 21,
+    "trainingDatasetSha256": "3d15c9e6e3e576687b971f58ef63034b3e05b1f53ff07c4502cd063d48dcdbf8",
+    "trainingDataFingerprint": "56a211c27cec8eead5176baf2de184ebcb18324ebf33a211615ee2e6ccb5e38a",
+    "uniqueUnitPairEndpoints": 447,
+    "familyCount": 3,
+    "familyNames": [
+      "flaky-timeout",
+      "perf-regression",
+      "sse-truncated"
+    ],
+    "familyUnitCounts": {
+      "flaky-timeout": 120,
+      "perf-regression": 98,
+      "sse-truncated": 324
+    },
+    "eligibleFamilyUnitCounts": {
+      "flaky-timeout": 120,
+      "perf-regression": 94,
+      "sse-truncated": 324
+    },
+    "labelAudit": {
+      "unitSamples": 542,
+      "trainEligibleUnitSamples": 538,
+      "needsSemanticReviewUnitSamples": 4,
+      "unitFlags": {
+        "competing-slot-overlap": 103,
+        "mechanism-heuristic-no-direct-gold-slot": 184,
+        "noise-label-has-actionable-cue": 19,
+        "noise-label-has-gold-overlap": 13
+      },
+      "preferencePairs": 303,
+      "trainEligiblePreferencePairs": 219,
+      "needsReviewPreferencePairs": 84,
+      "reviewStatus": "deterministic-screen-only; LLM/human semantic review not run"
+    },
+    "splitAndCheckpointRules": {
+      "grouping": "familyKey; no family crosses train/validation; _decoy/_long-horizon suffixes normalize to the source family",
+      "validationFamilySelection": "closest eligible-unit family size to 20%; deterministic SHA-256 tie-break; no label or score optimization",
+      "sftCheckpoint": "minimum grouped validation loss",
+      "teacherPreferenceCheckpoint": "maximum unweighted mean of grouped validation Unit-pair and Draft-pair accuracy",
+      "compactUnitHeadCheckpoint": "minimum grouped validation total loss = multitask (0.55*CE + 0.45*KL + huber(value) + 0.6*huber(temptation)) + unit_pair_loss_weight * Unit pair objective loss; the Unit-pair objective therefore participates in checkpoint selection",
+      "compactDraftHeadCheckpoint": "maximum grouped validation pair accuracy; lower distillation/ranking loss breaks ties",
+      "freshNewFamilyTest": "run after the frozen candidate if --final-test-dataset is supplied; never enters fitting or checkpoint selection"
+    },
+    "unitPairTrainCount": 220,
+    "unitPairValidationCount": 316,
+    "draftPairTrainCount": 120,
+    "draftPairValidationCount": 99
+  },
+  "ceilingDistances": {
+    "sftValidationSlotAccTo100Pp": 68.21,
+    "unitPreferenceValidationTo100Pp": 27.85,
+    "compactStudentUnitPairValidationTo100Pp": 12.03,
+    "jsRuntimeUnitPairValidationTo100Pp": 12.03,
+    "teacherDraftPreferenceValidationTo100Pp": 40.4,
+    "pytorchCompactStudentDraftValidationTo100Pp": 36.36,
+    "compactStudentDraftPairValidationTo100Pp": 36.36,
+    "jsRuntimeDraftPairValidationTo100Pp": 36.36,
+    "mode2DevMeanScoreTo1Pp": 50.0,
+    "mode2HoldoutMeanScoreTo1Pp": 16.7,
+    "mode2MeanCharReductionTo100Pp": 49.54,
+    "mode2G1FailuresToZero": 0,
+    "mode2G2FailuresToZero": 0,
+    "parametersBelow100M": 2047786
+  },
+  "rulerReading": {
+    "note": "Headline accuracy keeps its historical definition (a tied pair scores 0) so gates stay comparable; lengthMatchedAccuracy restricts to pairs whose two Units differ by <= near_length_tokens tokens, where the lambda*tokenCount penalty cannot manufacture the win; wilsonLower95 is the one-sided-friendly 95% lower bound and is the honest number to compare against 90% on a 138/40-pair validation set.",
+    "candidateUnitTrain": {
+      "accuracy": 1,
+      "correct": 220,
+      "total": 220,
+      "ties": 0,
+      "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+      "accuracyWithTiesHalfCredit": 1,
+      "wilson95": {
+        "lower": 0.9828,
+        "upper": 1
+      },
+      "wilsonLower95": 0.9828,
+      "lengthMatchedAccuracy": 1,
+      "lengthMatchedCorrect": 72,
+      "lengthMatchedTotal": 72,
+      "lengthMatchedWilsonLower95": 0.9493,
+      "lengthMatchedShare": 0.3273,
+      "lengthStratified": {
+        "far": {
+          "correct": 120,
+          "total": 120,
+          "ties": 0,
+          "accuracy": 1,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 1,
+          "wilson95": {
+            "lower": 0.969,
+            "upper": 1
+          },
+          "wilsonLower95": 0.969,
+          "wilsonLowerOneSided95": 0.9779
+        },
+        "matched": {
+          "correct": 72,
+          "total": 72,
+          "ties": 0,
+          "accuracy": 1,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 1,
+          "wilson95": {
+            "lower": 0.9493,
+            "upper": 1
+          },
+          "wilsonLower95": 0.9493,
+          "wilsonLowerOneSided95": 0.9638
+        },
+        "near": {
+          "correct": 28,
+          "total": 28,
+          "ties": 0,
+          "accuracy": 1,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 1,
+          "wilson95": {
+            "lower": 0.8794,
+            "upper": 1
+          },
+          "wilsonLower95": 0.8794,
+          "wilsonLowerOneSided95": 0.9119
+        }
+      },
+      "accuracyWithoutTokenPenalty": 1
+    },
+    "candidateUnitValidation": {
+      "accuracy": 0.8797,
+      "correct": 278,
+      "total": 316,
+      "ties": 0,
+      "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+      "accuracyWithTiesHalfCredit": 0.8797,
+      "wilson95": {
+        "lower": 0.8392,
+        "upper": 0.9111
+      },
+      "wilsonLower95": 0.8392,
+      "lengthMatchedAccuracy": 0.6907,
+      "lengthMatchedCorrect": 67,
+      "lengthMatchedTotal": 97,
+      "lengthMatchedWilsonLower95": 0.593,
+      "lengthMatchedShare": 0.307,
+      "lengthStratified": {
+        "far": {
+          "correct": 168,
+          "total": 171,
+          "ties": 0,
+          "accuracy": 0.9825,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 0.9825,
+          "wilson95": {
+            "lower": 0.9497,
+            "upper": 0.994
+          },
+          "wilsonLower95": 0.9497,
+          "wilsonLowerOneSided95": 0.9569
+        },
+        "matched": {
+          "correct": 67,
+          "total": 97,
+          "ties": 0,
+          "accuracy": 0.6907,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 0.6907,
+          "wilson95": {
+            "lower": 0.593,
+            "upper": 0.774
+          },
+          "wilsonLower95": 0.593,
+          "wilsonLowerOneSided95": 0.6092
+        },
+        "near": {
+          "correct": 43,
+          "total": 48,
+          "ties": 0,
+          "accuracy": 0.8958,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 0.8958,
+          "wilson95": {
+            "lower": 0.7783,
+            "upper": 0.9547
+          },
+          "wilsonLower95": 0.7783,
+          "wilsonLowerOneSided95": 0.801
+        }
+      },
+      "accuracyWithoutTokenPenalty": 0.8829
+    },
+    "productionUnitValidation": {
+      "accuracy": 0.5285,
+      "correct": 167,
+      "total": 316,
+      "ties": 0,
+      "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+      "accuracyWithTiesHalfCredit": 0.5285,
+      "wilson95": {
+        "lower": 0.4734,
+        "upper": 0.5828
+      },
+      "wilsonLower95": 0.4734,
+      "lengthMatchedAccuracy": 0.2784,
+      "lengthMatchedCorrect": 27,
+      "lengthMatchedTotal": 97,
+      "lengthMatchedWilsonLower95": 0.1989,
+      "lengthMatchedShare": 0.307,
+      "lengthStratified": {
+        "far": {
+          "correct": 114,
+          "total": 171,
+          "ties": 0,
+          "accuracy": 0.6667,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 0.6667,
+          "wilson95": {
+            "lower": 0.593,
+            "upper": 0.733
+          },
+          "wilsonLower95": 0.593,
+          "wilsonLowerOneSided95": 0.6052
+        },
+        "matched": {
+          "correct": 27,
+          "total": 97,
+          "ties": 0,
+          "accuracy": 0.2784,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 0.2784,
+          "wilson95": {
+            "lower": 0.1989,
+            "upper": 0.3747
+          },
+          "wilsonLower95": 0.1989,
+          "wilsonLowerOneSided95": 0.2103
+        },
+        "near": {
+          "correct": 26,
+          "total": 48,
+          "ties": 0,
+          "accuracy": 0.5417,
+          "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+          "accuracyWithTiesHalfCredit": 0.5417,
+          "wilson95": {
+            "lower": 0.4029,
+            "upper": 0.6742
+          },
+          "wilsonLower95": 0.4029,
+          "wilsonLowerOneSided95": 0.4243
+        }
+      },
+      "accuracyWithoutTokenPenalty": 0.5538
+    },
+    "candidateDraftTrain": {
+      "accuracy": 0.5583,
+      "correct": 67,
+      "total": 120,
+      "ties": 19,
+      "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+      "accuracyWithTiesHalfCredit": 0.6375,
+      "wilson95": {
+        "lower": 0.469,
+        "upper": 0.644
+      },
+      "wilsonLower95": 0.469
+    },
+    "candidateDraftValidation": {
+      "accuracy": 0.6364,
+      "correct": 63,
+      "total": 99,
+      "ties": 0,
+      "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+      "accuracyWithTiesHalfCredit": 0.6364,
+      "wilson95": {
+        "lower": 0.5382,
+        "upper": 0.7244
+      },
+      "wilsonLower95": 0.5382
+    },
+    "productionDraftValidation": {
+      "accuracy": 0.596,
+      "correct": 59,
+      "total": 99,
+      "ties": 0,
+      "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+      "accuracyWithTiesHalfCredit": 0.596,
+      "wilson95": {
+        "lower": 0.4975,
+        "upper": 0.6873
+      },
+      "wilsonLower95": 0.4975
+    }
+  },
+  "parameters": {
+    "total": 97952214,
+    "backbone": 97441152,
+    "trainable": 97952214,
+    "limit": 100000000,
+    "headroom": 2047786,
+    "fractionOfLimit": 0.979522
+  },
+  "training": {
+    "elapsedSeconds": 130.02,
+    "sftAmpSkippedSteps": 2,
+    "simpoAmpSkippedSteps": 1,
+    "sftHistory": [
+      {
+        "epoch": 1,
+        "trainLoss": 2.14018,
+        "train": {
+          "slotAcc": 0.2991,
+          "slotMacroF1": 0.1811,
+          "slotF1": {
+            "MECHANISM": 0.3246,
+            "EXCLUDED": 0.1111,
+            "DECIDED": 0.2991,
+            "ACCEPT": 0.0,
+            "OPEN": 0.0,
+            "NOISE": 0.3516
+          },
+          "loss": 1.96667,
+          "valueMae": 0.33429,
+          "temptationMae": 0.17376,
+          "samples": 214
+        },
+        "validation": {
+          "slotAcc": 0.3333,
+          "slotMacroF1": 0.2335,
+          "slotF1": {
+            "MECHANISM": 0.4074,
+            "EXCLUDED": 0.0741,
+            "DECIDED": 0.1644,
+            "ACCEPT": 0.3548,
+            "OPEN": 0.0,
+            "NOISE": 0.4
+          },
+          "loss": 1.95963,
+          "valueMae": 0.26818,
+          "temptationMae": 0.21415,
+          "samples": 324
+        }
+      },
+      {
+        "epoch": 2,
+        "trainLoss": 2.09369,
+        "train": {
+          "slotAcc": 0.2944,
+          "slotMacroF1": 0.1785,
+          "slotF1": {
+            "MECHANISM": 0.3209,
+            "EXCLUDED": 0.1111,
+            "DECIDED": 0.2909,
+            "ACCEPT": 0.0,
+            "OPEN": 0.0,
+            "NOISE": 0.3478
+          },
+          "loss": 1.91447,
+          "valueMae": 0.3258,
+          "temptationMae": 0.17091,
+          "samples": 214
+        },
+        "validation": {
+          "slotAcc": 0.3333,
+          "slotMacroF1": 0.2523,
+          "slotF1": {
+            "MECHANISM": 0.4051,
+            "EXCLUDED": 0.2069,
+            "DECIDED": 0.16,
+            "ACCEPT": 0.3548,
+            "OPEN": 0.0,
+            "NOISE": 0.3871
+          },
+          "loss": 1.93773,
+          "valueMae": 0.25967,
+          "temptationMae": 0.21124,
+          "samples": 324
+        }
+      },
+      {
+        "epoch": 3,
+        "trainLoss": 2.06053,
+        "train": {
+          "slotAcc": 0.2897,
+          "slotMacroF1": 0.1782,
+          "slotF1": {
+            "MECHANISM": 0.2989,
+            "EXCLUDED": 0.1111,
+            "DECIDED": 0.2881,
+            "ACCEPT": 0.0,
+            "OPEN": 0.0,
+            "NOISE": 0.3711
+          },
+          "loss": 1.87805,
+          "valueMae": 0.3197,
+          "temptationMae": 0.16847,
+          "samples": 214
+        },
+        "validation": {
+          "slotAcc": 0.3364,
+          "slotMacroF1": 0.2626,
+          "slotF1": {
+            "MECHANISM": 0.4065,
+            "EXCLUDED": 0.2667,
+            "DECIDED": 0.16,
+            "ACCEPT": 0.3548,
+            "OPEN": 0.0,
+            "NOISE": 0.3876
+          },
+          "loss": 1.92457,
+          "valueMae": 0.25437,
+          "temptationMae": 0.20878,
+          "samples": 324
+        }
+      },
+      {
+        "epoch": 4,
+        "trainLoss": 2.05641,
+        "train": {
+          "slotAcc": 0.285,
+          "slotMacroF1": 0.1762,
+          "slotF1": {
+            "MECHANISM": 0.2805,
+            "EXCLUDED": 0.1111,
+            "DECIDED": 0.281,
+            "ACCEPT": 0.0,
+            "OPEN": 0.0,
+            "NOISE": 0.3846
+          },
+          "loss": 1.84075,
+          "valueMae": 0.31327,
+          "temptationMae": 0.16545,
+          "samples": 214
+        },
+        "validation": {
+          "slotAcc": 0.3395,
+          "slotMacroF1": 0.2733,
+          "slotF1": {
+            "MECHANISM": 0.407,
+            "EXCLUDED": 0.303,
+            "DECIDED": 0.1667,
+            "ACCEPT": 0.3548,
+            "OPEN": 0.0,
+            "NOISE": 0.4085
+          },
+          "loss": 1.91152,
+          "valueMae": 0.24972,
+          "temptationMae": 0.2057,
+          "samples": 324
+        }
+      },
+      {
+        "epoch": 5,
+        "trainLoss": 1.96552,
+        "train": {
+          "slotAcc": 0.3037,
+          "slotMacroF1": 0.1851,
+          "slotF1": {
+            "MECHANISM": 0.2953,
+            "EXCLUDED": 0.1111,
+            "DECIDED": 0.315,
+            "ACCEPT": 0.0,
+            "OPEN": 0.0,
+            "NOISE": 0.3894
+          },
+          "loss": 1.81161,
+          "valueMae": 0.30818,
+          "temptationMae": 0.16251,
+          "samples": 214
+        },
+        "validation": {
+          "slotAcc": 0.3488,
+          "slotMacroF1": 0.2872,
+          "slotF1": {
+            "MECHANISM": 0.4207,
+            "EXCLUDED": 0.3529,
+            "DECIDED": 0.1758,
+            "ACCEPT": 0.3548,
+            "OPEN": 0.0,
+            "NOISE": 0.4189
+          },
+          "loss": 1.90308,
+          "valueMae": 0.24598,
+          "temptationMae": 0.20274,
+          "samples": 324
+        }
+      },
+      {
+        "epoch": 6,
+        "trainLoss": 1.90501,
+        "train": {
+          "slotAcc": 0.3037,
+          "slotMacroF1": 0.1852,
+          "slotF1": {
+            "MECHANISM": 0.2657,
+            "EXCLUDED": 0.1111,
+            "DECIDED": 0.3485,
+            "ACCEPT": 0.0,
+            "OPEN": 0.0,
+            "NOISE": 0.386
+          },
+          "loss": 1.78845,
+          "valueMae": 0.304,
+          "temptationMae": 0.15966,
+          "samples": 214
+        },
+        "validation": {
+          "slotAcc": 0.3241,
+          "slotMacroF1": 0.2768,
+          "slotF1": {
+            "MECHANISM": 0.376,
+            "EXCLUDED": 0.3529,
+            "DECIDED": 0.1538,
+            "ACCEPT": 0.3548,
+            "OPEN": 0.0,
+            "NOISE": 0.4231
+          },
+          "loss": 1.89641,
+          "valueMae": 0.24309,
+          "temptationMae": 0.19991,
+          "samples": 324
+        }
+      },
+      {
+        "epoch": 7,
+        "trainLoss": 1.88516,
+        "train": {
+          "slotAcc": 0.2991,
+          "slotMacroF1": 0.1813,
+          "slotF1": {
+            "MECHANISM": 0.2647,
+            "EXCLUDED": 0.1053,
+            "DECIDED": 0.3382,
+            "ACCEPT": 0.0,
+            "OPEN": 0.0,
+            "NOISE": 0.3793
+          },
+          "loss": 1.77049,
+          "valueMae": 0.30068,
+          "temptationMae": 0.1572,
+          "samples": 214
+        },
+        "validation": {
+          "slotAcc": 0.3241,
+          "slotMacroF1": 0.2864,
+          "slotF1": {
+            "MECHANISM": 0.3682,
+            "EXCLUDED": 0.3889,
+            "DECIDED": 0.1651,
+            "ACCEPT": 0.381,
+            "OPEN": 0.0,
+            "NOISE": 0.4151
+          },
+          "loss": 1.89241,
+          "valueMae": 0.24109,
+          "temptationMae": 0.19748,
+          "samples": 324
+        }
+      },
+      {
+        "epoch": 8,
+        "trainLoss": 1.85645,
+        "train": {
+          "slotAcc": 0.2991,
+          "slotMacroF1": 0.181,
+          "slotF1": {
+            "MECHANISM": 0.2687,
+            "EXCLUDED": 0.1053,
+            "DECIDED": 0.3358,
+            "ACCEPT": 0.0,
+            "OPEN": 0.0,
+            "NOISE": 0.3761
+          },
+          "loss": 1.75682,
+          "valueMae": 0.29827,
+          "temptationMae": 0.15526,
+          "samples": 214
+        },
+        "validation": {
+          "slotAcc": 0.3241,
+          "slotMacroF1": 0.2885,
+          "slotF1": {
+            "MECHANISM": 0.359,
+            "EXCLUDED": 0.3889,
+            "DECIDED": 0.177,
+            "ACCEPT": 0.381,
+            "OPEN": 0.0,
+            "NOISE": 0.425
+          },
+          "loss": 1.88975,
+          "valueMae": 0.23981,
+          "temptationMae": 0.19553,
+          "samples": 324
+        }
+      },
+      {
+        "epoch": 9,
+        "trainLoss": 1.84095,
+        "train": {
+          "slotAcc": 0.2991,
+          "slotMacroF1": 0.1809,
+          "slotF1": {
+            "MECHANISM": 0.2707,
+            "EXCLUDED": 0.1053,
+            "DECIDED": 0.3333,
+            "ACCEPT": 0.0,
+            "OPEN": 0.0,
+            "NOISE": 0.3761
+          },
+          "loss": 1.74777,
+          "valueMae": 0.29667,
+          "temptationMae": 0.15394,
+          "samples": 214
+        },
+        "validation": {
+          "slotAcc": 0.321,
+          "slotMacroF1": 0.2871,
+          "slotF1": {
+            "MECHANISM": 0.3565,
+            "EXCLUDED": 0.3889,
+            "DECIDED": 0.1709,
+            "ACCEPT": 0.381,
+            "OPEN": 0.0,
+            "NOISE": 0.425
+          },
+          "loss": 1.88855,
+          "valueMae": 0.23899,
+          "temptationMae": 0.1942,
+          "samples": 324
+        }
+      },
+      {
+        "epoch": 10,
+        "trainLoss": 1.83072,
+        "train": {
+          "slotAcc": 0.3037,
+          "slotMacroF1": 0.1835,
+          "slotF1": {
+            "MECHANISM": 0.2727,
+            "EXCLUDED": 0.1053,
+            "DECIDED": 0.3333,
+            "ACCEPT": 0.0,
+            "OPEN": 0.0,
+            "NOISE": 0.3898
+          },
+          "loss": 1.74232,
+          "valueMae": 0.2958,
+          "temptationMae": 0.15316,
+          "samples": 214
+        },
+        "validation": {
+          "slotAcc": 0.321,
+          "slotMacroF1": 0.2854,
+          "slotF1": {
+            "MECHANISM": 0.3612,
+            "EXCLUDED": 0.3784,
+            "DECIDED": 0.1695,
+            "ACCEPT": 0.381,
+            "OPEN": 0.0,
+            "NOISE": 0.4224
+          },
+          "loss": 1.88775,
+          "valueMae": 0.23858,
+          "temptationMae": 0.19341,
+          "samples": 324
+        }
+      },
+      {
+        "epoch": 11,
+        "trainLoss": 1.81658,
+        "train": {
+          "slotAcc": 0.3084,
+          "slotMacroF1": 0.1859,
+          "slotF1": {
+            "MECHANISM": 0.2748,
+            "EXCLUDED": 0.1053,
+            "DECIDED": 0.3453,
+            "ACCEPT": 0.0,
+            "OPEN": 0.0,
+            "NOISE": 0.3898
+          },
+          "loss": 1.73963,
+          "valueMae": 0.29535,
+          "temptationMae": 0.15278,
+          "samples": 214
+        },
+        "validation": {
+          "slotAcc": 0.3179,
+          "slotMacroF1": 0.284,
+          "slotF1": {
+            "MECHANISM": 0.354,
+            "EXCLUDED": 0.3784,
+            "DECIDED": 0.1681,
+            "ACCEPT": 0.381,
+            "OPEN": 0.0,
+            "NOISE": 0.4224
+          },
+          "loss": 1.88727,
+          "valueMae": 0.23837,
+          "temptationMae": 0.19302,
+          "samples": 324
+        }
+      },
+      {
+        "epoch": 12,
+        "trainLoss": 1.81812,
+        "train": {
+          "slotAcc": 0.3084,
+          "slotMacroF1": 0.1859,
+          "slotF1": {
+            "MECHANISM": 0.2748,
+            "EXCLUDED": 0.1053,
+            "DECIDED": 0.3453,
+            "ACCEPT": 0.0,
+            "OPEN": 0.0,
+            "NOISE": 0.3898
+          },
+          "loss": 1.73902,
+          "valueMae": 0.29519,
+          "temptationMae": 0.15267,
+          "samples": 214
+        },
+        "validation": {
+          "slotAcc": 0.3179,
+          "slotMacroF1": 0.284,
+          "slotF1": {
+            "MECHANISM": 0.354,
+            "EXCLUDED": 0.3784,
+            "DECIDED": 0.1681,
+            "ACCEPT": 0.381,
+            "OPEN": 0.0,
+            "NOISE": 0.4224
+          },
+          "loss": 1.88717,
+          "valueMae": 0.23831,
+          "temptationMae": 0.19291,
+          "samples": 324
+        }
+      }
+    ],
+    "simpoHistory": [
+      {
+        "epoch": 1,
+        "loss": 1.17892,
+        "trainUnitPairAcc": 0.7909,
+        "validationUnitPairAcc": 0.6994,
+        "trainDraftPairAcc": 0.5583,
+        "validationDraftPairAcc": 0.596
+      },
+      {
+        "epoch": 2,
+        "loss": 1.26577,
+        "trainUnitPairAcc": 0.8045,
+        "validationUnitPairAcc": 0.6994,
+        "trainDraftPairAcc": 0.5583,
+        "validationDraftPairAcc": 0.596
+      },
+      {
+        "epoch": 3,
+        "loss": 1.29655,
+        "trainUnitPairAcc": 0.8045,
+        "validationUnitPairAcc": 0.7089,
+        "trainDraftPairAcc": 0.5667,
+        "validationDraftPairAcc": 0.596
+      },
+      {
+        "epoch": 4,
+        "loss": 1.18802,
+        "trainUnitPairAcc": 0.8091,
+        "validationUnitPairAcc": 0.712,
+        "trainDraftPairAcc": 0.5667,
+        "validationDraftPairAcc": 0.596
+      },
+      {
+        "epoch": 5,
+        "loss": 1.10573,
+        "trainUnitPairAcc": 0.8182,
+        "validationUnitPairAcc": 0.7184,
+        "trainDraftPairAcc": 0.5583,
+        "validationDraftPairAcc": 0.596
+      },
+      {
+        "epoch": 6,
+        "loss": 1.22343,
+        "trainUnitPairAcc": 0.8182,
+        "validationUnitPairAcc": 0.7184,
+        "trainDraftPairAcc": 0.5667,
+        "validationDraftPairAcc": 0.596
+      },
+      {
+        "epoch": 7,
+        "loss": 1.20528,
+        "trainUnitPairAcc": 0.8227,
+        "validationUnitPairAcc": 0.7184,
+        "trainDraftPairAcc": 0.5667,
+        "validationDraftPairAcc": 0.596
+      },
+      {
+        "epoch": 8,
+        "loss": 1.08177,
+        "trainUnitPairAcc": 0.8227,
+        "validationUnitPairAcc": 0.7184,
+        "trainDraftPairAcc": 0.5667,
+        "validationDraftPairAcc": 0.596
+      },
+      {
+        "epoch": 9,
+        "loss": 1.16248,
+        "trainUnitPairAcc": 0.8227,
+        "validationUnitPairAcc": 0.7215,
+        "trainDraftPairAcc": 0.5667,
+        "validationDraftPairAcc": 0.596
+      },
+      {
+        "epoch": 10,
+        "loss": 1.26023,
+        "trainUnitPairAcc": 0.8227,
+        "validationUnitPairAcc": 0.7184,
+        "trainDraftPairAcc": 0.5667,
+        "validationDraftPairAcc": 0.596
+      },
+      {
+        "epoch": 11,
+        "loss": 1.08176,
+        "trainUnitPairAcc": 0.8227,
+        "validationUnitPairAcc": 0.7184,
+        "trainDraftPairAcc": 0.5667,
+        "validationDraftPairAcc": 0.596
+      },
+      {
+        "epoch": 12,
+        "loss": 1.14636,
+        "trainUnitPairAcc": 0.8227,
+        "validationUnitPairAcc": 0.7184,
+        "trainDraftPairAcc": 0.5667,
+        "validationDraftPairAcc": 0.596
+      }
+    ],
+    "simpoBestEpoch": 9,
+    "simpoTrainUnitPairAcc": 0.8227,
+    "simpoValidationUnitPairAcc": 0.7215,
+    "teacherValidationUnitPairAcc": 0.7215,
+    "teacherValidationDraftPairAcc": 0.596,
+    "compactStudentUnitTrainPairAcc": 1,
+    "compactStudentUnitValidationPairAcc": 0.8797,
+    "compactStudentUnitTrainPairs": 220,
+    "compactStudentUnitValidationPairs": 316,
+    "compactStudentPairScorer": "src/compile-v5-local.js:extractUnitFeatures (dataset-built JS vectors) + scoreUnitWithWeights + scoreDraftPreferenceFeatures",
+    "compactStudentPythonJsNumericalParity": {
+      "status": "passed",
+      "reference": "PyTorch student parameters recomputed with JS scorer equations before six-decimal JSON quantization",
+      "runtime": "src/compile-v5-local.js scoring functions on the candidate JSON weights",
+      "tolerance": 0.001,
+      "unitCases": 538,
+      "draftCases": 438,
+      "unitMaxAbsError": 5.159e-05,
+      "unitSlotMismatches": 0,
+      "unitGateMismatches": 0,
+      "unitGateActiveCases": 118,
+      "draftMaxAbsError": 4.988e-05,
+      "slotMismatchesIgnoredNearTie": 0,
+      "gateMismatchesIgnoredBoundary": 0,
+      "slotNearTieEps": 0.002,
+      "gateBoundaryEps": 0.002
+    },
+    "jsRuntimePairEvaluation": {
+      "schema": "cfb.micro-js-pair-eval/4",
+      "runtimeScorer": "src/compile-v5-local.js:extractUnitFeatures (dataset-built JS vectors) + scoreUnitWithWeights + scoreDraftPreferenceFeatures",
+      "unitPairRankScore": "pair accuracy compares scoreUnitWithWeights(...).v, including lambda * tokenCount; the same call applies EXCLUDED negative-priming gate to slot probabilities used by selection and reports gate counts",
+      "metricsPolicy": {
+        "ties": "strict (ties count 0) is the headline and gate-comparable metric; accuracyWithTiesHalfCredit is reported alongside",
+        "smallSampleStatistics": "Wilson 95% interval and one-sided 95% lower bound per metric; with 138/40 pairs a 4pp difference is inside noise, so gates must be read with the lower bound",
+        "lengthStratification": "unit pairs are bucketed by |delta token|; the matched bucket (length cannot explain the outcome) carries the load-bearing claim",
+        "tokenPenaltyDecoupling": "every unit metric is also computed with lambda*tokenCount added back, so conclusions cannot come from the length penalty alone"
+      },
+      "weightsPath": "transfer/models/v5-micro-weights.candidate.json",
+      "datasetPath": "transfer/models/micro-dev-dataset.json",
+      "datasetSchema": "cfb.micro-dev-dataset/3",
+      "holdoutTouched": false,
+      "familyCount": 3,
+      "families": [
+        "flaky-timeout",
+        "perf-regression",
+        "sse-truncated"
+      ],
+      "unitPairEndpointAudit": {
+        "eligiblePairs": 536,
+        "uniqueEndpoints": 447,
+        "endpointReferences": 1072,
+        "endpointsReused": 329,
+        "maxEndpointDegree": 4,
+        "cap": 4
+      },
+      "validationFamily": "sse-truncated",
+      "validationFamilyWasUsedForCheckpointSelection": true,
+      "evaluationPurpose": "development-or-candidate-validation",
+      "familySplit": {
+        "train": [
+          "flaky-timeout",
+          "perf-regression"
+        ],
+        "validation": [
+          "sse-truncated"
+        ]
+      },
+      "production": {
+        "schema": "cfb.v5-micro-weights/2-neural-65m",
+        "weightsDigest": "a3ddacc67139db0508e40eac59888c9acebbef04d8c8d1ee833a2fdf27f05bd7",
+        "unitPairs": {
+          "train": {
+            "correct": 129,
+            "total": 220,
+            "ties": 0,
+            "accuracy": 0.5864,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 0.5864,
+            "wilson95": {
+              "lower": 0.5203,
+              "upper": 0.6494
+            },
+            "wilsonLower95": 0.5203,
+            "wilsonLowerOneSided95": 0.531,
+            "byFamily": {
+              "flaky-timeout": {
+                "correct": 64,
+                "total": 100,
+                "accuracy": 0.64
+              },
+              "perf-regression": {
+                "correct": 65,
+                "total": 120,
+                "accuracy": 0.5417
+              }
+            },
+            "maxEndpointDegree": 4,
+            "endpointReuseCap": 4,
+            "lengthStratified": {
+              "far": {
+                "correct": 68,
+                "total": 120,
+                "ties": 0,
+                "accuracy": 0.5667,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.5667,
+                "wilson95": {
+                  "lower": 0.4773,
+                  "upper": 0.6519
+                },
+                "wilsonLower95": 0.4773,
+                "wilsonLowerOneSided95": 0.4916
+              },
+              "matched": {
+                "correct": 44,
+                "total": 72,
+                "ties": 0,
+                "accuracy": 0.6111,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.6111,
+                "wilson95": {
+                  "lower": 0.4956,
+                  "upper": 0.7153
+                },
+                "wilsonLower95": 0.4956,
+                "wilsonLowerOneSided95": 0.5142
+              },
+              "near": {
+                "correct": 17,
+                "total": 28,
+                "ties": 0,
+                "accuracy": 0.6071,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.6071,
+                "wilson95": {
+                  "lower": 0.4241,
+                  "upper": 0.7643
+                },
+                "wilsonLower95": 0.4241,
+                "wilsonLowerOneSided95": 0.4524
+              }
+            },
+            "lengthStratumBounds": {
+              "matched": "|delta token| <= 3",
+              "near": "3 < |delta token| <= 8",
+              "far": "|delta token| > 8"
+            },
+            "lengthMatchedSubset": {
+              "correct": 44,
+              "total": 72,
+              "ties": 0,
+              "accuracy": 0.6111,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 0.6111,
+              "wilson95": {
+                "lower": 0.4956,
+                "upper": 0.7153
+              },
+              "wilsonLower95": 0.4956,
+              "wilsonLowerOneSided95": 0.5142
+            },
+            "lengthMatchedShare": 0.3273,
+            "medianLengthGap": 10,
+            "lengthShortcutAudit": {
+              "note": "a longer winner means lambda*tokenCount works against the label; accuracy there cannot be a length shortcut",
+              "winnerLonger": {
+                "correct": 104,
+                "total": 181,
+                "ties": 0,
+                "accuracy": 0.5746,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.5746,
+                "wilson95": {
+                  "lower": 0.5017,
+                  "upper": 0.6443
+                },
+                "wilsonLower95": 0.5017,
+                "wilsonLowerOneSided95": 0.5135
+              },
+              "winnerShorter": {
+                "correct": 21,
+                "total": 32,
+                "ties": 0,
+                "accuracy": 0.6563,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.6563,
+                "wilson95": {
+                  "lower": 0.4831,
+                  "upper": 0.7959
+                },
+                "wilsonLower95": 0.4831,
+                "wilsonLowerOneSided95": 0.5109
+              },
+              "equalLength": {
+                "correct": 4,
+                "total": 7,
+                "ties": 0,
+                "accuracy": 0.5714,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.5714,
+                "wilson95": {
+                  "lower": 0.2505,
+                  "upper": 0.8418
+                },
+                "wilsonLower95": 0.2505,
+                "wilsonLowerOneSided95": 0.2895
+              }
+            },
+            "scoreWithoutTokenPenalty": {
+              "rankScoreDefinition": "v + lambda*tokenCount (lambda*tokenCount removed from the compared score)",
+              "correct": 136,
+              "total": 220,
+              "ties": 0,
+              "accuracy": 0.6182,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 0.6182,
+              "wilson95": {
+                "lower": 0.5525,
+                "upper": 0.6798
+              },
+              "wilsonLower95": 0.5525,
+              "wilsonLowerOneSided95": 0.5632,
+              "agreementWithFullScore": 0.9682
+            },
+            "scoreAudit": {
+              "uniqueEndpointsScored": 183,
+              "tokenLengthPenaltyIncludedInRankScore": true,
+              "tokenPenaltyDecoupledMetricReported": true,
+              "tokenPenaltyCoupledMetricRole": "headline accuracy stays on the production rank score v; scoreWithoutTokenPenalty reports the same pairs with lambda*tokenCount removed",
+              "tokenPenaltyMean": 0.064745,
+              "tokenPenaltyMin": 0.0076,
+              "tokenPenaltyMax": 0.2394,
+              "excludedGateActiveEndpoints": 51,
+              "scoredAsExcludedAfterGate": 0,
+              "scoredAsNoiseAfterGate": 29
+            }
+          },
+          "validation": {
+            "correct": 167,
+            "total": 316,
+            "ties": 0,
+            "accuracy": 0.5285,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 0.5285,
+            "wilson95": {
+              "lower": 0.4734,
+              "upper": 0.5828
+            },
+            "wilsonLower95": 0.4734,
+            "wilsonLowerOneSided95": 0.4822,
+            "byFamily": {
+              "sse-truncated": {
+                "correct": 167,
+                "total": 316,
+                "accuracy": 0.5285
+              }
+            },
+            "maxEndpointDegree": 4,
+            "endpointReuseCap": 4,
+            "lengthStratified": {
+              "far": {
+                "correct": 114,
+                "total": 171,
+                "ties": 0,
+                "accuracy": 0.6667,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.6667,
+                "wilson95": {
+                  "lower": 0.593,
+                  "upper": 0.733
+                },
+                "wilsonLower95": 0.593,
+                "wilsonLowerOneSided95": 0.6052
+              },
+              "matched": {
+                "correct": 27,
+                "total": 97,
+                "ties": 0,
+                "accuracy": 0.2784,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.2784,
+                "wilson95": {
+                  "lower": 0.1989,
+                  "upper": 0.3747
+                },
+                "wilsonLower95": 0.1989,
+                "wilsonLowerOneSided95": 0.2103
+              },
+              "near": {
+                "correct": 26,
+                "total": 48,
+                "ties": 0,
+                "accuracy": 0.5417,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.5417,
+                "wilson95": {
+                  "lower": 0.4029,
+                  "upper": 0.6742
+                },
+                "wilsonLower95": 0.4029,
+                "wilsonLowerOneSided95": 0.4243
+              }
+            },
+            "lengthStratumBounds": {
+              "matched": "|delta token| <= 3",
+              "near": "3 < |delta token| <= 8",
+              "far": "|delta token| > 8"
+            },
+            "lengthMatchedSubset": {
+              "correct": 27,
+              "total": 97,
+              "ties": 0,
+              "accuracy": 0.2784,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 0.2784,
+              "wilson95": {
+                "lower": 0.1989,
+                "upper": 0.3747
+              },
+              "wilsonLower95": 0.1989,
+              "wilsonLowerOneSided95": 0.2103
+            },
+            "lengthMatchedShare": 0.307,
+            "medianLengthGap": 10,
+            "lengthShortcutAudit": {
+              "note": "a longer winner means lambda*tokenCount works against the label; accuracy there cannot be a length shortcut",
+              "winnerLonger": {
+                "correct": 156,
+                "total": 283,
+                "ties": 0,
+                "accuracy": 0.5512,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.5512,
+                "wilson95": {
+                  "lower": 0.493,
+                  "upper": 0.6081
+                },
+                "wilsonLower95": 0.493,
+                "wilsonLowerOneSided95": 0.5023
+              },
+              "winnerShorter": {
+                "correct": 9,
+                "total": 21,
+                "ties": 0,
+                "accuracy": 0.4286,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.4286,
+                "wilson95": {
+                  "lower": 0.2447,
+                  "upper": 0.6345
+                },
+                "wilsonLower95": 0.2447,
+                "wilsonLowerOneSided95": 0.2693
+              },
+              "equalLength": {
+                "correct": 2,
+                "total": 12,
+                "ties": 0,
+                "accuracy": 0.1667,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.1667,
+                "wilson95": {
+                  "lower": 0.047,
+                  "upper": 0.448
+                },
+                "wilsonLower95": 0.047,
+                "wilsonLowerOneSided95": 0.0568
+              }
+            },
+            "scoreWithoutTokenPenalty": {
+              "rankScoreDefinition": "v + lambda*tokenCount (lambda*tokenCount removed from the compared score)",
+              "correct": 175,
+              "total": 316,
+              "ties": 0,
+              "accuracy": 0.5538,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 0.5538,
+              "wilson95": {
+                "lower": 0.4987,
+                "upper": 0.6076
+              },
+              "wilsonLower95": 0.4987,
+              "wilsonLowerOneSided95": 0.5075,
+              "agreementWithFullScore": 0.9747
+            },
+            "scoreAudit": {
+              "uniqueEndpointsScored": 264,
+              "tokenLengthPenaltyIncludedInRankScore": true,
+              "tokenPenaltyDecoupledMetricReported": true,
+              "tokenPenaltyCoupledMetricRole": "headline accuracy stays on the production rank score v; scoreWithoutTokenPenalty reports the same pairs with lambda*tokenCount removed",
+              "tokenPenaltyMean": 0.056539,
+              "tokenPenaltyMin": 0.0076,
+              "tokenPenaltyMax": 0.1824,
+              "excludedGateActiveEndpoints": 42,
+              "scoredAsExcludedAfterGate": 1,
+              "scoredAsNoiseAfterGate": 32
+            }
+          }
+        },
+        "draftPairs": {
+          "train": {
+            "correct": 66,
+            "total": 120,
+            "ties": 19,
+            "accuracy": 0.55,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 0.6292,
+            "wilson95": {
+              "lower": 0.4608,
+              "upper": 0.6361
+            },
+            "wilsonLower95": 0.4608,
+            "wilsonLowerOneSided95": 0.475,
+            "byFamily": {
+              "flaky-timeout": {
+                "correct": 33,
+                "total": 72,
+                "accuracy": 0.4583
+              },
+              "perf-regression": {
+                "correct": 33,
+                "total": 48,
+                "accuracy": 0.6875
+              }
+            }
+          },
+          "validation": {
+            "correct": 59,
+            "total": 99,
+            "ties": 0,
+            "accuracy": 0.596,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 0.596,
+            "wilson95": {
+              "lower": 0.4975,
+              "upper": 0.6873
+            },
+            "wilsonLower95": 0.4975,
+            "wilsonLowerOneSided95": 0.5133,
+            "byFamily": {
+              "sse-truncated": {
+                "correct": 59,
+                "total": 99,
+                "accuracy": 0.596
+              }
+            }
+          }
+        }
+      },
+      "candidate": {
+        "schema": "cfb.v5-micro-weights/3-distilled-pretrained",
+        "weightsDigest": "d87508db774596f40af92c7ea7e95c6f533e60ac40d420219674223d9f5e585b",
+        "unitPairs": {
+          "train": {
+            "correct": 220,
+            "total": 220,
+            "ties": 0,
+            "accuracy": 1,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 1,
+            "wilson95": {
+              "lower": 0.9828,
+              "upper": 1
+            },
+            "wilsonLower95": 0.9828,
+            "wilsonLowerOneSided95": 0.9878,
+            "byFamily": {
+              "flaky-timeout": {
+                "correct": 100,
+                "total": 100,
+                "accuracy": 1
+              },
+              "perf-regression": {
+                "correct": 120,
+                "total": 120,
+                "accuracy": 1
+              }
+            },
+            "maxEndpointDegree": 4,
+            "endpointReuseCap": 4,
+            "lengthStratified": {
+              "far": {
+                "correct": 120,
+                "total": 120,
+                "ties": 0,
+                "accuracy": 1,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 1,
+                "wilson95": {
+                  "lower": 0.969,
+                  "upper": 1
+                },
+                "wilsonLower95": 0.969,
+                "wilsonLowerOneSided95": 0.9779
+              },
+              "matched": {
+                "correct": 72,
+                "total": 72,
+                "ties": 0,
+                "accuracy": 1,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 1,
+                "wilson95": {
+                  "lower": 0.9493,
+                  "upper": 1
+                },
+                "wilsonLower95": 0.9493,
+                "wilsonLowerOneSided95": 0.9638
+              },
+              "near": {
+                "correct": 28,
+                "total": 28,
+                "ties": 0,
+                "accuracy": 1,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 1,
+                "wilson95": {
+                  "lower": 0.8794,
+                  "upper": 1
+                },
+                "wilsonLower95": 0.8794,
+                "wilsonLowerOneSided95": 0.9119
+              }
+            },
+            "lengthStratumBounds": {
+              "matched": "|delta token| <= 3",
+              "near": "3 < |delta token| <= 8",
+              "far": "|delta token| > 8"
+            },
+            "lengthMatchedSubset": {
+              "correct": 72,
+              "total": 72,
+              "ties": 0,
+              "accuracy": 1,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 1,
+              "wilson95": {
+                "lower": 0.9493,
+                "upper": 1
+              },
+              "wilsonLower95": 0.9493,
+              "wilsonLowerOneSided95": 0.9638
+            },
+            "lengthMatchedShare": 0.3273,
+            "medianLengthGap": 10,
+            "lengthShortcutAudit": {
+              "note": "a longer winner means lambda*tokenCount works against the label; accuracy there cannot be a length shortcut",
+              "winnerLonger": {
+                "correct": 181,
+                "total": 181,
+                "ties": 0,
+                "accuracy": 1,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 1,
+                "wilson95": {
+                  "lower": 0.9792,
+                  "upper": 1
+                },
+                "wilsonLower95": 0.9792,
+                "wilsonLowerOneSided95": 0.9853
+              },
+              "winnerShorter": {
+                "correct": 32,
+                "total": 32,
+                "ties": 0,
+                "accuracy": 1,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 1,
+                "wilson95": {
+                  "lower": 0.8928,
+                  "upper": 1
+                },
+                "wilsonLower95": 0.8928,
+                "wilsonLowerOneSided95": 0.922
+              },
+              "equalLength": {
+                "correct": 7,
+                "total": 7,
+                "ties": 0,
+                "accuracy": 1,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 1,
+                "wilson95": {
+                  "lower": 0.6457,
+                  "upper": 1
+                },
+                "wilsonLower95": 0.6457,
+                "wilsonLowerOneSided95": 0.7212
+              }
+            },
+            "scoreWithoutTokenPenalty": {
+              "rankScoreDefinition": "v + lambda*tokenCount (lambda*tokenCount removed from the compared score)",
+              "correct": 220,
+              "total": 220,
+              "ties": 0,
+              "accuracy": 1,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 1,
+              "wilson95": {
+                "lower": 0.9828,
+                "upper": 1
+              },
+              "wilsonLower95": 0.9828,
+              "wilsonLowerOneSided95": 0.9878,
+              "agreementWithFullScore": 1
+            },
+            "scoreAudit": {
+              "uniqueEndpointsScored": 183,
+              "tokenLengthPenaltyIncludedInRankScore": true,
+              "tokenPenaltyDecoupledMetricReported": true,
+              "tokenPenaltyCoupledMetricRole": "headline accuracy stays on the production rank score v; scoreWithoutTokenPenalty reports the same pairs with lambda*tokenCount removed",
+              "tokenPenaltyMean": 0.064745,
+              "tokenPenaltyMin": 0.0076,
+              "tokenPenaltyMax": 0.2394,
+              "excludedGateActiveEndpoints": 53,
+              "scoredAsExcludedAfterGate": 16,
+              "scoredAsNoiseAfterGate": 58
+            }
+          },
+          "validation": {
+            "correct": 278,
+            "total": 316,
+            "ties": 0,
+            "accuracy": 0.8797,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 0.8797,
+            "wilson95": {
+              "lower": 0.8392,
+              "upper": 0.9111
+            },
+            "wilsonLower95": 0.8392,
+            "wilsonLowerOneSided95": 0.8464,
+            "byFamily": {
+              "sse-truncated": {
+                "correct": 278,
+                "total": 316,
+                "accuracy": 0.8797
+              }
+            },
+            "maxEndpointDegree": 4,
+            "endpointReuseCap": 4,
+            "lengthStratified": {
+              "far": {
+                "correct": 168,
+                "total": 171,
+                "ties": 0,
+                "accuracy": 0.9825,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.9825,
+                "wilson95": {
+                  "lower": 0.9497,
+                  "upper": 0.994
+                },
+                "wilsonLower95": 0.9497,
+                "wilsonLowerOneSided95": 0.9569
+              },
+              "matched": {
+                "correct": 67,
+                "total": 97,
+                "ties": 0,
+                "accuracy": 0.6907,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.6907,
+                "wilson95": {
+                  "lower": 0.593,
+                  "upper": 0.774
+                },
+                "wilsonLower95": 0.593,
+                "wilsonLowerOneSided95": 0.6092
+              },
+              "near": {
+                "correct": 43,
+                "total": 48,
+                "ties": 0,
+                "accuracy": 0.8958,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.8958,
+                "wilson95": {
+                  "lower": 0.7783,
+                  "upper": 0.9547
+                },
+                "wilsonLower95": 0.7783,
+                "wilsonLowerOneSided95": 0.801
+              }
+            },
+            "lengthStratumBounds": {
+              "matched": "|delta token| <= 3",
+              "near": "3 < |delta token| <= 8",
+              "far": "|delta token| > 8"
+            },
+            "lengthMatchedSubset": {
+              "correct": 67,
+              "total": 97,
+              "ties": 0,
+              "accuracy": 0.6907,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 0.6907,
+              "wilson95": {
+                "lower": 0.593,
+                "upper": 0.774
+              },
+              "wilsonLower95": 0.593,
+              "wilsonLowerOneSided95": 0.6092
+            },
+            "lengthMatchedShare": 0.307,
+            "medianLengthGap": 10,
+            "lengthShortcutAudit": {
+              "note": "a longer winner means lambda*tokenCount works against the label; accuracy there cannot be a length shortcut",
+              "winnerLonger": {
+                "correct": 260,
+                "total": 283,
+                "ties": 0,
+                "accuracy": 0.9187,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.9187,
+                "wilson95": {
+                  "lower": 0.881,
+                  "upper": 0.9452
+                },
+                "wilsonLower95": 0.881,
+                "wilsonLowerOneSided95": 0.8879
+              },
+              "winnerShorter": {
+                "correct": 10,
+                "total": 21,
+                "ties": 0,
+                "accuracy": 0.4762,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.4762,
+                "wilson95": {
+                  "lower": 0.2834,
+                  "upper": 0.6763
+                },
+                "wilsonLower95": 0.2834,
+                "wilsonLowerOneSided95": 0.3101
+              },
+              "equalLength": {
+                "correct": 8,
+                "total": 12,
+                "ties": 0,
+                "accuracy": 0.6667,
+                "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+                "accuracyWithTiesHalfCredit": 0.6667,
+                "wilson95": {
+                  "lower": 0.3906,
+                  "upper": 0.8619
+                },
+                "wilsonLower95": 0.3906,
+                "wilsonLowerOneSided95": 0.4315
+              }
+            },
+            "scoreWithoutTokenPenalty": {
+              "rankScoreDefinition": "v + lambda*tokenCount (lambda*tokenCount removed from the compared score)",
+              "correct": 279,
+              "total": 316,
+              "ties": 0,
+              "accuracy": 0.8829,
+              "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+              "accuracyWithTiesHalfCredit": 0.8829,
+              "wilson95": {
+                "lower": 0.8428,
+                "upper": 0.9138
+              },
+              "wilsonLower95": 0.8428,
+              "wilsonLowerOneSided95": 0.8499,
+              "agreementWithFullScore": 0.9968
+            },
+            "scoreAudit": {
+              "uniqueEndpointsScored": 264,
+              "tokenLengthPenaltyIncludedInRankScore": true,
+              "tokenPenaltyDecoupledMetricReported": true,
+              "tokenPenaltyCoupledMetricRole": "headline accuracy stays on the production rank score v; scoreWithoutTokenPenalty reports the same pairs with lambda*tokenCount removed",
+              "tokenPenaltyMean": 0.056539,
+              "tokenPenaltyMin": 0.0076,
+              "tokenPenaltyMax": 0.1824,
+              "excludedGateActiveEndpoints": 42,
+              "scoredAsExcludedAfterGate": 36,
+              "scoredAsNoiseAfterGate": 94
+            }
+          }
+        },
+        "draftPairs": {
+          "train": {
+            "correct": 67,
+            "total": 120,
+            "ties": 19,
+            "accuracy": 0.5583,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 0.6375,
+            "wilson95": {
+              "lower": 0.469,
+              "upper": 0.644
+            },
+            "wilsonLower95": 0.469,
+            "wilsonLowerOneSided95": 0.4833,
+            "byFamily": {
+              "flaky-timeout": {
+                "correct": 34,
+                "total": 72,
+                "accuracy": 0.4722
+              },
+              "perf-regression": {
+                "correct": 33,
+                "total": 48,
+                "accuracy": 0.6875
+              }
+            }
+          },
+          "validation": {
+            "correct": 63,
+            "total": 99,
+            "ties": 0,
+            "accuracy": 0.6364,
+            "tiesPolicy": "strict: a tied pair scores 0 (headline metric, gate-comparable)",
+            "accuracyWithTiesHalfCredit": 0.6364,
+            "wilson95": {
+              "lower": 0.5382,
+              "upper": 0.7244
+            },
+            "wilsonLower95": 0.5382,
+            "wilsonLowerOneSided95": 0.5542,
+            "byFamily": {
+              "sse-truncated": {
+                "correct": 63,
+                "total": 99,
+                "accuracy": 0.6364
+              }
+            }
+          }
+        }
+      },
+      "numericalParity": {
+        "status": "passed",
+        "reference": "PyTorch student parameters recomputed with JS scorer equations before six-decimal JSON quantization",
+        "runtime": "src/compile-v5-local.js scoring functions on the candidate JSON weights",
+        "tolerance": 0.001,
+        "unitCases": 538,
+        "draftCases": 438,
+        "unitMaxAbsError": 5.159e-05,
+        "unitSlotMismatches": 0,
+        "unitGateMismatches": 0,
+        "unitGateActiveCases": 118,
+        "draftMaxAbsError": 4.988e-05,
+        "slotMismatchesIgnoredNearTie": 0,
+        "gateMismatchesIgnoredBoundary": 0,
+        "slotNearTieEps": 0.002,
+        "gateBoundaryEps": 0.002
+      }
+    },
+    "jsRuntimeValidationUnitPairAcc": 0.8797,
+    "compactStudentDraftTrainPairAcc": 0.5583,
+    "compactStudentDraftValidationPairAcc": 0.6364,
+    "compactStudentDraftTrainPairs": 120,
+    "compactStudentDraftValidationPairs": 99,
+    "jsRuntimeValidationDraftPairAcc": 0.6364,
+    "productionJsRuntimeValidationUnitPairAcc": 0.5285,
+    "productionJsRuntimeValidationDraftPairAcc": 0.596,
+    "simpoTrainDraftPairAcc": 0.5667,
+    "simpoValidationDraftPairAcc": 0.596,
+    "pytorchStudentUnitTrain": {
+      "slotAcc": 0.9346,
+      "slotMacroF1": 0.9489,
+      "slotF1": {
+        "MECHANISM": 0.9362,
+        "EXCLUDED": 1.0,
+        "DECIDED": 0.9371,
+        "ACCEPT": 1.0,
+        "OPEN": 0.9032,
+        "NOISE": 0.9167
+      },
+      "loss": 0.66206,
+      "multiTaskLoss": 0.5598,
+      "unitPairwiseLoss": 0.10227,
+      "unitPairAccReference": 1.0,
+      "unitPairObjective": "listwise",
+      "unitPairCount": 220,
+      "unitPairLossWeight": 1.0,
+      "valueMae": 0.20867,
+      "samples": 214
+    },
+    "pytorchStudentUnitValidation": {
+      "slotAcc": 0.3642,
+      "slotMacroF1": 0.2862,
+      "slotF1": {
+        "MECHANISM": 0.4124,
+        "EXCLUDED": 0.2353,
+        "DECIDED": 0.1867,
+        "ACCEPT": 0.3175,
+        "OPEN": 0.04,
+        "NOISE": 0.5253
+      },
+      "loss": 1.80461,
+      "multiTaskLoss": 1.12385,
+      "unitPairwiseLoss": 0.68077,
+      "unitPairAccReference": 0.8797,
+      "unitPairObjective": "listwise",
+      "unitPairCount": 316,
+      "unitPairLossWeight": 1.0,
+      "valueMae": 0.2521,
+      "samples": 324
+    },
+    "pytorchStudentDraftTrainPairAcc": 0.5583333373069763,
+    "pytorchStudentDraftValidationPairAcc": 0.6363636255264282,
+    "studentPreferenceHistory": [
+      {
+        "epoch": 1,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.75552
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.93268
+        }
+      },
+      {
+        "epoch": 2,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.754
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.93176
+        }
+      },
+      {
+        "epoch": 3,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.75254
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.9309
+        }
+      },
+      {
+        "epoch": 4,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.75113
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.93011
+        }
+      },
+      {
+        "epoch": 5,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.74978
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.92936
+        }
+      },
+      {
+        "epoch": 6,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.74848
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.92866
+        }
+      },
+      {
+        "epoch": 7,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.74723
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.928
+        }
+      },
+      {
+        "epoch": 8,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.74603
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.92736
+        }
+      },
+      {
+        "epoch": 9,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.74489
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.92673
+        }
+      },
+      {
+        "epoch": 10,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.7438
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.92612
+        }
+      },
+      {
+        "epoch": 11,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.74275
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.92552
+        }
+      },
+      {
+        "epoch": 12,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.74174
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.92494
+        }
+      },
+      {
+        "epoch": 13,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.74077
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.92436
+        }
+      },
+      {
+        "epoch": 14,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.73983
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.9238
+        }
+      },
+      {
+        "epoch": 15,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.73893
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.92325
+        }
+      },
+      {
+        "epoch": 16,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.73805
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.92271
+        }
+      },
+      {
+        "epoch": 17,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.73721
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.92218
+        }
+      },
+      {
+        "epoch": 18,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.73638
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.92167
+        }
+      },
+      {
+        "epoch": 19,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.73558
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.92118
+        }
+      },
+      {
+        "epoch": 20,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.7348
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.9207
+        }
+      },
+      {
+        "epoch": 21,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.73405
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.92023
+        }
+      },
+      {
+        "epoch": 22,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.73331
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.91978
+        }
+      },
+      {
+        "epoch": 23,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.73259
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.91935
+        }
+      },
+      {
+        "epoch": 24,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.73188
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.91893
+        }
+      },
+      {
+        "epoch": 25,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.7312
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.91853
+        }
+      },
+      {
+        "epoch": 26,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.73053
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.91814
+        }
+      },
+      {
+        "epoch": 27,
+        "train": {
+          "pairAcc": 0.550000011920929,
+          "loss": 0.72987
+        },
+        "validation": {
+          "pairAcc": 0.5959596037864685,
+          "loss": 0.91777
+        }
+      },
+      {
+        "epoch": 28,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72923
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.91741
+        }
+      },
+      {
+        "epoch": 29,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72861
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.91707
+        }
+      },
+      {
+        "epoch": 30,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.728
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.91674
+        }
+      },
+      {
+        "epoch": 31,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72741
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.91641
+        }
+      },
+      {
+        "epoch": 32,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72684
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.9161
+        }
+      },
+      {
+        "epoch": 33,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72627
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.91579
+        }
+      },
+      {
+        "epoch": 34,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72572
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.91548
+        }
+      },
+      {
+        "epoch": 35,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72518
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.91517
+        }
+      },
+      {
+        "epoch": 36,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72466
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.91486
+        }
+      },
+      {
+        "epoch": 37,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72415
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.91455
+        }
+      },
+      {
+        "epoch": 38,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72365
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.91424
+        }
+      },
+      {
+        "epoch": 39,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72316
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.91391
+        }
+      },
+      {
+        "epoch": 40,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72269
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.91358
+        }
+      },
+      {
+        "epoch": 41,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72222
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.91324
+        }
+      },
+      {
+        "epoch": 42,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72177
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.91288
+        }
+      },
+      {
+        "epoch": 43,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72132
+        },
+        "validation": {
+          "pairAcc": 0.6161616444587708,
+          "loss": 0.91251
+        }
+      },
+      {
+        "epoch": 44,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72089
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.91213
+        }
+      },
+      {
+        "epoch": 45,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72046
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.91174
+        }
+      },
+      {
+        "epoch": 46,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.72005
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.91133
+        }
+      },
+      {
+        "epoch": 47,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71965
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.91091
+        }
+      },
+      {
+        "epoch": 48,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71926
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.91047
+        }
+      },
+      {
+        "epoch": 49,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71887
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.91002
+        }
+      },
+      {
+        "epoch": 50,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.7185
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90955
+        }
+      },
+      {
+        "epoch": 51,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71814
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90907
+        }
+      },
+      {
+        "epoch": 52,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71779
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90858
+        }
+      },
+      {
+        "epoch": 53,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71745
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90809
+        }
+      },
+      {
+        "epoch": 54,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71712
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90758
+        }
+      },
+      {
+        "epoch": 55,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.7168
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90707
+        }
+      },
+      {
+        "epoch": 56,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71649
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90656
+        }
+      },
+      {
+        "epoch": 57,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.7162
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90604
+        }
+      },
+      {
+        "epoch": 58,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71592
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90553
+        }
+      },
+      {
+        "epoch": 59,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71565
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90502
+        }
+      },
+      {
+        "epoch": 60,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71539
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90452
+        }
+      },
+      {
+        "epoch": 61,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71514
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90403
+        }
+      },
+      {
+        "epoch": 62,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71491
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90356
+        }
+      },
+      {
+        "epoch": 63,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71468
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.9031
+        }
+      },
+      {
+        "epoch": 64,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71447
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90266
+        }
+      },
+      {
+        "epoch": 65,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71427
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90225
+        }
+      },
+      {
+        "epoch": 66,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71408
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90186
+        }
+      },
+      {
+        "epoch": 67,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71389
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90151
+        }
+      },
+      {
+        "epoch": 68,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71371
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90118
+        }
+      },
+      {
+        "epoch": 69,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71354
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90088
+        }
+      },
+      {
+        "epoch": 70,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71338
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.90062
+        }
+      },
+      {
+        "epoch": 71,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71322
+        },
+        "validation": {
+          "pairAcc": 0.6262626051902771,
+          "loss": 0.9004
+        }
+      },
+      {
+        "epoch": 72,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71306
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.9002
+        }
+      },
+      {
+        "epoch": 73,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71291
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.90004
+        }
+      },
+      {
+        "epoch": 74,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71277
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89991
+        }
+      },
+      {
+        "epoch": 75,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71262
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89981
+        }
+      },
+      {
+        "epoch": 76,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71248
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89973
+        }
+      },
+      {
+        "epoch": 77,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71234
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89968
+        }
+      },
+      {
+        "epoch": 78,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71221
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89964
+        }
+      },
+      {
+        "epoch": 79,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71208
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89962
+        }
+      },
+      {
+        "epoch": 80,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71195
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.8996
+        }
+      },
+      {
+        "epoch": 81,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71182
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89959
+        }
+      },
+      {
+        "epoch": 82,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.7117
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89958
+        }
+      },
+      {
+        "epoch": 83,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71158
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89956
+        }
+      },
+      {
+        "epoch": 84,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71146
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89953
+        }
+      },
+      {
+        "epoch": 85,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71134
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89948
+        }
+      },
+      {
+        "epoch": 86,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71123
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89942
+        }
+      },
+      {
+        "epoch": 87,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71112
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89935
+        }
+      },
+      {
+        "epoch": 88,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71101
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89925
+        }
+      },
+      {
+        "epoch": 89,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71091
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89914
+        }
+      },
+      {
+        "epoch": 90,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.7108
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89902
+        }
+      },
+      {
+        "epoch": 91,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.7107
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89888
+        }
+      },
+      {
+        "epoch": 92,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71061
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89873
+        }
+      },
+      {
+        "epoch": 93,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71051
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89857
+        }
+      },
+      {
+        "epoch": 94,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71042
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89841
+        }
+      },
+      {
+        "epoch": 95,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71033
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89825
+        }
+      },
+      {
+        "epoch": 96,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71024
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89809
+        }
+      },
+      {
+        "epoch": 97,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71016
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89793
+        }
+      },
+      {
+        "epoch": 98,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71008
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89778
+        }
+      },
+      {
+        "epoch": 99,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.71
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89763
+        }
+      },
+      {
+        "epoch": 100,
+        "train": {
+          "pairAcc": 0.5583333373069763,
+          "loss": 0.70992
+        },
+        "validation": {
+          "pairAcc": 0.6363636255264282,
+          "loss": 0.89749
+        }
+      }
+    ],
+    "validationFamily": "sse-truncated"
+  },
+  "mode2GoldEval": {
+    "schema": "cfb.micro-mode2-eval/1",
+    "trainingStats": {
+      "device": "cuda (Tesla T4; Tesla T4, count=2)",
+      "validationFamily": "sse-truncated",
+      "devGoldCount": 4,
+      "devPoolCount": 3,
+      "devUnitSamples": 542,
+      "devTrainEligibleUnitSamples": 538,
+      "devUnitLabelsNeedsReview": 4,
+      "trainUnitSamples": 214,
+      "validationUnitSamples": 324,
+      "sftAmpSkippedSteps": 2,
+      "simpoAmpSkippedSteps": 1,
+      "devUnitStepPairs": 536,
+      "devDraftPreferencePairs": 303,
+      "trainEligibleDraftPreferencePairs": 219,
+      "draftPreferencePairsNeedsReview": 84,
+      "unitPairEndpointReuse": {
+        "maxDegree": 4,
+        "uniqueEndpoints": 447,
+        "endpointReferences": 1072,
+        "endpointsReused": 329,
+        "reuseFraction": 0.736,
+        "degreeHistogram": {
+          "1": 118,
+          "2": 172,
+          "3": 18,
+          "4": 139
+        },
+        "cap": 4
+      },
+      "lastSftTrain": {
+        "slotAcc": 0.3084,
+        "slotMacroF1": 0.1859,
+        "slotF1": {
+          "MECHANISM": 0.2748,
+          "EXCLUDED": 0.1053,
+          "DECIDED": 0.3453,
+          "ACCEPT": 0,
+          "OPEN": 0,
+          "NOISE": 0.3898
+        },
+        "loss": 1.73902,
+        "valueMae": 0.29519,
+        "temptationMae": 0.15267,
+        "samples": 214
+      },
+      "lastSftValidation": {
+        "slotAcc": 0.3179,
+        "slotMacroF1": 0.284,
+        "slotF1": {
+          "MECHANISM": 0.354,
+          "EXCLUDED": 0.3784,
+          "DECIDED": 0.1681,
+          "ACCEPT": 0.381,
+          "OPEN": 0,
+          "NOISE": 0.4224
+        },
+        "loss": 1.88717,
+        "valueMae": 0.23831,
+        "temptationMae": 0.19291,
+        "samples": 324
+      },
+      "bestSftValidation": {
+        "slotAcc": 0.3179,
+        "slotMacroF1": 0.284,
+        "slotF1": {
+          "MECHANISM": 0.354,
+          "EXCLUDED": 0.3784,
+          "DECIDED": 0.1681,
+          "ACCEPT": 0.381,
+          "OPEN": 0,
+          "NOISE": 0.4224
+        },
+        "loss": 1.88717,
+        "valueMae": 0.23831,
+        "temptationMae": 0.19291,
+        "samples": 324
+      },
+      "simpoBestEpoch": 9,
+      "simpoTrainUnitPairAcc": 0.8227,
+      "simpoValidationUnitPairAcc": 0.7215,
+      "simpoTrainDraftPairAcc": 0.5667,
+      "simpoValidationDraftPairAcc": 0.596,
+      "studentUnitTrain": {
+        "slotAcc": 0.9346,
+        "slotMacroF1": 0.9489,
+        "slotF1": {
+          "MECHANISM": 0.9362,
+          "EXCLUDED": 1,
+          "DECIDED": 0.9371,
+          "ACCEPT": 1,
+          "OPEN": 0.9032,
+          "NOISE": 0.9167
+        },
+        "loss": 0.66206,
+        "multiTaskLoss": 0.5598,
+        "unitPairwiseLoss": 0.10227,
+        "unitPairAccReference": 1,
+        "unitPairObjective": "listwise",
+        "unitPairCount": 220,
+        "unitPairLossWeight": 1,
+        "valueMae": 0.20867,
+        "samples": 214
+      },
+      "studentUnitValidation": {
+        "slotAcc": 0.3642,
+        "slotMacroF1": 0.2862,
+        "slotF1": {
+          "MECHANISM": 0.4124,
+          "EXCLUDED": 0.2353,
+          "DECIDED": 0.1867,
+          "ACCEPT": 0.3175,
+          "OPEN": 0.04,
+          "NOISE": 0.5253
+        },
+        "loss": 1.80461,
+        "multiTaskLoss": 1.12385,
+        "unitPairwiseLoss": 0.68077,
+        "unitPairAccReference": 0.8797,
+        "unitPairObjective": "listwise",
+        "unitPairCount": 316,
+        "unitPairLossWeight": 1,
+        "valueMae": 0.2521,
+        "samples": 324
+      },
+      "compactStudentUnitTrainPairs": 220,
+      "compactStudentUnitValidationPairs": 316,
+      "compactStudentUnitPairLossWeight": 1,
+      "compactStudentUnitPairBeta": 0.85,
+      "compactStudentUnitPairMarginSource": "gammaStep from audited Unit preference pairs",
+      "compactStudentUnitPairObjective": "listwise",
+      "compactStudentUnitTrainPairwiseLoss": 0.10227,
+      "compactStudentUnitValidationPairwiseLoss": 0.68077,
+      "compactStudentUnitTrainPairAccPreSerialization": 1,
+      "compactStudentUnitValidationPairAccPreSerialization": 0.8797,
+      "pytorchStudentDraftTrainPairAcc": 0.5583333373069763,
+      "pytorchStudentDraftValidationPairAcc": 0.6363636255264282,
+      "compactStudentUnitTrainPairAcc": 1,
+      "compactStudentUnitValidationPairAcc": 0.8797,
+      "compactStudentDraftTrainPairAcc": 0.5583,
+      "compactStudentDraftValidationPairAcc": 0.6364,
+      "compactStudentDraftTrainPairs": 120,
+      "compactStudentDraftValidationPairs": 99,
+      "productionJsRuntimeValidationUnitPairAcc": 0.5285,
+      "productionJsRuntimeValidationDraftPairAcc": 0.596,
+      "jsRuntimeScorer": "src/compile-v5-local.js:extractUnitFeatures (dataset-built JS vectors) + scoreUnitWithWeights + scoreDraftPreferenceFeatures",
+      "jsRuntimeWeightsSchema": "cfb.v5-micro-weights/3-distilled-pretrained",
+      "pythonJsNumericalParity": {
+        "status": "passed",
+        "reference": "PyTorch student parameters recomputed with JS scorer equations before six-decimal JSON quantization",
+        "runtime": "src/compile-v5-local.js scoring functions on the candidate JSON weights",
+        "tolerance": 0.001,
+        "unitCases": 538,
+        "draftCases": 438,
+        "unitMaxAbsError": 5.159e-05,
+        "unitSlotMismatches": 0,
+        "unitGateMismatches": 0,
+        "unitGateActiveCases": 118,
+        "draftMaxAbsError": 4.988e-05,
+        "slotMismatchesIgnoredNearTie": 0,
+        "gateMismatchesIgnoredBoundary": 0,
+        "slotNearTieEps": 0.002,
+        "gateBoundaryEps": 0.002
+      }
+    },
+    "summary": {
+      "totalItems": 4,
+      "devItems": 2,
+      "holdoutItems": 2,
+      "devMeanScore": 0.5,
+      "holdoutMeanScore": 0.833,
+      "overallMeanScore": 0.6665,
+      "generalizationGap": 0.333,
+      "g1PassCount": 4,
+      "g2PassCount": 4,
+      "closeCount": 0,
+      "meanRawChars": 3709.3,
+      "meanSplicedChars": 1685.3,
+      "meanSplicedToRawRatio": 0.4954,
+      "meanCharReductionPct": 50.46,
+      "meanMs": 43.71,
+      "maxMs": 65.44,
+      "heapDeltaKB": 514.9
+    },
+    "rows": [
+      {
+        "id": "sse-truncated-s0-r4",
+        "family": "sse-truncated",
+        "split": "dev",
+        "ms": 65.44,
+        "rawChars": 3911,
+        "draftChars": 1316,
+        "splicedChars": 1898,
+        "g1Accept": true,
+        "g1Why": null,
+        "g1Info": null,
+        "g2Ok": true,
+        "score": 0.5,
+        "verdict": "partial",
+        "slots": {
+          "decision": null,
+          "excludedRecall": null,
+          "acceptOk": 0,
+          "openRecall": null,
+          "anchorPrecision": 1,
+          "lengthOk": 0,
+          "lengthRatio": 4.36
+        },
+        "resurrected": [],
+        "gateReasons": []
+      },
+      {
+        "id": "sse-truncated-s1-r3",
+        "family": "sse-truncated",
+        "split": "dev",
+        "ms": 40.2,
+        "rawChars": 3687,
+        "draftChars": 1307,
+        "splicedChars": 1770,
+        "g1Accept": true,
+        "g1Why": null,
+        "g1Info": null,
+        "g2Ok": true,
+        "score": 0.5,
+        "verdict": "partial",
+        "slots": {
+          "decision": null,
+          "excludedRecall": null,
+          "acceptOk": 0,
+          "openRecall": null,
+          "anchorPrecision": 1,
+          "lengthOk": 0,
+          "lengthRatio": 4.37
+        },
+        "resurrected": [],
+        "gateReasons": []
+      },
+      {
+        "id": "wrong-model-s0-r6",
+        "family": "wrong-model",
+        "split": "holdout",
+        "ms": 34.51,
+        "rawChars": 2213,
+        "draftChars": 1060,
+        "splicedChars": 1601,
+        "g1Accept": true,
+        "g1Why": null,
+        "g1Info": null,
+        "g2Ok": true,
+        "score": 0.833,
+        "verdict": "partial",
+        "slots": {
+          "decision": null,
+          "excludedRecall": null,
+          "acceptOk": 1,
+          "openRecall": null,
+          "anchorPrecision": 1,
+          "lengthOk": 0,
+          "lengthRatio": 2.81
+        },
+        "resurrected": [],
+        "gateReasons": []
+      },
+      {
+        "id": "wrong-model-s1-r5",
+        "family": "wrong-model",
+        "split": "holdout",
+        "ms": 34.68,
+        "rawChars": 5026,
+        "draftChars": 1082,
+        "splicedChars": 1472,
+        "g1Accept": true,
+        "g1Why": null,
+        "g1Info": null,
+        "g2Ok": true,
+        "score": 0.833,
+        "verdict": "partial",
+        "slots": {
+          "decision": null,
+          "excludedRecall": null,
+          "acceptOk": 1,
+          "openRecall": null,
+          "anchorPrecision": 1,
+          "lengthOk": 0,
+          "lengthRatio": 3.56
+        },
+        "resurrected": [],
+        "gateReasons": []
+      }
+    ]
+  },
+  "artifacts": {
+    "candidateWeights": "transfer/models/v5-micro-weights.candidate.json",
+    "compactCandidateOnnx": "transfer/models/cfb-micro-neural.candidate.onnx",
+    "compactOnnxExportTempPath": "/kaggle/working/cfb-micro-neural.candidate.onnx",
+    "fullEncoderOnnxTempPath": "/kaggle/working/cfb-micro-97m-multilingual.int8.onnx",
+    "compactOnnxBytes": 124651,
+    "fullOnnxBytes": 98742284,
+    "compactCpuMsBatch36": 0.1629,
+    "fullCpuMsBatch2Seq256": 225.738,
+    "fullOnnxSmoke": "passed",
+    "fullOnnxError": null,
+    "tokenizerRevision": "835ad14087e140460703cf0fae09f97d469d65c2"
+  },
+  "gates": {
+    "under01B": true,
+    "strictDevOnly": true,
+    "unitPreferenceValidationAtLeast90": false,
+    "teacherDraftPreferenceValidationAtLeast90": false,
+    "compactStudentUnitPairValidationAtLeast90": false,
+    "jsRuntimeUnitPairValidationAtLeast90": false,
+    "draftPreferenceStudentValidationAtLeast90": false,
+    "jsRuntimeDraftPairValidationAtLeast90": false,
+    "mode2G1AllPass": true,
+    "mode2G2AllPass": true,
+    "fullOnnxSmokePassed": true,
+    "pythonJsNumericalParityPassed": true,
+    "freshIndependentNewFamilyTestPassed": false,
+    "threeFoldCvComplete": false,
+    "foldLineageCompatible": false,
+    "threeFoldMatchedBeatsProductionPlus20": false,
+    "threeFoldMatchedMeanAtLeast75": false,
+    "threeFoldMatchedWorstAtLeast70": false,
+    "noRegressionVsPreviousCandidateFold": false,
+    "draftThreeFoldAggregateAtLeast85": false,
+    "draftEachFoldAtLeastProduction": false,
+    "prospectivePreregistration": false
+  },
+  "threeFoldCv": {
+    "schema": "cfb.micro-cv/2",
+    "policy": "retrospective exploratory summary only: v2 thresholds were written after the 2026-10-04 fold results; a positive metric summary is not confirmatory and cannot authorize promotion",
+    "confirmatoryEligible": false,
+    "confirmatoryReason": "fold-lineage-incompatible-or-missing; baseline-lineage-incompatible:baseline-schema-missing-or-legacy",
+    "families": [
+      "flaky-timeout",
+      "perf-regression",
+      "sse-truncated"
+    ],
+    "complete": false,
+    "missingFolds": [
+      "flaky-timeout",
+      "perf-regression"
+    ],
+    "invalidFolds": {},
+    "foldCompatibility": {
+      "allCompatible": false,
+      "families": {
+        "flaky-timeout": {
+          "compatible": false,
+          "reasons": [
+            "fold-report-missing"
+          ]
+        },
+        "perf-regression": {
+          "compatible": false,
+          "reasons": [
+            "fold-report-missing"
+          ]
+        },
+        "sse-truncated": {
+          "compatible": true,
+          "reasons": [],
+          "source": "current-run"
+        }
+      }
+    },
+    "thresholds": {
+      "matchedProductionMargin": 0.2,
+      "matchedMeanFloor": 0.75,
+      "matchedWorstFloor": 0.7,
+      "noRegressionTolerance": 0.03,
+      "draftAggregateFloor": 0.85,
+      "requiredFoldCount": 3
+    },
+    "baselineValidation": {
+      "valid": false,
+      "reasons": [
+        "baseline-lineage-incompatible:baseline-schema-missing-or-legacy",
+        "baseline-missing",
+        "baseline-schema-missing-or-legacy",
+        "baseline-training-data-fingerprint-mismatch-or-missing",
+        "baseline-source-sha256-mismatch-or-missing",
+        "baseline-preregistration-sha256-mismatch-or-missing",
+        "baseline-family-set-mismatch-or-missing",
+        "baseline-matched-values-missing"
+      ]
+    },
+    "perFold": {
+      "sse-truncated": {
+        "candidateMatched": 0.6907,
+        "productionMatched": 0.2784,
+        "marginOverProduction": 0.4123,
+        "matchedCorrect": 67,
+        "matchedTotal": 97,
+        "candidateAllPairs": 0.8797,
+        "candidateWilsonLower95": 0.8392,
+        "candidateDraft": 0.6364,
+        "productionDraft": 0.596,
+        "baselineMatched": null,
+        "deltaVsBaseline": null
+      }
+    },
+    "summary": {
+      "matchedMean": null,
+      "matchedWorst": null,
+      "matchedSpread": null,
+      "draftAggregate": 0.6364
+    },
+    "gates": {
+      "threeFoldCvComplete": {
+        "passed": false,
+        "detail": "folds present=['sse-truncated'] missing=['flaky-timeout', 'perf-regression'] invalid={} uniqueFamilies=True required=3"
+      },
+      "foldLineageCompatible": {
+        "passed": false,
+        "detail": "allCompatible=False reasons=['fold-lineage-not-fully-compatible', 'fold-lineage-incompatible:flaky-timeout', 'fold-lineage-incompatible:perf-regression']"
+      },
+      "threeFoldMatchedBeatsProductionPlus20": {
+        "passed": false,
+        "detail": "margins={'sse-truncated': 0.4123} required>=+0.2"
+      },
+      "threeFoldMatchedMeanAtLeast75": {
+        "passed": false,
+        "detail": "mean=None floor>=0.75"
+      },
+      "threeFoldMatchedWorstAtLeast70": {
+        "passed": false,
+        "detail": "worst=None floor>=0.7"
+      },
+      "noRegressionVsPreviousCandidateFold": {
+        "passed": false,
+        "detail": "delta_vs_baseline={'sse-truncated': None} tolerance>=-0.03 baselineValid=False reasons=['baseline-lineage-incompatible:baseline-schema-missing-or-legacy', 'baseline-missing', 'baseline-schema-missing-or-legacy', 'baseline-training-data-fingerprint-mismatch-or-missing', 'baseline-source-sha256-mismatch-or-missing', 'baseline-preregistration-sha256-mismatch-or-missing', 'baseline-family-set-mismatch-or-missing', 'baseline-matched-values-missing']"
+      },
+      "draftThreeFoldAggregateAtLeast85": {
+        "passed": false,
+        "detail": "aggregate=0.6364 floor>=0.85 (n=99)"
+      },
+      "draftEachFoldAtLeastProduction": {
+        "passed": false,
+        "detail": "candidate-minus-production={'sse-truncated': 0.0404}"
+      },
+      "prospectivePreregistration": {
+        "passed": false,
+        "detail": "fold-lineage-incompatible-or-missing; baseline-lineage-incompatible:baseline-schema-missing-or-legacy"
+      }
+    }
+  },
+  "accepted": false,
+  "promotionEligible": false,
+  "preregistration": {
+    "file": "transfer/micro-preregistration-2026-10-06c.json",
+    "sha256": "3dbc8fb8a154489d6f1b03d7566fe4e88bc6ac659aeb3ed495d35a45ea5b9dd6",
+    "matched": true,
+    "confirmatoryEligible": true,
+    "folds": [
+      "flaky-timeout",
+      "perf-regression",
+      "sse-truncated"
+    ],
+    "trainingDataFingerprint": "56a211c27cec8eead5176baf2de184ebcb18324ebf33a211615ee2e6ccb5e38a",
+    "declaredFlagCount": 14,
+    "decisionRule": "v2: decide on report.threeFoldCv — per fold matched >= production matched + 0.20; mean(matched) >= 0.75; min(matched) >= 0.70; per fold matched >= previous candidate matched - 0.03; draft aggregate >= 0.85 and every fold >= production draft. Absolute 90% lines are reported-only. One-shot blind family judged by the v2 criteria against the same-family production baseline (matched >= 0.75 and >= production + 0.20; draft >= max(0.85, production draft)).",
+    "datasetBuilder": {
+      "schema": "cfb.micro-dev-dataset/3",
+      "textHashBuckets": 256,
+      "expectedFeatureDim": 275,
+      "unitLabelReviewFile": "transfer/models/unit-label-review-blind-v3.json"
+    }
+  },
+  "gatePolicy": {
+    "policy": "v2 (2026-10-04). Promotion-blocking judgement is the three-fold family cross-validation on the length-matched bucket versus the production weights (plus a no-regression guard and draft parity), the deployed path checks (Mode 2, PyTorch/JS parity, ONNX smoke, <100M params, strict dev-only discipline) and one fresh independent family. Absolute 90% point-estimate lines are reported every run but no longer block.",
+    "blockingGates": [
+      "draftEachFoldAtLeastProduction",
+      "draftThreeFoldAggregateAtLeast85",
+      "foldLineageCompatible",
+      "freshIndependentNewFamilyTestPassed",
+      "fullOnnxSmokePassed",
+      "mode2G1AllPass",
+      "mode2G2AllPass",
+      "noRegressionVsPreviousCandidateFold",
+      "prospectivePreregistration",
+      "pythonJsNumericalParityPassed",
+      "strictDevOnly",
+      "threeFoldCvComplete",
+      "threeFoldMatchedBeatsProductionPlus20",
+      "threeFoldMatchedMeanAtLeast75",
+      "threeFoldMatchedWorstAtLeast70",
+      "under01B"
+    ],
+    "threeFoldCv": {
+      "rule": "per fold: matched >= production matched + 0.20; mean(matched) >= 0.75; min(matched) >= 0.70; per fold: matched >= previous candidate matched - 0.03; draft aggregate >= 0.85 and every fold >= production draft",
+      "basis": "Measured 2026-10-04 (same model, same ruler): matched spread across the three dev families is 22.9pp (flaky 77.1 / perf 100.0 / sse 84.7); the worst family's linear text ceiling is 0.79, so a per-family absolute 90% line is unreachable there and turns into a family-draw lottery.",
+      "thresholds": {
+        "matchedProductionMargin": 0.2,
+        "matchedMeanFloor": 0.75,
+        "matchedWorstFloor": 0.7,
+        "noRegressionTolerance": 0.03,
+        "draftAggregateFloor": 0.85,
+        "requiredFoldCount": 3
+      },
+      "summary": {
+        "matchedMean": null,
+        "matchedWorst": null,
+        "matchedSpread": null,
+        "draftAggregate": 0.6364
+      },
+      "perFold": {
+        "sse-truncated": {
+          "candidateMatched": 0.6907,
+          "productionMatched": 0.2784,
+          "marginOverProduction": 0.4123,
+          "matchedCorrect": 67,
+          "matchedTotal": 97,
+          "candidateAllPairs": 0.8797,
+          "candidateWilsonLower95": 0.8392,
+          "candidateDraft": 0.6364,
+          "productionDraft": 0.596,
+          "baselineMatched": null,
+          "deltaVsBaseline": null
+        }
+      }
+    },
+    "reportedOnlyGates": [
+      {
+        "name": "unitPreferenceValidationAtLeast90",
+        "measured": 0.7215,
+        "required": 0.9,
+        "passed": false,
+        "reason": "The full encoder is an optional reference artifact (98.7MB INT8, ~170-280ms per pair on CPU) and cannot serve the synchronous JS runtime."
+      },
+      {
+        "name": "teacherDraftPreferenceValidationAtLeast90",
+        "measured": 0.596,
+        "required": 0.9,
+        "passed": false,
+        "reason": "Same optional teacher artifact as above."
+      },
+      {
+        "name": "compactStudentUnitPairValidationAtLeast90",
+        "measured": 0.8797,
+        "required": 0.9,
+        "passed": false,
+        "reason": "Absolute 90% is family-dependent (see threeFoldCv.basis); the blocking replacement is threeFoldMatchedBeatsProductionPlus20 plus the mean/worst floors."
+      },
+      {
+        "name": "jsRuntimeUnitPairValidationAtLeast90",
+        "measured": 0.8797,
+        "required": 0.9,
+        "passed": false,
+        "reason": "Same as above; this reading stays the headline number in rulerReading and in the threeFoldCv table."
+      },
+      {
+        "name": "draftPreferenceStudentValidationAtLeast90",
+        "measured": 0.6364,
+        "required": 0.9,
+        "passed": false,
+        "reason": "Draft validation has 12-16 pairs per fold; measured 0.8125 on the hardest fold for BOTH candidate and production, so 90% there is a coin flip. Blocking replacement: draft aggregate >= 0.85 and every fold >= production draft."
+      },
+      {
+        "name": "jsRuntimeDraftPairValidationAtLeast90",
+        "measured": 0.6364,
+        "required": 0.9,
+        "passed": false,
+        "reason": "Same as above."
+      }
+    ],
+    "note": "The teacher stages still train every run with an unchanged recipe and their metrics are recomputed from the audited dataset; declaring the teacher out of scope and simultaneously requiring it to clear a blocking 90% gate would be contradictory. Every 90% reading above remains in gates, ceilingDistances and rulerReading for historical comparability."
+  },
+  "promoted": false,
+  "scope": {
+    "roundScope": "student-only",
+    "teacherRecipeChangedThisRound": false,
+    "teacherRetrainedThisRun": true,
+    "teacherMetricsSource": "recomputed in this run by the encoder SFT + SimPO stages from the same audited dev dataset; the recipe is unchanged, so changes in teacher numbers come from the expanded dataset only",
+    "studentPairObjective": "listwise",
+    "datasetNegStrategy": "hardened",
+    "note": "This round fixes the compact student, the training dataset construction and the evaluation ruler. The teacher recipe is deliberately unchanged; its stages still run each time and its metrics are recomputed, not carried over."
+  },
+  "notes": [
+    "Mode 2 metrics are parsed from tools/train-v5-micro.mjs --eval-json.",
+    "The synchronous JS compiler consumes the compact symbolic student; the full encoder ONNX is a separate optional artifact.",
+    "Full INT8 ONNX ORT smoke is an export/runtime check on fixed synthetic inputs only; it is not Python-to-JS numerical parity.",
+    "The selected dev validation family is excluded from gradient updates and used for early stopping/checkpoint selection; Gold holdout is excluded from fitting and selection and is only a fixed Mode 2 safety gate.",
+    "The four existing Gold holdout cases were already evaluated in the prior run; they are not a fresh blind set.",
+    "Training-corpus Unit and preference labels carry deterministic audit provenance; rows flagged needs-review are excluded from fitting. The separate final family, if supplied, must carry per-item semantic review provenance.",
+    "Round scope: compact student + dataset + evaluation ruler only; the teacher (encoder SFT/SimPO path) keeps its previous recipe but still trains every run, and its metrics are recomputed from the audited dataset (not carried over). The teacher is an optional reference artifact, not the deployed synchronous-JS scorer, so its unit-preference gate is reported (report.gatePolicy) while the deployed-scorer gates remain blocking.",
+    "Unit preference pairs are mined with the hardened strategy: negatives are ordered by length match (|delta token| <= near_length_tokens) first, then by current production model score (hardest for the model), then by lexical hardness; endpoint degree cap is raised so that far more positive Units receive supervision.",
+    "Persisted flywheel pairs are rejected as supervision when their stored scores are a degenerate constant placeholder set (all pairs share <= 2 distinct score pairs); such batches are marked needs-review instead of being fitted as if they were real margins.",
+    "The compact student Unit objective is a listwise softmax over each positive's negative group (fallback: --student-pair-objective ranknet). Reported Unit pair accuracy is the strict delta>0 rate; the JS ruler additionally reports length-stratified and token-penalty-free accuracy with Wilson lower bounds.",
+    "Gate reading v2 (2026-10-04): blocking judgement is the three-fold family CV on the length-matched bucket (report.threeFoldCv) versus the production weights, with a no-regression guard against the previous candidate and draft parity; the historical absolute 90% lines are still computed and shown in gates/gatePolicy but are reported-only, because the same model varies 22.9pp in matched accuracy across the three dev families and the hardest family's linear text ceiling is 0.79. rulerReading.candidateUnitValidation.lengthMatchedAccuracy with its Wilson lower bound remains the load-bearing reading.",
+    "Promotion remains blocked until one genuinely new, independently reviewed family is evaluated after checkpoint selection; current training corpus has only three eligible dev families."
+  ],
+  "promotionAuthorized": false,
+  "publicationAuthorized": false
+}

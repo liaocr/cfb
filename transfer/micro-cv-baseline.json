@@ -1,17 +1,36 @@
 {
-  "schema": "cfb.micro-cv-baseline/1",
-  "createdAt": "2026-10-04T00:00:00.000Z",
-  "purpose": "no-regression guard for gate policy v2: per-family length-matched accuracy of the PREVIOUS candidate",
-  "candidateWeights": "transfer/models/v5-micro-weights.judge-4764fd2.json",
-  "candidateNote": "previous candidate = 19-dim symbolic student recorded in 4764fd2; measured locally with tools/eval-micro-js-pairs.mjs on the same dev dataset (275-dim features, judge-frozen pair set), one fold per --validation-family; NOTE: that model trained on the flaky-timeout and perf-regression families (its own validation family was sse-truncated), so its flaky/perf numbers are optimistic for the baseline — which makes the no-regression guard conservative (harder to pass), never laxer.",
-  "matched": {
-    "flaky-timeout": 0.6976,
-    "perf-regression": 0.8,
-    "sse-truncated": 0.8571
+  "schema": "cfb.micro-cv-baseline/2",
+  "trainingDataFingerprint": "56a211c27cec8eead5176baf2de184ebcb18324ebf33a211615ee2e6ccb5e38a",
+  "preregistrationSha256": "3dbc8fb8a154489d6f1b03d7566fe4e88bc6ac659aeb3ed495d35a45ea5b9dd6",
+  "sourceSha256": {
+    "src/compile-v5-local.js": "0e6ee939e6ab0ae598b2a365f5d669640e6028771c7ac09206a6afe7e255a3ad",
+    "tools/build-micro-dataset.mjs": "9b3d96e7671dbfd681cf864a0ec8981ecd6f1476f69ec40523d5b8487aa2b154",
+    "tools/helpers/three-mode.mjs": "90188c05c77171a67e897ed93d50c57059e710b49df01ae682d5038de4fefe48",
+    "tools/helpers/mode1-quality.mjs": "9ed41b9f1ed8a517bd5660e6e94540f465042675ea3f379eab4549c75ea67425",
+    "tools/helpers/hand-capture.mjs": "31539646563548fcdb51ccfb1fd4cb27f49a43a9d48636d802c5336d7c9a19e6",
+    "tools/helpers/hand-draft.mjs": "b713252563df13bb5464bd846339be6a761caffaa487bf93b1cc9319fe37ee98",
+    "tools/eval-micro-js-pairs.mjs": "1abbfbaac5d501cefc47f9d12f7372e897cefb117e0fbfea99752951e3b62354",
+    "tools/micro_cv.py": "9c3da7a041749fd55373ade24d80594566113cb201be4f523408eaa1b56c8a10",
+    "tools/kaggle-train-micro.py": "34bf49793203a2d3af6769deb4868e99872aa320f1c541dbc00617510404fc27",
+    "tools/train-v5-micro.mjs": "4faaa400aa3c80d839eb35c1b365d8513611e26ad584287f81992a71e1798d7b",
+    "tools/review-unit-labels.mjs": "5d4628da8746e6370e798de8e9d296df039435e53adec48f2502e0520c371f48",
+    "tools/bench-run.mjs": "b74b4f3913f3a00f2caa1edd6d82f10979e2e904f8e242839ebb72a45d29f546",
+    "transfer/micro-preregistration.json": "a229e0f367ef4730910680335bfbd30aeb29d51c2315bd930db747ed59fd2bda"
   },
-  "matchedCounts": {
-    "flaky-timeout": 572,
-    "perf-regression": 30,
-    "sse-truncated": 98
-  }
+  "families": [
+    "flaky-timeout",
+    "perf-regression",
+    "sse-truncated"
+  ],
+  "matched": {
+    "flaky-timeout": 0.7576,
+    "perf-regression": 0.8462,
+    "sse-truncated": 0.6907
+  },
+  "productionMatched": {
+    "flaky-timeout": 0.7273,
+    "perf-regression": 0.5128,
+    "sse-truncated": 0.2784
+  },
+  "note": "同血统无回退基准（06c 轮候选自读，v14.25.x）"
 }
