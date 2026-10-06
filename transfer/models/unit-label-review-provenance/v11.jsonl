@@ -1,0 +1,55 @@
+{"id": "u331", "slot": "MECHANISM", "yVal": 0.8, "yTempt": 0.06, "confidence": "high", "rationale": "事件循环阻塞致延迟的机制"}
+{"id": "u388", "slot": "OPEN", "yVal": 0.86, "yTempt": 0.08, "confidence": "high", "rationale": "反问改测试是否掩盖实现问题"}
+{"id": "u310", "slot": "MECHANISM", "yVal": 0.9, "yTempt": 0.05, "confidence": "high", "rationale": "坐实 2 核调度致竞态"}
+{"id": "u151", "slot": "OPEN", "yVal": 0.76, "yTempt": 0.08, "confidence": "medium", "rationale": "区分 [DONE] 语义的待决点"}
+{"id": "u389", "slot": "MECHANISM", "yVal": 0.78, "yTempt": 0.06, "confidence": "high", "rationale": "引用测试 §4 的意图"}
+{"id": "u91", "slot": "MECHANISM", "yVal": 0.62, "yTempt": 0.08, "confidence": "medium", "rationale": "eventCount 观测读数"}
+{"id": "u133", "slot": "MECHANISM", "yVal": 0.86, "yTempt": 0.05, "confidence": "high", "rationale": "指出 null+content 仍判 ok 的漏洞"}
+{"id": "u326", "slot": "DECIDED", "yVal": 0.84, "yTempt": 0.18, "confidence": "high", "rationale": "带理由落定放宽时序"}
+{"id": "u398", "slot": "MECHANISM", "yVal": 0.88, "yTempt": 0.05, "confidence": "high", "rationale": "异步到达无法先于定时器"}
+{"id": "u399", "slot": "OPEN", "yVal": 0.74, "yTempt": 0.08, "confidence": "medium", "rationale": "提出替代置位点但结构未知"}
+{"id": "u147", "slot": "OPEN", "yVal": 0.84, "yTempt": 0.08, "confidence": "high", "rationale": "追问无 finish_reason 但完整的合法场景"}
+{"id": "u311", "slot": "OPEN", "yVal": 0.7, "yTempt": 0.12, "confidence": "medium", "rationale": "改测试或改源码未择一"}
+{"id": "u387", "slot": "OPEN", "yVal": 0.76, "yTempt": 0.08, "confidence": "high", "rationale": "是否应先改实现的核查点"}
+{"id": "u267", "slot": "MECHANISM", "yVal": 0.62, "yTempt": 0.08, "confidence": "medium", "rationale": "verify 文件缺失与 npm test 可用的矛盾"}
+{"id": "u204", "slot": "ACCEPT", "yVal": 0.72, "yTempt": 0.1, "confidence": "medium", "rationale": "指定跑 npm test 验证"}
+{"id": "u265", "slot": "DECIDED", "yVal": 0.74, "yTempt": 0.08, "confidence": "medium", "rationale": "补截断用例的测试改动计划"}
+{"id": "u365", "slot": "OPEN", "yVal": 0.7, "yTempt": 0.1, "confidence": "low", "rationale": "延后验证的自问"}
+{"id": "u415", "slot": "OPEN", "yVal": 0.7, "yTempt": 0.1, "confidence": "low", "rationale": "old_text 唯一性风险"}
+{"id": "u261", "slot": "NOISE", "yVal": 0.12, "yTempt": 0.15, "confidence": "medium", "rationale": "判定无展开"}
+{"id": "u150", "slot": "NOISE", "yVal": 0.12, "yTempt": 0.15, "confidence": "medium", "rationale": "同上重复"}
+{"id": "u216", "slot": "NOISE", "yVal": 0.12, "yTempt": 0.45, "confidence": "high", "rationale": "只宣告定位"}
+{"id": "u285", "slot": "NOISE", "yVal": 0.06, "yTempt": 0.2, "confidence": "high", "rationale": "Not required 无据"}
+{"id": "u136", "slot": "NOISE", "yVal": 0.04, "yTempt": 0.1, "confidence": "high", "rationale": "标签行"}
+{"id": "u207", "slot": "NOISE", "yVal": 0.06, "yTempt": 0.2, "confidence": "high", "rationale": "代词无对象"}
+{"id": "u212", "slot": "NOISE", "yVal": 0.04, "yTempt": 0.2, "confidence": "high", "rationale": "转场"}
+{"id": "u69", "slot": "NOISE", "yVal": 0.06, "yTempt": 0.2, "confidence": "high", "rationale": "泛泛跑命令"}
+{"id": "u71", "slot": "NOISE", "yVal": 0.06, "yTempt": 0.2, "confidence": "high", "rationale": "泛泛试调用"}
+{"id": "u3", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.2, "confidence": "high", "rationale": "泛泛探索"}
+{"id": "u66", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.2, "confidence": "high", "rationale": "泛泛取数"}
+{"id": "u455", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.15, "confidence": "high", "rationale": "复述题面"}
+{"id": "u489", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.15, "confidence": "high", "rationale": "复述题面"}
+{"id": "u339", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.15, "confidence": "high", "rationale": "格式复述"}
+{"id": "u512", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.15, "confidence": "high", "rationale": "格式复述"}
+{"id": "u367", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.15, "confidence": "high", "rationale": "复述题面"}
+{"id": "u338", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.15, "confidence": "high", "rationale": "复述题面"}
+{"id": "u385", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.15, "confidence": "high", "rationale": "复述题面"}
+{"id": "u156", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.1, "confidence": "high", "rationale": "代码碎片"}
+{"id": "u244", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.1, "confidence": "high", "rationale": "代码碎片"}
+{"id": "u224", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.1, "confidence": "high", "rationale": "碎片"}
+{"id": "u227", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.1, "confidence": "high", "rationale": "碎片"}
+{"id": "u239", "slot": "NOISE", "yVal": 0.06, "yTempt": 0.1, "confidence": "high", "rationale": "代码行无判断"}
+{"id": "u290", "slot": "NOISE", "yVal": 0.06, "yTempt": 0.15, "confidence": "high", "rationale": "有输出无解读"}
+{"id": "u305", "slot": "NOISE", "yVal": 0.1, "yTempt": 0.3, "confidence": "medium", "rationale": "无据安心话"}
+{"id": "u452", "slot": "NOISE", "yVal": 0.04, "yTempt": 0.15, "confidence": "high", "rationale": "格式复述"}
+{"id": "u447", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.15, "confidence": "high", "rationale": "格式核对"}
+{"id": "u526", "slot": "NOISE", "yVal": 0.1, "yTempt": 0.2, "confidence": "medium", "rationale": "只说证据已给过"}
+{"id": "u418", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.15, "confidence": "high", "rationale": "转义细节"}
+{"id": "u372", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.15, "confidence": "high", "rationale": "格式复述"}
+{"id": "u501", "slot": "NOISE", "yVal": 0.1, "yTempt": 0.3, "confidence": "high", "rationale": "可能是修复，无据"}
+{"id": "u438", "slot": "NOISE", "yVal": 0.05, "yTempt": 0.15, "confidence": "high", "rationale": "缺参数"}
+{"id": "u416", "slot": "NOISE", "yVal": 0.08, "yTempt": 0.2, "confidence": "high", "rationale": "猜测无据"}
+{"id": "u384", "slot": "NOISE", "yVal": 0.08, "yTempt": 0.25, "confidence": "high", "rationale": "所以这符合，无判据"}
+{"id": "u211", "slot": "NOISE", "yVal": 0.1, "yTempt": 0.25, "confidence": "medium", "rationale": "只说有矛盾不给内容"}
+{"id": "u145", "slot": "NOISE", "yVal": 0.04, "yTempt": 0.2, "confidence": "high", "rationale": "So no"}
+{"id": "u65", "slot": "NOISE", "yVal": 0.04, "yTempt": 0.2, "confidence": "high", "rationale": "but no"}

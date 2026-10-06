@@ -1,0 +1,40 @@
+{"id":"u121","slot":"MECHANISM","yVal":0.50,"yTempt":0.08,"confidence":"medium","rationale":"承接测试核对的事实点"}
+{"id":"u122","slot":"MECHANISM","yVal":0.60,"yTempt":0.08,"confidence":"medium","rationale":"逐条核对测试 1 的结束信号"}
+{"id":"u123","slot":"MECHANISM","yVal":0.60,"yTempt":0.08,"confidence":"medium","rationale":"测试 2 的 finish_reason 事实"}
+{"id":"u124","slot":"MECHANISM","yVal":0.58,"yTempt":0.08,"confidence":"medium","rationale":"测试 4 只查 eventCount，界定覆盖范围"}
+{"id":"u125","slot":"MECHANISM","yVal":0.85,"yTempt":0.05,"confidence":"high","rationale":"归纳出关键不变量：ok=true 皆有 finish_reason"}
+{"id":"u126","slot":"NOISE","yVal":0.10,"yTempt":0.30,"confidence":"high","rationale":"半句加情绪词，无独立信息"}
+{"id":"u127","slot":"ACCEPT","yVal":0.78,"yTempt":0.08,"confidence":"medium","rationale":"预测删除合成后测试仍绿，待验证的验收点"}
+{"id":"u128","slot":"DECIDED","yVal":0.92,"yTempt":0.05,"confidence":"high","rationale":"落定改法：finish 只取真实 finish_reason"}
+{"id":"u129","slot":"DECIDED","yVal":0.86,"yTempt":0.05,"confidence":"high","rationale":"禁令式结论：不得由 [DONE] 合成 stop"}
+{"id":"u131","slot":"MECHANISM","yVal":0.50,"yTempt":0.08,"confidence":"medium","rationale":"被引代码原文，落点证据"}
+{"id":"u132","slot":"MECHANISM","yVal":0.50,"yTempt":0.08,"confidence":"medium","rationale":"上一条代码的后半段"}
+{"id":"u134","slot":"MECHANISM","yVal":0.90,"yTempt":0.05,"confidence":"high","rationale":"定位第二个缺陷：无结束信号但有内容仍算 ok"}
+{"id":"u135","slot":"DECIDED","yVal":0.88,"yTempt":0.05,"confidence":"high","rationale":"落定 ok 必须以真实 finish_reason 为条件"}
+{"id":"u137","slot":"ACCEPT","yVal":0.90,"yTempt":0.05,"confidence":"high","rationale":"验收条件原文：截断流 ok:false 且 birth 直通"}
+{"id":"u138","slot":"ACCEPT","yVal":0.86,"yTempt":0.05,"confidence":"high","rationale":"验收条件原文：完整流含 length 仍 condensed"}
+{"id":"u139","slot":"DECIDED","yVal":0.80,"yTempt":0.06,"confidence":"medium","rationale":"给出 settle 的重写形态"}
+{"id":"u141","slot":"MECHANISM","yVal":0.78,"yTempt":0.06,"confidence":"high","rationale":"核查空内容正常结束的边界用例"}
+{"id":"u142","slot":"NOISE","yVal":0.15,"yTempt":0.30,"confidence":"medium","rationale":"「那就是测试3，没问题」是过早收口，未给判读"}
+{"id":"u143","slot":"OPEN","yVal":0.76,"yTempt":0.08,"confidence":"high","rationale":"具体待决问题：r.out.length>0 还需不需要保留"}
+{"id":"u144","slot":"ACCEPT","yVal":0.88,"yTempt":0.05,"confidence":"high","rationale":"复述验收要求并有判定方向"}
+{"id":"u146","slot":"DECIDED","yVal":0.88,"yTempt":0.05,"confidence":"high","rationale":"落定成功判据：收到 finish_reason"}
+{"id":"u148","slot":"MECHANISM","yVal":0.76,"yTempt":0.06,"confidence":"high","rationale":"网关文档依据：正常结束必有 finish_reason"}
+{"id":"u149","slot":"NOISE","yVal":0.10,"yTempt":0.10,"confidence":"high","rationale":"句子被截断，单独不可读"}
+{"id":"u152","slot":"DECIDED","yVal":0.90,"yTempt":0.05,"confidence":"high","rationale":"给出最简设计：返回真实 finish 与独立 done 标志"}
+{"id":"u153","slot":"DECIDED","yVal":0.90,"yTempt":0.05,"confidence":"high","rationale":"ok 的充要条件落定"}
+{"id":"u155","slot":"MECHANISM","yVal":0.55,"yTempt":0.08,"confidence":"medium","rationale":"现状代码事实"}
+{"id":"u157","slot":"MECHANISM","yVal":0.85,"yTempt":0.05,"confidence":"high","rationale":"推演改动后果：截断带 DONE 时 finish=null"}
+{"id":"u158","slot":"OPEN","yVal":0.72,"yTempt":0.08,"confidence":"medium","rationale":"保留 done 信息的待决取舍"}
+{"id":"u159","slot":"DECIDED","yVal":0.78,"yTempt":0.08,"confidence":"medium","rationale":"返回结构提案（带问号，未完全落定）"}
+{"id":"u160","slot":"EXCLUDED","yVal":0.74,"yTempt":0.08,"confidence":"high","rationale":"排除顾虑：测试不检查 done"}
+{"id":"u161","slot":"NOISE","yVal":0.08,"yTempt":0.15,"confidence":"high","rationale":"两个词的名词碎片，无判断"}
+{"id":"u162","slot":"NOISE","yVal":0.15,"yTempt":0.35,"confidence":"medium","rationale":"「保持简单，也许保留」是决策话术而非决策"}
+{"id":"u163","slot":"DECIDED","yVal":0.86,"yTempt":0.06,"confidence":"medium","rationale":"确定最小改动位置"}
+{"id":"u164","slot":"DECIDED","yVal":0.80,"yTempt":0.06,"confidence":"medium","rationale":"改动目标形态（承接上一条）"}
+{"id":"u165","slot":"MECHANISM","yVal":0.66,"yTempt":0.08,"confidence":"medium","rationale":"指出改后 done 变量将变为未使用"}
+{"id":"u166","slot":"OPEN","yVal":0.72,"yTempt":0.08,"confidence":"medium","rationale":"是否继续返回 done 的挂起取舍"}
+{"id":"u167","slot":"DECIDED","yVal":0.86,"yTempt":0.05,"confidence":"high","rationale":"落定：保留 done 供追溯但不参与 finish 判定"}
+{"id":"u169","slot":"MECHANISM","yVal":0.50,"yTempt":0.08,"confidence":"medium","rationale":"环境事实：无 lint，影响未用变量处置"}
+{"id":"u170","slot":"MECHANISM","yVal":0.55,"yTempt":0.08,"confidence":"medium","rationale":"settle 现状代码引用"}
+{"id":"u172","slot":"NOISE","yVal":0.12,"yTempt":0.40,"confidence":"high","rationale":"宣称要验证但本单元没有验证内容"}
