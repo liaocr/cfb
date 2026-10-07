@@ -113,26 +113,32 @@ def main() -> None:
                             globalBatch=GLOBAL_BATCH, ctx=CTX,
                             plannedTokens=world * per_rank_batch * CTX * steps)
     log = wd / "train.log"
+
+    def run_logged(cmd_str: str, append: bool = False) -> int:
+        """训练输出同时进 notebook（实时）与 train.log（断线可查）。"""
+        print(f"$ {cmd_str}", flush=True)
+        tee = "tee -a" if append else "tee"
+        wrapped = f"{cmd_str} 2>&1 | {tee} {log}"
+        # pipefail：返回码取训练进程的，而不是 tee 的
+        return subprocess.run(["bash", "-o", "pipefail", "-c", wrapped]).returncode
+
     if world > 1:
         cmd = (f"{sys.executable} -m torch.distributed.run --nproc_per_node={world} "
                f"--master_port=29517 {tools/'train-micro-gen.py'} {common}")
     else:
         cmd = f"{sys.executable} {tools/'train-micro-gen.py'} {common}"
+    print(f"[train] 开始（本 cell 实时输出；另开 cell 也可 !tail -n 8 {log}）", flush=True)
     t0 = time.time()
-    with open(log, "w") as lf:
-        rc = subprocess.run(cmd, shell=True, stdout=lf, stderr=subprocess.STDOUT).returncode
+    rc = run_logged(cmd)
     results["trainSeconds"] = round(time.time() - t0, 1)
-    tail = log.read_text(errors="replace").splitlines()[-40:]
-    print("\n".join(tail), flush=True)
     if rc != 0 and world > 1:
         print(f"[warn] DDP 训练返回码 {rc}，回退单卡重跑", flush=True)
         results["ddpFallback"] = True
-        with open(log, "a") as lf:
-            cmd1 = f"{sys.executable} {tools/'train-micro-gen.py'} {common}"
-            rc = subprocess.run(cmd1, shell=True, stdout=lf, stderr=subprocess.STDOUT).returncode
+        rc = run_logged(f"{sys.executable} {tools/'train-micro-gen.py'} {common}", append=True)
         results["trainSecondsFallback"] = round(time.time() - t0, 1)
-        tail = log.read_text(errors="replace").splitlines()[-40:]
-        print("\n".join(tail), flush=True)
+    tail = log.read_text(errors="replace").splitlines()[-40:]
+    if rc != 0:
+        print("\n".join(tail), flush=True)   # 成功时上面已实时流过，不必重打
     results["trainExitCode"] = rc
 
     # 5) 汇总（模型规格 / 训练曲线尾 / dev 指标 / 文件哈希）
