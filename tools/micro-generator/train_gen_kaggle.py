@@ -2,15 +2,18 @@
 """Round-0 generative compressor: QLoRA SFT of Qwen3-0.6B on the mechanical-teacher corpus.
 
 Runs on Kaggle (T4/P100) with Internet enabled for the base-model download.
-This is deliberately SEPARATE from tools/micro-generator/train_qlora.py, which is the
-fail-closed reviewed-corpus trainer. This script trains on the round-0 teacher corpus
-(`build-teacher-corpus.py` output) whose targets are machine-generated and whose training
-bar is the user-set one: **the compressed block must not lose information**, measured
-mechanically as critical-anchor retention (see `metric_report` below). Shape/quality is
-retuned in later rounds; no E1/E2 claim is made without a target-model endpoint.
+Deliberately SEPARATE from tools/micro-generator/train_qlora.py (the fail-closed
+reviewed-corpus trainer). Training bar = the user-set one: **the compressed block must
+not lose information**, measured as critical-anchor retention (see metric_report).
 
-Usage (Kaggle or any CUDA box):
-  python train_gen_kaggle.py --train train.jsonl --dev dev.jsonl --out /kaggle/working/run1 \
+Multi-GPU: pass-through DDP. Launch with:
+  python -m torch.distributed.run --nproc_per_node=2 train_gen_kaggle.py ...
+or just run it plainly for single-GPU. World size comes from LOCAL_RANK/WORLD_SIZE.
+Effective batch is batch × grad_accum × world_size; when doubling the world size,
+halve --grad-accum to keep the same optimisation step count and LR schedule.
+
+Usage:
+  python train_gen_kaggle.py --train train.jsonl.gz --dev dev.jsonl.gz --out /kaggle/working/run1 \
       --model-id Qwen/Qwen3-0.6B --epochs 2 --lr 1e-4
 """
 from __future__ import annotations
@@ -18,6 +21,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 import time
@@ -34,7 +38,7 @@ STOP = {
     "PASS", "FAIL", "pass", "fail", "grep", "sed", "cat", "head", "tail", "echo", "python",
     "command", "found", "error", "Error", "AssertionError", "Traceback", "exit", "code",
 }
-VERDICT_RE = re.compile(r"(?i)(\d+\s+(?:passed|failed|error)|\bpassed\b|\bfailed\b|\btraceback\b|assertionerror|\bexit(?:ed)? code\s*\d|\bok\b|\bFAIL\b|\bPASS\b)")
+VERDICT_RE = re.compile(r"(\d+\s+(?:passed|failed|error)|\bpassed\b|\bfailed\b|\btraceback\b|assertionerror|\bexit(?:ed)? code\s*\d|\bok\b|\bFAIL\b|\bPASS\b)", re.I)
 CMD_RE = re.compile(r"(?m)^\s*(?:cd\s+\S+\s*&&\s*)?(?:python3?|pytest|git|npm|npx|node|pip|make|tox|grep|sed|find|cat)\b")
 PATHY_RE = re.compile(r"\w+\.(?:py|js|mjs|ts|json|md|txt|cfg|toml|yaml|yml|sh|go|rs|java|rb|php|c|cpp|h)\b")
 
@@ -109,6 +113,14 @@ def read_jsonl(path):
     return rows
 
 
+def row_drop_target(row):
+    """从 user 消息里取回 raw（【RAW】段），用于相对原文的留存率。"""
+    content = row["messages"][1]["content"]
+    marker = "【RAW】\n"
+    idx = content.rfind(marker)
+    return content[idx + len(marker):] if idx >= 0 else content
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--train", required=True)
@@ -129,21 +141,39 @@ def main() -> int:
     args = ap.parse_args()
 
     import torch
+    from torch.utils.data import DataLoader
+    from torch.utils.data.distributed import DistributedSampler
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
     if not torch.cuda.is_available():
         print("FATAL: no CUDA device; this trainer refuses CPU runs", file=sys.stderr)
         return 2
-    torch.manual_seed(args.seed)
+
+    # ---- distributed setup：torchrun 给 LOCAL_RANK/WORLD_SIZE；裸跑即单卡 ----
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    ddp = world_size > 1
+    if ddp:
+        torch.distributed.init_process_group(backend="nccl")
+        torch.cuda.set_device(local_rank)
+    is_main = local_rank == 0
+    torch.manual_seed(args.seed + local_rank)
+
+    def log(*a):
+        if is_main:
+            print(*a, flush=True)
+
     out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
+    if is_main:
+        out.mkdir(parents=True, exist_ok=True)
 
     train_rows = read_jsonl(args.train)
     dev_rows = read_jsonl(args.dev)
     corpus_sha = hashlib.sha256(Path(args.train).read_bytes()).hexdigest()  # 压缩文件的字节哈希即语料指纹
-    print(f"train rows {len(train_rows)} · dev rows {len(dev_rows)} · corpus sha256 {corpus_sha[:16]}")
-    print(f"torch {torch.__version__} · cuda {torch.cuda.device_count()}x {torch.cuda.get_device_name(0)}")
+    log(f"world_size={world_size} · train rows {len(train_rows)} · dev rows {len(dev_rows)} · corpus sha256 {corpus_sha[:16]}")
+    log(f"torch {torch.__version__} · {torch.cuda.device_count()}x {torch.cuda.get_device_name(0)}"
+        + (f" · DDP: this rank={local_rank} on {torch.cuda.get_device_name(local_rank)}" if ddp else " · single-process"))
 
     tok = AutoTokenizer.from_pretrained(args.model_id, revision=args.revision, use_fast=True)
     if tok.pad_token is None:
@@ -169,22 +199,30 @@ def main() -> int:
             continue
         labels = [-100] * min(plen, len(ids)) + ids[min(plen, len(ids)):]
         data.append((ids, labels))
-    print(f"tokenized {len(data)} examples (skipped {skipped} over {args.max_len} tokens)")
+    log(f"tokenized {len(data)} examples (skipped {skipped} over {args.max_len} tokens)")
 
     bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.float16, bnb_4bit_use_double_quant=True)
-    model = AutoModelForCausalLM.from_pretrained(args.model_id, revision=args.revision, quantization_config=bnb, device_map="auto", torch_dtype=torch.float16)
-    model = prepare_model_for_kbit_training(model)
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_id, revision=args.revision, quantization_config=bnb,
+        device_map={"": local_rank} if ddp else "auto", torch_dtype=torch.float16)
+    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True,
+                                            gradient_checkpointing_kwargs={"use_reentrant": False})
     try:
         lora = LoraConfig(r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=0.0, bias="none", task_type="CAUSAL_LM",
                           target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"])
         model = get_peft_model(model, lora)
     except ValueError as exc:
-        print(f"target_modules fallback ({exc}); retrying with q_proj/v_proj only")
+        log(f"target_modules fallback ({exc}); retrying with q_proj/v_proj only")
         lora = LoraConfig(r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=0.0, bias="none", task_type="CAUSAL_LM",
                           target_modules=["q_proj", "v_proj"])
         model = get_peft_model(model, lora)
     model.config.use_cache = False
-    model.print_trainable_parameters()
+    if is_main:
+        model.print_trainable_parameters()
+
+    if ddp:
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], find_unused_parameters=False)
+    core = model.module if ddp else model
 
     def collate(batch):
         maxlen = max(len(x[0]) for x in batch)
@@ -196,47 +234,64 @@ def main() -> int:
             attn.append([1] * len(ids) + [0] * pad)
         return (torch.tensor(input_ids), torch.tensor(labels), torch.tensor(attn))
 
-    dl = torch.utils.data.DataLoader(data, batch_size=args.batch, shuffle=True, collate_fn=collate, generator=torch.Generator().manual_seed(args.seed))
+    sampler = None
+    if ddp:
+        sampler = DistributedSampler(data, num_replicas=world_size, rank=local_rank, shuffle=True,
+                                     seed=args.seed, drop_last=True)
+    dl = DataLoader(data, batch_size=args.batch, shuffle=(sampler is None), sampler=sampler,
+                    collate_fn=collate, drop_last=ddp,
+                    generator=torch.Generator().manual_seed(args.seed))
     try:
         import bitsandbytes as bnbmod
-        opt = bnbmod.optim.PagedAdamW8bit([p for p in model.parameters() if p.requires_grad], lr=args.lr)
-        print("optimizer: paged_adamw_8bit")
+        opt = bnbmod.optim.PagedAdamW8bit([p for p in core.parameters() if p.requires_grad], lr=args.lr)
+        log("optimizer: paged_adamw_8bit")
     except Exception:
-        opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=args.lr)
-        print("optimizer: adamw_torch")
-    steps_per_epoch = max(1, len(dl) // args.grad_accum)
+        opt = torch.optim.AdamW([p for p in core.parameters() if p.requires_grad], lr=args.lr)
+        log("optimizer: adamw_torch")
+    micro_per_epoch = max(1, len(dl))
+    steps_per_epoch = max(1, micro_per_epoch // args.grad_accum)
     total_steps = max(1, int(steps_per_epoch * args.epochs))
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=args.lr, total_steps=total_steps, pct_start=0.03)
-    print(f"steps: {total_steps} (batch {args.batch} × accum {args.grad_accum})")
+    log(f"steps: {total_steps} (per-rank micro-batches/epoch {micro_per_epoch} ÷ accum {args.grad_accum}"
+        + (f" × {world_size} GPUs ⇒ effective batch {args.batch * args.grad_accum * world_size})" if ddp else ")"))
 
     model.train()
     t0 = time.time()
     step = 0
     losses = []
-    done = False
-    while not done:
+    epoch = 0
+    while step < total_steps:
+        if sampler is not None:
+            sampler.set_epoch(epoch)
         for micro, (ids, labels, attn) in enumerate(dl):
-            loss = model(input_ids=ids.to(model.device), attention_mask=attn.to(model.device), labels=labels.to(model.device)).loss / args.grad_accum
+            loss = model(input_ids=ids.to(core.device), attention_mask=attn.to(core.device), labels=labels.to(core.device)).loss / args.grad_accum
             loss.backward()
-            losses.append(float(loss) * args.grad_accum)
+            losses.append(float(loss.detach()) * args.grad_accum)
             if (micro + 1) % args.grad_accum == 0:
-                torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], 1.0)
+                torch.nn.utils.clip_grad_norm_([p for p in core.parameters() if p.requires_grad], 1.0)
                 opt.step()
                 sched.step()
                 opt.zero_grad(set_to_none=True)
                 step += 1
                 if step % 10 == 0 or step == total_steps:
-                    print(f"step {step}/{total_steps} · loss {sum(losses[-50:]) / max(1, len(losses[-50:])):.4f} · {int(time.time() - t0)}s")
+                    log(f"step {step}/{total_steps} · loss {sum(losses[-50:]) / max(1, len(losses[-50:])):.4f} · {int(time.time() - t0)}s")
                 if step >= total_steps:
-                    done = True
                     break
-        if args.epochs * steps_per_epoch <= step:
-            done = True
-    print(f"training done in {int(time.time() - t0)}s")
+        epoch += 1
+    if ddp:
+        torch.distributed.barrier()
+    log(f"training done in {int(time.time() - t0)}s")
 
-    # ---- dev evaluation: generate + mechanical retention ----
+    if not is_main:
+        # 非主 rank：等主 rank 做完评测/保存后一起退出
+        if ddp:
+            torch.distributed.barrier()
+            torch.distributed.destroy_process_group()
+        return 0
+
+    # ---- dev evaluation: generate + mechanical retention (rank 0 only) ----
     model.eval()
-    model.config.use_cache = True
+    core.config.use_cache = True
     from transformers import GenerationConfig
     gen_cfg = GenerationConfig(max_new_tokens=args.max_new_tokens, do_sample=False, temperature=None, top_p=None, top_k=None, repetition_penalty=1.02, pad_token_id=tok.pad_token_id)
     picks = list(range(0, len(dev_rows), max(1, len(dev_rows) // max(1, args.eval_samples))))[: args.eval_samples]
@@ -244,9 +299,9 @@ def main() -> int:
     for i in picks:
         row = dev_rows[i]
         prompt = render(row["messages"][:-1], add_gen=True)
-        enc = tok(prompt, return_tensors="pt", add_special_tokens=False).to(model.device)
+        enc = tok(prompt, return_tensors="pt", add_special_tokens=False).to(core.device)
         with torch.no_grad():
-            gen = model.generate(**enc, generation_config=gen_cfg)
+            gen = core.generate(**enc, generation_config=gen_cfg)
         text = tok.decode(gen[0][enc["input_ids"].shape[1]:], skip_special_tokens=True).strip()
         m = metric_report(row["messages"][-1]["content"] or "", text)  # 相对教师目标报告一次（诊断）
         raw = row_drop_target(row)
@@ -254,7 +309,7 @@ def main() -> int:
         results.append({"unitId": row["unitId"], "repo": row["repo"], "predChars": len(text),
                         "teacherTargetChars": len(row["messages"][-1]["content"]),
                         "vsRaw": m_vs_raw, "vsTeacherTarget": m, "prediction": text})
-        print(f"  [{i}] {row['unitId']} pred={len(text)}c critCov={m_vs_raw['criticalCoverage']} fullCov={m_vs_raw['fullCoverage']} ratio={m_vs_raw['ratio']}")
+        print(f"  [{i}] {row['unitId']} pred={len(text)}c critCov={m_vs_raw['criticalCoverage']} fullCov={m_vs_raw['fullCoverage']} ratio={m_vs_raw['ratio']}", flush=True)
     agg = {
         "n": len(results),
         "criticalCoverageMean": round(sum(r["vsRaw"]["criticalCoverage"] for r in results) / max(1, len(results)), 4),
@@ -264,37 +319,33 @@ def main() -> int:
         "inventedAnchorsTotal": sum(r["vsRaw"]["inventedCount"] for r in results),
     }
     (out / "dev-predictions.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in results) + "\n", encoding="utf-8")
-    model.save_pretrained(str(out / "adapter"))
+    core.save_pretrained(str(out / "adapter"))
     tok.save_pretrained(str(out / "adapter"))
     meta = {
         "schema": "cfb.gen-compressor-run/1",
         "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "modelId": args.model_id, "revision": args.revision, "epochs": args.epochs, "lr": args.lr,
-        "maxLen": args.max_len, "batch": args.batch, "gradAccum": args.grad_accum,
+        "maxLen": args.max_len, "batch": args.batch, "gradAccum": args.grad_accum, "worldSize": world_size,
+        "effectiveBatch": args.batch * args.grad_accum * world_size,
         "trainRows": len(train_rows), "trainExamplesUsed": len(data), "skippedOverMaxLen": skipped,
         "devRows": len(dev_rows), "evalSamples": len(results), "corpusTrainSha256": corpus_sha,
         "finalLossAvg50": round(sum(losses[-50:]) / max(1, len(losses[-50:])), 4),
         "trainingSeconds": int(time.time() - t0),
         "devMetrics": agg,
         "boundaries": [
-            "targets are machine-generated by teacher v0.2 (extractive, verbatim) — NOT reviewed gold; human review count = 0",
+            "targets are machine-generated by teacher v0.3 (rulers M1/M3/M4/M5/M6/M7/M8 installed; extractive + verbatim) — NOT reviewed gold; human review count = 0",
             "信息不丢 measured as critical-anchor coverage (verdicts/commands/fenced code/paths); semantic completeness NOT claimed",
             "E1/E2 未测 — require feeding the compressed block back to DeepSeek-V4.1-Flash (endpoint needed)",
             "dev is repo-disjoint from train; metrics are on unseen repositories",
         ],
     }
     (out / "run-meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(agg, ensure_ascii=False))
-    print(f"DONE · artifacts in {out}")
+    print(json.dumps(agg, ensure_ascii=False), flush=True)
+    print(f"DONE · artifacts in {out}", flush=True)
+    if ddp:
+        torch.distributed.barrier()
+        torch.distributed.destroy_process_group()
     return 0
-
-
-def row_drop_target(row):
-    """从 user 消息里取回 raw（【RAW】段），用于相对原文的留存率。"""
-    content = row["messages"][1]["content"]
-    marker = "【RAW】\n"
-    idx = content.rfind(marker)
-    return content[idx + len(marker):] if idx >= 0 else content
 
 
 if __name__ == "__main__":

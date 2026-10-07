@@ -51,9 +51,21 @@ def main():
         rep = json.load(fh)
     print("语料：train", rep["train"]["rows"], "条 /", rep["train"]["repos"], "仓库 · dev", rep["dev"]["rows"], "条（7 轴全过）", flush=True)
 
-    print("=== 训练 ===", flush=True)
-    sh(f"{sys.executable} {trainer} --train {train} --dev {dev} --out {RUN} "
-       f"--model-id Qwen/Qwen3-0.6B --epochs 2 --lr 1e-4 --max-len 5120 --batch 1 --grad-accum 16 --eval-samples 12")
+    gpus = torch.cuda.device_count()
+    accum = max(1, 16 // gpus)  # 保持有效 batch 不变：单卡 16，双卡 8×2
+    print(f"=== 训练（{gpus} 张 GPU · 每卡 batch 1 × accum {accum} ⇒ 有效 batch {accum * gpus}）===", flush=True)
+    train_args = (f"--train {train} --dev {dev} --out {RUN} --model-id Qwen/Qwen3-0.6B "
+                  f"--epochs 2 --lr 1e-4 --max-len 5120 --batch 1 --grad-accum {accum} --eval-samples 12")
+    if gpus >= 2:
+        ddp_cmd = (f"{sys.executable} -m torch.distributed.run --nproc_per_node {gpus} "
+                   f"--master_port 29517 {trainer} {train_args}")
+        r = subprocess.run(ddp_cmd, shell=True, text=True)
+        if r.returncode != 0:
+            print("!! DDP 失败，回退单卡重跑（日志在上面）", flush=True)
+            sh(f"{sys.executable} {trainer} --train {train} --dev {dev} --out {RUN} "
+               f"--model-id Qwen/Qwen3-0.6B --epochs 2 --lr 1e-4 --max-len 5120 --batch 1 --grad-accum 16 --eval-samples 12")
+    else:
+        sh(f"{sys.executable} {trainer} {train_args}")
 
     print("=== 读数 ===", flush=True)
     meta = json.load(open(f"{RUN}/run-meta.json"))
