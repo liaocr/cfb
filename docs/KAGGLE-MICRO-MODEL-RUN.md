@@ -20,10 +20,19 @@
 
 ## 规格与超参（train_micro.py 默认）
 
-- 词表：16,384（ByteLevel BPE，只在 `train.jsonl.gz` 上现训，零 OOV）
-- 模型：d_model 512 / 8 层 / 8 头 / FFN 4× / ctx 2048，权重共享嵌入 ⇒ **约 33.6M 参数**
-  （对比 Qwen3-0.6B：参数 0.6B、可训 10.1M）
+- 词表：**24,576**（ByteLevel BPE，英文训练文本 + 仓库自带中文种子 `tokenizer-zh-seed.txt`，零 OOV）
+  - 实测（v3 dev 139 条，char/token）：Qwen 自带词表 3.784 ~ 我们 16k 纯英 3.542 ~ **我们 24k+种子 3.589**
+  - 标识符（11,412 个唯一样本）：Qwen 3.874/26.1% 整词 ~ 我们 24k+种子 3.132/20.9% 整词
+  - 中文（留出百科页）：Qwen 1.555 ~ 我们 16k 纯英 0.456（**不可用**）~ 16k+种子 1.111 ~ 24k+种子 0.895
+  - 结论：24k 是甜点；32k 只多买 0.03 char/token（中文）却多 4.2M 参数，不做
+- 模型：d_model 512 / 8 层 / 8 头 / FFN 4× / ctx 2048，权重共享嵌入 ⇒ **约 37.8M 参数**
+  （对比 Qwen3-0.6B：参数 0.6B、可训 10.1M、嵌入占 26%）
 - 训练：fp16（T4 无 bf16），AdamW，lr 3e-4，warmup 100，60M tokens ≈ 40 epoch
+- 防过拟合仪表（内置）：
+  - `--devloss-every 40`：每 40 步算 dev 答案段 CE（与训练 loss 同口径），打印 `gap = dev - train`
+  - **gap 掉头向上** = 开始过拟合的实测信号（不看感觉，看曲线）
+  - 自动保留 `micro-gen-best.pt`（dev 最优），评测与交付用它，不用最后一版
+  - `--early-stop-patience 4`：连续 4 次不改善即停
 - 多卡：`torchrun` DDP 用满所有 GPU；每步全局 token 固定 12×2048=24,576，
   换卡数只改 steps（语义与单卡可比）；DDP 失败自动回退单卡
 

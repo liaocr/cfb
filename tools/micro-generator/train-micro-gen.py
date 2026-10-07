@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """从零训练「任务专用微模型」—— 手写小 GPT，不依赖任何预训练权重。
 
-用法（单卡）/（双卡 torchrun 由 deploy 脚本自动选择）：
-  python3 micro-tokenizer.py --train <train.jsonl.gz> --vocab-size 16384 --out <dir>/tokenizer.json
-  python3 train-micro-gen.py --corpus <v3 目录> --out <dir> --steps 1200
+带防过拟合仪表：
+  * dev 损失曲线（每 N 步只在前向算答案段 CE，几分钟内可完成，不用生成）
+  * best checkpoint（按 dev 损失挑），可早停（连续多次不改善即停）
+  * 训练结束用 best checkpoint 做生成评测
 
-设计要点（为什么这样）：
-  * 词表 16,384 由本语料现训（ByteLevel BPE），无多语言冗余；嵌入只占模型极小部分。
-  * 全部算力都花在「任务形状」上：文本格式只有 <|sys|>/<|user|>/<|asst|>/<|end|> 四个特殊 token。
-  * 自回归 LM，整段（prompt+answer）参与 loss；任务窄，无需复杂掩码。
-  * fp16+GradScaler（T4 无 bf16）；CPU 用 float32 便于本地冒烟。
+用法：
+  python3 micro-tokenizer.py --train <train.jsonl.gz> [--extra-text <seed.txt>] --vocab-size 24576 --out <dir>/tokenizer.json
+  python3 train-micro-gen.py --corpus <v3 目录> --out <dir> --tokenizer <dir>/tokenizer.json
 """
 from __future__ import annotations
 
@@ -49,7 +48,7 @@ class Block(nn.Module):
     def __init__(self, d, n_head, ffn_mult=4):
         super().__init__()
         self.ln1, self.ln2 = RMSNorm(d), RMSNorm(d)
-        self.attn = nn.MultiheadAttention(d, n_head, batch_first=True)  # 自带 qkv/out 投影
+        self.attn = nn.MultiheadAttention(d, n_head, batch_first=True)
         self.ff = nn.Sequential(nn.Linear(d, ffn_mult * d), nn.GELU(), nn.Linear(ffn_mult * d, d))
 
     def forward(self, x, attn_mask=None):
@@ -67,7 +66,7 @@ class MicroGPT(nn.Module):
         self.blocks = nn.ModuleList(Block(d, heads, ffn_mult) for _ in range(layers))
         self.ln_f = RMSNorm(d)
         self.head = nn.Linear(d, vocab, bias=False)
-        self.head.weight = self.tok_emb.weight  # 权重共享：词表再大也不多占参数
+        self.head.weight = self.tok_emb.weight  # 权重共享：词表大也不额外翻倍
         self.apply(self._init)
         for name, p in self.named_parameters():  # 残差投影缩放，防残差流随深度爆炸
             if name.endswith("out_proj.weight") or name.endswith("ff.2.weight"):
@@ -85,7 +84,6 @@ class MicroGPT(nn.Module):
     def forward(self, idx, targets=None):
         B, T = idx.shape
         x = self.tok_emb(idx)
-        # 因果掩码（PyTorch 约定：True = 屏蔽）
         mask = torch.triu(torch.ones(T, T, device=idx.device, dtype=torch.bool), diagonal=1)
         for blk in self.blocks:
             x = blk(x, attn_mask=mask)
@@ -102,7 +100,7 @@ def load_rows(path: Path):
 
 
 def encode_pack(tok, rows, ctx: int, eos_id: int, max_docs: int | None = None):
-    """把全部样本编码成一条 token 流，再切成 ctx 长的块（预训练式打包，无 padding 浪费）。"""
+    """全部样本编码成一条 token 流，切成 ctx 长的块（无 padding 浪费）。"""
     ids: list[int] = []
     for i, r in enumerate(rows):
         if max_docs and i >= max_docs:
@@ -111,11 +109,40 @@ def encode_pack(tok, rows, ctx: int, eos_id: int, max_docs: int | None = None):
         ids.extend(tok.encode(full).ids)
         ids.append(eos_id)
     n = (len(ids) - 1) // ctx
-    chunks = [ids[i * ctx : (i + 1) * ctx] for i in range(max(0, n))]
-    return chunks
+    return [ids[i * ctx : (i + 1) * ctx] for i in range(max(0, n))]
 
 
-# ---------------------------------------------------------------- 训练
+# ---------------------------------------------------------------- 防过拟合仪表
+def dev_loss(base, tok, dev_rows, device, limit=0, max_row_tokens=4096):
+    """dev 集答案段 CE（与训练 loss 同口径）。纯前向，代价小。
+    返回 (loss, 参与行数, 跳过行数)。"""
+    rows = dev_rows[:limit] if limit else dev_rows
+    base.eval()
+    total, n, skipped = 0.0, 0, 0
+    use_amp = device.startswith("cuda")
+    with torch.no_grad():
+        for r in rows:
+            prompt, full = FMT.row_to_texts(r)
+            ids = tok.encode(full).ids
+            plen = len(tok.encode(prompt).ids)
+            if len(ids) > max_row_tokens:      # 超长行截断（prompt 至少留 32 token 的下文）
+                ids = ids[:max_row_tokens]
+                plen = min(plen, max_row_tokens - 32)
+                skipped += 1
+            if len(ids) < 8 or plen >= len(ids) - 1:
+                skipped += 1
+                continue
+            x = torch.tensor([ids[:-1]], device=device)
+            lab = [(-100 if (t + 1) < plen else ids[t + 1]) for t in range(len(ids) - 1)]
+            y = torch.tensor([lab], device=device)
+            with torch.autocast("cuda", dtype=torch.float16, enabled=use_amp):
+                _, loss = base(x, y)
+            total += float(loss.detach()) if loss.dim() == 0 else float(loss.mean().detach())
+            n += 1
+    base.train()
+    return (total / n if n else float("nan")), n, skipped
+
+
 @torch.no_grad()
 def greedy_gen(model, tok, prompt: str, max_new=1024, ctx=2048, device="cpu"):
     ids = tok.encode(prompt).ids[-(ctx - max_new - 1):]
@@ -137,20 +164,25 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--corpus", required=True, help="含 train.jsonl.gz / dev.jsonl.gz 的目录")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--vocab-size", type=int, default=16384)
-    ap.add_argument("--tokenizer", default=None, help="已有 tokenizer.json；缺省时自动训练")
+    ap.add_argument("--vocab-size", type=int, default=24576)
+    ap.add_argument("--tokenizer", default=None, help="已有 tokenizer.json；缺省时用 out/tokenizer.json")
     ap.add_argument("--ctx", type=int, default=2048)
-    ap.add_argument("--d-model", type=int, default=384)
-    ap.add_argument("--layers", type=int, default=6)
-    ap.add_argument("--heads", type=int, default=6)
+    ap.add_argument("--d-model", type=int, default=512)
+    ap.add_argument("--layers", type=int, default=8)
+    ap.add_argument("--heads", type=int, default=8)
     ap.add_argument("--batch", type=int, default=12)
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--warmup", type=int, default=50)
     ap.add_argument("--steps", type=int, default=1200)
-    ap.add_argument("--time-budget-sec", type=float, default=0.0, help=">0 时按墙钟时间提前收工（Kaggle 限时用）")
-    ap.add_argument("--limit-docs", type=int, default=0, help="调试：只用前 N 条训练样本")
-    ap.add_argument("--eval-limit", type=int, default=0, help="调试：只用前 N 条 dev 样本")
-    ap.add_argument("--eval-max-new", type=int, default=1024, help="评测时最长新生成 token 数")
+    ap.add_argument("--time-budget-sec", type=float, default=0.0)
+    ap.add_argument("--limit-docs", type=int, default=0)
+    ap.add_argument("--eval-limit", type=int, default=0)
+    ap.add_argument("--eval-max-new", type=int, default=1024)
+    # —— 防过拟合仪表 ——
+    ap.add_argument("--devloss-every", type=int, default=0, help="每 N 步算一次 dev 损失（0=关闭）")
+    ap.add_argument("--devloss-limit", type=int, default=64, help="dev 损失用多少行")
+    ap.add_argument("--devloss-max-tokens", type=int, default=4096)
+    ap.add_argument("--early-stop-patience", type=int, default=0, help="dev 连续 N 次不改善即停（0=关）")
     ap.add_argument("--log-every", type=int, default=10)
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--threads", type=int, default=0)
@@ -162,7 +194,6 @@ def main():
     out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
     corpus = Path(args.corpus)
 
-    # --- 分布式（torchrun 自动注入；单进程则为普通训练）
     rank, world = int(os.environ.get("RANK", 0)), int(os.environ.get("WORLD_SIZE", 1))
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
     has_cuda = torch.cuda.is_available()
@@ -173,11 +204,11 @@ def main():
     device = f"cuda:{local_rank}" if has_cuda else "cpu"
     is_main = rank == 0
 
-    from tokenizers import Tokenizer  # 延迟导入，缺库时给清晰报错
+    from tokenizers import Tokenizer
 
     tok_path = Path(args.tokenizer) if args.tokenizer else out / "tokenizer.json"
     if not tok_path.exists():
-        raise SystemExit(f"缺词表 {tok_path}；先跑 micro-tokenizer.py（train-micro-gen.py 不会隐式重训）")
+        raise SystemExit(f"缺词表 {tok_path}；先跑 micro-tokenizer.py")
     tok = Tokenizer.from_file(str(tok_path))
     assert tok.get_vocab_size() <= args.vocab_size, f"词表 {tok.get_vocab_size()} > --vocab-size {args.vocab_size}"
     eos_id = tok.token_to_id(FMT.END)
@@ -202,30 +233,38 @@ def main():
         (out / "model-config.json").write_text(json.dumps(model.cfg, indent=2))
 
     if world > 1:
-        model = nn.parallel.DistributedDataParallel(
-            model, device_ids=[local_rank] if has_cuda else None)
-        chunks_per_rank = chunks[rank::world]  # 极简分片：交错切片，各 rank 数据量一致
+        model = nn.parallel.DistributedDataParallel(model, device_ids=[local_rank] if has_cuda else None)
+        chunks_per_rank = chunks[rank::world]
     else:
         chunks_per_rank = chunks
-    base = model.module if world > 1 else model  # 未包装引用（cfg/存档/评测用）
+    base = model.module if world > 1 else model
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.1, betas=(0.9, 0.95))
     use_amp = device.startswith("cuda")
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
-    t0, step, t_start = 0, 0, time.time()
-    last_eval = None
+    step, t_start = 0, time.time()
 
-    def lr_at(s):  # 线性 warmup + 余弦
+    def lr_at(s):
         if s < args.warmup:
             return args.lr * (s + 1) / max(1, args.warmup)
         p = min(1.0, (s - args.warmup) / max(1, args.steps - args.warmup))
         return args.lr * (0.1 + 0.9 * 0.5 * (1 + math.cos(math.pi * p)))
 
     model.train()
-    order = list(range(len(chunks_per_rank)))
-    while step < args.steps:
+    order: list[int] = []
+    curve: list[dict] = []
+    best = {"devLoss": float("inf"), "step": -1}
+    patience = 0
+    stop = False
+
+    def snapshot(tag: str):
+        torch.save({"model": base.state_dict(),
+                    "meta": dict(step=step, wallSec=round(time.time() - t_start, 1), cfg=base.cfg,
+                                 tag=tag, best=best, devLossCurve=curve)}, out / f"micro-gen{tag}.pt")
+
+    while step < args.steps and not stop:
         if not order:
-            order = torch.randperm(len(chunks_per_rank)).tolist()  # 每轮洗牌
+            order = torch.randperm(len(chunks_per_rank)).tolist()
         idxs = order[: args.batch]
         order = order[args.batch :]
         x = torch.tensor([chunks_per_rank[i][:-1] for i in idxs], device=device)
@@ -239,34 +278,62 @@ def main():
         scaler.unscale_(opt)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         scaler.step(opt); scaler.update()
-        if is_main and step % args.log_every == 0:
-            print(f"[train] step {step}/{args.steps} loss {loss.item():.4f} lr {lr_at(step):.2e} "
-                  f"({time.time()-t_start:.0f}s)", flush=True)
         step += 1
-        if args.time_budget_sec and time.time() - t_start > args.time_budget_sec:
-            if is_main:
-                print(f"[train] 到时间预算 {args.time_budget_sec:.0f}s，提前停在 step {step}", flush=True)
-            break
 
-    # --- 保存（rank0；先 barrier 防别的 rank 已退出）
+        if is_main and step % args.log_every == 0:
+            print(f"[train] step {step}/{args.steps} loss {float(loss.detach()):.4f} "
+                  f"lr {lr_at(step-1):.2e} ({time.time()-t_start:.0f}s)", flush=True)
+
+        # —— dev 损失仪表（只在主 rank 算；停止标志广播给所有 rank）——
+        if dev_rows and args.devloss_every and step % args.devloss_every == 0:
+            if is_main:
+                dl, ndev, nskip = dev_loss(base, tok, dev_rows, device,
+                                           limit=args.devloss_limit, max_row_tokens=args.devloss_max_tokens)
+                tl = round(float(loss.detach()), 4)
+                curve.append(dict(step=step, trainLoss=tl, devLoss=round(dl, 4), rows=ndev, skipped=nskip))
+                print(f"[devloss] step {step} train {tl:.4f} dev {dl:.4f} gap {dl-tl:+.4f} "
+                      f"({ndev} 行{('，跳过 '+str(nskip)) if nskip else ''}) — 看 gap 有没有掉头向上", flush=True)
+                if dl < best["devLoss"] - 1e-4:
+                    best = {"devLoss": dl, "step": step}
+                    patience = 0
+                    snapshot("-best")
+                    print(f"[devloss] ↑ 新最优（step {step}），已存 micro-gen-best.pt", flush=True)
+                else:
+                    patience += 1
+                    if args.early_stop_patience and patience >= args.early_stop_patience:
+                        stop = True
+                        print(f"[early-stop] dev 连续 {patience} 次未改善；"
+                              f"最优 step {best['step']} dev {best['devLoss']:.4f}，停在这里", flush=True)
+            if world > 1:
+                flag = torch.tensor([1 if stop else 0], device=device)
+                torch.distributed.broadcast(flag, 0)
+                stop = bool(flag.item())
+
+        if not stop and args.time_budget_sec and time.time() - t_start > args.time_budget_sec:
+            if is_main:
+                print(f"[train] 到时间预算 {args.time_budget_sec:.0f}s，停在 step {step}", flush=True)
+            stop = True
+            if world > 1:
+                flag = torch.tensor([1], device=device)
+                torch.distributed.broadcast(flag, 0)
+
     if world > 1:
         torch.distributed.barrier()
-    sd = base.state_dict()
-    ckpt_meta = dict(step=step, wall_sec=round(time.time() - t_start, 1), cfg=base.cfg,
-                     args=vars(args), corpus=str(corpus),
-                     train_sha256=_sha256(corpus / "train.jsonl.gz"))
     if is_main:
-        torch.save({"model": sd, "meta": ckpt_meta}, out / "micro-gen.pt")
-        print(f"[save] {out/'micro-gen.pt'} ({time.time()-t_start:.0f}s 总耗时)", flush=True)
+        snapshot("")
 
-    # --- dev 评测（贪心解码；只看前 --eval-limit 条；仅主 rank，其余 rank 在 barrier 等待）
+    # --- dev 生成评测：优先用 best checkpoint（防"最后一版恰好过拟合"）
     if is_main and dev_rows:
-        ev = evaluate(model, tok, dev_rows, device, ctx=args.ctx, limit=args.eval_limit,
-                      max_new=args.eval_max_new)
-        if is_main:
-            (out / "dev-metrics.json").write_text(json.dumps(ev, indent=2, ensure_ascii=False))
-            print("[eval] " + json.dumps({k: v for k, v in ev.items() if k != "per_sample"},
-                                        ensure_ascii=False), flush=True)
+        best_p = out / "micro-gen-best.pt"
+        if best_p.exists():
+            base.load_state_dict(torch.load(best_p, map_location=device)["model"])
+            print(f"[eval] 载入 best checkpoint（step {best['step']} dev {best['devLoss']:.4f}）", flush=True)
+        ev = evaluate(base, tok, dev_rows, device, ctx=args.ctx, limit=args.eval_limit, max_new=args.eval_max_new)
+        ev["devLossCurve"] = curve
+        ev["bestDevLoss"] = best["devLoss"]
+        ev["bestStep"] = best["step"]
+        (out / "dev-metrics.json").write_text(json.dumps(ev, indent=2, ensure_ascii=False))
+        print("[eval] " + json.dumps({k: v for k, v in ev.items() if k != "per_sample"}, ensure_ascii=False), flush=True)
     if world > 1:
         torch.distributed.barrier()
         torch.distributed.destroy_process_group()
@@ -283,7 +350,7 @@ def _sha256(p: Path):
     return h.hexdigest()
 
 
-# ---------------------------------------------------------------- 评测
+# ---------------------------------------------------------------- 评测（内部代理）
 IDENT_RE = None
 
 
@@ -307,8 +374,8 @@ def anchor_recall(gold: str, pred: str):
     return hit / len(g), invented, len(g)
 
 
-def evaluate(model, tok, dev_rows, device, ctx=2048, limit=0, max_new=1536):
-    """内部代理指标：锚点召回（正则代理）、压缩比、精确匹配。真验收仍是 7 轴判定，不在本地冒充。"""
+def evaluate(model, tok, dev_rows, device, ctx=2048, limit=0, max_new=1024):
+    """内部代理指标：锚点召回（正则代理）、压缩比、精确匹配。真验收是 7 轴判定，不在本地冒充。"""
     gen = model.module if hasattr(model, "module") else model
     gen.eval()
     rows = dev_rows[:limit] if limit else dev_rows
@@ -326,8 +393,8 @@ def evaluate(model, tok, dev_rows, device, ctx=2048, limit=0, max_new=1536):
         per.append(dict(recall=round(rec, 4), invented=inv, n_anchors=na, em=em,
                         gold_len=len(gold), pred_len=len(pred)))
     gen.train()
-    recalls_sorted = sorted(recalls)
-    med = recalls_sorted[len(recalls_sorted) // 2] if recalls_sorted else 0.0
+    rs = sorted(recalls)
+    med = rs[len(rs) // 2] if rs else 0.0
     return dict(n=len(rows), exact_match=round(n_em / max(1, len(rows)), 4),
                 anchorRecallMean=round(sum(recalls) / max(1, len(recalls)), 4),
                 anchorRecallMedian=round(med, 4),

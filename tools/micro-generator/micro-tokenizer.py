@@ -63,7 +63,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--train", default=None, help="train.jsonl.gz")
     ap.add_argument("--config", default=None, help="用某个 micro-gen 运行目录的 model-config.json 推断")
-    ap.add_argument("--vocab-size", type=int, default=16384)
+    ap.add_argument("--vocab-size", type=int, default=24576)
+    ap.add_argument("--extra-text", action="append", default=[],
+                    help="额外词表训练文本（可重复；例如中文种子，让常见中文词进入词表）")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
@@ -76,7 +78,14 @@ def main():
         train = Path(args.train)
     assert train.exists(), f"缺训练文本 {train}"
 
-    tok, sec = train_tokenizer(iter_texts(train, args.limit), args.vocab_size, Path(args.out))
+    def texts():
+        yield from iter_texts(train, args.limit)
+        for extra in args.extra_text:
+            t = Path(extra).read_text(errors="ignore")
+            # 种子按行切碎喂入（BPE 只关心共现，长文本整段喂入也可以，但按行更均匀）
+            yield from (l for l in t.splitlines() if l.strip())
+
+    tok, sec = train_tokenizer(texts(), args.vocab_size, Path(args.out))
     v = tok.get_vocab_size()
     ids = tok.token_to_id(FMT.END)
     print(json.dumps(dict(out=args.out, vocab=v, sec=round(sec, 2), end_token_id=ids,

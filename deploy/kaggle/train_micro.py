@@ -25,7 +25,7 @@ def _env(name, default, cast=int):
     return cast(os.environ.get(name, default))
 
 
-VOCAB = _env("CFB_VOCAB", 16384)
+VOCAB = _env("CFB_VOCAB", 24576)
 CTX = _env("CFB_CTX", 2048)
 D_MODEL = _env("CFB_D_MODEL", 512)
 LAYERS = _env("CFB_LAYERS", 8)
@@ -91,11 +91,13 @@ def main() -> None:
     corpus = repo / CORPUS
     assert (corpus / "train.jsonl.gz").exists(), f"缺语料 {corpus}"
 
-    # 3) 词表（16k，仅用我们的训练文本）
+    # 3) 词表（默认 24k；英文训练文本 + 仓库自带中文种子，让常见中文词也是单 token）
     tok_json = out / "tokenizer.json"
+    seed = corpus / "tokenizer-zh-seed.txt"
+    extra = f" --extra-text {seed}" if seed.exists() else ""
     if not tok_json.exists():
         sh(f"{sys.executable} {tools/'micro-tokenizer.py'} --train {corpus/'train.jsonl.gz'} "
-           f"--vocab-size {VOCAB} --out {tok_json}")
+           f"--vocab-size {VOCAB}{extra} --out {tok_json}")
 
     # 4) 训练：≥2 卡用 torchrun（DDP），否则单进程
     world = max(1, n_gpu)
@@ -105,7 +107,8 @@ def main() -> None:
               f"--ctx {CTX} --d-model {D_MODEL} --layers {LAYERS} --heads {HEADS} "
               f"--batch {per_rank_batch} --steps {steps} --lr {LR} --warmup 100 "
               f"--log-every 20 --time-budget-sec {TIME_BUDGET} --eval-limit {FINAL_EVAL} "
-              f"--eval-max-new 1024")
+              f"--eval-max-new 1024 --devloss-every {_env('CFB_DEV_EVERY', 40)} "
+              f"--devloss-limit {_env('CFB_DEV_LOSS_LIMIT', 64)} --early-stop-patience 4")
     results["train"] = dict(world=world, perRankBatch=per_rank_batch, steps=steps,
                             globalBatch=GLOBAL_BATCH, ctx=CTX,
                             plannedTokens=world * per_rank_batch * CTX * steps)
@@ -154,8 +157,12 @@ def main() -> None:
         results["modelConfig"] = cfg
     losses = [l for l in tail if l.startswith("[train]")][-6:]
     results["lossTail"] = losses
+    results["devLossTail"] = [l for l in tail if l.startswith("[devloss]")][-8:]
     if (out / "dev-metrics.json").exists():
-        results["devMetrics"] = json.loads((out / "dev-metrics.json").read_text())
+        m = json.loads((out / "dev-metrics.json").read_text())
+        results["bestDevLoss"] = m.get("bestDevLoss")
+        results["bestStep"] = m.get("bestStep")
+        results["devMetrics"] = {k: v for k, v in m.items() if k != "per_sample"}
     results["wallSeconds"] = round(time.time() - t_all, 1)
     (wd / "RESULTS.txt").write_text(json.dumps(results, indent=2, ensure_ascii=False))
     print("[results] " + json.dumps({k: results[k] for k in
