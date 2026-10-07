@@ -1,0 +1,112 @@
+{
+  "schema": "cfb.micro-generator-corpus/1",
+  "at": "2026-10-07T13:19:41Z",
+  "builtBy": "tools/micro-generator/merge-corpora.py",
+  "evalDir": "transfer/models/micro-generator-gen-v3",
+  "sources": [
+    "transfer/models/micro-generator-gen-v3",
+    "transfer/models/micro-generator-gen-batch3",
+    "transfer/models/micro-generator-gen-batch4",
+    "transfer/models/micro-generator-gen-batch5"
+  ],
+  "provenance": [
+    {
+      "dir": "transfer/models/micro-generator-gen-v3",
+      "trainIn": 937,
+      "devIn": 139,
+      "nonconfIn": 106,
+      "trainAdded": 937,
+      "devRowsAdded": 0,
+      "devRowsBlockedByIsolation": 139,
+      "sha16": {
+        "train": "758a70233fe8655c",
+        "dev": "7f9b9d4fea908244"
+      }
+    },
+    {
+      "dir": "transfer/models/micro-generator-gen-batch3",
+      "trainIn": 844,
+      "devIn": 122,
+      "nonconfIn": 101,
+      "trainAdded": 524,
+      "devRowsAdded": 3,
+      "devRowsBlockedByIsolation": 119,
+      "sha16": {
+        "train": "161f7d925a3d4414",
+        "dev": "3d0df02b6a7efba3"
+      }
+    },
+    {
+      "dir": "transfer/models/micro-generator-gen-batch4",
+      "trainIn": 2491,
+      "devIn": 312,
+      "nonconfIn": 202,
+      "trainAdded": 2163,
+      "devRowsAdded": 56,
+      "devRowsBlockedByIsolation": 251,
+      "sha16": {
+        "train": "198139e30cab7c86",
+        "dev": "a350b95387b95470"
+      }
+    },
+    {
+      "dir": "transfer/models/micro-generator-gen-batch5",
+      "trainIn": 3985,
+      "devIn": 529,
+      "nonconfIn": 367,
+      "trainAdded": 2290,
+      "devRowsAdded": 28,
+      "devRowsBlockedByIsolation": 466,
+      "sha16": {
+        "train": "1e4edb59a1ad07bf",
+        "dev": "1c2bef7c1f2b9966"
+      }
+    }
+  ],
+  "isolation": {
+    "evalRepos": 86,
+    "trainRepos": 986,
+    "overlapCount": 0,
+    "checked": true
+  },
+  "train": {
+    "label": "merged-train",
+    "rows": 6001,
+    "repos": 986,
+    "axesAllPass": 6001,
+    "axisPass": {
+      "M1": 6001,
+      "M3": 6001,
+      "M4": 6001,
+      "M5": 6001,
+      "M6": 6001,
+      "M7": 6001,
+      "M8": 6001
+    },
+    "medianRatio": 0.4146
+  },
+  "dev": {
+    "label": "fixed-eval(=evalDir/dev)",
+    "rows": 139,
+    "repos": 86,
+    "axesAllPass": 124,
+    "axisPass": {
+      "M1": 124,
+      "M3": 139,
+      "M4": 139,
+      "M5": 139,
+      "M6": 139,
+      "M7": 139,
+      "M8": 139
+    },
+    "medianRatio": 0.4375
+  },
+  "trainNonconforming": {
+    "rows": 630,
+    "repos": 433
+  },
+  "boundaries": {
+    "note": "只有全轴通过的行进入 train；评测集固定为 evalDir 的 dev，跨轮可比；各源目录 dev 中与评测集同仓库的行被硬性排除（见 provenance.devRowsBlockedByIsolation）。",
+    "policy": "cfb.micro-generator.dataset-policy/1"
+  }
+}
