@@ -41,10 +41,10 @@
 先设 **Accelerator = GPU T4 ×2**、**Internet = ON**，然后：
 
 ```bash
-!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/4de9d313a197455d0da9509e8dc9a6c1f9df616e/deploy/kaggle/train_micro.py | python3 -
+!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/00e083a6cbbc69c23370dd9f4d9e82fd81d68c34/deploy/kaggle/train_micro.py | python3 -
 ```
 
-脚本内部固定 checkout `372e1d5`（该提交含同一份 tools/语料），URL 指向 `065111b8`；
+脚本内部固定 checkout `372e1d5`（该提交含同一份 tools/语料），URL 指向 `00e083a6`；
 两层都用不可变的提交哈希，避免 raw CDN 缓存导致跑旧代码。
 
 ## 产物（/kaggle/working）
