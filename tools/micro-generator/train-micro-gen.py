@@ -178,6 +178,7 @@ def main():
     ap.add_argument("--limit-docs", type=int, default=0)
     ap.add_argument("--eval-limit", type=int, default=0)
     ap.add_argument("--eval-max-new", type=int, default=1024)
+    ap.add_argument("--dump-predictions", action="store_true", help="评测时落盘 dev-predictions.jsonl")
     # —— 防过拟合仪表 ——
     ap.add_argument("--devloss-every", type=int, default=0, help="每 N 步算一次 dev 损失（0=关闭）")
     ap.add_argument("--devloss-limit", type=int, default=64, help="dev 损失用多少行")
@@ -328,7 +329,9 @@ def main():
         if best_p.exists():
             base.load_state_dict(torch.load(best_p, map_location=device)["model"])
             print(f"[eval] 载入 best checkpoint（step {best['step']} dev {best['devLoss']:.4f}）", flush=True)
-        ev = evaluate(base, tok, dev_rows, device, ctx=args.ctx, limit=args.eval_limit, max_new=args.eval_max_new)
+        ev = evaluate(base, tok, dev_rows, device, ctx=args.ctx, limit=args.eval_limit,
+                      max_new=args.eval_max_new,
+                      dump_path=(out / "dev-predictions.jsonl") if args.dump_predictions else None)
         ev["devLossCurve"] = curve
         ev["bestDevLoss"] = best["devLoss"]
         ev["bestStep"] = best["step"]
@@ -374,13 +377,15 @@ def anchor_recall(gold: str, pred: str):
     return hit / len(g), invented, len(g)
 
 
-def evaluate(model, tok, dev_rows, device, ctx=2048, limit=0, max_new=1024):
-    """内部代理指标：锚点召回（正则代理）、压缩比、精确匹配。真验收是 7 轴判定，不在本地冒充。"""
+def evaluate(model, tok, dev_rows, device, ctx=2048, limit=0, max_new=1024, dump_path: Path | None = None):
+    """内部代理指标：锚点召回（正则代理）、压缩比、精确匹配。真验收是 7 轴判定，不在本地冒充。
+    dump_path 非空时，同时写预测文本（unitId/prediction/gold/proxy），供 7 轴判读。"""
     gen = model.module if hasattr(model, "module") else model
     gen.eval()
     rows = dev_rows[:limit] if limit else dev_rows
     n_em = 0; tot_g = tot_p = 0; recalls = []; invented = 0
     per = []
+    dump = open(dump_path, "w") if dump_path else None
     for r in rows:
         prompt, full = FMT.row_to_texts(r)
         pred = greedy_gen(gen, tok, prompt, max_new=max_new, ctx=ctx, device=device)
@@ -390,8 +395,14 @@ def evaluate(model, tok, dev_rows, device, ctx=2048, limit=0, max_new=1024):
         tot_g += len(gold); tot_p += len(pred)
         em = pred.strip() == gold.strip()
         n_em += em
-        per.append(dict(recall=round(rec, 4), invented=inv, n_anchors=na, em=em,
-                        gold_len=len(gold), pred_len=len(pred)))
+        entry = dict(recall=round(rec, 4), invented=inv, n_anchors=na, em=em,
+                     gold_len=len(gold), pred_len=len(pred))
+        per.append(entry)
+        if dump:
+            dump.write(json.dumps(dict(unitId=r.get("unitId"), prediction=pred, gold=gold,
+                                       proxy=entry), ensure_ascii=False) + "\n")
+    if dump:
+        dump.close()
     gen.train()
     rs = sorted(recalls)
     med = rs[len(rs) // 2] if rs else 0.0

@@ -83,6 +83,29 @@
 2. 评测与交付一律用 `micro-gen-best.pt`（按 dev 挑的最优点），不用最后一版；
 3. `early-stop-patience 4` 到点自动停。
 
+## 训练跑完：补预测文本 + 打包（当前 session 内，新开一个 cell）
+
+训练器在训练时只存指标；**判读（7 轴）要的是每条 dev 的预测文本**。训练完成后，在同一个
+notebook 里新开一个 cell 跑：
+
+```bash
+!cd /kaggle/working/cfb-micro-run/repo && git fetch -q origin <SHA> && git checkout -q <SHA> \
+  && python3 tools/micro-generator/eval-micro-gen.py \
+     --ckpt /kaggle/working/cfb-micro-run/out \
+     --corpus transfer/models/micro-generator-gen-v3 \
+     --out /kaggle/working/cfb-micro-run/out --device cuda --examples 3 \
+  && cd /kaggle/working/cfb-micro-run/out \
+  && zip -q -r /kaggle/working/preds.zip dev-predictions.jsonl dev-predictions-summary.json \
+     dev-metrics.json model-config.json tokenizer.json micro-gen-best.pt \
+  && echo ZIPPED
+```
+
+它载入 `micro-gen-best.pt`（按 dev 挑的最优点），对全部 139 条 dev 贪心生成
+（每条长度按 gold 自适应 ×1.6+96，上限 2048），落盘 `dev-predictions.jsonl`。
+之后从 Kaggle 右侧 Output 下载 `preds.zip` 交回即可做 7 轴判读。
+
+（从下一轮起 `train_micro.py` 默认带 `--dump-predictions`，训练时就直接落盘，不用补跑。）
+
 ## 与 Qwen 路线的取舍
 
 | | Qwen3-0.6B + LoRA | 微模型（自训词表） |
