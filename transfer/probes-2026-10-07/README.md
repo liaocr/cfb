@@ -1,7 +1,10 @@
 # 通用压缩器探针资产（2026-10-07 入库）
 
-来源：沙箱 `/home/user/probes/`（原样拷贝，未改一行）。用途：为「通用压缩器 + 稳定金标」轮提供**可复跑**的读数。
-**这批文件不被 `verify.mjs` 调用、不改生产路径、不耗 API**；只有 `fetch_corpus.py` 需要外网。
+来源：沙箱 `/home/user/probes/` 的历史拷贝（原始脚本保留，未改脚本）。当时的用途是为「通用压缩器 + 稳定金标」轮提供读数；**截至 2026-10-07 当前 checkout，这批读数属于历史快照，不等于本轮实测，也不能宣称从本仓可复跑**。
+
+审计复跑 `node transfer/probes-2026-10-07/universal_bench.mjs` 失败：脚本从 `/home/user/cfb/src/compile-v5-local.js` 导入，当前目录实际是 `/home/user/cfb-audit`，该绝对路径不存在。共 15 个探针脚本含 `/home/user/cfb` 或 `/home/user/probes` 绝对路径；`universal_bench.mjs` 与 `oracle_bench.mjs` 的 random 对照还用未设种子的 `Math.random()` 排序，结果不可复现且不构成合格的均匀随机基线。
+
+**这批文件不被 `verify.mjs` 调用、不改生产路径、不耗 API**；只有 `fetch_corpus.py` 需要外网。为保留历史可追溯性，本轮只更正文档，不原地改写探针脚本；后续应另建相对路径/固定种子的复跑版，并另存新读数。
 
 ## 0. 结论速览（每条都有 §2 的表支撑）
 
@@ -10,7 +13,9 @@
 - 但「必需事实保留」（oracle 金标）暴露缺口：multihop 生产 **0.0%** vs 通用 57.9%；**math 上通用 57.3% 输给 random 65.4%**（答案集中在末句 ⇒ 需加结论位项）。
 - 幻觉已核实 **0%**（旧「70% 幻觉」是正则伪影，见 §4）。
 
-## 1. 依赖顺序与命令（Node ≥20 / Python3，零第三方依赖）
+## 1. 历史计划运行顺序（Node ≥20 / Python3；非当前可复跑承诺）
+
+下列命令保留原环境的设计顺序；除非先修复绝对路径并固定随机种子，否则不能视为当前 checkout 中已通过的复跑流程。
 
 ```bash
 python3 fetch_corpus.py          # ① 拉语料（HF datasets-server，需外网+UA 头；免鉴权）
@@ -26,7 +31,9 @@ node    compression_quality.mjs && node compression_quality2.mjs   # ⑩ 旧 rec
 node    regress.mjs              # ⑪ 0c556b6 修复后的三折回归（24/33 · 20/39 · 27/97）
 ```
 
-## 2. 关键读数（全部实测，2026-10-07 沙箱）
+## 2. 关键历史读数（当时记录于 2026-10-07 沙箱；本轮未复现）
+
+以下表格保留原始报告数值用于追溯；它们不能当作本轮实测或新 checkout 可重复的结果。除非注明复跑环境、依赖版本、数据哈希与随机种子，不应据此作晋级/生产决策。
 
 ### 2.1 `ground_check.mjs` —— 覆盖 / 幻觉（仓库 `extractAnchorsV5` 口径）
 

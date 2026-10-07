@@ -15,7 +15,7 @@
 > | 附录 A | （对话中的评审） | v4a / v4b 评审结论与经济学修正 |
 > | 附录 B | `src/value.js`、`tools/value-demo.mjs`（**v12.1 起已从仓库删除**，源码只存于本附录） | v4 参考实现源码 |
 >
-> 各卷原文中的“上一篇”“前文”指**上一卷**；正文里出现的 `XXX.md` 卷文件名一律指本合订本中对应的卷（见上表）；各卷的引用编号 [n](url) 在卷内独立编号，链接本身即出处。
+> 各卷原文中的“上一篇”“前文”指**上一卷**；正文里出现的 `XXX.md` 卷文件名一律指本合订本中对应的卷（见上表）；各卷的引用编号示例 `[n](url)` 在卷内独立编号，真实引用链接本身即出处。
 > **v12.1 状态说明**：仓库已收敛为单一路径（birth + compress，缺省 v3）。正文中提到的 checkpoint 模式、memory 模式 / `state-memory.js`、迟到认领、legacy v1 提示词、`src/value.js` 均已删除（可从 git `cfba57b` / v12.0 提交取回）；
 > 这些段落按写作时的事实保留，作为理论推导的上下文，**不再描述现行代码**。value.js 里唯一被吸收进主路径的是不变量 I2 的判定部分：
 > 「摘要里的标识符必须逐字出现在原文」，现为 `fidelity.inventedIdentifiers` + birth 的 `invented-identifier` 放行（`birthIdentifierGate`，缺省开）。

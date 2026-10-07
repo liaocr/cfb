@@ -1019,6 +1019,18 @@ try {
   await test('A39 三大终极天花板突破：台账低门槛自然语言落定抽取与去重 + modular 动态提示词裁剪 + truthEfficiency 高分段破平局与 8/8 全轮覆盖 + 飞轮 In-Context DPO 对比示范合成', async () => {
     const I = await import('../index.js')
     const { truthEfficiency } = await import('../tools/helpers/truth-dims.mjs')
+    // Keep this integration fixture deterministic and side-effect-free: use the frozen 5-task pool,
+    // while copying only the tracked parent policy and flywheel inputs needed by synthesis.
+    const previousCycleDir = cyc.cycleDir()
+    const isolatedCycleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-a39-'))
+    try {
+      const policyDir = path.join(isolatedCycleDir, 'offline', 'policies')
+      const flywheelDir = path.join(isolatedCycleDir, 'offline', 'train')
+      fs.mkdirSync(policyDir, { recursive: true }); fs.mkdirSync(flywheelDir, { recursive: true })
+      fs.copyFileSync(path.join(ROOT, '.cfb-offline/policies/p-5d92393440.json'), path.join(policyDir, 'p-5d92393440.json'))
+      fs.copyFileSync(path.join(ROOT, '.cfb-offline/train/pairs.jsonl'), path.join(flywheelDir, 'pairs.jsonl'))
+      cyc.setCycleDir(isolatedCycleDir)
+
     // 1. 台账自然语言落定抽取（低于门槛未压缩的原文轮次）+ bounded 延续段对已引落定代码行的去重
     const rawSubFloorMsgs = [
       { role: 'user', content: '修 fastModel 配置失效问题' },
@@ -1044,7 +1056,7 @@ try {
     assert.ok(pMod.includes('【第 2 轮样例】') && !pMod.includes('【风格样例】'), 'modular 多轮态只保留第 2 轮样例')
 
     // 3. truthEfficiency 高分段破平局 + R1/R2 全轮（8/8）过闸覆盖
-    for (const t of pool.tasks) {
+    for (const t of pool.tasks.filter((t) => t.source === 'frozen')) {
       assert.ok(t.r1Side && t.r1Ctx, `${t.id}: 冻结池同时携带 R1 side 与 R1 ctx`)
       const effCtx = I.applyCtxContinuationPolicy(t.ctx || '', 'bounded')
       const vAll = I.compileV4Direct(t.side, t.chain.a2.raw, I.normalizeConfig({ compressPrompt: 'v4', compressV4Direct: true, compressCtx: effCtx, programParts: 'all' }))
@@ -1058,11 +1070,15 @@ try {
     const synDpo = cyc.runCli(['synthesize-policy', '--parent', 'p-5d92393440', '--contrastive'])
     assert.equal(synDpo.status, 0, synDpo.stdout + synDpo.stderr)
     assert.match(synDpo.stdout, /池题过闸 3\/3 \(8\/8\)/)
-    assert.match(synDpo.stdout, /池题均省 4[34]\d tok/)
-    assert.match(synDpo.stdout, /真值分=0\.762/)
+    assert.match(synDpo.stdout, /池题均省 482 tok/)
+    assert.match(synDpo.stdout, /真值分=0\.781/)
+    } finally {
+      cyc.setCycleDir(previousCycleDir)
+      fs.rmSync(isolatedCycleDir, { recursive: true, force: true })
+    }
   })
 
-  await test('A40 官方级 AI 基准评测融合与个人极简省钱模式（SWE-bench Pro 三重门 + TAU-bench pass^k + LMArena Elo + AA 性价比前沿 + --lite 微基准）', async () => {
+  await test('A40 外部评测口径的本地代理记分卡与个人极简省钱模式（SWE-bench Pro 三重门 + TAU-bench pass^k + Arena Elo + AA 效率 + --lite 微基准）', async () => {
     const { passAtK, passHatK, arenaElo } = await import('../tools/helpers/ruler.mjs')
     assert.equal(passAtK(4, 2, 1), 0.5)
     assert.equal(passAtK(4, 2, 2), 0.833)
@@ -1078,7 +1094,7 @@ try {
 
     const bm = cyc.runCli(['benchmark'])
     assert.equal(bm.status, 0, bm.stdout + bm.stderr)
-    assert.match(bm.stdout, /CFB 官方级 AI 基准评测记分卡/)
+    assert.match(bm.stdout, /CFB 本地代理评测记分卡/)
     assert.match(bm.stdout, /Arena Elo/)
     assert.match(bm.stdout, /pass\^2\(可靠性\)/)
     assert.match(bm.stdout, /三、个人开发者「极简省钱」三档官方测试菜单/)

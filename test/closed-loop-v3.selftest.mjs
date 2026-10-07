@@ -23,7 +23,9 @@ const test = (name, fn) => { try { fn(); pass++; console.log('PASS ' + name) } c
 const PRICING = { inputUsdPerMillion: 1, outputUsdPerMillion: 4, requestFeeUsd: 0, source: 'https://prices.vendor.test/rates', verifiedAt: '2026-10-02' }
 const PROFILE = { schema: 'cfb.eval-profile/1', model: 'deepseek-v4.1-flash', baseUrl: 'https://gateway.vendor.test/v1', apiKeyEnv: 'DEEPSEEK_API_KEY', pricing: PRICING }
 const W = (task, outcome = 'win') => ({ task, outcome })
-const pool = buildPool()
+// 这些契约固定验证内置 5 题；外加任务的加载与轮换由 B3 / E3 单独覆盖。
+// 不继承仓库本地 .cfb-offline/tasks，否则已有铸造题会悄悄改变冻结夹具。
+const pool = buildPool({ extra: { tasks: [], warnings: [] } })
 const dev = pool.tasks.filter((t) => t.split === 'dev'), holdout = pool.tasks.filter((t) => t.split === 'holdout')
 
 // 合成报告：按给定 outcome 给两臂判据旗标（candidate win ⇒ candidate 的 next=1、control 的 next=0）
@@ -152,7 +154,7 @@ try {
     const comp = buildGenerationPlan({ role: 'compile', round: 1, tasks: pool.tasks, pricing: PRICING })
     assert.equal(planVersion(comp), 10); assert.equal(planScope(comp), 'cfb.generation.2026-10-02.g1')
     const a = auditApiPlan(comp); assert.equal(a.main, 5); assert.equal(a.probe, 3); assert.ok(a.totalReservedUsd < APPROVED_API_LIMITS_GEN.maxUsd)
-    assert.equal(comp.jobs.find((j) => j.kind === 'main').body.max_tokens, 1600); assert.equal(comp.jobs.find((j) => j.kind === 'main').body.temperature, 0); assert.equal(comp.jobs.find((j) => j.kind === 'main').body.thinking.type, 'disabled')   // v14.9：与生产 distillOnce 同形
+    assert.equal(comp.jobs.find((j) => j.kind === 'main').body.max_tokens, Number(process.env.CFB_GEN_COMPILE_MAX_TOKENS || 5120)); assert.equal(comp.jobs.find((j) => j.kind === 'main').body.temperature, 0); assert.equal(comp.jobs.find((j) => j.kind === 'main').body.thinking.type, 'disabled')   // compile 计划默认 5120：实测中转会截断 1600；生产默认请求仍为 1600
     const prop = buildGenerationPlan({ role: 'propose', round: 40, tasks: dev, evidence: [], devTaskIds: dev.map((t) => t.id), pricing: PRICING })
     assert.equal(auditApiPlan(prop).main, 1); assert.equal(planScope(prop), 'cfb.generation.2026-10-02.g40')
     const mint = buildGenerationPlan({ role: 'mint-a', round: 2, scenario: { id: 'minted-x', u1: '修一下保存配置时的 EACCES' }, pricing: PRICING })

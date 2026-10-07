@@ -644,7 +644,7 @@ v14.25.0 改了判据与 `preflightUpstream` 的调用点，但 `tools/probe-car
 - **诚实清单**（详版 §7）：13.27 bit 是**容量不是效度**，效度要靠 ρ 证明而**当前观测数为 0**；评委锚点写了但**从未与人工裁决对齐**（刻度悬空）；
   `missingDimensionSignal` 阈值 0.35 与探索/利用 0.6/0.4 **都是拍的**；`selection` 杠杆**目前只是参数占位，尚未真正实现卷四 A2 的逐条 v(i) 计算**。
   —— **杠杆列表里有，不等于杠杆已经建好。**
-- 详版： [`docs/design/CONTINUOUS-TRAINING-ARCHITECTURE.md`](docs/design/CONTINUOUS-TRAINING-ARCHITECTURE.md)
+- 历史详版原路径（当前 checkout 缺失，内容未恢复）：`docs/design/CONTINUOUS-TRAINING-ARCHITECTURE.md`。
 
 ---
 ## v13.8.0（2026-10-02，离线层重构：从「互不相连的工具箱」变成「接上 API 就能开练」的一条流水线）
@@ -666,14 +666,14 @@ v14.25.0 改了判据与 `preflightUpstream` 的调用点，但 `tools/probe-car
   `greenAsProof` 的规则代理**从未与评委对齐**（有效度风险）；`scoreDraft` 权重是人工设定、**未经数据拟合**；黄金集仅 20 条，分辨力约 44 个百分点；
   卷四 D 的 1 号未解问题（v(i) 代理量在 agent 轨迹上的误差）**依然未解**——本轮只是把「可计算」从零变成有。
 - 验证：新增 `test/offline-lab.selftest.mjs` **20/20**；全量 `node verify.mjs` **901 通过 / 77 失败**（基线 `6e41a4a` 为 880 / 78）⇒ **+21 通过、失败 −1、零回归**；`cfb-train --check` 四门全绿；manifest 368 文件。
-- 详版： [`docs/design/OFFLINE-ARCHITECTURE.md`](docs/design/OFFLINE-ARCHITECTURE.md)
+- 历史详版原路径（当前 checkout 缺失，内容未恢复）：`docs/design/OFFLINE-ARCHITECTURE.md`。
 
 ---
 ## v13.7.0（2026-10-02，v8 reasoning 回放协议**首次真实运行**：通道拼接已复证；压缩稿「不劣」但**未**证明更优）
 
 - **真实运行（本轮主线）**：用户切回带思维链的商户后，v8 协议首次跑通并**完整结束**：13 次派发（12 主 + 1 探针）全部 `accepted`，
   12/12 有效主响应，0 拒绝，`channelVerified=true`，`pairsSameFingerprint=6/6`，`sourceCurrent=true`，预留 **$0.648127**。
-  报告见 [`docs/analysis/LIVE-REASONING-REPLAY-2026-10-02.md`](docs/analysis/LIVE-REASONING-REPLAY-2026-10-02.md)。
+  报告原路径：`docs/analysis/LIVE-REASONING-REPLAY-2026-10-02.md`（当前 checkout 缺失，未恢复，读数仅作历史记录）。
 - **通道拼接由探针直接证明（不再是推断）**：v8 探针把一个标记**只**放进上一轮 assistant 的 `reasoning_content`（可见回复不含它），
   要求模型逐字返回；工具要求回显与 canary **逐字相等**，否则 `channel-history-not-visible` 硬停。首探即过 ⇒ 历史 reasoning 确实进入上下文。
   另有独立 canary 复测：Δprompt(1000字−1字)=539 ⇒ 拼接=是。
@@ -1357,7 +1357,7 @@ checkpoint 模式、迟到认领（`birthDeferredClaim` / late-memory，含未�
 
 ## v11.13.0（2026-09-26）x1 r2：死分支折叠 / 失败信号保留 / 按块类型目标长度 / 状态行去重 + 句柄回取观测 + cf-eval 过程指标（**x1 仍缺省关闭，线上零变化**）
 
-落地 [`docs/analysis/RESEARCH-PERFORMANCE.md`](docs/analysis/RESEARCH-PERFORMANCE.md) §3 的 P1–P6 代码部分（与原方案的差异见该节「实现状态」表）。
+落地历史研究文档原路径 `docs/analysis/RESEARCH-PERFORMANCE.md` §3 的 P1–P6 代码部分（当前 checkout 不含该文档；与原方案的差异无法从这份 checkout 复核）。
 
 ### x1（`src/extractive.js`，只在 `compressPrompt: 'x1'` 下生效）
 - **P1 死分支折叠**：副模型可回 `branches: [{from,to,head,why,s,seq,quote}]`。`refuted`（工具证据逐字命中）⇒ head 标 `⟨已否定·seqN⟩`；
@@ -1393,7 +1393,7 @@ checkpoint 模式、迟到认领（`birthDeferredClaim` / late-memory，含未�
 
 ## v11.12.1（2026-09-26）提升主模型表现的第四轮调研（**仅文档，代码与缺省值零变化**）
 
-- 新增 [`docs/analysis/RESEARCH-PERFORMANCE.md`](docs/analysis/RESEARCH-PERFORMANCE.md)：从「推理保留 / 离策略代价 / 去噪 / 历史中的错误 / 想太多想太少 / 状态与复述 / 可逆性」7 个角度调研 30+ 篇来源。
+- 历史研究文档原路径 `docs/analysis/RESEARCH-PERFORMANCE.md`（当前 checkout 缺失，未恢复）：当时记录从「推理保留 / 离策略代价 / 去噪 / 历史中的错误 / 想太多想太少 / 状态与复述 / 可逆性」7 个角度调研 30+ 篇来源。
 - 核心判断：表现 = 去噪收益 − 离策略代价 ⇒ 逐字抽取（x1）在表现上应优于改写式摘要（v3），待 `cf-eval` 验证（H1）。
 - 排序方案：P1 死分支折叠（`refuted` / `abandoned` / `parked`）· P2 失败信号强制保留 · P3 按块类型自适应保留比例 · P4 状态行去重 ·
   P5 句柄取回率闭环 · P6 cf-eval 过程指标（loopRate / rederiveRate / 配对 bootstrap）· P7 勘误写法。均**未实现**。
@@ -1403,7 +1403,7 @@ checkpoint 模式、迟到认领（`birthDeferredClaim` / late-memory，含未�
 
 ## v11.12.0（2026-09-25）抽取式压缩 compress-x1 + 反事实续写评测 + 准则自进化回路（**缺省关闭，线上零变化**）
 
-设计与论文依据见 [`docs/analysis/RESEARCH-COT-SHAPING.md`](docs/analysis/RESEARCH-COT-SHAPING.md) §10。
+设计与论文依据的历史文档原路径为 `docs/analysis/RESEARCH-COT-SHAPING.md` §10（当前 checkout 缺失，未恢复）。
 
 ### 新增
 - **`src/extractive.js` — `compressPrompt: 'x1'`（抽取式）**：副模型不写摘要，只回 JSON 选择（句子编号 / `verified|refuted|unverified` 标签 / 状态变量 / 块类型），
@@ -1433,7 +1433,7 @@ checkpoint 模式、迟到认领（`birthDeferredClaim` / late-memory，含未�
 
 ## v11.11.2（2026-09-25）可改写思维链的表现提升调研（**仅文档，无代码改动**）
 
-新增 [`docs/analysis/RESEARCH-COT-SHAPING.md`](docs/analysis/RESEARCH-COT-SHAPING.md)，并登记进 `docs/README.md` 索引。
+当时新增的研究文档原路径为 `docs/analysis/RESEARCH-COT-SHAPING.md`（当前 checkout 缺失，未恢复），并登记进 `docs/README.md` 索引。
 问题：cfb 能在出生时改写 reasoning，而且宿主压缩被推迟、信息留存更久——这时怎样改写，才能让主模型更专注、更有底气、想得更全？
 
 ### 主要结论
@@ -1454,7 +1454,7 @@ checkpoint 模式、迟到认领（`birthDeferredClaim` / late-memory，含未�
 
 ## v11.11.1（2026-09-25）压缩经济性审计与路线决议（**仅文档，无代码改动**）
 
-新增 [`docs/analysis/ECONOMICS-V11.11.md`](docs/analysis/ECONOMICS-V11.11.md)，并登记进 `docs/README.md` 索引。
+当时新增的审计文档原路径为 `docs/analysis/ECONOMICS-V11.11.md`（当前 checkout 缺失，未恢复），并登记进 `docs/README.md` 索引。
 **结论上取代 `AUDIT-V11.5.md` 的成本模型部分**；后者按「只追加不回写」保留原文，更正写在 §6.1。
 
 **验证**：`npm test` 1308 通过 / 0 失败 / 1 跳过（25/25 套件），与 v11.11 基线一致。
@@ -1825,7 +1825,7 @@ TTFB 3 秒的三条正面处置，全部**可关、缺省保守**。
 ## v11.5（2026-09-23）compress-v3 与审计
 
 compress-v3 = v2 的保真规则 + v1 的绝对长度目标（`compressTargetMin/Max`，缺省 250/450）。
-同日发布审计 [`docs/analysis/AUDIT-V11.5.md`](docs/analysis/AUDIT-V11.5.md)：收益判据按缓存记账口径重写、按真实工况（95% 冗余）重算门槛反解表。
+同日发布的审计文档原路径为 `docs/analysis/AUDIT-V11.5.md`（当前 checkout 缺失，未恢复）：当时记录收益判据按缓存记账口径重写，并按真实工况（95% 冗余）重算门槛反解表。
 
 ## v11.4（2026-09-23）
 

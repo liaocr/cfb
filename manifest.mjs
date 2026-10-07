@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * manifest.mjs —— 完整性清单（sha256）。
+ * manifest.mjs —— 项目交付树的 SHA-256 清单（非全 Git 跟踪树校验）。
  *
  *   node manifest.mjs          重新生成 MANIFEST.sha256
- *   node manifest.mjs --check  逐文件校验，任何漂移都非零退出
+ *   node manifest.mjs --check  对清单范围逐文件校验，任何漂移都非零退出
  *
- * 为什么需要：这个包会被复制到别的机器/云端 workspace，
- * 「我拿到的是不是那份经过自测的代码」必须能用一条命令回答。
+ * 范围由 .gitignore 驱动；本地/再生状态目录（包括被 Git 强制跟踪但仍匹配忽略规则的 .cfb-runtime/.cfb-offline 资产）有意不进入此清单。
+ * 因此它回答的是「交付树里的文件是否漂移」，不回答「所有 Git 跟踪文件是否逐一校验」。
  */
 import fs from 'node:fs'
 import path from 'node:path'

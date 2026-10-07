@@ -1,0 +1,317 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cfb.local/schemas/micro-generator-training-example-1.json",
+  "title": "AI single-reviewer family-isolated generator training example",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "caseId",
+    "family",
+    "split",
+    "raw",
+    "ctx",
+    "draft",
+    "facts",
+    "sourceCoverage",
+    "annotationStatus",
+    "reviewers",
+    "referenceReview",
+    "trainingEligible",
+    "sourceHashes",
+    "reviewProvenance"
+  ],
+  "properties": {
+    "schema": {
+      "const": "cfb.micro-generator-training-example/1"
+    },
+    "caseId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "family": {
+      "type": "string",
+      "minLength": 1
+    },
+    "split": {
+      "enum": [
+        "train",
+        "dev"
+      ]
+    },
+    "raw": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ctx": {
+      "type": "string"
+    },
+    "draft": {
+      "type": "string",
+      "minLength": 1
+    },
+    "facts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "factId",
+          "proposition",
+          "sourceSpan",
+          "importance",
+          "polarity",
+          "modality",
+          "conditions",
+          "entities",
+          "mustPreserve"
+        ],
+        "properties": {
+          "factId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "proposition": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceSpan": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "field",
+              "start",
+              "end",
+              "quote"
+            ],
+            "properties": {
+              "field": {
+                "enum": [
+                  "raw",
+                  "ctx"
+                ]
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "end": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "quote": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "importance": {
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "polarity": {
+            "enum": [
+              "positive",
+              "negative",
+              "mixed",
+              "not-applicable",
+              "uncertain"
+            ]
+          },
+          "modality": {
+            "enum": [
+              "asserted",
+              "required",
+              "prohibited",
+              "possible",
+              "conditional",
+              "reported",
+              "uncertain"
+            ]
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mustPreserve": {
+            "type": "boolean"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "number",
+                "threshold",
+                "time",
+                "actor",
+                "negation",
+                "condition",
+                "exception",
+                "decision",
+                "causality",
+                "identifier"
+              ]
+            },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "sourceCoverage": {
+      "const": "complete"
+    },
+    "annotationStatus": {
+      "const": "adjudicated"
+    },
+    "reviewers": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "const": "arena-agent-mode"
+      },
+      "maxItems": 1
+    },
+    "referenceReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "factStatuses",
+        "allMustPreserveFactsSatisfied",
+        "unsupportedClaimsReviewed",
+        "unsupportedClaimsCount"
+      ],
+      "properties": {
+        "status": {
+          "const": "adjudicated"
+        },
+        "factStatuses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "factId",
+              "status"
+            ],
+            "properties": {
+              "factId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "enum": [
+                  "preserved",
+                  "omitted",
+                  "contradicted",
+                  "uncertain"
+                ]
+              }
+            }
+          }
+        },
+        "allMustPreserveFactsSatisfied": {
+          "const": true
+        },
+        "unsupportedClaimsReviewed": {
+          "const": true
+        },
+        "unsupportedClaimsCount": {
+          "const": 0
+        }
+      }
+    },
+    "trainingEligible": {
+      "const": true
+    },
+    "sourceHashes": {
+      "type": "object",
+      "required": [
+        "rawSha256",
+        "ctxSha256",
+        "referenceSha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "rawSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "ctxSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "referenceSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "reviewProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "reviewerType",
+        "reviewerId",
+        "reviewerCount",
+        "humanReviewerCount",
+        "independentSecondReview",
+        "reviewedAt",
+        "scope",
+        "limitations"
+      ],
+      "properties": {
+        "mode": {
+          "const": "ai-single-reviewer"
+        },
+        "reviewerType": {
+          "const": "ai"
+        },
+        "reviewerId": {
+          "const": "arena-agent-mode"
+        },
+        "reviewerCount": {
+          "const": 1
+        },
+        "humanReviewerCount": {
+          "const": 0
+        },
+        "independentSecondReview": {
+          "const": false
+        },
+        "reviewedAt": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "scope": {
+          "const": "raw-context-facts-and-reference-claims"
+        },
+        "limitations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

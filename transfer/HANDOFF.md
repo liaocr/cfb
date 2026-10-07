@@ -1,4 +1,4 @@
-# AI 模型与开发者一页交接卡（`transfer/HANDOFF.md`，v14.25.1）
+# AI 模型与开发者一页交接卡（`transfer/HANDOFF.md`，v14.25.4）
 
 > 本文件替代了原先分散的 `MIGRATION.md`、`LIVE-MEMORY.md`、`MEMORY.md`、`NEXT-MODEL-PROMPT.md` 与 `SUMMARY-2026-10-02.md`。
 > 接手本项目的 AI 模型或人类开发者只需读完本页即可 **30 秒内零盲区开工**。请始终使用**中文**回复。
@@ -16,19 +16,19 @@ npm run manifest:check      # = node manifest.mjs --check（0 缺失 / 0 失配�
 npm run verify:offline      # = node tools/verify-offline.mjs（读数见下面的水位块，勿手抄）
 npm run watermark:check     # = node tools/doc-watermark.mjs --check（文档水位与磁盘一致？）
 
-# 3. 一屏查看当前闭环状态、五大官方基准成绩单与智能下一步建议
+# 3. 一屏查看当前闭环状态、本地代理评测记分卡与智能下一步建议
 npm run cycle               # = node tools/cfb-cycle.mjs status
 npm run bench               # = node tools/cfb-cycle.mjs benchmark
 npm run next                # = node tools/cfb-cycle.mjs next
 ```
 
 <!-- watermark:begin 由 node tools/doc-watermark.mjs --write 生成，勿手抄 -->
-- **当前版本：v14.25.1** · **零第三方依赖**（纯 Node.js ≥ 20/22 内置模块）
+- **当前版本：v14.25.4** · **零第三方依赖**（纯 Node.js ≥ 20/22 内置模块）
 - **自测（本块由 `node tools/doc-watermark.mjs --write` 生成，勿手抄）**
-- 验收口径 `npm run verify:offline`（真断网 Linux 命名空间）：40/40 套件全绿 · `1207 通过 / 0 失败 / 1 跳过`
-- 快速自检 `npm test`（联网机上跑，需要隔离的那条断言按设计跳过）：41/41 套件全绿 · `1216 通过 / 0 失败 / 2 跳过`
+- 验收口径 `npm run verify:offline`（真断网 Linux 命名空间）：42/42 套件通过 · `1242 通过 / 0 失败 / 1 跳过`
+- 快速自检 `npm test`（联网机上跑，需要隔离的那条断言按设计跳过）：42/42 套件通过 · `1241 通过 / 0 失败 / 2 跳过`
 - 用时与记账时刻**不进文档**（每次 `--record` 都会变 ⇒ 写进文档就永远在漂），要查 `transfer/watermark.json` 的 `seconds` / `at`。
-- **规模**：`src/` 23 个零依赖模块 · `tools/` 60 个脚本 + 29 个 helpers · `test/` 41 套自测 · `transfer/gold/` 13 条（4 个家族）
+- **规模**：`src/` 24 个零依赖模块 · `tools/` 61 个脚本 + 29 个 helpers · `test/` 42 套自测 · `transfer/gold/` 13 条（4 个家族）
 <!-- watermark:end -->
 
 > **沙盒环境提示**：`package.json` **没有** `engines` 字段 ⇒ 版本要求只写在文档里、不作硬闸；实测 Node 20.20.2 全绿。若容器 Node < 20，可一行升级至 `/usr/local`：
@@ -41,16 +41,14 @@ npm run next                # = node tools/cfb-cycle.mjs next
 
 - **分支与版本**：`main`，版本与自测读数全部见上面的水位块（由 `--record` 记账 ⇒ 本文件不再抄一遍旧数）。
 - **核心架构**：100% 纯净的思维链出生即压缩（`birth` + `compile-v4`），已彻底剥离 DSH 外部宿主混入层与冗余旁路。
-- **`npm run bench` 第二表榜首**：**`p-1490eefcdf`**（四维满配：`continuationPath: 'bounded'` + `statePartsMode: 'compact'` + `modularPromptPrune: true` + `birthAdaptiveFloor: true`，提示词净减 `-1037` 字）。
-  **注意榜首 ≠ 已采纳**：`npm run cycle` 里 `champion 策略: base`、`champion 采纳状态 baseline` ⇒ 榜首只是当前尺子上的第一名，闭环仍按 `base` 生产。
-  - **L1 金标基准（`npm run bench` 实测，2026-10-06）**：金标过闸 **12/13**（净省 `431 tok`），距离分 **`dd = 0.724 [实测]`**（距理论极限 `-0.276`），池题全轮 `8/8`、均省 `482 tok`，5 题 Oracle `dd = 0.908`，真值分 `0.781`，AA 密度效率 `0.7234`，飞轮排序器 `-0.792`。旧版本在册 11 项时的 `1.000` 只作历史成绩看（CHANGELOG）。
-  - **L2 多轮轨迹基线（`transfer/traj1..3`）**：`auto` 臂 SWE 严苛解决率 **`85.7%`**（伪修好水分 **`0.0%`**，而只挂台账的 `ledger` 臂含 **`16.7%` 伪修好**），平均轮次 **`-13.7%`**，思维链字符 **`-27.4%`**，**LMArena Elo `1110`，95% CI `[926, 1345]`**（CI 跨过 `raw` 的 1000 ⇒ 这张表不足以单独宣称稳赢；`ledger` `951`）。
-- **飞轮与排序器**（`npm run cycle`，2026-10-06 实测）：飞轮 **80/80 对**通过 dev/内容闸；CPU 排序器 `ready`，**LOO-CV = 0.762**；效度尺子 `valid (n=259)`。`npm run train:export` 随时可按 5 家族严格组隔离导出 SFT/DPO 数据与 In-Context DPO 范例。
-  ⚠ 本页此前写的 LOO-CV **`92.9%`** 在当前实现下复现不出来（现值 `0.762`），**差异原因未查** ⇒ 引用前先 `npm run cycle` 重跑，别拿旧数当现状。
+- **`npm run bench` 第二表榜首**：**`p-1490eefcdf`**（四维满配：`continuationPath: 'bounded'` + `statePartsMode: 'compact'` + `modularPromptPrune: true` + `birthAdaptiveFloor: true`，提示词净减 `-1037` 字）。当前 L1 预筛为金标过闸 **12/13（净省 431 tok）**、`dd=0.724`、池题 **4/4 题 / 9/9 轮**、均省 **1111 tok**、Oracle `dd=0.831`、真值分 `0.696`、AA 密度效率 `0.6473`。
+  **榜首 ≠ 已采纳**：`npm run cycle` 当前 champion 仍为 `base`；候选在当前 L2 汇总里 `policy:p-1490eefcdf` 是 **1/24（4.2%）**严苛修好。先不采纳，也不把 L1 排名当端到端收益。
+- **L2 轨迹汇总（`npm run bench`，2026-10-07 本地日期）**：`raw n=80 / auto n=7 / ledger n=6`；`auto` 严苛解决率 **85.7%**、伪修好 `0%`、`pass@1=0.889`、`pass^2=0.778`、平均 `4.86` 轮（相对 raw `−24.9%`）、思维链字符 `−27.4%`；Elo **1104，95% CI [945, 1279]**（区间覆盖 raw=1000）。这是多个在盘轨迹的描述性汇总，不是同一随机化盲测；旧数 `raw n=8 / Elo 1110 / −13.7%` 不再当现状。
+- **闭环状态（`npm run cycle` 当前输出）**：champion=`base`；飞轮 **93/93** 对过 dev/内容闸；CPU 排序器 `ready`、LOO-CV **0.763**；效度尺子 **`suspect (n=304)`**，不是 `valid`。`npm run train:export` 是导出工具，不改变候选的验证状态。
 
-### 2′. 金标注册表现状与「改稿重挣」通道（v14.25.1 复核，接手必读）
+### 2′. 金标注册表现状与「改稿重挣」通道（v14.25.4 复核，接手必读）
 
-- **注册表现状（2026-10-06 现算，条数同步在 `../README.md` 文首水位块）**：`transfer/gold/` 在册 **13 条 / 4 家族**（`sse-truncated` 5 · `wrong-model` 4 · `eacces-config` 3 · `perf-regression` 1；`dev 6 + holdout 7`）。
+- **注册表现状（2026-10-07 本地日期现算，条数同步在 `../README.md` 文首水位块）**：`transfer/gold/` 在册 **13 条 / 4 家族**（`sse-truncated` 5 · `wrong-model` 4 · `eacces-config` 3 · `perf-regression` 1；`dev 6 + holdout 7`）。
   尺子判词按 `cfb.gold-standard/1` 逐条现算：**4 条 `gold` / 9 条 `not-gold`**（`tools/gold-attest.mjs` 只降不升，条目 `goldStandard.stampDigest` 一变即过期）。
   `ceiling.ok`：**12/13 达标**，唯一不达标是 `perf-regression-s0-r7`（真机 `roundsToFix 9 > 6` ⇒ C4 提前量不成立 ⇒ 按 fail-closed 保持 `use:'train'`，不删）。
 - **用途隔离现状（v14.21.0 起，v14.24.x 改了默认走向）**：13 条里 **`use:'ruler'` 7 条 / `use:'train'` 6 条** —— **不是**"全部只当标尺"。`train` 那 6 条是 `goldCeiling` 不达线被 fail-closed **降级**下来的（降级 ≠ 丢数据：不进标尺、不删条目），要复核就 `node tools/gold-ceiling-audit.mjs`（$0）。
@@ -68,7 +66,7 @@ npm run next                # = node tools/cfb-cycle.mjs next
 
 | 档位 | 命令 | 成本 | 用途 |
 |---|---|---:|---|
-| **Tier 0（离线全表）** | `npm run bench` / `npm run prescreen` | **`$0.00`** | 1 秒输出五大国际官方基准成绩单 + 零 API 预筛与四维正交因子归因 |
+| **Tier 0（离线全表）** | `npm run bench` / `npm run prescreen` | **`$0.00`** | 本地轨迹汇总与预筛代理记分卡（借鉴外部指标口径，非官方 benchmark 成绩）+ 四维正交因子归因 |
 | **Tier 1（极简基准）** | `npm run bench:lite` | **`≈ $0.004`** | 复用 `b1` 缓存的 `base` 臂，仅对新候选策略发 **1 次**副模型调用即完成配对对比 |
 | **Tier 2（极简轨迹）** | `npm run traj:lite` | **`≈ $0.068`** | IRT 自动挑信息量最高 1 题 × 4 轮上限 × 影子分叉（分歧前零主调用）+ `$0.08` 硬熔断 |
 

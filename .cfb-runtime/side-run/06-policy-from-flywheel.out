@@ -1,6 +1,0 @@
-未生成：前 5 条赢稿都没过补丁预算 / 泄漏闸
-  flaky-timeout: leak:perf-regression:head,flaky-timeout:expected,flaky-timeout:hedgestartedat
-  sse-truncated: leak:perf-regression:root,sse-truncated:birth.js,sse-truncated:src/birth.js
-  sse-truncated: leak:sse-truncated:node_modules,flaky-timeout:type,perf-regression:print
-  flaky-timeout: leak:flaky-timeout:test/hedge.selftest.mjs,flaky-timeout:hedgeafterms,flaky-timeout:timer
-  sse-truncated: leak:sse-truncated:src/transport.js,sse-truncated:assemblesseframes,perf-regression:finish_reason

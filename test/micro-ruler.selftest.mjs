@@ -113,15 +113,26 @@ ok('promoted flywheel pairs are real (non-degenerate) supervision', () => {
 
 // ── 3. 构建器声明与端点上限
 ok('dataset builder declares the hardened pair-construction strategy and honours its cap', () => {
-  const out = execFileSync(NODE, [path.join(ROOT, 'tools/build-micro-dataset.mjs')], { cwd: ROOT, stdio: 'pipe' })
+  const builtPath = path.join(tmp, 'built-dataset.json')
+  const out = execFileSync(NODE, [path.join(ROOT, 'tools/build-micro-dataset.mjs'), '--out', builtPath], { cwd: ROOT, stdio: 'pipe' })
   assert.ok(out.length > 0)
-  const built = readJson(path.join(ROOT, 'transfer/models/micro-dev-dataset.json'))
+  const built = readJson(builtPath)
   assert.equal(built.stats.pairConstruction.strategy, 'hardened')
   assert.ok(Number.isInteger(built.stats.unitPairEndpointReuse.cap) && built.stats.unitPairEndpointReuse.cap >= 1)
   assert.ok(built.stats.unitPairEndpointReuse.maxDegree <= built.stats.unitPairEndpointReuse.cap)
   const eligibleDraft = built.stepSimpoPairs.filter((p) => p.trainingEligible).length
   assert.ok(eligibleDraft > 0, 'real draft supervision must survive the degenerate-score guard')
   assert.equal(built.stats.flywheelScoresDegenerate, false)
+  const unresolved = built.unitSamples.filter((row) =>
+    row.labelAudit?.labelRule === 'no-slot-cue-or-gold-anchor'
+      && row.labelAudit?.review?.applied !== true,
+  )
+  assert.ok(unresolved.length > 0, 'fixture should contain unresolved default labels')
+  assert.ok(unresolved.every((row) => row.trainingEligible === false), 'unreviewed absence-of-evidence labels must be fail-closed')
+  const unresolvedIds = new Set(unresolved.map((row) => row.globalIdx))
+  assert.ok(built.unitStepPairs.every((pair) =>
+    !unresolvedIds.has(pair.winIdx) && !unresolvedIds.has(pair.loseIdx),
+  ), 'an unresolved default-noise row entered a unit preference pair')
 })
 
 fs.rmSync(tmp, { recursive: true, force: true })

@@ -545,6 +545,48 @@ export async function birthFinish(task, deps = {}) {
   return pass(dist === null ? 'distill-timeout' : 'distill-failed', handle, { error: (dist && dist.error) || null })
 }
 
+/* DOC-WATERMARK-BEGIN
+{
+  "gates": [
+    {
+      "title": "**归档成功**",
+      "detail": "拿不到可读回的 CAS 句柄 ⇒ 不换原文（`birth.js` 的 archive 结果先行判定）",
+      "anchors": ["if (!handle) return pass("]
+    },
+    {
+      "title": "**编译非空**",
+      "detail": "空稿或纯空白 ⇒ `empty-candidate`，原文放行",
+      "anchors": ["why: 'empty-candidate'"]
+    },
+    {
+      "title": "**无发明标识符**",
+      "detail": "稿里的路径 / 反引号代码 / camelCase / snake_case 必须逐字出自 `raw ∪ ctx ∪ 程序部件`；发明或核验异常 ⇒ 原文放行",
+      "anchors": ["why: 'invented-identifier'", "why: 'identifier-check-error'"]
+    },
+    {
+      "title": "**字符净省**",
+      "detail": "`raw − candidate ≥ birthMinSavedChars`（默认 50），否则 `no-gain`",
+      "anchors": ["if (netSaved < minSaved) return { ok: false, why: 'no-gain'"]
+    },
+    {
+      "title": "**token 严格下降**",
+      "detail": "字符达到净省门槛但 token 没降 ⇒ `no-token-gain`（估算按书写系统区分，不是真 tokenizer）",
+      "anchors": ["netSavedTokensEst < minSavedTokens", "why: 'no-token-gain'"]
+    },
+    {
+      "title": "**替换成功（condensed）**",
+      "detail": "以上全过才原位改写；任何一步不达标或异常 ⇒ 取消在途请求并原文放行",
+      "anchors": ["why: 'condensed'"]
+    }
+  ],
+  "closingNote": "> **结构闭合**（判读分支闭合、三元组 `new_text ≠ old_text`）与**死路不复活**是**编译阶段**的要求（`compileV4Direct` / `src/compile-v5-local.js`），不在上面这六道收网判定里 —— 两段别混成一条闸。",
+  "closingAnchors": [
+    { "file": "src/compile-v4.js", "text": "export function compileV4Direct(" },
+    { "file": "src/compile-v5-local.js", "text": "export function compileV5Local(" }
+  ]
+}
+DOC-WATERMARK-END */
+
 /**
  * v12.7：候选替换稿的闸门判定（纯函数；birthFinish 与 tools/compile-direct 共用）。
  *   empty-candidate    空白（DeepSeek 带 tools 的请求要求历史 assistant 带 reasoning_content，空白 = 丢失该轮思维链，H8 事故同形）
@@ -553,7 +595,7 @@ export async function birthFinish(task, deps = {}) {
  *   no-gain            净省不足 birthMinSavedChars（缺省 50）
  * @returns {{ ok:boolean, why?:string, info?:object, netSaved:number, minSaved:number, tokens:object, netSavedTokensEst:number }}
  */
-export function birthAccept(raw, candidate, cfg = {}) {
+function birthAcceptWithScanner(raw, candidate, cfg, scanIdentifiers) {
   const r = String(raw || ''), c = String(candidate == null ? '' : candidate)
   const netSaved = r.length - c.length
   const minSaved = cfg.birthMinSavedChars == null ? 50 : cfg.birthMinSavedChars
@@ -562,9 +604,17 @@ export function birthAccept(raw, candidate, cfg = {}) {
   const base = { netSaved, minSaved, tokens, netSavedTokensEst }
   if (!c.trim()) return { ok: false, why: 'empty-candidate', info: undefined, ...base }
   if (cfg.birthIdentifierGate !== false) {
-    let invented = []
     const ppMode = (cfg && cfg.compressPolicy && cfg.compressPolicy.config && cfg.compressPolicy.config.programParts) || (cfg && cfg.programParts) || 'all'
-    try { invented = inventedIdentifiers(r, c, { extra: (cfg.compressCtx || '') + '\n' + programPartsText(cfg.compressCtx || '', { programParts: ppMode }) }) } catch { invented = [] }   // v12.9.2：程序部件（延续段 / 提示 / 三问）的片段都由 ctx 推出，算出处
+    let invented
+    try {
+      if (typeof scanIdentifiers !== 'function') throw new TypeError('identifier-scanner-unavailable')
+      invented = scanIdentifiers(r, c, { extra: (cfg.compressCtx || '') + '\n' + programPartsText(cfg.compressCtx || '', { programParts: ppMode }) })
+      if (!Array.isArray(invented)) throw new TypeError('identifier-scanner-invalid-result')
+    } catch {
+      // Safety gate: inability to prove provenance is not evidence of safety. birthFinish sees a rejection and
+      // returns the original reasoning verbatim; never convert a scanner fault into invented=[] (fail-open).
+      return { ok: false, why: 'identifier-check-error', info: { stage: 'identifier-scan' }, ...base }
+    }
     if (invented.length) return { ok: false, why: 'invented-identifier', info: { invented }, ...base }
   }
   const minSavedTokens = Number.isFinite(cfg.birthMinSavedTokens) && cfg.birthMinSavedTokens > 0 ? cfg.birthMinSavedTokens : 1
@@ -573,6 +623,15 @@ export function birthAccept(raw, candidate, cfg = {}) {
   }
   if (netSaved < minSaved) return { ok: false, why: 'no-gain', info: { netSaved, minSaved, ...tokens }, ...base }
   return { ok: true, ...base }
+}
+
+// Internal fault-injection seam for the selftest; deliberately not re-exported from the package entry.
+export function birthAcceptWithScannerForTest(raw, candidate, cfg = {}, scanner) {
+  return birthAcceptWithScanner(raw, candidate, cfg, scanner)
+}
+
+export function birthAccept(raw, candidate, cfg = {}) {
+  return birthAcceptWithScanner(raw, candidate, cfg, inventedIdentifiers)
 }
 /**
  * 单次结算便捷入口（供单测/直调）：起火 + 立即收网。

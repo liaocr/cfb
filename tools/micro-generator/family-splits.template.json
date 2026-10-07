@@ -1,0 +1,26 @@
+{
+  "schema": "cfb.micro-generator-family-splits/1",
+  "status": "draft-not-preregistered",
+  "splitUnit": "family",
+  "splitRules": [
+    "Every family must occur in exactly one final split: train, dev, or blind.",
+    "Existing holdout families are not automatically a fresh blind set.",
+    "Blind family names, sample ids, and hashes are registered before inference; raw labels and annotations stay private until predictions are frozen.",
+    "No case or input hash may cross final splits; duplicate input-target variants remain in one family and one split."
+  ],
+  "splitEvidenceNote": "The three families present in the current rewrite-candidate file were already development families and are preserved as dev. This draft does not allocate any family to train and does not register a new blind family.",
+  "currentlyKnownFamilies": [
+    { "family": "flaky-timeout", "observedAs": "existing-dev", "finalSplit": "dev" },
+    { "family": "perf-regression", "observedAs": "existing-dev", "finalSplit": "dev" },
+    { "family": "sse-truncated", "observedAs": "existing-dev", "finalSplit": "dev" },
+    { "family": "eacces-config", "observedAs": "existing-holdout", "finalSplit": null },
+    { "family": "wrong-model", "observedAs": "existing-holdout", "finalSplit": null }
+  ],
+  "newBlindFamilies": [],
+  "blockers": [
+    "no genuinely new family is registered for the current raw+ctx-to-draft task",
+    "no train family set is assigned",
+    "no complete source-coverage annotations exist for the rewrite candidates",
+    "the existing blind unit-label fixtures do not contain reviewed progress-summary targets"
+  ]
+}

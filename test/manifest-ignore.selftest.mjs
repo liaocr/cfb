@@ -15,7 +15,8 @@ const test = (name, fn) => { try { fn(); pass++; console.log('PASS ' + name) } c
 
 /** 用 git 判定「是否被忽略」——单一事实来源就是 git 自己。 */
 const isIgnored = (rel) => {
-  const r = spawnSync('git', ['check-ignore', '-q', '--', rel], { cwd: ROOT })
+  // --no-index also evaluates the ignore rule for force-tracked paths (e.g. corpus.json).
+  const r = spawnSync('git', ['check-ignore', '-q', '--no-index', '--', rel], { cwd: ROOT })
   return r.status === 0
 }
 
@@ -41,8 +42,7 @@ try {
   })
   test('05 已知的本地产物目录必须在忽略规则内（防止有人把它从 .gitignore 删掉）', () => {
     for (const p of ['.cfb-runtime/keep', '.cfb-offline/corpus.json', 'eval-profile.json']) {
-      const r = spawnSync('git', ['check-ignore', '-q', '--', p], { cwd: ROOT })
-      assert.equal(r.status, 0, p + ' 应被 .gitignore 忽略（否则会被写进清单，CI 失败）')
+      assert.equal(isIgnored(p), true, p + ' 应被 .gitignore 忽略（否则会被写进清单，CI 失败）')
     }
   })
 } finally {

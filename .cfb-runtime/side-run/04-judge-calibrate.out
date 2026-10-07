@@ -1,4 +1,0 @@
-判断层回灌校准（观测数 n=130，状态=已拟合）
-  默认权重 Spearman ρ = 0.250 → 岭回归校准后 ρ = 0.394（r²=0.639，LOO-RMSE=0.322，置信度=high）
-  拟合非零维度权重：evidenceSufficiency=0.8705, stateCalibration=0.7228, foresight=0.3169, actionResolve=0.2974, avoidLeak=0.1102, keyFactsCarried=0.0601, nextDerivable=0.0546
-  缺维度诊断：有 30/33 个最差样本在特征上却接近最好样本 ⇒ 现有维度解释不了它们，需要新增维度

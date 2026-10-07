@@ -218,7 +218,7 @@ export function measureGold(item, { draft = null, lineRow = null, home = null, s
 
   // R2 可复现样本数（同家族同轮的独立样本 / 独立趟）
   const n = samples ?? countSamples(home, item?.family, item?.task ?? null, item?.sample ?? null, root)
-  put('R2', n, n >= THRESHOLDS.minSamples, { gap: +Math.max(0, (THRESHOLDS.minSamples - n) / THRESHOLDS.minSamples).toFixed(3), margin: clamp01(n / THRESHOLDS.minSamples), note: n < THRESHOLDS.minSamples ? 'n=1 ⇒ provisional，不得当尺子用' : '' })
+  put('R2', n, n >= THRESHOLDS.minSamples, { gap: +Math.max(0, (THRESHOLDS.minSamples - n) / THRESHOLDS.minSamples).toFixed(3), margin: clamp01(n / THRESHOLDS.minSamples), note: n < THRESHOLDS.minSamples ? `n=${n} ⇒ R2 样本数低于 ${THRESHOLDS.minSamples} 的阈值，status=not-gold，不得当尺子用` : '' })
 
   const axes = {}
   let pass = true, measuredAll = true, gapSum = 0, unmeasured = []

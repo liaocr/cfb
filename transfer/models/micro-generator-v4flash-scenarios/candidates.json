@@ -1,0 +1,14 @@
+[
+  {
+    "scenarioId": "ae51ec25-05d2-4a3b-aefe-f1d912ea9d01",
+    "repo": "esphome/aioesphomeapi",
+    "license": "MIT",
+    "steps": 118,
+    "reasoningChars": 138508,
+    "testOutputs": 16,
+    "verdictOutputs": 33,
+    "patchChars": 63950,
+    "shard": 25,
+    "fileRowNumber": 157
+  }
+]

@@ -144,7 +144,11 @@ assert.ok(noLedger.drift.some((d) => d.includes('无真机结局行可回放')),
 // ── 6) R2：只有一趟 ⇒ n=1 判假；补第二趟 ⇒ 过（同格重复不是新证据 ⇒ 同 home 再加行不许抬 n）
 const single = measureGold(item(), { root: tmp, lineRow: { lineChars: 1400, splicedChars: 1400 }, samples: 1 })
 assert.equal(single.axes.R2.pass, false, 'n=1 ⇒ R2 不过')
-assert.match(single.axes.R2.note, /provisional/, 'note 要说清「不得当尺子用」')
+assert.match(single.axes.R2.note, /not-gold/, 'n=1 是已测失败，应标 not-gold（未测才 provisional）')
+assert.equal(single.status, 'not-gold', 'R2 已测但不足两趟 ⇒ not-gold，而非 provisional-gold')
+const zero = measureGold(item(), { root: tmp, lineRow: { lineChars: 1400, splicedChars: 1400 }, samples: 0 })
+assert.match(zero.axes.R2.note, /n=0/, '零样本的说明不得误报成 n=1')
+assert.equal(zero.status, 'not-gold', 'R2 n=0 也不得升成 provisional 或 gold')
 const two = measureGold(item(), { root: tmp, lineRow: { lineChars: 1400, splicedChars: 1400 }, samples: 2 })
 assert.equal(two.axes.R2.pass, true, '两趟独立样本 ⇒ R2 过')
 

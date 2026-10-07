@@ -1,5 +1,7 @@
 # 证据程序架构（2026-09-30，预注册先于实现）
 
+> **审计新鲜度说明（2026-10-07）**：本文保留为设计/历史记录；以下分母、版本、命令与实验读数来自 2026-09-30 至 v13.2 阶段，不能当作当前 checkout 的现状。原独立报告 `docs/analysis/*` 与 `RUNBOOK-ONLINE-READY.md` 不在当前树中。当前可执行入口是 `node verify.mjs evidence-program`（套件：`test/evidence-program.selftest.mjs`）；它验证接口/夹具，不复现旧的模型/效果实验。
+
 ## 0. 可证伪预测与证据边界
 
 **本节写于实现与离线回放之前。** 基线来自 `transfer/mr/run4/summary.md`：红题 raw 4.9 → v4d9 8.0；flaky 3.0 → 5.0，wrong-model 9.0，eacces 8.5。
@@ -164,7 +166,7 @@ const result = await runtime.runRound(program, { roundId: 'round-1', raw: origin
 
 ## 8. 实际验收与仍待证明的部分
 
-详见 [完整验收报告](analysis/EVIDENCE-VALIDATION-2026-09-30.md) 与 [历史回放](analysis/EVIDENCE-REPLAY-2026-09-30.md)。
+原独立的完整验收报告与历史回放文件已不在当前树中；下列读数仅为 2026-09-30 历史记录。当前可执行契约见 [`test/evidence-program.selftest.mjs`](../test/evidence-program.selftest.mjs)，不等同于复现这些历史效果数据。
 
 - 本轮模型/评委/副模型 API 调用 **0**，费用 **0**；本地 HTTP 替身只是既有自测，不是真模型。
 - R1 15、R2 11、R3 12、R4 26 项自测；加上原 636 项为 **700 通过 / 0 失败 / 1 原有宿主依赖跳过**，20 套件，manifest 271 文件无漂移。
@@ -185,7 +187,7 @@ const result = await runtime.runRound(program, { roundId: 'round-1', raw: origin
 
 命名 head 以 HMAC+独占文件锁+前版本 CAS 更新，档案自动恢复；`reserveHoldout()` 在异步执行 test 之前持久预占，即使崩溃/失败也不返还任务族。恢复旧 `restoreRef` 不可跨越最新 head 的退役状态。崩溃遗留 head 锁不自动抢锁，须宿主检查后处理；这是故意保守的可用性权衡。普通主机断电的目录 fsync/故障文件系统耐久性及恶意特权宿主不在本轮证明范围。
 
-完整覆盖台账与未实施边界见 [四轮覆盖复核](analysis/THEORY-COVERAGE-2026-09-30.md)。零 API 复现：`npm run verify:offline`（Linux/unshare/ip 必需，隔离失败停止，不回退在线）；不读取真实 HOME/DSH_HOME/keys.env，不继承 API/代理/凭据环境，只准 loopback 测试替身。
+原四轮覆盖台账 `docs/analysis/THEORY-COVERAGE-2026-09-30.md` 已不在当前树中；此段覆盖分母只作历史记录。当前零 API 工程契约可用 `npm run verify:offline` 重跑（Linux/unshare/ip 必需，隔离失败停止，不回退在线）；它不复算已删除报告中的旧分母。
 
 
 本地搜索补件：`createEvidenceDocument`/`editEvidenceDocument` 只编辑指定文本槽，冻结头与必需槽不可删；次数/字符/总量限额先检查。`runEvidenceSearch` 将 async 真实执行结果无损签名留仓，再交 R3 同步证书内核；最多 8 个候选，固定候选且持久 reserve 后才读 test，任何扰动/观察器负项或 unknown 都 veto。拒绝缓存跨周期要求宿主提供完整源码/环境 `evaluationScope` 指纹，不把函数的字符串表示误认为 closure 环境证明；没有指纹不跳过旧失败。问题队列认证证据、去重、按复发排序、限额并持久恢复，仅供宿主，不作为 solver 失败故事。
@@ -197,20 +199,20 @@ const result = await runtime.runRound(program, { roundId: 'round-1', raw: origin
 
 `freezeApprovedRepairPolicy(def, contract)`冻结初始/后备/后验路由批准动作与>=0.8信心阈值、最多2修复；`createApprovedRepairEpisode({ host, contract, policy }).run()`是显式原生宿主调度入口，不是插件默认开关。它只从品牌host本次runLatest取得认证诊断，拒绝外部后验注入；unknown/恢复不完整/冲突/截止/预算满停止，诊断仍不能扮演验收。构造和调用均需宿主明确授权；断开调用即保留旧路径。
 
-对照宿主可设 `diagnosticStrategy:'fixed', diagnosticOrder:[已批准的diagnostic检查ID]`；默认仍是 EIG（active）。固定诊断不会在熵为0时提前终止，这是强对照的既定检查成本，不偷换验收。预注册计划、18个新真实本机故障任务、四臂三切分及完整分母见 [两轮实测](analysis/LOCAL-ITERATIONS-2026-09-30.md)。静态12/18、单EIG12/18、单路由18/18、组合18/18；完成增益来自路由，诊断36→18。两轮验证只使用本机HTTP/计时器/Node进程，无模型或外网API。
+对照宿主可设 `diagnosticStrategy:'fixed', diagnosticOrder:[已批准的diagnostic检查ID]`；默认仍是 EIG（active）。固定诊断不会在熵为0时提前终止，这是当时设计的对照成本。原预注册计划与 18 个任务的报告 `docs/analysis/LOCAL-ITERATIONS-2026-09-30.md` 已不在当前树中；`12/18、18/18、36→18` 均为历史自报读数，本轮未复算，不据此宣称当前收益。
 
-`npm run evidence:repair:development`与`npm run evidence:repair:iterations`都经断网入口；签名报告保存于ignored `.cfb-runtime/repair-iterations/`。留出已持久消耗，重跑只认证回放；改变源码后不能靠删库复用。最终763/0/1、25套件、manifest291、N1–N7全零。完整外部DSH/Cordis缺依赖仍未验证；自写复现不称独立泛化，付费模型A/B与生产接管仍待批准。
+历史记录：当时使用的 `npm run evidence:repair:development` / `evidence:repair:iterations` 名称不在当前 `package.json`，相应 `.cfb-runtime/repair-iterations/` 报告也未纳入当前树；`763/0/1、25 套件、manifest 291、N1–N7 全零` 不代表当前状态。当前 checkout 只能复跑本节上方所述的 `evidence-program` 自测；完整外部 DSH/Cordis 依赖仍未验证，独立泛化与生产接管也未获证明。
 
 
 ### v13.1.3 增量：取消与按重试需要诊断（显式、默认旧行为）
 
 冻结批准策略可选`diagnosticMode:'before-retry'`：只有还存在下一次批准修复机会才做失败诊断，首个unknown停止；不降低前置/验收要求。省下的诊断不会当成完成增益或评委涨分。未选模式/显式always保留旧policy摘要与每次失败诊断默认。`controller.run({signal})`、`host.runLatest(index,{signal})`、`runtime.runRound(program,{signal})`接受可选AbortSignal；预取消零预算，执行中取消等待本轮显式文件/JSON恢复、不启用下一分支，不采纳迟到检查。
 
-底层显式round选项`diagnostics:false`只跳诊断，不跳验收；`stopOnUnknown:true`让诊断首个未知停止。HMAC认证与角色/轮次仍严格；固定顺序不受构造后调用方数组修改影响。取消不回退已经发生的网络等非受管副作用，也不能抢占同步I/O或强制终止不遵守signal的观察回调；宿主必须保护独占资源。详见 [增量优化/回归](analysis/REPAIR-HARDENING-2026-09-30.md)。
+底层显式 round 选项 `diagnostics:false` 只跳诊断，不跳验收；`stopOnUnknown:true` 让诊断首个未知停止。HMAC 认证与角色/轮次仍严格；固定顺序不受构造后调用方数组修改影响。取消不回退已发生的网络等非受管副作用，也不能抢占同步 I/O 或强制终止不遵守 signal 的观察回调；宿主必须保护独占资源。原增量优化/回归报告 `docs/analysis/REPAIR-HARDENING-2026-09-30.md` 已不在当前树中；当前代码和测试才是实现事实。
 
-`npm run evidence:repair:regression`只跑6个已知开发任务，不再搜索已消费18任务留出。旧report仍保留历史；源码变化会关闭旧搜索入口，不删库规避。最终776/0/1、26套件、manifest294、N1–N7全零；外部API0、费用0。
+历史记录：`npm run evidence:repair:regression` 与其原报告不在当前 `package.json` / checkout 中；`776/0/1、26 套件、manifest 294、N1–N7 全零` 仅记录当时的结果，不能声称本轮通过。当前可执行验证以 `node verify.mjs evidence-program` 和 `npm run verify:offline` 的现场输出为准。
 
 
 ### v13.2 离线到联网交付平面（不改变原证据执行权限）
 
-`createEvidenceStore`新增只读 `authorityId`，为域分离HMAC衍生的公开仓身份，**不是私钥**；仅用于公开预算收据与私有仓/检查点绑定，旧块内容/原文/编译稿不变。离线优先评测工具把现有编译与有界渠道门、预算/完整配对、加密迁移接成同一路径，默认不联网、不接管DSH或原生episode。使用 [联网准备手册](RUNBOOK-ONLINE-READY.md)；新参数不增加任何检查/文件执行权限。真实DSH依赖、模型效果与独立泛化仍分别待验证，不能用本机替身代替。
+`createEvidenceStore`新增只读 `authorityId`，为域分离 HMAC 衍生的公开仓身份，**不是私钥**；仅用于公开预算收据与私有仓/检查点绑定。原 `RUNBOOK-ONLINE-READY.md` 在当前树中缺失，因此本文不再把它当可执行接入说明；新参数不增加任何检查/文件执行权限。真实 DSH 依赖、模型效果与独立泛化仍分别待验证，不能用本机替身代替。

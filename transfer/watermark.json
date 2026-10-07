@@ -1,31 +1,31 @@
 {
   "schema": "cfb.doc-watermark/1",
-  "generatedAt": "2026-10-06",
+  "generatedAt": "2026-10-07",
   "counts": {
-    "srcModules": 23,
-    "testSuites": 41,
-    "toolsScripts": 60,
+    "srcModules": 24,
+    "testSuites": 42,
+    "toolsScripts": 61,
     "toolsHelpers": 29,
     "goldItems": 13,
     "goldFamilies": 4
   },
-  "version": "14.25.1",
+  "version": "14.25.4",
   "selftest": {
     "online": {
-      "at": "2026-10-06T02:23:09Z",
-      "suitesPass": "41/41 套件",
-      "pass": 1216,
+      "at": "2026-10-07T03:17:42.947Z",
+      "suitesPass": "42/42 套件",
+      "pass": 1241,
       "fail": 0,
       "skip": 2,
-      "seconds": "32.8"
+      "seconds": "34.7"
     },
     "isolated": {
-      "at": "2026-10-06T02:14:56Z",
-      "suitesPass": "40/40 套件",
-      "pass": 1207,
+      "at": "2026-10-07T03:18:19.371Z",
+      "suitesPass": "42/42 套件",
+      "pass": 1242,
       "fail": 0,
       "skip": 1,
-      "seconds": "34.0"
+      "seconds": "35.9"
     }
   }
 }

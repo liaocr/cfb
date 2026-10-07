@@ -1964,7 +1964,7 @@ export function cmdBenchmark() {
   const rep = benchmarkReport()
   const { l2Scorecard: card, l1Leaderboard: pre, topPolicy } = rep
   const L = [
-    '# CFB 官方级 AI 基准评测记分卡（SWE-bench Pro × TAU-bench × LMArena Elo × Artificial Analysis）',
+    '# CFB 本地代理评测记分卡（借鉴 SWE-bench Pro × TAU-bench × Arena Elo × AA 指标口径；非官方成绩）',
     '',
     '## 一、L2 端到端 Agent 轨迹基准（基于已落盘真实轨迹，零 API 复算）',
     '> 口径融合：**SWE-bench Pro 严苛解决率**（`F2P ∧ P2P ∧ !falseDone`，剔除伪修好水分）· **TAU-bench `pass^k` 工程一致性** · **LMArena Elo 天梯分**（`raw=1000`）· **Artificial Analysis (AA) 性价比前沿指数**',

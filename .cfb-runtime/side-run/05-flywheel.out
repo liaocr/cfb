@@ -1,2 +1,0 @@
-飞轮偏好对（.cfb-offline/train/pairs.jsonl）：通过内容/dev 闸 80/80 对（本次回填 +0）；按家族：flaky-timeout=23 sse-truncated=43 perf-regression=14
-CPU 排序器（ranker）：ready（pairs=80，cvAcc=0.762）；top 特征：fileExt:1.416, errorTokens:-1, stateWords:-0.845, paths:-0.641, codeSpans:-0.581 — 留一 CV 准确率 0.762 ≥ 0.6：用于候选预排序（不替代评委）

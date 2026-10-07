@@ -1,0 +1,217 @@
+{
+  "revision": "f8fb5b3d2c787f85f8a00f5fe04fe3f1a11088ef",
+  "dataset": "nvidia/Open-SWE-Traces",
+  "protocol": {
+    "sampledRowsPerShard": 80,
+    "shardsSampledPerCell": 12,
+    "note": "Rows sampled with LIMIT from evenly spaced shards; counts are sample-derived, not full-corpus totals."
+  },
+  "cells": {
+    "v1.1/openhands": {
+      "config": "v1.1",
+      "split": "openhands",
+      "shardsTotal": 34,
+      "shardsSampled": 12,
+      "failedShards": [],
+      "byTeacherModel": {
+        "Qwen3.6-27B": {
+          "trajectories": 720,
+          "assistantTurns": 61680,
+          "reasoningChars": 0,
+          "visibleContentChars": 5786330,
+          "meanAssistantTurns": 85.67,
+          "meanReasoningCharsPerTrajectory": 0.0,
+          "meanReasoningCharsPerAssistantTurn": 0.0,
+          "meanVisibleContentCharsPerTrajectory": 8036.6
+        },
+        "DeepSeek-V4-Flash": {
+          "trajectories": 240,
+          "assistantTurns": 11226,
+          "reasoningChars": 10624346,
+          "visibleContentChars": 2915,
+          "meanAssistantTurns": 46.77,
+          "meanReasoningCharsPerTrajectory": 44268.1,
+          "meanReasoningCharsPerAssistantTurn": 946.4,
+          "meanVisibleContentCharsPerTrajectory": 12.1
+        }
+      },
+      "reasoningMarkers": {
+        "Qwen3.6-27B": {
+          "sampleRows": 720,
+          "sampleChars": 5787041,
+          "per100kChars": {
+            "wait": 8.14,
+            "let_me": 579.48,
+            "actually": 16.71,
+            "hmm": 2.18,
+            "therefore": 0.09,
+            "i_actions": 30.53,
+            "test_words": 554.22,
+            "error_words": 33.35,
+            "verify": 113.82,
+            "fence": 15.1,
+            "cjk": 0.17
+          }
+        },
+        "DeepSeek-V4-Flash": {
+          "sampleRows": 240,
+          "sampleChars": 10624583,
+          "per100kChars": {
+            "wait": 38.53,
+            "let_me": 226.23,
+            "actually": 40.0,
+            "hmm": 2.03,
+            "therefore": 0.24,
+            "i_actions": 37.16,
+            "test_words": 166.56,
+            "error_words": 30.59,
+            "verify": 20.41,
+            "fence": 77.69,
+            "cjk": 0.15
+          }
+        }
+      }
+    },
+    "v1.1/minisweagent": {
+      "config": "v1.1",
+      "split": "minisweagent",
+      "shardsTotal": 39,
+      "shardsSampled": 12,
+      "failedShards": [],
+      "byTeacherModel": {
+        "Qwen3.6-27B": {
+          "trajectories": 960,
+          "assistantTurns": 56394,
+          "reasoningChars": 923,
+          "visibleContentChars": 7287886,
+          "meanAssistantTurns": 58.74,
+          "meanReasoningCharsPerTrajectory": 1.0,
+          "meanReasoningCharsPerAssistantTurn": 0.0,
+          "meanVisibleContentCharsPerTrajectory": 7591.5
+        }
+      },
+      "reasoningMarkers": {
+        "Qwen3.6-27B": {
+          "sampleRows": 960,
+          "sampleChars": 7288422,
+          "per100kChars": {
+            "wait": 14.86,
+            "let_me": 582.77,
+            "actually": 27.17,
+            "hmm": 2.85,
+            "therefore": 0.15,
+            "i_actions": 48.21,
+            "test_words": 281.85,
+            "error_words": 44.21,
+            "verify": 101.32,
+            "fence": 22.24,
+            "cjk": 0.0
+          }
+        }
+      }
+    },
+    "v1.2/minisweagent": {
+      "config": "v1.2",
+      "split": "minisweagent",
+      "shardsTotal": 44,
+      "shardsSampled": 12,
+      "failedShards": [],
+      "byTeacherModel": {
+        "Qwen3.8-27B": {
+          "trajectories": 960,
+          "assistantTurns": 48546,
+          "reasoningChars": 96633966,
+          "visibleContentChars": 6826442,
+          "meanAssistantTurns": 50.57,
+          "meanReasoningCharsPerTrajectory": 100660.4,
+          "meanReasoningCharsPerAssistantTurn": 1990.6,
+          "meanVisibleContentCharsPerTrajectory": 7110.9
+        }
+      },
+      "reasoningMarkers": {
+        "Qwen3.8-27B": {
+          "sampleRows": 960,
+          "sampleChars": 96634914,
+          "per100kChars": {
+            "wait": 68.95,
+            "let_me": 192.35,
+            "actually": 67.11,
+            "hmm": 62.59,
+            "therefore": 1.99,
+            "i_actions": 13.6,
+            "test_words": 158.59,
+            "error_words": 35.37,
+            "verify": 21.74,
+            "fence": 93.15,
+            "cjk": 1.72
+          }
+        }
+      }
+    },
+    "v1.0/openhands": {
+      "config": "v1.0",
+      "split": "openhands",
+      "shardsTotal": 35,
+      "shardsSampled": 12,
+      "failedShards": [],
+      "byTeacherModel": {
+        "MiniMax-M2.5": {
+          "trajectories": 560,
+          "assistantTurns": 32089,
+          "reasoningChars": 13462478,
+          "visibleContentChars": 1522474,
+          "meanAssistantTurns": 57.3,
+          "meanReasoningCharsPerTrajectory": 24040.1,
+          "meanReasoningCharsPerAssistantTurn": 419.5,
+          "meanVisibleContentCharsPerTrajectory": 2718.7
+        },
+        "Qwen3.5-122B-A10B": {
+          "trajectories": 400,
+          "assistantTurns": 35950,
+          "reasoningChars": 0,
+          "visibleContentChars": 3601299,
+          "meanAssistantTurns": 89.88,
+          "meanReasoningCharsPerTrajectory": 0.0,
+          "meanReasoningCharsPerAssistantTurn": 0.0,
+          "meanVisibleContentCharsPerTrajectory": 9003.2
+        }
+      },
+      "reasoningMarkers": {
+        "MiniMax-M2.5": {
+          "sampleRows": 560,
+          "sampleChars": 13463031,
+          "per100kChars": {
+            "wait": 37.68,
+            "let_me": 333.69,
+            "actually": 40.93,
+            "hmm": 3.06,
+            "therefore": 0.13,
+            "i_actions": 62.27,
+            "test_words": 303.18,
+            "error_words": 53.56,
+            "verify": 56.63,
+            "fence": 55.37,
+            "cjk": 1.97
+          }
+        },
+        "Qwen3.5-122B-A10B": {
+          "sampleRows": 400,
+          "sampleChars": 3601694,
+          "per100kChars": {
+            "wait": 11.25,
+            "let_me": 594.47,
+            "actually": 24.52,
+            "hmm": 2.75,
+            "therefore": 0.11,
+            "i_actions": 37.07,
+            "test_words": 534.78,
+            "error_words": 41.82,
+            "verify": 104.93,
+            "fence": 23.38,
+            "cjk": 0.17
+          }
+        }
+      }
+    }
+  }
+}

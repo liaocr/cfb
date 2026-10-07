@@ -15,15 +15,15 @@
 ## 1. 判定式
 
 ```
-gold            ⟺  M1 ∧ M2 ∧ M3 ∧ M4 ∧ M5 ∧ M6 ∧ M7 ∧ M8 ∧ E1 ∧ E2 ∧ R1 ∧ R2  ∧ drift = ∅
-provisional-gold⟺  上式除「有轴未测（E1/E2/R*）」或「R2 只有 n=1」或「drift ≠ ∅」外全过
-not-gold        ⟺  任一已测轴为假
+gold            ⟺  M1 ∧ M2 ∧ M3 ∧ M4 ∧ M5 ∧ M6 ∧ M7 ∧ M8 ∧ E1 ∧ E2 ∧ R1 ∧ R2 全部实测通过 ∧ drift = ∅
+provisional-gold⟺  没有任何已测轴失败，但至少有一轴未测或 drift ≠ ∅
+not-gold        ⟺  任一已测轴为假（包括 R2 样本数 n<2）
 ```
 
 - `gap = Σ gapᵢ`（每条未过轴的距离之和，0 = 刚好达阈）⇒ 用来**排序/选稿**：先补 gap 小的。
 - `margin = 已测轴余量的均值 ∈ [0,1]` ⇒ 用来给模式 2 **分难度**：margin 高 = 副模型照着做也稳；margin 低 = 贴着阈值，别当教材。
 - `status` 由 `tools/gold-score.mjs` 输出，人话读数与 `why` 同源；不要用「我觉得这条挺好」替代它。
-- **未测 ≠ 通过，也未测 ≠ 不合格**：已测轴全过、但 E1/E2/M2/R1 这类需要凭据的轴还没测到 ⇒ `provisional-gold`（稿侧达标、凭据待补）；任一已测轴为假 ⇒ `not-gold`。
+- **未测 ≠ 通过，也未测 ≠ 不合格**：已测轴全过、但至少一条需要凭据的轴还没测到 ⇒ `provisional-gold`（稿侧达标、凭据待补）；任一已测轴为假 ⇒ `not-gold`。`R2 n<2` 是已知样本数未达到 ≥2 的阈值，因此是 `not-gold`，不是 provisional。
 - 结论要落进条目才算下游可见：`node tools/gold-attest.mjs` 把 `{version,status,gap,margin,drift,home,stampDigest}` 写进 `goldStandard` 键（**只加元数据，绝不碰 `draft`** ⇒ `digest` 不变）。见 §3.5。
 
 ```bash
@@ -103,7 +103,7 @@ $ node tools/gold-score.mjs --id perf-regression-s0-r7
 M4 可执行验收：value=1 ✗  gap=1  ⇒ 窗内只有 1 个分支，缺「仍不绿 ⇒ 还有别处」
 M5 接地精度：value=0.9474 ✗ ⇒ 未接地 2 处：`compressTargetMax: 450`、`edit_file`  ← 编的
 E1 真机效率：value=9 ✗ ⇒ 真机行 9 轮（注册表自报 9 已弃用）· 阈 6
-R2 可复现样本：value=1 ⇒ n=1 ⇒ provisional，不得当尺子用
+R2 可复现样本：value=1 ⇒ n=1 ⇒ 已测不达阈值，not-gold，不得当尺子用
 ```
 
 ---
@@ -166,9 +166,9 @@ gold 4 · provisional-gold 0 · not-gold 15
 
 ## 7. 使用约束（写给模式 2，也写给未来的我）
 
-1. **金标是尺子，不是饲料。** 只有 `gold` 状态的条目可当难度/成功判据；`provisional-gold` 只能当训练素材（`use:'train'`），不得用于「达标」判定。
+1. **金标是尺子，不是饲料。** 只有 `gold` 状态可当难度/成功判据（ruler）；`provisional-gold` 可按 `goldBenchOk` 作为模式 2 的比对靶，但不得当达标判据；是否进训练由 `use` 决定，不自动等于训练素材。
 2. 任何「我把它改好了」的说法，必须附 `gold-score` 的轴表 + 真机趟名；没有趟名 = 没改。
-3. 阈值只能改代码 + 改本文 + 加自测一起改（`test/gold-standard.selftest.mjs`：每轴一个通过 fixture、一个失败 fixture，含缺线 fail-closed 与 n=1 provisional）。改一处不改测试，视为未改。
+3. 阈值只能改代码 + 改本文 + 加自测一起改（`test/gold-standard.selftest.mjs`：每轴一个通过 fixture、一个失败 fixture，含缺线 fail-closed 与 `n=1 ⇒ not-gold`）。改一处不改测试，视为未改。
 4. 标准升版 ⇒ `GOLD_STANDARD_VERSION` 递增，历史条目按旧版判定的结论同时作废，重测后才算数（`gold-attest --check` 会把过期章抓出来）。
 5. 真机重跑到线之后，顺序固定：`gold-campaign` → `gold-vs-line` → `gold-attest`（重盖章）→ `gold-score --dedup` 复核 ⇒ 少一步就会出现"分数是旧稿挣的"那种假账。
 6. `R2` 只数**真消费过稿**的趟：`results.jsonl` 里有 hand 行但台账没有对应样本 = 空跑，一条都不算。

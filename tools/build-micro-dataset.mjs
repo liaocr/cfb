@@ -9,7 +9,7 @@
 import fs from 'node:fs'
 import crypto from 'node:crypto'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   SLOT_NAMES, extractAnchorsV5, splitDiscourseUnits,
   extractUnitFeatures, extractDraftPrefFeatures, buildGroundedHay, scoreUnitWithWeights,
@@ -233,6 +233,10 @@ function labelUnitMultiTask(unit, feat, goldSlots) {
   const otherSupported = ranked.filter(([name, v]) => name !== slot && v.score >= 0.2)
   const flags = []
   if (slot === 'MECHANISM') flags.push('mechanism-heuristic-no-direct-gold-slot')
+  // Absence of a lexical cue or exact gold anchor is not evidence of noise. Keep this
+  // default-NOISE hypothesis out of SFT and pair negatives unless the blind review below
+  // explicitly confirms/relabels it. applyUnitLabelReview promotes high/medium reviews.
+  if (slot === 'NOISE' && labelRule === 'no-slot-cue-or-gold-anchor') flags.push('no-direct-supervision-default-noise')
   if (slot === 'NOISE' && Object.values(overlap).some((v) => v.score >= 0.2)) flags.push('noise-label-has-gold-overlap')
   if (slot === 'NOISE' && Object.values(cue).some(Boolean)) flags.push('noise-label-has-actionable-cue')
   if (['DECIDED', 'EXCLUDED', 'ACCEPT', 'OPEN'].includes(slot) && (!supported || supported.score < 0.2 || supported.matchedAnchors.length === 0)) flags.push('weak-gold-anchor-support')
@@ -414,7 +418,7 @@ function buildStepSimpoCounterfactuals(item) {
   return pairs
 }
 
-export function buildMicroDataset() {
+export function buildMicroDataset({ outputPath = null } = {}) {
   const allGold = loadAllGold(ROOT)
   const cleanGold = allGold.filter((g) => isMode1GoldEligible(g) && g.qualityAudit?.status === 'clean')
   // 用途隔离（v14.21.0）：被策略当标尺挑过的条目（use=ruler）绝不进拟合 —— 否则「micro 追平」是自证
@@ -1039,7 +1043,10 @@ export function buildMicroDataset() {
     stepSimpoPairs,
   }
 
-  const outPath = path.join(ROOT, 'transfer/models/micro-dev-dataset.json')
+  // Default stays repo-compatible; tests and one-off builds can redirect output without
+  // rewriting a tracked snapshot just to refresh its createdAt timestamp.
+  const configuredOutput = outputPath || process.env.CFB_MICRO_DATASET_OUT || 'transfer/models/micro-dev-dataset.json'
+  const outPath = path.resolve(ROOT, configuredOutput)
   fs.mkdirSync(path.dirname(outPath), { recursive: true })
   fs.writeFileSync(outPath, JSON.stringify(dataset, null, 2) + '\n')
   console.log('[build-micro-dataset] Written:', outPath)
@@ -1047,6 +1054,8 @@ export function buildMicroDataset() {
   return dataset
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  buildMicroDataset()
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  const outIndex = process.argv.indexOf('--out')
+  if (outIndex >= 0 && !process.argv[outIndex + 1]) throw new Error('--out requires a path')
+  buildMicroDataset({ outputPath: outIndex >= 0 ? process.argv[outIndex + 1] : null })
 }

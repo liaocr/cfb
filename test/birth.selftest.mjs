@@ -10,6 +10,7 @@ import {
   deriveArtHandle, requestOnce, requestStream, prewarmTargetUrl, provenanceOf,
   makeTraceWriter, settledTraceData, mapMessagesToSeqs, DEFAULTS,
 } from '../index.js'
+import { birthAcceptWithScannerForTest } from '../src/birth.js'
 import os from 'node:os'
 
 let pass = 0, failn = 0, skipn = 0
@@ -919,6 +920,16 @@ const reasoningOf = (blocks) => blocks.filter((b) => b.type === 'reasoning').map
   const got0 = await collect(birthTransform(mkStream([BS(0, 'reasoning'), RD(0, raw), BE(0, { type: 'reasoning', text: raw }), BS(1, 'text'), TD(1, 'x'), BE(1, { type: 'text', text: 'x' }), FIN()]), { ...deps, trace: (n, d) => traces0.push({ n, d }) }))
   const t0 = got0.filter((c) => c.type === 'block-end' && c.index === 0)[0].block.text
   ok('T35 阴性：无 tool-call ⇒ 稿 = 蒸馏稿原样（提示拼接只在 finish 处按调用算）', t0 === draft && !traces0.some((t) => t.n === 'birth-hints-spliced'), t0.slice(0, 80))
+}
+
+// ═══ T36 identifier-gate faults fail closed: a scanner error must never become invented=[] ═══
+{
+  const r = birthAcceptWithScannerForTest('原文 '.repeat(100), '短稿 '.repeat(10), {}, () => { throw new Error('injected scanner fault') })
+  ok('T36 ★ 标识符核验异常 ⇒ 拒绝候选（原文放行），不把异常当作 invented=[]',
+    r.ok === false && r.why === 'identifier-check-error' && r.info?.stage === 'identifier-scan', JSON.stringify(r))
+  const malformed = birthAcceptWithScannerForTest('原文 '.repeat(100), '短稿 '.repeat(10), {}, () => null)
+  ok('T37 ★ 标识符核验器返回非数组 ⇒ fail-closed，不把无效结果当作无发明标识符',
+    malformed.ok === false && malformed.why === 'identifier-check-error' && malformed.info?.stage === 'identifier-scan', JSON.stringify(malformed))
 }
 
 console.log('')

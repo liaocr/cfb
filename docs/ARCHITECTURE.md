@@ -1,4 +1,4 @@
-# 生产插件与认知编译器架构（v14.25.1 复核，开发者视角）
+# 生产插件与认知编译器架构（v14.25.4 复核，开发者视角）
 
 > 面向改代码的开发者与 AI 模型：模块怎么分、数据怎么流、哪些不变式不能碰、加功能该改哪里。
 > 快速上手见根目录 [`README.md`](../README.md)；闭环训练与官方基准见 [`TRAINING-AND-BENCHMARK.md`](TRAINING-AND-BENCHMARK.md)；历史实验与成本定律见 [`HISTORY-AND-EXPERIMENTS.md`](HISTORY-AND-EXPERIMENTS.md)。
@@ -75,9 +75,9 @@ birthTransform(inner, deps)
 <!-- watermark:begin 由 node tools/doc-watermark.mjs --write 生成，勿手抄 -->
 1. **归档成功** —— 拿不到可读回的 CAS 句柄 ⇒ 不换原文（`birth.js` 的 archive 结果先行判定）
 2. **编译非空** —— 空稿或纯空白 ⇒ `empty-candidate`，原文放行
-3. **无发明标识符** —— 稿里的路径 / 反引号代码 / camelCase / snake_case 必须逐字出自 `raw ∪ ctx ∪ 程序部件`，否则 `invented-identifier`
+3. **无发明标识符** —— 稿里的路径 / 反引号代码 / camelCase / snake_case 必须逐字出自 `raw ∪ ctx ∪ 程序部件`；发明或核验异常 ⇒ 原文放行
 4. **字符净省** —— `raw − candidate ≥ birthMinSavedChars`（默认 50），否则 `no-gain`
-5. **token 严格下降** —— 字符变短而 token 没降 ⇒ `no-token-gain`（估算按书写系统区分，不是真 tokenizer）
+5. **token 严格下降** —— 字符达到净省门槛但 token 没降 ⇒ `no-token-gain`（估算按书写系统区分，不是真 tokenizer）
 6. **替换成功（condensed）** —— 以上全过才原位改写；任何一步不达标或异常 ⇒ 取消在途请求并原文放行
 
 > **结构闭合**（判读分支闭合、三元组 `new_text ≠ old_text`）与**死路不复活**是**编译阶段**的要求（`compileV4Direct` / `src/compile-v5-local.js`），不在上面这六道收网判定里 —— 两段别混成一条闸。

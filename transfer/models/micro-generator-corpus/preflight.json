@@ -1,0 +1,139 @@
+{
+  "schema": "cfb.micro-generator-export-manifest/1",
+  "queueSha256": "2ac9660e29a029f62c5d6af06254e25bcb9cf82e11ca7d4cf0ab4f40b208b5d2",
+  "counts": {
+    "queueRows": 17,
+    "train": 0,
+    "dev": 0,
+    "blindPrivate": 0,
+    "excluded": 17
+  },
+  "conflictingInputTargets": [
+    {
+      "inputSha256": "81467a41d7ee4b81ee87214eeb0d8537bcec8b34de821a872248163698b1dec0",
+      "caseIds": [
+        "perf-regression-1b5bf68718d1be80",
+        "perf-regression-b658aaee22057ecf"
+      ],
+      "targetHashes": [
+        "22ffc79dcf0e00ed403ec9edd9829f50542f4b993154bff1afac09b5762f0c55",
+        "e81582af01f06bba38054d9135d7946664ebb6a55b192f511198fb52f4e846f8"
+      ],
+      "families": [
+        "perf-regression"
+      ]
+    }
+  ],
+  "families": {
+    "train": [],
+    "dev": [],
+    "blindPrivate": []
+  },
+  "trainingReady": false,
+  "confirmatoryEvaluationReady": false,
+  "confirmatoryBlockers": [
+    "no-registered-blind-examples",
+    "identical-input-has-multiple-reference-targets",
+    "frozen-gates-and-blind-registry-must-be-validated-by-evaluator"
+  ],
+  "blockers": [
+    "some-cases-have-no-final-split",
+    "no-adjudicated-training-examples",
+    "no-adjudicated-family-heldout-dev-examples",
+    "identical-input-has-multiple-reference-targets"
+  ],
+  "unassigned": [
+    "flaky-timeout-27ad98621b224ab9: no final family split assigned",
+    "flaky-timeout-445555c31e8f51b1: no final family split assigned",
+    "flaky-timeout-516ae841af7e4451: no final family split assigned",
+    "flaky-timeout-618b42a02b6aa205: no final family split assigned",
+    "flaky-timeout-abc7c84a60543747: no final family split assigned",
+    "flaky-timeout-b79f3481defb4912: no final family split assigned",
+    "flaky-timeout-f008aed867a41545: no final family split assigned",
+    "perf-regression-1b5bf68718d1be80: no final family split assigned",
+    "perf-regression-b658aaee22057ecf: no final family split assigned",
+    "perf-regression-bf171c05465d1bab: no final family split assigned",
+    "perf-regression-c5a46f633a734bab: no final family split assigned",
+    "sse-truncated-2c6c7d60c10b5d86: no final family split assigned",
+    "sse-truncated-36a50e856e426f8e: no final family split assigned",
+    "sse-truncated-8b948358cca4b9e7: no final family split assigned",
+    "sse-truncated-95fd0d6633ab9b19: no final family split assigned",
+    "sse-truncated-9cf468008d803a3a: no final family split assigned",
+    "sse-truncated-ab9f32022400104e: no final family split assigned"
+  ],
+  "excluded": [
+    {
+      "caseId": "flaky-timeout-27ad98621b224ab9",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "flaky-timeout-445555c31e8f51b1",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "flaky-timeout-516ae841af7e4451",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "flaky-timeout-618b42a02b6aa205",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "flaky-timeout-abc7c84a60543747",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "flaky-timeout-b79f3481defb4912",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "flaky-timeout-f008aed867a41545",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "perf-regression-1b5bf68718d1be80",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "perf-regression-b658aaee22057ecf",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "perf-regression-bf171c05465d1bab",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "perf-regression-c5a46f633a734bab",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "sse-truncated-2c6c7d60c10b5d86",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "sse-truncated-36a50e856e426f8e",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "sse-truncated-8b948358cca4b9e7",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "sse-truncated-95fd0d6633ab9b19",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "sse-truncated-9cf468008d803a3a",
+      "reason": "unassigned-or-invalid-split"
+    },
+    {
+      "caseId": "sse-truncated-ab9f32022400104e",
+      "reason": "unassigned-or-invalid-split"
+    }
+  ],
+  "safety": {
+    "blindPrivateArtifactMustNotBeUploadedToKaggle": true,
+    "blindPrivateArtifactWrittenOnlyToExplicitExternalPath": true,
+    "evaluationClaimsRequireFrozenGatesAndCompleteOutputAdjudication": true
+  }
+}

@@ -1,13 +1,15 @@
-# 统一科学训练闭环与官方基准指南（v14.20 合一版）
+# 统一科学训练闭环与本地代理基准指南（v14.20 历史快照）
 
-> 本文档整合了原先分散的 `CLOSED-LOOP-V2/V3/V4.md`、`CONTINUOUS-TRAINING-ARCHITECTURE.md`、`OFFLINE-ARCHITECTURE.md` 与 `RUNBOOK-*.md`，是 **训练压缩器、运行官方基准与执行省钱评测** 的唯一权威操作指南。
+> 本文档整合了当时分散的 `CLOSED-LOOP-V2/V3/V4.md`、`CONTINUOUS-TRAINING-ARCHITECTURE.md`、`OFFLINE-ARCHITECTURE.md` 与 `RUNBOOK-*.md`。它不是当前 checkout 的唯一权威操作指南：正文命令、样本数与分数属于 v14.20 时期的设计/历史读数，可能已过期；当前现场基线见根 [`README.md`](../README.md) §5，脚本可用性以当前 `package.json` 和测试为准。
+>
+> **评测口径说明：**本文提到的 SWE-bench、TAU-bench、LMArena、Artificial Analysis、LiveBench 等仅是本地记分卡借鉴的指标/设计来源，不代表使用了其官方测试集、参加官方评测或获得官方认证。下方数字是历史本地样本的结果，不能当作本轮实测。
 
 ---
 
 ## 1. 训练架构核心理念：把压缩器训练到极致
 
 在编码 Agent 多轮排障中，原生思维链存在四大顽疾：**跨轮上下文指数膨胀、死路失忆重走、只看不改内耗、未验证即伪称完成**。
-`cfb` 的训练闭环不是盲目调参，而是通过 **四维全空间策略搜索 + 双轨（代码规则 × LLM 语义）裁判 + 五大国际官方基准尺子**，以最低 API 成本持续逼近压缩器理论极限。
+`cfb` 的训练闭环不是盲目调参，而是通过 **四维策略搜索 + 双轨（代码规则 × LLM 语义）裁判 + 借鉴外部 benchmark 思路的本地代理指标**，以较低 API 成本探索压缩器上限；这些本地代理不等同于官方 benchmark 结果。
 
 ### 1.1 四维全空间策略基因（`src/policy.js`）
 
@@ -82,11 +84,11 @@ node tools/cfb-cycle.mjs export-train
 
 ---
 
-## 3. 五大国际官方基准融合（`npm run bench`）
+## 3. 外部评测口径的本地代理指标（`npm run bench`，设计快照）
 
-我们将 2026 年国际公认的五大 AI 与编码 Agent 评测标准直接内置进 `tools/helpers/ruler.mjs` 与 `node tools/cfb-cycle.mjs benchmark`：
+本节记录 v14.20 文档写作时的本地指标设计。`tools/helpers/ruler.mjs` 与 `node tools/cfb-cycle.mjs benchmark` 使用的是仓库自有轨迹/任务和本地评分变体，不是下列机构的官方测试集或成绩；表内样本与分数均为历史快照。
 
-| 官方基准体系 | 融合进 `cfb` 的核心指标 | 评测意义 |
+| 指标启发来源（非官方执行） | 本地代理指标 | 设计意图（非官方结论） |
 |---|---|---|
 | **1. SWE-bench Pro / Verified** | **严苛解决率 (`F2P ∧ P2P ∧ !falseDone`)** + **伪修好水分 (`False-Done Gap`)** + **`pass@1` 无偏估计** | 揭穿「改了代码没跑测试就宣称修好」的刷分假象（实测揭露出 `ledger` 臂存在 **`16.7%` 伪修好水分**，而 `auto` 出生即压缩臂为 **`0.0%`**） |
 | **2. TAU-bench ($\tau$-bench)** | **`pass^2` / `pass^k` 多轮连续可靠度** | 衡量压缩器介入后是否引入随机抖动（实测 `auto` 与 `raw` 均保持 `pass^2 = 0.778` 零退化） |
@@ -112,12 +114,12 @@ node tools/cfb-cycle.mjs export-train
 
 针对个人开发者预算有限的场景，`cfb` 提供三档阶梯式验证，**95% 的日常迭代只需第 0 档（$0）和第 1 档（¥0.03）**：
 
-### 第 0 档：零成本官方基准总表（`$0.00`，耗时 1 秒）
+### 第 0 档：零成本本地代理记分卡（`$0.00`，耗时约 1 秒；非官方基准总表）
 ```bash
 npm run bench
 # 或：node tools/cfb-cycle.mjs benchmark
 ```
-- 直接在已入库的 21 条真实多轮轨迹（`transfer/traj1..3`）与 8 轮金标基准（`b1/b2`）上计算全套五大官方指标。
+- v14.20 快照当时记录的输入为 21 条真实多轮轨迹（`transfer/traj1..3`）与 `b1/b2` 金标计划；当前数据池与结果已不同，必须以根 README §5 的本轮输出为准。该表仍是本地代理指标，不是任何外部基准的官方参测成绩。
 
 ### 第 1 档：极简金标基准测试（`≈ $0.004` / 约 ¥0.03，仅 1 次副模型调用）
 ```bash
