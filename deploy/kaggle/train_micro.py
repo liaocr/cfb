@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Kaggle 一键（code 框一条命令）：从零训练「任务专用微模型」生成式压缩器。
 
-内部固定 checkout 提交 372e1d5ae41add54ad74f0a691fcdabeeac2a002（tools 与语料均来自该提交），避免 CDN 缓存跑旧代码。
+内部固定 checkout 提交 7a9f48802ea1ff1686ccce7d9345a121e89da1d8（tools 与语料均来自该提交），避免 CDN 缓存跑旧代码。
 
 与 train_gen.py（Qwen3-0.6B + LoRA）并列的第二条路线：
   * 自训 16k 词表（只用我们的语料）+ 手写小 GPT 从零训（无预训练权重）
@@ -17,7 +17,7 @@ import json, os, shutil, subprocess, sys, time, zipfile
 from pathlib import Path
 
 REPO = "https://github.com/liaocr/cfb.git"
-PIN = os.environ.get("CFB_SHA", "372e1d5ae41add54ad74f0a691fcdabeeac2a002")
+PIN = os.environ.get("CFB_SHA", "7a9f48802ea1ff1686ccce7d9345a121e89da1d8")
 CORPUS = "transfer/models/micro-generator-gen-v3"
 
 # ---- 训练超参（全局量：换卡数时 token 预算不变）----

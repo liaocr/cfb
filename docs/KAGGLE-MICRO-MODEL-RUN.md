@@ -41,7 +41,7 @@
 先设 **Accelerator = GPU T4 ×2**、**Internet = ON**，然后：
 
 ```bash
-!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/065111b8827369ad24394062d9b3a58684dbc1f8/deploy/kaggle/train_micro.py | python3 -
+!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/<将随下一次推送替换>/deploy/kaggle/train_micro.py | python3 -
 ```
 
 脚本内部固定 checkout `372e1d5`（该提交含同一份 tools/语料），URL 指向 `065111b8`；
