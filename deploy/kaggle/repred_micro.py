@@ -108,9 +108,14 @@ def main() -> int:
     run_dir = find_ckpt(wd)
     if run_dir is None:
         if TRAIN_STEPS <= 0:
-            print("[ckpt] ✗ 没找到任何已训 ckpt（micro-gen-best.pt + tokenizer.json）。\n"
-                  "       要么把 ckpt 目录传进来：CFB_REPRED_CKPT=/path/to/out，\n"
-                  "       要么补训：CFB_REPRED_TRAIN_STEPS=2000 再跑本命令。", flush=True)
+            print("[ckpt] ✗ 没找到任何已训 ckpt（需要 micro-gen-best.pt + tokenizer.json）。\n"
+                  "       ① 若 ckpt 还在别处：CFB_REPRED_CKPT=<run 目录> 再跑本命令；\n"
+                  "       ② 若 Kaggle 会话已重置（ckpt 丢了）：用下面这条（同配置补训 ≈ run2 的 2040 步再评测）：\n"
+                  "          CFB_REPRED_TRAIN_STEPS=2040 python3 - <<'EOF' 形式见文档；\n"
+                  "          或直接：!CFB_REPRED_TRAIN_STEPS=2040 curl ... | ... 不行（env 不进管道），"
+                  "请改在 code 框里这样写：\n"
+                  "          !bash -c 'export CFB_REPRED_TRAIN_STEPS=2040; curl -sSL <本脚本 URL> | python3 -'",
+                  flush=True)
             return 1
         run_dir = wd / "out-repred"
         run_dir.mkdir(parents=True, exist_ok=True)
