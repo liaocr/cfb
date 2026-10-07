@@ -41,10 +41,10 @@
 先设 **Accelerator = GPU T4 ×2**、**Internet = ON**，然后：
 
 ```bash
-!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/afeaf4d9ab4bd8cdbdbfc71a991dd406a7ec88e7/deploy/kaggle/train_micro.py | python3 -
+!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/fdc554e707e44b5510148d4ee3eef45c115d73f2/deploy/kaggle/train_micro.py | python3 -
 ```
 
-脚本内部固定 checkout `372e1d5`（该提交含同一份 tools/语料），URL 指向 `afeaf4d9`；
+脚本内部固定 checkout `ec82812`（含 v4 语料）（该提交含同一份 tools/语料），URL 指向 `fdc554e7`；
 两层都用不可变的提交哈希，避免 raw CDN 缓存导致跑旧代码。
 
 ## 产物（/kaggle/working）
@@ -105,6 +105,22 @@ notebook 里新开一个 cell 跑：
 之后从 Kaggle 右侧 Output 下载 `preds.zip` 交回即可做 7 轴判读。
 
 （从下一轮起 `train_micro.py` 默认带 `--dump-predictions`，训练时就直接落盘，不用补跑。）
+
+## 第二轮语料（v4，2026-10-07）
+
+第一轮 937 条在 ~800–900 步出现 dev 平台期（数据吃紧）。已用深度重扫扩容：
+
+| 来源 | 单元 | 教师全轴通过行 |
+| --- | ---: | ---: |
+| v3（batch2+sample） | — | 937 |
+| batch3（shards 31–33） | 1,085 | 844 |
+| batch4（shards 25–33 深度重扫，max-units-per-row 2） | 3,078 | 2,491 |
+| **合并 v4（去重后）** | — | **3,683 行 / 986 仓库** |
+
+- 固定评测集 = v3 的 dev 139 条（跨轮可比）；合并时对"与评测集同仓库"的行做硬性排除（batch3 挡住 119 行、batch4 挡住 251 行）。
+- 中位 ratio 0.4127（与 v3 的 0.4139 一致 ⇒ 教师形状未漂移）。
+- 数据边界已探明：v1.1/openhands 仅 **shards 25–33** 含 DeepSeek-V4-Flash 的 reasoning 块；shards 0–24 为 Qwen3.6-27B（无 reasoning），v1.0/v1.2/sweagent/minisweagent 探测为 0 单元。
+- 一键命令不变（默认语料已切 v4，落 RESULTS.txt 会带 corpus 出身证明）。
 
 ## 与 Qwen 路线的取舍
 
