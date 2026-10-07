@@ -41,11 +41,28 @@
 先设 **Accelerator = GPU T4 ×2**、**Internet = ON**，然后：
 
 ```bash
-!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/c906ff5be5a1d1f82a6beaa7f30507d365d121f0/deploy/kaggle/train_micro.py | python3 -
+!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/microgen-v2/deploy/kaggle/train_micro.py | python3 -
 ```
 
-脚本内部固定 checkout `c906ff5be5a1d1f82a6beaa7f30507d365d121f0`（含 v5 语料）（该提交含同一份 tools/语料），URL 指向 `c906ff5b`；
-两层都用不可变的提交哈希，避免 raw CDN 缓存导致跑旧代码。
+脚本内部固定 checkout 标签 **`microgen-v2`**（含 v5 语料 + 生成侧截断修复 + 生成前自检探针），
+URL 也指向同名标签；两层都用不可变引用（标签/SHA），避免 raw CDN 缓存导致跑旧代码。
+标签不可变；需要绝对定位时用 `CFB_SHA=<完整提交 SHA>` 覆盖。
+
+## 重跑 dev 预测（自检版，一条）
+
+上一轮 139 条预测全空白 ⇒ 修了生成口径（见 `MICRO-GENERATOR-BLANK-PREDICTIONS-ROOT-CAUSE-2026-10-07.md`）。
+用已训好的 ckpt 重跑预测（**含生成前自检**：prompt 构成 / teacher-forced 首字 / 缓存等价断言 /
+训练行记忆检查），跑完自动打包并打印 `[probe]` 判定：
+
+```bash
+!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/microgen-v2/deploy/kaggle/repred_micro.py | python3 -
+```
+
+* 自动找 ckpt（`/content/runs/*/out`、`/kaggle/working/**/out`）；也可以 `CFB_REPRED_CKPT=<run 目录>` 指定。
+* 找不到 ckpt 时，加 `CFB_REPRED_TRAIN_STEPS=2000` 会先按同配置补训再评。
+* 先小样试跑：`CFB_REPRED_ARGS="--limit 5"`。
+* 判读口径不变（7 轴，`tools/micro-generator/judge-micro-predictions.mjs`）。
+* `probeVerdict` 取值：`ok` / `cache-broken` / `no-output` / `mem-only`——后两者说明结果不可用于判读。
 
 ## 产物（/kaggle/working）
 

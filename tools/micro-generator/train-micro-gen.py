@@ -200,15 +200,22 @@ def forward_with_cache(model, x, kv_caches=None):
 
 
 @torch.no_grad()
-def greedy_gen_cached(model, tok, prompt: str, max_new=1024, ctx=2048, device="cpu"):
-    """KV 缓存版贪心生成（输出 token 与 greedy_gen 在无截断情形下逐 token 相同）。"""
+def greedy_gen_cached(model, tok, prompt: str, max_new=1024, ctx=2048, device="cpu", prefill_chunk=2048):
+    """KV 缓存版贪心生成（输出 token 与 greedy_gen 在无截断情形下逐 token 相同）。
+    预填充默认分块（2048/块）：因果掩码按「块内位置 + 已有缓存长度」对齐，数学等价，
+    但峰值显存按块计——长 prompt（数千 token）不会一次性分配 T×T 注意力矩阵。"""
     ids = tok.encode(prompt).ids[-(ctx - max_new - 1):] if len(tok.encode(prompt).ids) > ctx - max_new - 1 else tok.encode(prompt).ids
     x = torch.tensor([ids], device=device)
     end_id = tok.token_to_id(FMT.END)
     out: list[int] = []
     use_amp = device.startswith("cuda")
     with torch.autocast("cuda", dtype=torch.float16, enabled=use_amp):
-        logits, caches = forward_with_cache(model, x)
+        if prefill_chunk and x.shape[1] > prefill_chunk:
+            caches, logits = None, None
+            for i in range(0, x.shape[1], prefill_chunk):
+                logits, caches = forward_with_cache(model, x[:, i:i + prefill_chunk], kv_caches=caches)
+        else:
+            logits, caches = forward_with_cache(model, x)
     for _ in range(max_new):
         nxt = int(logits[0, -1].argmax())
         if nxt == end_id:

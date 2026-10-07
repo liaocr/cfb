@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Kaggle 一键（code 框一条命令）：从零训练「任务专用微模型」生成式压缩器。
 
-内部固定 checkout 提交 2f16472b28302fcb8916f9a15c3c800fdfea0289（tools 与语料均来自该提交），避免 CDN 缓存跑旧代码。
+内部固定 checkout 标签 microgen-v2（tools 与语料均来自该提交），避免 CDN 缓存跑旧代码。
 
 与 train_gen.py（Qwen3-0.6B + LoRA）并列的第二条路线：
   * 自训 16k 词表（只用我们的语料）+ 手写小 GPT 从零训（无预训练权重）
@@ -9,7 +9,7 @@
   * 产物：/kaggle/working/RESULTS.txt + cfb-micro-gen-run1.zip（含 tokenizer/model/predictions）
 
 用法（Kaggle notebook，Internet ON，Accelerator = GPU T4 x2）：
-  !curl -sSL https://raw.githubusercontent.com/liaocr/cfb/<PIN>/deploy/kaggle/train_micro.py | python3 -
+  !curl -sSL https://raw.githubusercontent.com/liaocr/cfb/microgen-v2/deploy/kaggle/train_micro.py | python3 -
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import json, os, shutil, subprocess, sys, time, zipfile
 from pathlib import Path
 
 REPO = "https://github.com/liaocr/cfb.git"
-PIN = os.environ.get("CFB_SHA", "2f16472b28302fcb8916f9a15c3c800fdfea0289")
+PIN = os.environ.get("CFB_SHA", "microgen-v2")   # 不可变标签；含生成侧截断修复 + 自检探针
 # 语料：默认用 v4（= v3 + batch3 + batch4 的合并语料，评测集固定为 v3 dev 保持跨轮可比）；
 # 可用 CFB_CORPUS 覆盖。找不到时回退 v3 并告警。
 CORPUS = os.environ.get("CFB_CORPUS", "transfer/models/micro-generator-gen-v5")
@@ -87,7 +87,7 @@ def main() -> None:
     repo = wd / "repo"
     if not repo.exists():
         sh(f"git clone -q {REPO} {repo}")
-    sh(f"git -C {repo} fetch -q origin {PIN} && git -C {repo} checkout -q {PIN}")
+    sh(f"git -C {repo} fetch -q --tags --force origin && git -C {repo} checkout -q {PIN}")
     results["repoSha"] = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
                                         capture_output=True, text=True).stdout.strip()
     tools = repo / "tools" / "micro-generator"
