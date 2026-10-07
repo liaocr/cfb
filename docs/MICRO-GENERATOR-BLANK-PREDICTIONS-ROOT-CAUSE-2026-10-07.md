@@ -64,17 +64,17 @@ run2（v4 语料）dev CE 已降到 **2.4021**（v3 最好 4.5463），但用户
 
 | 层 | 提交 | 说明 |
 | --- | --- | --- |
-| URL 层（launcher 本身） | `48a7982c213ed7d9820f4f98bd85f7522e391e29` | `deploy/kaggle/*.py` 所在的提交 |
+| URL 层（launcher 本身） | `1993fe8a90f4dfc6ee019be985041b9b781de57a` | `deploy/kaggle/*.py` 所在的提交（launcher 若有更新，以 main 最新提交为准） |
 | tools 层（脚本内部 `PIN`） | `ab8fa97e234407e129c4adb815e1a69a71c40dd7` | `tools/` + 语料所在；`tools/` 内容与 URL 层逐字相同 |
 
 两条命令（互不影响）：
 
 ```bash
 # A. 重跑 dev 预测（自检版）——用已训 ckpt，跑完打 zip + [probe] 判定
-!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/48a7982c213ed7d9820f4f98bd85f7522e391e29/deploy/kaggle/repred_micro.py | python3 -
+!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/1993fe8a90f4dfc6ee019be985041b9b781de57a/deploy/kaggle/repred_micro.py | python3 -
 
 # B. ckpt 丢了时（同配置补训 ≈ run2 的 2040 步，再走同一套自检+评测）
-!bash -c 'export CFB_REPRED_TRAIN_STEPS=2040; curl -sSL https://raw.githubusercontent.com/liaocr/cfb/48a7982c213ed7d9820f4f98bd85f7522e391e29/deploy/kaggle/repred_micro.py | python3 -'
+!bash -c 'export CFB_REPRED_TRAIN_STEPS=2040; curl -sSL https://raw.githubusercontent.com/liaocr/cfb/1993fe8a90f4dfc6ee019be985041b9b781de57a/deploy/kaggle/repred_micro.py | python3 -'
 ```
 
 > **不要用标签钉**：raw CDN 对 force-move 过的标签会继续吐旧内容（本轮实测踩过，已删掉那个标签）。
