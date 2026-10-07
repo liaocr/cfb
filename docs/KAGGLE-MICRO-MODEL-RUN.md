@@ -127,6 +127,19 @@ zip 不含 `.pt`（权重 150MB，判读用不到，需要时从 Output 单独�
 - 数据边界已探明：v1.1/openhands 仅 **shards 25–33** 含 DeepSeek-V4-Flash 的 reasoning 块；shards 0–24 为 Qwen3.6-27B（无 reasoning），v1.0/v1.2/sweagent/minisweagent 探测为 0 单元。
 - 一键命令不变（默认语料已切 v4，落 RESULTS.txt 会带 corpus 出身证明）。
 
+## 拿到预测后：7 轴判读（唯一验收）
+
+```bash
+node tools/micro-generator/judge-micro-predictions.mjs \
+  --predictions <dev-predictions.jsonl> --corpus transfer/models/micro-generator-gen-v3 \
+  --out <judgement.json> --examples 5
+```
+
+- 与教师**同一实现**（`scoreBirthDraft`），逐字复现生产判据；自检：拿 gold 当预测跑，应得
+  `axesAllPass 124/139 · M1 124 · M3–M8 139 · medianRatio 0.4375`（= corpus-report.json）。
+- 输出：逐轴通过率、全轴通过数、中位 ratio（对比教师 0.4375 / 上一轮读数）、失败最多条目及原因。
+- **E1/E2 仍是未测**：同源测量能量"学没学到形状"，不构成对尺子的验证；真机回喂仍是唯一终验。
+
 ## 与 Qwen 路线的取舍
 
 | | Qwen3-0.6B + LoRA | 微模型（自训词表） |
