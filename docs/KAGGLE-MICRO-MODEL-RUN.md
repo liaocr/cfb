@@ -41,10 +41,10 @@
 先设 **Accelerator = GPU T4 ×2**、**Internet = ON**，然后：
 
 ```bash
-!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/0185b90df10cb052c4be85c47d074a783f6b3d0b/deploy/kaggle/train_micro.py | python3 -
+!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/7e42a68409707bf3b666916c1cffea352f5cd91c/deploy/kaggle/train_micro.py | python3 -
 ```
 
-脚本内部固定 checkout `0185b90df10cb052c4be85c47d074a783f6b3d0b`（含 v4 语料）（该提交含同一份 tools/语料），URL 指向 `0185b90d`；
+脚本内部固定 checkout `7e42a68409707bf3b666916c1cffea352f5cd91c`（含 v5 语料）（该提交含同一份 tools/语料），URL 指向 `7e42a684`；
 两层都用不可变的提交哈希，避免 raw CDN 缓存导致跑旧代码。
 
 ## 产物（/kaggle/working）
@@ -139,6 +139,20 @@ node tools/micro-generator/judge-micro-predictions.mjs \
   `axesAllPass 124/139 · M1 124 · M3–M8 139 · medianRatio 0.4375`（= corpus-report.json）。
 - 输出：逐轴通过率、全轴通过数、中位 ratio（对比教师 0.4375 / 上一轮读数）、失败最多条目及原因。
 - **E1/E2 仍是未测**：同源测量能量"学没学到形状"，不构成对尺子的验证；真机回喂仍是唯一终验。
+
+## 第三轮语料（v5，2026-10-07）
+
+| 来源 | 单元 | 教师全轴通过行 |
+| --- | ---: | ---: |
+| v3 | — | 937 |
+| batch3 | 1,085 | 844 |
+| batch4（深度重扫） | 3,078 | 2,491 |
+| batch5（repo 上限 2→6 再扫） | 5,054 | 3,985 |
+| **合并 v5（去重后）** | — | **6,001 行 / 986 仓库 / ~14.3M tokens** |
+
+- 固定评测集仍是 v3 的 dev 139 条（跨轮可比）；合并硬校验隔离 0 重叠（batch5 挡住 466 行）。
+- 中位 ratio 0.4146（v3 0.4139 / v4 0.4127 ⇒ 教师形状稳定）。
+- 数据仍未挖尽：**同 9 个分片**把 repo 上限提到 12 预计还能再出一批；`--max-units-per-row` 也可再提。
 
 ## 与 Qwen 路线的取舍
 
