@@ -458,12 +458,13 @@ def evaluate(model, tok, dev_rows, device, ctx=2048, limit=0, max_new=1024, dump
             eff_new = int(min(1024, max(256, len(tok.encode(gold).ids) * 1.6 + 96)))
         if gen_fn is None:
             gen_fn = greedy_gen_cached
+        gen_ctx = 8192  # 只作硬上限；不按训练 ctx 截断（长 prompt 被切头会让生成失真）
         try:
-            pred = gen_fn(gen, tok, prompt, max_new=eff_new, ctx=ctx, device=device)
+            pred = gen_fn(gen, tok, prompt, max_new=eff_new, ctx=gen_ctx, device=device)
         except Exception as exc:  # 缓存版异常 → 永久回退旧实现，明示不静默
             print(f"[warn] KV 缓存生成失败（{type(exc).__name__}: {exc}）；回退无缓存实现（慢）", flush=True)
             gen_fn = greedy_gen
-            pred = gen_fn(gen, tok, prompt, max_new=eff_new, ctx=ctx, device=device)
+            pred = gen_fn(gen, tok, prompt, max_new=eff_new, ctx=gen_ctx, device=device)
         rec, inv, na = anchor_recall(gold, pred)
         recalls.append(rec); invented += inv
         tot_g += len(gold); tot_p += len(pred)

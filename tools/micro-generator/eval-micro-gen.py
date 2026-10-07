@@ -71,6 +71,10 @@ def main() -> int:
     ap.add_argument("--cap", type=int, default=1024, help="单条最长新生成 token（自适应上限）")
     ap.add_argument("--max-new", type=int, default=0, help=">0 时固定长度；0=按 gold 自适应")
     ap.add_argument("--examples", type=int, default=3, help="打印几条样例（rank0）")
+    ap.add_argument("--gen-mode", choices=["auto", "cached", "plain"], default="auto",
+                    help="auto=KV 缓存优先，异常回退；cached/plain=强制指定（用于 A/B）")
+    ap.add_argument("--ctx-limit", type=int, default=8192,
+                    help="prompt+生成长度上限；超过才截断（默认 8192，避免把长 prompt 静默切头）")
     args = ap.parse_args()
 
     rank = int(os.environ.get("RANK", 0))
@@ -129,11 +133,17 @@ def main() -> int:
             else:
                 g_tok = len(tok.encode(gold).ids)
                 max_new = int(min(args.cap, max(256, g_tok * 1.6 + 96)))
-            try:
-                pred = TM.greedy_gen_cached(model, tok, prompt, max_new=max_new, ctx=cfg["ctx"], device=device)
-            except Exception as exc:
-                print(f"[warn] KV 缓存生成失败（{type(exc).__name__}: {exc}）；回退慢速实现", flush=True)
-                pred = TM.greedy_gen(model, tok, prompt, max_new=max_new, ctx=cfg["ctx"], device=device)
+            gen_ctx = args.ctx_limit   # 只是"prompt+生成"的硬上限，不是训练 ctx
+            if args.gen_mode == "plain":
+                pred = TM.greedy_gen(model, tok, prompt, max_new=max_new, ctx=gen_ctx, device=device)
+            elif args.gen_mode == "cached":
+                pred = TM.greedy_gen_cached(model, tok, prompt, max_new=max_new, ctx=gen_ctx, device=device)
+            else:
+                try:
+                    pred = TM.greedy_gen_cached(model, tok, prompt, max_new=max_new, ctx=gen_ctx, device=device)
+                except Exception as exc:
+                    print(f"[warn] KV 缓存生成失败（{type(exc).__name__}: {exc}）；回退慢速实现", flush=True)
+                    pred = TM.greedy_gen(model, tok, prompt, max_new=max_new, ctx=gen_ctx, device=device)
             rec, inv, na = TM.anchor_recall(gold, pred)
             truncated = len(tok.encode(pred).ids) >= max_new
             obj = dict(idx=idx, unitId=r.get("unitId"), prediction=pred, gold=gold,
@@ -170,6 +180,9 @@ def main() -> int:
                 f.write(json.dumps(o, ensure_ascii=False) + "\n")
         summary = summarize(ordered, str(ckpt_p), time.time() - t0)
         summary["worldSize"] = world
+        summary["genMode"] = args.gen_mode
+        summary["ctxLimit"] = args.ctx_limit
+        summary["modelCtx"] = cfg.get("ctx")
         (out / "dev-predictions-summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False))
         for rk in range(world):
             (out / f"dev-predictions.shard{rk}.jsonl").unlink(missing_ok=True)
