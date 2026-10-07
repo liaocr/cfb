@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Kaggle 一键（code 框一条命令）：从零训练「任务专用微模型」生成式压缩器。
 
-内部固定 checkout 提交 7210d168e439b4c08fc969a404f10b4a40c7b3d6（tools 与语料均来自该提交），避免 CDN 缓存跑旧代码。
+内部固定 checkout 提交 fda2a68ffa4d7ca6aafc6bd1d66fdfa2c661fbaf（tools 与语料均来自该提交），避免 CDN 缓存跑旧代码。
 
 与 train_gen.py（Qwen3-0.6B + LoRA）并列的第二条路线：
   * 自训 16k 词表（只用我们的语料）+ 手写小 GPT 从零训（无预训练权重）
@@ -17,11 +17,11 @@ import json, os, shutil, subprocess, sys, time, zipfile
 from pathlib import Path
 
 REPO = "https://github.com/liaocr/cfb.git"
-PIN = os.environ.get("CFB_SHA", "7210d168e439b4c08fc969a404f10b4a40c7b3d6")
+PIN = os.environ.get("CFB_SHA", "fda2a68ffa4d7ca6aafc6bd1d66fdfa2c661fbaf")
 # 语料：默认用 v4（= v3 + batch3 + batch4 的合并语料，评测集固定为 v3 dev 保持跨轮可比）；
 # 可用 CFB_CORPUS 覆盖。找不到时回退 v3 并告警。
-CORPUS = os.environ.get("CFB_CORPUS", "transfer/models/micro-generator-gen-v4")
-CORPUS_FALLBACK = "transfer/models/micro-generator-gen-v3"
+CORPUS = os.environ.get("CFB_CORPUS", "transfer/models/micro-generator-gen-v5")
+CORPUS_FALLBACK = "transfer/models/micro-generator-gen-v4"
 
 # ---- 训练超参（全局量：换卡数时 token 预算不变）----
 def _env(name, default, cast=int):
