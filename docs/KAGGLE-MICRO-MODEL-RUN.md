@@ -89,16 +89,21 @@
 notebook 里新开一个 cell 跑：
 
 ```bash
-!cd /kaggle/working/cfb-micro-run/repo && git fetch -q origin afeaf4d9ab4bd8cdbdbfc71a991dd406a7ec88e7 && git checkout -q afeaf4d9ab4bd8cdbdbfc71a991dd406a7ec88e7 \
-  && python3 tools/micro-generator/eval-micro-gen.py \
+!cd /kaggle/working/cfb-micro-run/repo && git fetch -q origin <SHA> && git checkout -q <SHA> \
+  && python3 -m torch.distributed.run --nproc_per_node=2 --master_port=29519 \
+     tools/micro-generator/eval-micro-gen.py \
      --ckpt /kaggle/working/cfb-micro-run/out \
      --corpus transfer/models/micro-generator-gen-v3 \
-     --out /kaggle/working/cfb-micro-run/out --device cuda --examples 3 \
+     --out /kaggle/working/cfb-micro-run/out --cap 1024 --examples 3 \
   && cd /kaggle/working/cfb-micro-run/out \
-  && zip -q -r /kaggle/working/preds.zip dev-predictions.jsonl dev-predictions-summary.json \
-     dev-metrics.json model-config.json tokenizer.json micro-gen-best.pt \
+  && zip -q /kaggle/working/preds.zip dev-predictions.jsonl dev-predictions-summary.json \
+     model-config.json tokenizer.json \
   && echo ZIPPED
 ```
+
+要点：**双卡各做一半行**（进度按 rank 打印、带 ETA）；`--cap` 是单条最长生成 token；
+zip 不含 `.pt`（权重 150MB，判读用不到，需要时从 Output 单独取）。
+训练内评测（原来"评测段静默"的坑）已改为自适应长度 + 逐条进度。
 
 它载入 `micro-gen-best.pt`（按 dev 挑的最优点），对全部 139 条 dev 贪心生成
 （每条长度按 gold 自适应 ×1.6+96，上限 2048），落盘 `dev-predictions.jsonl`。

@@ -119,7 +119,7 @@ def main() -> None:
               f"--ctx {CTX} --d-model {D_MODEL} --layers {LAYERS} --heads {HEADS} "
               f"--batch {per_rank_batch} --steps {steps} --lr {LR} --warmup 100 "
               f"--log-every 20 --time-budget-sec {TIME_BUDGET} --eval-limit {FINAL_EVAL} "
-              f"--eval-max-new 1024 --devloss-every {_env('CFB_DEV_EVERY', 40)} "
+              f"--eval-max-new 0 --devloss-every {_env('CFB_DEV_EVERY', 40)} "
               f"--devloss-limit {_env('CFB_DEV_LOSS_LIMIT', 64)} --early-stop-patience 4 "
               f"--dump-predictions")
     results["train"] = dict(world=world, perRankBatch=per_rank_batch, steps=steps,

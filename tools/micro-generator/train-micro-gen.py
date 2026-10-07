@@ -377,7 +377,8 @@ def anchor_recall(gold: str, pred: str):
     return hit / len(g), invented, len(g)
 
 
-def evaluate(model, tok, dev_rows, device, ctx=2048, limit=0, max_new=1024, dump_path: Path | None = None):
+def evaluate(model, tok, dev_rows, device, ctx=2048, limit=0, max_new=1024, dump_path: Path | None = None,
+             progress: bool = True):
     """内部代理指标：锚点召回（正则代理）、压缩比、精确匹配。真验收是 7 轴判定，不在本地冒充。
     dump_path 非空时，同时写预测文本（unitId/prediction/gold/proxy），供 7 轴判读。"""
     gen = model.module if hasattr(model, "module") else model
@@ -386,10 +387,15 @@ def evaluate(model, tok, dev_rows, device, ctx=2048, limit=0, max_new=1024, dump
     n_em = 0; tot_g = tot_p = 0; recalls = []; invented = 0
     per = []
     dump = open(dump_path, "w") if dump_path else None
-    for r in rows:
+    t0 = time.time()
+    for i, r in enumerate(rows):
         prompt, full = FMT.row_to_texts(r)
-        pred = greedy_gen(gen, tok, prompt, max_new=max_new, ctx=ctx, device=device)
         gold = FMT.assistant_text(r)
+        if max_new and max_new > 0:
+            eff_new = max_new
+        else:  # 自适应：按 gold 长度（无 KV cache 的逐 token 前向很慢，别一律生成满额）
+            eff_new = int(min(1024, max(256, len(tok.encode(gold).ids) * 1.6 + 96)))
+        pred = greedy_gen(gen, tok, prompt, max_new=eff_new, ctx=ctx, device=device)
         rec, inv, na = anchor_recall(gold, pred)
         recalls.append(rec); invented += inv
         tot_g += len(gold); tot_p += len(pred)
@@ -401,6 +407,12 @@ def evaluate(model, tok, dev_rows, device, ctx=2048, limit=0, max_new=1024, dump
         if dump:
             dump.write(json.dumps(dict(unitId=r.get("unitId"), prediction=pred, gold=gold,
                                        proxy=entry), ensure_ascii=False) + "\n")
+            dump.flush()
+        if progress:
+            el = time.time() - t0
+            avg = el / (i + 1)
+            print(f"[eval] {i+1}/{len(rows)} · {el:.0f}s（均 {avg:.1f}s/条，剩约 {avg*(len(rows)-i-1)/60:.1f} 分钟）"
+                  f" · recall {rec:.2f} · gen {len(pred)}c", flush=True)
     if dump:
         dump.close()
     gen.train()
