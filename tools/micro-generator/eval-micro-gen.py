@@ -129,7 +129,11 @@ def main() -> int:
             else:
                 g_tok = len(tok.encode(gold).ids)
                 max_new = int(min(args.cap, max(256, g_tok * 1.6 + 96)))
-            pred = TM.greedy_gen(model, tok, prompt, max_new=max_new, ctx=cfg["ctx"], device=device)
+            try:
+                pred = TM.greedy_gen_cached(model, tok, prompt, max_new=max_new, ctx=cfg["ctx"], device=device)
+            except Exception as exc:
+                print(f"[warn] KV 缓存生成失败（{type(exc).__name__}: {exc}）；回退慢速实现", flush=True)
+                pred = TM.greedy_gen(model, tok, prompt, max_new=max_new, ctx=cfg["ctx"], device=device)
             rec, inv, na = TM.anchor_recall(gold, pred)
             truncated = len(tok.encode(pred).ids) >= max_new
             obj = dict(idx=idx, unitId=r.get("unitId"), prediction=pred, gold=gold,

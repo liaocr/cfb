@@ -160,6 +160,66 @@ def greedy_gen(model, tok, prompt: str, max_new=1024, ctx=2048, device="cpu"):
     return tok.decode(out)
 
 
+# ---------------------------------------------------------------- 带 KV 缓存的贪心生成
+# 为什么需要：无 cache 时每个新 token 都要把整段重算一遍前向（O(L²) 变 O(L³)），
+# 单条 1000 token 在 T4 上要 ~1 分钟；本实现在预填充后只跑「新 token 的前向 + 注意力读缓存」。
+# 语义与 greedy_gen 完全一致（贪心 argmax、同一 <|end|> 终止）；仅在 ctx 截断行为上更宽松：
+# 无位置编码 ⇒ 缓存可随生成增长，不做中途截断（greedy_gen 会滑窗截断）。
+@torch.no_grad()
+def forward_with_cache(model, x, kv_caches=None):
+    """x: [B,T] token ids；kv_caches: 每层 (k,v) 形状 [B,h,S,dh] 或 None。
+    返回 (logits[B,T,V], new_caches)。数学上与 nn.MultiheadAttention(batch_first, 因果) 等价。"""
+    h = model.tok_emb(x)
+    new_caches = []
+    T = x.shape[1]
+    for i, blk in enumerate(model.blocks):
+        n = blk.ln1(h)
+        qkv = F.linear(n, blk.attn.in_proj_weight, blk.attn.in_proj_bias)
+        q, k, v = qkv.chunk(3, dim=-1)
+        heads = blk.attn.num_heads
+        B_, T_, E = q.shape
+        dh = E // heads
+        q = q.view(B_, T_, heads, dh).transpose(1, 2)
+        k = k.view(B_, T_, heads, dh).transpose(1, 2)
+        v = v.view(B_, T_, heads, dh).transpose(1, 2)
+        if kv_caches is not None and kv_caches[i] is not None:
+            k = torch.cat([kv_caches[i][0], k], dim=2)
+            v = torch.cat([kv_caches[i][1], v], dim=2)
+        new_caches.append((k, v))
+        att = torch.matmul(q, k.transpose(-2, -1)) * (dh ** -0.5)   # [B,h,T_,S]
+        S = k.shape[2]
+        if T_ > 1:
+            mask = torch.triu(torch.ones(T_, S, device=x.device, dtype=torch.bool), diagonal=S - T_ + 1)
+            att = att.masked_fill(mask, float("-inf"))
+        att = att.softmax(dim=-1)
+        out = torch.matmul(att, v).transpose(1, 2).reshape(B_, T_, E)
+        out = F.linear(out, blk.attn.out_proj.weight, blk.attn.out_proj.bias)
+        h = h + out
+        h = h + blk.ff(blk.ln2(h))
+    return model.head(model.ln_f(h)), new_caches
+
+
+@torch.no_grad()
+def greedy_gen_cached(model, tok, prompt: str, max_new=1024, ctx=2048, device="cpu"):
+    """KV 缓存版贪心生成（输出 token 与 greedy_gen 在无截断情形下逐 token 相同）。"""
+    ids = tok.encode(prompt).ids[-(ctx - max_new - 1):] if len(tok.encode(prompt).ids) > ctx - max_new - 1 else tok.encode(prompt).ids
+    x = torch.tensor([ids], device=device)
+    end_id = tok.token_to_id(FMT.END)
+    out: list[int] = []
+    use_amp = device.startswith("cuda")
+    with torch.autocast("cuda", dtype=torch.float16, enabled=use_amp):
+        logits, caches = forward_with_cache(model, x)
+    for _ in range(max_new):
+        nxt = int(logits[0, -1].argmax())
+        if nxt == end_id:
+            break
+        out.append(nxt)
+        x = torch.tensor([[nxt]], device=device)
+        with torch.autocast("cuda", dtype=torch.float16, enabled=use_amp):
+            logits, caches = forward_with_cache(model, x, kv_caches=caches)
+    return tok.decode(out)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--corpus", required=True, help="含 train.jsonl.gz / dev.jsonl.gz 的目录")
@@ -387,15 +447,23 @@ def evaluate(model, tok, dev_rows, device, ctx=2048, limit=0, max_new=1024, dump
     n_em = 0; tot_g = tot_p = 0; recalls = []; invented = 0
     per = []
     dump = open(dump_path, "w") if dump_path else None
+    gen_fn = None
     t0 = time.time()
     for i, r in enumerate(rows):
         prompt, full = FMT.row_to_texts(r)
         gold = FMT.assistant_text(r)
         if max_new and max_new > 0:
             eff_new = max_new
-        else:  # 自适应：按 gold 长度（无 KV cache 的逐 token 前向很慢，别一律生成满额）
+        else:  # 自适应：按 gold 长度上浮 1.6 倍
             eff_new = int(min(1024, max(256, len(tok.encode(gold).ids) * 1.6 + 96)))
-        pred = greedy_gen(gen, tok, prompt, max_new=eff_new, ctx=ctx, device=device)
+        if gen_fn is None:
+            gen_fn = greedy_gen_cached
+        try:
+            pred = gen_fn(gen, tok, prompt, max_new=eff_new, ctx=ctx, device=device)
+        except Exception as exc:  # 缓存版异常 → 永久回退旧实现，明示不静默
+            print(f"[warn] KV 缓存生成失败（{type(exc).__name__}: {exc}）；回退无缓存实现（慢）", flush=True)
+            gen_fn = greedy_gen
+            pred = gen_fn(gen, tok, prompt, max_new=eff_new, ctx=ctx, device=device)
         rec, inv, na = anchor_recall(gold, pred)
         recalls.append(rec); invented += inv
         tot_g += len(gold); tot_p += len(pred)
