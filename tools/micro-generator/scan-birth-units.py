@@ -52,10 +52,12 @@ def download(url: str, dest: Path) -> float:
 
 
 def scan_shard(shard: int, per_shard_cap: int, min_raw_chars: int, max_units_per_row: int,
-               repo_counts: dict, repo_cap: int, row_limit: int | None, keep: bool, log) -> dict:
+               repo_counts: dict, repo_cap: int, row_limit: int | None, keep: bool, log,
+               shard_url: str | None = None) -> dict:
     import pyarrow.parquet as pq
 
-    url = birth.SHARD_URL.format(index=shard)
+    # 默认用 extract-birth-units.py 的 SHARD_URL（v1.1/openhands）；--shard-url 可换数据集版本/配置
+    url = (shard_url or birth.SHARD_URL).format(index=shard)
     # 注意：/tmp 在小内存环境是 tmpfs（占 RAM），分片可改落到磁盘目录（CFB_SCAN_TMP）
     spill = Path(os.environ.get("CFB_SCAN_TMP", "/tmp"))
     spill.mkdir(parents=True, exist_ok=True)
@@ -122,6 +124,8 @@ def main() -> int:
     p.add_argument("--repo-cap", type=int, default=2)
     p.add_argument("--row-limit", type=int, default=None, help="stop each shard after N rows (smoke test)")
     p.add_argument("--keep-parquet", action="store_true")
+    p.add_argument("--shard-url", default=None,
+                   help="覆盖分片 URL 模板（含 {index}），例：…/parquet/v1.0/openhands/{index}.parquet")
     args = p.parse_args()
 
     shards = [int(x) for x in args.shards.split(",") if x.strip()]
@@ -144,13 +148,15 @@ def main() -> int:
 
     for shard in shards:
         stats = scan_shard(shard, per_shard_cap, args.min_raw_chars, args.max_units_per_row,
-                           repo_counts, args.repo_cap, args.row_limit, args.keep_parquet, log)
+                           repo_counts, args.repo_cap, args.row_limit, args.keep_parquet, log,
+                           shard_url=args.shard_url)
         units = stats.pop("units")
         all_units.extend(units)
         per_shard.append(stats)
         # free disk between shards unless told to keep
         if not args.keep_parquet:
-            Path(f"/tmp/shard{shard}.parquet").unlink(missing_ok=True)
+            spill = Path(os.environ.get("CFB_SCAN_TMP", "/tmp"))
+            (spill / f"shard{shard}.parquet").unlink(missing_ok=True)
         if len(all_units) >= args.total_cap:
             log(f"total cap {args.total_cap} reached; stopping")
             break

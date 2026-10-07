@@ -1,0 +1,63 @@
+{
+  "schema": "cfb.micro-generator-gen-corpus/2",
+  "at": "2026-10-07T12:53:12.096Z",
+  "teacher": "shape-teacher v0.3 (shape) — draft-only rulers installed: M1/M3/M4/M5/M6/M7/M8 (M2/E1/E2/R1/R2 excluded by request: they need another run)",
+  "unitsIn": 1067,
+  "rowsWritten": 1067,
+  "train": {
+    "rows": 844,
+    "repos": 578,
+    "axesAllPass": 844,
+    "axisPass": {
+      "M1": 844,
+      "M3": 844,
+      "M4": 844,
+      "M5": 844,
+      "M6": 844,
+      "M7": 844,
+      "M8": 844
+    },
+    "medianRatio": 0.4142,
+    "overBudgetRows": 0
+  },
+  "trainNonconforming": {
+    "rows": 101,
+    "repos": 95,
+    "axesAllPass": 0,
+    "axisPass": {
+      "M1": 3,
+      "M3": 101,
+      "M4": 101,
+      "M5": 101,
+      "M6": 101,
+      "M7": 101,
+      "M8": 98
+    },
+    "medianRatio": 0.6474,
+    "overBudgetRows": 98
+  },
+  "dev": {
+    "rows": 122,
+    "repos": 76,
+    "axesAllPass": 103,
+    "axisPass": {
+      "M1": 103,
+      "M3": 122,
+      "M4": 122,
+      "M5": 122,
+      "M6": 122,
+      "M7": 122,
+      "M8": 122
+    },
+    "medianRatio": 0.4323,
+    "overBudgetRows": 19
+  },
+  "devAllPass": 103,
+  "boundaries": [
+    "targets are machine-generated (AI single-reviewer count = 0) — NOT reviewed gold",
+    "the teacher executes the same rulers it is scored with ⇒ later student numbers are same-source measurements of shape acquisition, NOT validation of the rulers",
+    "E1/E2 (target-model feedback) remain 未测 — endpoint needed; no run was faked",
+    "dev is repo-disjoint from train",
+    "training rows are the all-pass subset; non-conforming rows are kept in train-nonconforming.jsonl.gz (info-preservation outranks the 0.60 ratio cap, so a few rows exceed it on purpose)"
+  ]
+}

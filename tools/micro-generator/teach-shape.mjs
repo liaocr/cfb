@@ -356,7 +356,30 @@ function main() {
   const withShape = mode === 'shape'
   const devFrac = Number(argOf('dev-frac', '0.10'))
   const maxRaw = Number(argOf('max-raw-chars', '12000'))
+  const force = process.argv.includes('--force')
+
+  // ── 防线（2026-10-07 事故教训：无 --units 空跑会把 out-dir 语料覆盖成空文件）──
+  if (!unitsFiles.length) {
+    console.error('拒绝执行：没有给 --units。用法：--units <birth-units.jsonl[.gz]> [--units 更多…] [--out-dir <目录>] [--force]')
+    process.exit(2)
+  }
+  for (const f of unitsFiles) {
+    const fp = path.resolve(ROOT, f)
+    if (!fs.existsSync(fp)) { console.error(`拒绝执行：--units 文件不存在：${f}`); process.exit(2) }
+    if (fs.statSync(fp).size < 64) { console.error(`拒绝执行：--units 文件几乎为空（${f}）`); process.exit(2) }
+  }
+  const existingTrain = path.join(outDir, 'train.jsonl.gz')
+  if (fs.existsSync(existingTrain) && fs.statSync(existingTrain).size > 256 && !force) {
+    console.error(`拒绝覆盖：${path.relative(ROOT, outDir)}/train.jsonl.gz 已存在且非空；` +
+      `确认要重建请显式加 --force（旧文件会被覆盖）。建议先备份或换 --out-dir。`)
+    process.exit(3)
+  }
+
   const units = readUnits(unitsFiles).filter((u) => (u.raw || '').length && u.raw.length <= maxRaw)
+  if (!units.length) {
+    console.error(`拒绝执行：读入 ${unitsFiles.length} 个文件后有效单元为 0（检查内容/字段名/--max-raw-chars）。`)
+    process.exit(2)
+  }
 
   const rows = []
   for (const u of units) {

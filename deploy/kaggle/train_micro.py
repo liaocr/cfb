@@ -18,7 +18,10 @@ from pathlib import Path
 
 REPO = "https://github.com/liaocr/cfb.git"
 PIN = os.environ.get("CFB_SHA", "7a9f48802ea1ff1686ccce7d9345a121e89da1d8")
-CORPUS = "transfer/models/micro-generator-gen-v3"
+# 语料：默认用 v4（= v3 + batch3 + batch4 的合并语料，评测集固定为 v3 dev 保持跨轮可比）；
+# 可用 CFB_CORPUS 覆盖。找不到时回退 v3 并告警。
+CORPUS = os.environ.get("CFB_CORPUS", "transfer/models/micro-generator-gen-v4")
+CORPUS_FALLBACK = "transfer/models/micro-generator-gen-v3"
 
 # ---- 训练超参（全局量：换卡数时 token 预算不变）----
 def _env(name, default, cast=int):
@@ -89,7 +92,16 @@ def main() -> None:
                                         capture_output=True, text=True).stdout.strip()
     tools = repo / "tools" / "micro-generator"
     corpus = repo / CORPUS
+    if not (corpus / "train.jsonl.gz").exists() and not os.environ.get("CFB_CORPUS"):
+        print(f"[warn] 提交里没有 {CORPUS}，回退到 {CORPUS_FALLBACK}", flush=True)
+        corpus = repo / CORPUS_FALLBACK
     assert (corpus / "train.jsonl.gz").exists(), f"缺语料 {corpus}"
+    crep = corpus / "corpus-report.json"
+    if crep.exists():  # 语料出身证明（行数/仓库数/隔离校验）进 RESULTS
+        cr = json.loads(crep.read_text())
+        results["corpus"] = dict(dir=str(corpus.relative_to(repo)),
+                                 train=cr.get("train"), dev=cr.get("dev"),
+                                 isolation=cr.get("isolation"))
 
     # 3) 词表（默认 24k；英文训练文本 + 仓库自带中文种子，让常见中文词也是单 token）
     tok_json = out / "tokenizer.json"
