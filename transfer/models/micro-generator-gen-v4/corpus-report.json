@@ -1,11 +1,12 @@
 {
   "schema": "cfb.micro-generator-corpus/1",
-  "at": "2026-10-07T12:53:39Z",
+  "at": "2026-10-07T13:00:32Z",
   "builtBy": "tools/micro-generator/merge-corpora.py",
   "evalDir": "transfer/models/micro-generator-gen-v3",
   "sources": [
     "transfer/models/micro-generator-gen-v3",
-    "transfer/models/micro-generator-gen-batch3"
+    "transfer/models/micro-generator-gen-batch3",
+    "transfer/models/micro-generator-gen-batch4"
   ],
   "provenance": [
     {
@@ -33,29 +34,42 @@
         "train": "161f7d925a3d4414",
         "dev": "3d0df02b6a7efba3"
       }
+    },
+    {
+      "dir": "transfer/models/micro-generator-gen-batch4",
+      "trainIn": 2491,
+      "devIn": 312,
+      "nonconfIn": 202,
+      "trainAdded": 2163,
+      "devRowsAdded": 56,
+      "devRowsBlockedByIsolation": 251,
+      "sha16": {
+        "train": "198139e30cab7c86",
+        "dev": "a350b95387b95470"
+      }
     }
   ],
   "isolation": {
     "evalRepos": 86,
-    "trainRepos": 690,
+    "trainRepos": 986,
     "overlapCount": 0,
     "checked": true
   },
   "train": {
     "label": "merged-train",
-    "rows": 1464,
-    "repos": 690,
-    "axesAllPass": 1464,
+    "rows": 3683,
+    "repos": 986,
+    "axesAllPass": 3683,
     "axisPass": {
-      "M1": 1464,
-      "M3": 1464,
-      "M4": 1464,
-      "M5": 1464,
-      "M6": 1464,
-      "M7": 1464,
-      "M8": 1464
+      "M1": 3683,
+      "M3": 3683,
+      "M4": 3683,
+      "M5": 3683,
+      "M6": 3683,
+      "M7": 3683,
+      "M8": 3683
     },
-    "medianRatio": 0.414
+    "medianRatio": 0.4127
   },
   "dev": {
     "label": "fixed-eval(=evalDir/dev)",
@@ -74,8 +88,8 @@
     "medianRatio": 0.4375
   },
   "trainNonconforming": {
-    "rows": 198,
-    "repos": 175
+    "rows": 391,
+    "repos": 315
   },
   "boundaries": {
     "note": "只有全轴通过的行进入 train；评测集固定为 evalDir 的 dev，跨轮可比；各源目录 dev 中与评测集同仓库的行被硬性排除（见 provenance.devRowsBlockedByIsolation）。",

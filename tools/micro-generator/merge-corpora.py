@@ -67,10 +67,11 @@ def main() -> int:
     ap.add_argument("--eval-dir", required=True, help="固定评测集来源（取其 dev.jsonl.gz）")
     ap.add_argument("--source", action="append", required=True, help="源语料目录（可重复）")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--force", action="store_true", help="允许覆盖已有非空的 out/train.jsonl.gz")
     args = ap.parse_args()
 
     eval_dir, out = Path(args.eval_dir), Path(args.out)
-    force = "--force" in sys.argv
+    force = args.force
     existing = out / "train.jsonl.gz"
     if existing.exists() and existing.stat().st_size > 256 and not force:
         print(f"拒绝覆盖：{existing} 已存在且非空；确认请加 --force", file=sys.stderr)
