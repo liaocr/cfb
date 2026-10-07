@@ -41,10 +41,10 @@
 先设 **Accelerator = GPU T4 ×2**、**Internet = ON**，然后：
 
 ```bash
-!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/00e083a6cbbc69c23370dd9f4d9e82fd81d68c34/deploy/kaggle/train_micro.py | python3 -
+!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/afeaf4d9ab4bd8cdbdbfc71a991dd406a7ec88e7/deploy/kaggle/train_micro.py | python3 -
 ```
 
-脚本内部固定 checkout `372e1d5`（该提交含同一份 tools/语料），URL 指向 `00e083a6`；
+脚本内部固定 checkout `372e1d5`（该提交含同一份 tools/语料），URL 指向 `afeaf4d9`；
 两层都用不可变的提交哈希，避免 raw CDN 缓存导致跑旧代码。
 
 ## 产物（/kaggle/working）
@@ -89,7 +89,7 @@
 notebook 里新开一个 cell 跑：
 
 ```bash
-!cd /kaggle/working/cfb-micro-run/repo && git fetch -q origin <SHA> && git checkout -q <SHA> \
+!cd /kaggle/working/cfb-micro-run/repo && git fetch -q origin afeaf4d9ab4bd8cdbdbfc71a991dd406a7ec88e7 && git checkout -q afeaf4d9ab4bd8cdbdbfc71a991dd406a7ec88e7 \
   && python3 tools/micro-generator/eval-micro-gen.py \
      --ckpt /kaggle/working/cfb-micro-run/out \
      --corpus transfer/models/micro-generator-gen-v3 \
