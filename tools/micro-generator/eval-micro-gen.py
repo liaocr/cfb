@@ -75,8 +75,29 @@ def read_first_rows(path: Path, k: int) -> list[dict]:
     return out
 
 
-def probe_rows(model, tok, pairs, device, max_tokens: int = 2048, ab_tokens: int = 32) -> list[dict]:
-    """在一批 (标签, 行) 上做三项自检：prompt 构成 / teacher-forced 首字 / 缓存等价 + 贪心文本对照。"""
+def seq_ce(model, tok, prompt_ids, gold_ids, device, max_tokens: int = 4096) -> float | None:
+    """teacher-forced：给 prompt（末尾应含 <|asst|>）算 gold 段 CE——与训练内 devloss 完全同口径
+    （同样的头截断 ids[:max_tokens] + 同样的 label 掩码）。用来把「同一个模型、换输入」的差别量化。"""
+    ids = list(prompt_ids) + list(gold_ids) + [tok.token_to_id(FMT.END)]
+    plen = len(prompt_ids)
+    if len(ids) > max_tokens:          # 与 devloss 一致：超长从头部截（prompt 至少留 32 token）
+        ids = ids[:max_tokens]
+        plen = min(plen, max_tokens - 32)
+    if len(ids) < 8 or plen >= len(ids) - 1:
+        return None
+    x = torch.tensor([ids[:-1]], device=device)
+    lab = [(-100 if (t + 1) < plen else ids[t + 1]) for t in range(len(ids) - 1)]
+    y = torch.tensor([lab], device=device)
+    with torch.no_grad(), torch.autocast("cuda", dtype=torch.float16, enabled=device.startswith("cuda")):
+        _, loss = model(x, y)
+    return round(float(loss.mean() if loss.dim() else loss), 4)
+
+
+def probe_rows(model, tok, pairs, device, max_tokens: int = 2048, ab_tokens: int = 32,
+               old_ctx: int = 2048, cap: int = 1024, old_clip: bool = True) -> list[dict]:
+    """在一批 (标签, 行) 上做三项自检：prompt 构成 / teacher-forced 首字 / 缓存等价 + 贪心文本对照；
+    old_clip=True 时再补一条**决定性对照**：同一条行、同一个模型，喂「完整 prompt」vs「旧口径切头后的
+    prompt」，分别报 gold 段 teacher-forced CE 与 32-token 生成 ⇒ 直接判定上一轮空白是不是截断造成的。"""
     use_amp = device.startswith("cuda")
     res: list[dict] = []
     for label, r in pairs:
@@ -103,7 +124,9 @@ def probe_rows(model, tok, pairs, device, max_tokens: int = 2048, ab_tokens: int
                 break
             cp += 1
         agree = cp / max(1, max(len(p_plain), len(p_cached)))
+        ce_full = seq_ce(model, tok, pid, gid, device)
         rec = dict(label=label, unitId=r.get("unitId"), promptTokens=len(pid), goldTokens=len(gid),
+                   ceFull=ce_full,
                    promptTail=tok.decode(pid[-16:]), goldFirst=tok.decode([gid[0]]) if gid else "",
                    top5=tops, maxAbsDeltaFull=round(d_full, 6), maxAbsDeltaChunk=round(d_chunk, 6),
                    textAgree32=round(agree, 3), plainHead=p_plain[:80], cachedHead=p_cached[:80],
@@ -111,17 +134,32 @@ def probe_rows(model, tok, pairs, device, max_tokens: int = 2048, ab_tokens: int
         res.append(rec)
         print(f"[probe·{label}] prompt {len(pid)} tok（尾: {rec['promptTail']!r}）· gold 首 token {rec['goldFirst']!r} "
               f"· 模型 top5 {tops}", flush=True)
-        print(f"[probe·{label}] 等价 max|Δlogit| 整块 {d_full:.2e} / 分块 {d_chunk:.2e} · 32tok 一致率 {agree:.2f} "
+        if old_clip:
+            old_new = int(min(cap, max(256, len(gid) * 1.6 + 96)))     # 旧评测的自适应 max_new
+            limit = max(64, old_ctx - old_new - 1)                     # 旧口径的 prompt 上限（切头）
+            if limit < len(pid):
+                ce_clip = seq_ce(model, tok, pid[-limit:], gid, device)
+                gen_old = TM.greedy_gen_cached(model, tok, prompt, max_new=ab_tokens,
+                                               ctx=limit + ab_tokens + 1, device=device)
+                rec["oldClipTokens"] = limit
+                rec["ceClipped"] = ce_clip
+                rec["oldClipGen"] = gen_old[:80]
+                print(f"[probe·旧口径] prompt 切到 {limit} tok（原 {len(pid)}，切掉头部 {len(pid)-limit}）· "
+                      f"gold 段 CE：全 prompt {ce_full} → 切头后 {ce_clip} · 旧口径生成 {gen_old[:50]!r}", flush=True)
+            else:
+                print(f"[probe·旧口径] prompt {len(pid)} ≤ 上限 {limit}，旧口径不切（本条无差别）", flush=True)
+        print(f"[probe·{label}] gold 段 CE(全prompt) {ce_full} · 等价 max|Δlogit| 整块 {d_full:.2e} / 分块 {d_chunk:.2e} · 32tok 一致率 {agree:.2f} "
               f" · 生成 {p_cached[:50]!r}", flush=True)
     return res
 
 
 def probe(model, tok, dev_rows, device, n: int = 2, max_tokens: int = 2048, ab_tokens: int = 32,
-          train_rows: list[dict] | None = None, n_train: int = 1) -> dict:
+          train_rows: list[dict] | None = None, n_train: int = 1,
+          old_ctx: int = 2048, cap: int = 1024, old_clip: bool = True) -> dict:
     """生成前自检：dev 行 + 训练行（记忆检查）。训练行能背出来说明管线好、模型在记；
     dev 行若同样能开口，说明任务真的学会了；两边都开口不了 = 生成管线（或 ckpt 加载）坏了。"""
     pairs = [("dev", r) for r in dev_rows[:n]] + [("train·记忆", r) for r in (train_rows or [])[:n_train]]
-    recs = probe_rows(model, tok, pairs, device, max_tokens, ab_tokens)
+    recs = probe_rows(model, tok, pairs, device, max_tokens, ab_tokens, old_ctx, cap, old_clip)
     info = dict(rows=recs, maxAbsDelta=max([r["maxAbsDeltaChunk"] for r in recs] or [0.0]),
                 textAgreeMin=min([r["textAgree32"] for r in recs] or [1.0]), verdict="ok")
     dl, ndev, _ = TM.dev_loss(model, tok, dev_rows, device, limit=n, max_row_tokens=4096)
@@ -166,6 +204,8 @@ def main() -> int:
     ap.add_argument("--probe-train", type=int, default=1,
                     help="自检再跑几条**训练集**行（记忆检查：连背过的行都生成不出内容 ⇒ 管线坏，不是模型弱）")
     ap.add_argument("--train-rows", type=int, default=2, help="记忆检查取前几条 train 行")
+    ap.add_argument("--probe-old-clip", type=int, default=1,
+                    help="自检里加「旧口径切头 vs 全 prompt」对照（1=开）：直接判定空白是否是截断造成的")
     args = ap.parse_args()
 
     rank = int(os.environ.get("RANK", 0))
@@ -218,7 +258,8 @@ def main() -> int:
         if is_main:
             train_rows = read_first_rows(Path(args.corpus) / "train.jsonl.gz", args.probe_train) if args.probe_train else []
             probe_info = probe(model, tok, dev_rows, device, args.probe, args.probe_tokens, args.ab_tokens,
-                               train_rows=train_rows, n_train=args.probe_train)
+                               train_rows=train_rows, n_train=args.probe_train,
+                               old_ctx=cfg.get("ctx", 2048), cap=args.cap, old_clip=bool(args.probe_old_clip))
             if probe_info["verdict"] == "cache-broken" and args.gen_mode != "plain":
                 gen_mode = "plain"
                 print("[probe] → 本轮 gen-mode 强制为 plain", flush=True)
