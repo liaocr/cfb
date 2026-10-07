@@ -41,11 +41,16 @@ node tools/micro-generator/teach-shape.mjs \
 3. 第一个 code 框里粘这一条，Shift+Enter：
 
 ```bash
-!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/train_gen.py | python3 -
+!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/bad9c26ed28e6fcee069296123dfcac3abb6c4c0/deploy/kaggle/train_gen.py | python3 -
 ```
 
 它自己完成：装依赖 → 从 GitHub 拉仓库（含 v3 语料）→ **自动检测 GPU 数：T4×2 走 DDP 双卡（每卡一份数据分片，有效 batch 不变、步数不变，约快 1.7×），DDP 失败自动回退单卡** → QLoRA 训练 → 打印读数 → 结果落盘 `/kaggle/working/RESULTS.txt` → 打包 `cfb-gen-compressor-run1.zip`。
 **不需要上传任何东西。**
+
+> **实测速度（2026-10-07，T4）**：46.4 s/step（step10=463s、step20=927s，线性）⇒ 116 步全程 ≈ **90 分钟**。
+> 若确实跑在 T4×2 DDP 上，应约 1.7× 快（≈每步 25–28s）；若明显更慢，多半实际是单进程。核对方式：
+> 启动日志里出现 `world_size=2 … DDP: this rank=…`（新脚本）或 `steps: 116 (batch 16 × accum 16)`（旧脚本，单卡）；
+> 运行结束后 `RESULTS.txt` 的 `worldSize` / 训练器 `run-meta.json` 是最终判据。
 
 ## 3. 跑完先看三个数（notebook 自动打）
 
