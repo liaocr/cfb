@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import time
@@ -55,7 +56,10 @@ def scan_shard(shard: int, per_shard_cap: int, min_raw_chars: int, max_units_per
     import pyarrow.parquet as pq
 
     url = birth.SHARD_URL.format(index=shard)
-    local = Path(f"/tmp/shard{shard}.parquet")
+    # 注意：/tmp 在小内存环境是 tmpfs（占 RAM），分片可改落到磁盘目录（CFB_SCAN_TMP）
+    spill = Path(os.environ.get("CFB_SCAN_TMP", "/tmp"))
+    spill.mkdir(parents=True, exist_ok=True)
+    local = spill / f"shard{shard}.parquet"
     stats = {"shard": shard, "url": url, "downloadSeconds": None, "rowsScanned": 0,
              "rowsWithUnits": 0, "unitsFound": 0, "reposWithUnits": {}, "licensesFound": {},
              "reposKept": [], "licenses": {}, "stoppedEarly": False}

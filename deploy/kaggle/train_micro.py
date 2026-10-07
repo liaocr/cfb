@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+"""Kaggle 一键（code 框一条命令）：从零训练「任务专用微模型」生成式压缩器。
+
+与 train_gen.py（Qwen3-0.6B + LoRA）并列的第二条路线：
+  * 自训 16k 词表（只用我们的语料）+ 手写小 GPT 从零训（无预训练权重）
+  * 不需要 transformers / 4-bit / peft；T4 上直接 fp16，DDP 用满所有卡
+  * 产物：/kaggle/working/RESULTS.txt + cfb-micro-gen-run1.zip（含 tokenizer/model/predictions）
+
+用法（Kaggle notebook，Internet ON，Accelerator = GPU T4 x2）：
+  !curl -sSL https://raw.githubusercontent.com/liaocr/cfb/<PIN>/deploy/kaggle/train_micro.py | python3 -
+"""
+from __future__ import annotations
+
+import json, os, shutil, subprocess, sys, time, zipfile
+from pathlib import Path
+
+REPO = "https://github.com/liaocr/cfb.git"
+PIN = os.environ.get("CFB_SHA", "PIN_SHA_HERE")
+CORPUS = "transfer/models/micro-generator-gen-v3"
+
+# ---- 训练超参（全局量：换卡数时 token 预算不变）----
+def _env(name, default, cast=int):
+    return cast(os.environ.get(name, default))
+
+
+VOCAB = _env("CFB_VOCAB", 16384)
+CTX = _env("CFB_CTX", 2048)
+D_MODEL = _env("CFB_D_MODEL", 512)
+LAYERS = _env("CFB_LAYERS", 8)
+HEADS = _env("CFB_HEADS", 8)
+GLOBAL_BATCH = _env("CFB_GLOBAL_BATCH", 12)   # 每步 token = GLOBAL_BATCH × CTX = 24,576
+TOTAL_TOKENS = _env("CFB_TOTAL_TOKENS", 60_000_000)  # ≈ 40 epoch（语料约 1.5M tokens）
+TIME_BUDGET = _env("CFB_TIME_BUDGET", 1500)   # 秒；到点收工，保证训练+评测+打包 < 45 分钟
+LR = float(os.environ.get("CFB_LR", 3e-4))
+FINAL_EVAL = _env("CFB_FINAL_EVAL", 64)       # 最终评测用多少条 dev（全量 139 稍后可补）
+WDIR_ENV = os.environ.get("CFB_WORKDIR", "")
+
+
+def sh(cmd: str, **kw) -> subprocess.CompletedProcess:
+    print(f"$ {cmd}", flush=True)
+    return subprocess.run(cmd, shell=True, text=True, **kw)
+
+
+def count_gpus() -> int:
+    try:
+        out = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                             capture_output=True, text=True).stdout.strip()
+        return len([l for l in out.splitlines() if l.strip()])
+    except Exception:
+        return 0
+
+
+def workdir() -> Path:
+    if WDIR_ENV:
+        return Path(WDIR_ENV)
+    w = Path("/kaggle/working")
+    return (w if w.exists() else Path("/tmp/cfb-micro")) / "cfb-micro-run"
+
+
+def main() -> None:
+    t_all = time.time()
+    wd = workdir()
+    out = wd / "out"
+    for d in (wd, out):
+        d.mkdir(parents=True, exist_ok=True)
+    results = {"pinnedSha": PIN, "startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+
+    n_gpu = count_gpus()
+    results["gpus"] = n_gpu
+    print(f"[env] python {sys.version.split()[0]} / GPUs={n_gpu}", flush=True)
+    if n_gpu == 0:
+        print("[warn] 没有 GPU：CPU 上也能跑完，但会很慢（这不是验收跑）", flush=True)
+
+    # 1) 依赖：只需要 tokenizers（Kaggle 镜像通常已有）
+    try:
+        import tokenizers  # noqa: F401
+        print("[deps] tokenizers 已存在", flush=True)
+    except Exception:
+        sh(f"{sys.executable} -m pip install -q tokenizers")
+
+    # 2) 取代码（固定 SHA，避免 CDN 缓存导致跑旧代码）
+    repo = wd / "repo"
+    if not repo.exists():
+        sh(f"git clone -q {REPO} {repo}")
+    sh(f"git -C {repo} fetch -q origin {PIN} && git -C {repo} checkout -q {PIN}")
+    results["repoSha"] = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
+                                        capture_output=True, text=True).stdout.strip()
+    tools = repo / "tools" / "micro-generator"
+    corpus = repo / CORPUS
+    assert (corpus / "train.jsonl.gz").exists(), f"缺语料 {corpus}"
+
+    # 3) 词表（16k，仅用我们的训练文本）
+    tok_json = out / "tokenizer.json"
+    if not tok_json.exists():
+        sh(f"{sys.executable} {tools/'micro-tokenizer.py'} --train {corpus/'train.jsonl.gz'} "
+           f"--vocab-size {VOCAB} --out {tok_json}")
+
+    # 4) 训练：≥2 卡用 torchrun（DDP），否则单进程
+    world = max(1, n_gpu)
+    per_rank_batch = max(1, GLOBAL_BATCH // world)
+    steps = max(200, TOTAL_TOKENS // (world * per_rank_batch * CTX))
+    common = (f"--corpus {corpus} --out {out} --vocab-size {VOCAB} --tokenizer {tok_json} "
+              f"--ctx {CTX} --d-model {D_MODEL} --layers {LAYERS} --heads {HEADS} "
+              f"--batch {per_rank_batch} --steps {steps} --lr {LR} --warmup 100 "
+              f"--log-every 20 --time-budget-sec {TIME_BUDGET} --eval-limit {FINAL_EVAL} "
+              f"--eval-max-new 1024")
+    results["train"] = dict(world=world, perRankBatch=per_rank_batch, steps=steps,
+                            globalBatch=GLOBAL_BATCH, ctx=CTX,
+                            plannedTokens=world * per_rank_batch * CTX * steps)
+    log = wd / "train.log"
+    if world > 1:
+        cmd = (f"{sys.executable} -m torch.distributed.run --nproc_per_node={world} "
+               f"--master_port=29517 {tools/'train-micro-gen.py'} {common}")
+    else:
+        cmd = f"{sys.executable} {tools/'train-micro-gen.py'} {common}"
+    t0 = time.time()
+    with open(log, "w") as lf:
+        rc = subprocess.run(cmd, shell=True, stdout=lf, stderr=subprocess.STDOUT).returncode
+    results["trainSeconds"] = round(time.time() - t0, 1)
+    tail = log.read_text(errors="replace").splitlines()[-40:]
+    print("\n".join(tail), flush=True)
+    if rc != 0 and world > 1:
+        print(f"[warn] DDP 训练返回码 {rc}，回退单卡重跑", flush=True)
+        results["ddpFallback"] = True
+        with open(log, "a") as lf:
+            cmd1 = f"{sys.executable} {tools/'train-micro-gen.py'} {common}"
+            rc = subprocess.run(cmd1, shell=True, stdout=lf, stderr=subprocess.STDOUT).returncode
+        results["trainSecondsFallback"] = round(time.time() - t0, 1)
+        tail = log.read_text(errors="replace").splitlines()[-40:]
+        print("\n".join(tail), flush=True)
+    results["trainExitCode"] = rc
+
+    # 5) 汇总（模型规格 / 训练曲线尾 / dev 指标 / 文件哈希）
+    import hashlib
+
+    def sha256(p: Path):
+        if not p.exists():
+            return None
+        h = hashlib.sha256()
+        with open(p, "rb") as f:
+            for b in iter(lambda: f.read(1 << 20), b""):
+                h.update(b)
+        return h.hexdigest()
+
+    cfg_p = out / "model-config.json"
+    if cfg_p.exists():
+        cfg = json.loads(cfg_p.read_text())
+        params = cfg["vocab"] * cfg["d_model"]  # 嵌入+输出（共享）
+        for _ in range(cfg["layers"]):
+            params += 4 * cfg["d_model"] ** 2 + 2 * cfg["d_model"] * cfg["ffn_mult"] * cfg["d_model"]
+        results["modelParams"] = params
+        results["modelConfig"] = cfg
+    losses = [l for l in tail if l.startswith("[train]")][-6:]
+    results["lossTail"] = losses
+    if (out / "dev-metrics.json").exists():
+        results["devMetrics"] = json.loads((out / "dev-metrics.json").read_text())
+    results["wallSeconds"] = round(time.time() - t_all, 1)
+    (wd / "RESULTS.txt").write_text(json.dumps(results, indent=2, ensure_ascii=False))
+    print("[results] " + json.dumps({k: results[k] for k in
+                                     ("gpus", "trainSeconds", "modelParams", "devMetrics")
+                                     if k in results}, ensure_ascii=False), flush=True)
+
+    # 6) 打包
+    zip_p = wd / "cfb-micro-gen-run1.zip" if WDIR_ENV or not Path("/kaggle/working").exists() \
+        else Path("/kaggle/working") / "cfb-micro-gen-run1.zip"
+    with zipfile.ZipFile(zip_p, "w", zipfile.ZIP_DEFLATED) as z:
+        for p in sorted(out.rglob("*")):
+            if p.is_file():
+                z.write(p, p.relative_to(wd))
+        z.write(wd / "RESULTS.txt", "RESULTS.txt")
+        z.write(log, "train.log")
+    print(f"[done] 产物 {zip_p} ({zip_p.stat().st_size/1e6:.1f} MB) / RESULTS.txt 同步在 /kaggle/working",
+          flush=True)
+
+
+if __name__ == "__main__":
+    main()
