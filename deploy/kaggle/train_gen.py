@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 REPO = "https://github.com/liaocr/cfb.git"
 WORK = "/kaggle/working"
@@ -59,8 +60,16 @@ def main():
     print(json.dumps({k: meta[k] for k in ("trainRows", "trainExamplesUsed", "skippedOverMaxLen",
                                            "finalLossAvg50", "trainingSeconds", "devMetrics")}, ensure_ascii=False, indent=2), flush=True)
 
+    summ = {k: meta[k] for k in ("trainRows", "trainExamplesUsed", "skippedOverMaxLen",
+                                 "finalLossAvg50", "trainingSeconds")}
+    summ.update(meta["devMetrics"])
+    Path(f"{WORK}/RESULTS.txt").write_text(json.dumps(summ, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print("=== 结果落盘 /kaggle/working/RESULTS.txt ===", flush=True)
+    print(json.dumps(summ, ensure_ascii=False, indent=2), flush=True)
+
     print("=== 打包 ===", flush=True)
     import shutil
+    shutil.copy(f"{WORK}/RESULTS.txt", f"{RUN}/RESULTS.txt")
     zip_path = shutil.make_archive(f"{WORK}/cfb-gen-compressor-run1", "zip", root_dir=RUN)
     print("产物：", zip_path, os.path.getsize(zip_path), "bytes · 总耗时", int(time.time() - t0), "s", flush=True)
     print("下载：Kaggle 右侧 Output → cfb-gen-compressor-run1.zip（含 adapter/、dev-predictions.jsonl、run-meta.json）", flush=True)

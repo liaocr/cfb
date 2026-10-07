@@ -34,13 +34,18 @@ node tools/micro-generator/teach-shape.mjs \
   --mode shape --out-dir transfer/models/micro-generator-gen-v3
 ```
 
-## 2. 上传到 Kaggle（两分钟）
+## 2. 开训：Kaggle 新建 notebook，code 框里粘一条
 
-1. **Datasets → New Dataset**，上传整个文件夹 `transfer/models/micro-generator-gen/kaggle-upload/`（2.4MB），命名如 `cfb-gen-compressor-corpus`。
-2. **New Notebook → File → Import Notebook**，上传同文件夹里的 `kaggle-generative-compressor.ipynb`。
-3. 设置：**Accelerator = GPU T4 × 2**，**Internet = ON**（拉 Qwen3-0.6B 权重）。
-4. **Add Input** → 选第 1 步的数据集。
-5. **Run All**（预计 35–60 分钟）。
+1. Kaggle → **New Notebook**（新建一个空 notebook 即可）。
+2. 右侧设置两下：**Accelerator = GPU T4 × 2**、**Internet = ON**。
+3. 第一个 code 框里粘这一条，Shift+Enter：
+
+```bash
+!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/train_gen.py | python3 -
+```
+
+它自己完成：装依赖 → 从 GitHub 拉仓库（含 v3 语料）→ QLoRA 训练 → 打印读数 → 结果落盘 `/kaggle/working/RESULTS.txt` → 打包 `cfb-gen-compressor-run1.zip`。
+**不需要上传任何东西。**
 
 ## 3. 跑完先看三个数（notebook 自动打）
 
