@@ -25,7 +25,7 @@ import json, os, subprocess, sys, time, zipfile
 from pathlib import Path
 
 REPO = "https://github.com/liaocr/cfb.git"
-PIN = os.environ.get("CFB_SHA", "microgen-v2")   # 不可变标签（= 提交 c1b1e3f… 见文档）；CFB_SHA 可覆盖
+PIN = os.environ.get("CFB_SHA", "microgen-v2")   # 不可变标签（在文档里记录对应提交 SHA）；CFB_SHA 可覆盖
 CORPUS = os.environ.get("CFB_CORPUS", "transfer/models/micro-generator-gen-v4")
 WDIR_ENV = os.environ.get("CFB_WORKDIR", "")
 CKPT_ENV = os.environ.get("CFB_REPRED_CKPT", "")
