@@ -41,12 +41,14 @@
 先设 **Accelerator = GPU T4 ×2**、**Internet = ON**，然后：
 
 ```bash
-!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/microgen-v2/deploy/kaggle/train_micro.py | python3 -
+!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/<URL_SHA>/deploy/kaggle/train_micro.py | python3 -
 ```
 
-脚本内部固定 checkout 标签 **`microgen-v2`**（含 v5 语料 + 生成侧截断修复 + 生成前自检探针），
-URL 也指向同名标签；两层都用不可变引用（标签/SHA），避免 raw CDN 缓存导致跑旧代码。
-标签不可变；需要绝对定位时用 `CFB_SHA=<完整提交 SHA>` 覆盖。
+**两层钉法**（避免 raw CDN 缓存跑旧代码）：
+* URL 里的 `<URL_SHA>` = **launcher 提交**（`deploy/kaggle/*.py` 本身所在的提交）；
+* 脚本内部 `PIN` = **tools 提交**（`tools/` + `transfer/models/` 语料所在，当前 `ab8fa97e`）。
+两者内容一致（只有 launcher 里的 PIN 一行不同）。**不要用标签钉**：raw CDN 对 force-move 过的标签会继续吐旧内容（实测踩过）。
+需要覆盖时用 `CFB_SHA=<完整提交 SHA>`。
 
 ## 重跑 dev 预测（自检版，一条）
 
@@ -55,7 +57,7 @@ URL 也指向同名标签；两层都用不可变引用（标签/SHA），避免
 训练行记忆检查），跑完自动打包并打印 `[probe]` 判定：
 
 ```bash
-!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/microgen-v2/deploy/kaggle/repred_micro.py | python3 -
+!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/<URL_SHA>/deploy/kaggle/repred_micro.py | python3 -
 ```
 
 * 自动找 ckpt（`/content/runs/*/out`、`/kaggle/working/**/out`）；也可以 `CFB_REPRED_CKPT=<run 目录>` 指定。
