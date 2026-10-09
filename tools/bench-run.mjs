@@ -8,7 +8,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { BASE_POLICY } from './helpers/generation.mjs'
 import { loadPolicyFor } from './traj-run.mjs'
 import { draftDistance } from './helpers/hand-draft.mjs'
@@ -16,7 +16,7 @@ import { isMode1GoldEligible } from './helpers/mode1-quality.mjs'
 import { loadGold, goldUse, goldRulerOk, DRAFT_DISTANCE_VERSION, benchReport, benchReportMd } from './helpers/three-mode.mjs'
 import { evidenceDigest } from '../src/evidence-program.js'
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 export const benchCacheKey = ({ policyId, policy, goldId, goldDigest, model }) => evidenceDigest({
   policyId: policyId || (policy && policy.id) || 'base',
   patches: (policy && policy.patches) || [],

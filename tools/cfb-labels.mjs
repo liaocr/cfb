@@ -13,10 +13,10 @@
 //   node tools/cfb-labels.mjs power [--n 20]    报最小可分辨效应（近似）
 import fs from 'node:fs'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { annotate, writeJson, readJson, ensureDir, prng } from './helpers/offline-core.mjs'
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..')
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const OFFLINE = path.join(ROOT, '.cfb-offline')
 const f = (a, d) => (a.includes(d) ? a[a.indexOf(d) + 1] : null)
 

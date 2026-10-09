@@ -16,7 +16,7 @@
 //   node tools/cfb-judge.mjs audit-traj --results f.jsonl        分叉轨迹分歧轮语义归因（代码维 + 评委归因提示词）
 import fs from 'node:fs'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { DIMENSIONS, DIMS_BY_RATER, judgeCapacity, binaryCeiling, judgeLadPrompt, parseJudgeLad, compositeScore, DEFAULT_WEIGHTS, raterAgreement, ruleLlmDisagreement, pairedBootstrap, pairedEffectSize, codeDimensions, trajDivergenceJudgePrompt, CAUSAL_ATTRIBUTIONS, benchJudgePrompt, parseBenchJudge, BENCH_SEMANTIC_VERDICTS } from './helpers/judge-layer.mjs'
 import { episodeOutcome } from './helpers/ruler.mjs'
 import { toRow, fitWeights, rankAgreement, missingDimensionSignal, activeSelect } from './helpers/calibration.mjs'
@@ -25,7 +25,7 @@ import { auditMode1Output, isMode1GoldEligible } from './helpers/mode1-quality.m
 import { loadFrozenTasks } from './helpers/candidates.mjs'
 import { truthDimensions } from './helpers/truth-dims.mjs'
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..')
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const f = (a, d) => (a.includes(d) ? a[a.indexOf(d) + 1] : null)
 const read = (p) => (p && fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '')
 const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'))

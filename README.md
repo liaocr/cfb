@@ -89,7 +89,7 @@ dsh-cot-form-b/
 │   └── helpers/                 内聚辅助模块（ruler / judge-layer / hand-draft / flywheel / proposer / gold-store 等；数量见文首水位块）
 │
 ├── test/                        *.selftest.mjs 套件（个数见文首水位块）+ fixtures/ 真机样本
-├── deploy/                      onboard.mjs 部署漂移体检 + eval-profile 配置模板 + probe/ 探针 + systemd/
+├── deploy/                      onboard.mjs 部署漂移体检 + eval-profile 配置模板 + kaggle/ 一键训练启动器(train_micro/train_gen/repred_micro/start)
 ├── docs/                        ③ 合一化文档体系（索引见 docs/README.md）
 │   ├── README.md                文档总目录与阅读路线图
 │   ├── ARCHITECTURE.md          生产插件与认知编译器技术架构

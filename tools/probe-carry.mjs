@@ -10,9 +10,9 @@
 // 用法：DEEPSEEK_API_KEY=… DEEPSEEK_BASE_URL=… DEEPSEEK_MODEL=… node tools/probe-carry.mjs [--with-cot]
 //   --with-cot 额外发一次 128-token 请求，确认这条通道会不会**返回**思维链（模式 1 两头都要：能收、能出）。
 import process from 'node:process'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const ROOT = new URL('..', import.meta.url).pathname
+const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const { carryCheck } = await import(pathToFileURL(ROOT + 'tools/traj-run.mjs').href)
 const { makeChat, TRUSTED_FP, responseText } = await import(pathToFileURL(ROOT + 'tools/effect-eval.mjs').href)
 

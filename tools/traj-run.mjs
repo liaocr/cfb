@@ -21,7 +21,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { TOOLS, makeChat, responseText, TRUSTED_FP, claudeShaped } from './effect-eval.mjs'
 import { claimOf } from './effect-mr.mjs'
 import { TRAJ_TASKS, materialize } from './traj-fixtures.mjs'
@@ -111,7 +111,7 @@ export function loadPolicyFor(variant, policyDir) {
   if (!variant.startsWith('policy:')) return null
   const id = variant.slice('policy:'.length)
   if (id === 'base') return BASE_POLICY
-  const dir = policyDir || (process.env.CFB_CYCLE_DIR ? path.join(path.resolve(process.env.CFB_CYCLE_DIR), 'offline', 'policies') : path.join(path.dirname(new URL(import.meta.url).pathname), '..', '.cfb-offline', 'policies'))
+  const dir = policyDir || (process.env.CFB_CYCLE_DIR ? path.join(path.resolve(process.env.CFB_CYCLE_DIR), 'offline', 'policies') : path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.cfb-offline', 'policies'))
   const file = path.join(dir, id + '.json')
   if (!fs.existsSync(file)) throw new Error('policy-not-found:' + id + '（' + file + '）')
   return JSON.parse(fs.readFileSync(file, 'utf8'))

@@ -25,8 +25,10 @@ import { perturbExposure } from '../tools/helpers/perturb-check.mjs'
 import { auditMode1Pair } from '../tools/helpers/mode1-quality.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-let pass = 0, fail = 0
-const test = async (name, fn) => { try { await fn(); pass++; console.log('PASS ' + name) } catch (e) { fail++; console.log('FAIL ' + name); console.log(e && e.stack ? e.stack.split('\n').slice(0, 5).join('\n') : String(e)) } }
+let pass = 0, fail = 0, skip = 0
+const test = async (name, fn) => { try { const r = await fn(); if (r === 'skip') { skip++; console.log('SKIP ' + name); return } pass++; console.log('PASS ' + name) } catch (e) { fail++; console.log('FAIL ' + name); console.log(e && e.stack ? e.stack.split('\n').slice(0, 5).join('\n') : String(e)) } }
+// A18/A19 需要 POSIX bash 沙箱(execFileSync bash 重放真实轨迹),Windows 上无法验证 ⇒ 按仓库 platform.mjs 约定跳过
+const BASH_ONLY = process.platform === 'win32'
 const W = (task, outcome = 'win') => ({ task, outcome })
 const split = { h1: 'holdout', h2: 'holdout' }
 const devWins = ['a', 'b', 'c', 'd', 'e'].map((t) => W(t))
@@ -286,6 +288,7 @@ try {
     const r = fitFlagWeights(pairs); assert.equal(r.status, 'diagnostic'); assert.ok(r.weights.next > 0 && r.weights.falseDone < 0, JSON.stringify(r.weights)); assert.ok(r.aucLearnedCv > 0.9 && r.aucHand > 0.9)
   })
   await test('A18 新家族（零 API）：wrong-model / sse-truncated 落成可执行场景 —— 起始未修好、可见测试是绿的、复现脚本真跑出症状；隐藏 oracle：改脚本不算、两种真修法都算、sse 只改一处不算、改坏不算；decoy 也能加', () => {
+    if (BASH_ONLY) return 'skip'   // Windows 无 bash,沙箱重放不可用(A18/A19 专属守卫)
     const { execTool } = tr
     assert.deepEqual(TRAJ_TASKS.map((t) => t.id), ['eacces-config', 'flaky-timeout', 'perf-regression', 'wrong-model', 'sse-truncated'])
     const mk = (id) => { const t = TRAJ_TASKS.find((x) => x.id === id); const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'fam-')); materialize(t, repo); return { t, repo } }
@@ -317,6 +320,7 @@ try {
     } finally { for (const d of tmps) fs.rmSync(d, { recursive: true, force: true }) }
   })
   await test('A19 扰动惰性检查 + 续跑探针 + 单状态探针计划：decoy 在 21 条真实轨迹上 active（排查类调用命中 ≥ 80%）；raw 单臂计划 3 次主调用 ≈$0.038、stop 无配对只看上界；续跑探针字段', () => {
+    if (BASH_ONLY) return 'skip'   // 需 bash 沙箱重放,Windows 不可用
     const rows = ['traj1', 'traj2', 'traj3'].flatMap((d) => fs.readFileSync(path.join(ROOT, 'transfer', d, 'results.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => ({ ...JSON.parse(l), dir: d })))
     const r = perturbExposure(rows, { kind: 'decoy' }); assert.equal(r.n, 21); assert.equal(r.exposedBeforeFix, 21); assert.ok(r.searchRate >= 0.8, JSON.stringify(r)); assert.equal(r.verdict, 'active'); assert.match(r.note, /可见 ≠ 更难/)
     assert.ok(Object.values(r.byFamily).every((f) => f.verdict === 'active'))
@@ -802,6 +806,7 @@ try {
     assert.equal(TR.compressBudgetLine([{ variant: 'raw' }]), '')
   })
   await test('A34 v14.12.3 F7 假沙箱不泄宿主（t8 实测漏洞）：裸 ~ / 裸 / / .. / $HOME 一律「不存在」，不真跑；真跑的白名单命令 HOME 指向假仓库、不读宿主 profile；仓库内命令照常', async () => {
+    if (BASH_ONLY) return 'skip'   // A34 全测 bash 沙箱(execFileSync 'bash'),Windows 不可用
     const TR = await import('../tools/traj-run.mjs'); const F = await import('../tools/traj-fixtures.mjs')
     const task = F.TRAJ_TASKS.find((t) => t.id === 'perf-regression'); const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'fx-'))
     try {
@@ -994,9 +999,14 @@ try {
         assert.equal(lh.perturb, 'long-horizon')
         assert.ok(lh.files['docs/incident-runbook.md'] && lh.files['logs/stale-diagnostic.log'], `${baseTask.id}: 含排障手册与陈旧快照日志`)
       }
-      const pc = cyc.runCli(['perturb-check', '--kind', 'long-horizon'])
-      assert.equal(pc.status, 0, pc.stdout + pc.stderr)
-      assert.match(pc.stdout, /\*\*active\*\*/)
+      // C3 的活口判据依赖 bash 沙箱反事实重放(perturb-check → execTool → execFileSync bash);Windows 无 bash ⇒ 只跳过这一条,上面的纯函数断言照跑
+      if (!BASH_ONLY) {
+        const pc = cyc.runCli(['perturb-check', '--kind', 'long-horizon'])
+        assert.equal(pc.status, 0, pc.stdout + pc.stderr)
+        assert.match(pc.stdout, /\*\*active\*\*/)
+      } else {
+        console.log('SKIP C3 的 perturb-check active 判据(bash 沙箱不可用),long-horizon 文件形状断言已跑')
+      }
 
       // 4. C4：synthesize-policy 帕累托极限策略合成与 bon-concise 飞轮对。
       //    用跟踪的历史轨迹/金标在临时 cycle dir 中显式 harvest；不依赖本机 .cfb-offline 状态。
@@ -1213,7 +1223,8 @@ try {
     assert.deepEqual(r2.added, [loss.id], '显式 --include-loss 时同样的稿要能入库')
   })
 } finally {
-  console.log(`\n=== closed-loop-v4 selftest: ${pass} pass / ${fail} fail ===`)
+  console.log(`\n=== closed-loop-v4 selftest: ${pass} pass / ${fail} fail / ${skip} skip ===`)
+  console.log(`PASS=${pass} FAIL=${fail} SKIP=${skip}`)
   process.exit(fail ? 1 : 0)
 }
 })()

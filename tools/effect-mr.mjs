@@ -13,11 +13,11 @@
 import fs from 'node:fs'
 import crypto from 'node:crypto'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { TASKS } from './v4-live.mjs'
 import { SYSTEM, ASK, TOOLS, makeChat, responseText, parseJudge, channelIssue } from './effect-eval.mjs'
 
-const HERE = path.dirname(new URL(import.meta.url).pathname)
+const HERE = path.dirname(fileURLToPath(import.meta.url))
 // v12.9.0 措辞修订：run1 里主模型把「判断 + 工具调用」读成与它的输出协议冲突（调用工具时只能输出 JSON），于是为了能写文字而宣布「无需动作、可以收工」
 //   （sse 红题两例假完成的思考原话都在纠结这个）。改成两种模式二选一，消掉这个假象。
 export const ASK3 = '\n\n根据这两个结果决定下一步。二选一：还需要动作，就直接发出下一条工具调用（不用写判断）；不需要任何动作，就用文字说明问题是否已解决、依据是什么、为什么可以收工。'

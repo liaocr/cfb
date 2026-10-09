@@ -9,11 +9,11 @@
 //   node tools/cfb-criteria.mjs --add               把当前判据的判定写入拟标注文件供人复核
 import fs from 'node:fs'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { claimOfV3Core, annotate } from './helpers/offline-core.mjs'
 import { claimOf, claimOfV2, claimOfV3 } from './effect-mr.mjs'
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..')
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 export const GOLDEN = path.join(ROOT, 'transfer/offline/golden.json')
 
 /** 内建黄金集：逐字取自 docs/analysis/LIVE-EXPANDED-2026-10-01.md §3 与 effect-mr.mjs 的判据注释。 */

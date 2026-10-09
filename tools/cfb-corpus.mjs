@@ -9,11 +9,11 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { readTraceEvents, rebuildTrajectories, funnelOf, annotate, gateDraft, kItemsOf, writeJson, ensureDir } from './helpers/offline-core.mjs'
 
-const ROOT = path.resolve(path.dirname(require$fileURL()), '..')
-function require$fileURL() { return new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1') }
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
 
 export const DEFAULT_TRACE = (() => {
   const candidates = [

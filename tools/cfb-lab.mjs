@@ -13,10 +13,10 @@
 //   node tools/cfb-lab.mjs all                            以上串起来，出 .cfb-offline/lab.md
 import fs from 'node:fs'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { gateDraft, kItemsOf, annotate, rankCandidates, prng, editDistance, similarity, writeJson, readJson, ensureDir, K_ITEMS } from './helpers/offline-core.mjs'
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..')
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const OFFLINE = path.join(ROOT, '.cfb-offline')
 const f = (a, d) => (a.includes(d) ? a[a.indexOf(d) + 1] : null)
 

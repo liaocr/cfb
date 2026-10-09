@@ -12,12 +12,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 
 const argValue = (name, fallback = null) => {
   const i = process.argv.indexOf(name)
   return i >= 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : (process.argv.includes(name) ? fallback : fallback)
 }
-const HERE = path.dirname(new URL(import.meta.url).pathname)
+const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(HERE, '..')
 const DATASET = path.resolve(argValue('--dataset', path.join(REPO, 'transfer/models/micro-dev-dataset.json')))
 const OUT = path.resolve(argValue('--out', path.join(REPO, 'transfer/models/unit-label-review-blind-v3.json')))

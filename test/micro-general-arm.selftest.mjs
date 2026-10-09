@@ -117,7 +117,9 @@ try {
   })
   test('08 生产权重在清单里且哈希一致（不改它，但要能证明没被改）', () => {
     const list = fs.readFileSync(path.join(ROOT, 'MANIFEST.sha256'), 'utf8')
-    const line = list.split('\n').find((l) => l.trim().endsWith(WEIGHTS))
+    // MANIFEST 行路径一律正斜杠,与 path.join 的 win32 反斜杠无关;统一转正斜杠再匹配
+    const wantRel = WEIGHTS.split(path.sep).join('/')
+    const line = list.split('\n').find((l) => l.trim().endsWith(wantRel))
     assert.ok(line, '生产权重不在 MANIFEST 里 ⇒ 它一旦被 .gitignore 吞掉，CI 检出会静缺')
     const want = line.trim().split(/\s+/)[0]
     const got = crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, WEIGHTS))).digest('hex')

@@ -68,11 +68,28 @@ const captureRows = [
   { ...captureBase, stored: captureBase.stored + ' ' , trainingEligible: true, qualityAudit: captureAudit.qualityAudit },
 ]
 
-const pySource = `import json, sys\nsys.path.insert(0, 'tools')\nfrom helpers.mode1_quality import mode1_apparatus_categories, mode1_output_issues, mode1_pair_text_sha256, mode1_pair_content_audit_valid, mode1_capture_quality_audit_valid\ndata = json.load(sys.stdin)\nprint(json.dumps({\n  'categories': [mode1_apparatus_categories(x) for x in data['texts']],\n  'pairHashes': [mode1_pair_text_sha256(p['chosenText'], p['rejectedText']) for p in data['pairs']],\n  'pairValid': [mode1_pair_content_audit_valid(p) for p in data['pairCases']],\n  'captureValid': [mode1_capture_quality_audit_valid(s) for s in data['captures']],\n  'evidenceCounts': [mode1_output_issues(c['text'], c['evidence']) for c in data['evidenceCases']],\n}, ensure_ascii=False))\n`
-const proc = spawnSync('python3', ['-c', pySource], {
+const pySource = `import json, sys\ntry:\n    sys.stdin.reconfigure(encoding='utf-8')\n    sys.stdout.reconfigure(encoding='utf-8')\nexcept Exception:\n    pass\nsys.path.insert(0, 'tools')\nfrom helpers.mode1_quality import mode1_apparatus_categories, mode1_output_issues, mode1_pair_text_sha256, mode1_pair_content_audit_valid, mode1_capture_quality_audit_valid\ndata = json.load(sys.stdin)\nprint(json.dumps({\n  'categories': [mode1_apparatus_categories(x) for x in data['texts']],\n  'pairHashes': [mode1_pair_text_sha256(p['chosenText'], p['rejectedText']) for p in data['pairs']],\n  'pairValid': [mode1_pair_content_audit_valid(p) for p in data['pairCases']],\n  'captureValid': [mode1_capture_quality_audit_valid(s) for s in data['captures']],\n  'evidenceCounts': [mode1_output_issues(c['text'], c['evidence']) for c in data['evidenceCases']],\n}, ensure_ascii=False))\n`
+// 平台探测(Windows 的 python3 常是 Store 占位存根,spawn 会失败):优先 python3,回退 python;都不可用则整条跳过。
+function pickPython() {
+  for (const bin of ['python3', 'python']) {
+    try {
+      const p = spawnSync(bin, ['-c', 'print(1)'], { encoding: 'utf8' })
+      if (p.status === 0 && String(p.stdout).trim() === '1') return bin
+    } catch { /* 试下一个 */ }
+  }
+  return null
+}
+const PY = pickPython()
+if (!PY) {
+  console.log('SKIP mode1-quality-parity:需要可用的 Python(JS/Python 双实现一致性校验),本机 python3/python 均不可用')
+  console.log('PASS=0 FAIL=0 SKIP=1')
+  process.exit(0)
+}
+const proc = spawnSync(PY, ['-c', pySource], {
   cwd: process.cwd(),
   input: JSON.stringify({ texts: cases, pairs: auditedPairs, pairCases, captures: captureRows, evidenceCases }),
   encoding: 'utf8',
+  env: { ...process.env, PYTHONIOENCODING: 'utf-8' },   // Windows 默认 cp936,不设会把 UTF-8 字节解成 lone surrogate
 })
 assert.equal(proc.status, 0, proc.stderr || 'Python parity helper failed')
 const python = JSON.parse(proc.stdout)
