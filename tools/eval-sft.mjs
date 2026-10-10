@@ -85,6 +85,15 @@ const neither = n - both - sOnly - tOnly
 const fc = (k) => { const m = {}; for (const r of rows) for (const f of r[k]) m[f] = (m[f] || 0) + 1; return m }
 const q = (a, p) => { const s = a.slice().sort((x, y) => x - y); return s.length ? s[Math.floor((s.length - 1) * p)] : null }
 const rate = (x) => n ? +(x / n).toFixed(4) : 0
+const mean = (a) => a.length ? +(a.reduce((s, x) => s + x, 0) / a.length).toFixed(4) : 0
+// 软分是不带阈值的连续量，比"过没过门"信息量大得多：
+// 硬门把压缩比切成过/不过，阈值挪 0.1 就能让通过率动 10 个百分点（见 docs 里的敏感度表），
+// 而软分不会因为挪一条线就跳变。所以两个都报 —— 只看通过率会被阈值牵着走。
+const tScore = rows.map((r) => r.teacherScore)
+const sScore = rows.map((r) => r.studentScore)
+const scoreWins = rows.filter((r) => r.studentScore > r.teacherScore).length
+const scoreLoss = rows.filter((r) => r.studentScore < r.teacherScore).length
+const scoreTie = n - scoreWins - scoreLoss
 const rate2 = (x, d) => d ? +(x / d).toFixed(4) : 0
 
 const report = {
@@ -101,6 +110,10 @@ const report = {
   chars: { teacher: { p50: q(rows.map((r) => r.teacherChars), 0.5) },
            student: { p50: q(rows.map((r) => r.studentChars), 0.5) } },
   ratio: { teacherP50: q(rows.map((r) => r.teacherRatio), 0.5), studentP50: q(rows.map((r) => r.studentRatio), 0.5) },
+  softScore: { teacherMean: mean(tScore), studentMean: mean(sScore),
+    teacherP50: q(tScore, 0.5), studentP50: q(sScore, 0.5),
+    studentWins: scoreWins, studentLosses: scoreLoss, ties: scoreTie,
+    note: '不带阈值的连续量，不会被 G7 那条线牵着走' },
   rows,
 }
 fs.mkdirSync(path.dirname(OUT), { recursive: true })
@@ -114,6 +127,10 @@ console.log('  四格：都过 %d · 只学生过 %d · 只教师过 %d · 都�
 console.log('  ── 有受力点子集（剔除 G0 的 %d 条）才是真正的对比 ──', n - sn)
 console.log('  教师 %d/%d = %s · 学生 %d/%d = %s', stPass, sn, pc(rate2(stPass, sn)), ssPass, sn, pc(rate2(ssPass, sn)))
 console.log('  压缩比 p50：教师 %s · 学生 %s', report.ratio.teacherP50, report.ratio.studentP50)
+console.log('  软分（无阈值）：教师均值 %s p50 %s · 学生均值 %s p50 %s',
+  report.softScore.teacherMean, report.softScore.teacherP50,
+  report.softScore.studentMean, report.softScore.studentP50)
+console.log('  软分逐条胜负：学生赢 %d · 输 %d · 平 %d', scoreWins, scoreLoss, scoreTie)
 console.log('  字数 p50：教师 %d · 学生 %d', report.chars.teacher.p50, report.chars.student.p50)
 const fmt = (m) => Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => k + ' x' + v).join('、') || '（无）'
 console.log('  学生失败分布：' + fmt(report.student.failCount))
