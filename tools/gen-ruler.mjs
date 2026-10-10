@@ -43,7 +43,7 @@ import { fileURLToPath } from 'node:url'
 // 用生产同一个估算器（src/tokens.js，中文 0.6 / 其余 0.3），不另立口径。
 import { estimateTokens } from '../src/tokens.js'
 
-export const RULER_VERSION = 'gen-ruler/2'
+export const RULER_VERSION = 'gen-ruler/3'
 // 承重**标识符**保留率下限（承重路径另算，一个都不许丢）。
 //
 // 实测依据（61 条真手稿，.cfb-offline/ruler/report-hand.json）：
@@ -467,6 +467,20 @@ export function judge(input) {
   }
   if (lostPaths.length) failed.push('G3 anchors-kept')
   if (loadIds.length >= 1 && retIds < ANCHOR_FLOOR) failed.push('G3 anchors-kept')
+
+  // ---- G0：这道尺子对这条单元**根本没有受力点** ----
+  //
+  // 自测发现的洞，不是推演：把学生稿换成**空字符串**，89 条 dev 里居然有 16 条过门
+  // （18.0%）。逐条看原因是——那些单元 raw 里没有任何文件路径（codeTask=false），
+  // 题面的失败陈述里也没有一个 raw 认得、可当承重的锚点（load 为空）。于是
+  // G1~G7 全部**空转**：没有引号可查、没有落点可判、没有锚点可丢、没有命令可验，
+  // 空稿当然也不算"抄"、不算"没压缩"。
+  //
+  // 后果非常坏：模型只要学会**什么都不输出**，就能白拿 18% 的分数，而没有任何指标报警。
+  // 所以"没有受力点"必须显式判死，而不是默认放过。默认放过会让指标系统性报喜。
+  // 这跟 preflight() 的 P5（no-load-bearing-anchors）是同一条道理，只是那道门
+  // 拦在**花钱之前**，这道门拦在**打分之时**——两道都要有。
+  if (load.length === 0 && !codeTask) failed.push('G0 no-leverage')
 
   // ---- G5 ----
   const rawPairs = new Set(causePairs(raw))

@@ -209,6 +209,10 @@ def parse_args(argv=None):
     ap.add_argument("--smoke-steps", type=int, default=3)
     ap.add_argument("--gen-n", type=int, default=20, help="训练后在 dev 上生成多少条稿子供本地尺子打分")
     ap.add_argument("--gen-max-new", type=int, default=768)
+    ap.add_argument("--gen-budget", type=float, default=0,
+                    help="生成阶段的时间预算（秒），0=不限。缓存不生效时防止生成阶段拖垮整轮")
+    ap.add_argument("--no-gen-cache", dest="gen_cache", action="store_false", default=True,
+                    help="生成时不用状态缓存（慢一个数量级，只在缓存自检失败时才有意义）")
     return ap.parse_args(argv)
 
 
@@ -558,6 +562,26 @@ def main(argv=None) -> int:
             break
     print(f"· 训练结束 {step} 步，{(time.time()-t0)/60:.1f} 分钟", flush=True)
 
+    # ---- 7b. 先存档，再做 dev / 生成 ----
+    # 顺序是有意的：生成阶段要跑十几分钟，中途任何异常（OOM、缓存不兼容、
+    # 下载被打断）都会让一整轮训练白跑。先把权重落盘，后面崩了模型也还在。
+    # 两个 rank 同时 save_pretrained 到同一目录会互相踩，只让 0 号写。
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if world > 1:
+        torch.distributed.barrier()
+    if is_main:
+        base_model.save_pretrained(out_dir / "model")
+        tok.save_pretrained(out_dir / "model")
+        print(f"· 已存档 {out_dir / 'model'}", flush=True)
+
+    # 关掉梯度检查点。它在 eval 下本来就不生效，但 transformers 会因为
+    # "gradient checkpointing 与 use_cache 不兼容" 把生成的状态缓存一并关掉 ——
+    # 于是每吐一个 token 都要把整段 prompt 重算一遍（O(n^2)）。
+    # 冒烟 v5 里 256 token 花了 37.5s（约 6.8 token/s）就是这么来的。
+    if args.grad_ckpt:
+        base_model.gradient_checkpointing_disable()
+
     # ---- 8. dev 损失（只 0 号 rank，走未包裹句柄）----
     if dev_encoded and is_main:
         base_model.eval()
@@ -572,31 +596,65 @@ def main(argv=None) -> int:
         print(f"· dev loss {tot/max(1,cnt):.4f}（{len(dev_encoded)} 条）", flush=True)
 
     # ---- 9. 生成稿子，交给本地尺子打分（不在这里自评）----
-    out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
     gen_path = out_dir / "dev-generations.jsonl"
+    gen_rows = 0
     if dev_encoded and is_main:
         base_model.eval()
-        written = 0
-        with gen_path.open("w", encoding="utf-8") as f, torch.no_grad(), \
-                torch.autocast("cuda", dtype=amp_dtype, enabled=amp_dtype is not None):
+
+        def gen_once(row, max_new, cache):
+            prompt = render(tok, [{"role": "system", "content": row["system"]},
+                                  {"role": "user", "content": row["user"]}], True)
+            enc = tok(prompt, return_tensors="pt", add_special_tokens=False).to(device)
+            t = time.time()
+            with torch.no_grad(), torch.autocast("cuda", dtype=amp_dtype,
+                                                 enabled=amp_dtype is not None):
+                o = base_model.generate(**enc, max_new_tokens=max_new, do_sample=False,
+                                        use_cache=cache, pad_token_id=tok.pad_token_id,
+                                        eos_token_id=eos_id)
+            return (tok.decode(o[0][enc["input_ids"].shape[1]:], skip_special_tokens=True),
+                    time.time() - t)
+
+        # 先自检：开缓存与不开缓存的输出**必须逐字相同**，否则"提速"是拿正确性换的。
+        # RWKV7 是线性注意力，缓存的是循环状态，理论上应等价；但理论不等于实测。
+        if args.gen_cache:
+            a, ta = gen_once(dev_encoded[0][0], 64, False)
+            b, tb = gen_once(dev_encoded[0][0], 64, True)
+            same = a == b
+            print(f"· 缓存自检 64 token：不开 {ta:.1f}s / 开 {tb:.1f}s"
+                  f"（{ta / max(tb, 1e-6):.1f}x）· 输出{'逐字一致' if same else '不一致'}", flush=True)
+            if not same:
+                print("  警告：开缓存后输出变了 -> 回退到不开缓存（慢，但不冒正确性的险）", flush=True)
+                print(f"  不开：{a[:150]!r}", flush=True)
+                print(f"  开  ：{b[:150]!r}", flush=True)
+                args.gen_cache = False
+
+        written, skipped, t_gen = 0, 0, time.time()
+        with gen_path.open("w", encoding="utf-8") as f:
             for r, _ in dev_encoded[:args.gen_n]:
-                prompt = render(tok, [{"role": "system", "content": r["system"]},
-                                      {"role": "user", "content": r["user"]}], True)
-                enc = tok(prompt, return_tensors="pt", add_special_tokens=False).to(device)
-                o = base_model.generate(**enc, max_new_tokens=args.gen_max_new, do_sample=False,
-                                        pad_token_id=tok.pad_token_id, eos_token_id=eos_id)
-                txt = tok.decode(o[0][enc["input_ids"].shape[1]:], skip_special_tokens=True)
+                if args.gen_budget and time.time() - t_gen > args.gen_budget:
+                    skipped = min(args.gen_n, len(dev_encoded)) - written
+                    print(f"· 生成到时间预算 {args.gen_budget:.0f}s，余 {skipped} 条不生成"
+                          f"（样本变少，尺子上的置信区间会变宽）", flush=True)
+                    break
+                try:
+                    txt, dt = gen_once(r, args.gen_max_new, args.gen_cache)
+                except Exception as exc:  # noqa: BLE001
+                    if not args.gen_cache:
+                        raise
+                    print(f"· 缓存生成失败（{exc!r}）-> 回退到不开缓存", flush=True)
+                    args.gen_cache = False
+                    txt, dt = gen_once(r, args.gen_max_new, False)
                 f.write(json.dumps({"id": r.get("id"), "raw": r.get("raw", ""),
                                     "ctx": r.get("ctx", ""), "draft": txt.strip()},
                                    ensure_ascii=False) + "\n")
+                f.flush()
                 written += 1
-        print(f"· 生成 {written} 条 -> {gen_path}（用 tools/gen-ruler.mjs 本地打分）", flush=True)
+                print(f"  gen {written}/{min(args.gen_n, len(dev_encoded))}"
+                      f" · {len(txt)} 字 · {dt:.1f}s", flush=True)
+        gen_rows = written
+        print(f"· 生成 {written} 条 -> {gen_path}"
+              f"（{time.time() - t_gen:.0f}s，用 tools/eval-sft.mjs 本地打分）", flush=True)
 
-    # 两个 rank 同时 save_pretrained 到同一个目录会互相踩，只让 0 号写。
-    if is_main:
-        base_model.save_pretrained(out_dir / "model")
-        tok.save_pretrained(out_dir / "model")
     report = {
         "model": args.model, "params": nparam, "maxLen": args.max_len, "dtype": args.dtype,
         "trainRows": len(rows_raw), "kept": len(encoded), "overWindow": len(rows_raw) - len(encoded),
@@ -604,6 +662,7 @@ def main(argv=None) -> int:
         "batch": args.batch, "accum": args.accum, "gpu": gpu, "sm": f"sm_{cap[0]}{cap[1]}",
         "minutes": round((time.time() - t0) / 60, 1), "lossTail": hist[-10:],
         "maskDriftNonZero": len(nz),
+        "genRows": gen_rows, "genCache": bool(args.gen_cache), "genBudget": args.gen_budget,
     }
     # rank1 跳过了 dev 损失和生成，会先到这里 —— 对齐后再收尾，理由同上。
     if world > 1:

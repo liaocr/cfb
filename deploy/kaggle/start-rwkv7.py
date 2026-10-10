@@ -162,8 +162,11 @@ def main() -> int:
     ap.add_argument("--epochs", type=float, default=5.0, help="训练轮数")
     ap.add_argument("--accum", type=int, default=4, help="梯度累积（每卡有效批 = batch x accum）")
     ap.add_argument("--lr", type=float, default=1e-4, help="峰值学习率")
-    ap.add_argument("--gen-n", type=int, default=24, help="训完生成多少条 dev 稿子给尺子打分")
+    ap.add_argument("--gen-n", type=int, default=89, help="训完生成多少条 dev 稿子给尺子打分")
     ap.add_argument("--gen-max-new", type=int, default=768, help="单条生成上限 token")
+    ap.add_argument("--gen-budget", type=float, default=1500,
+                    help="生成阶段时间预算（秒）。开缓存时 89 条约 15 分钟；"
+                         "缓存失效时它会兜住，不至于把整轮拖垮")
     args = ap.parse_args()
 
     user = username()
@@ -178,7 +181,8 @@ def main() -> int:
         return stop_kernel(kid)
 
     tune = {"epochs": args.epochs, "accum": args.accum, "lr": args.lr,
-            "gen_n": args.gen_n, "gen_max_new": args.gen_max_new}
+            "gen_n": args.gen_n, "gen_max_new": args.gen_max_new,
+            "gen_budget": args.gen_budget}
     code = build_kernel(args.mode, tune)
     work = Path(tempfile.mkdtemp(prefix="cfb-rwkv7-"))
     (work / "kernel.py").write_text(code, encoding="utf-8")

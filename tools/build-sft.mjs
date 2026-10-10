@@ -89,7 +89,10 @@ const mk = (u) => ({ id: u.id, repo: u.repo, system: SYSTEM,
     ratio: Number((u.draft.length / u.raw.length).toFixed(4)), score: u.score,
     judgePass: u.pass, license: u.license, usage: u.usage } })
 const rows = train.map(mk)
-const devRows = dev.map(mk)
+// dev 额外带顶层 raw/ctx：训练器把它们原样写进 dev-generations.jsonl，
+// 于是那份生成结果**自带**打分所需的输入，不依赖"当时的 dev.jsonl 还在这儿"。
+// 训练集不带 —— 训练器不读这两个字段，多存一份纯属浪费。
+const devRows = dev.map((u) => ({ ...mk(u), raw: u.raw, ctx: u.ctx }))
 const devPass = dev.filter((u) => u.pass).length
 
 fs.mkdirSync(OUT, { recursive: true })
