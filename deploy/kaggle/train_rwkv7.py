@@ -301,27 +301,43 @@ def main(argv=None) -> int:
     # （from fla.models.rwkv7 import RWKV7ForCausalLM, RWKV7Model, RWKV7Config），
     # 所以 trust_remote_code=True 也救不了 —— 只有 flash-linear-attention 带 fla/models。
     # 用 --no-deps + 显式列依赖，避免 pip 顺手升级 torch/transformers 把镜像搞坏。
-    try:
-        from fla.models.rwkv7 import RWKV7Config, RWKV7ForCausalLM  # noqa: F401
-        print("· fla.models.rwkv7 镜像里已有", flush=True)
-    except Exception as exc:
-        print(f"· fla.models.rwkv7 缺失（{exc!r}）-> 装 flash-linear-attention==0.5.2", flush=True)
-        # --progress-bar off：pip 的进度条里有 ▋ 这类字形，会让 Windows 上的
-        # kaggle CLI 在按 GBK 落盘日志时崩掉（日志变成 0 字节，白跑一轮）。
-        cmd = [sys.executable, "-m", "pip", "install", "--quiet", "--no-deps",
-               "--progress-bar", "off",
-               "flash-linear-attention==0.5.2", "fla-core==0.5.2", "einops"]
-        r = subprocess.run(cmd, capture_output=True, text=True)
-        print(f"· pip install -> exit {r.returncode}", flush=True)
-        if r.stdout.strip():
-            print(r.stdout[-1500:], flush=True)
-        if r.returncode != 0:
-            print("FATAL: 装 flash-linear-attention 失败：\n" + r.stderr[-3000:], file=sys.stderr)
-            return 2
+    def _fla_ready() -> bool:
         try:
             from fla.models.rwkv7 import RWKV7Config, RWKV7ForCausalLM  # noqa: F401
-        except Exception as exc2:
-            print(f"FATAL: 装完仍导不进 fla.models.rwkv7：{exc2!r}", file=sys.stderr)
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
+    if _fla_ready():
+        print("· fla.models.rwkv7 镜像里已有", flush=True)
+    else:
+        # 多卡时**只让 0 号装**。两个 rank 同时往同一个 site-packages 里 pip install
+        # 是在赌 pip 的原子性：赢了没奖，输了整轮白跑（排队 + 下载 + 编译全废）。
+        # 共享文件系统 ⇒ 两边 _fla_ready() 结果必然一致 ⇒ 分支对称，barrier 不会错配。
+        if world > 1 and not is_main:
+            torch.distributed.barrier()   # 等 0 号装完
+        else:
+            print("· fla.models.rwkv7 缺失 -> 装 flash-linear-attention==0.5.2", flush=True)
+            # --progress-bar off：pip 的进度条里有 ▋ 这类字形，会让 Windows 上的
+            # kaggle CLI 在按 GBK 落盘日志时崩掉（日志变成 0 字节，白跑一轮）。
+            cmd = [sys.executable, "-m", "pip", "install", "--quiet", "--no-deps",
+                   "--progress-bar", "off",
+                   "flash-linear-attention==0.5.2", "fla-core==0.5.2", "einops"]
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            print(f"· pip install -> exit {r.returncode}", flush=True)
+            if r.stdout.strip():
+                print(r.stdout[-1500:], flush=True)
+            if r.returncode != 0:
+                print("FATAL: 装 flash-linear-attention 失败：\n" + r.stderr[-3000:],
+                      file=sys.stderr)
+                # 失败也要走到 barrier：否则非 0 号会一直挂在上面，直到 torchrun 超时。
+                if world > 1:
+                    torch.distributed.barrier()
+                return 2
+            if world > 1:
+                torch.distributed.barrier()   # 通知其余 rank 可以导入了
+        if not _fla_ready():
+            print("FATAL: 装完仍导不进 fla.models.rwkv7", file=sys.stderr)
             return 2
     import transformers
     print(f"· fla ok · transformers {transformers.__version__}", flush=True)
