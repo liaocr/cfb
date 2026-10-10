@@ -4,14 +4,15 @@
 > 环境：NvidiaTeslaT4 ×2 · sm_75 · torch 2.11.0+cu128 · transformers 5.16.1 · fla 0.5.2 · Python 3.13
 > 内核：`liaocr/cfb-rwkv7-compressor`（script kernel，private，enable_internet）
 
-## 一、四轮冒烟的战报
+## 一、五轮冒烟的战报
 
-| 轮 | 走到哪一步 | 死因 |
+| 轮 | 走到哪一步 | 结果 |
 |----|-----------|------|
-| v1 | GPU 检测通过 | `ModuleNotFoundError: No module named 'fla'` |
-| v2 | 数据/分词/建模全过，死在第一次 `backward()` | `fla/modules/l2warp.py:47` dtype 崩 |
-| v3 | 过了 l2warp，死在 Triton kernel 里 | `OutOfResources: shared memory, Required 98304, Limit 65536` |
-| v4 | 见下 | — |
+| v1 | GPU 检测通过 | 死：`ModuleNotFoundError: No module named 'fla'` |
+| v2 | 数据/分词/建模全过，死在第一次 `backward()` | 死：`fla/modules/l2warp.py:47` dtype 崩 |
+| v3 | 过了 l2warp，死在 Triton kernel 里 | 死：`OutOfResources: shared memory, Required 98304, Limit 65536` |
+| v4 | 单卡全流程 | **通过**：3 步 + dev loss + 生成 + 存档 |
+| v5 | **双卡 DDP 全流程** | **通过**：2 卡都吃上，barrier / destroy 干净收尾 |
 
 三个坑互相独立，都是**环境/库层面的**，与我们的训练配方无关。
 
@@ -118,9 +119,8 @@ BT 64→16 后 `[BT,BT]` 矩阵小 16 倍，共享内存掉到 ~20KB 量级。
 
 ## 六、尚未验证 / 已知风险
 
-- `chunk_size=16` 是否真能把共享内存压到 64KB 以下（v4 在跑）
-- 训练 3 轮实际耗时（v3 单轮 583s 几乎全花在 Triton autotune 失败上，
-  降到 16 之后这一项应大幅下降）
+- ~~`chunk_size=16` 是否真能把共享内存压到 64KB 以下~~ ⇒ **已验证**：v4/v5 全程无 OOM
+- ~~训练实际耗时~~ ⇒ **已验证**：见第十节实测步时
 - 6144 窗口对 RWKV 固定状态容量的挤压：退化是渐进的，不是断崖；
   g1 的预训练上下文长度未公开，6144 是外推 —— "跑得动" ≠ "质量不掉"
 
@@ -152,3 +152,77 @@ POST /api/v1/kernels/cancel-session/{kernel_session_id}
 已封装成 `python deploy/kaggle/start-rwkv7.py --stop`。
 `kernel_session_id` 从 `kernels_status` 里取；session 已结束就拿不到，
 那也没有可停的对象。
+
+## 十、冒烟 v5：双卡 DDP 全流程
+
+### 为什么会有 v5
+
+v4 通过之后我说了句"2 卡"，**那是错的**。日志里的
+`torch.cuda.device_count()` 只是机器规格，不是使用情况。v4 代码里
+`model.to("cuda")`、`torch.tensor(..., device="cuda")` 全落在 `cuda:0`，
+`cuda:1` 一次都没出现，没有 DDP / DP / accelerate —— 等于 T4 白扔一张。
+
+### 修法
+
+`main()` 解析完参数后自检：`args.gpus <= 0` 时取 `min(device_count, 2)`；
+若 `gpus > 1` 且环境变量 `CFB_DDP != 1`，用
+
+```
+torch.distributed.run --nproc_per_node N --standalone --master_port 29517
+```
+
+重新 exec 自己（`reexec_under_torchrun`），带 `CFB_DDP=1` 防递归。
+进去之后：
+
+- `local_rank = LOCAL_RANK`、`world = WORLD_SIZE`、`torch.cuda.set_device(local_rank)`
+- `init_process_group(backend="nccl")`
+- 非 0 号 rank 把 stdout 丢进 `os.devnull`，免得两行日志交错
+- `batches = batches[local_rank::world]` —— 按 rank 切分，不重不漏
+- `DistributedDataParallel(..., device_ids=[local_rank], find_unused_parameters=True)`
+- dev loss / 生成 / `save_pretrained` **只在 0 号做**，且用**未包裹**的
+  `base_model`（DDP 包裹层的 `.generate()` 会因 forward 签名不同而炸）
+- 退出前 `barrier()`，最后 `destroy_process_group()`
+
+### v5 真机日志（原样）
+
+```
+· 参数量 191.0M（全参微调 · fp32 主权重） · DDP 2 卡
+· rank 0 分到 6 个微批
+· 批 4 × 累积 8 = 有效批 32 · 每轮 6 微批 -> 1 步 · 共 3 步
+  step 1/3 loss 3.0911 · 193.7s · 峰值显存 5.30 GiB
+  step 2/3 loss 4.6074 · 4.5s · 峰值显存 6.95 GiB
+  step 3/3 loss 4.7127 · 2.5s · 峰值显存 7.13 GiB
+· 前向+反传 合计 200.7s · 首步 193.7s（含 Triton 首次编译） · 最快 2.5s/步
+· 生成通路 ok（37.5s / 256 token）
+=== 冒烟通过 ===
+```
+
+两条 `Loading weights:` 进度条交错、`[rank0]`/`[rank1]` 两条警告都出现，
+证明两个进程**都真的载了权重**、都进了 DDP。
+
+### 实测吞吐
+
+| | 单卡 v4 | 双卡 v5 |
+|---|---|---|
+| 稳态 | 1.8 s / 微批 | 2.5 s / 微批 |
+| 峰值显存 | 4.66 GiB | 7.13 GiB |
+| 48 行一轮 | 12 微批 × 1.8 = 21.6 s | 6 微批 × 2.5 = 15.0 s |
+
+**DDP 只拿到约 1.4×，不是 2×** —— 每微批多出的 0.7s 是梯度 allreduce
+加上 `find_unused_parameters=True` 的图遍历。
+全量 4687 行 / 批 4 = 1172 微批，每卡 586，3 轮 ≈ 1758 微批：
+
+- 双卡：1758 × 2.5 ≈ **73 分钟**（+ 首步编译约 3 分钟）
+- 单卡：3516 × 1.8 ≈ **105 分钟**
+
+### 顺手修掉的一个报告 bug
+
+冒烟结尾原来算的是 `steady * total_steps`，但 `total_steps` 是**优化器步数**、
+每步要 `accum` 个微批 —— 等于把耗时低估 `accum`（8）倍。已改成
+`steady * total_steps * accum`。
+
+### 一条已知无害警告
+
+`find_unused_parameters=True` 但 DDP 报 "did not find any unused parameters"。
+**不改成 `False`** —— 梯度检查点下 DDP 的静态图假设本来就容易翻车，
+省那 3% 不值得赌一次 73 分钟的训练。

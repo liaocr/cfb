@@ -479,8 +479,10 @@ def main(argv=None) -> int:
         steady = min(times)
         print(f"· 前向+反传 合计 {sum(times):.1f}s · 首步 {times[0]:.1f}s（含 Triton 首次编译）"
               f" · 最快 {steady:.1f}s/步", flush=True)
-        print(f"· 外推：全量 {total_steps} 步约 {steady*total_steps/60:.0f} 分钟"
-              f"（按最快一步算，首步编译不计；Kaggle 上限 12 小时）", flush=True)
+        total_micro = total_steps * args.accum
+        print(f"· 外推：全量 {total_steps} 步 × 累积 {args.accum} = 每卡 {total_micro} 微批"
+              f" 约 {steady*total_micro/60:.0f} 分钟（按最快一步算，首步编译不计；Kaggle 上限 12 小时）",
+              flush=True)
         if not all(math.isfinite(x) for x in losses):
             print("FATAL: 损失非有限值。", file=sys.stderr)
             return 3
@@ -501,7 +503,13 @@ def main(argv=None) -> int:
             print(f"· 生成通路 ok（{time.time()-g:.1f}s / 256 token）", flush=True)
             print("  ── 未训练模型的输出（应当是一堆不通顺的话，这是对的）──")
             print("  " + txt.strip().replace("\\n", " ")[:400], flush=True)
+        # rank1 会先走到这里，rank0 还在生成。加个 barrier 对齐，
+        # 否则 rank1 先退出进程，rank0 收尾时 NCCL 会报通信失败。
+        if world > 1:
+            torch.distributed.barrier()
         print("\\n=== 冒烟通过 ===", flush=True)
+        if world > 1:
+            torch.distributed.destroy_process_group()
         return 0
 
     # ---- 7. 训练 ----
@@ -586,6 +594,9 @@ def main(argv=None) -> int:
         "minutes": round((time.time() - t0) / 60, 1), "lossTail": hist[-10:],
         "maskDriftNonZero": len(nz),
     }
+    # rank1 跳过了 dev 损失和生成，会先到这里 —— 对齐后再收尾，理由同上。
+    if world > 1:
+        torch.distributed.barrier()
     if is_main:
         (out_dir / "report.json").write_text(
             json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
