@@ -61,7 +61,10 @@ for (const g of gen) {
     id: g.id, teacherPass: tj.pass, studentPass: sj.pass,
     teacherFailed: tj.failed, studentFailed: sj.failed,
     teacherScore: tj.score, studentScore: sj.score,
-    teacherRatio: tj.detail.compression.ratio, studentRatio: sj.detail.compression.ratio,
+    // 两个比都给：G7 判的是 token 比，字符比只作归因。只报一个的话，
+    // 读的人会拿字符比去对文档里的 token 比，然后以为哪里算错了。
+    teacherCharRatio: tj.detail.compression.ratio, studentCharRatio: sj.detail.compression.ratio,
+    teacherTokRatio: tj.detail.compression.tokenRatio, studentTokRatio: sj.detail.compression.tokenRatio,
     teacherChars: t.draft.length, studentChars: sd.length,
     studentTok: estimateTokens(sd), teacherTok: estimateTokens(t.draft),
     studentDraft: sd,
@@ -109,7 +112,16 @@ const report = {
   paired: { bothPass: both, studentOnly: sOnly, teacherOnly: tOnly, neither },
   chars: { teacher: { p50: q(rows.map((r) => r.teacherChars), 0.5) },
            student: { p50: q(rows.map((r) => r.studentChars), 0.5) } },
-  ratio: { teacherP50: q(rows.map((r) => r.teacherRatio), 0.5), studentP50: q(rows.map((r) => r.studentRatio), 0.5) },
+  ratio: {
+    // G7 的判据是 **token 比**（gen-ruler/2 起）。字符比会被"英文原文 -> 中文稿"
+    // 这种语言切换骗过：字符腰斩、token 不降。两个都报，别只报字符比。
+    token: { teacherP50: q(rows.map((r) => r.teacherTokRatio), 0.5),
+             studentP50: q(rows.map((r) => r.studentTokRatio), 0.5),
+             note: 'G7 用的就是这条' },
+    char: { teacherP50: q(rows.map((r) => r.teacherCharRatio), 0.5),
+            studentP50: q(rows.map((r) => r.studentCharRatio), 0.5),
+            note: '只作归因，不是判据' },
+  },
   softScore: { teacherMean: mean(tScore), studentMean: mean(sScore),
     teacherP50: q(tScore, 0.5), studentP50: q(sScore, 0.5),
     studentWins: scoreWins, studentLosses: scoreLoss, ties: scoreTie,
@@ -126,7 +138,10 @@ console.log('  学生 RWKV7-0.1B      通过 %d/%d = %s', sPass, n, pc(rate(sPas
 console.log('  四格：都过 %d · 只学生过 %d · 只教师过 %d · 都不过 %d', both, sOnly, tOnly, neither)
 console.log('  ── 有受力点子集（剔除 G0 的 %d 条）才是真正的对比 ──', n - sn)
 console.log('  教师 %d/%d = %s · 学生 %d/%d = %s', stPass, sn, pc(rate2(stPass, sn)), ssPass, sn, pc(rate2(ssPass, sn)))
-console.log('  压缩比 p50：教师 %s · 学生 %s', report.ratio.teacherP50, report.ratio.studentP50)
+console.log('  压缩比 p50（token 比，G7 的判据）：教师 %s · 学生 %s',
+  report.ratio.token.teacherP50, report.ratio.token.studentP50)
+console.log('  压缩比 p50（字符比，只作归因）  ：教师 %s · 学生 %s',
+  report.ratio.char.teacherP50, report.ratio.char.studentP50)
 console.log('  软分（无阈值）：教师均值 %s p50 %s · 学生均值 %s p50 %s',
   report.softScore.teacherMean, report.softScore.teacherP50,
   report.softScore.studentMean, report.softScore.studentP50)
