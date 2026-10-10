@@ -1,0 +1,14 @@
+=== 严格口径（代码味标识符 >=8 字符）===
+稿子含代码味标识符的: 98
+其中含「只在题面、不在思考过程」的: 42/98 = 43%
+  adamchainz_django-cors-headers -> ['corsheaders.models']
+  adamchainz_flake8-logging_pr4# -> ['tests/test_flake8_logging.py']
+  adamtheturtle_doccmd_pr191#b7 -> ['tests/test_doccmd.py']
+  aiven_aiven-client_pr287#b4 -> ['CommandLineTool.add_cmd']
+  ansys_pyedb-core_pr347#b30 -> ['ansys.edb.core.geometry', 'ansys/edb', 'workspace/ansys__pyedb-core__1.0/src']
+  ansys_pyfluent_pr139#b6 -> ['ansys/fluent/services/datamodel_se.py']
+  app-sre_qontract-reconcile_pr1 -> ['terrascript.aws.r']
+  argyle-engineering_pyap_pr21#b -> ['data_us.full_street', 're.compile', 're.error']
+
+=== 反向：稿子里的代码味标识符有多少能在 raw 里找到 ===
+稿中标识符总 515，能在 raw 找到 296 = 57%

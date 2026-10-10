@@ -1,0 +1,53 @@
+=== fla/layers/rwkv7.py 160..200（position-based init 是什么）===
+ 160|     def _initialize_weights(self, module: nn.Module):
+ 161|         if getattr(module, "_is_hf_initialized", False):
+ 162|             return
+ 163| 
+ 164|         # Initialize only when we're processing the RWKV7Attention module itself
+ 165|         if isinstance(module, RWKV7Attention) and self.layer_idx is not None:
+ 166|             ratio_0_to_1 = self.layer_idx / (self.num_hidden_layers - 1)  # 0 to 1
+ 167|             ratio_1_to_almost0 = 1.0 - (self.layer_idx / self.num_hidden_layers)  # 1 to ~0
+ 168| 
+ 169|             # Create position-based initialization tensor
+ 170|             ddd = torch.ones(1, 1, self.hidden_size, device=self.x_r.device)
+ 171|             www = torch.zeros(self.hidden_size, device=self.x_r.device)
+ 172|             zigzag = torch.zeros(self.hidden_size, device=self.x_r.device)
+ 173|             linear = torch.zeros(self.hidden_size, device=self.x_r.device)
+ 174|             for n in range(self.hidden_size):
+ 175|                 linear[n] = n / (self.hidden_size-1) - 0.5
+ 176|                 zigzag[n] = ((n % self.head_dim) - ((self.head_dim-1) / 2)) / ((self.head_dim-1) / 2)
+ 177|                 zigzag[n] = zigzag[n] * abs(zigzag[n])
+ 178|                 www[n] = -6 + 6 * (n / (self.hidden_size - 1)) ** (1 + 1 * ratio_0_to_1 ** 0.3)
+ 179|                 ddd[0, 0, n] = n / self.hidden_size
+ 180| 
+ 181|             # Initialize x_* parameters directly
+ 182|             self.x_r.data = (1.0 - torch.pow(ddd, 0.2 * ratio_1_to_almost0)).to(self.x_r.dtype)
+ 183|             self.x_w.data = (1.0 - torch.pow(ddd, 0.9 * ratio_1_to_almost0)).to(self.x_w.dtype)
+ 184|             self.x_k.data = (1.0 - torch.pow(ddd, 0.7 * ratio_1_to_almost0)).to(self.x_k.dtype)
+ 185|             self.x_v.data = (1.0 - torch.pow(ddd, 0.7 * ratio_1_to_almost0)).to(self.x_v.dtype)
+ 186|             self.x_a.data = (1.0 - torch.pow(ddd, 0.9 * ratio_1_to_almost0)).to(self.x_a.dtype)
+ 187|             self.x_g.data = (1.0 - torch.pow(ddd, 0.2 * ratio_1_to_almost0)).to(self.x_g.dtype)
+ 188| 
+ 189|             # Initialize k_k, k_a, r_k
+ 190|             nn.init.constant_(self.k_a, 1.02)
+ 191|             nn.init.constant_(self.r_k, -0.04)
+ 192|             self.k_k.data.copy_((torch.zeros(self.hidden_size, device=self.k_k.device) +
+ 193|                                 0.71 - linear*0.1).to(self.k_k.dtype))
+ 194|             # Set specific bias values for LoRA modules
+ 195|             # 0.5 comes from F.softplus
+ 196|             self.w_lora.set_bias_value(www + 0.5 + zigzag*2.5)
+ 197|             self.a_lora.set_bias_value(-0.19 + zigzag*0.3 + linear*0.4)
+ 198| 
+ 199|             # v0 initialization - ones (for non-first layers)
+ 200|             if self.layer_idx != 0:
+
+=== 该文件里所有 forward 签名 ===
+ 224| def forward(
+
+=== RWKV7Model.forward 里有没有 seq_len 上限检查 ===
+  11| import warnings
+ 151| max_position_embeddings=config.max_position_embeddings,
+ 359| logger.warning(
+ 379| warnings.warn("`RWKV7Model` does not `output_attentions` now, setting it to `False`.")
+ 388| raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+ 390| raise ValueError("You have to specify either input_ids or inputs_embeds")

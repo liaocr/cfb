@@ -1,0 +1,22 @@
+hand-samples 文件数 = 18
+总行数 = 75
+字段 = at, callsThisRound, ctx, draft, draftChars, draftFile, gate, id, outChars, pendingFile, production, qualityAudit, raw, rawChars, revision, round, sample, schema, stored, task, trainingEligible
+
+样例：{"schema": "cfb.hand-sample/2", "id": "eacces-config-s0-r6", "task": "eacces-config", "sample": 0, "round": 6, "at": "2026-10-05T12:55:38.661Z", "draftFile": "traj/drafts/eacces-config-s0-r6.md", "pendingFile": "traj/pending/done/eacces-config-s0-r6.json", "raw": "Now I understand. Environment has DSH_HOME=/home/u/.dsh and CFB_REAL_DSH_HOME=/home/u/.dsh set globally (inherited). ver", "ctx": "仓库里 `npm test` 在 test/birth.selftest.mjs 上报 EACCES: permission denied, open '/home/u/.dsh/storages/cot-form-b/trace.log'", "draft": "已落定的决定（原文逐字）：「The test should use DSH_HOME (the isolated temp dir), not CFB_REAL_DSH_HOME.」\n\n落点：test/birth.selftest.mjs（", "stored": "仍在依赖的事实：`home: process.env.CFB_REAL_DSH_HOME`（第 4 轮引，出处有效）。已走过的路：第 1–3 轮已跑 6 条：bash×6（pwd、ls×2、cat×2、for）（曾涉 package.jso", "rawChars": 2291, "draftChars": 394, "outChars": 923, "gate": "{'ok': True, 'violations': []}", "production": "{
+
+金标 id 在 hand-samples 里的：
+   eacces-config-s0-r5                YES
+   eacces-config_decoy-s0-r3          no
+   eacces-config_long-horizon-s0-r5   no
+   perf-regression-s0-r7              YES
+   sse-truncated-s0-r4                YES
+   sse-truncated-s0-r5                no
+   sse-truncated-s1-r3                YES
+   sse-truncated_decoy-s0-r4          no
+   sse-truncated_long-horizon-s0-r5   no
+   wrong-model-s0-r6                  YES
+   wrong-model-s1-r5                  YES
+   wrong-model_decoy-s0-r4            no
+   wrong-model_long-horizon-s0-r4     no
+
+trainingEligible 手写稿 字符比：n=61 min=0.014 p25=0.068 中位=0.114 p75=0.221 max=0.610

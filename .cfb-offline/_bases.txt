@@ -1,0 +1,25 @@
+模型                                                           下载  likes  权重文件
+----------------------------------------------------------------------------------------------------------------------------------
+Qwen/Qwen3-0.6B                                        30889504   1761  ['model.safetensors']
+Qwen/Qwen3-0.6B-Base                                     718776    202  ['model.safetensors']
+Qwen/Qwen2.5-0.5B                                       1424114    464  ['model.safetensors']
+Qwen/Qwen2.5-Coder-0.5B                                   33197     63  ['model.safetensors']
+Qwen/Qwen3-1.7B                                         3269803    567  ['model-00001-of-00002.safetensors', 'model-00002-of-00002.s
+Qwen/Qwen2.5-1.5B                                        641000    227  ['model.safetensors']
+HuggingFaceTB/SmolLM2-360M                               390746    138  ['model.safetensors']
+HuggingFaceTB/SmolLM3-3B                                 654994   1048  ['model-00001-of-00002.safetensors', 'model-00002-of-00002.s
+jingyaogong/minimind-3                                     1730     16  ['model.safetensors']
+charent/ChatLM-mini-Chinese                                 230     69  ['model.safetensors']
+fla-hub/rwkv7-0.1B-g1                                      1838      6  ['model.safetensors']
+google/gemma-3-270m-it                                    79528    659  ['model.safetensors']
+microsoft/Phi-3-mini-4k-instruct                         364835   1468  ['model-00001-of-00002.safetensors', 'model-00002-of-00002.s
+unsloth/Qwen3-0.6B                                       211342     24  ['model.safetensors']
+
+==========================================================================
+ModelScope 可达性
+  FAIL .cn/api/v1/models/jingyaogong/minimind-3   HTTPError HTTP Error 404: Not Found
+  OK  charent/ChatLM-mini-Chinese                Downloads=9009 License=Apache License 2.0
+
+==========================================================================
+Kaggle 凭据/CLI
+  kaggle CLI: None

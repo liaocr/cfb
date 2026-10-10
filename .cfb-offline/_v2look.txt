@@ -1,0 +1,253 @@
+================================================================================
+adamchainz_ec2-metadata_pr40#b4  raw=2449
+--- CTX ---
+[task]
+<uploaded_files>
+/workspace/adamchainz__ec2-metadata__1.0
+</uploaded_files>
+I've uploaded a python code repository in the directory adamchainz__ec2-metadata__1.0. Consider the following issue description:
+
+<issue_description>
+# Raise exceptions for unexpected HTTP status codes on metadata attributes
+
+I have noticed that the library is currently too lenient when handling HTTP responses from the EC2 metadata service for certain attributes.
+
+Currently, for attributes that are considered opti
+--- RAW[:700] ---
+All 56 tests pass currently. But wait - the issue says the library is too lenient. Let me look at the current code more carefully.
+
+Looking at the current code:
+
+1. `iam_info` (lines 64-70): This already handles errors correctly - it checks for 404, then 200, then calls `resp.raise_for_status()` for anything else. Good.
+
+2. `public_hostname` (lines 117-122):
+```python
+resp = self._get_url(METADATA_URL + 'public-hostname', raise_for_status=False)
+if resp.status_code == 404:
+    return None
+else:
+    return resp.text
+```
+If the status code is 500, it returns `resp.text` instead of raising an error. This is the bug.
+
+3. `public_ipv4` (lines 125-130): Same issue.
+
+4. `user_data` (lines 145-150):
+--- v1 (1006字) ---
+当前 56 个测试全部通过，但 issue 指出库对非 404 错误码过于宽容。通读代码后确认问题所在：
+
+- `iam_info`（约 64-70 行）已经正确：先判 404 返回 None，再判 200 返回 `resp.json()`，其余情况调用 `resp.raise_for_status()`。
+- 其余属性都有 bug，它们用 `raise_for_status=False` 取响应，却只判断 404，500 时照样返回内容：
+  - `public_hostname`（约 117-122 行）：非 404 直接 `return resp.text`。
+  - `public_ipv4`（约 125-130 行）：同样问题。
+  - `user_data`（约 145-150 行）：同样问题。
+  - `NetworkInterface.public_hostname`（约 212-217 行）：同样问题。
+  - `NetworkInterface.public_ipv4s`（约 220-225 行）：404 返回 `[]`，500 却返回 `resp.text.splitlines()`。
+  - `NetworkInterface.subnet_ipv4_cidr_block`（约 240-245 行）：同样问题。
+  - `NetworkInterface.vpc_ipv4_cidr_block`（约 258-263 行）：同样问题。
+  - `NetworkInterface.vpc_ipv4_cidr_blocks`（约 266-271 行）：同样问题。
+
+结论与决定：落点是 `/workspace/adamchainz__ec2-metadata__1.0/ec2_metadata.py`，需在上述所有位置补上 `resp.raise_for_status()`。统一采用 `iam_info` 已有的写法：404 时返回 None（列表属性返回 `[]`），200 时返回处理后的结果，其他状态码交给 `resp.raise_for_statu
+--- v2 (1398字) ---
+1. 已落定的决定（原文逐字）
+
+- `iam_info`:「This already handles errors correctly - it checks for 404, then 200, then calls `resp.raise_for_status()` for anything else. Good.」
+- 缺陷定性:「If the status code is 500, it returns `resp.text` instead of raising an error. This is the bug.」
+- 修法:「So I need to add `resp.raise_for_status()` calls after checking for 404 in all these places.」
+- 目标模式:
+「```python
+resp = self._get_url(url, raise_for_status=False)
+if resp.status_code == 404:
+    return None  # or [] for lists
+elif resp.status_code == 200:
+    return resp.text  # or appropriate processing
+resp.raise_for_status()
+```」
+- 采用该模式:「This is clean. Let me apply this pattern to all the other properties.」
+
+待改的成员（原文点名）：`public_hostname`、`public_ipv4`、`user_data`、`NetworkInterface.public_hostname`、`NetworkInterface.public_ipv4s`、`NetworkInterface.subnet_ipv4_cidr_block`、`NetworkInterface.vpc_ipv4_cidr_block`、`NetworkInterface.vpc_ipv4_cidr_blocks`；404 返回值按原样：`None` 或 `[]`。
+
+2. 落点
+`/workspace/adamchainz__ec2-metadata__1.0/ec2_metadata.py`
+
+3. 原文还悬着什么
+- 非 200 的 2xx 状态码怎么处理未定：「Wait, but what about other successful status codes like 2xx?」
+- 复现脚本尚未写：「Let me write a reproduce script first.」
+
+4. 验收
+命令：`python -m pytest test_ec2_metadata.py -v`
+
+- 现状无失败用例（「All 56 tests pass currently.」），故以 500 行为为准。
+- 若不再出现「If the status code is 500, it returns `resp.text` instead of raising an error.」⇒ 判这条修好。
+- 若仍出现 ⇒ 回到落点继续查。
+
+================================================================================
+adamchainz_django-cors-headers_pr396#b8  raw=3760
+--- CTX ---
+[task]
+<uploaded_files>
+/workspace/adamchainz__django-cors-headers__1.0
+</uploaded_files>
+I've uploaded a python code repository in the directory adamchainz__django-cors-headers__1.0. Consider the following issue description:
+
+<issue_description>
+# Remove `CORS_MODEL` setting and associated functionality
+
+## Description
+I propose removing the `CORS_MODEL` setting and the associated `AbstractCorsModel` class from the library.
+
+It appears that this feature is rarely used, as there have been no bug
+--- RAW[:700] ---
+There are no uncommitted changes. The user said they already took care of test changes, but the tests still reference `CORS_MODEL`. Let me re-read the issue description more carefully.
+
+"I've already taken care of all changes to any of the test files described in the <issue_description>."
+
+Hmm, the issue description doesn't describe any specific test file changes. It just describes the changes to be made. So maybe the user is saying we don't need to modify tests. But the tests reference `CORS_MODEL` and `AbstractCorsModel` - if we remove these, the tests will fail.
+
+Wait, maybe the user already modified the test files? Let me check the git diff between the base commit and the current state..
+--- v1 (703字) ---
+**状态**：工作树干净，无未提交改动；HEAD 为 3a1c92d「Make Origin scheme-aware (#388)」。题面称测试文件已处理，但仓库中并未体现：tests/testapp/models.py 仍是 `class CorsModel(AbstractCorsModel)`，tests/utils.py 仍是用 check_request_enabled 连接/断开处理器的上下文管理器。因此按题面只改非测试文件，不碰测试逻辑。
+
+**改动清单（落点）**：
+1. corsheaders/conf.py：删除 CORS_MODEL 设置（属性）。
+2. corsheaders/models.py：删除 AbstractCorsModel。
+3. corsheaders/middleware.py：删除 origin_found_in_model 及其调用点。
+4. corsheaders/checks.py：把原 E010 检查（CORS_MODEL 非 None 且非字符串时报错）改为系统检查——只要 CORS_MODEL 被设置（非 None）即报错，明确告知该设置已被移除。
+
+**验收依据与风险**：tests/test_checks.py 有 test_cors_model_failure，用 `@override_settings(CORS_MODEL=object)`，期望错误码 corsheaders.E010。改成「设置即报错」后该用例仍会触发错误，但错误消息、可能错误码会与原来不同，需据测试预期确认。
+
+**下一步**：先跑现有测试取基线。
+--- v2 (1268字) ---
+1. 已落定的决定（原文逐字）
+- 「1. Remove `CORS_MODEL` from `conf.py`」「2. Remove `AbstractCorsModel` from `models.py`」「3. Remove `origin_found_in_model` from `middleware.py` and its usage」「4. Update `checks.py` to add a system check for `CORS_MODEL` being set (raising an error)」
+- 「The new behavior should be:
+- If `CORS_MODEL` is set (not None), raise an error saying it's been removed.」
+- 「So I should just focus on the non-test files.」
+
+2. 落点
+原文未定单一落点；原文列出待改文件为 `conf.py`、`models.py`、`middleware.py`、`checks.py`。
+
+3. 原文还悬着什么
+- 测试是否已被改、是否需改： 「the tests still reference `CORS_MODEL`」「if we remove these, the tests will fail」「the tests that use `CORS_MODEL` would fail... Unless the user expects us to NOT run those tests? Or maybe the user wants us to make the changes and then the tests will be updated separately?」
+- `checks.py` 中 `E010` 与 `test_cors_model_failure`： 「the error message and maybe the error code would be different.」
+- 「let me first just run the existing tests to see the baseline」——尚未执行。
+
+4. 验收
+原文未写出测试命令；原文执行过的命令为
+```
+cd /workspace/adamchainz__django-cors-headers__1.0 && git diff HEAD
+```
+若输出显示 `origin_found_in_model`、`AbstractCorsModel` 已从非测试文件移除且 `checks.py` 新增 `CORS_MODEL` 已被移除的系统检查 ⇒ 判这条修好；若仍报 `origin_found_in_model` 或 `AbstractCorsModel` 未删 ⇒ 回到落点继续查。
+
+================================================================================
+adamchainz_apig-wsgi_pr93#b7  raw=3622
+--- CTX ---
+[task]
+<uploaded_files>
+/workspace/adamchainz__apig-wsgi__1.0
+</uploaded_files>
+I've uploaded a python code repository in the directory adamchainz__apig-wsgi__1.0. Consider the following issue description:
+
+<issue_description>
+# Add support for `application/vnd.api+json` and custom non-binary content types
+
+When using `make_lambda_handler` with `binary_support=True`, the library automatically detects text-based responses to avoid base64 encoding them. Currently, this detection seems limited to c
+--- RAW[:700] ---
+All tests pass. Now let me understand the issue better and implement the changes.
+
+The current code:
+1. In `make_lambda_handler`, only `binary_support` parameter is accepted.
+2. In `_should_send_binary`, the non-binary content types are hardcoded as `("text/", "application/json")`.
+
+Changes needed:
+1. Add `application/vnd.api+json` to the default list of non-binary content types.
+2. Add a new optional argument `non_binary_content_type_prefixes` to `make_lambda_handler` that allows users to pass a list of strings to control which content types should be treated as plain text.
+
+Let me think about how to implement this:
+
+1. The default non-binary content type prefixes should include `"text/"`, 
+--- v1 (866字) ---
+- 起始状态：执行 `pip install -e .` 后跑 `python -m pytest tests/ -v`，全部测试通过（此前未安装时该命令以 exit code 2 失败）。
+- 现状：`make_lambda_handler` 只接受 `binary_support` 参数；`_should_send_binary` 把非二进制 content type 硬编码为「("text/", "application/json")」。
+- 待实现两点：1) 把 `application/vnd.api+json` 加入默认非二进制类型列表；2) 给 `make_lambda_handler` 增加可选参数 `non_binary_content_type_prefixes`，允许用户传入字符串列表，控制哪些 content type 在开启 binary support 时按纯文本处理。
+- 默认前缀集合应为 `"text/"`、`"application/json"`、`"application/vnd.api+json"`。
+- 未决决策：用户传入的列表是**替换**默认还是**与默认合并**。题面措辞「control exactly which content types」暗示替换；但替换构成破坏性变更，且用户须重复指定 `text/` 与 `application/json`，易出错。当前倾向与默认合并，尚未定论。
+- 实现路径：把该参数一路透传给 `Response`，并在 `_should_send_binary` 中使用。
+- 测试处理：题面称测试文件的改动已由用户自行完成；检查测试文件未发现针对新特性的测试。决定不修改测试。
+- 落点：仓库 `/workspace/adamchainz__apig-wsgi__1.0` 内定义 `make_lambda_handler`、`Response`、`_should_send_binary` 的那个模块文件（原思考未给出确切文件名）。
+--- v2 (1424字) ---
+1. 已落定的决定（原文逐字）
+- 「In `make_lambda_handler`, only `binary_support` parameter is accepted.」
+- 「In `_should_send_binary`, the non-binary content types are hardcoded as `("text/", "application/json")`.」
+- 「Add `application/vnd.api+json` to the default list of non-binary content types.」
+- 「Add a new optional argument `non_binary_content_type_prefixes` to `make_lambda_handler` that allows users to pass a list of strings to control which content types should be treated as plain text.」
+- 「The default non-binary content type prefixes should include `"text/"`, `"application/json"`, and `"application/vnd.api+json"`.」
+
+2. 落点
+原文未定落点。原文只点名要改 `make_lambda_handler`（新增 `non_binary_content_type_prefixes`）及其内部判断 `_should_send_binary`（硬编码处），未给出文件路径。
+
+3. 原文还悬着什么
+- 「should `non_binary_content_type_prefixes` replace the defaults or be added to them?」 —— 即该参数是替换默认还是合并默认，未定。
+- 两种倾向并存：先称「I think the most flexible approach is: - If `non_binary_content_type_prefixes` is None, use the defaults. - If provided, use the user's list instead of the defaults.」，后又称「I think the best approach is to merge the user-provided list with the defaults.」
+- 测试是否已改好未确认：「The user said "I've already taken care of all changes to any of the test files". But the test file doesn't seem to have tests for these new features yet...」，并注明「let me check if the test file has been modified」。
+
+4. 验收
+- `python -m pytest tests/ -v`
+- 若不再报测试失
+
+================================================================================
+adamchainz_pytest-reverse_pr10#b15  raw=1653
+--- CTX ---
+[task]
+<uploaded_files>
+/workspace/adamchainz__pytest-reverse__1.0
+</uploaded_files>
+I've uploaded a python code repository in the directory adamchainz__pytest-reverse__1.0. Consider the following issue description:
+
+<issue_description>
+# Support Python 3.9
+
+It would be beneficial to add official support for Python 3.9 to this project.
+
+Currently, the project appears to support Python 3.6, 3.7, and 3.8. I propose extending this to include Python 3.9 to ensure compatibility for users upgrading to
+--- RAW[:700] ---
+Interesting. So the pattern is:
+- py35: has `pathlib2`, `importlib-metadata`, `zipp==1.2.0`, `twine==1.15.0`, `flake8-bugbear==19.8.0`
+- py36: has `importlib-metadata`, `zipp==3.1.0`
+- py37: has `importlib-metadata`, `zipp==3.1.0`, `keyring==21.2.1`
+- py38: has `black`, `check-manifest`, and their dependencies (appdirs, click, pathspec, pep517, regex, toml, typed-ast). No `importlib-metadata`, no `zipp`, no `keyring`.
+
+Wait, py37 has `keyring` and `jeepney` and `secretstorage`, while py38 does NOT have `keyring` or `jeepney` or `secretstorage`. Let me check again...
+
+Actually, looking at the py38 output:
+- attrs, bleach, certifi, cffi, chardet, cryptography, docutils, flake8-bugbear, flake8-
+--- v1 (938字) ---
+**任务**：为项目增加 Python 3.9 官方支持。题面要求：CI（GitHub Actions）加跑 3.9、`tox.ini` 加 `py39` 环境、生成 Python 3.9 对应 requirements 文件、在 `setup.cfg` 的 classifiers 中声明支持。
+
+**落点**：当前思考实际在盘算要生成的 `requirements/py39.txt`（对照已有的 `py35.txt`–`py38.txt` 逐版差异）。`tox.ini`、`setup.cfg` 按题面也需改动，但思考尚未落到它们上面。
+
+**已核实的既有 requirements 内容差异**：
+- `py35.txt`：含 `pathlib2`、`importlib-metadata`、`zipp==1.2.0`，`twine==1.15.0`、`flake8-bugbear==19.8.0`（版本偏旧）。
+- `py36.txt`：含 `importlib-metadata`、`zipp==3.1.0`。
+- `py37.txt`：含 `importlib-metadata`、`zipp==3.1.0`、`keyring==21.2.1`。
+- `py38.txt`：含 `black`、`check-manifest` 及其依赖 `appdirs`、`click`、`pathspec`、`pep517`、`regex`、`toml`、`typed-ast`；**不含** `importlib-metadata`，也不含 `zipp`。
+
+**过程性纠正**：曾一度认为 `py38.txt` 没有 `keyring`/`jeepney`/`secretstorage`，复查后确认 `py38.txt` 确实包含 `jeepney`、`keyring`、`secretstorage`；`py37.txt` 同样含这三者。
+
+**未完成**：`requirements/py39.txt` 最终应包含哪些包、哪些版本，尚未得出结论；思考停在比对 `py37` 是否含 `k
+--- v2 (809字) ---
+## 1. 已落定的决定
+- 「py35: has `pathlib2`, `importlib-metadata`, `zipp==1.2.0`, `twine==1.15.0`, `flake8-bugbear==19.8.0`」
+- 「py36: has `importlib-metadata`, `zipp==3.1.0`」
+- 「py37: has `importlib-metadata`, `zipp==3.1.0`, `keyring==21.2.1`」
+- 「py38: has `black`, `check-manifest`, and their dependencies (appdirs, click, pathspec, pep517, regex, toml, typed-ast).」及「No `importlib-metadata`, no `zipp`」
+
+## 2. 落点
+原文未定落点
+
+## 3. 原文还悬着什么
+py38 是否含 `keyring`/`jeepney`/`secretstorage` 未定，原文自相矛盾：先「Wait, py37 has `keyring` and `jeepney` and `secretstorage`, while py38 does NOT have `keyring` or `jeepney` or `secretstorage`.」，后又「So py38 has keyring/jeepney/secretstorage too.」，且仍在核对——「Let me check if py37 has them:」
+
+## 4. 验收
+原文与题面均未出现逐字的可执行验收命令，无法给出「不再报 <失败片段> ⇒ 修好／仍报 ⇒ 回查」这一判定；题面仅给出目标「run tests against Python 3.9」。
+

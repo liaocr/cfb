@@ -1,0 +1,24 @@
+vocab size = 65529
+单字中文 token 数 = 8244
+
+=== A. 输出侧：真实中文压缩稿（transfer/gold + hand samples）===
+  稿数 = 61
+  合计：chars=37990 tokens=20986  chars/tok=1.81  CJK=9898  每汉字 token=2.120
+
+=== B. 输入侧：raw 英文思维链（raw-mine-shortlist）===
+  条数 = 200
+  合计：chars=548967 tokens=146636  chars/tok=3.74
+  每单元 raw token 数：min=371 med=677 p90=1154 max=2036
+
+=== C. 2048 窗口可行性 ===
+  raw 单独超 2048 的单元：0 / 200
+  中位 raw = 677 tok；中位稿 ~1376 tok；合计 ~2053
+  => 结论：塞不进 2048，需要截断或分段
+
+=== D. 抽样：同一个中文句子的切分（看是否按词切） ===
+  '落点：test/birth.selftest.mjs（只动这一处；其余路径不动）'
+     40 chars -> 26 tokens (1.54)
+  '已落定的决定（原文逐字）：「The test should use DSH_HOME」'
+     43 chars -> 23 tokens (1.87)
+  '验收：跑 node verify.mjs。若不再报 原判定失败 ⇒ 判这条修好。'
+     40 chars -> 28 tokens (1.43)

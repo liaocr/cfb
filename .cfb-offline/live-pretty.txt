@@ -1,0 +1,117 @@
+[17.985479925] stdout: · GPU Tesla T4 · sm_75 · torch 2.11.0+cu128 · 2 卡
+[17.985749857] stdout: · fla.models.rwkv7 缺失（ModuleNotFoundError("No module named 'fla'")）-> 装 flash-linear-attention==0.5.2
+[23.06589303] stdout: · pip install -> exit 0
+[63.055066587] stdout: · fla ok · transformers 5.16.1
+[63.321826043] stderr: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[63.547657834] stderr: [transformers] A new version of the following files was downloaded from https://huggingface.co/fla-hub/rwkv7-0.1B-g1:
+[63.547690749] stderr: - hf_rwkv_tokenizer.py
+[63.547695265] stderr: . Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.
+[66.683490838] stdout: · tokenizer RwkvTokenizer · vocab 65531 · eos=65530 pad=0
+[67.005227496] stdout: · 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl -> /kaggle/working/_train.jsonl (582074 bytes)
+[67.009694175] stdout: · 读入 48 行
+[67.822353155] stdout: · 编码完成 48/48 条（0.8s）· 超窗丢弃 0
+[67.822387062] stdout: · token 长度 min 3014 p50 3522 p90 4100 max 4408 · 窗口 6144 占用 p50 57.3%
+[67.822393484] stdout: · 掩码边界偏差：2/48 条非零，max 1（持续偏大说明模板/分词器与预期不符，是必须看见的信号）
+[67.973062295] stdout: · 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl -> /kaggle/working/_dev.jsonl (115690 bytes)
+[68.137421543] stdout: · dev 9 条
+[68.137464927] stdout: · 载入 fla-hub/rwkv7-0.1B-g1（主权重 fp32 · autocast fp16）…
+[71.394077956] stderr: /usr/local/lib/python3.13/dist-packages/fla/layers/rwkv7.py:148: UserWarning: According to Bo, you are using a potentially buggy FLA implementation of RWKV. If you plan to report any numbers based on this implementation, we strongly recommend cross-checking with the official repo: https://github.com/BlinkDL/RWKV-LM. Bo may disagree with results reported from this version.
+[71.394117294] stderr:   warnings.warn(
+[74.625381976] stderr: Loading weights:   0%|          | 0/399 [00:00<?, ?it/s]Loading weights:  48%|████▊     | 193/399 [00:00<00:00, 1827.61it/s]Loading weights:  94%|█████████▍| 377/399 [00:00<00:00, 1832.12it/s]Loading weights: 100%|██████████| 399/399 [00:00<00:00, 1832.05it/s]
+[75.315765296] stdout: · 参数量 191.0M（全参微调 · fp32 主权重）
+[75.31769490799999] stdout: · 批 4 × 累积 8 = 有效批 32 · 每轮 12 微批 -> 1 步 · 共 3 步
+[75.317711298] stdout: \n=== 冒烟模式：只验证环境，不训练 ===
+[75.327468398] stderr: [transformers] `use_return_dict` is deprecated! Use `return_dict` instead!
+[658.196879215] stderr: Traceback (most recent call last):
+[658.1998059] stderr:   File "/kaggle/src/script.py", line 505, in <module>
+[658.199826104] stderr:     sys.exit(main([
+[658.199832062] stderr:              ~~~~^^
+[658.19983667] stderr:         "--smoke",
+[658.199841569] stderr:         ^^^^^^^^^^
+[658.199846492] stderr:     ...<3 lines>...
+[658.199851961] stderr:         "https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl",
+[658.199857062] stderr:         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[658.199862369] stderr:     ]))
+[658.199867141] stderr:     ^^
+[658.199871714] stderr:   File "/kaggle/src/script.py", line 378, in main
+[658.199876215] stderr:     scaler.scale(loss).backward()
+[658.199880781] stderr:     ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+[658.199885171] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/_tensor.py", line 631, in backward
+[658.199889501] stderr:     torch.autograd.backward(
+[658.199893855] stderr:     ~~~~~~~~~~~~~~~~~~~~~~~^
+[658.199898307] stderr:         self, gradient, retain_graph, create_graph, inputs=inputs
+[658.199902422] stderr:         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[658.199908332] stderr:     )
+[658.199917378] stderr:     ^
+[658.199920018] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/autograd/__init__.py", line 381, in backward
+[658.199923327] stderr:     _engine_run_backward(
+[658.199925803] stderr:     ~~~~~~~~~~~~~~~~~~~~^
+[658.199928442] stderr:         tensors,
+[658.199930925] stderr:         ^^^^^^^^
+[658.199933509] stderr:     ...<5 lines>...
+[658.199937231] stderr:         accumulate_grad=True,
+[658.199957807] stderr:         ^^^^^^^^^^^^^^^^^^^^^
+[658.199962855] stderr:     )
+[658.199967149] stderr:     ^
+[658.1999712] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/autograd/graph.py", line 869, in _engine_run_backward
+[658.199976103] stderr:     return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+[658.199980756] stderr:            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[658.199985052] stderr:         t_outputs, *args, **kwargs
+[658.199988971] stderr:         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+[658.200002015] stderr:     )  # Calls into the C++ engine to run the backward pass
+[658.20001232] stderr:     ^
+[658.200014944] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/autograd/function.py", line 317, in apply
+[658.200017838] stderr:     return user_fn(self, *args)
+[658.200020362] stderr:   File "/usr/local/lib/python3.13/dist-packages/fla/utils/_decorators.py", line 152, in wrapper
+[658.200023032] stderr:     return fn(*processed_args, **processed_kwargs)
+[658.20002566] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/amp/autocast_mode.py", line 527, in decorate_bwd
+[658.200028389] stderr:     return bwd(*args, **kwargs)  # pyrefly: ignore [not-callable]
+[658.200032595] stderr:   File "/usr/local/lib/python3.13/dist-packages/fla/ops/generalized_delta_rule/dplr/chunk.py", line 412, in backward
+[658.200040479] stderr:     dq, dk, da, db, dgk = chunk_dplr_bwd_dqk_intra(
+[658.200043153] stderr:                           ~~~~~~~~~~~~~~~~~~~~~~~~^
+[658.200045804] stderr:         q=q,
+[658.200048304] stderr:         ^^^^
+[658.200050854] stderr:     ...<18 lines>...
+[658.200053689] stderr:         chunk_indices=ctx.chunk_indices,
+[658.200056324] stderr:         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[658.20005895] stderr:     )
+[658.200061496] stderr:     ^
+[658.200064061] stderr:   File "/usr/local/lib/python3.13/dist-packages/fla/ops/generalized_delta_rule/dplr/chunk_A_bwd.py", line 509, in chunk_dplr_bwd_dqk_intra
+[658.200066942] stderr:     chunk_dplr_bwd_kernel_intra_func[grid](
+[658.200069529] stderr:     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+[658.200072118] stderr:         q=q,
+[658.200074661] stderr:         ^^^^
+[658.20007719] stderr:     ...<28 lines>...
+[658.200081093] stderr:         GATHER_SUPPORTED=IS_GATHER_SUPPORTED,
+[658.200083998] stderr:         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[658.200086611] stderr:     )
+[658.200089112] stderr:     ^
+[658.200091659] stderr:   File "/usr/local/lib/python3.13/dist-packages/triton/runtime/jit.py", line 370, in <lambda>
+[658.200094478] stderr:     return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+[658.200097312] stderr:                                    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[658.200100013] stderr:   File "/usr/local/lib/python3.13/dist-packages/triton/runtime/autotuner.py", line 459, in run
+[658.200102799] stderr:     return self.fn.run(*args, **kwargs)
+[658.200105304] stderr:            ~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+[658.200107907] stderr:   File "/usr/local/lib/python3.13/dist-packages/triton/runtime/autotuner.py", line 252, in run
+[658.200113146] stderr:     ret = self.fn.run(
+[658.200115847] stderr:         *args,
+[658.200119212] stderr:         **kwargs,
+[658.200122308] stderr:         **config.all_kwargs(),
+[658.200124927] stderr:     )
+[658.200127516] stderr:   File "/usr/local/lib/python3.13/dist-packages/triton/runtime/jit.py", line 743, in run
+[658.200130264] stderr:     launch_metadata = kernel.launch_metadata(grid, stream, *bound_args.values())
+[658.200132995] stderr:   File "/usr/local/lib/python3.13/dist-packages/triton/compiler/compiler.py", line 482, in launch_metadata
+[658.200136429] stderr:     self._init_handles()
+[658.200138967] stderr:     ~~~~~~~~~~~~~~~~~~^^
+[658.20014148] stderr:   File "/usr/local/lib/python3.13/dist-packages/triton/compiler/compiler.py", line 456, in _init_handles
+[658.200144266] stderr:     raise_(OutOfResources(self.metadata.shared, max_shared, "shared memory"))
+[658.200146978] stderr:     ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[658.200149618] stderr:   File "/usr/local/lib/python3.13/dist-packages/triton/compiler/compiler.py", line 448, in raise_
+[658.200152379] stderr:     raise err
+[658.200155498] stderr: triton.runtime.errors.OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+[670.26024035] stderr: /usr/local/lib/python3.13/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\|'
+[670.260268919] stderr:   cells[i][c] = re.sub('\\\\\|', '|', cell)
+[670.674974272] stderr: /usr/local/lib/python3.13/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\_'
+[670.675014673] stderr:   text = re.sub(r'_', '\_', text) # Escape underscores in display text
+[671.569791653] stderr: [NbConvertApp] Converting notebook __script__.ipynb to html
+[673.001812976] stderr: [NbConvertApp] Writing 383423 bytes to __results__.html

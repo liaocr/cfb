@@ -1,0 +1,90 @@
+total 10558
+
+=== 一条完整样本（去掉 raw/ctx 正文）===
+{
+ "unitId": "canonical_operator_pr1000#b15",
+ "source": {
+  "dataset": "nvidia/Open-SWE-Traces",
+  "revision": "f8fb5b3d2c787f85f8a00f5fe04fe3f1a11088ef",
+  "config": "v1.1",
+  "split": "openhands",
+  "shardUrl": "https://huggingface.co/api/datasets/nvidia/Open-SWE-Traces/parquet/v1.1/openhands/25.parquet",
+  "fileRowNumber": 0,
+  "repository": "canonical/operator",
+  "repositoryLicense": "Apache-2.0",
+  "instanceId": "canonical_operator_pr1000",
+  "trajectoryId": "ec660c4d-dc59-4b5a-b4c4-79b7bb5cecb1",
+  "teacherModel": "DeepSeek-V4-Flash",
+  "reasoningEffort": "max"
+ },
+ "birthStep": 15,
+ "raw": "<str len=3502>",
+ "rawChars": 3502,
+ "ctx": "<str len=4043>",
+ "ctxChars": 4043,
+ "visibleAtBirth": {
+  "contentChars": 0,
+  "toolCalls": [
+   "str_replace_editor"
+  ]
+ },
+ "after": {
+  "steps": [
+   "[result] Here's the result of running `cat -n` on /workspace/canonical__operator__1.0/ops/model.py:\n   408\t    def add_secret(self, content: Dict[str, str], *,\n   409\t                   label: Optional[str] = None,\n   410\t                   description: Optional[str] = None,\n…[8602 chars omitted]…\nwith the given protocol for this unit.\n   599\t\n   600\t        Calling this registers intent with Juju that the application should be\n",
+   "[call:execute_bash] {\"command\": \"cd /workspace/canonical__operator__1.0 && python3 -m pytest test/test_model.py -v 2>&1 | tail -20\"}",
+   "[result] \"\"\"\n        level = 0\n        if name.startswith('.'):\n            if not package:\n                msg = (\"the 'package' argument is required to perform a relative \"\n                       \"import for {!r}\")\n                raise TypeError(msg.format(name))\n…[695 chars omitted]…\norking directory: /workspace/canonical__operator__1.0]\n[Python interpreter: /usr/local/bin/python]\n[Command finished with exit code 0]",
+   "[call:execute_bash] {\"command\": \"cd /workspace/canonical__operator__1.0 && git stash && python3 -m pytest test/test_model.py::TestContainerPebble::test_exec -v 2>&1 | tail -15; git stash pop\"}",
+   "[result] Saved working directory and index state WIP on scaleswe: c9bba5b Raise error in wait_output if stdout is already being consumed (#998)\n            if not package:\n                msg = (\"the 'package' argument is required to perform a relative \"\n…[1029 chars omitted]…\norking directory: /workspace/canonical__operator__1.0]\n[Python interpreter: /usr/local/bin/python]\n[Command finished with exit code 0]",
+   "[call:execute_bash] 
+
+=== 字段类型分布 ===
+  unitId             [('str', 10558)]
+  source             [('dict', 10558)]
+  birthStep          [('int', 10558)]
+  raw                [('str', 10558)]
+  rawChars           [('int', 10558)]
+  ctx                [('str', 10558)]
+  ctxChars           [('int', 10558)]
+  visibleAtBirth     [('dict', 10558)]
+  after              [('dict', 10558)]
+  offlineSignals     [('dict', 10558)]
+  notes              [('dict', 10558)]
+
+=== source 子字段 ===
+[["dataset", 10558], ["revision", 10558], ["config", 10558], ["split", 10558], ["shardUrl", 10558], ["fileRowNumber", 10558], ["repository", 10558], ["repositoryLicense", 10558], ["instanceId", 10558], ["trajectoryId", 10558], ["teacherModel", 10558], ["reasoningEffort", 10558]]
+
+=== source 去重基数 ===
+  dataset              唯一=1      top=[["nvidia/Open-SWE-Traces", 10558]]
+  config               唯一=1      top=[["v1.1", 10558]]
+  split                唯一=1      top=[["openhands", 10558]]
+  teacherModel         唯一=1      top=[["DeepSeek-V4-Flash", 10558]]
+  reasoningEffort      唯一=1      top=[["max", 10558]]
+  repository           唯一=1075   top=[["canonical/operator", 14], ["googlefonts/ufo2ft", 14], ["sciunto-org/python-bibtexparser", 14], ["sbdchd/flake8-pie", 14], ["app-sre/qontract-reconcile", 14], ["swagger-api/swagger-codegen", 14]]
+  repositoryLicense    唯一=4      top=[["MIT", 5664], ["Apache-2.0", 2814], ["BSD-3-Clause", 1778], ["BSD-2-Clause", 302]]
+
+=== trajectoryId / instanceId / fileRowNumber ===
+  trajectoryId     唯一=4741
+  instanceId       唯一=3918
+  fileRowNumber    唯一=1823
+  shardUrl         唯一=9
+
+=== unitId 形态 ===
+   canonical_operator_pr1000#b15
+   googlefonts_ufo2ft_pr299#b9
+   sciunto-org_python-bibtexparser_pr317#b19
+   sbdchd_flake8-pie_pr72#b15
+   itamarst_crochet_pr30#b4
+unique unitId= 7395
+
+=== visibleAtBirth / after / offlineSignals ===
+  visibleAtBirth   sample=[{"contentChars": 0, "toolCalls": ["str_replace_editor"]}, {"contentChars": 0, "toolCalls": ["str_replace_editor"]}, {"contentChars": 0, "toolCalls": ["str_replace_editor"]}]
+  after            sample=[{"steps": ["[result] Here's the result of running `cat -n` on /workspace/canonical__operator__1.0/ops/model.py:\n   408\t    def add_secret(self, content: Dict[str, str], *,\n   409\t                   label: Optional[str] = None,\n   410\t                   description: Optional[str] = None,\n…[8602 chars omitted]…\nwith the given protocol for this unit.\n   599\t\n   600\t        Calling this r
+  offlineSignals   sample=[{"identifiersInRaw": ["Secret.get", "_backend.secret", "`Application.add_secret()`", "`Model.get_secret()`", "`Secret._validate_content(content)`", "`Secret`", "`__init__`", "`add_secret`", "`content`", "`get_content()`", "`peek_content()`", "`secret.get_content()`", "`self._backend.secret_add(content, ...)`", "`self._backend.secret_get()`", "`self._content`", "get_secret", "model.get", "peek_con
+  birthStep        sample=[15, 9, 19]
+
+=== 重复率：同一 (trajectoryId,birthStep) 出现几次 ===
+  pairs= 7673  重复最多的: [[["646610d3-4d4b-4033-bc6a-6c7ed2e046b9", 7], 5], [["3f2b32a8-897e-4dba-8fc4-54b12454c947", 15], 5], [["ec660c4d-dc59-4b5a-b4c4-79b7bb5cecb1", 15], 4], [["58b462f9-0e94-4d1d-8170-970d42f06588", 9], 4], [["5b8ef8cf-19ae-42a5-8f95-e0a413de63f4", 19], 4]]
+
+=== 每个 trajectory 有几个 unit ===
+  trajectories= 4741  units/traj min=1 med=2 max=7 mean=2.23
+  分布: [[2, 1887], [1, 1429], [3, 637], [4, 539], [5, 208], [6, 39], [7, 2]]

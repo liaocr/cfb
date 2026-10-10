@@ -1,0 +1,9 @@
+gemma-3-270m-it FAIL HTTP Error 401: Unauthorized
+SmolLM2-360M-Instruct :: {"model_type": "llama", "vocab_size": 49152, "hidden_size": 960, "num_hidden_layers": 32, "intermediate_size": 2560, "num_attention_heads": 15, "num_key_value_heads": 5, "max_position_embeddings": 8192, "tie_word_embeddings": true, "torch_dtype": "bfloat16"}
+Qwen2.5-0.5B-Instruct :: {"model_type": "qwen2", "vocab_size": 151936, "hidden_size": 896, "num_hidden_layers": 24, "intermediate_size": 4864, "num_attention_heads": 14, "num_key_value_heads": 2, "max_position_embeddings": 32768, "tie_word_embeddings": true, "torch_dtype": "bfloat16"}
+rwkv7-0.1B-g1 :: {"model_type": "rwkv7", "vocab_size": 65536, "hidden_size": 768, "num_hidden_layers": 12, "intermediate_size": 3072, "max_position_embeddings": 2048, "tie_word_embeddings": false, "torch_dtype": "float32", "head_dim": 64, "num_heads": 32}
+PYPI flash-linear-attention latest=0.5.2 files=2 requires_python=>=3.10
+PYPI fla-core latest=0.5.2 files=2 requires_python=>=3.10
+PYPI rwkv-fla latest=0.7.202508221413 files=2 requires_python=>=3.10
+TOK gemma-3-270m-it FAIL HTTP Error 401: Unauthorized
+TOK SmolLM2-360M tokenizer.json 2104556 bytes

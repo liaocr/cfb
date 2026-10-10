@@ -1,0 +1,118 @@
+==============================================================================
+adamchainz_treepoem_pr437#b19
+--- DRAFT ---
+已实现并验证：
+- CLI 帮助已含 `-s SCALE`，usage 行为：「usage: -c [-h] [-t TYPE] [-f FORMAT] [-o OUTPUT] [-s SCALE] data [options ...]」。
+- 手动脚本验证：默认 scale（2）与显式 scale=2 的图像尺寸一致，尺寸随 scale 成比例变化。
+- pytest 全量通过，既有 test_main.py 用例未受影响。
+- 题面要求均已满足：scale 为 int、默认 2 保持向后兼容、校验为正整数（>= 1）。
+
+落点：
+- CLI 解析器在 `treepoem/__main__.py`（由导入 `parser` 的路径确认）。
+- 图像生成侧的关键是 treepoem 包内的 `EPS_TEMPLATE` 与 `_get_bbox`，即 `treepoem/__init__.py`。
+
+尚在核对、未定论的边界：bbox 是否需感知 scale。推理链为：`_get_bbox` 用 Ghostscript 的 bbox device 求边界；PostScript 内含 scale 指令，故 bbox 是缩放之后的结果，scale 越大 bbox 越大；该 bbox 经 `EPS_TEMPLATE` 写入 EPS 的 `%%BoundingBox`，PIL 的 EpsImagePlugin 据此确定画布尺寸，而 EPS 内容同样带缩放指令（「2 2 scale」）。据此推断输出正确——bbox 与内容同步缩放；下一步是实际查看不同 scale 下的 EPS 输出来确认。
+
+已查看 `tests/conftest.py`：它只汇报 Ghostscript 版本，与 scale 无关。
+--- 稿中反引号 token 是否在 raw/ctx 里 ---
+   -s SCALE                                   in raw/ctx: True
+   treepoem/__main__.py                       in raw/ctx: False
+   parser                                     in raw/ctx: True
+   EPS_TEMPLATE                               in raw/ctx: True
+   _get_bbox                                  in raw/ctx: True
+   treepoem/__init__.py                       in raw/ctx: False
+   _get_bbox                                  in raw/ctx: True
+   EPS_TEMPLATE                               in raw/ctx: True
+   %%BoundingBox                              in raw/ctx: True
+   tests/conftest.py                          in raw/ctx: True
+
+==============================================================================
+aiokitchen_aiomisc_pr199#b13
+--- DRAFT ---
+**环境前提**：仓库根目录 `/workspace/aiokitchen__aiomisc__1.0`；已安装 `grpcio-reflection` 1.56.2；`grpc_reflection.v1alpha.reflection` 可用（参考实现模块）。
+
+**机制结论**：`Service.__init__` 会调用 `_set_params(**kwargs)`，把全部 kwargs 存进 `_instance_params` 并设为实例属性，所以新增 `reflection` 关键字后可直接以 `self.reflection` 访问。`GRPCService.__init__` 目前用 `**kwds: Any` 并把这些转交 `super().__init__(**kwds)`，把 `reflection` 正式加进构造签名即可正常传递。
+
+**反射 API**：`enable_server_reflection(service_names, server, pool=None)`，`service_names` 是完全限定服务名的可迭代对象；也可用 `ReflectionServicer(service_names, pool=None)`。服务名需从已注册的 handler 提取：`grpc.ServiceRpcHandler` 是 `grpc.GenericRpcHandler` 的子类，handler 上可能有 `service_name`；`grpc.aio.Server` 经 `add_generic_rpc_handlers` 接收它们（示例里是 `add_GreeterServicer_to_server(Greeter(), grpc_service)`，服务名形如 `helloworld.Greeter`）。**具体提取方式未定论**，还待查 grpc 源码中 `GenericRpcHandler` 的定义。
+
+**决定要做的改动**：
+1. `GRPCService.__init__` 新增 `reflection` 参数，默认 `False`；
+2. 条件导入 `grpc_reflection.v1alpha.reflection`；
+3. `start()` 中当 `reflection` 为真时启用 server reflection；
+4. 在 `pyproject.toml` 的 `grpc` extra 里加入 `grpcio-reflection`。
+
+**落点**：`aiomisc/service/grpc_server.py`（题面模块 `aiomisc.service.grpc_server`，即 `GRPCService` 所在文件），以及 `pyproject.toml`。已查阅 `aiomisc/service/base.py` 以确认上述参数机制。
+--- 稿中反引号 token 是否在 raw/ctx 里 ---
+   /workspace/aiokitchen__aiomisc__1.0        in raw/ctx: True
+   grpcio-reflection                          in raw/ctx: True
+   grpc_reflection.v1alpha.reflection         in raw/ctx: True
+   Service.__init__                           in raw/ctx: True
+   _set_params(**kwargs)                      in raw/ctx: True
+   _instance_params                           in raw/ctx: True
+   reflection                                 in raw/ctx: True
+   self.reflection                            in raw/ctx: True
+   GRPCService.__init__                       in raw/ctx: True
+   **kwds: Any                                in raw/ctx: True
+   super().__init__(**kwds)                   in raw/ctx: True
+   reflection                                 in raw/ctx: True
+   enable_server_reflection(service_names, se in raw/ctx: True
+   service_names                              in raw/ctx: True
+   ReflectionServicer(service_names, pool=Non in raw/ctx: True
+   grpc.ServiceRpcHandler                     in raw/ctx: True
+   grpc.GenericRpcHandler                     in raw/ctx: True
+   service_name                               in raw/ctx: True
+   grpc.aio.Server                            in raw/ctx: True
+   add_generic_rpc_handlers                   in raw/ctx: True
+   add_GreeterServicer_to_server(Greeter(), g in raw/ctx: True
+   helloworld.Greeter                         in raw/ctx: True
+   GenericRpcHandler                          in raw/ctx: True
+   GRPCService.__init__                       in raw/ctx: True
+   reflection                                 in raw/ctx: True
+   False                                      in raw/ctx: True
+   grpc_reflection.v1alpha.reflection         in raw/ctx: True
+   start()                                    in raw/ctx: True
+   reflection                                 in raw/ctx: True
+   pyproject.toml                             in raw/ctx: True
+   grpc                                       in raw/ctx: True
+   grpcio-reflection                          in raw/ctx: True
+   aiomisc/service/grpc_server.py             in raw/ctx: False
+   aiomisc.service.grpc_server                in raw/ctx: True
+   GRPCService                                in raw/ctx: True
+   pyproject.toml                             in raw/ctx: True
+   aiomisc/service/base.py                    in raw/ctx: True
+
+==============================================================================
+ariebovenberg_slotscheck_pr34#b10
+--- DRAFT ---
+触发：多层继承中同名 slot（如 `Grandparent`/`Parent`/`Child` 都定义 `__slots__ = 'x'`）时，slotscheck 本应报告重叠错误，却崩溃「TypeError: '<' not supported between instances of 'type' and 'type'」。
+
+根因：`cli.py` 第 317 行对 `_overlapping_slots(self.cls)` 的结果做 `sorted`。该函数会为同一 slot 名产出多个 `(slot_name, base)` 元组；slot 名相同时，排序会继续比较 `type` 对象，故抛错。排序调用位于 `OverlappingSlots.for_display` 内。
+
+相关实现：`_overlapping_slots(c: type) -> Iterable[Tuple[str, type]]` 先取 `set(c.__dict__["__slots__"])`，再遍历 `c.mro()[1:]`，对与 `base.__dict__.get("__slots__", ())` 的交集 yield `(overlap, base)`。输出希望列出形如 `- p (module_not_ok.foo:U)`、`- v (module_not_ok.foo:V)` 的条目。
+
+方案：1）改排序 key，用 slot 名 + 类全名字符串（`_class_fullname`）排序，避免直接比较 type；2）在 `_overlapping_slots` 去重，不再对同一 slot 名产出多条——但会丢失基类信息，不取。决定采用 1，保留同名 slot 对多个基类的多条显示。
+
+落点：仓库 `/workspace/ariebovenberg__slotscheck__1.0` 中的 `cli.py`，第 317 行排序调用处。下一步先写复现脚本，再实施该修复。
+--- 稿中反引号 token 是否在 raw/ctx 里 ---
+   Grandparent                                in raw/ctx: True
+   Parent                                     in raw/ctx: True
+   Child                                      in raw/ctx: True
+   __slots__ = 'x'                            in raw/ctx: True
+   cli.py                                     in raw/ctx: True
+   _overlapping_slots(self.cls)               in raw/ctx: True
+   sorted                                     in raw/ctx: True
+   (slot_name, base)                          in raw/ctx: False
+   type                                       in raw/ctx: True
+   OverlappingSlots.for_display               in raw/ctx: True
+   _overlapping_slots(c: type) -> Iterable[Tu in raw/ctx: True
+   set(c.__dict__["__slots__"])               in raw/ctx: True
+   c.mro()[1:]                                in raw/ctx: True
+   base.__dict__.get("__slots__", ())         in raw/ctx: True
+   (overlap, base)                            in raw/ctx: True
+   - p (module_not_ok.foo:U)                  in raw/ctx: True
+   - v (module_not_ok.foo:V)                  in raw/ctx: True
+   _class_fullname                            in raw/ctx: True
+   _overlapping_slots                         in raw/ctx: True
+   /workspace/ariebovenberg__slotscheck__1.0  in raw/ctx: True
+   cli.py                                     in raw/ctx: True
+

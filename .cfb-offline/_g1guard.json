@@ -1,0 +1,5266 @@
+{
+ "off": {
+  "gaugeable": 73,
+  "pass": 25,
+  "rate": 0.3425,
+  "soft": 0.574,
+  "tokP50": 0.3491,
+  "charsP50": 697,
+  "hits": 0,
+  "changed": 0,
+  "empty": 0,
+  "failCount": {
+   "G1 quote-grounded": 32,
+   "G3 anchors-kept": 16,
+   "G4 actionable": 14,
+   "G6 not-copy": 1
+  },
+  "per": [
+   {
+    "id": "adamchainz_pytest-reverse_pr10#b15",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G0 no-leverage"
+    ],
+    "score": 0.3626,
+    "tok": 1.0419,
+    "chars": 1388,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "adamchainz_treepoem_pr437#b19",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.613,
+    "tok": 0.2676,
+    "chars": 509,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "adamtheturtle_pip-check-reqs_pr38#b9",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4493,
+    "tok": 0.5133,
+    "chars": 593,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "adamtheturtle_sybil-extras_pr297#b11",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G3 anchors-kept"
+    ],
+    "score": 0.7416,
+    "tok": 0.3147,
+    "chars": 1238,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "astropy_sphinx-automodapi_pr100#b11",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.349,
+    "tok": 0.3103,
+    "chars": 366,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "avian2_jsonmerge_pr29#b3",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G4 actionable"
+    ],
+    "score": 0.6437,
+    "tok": 0.1874,
+    "chars": 1319,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "bambinos_formulae_pr102#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4695,
+    "tok": 0.2217,
+    "chars": 1165,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "bastibe_python-soundfile_pr58#b21",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6476,
+    "tok": 0.2852,
+    "chars": 359,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "belerico_py-asciimath_pr4#b12",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.3874,
+    "tok": 0.2988,
+    "chars": 958,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "bellockk_alphashape_pr12#b5",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6732,
+    "tok": 0.2614,
+    "chars": 898,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "best-doctor_flake8-annotations-complexity_pr23#b8",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.4338,
+    "tok": 0.3117,
+    "chars": 585,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "biopragmatics_bioversions_pr80#b18",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.677,
+    "tok": 0.3537,
+    "chars": 457,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "blackducksoftware_hub-rest-api-python_pr152#b10",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.61,
+    "tok": 0.6562,
+    "chars": 944,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "bluetooth-devices_bluetooth-auto-recovery_pr13#b13",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.4289,
+    "tok": 0.6076,
+    "chars": 1843,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "brandon-rhodes_python-skyfield_pr51#b9",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7372,
+    "tok": 0.213,
+    "chars": 298,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "brightway-lca_brightway2-data_pr207#b3",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.6048,
+    "tok": 0.2542,
+    "chars": 355,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "burnash_gspread_pr1004#b7",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.457,
+    "tok": 0.2225,
+    "chars": 401,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "c4deszes_ldfparser_pr11#b9",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G0 no-leverage"
+    ],
+    "score": 0.4238,
+    "tok": 0.1896,
+    "chars": 608,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "carsonyl_pypac_pr81#b10",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G0 no-leverage"
+    ],
+    "score": 0.5668,
+    "tok": 0.7797,
+    "chars": 1168,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "cerfacs-globc_icclim_pr110#b10",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.4514,
+    "tok": 0.4775,
+    "chars": 977,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "cgoldberg_xvfbwrapper_pr66#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.8059,
+    "tok": 0.4607,
+    "chars": 838,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "chimpler_pyhocon_pr123#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4439,
+    "tok": 0.6477,
+    "chars": 1977,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "chmp_ipytest_pr110#b13",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.632,
+    "tok": 0.3484,
+    "chars": 833,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "cloudsmith-io_cloudsmith-cli_pr14#b8",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G4 actionable"
+    ],
+    "score": 0.6396,
+    "tok": 0.3919,
+    "chars": 533,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "cloudtools_troposphere_pr2101#b11",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.5457,
+    "tok": 0.3116,
+    "chars": 314,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "common-workflow-language_cwl-utils_pr101#b13",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.551,
+    "tok": 0.4543,
+    "chars": 1127,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "csparpa_pyowm_pr230#b39",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.5395,
+    "tok": 0.1531,
+    "chars": 139,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "csurfer_rake-nltk_pr59#b4",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4441,
+    "tok": 0.7174,
+    "chars": 763,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "cthoyt_pystow_pr29#b4",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7745,
+    "tok": 0.5281,
+    "chars": 603,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "daggaz_json-stream_pr11#b17",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6321,
+    "tok": 0.4041,
+    "chars": 658,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "dbatten5_maison_pr16#b15",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G0 no-leverage"
+    ],
+    "score": 0.8219,
+    "tok": 0.4646,
+    "chars": 579,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "dchevell_flask-executor_pr12#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.4985,
+    "tok": 0.2546,
+    "chars": 280,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "delta-io_delta-sharing_pr209#b10",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G0 no-leverage"
+    ],
+    "score": 0.4874,
+    "tok": 0.2547,
+    "chars": 639,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "denisart_graphql-query_pr39#b7",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4976,
+    "tok": 0.2201,
+    "chars": 551,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "devolo_ssllabs_pr37#b4",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6438,
+    "tok": 0.4167,
+    "chars": 1092,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "dhermes_bezier_pr233#b5",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G0 no-leverage"
+    ],
+    "score": 0.2834,
+    "tok": 0.4111,
+    "chars": 843,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "di_pip-api_pr99#b9",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.5908,
+    "tok": 0.5336,
+    "chars": 919,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "django-extensions_django-extensions_pr1837#b26",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.6972,
+    "tok": 0.5078,
+    "chars": 786,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "docopt_docopt_pr6#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7635,
+    "tok": 0.2567,
+    "chars": 306,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "drgarcia1986_simple-settings_pr19#b13",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7977,
+    "tok": 0.3288,
+    "chars": 532,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "durandtibo_feu_pr508#b8",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.4334,
+    "tok": 0.2893,
+    "chars": 413,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "dwavesystems_dimod_pr387#b15",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G3 anchors-kept"
+    ],
+    "score": 0.578,
+    "tok": 0.2703,
+    "chars": 785,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "erezlife_html2docx_pr11#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6685,
+    "tok": 0.5765,
+    "chars": 613,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "ethereum_hexbytes_pr13#b27",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.486,
+    "tok": 0.2634,
+    "chars": 680,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "executablebooks_myst-nb_pr219#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.622,
+    "tok": 0.8073,
+    "chars": 999,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "explosion_catalogue_pr33#b10",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.4778,
+    "tok": 0.4647,
+    "chars": 838,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "fohrloop_wakepy_pr79#b12",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.6699,
+    "tok": 0.4126,
+    "chars": 1011,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "fox-it_dissect.util_pr70#b15",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.35,
+    "tok": 0.034,
+    "chars": 96,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "frankie567_httpx-ws_pr110#b13",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.8143,
+    "tok": 0.3791,
+    "chars": 925,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "fulder_pki-tools_pr119#b11",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.5866,
+    "tok": 0.3333,
+    "chars": 771,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "gauge-sh_tach_pr10#b6",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.7183,
+    "tok": 0.2779,
+    "chars": 480,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "gijzelaerr_python-snap7_pr241#b24",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6626,
+    "tok": 0.3065,
+    "chars": 466,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "google_pasta_pr10#b13",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.5041,
+    "tok": 0.2201,
+    "chars": 139,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "google_pinject_pr49#b13",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.5493,
+    "tok": 0.7803,
+    "chars": 1743,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "gruebel_pycep_pr109#b6",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G6 not-copy"
+    ],
+    "score": 0.4356,
+    "tok": 0.9705,
+    "chars": 1515,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "home-assistant-libs_voluptuous-serialize_pr12#b6",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4758,
+    "tok": 0.4211,
+    "chars": 370,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "ikalnytskyi_picobox_pr33#b13",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6319,
+    "tok": 0.5678,
+    "chars": 1899,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "imageio_imageio_pr83#b18",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.7061,
+    "tok": 0.1284,
+    "chars": 447,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "jazzband_dj-database-url_pr145#b6",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.6261,
+    "tok": 0.2642,
+    "chars": 461,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "jazzband_geojson_pr131#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.65,
+    "tok": 0.1778,
+    "chars": 515,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "joerick_pyinstrument_pr46#b17",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G3 anchors-kept"
+    ],
+    "score": 0.5277,
+    "tok": 0.3274,
+    "chars": 568,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "johnnoone_json-spec_pr8#b12",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.5979,
+    "tok": 0.2173,
+    "chars": 571,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "jupyter-widgets_ipywidgets_pr2570#b6",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G3 anchors-kept"
+    ],
+    "score": 0.413,
+    "tok": 0.313,
+    "chars": 687,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "jwodder_versioningit_pr79#b10",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.333,
+    "tok": 0.943,
+    "chars": 1262,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "keboola_python-component_pr51#b10",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.7922,
+    "tok": 0.2173,
+    "chars": 685,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "kyleking_mdformat-mkdocs_pr26#b7",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6334,
+    "tok": 0.2712,
+    "chars": 340,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "lasp_cdflib_pr140#b12",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6373,
+    "tok": 0.3665,
+    "chars": 707,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "lasselindqvist_robotframework-imaplibrary2_pr33#b8",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7865,
+    "tok": 0.3412,
+    "chars": 598,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "liormizr_s3path_pr121#b7",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G3 anchors-kept"
+    ],
+    "score": 0.617,
+    "tok": 0.3902,
+    "chars": 432,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "litl_backoff_pr129#b15",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G4 actionable"
+    ],
+    "score": 0.4676,
+    "tok": 0.4213,
+    "chars": 782,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "logdna_python_pr75#b3",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G0 no-leverage"
+    ],
+    "score": 0.2822,
+    "tok": 1.223,
+    "chars": 1678,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "lovesegfault_beautysh_pr36#b3",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.3089,
+    "tok": 0.1669,
+    "chars": 271,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "magmax_python-inquirer_pr167#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.2988,
+    "tok": 0.21,
+    "chars": 1104,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "marcharper_python-ternary_pr145#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.5715,
+    "tok": 0.5867,
+    "chars": 697,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "matthew-brett_delocate_pr186#b26",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.921,
+    "tok": 0.5159,
+    "chars": 697,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "matyasrichter_fastapi-injector_pr25#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G4 actionable"
+    ],
+    "score": 0.4599,
+    "tok": 0.6207,
+    "chars": 1572,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "maurerle_eralchemy2_pr31#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.7353,
+    "tok": 0.3491,
+    "chars": 861,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "maxpmaxp_pdfreader_pr13#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6856,
+    "tok": 0.425,
+    "chars": 695,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "mehcode_python-xmlsec_pr100#b15",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.3297,
+    "tok": 0.6816,
+    "chars": 1571,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "mercedes-benz_odxtools_pr159#b11",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G4 actionable"
+    ],
+    "score": 0.5416,
+    "tok": 0.32,
+    "chars": 323,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "meteostat_meteostat-python_pr207#b7",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded",
+     "G3 anchors-kept"
+    ],
+    "score": 0.5548,
+    "tok": 0.3388,
+    "chars": 1226,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "mhostetter_galois_pr229#b7",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.4418,
+    "tok": 0.9566,
+    "chars": 1746,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "mkorpela_pabot_pr317#b10",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.5263,
+    "tok": 0.3554,
+    "chars": 1091,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "mmore500_alifedata-phyloinformatics-convert_pr6#b11",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.6618,
+    "tok": 0.1908,
+    "chars": 288,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "mvcisback_py-aiger_pr102#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.3908,
+    "tok": 0.5205,
+    "chars": 857,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "nschloe_matplotx_pr11#b6",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.3079,
+    "tok": 0.5236,
+    "chars": 775,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "openedx_edx-rest-api-client_pr37#b5",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.657,
+    "tok": 0.6212,
+    "chars": 1013,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "openshift_openshift-client-python_pr113#b12",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G1 quote-grounded"
+    ],
+    "score": 0.5723,
+    "tok": 0.5812,
+    "chars": 1487,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "pallets-eco_flask-pydantic_pr44#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6652,
+    "tok": 0.5569,
+    "chars": 1025,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   }
+  ]
+ },
+ "strip": {
+  "gaugeable": 73,
+  "pass": 45,
+  "rate": 0.6164,
+  "soft": 0.5836,
+  "tokP50": 0.3462,
+  "charsP50": 697,
+  "hits": 39,
+  "changed": 39,
+  "empty": 0,
+  "failCount": {
+   "G3 anchors-kept": 16,
+   "G4 actionable": 14,
+   "G6 not-copy": 2
+  },
+  "per": [
+   {
+    "id": "adamchainz_pytest-reverse_pr10#b15",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.3686,
+    "tok": 1.0349,
+    "chars": 1376,
+    "hits": 6,
+    "changed": true,
+    "invented": [
+     "py476",
+     "__init__.py",
+     "init__",
+     "urllib2",
+     "flake9",
+     "get_repo"
+    ]
+   },
+   {
+    "id": "adamchainz_treepoem_pr437#b19",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.613,
+    "tok": 0.2676,
+    "chars": 509,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "adamtheturtle_pip-check-reqs_pr38#b9",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4493,
+    "tok": 0.5133,
+    "chars": 593,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "adamtheturtle_sybil-extras_pr297#b11",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.7441,
+    "tok": 0.3137,
+    "chars": 1236,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "setdefaultLater"
+    ]
+   },
+   {
+    "id": "astropy_sphinx-automodapi_pr100#b11",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.349,
+    "tok": 0.3103,
+    "chars": 366,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "avian2_jsonmerge_pr29#b3",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.6464,
+    "tok": 0.1869,
+    "chars": 1315,
+    "hits": 2,
+    "changed": true,
+    "invented": [
+     "objectMergeById",
+     "call_strategy"
+    ]
+   },
+   {
+    "id": "bambinos_formulae_pr102#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4695,
+    "tok": 0.2217,
+    "chars": 1165,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "bastibe_python-soundfile_pr58#b21",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6476,
+    "tok": 0.2852,
+    "chars": 359,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "belerico_py-asciimath_pr4#b12",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.3874,
+    "tok": 0.2988,
+    "chars": 958,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "bellockk_alphashape_pr12#b5",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6732,
+    "tok": 0.2614,
+    "chars": 898,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "best-doctor_flake8-annotations-complexity_pr23#b8",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.4338,
+    "tok": 0.3117,
+    "chars": 585,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "biopragmatics_bioversions_pr80#b18",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.677,
+    "tok": 0.3537,
+    "chars": 457,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "blackducksoftware_hub-rest-api-python_pr152#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6169,
+    "tok": 0.6523,
+    "chars": 938,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "test_timeout",
+     "test_retrieve"
+    ]
+   },
+   {
+    "id": "bluetooth-devices_bluetooth-auto-recovery_pr13#b13",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.4289,
+    "tok": 0.6076,
+    "chars": 1843,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "brandon-rhodes_python-skyfield_pr51#b9",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7372,
+    "tok": 0.213,
+    "chars": 298,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "brightway-lca_brightway2-data_pr207#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.658,
+    "tok": 0.25,
+    "chars": 345,
+    "hits": 5,
+    "changed": true,
+    "invented": [
+     "is_emitted",
+     "error_class",
+     "is_save",
+     "is_initiated",
+     "is_executed"
+    ]
+   },
+   {
+    "id": "burnash_gspread_pr1004#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4699,
+    "tok": 0.2211,
+    "chars": 399,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "test_class"
+    ]
+   },
+   {
+    "id": "c4deszes_ldfparser_pr11#b9",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4327,
+    "tok": 0.1888,
+    "chars": 604,
+    "hits": 2,
+    "changed": true,
+    "invented": [
+     "lark_path_master",
+     "lark_path_slaves"
+    ]
+   },
+   {
+    "id": "carsonyl_pypac_pr81#b10",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6011,
+    "tok": 0.7648,
+    "chars": 1142,
+    "hits": 13,
+    "changed": true,
+    "invented": [
+     "findProxyForURLEx",
+     "myIpAddressList",
+     "isInSubnet",
+     "findProxyForURL",
+     "isResolved",
+     "isServerVersion",
+     "isClientVersion"
+    ]
+   },
+   {
+    "id": "cerfacs-globc_icclim_pr110#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4614,
+    "tok": 0.4738,
+    "chars": 973,
+    "hits": 2,
+    "changed": true,
+    "invented": [
+     "/usr/local/bin/python/verfiona/preprocessing/preprocessing.py",
+     "attributes/__headers/__context/__gconf/__mod"
+    ]
+   },
+   {
+    "id": "cgoldberg_xvfbwrapper_pr66#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.8059,
+    "tok": 0.4607,
+    "chars": 838,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "chimpler_pyhocon_pr123#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4439,
+    "tok": 0.6477,
+    "chars": 1977,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "chmp_ipytest_pr110#b13",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.636,
+    "tok": 0.3462,
+    "chars": 829,
+    "hits": 2,
+    "changed": true,
+    "invented": [
+     "temp_abc123.py",
+     "temp_abc123"
+    ]
+   },
+   {
+    "id": "cloudsmith-io_cloudsmith-cli_pr14#b8",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.6436,
+    "tok": 0.3899,
+    "chars": 531,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "config.py"
+    ]
+   },
+   {
+    "id": "cloudtools_troposphere_pr2101#b11",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.5457,
+    "tok": 0.3116,
+    "chars": 314,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "common-workflow-language_cwl-utils_pr101#b13",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.551,
+    "tok": 0.4543,
+    "chars": 1127,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "csparpa_pyowm_pr230#b39",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.5395,
+    "tok": 0.1531,
+    "chars": 139,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "csurfer_rake-nltk_pr59#b4",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4441,
+    "tok": 0.7174,
+    "chars": 763,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "cthoyt_pystow_pr29#b4",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7745,
+    "tok": 0.5281,
+    "chars": 603,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "daggaz_json-stream_pr11#b17",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6321,
+    "tok": 0.4041,
+    "chars": 658,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "dbatten5_maison_pr16#b15",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.8311,
+    "tok": 0.4646,
+    "chars": 577,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "value2"
+    ]
+   },
+   {
+    "id": "dchevell_flask-executor_pr12#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.4985,
+    "tok": 0.2546,
+    "chars": 280,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "delta-io_delta-sharing_pr209#b10",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4991,
+    "tok": 0.2526,
+    "chars": 633,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "sparkStream",
+     "sparkSharingSource",
+     "isSharing"
+    ]
+   },
+   {
+    "id": "denisart_graphql-query_pr39#b7",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4976,
+    "tok": 0.2201,
+    "chars": 551,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "devolo_ssllabs_pr37#b4",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6438,
+    "tok": 0.4167,
+    "chars": 1092,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "dhermes_bezier_pr233#b5",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.2857,
+    "tok": 0.4071,
+    "chars": 831,
+    "hits": 6,
+    "changed": true,
+    "invented": [
+     "d_amics",
+     "t_max",
+     "t_min",
+     "d_lim"
+    ]
+   },
+   {
+    "id": "di_pip-api_pr99#b9",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.5908,
+    "tok": 0.5336,
+    "chars": 919,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "django-extensions_django-extensions_pr1837#b26",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7185,
+    "tok": 0.5039,
+    "chars": 778,
+    "hits": 4,
+    "changed": true,
+    "invented": [
+     "getLogger"
+    ]
+   },
+   {
+    "id": "docopt_docopt_pr6#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7635,
+    "tok": 0.2567,
+    "chars": 306,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "drgarcia1986_simple-settings_pr19#b13",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7977,
+    "tok": 0.3288,
+    "chars": 532,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "durandtibo_feu_pr508#b8",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.4334,
+    "tok": 0.2893,
+    "chars": 413,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "dwavesystems_dimod_pr387#b15",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.606,
+    "tok": 0.2694,
+    "chars": 779,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "ignore_interactions",
+     "ignore_variables"
+    ]
+   },
+   {
+    "id": "erezlife_html2docx_pr11#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6685,
+    "tok": 0.5765,
+    "chars": 613,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "ethereum_hexbytes_pr13#b27",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.486,
+    "tok": 0.2634,
+    "chars": 680,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "executablebooks_myst-nb_pr219#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.622,
+    "tok": 0.8073,
+    "chars": 999,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "explosion_catalogue_pr33#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4892,
+    "tok": 0.4631,
+    "chars": 832,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "cfg_registry__catalogue_registry",
+     "to_json"
+    ]
+   },
+   {
+    "id": "fohrloop_wakepy_pr79#b12",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6868,
+    "tok": 0.409,
+    "chars": 997,
+    "hits": 7,
+    "changed": true,
+    "invented": [
+     "test_core.method.py",
+     "test_core.conftest.py",
+     "is_manager_to_lua",
+     "test_core/mode__exit",
+     "last_excursion",
+     "test_core/last_excursion",
+     "last_excursion_with_switch_to_the_mode",
+     "test_core/last_excursion_with_switch_to_the_mode"
+    ]
+   },
+   {
+    "id": "fox-it_dissect.util_pr70#b15",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.35,
+    "tok": 0.034,
+    "chars": 96,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "frankie567_httpx-ws_pr110#b13",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.8143,
+    "tok": 0.3791,
+    "chars": 925,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "fulder_pki-tools_pr119#b11",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.5866,
+    "tok": 0.3333,
+    "chars": 771,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "gauge-sh_tach_pr10#b6",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.7183,
+    "tok": 0.2779,
+    "chars": 480,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "gijzelaerr_python-snap7_pr241#b24",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6626,
+    "tok": 0.3065,
+    "chars": 466,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "google_pasta_pr10#b13",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.5041,
+    "tok": 0.2201,
+    "chars": 139,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "google_pinject_pr49#b13",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.5789,
+    "tok": 0.7677,
+    "chars": 1709,
+    "hits": 17,
+    "changed": true,
+    "invented": [
+     "init__",
+     "setattr__",
+     "delattr__",
+     "all__",
+     "main__",
+     "frame__",
+     "traceback__",
+     "exit__"
+    ]
+   },
+   {
+    "id": "gruebel_pycep_pr109#b6",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G6 not-copy"
+    ],
+    "score": 0.4356,
+    "tok": 0.9705,
+    "chars": 1515,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "home-assistant-libs_voluptuous-serialize_pr12#b6",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4758,
+    "tok": 0.4211,
+    "chars": 370,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "ikalnytskyi_picobox_pr33#b13",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6319,
+    "tok": 0.5678,
+    "chars": 1899,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "imageio_imageio_pr83#b18",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.7061,
+    "tok": 0.1284,
+    "chars": 447,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "jazzband_dj-database-url_pr145#b6",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6426,
+    "tok": 0.2642,
+    "chars": 459,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "ENGINES",
+     "django_djangodb"
+    ]
+   },
+   {
+    "id": "jazzband_geojson_pr131#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.65,
+    "tok": 0.1778,
+    "chars": 515,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "joerick_pyinstrument_pr46#b17",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.5363,
+    "tok": 0.3274,
+    "chars": 566,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "run_body"
+    ]
+   },
+   {
+    "id": "johnnoone_json-spec_pr8#b12",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.5979,
+    "tok": 0.2173,
+    "chars": 571,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "jupyter-widgets_ipywidgets_pr2570#b6",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.4326,
+    "tok": 0.3106,
+    "chars": 681,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "getClass"
+    ]
+   },
+   {
+    "id": "jwodder_versioningit_pr79#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.3361,
+    "tok": 0.9359,
+    "chars": 1252,
+    "hits": 5,
+    "changed": true,
+    "invented": [
+     "test_add_no_commits_default_tag",
+     "test_log_level",
+     "test_remove_no_tag",
+     "test_tag",
+     "test_optional_str"
+    ]
+   },
+   {
+    "id": "keboola_python-component_pr51#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7958,
+    "tok": 0.2164,
+    "chars": 683,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "filter_manifest_by_manifest_type"
+    ]
+   },
+   {
+    "id": "kyleking_mdformat-mkdocs_pr26#b7",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6334,
+    "tok": 0.2712,
+    "chars": 340,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "lasp_cdflib_pr140#b12",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6373,
+    "tok": 0.3665,
+    "chars": 707,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "lasselindqvist_robotframework-imaplibrary2_pr33#b8",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7865,
+    "tok": 0.3412,
+    "chars": 598,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "liormizr_s3path_pr121#b7",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.6338,
+    "tok": 0.3878,
+    "chars": 426,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "_path.py",
+     "S3path/"
+    ]
+   },
+   {
+    "id": "litl_backoff_pr129#b15",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.5883,
+    "tok": 0.412,
+    "chars": 762,
+    "hits": 10,
+    "changed": true,
+    "invented": [
+     "raise_on_exception",
+     "raise_on_keyerror",
+     "raise_on_re"
+    ]
+   },
+   {
+    "id": "logdna_python_pr75#b3",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.3384,
+    "tok": 1.1716,
+    "chars": 1594,
+    "hits": 42,
+    "changed": true,
+    "invented": [
+     "return_now",
+     "all__",
+     "__init__.py",
+     "init__",
+     "output_file__",
+     "workspace_size",
+     "workspace_type",
+     "x10000000"
+    ]
+   },
+   {
+    "id": "lovesegfault_beautysh_pr36#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.3839,
+    "tok": 0.1573,
+    "chars": 249,
+    "hits": 11,
+    "changed": true,
+    "invented": [
+     "test_remove",
+     "test_strip",
+     "test_replace",
+     "test_indent",
+     "test_deselect",
+     "test_open",
+     "test_close",
+     "test_main"
+    ]
+   },
+   {
+    "id": "magmax_python-inquirer_pr167#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.2988,
+    "tok": 0.21,
+    "chars": 1104,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "marcharper_python-ternary_pr145#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.5715,
+    "tok": 0.5867,
+    "chars": 697,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "matthew-brett_delocate_pr186#b26",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.921,
+    "tok": 0.5159,
+    "chars": 697,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "matyasrichter_fastapi-injector_pr25#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.5074,
+    "tok": 0.613,
+    "chars": 1550,
+    "hits": 11,
+    "changed": true,
+    "invented": [
+     "fastapi_injector/api_injector.py",
+     "inner__app",
+     "create_scope_instance"
+    ]
+   },
+   {
+    "id": "maurerle_eralchemy2_pr31#b4",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7501,
+    "tok": 0.3455,
+    "chars": 847,
+    "hits": 7,
+    "changed": true,
+    "invented": [
+     "import_table",
+     "exclude_groups",
+     "name_to_dot"
+    ]
+   },
+   {
+    "id": "maxpmaxp_pdfreader_pr13#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6856,
+    "tok": 0.425,
+    "chars": 695,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "mehcode_python-xmlsec_pr100#b15",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G6 not-copy"
+    ],
+    "score": 0.3828,
+    "tok": 0.6715,
+    "chars": 1543,
+    "hits": 14,
+    "changed": true,
+    "invented": [
+     "XMLSEC_NO_DHACC",
+     "XMLSEC_NO_EDDS",
+     "XMLSEC_NO_SHA256",
+     "XMLSEC_NO_SHA384",
+     "XMLSEC_NO_SHA512",
+     "XMLSEC_NO_CRYPTO_DES"
+    ]
+   },
+   {
+    "id": "mercedes-benz_odxtools_pr159#b11",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.5737,
+    "tok": 0.3179,
+    "chars": 321,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "item.sh"
+    ]
+   },
+   {
+    "id": "meteostat_meteostat-python_pr207#b7",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.5631,
+    "tok": 0.3371,
+    "chars": 1218,
+    "hits": 4,
+    "changed": true,
+    "invented": [
+     "empty_data",
+     "get_df"
+    ]
+   },
+   {
+    "id": "mhostetter_galois_pr229#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4453,
+    "tok": 0.9566,
+    "chars": 1744,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "method_call__"
+    ]
+   },
+   {
+    "id": "mkorpela_pabot_pr317#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.5345,
+    "tok": 0.3554,
+    "chars": 1089,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "start_remote_libraryinv"
+    ]
+   },
+   {
+    "id": "mmore500_alifedata-phyloinformatics-convert_pr6#b11",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6718,
+    "tok": 0.1908,
+    "chars": 286,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "tree_length"
+    ]
+   },
+   {
+    "id": "mvcisback_py-aiger_pr102#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.3908,
+    "tok": 0.5205,
+    "chars": 857,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "nschloe_matplotx_pr11#b6",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.3069,
+    "tok": 0.5202,
+    "chars": 765,
+    "hits": 5,
+    "changed": true,
+    "invented": [
+     "styles/style_sheets.py",
+     "log10"
+    ]
+   },
+   {
+    "id": "openedx_edx-rest-api-client_pr37#b5",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6598,
+    "tok": 0.6212,
+    "chars": 1011,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "test_oauth_access_token"
+    ]
+   },
+   {
+    "id": "openshift_openshift-client-python_pr113#b12",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6208,
+    "tok": 0.57,
+    "chars": 1455,
+    "hits": 16,
+    "changed": true,
+    "invented": [
+     "default_context",
+     "default_project"
+    ]
+   },
+   {
+    "id": "pallets-eco_flask-pydantic_pr44#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6652,
+    "tok": 0.5569,
+    "chars": 1025,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   }
+  ]
+ },
+ "drop": {
+  "gaugeable": 73,
+  "pass": 46,
+  "rate": 0.6301,
+  "soft": 0.5925,
+  "tokP50": 0.3385,
+  "charsP50": 695,
+  "hits": 39,
+  "changed": 39,
+  "empty": 0,
+  "failCount": {
+   "G3 anchors-kept": 16,
+   "G4 actionable": 14,
+   "G6 not-copy": 1
+  },
+  "per": [
+   {
+    "id": "adamchainz_pytest-reverse_pr10#b15",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.3943,
+    "tok": 0.9535,
+    "chars": 1240,
+    "hits": 6,
+    "changed": true,
+    "invented": [
+     "py476",
+     "__init__.py",
+     "init__",
+     "urllib2",
+     "flake9",
+     "get_repo"
+    ]
+   },
+   {
+    "id": "adamchainz_treepoem_pr437#b19",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.613,
+    "tok": 0.2676,
+    "chars": 509,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "adamtheturtle_pip-check-reqs_pr38#b9",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4493,
+    "tok": 0.5133,
+    "chars": 593,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "adamtheturtle_sybil-extras_pr297#b11",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.7511,
+    "tok": 0.3098,
+    "chars": 1220,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "setdefaultLater"
+    ]
+   },
+   {
+    "id": "astropy_sphinx-automodapi_pr100#b11",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.349,
+    "tok": 0.3103,
+    "chars": 366,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "avian2_jsonmerge_pr29#b3",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.6617,
+    "tok": 0.1836,
+    "chars": 1286,
+    "hits": 2,
+    "changed": true,
+    "invented": [
+     "objectMergeById",
+     "call_strategy"
+    ]
+   },
+   {
+    "id": "bambinos_formulae_pr102#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4695,
+    "tok": 0.2217,
+    "chars": 1165,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "bastibe_python-soundfile_pr58#b21",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6476,
+    "tok": 0.2852,
+    "chars": 359,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "belerico_py-asciimath_pr4#b12",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.3874,
+    "tok": 0.2988,
+    "chars": 958,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "bellockk_alphashape_pr12#b5",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6732,
+    "tok": 0.2614,
+    "chars": 898,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "best-doctor_flake8-annotations-complexity_pr23#b8",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.4338,
+    "tok": 0.3117,
+    "chars": 585,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "biopragmatics_bioversions_pr80#b18",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.677,
+    "tok": 0.3537,
+    "chars": 457,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "blackducksoftware_hub-rest-api-python_pr152#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6337,
+    "tok": 0.6326,
+    "chars": 898,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "test_timeout",
+     "test_retrieve"
+    ]
+   },
+   {
+    "id": "bluetooth-devices_bluetooth-auto-recovery_pr13#b13",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.4289,
+    "tok": 0.6076,
+    "chars": 1843,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "brandon-rhodes_python-skyfield_pr51#b9",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7372,
+    "tok": 0.213,
+    "chars": 298,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "brightway-lca_brightway2-data_pr207#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7142,
+    "tok": 0.2208,
+    "chars": 290,
+    "hits": 5,
+    "changed": true,
+    "invented": [
+     "is_emitted",
+     "error_class",
+     "is_save",
+     "is_initiated",
+     "is_executed"
+    ]
+   },
+   {
+    "id": "burnash_gspread_pr1004#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4809,
+    "tok": 0.2141,
+    "chars": 381,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "test_class"
+    ]
+   },
+   {
+    "id": "c4deszes_ldfparser_pr11#b9",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.438,
+    "tok": 0.1818,
+    "chars": 570,
+    "hits": 2,
+    "changed": true,
+    "invented": [
+     "lark_path_master",
+     "lark_path_slaves"
+    ]
+   },
+   {
+    "id": "carsonyl_pypac_pr81#b10",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6493,
+    "tok": 0.6038,
+    "chars": 849,
+    "hits": 13,
+    "changed": true,
+    "invented": [
+     "findProxyForURLEx",
+     "myIpAddressList",
+     "isInSubnet",
+     "findProxyForURL",
+     "isResolved",
+     "isServerVersion",
+     "isClientVersion"
+    ]
+   },
+   {
+    "id": "cerfacs-globc_icclim_pr110#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4799,
+    "tok": 0.4213,
+    "chars": 864,
+    "hits": 2,
+    "changed": true,
+    "invented": [
+     "/usr/local/bin/python/verfiona/preprocessing/preprocessing.py",
+     "attributes/__headers/__context/__gconf/__mod"
+    ]
+   },
+   {
+    "id": "cgoldberg_xvfbwrapper_pr66#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.8059,
+    "tok": 0.4607,
+    "chars": 838,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "chimpler_pyhocon_pr123#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4439,
+    "tok": 0.6477,
+    "chars": 1977,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "chmp_ipytest_pr110#b13",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6513,
+    "tok": 0.3385,
+    "chars": 799,
+    "hits": 2,
+    "changed": true,
+    "invented": [
+     "temp_abc123.py",
+     "temp_abc123"
+    ]
+   },
+   {
+    "id": "cloudsmith-io_cloudsmith-cli_pr14#b8",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.6566,
+    "tok": 0.3859,
+    "chars": 522,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "config.py"
+    ]
+   },
+   {
+    "id": "cloudtools_troposphere_pr2101#b11",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.5457,
+    "tok": 0.3116,
+    "chars": 314,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "common-workflow-language_cwl-utils_pr101#b13",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.551,
+    "tok": 0.4543,
+    "chars": 1127,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "csparpa_pyowm_pr230#b39",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.5395,
+    "tok": 0.1531,
+    "chars": 139,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "csurfer_rake-nltk_pr59#b4",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4441,
+    "tok": 0.7174,
+    "chars": 763,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "cthoyt_pystow_pr29#b4",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7745,
+    "tok": 0.5281,
+    "chars": 603,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "daggaz_json-stream_pr11#b17",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6321,
+    "tok": 0.4041,
+    "chars": 658,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "dbatten5_maison_pr16#b15",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.8397,
+    "tok": 0.4479,
+    "chars": 549,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "value2"
+    ]
+   },
+   {
+    "id": "dchevell_flask-executor_pr12#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.4985,
+    "tok": 0.2546,
+    "chars": 280,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "delta-io_delta-sharing_pr209#b10",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.5409,
+    "tok": 0.2421,
+    "chars": 594,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "sparkStream",
+     "sparkSharingSource",
+     "isSharing"
+    ]
+   },
+   {
+    "id": "denisart_graphql-query_pr39#b7",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4976,
+    "tok": 0.2201,
+    "chars": 551,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "devolo_ssllabs_pr37#b4",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6438,
+    "tok": 0.4167,
+    "chars": 1092,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "dhermes_bezier_pr233#b5",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.296,
+    "tok": 0.3953,
+    "chars": 797,
+    "hits": 6,
+    "changed": true,
+    "invented": [
+     "d_amics",
+     "t_max",
+     "t_min",
+     "d_lim"
+    ]
+   },
+   {
+    "id": "di_pip-api_pr99#b9",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.5908,
+    "tok": 0.5336,
+    "chars": 919,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "django-extensions_django-extensions_pr1837#b26",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7376,
+    "tok": 0.4671,
+    "chars": 704,
+    "hits": 4,
+    "changed": true,
+    "invented": [
+     "getLogger"
+    ]
+   },
+   {
+    "id": "docopt_docopt_pr6#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7635,
+    "tok": 0.2567,
+    "chars": 306,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "drgarcia1986_simple-settings_pr19#b13",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7977,
+    "tok": 0.3288,
+    "chars": 532,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "durandtibo_feu_pr508#b8",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.4334,
+    "tok": 0.2893,
+    "chars": 413,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "dwavesystems_dimod_pr387#b15",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.6255,
+    "tok": 0.2435,
+    "chars": 672,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "ignore_interactions",
+     "ignore_variables"
+    ]
+   },
+   {
+    "id": "erezlife_html2docx_pr11#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6685,
+    "tok": 0.5765,
+    "chars": 613,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "ethereum_hexbytes_pr13#b27",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.486,
+    "tok": 0.2634,
+    "chars": 680,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "executablebooks_myst-nb_pr219#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.622,
+    "tok": 0.8073,
+    "chars": 999,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "explosion_catalogue_pr33#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.5057,
+    "tok": 0.4302,
+    "chars": 756,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "cfg_registry__catalogue_registry",
+     "to_json"
+    ]
+   },
+   {
+    "id": "fohrloop_wakepy_pr79#b12",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7053,
+    "tok": 0.3507,
+    "chars": 813,
+    "hits": 7,
+    "changed": true,
+    "invented": [
+     "test_core.method.py",
+     "test_core.conftest.py",
+     "is_manager_to_lua",
+     "test_core/mode__exit",
+     "last_excursion",
+     "test_core/last_excursion",
+     "last_excursion_with_switch_to_the_mode",
+     "test_core/last_excursion_with_switch_to_the_mode"
+    ]
+   },
+   {
+    "id": "fox-it_dissect.util_pr70#b15",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.35,
+    "tok": 0.034,
+    "chars": 96,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "frankie567_httpx-ws_pr110#b13",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.8143,
+    "tok": 0.3791,
+    "chars": 925,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "fulder_pki-tools_pr119#b11",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.5866,
+    "tok": 0.3333,
+    "chars": 771,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "gauge-sh_tach_pr10#b6",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.7183,
+    "tok": 0.2779,
+    "chars": 480,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "gijzelaerr_python-snap7_pr241#b24",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6626,
+    "tok": 0.3065,
+    "chars": 466,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "google_pasta_pr10#b13",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.5041,
+    "tok": 0.2201,
+    "chars": 139,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "google_pinject_pr49#b13",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6118,
+    "tok": 0.7065,
+    "chars": 1541,
+    "hits": 17,
+    "changed": true,
+    "invented": [
+     "init__",
+     "setattr__",
+     "delattr__",
+     "all__",
+     "main__",
+     "frame__",
+     "traceback__",
+     "exit__"
+    ]
+   },
+   {
+    "id": "gruebel_pycep_pr109#b6",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G6 not-copy"
+    ],
+    "score": 0.4356,
+    "tok": 0.9705,
+    "chars": 1515,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "home-assistant-libs_voluptuous-serialize_pr12#b6",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4758,
+    "tok": 0.4211,
+    "chars": 370,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "ikalnytskyi_picobox_pr33#b13",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6319,
+    "tok": 0.5678,
+    "chars": 1899,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "imageio_imageio_pr83#b18",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.7061,
+    "tok": 0.1284,
+    "chars": 447,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "jazzband_dj-database-url_pr145#b6",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.67,
+    "tok": 0.2425,
+    "chars": 410,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "ENGINES",
+     "django_djangodb"
+    ]
+   },
+   {
+    "id": "jazzband_geojson_pr131#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.65,
+    "tok": 0.1778,
+    "chars": 515,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "joerick_pyinstrument_pr46#b17",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.5444,
+    "tok": 0.3177,
+    "chars": 544,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "run_body"
+    ]
+   },
+   {
+    "id": "johnnoone_json-spec_pr8#b12",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.5979,
+    "tok": 0.2173,
+    "chars": 571,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "jupyter-widgets_ipywidgets_pr2570#b6",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.4416,
+    "tok": 0.3006,
+    "chars": 649,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "getClass"
+    ]
+   },
+   {
+    "id": "jwodder_versioningit_pr79#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.3592,
+    "tok": 0.8812,
+    "chars": 1162,
+    "hits": 5,
+    "changed": true,
+    "invented": [
+     "test_add_no_commits_default_tag",
+     "test_log_level",
+     "test_remove_no_tag",
+     "test_tag",
+     "test_optional_str"
+    ]
+   },
+   {
+    "id": "keboola_python-component_pr51#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.8035,
+    "tok": 0.2094,
+    "chars": 651,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "filter_manifest_by_manifest_type"
+    ]
+   },
+   {
+    "id": "kyleking_mdformat-mkdocs_pr26#b7",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6334,
+    "tok": 0.2712,
+    "chars": 340,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "lasp_cdflib_pr140#b12",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6373,
+    "tok": 0.3665,
+    "chars": 707,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "lasselindqvist_robotframework-imaplibrary2_pr33#b8",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7865,
+    "tok": 0.3412,
+    "chars": 598,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "liormizr_s3path_pr121#b7",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.6655,
+    "tok": 0.3732,
+    "chars": 403,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "_path.py",
+     "S3path/"
+    ]
+   },
+   {
+    "id": "litl_backoff_pr129#b15",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.5466,
+    "tok": 0.3426,
+    "chars": 587,
+    "hits": 10,
+    "changed": true,
+    "invented": [
+     "raise_on_exception",
+     "raise_on_keyerror",
+     "raise_on_re"
+    ]
+   },
+   {
+    "id": "logdna_python_pr75#b3",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.3744,
+    "tok": 0.8578,
+    "chars": 1104,
+    "hits": 42,
+    "changed": true,
+    "invented": [
+     "return_now",
+     "all__",
+     "__init__.py",
+     "init__",
+     "output_file__",
+     "workspace_size",
+     "workspace_type",
+     "x10000000"
+    ]
+   },
+   {
+    "id": "lovesegfault_beautysh_pr36#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.496,
+    "tok": 0.1091,
+    "chars": 131,
+    "hits": 11,
+    "changed": true,
+    "invented": [
+     "test_remove",
+     "test_strip",
+     "test_replace",
+     "test_indent",
+     "test_deselect",
+     "test_open",
+     "test_close",
+     "test_main"
+    ]
+   },
+   {
+    "id": "magmax_python-inquirer_pr167#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.2988,
+    "tok": 0.21,
+    "chars": 1104,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "marcharper_python-ternary_pr145#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.5715,
+    "tok": 0.5867,
+    "chars": 697,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "matthew-brett_delocate_pr186#b26",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.921,
+    "tok": 0.5159,
+    "chars": 697,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "matyasrichter_fastapi-injector_pr25#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.556,
+    "tok": 0.4393,
+    "chars": 1025,
+    "hits": 11,
+    "changed": true,
+    "invented": [
+     "fastapi_injector/api_injector.py",
+     "inner__app",
+     "create_scope_instance"
+    ]
+   },
+   {
+    "id": "maurerle_eralchemy2_pr31#b4",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7742,
+    "tok": 0.3172,
+    "chars": 755,
+    "hits": 7,
+    "changed": true,
+    "invented": [
+     "import_table",
+     "exclude_groups",
+     "name_to_dot"
+    ]
+   },
+   {
+    "id": "maxpmaxp_pdfreader_pr13#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6856,
+    "tok": 0.425,
+    "chars": 695,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "mehcode_python-xmlsec_pr100#b15",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4526,
+    "tok": 0.5519,
+    "chars": 1222,
+    "hits": 14,
+    "changed": true,
+    "invented": [
+     "XMLSEC_NO_DHACC",
+     "XMLSEC_NO_EDDS",
+     "XMLSEC_NO_SHA256",
+     "XMLSEC_NO_SHA384",
+     "XMLSEC_NO_SHA512",
+     "XMLSEC_NO_CRYPTO_DES"
+    ]
+   },
+   {
+    "id": "mercedes-benz_odxtools_pr159#b11",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.5751,
+    "tok": 0.3032,
+    "chars": 292,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "item.sh"
+    ]
+   },
+   {
+    "id": "meteostat_meteostat-python_pr207#b7",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.5718,
+    "tok": 0.3306,
+    "chars": 1186,
+    "hits": 4,
+    "changed": true,
+    "invented": [
+     "empty_data",
+     "get_df"
+    ]
+   },
+   {
+    "id": "mhostetter_galois_pr229#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4482,
+    "tok": 0.9494,
+    "chars": 1729,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "method_call__"
+    ]
+   },
+   {
+    "id": "mkorpela_pabot_pr317#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.5452,
+    "tok": 0.3344,
+    "chars": 1014,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "start_remote_libraryinv"
+    ]
+   },
+   {
+    "id": "mmore500_alifedata-phyloinformatics-convert_pr6#b11",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6839,
+    "tok": 0.1857,
+    "chars": 275,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "tree_length"
+    ]
+   },
+   {
+    "id": "mvcisback_py-aiger_pr102#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.3908,
+    "tok": 0.5205,
+    "chars": 857,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "nschloe_matplotx_pr11#b6",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.3089,
+    "tok": 0.5017,
+    "chars": 723,
+    "hits": 5,
+    "changed": true,
+    "invented": [
+     "styles/style_sheets.py",
+     "log10"
+    ]
+   },
+   {
+    "id": "openedx_edx-rest-api-client_pr37#b5",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6685,
+    "tok": 0.6106,
+    "chars": 987,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "test_oauth_access_token"
+    ]
+   },
+   {
+    "id": "openshift_openshift-client-python_pr113#b12",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6496,
+    "tok": 0.4436,
+    "chars": 1062,
+    "hits": 16,
+    "changed": true,
+    "invented": [
+     "default_context",
+     "default_project"
+    ]
+   },
+   {
+    "id": "pallets-eco_flask-pydantic_pr44#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6652,
+    "tok": 0.5569,
+    "chars": 1025,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   }
+  ]
+ },
+ "sentence": {
+  "gaugeable": 73,
+  "pass": 32,
+  "rate": 0.4384,
+  "soft": 0.5126,
+  "tokP50": 0.2429,
+  "charsP50": 466,
+  "hits": 39,
+  "changed": 39,
+  "empty": 18,
+  "failCount": {
+   "G3 anchors-kept": 27,
+   "G4 actionable": 27,
+   "G6 not-copy": 1
+  },
+  "per": [
+   {
+    "id": "adamchainz_pytest-reverse_pr10#b15",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.23,
+    "tok": 0,
+    "chars": 0,
+    "hits": 6,
+    "changed": true,
+    "invented": [
+     "py476",
+     "__init__.py",
+     "init__",
+     "urllib2",
+     "flake9",
+     "get_repo"
+    ]
+   },
+   {
+    "id": "adamchainz_treepoem_pr437#b19",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.613,
+    "tok": 0.2676,
+    "chars": 509,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "adamtheturtle_pip-check-reqs_pr38#b9",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4493,
+    "tok": 0.5133,
+    "chars": 593,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "adamtheturtle_sybil-extras_pr297#b11",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.2557,
+    "tok": 0,
+    "chars": 0,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "setdefaultLater"
+    ]
+   },
+   {
+    "id": "astropy_sphinx-automodapi_pr100#b11",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.349,
+    "tok": 0.3103,
+    "chars": 366,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "avian2_jsonmerge_pr29#b3",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.6461,
+    "tok": 0.099,
+    "chars": 636,
+    "hits": 2,
+    "changed": true,
+    "invented": [
+     "objectMergeById",
+     "call_strategy"
+    ]
+   },
+   {
+    "id": "bambinos_formulae_pr102#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4695,
+    "tok": 0.2217,
+    "chars": 1165,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "bastibe_python-soundfile_pr58#b21",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6476,
+    "tok": 0.2852,
+    "chars": 359,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "belerico_py-asciimath_pr4#b12",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.3874,
+    "tok": 0.2988,
+    "chars": 958,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "bellockk_alphashape_pr12#b5",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6732,
+    "tok": 0.2614,
+    "chars": 898,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "best-doctor_flake8-annotations-complexity_pr23#b8",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.4338,
+    "tok": 0.3117,
+    "chars": 585,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "biopragmatics_bioversions_pr80#b18",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.677,
+    "tok": 0.3537,
+    "chars": 457,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "blackducksoftware_hub-rest-api-python_pr152#b10",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.29,
+    "tok": 0,
+    "chars": 0,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "test_timeout",
+     "test_retrieve"
+    ]
+   },
+   {
+    "id": "bluetooth-devices_bluetooth-auto-recovery_pr13#b13",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.4289,
+    "tok": 0.6076,
+    "chars": 1843,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "brandon-rhodes_python-skyfield_pr51#b9",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7372,
+    "tok": 0.213,
+    "chars": 298,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "brightway-lca_brightway2-data_pr207#b3",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.23,
+    "tok": 0,
+    "chars": 0,
+    "hits": 5,
+    "changed": true,
+    "invented": [
+     "is_emitted",
+     "error_class",
+     "is_save",
+     "is_initiated",
+     "is_executed"
+    ]
+   },
+   {
+    "id": "burnash_gspread_pr1004#b7",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.544,
+    "tok": 0.0831,
+    "chars": 111,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "test_class"
+    ]
+   },
+   {
+    "id": "c4deszes_ldfparser_pr11#b9",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4547,
+    "tok": 0.1305,
+    "chars": 413,
+    "hits": 2,
+    "changed": true,
+    "invented": [
+     "lark_path_master",
+     "lark_path_slaves"
+    ]
+   },
+   {
+    "id": "carsonyl_pypac_pr81#b10",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.32,
+    "tok": 0,
+    "chars": 0,
+    "hits": 13,
+    "changed": true,
+    "invented": [
+     "findProxyForURLEx",
+     "myIpAddressList",
+     "isInSubnet",
+     "findProxyForURL",
+     "isResolved",
+     "isServerVersion",
+     "isClientVersion"
+    ]
+   },
+   {
+    "id": "cerfacs-globc_icclim_pr110#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4343,
+    "tok": 0.2341,
+    "chars": 479,
+    "hits": 2,
+    "changed": true,
+    "invented": [
+     "/usr/local/bin/python/verfiona/preprocessing/preprocessing.py",
+     "attributes/__headers/__context/__gconf/__mod"
+    ]
+   },
+   {
+    "id": "cgoldberg_xvfbwrapper_pr66#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.8059,
+    "tok": 0.4607,
+    "chars": 838,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "chimpler_pyhocon_pr123#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.4439,
+    "tok": 0.6477,
+    "chars": 1977,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "chmp_ipytest_pr110#b13",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6744,
+    "tok": 0.2326,
+    "chars": 536,
+    "hits": 2,
+    "changed": true,
+    "invented": [
+     "temp_abc123.py",
+     "temp_abc123"
+    ]
+   },
+   {
+    "id": "cloudsmith-io_cloudsmith-cli_pr14#b8",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.4974,
+    "tok": 0.196,
+    "chars": 232,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "config.py"
+    ]
+   },
+   {
+    "id": "cloudtools_troposphere_pr2101#b11",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.5457,
+    "tok": 0.3116,
+    "chars": 314,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "common-workflow-language_cwl-utils_pr101#b13",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.551,
+    "tok": 0.4543,
+    "chars": 1127,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "csparpa_pyowm_pr230#b39",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.5395,
+    "tok": 0.1531,
+    "chars": 139,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "csurfer_rake-nltk_pr59#b4",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4441,
+    "tok": 0.7174,
+    "chars": 763,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "cthoyt_pystow_pr29#b4",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7745,
+    "tok": 0.5281,
+    "chars": 603,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "daggaz_json-stream_pr11#b17",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6321,
+    "tok": 0.4041,
+    "chars": 658,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "dbatten5_maison_pr16#b15",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.8291,
+    "tok": 0.2667,
+    "chars": 266,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "value2"
+    ]
+   },
+   {
+    "id": "dchevell_flask-executor_pr12#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.4985,
+    "tok": 0.2546,
+    "chars": 280,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "delta-io_delta-sharing_pr209#b10",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4984,
+    "tok": 0.0723,
+    "chars": 139,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "sparkStream",
+     "sparkSharingSource",
+     "isSharing"
+    ]
+   },
+   {
+    "id": "denisart_graphql-query_pr39#b7",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4976,
+    "tok": 0.2201,
+    "chars": 551,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "devolo_ssllabs_pr37#b4",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6438,
+    "tok": 0.4167,
+    "chars": 1092,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "dhermes_bezier_pr233#b5",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.29,
+    "tok": 0,
+    "chars": 0,
+    "hits": 6,
+    "changed": true,
+    "invented": [
+     "d_amics",
+     "t_max",
+     "t_min",
+     "d_lim"
+    ]
+   },
+   {
+    "id": "di_pip-api_pr99#b9",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.5908,
+    "tok": 0.5336,
+    "chars": 919,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "django-extensions_django-extensions_pr1837#b26",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.2814,
+    "tok": 0,
+    "chars": 0,
+    "hits": 4,
+    "changed": true,
+    "invented": [
+     "getLogger"
+    ]
+   },
+   {
+    "id": "docopt_docopt_pr6#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7635,
+    "tok": 0.2567,
+    "chars": 306,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "drgarcia1986_simple-settings_pr19#b13",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7977,
+    "tok": 0.3288,
+    "chars": 532,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "durandtibo_feu_pr508#b8",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.4334,
+    "tok": 0.2893,
+    "chars": 413,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "dwavesystems_dimod_pr387#b15",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.6346,
+    "tok": 0.1568,
+    "chars": 427,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "ignore_interactions",
+     "ignore_variables"
+    ]
+   },
+   {
+    "id": "erezlife_html2docx_pr11#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6685,
+    "tok": 0.5765,
+    "chars": 613,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "ethereum_hexbytes_pr13#b27",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.486,
+    "tok": 0.2634,
+    "chars": 680,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "executablebooks_myst-nb_pr219#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.622,
+    "tok": 0.8073,
+    "chars": 999,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "explosion_catalogue_pr33#b10",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.4328,
+    "tok": 0.1379,
+    "chars": 250,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "cfg_registry__catalogue_registry",
+     "to_json"
+    ]
+   },
+   {
+    "id": "fohrloop_wakepy_pr79#b12",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.374,
+    "tok": 0,
+    "chars": 0,
+    "hits": 7,
+    "changed": true,
+    "invented": [
+     "test_core.method.py",
+     "test_core.conftest.py",
+     "is_manager_to_lua",
+     "test_core/mode__exit",
+     "last_excursion",
+     "test_core/last_excursion",
+     "last_excursion_with_switch_to_the_mode",
+     "test_core/last_excursion_with_switch_to_the_mode"
+    ]
+   },
+   {
+    "id": "fox-it_dissect.util_pr70#b15",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.35,
+    "tok": 0.034,
+    "chars": 96,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "frankie567_httpx-ws_pr110#b13",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.8143,
+    "tok": 0.3791,
+    "chars": 925,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "fulder_pki-tools_pr119#b11",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.5866,
+    "tok": 0.3333,
+    "chars": 771,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "gauge-sh_tach_pr10#b6",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.7183,
+    "tok": 0.2779,
+    "chars": 480,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "gijzelaerr_python-snap7_pr241#b24",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6626,
+    "tok": 0.3065,
+    "chars": 466,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "google_pasta_pr10#b13",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.5041,
+    "tok": 0.2201,
+    "chars": 139,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "google_pinject_pr49#b13",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.32,
+    "tok": 0,
+    "chars": 0,
+    "hits": 17,
+    "changed": true,
+    "invented": [
+     "init__",
+     "setattr__",
+     "delattr__",
+     "all__",
+     "main__",
+     "frame__",
+     "traceback__",
+     "exit__"
+    ]
+   },
+   {
+    "id": "gruebel_pycep_pr109#b6",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G6 not-copy"
+    ],
+    "score": 0.4356,
+    "tok": 0.9705,
+    "chars": 1515,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "home-assistant-libs_voluptuous-serialize_pr12#b6",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.4758,
+    "tok": 0.4211,
+    "chars": 370,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "ikalnytskyi_picobox_pr33#b13",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6319,
+    "tok": 0.5678,
+    "chars": 1899,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "imageio_imageio_pr83#b18",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.7061,
+    "tok": 0.1284,
+    "chars": 447,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "jazzband_dj-database-url_pr145#b6",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7093,
+    "tok": 0.1421,
+    "chars": 222,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "ENGINES",
+     "django_djangodb"
+    ]
+   },
+   {
+    "id": "jazzband_geojson_pr131#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.65,
+    "tok": 0.1778,
+    "chars": 515,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "joerick_pyinstrument_pr46#b17",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.4777,
+    "tok": 0.1516,
+    "chars": 228,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "run_body"
+    ]
+   },
+   {
+    "id": "johnnoone_json-spec_pr8#b12",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.5979,
+    "tok": 0.2173,
+    "chars": 571,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "jupyter-widgets_ipywidgets_pr2570#b6",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.4705,
+    "tok": 0.0857,
+    "chars": 158,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "getClass"
+    ]
+   },
+   {
+    "id": "jwodder_versioningit_pr79#b10",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.23,
+    "tok": 0,
+    "chars": 0,
+    "hits": 5,
+    "changed": true,
+    "invented": [
+     "test_add_no_commits_default_tag",
+     "test_log_level",
+     "test_remove_no_tag",
+     "test_tag",
+     "test_optional_str"
+    ]
+   },
+   {
+    "id": "keboola_python-component_pr51#b10",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.6267,
+    "tok": 0.144,
+    "chars": 426,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "filter_manifest_by_manifest_type"
+    ]
+   },
+   {
+    "id": "kyleking_mdformat-mkdocs_pr26#b7",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6334,
+    "tok": 0.2712,
+    "chars": 340,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "lasp_cdflib_pr140#b12",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.6373,
+    "tok": 0.3665,
+    "chars": 707,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "lasselindqvist_robotframework-imaplibrary2_pr33#b8",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.7865,
+    "tok": 0.3412,
+    "chars": 598,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "liormizr_s3path_pr121#b7",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.498,
+    "tok": 0.122,
+    "chars": 105,
+    "hits": 3,
+    "changed": true,
+    "invented": [
+     "_path.py",
+     "S3path/"
+    ]
+   },
+   {
+    "id": "litl_backoff_pr129#b15",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.27,
+    "tok": 0,
+    "chars": 0,
+    "hits": 10,
+    "changed": true,
+    "invented": [
+     "raise_on_exception",
+     "raise_on_keyerror",
+     "raise_on_re"
+    ]
+   },
+   {
+    "id": "logdna_python_pr75#b3",
+    "gaugeable": false,
+    "pass": false,
+    "failed": [
+     "G0 no-leverage"
+    ],
+    "score": 0.23,
+    "tok": 0,
+    "chars": 0,
+    "hits": 42,
+    "changed": true,
+    "invented": [
+     "return_now",
+     "all__",
+     "__init__.py",
+     "init__",
+     "output_file__",
+     "workspace_size",
+     "workspace_type",
+     "x10000000"
+    ]
+   },
+   {
+    "id": "lovesegfault_beautysh_pr36#b3",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.29,
+    "tok": 0,
+    "chars": 0,
+    "hits": 11,
+    "changed": true,
+    "invented": [
+     "test_remove",
+     "test_strip",
+     "test_replace",
+     "test_indent",
+     "test_deselect",
+     "test_open",
+     "test_close",
+     "test_main"
+    ]
+   },
+   {
+    "id": "magmax_python-inquirer_pr167#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.2988,
+    "tok": 0.21,
+    "chars": 1104,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "marcharper_python-ternary_pr145#b3",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.5715,
+    "tok": 0.5867,
+    "chars": 697,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "matthew-brett_delocate_pr186#b26",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.921,
+    "tok": 0.5159,
+    "chars": 697,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "matyasrichter_fastapi-injector_pr25#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.23,
+    "tok": 0,
+    "chars": 0,
+    "hits": 11,
+    "changed": true,
+    "invented": [
+     "fastapi_injector/api_injector.py",
+     "inner__app",
+     "create_scope_instance"
+    ]
+   },
+   {
+    "id": "maurerle_eralchemy2_pr31#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.3118,
+    "tok": 0,
+    "chars": 0,
+    "hits": 7,
+    "changed": true,
+    "invented": [
+     "import_table",
+     "exclude_groups",
+     "name_to_dot"
+    ]
+   },
+   {
+    "id": "maxpmaxp_pdfreader_pr13#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6856,
+    "tok": 0.425,
+    "chars": 695,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "mehcode_python-xmlsec_pr100#b15",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G3 anchors-kept"
+    ],
+    "score": 0.23,
+    "tok": 0,
+    "chars": 0,
+    "hits": 14,
+    "changed": true,
+    "invented": [
+     "XMLSEC_NO_DHACC",
+     "XMLSEC_NO_EDDS",
+     "XMLSEC_NO_SHA256",
+     "XMLSEC_NO_SHA384",
+     "XMLSEC_NO_SHA512",
+     "XMLSEC_NO_CRYPTO_DES"
+    ]
+   },
+   {
+    "id": "mercedes-benz_odxtools_pr159#b11",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.4732,
+    "tok": 0.2105,
+    "chars": 181,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "item.sh"
+    ]
+   },
+   {
+    "id": "meteostat_meteostat-python_pr207#b7",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.275,
+    "tok": 0,
+    "chars": 0,
+    "hits": 4,
+    "changed": true,
+    "invented": [
+     "empty_data",
+     "get_df"
+    ]
+   },
+   {
+    "id": "mhostetter_galois_pr229#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.3714,
+    "tok": 0.8246,
+    "chars": 1528,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "method_call__"
+    ]
+   },
+   {
+    "id": "mkorpela_pabot_pr317#b10",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.5317,
+    "tok": 0.2429,
+    "chars": 734,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "start_remote_libraryinv"
+    ]
+   },
+   {
+    "id": "mmore500_alifedata-phyloinformatics-convert_pr6#b11",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable"
+    ],
+    "score": 0.29,
+    "tok": 0.0221,
+    "chars": 16,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "tree_length"
+    ]
+   },
+   {
+    "id": "mvcisback_py-aiger_pr102#b4",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.3908,
+    "tok": 0.5205,
+    "chars": 857,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   },
+   {
+    "id": "nschloe_matplotx_pr11#b6",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.2598,
+    "tok": 0.2929,
+    "chars": 393,
+    "hits": 5,
+    "changed": true,
+    "invented": [
+     "styles/style_sheets.py",
+     "log10"
+    ]
+   },
+   {
+    "id": "openedx_edx-rest-api-client_pr37#b5",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6787,
+    "tok": 0.5451,
+    "chars": 888,
+    "hits": 1,
+    "changed": true,
+    "invented": [
+     "test_oauth_access_token"
+    ]
+   },
+   {
+    "id": "openshift_openshift-client-python_pr113#b12",
+    "gaugeable": true,
+    "pass": false,
+    "failed": [
+     "G4 actionable",
+     "G3 anchors-kept"
+    ],
+    "score": 0.305,
+    "tok": 0,
+    "chars": 0,
+    "hits": 16,
+    "changed": true,
+    "invented": [
+     "default_context",
+     "default_project"
+    ]
+   },
+   {
+    "id": "pallets-eco_flask-pydantic_pr44#b7",
+    "gaugeable": true,
+    "pass": true,
+    "failed": [],
+    "score": 0.6652,
+    "tok": 0.5569,
+    "chars": 1025,
+    "hits": 0,
+    "changed": false,
+    "invented": []
+   }
+  ]
+ }
+}

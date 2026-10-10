@@ -1,0 +1,79 @@
+[9.787722174] stdout: · 检测到 2 张卡 —— 单进程只会用 cuda:0，用 torchrun 重开跑满：
+[9.78777424] stdout:   /usr/bin/python3 -m torch.distributed.run --nproc_per_node 2 --standalone --master_port 29517 /kaggle/src/script.py --data https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl --dev https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl --out /kaggle/working/rwkv7-compressor --epochs 5.0 --accum 2 --lr 0.0001 --gen-n 89 --gen-max-new 768 --gen-budget 1500.0
+[11.540019468] stderr: 
+[11.54004533] stderr: *****************************************
+[11.540050921] stderr: Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed.
+[11.540056942] stderr: *****************************************
+[14.021080125] stdout: · GPU Tesla T4 · sm_75 · torch 2.11.0+cu128 · 2 卡中用了 2 张（rank 0）
+[14.021224972] stdout: · fla.models.rwkv7 缺失（ModuleNotFoundError("No module named 'fla'")）-> 装 flash-linear-attention==0.5.2
+[18.167404101] stdout: · pip install -> exit 0
+[48.245537883] stdout: · fla ok · transformers 5.16.1
+[48.245572916] stdout: · chunk_size 16（T4 的 64KB 共享内存装不下 fla 默认的 64）
+[48.818134238] stderr: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[48.833993139] stderr: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[49.342812112] stderr: [transformers] A new version of the following files was downloaded from https://huggingface.co/fla-hub/rwkv7-0.1B-g1:
+[49.342847009] stderr: - hf_rwkv_tokenizer.py
+[49.34285212] stderr: . Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.
+[49.342856135] stderr: [transformers] A new version of the following files was downloaded from https://huggingface.co/fla-hub/rwkv7-0.1B-g1:
+[49.342859787] stderr: - hf_rwkv_tokenizer.py
+[49.342863075] stderr: . Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.
+[53.783168225] stdout: · tokenizer RwkvTokenizer · vocab 65531 · eos=65530 pad=0
+[54.164121247] stderr: FATAL: /kaggle/working/_train.jsonl 是空的。
+[54.174925329] stdout: · 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl -> /kaggle/working/_train.jsonl (3262564 bytes)
+[54.198704976] stdout: · 读入 256 行
+[58.948225553] stderr: W1010 13:13:20.534000 20 torch/distributed/elastic/multiprocessing/api.py:1012] Sending process 28 closing signal SIGTERM
+[59.162593646] stderr: E1010 13:13:20.749000 20 torch/distributed/elastic/multiprocessing/api.py:986] failed (exitcode: 2) local_rank: 1 (pid: 29) of binary: /usr/bin/python3
+[59.18864838] stderr: Traceback (most recent call last):
+[59.18951051] stderr:   File "<frozen runpy>", line 203, in _run_module_as_main
+[59.189541175] stderr:   File "<frozen runpy>", line 88, in _run_code
+[59.189546647] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/distributed/run.py", line 994, in <module>
+[59.189551106] stderr:     main()
+[59.189555081] stderr:     ~~~~^^
+[59.189558627] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 362, in wrapper
+[59.189563055] stderr:     return f(*args, **kwargs)
+[59.189566431] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/distributed/run.py", line 990, in main
+[59.189570482] stderr:     run(args)
+[59.189574111] stderr:     ~~~^^^^^^
+[59.189577766] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/distributed/run.py", line 981, in run
+[59.189581681] stderr:     elastic_launch(
+[59.189585413] stderr:     ~~~~~~~~~~~~~~~
+[59.189588671] stderr:         config=config,
+[59.189591906] stderr:         ~~~~~~~~~~~~~~
+[59.189595184] stderr:         entrypoint=cmd,
+[59.18959839] stderr:         ~~~~~~~~~~~~~~~
+[59.189601616] stderr:     )(*cmd_args)
+[59.189604795] stderr:     ~^^^^^^^^^^^
+[59.189608091] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/distributed/launcher/api.py", line 170, in __call__
+[59.189617999] stderr:     return launch_agent(self._config, self._entrypoint, list(args))
+[59.189620772] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/distributed/launcher/api.py", line 317, in launch_agent
+[59.189623073] stderr:     raise ChildFailedError(
+[59.189636529] stderr:     ...<2 lines>...
+[59.18964045] stderr:     )
+[59.189650168] stderr: torch.distributed.elastic.multiprocessing.errors.ChildFailedError:
+[59.189654399] stderr: ============================================================
+[59.189658658] stderr: /kaggle/src/script.py FAILED
+[59.189662349] stderr: ------------------------------------------------------------
+[59.189665866] stderr: Failures:
+[59.189669066] stderr: [1]:
+[59.189672303] stderr:   time      : 2026-10-10_13:13:20
+[59.189675592] stderr:   host      : 7a9b17fba4e8
+[59.189678873] stderr:   rank      : 0 (local_rank: 0)
+[59.189690018] stderr:   exitcode  : -15 (pid: 28)
+[59.189693371] stderr:   error_file: <N/A>
+[59.18969666] stderr:   traceback : Signal 15 (SIGTERM) received by PID 28
+[59.189700025] stderr: ------------------------------------------------------------
+[59.189703348] stderr: Root Cause (first observed failure):
+[59.189708258] stderr: [0]:
+[59.189714913] stderr:   time      : 2026-10-10_13:13:20
+[59.189717171] stderr:   host      : 7a9b17fba4e8
+[59.189719253] stderr:   rank      : 1 (local_rank: 1)
+[59.189721355] stderr:   exitcode  : 2 (pid: 29)
+[59.189723431] stderr:   error_file: <N/A>
+[59.18972617] stderr:   traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+[59.189743271] stderr: ============================================================
+[61.917454392] stderr: /usr/local/lib/python3.13/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\|'
+[61.91748392] stderr:   cells[i][c] = re.sub('\\\\\|', '|', cell)
+[62.155826321] stderr: /usr/local/lib/python3.13/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\_'
+[62.155853146] stderr:   text = re.sub(r'_', '\_', text) # Escape underscores in display text
+[62.87822566] stderr: [NbConvertApp] Converting notebook __script__.ipynb to html
+[63.983444699] stderr: [NbConvertApp] Writing 420271 bytes to __results__.html

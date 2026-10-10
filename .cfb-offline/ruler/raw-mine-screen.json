@@ -1,0 +1,100 @@
+{
+  "schema": "cfb.raw-mine-screen/1",
+  "at": "2026-10-10T03:46:04.911Z",
+  "inputs": [
+    "birth-units-census-batch1.jsonl.gz",
+    "birth-units-census-batch2.jsonl.gz",
+    "birth-units-census-batch3.jsonl.gz",
+    "birth-units-census-batch4.jsonl.gz",
+    "birth-units-census-batch5.jsonl.gz"
+  ],
+  "nRawRows": 10558,
+  "dedup": {
+    "rows": 10558,
+    "uniqueUnitId": 7395,
+    "uniqueContent": 7673,
+    "droppedByContent": 2885,
+    "unitIdGroupsWithDifferentRaw": 266,
+    "trajectories": 4741,
+    "afterOnePerTrajectory": 4741,
+    "medianRawChars": 2507
+  },
+  "preflight": {
+    "checked": 4741,
+    "passed": 4687,
+    "rejected": 54,
+    "reasons": {
+      "P2 too-long-for-window": 30,
+      "P4 mostly-code": 12,
+      "P5 no-load-bearing-anchors": 12
+    },
+    "measured": {
+      "rawChars": {
+        "min": 1500,
+        "q25": 1913,
+        "med": 2383,
+        "q75": 3024,
+        "max": 24026
+      },
+      "identifiers": {
+        "min": 0,
+        "q25": 13,
+        "med": 19,
+        "q75": 25,
+        "max": 40
+      },
+      "verdicts": {
+        "min": 0,
+        "q25": 0,
+        "med": 1,
+        "q75": 2,
+        "max": 8
+      }
+    }
+  },
+  "shortlist": {
+    "orderedTotal": 4687,
+    "emitted": 4687,
+    "repositoriesCovered": 1075,
+    "repositoriesAvailable": 1075,
+    "licenses": {
+      "MIT": 2490,
+      "Apache-2.0": 1272,
+      "BSD-3-Clause": 791,
+      "BSD-2-Clause": 134
+    },
+    "costAt": [
+      {
+        "n": 1000,
+        "rawChars": 2929376,
+        "estRawTokens": 836965,
+        "estOutTokens": 125545,
+        "estTotalTokens": 962510,
+        "estMB": 2.79
+      },
+      {
+        "n": 3000,
+        "rawChars": 8625294,
+        "estRawTokens": 2464370,
+        "estOutTokens": 369656,
+        "estTotalTokens": 2834026,
+        "estMB": 8.23
+      },
+      {
+        "n": 4687,
+        "rawChars": 12874853,
+        "estRawTokens": 3678529,
+        "estOutTokens": 551779,
+        "estTotalTokens": 4230308,
+        "estMB": 12.28
+      }
+    ]
+  },
+  "elapsedMs": 6170,
+  "notes": {
+    "whatThisIs": "花钱前的资格筛：只回答「值不值得为这个输入花钱」，不回答「稿子好不好」。后者需要 draft，由 tools/gen-ruler.mjs 的 judge() 判。",
+    "dedupIsFact": "内容去重与「每个 trajectory 只留一个单元」是硬事实（同轨迹不同 birthStep 的 raw 是嵌套前缀），不依赖任何启发式。",
+    "unvalidated": "teachScore 的权重**未经任何真实压缩结果校准**，它只是把「有具体标识符 / 有决断句 / 是散文而非日志」排序。所以默认不拿它砍样本，只拿它排序。第一批付费压缩做完后必须回头校准。",
+    "singleDistribution": "全部 10558 行来自同一个数据集（nvidia/Open-SWE-Traces v1.1 / openhands）、同一个教师模型（DeepSeek-V4-Flash / reasoningEffort=max）。好处是这正是目标模型的分布；风险是**没有第二种分布**，泛化到别的思维链形态上未测。"
+  }
+}

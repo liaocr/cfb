@@ -1,0 +1,1233 @@
+{
+  "schema": "cfb.gen-ruler-report/1",
+  "ruler": "gen-ruler/1",
+  "at": "2026-10-10T06:11:21.352Z",
+  "input": ".cfb-offline/ruler/pairs-hand.jsonl",
+  "n": 61,
+  "pass": 25,
+  "fail": 36,
+  "passRate": 0.4098,
+  "failCount": {
+    "G2 locus-grounded": 15,
+    "G3 anchors-kept": 12,
+    "G1 quote-grounded": 16,
+    "G4 actionable": 5,
+    "G7 compressed": 1
+  },
+  "rows": [
+    {
+      "id": "hand:eacces-config-s0-r6",
+      "family": "eacces-config",
+      "pass": true,
+      "failed": [],
+      "score": 0.6663,
+      "ratio": 0.172,
+      "copy": 0.2686,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 1,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [
+          "test/birth.selftest.mjs"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:eacces-config-s1-r5",
+      "family": "eacces-config",
+      "pass": false,
+      "failed": [
+        "G2 locus-grounded"
+      ],
+      "score": 0.7937,
+      "ratio": 0.2215,
+      "copy": 0.4038,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r3",
+      "family": "flaky-timeout",
+      "pass": false,
+      "failed": [
+        "G2 locus-grounded"
+      ],
+      "score": 0.6115,
+      "ratio": 0.0445,
+      "copy": 0.205,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:flaky-timeout-s1-r4",
+      "family": "flaky-timeout",
+      "pass": true,
+      "failed": [],
+      "score": 0.5959,
+      "ratio": 0.0223,
+      "copy": 0.284,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 1,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [
+          "test/hedge.selftest.mjs"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:perf-regression-s0-r7",
+      "family": "perf-regression",
+      "pass": true,
+      "failed": [],
+      "score": 0.685,
+      "ratio": 0.0407,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:perf-regression-s1-r7",
+      "family": "perf-regression",
+      "pass": true,
+      "failed": [],
+      "score": 0.6227,
+      "ratio": 0.0553,
+      "copy": 0.1727,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:sse-truncated-s0-r4",
+      "family": "sse-truncated",
+      "pass": true,
+      "failed": [],
+      "score": 0.6551,
+      "ratio": 0.1112,
+      "copy": 0.2659,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:sse-truncated-s1-r3",
+      "family": "sse-truncated",
+      "pass": true,
+      "failed": [],
+      "score": 0.7084,
+      "ratio": 0.1098,
+      "copy": 0.3005,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:wrong-model-s0-r6",
+      "family": "wrong-model",
+      "pass": true,
+      "failed": [],
+      "score": 0.8664,
+      "ratio": 0.2571,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:wrong-model-s1-r5",
+      "family": "wrong-model",
+      "pass": false,
+      "failed": [
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ],
+      "score": 0.6266,
+      "ratio": 0.0822,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 6,
+        "paths": 4,
+        "ids": 2,
+        "idRetention": 0,
+        "sample": [
+          "package.js",
+          "src/plugin.js",
+          "host-follow.js",
+          "src/host-follow.js",
+          "README",
+          "deepseek-v3"
+        ],
+        "lostPaths": [
+          "package.js",
+          "src/plugin.js"
+        ]
+      }
+    },
+    {
+      "id": "hand:eacces-config_decoy-s0-r6",
+      "family": "eacces-config_decoy",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded",
+        "G2 locus-grounded"
+      ],
+      "score": 0.7098,
+      "ratio": 0.366,
+      "copy": 0.4038,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:eacces-config_long-horizon-s0-r5",
+      "family": "eacces-config_long-horizon",
+      "pass": true,
+      "failed": [],
+      "score": 0.5333,
+      "ratio": 0.0825,
+      "copy": 0.2242,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 1,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "test/birth.selftest.mjs",
+          "npm test"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r3",
+      "family": "flaky-timeout",
+      "pass": false,
+      "failed": [
+        "G2 locus-grounded"
+      ],
+      "score": 0.489,
+      "ratio": 0.0557,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:flaky-timeout_long-horizon-s0-r4",
+      "family": "flaky-timeout_long-horizon",
+      "pass": false,
+      "failed": [
+        "G2 locus-grounded"
+      ],
+      "score": 0.4243,
+      "ratio": 0.0409,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:flaky-timeout_long-horizon-s0-r5",
+      "family": "flaky-timeout_long-horizon",
+      "pass": true,
+      "failed": [],
+      "score": 0.4993,
+      "ratio": 0.0184,
+      "copy": 0.2743,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 1,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [
+          "test/hedge.selftest.mjs"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r5",
+      "family": "flaky-timeout",
+      "pass": false,
+      "failed": [
+        "G2 locus-grounded",
+        "G3 anchors-kept"
+      ],
+      "score": 0.4585,
+      "ratio": 0.0142,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 1,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [
+          "test/hedge.selftest.mjs"
+        ],
+        "lostPaths": [
+          "test/hedge.selftest.mjs"
+        ]
+      }
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r6",
+      "family": "flaky-timeout",
+      "pass": false,
+      "failed": [
+        "G2 locus-grounded"
+      ],
+      "score": 0.5032,
+      "ratio": 0.0253,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:perf-regression-s0-r7",
+      "family": "perf-regression",
+      "pass": false,
+      "failed": [
+        "G2 locus-grounded",
+        "G4 actionable"
+      ],
+      "score": 0.5301,
+      "ratio": 0.1472,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:sse-truncated-s0-r3",
+      "family": "sse-truncated",
+      "pass": false,
+      "failed": [
+        "G2 locus-grounded"
+      ],
+      "score": 0.5524,
+      "ratio": 0.1057,
+      "copy": 0.2601,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:sse-truncated-s0-r4",
+      "family": "sse-truncated",
+      "pass": false,
+      "failed": [
+        "G2 locus-grounded"
+      ],
+      "score": 0.4747,
+      "ratio": 0.1207,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r7",
+      "family": "flaky-timeout",
+      "pass": true,
+      "failed": [],
+      "score": 0.4685,
+      "ratio": 0.014,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:sse-truncated_decoy-s0-r5",
+      "family": "sse-truncated_decoy",
+      "pass": false,
+      "failed": [
+        "G4 actionable"
+      ],
+      "score": 0.4809,
+      "ratio": 0.1366,
+      "copy": 0.2743,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:sse-truncated_long-horizon-s0-r5",
+      "family": "sse-truncated_long-horizon",
+      "pass": false,
+      "failed": [
+        "G2 locus-grounded",
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ],
+      "score": 0.5172,
+      "ratio": 0.0805,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 4,
+        "paths": 3,
+        "ids": 1,
+        "idRetention": 0,
+        "sample": [
+          "src/birth.js",
+          "src/transport.js",
+          "transport.js",
+          "README"
+        ],
+        "lostPaths": [
+          "src/birth.js",
+          "src/transport.js",
+          "transport.js"
+        ]
+      }
+    },
+    {
+      "id": "hand:wrong-model_decoy-s0-r4",
+      "family": "wrong-model_decoy",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded",
+        "G4 actionable"
+      ],
+      "score": 0.3904,
+      "ratio": 0.2918,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:sse-truncated_long-horizon-s0-r6",
+      "family": "sse-truncated_long-horizon",
+      "pass": false,
+      "failed": [
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ],
+      "score": 0.5309,
+      "ratio": 0.1144,
+      "copy": 0.2743,
+      "anchors": {
+        "loadBearing": 6,
+        "paths": 5,
+        "ids": 1,
+        "idRetention": 0,
+        "sample": [
+          "src/birth.js",
+          "src/transport.js",
+          "src/transport.legacy.js",
+          "src/transport.compat.js",
+          "transport.js",
+          "README"
+        ],
+        "lostPaths": [
+          "src/birth.js",
+          "src/transport.js",
+          "src/transport.compat.js",
+          "transport.js"
+        ]
+      }
+    },
+    {
+      "id": "hand:sse-truncated_long-horizon-s0-r7",
+      "family": "sse-truncated_long-horizon",
+      "pass": false,
+      "failed": [
+        "G2 locus-grounded",
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ],
+      "score": 0.5639,
+      "ratio": 0.0852,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 4,
+        "paths": 3,
+        "ids": 1,
+        "idRetention": 0,
+        "sample": [
+          "src/transport.js",
+          "transport.js",
+          "verify.mjs",
+          "README"
+        ],
+        "lostPaths": [
+          "src/transport.js",
+          "transport.js",
+          "verify.mjs"
+        ]
+      }
+    },
+    {
+      "id": "hand:wrong-model_long-horizon-s0-r4",
+      "family": "wrong-model_long-horizon",
+      "pass": false,
+      "failed": [
+        "G2 locus-grounded"
+      ],
+      "score": 0.4202,
+      "ratio": 0.1683,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:wrong-model_long-horizon-s0-r5",
+      "family": "wrong-model_long-horizon",
+      "pass": false,
+      "failed": [
+        "G2 locus-grounded"
+      ],
+      "score": 0.4816,
+      "ratio": 0.1586,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:perf-regression-s0-r7",
+      "family": "perf-regression",
+      "pass": true,
+      "failed": [],
+      "score": 0.6742,
+      "ratio": 0.0843,
+      "copy": 0.2065,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:wrong-model_decoy-s0-r4",
+      "family": "wrong-model_decoy",
+      "pass": true,
+      "failed": [],
+      "score": 0.6207,
+      "ratio": 0.2611,
+      "copy": 0.1074,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:eacces-config_long-horizon-s0-r5",
+      "family": "eacces-config_long-horizon",
+      "pass": true,
+      "failed": [],
+      "score": 0.5187,
+      "ratio": 0.0676,
+      "copy": 0.2743,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 1,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "test/birth.selftest.mjs",
+          "npm test"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:sse-truncated-s0-r3",
+      "family": "sse-truncated",
+      "pass": false,
+      "failed": [
+        "G2 locus-grounded"
+      ],
+      "score": 0.6833,
+      "ratio": 0.0974,
+      "copy": 0.306,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:wrong-model_long-horizon-s0-r4",
+      "family": "wrong-model_long-horizon",
+      "pass": true,
+      "failed": [],
+      "score": 0.6725,
+      "ratio": 0.1551,
+      "copy": 0.2242,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:sse-truncated_decoy-s0-r5",
+      "family": "sse-truncated_decoy",
+      "pass": true,
+      "failed": [],
+      "score": 0.7029,
+      "ratio": 0.2228,
+      "copy": 0.0479,
+      "anchors": {
+        "loadBearing": 3,
+        "paths": 2,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "src/transport.js",
+          "transport.js",
+          "README"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:flaky-timeout_long-horizon-s0-r4",
+      "family": "flaky-timeout_long-horizon",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded",
+        "G4 actionable"
+      ],
+      "score": 0.6045,
+      "ratio": 0.2395,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:eacces-config_decoy-s0-r5",
+      "family": "eacces-config_decoy",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.7261,
+      "ratio": 0.1432,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "npm test"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:wrong-model_decoy-s0-r5",
+      "family": "wrong-model_decoy",
+      "pass": false,
+      "failed": [
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ],
+      "score": 0.6068,
+      "ratio": 0.072,
+      "copy": 0.1074,
+      "anchors": {
+        "loadBearing": 6,
+        "paths": 5,
+        "ids": 1,
+        "idRetention": 0,
+        "sample": [
+          "scripts/smoke-session.mjs",
+          "src/plugin.js",
+          "src/host-follow.js",
+          "src/host-follow.legacy.js",
+          "host-follow.js",
+          "README"
+        ],
+        "lostPaths": [
+          "src/plugin.js",
+          "src/host-follow.legacy.js"
+        ]
+      }
+    },
+    {
+      "id": "hand:sse-truncated_decoy-s0-r6",
+      "family": "sse-truncated_decoy",
+      "pass": true,
+      "failed": [],
+      "score": 0.6629,
+      "ratio": 0.1735,
+      "copy": 0.0479,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r4",
+      "family": "flaky-timeout",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.3604,
+      "ratio": 0.2541,
+      "copy": 0.0887,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:flaky-timeout_long-horizon-s0-r4",
+      "family": "flaky-timeout_long-horizon",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded",
+        "G4 actionable"
+      ],
+      "score": 0.5299,
+      "ratio": 0.1465,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r4",
+      "family": "flaky-timeout",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.7038,
+      "ratio": 0.2147,
+      "copy": 0.0451,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:perf-regression-s0-r5",
+      "family": "perf-regression",
+      "pass": true,
+      "failed": [],
+      "score": 0.8587,
+      "ratio": 0.5346,
+      "copy": 0.293,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:sse-truncated_decoy-s0-r4",
+      "family": "sse-truncated_decoy",
+      "pass": true,
+      "failed": [],
+      "score": 0.7179,
+      "ratio": 0.4361,
+      "copy": 0.2778,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 1,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "transport.js",
+          "README"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r3",
+      "family": "flaky-timeout",
+      "pass": true,
+      "failed": [],
+      "score": 0.7787,
+      "ratio": 0.1515,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:sse-truncated_decoy-s0-r4",
+      "family": "sse-truncated_decoy",
+      "pass": true,
+      "failed": [],
+      "score": 0.7175,
+      "ratio": 0.4387,
+      "copy": 0.2733,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 1,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "transport.js",
+          "README"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r4",
+      "family": "flaky-timeout",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.7098,
+      "ratio": 0.2808,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:perf-regression-s0-r5",
+      "family": "perf-regression",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.7986,
+      "ratio": 0.6099,
+      "copy": 0.2192,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:perf-regression-s0-r7",
+      "family": "perf-regression",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.7602,
+      "ratio": 0.3315,
+      "copy": 0.118,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:perf-regression-s0-r7",
+      "family": "perf-regression",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.7713,
+      "ratio": 0.3259,
+      "copy": 0.1273,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:perf-regression-s0-r7",
+      "family": "perf-regression",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.7707,
+      "ratio": 0.3006,
+      "copy": 0.2042,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:perf-regression-s0-r8",
+      "family": "perf-regression",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.7179,
+      "ratio": 0.1394,
+      "copy": 0.1018,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r3",
+      "family": "flaky-timeout",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.6029,
+      "ratio": 0.0476,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r3",
+      "family": "flaky-timeout",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.6146,
+      "ratio": 0.0469,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:eacces-config-s0-r5",
+      "family": "eacces-config",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.8934,
+      "ratio": 0.2075,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 1,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [
+          "test/birth.selftest.mjs"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:eacces-config-s0-r5",
+      "family": "eacces-config",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.7619,
+      "ratio": 0.1658,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 1,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [
+          "test/birth.selftest.mjs"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:eacces-config-s0-r5",
+      "family": "eacces-config",
+      "pass": true,
+      "failed": [],
+      "score": 0.738,
+      "ratio": 0.1555,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 1,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [
+          "test/birth.selftest.mjs"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:eacces-config-s0-r5",
+      "family": "eacces-config",
+      "pass": true,
+      "failed": [],
+      "score": 0.7554,
+      "ratio": 0.1339,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 1,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [
+          "test/birth.selftest.mjs"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:eacces-config-s0-r5",
+      "family": "eacces-config",
+      "pass": true,
+      "failed": [],
+      "score": 0.7209,
+      "ratio": 0.1342,
+      "copy": 0.1455,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 1,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [
+          "test/birth.selftest.mjs"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:eacces-config-s0-r5",
+      "family": "eacces-config",
+      "pass": true,
+      "failed": [],
+      "score": 0.702,
+      "ratio": 0.1017,
+      "copy": 0.1688,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 1,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [
+          "test/birth.selftest.mjs"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:eacces-config-s0-r5",
+      "family": "eacces-config",
+      "pass": false,
+      "failed": [
+        "G3 anchors-kept"
+      ],
+      "score": 0.611,
+      "ratio": 0.1662,
+      "copy": 0.1688,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 0,
+        "sample": [
+          "npm test"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "hand:sse-truncated-s0-r4",
+      "family": "sse-truncated",
+      "pass": true,
+      "failed": [],
+      "score": 0.6723,
+      "ratio": 0.1311,
+      "copy": 0.0561,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    }
+  ]
+}

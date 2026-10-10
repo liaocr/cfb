@@ -1,0 +1,12 @@
+===== configuration_rwkv7.py =====
+  23| hidden_size: int = 2048,
+  34| max_position_embeddings: int = 2048,
+  86| self.max_position_embeddings = max_position_embeddings
+
+===== tokenizer_config.json =====
+  model_max_length = 1000000000000000019884624838656
+  chat_template = {{ '<|rwkv_tokenizer_end_of_text|>' }}{% for message in messages %}{% if message['role'] == 'user' %}{{'User: ' + message['content'] + '
+
+'}}{% elif message['role'] == 'system' %}{{'System: ' + message['content'] + '
+
+'}}{% elif message['role'] == 'assistant' %}{{'Assistant: ' + message['content'] +

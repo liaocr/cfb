@@ -1,0 +1,20 @@
+transfer/gold 条目 = 13
+
+id                                            raw字   draft  stored     d/r    use 
+eacces-config-s0-r5                           3480     354    3114   0.102  ruler
+eacces-config_decoy-s0-r3                     2906     966    1729   0.332  train
+eacces-config_long-horizon-s0-r5              3027     912    1524   0.301  train
+perf-regression-s0-r7                         4112    1236    2864   0.301  train
+sse-truncated-s0-r4                           3911     435    1577   0.111  ruler
+sse-truncated-s0-r5                           4198    1532    2794   0.365  train
+sse-truncated-s1-r3                           3687     405    1107   0.110  ruler
+sse-truncated_decoy-s0-r4                     1518     750    1222   0.494  train
+sse-truncated_long-horizon-s0-r5              5195     626    3398   0.121  train
+wrong-model-s0-r6                             2213     569    1148   0.257  ruler
+wrong-model-s1-r5                             5026     413    1578   0.082  ruler
+wrong-model_decoy-s0-r4                       1436     375     838   0.261  ruler
+wrong-model_long-horizon-s0-r4                3185     494    1459   0.155  ruler
+
+draft 长度：min 354 中位 569 max 1532 均值 697
+draft/raw ：min 0.082 中位 0.257 max 0.494 均值 0.230
+raw   长度：min 1436 中位 3480 max 5195

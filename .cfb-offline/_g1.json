@@ -1,0 +1,180 @@
+{
+ "g1Rows": 39,
+ "totalInv": 236,
+ "nearMiss": 60,
+ "noNear": 176,
+ "examples": [
+  {
+   "id": "adamchainz_pytest-reverse_pr10#b15",
+   "nInv": 7,
+   "inv": [
+    {
+     "a": "py476",
+     "frag": "py476"
+    },
+    {
+     "a": "__init__.py",
+     "frag": "__init__.py"
+    },
+    {
+     "a": "init__",
+     "frag": "__init__.py"
+    }
+   ]
+  },
+  {
+   "id": "adamtheturtle_sybil-extras_pr297#b11",
+   "nInv": 1,
+   "inv": [
+    {
+     "a": "setdefaultLater",
+     "frag": "setdefaultLater"
+    }
+   ]
+  },
+  {
+   "id": "avian2_jsonmerge_pr29#b3",
+   "nInv": 2,
+   "inv": [
+    {
+     "a": "objectMergeById",
+     "frag": "objectMergeById"
+    },
+    {
+     "a": "call_strategy",
+     "frag": "call_strategy"
+    }
+   ]
+  },
+  {
+   "id": "blackducksoftware_hub-rest-api-python_pr152#b10",
+   "nInv": 3,
+   "inv": [
+    {
+     "a": "test_timeout",
+     "frag": "test_timeout"
+    },
+    {
+     "a": "test_timeout",
+     "frag": "test_timeout"
+    },
+    {
+     "a": "test_retrieve",
+     "frag": "test_retrieve"
+    }
+   ]
+  },
+  {
+   "id": "brightway-lca_brightway2-data_pr207#b3",
+   "nInv": 5,
+   "inv": [
+    {
+     "a": "is_emitted",
+     "frag": "_is_emitted"
+    },
+    {
+     "a": "error_class",
+     "frag": "error_class"
+    },
+    {
+     "a": "is_save",
+     "frag": "_is_save"
+    }
+   ]
+  },
+  {
+   "id": "burnash_gspread_pr1004#b7",
+   "nInv": 1,
+   "inv": [
+    {
+     "a": "test_class",
+     "frag": "Client.test_class"
+    }
+   ]
+  },
+  {
+   "id": "c4deszes_ldfparser_pr11#b9",
+   "nInv": 2,
+   "inv": [
+    {
+     "a": "lark_path_master",
+     "frag": "lark_path_master"
+    },
+    {
+     "a": "lark_path_slaves",
+     "frag": "lark_path_slaves"
+    }
+   ]
+  },
+  {
+   "id": "carsonyl_pypac_pr81#b10",
+   "nInv": 13,
+   "inv": [
+    {
+     "a": "findProxyForURLEx",
+     "frag": "findProxyForURLEx"
+    },
+    {
+     "a": "myIpAddressList",
+     "frag": "myIpAddressList()"
+    },
+    {
+     "a": "isInSubnet",
+     "frag": "isInSubnet(ipAddress, ipPrefix)"
+    }
+   ]
+  },
+  {
+   "id": "cerfacs-globc_icclim_pr110#b10",
+   "nInv": 2,
+   "inv": [
+    {
+     "a": "/usr/local/bin/python/verfiona/preprocessing/preprocessing.py",
+     "frag": "/usr/local/bin/python/verfiona/preprocessing/preprocessing.py"
+    },
+    {
+     "a": "attributes/__headers/__context/__gconf/__mod",
+     "frag": "/__attributes/__headers/__context/__gconf/__mod"
+    }
+   ]
+  },
+  {
+   "id": "chmp_ipytest_pr110#b13",
+   "nInv": 4,
+   "inv": [
+    {
+     "a": "temp_abc123.py",
+     "frag": "temp_abc123.py"
+    },
+    {
+     "a": "temp_abc123",
+     "frag": "temp_abc123.py"
+    },
+    {
+     "a": "temp_abc123.py",
+     "frag": "temp_abc123.py"
+    }
+   ]
+  },
+  {
+   "id": "cloudsmith-io_cloudsmith-cli_pr14#b8",
+   "nInv": 1,
+   "inv": [
+    {
+     "a": "config.py",
+     "frag": "config.py"
+    }
+   ]
+  },
+  {
+   "id": "dbatten5_maison_pr16#b15",
+   "nInv": 1,
+   "inv": [
+    {
+     "a": "value2",
+     "frag": "dict('value1': 'value2': 42)"
+    }
+   ]
+  }
+ ]
+}

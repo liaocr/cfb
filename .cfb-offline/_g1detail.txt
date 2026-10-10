@@ -1,0 +1,12 @@
+adamchainz_flake8-logging_pr4#b7 failed=['G7 compressed']
+   detail={"id": "adamchainz_flake8-logging_pr4#b7", "family": "adamchainz/flake8-logging", "pass": false, "failed": ["G7 compressed"], "score": 0.7713, "ratio": 0.5574, "copy": 0, "anchors": {"loadBearing": 3, "paths": 0, "ids": 3, "idRetention": 0.6667, "sample": ["extra", "LogRecord", "issue_description"], "lostPaths": []}}
+
+adamchainz_treepoem_pr437#b19 failed=['G1 quote-grounded']
+   detail={"id": "adamchainz_treepoem_pr437#b19", "family": "adamchainz/treepoem", "pass": false, "failed": ["G1 quote-grounded"], "score": 0.7257, "ratio": 0.33, "copy": 0.0309, "anchors": {"loadBearing": 0, "paths": 0, "ids": 0, "idRetention": 1, "sample": [], "lostPaths": []}}
+
+aiokitchen_aiomisc_pr199#b13 failed=['G1 quote-grounded']
+   detail={"id": "aiokitchen_aiomisc_pr199#b13", "family": "aiokitchen/aiomisc", "pass": false, "failed": ["G1 quote-grounded"], "score": 0.7762, "ratio": 0.3994, "copy": 0.047, "anchors": {"loadBearing": 4, "paths": 0, "ids": 4, "idRetention": 0.5, "sample": ["True", "gRPC", "grpc_reflection", "v1alpha"], "lostPaths": []}}
+
+ariebovenberg_slotscheck_pr34#b10 failed=['G1 quote-grounded']
+   detail={"id": "ariebovenberg_slotscheck_pr34#b10", "family": "ariebovenberg/slotscheck", "pass": false, "failed": ["G1 quote-grounded"], "score": 0.7141, "ratio": 0.2937, "copy": 0, "anchors": {"loadBearing": 1, "paths": 0, "ids": 1, "idRetention": 1, "sample": ["TypeError"], "lostPaths": []}}
+

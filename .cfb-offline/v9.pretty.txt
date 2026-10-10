@@ -1,0 +1,160 @@
+[18.142472004] stdout: · 检测到 2 张卡 —— 单进程只会用 cuda:0，用 torchrun 重开跑满：
+[18.14252286] stdout:   /usr/bin/python3 -m torch.distributed.run --nproc_per_node 2 --standalone --master_port 29517 /kaggle/src/script.py --data https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl --dev https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl --out /kaggle/working/rwkv7-compressor --epochs 5.0 --accum 4 --lr 0.0001 --gen-n 89 --gen-max-new 768 --gen-budget 3600
+[19.922519938] stderr: 
+[19.922562255] stderr: *****************************************
+[19.9225681] stderr: Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed.
+[19.922574116] stderr: *****************************************
+[22.39708405] stdout: · GPU Tesla T4 · sm_75 · torch 2.11.0+cu128 · 2 卡中用了 2 张（rank 0）
+[22.397382042] stdout: · fla.models.rwkv7 缺失 -> 装 flash-linear-attention==0.5.2
+[27.524618486] stdout: · pip install -> exit 0
+[27.526773417] stderr: /usr/local/lib/python3.13/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+[27.526793868] stderr:   return func(*args, **kwargs)
+[27.528804484] stderr: [rank0]:[W1010 14:00:17.663920683 ProcessGroupNCCL.cpp:5188] Guessing device ID based on global rank. This can cause a hang if rank to GPU mapping is heterogeneous. You can specify device_id in init_process_group()
+[69.912058019] stdout: · fla ok · transformers 5.16.1
+[69.912085839] stdout: · chunk_size 16（T4 的 64KB 共享内存装不下 fla 默认的 64）
+[70.205107342] stderr: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[70.291381139] stderr: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[70.437679216] stderr: [transformers] A new version of the following files was downloaded from https://huggingface.co/fla-hub/rwkv7-0.1B-g1:
+[70.437703599] stderr: - hf_rwkv_tokenizer.py
+[70.437707574] stderr: . Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.
+[70.447124992] stderr: [transformers] A new version of the following files was downloaded from https://huggingface.co/fla-hub/rwkv7-0.1B-g1:
+[70.447143045] stderr: - hf_rwkv_tokenizer.py
+[70.4471541] stderr: . Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.
+[73.71060844] stdout: · tokenizer RwkvTokenizer · vocab 65531 · eos=65530 pad=0
+[74.188954538] stdout: · 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl -> /kaggle/working/_train.jsonl (3262564 bytes)
+[74.189144787] stderr: /usr/local/lib/python3.13/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+[74.189156618] stderr:   return func(*args, **kwargs)
+[74.216325154] stdout: · 读入 256 行
+[78.628370814] stdout: · 编码完成 254/256 条（4.4s）· 超窗丢弃 2
+[78.628413048] stdout: · token 长度 min 2879 p50 3594 p90 4379 max 6111 · 窗口 6144 占用 p50 58.5%
+[78.628419179] stdout: · 掩码边界偏差：19/254 条非零，max 1（持续偏大说明模板/分词器与预期不符，是必须看见的信号）
+[78.868963103] stdout: · 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl -> /kaggle/working/_dev.jsonl (1709978 bytes)
+[80.32288826999999] stdout: · dev 89 条
+[80.322917957] stdout: · 载入 fla-hub/rwkv7-0.1B-g1（主权重 fp32 · autocast fp16）…
+[83.567654376] stderr: /usr/local/lib/python3.13/dist-packages/fla/layers/rwkv7.py:148: UserWarning: According to Bo, you are using a potentially buggy FLA implementation of RWKV. If you plan to report any numbers based on this implementation, we strongly recommend cross-checking with the official repo: https://github.com/BlinkDL/RWKV-LM. Bo may disagree with results reported from this version.
+[83.567687411] stderr:   warnings.warn(
+[83.567964992] stderr: /usr/local/lib/python3.13/dist-packages/fla/layers/rwkv7.py:148: UserWarning: According to Bo, you are using a potentially buggy FLA implementation of RWKV. If you plan to report any numbers based on this implementation, we strongly recommend cross-checking with the official repo: https://github.com/BlinkDL/RWKV-LM. Bo may disagree with results reported from this version.
+[83.567978136] stderr:   warnings.warn(
+[86.876217628] stderr: Loading weights:   0%|          | 0/399 [00:00<?, ?it/s]Loading weights:   0%|          | 1/399 [00:00<01:05,  6.10it/s]Loading weights:  60%|██████    | 240/399 [00:00<00:00, 1115.55it/s]Loading weights:   0%|          | 0/399 [00:00<?, ?it/s]Loading weights: 100%|██████████| 399/399 [00:00<00:00, 1098.26it/s]
+[87.000347267] stderr: Loading weights:  82%|████████▏ | 327/399 [00:00<00:00, 3027.21it/s]Loading weights: 100%|██████████| 399/399 [00:00<00:00, 2914.58it/s]
+[87.516753236] stdout: · 参数量 191.0M（全参微调 · fp32 主权重） · DDP 2 卡
+[87.516877231] stdout: · rank 0 分到 32 个微批
+[87.518955361] stdout: · 批 4 × 累积 4 = 有效批 16 · 每轮 32 微批 -> 8 步 · 共 40 步
+[87.565524306] stderr: [transformers] `use_return_dict` is deprecated! Use `return_dict` instead!
+[87.566501656] stderr: [transformers] `use_return_dict` is deprecated! Use `return_dict` instead!
+[170.429309933] stderr: [rank1]:[W1010 14:02:40.565838022 reducer.cpp:1502] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[170.429365594] stderr: [rank0]:[W1010 14:02:40.565930780 reducer.cpp:1502] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[288.097480036] stdout:   step 1/40 loss 3.1068 lr 1.00e-04 elapsed 3.3m
+[419.457855537] stdout:   step 11/40 loss 2.8187 lr 8.87e-05 elapsed 5.5m
+[505.688618941] stdout:   step 21/40 loss 1.6692 lr 5.68e-05 elapsed 7.0m
+[593.882637329] stdout:   step 31/40 loss 1.2572 lr 2.38e-05 elapsed 8.4m
+[674.850330267] stdout:   step 40/40 loss 1.1246 lr 1.01e-05 elapsed 9.8m
+[674.850369687] stdout: · 训练结束 40 步，9.8 分钟
+[674.850865927] stderr: /usr/local/lib/python3.13/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+[674.850884887] stderr:   return func(*args, **kwargs)
+[674.911749398] stdout: · _tied_weights_keys 归一 1 个模块 · lm_head 与输入嵌入共享存储=False
+[675.968171629] stderr: Writing model shards:   0%|          | 0/1 [00:00<?, ?it/s]Writing model shards: 100%|██████████| 1/1 [00:01<00:00,  1.01s/it]Writing model shards: 100%|██████████| 1/1 [00:01<00:00,  1.01s/it]
+[676.002515078] stdout: · 词表 rwkv_vocab_v20230424.txt <- /root/.cache/huggingface/hub/models--fla-hub--rwkv7-0.1B-g1/snapshots/7450ee04eb9c66baa7161b7a5c0fe09e5b2817d8/rwkv_vocab_v20230424.txt（1093733 B）
+[677.327845839] stdout: · 存档校验 399 块 · max|Δ|=0.00e+00 @ None
+[677.327880836] stdout: · 已存档 /kaggle/working/rwkv7-compressor/model
+[693.161101547] stdout: · dev loss 2.3481（89 条）
+[730.882501467] stdout: · 缓存自检 64 token：不开 6.7s / 开 31.0s（0.2x）· 输出逐字一致
+[756.34718061] stdout:   gen 1/89 · 1388 字 · 25.4s
+[763.846847138] stdout:   gen 2/89 · 509 字 · 7.5s
+[775.500045183] stdout:   gen 3/89 · 593 字 · 11.6s
+[789.176003085] stdout:   gen 4/89 · 1238 字 · 13.7s
+[796.219964804] stdout:   gen 5/89 · 366 字 · 7.0s
+[816.375443089] stdout:   gen 6/89 · 1319 字 · 20.1s
+[834.213618434] stdout:   gen 7/89 · 1165 字 · 17.8s
+[841.158809418] stdout:   gen 8/89 · 359 字 · 6.9s
+[859.175956038] stdout:   gen 9/89 · 958 字 · 18.0s
+[873.572563254] stdout:   gen 10/89 · 898 字 · 14.4s
+[884.162598314] stdout:   gen 11/89 · 585 字 · 10.6s
+[892.16692157] stdout:   gen 12/89 · 457 字 · 8.0s
+[906.534630456] stdout:   gen 13/89 · 944 字 · 14.4s
+[931.834086003] stdout:   gen 14/89 · 1843 字 · 25.3s
+[937.119769775] stdout:   gen 15/89 · 298 字 · 5.3s
+[942.879231888] stdout:   gen 16/89 · 355 字 · 5.7s
+[949.759018885] stdout:   gen 17/89 · 401 字 · 6.9s
+[963.381074534] stdout:   gen 18/89 · 608 字 · 13.6s
+[979.884292615] stdout:   gen 19/89 · 1168 字 · 16.5s
+[990.260176413] stdout:   gen 20/89 · 977 字 · 10.4s
+[1003.004217656] stdout:   gen 21/89 · 838 字 · 12.7s
+[1028.554429917] stdout:   gen 22/89 · 1977 字 · 25.5s
+[1044.352191286] stdout:   gen 23/89 · 833 字 · 15.8s
+[1052.539180031] stdout:   gen 24/89 · 533 字 · 8.2s
+[1058.528496154] stdout:   gen 25/89 · 314 字 · 6.0s
+[1074.376263183] stdout:   gen 26/89 · 1127 字 · 15.8s
+[1078.392891336] stdout:   gen 27/89 · 139 字 · 4.0s
+[1092.953043191] stdout:   gen 28/89 · 763 字 · 14.5s
+[1103.31299292] stdout:   gen 29/89 · 603 字 · 10.3s
+[1114.145020208] stdout:   gen 30/89 · 658 字 · 10.8s
+[1124.617751841] stdout:   gen 31/89 · 579 字 · 10.5s
+[1129.992122108] stdout:   gen 32/89 · 280 字 · 5.4s
+[1140.198812997] stdout:   gen 33/89 · 639 字 · 10.2s
+[1150.597167728] stdout:   gen 34/89 · 551 字 · 10.4s
+[1169.081971012] stdout:   gen 35/89 · 1092 字 · 18.5s
+[1189.003101052] stdout:   gen 36/89 · 843 字 · 19.9s
+[1208.112784704] stdout:   gen 37/89 · 919 字 · 19.1s
+[1218.889368667] stdout:   gen 38/89 · 786 字 · 10.8s
+[1224.676527297] stdout:   gen 39/89 · 306 字 · 5.8s
+[1234.055917279] stdout:   gen 40/89 · 532 字 · 9.4s
+[1240.785721058] stdout:   gen 41/89 · 413 字 · 6.7s
+[1252.80461232] stdout:   gen 42/89 · 785 字 · 12.0s
+[1264.080121154] stdout:   gen 43/89 · 613 字 · 11.3s
+[1277.153506856] stdout:   gen 44/89 · 680 字 · 13.1s
+[1292.904328454] stdout:   gen 45/89 · 999 字 · 15.7s
+[1305.890181779] stdout:   gen 46/89 · 838 字 · 13.0s
+[1321.113886653] stdout:   gen 47/89 · 1011 字 · 15.2s
+[1322.012906193] stdout:   gen 48/89 · 96 字 · 0.9s
+[1335.240484612] stdout:   gen 49/89 · 925 字 · 13.2s
+[1346.363927196] stdout:   gen 50/89 · 771 字 · 11.1s
+[1355.56208443] stdout:   gen 51/89 · 480 字 · 9.2s
+[1359.662663881] stdout:   gen 52/89 · 466 字 · 4.1s
+[1363.445303747] stdout:   gen 53/89 · 139 字 · 3.8s
+[1388.114955834] stdout:   gen 54/89 · 1743 字 · 24.7s
+[1412.851408175] stdout:   gen 55/89 · 1515 字 · 24.7s
+[1419.736467891] stdout:   gen 56/89 · 370 字 · 6.9s
+[1445.087023139] stdout:   gen 57/89 · 1899 字 · 25.3s
+[1453.0029594] stdout:   gen 58/89 · 447 字 · 7.9s
+[1460.025936726] stdout:   gen 59/89 · 461 字 · 7.0s
+[1467.463299079] stdout:   gen 60/89 · 515 字 · 7.4s
+[1476.98559853] stdout:   gen 61/89 · 568 字 · 9.5s
+[1488.019095575] stdout:   gen 62/89 · 571 字 · 11.0s
+[1499.042457715] stdout:   gen 63/89 · 687 字 · 11.0s
+[1523.49123629] stdout:   gen 64/89 · 1262 字 · 24.4s
+[1533.634097521] stdout:   gen 65/89 · 685 字 · 10.1s
+[1540.576506576] stdout:   gen 66/89 · 340 字 · 6.9s
+[1553.066072301] stdout:   gen 67/89 · 707 字 · 12.5s
+[1563.243370412] stdout:   gen 68/89 · 598 字 · 10.2s
+[1570.895628813] stdout:   gen 69/89 · 432 字 · 7.6s
+[1583.104898682] stdout:   gen 70/89 · 782 字 · 12.2s
+[1607.487380858] stdout:   gen 71/89 · 1678 字 · 24.4s
+[1612.337165049] stdout:   gen 72/89 · 271 字 · 4.8s
+[1629.890965261] stdout:   gen 73/89 · 1104 字 · 17.5s
+[1640.70050793] stdout:   gen 74/89 · 697 字 · 10.8s
+[1652.057251629] stdout:   gen 75/89 · 697 字 · 11.3s
+[1671.982032026] stdout:   gen 76/89 · 1572 字 · 19.9s
+[1687.597189863] stdout:   gen 77/89 · 861 字 · 15.6s
+[1700.067400252] stdout:   gen 78/89 · 695 字 · 12.5s
+[1727.175965274] stdout:   gen 79/89 · 1571 字 · 27.1s
+[1734.38420564] stdout:   gen 80/89 · 323 字 · 7.2s
+[1754.115518801] stdout:   gen 81/89 · 1226 字 · 19.7s
+[1781.292374033] stdout:   gen 82/89 · 1746 字 · 27.2s
+[1797.078930008] stdout:   gen 83/89 · 1091 字 · 15.8s
+[1802.949844591] stdout:   gen 84/89 · 288 字 · 5.9s
+[1822.513845769] stdout:   gen 85/89 · 857 字 · 19.6s
+[1839.868329677] stdout:   gen 86/89 · 775 字 · 17.3s
+[1856.426006995] stdout:   gen 87/89 · 1013 字 · 16.5s
+[1876.978527397] stdout:   gen 88/89 · 1487 字 · 20.5s
+[1895.021591482] stdout:   gen 89/89 · 1025 字 · 18.0s
+[1895.021643669] stdout: · 生成 89 条 -> /kaggle/working/rwkv7-compressor/dev-generations.jsonl（1164s，用 tools/eval-sft.mjs 本地打分）
+[1895.021834042] stderr: /usr/local/lib/python3.13/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+[1895.02184836] stderr:   return func(*args, **kwargs)
+[1895.022934402] stdout: · 产出 /kaggle/working/rwkv7-compressor
+[1908.355052047] stderr: /usr/local/lib/python3.13/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\|'
+[1908.355097887] stderr:   cells[i][c] = re.sub('\\\\\|', '|', cell)
+[1908.823911166] stderr: /usr/local/lib/python3.13/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\_'
+[1908.823969835] stderr:   text = re.sub(r'_', '\_', text) # Escape underscores in display text
+[1909.759542318] stderr: [NbConvertApp] Converting notebook __script__.ipynb to html
+[1911.686966626] stderr: [NbConvertApp] Writing 451132 bytes to __results__.html

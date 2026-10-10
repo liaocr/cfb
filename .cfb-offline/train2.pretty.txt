@@ -1,0 +1,133 @@
+[7.669912257] stdout: · 检测到 2 张卡 —— 单进程只会用 cuda:0，用 torchrun 重开跑满：
+[7.6699742109999995] stdout:   /usr/bin/python3 -m torch.distributed.run --nproc_per_node 2 --standalone --master_port 29517 /kaggle/src/script.py --data https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl --dev https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl --out /kaggle/working/rwkv7-compressor --epochs 5.0 --accum 2 --lr 0.0001 --gen-n 89 --gen-max-new 768 --gen-budget 1500.0
+[9.433919552] stderr: 
+[9.433949866] stderr: *****************************************
+[9.433953822] stderr: Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed.
+[9.433971913] stderr: *****************************************
+[12.08744038] stdout: · GPU Tesla T4 · sm_75 · torch 2.11.0+cu128 · 2 卡中用了 2 张（rank 0）
+[12.087475505] stdout: · fla.models.rwkv7 缺失（ModuleNotFoundError("No module named 'fla'")）-> 装 flash-linear-attention==0.5.2
+[15.529530751] stdout: · pip install -> exit 0
+[41.654314915] stdout: · fla ok · transformers 5.16.1
+[41.654350505] stdout: · chunk_size 16（T4 的 64KB 共享内存装不下 fla 默认的 64）
+[41.796588312] stderr: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[41.79661762] stderr: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[41.889490259] stderr: [transformers] A new version of the following files was downloaded from https://huggingface.co/fla-hub/rwkv7-0.1B-g1:
+[41.889535778] stderr: - hf_rwkv_tokenizer.py
+[41.88954169] stderr: . Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.
+[44.855279358] stdout: · tokenizer RwkvTokenizer · vocab 65531 · eos=65530 pad=0
+[45.119901473] stdout: · 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl -> /kaggle/working/_train.jsonl (3262564 bytes)
+[45.121126116] stderr: /usr/local/lib/python3.13/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+[45.121138247] stderr:   return func(*args, **kwargs)
+[45.121621026] stderr: [rank0]:[W1010 13:15:18.456329950 ProcessGroupNCCL.cpp:5188] Guessing device ID based on global rank. This can cause a hang if rank to GPU mapping is heterogeneous. You can specify device_id in init_process_group()
+[45.808950434] stdout: · 读入 256 行
+[50.399113829] stdout: · 编码完成 254/256 条（4.6s）· 超窗丢弃 2
+[50.39931043] stdout: · token 长度 min 2879 p50 3594 p90 4379 max 6111 · 窗口 6144 占用 p50 58.5%
+[50.399398219] stdout: · 掩码边界偏差：19/254 条非零，max 1（持续偏大说明模板/分词器与预期不符，是必须看见的信号）
+[50.537914564] stdout: · 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl -> /kaggle/working/_dev.jsonl (1709978 bytes)
+[52.190146547] stdout: · dev 89 条
+[52.190197432] stdout: · 载入 fla-hub/rwkv7-0.1B-g1（主权重 fp32 · autocast fp16）…
+[54.450917689] stderr: /usr/local/lib/python3.13/dist-packages/fla/layers/rwkv7.py:148: UserWarning: According to Bo, you are using a potentially buggy FLA implementation of RWKV. If you plan to report any numbers based on this implementation, we strongly recommend cross-checking with the official repo: https://github.com/BlinkDL/RWKV-LM. Bo may disagree with results reported from this version.
+[54.450949709] stderr:   warnings.warn(
+[54.4654564] stderr: /usr/local/lib/python3.13/dist-packages/fla/layers/rwkv7.py:148: UserWarning: According to Bo, you are using a potentially buggy FLA implementation of RWKV. If you plan to report any numbers based on this implementation, we strongly recommend cross-checking with the official repo: https://github.com/BlinkDL/RWKV-LM. Bo may disagree with results reported from this version.
+[54.465499854] stderr:   warnings.warn(
+[57.902622439] stderr: Loading weights:   0%|          | 0/399 [00:00<?, ?it/s]Loading weights:   0%|          | 1/399 [00:00<00:43,  9.21it/s]Loading weights:  49%|████▉     | 196/399 [00:00<00:00, 1013.10it/s]Loading weights:  78%|███████▊  | 311/399 [00:00<00:00, 1063.54it/s]Loading weights:   0%|          | 0/399 [00:00<?, ?it/s]Loading weights: 100%|██████████| 399/399 [00:00<00:00, 1054.44it/s]
+[58.040800904] stderr: Loading weights:  70%|██████▉   | 278/399 [00:00<00:00, 2777.55it/s]Loading weights: 100%|██████████| 399/399 [00:00<00:00, 2547.18it/s]
+[58.404025932] stdout: · 参数量 191.0M（全参微调 · fp32 主权重） · DDP 2 卡
+[58.404124772] stdout: · rank 0 分到 32 个微批
+[58.406197515] stdout: · 批 4 × 累积 2 = 有效批 8 · 每轮 32 微批 -> 16 步 · 共 80 步
+[58.471720205] stderr: [transformers] `use_return_dict` is deprecated! Use `return_dict` instead!
+[58.47199725] stderr: [transformers] `use_return_dict` is deprecated! Use `return_dict` instead!
+[142.706512098] stderr: [rank1]:[W1010 13:16:55.041119876 reducer.cpp:1502] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[142.738041603] stderr: [rank0]:[W1010 13:16:55.072668432 reducer.cpp:1502] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[268.055558694] stdout:   step 1/80 loss 3.3404 lr 5.00e-05 elapsed 3.5m
+[322.447162476] stdout:   step 11/80 loss 3.1177 lr 9.77e-05 elapsed 4.4m
+[411.883561587] stdout:   step 21/80 loss 2.4798 lr 8.87e-05 elapsed 5.9m
+[460.621051432] stdout:   step 31/80 loss 1.6637 lr 7.43e-05 elapsed 6.7m
+[506.785145039] stdout:   step 41/80 loss 1.2083 lr 5.68e-05 elapsed 7.5m
+[556.727307948] stdout:   step 51/80 loss 0.5138 lr 3.90e-05 elapsed 8.3m
+[602.894708251] stdout:   step 61/80 loss 0.6010 lr 2.38e-05 elapsed 9.1m
+[650.051425753] stdout:   step 71/80 loss 0.4428 lr 1.36e-05 elapsed 9.9m
+[696.240278907] stdout:   step 80/80 loss 0.5295 lr 1.00e-05 elapsed 10.6m
+[696.240327525] stdout: · 训练结束 80 步，10.6 分钟
+[696.240778203] stderr: /usr/local/lib/python3.13/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+[696.240799278] stderr:   return func(*args, **kwargs)
+[696.310362419] stderr: [rank0]: Traceback (most recent call last):
+[696.310389647] stderr: [rank0]:   File "/kaggle/src/script.py", line 707, in <module>
+[696.310398578] stderr: [rank0]:     sys.exit(main([
+[696.310403599] stderr: [rank0]:              ~~~~^^
+[696.310408658] stderr: [rank0]:         "--data",
+[696.310413573] stderr: [rank0]:         ^^^^^^^^^
+[696.310418303] stderr: [rank0]:     ...<16 lines>...
+[696.310423059] stderr: [rank0]:         "1500.0",
+[696.310427762] stderr: [rank0]:         ^^^^^^^^^
+[696.310432351] stderr: [rank0]:     ]))
+[696.310436909] stderr: [rank0]:     ^^
+[696.310441495] stderr: [rank0]:   File "/kaggle/src/script.py", line 590, in main
+[696.31044641] stderr: [rank0]:     base_model.save_pretrained(out_dir / "model")
+[696.310451277] stderr: [rank0]:     ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+[696.310456117] stderr: [rank0]:   File "/usr/local/lib/python3.13/dist-packages/transformers/modeling_utils.py", line 3513, in save_pretrained
+[696.310461261] stderr: [rank0]:     state_dict = remove_tied_weights_from_state_dict(state_dict, model_to_save)
+[696.31046624] stderr: [rank0]:   File "/usr/local/lib/python3.13/dist-packages/transformers/modeling_utils.py", line 468, in remove_tied_weights_from_state_dict
+[696.310483782] stderr: [rank0]:     all_potential_tied_weights_keys = set(_get_tied_weight_keys(model))
+[696.310487989] stderr: [rank0]:                                           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+[696.310491932] stderr: [rank0]:   File "/usr/local/lib/python3.13/dist-packages/transformers/modeling_utils.py", line 381, in _get_tied_weight_keys
+[696.310496077] stderr: [rank0]:     tied_weight_keys.extend([f"{name}.{k}" if name else k for k in tied.keys()])
+[696.310500057] stderr: [rank0]:                                                                    ^^^^^^^^^
+[696.310504067] stderr: [rank0]: AttributeError: 'list' object has no attribute 'keys'
+[701.24969724] stderr: [rank0]:[W1010 13:26:14.584308405 ProcessGroupNCCL.cpp:1575] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+[702.581531008] stderr: W1010 13:26:15.620000 20 torch/distributed/elastic/multiprocessing/api.py:1012] Sending process 29 closing signal SIGTERM
+[702.896193666] stderr: E1010 13:26:15.935000 20 torch/distributed/elastic/multiprocessing/api.py:986] failed (exitcode: 1) local_rank: 0 (pid: 28) of binary: /usr/bin/python3
+[702.925478516] stderr: Traceback (most recent call last):
+[702.926428111] stderr:   File "<frozen runpy>", line 203, in _run_module_as_main
+[702.926441841] stderr:   File "<frozen runpy>", line 88, in _run_code
+[702.926448684] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/distributed/run.py", line 994, in <module>
+[702.926453193] stderr:     main()
+[702.926458761] stderr:     ~~~~^^
+[702.926462334] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 362, in wrapper
+[702.926467342] stderr:     return f(*args, **kwargs)
+[702.926471523] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/distributed/run.py", line 990, in main
+[702.926476698] stderr:     run(args)
+[702.926481019] stderr:     ~~~^^^^^^
+[702.926485304] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/distributed/run.py", line 981, in run
+[702.926490585] stderr:     elastic_launch(
+[702.926494306] stderr:     ~~~~~~~~~~~~~~~
+[702.92649786] stderr:         config=config,
+[702.926502464] stderr:         ~~~~~~~~~~~~~~
+[702.926506694] stderr:         entrypoint=cmd,
+[702.926511594] stderr:         ~~~~~~~~~~~~~~~
+[702.926516049] stderr:     )(*cmd_args)
+[702.926532042] stderr:     ~^^^^^^^^^^^
+[702.92653599] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/distributed/launcher/api.py", line 170, in __call__
+[702.926554506] stderr:     return launch_agent(self._config, self._entrypoint, list(args))
+[702.926558433] stderr:   File "/usr/local/lib/python3.13/dist-packages/torch/distributed/launcher/api.py", line 317, in launch_agent
+[702.926568866] stderr:     raise ChildFailedError(
+[702.92657154] stderr:     ...<2 lines>...
+[702.926573936] stderr:     )
+[702.926579865] stderr: torch.distributed.elastic.multiprocessing.errors.ChildFailedError:
+[702.926582382] stderr: ============================================================
+[702.926585836] stderr: /kaggle/src/script.py FAILED
+[702.926602238] stderr: ------------------------------------------------------------
+[702.926606579] stderr: Failures:
+[702.926610526] stderr: [1]:
+[702.926614446] stderr:   time      : 2026-10-10_13:26:15
+[702.92661841] stderr:   host      : b93bacbe4b60
+[702.926622304] stderr:   rank      : 1 (local_rank: 1)
+[702.926625766] stderr:   exitcode  : -15 (pid: 29)
+[702.926629191] stderr:   error_file: <N/A>
+[702.926632739] stderr:   traceback : Signal 15 (SIGTERM) received by PID 29
+[702.92664319] stderr: ------------------------------------------------------------
+[702.926646776] stderr: Root Cause (first observed failure):
+[702.926650166] stderr: [0]:
+[702.926653598] stderr:   time      : 2026-10-10_13:26:15
+[702.926657344] stderr:   host      : b93bacbe4b60
+[702.926660758] stderr:   rank      : 0 (local_rank: 0)
+[702.926664304] stderr:   exitcode  : 1 (pid: 28)
+[702.926681289] stderr:   error_file: <N/A>
+[702.926684487] stderr:   traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+[702.926699591] stderr: ============================================================
+[705.771466827] stderr: /usr/local/lib/python3.13/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\|'
+[705.771495027] stderr:   cells[i][c] = re.sub('\\\\\|', '|', cell)
+[705.996783606] stderr: /usr/local/lib/python3.13/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\_'
+[705.99681873] stderr:   text = re.sub(r'_', '\_', text) # Escape underscores in display text
+[706.77028619] stderr: [NbConvertApp] Converting notebook __script__.ipynb to html
+[707.833400869] stderr: [NbConvertApp] Writing 422786 bytes to __results__.html

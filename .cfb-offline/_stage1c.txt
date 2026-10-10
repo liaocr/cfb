@@ -1,0 +1,26 @@
+单元数 = 20
+[ 1] adamchainz_apig-wsgi_pr93#b7              10.7s raw=3622 draft=1235 ratio=0.34 finish=stop
+[ 2] adamchainz_django-cors-headers_pr396#b8   13.9s raw=3760 draft=539 ratio=0.14 finish=stop
+[ 3] adamchainz_ec2-metadata_pr40#b4           13.5s raw=2449 draft=856 ratio=0.35 finish=stop
+[ 4] adamchainz_flake8-comprehensions_pr195#b   7.9s raw=2033 draft=1015 ratio=0.50 finish=stop
+[ 5] adamchainz_flake8-logging_pr4#b7          19.5s raw=2031 draft=1132 ratio=0.56 finish=stop
+[ 6] adamchainz_treepoem_pr437#b19             12.5s raw=2297 draft=758 ratio=0.33 finish=stop
+[ 7] adamtheturtle_pip-check-reqs_pr38#b9       8.8s raw=1873 draft=511 ratio=0.27 finish=stop
+[ 8] adamtheturtle_sybil-extras_pr297#b11       6.0s raw=3983 draft=813 ratio=0.20 finish=stop
+[ 9] aio-libs_aiosmtpd_pr258#b36                5.7s raw=2092 draft=655 ratio=0.31 finish=stop
+[10] aiokitchen_aiomisc_pr199#b13              13.1s raw=3080 draft=1230 ratio=0.40 finish=stop
+[11] aiven_aiven-client_pr287#b4               10.1s raw=2419 draft=1147 ratio=0.47 finish=stop
+[12] andialbrecht_sqlparse_pr317#b20           20.1s raw=2240 draft=893 ratio=0.40 finish=stop
+[13] andrewgodwin_urlman_pr6#b7                 5.4s raw=1952 draft=990 ratio=0.51 finish=stop
+[14] anntzer_defopt_pr30#b6                    12.6s raw=4531 draft=1464 ratio=0.32 finish=stop
+[15] app-sre_qontract-reconcile_pr1020#b18      6.4s raw=2259 draft=987 ratio=0.44 finish=stop
+[16] argyle-engineering_pyap_pr21#b34           8.1s raw=4120 draft=719 ratio=0.17 finish=stop
+[17] ariebovenberg_slotscheck_pr34#b10         16.4s raw=2894 draft=850 ratio=0.29 finish=stop
+[18] arviz-devs_preliz_pr103#b19                9.7s raw=4968 draft=936 ratio=0.19 finish=stop
+[19] asottile_add-trailing-comma_pr178#b7      15.0s raw=3044 draft=853 ratio=0.28 finish=stop
+[20] asottile_blacken-docs_pr128#b4            10.9s raw=4965 draft=878 ratio=0.18 finish=stop
+
+=== 合计 ===
+  成功 20  截断 0  用时 226s  token 83994  报告花费 $0.000503
+  单条报告花费 $0.000025
+  按官方价保守估：输入≈40417 tok 输出≈43577 tok => 单条 $0.001481，3000 条 $4.44

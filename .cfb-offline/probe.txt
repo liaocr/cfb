@@ -1,0 +1,43 @@
+fla-core 0.5.2 wheels: ['fla_core-0.5.2-py3-none-any.whl']
+requires_dist: ['einops', 'torch>=2.7.0; extra == "cuda"', 'triton>=3.3; extra == "cuda"', 'torch>=2.7.0; extra == "rocm"', 'torch>=2.7.0; extra == "xpu"', 'torch==2.7.1; extra == "npu"', 'torch_npu==2.7.1.post4; extra == "npu"', 'torchvision==0.22.1; extra == "npu"', 'triton-ascend==3.2.1; extra == "npu"', 'torch>=2.7.0; extra == "cpu"', 'triton>=3.3; extra == "cpu"']
+wheel bytes: 819225  entries: 319
+top-level: fla, fla_core-0.5.2.dist-info
+fla/*: __init__.py, modules, ops, utils
+rwkv7 entries: 7 -> fla/ops/rwkv7/__init__.py, fla/ops/rwkv7/channel_mixing.py, fla/ops/rwkv7/chunk.py, fla/ops/rwkv7/fused_addcmul.py, fla/ops/rwkv7/fused_k_update.py, fla/ops/rwkv7/fused_recurrent.py, fla/ops/rwkv7/gate_output_correction.py
+models entries: 0 -> 
+HF OK https://huggingface.co/api/models/fla-hub/rwkv7-0.1B-g1
+  siblings: .gitattributes, README.md, __init__.py, added_tokens.json, config.json, generation_config.json, hf_rwkv_tokenizer.py, model.safetensors, modeling_rwkv7.py, rwkv_vocab_v20230424.txt, special_tokens_map.json, tokenizer_config.json
+OK https://hf-mirror.com/fla-hub/rwkv7-0.1B-g1/raw/main/config.json (925 chars)
+  {
+    "a_low_rank_dim": 64,
+    "architectures": [
+      "RWKV7ForCausalLM"
+    ],
+    "attn": null,
+    "attn_mode": "chunk",
+    "auto_map": {
+      "AutoConfig": "modeling_rwkv7.RWKV7Config",
+      "AutoModel": "modeling_rwkv7.RWKV7Model",
+      "AutoModelForCausalLM": "modeling_rwkv7.RWKV7ForCausalLM"
+    },
+    "bos_token_id": 0,
+    "decay_low_rank_dim": 64,
+    "eos_token_id": 0,
+    "fuse_cross_entropy": true,
+    "fuse_norm": false,
+    "gate_low_rank_dim": 128,
+    "head_dim": 64,
+    "hidden_act": "sqrelu",
+    "hidden_rati
+OK https://raw.githubusercontent.com/fla-org/flash-linear-attention/main/fla/models/rwkv7/__init__.py (778 chars)
+  # Copyright (c) 2023-2026, Songlin Yang, Yu Zhang, Zhiyuan Li
+  #
+  # This source code is licensed under the MIT license found in the
+  # LICENSE file in the root directory of this source tree.
+  # For a list of all contributors, visit:
+  #   https://github.com/fla-org/flash-linear-attention/graphs/contributors
+  
+  from transformers import AutoConfig, AutoModel, AutoModelForCausalLM
+  
+  from fla.models.rwkv7.configuration_rwkv7 import RWKV7Config
+  from fla.models.rwkv7.modeling_rwkv7 import RWKV7ForCausalLM, RWK

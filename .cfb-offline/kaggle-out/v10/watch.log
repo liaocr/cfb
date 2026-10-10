@@ -1,0 +1,9 @@
+00:04:57 === watch start ===
+00:04:59 status -> RUNNING
+00:13:41 status err: ConnectTimeout(MaxRetryError("HTTPSConnectionPool(host='api.kaggle.com', port=443): Max retries exceeded with url: /v1/kernels.KernelsApiService/GetKernelSessionStatus (Caused by ConnectTimeoutError(<HTTPSConnection(host='api.kaggle.com', port=443) at 0x20fd01aa240>, 'Connection to api.kaggle.com timed out. (connect timeout=None)'))"))
+00:15:02 status err: ConnectTimeout(MaxRetryError("HTTPSConnectionPool(host='api.kaggle.com', port=443): Max retries exceeded with url: /v1/kernels.KernelsApiService/GetKernelSessionStatus (Caused by ConnectTimeoutError(<HTTPSConnection(host='api.kaggle.com', port=443) at 0x20fd01a9250>, 'Connection to api.kaggle.com timed out. (connect timeout=None)'))"))
+00:18:58 === watch start ===
+00:19:00 status -> RUNNING
+01:25:02 status -> COMPLETE
+01:25:04 === terminal COMPLETE · kernel.log 0 chars ===
+01:25:04 

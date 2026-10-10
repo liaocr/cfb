@@ -1,0 +1,14 @@
+======================================================================
+### minimal  {"reasoning_effort": "minimal"}
+     8.3s reasoning=1008   content=1125  finish=stop
+      前 120 字: ## 1. 已落定的决定 /  / - 「1. Add `application/vnd.api+json` to the default list of non-binary content types.」 / - 「2. Add a new opt
+    23.5s reasoning=4421   content=1000  finish=stop
+      前 120 字: 1. 已落定的决定（原文逐字） / - 「So I should just focus on the non-test files.」 / - 「Remove `CORS_MODEL` from `conf.py`」 / - 「Remove `Abst
+   -> 有正文 2/2  思考合计 5429  completion 合计 6156
+======================================================================
+### disabled  {"thinking": {"type": "disabled"}}
+     7.0s reasoning=0      content=1306  finish=stop
+      前 120 字: 1. 已落定的决定（原文逐字） / - 「The current code: 1. In `make_lambda_handler`, only `binary_support` parameter is accepted. 2. In `_s
+     6.1s reasoning=0      content=806   finish=stop
+      前 120 字: 1. 已落定的决定（原文逐字） / - 「Remove the `CORS_MODEL` property from `conf.py`」 / - 「Remove `AbstractCorsModel` from `models.py`」 / - 「R
+   -> 有正文 2/2  思考合计 0  completion 合计 748

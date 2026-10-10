@@ -1,0 +1,28 @@
+=== default(max_tokens=1600)  (10.6s) ===
+  finish_reason = length
+  reasoning_content len = 2909
+  content len = 681
+  usage = {"cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "cached_tokens": 0, "completion_thinking_tokens": 1309, "completion_tokens": 1600, "completion_tokens_details": {"accepted_prediction_tokens": 0, "audio_tokens": 0, "cached_tokens": 0, "reasoning_tokens": 1309, "rejected_prediction_tokens": 0}, "cost": 2.090235e-05, "credit": 0.12, "prompt_cache_hit_tokens": 0, "prompt_cache_miss_tok
+  content[:200] = ## 中文压缩稿 /  / **任务** / 在仓库 `/workspace/adamchainz__apig-wsgi__1.0`（apig-wsgi 库）中，为 `make_lambda_handler` 增加对 `application/vnd.api+json` 及自定义非二进制内容类型的支持。 /  / **问题描述** / `make_lambda_handler(binary_support=True)` 
+
+=== max_tokens=8000  (10.9s) ===
+  finish_reason = stop
+  reasoning_content len = 3136
+  content len = 1441
+  usage = {"cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "cached_tokens": 0, "completion_thinking_tokens": 1231, "completion_tokens": 1728, "completion_tokens_details": {"accepted_prediction_tokens": 0, "audio_tokens": 0, "cached_tokens": 0, "reasoning_tokens": 1231, "rejected_prediction_tokens": 0}, "cost": 1.838907e-05, "credit": 0.1, "prompt_cache_hit_tokens": 1664, "prompt_cache_miss_t
+  content[:200] = # 中文压缩稿 /  / ## 需求 / 在 `binary_support=True` 时，让 `application/vnd.api+json` 及用户自定义前缀的内容类型按文本处理（不 base64）。 /  / ## 改动方案（`src/apig_wsgi.py`） /  / **1. 新增默认前缀常量** / ```python / DEFAULT_NON_BINARY_CONTENT_TYPE_PREFIXES = (
+
+=== no-thinking?  (3.7s) ===
+  finish_reason = stop
+  reasoning_content len = 40
+  content len = 547
+  usage = {"cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "cached_tokens": 0, "completion_thinking_tokens": 23, "completion_tokens": 255, "completion_tokens_details": {"accepted_prediction_tokens": 0, "audio_tokens": 0, "cached_tokens": 0, "reasoning_tokens": 23, "rejected_prediction_tokens": 0}, "cost": 1e-05, "credit": 0.04, "prompt_cache_hit_tokens": 0, "prompt_cache_miss_tokens": 1856, 
+  content[:200] = 我需要实现两个改动： /  / 1. 将 `application/vnd.api+json` 加入默认可作为文本处理的 content type 前缀。 / 2. 给 `make_lambda_handler` 增加可选参数 `non_binary_content_type_prefixes`，让用户自定义哪些 content type 前缀按纯文本处理。 /  / 先看一下当前相关实现，重点关注 `make_la
+
+=== chat_template_kwargs  (6.7s) ===
+  finish_reason = stop
+  reasoning_content len = 455
+  content len = 974
+  usage = {"cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "cached_tokens": 0, "completion_thinking_tokens": 229, "completion_tokens": 667, "completion_tokens_details": {"accepted_prediction_tokens": 0, "audio_tokens": 0, "cached_tokens": 0, "reasoning_tokens": 229, "rejected_prediction_tokens": 0}, "cost": 1e-05, "credit": 0.04, "prompt_cache_hit_tokens": 1664, "prompt_cache_miss_tokens": 1
+  content[:200] = ## 中文压缩稿 /  / **任务**：修改 `/workspace/adamchainz__apig-wsgi__1.0`，为 `apig-wsgi` 增加两类非二进制内容类型支持。 /  / **现状** / - `make_lambda_handler` 目前只接受 `binary_support` 参数。 / - `_should_send_binary` 里非二进制前缀硬编码为 `("text/", "app
+

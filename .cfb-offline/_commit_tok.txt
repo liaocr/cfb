@@ -1,0 +1,32 @@
+fix(tokens): token 系数实测校准（0.6/0.3 → 0.81/0.26）+ 尺子 G7 改 token 比
+
+## 一、src/tokens.js 的常数是错的
+
+原注释声称出处是 DeepSeek 官方文档（1 个英文字符 ≈ 0.3 token、1 个中文字符 ≈ 0.6 token），
+但全仓没有任何一次校准产物 —— tools/analyze-trace.mjs:109 的 addCalibration() 建好了从没跑过。
+本次用 330 次真实调用的 providerReportedUsage 对「宽字符数 / 其余字符数」做最小二乘
+（输入侧 330 + 输出侧 330，n=660，不带截距以保持 estimateTokens 的接口）：
+
+  中文/全角 0.8084 · 其余 0.2600 · 平均绝对误差 3.87%（旧常数 7.07%）
+
+留出验证（8:2 切分）：输入侧 6.03% → 2.61%，输出侧 9.79% → 5.47%。
+共线性检查：corr(宽, 其余) = 0.13（输入）/ −0.10（输出）⇒ 两个系数可分辨，不是拟合噪声。
+
+旧常数错在两处：低估中文 28%（0.6 vs 0.81）；把中英比例当成 2.00x（实为 3.11x）。
+后者的代价正是「英文原文 → 中文稿」：字符腰斩而 token 不降。
+
+test/hardening.selftest.mjs §3a 原来钉的是那个已证伪的文档口径，同步更新为现行校准值。
+
+## 二、tools/gen-ruler.mjs 的 G7 量错了量
+
+G7 原来卡「字符比 <= 0.55」。实测反例（同一批 100 条，提示词只差语言要求）：
+v3 用中文写稿，字符比 0.471 过 G7，但 raw 是英文 —— raw 3.75 字符/token、稿 1.85 字符/token
+⇒ **token 比 0.978，等于没压缩**。字符比会把「翻译成中文」误判成压缩。
+
+改为 token 比，估算复用 src/tokens.js（不另立口径）。RULER_VERSION gen-ruler/1 → /2。
+软分 S4 compressionGain 同步改用 token 比。
+
+换尺子后的同批重评（n=30，四版提示词）：v3 从旧尺子的 65%（看着最好）塌到 20%（实际最差），
+因为旧尺子对中文稿格外宽松。v4 56.7% 居首，G1 凭空引用 0/30。
+
+验证：test/hardening.selftest.mjs 30 PASS / 0 FAIL；test/gen-ruler.selftest.mjs 16 PASS / 0 FAIL。

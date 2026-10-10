@@ -1,0 +1,117 @@
+{"stream_name": "stdout", "time": 17.985479925, "data": "· GPU Tesla T4 · sm_75 · torch 2.11.0+cu128 · 2 卡\n"}
+{"stream_name": "stdout", "time": 17.985749857, "data": "· fla.models.rwkv7 缺失（ModuleNotFoundError(\"No module named 'fla'\")）-> 装 flash-linear-attention==0.5.2\n"}
+{"stream_name": "stdout", "time": 23.06589303, "data": "· pip install -> exit 0\n"}
+{"stream_name": "stdout", "time": 63.055066587, "data": "· fla ok · transformers 5.16.1\n"}
+{"stream_name": "stderr", "time": 63.321826043, "data": "Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n"}
+{"stream_name": "stderr", "time": 63.547657834, "data": "[transformers] A new version of the following files was downloaded from https://huggingface.co/fla-hub/rwkv7-0.1B-g1:\n"}
+{"stream_name": "stderr", "time": 63.547690749, "data": "- hf_rwkv_tokenizer.py\n"}
+{"stream_name": "stderr", "time": 63.547695265, "data": ". Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.\n"}
+{"stream_name": "stdout", "time": 66.683490838, "data": "· tokenizer RwkvTokenizer · vocab 65531 · eos=65530 pad=0\n"}
+{"stream_name": "stdout", "time": 67.005227496, "data": "· 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl -> /kaggle/working/_train.jsonl (582074 bytes)\n"}
+{"stream_name": "stdout", "time": 67.009694175, "data": "· 读入 48 行\n"}
+{"stream_name": "stdout", "time": 67.822353155, "data": "· 编码完成 48/48 条（0.8s）· 超窗丢弃 0\n"}
+{"stream_name": "stdout", "time": 67.822387062, "data": "· token 长度 min 3014 p50 3522 p90 4100 max 4408 · 窗口 6144 占用 p50 57.3%\n"}
+{"stream_name": "stdout", "time": 67.822393484, "data": "· 掩码边界偏差：2/48 条非零，max 1（持续偏大说明模板/分词器与预期不符，是必须看见的信号）\n"}
+{"stream_name": "stdout", "time": 67.973062295, "data": "· 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl -> /kaggle/working/_dev.jsonl (115690 bytes)\n"}
+{"stream_name": "stdout", "time": 68.137421543, "data": "· dev 9 条\n"}
+{"stream_name": "stdout", "time": 68.137464927, "data": "· 载入 fla-hub/rwkv7-0.1B-g1（主权重 fp32 · autocast fp16）…\n"}
+{"stream_name": "stderr", "time": 71.394077956, "data": "/usr/local/lib/python3.13/dist-packages/fla/layers/rwkv7.py:148: UserWarning: According to Bo, you are using a potentially buggy FLA implementation of RWKV. If you plan to report any numbers based on this implementation, we strongly recommend cross-checking with the official repo: https://github.com/BlinkDL/RWKV-LM. Bo may disagree with results reported from this version.\n"}
+{"stream_name": "stderr", "time": 71.394117294, "data": "  warnings.warn(\n"}
+{"stream_name": "stderr", "time": 74.625381976, "data": "\rLoading weights:   0%|          | 0/399 [00:00<?, ?it/s]\rLoading weights:  48%|████▊     | 193/399 [00:00<00:00, 1827.61it/s]\rLoading weights:  94%|█████████▍| 377/399 [00:00<00:00, 1832.12it/s]\rLoading weights: 100%|██████████| 399/399 [00:00<00:00, 1832.05it/s]\n"}
+{"stream_name": "stdout", "time": 75.315765296, "data": "· 参数量 191.0M（全参微调 · fp32 主权重）\n"}
+{"stream_name": "stdout", "time": 75.31769490799999, "data": "· 批 4 × 累积 8 = 有效批 32 · 每轮 12 微批 -> 1 步 · 共 3 步\n"}
+{"stream_name": "stdout", "time": 75.317711298, "data": "\\n=== 冒烟模式：只验证环境，不训练 ===\n"}
+{"stream_name": "stderr", "time": 75.327468398, "data": "[transformers] `use_return_dict` is deprecated! Use `return_dict` instead!\n"}
+{"stream_name": "stderr", "time": 658.196879215, "data": "Traceback (most recent call last):\n"}
+{"stream_name": "stderr", "time": 658.1998059, "data": "  File \"/kaggle/src/script.py\", line 505, in <module>\n"}
+{"stream_name": "stderr", "time": 658.199826104, "data": "    sys.exit(main([\n"}
+{"stream_name": "stderr", "time": 658.199832062, "data": "             ~~~~^^\n"}
+{"stream_name": "stderr", "time": 658.19983667, "data": "        \"--smoke\",\n"}
+{"stream_name": "stderr", "time": 658.199841569, "data": "        ^^^^^^^^^^\n"}
+{"stream_name": "stderr", "time": 658.199846492, "data": "    ...<3 lines>...\n"}
+{"stream_name": "stderr", "time": 658.199851961, "data": "        \"https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl\",\n"}
+{"stream_name": "stderr", "time": 658.199857062, "data": "        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+{"stream_name": "stderr", "time": 658.199862369, "data": "    ]))\n"}
+{"stream_name": "stderr", "time": 658.199867141, "data": "    ^^\n"}
+{"stream_name": "stderr", "time": 658.199871714, "data": "  File \"/kaggle/src/script.py\", line 378, in main\n"}
+{"stream_name": "stderr", "time": 658.199876215, "data": "    scaler.scale(loss).backward()\n"}
+{"stream_name": "stderr", "time": 658.199880781, "data": "    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^\n"}
+{"stream_name": "stderr", "time": 658.199885171, "data": "  File \"/usr/local/lib/python3.13/dist-packages/torch/_tensor.py\", line 631, in backward\n"}
+{"stream_name": "stderr", "time": 658.199889501, "data": "    torch.autograd.backward(\n"}
+{"stream_name": "stderr", "time": 658.199893855, "data": "    ~~~~~~~~~~~~~~~~~~~~~~~^\n"}
+{"stream_name": "stderr", "time": 658.199898307, "data": "        self, gradient, retain_graph, create_graph, inputs=inputs\n"}
+{"stream_name": "stderr", "time": 658.199902422, "data": "        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+{"stream_name": "stderr", "time": 658.199908332, "data": "    )\n"}
+{"stream_name": "stderr", "time": 658.199917378, "data": "    ^\n"}
+{"stream_name": "stderr", "time": 658.199920018, "data": "  File \"/usr/local/lib/python3.13/dist-packages/torch/autograd/__init__.py\", line 381, in backward\n"}
+{"stream_name": "stderr", "time": 658.199923327, "data": "    _engine_run_backward(\n"}
+{"stream_name": "stderr", "time": 658.199925803, "data": "    ~~~~~~~~~~~~~~~~~~~~^\n"}
+{"stream_name": "stderr", "time": 658.199928442, "data": "        tensors,\n"}
+{"stream_name": "stderr", "time": 658.199930925, "data": "        ^^^^^^^^\n"}
+{"stream_name": "stderr", "time": 658.199933509, "data": "    ...<5 lines>...\n"}
+{"stream_name": "stderr", "time": 658.199937231, "data": "        accumulate_grad=True,\n"}
+{"stream_name": "stderr", "time": 658.199957807, "data": "        ^^^^^^^^^^^^^^^^^^^^^\n"}
+{"stream_name": "stderr", "time": 658.199962855, "data": "    )\n"}
+{"stream_name": "stderr", "time": 658.199967149, "data": "    ^\n"}
+{"stream_name": "stderr", "time": 658.1999712, "data": "  File \"/usr/local/lib/python3.13/dist-packages/torch/autograd/graph.py\", line 869, in _engine_run_backward\n"}
+{"stream_name": "stderr", "time": 658.199976103, "data": "    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass\n"}
+{"stream_name": "stderr", "time": 658.199980756, "data": "           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+{"stream_name": "stderr", "time": 658.199985052, "data": "        t_outputs, *args, **kwargs\n"}
+{"stream_name": "stderr", "time": 658.199988971, "data": "        ^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+{"stream_name": "stderr", "time": 658.200002015, "data": "    )  # Calls into the C++ engine to run the backward pass\n"}
+{"stream_name": "stderr", "time": 658.20001232, "data": "    ^\n"}
+{"stream_name": "stderr", "time": 658.200014944, "data": "  File \"/usr/local/lib/python3.13/dist-packages/torch/autograd/function.py\", line 317, in apply\n"}
+{"stream_name": "stderr", "time": 658.200017838, "data": "    return user_fn(self, *args)\n"}
+{"stream_name": "stderr", "time": 658.200020362, "data": "  File \"/usr/local/lib/python3.13/dist-packages/fla/utils/_decorators.py\", line 152, in wrapper\n"}
+{"stream_name": "stderr", "time": 658.200023032, "data": "    return fn(*processed_args, **processed_kwargs)\n"}
+{"stream_name": "stderr", "time": 658.20002566, "data": "  File \"/usr/local/lib/python3.13/dist-packages/torch/amp/autocast_mode.py\", line 527, in decorate_bwd\n"}
+{"stream_name": "stderr", "time": 658.200028389, "data": "    return bwd(*args, **kwargs)  # pyrefly: ignore [not-callable]\n"}
+{"stream_name": "stderr", "time": 658.200032595, "data": "  File \"/usr/local/lib/python3.13/dist-packages/fla/ops/generalized_delta_rule/dplr/chunk.py\", line 412, in backward\n"}
+{"stream_name": "stderr", "time": 658.200040479, "data": "    dq, dk, da, db, dgk = chunk_dplr_bwd_dqk_intra(\n"}
+{"stream_name": "stderr", "time": 658.200043153, "data": "                          ~~~~~~~~~~~~~~~~~~~~~~~~^\n"}
+{"stream_name": "stderr", "time": 658.200045804, "data": "        q=q,\n"}
+{"stream_name": "stderr", "time": 658.200048304, "data": "        ^^^^\n"}
+{"stream_name": "stderr", "time": 658.200050854, "data": "    ...<18 lines>...\n"}
+{"stream_name": "stderr", "time": 658.200053689, "data": "        chunk_indices=ctx.chunk_indices,\n"}
+{"stream_name": "stderr", "time": 658.200056324, "data": "        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+{"stream_name": "stderr", "time": 658.20005895, "data": "    )\n"}
+{"stream_name": "stderr", "time": 658.200061496, "data": "    ^\n"}
+{"stream_name": "stderr", "time": 658.200064061, "data": "  File \"/usr/local/lib/python3.13/dist-packages/fla/ops/generalized_delta_rule/dplr/chunk_A_bwd.py\", line 509, in chunk_dplr_bwd_dqk_intra\n"}
+{"stream_name": "stderr", "time": 658.200066942, "data": "    chunk_dplr_bwd_kernel_intra_func[grid](\n"}
+{"stream_name": "stderr", "time": 658.200069529, "data": "    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^\n"}
+{"stream_name": "stderr", "time": 658.200072118, "data": "        q=q,\n"}
+{"stream_name": "stderr", "time": 658.200074661, "data": "        ^^^^\n"}
+{"stream_name": "stderr", "time": 658.20007719, "data": "    ...<28 lines>...\n"}
+{"stream_name": "stderr", "time": 658.200081093, "data": "        GATHER_SUPPORTED=IS_GATHER_SUPPORTED,\n"}
+{"stream_name": "stderr", "time": 658.200083998, "data": "        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+{"stream_name": "stderr", "time": 658.200086611, "data": "    )\n"}
+{"stream_name": "stderr", "time": 658.200089112, "data": "    ^\n"}
+{"stream_name": "stderr", "time": 658.200091659, "data": "  File \"/usr/local/lib/python3.13/dist-packages/triton/runtime/jit.py\", line 370, in <lambda>\n"}
+{"stream_name": "stderr", "time": 658.200094478, "data": "    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n"}
+{"stream_name": "stderr", "time": 658.200097312, "data": "                                   ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+{"stream_name": "stderr", "time": 658.200100013, "data": "  File \"/usr/local/lib/python3.13/dist-packages/triton/runtime/autotuner.py\", line 459, in run\n"}
+{"stream_name": "stderr", "time": 658.200102799, "data": "    return self.fn.run(*args, **kwargs)\n"}
+{"stream_name": "stderr", "time": 658.200105304, "data": "           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^\n"}
+{"stream_name": "stderr", "time": 658.200107907, "data": "  File \"/usr/local/lib/python3.13/dist-packages/triton/runtime/autotuner.py\", line 252, in run\n"}
+{"stream_name": "stderr", "time": 658.200113146, "data": "    ret = self.fn.run(\n"}
+{"stream_name": "stderr", "time": 658.200115847, "data": "        *args,\n"}
+{"stream_name": "stderr", "time": 658.200119212, "data": "        **kwargs,\n"}
+{"stream_name": "stderr", "time": 658.200122308, "data": "        **config.all_kwargs(),\n"}
+{"stream_name": "stderr", "time": 658.200124927, "data": "    )\n"}
+{"stream_name": "stderr", "time": 658.200127516, "data": "  File \"/usr/local/lib/python3.13/dist-packages/triton/runtime/jit.py\", line 743, in run\n"}
+{"stream_name": "stderr", "time": 658.200130264, "data": "    launch_metadata = kernel.launch_metadata(grid, stream, *bound_args.values())\n"}
+{"stream_name": "stderr", "time": 658.200132995, "data": "  File \"/usr/local/lib/python3.13/dist-packages/triton/compiler/compiler.py\", line 482, in launch_metadata\n"}
+{"stream_name": "stderr", "time": 658.200136429, "data": "    self._init_handles()\n"}
+{"stream_name": "stderr", "time": 658.200138967, "data": "    ~~~~~~~~~~~~~~~~~~^^\n"}
+{"stream_name": "stderr", "time": 658.20014148, "data": "  File \"/usr/local/lib/python3.13/dist-packages/triton/compiler/compiler.py\", line 456, in _init_handles\n"}
+{"stream_name": "stderr", "time": 658.200144266, "data": "    raise_(OutOfResources(self.metadata.shared, max_shared, \"shared memory\"))\n"}
+{"stream_name": "stderr", "time": 658.200146978, "data": "    ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+{"stream_name": "stderr", "time": 658.200149618, "data": "  File \"/usr/local/lib/python3.13/dist-packages/triton/compiler/compiler.py\", line 448, in raise_\n"}
+{"stream_name": "stderr", "time": 658.200152379, "data": "    raise err\n"}
+{"stream_name": "stderr", "time": 658.200155498, "data": "triton.runtime.errors.OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.\n"}
+{"stream_name": "stderr", "time": 670.26024035, "data": "/usr/local/lib/python3.13/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+{"stream_name": "stderr", "time": 670.260268919, "data": "  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+{"stream_name": "stderr", "time": 670.674974272, "data": "/usr/local/lib/python3.13/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+{"stream_name": "stderr", "time": 670.675014673, "data": "  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+{"stream_name": "stderr", "time": 671.569791653, "data": "[NbConvertApp] Converting notebook __script__.ipynb to html\n"}
+{"stream_name": "stderr", "time": 673.001812976, "data": "[NbConvertApp] Writing 383423 bytes to __results__.html\n"}

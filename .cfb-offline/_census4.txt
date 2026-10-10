@@ -1,0 +1,61 @@
+rows=282
+rows with task+variant=208
+fixed values: {'True': 45, 'None': 71, 'False': 92}
+fixedAtRound: {'7': 11, 'None': 162, '4': 8, '5': 8, '6': 11, '8': 6, '11': 1, '9': 1}
+verifiedAfterFix: {'True': 37, 'False': 171}
+
+=== task x variant  (fixed / fixedAtRound / claimJustified) ===
+  eacces-config                                          {"raw": [false, null, false], "hand": [false, null, false]}
+  eacces-config:decoy                                    {"raw": [true, 7, true], "hand": [null, null, false]}
+  eacces-config:long-horizon                             {"raw": [true, 6, true], "hand": [true, 6, true]}
+  flaky-timeout                                          {"raw": [false, null, false], "hand": [false, null, false], "policy:p-1490eefcdf": [false, null, false], "policy:base": [false, null, false]}
+  flaky-timeout:long-horizon                             {"raw": [false, null, false], "hand": [false, null, false]}
+  perf-regression                                        {"raw": [false, null, false], "hand": [false, null, false]}
+  perf-regression:long-horizon                           {"hand": [null, null, false]}
+  sse-truncated                                          {"raw": [true, 6, false], "hand": [false, null, false]}
+  sse-truncated:decoy                                    {"raw": [true, 5, true], "hand": [true, 5, true]}
+  sse-truncated:long-horizon                             {"raw": [true, 7, false], "hand": [true, 8, false]}
+  wrong-model                                            {"raw": [true, 6, true], "hand": [null, null, false]}
+  wrong-model:decoy                                      {"raw": [true, 4, true], "hand": [null, null, false]}
+  wrong-model:long-horizon                               {"raw": [true, 5, true], "hand": [true, 5, true]}
+
+=== perturb rows ===
+count=44
+keys=['at', 'task', 'variant', 'sample', 'rounds', 'calls', 'edits', 'repeats', 'fixedAtRound', 'verifiedAfterFix', 'promptTokens', 'compile', 'transcript', 'rejected', 'perturb', 'mainCalls', 'completionTokens', 'fixed', 'claim', 'claimJustified', 'contextReasoningChars', 'finalFiles', 'proxySteps', 'proxyScore', 'proxyRound2', 'roundMessages', '_f']
+perturb="decoy"
+task=eacces-config:decoy variant=raw
+
+=== claim / claimJustified sample ===
+  task=eacces-config var=raw fixed=True just=True
+  task=eacces-config var=hand fixed=None just=None
+  task=eacces-config var=raw fixed=True just=True
+  task=eacces-config var=hand fixed=None just=None
+  task=flaky-timeout var=raw fixed=False just=True
+  task=flaky-timeout var=hand fixed=None just=None
+
+=== rejected / transcript shape ===
+rejected type=int len=0
+transcript n=8
+transcript[0] keys=['round', 'finish', 'reasoningChars', 'storedChars', 'text', 'calls', 'reasoning', 'stored', 'results']
+{"round": 1, "finish": "tool_calls", "reasoningChars": 41, "storedChars": 41, "text": "先看一下仓库结构和报错相关的文件。\n[tool_call bash] {\"command\": \"pwd; ls -la; cat package.json 2>/dev/null\"}\n[tool_call bash] {\"command\": \"ls -la /home/u/.dsh/storages/ 2>&1; ls -la /home/u/.dsh/ 2>&1; id\"}", "calls": [{"name": "bash", "args": "{\"command\": \"pwd; ls -la; cat package.json 2>/dev/null\"}"}, {"name": "bash", "args": "{\"command\": \"ls -la /home/u/.dsh/storages/ 2>&1; ls -la /home/u/.dsh/ 2>&1; id\"}"}], "reasoning": "Let me start by exploring the repository.", "stored": null, "results": ["$ pwd\n/home/u/work/repo\n$ ls -la\ntotal 12\ndrwxr-xr-x  4 user user 140 Oct  5 12:48 .\ndrwxrwxrwt 26 root root 560 Oct  5 12:48 ..\n-rw-r--r--  1 user user 109 Oct  5 12:48 README.md\n-rw-r--r--  1 user use
+roundMessages n=8
+rm[0] keys=['role', 'content', 'reasoning_content', 'tool_calls']
+
+=== contextReasoningChars by variant ===
+  raw n=72 mean=12273 med=8941 max=53296
+  hand n=40 mean=11661 med=7060 max=49702
+
+=== per-task: did variant fix it? ===
+  eacces-config                                            {'raw': (False, None), 'hand': (False, None)}
+  eacces-config:decoy                                      {'raw': (True, 7), 'hand': (None, None)}
+  eacces-config:long-horizon                               {'raw': (True, 6), 'hand': (True, 6)}
+  flaky-timeout                                            {'raw': (False, None), 'hand': (False, None), 'policy:p-1490eefcdf': (False, None), 'policy:base': (False, None)}
+  flaky-timeout:long-horizon                               {'raw': (False, None), 'hand': (False, None)}
+  perf-regression                                          {'raw': (False, None), 'hand': (False, None)}
+  perf-regression:long-horizon                             {'hand': (None, None)}
+  sse-truncated                                            {'raw': (True, 6), 'hand': (False, None)}
+  sse-truncated:decoy                                      {'raw': (True, 5), 'hand': (True, 5)}
+  sse-truncated:long-horizon                               {'raw': (True, 7), 'hand': (True, 8)}
+  wrong-model                                              {'raw': (True, 6), 'hand': (None, None)}
+  wrong-model:decoy                                        {'raw': (True, 4), 'hand': (None, None)}
+  wrong-model:long-horizon                                 {'raw': (True, 5), 'hand': (True, 5)}

@@ -1,0 +1,407 @@
+
+
+########## transfer\HANDOFF.md (7164) ##########
+# AI 模型与开发者一页交接卡（`transfer/HANDOFF.md`，v14.25.4）
+
+> 本文件替代了原先分散的 `MIGRATION.md`、`LIVE-MEMORY.md`、`MEMORY.md`、`NEXT-MODEL-PROMPT.md` 与 `SUMMARY-2026-10-02.md`。
+> 接手本项目的 AI 模型或人类开发者只需读完本页即可 **30 秒内零盲区开工**。请始终使用**中文**回复。
+
+---
+
+## 1. 三步环境恢复与全量自检（换机器 / 新会话第一件事）
+
+```bash
+# 1. 从入库快照重建 gitignored 的可再生闭环状态 (.cfb-offline)
+npm run restore             # = node tools/cfb-cycle.mjs restore
+
+# 2. 校验 SHA-256 清单并在断网命名空间跑满全部自检（Node >= 20 即可；本仓库在 v20.20.2 上验证通过）
+npm run manifest:check      # = node manifest.mjs --check（0 缺失 / 0 失配）
+npm run verify:offline      # = node tools/verify-offline.mjs（读数见下面的水位块，勿手抄）
+npm run watermark:check     # = node tools/doc-watermark.mjs --check（文档水位与磁盘一致？）
+
+# 3. 一屏查看当前闭环状态、本地代理评测记分卡与智能下一步建议
+npm run cycle               # = node tools/cfb-cycle.mjs status
+npm run bench               # = node tools/cfb-cycle.mjs benchmark
+npm run next                # = node tools/cfb-cycle.mjs next
+```
+
+<!-- watermark:begin 由 node tools/doc-watermark.mjs --write 生成，勿手抄 -->
+- **当前版本：v14.25.4** · **零第三方依赖**（纯 Node.js ≥ 20/22 内置模块）
+- **自测（本块由 `node tools/doc-watermark.mjs --write` 生成，勿手抄）**
+- 验收口径 `npm run verify:offline`（真断网 Linux 命名空间）：42/42 套件通过 · `1242 通过 / 0 失败 / 1 跳过`（**42 套件时代**的回执：该车道需 Linux 网络命名空间取证，本平台无法复跑；当前 `test/` 有 44 套）
+- 快速自检 `npm test`（联网机上跑，需要隔离的那条断言按设计跳过）：43/43 套件通过 · `1252 通过 / 0 失败 / 8 跳过`（**43 套件时代**的回执：该回执未在当前平台重记；当前 `test/` 有 44 套）
+- 用时与记账时刻**不进文档**（每次 `--record` 都会变 ⇒ 写进文档就永远在漂），要查 `transfer/watermark.json` 的 `seconds` / `at`。
+- **规模**：`src/` 24 个零依赖模块 · `tools/` 65 个脚本 + 29 个 helpers · `test/` 44 套自测 · `transfer/gold/` 13 条（4 个家族）
+<!-- watermark:end -->
+
+> **沙盒环境提示**：`package.json` **没有** `engines` 字段 ⇒ 版本要求只写在文档里、不作硬闸；实测 Node 20.20.2 全绿。若容器 Node < 20，可一行升级至 `/usr/local`：
+> `curl -fsSL https://nodejs.org/dist/v22.21.1/node-v22.21.1-linux-x64.tar.xz | sudo tar -xJ -C /usr/local --strip-components=1`
+> 真实 API 密钥（如需要跑线上评测）存放在工作区外 `~/.secrets/keys.env`（`chmod 600`，**永不入库、永不打印**）。
+
+---
+
+## 2. 当前仓库状态与最优策略基线
+
+- **分支与版本**：`main`，版本与自测读数全部见上面的水位块（由 `--record` 记账 ⇒ 本文件不再抄一遍旧数）。
+- **核心架构**：100% 纯净的思维链出生即压缩（`birth` + `compile-v4`），已彻底剥离 DSH 外部宿主混入层与冗余旁路。
+- **`npm run bench` 第二表榜首**：**`p-1490eefcdf`**（四维满配：`continuationPath: 'bounded'` + `statePartsMode: 'compact'` + `modularPromptPrune: true` + `birthAdaptiveFloor: true`，提示词净减 `-1037` 字）。当前 L1 预筛为金标过闸 **12/13（净省 431 tok）**、`dd=0.724`、池题 **4/4 题 / 9/9 轮**、均省 **1111 tok**、Oracle `dd=0.831`、真值分 `0.696`、AA 密度效率 `0.6473`。
+  **榜首 ≠ 已采纳**：`npm run cycle` 当前 champion 仍为 `base`；候选在当前 L2 汇总里 `policy:p-1490eefcdf` 是 **1/24（4.2%）**严苛修好。先不采纳，也不把 L1 排名当端到端收益。
+- **L2 轨迹汇总（`npm run bench`，2026-10-07 本地日期）**：`raw n=80 / auto n=7 / ledger n=6`；`auto` 严苛解决率 **85.7%**、伪修好 `0%`、`pass@1=0.889`、`pass^2=0.778`、平均 `4.86` 轮（相对 raw `−24.9%`）、思维链字符 `−27.4%`；Elo **1104，95% CI [945, 1279]**（区间覆盖 raw=1000）。这是多个在盘轨迹的描述性汇总，不是同一随机化盲测；旧数 `raw n=8 / Elo 1110 / −13.7%` 不再当现状。
+- **闭环状态（`npm run cycle` 当前输出）**：champion=`base`；飞轮 **93/93** 对过 dev/内容闸；CPU 排序器 `ready`、LOO-CV **0.763**；效度尺子 **`suspect (n=304)`**，不是 `valid`。`npm run train:export` 是导出工具，不改变候选的验证状态。
+
+### 2′. 金标注册表现状与「改稿重挣」通道（v14.25.4 复核，接手必读）
+
+- **注册表现状（2026-10-07 本地日期现算，条数同步在 `../README.md` 文首水位块）**：`transfer/gold/` 在册 **13 条 / 4 家族**（`sse-truncated` 5 · `wrong-model` 4 · `eacces-config` 3 · `perf-regression` 1；`dev 6 + holdout 7`）。
+  尺子判词按 `cfb.gold-standard/1` 逐条现算：**4 条 `gold` / 9 条 `not-gold`**（`tools/gold-attest.mjs` 只降不升，条目 `goldStandard.stampDigest` 一变即过期）。
+  `ceiling.ok`：**12/13 达标**，唯一不达标是 `perf-regression-s0-r7`（真机 `roundsToFix 9 > 6` ⇒ C4 提前量不成立 ⇒ 按 fail-closed 保持 `use:'train'`，不删）。
+- **用途隔离现状（v14.21.0 起，v14.24.x 改了默认走向）**：13 条里 **`use:'ruler'` 7 条 / `use:'train'` 6 条** —— **不是**"全部只当标尺"。`train` 那 6 条是 `goldCeiling` 不达线被 fail-closed **降级**下来的（降级 ≠ 丢数据：不进标尺、不删条目），要复核就 `node tools/gold-ceiling-audit.mjs`（$0）。
+- **模式 2 实测基线（只认 `b13`，别再引 `b10`/`b11`）**：⚠ `b13` 跑在旧的 7 项 dev 集上，注册表现已 13 条 ⇒ 重跑前别把它当现状。dev 3 项 × 5 策略、`dd/2` ⇒ `base 0.300`、`p-082d742f60 0.560`、`p-55a320e0f8 0.579`、`p-08bdbc7561 0.620`、`p-1490eefcdf 0.667`；配对全 `undetermined`（e 最高 2.333 < 10 —— dev 只有 3 项，本来就量不到 10）。`b10`/`b11` 那个 `base 0.519` 是**假数字**：15 行里 8 行是通道 `timeout 22000ms`，而 dd/1 又把「调用失败 ⇒ 原文回塞」当成稿来计分。跑法必须带 `--timeout-ms 150000`；真 `no-gain` 只有 6 行 ⇒ 侧模型的瓶颈先是**压不出**，再谈压得好。标尺口径（含「模板照旧受奖励」的判定）见 `docs/TRAINING-AND-BENCHMARK.md` §3.1；注册表摘要一变，旧计划按设计 `gold-changed` 拒跑，`plan-bench` 重建即可，未变条目靠 `--out` 同目录的兄弟缓存免付调用。
+- **扩标方案（要补金标先读这份）**：`docs/GOLD-EXPANSION-PROGRAM.md` —— 40 项 / 5 家族的判据、标尺与训练料分家、双作者一致率（复用 `blind-unit-label-v3`）、覆盖矩阵与三档预算；里面 §6 记了 2026-10-05 换上游后的通道事实（`temperature 0` 不再逐字确定、400 tok 只要 2.0–2.2 s、小 `max_tokens` 会被思考吃满 ⇒ 压缩调用下限 600、`--timeout-ms 150000`）。
+- **天花板资格先于越界**：`gold add` 有三道拒收 —— 未修好、`vsRaw loss`（比主模型自己读原文还慢）、`missing`；前两道是「不够格」，只有 lint 那道才叫「越界」并进隔离区。判据写在 `saveGold`，`A41b` 钉住。稿子被拒后**不删**：连同单元结果落 `transfer/gold-repair/measured/`。
+- **改稿两条铁规矩（被真机教出来的）**：① 只能照当轮 `pending/<id>.json` 的 `raw + ctx` 写，别把旧轨迹的结论搬过来（`invented-decision`/`invented-triple`）；原文还没下决定时，稿子只许带机理＋排除，不许替主模型落定。② 花钱前先 `node tools/hand-preflight.mjs <plan> [--only id]`（$0 复跑同一条闸链）；短 raw 的轮次要算上程序部件（~600 字），稿得压到 ~700 字以内才可能有净省。
+- **审计口径**：装置话术（越界）只定**作者自己写的主张**的罪；整句或「…」/`…` 定界引用若原样出现在 `raw ∪ ctx` ⇒ 报告观测，免检（`qualityAudit.exempted[]` 带 `basis`）。`auditMode1Gold` = `draft ∪ stored` 都过免检。
+- **被隔离 ≠ 报废**：`node tools/cfb-gold-repair.mjs audit` 复算隔离区（active + `transfer/gold-rejected`）⇒ `RESTORABLE` 用 `restore --id … --apply` 字节级放回（digest 不变 ⇒ 冻结的 `b1`–`b9` 仍可用）；`NEEDS-REWRITE` 改稿后 `replay --id X --draft F`（$0 复跑 G2 → `compileV4Direct` → 程序部件 → `birthAccept` → lint，并打印逐槽差 = 归因账）⇒ 全绿 `stage`。
+- **换稿入库**：真机复测过后 `node tools/cfb-cycle.mjs gold add --plan N --replace` —— 旧条目自动归档 `transfer/gold-history/<family>/`，新条目打 `revision` 戳。金标摘要一变，旧基准计划按设计 `gold-changed` 拒跑 ⇒ 必须 `plan-bench` 重建。
+
+---
+
+## 3. 个人极简省钱评测三档菜单
+
+| 档位 | 命令 | 成本 | 用途 |
+|---|---|---:|---|
+| **Tier 0（离线全表）** | `npm run bench` / `npm run prescreen` | **`$0.00`** | 本地轨迹汇总与预筛代理记分卡（借鉴外部指标口径，非官方 benchmark 成绩）+ 四维正交因子归因 |
+| **Tier 1（极简基准）** | `npm run bench:lite` | **`≈ $0.004`** | 复用 `b1` 缓存的 `base` 臂，仅对新候选策略发 **1 次**副模型调用即完成配对对比 |
+| **Tier 2（极简轨迹）** | `npm run traj:lite` | **`≈ $0.068`** | IRT 自动挑信息量最高 1 题 × 4 轮上限 × 影子分叉（分歧前零主调用）+ `$0.08` 硬熔断 |
+
+---
+
+## 4. 铁律与长期约束（不可违反）
+
+1. **禁止删减双轨语义能力**：确定性规则（`draftDistance`）与 LLM 语义裁判（`tools/cfb-judge.mjs`）、LLM 提议器（`proposer.mjs`）、正交因子归因、Pareto 池与岭回归校准缺一不可。
+2. **禁止重新混入 DSH 宿主工具面**：`cfb` 只做思维链出生即压缩与认知编译，不接管宿主工具定义。
+3. **修改文件必更清单**：改动任何入库文件后，若修改了 `.cfb-offline` 状态需先跑 `npm run snapshot`，随后必须执行 `npm run manifest` 与 `npm run verify:offline` 确保 0 漂移、0 失败。
+
+## v14.21.0（2026-10-05）：标尺 / 训练料已分家 —— 从此 `use` 字段裁决
+
+`transfer/gold/` 里每条现在带 `use`（`ruler` / `train` / `both`，缺省 `ruler`）。**7 条现有金标全部 `use=ruler`：只当标尺，不再进任何拟合。** micro 的训练料改从 `tools/helpers/traj-corpus.mjs`（读 `.cfb-runtime/traj/*/hand-samples.jsonl`，只收 `trainingEligible && clean`）。要放行某条进训练：`node tools/cfb-cycle.mjs gold use --id X --set train` —— 但这等于亲手制造泄漏，除非你明确接受。
+扩量对账：`node tools/coverage-plan.mjs`（$0）→ `transfer/gold-repair/gold-coverage/matrix.md`（输入指纹 `90abc37bef69db7f`）：格 = 5 家族 ×（3 轮位档 + 3 长度档）= **30 格**，逐格"差 N"合计 **36**（旧文档写的 33 是上一轮读数）。两根轴是同一批条目的两种投影（各加总 = 目标 40 条），不是交叉相乘。双作者一致率与通道适配按用户裁决**不做**，所以噪声底没有实测值。详见 `docs/GOLD-EXPANSION-PROGRAM.md` §1/§8 与 CHANGELOG v14.21.0。
+
+
+########## docs\HANDOFF-2026-10-06.md (7547) ##########
+# 交接 · 迁移备忘（2026-10-06）
+
+> 写给下一个接手的人（或下一个会话）。这里只记**没在别处写下来、但会决定你成败**的东西。
+> 数字不要从这里读——从 `docs/TRAINING-AND-BENCHMARK.md` §6.2bis 读，它是脚本从产物文件生成的。
+
+## 0. 五分钟上手
+1. `git log --oneline -12` —— 每条 commit message 都是"做了什么 + 实测读数 + 拒绝了什么"，比 PR 描述可信。
+2. `npm run verify:offline` —— 项目自己的验收口径（全量套件数与用时见 `../README.md` 文首水位块；本沙箱实测 35–40 秒，别按 25 秒设超时）。
+3. `docs/KAGGLE-MICRO-RUN.md` —— §2 训练命令、§4 三组闸门判据、§5 两次盲测、§7 一键粘贴 cell。
+4. 本文件 §2/§3 —— 环境坑与流程经验，**这些不读就会重复踩**。
+5. 想知道现在能不能晋级：看 §6.2bis 最后一行 + `transfer/models/micro-blindtest-*.json` 是否存在。**缺盲测评分 ⇒ 一定是 `blocked`，这是设计而不是失败。**
+
+## 1. 这个仓库的"宪法"（用户明示，违反即返工）
+- 每阶段一个 commit；全部做完后重算 manifest 再 `git push origin main`。
+- 数据审核必须**逐条全读**，不许为省 token 抽样；**允许双向改判**（可把可训练判成 NOISE、可下调 yVal）；可训练数下降、分数变难看都可接受。
+- **手写稿不得参与打标**：新家族的标签只能从**可执行 fixture 的运行时事实**派生。
+- 训练权重一律不碰（`transfer/models/v5-micro-weights.json` 是生产件）；`--push-back` 未经要求不加。
+- 已划掉的：P2 真机补洞/渠道；Mode1 补稿。别再回到话题里。
+- 闸门不许放宽：`NEAR`、`margin≥0.05`、`distinctScorePairs≤2`、`<100M` 参数、三折 CV 的 +20pp。想"过线"只能靠加数据/修数据。
+
+## 2. 环境坑（我踩过，都会浪费你半天）
+| 症状 | 真因 | 处置 |
+|---|---|---|
+| `git push` 报 `'origin' does not appear to be a git repository`，且 `git remote -v` 空 | 沙箱重启后 **`.git/config` 不入快照**（被当敏感路径排除）⇒ remote 丢了 | `set -a; . ~/.secrets/keys.env; set +a; git remote add origin "https://x-access-token:${GITHUB_PAT}@github.com/liaocr/cfb.git"`；PAT 是否有效用 `curl -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GITHUB_PAT" https://api.github.com/repos/liaocr/cfb` 验 |
+| 新文件"提交了"但其实没进 | `.gitignore` 有 `.cfb-offline/` 与 `transfer/models/micro-dev-dataset.json`（`git add -A` 对 ignore 的新文件无效） | 一律**显式列路径** `git add <file>`；已跟踪的 ignore 目录内文件（如 `.cfb-offline/train/pairs.jsonl`）仍可 add，别被 warning 吓退 |
+| 提交完 `git status` 又脏 | `MANIFEST.sha256` 是在 `git add` **之后**才生成的 | 顺序固定：`npm run manifest` → `git add`（含 `MANIFEST.sha256`）→ commit |
+| 自测套件显示 `exit 0`、断言数不进合计 | `verify.mjs` 靠套件 stdout 里的 **`PASS=N FAIL=0`** 计数 | 新自测必须打这行；登记 `verify.mjs` 的 `ORDER` 用**裸 slug**（`'micro-label-review'`），不是 `test/xxx.selftest.mjs` |
+| 沙箱里想直接训练 | 2 CPU / 1 GB RAM、无 `kaggle` CLI、无 `~/.kaggle`、`import torch` Traceback | 训练必须用户侧跑；我这侧只做 prep + 交接 |
+| 想调付费 LLM 审核 | `tools/review-unit-labels.mjs` 无 key 直接 exit 2 | 走 `tools/review-unit-labels-manual.mjs`（人工孪生），别排 `CFB_LLM_API_KEY` 进计划 |
+
+## 3. 流程经验（做过才知道的）
+**A. 标签盲审（M0）**
+1. 孪生工具的 digest 必须与构建器 `reviewDigestOf` **逐字一致**（`sha256(JSON.stringify({sourceId,unitIdx,text}))`），否则回灌时被静默丢弃。
+2. **继承闸绝对不能用"数据集 sha 相同"** —— 回灌本身就会改变数据集 ⇒ 一次 apply 把已完成的 245 条判定全判废（我真栽了，靠 `.cfb-offline/review/v*.jsonl` 批次文件重建）。正确判据：**该单元 digest 是否仍存活**；改过正文的单元自动丢弃。这条已钉进 `test/micro-label-review.selftest.mjs`。
+3. 先抽样再决定要不要全审：`sha256(seed+id)` 确定性抽 15，误标率 >10% 才升级为整批复核（这次 2/15 = 13.3% ⇒ 全审了 120 条负例）。**两遍审核已经做完，别再重复。**
+4. 排查脚本必须排除**已审 id**（`dump-suspect.mjs` 初版没排除 ⇒ 打印的 34 条全是自己刚判过的，白跑一轮）。
+5. 判读口径：工作表里被截断的半句 ⇒ NOISE/低分；同结论重复句只给首句高分；纯复述任务、格式约束、"让我们验证"类 ⇒ NOISE；工具参数 schema 核对也算 NOISE。
+6. `labelRule` 字段是**旧规则名**，`slot` 才是我的结论 —— 别把两者当矛盾去"修数据"。
+
+**B. 一次性新家族盲测（M1）**
+1. **一个文件只能一个家族**：`tools/eval-micro-js-pairs.mjs:484`（`final-test-must-have-exactly-one-family`）与 `tools/kaggle-train-micro.py:1638`（`blocked-final-dataset-must-contain-one-family`）两处硬要求 ⇒ 两个家族 = 两次独立的一次性测量。
+2. 标签从 `require.cache` 读"测试真正加载了哪些文件"派生。**模块文件名不许随任务变体改** —— 改了 doc 里引用的名字与运行时事实就脱钩（我中途这样改过，回滚了）。
+3. mojibake 样本必须 **latin1 落盘**：否则 `'Ã'` 被再 UTF-8 编一次 ⇒ "双重编码"变"三重损坏"，锚点失真。由 `bugReproduced` 断言守住。
+4. 长度对齐：`tok` 对 `本步无新增事实。` 这类填充一次跳 ~5 token，NEAR=3 时经常 overshoot ⇒ 用**标点级**填充（`。`）+ 在 `win×lose` 全组合里搜最小差。搜索时**对照组必须取未填充那一侧的 tok**（取错就选不出最近对；`pair-drift` 会抓你，这闸是有用的）。
+5. 三条硬闸留着别拆：`blind-units-not-unique`（防复制体冒充样本量）、`pair-not-matched`（防 `near` 冒充 `matched`）、`endpoint-cap-exceeded`。
+6. **只能评一次分。** 构造阶段只跑 `--validate-dataset-only`（结构/血缘/审核，不出分数）。谁先手跑评分，谁就把这道一次性测量烧掉了。
+7. 别为指标做假特征：`cueExcluded` 只在 `isNeg` 成立时非零（`src/compile-v5-local.js:303`）⇒ 往 EXCLUDED 句子里塞"无需/不用"不会让它变 1.0，只会污染文本。当前 `cueExcluded=0` 是**如实记录**的局限。
+8. 已知局限（已写进 `stats.limitations`，别当新发现）：不测线索驱动的排除判定；matched 层靠标点填充对齐 ⇒ 读作"同长度判别力"。
+
+**C. 飞轮分数（v14.24.5）**
+- 量纲：`structuralScore`（`tools/helpers/experiment.mjs:75-77`）是**±1 旗标计数和**，不是 0–1 判分。解法选的是"带单位"：`scoreKind: 'structural-tally' | 'judge-01'`，构建器按单位分派最小差值（0.05 / ≥2），**缺字段按 `judge-01`** ⇒ 既有数据零变化。
+- 被否决的方案：把 tally 名次化到 0–1 —— 会编造裁判从未断言的强度差，且名次值只有几个 ⇒ 再踩 `distinctScorePairs≤2`。
+- 读数的坑：修前基线"可训练 draft pair 59"里含 13 行被计数尺度平凡放行的垃圾行；修后 17 是保护生效的真数。**别把 17 当倒退**，也别回滚 promote 侧的越界丢弃。
+
+**D. gold（金标）洞**
+- `tools/gold-forge2.mjs` 是 $0 锻造器，铁律：引用逐字取自该条 `raw/ctx`、抽不到就标 `needs-manual`、只允许一处反引号、长度 ≤ min(C1, C6)。
+- **`--ids` 模式是"预锻、不含真机读数" ⇒ `--write` 不落盘**（我撞过：19 条里 16 条达线，`transfer/gold` 仍 5、`devGoldItems` 仍 4）。要真入库得走 pending → 真机读数 → `gold-place-drafts` → `gold-check` → `gold-attest`。
+- 后果链要知道：gold 不达标会被自动降 `use:'train'` ⇒ `plan-bench` 报 `no-gold:dev`、`train-v5-micro` 报 `no-ruler-for-eval`、`export-train` 剔出 SFT。
+
+## 4. 重算水位（别手抄，手抄必错）
+```bash
+node -e 'const fs=require("fs");const j=p=>JSON.parse(fs.readFileSync(p,"utf8"));
+const d=j("transfer/models/micro-dev-dataset.json"),s=d.stats,r=s.unitLabelReview||{};
+for(const f of ["encoding-mojibake","lock-contention"]){const b=j(`transfer/models/micro-blindtest-${f}-v1.json`);
+ const u=b.unitSamples,p=b.unitStepPairs;const dg=new Map();for(const q of p)for(const i of[q.winIdx,q.loseIdx])dg.set(i,(dg.get(i)||0)+1);
+ console.log(f,"任务",new Set(u.map(x=>x.sourceId)).size,"单元",u.length,"唯一正文",new Set(u.map(x=>x.text)).size,
+  "对",p.length,"matched",p.filter(q=>q.stratum==="matched").length,"端点度",Math.max(...dg.values()))}
+console.log("devGoldItems",s.devGoldItems,"可训练Unit",s.trainEligibleUnitSamples,"待审",s.unitLabelNeedsReview,
+ "unitStepPairs",s.unitStepPairsCount,"draft",s.stepSimpoPairsCount,"draft可训练",s.trainEligibleStepSimpoPairs,
+ "盲审计数",JSON.stringify(r))'
+```
+把这个输出贴回 `docs/TRAINING-AND-BENCHMARK.md` §6.2bis（生成逻辑：`node tools/build-micro-dataset.mjs` 的 stdout 就是权威源）。
+
+## 5. 待办（按价值排序，全部 $0 可做除了第 1 项）
+1. **Kaggle：训练 + 两次盲测评分**（`docs/KAGGLE-MICRO-RUN.md` §7 一个 cell 搞定）—— 只有用户侧能做。
+2. 真机/API 可用时：跑带 `round` 的 `cfb-cycle` 实测轮 ⇒ 同时解锁 gold 写入（16 条已锻造待写）与 `structural-tally` 分支的实战验证。
+3. 可选增强：给盲测集加"自然等长"的正负例（不靠标点填充），让 matched 层反映真实长度分布；**不许**因此调 `NEAR`。
+4. 别做：放宽任何闸；手抄水位；重复 M0 的两遍审核；`--push-back`；碰权重。
+
+## 6. 迁移时必须手动带走的东西（git 里没有 ⇒ 换环境就没了）
+- `~/.secrets/keys.env`（`GITHUB_PAT` 等）：不在仓库、不在快照。新机第一件事就是把 PAT 放回去，否则推不动。
+- `.cfb-offline/**` 的**运行态**：`train/pairs.jsonl`（已跟踪）之外的东西默认忽略——包括 `history.json`、`ruler/*`、`.cfb-runtime/traj/*/pending/*.json`（**gold 的 13 条 pending 在这里，锻造好的 16 条稿子还没落盘 ⇒ 丢了要重跑 `gold-forge2`，好在它是 $0 且确定性**）。
+- 本次已把盲审 provenance 复制进仓库：`transfer/models/unit-label-review-provenance/`（`v1..v9.jsonl` 判定批次 + `units-worksheet.jsonl` 盲工作表 + `dump-suspect.mjs` 排查脚本 + `suspect-ids.txt`）。**理由**：`unit-label-review-blind-v3.json` 只有结论，没有"我当时看到的那张表"；下一位若被质疑审核独立性，需要能对着重放。`.cfb-offline` 被 ignore，不复制就会随沙箱消失。
+- 权重与生产件（`transfer/models/v5-micro-weights.json`、`v5-micro-weights.judge-4764fd2.json` 冻结裁判）在仓库里，**但迁移后请确认 sha 与 `MANIFEST.sha256` 一致**：`npm run manifest:check`。
+
+## 7. 渠道探测闸（v14.25.0）的两条读数须知
+- 判据的官方原文（`api-docs.deepseek.com/guides/thinking_mode`，逐字核对）：**带 `tools`** ⇒ 前几轮 `reasoning_content` 必须完整回传、会拼进上下文（"即使那一轮没调工具也算"，漏了 ⇒ 400）；**不带 `tools`** ⇒ 不需要回传，**回传也会被忽略、不进上下文**。⇒ 旧闸"无 tools 却量 Δ"是假阴性源（官方直连也判 ✗）。
+- **已知反证**：`withceleste/celeste-python#461` 用真机 `deepseek-v4-flash` + tools 实测，**文档承诺的 400 没有复现**（他们照文档修了回传，请求本来就能过）。⇒ 别把 `contract-validated`（靠 400 判 ✓）当**必需**路径，它只是把"官方校验器在场"当加分证据；**主判据仍是带 tools 的 Δ**。若某条通道对"缺 reasoning"报 400 却对"带 reasoning"照收，那是它自己的校验器，不是 DeepSeek 官方 —— 结论仍是"思考会进上下文"，可用。
+- 一句话口径：**`stripped`（带 tools、Δ=0、不报错）才该换渠道；`ignored-by-contract` 该改请求形状（带 tools 或把稿子放进 content），换渠道没用。**
+
+
+
+########## docs\ROADMAP-GOLD.md (5287) ##########
+# 后续路线（v14.24.0 之后）——按依赖排序，每段都带判据、成本、回退
+
+写于 2026-10-06。前置事实（全部实测，非计划）：
+- 尺子已落地：`cfb.gold-standard/1`，12 轴；`node tools/gold-score.mjs` 复算。
+- 水位：24 条中 **gold 4**（`sse-truncated-s0-r4`、`sse-truncated-s1-r3`、`wrong-model-s0-r6`、`wrong-model-s1-r5`），not-gold 20；轴通过率 M8 8/24 · E1 7/24 · R1 8/24 · R2 15/24。
+- 定律一（改稿即失分）⇒ 差额**不能靠改稿补**，只能重跑那一格。
+- 通道现状：`upstream-no-reasoning`（连续 3 次）会让 `traj-run` 停机（t102 已实测，2 行错误记录）。
+- 模式 2 靶子现状：微模型 `node tools/train-v5-micro.mjs --eval-only` 七项 `G1✓G2✓ prec=1` 但 **closeCount 0/7**；`node tools/cfb-cycle.mjs plan-bench --dry` 报「策略 base × 金标 2（dev）= 2 次压缩 ≈ $0.015」。
+
+目标顺序沿用你的排法：**① 模式 2 侧模型银标稳定达金标水平 → ② 模式 3 真机证明 → ③ 银标扩量 → ④ 喂微模型**。下面每一段都只服务其中一件事。
+
+---
+
+## P0 · 把「银标达金标水平」变成一条可算的指标（$0，先做这个）
+
+**为什么先做**：你的目标 ① 现在还没有度量。尺子已经能判金标；同一把尺子去量模式 2 吐出来的银标，就得到「银标距金标差哪几轴」⇒ 这才是「stably reach gold level」的定义，不是形容词。
+
+- 动作：`tools/silver-score.mjs`（复用 `measureGold`，输入 = 模式 2 产出的银标条目/`pending` 目录），输出：轴通过率、`gap` 分布、与金标的**逐轴差值**；再加 `--by-family` 与 `--csv`。
+- 测试：`test/silver-score.selftest.mjs` —— 银标 fixture 一条「与金标同过 12 轴」、一条「缺 M3/M4」、一条「raw 缺失 ⇒ fail-closed 未测」；登记 `verify.mjs` ORDER。
+- 判据（定死再跑）：`node tools/silver-score.mjs --dirs=silver-lab --json` 能出数，且与 `gold-score` 对同一 fixture 的结论**逐轴一致**。
+- 回退：只加工具，不动注册表；失败不影响既有闸。
+
+**这一步交出来的就是目标 ① 的验收线**，之后每次改模式 2 都只报这个数。
+
+## P1 · 给条目盖章 + 清掉尺子的两处脏（$0）—— ✅ 已完成（v14.24.1）
+
+- `tools/gold-attest.mjs` 落账：`goldStandard: { version, status, gap, margin, drift, home, at, stampDigest }`，**只加元数据、不碰 `draft`**（动稿即失分），并写 `.cfb-offline/ruler/gold-attest.json`（逐条 from→to + 缺章/过期清单）。幂等：重跑第二次 `0 处变更`。
+- 下游全部改读章（8 个消费点，逐个实测）：`three-mode` 的 `goldRulerOk/goldBenchOk/goldTrainOk` · `traj-corpus.rulerIdSet` · `cfb-judge` · `coverage-plan` · `bench-run.gold-use-mismatch` · `buildBenchPlan`（比对靶） · `build-micro-dataset` / `build-change-dataset`（拟合料） · `train-v5-micro`（devGold + `--eval-only` 自检）。
+- 尺子两处脏已清：`gold-score --dedup`（24 行 → **19 个唯一 id**，重复副本不重复计票，已是默认口径写进文档）；`countSamples` 排除 `-resume` 同趟复写，并且**只数真消费过稿的趟**（`hand-samples.jsonl` 有同 task+sample 行、跳过带 `error` 的行）。
+- 后果（实测）：标尺侧 `goldRulerOk` **17 → 4**，训练侧 **6 → 19**（降级不删数据）；`gold-study` 同步改 dedup ⇒ 24 → 19 个唯一 id。
+- 顺手抓到一个真 bug：`gold-attest --check` 报出 `wrong-model_decoy-s0-r4` 状态由 not-gold 翻成 gold —— 根因是 t103 那趟被停机保护掐掉、`results.jsonl` 仍留 hand 行，被当成"第二次独立样本"。收紧 R2 后重盖章，假 gold 撤掉（`gold 4 · not-gold 19`）。
+- 判据全绿：`npm run verify:offline` **1168 通过 / 0 失败 / 1 跳过（38/38 套件）**；三套金标自测 **192 条**（`gold-use-split` 52 + `gold-standard` 79 + `gold-attest` 61，含"真注册表章必须新鲜"活体检查）。
+
+## P2 · 转正缺口：把标尺池从 4 条做到 ≥8 条（≤$0.5，通道恢复才开）—— ⏸ 已武装，等 API
+
+**先探测再掏钱**：预检要看到 `fp=非null` 且「思考 N 字」N>0、正文非空，才起 run；不通就 $0 复验，绝不硬跑。
+一切真机花费必须过编排器：`node tools/gold-campaign.mjs`（`--dry` 零请求打印计划+估算；预检不合格直接 exit 3，不起轨迹）。
+
+- 待补清单（按 `gold-score --dedup` 的 gap 升序，2026-10-06 实测）：
+
+| 条目 | gap | 还缺 | 补法 |
+|---|---:|---|---|
+| `sse-truncated_decoy-s0-r4` | 0.2 | E1 + R1 | 现注册稿 750 字 ≠ 台账所发 662 字 ⇒ 用现稿重跑该格，跑完自动对齐 |
+| `wrong-model_decoy-s0-r4` | 0.5 | R2 | 同 task+sample 再跑**一趟独立**（不能是 resume，也不能是空跑） |
+| `wrong-model_long-horizon-s0-r4` | 0.5 | R2 | 同上 |
+| `eacces-config-s0-r5` | 1.0 | M8 | 先把改法句压到恰 1 条当**候选稿** —— 注意：改稿即章过期 ⇒ 那一格必须重跑才能把 E1/R1 重新挣回来 |
+| `eacces-config_long-horizon-s0-r5` | 1.7 | M8 + E1/R1/R2 | 改稿 + 重跑 + 补第二趟 |
+| 其余 10 条（gap 2.8–7.8） | — | M3/M4/M5/M6 + E1/R1(±E2/R2) | 属"重写稿"而非"补凭据"，别为凑数动它们；`use:'train'` 保留 |
+
+- 4 条**台账里没有 id**（`eacces-config_decoy-s0-r3`、`perf-regression-s0-r6`、`sse-truncated-s0-r5`、`sse-truncated_decoy-s0-r3`）⇒ 不可回放，只能作训练料；转正唯一办法是按新 id 重跑入册。
+- 判据：`gold-score` 里 **每个家族 ≥2 条 gold 且 R2 全过**；`node tools/gold-vs-line.mjs` 有新读数（M2 不再未测）；`gold-attest --check` 全新鲜；每条都带趟名，无「自报」。
+- 失败回退：任一格没过闸 ⇒ 只登记 `use:'train'`，不进标尺池；**不删数据、不改阈值凑数**（本仓库既有纪律，别为了跑通放宽谓词）。
+- 通道实测（2026-10-06）：三次预检 `preflight-failed:notClaude` / `fp=null`（思考 47 字、正文 1 字）/ `fp=vllm-…无放行依据` + `request-timeout`；唯一成功的那条 t103 三格全部 `upstream-no-reasoning` 停机（rounds 0/4/3），零新样本。⇒ 通道恢复前 P2 保持挂起，不再花钱重试。
+
+## P3 · 一次花钱买两个目标：`auto` 臂上尺（≤$1）
+
+把模式 2 的自动压缩稿（`auto` 臂，非手写）放进同一把尺子量 —— 这同时就是目标 ②「真机证明」的证据。
+
+- 动作：`--variants raw,auto --only <P2 用过的家族>`，产出后 `silver-score --dirs=auto-arm`（或 `gold-score --pending … --draft <auto 稿>`）。
+- 判据（跑之前钉死）：自动稿 **M3/M4/M5 ≥90%**；同格 **rtf ≤ raw**；`gap` 中位数 ≤ 1.0；并报告「与手写金标的逐轴差值」——差值集中在 M8 就说明侧模型在「留菜单」，改提示词即可，不用加数据。
+- 若 M5 不过：先查 `invented-identifier` 是稿的问题还是证据基缺项（P0 的 fixture 已能区分）——不许一上来改阈值。
+
+## P4 · 微模型只喂达标的（$0 训练 + 本地评估）
+
+- 教师料按 `margin` 分层：margin≥0.7 的 gold 做示范对，0.4–0.7 做偏好对的「优」侧，<0.4 不进训练。
+- 判据：`node tools/train-v5-micro.mjs --eval-only` 的 **closeCount 从 0/7 起先到 ≥3/7**，且 `prec=1` 不退；到不了就先回 P0 看银标缺口，别扩数据量（你要的是质量先于数量）。
+- `node tools/build-micro-dataset.mjs` 的 `gold-overlap` 口径改为「按 `goldStandard.status`」，`open/no-slot-cue` 计数进 CHANGELOG 当回归哨兵。
+
+## P5 · 银标扩量 → 反哺微模型（你的目标 ③④）
+
+- 只在 P3 达标后启动：同家族 × 多样本 × decoy/long-horizon 矩阵扩跑；每批先 `silver-score` 判缺口再谈注册。
+- 每批硬指标：批内 gold 级比例、rtf 分布、vsRaw 胜率、成本/条；`node tools/cfb-cycle.mjs plan-bench --dry` 的预算先行（出「≈$X」才开跑）。
+
+---
+
+## 贯穿的三条纪律（写给未来的我，也写给模式 2）
+
+1. **任何「改好了」的断言必须附 `gold-score` 轴表 + 真机趟名**；没趟名 = 没改。
+2. **阈值只能改代码 + 改本文 + 加自测一起改**，升版必须递增 `GOLD_STANDARD_VERSION`，旧版结论同时作废。
+3. 花钱单元一次只验一个假设；先 `$0` 复验（`--preflight-only`、`--dry`、fixture）干净才掏钱。
+
+## 不做清单（已结案，别再投入）
+
+- 5 条 `stored` 里带装置话术的 flaky/perf/sse_decoy 格子：隔离句不在 `draft`，改稿救不了（已逐条确认出自 `stored`）。
+- 「与旧稿相似度」类判据：口径已废，一切结论作废。
+- 为凑 30–40 条金标而扩量：金标是尺子不是饲料。
+- 用 `rtf 7/9` 的格子反复重造稿：轮数由主模型决定，稿子只影响 M 轴。
+
+
+########## docs\GOLD-EXPANSION-PROGRAM.md (9411) ##########
+# 金标扩标方案（$0 起草，v14.20.1 立项）
+
+> **现状更新（v14.25.1，2026-10-06）**：本文的判据、预算档与"不改判分公式"铁律照旧有效；**规模数以现场为准** —— `transfer/gold/` 现 **13 条 / 4 家族**（`dev 6 + holdout 7`），尺子判词 **4 `gold` / 9 `not-gold`**，`use` 分布 **7 `ruler` / 6 `train`**（后 6 条是 `goldCeiling` fail-closed 降级，不是人为放行），`pending-retest.json` 6 条待复测。逐条复算：`node tools/gold-ceiling-audit.mjs`（$0）与 `node tools/gold-score.mjs`。本文写于 7 条在册时期，文中"7 项/3 家族"一类数只作当时快照看。
+
+> 这份文档定"什么叫金标够了"，以及怎么把它做够。它不改判分公式、不改固定句式模板（模板是接口协议，见 `TRAINING-AND-BENCHMARK.md` §3.1）。
+> 现状：`transfer/gold/` 活跃 **7 项 / 3 家族**（`dev 3 + holdout 4`），全部 `[clean]` + 修好 + 自比 `dd=1.000`；隔离区 6 条（4 条是本通道测不出，不是稿子坏）。
+
+---
+
+## 0. 「够了」的判据（每条都可机检，不写感觉）
+
+| # | 判据 | 现值 | 目标 | 谁来判 |
+|---|---|---|---|---|
+| K1 | active 金标条数 | 7 | **≥40**（其中标尺 ≤12，其余进训练料库，见 §1） | `gold status` |
+| K2 | 家族覆盖 | 3 | **≥5 家族**（现池 `tools/traj-fixtures.mjs` 正好 5 条：`eacces-config` / `flaky-timeout` / `perf-regression` / `wrong-model` / `sse-truncated`），且新增 ≥2 条**新家族题**必须过仓里既有的盲测闸 | `eval-micro-js-pairs` 的 final-blind 闸 |
+| K3 | 每家族条数 | 1–3 | **≥8**（其中 `vsRaw win` ≥4 才能出训练正例） | `gold status`（已按家族打印） |
+| K4 | 双作者覆盖 | 0 | **每家族 ≥2 位作者写同一轮同一真值**，且给出作者间一致率 | `gold agreement`（待建，§2） |
+| K5 | 轮位覆盖 | 集中在 r3–r5 | 早(≤2) / 中(3–5) / 晚(≥6) **每档 ≥5 项** | 计划器 `plan-traj --round-band`（待建，§3） |
+| K6 | 原文长度覆盖 | 1.5k–5.2k | **<2k / 2–5k / >5k 三档各 ≥5 项**（压不出主要发生在短轮，必须单独量） | 同上 |
+| K7 | 统计功效 | 3 对，e 最高 2.333 | 见 §5：**≥12 对非平手、≥2 家族、按 `winsNeeded` 至少要 5 胜 0 负** | `ceiling` / `bench-report` |
+| K8 | 自洽 | 7/7 | 每条 active 金标自比 `dd=1.000`（已由 `A41` 钉） | `A41` |
+
+**为什么是 40**：`tools/helpers/ruler.mjs::rulerValidity` 的自身闸写死了 `minPairs = 12`、`minPerClass = 5`；`eValueWins` 要 `e ≥ 10` 最少得 **5 胜 0 负**（`e=10.5`；3 胜 0 负只有 3.75）。要在 5 个家族上都拿得出手，按 K2/K3 展开就是 40 条量级——不是我拍脑袋定的数。
+
+---
+
+## 1. 先分家：标尺 ≠ 训练料（这条最要紧，不做后面全白干）
+
+`transfer/gold/` 一个目录过去同时当两件事用：模式 2 用它选策略、训练拿它当标签。**同一批数据既当选择题的选项又当答案，就是泄漏**，之后任何「微模型追上金标」的读数都不作数。
+
+**v14.21.0 已落地（$0，本节从「计划」改成「事实 + 记录」）**：不新建第二份目录，改为条目级用途字段 —— 避免两处真相漂移。
+
+- `use: 'ruler' | 'train' | 'both'`（`tools/helpers/three-mode.mjs` 的 `goldUse` / `filterGoldByUse`）；**缺省 = `ruler`**：没登记的条目一律只当标尺，绝不因为漏登记就溜进训练侧。
+- 改 `use` **不会作废既有基准计划**：`goldDigest` 只 hash `raw/ctx/draft`（`three-mode.mjs:50`），实测 7 条加字段后 digest 全部逐字不变。
+- 五个读取口全部接线（逐个核实过行号，别再漏）：
+  | 读取口 | 侧 | 过滤 |
+  |---|---|---|
+  | `tools/helpers/three-mode.mjs` `buildBenchPlan` | 标尺计划生成 | `goldUse(g) !== 'train'` |
+  | `tools/bench-run.mjs` | 打分 | 命中 train 条目 ⇒ 抛 `gold-use-mismatch:<id>` |
+  | `tools/cfb-judge.mjs` | 评审 | `goldUse(g) !== 'train'` |
+  | `tools/build-micro-dataset.mjs` / `tools/train-v5-micro.mjs` | 拟合 | `goldUse(g) !== 'ruler'` |
+  | `tools/build-change-dataset.mjs` / `tools/label-change-directions.mjs` | 判读头料 | 同上 |
+- 训练料改由新通道供给：`tools/helpers/traj-corpus.mjs` 读 `.cfb-runtime/traj/*/hand-samples.jsonl`，只收 `trainingEligible === true` 且 `qualityAudit.status === 'clean'`；同 id 多版取最新当标签、旧版进 `pairs`（现成的 rejected/chosen）。命中标尺 id ⇒ **整条剔除并报出 id**（`onRulerId:'throw'` 可升级成硬失败）。剔除而非抛，是因为金标本来就是 `goldItemsFromTraj` 从这些轨迹里 add 进去的，两通道必然有 id 交集：抛 = 永远跑不动，静默丢 = 看不见漏了多少。兜底是 `train-v5-micro` 训练前的结果级断言 `ruler-leakage-into-train`。
+- 验收：`test/gold-use-split.selftest.mjs`（PASS=39，含 b13 实测稿逐分逐位复算 9/9 一致 ⇒ 证明分家没动尺子）。
+
+实测基线（`node tools/train-v5-micro.mjs`，$0）：分家前 `devGoldCount: 3 / devUnitSamples: 236 / devPairwiseAccuracy: 0.4`；分家后 `devGoldCount: 0（7 条全归标尺）+ traj:train 4 / devUnitSamples: 381 / devPairwiseAccuracy: 0.7`。**训练料不降反升**，且标尺侧 7 条读数的每一项、每一位都不变。
+
+遗留一条（本轮只报不改，因为改它会移动训练结果）：`train-v5-micro.mjs:66` 读 `pack.pool?.tasks`，而 `.cfb-offline/gen-2.pack.json` 顶层是 `devTasks` / `trajEvidence` / `evidence`，**没有 `pool` 键** ⇒ `devPoolCount` 恒为 0，是结构错配被 `?.` 吞成空，不是数据为空。现已改成显式打印告警；要真正修得先决定 `devTasks`（无 split 字段）怎么并入拟合，属于重训范畴，留待批准后单独做。
+
+## 2. 第二作者与一致率（没有它，dd 差值都是自欺）
+
+同轮同真值让两个作者各写一稿 ⇒ 双向槽位召回取小值 = **作者间一致率**，它是标尺的噪声底：`dd` 差小于噪声底的策略差距，一律不得当结论。
+
+- 作者 A：现流程（我，按当轮 `pending` 的 `raw + ctx` 写）。
+- 作者 B，两条路一起用最省：
+  - **B-离线（$0）**：作者 A 换一次盲写——不看旧稿、只用当轮 `raw + ctx` 重写一遍。它量的是**同一作者的自一致**，是噪声底的保守下界，必须标注 `sameAuthorResample: true`；
+  - **B-异源（≈$0.002/稿）**：换另一个 model id 在同一 `pending` 上出稿，再由人核对是否可用。真作者间偏差只能这么量。
+- 复用仓里**已有的独立性协议**，不另造概念：`tools/build-micro-dataset.mjs` 的标签审计已经区分 `blind-unit-label-v3`（`independence: blind-independent`）与 `rule-hints-visible-v1`（`…not-independent`）。金标侧照同一语义打标即可：`qualityAudit.reviewProtocol: 'blind-unit-label-v3'` + `reviewer` + `reviewedAt`，B-离线那一遍必须声明 `blindTo: <A 稿的 digest>`。
+- 待建（$0，一个子命令 + 一处打标）：
+  - `gold stage --reviewer <id> [--blind-to <digest>]`：登记作者与盲写依据，落 `author`/`reviewProtocol` 到条目；
+  - `gold agreement --family X`：打印同轮两稿的逐槽一致率 + 差异句（复用 `draftDistance`，不做新公式）；
+  - `pending-retest.json` 增加 `author` 字段，避免把 A 的复测算到 B 头上。
+- **新家族题的验收照旧走盲测闸**（`tools/eval-micro-js-pairs.mjs`）：`mustBeNewFamily` + `dataset.finalBlind:true` + `semanticReview{completed, reviewer, reviewedAt}` + `lineageReview{completed, newFamilyRationale, knownFamiliesReviewed/knownSourceIdsReviewed 必须精确覆盖全部训练家族与来源}`，任缺一条即 `final-test-requires-completed-family-lineage-audit`。注意：`test/evidence-program.selftest.mjs` 里那批 **R3 宿主协议合成夹具**（`docs/EVIDENCE-PROGRAM.md` 自己写明"不是未来 S0 的主模型任务集"），**不能**拿来当新家族。（旧版本此处写的 `test/helpers/evidence-fixtures.mjs` 从未入库。）
+
+## 3. 覆盖矩阵（先把格子排出来，再往里灌真机单元）
+
+| 家族 | 早(≤r2) | 中(r3–5) | 晚(≥r6) | <2k | 2–5k | >5k | 目标条数 |
+|---|---|---|---|---|---|---|---|
+| `sse-truncated`（已有 3） | 1 | 2 | 1 | 1 | 2 | 1 | 8 |
+| `eacces-config`（已有 2） | 1 | 2 | 1 | 1 | 2 | 1 | 8 |
+| `wrong-model`（已有 2） | 1 | 2 | 1 | 1 | 2 | 1 | 8 |
+| `flaky-timeout`（已有 0，本通道常压不出） | 1 | 2 | 2 | 1 | 2 | 2 | 8 |
+| `perf-regression`（已有 0） | 1 | 2 | 2 | 1 | 2 | 2 | 8 |
+| **合计** | | | | | | | **40** |
+
+- 落法：每家族一个预注册单元（`plan-traj --arms raw,hand --scenarios <fam> --samples 1 --max-rounds 9 --stop --cap-usd`），跑完 `ceiling --plan N` → `gold add --plan N`。轮次不由人选，由 fork 的 `pick` 决定 ⇒ 需要**小改一处**才能填满轮位/长度格子：`plan-traj` 加 `--round-band early|mid|late` 与 `--min-raw-chars N`（只影响挑哪一轮要稿，不改闸的判据）。这条也 $0。
+- 新家族先补 2 个（K2）：在 `tools/traj-fixtures.mjs` 里加题（仓库自带 `materialize` + `--dry` 预算），$0 造题与预检，真机只跑过闸的稿；出稿后要过上面那道 lineage 盲测闸才算独立。
+
+## 4. 每批的固定流程（写死，免得上次那种乱来重演）
+
+```
+1  node tools/cfb-cycle.mjs plan-traj --arms raw,hand --scenarios <fam> --samples 1 --max-rounds 9 --stop --cap-usd 0.22 [--round-band mid]
+2  （pass 1：raw 臂跑完，hand 臂在要压的那轮暂停，落 pending/<id>.json）
+3  作者 A 照当轮 raw+ctx 写 drafts/<id>.md      ← 禁止搬旧轨迹结论（G2 判 invented-decision）
+4  node tools/hand-preflight.mjs <plan>           ← $0：G2 ∧ lint ∧ compile ∧ birthAccept ∧ stored-lint ∧ 自比 dd
+5  重跑第 1 步那条命令（自动续跑，接受稿子）
+6  作者 B：B-离线重写一遍 / B-异源出稿 → gold agreement（先算噪声底）  ← ⏸ T0.2 按裁决未开工，此步暂无工具，跳过
+7  node tools/cfb-cycle.mjs ceiling --plan N
+8  node tools/cfb-cycle.mjs gold add --plan N [--replace]     ← 自动挡 vsRaw loss；入册条目默认 use=ruler（只当标尺）
+   8b node tools/cfb-cycle.mjs gold use --id A,B --set train [--dry-run]  ← 显式放行成训练料才进拟合；v14.21.0
+9  node tools/cfb-cycle.mjs plan-bench && node tools/bench-run.mjs --plan ... --timeout-ms 150000   ← 见 §6
+```
+
+**不许跳的三条**：第 4 步没全绿不许花钱；第 6 步没算噪声底不许宣称某策略"更好"；第 8 步被 `vsRaw loss` 挡下的稿**不删**（进训练料，它是"这样写会慢一轮"的负样本）。
+
+## 5. 统计口径（扩标期间也照这个读）
+
+- 判定阈值不动：`e ≥ 10` 且 `families ≥ 2`（`decideV4`）。要拿到 5 胜 0 负，`tie` 不加分 ⇒ 每格要真赢。
+- `ceiling`/`bench-report` 里 `undetermined` 只有一个含义：**配对不够**，不是"手稿没用"。当前 dev 3 项最多 e=2.333，本来就量不到 10——别再把它读成失败。
+- 因为通道在 `temperature 0` 下已不再逐字可复现（§6），所有"分数变化"必须按**同格重复 2 次取保守值**来读：优先复用 `results.jsonl` 缓存（同一文本 ⇒ 同分，免付也稳定）；要重跑就 2 次取均值并给极差，极差 > 0.05 的格子不进结论。
+
+## 6. 本通道今天实测到的变化（2026-10-05，换上游后）
+
+| 现象 | 数字 | 对策 |
+|---|---|---|
+| 单调用快了一个量级 | 400 tok 出稿 **2.0–2.2 s**（此前压缩调用常在 22 s 上超时） | 保留 `--timeout-ms 150000`；b10/b11 的"8 行超时"作废，别再当模型能力读 |
+| `temperature: 0` **不再逐字确定** | 同 prompt 同参数两次：127 字 / 133 字，指纹不同 | 见 §5：重复 2 次或走缓存；`pass^2` 语义照旧可用 |
+| 小 `max_tokens` 会被思考吃满 | 64 tok 预算 ⇒ `content:""`、`reasoning_tokens:64`、`finish:length` | 压缩调用 `max_tokens` 下限设 **600**，并在回执里显式记 |
+| `thinking:{type:'disabled'}` 仍被遵守 | 生产同构调用思考 0 字、正文正常 | 生产路径没坏，不用改 |
+| 网关开始自带计费/缓存字段 | `cost:0.00001`、`credit:0`、`prompt_cache_miss_tokens:101` 与 `prompt_tokens:42` 不一致 | 预算闸的单价（$0.0075/压缩调用）改为**读网关 `cost` 复核**；无 `system_fingerprint` ⇒ `--require-fp` 仍不可用 |
+
+## 7. 预算（按仓库自己的单价估）
+
+| 档 | 做什么 | 花费 | 产出 |
+|---|---|---|---|
+| **T0** | §1/§2/§3 的四处代码与闸（`inRuler` 隔离、`gold agreement`、`--round-band/--min-raw-chars`、preflight 已含自比）+ B-离线重写 + 全部离线复算 | **$0** | 格子排好、噪声底有定义、训练与标尺分家 |
+| **T1** | 5 个家族 × 各 1 个真机单元（每单元 ≤9 轮，影子分叉） | ≈$0.55（≈$0.11/单元） | +20～30 条真机稿；`flaky-timeout`/`perf-regression` 若本通道两臂同败 ⇒ 如实记 `blocked-on-this-channel`，不硬凑 |
+| **T2** | T1 + 作者 B-异源（每家族 4 稿）+ 每格重复 2 次 | ≈$0.9 | K4 满足；dd 有噪声底可比 |
+| **T3** | T2 + 标尺重建（`plan-bench` 5 策略 × 12 项）+ 模式 2 配对到 e 可判 | ≈$1.6 | 才第一次有资格谈"侧模型追上金标没有" |
+
+不含微模型正式训练本身（那是 `train-v5-micro` 的 Kaggle 侧，另算）。
+
+## 8. T0 的收支（v14.21.0 已执行，按用户裁决收口）
+
+| 步骤 | 内容 | 状态 |
+|---|---|---|
+| T0.1 | §1 用途隔离 + 读料断言 + 训练料换通道 | ✅ 已落地（`use` 字段 / 5 个读取口 / `traj-corpus` / 自测 39 断言 / `gold use` 子命令） |
+| T0.3 | §3 `--round-band` / `--min-raw-chars` + 覆盖矩阵对账 | ✅ 已落地（`tools/coverage-plan.mjs` → `transfer/gold-repair/gold-coverage/matrix.{md,json}`，30 格 / 目标 40 / 当前缺口 33，并直接输出每家族的下一批预注册命令） |
+| T0.2 | §2 第二作者与一致率 | ⏸ **按用户裁决不做**：「t0.2 我上哪给你找双作者，先不要」。一致率仍是 K4 硬判据，缺它则 dd 差值只能当方向性参考，不得对外称噪声可控。恢复条件：真出现第二位起草者。 |
+| T0.4 | §6 通道适配（`max_tokens` 地板、回执记网关 `cost`、探针转正） | ⏸ **按用户裁决不做**：「没必要，没啥用，能训练就行」。已知风险照此承担：`max_tokens` 过小会被 thinking 吃空 ⇒ 空 body 记成可重试 `error`；预算对账只能继续用 `estimatedUsd`，不采信网关 `cost`。 |
+
+T0.2 不做带来的直接后果要记在账上：**噪声底没有实测值**，所以 §5 的「配对差 > 一致率噪声」这条判据暂时只能用 A41c 的 ≥0.95 措辞相似度兜着。这不影响 T1 起草（仍是 $0），但影响 T3 敢不敢用 dd 差值下结论。
+
+这两项做完，T1 才值得花钱——否则补回来的金标还是同一把没分家的尺子。（分家已完成，所以 T1 的前置已满足。）

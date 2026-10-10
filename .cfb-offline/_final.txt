@@ -1,0 +1,10 @@
+两版都有稿的单元 = 100
+空稿：v1-off 0，v2-off 0
+
+=== token 用量（每条均摊）===
+               prompt   completion  reasoning
+v1-off           2051          492          0
+v2-off           2424          407          0
+v1-think         2082         1996       1562   <- 开思考
+
+本批花费（关思考，低谷官方价）：v1-off $0.0603  v2-off $0.0608

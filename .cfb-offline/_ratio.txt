@@ -1,0 +1,9 @@
+total = 328
+
+ALL drafts                       n=328   min=0.137 p25=0.287 MED=0.369 p75=0.451 p90=0.552 max=1.104 mean=0.382
+PASS (trainable)                 n=256   min=0.137 p25=0.277 MED=0.354 p75=0.422 p90=0.480 max=0.547 mean=0.351
+REJECT                           n=72    min=0.172 p25=0.335 MED=0.524 p75=0.621 p90=0.700 max=1.104 mean=0.492
+
+pass rate = 256/328 = 78.0%
+ratio > 0.55 : 35 (10.7%)
+ratio < 0.25 : 51 (15.5%)

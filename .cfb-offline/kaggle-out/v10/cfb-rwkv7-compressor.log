@@ -1,0 +1,283 @@
+[{"stream_name":"stdout","time":7.95123637,"data":"· 检测到 2 张卡 —— 单进程只会用 cuda:0，用 torchrun 重开跑满：\n"}
+,{"stream_name":"stdout","time":7.951297661,"data":"  /usr/bin/python3 -m torch.distributed.run --nproc_per_node 2 --standalone --master_port 29517 /kaggle/src/script.py --data https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl --dev https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl --out /kaggle/working/rwkv7-compressor --epochs 24.0 --accum 4 --lr 0.0001 --gen-n 89 --gen-max-new 768 --gen-budget 3600 --ckpt-steps 72,144,216 --ckpt-gen-n 30\n"}
+,{"stream_name":"stderr","time":9.782903138,"data":"\n"}
+,{"stream_name":"stderr","time":9.782930606,"data":"*****************************************\n"}
+,{"stream_name":"stderr","time":9.782934149999999,"data":"Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. \n"}
+,{"stream_name":"stderr","time":9.782937309,"data":"*****************************************\n"}
+,{"stream_name":"stdout","time":12.494780773,"data":"· GPU Tesla T4 · sm_75 · torch 2.11.0+cu128 · 2 卡中用了 2 张（rank 0）\n"}
+,{"stream_name":"stdout","time":12.495040305,"data":"· fla.models.rwkv7 缺失 -\u003e 装 flash-linear-attention==0.5.2\n"}
+,{"stream_name":"stdout","time":16.010145599,"data":"· pip install -\u003e exit 0\n"}
+,{"stream_name":"stderr","time":16.01106589,"data":"/usr/local/lib/python3.13/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.\n"}
+,{"stream_name":"stderr","time":16.011084511,"data":"  return func(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":16.012202626,"data":"[rank0]:[W1010 16:03:37.278879074 ProcessGroupNCCL.cpp:5188] Guessing device ID based on global rank. This can cause a hang if rank to GPU mapping is heterogeneous. You can specify device_id in init_process_group()\n"}
+,{"stream_name":"stdout","time":43.735764611,"data":"· fla ok · transformers 5.16.1\n"}
+,{"stream_name":"stdout","time":43.735812998,"data":"· chunk_size 16（T4 的 64KB 共享内存装不下 fla 默认的 64）\n"}
+,{"stream_name":"stderr","time":44.028749295,"data":"Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n"}
+,{"stream_name":"stderr","time":44.051125713,"data":"Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n"}
+,{"stream_name":"stderr","time":44.343274841,"data":"[transformers] A new version of the following files was downloaded from https://huggingface.co/fla-hub/rwkv7-0.1B-g1:\n"}
+,{"stream_name":"stderr","time":44.343310613,"data":"- hf_rwkv_tokenizer.py\n"}
+,{"stream_name":"stderr","time":44.34331795,"data":". Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.\n"}
+,{"stream_name":"stderr","time":44.371940957,"data":"[transformers] A new version of the following files was downloaded from https://huggingface.co/fla-hub/rwkv7-0.1B-g1:\n"}
+,{"stream_name":"stderr","time":44.371989814,"data":"- hf_rwkv_tokenizer.py\n"}
+,{"stream_name":"stderr","time":44.371996102,"data":". Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.\n"}
+,{"stream_name":"stdout","time":47.845875645,"data":"· tokenizer RwkvTokenizer · vocab 65531 · eos=65530 pad=0\n"}
+,{"stream_name":"stdout","time":48.215427079,"data":"· 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl -\u003e /kaggle/working/_train.jsonl (5067750 bytes)\n"}
+,{"stream_name":"stderr","time":48.215611053,"data":"/usr/local/lib/python3.13/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.\n"}
+,{"stream_name":"stderr","time":48.215622242,"data":"  return func(*args, **kwargs)\n"}
+,{"stream_name":"stdout","time":48.25527867,"data":"· 读入 412 行\n"}
+,{"stream_name":"stdout","time":55.60783428,"data":"· 编码完成 410/412 条（7.4s）· 超窗丢弃 2\n"}
+,{"stream_name":"stdout","time":55.608121679,"data":"· token 长度 min 2873 p50 3520 p90 4139 max 6111 · 窗口 6144 占用 p50 57.3%\n"}
+,{"stream_name":"stdout","time":55.608140183,"data":"· 掩码边界偏差：32/410 条非零，max 1（持续偏大说明模板/分词器与预期不符，是必须看见的信号）\n"}
+,{"stream_name":"stdout","time":55.847956317,"data":"· 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl -\u003e /kaggle/working/_dev.jsonl (1709954 bytes)\n"}
+,{"stream_name":"stdout","time":57.401954982,"data":"· dev 89 条\n"}
+,{"stream_name":"stdout","time":57.401988599,"data":"· 载入 fla-hub/rwkv7-0.1B-g1（主权重 fp32 · autocast fp16）…\n"}
+,{"stream_name":"stderr","time":60.809096447,"data":"/usr/local/lib/python3.13/dist-packages/fla/layers/rwkv7.py:148: UserWarning: According to Bo, you are using a potentially buggy FLA implementation of RWKV. If you plan to report any numbers based on this implementation, we strongly recommend cross-checking with the official repo: https://github.com/BlinkDL/RWKV-LM. Bo may disagree with results reported from this version.\n"}
+,{"stream_name":"stderr","time":60.80913003,"data":"  warnings.warn(\n"}
+,{"stream_name":"stderr","time":60.809135269,"data":"/usr/local/lib/python3.13/dist-packages/fla/layers/rwkv7.py:148: UserWarning: According to Bo, you are using a potentially buggy FLA implementation of RWKV. If you plan to report any numbers based on this implementation, we strongly recommend cross-checking with the official repo: https://github.com/BlinkDL/RWKV-LM. Bo may disagree with results reported from this version.\n"}
+,{"stream_name":"stderr","time":60.809140389,"data":"  warnings.warn(\n"}
+,{"stream_name":"stderr","time":64.498394606,"data":"\rLoading weights:   0%|          | 0/399 [00:00\u003c?, ?it/s]\rLoading weights:   0%|          | 0/399 [00:00\u003c?, ?it/s]\rLoading weights:   0%|          | 1/399 [00:00\u003c00:45,  8.80it/s]\rLoading weights:   0%|          | 1/399 [00:00\u003c01:22,  4.81it/s]\rLoading weights: 100%|██████████| 399/399 [00:00\u003c00:00, 1395.23it/s]\n"}
+,{"stream_name":"stderr","time":64.593587619,"data":"\rLoading weights:  60%|█████▉    | 238/399 [00:00\u003c00:00, 1323.11it/s]\rLoading weights: 100%|██████████| 399/399 [00:00\u003c00:00, 1366.82it/s]\n"}
+,{"stream_name":"stdout","time":65.097684948,"data":"· 参数量 191.0M（全参微调 · fp32 主权重） · DDP 2 卡\n"}
+,{"stream_name":"stdout","time":65.097919735,"data":"· 全局 103 个微批，为对齐 DDP 步数裁掉尾部 7 个（每轮少 28 条，约 6.8%）\n"}
+,{"stream_name":"stdout","time":65.097959152,"data":"· rank 0 分到 48 个微批\n"}
+,{"stream_name":"stdout","time":65.100485,"data":"· 批 4 × 累积 4 = 有效批 16 · 每轮 48 微批 -\u003e 12 步 · 共 288 步\n"}
+,{"stream_name":"stderr","time":65.163307714,"data":"[transformers] `use_return_dict` is deprecated! Use `return_dict` instead!\n"}
+,{"stream_name":"stderr","time":145.303068576,"data":"[rank1]:[W1010 16:05:47.570243116 reducer.cpp:1502] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())\n"}
+,{"stream_name":"stdout","time":190.081916919,"data":"· 缓存自检 64 token：不开 6.7s / 开 2.3s（开/不开 = 0.34x，热机后）· 输出逐字一致\n"}
+,{"stream_name":"stdout","time":190.091769584,"data":"· 学习曲线快照步数：[72, 144, 216]（共 288 步）\n"}
+,{"stream_name":"stderr","time":190.103057575,"data":"[transformers] `use_return_dict` is deprecated! Use `return_dict` instead!\n"}
+,{"stream_name":"stderr","time":191.384735831,"data":"[rank0]:[W1010 16:06:33.651905711 reducer.cpp:1502] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())\n"}
+,{"stream_name":"stdout","time":315.966814064,"data":"  step 1/288 loss 3.0895 lr 1.25e-05 elapsed 2.1m\n"}
+,{"stream_name":"stdout","time":411.811888297,"data":"  step 11/288 loss 2.1685 lr 1.00e-04 elapsed 3.7m\n"}
+,{"stream_name":"stdout","time":521.95900682,"data":"  step 21/288 loss 1.5887 lr 9.96e-05 elapsed 5.5m\n"}
+,{"stream_name":"stdout","time":620.702428766,"data":"  step 31/288 loss 1.0713 lr 9.86e-05 elapsed 7.2m\n"}
+,{"stream_name":"stdout","time":720.007055625,"data":"  step 41/288 loss 0.7548 lr 9.71e-05 elapsed 8.8m\n"}
+,{"stream_name":"stdout","time":819.231736153,"data":"  step 51/288 loss 0.4633 lr 9.51e-05 elapsed 10.5m\n"}
+,{"stream_name":"stdout","time":920.308292012,"data":"  step 61/288 loss 0.1412 lr 9.26e-05 elapsed 12.2m\n"}
+,{"stream_name":"stdout","time":1018.335769527,"data":"  step 71/288 loss 0.2860 lr 8.95e-05 elapsed 13.8m\n"}
+,{"stream_name":"stdout","time":1058.874771121,"data":"  gen 1/30 · 268 字 · 5.8s\n"}
+,{"stream_name":"stdout","time":1068.628330565,"data":"  gen 2/30 · 521 字 · 9.7s\n"}
+,{"stream_name":"stdout","time":1086.063124071,"data":"  gen 3/30 · 994 字 · 17.4s\n"}
+,{"stream_name":"stdout","time":1096.701648081,"data":"  gen 4/30 · 655 字 · 10.6s\n"}
+,{"stream_name":"stdout","time":1101.950321555,"data":"  gen 5/30 · 289 字 · 5.2s\n"}
+,{"stream_name":"stdout","time":1122.346589391,"data":"  gen 6/30 · 1040 字 · 20.4s\n"}
+,{"stream_name":"stdout","time":1138.276558225,"data":"  gen 7/30 · 963 字 · 15.9s\n"}
+,{"stream_name":"stdout","time":1150.539013288,"data":"  gen 8/30 · 546 字 · 12.3s\n"}
+,{"stream_name":"stdout","time":1166.590799471,"data":"  gen 9/30 · 605 字 · 16.0s\n"}
+,{"stream_name":"stdout","time":1175.989607866,"data":"  gen 10/30 · 530 字 · 9.4s\n"}
+,{"stream_name":"stdout","time":1202.535296419,"data":"  gen 11/30 · 2380 字 · 26.5s\n"}
+,{"stream_name":"stdout","time":1222.292106098,"data":"  gen 12/30 · 1095 字 · 19.7s\n"}
+,{"stream_name":"stdout","time":1238.9034518,"data":"  gen 13/30 · 1022 字 · 16.6s\n"}
+,{"stream_name":"stdout","time":1254.057038761,"data":"  gen 14/30 · 814 字 · 15.1s\n"}
+,{"stream_name":"stdout","time":1279.878527444,"data":"  gen 15/30 · 1851 字 · 25.8s\n"}
+,{"stream_name":"stdout","time":1292.36439945,"data":"  gen 16/30 · 790 字 · 12.5s\n"}
+,{"stream_name":"stdout","time":1301.985157319,"data":"  gen 17/30 · 567 字 · 9.6s\n"}
+,{"stream_name":"stdout","time":1314.992503643,"data":"  gen 18/30 · 577 字 · 13.0s\n"}
+,{"stream_name":"stdout","time":1325.348443686,"data":"  gen 19/30 · 549 字 · 10.3s\n"}
+,{"stream_name":"stdout","time":1331.345110265,"data":"  gen 20/30 · 345 字 · 6.0s\n"}
+,{"stream_name":"stdout","time":1348.756946052,"data":"  gen 21/30 · 851 字 · 17.4s\n"}
+,{"stream_name":"stdout","time":1352.312979092,"data":"  gen 22/30 · 193 字 · 3.5s\n"}
+,{"stream_name":"stdout","time":1360.924230085,"data":"  gen 23/30 · 455 字 · 8.6s\n"}
+,{"stream_name":"stdout","time":1370.654427335,"data":"  gen 24/30 · 672 字 · 9.7s\n"}
+,{"stream_name":"stdout","time":1377.756026764,"data":"  gen 25/30 · 428 字 · 7.1s\n"}
+,{"stream_name":"stdout","time":1391.478777034,"data":"  gen 26/30 · 770 字 · 13.7s\n"}
+,{"stream_name":"stdout","time":1399.137012778,"data":"  gen 27/30 · 422 字 · 7.6s\n"}
+,{"stream_name":"stdout","time":1404.707203252,"data":"  gen 28/30 · 274 字 · 5.6s\n"}
+,{"stream_name":"stdout","time":1430.011322051,"data":"  gen 29/30 · 1552 字 · 25.3s\n"}
+,{"stream_name":"stdout","time":1436.815181403,"data":"  gen 30/30 · 372 字 · 6.8s\n"}
+,{"stream_name":"stdout","time":1436.815550695,"data":"  · 生成 30 条 -\u003e dev-generations-step72.jsonl（384s）\n"}
+,{"stream_name":"stdout","time":1436.817263272,"data":"· 【学习曲线】step 72 · dev loss 2.8416 · 生成 30 条 · 已用 20.8m\n"}
+,{"stream_name":"stderr","time":1436.819189162,"data":"/usr/local/lib/python3.13/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.\n"}
+,{"stream_name":"stderr","time":1436.819216334,"data":"  return func(*args, **kwargs)\n"}
+,{"stream_name":"stdout","time":1521.529992427,"data":"  step 81/288 loss 0.1470 lr 8.61e-05 elapsed 22.2m\n"}
+,{"stream_name":"stdout","time":1619.569064252,"data":"  step 91/288 loss 0.1255 lr 8.23e-05 elapsed 23.8m\n"}
+,{"stream_name":"stdout","time":1717.898867804,"data":"  step 101/288 loss 0.0745 lr 7.81e-05 elapsed 25.5m\n"}
+,{"stream_name":"stdout","time":1817.960469888,"data":"  step 111/288 loss 0.0478 lr 7.36e-05 elapsed 27.1m\n"}
+,{"stream_name":"stdout","time":1917.890868859,"data":"  step 121/288 loss 0.0240 lr 6.89e-05 elapsed 28.8m\n"}
+,{"stream_name":"stdout","time":2015.228247862,"data":"  step 131/288 loss 0.0527 lr 6.40e-05 elapsed 30.4m\n"}
+,{"stream_name":"stdout","time":2111.80313206,"data":"  step 141/288 loss 0.0258 lr 5.90e-05 elapsed 32.0m\n"}
+,{"stream_name":"stdout","time":2158.678139042,"data":"  gen 1/30 · 13 字 · 0.5s\n"}
+,{"stream_name":"stdout","time":2163.886515718,"data":"  gen 2/30 · 279 字 · 5.2s\n"}
+,{"stream_name":"stdout","time":2174.151467231,"data":"  gen 3/30 · 515 字 · 10.3s\n"}
+,{"stream_name":"stdout","time":2187.185010091,"data":"  gen 4/30 · 711 字 · 13.0s\n"}
+,{"stream_name":"stdout","time":2193.367885715,"data":"  gen 5/30 · 254 字 · 6.2s\n"}
+,{"stream_name":"stdout","time":2200.590800482,"data":"  gen 6/30 · 404 字 · 7.2s\n"}
+,{"stream_name":"stdout","time":2208.996042182,"data":"  gen 7/30 · 805 字 · 8.4s\n"}
+,{"stream_name":"stdout","time":2220.442861595,"data":"  gen 8/30 · 1216 字 · 11.4s\n"}
+,{"stream_name":"stdout","time":2224.768090069,"data":"  gen 9/30 · 223 字 · 4.3s\n"}
+,{"stream_name":"stdout","time":2225.546239891,"data":"  gen 10/30 · 19 字 · 0.8s\n"}
+,{"stream_name":"stdout","time":2227.254161048,"data":"  gen 11/30 · 62 字 · 1.7s\n"}
+,{"stream_name":"stdout","time":2232.20498642,"data":"  gen 12/30 · 277 字 · 4.9s\n"}
+,{"stream_name":"stdout","time":2240.085813457,"data":"  gen 13/30 · 907 字 · 7.9s\n"}
+,{"stream_name":"stdout","time":2251.319074341,"data":"  gen 14/30 · 971 字 · 11.2s\n"}
+,{"stream_name":"stdout","time":2257.654312386,"data":"  gen 15/30 · 249 字 · 6.3s\n"}
+,{"stream_name":"stdout","time":2269.407003856,"data":"  gen 16/30 · 652 字 · 11.7s\n"}
+,{"stream_name":"stdout","time":2279.705017714,"data":"  gen 17/30 · 506 字 · 10.3s\n"}
+,{"stream_name":"stdout","time":2305.316913513,"data":"  gen 18/30 · 991 字 · 25.6s\n"}
+,{"stream_name":"stdout","time":2311.220000675,"data":"  gen 19/30 · 319 字 · 5.9s\n"}
+,{"stream_name":"stdout","time":2316.814793044,"data":"  gen 20/30 · 307 字 · 5.6s\n"}
+,{"stream_name":"stdout","time":2322.365454088,"data":"  gen 21/30 · 314 字 · 5.5s\n"}
+,{"stream_name":"stdout","time":2334.081473674,"data":"  gen 22/30 · 609 字 · 11.7s\n"}
+,{"stream_name":"stdout","time":2345.058703484,"data":"  gen 23/30 · 573 字 · 11.0s\n"}
+,{"stream_name":"stdout","time":2351.802572397,"data":"  gen 24/30 · 426 字 · 6.7s\n"}
+,{"stream_name":"stdout","time":2353.421689499,"data":"  gen 25/30 · 75 字 · 1.6s\n"}
+,{"stream_name":"stdout","time":2363.542243517,"data":"  gen 26/30 · 521 字 · 10.1s\n"}
+,{"stream_name":"stdout","time":2368.871559806,"data":"  gen 27/30 · 213 字 · 5.3s\n"}
+,{"stream_name":"stdout","time":2377.664140537,"data":"  gen 28/30 · 539 字 · 8.8s\n"}
+,{"stream_name":"stdout","time":2402.817587005,"data":"  gen 29/30 · 1847 字 · 25.1s\n"}
+,{"stream_name":"stdout","time":2405.304527662,"data":"  gen 30/30 · 83 字 · 2.5s\n"}
+,{"stream_name":"stdout","time":2405.304568929,"data":"  · 生成 30 条 -\u003e dev-generations-step144.jsonl（247s）\n"}
+,{"stream_name":"stdout","time":2405.306539116,"data":"· 【学习曲线】step 144 · dev loss 3.2418 · 生成 30 条 · 已用 36.9m\n"}
+,{"stream_name":"stdout","time":2469.710167675,"data":"  step 151/288 loss 0.0230 lr 5.40e-05 elapsed 38.0m\n"}
+,{"stream_name":"stdout","time":2568.247479064,"data":"  step 161/288 loss 0.0285 lr 4.90e-05 elapsed 39.6m\n"}
+,{"stream_name":"stdout","time":2667.058060688,"data":"  step 171/288 loss 0.0127 lr 4.40e-05 elapsed 41.3m\n"}
+,{"stream_name":"stdout","time":2766.298059903,"data":"  step 181/288 loss 0.0043 lr 3.92e-05 elapsed 42.9m\n"}
+,{"stream_name":"stdout","time":2864.603610586,"data":"  step 191/288 loss 0.0115 lr 3.46e-05 elapsed 44.6m\n"}
+,{"stream_name":"stdout","time":2961.193945396,"data":"  step 201/288 loss 0.0079 lr 3.02e-05 elapsed 46.2m\n"}
+,{"stream_name":"stdout","time":3058.104102748,"data":"  step 211/288 loss 0.0018 lr 2.62e-05 elapsed 47.8m\n"}
+,{"stream_name":"stdout","time":3130.697002853,"data":"  gen 1/30 · 346 字 · 6.4s\n"}
+,{"stream_name":"stdout","time":3136.926911285,"data":"  gen 2/30 · 307 字 · 6.2s\n"}
+,{"stream_name":"stdout","time":3147.248042543,"data":"  gen 3/30 · 665 字 · 10.3s\n"}
+,{"stream_name":"stdout","time":3155.338406866,"data":"  gen 4/30 · 500 字 · 8.1s\n"}
+,{"stream_name":"stdout","time":3165.588818797,"data":"  gen 5/30 · 567 字 · 10.2s\n"}
+,{"stream_name":"stdout","time":3172.996652699,"data":"  gen 6/30 · 681 字 · 7.4s\n"}
+,{"stream_name":"stdout","time":3179.987570486,"data":"  gen 7/30 · 698 字 · 7.0s\n"}
+,{"stream_name":"stdout","time":3186.649041801,"data":"  gen 8/30 · 348 字 · 6.7s\n"}
+,{"stream_name":"stdout","time":3187.600814168,"data":"  gen 9/30 · 114 字 · 0.9s\n"}
+,{"stream_name":"stdout","time":3188.46359038,"data":"  gen 10/30 · 22 字 · 0.8s\n"}
+,{"stream_name":"stdout","time":3201.404123646,"data":"  gen 11/30 · 663 字 · 12.9s\n"}
+,{"stream_name":"stdout","time":3202.664225617,"data":"  gen 12/30 · 59 字 · 1.2s\n"}
+,{"stream_name":"stdout","time":3205.430222916,"data":"  gen 13/30 · 273 字 · 2.8s\n"}
+,{"stream_name":"stdout","time":3211.530745571,"data":"  gen 14/30 · 466 字 · 6.1s\n"}
+,{"stream_name":"stdout","time":3218.124737339,"data":"  gen 15/30 · 343 字 · 6.6s\n"}
+,{"stream_name":"stdout","time":3224.755008386,"data":"  gen 16/30 · 455 字 · 6.6s\n"}
+,{"stream_name":"stdout","time":3229.03067428,"data":"  gen 17/30 · 275 字 · 4.3s\n"}
+,{"stream_name":"stdout","time":3239.617026126,"data":"  gen 18/30 · 466 字 · 10.6s\n"}
+,{"stream_name":"stdout","time":3249.563539314,"data":"  gen 19/30 · 715 字 · 9.9s\n"}
+,{"stream_name":"stdout","time":3253.995790908,"data":"  gen 20/30 · 261 字 · 4.4s\n"}
+,{"stream_name":"stdout","time":3263.946391595,"data":"  gen 21/30 · 742 字 · 9.9s\n"}
+,{"stream_name":"stdout","time":3269.607477918,"data":"  gen 22/30 · 588 字 · 5.6s\n"}
+,{"stream_name":"stdout","time":3280.829194226,"data":"  gen 23/30 · 546 字 · 11.2s\n"}
+,{"stream_name":"stdout","time":3294.212384962,"data":"  gen 24/30 · 1368 字 · 13.4s\n"}
+,{"stream_name":"stdout","time":3297.532865576,"data":"  gen 25/30 · 148 字 · 3.3s\n"}
+,{"stream_name":"stdout","time":3303.51243645,"data":"  gen 26/30 · 610 字 · 6.0s\n"}
+,{"stream_name":"stdout","time":3311.519898196,"data":"  gen 27/30 · 432 字 · 8.0s\n"}
+,{"stream_name":"stdout","time":3323.24208892,"data":"  gen 28/30 · 843 字 · 11.7s\n"}
+,{"stream_name":"stdout","time":3326.319520134,"data":"  gen 29/30 · 316 字 · 3.1s\n"}
+,{"stream_name":"stdout","time":3336.394535868,"data":"  gen 30/30 · 609 字 · 10.1s\n"}
+,{"stream_name":"stdout","time":3336.394579819,"data":"  · 生成 30 条 -\u003e dev-generations-step216.jsonl（212s）\n"}
+,{"stream_name":"stdout","time":3336.396626031,"data":"· 【学习曲线】step 216 · dev loss 3.4794 · 生成 30 条 · 已用 52.4m\n"}
+,{"stream_name":"stdout","time":3381.172438692,"data":"  step 221/288 loss 0.0011 lr 2.25e-05 elapsed 53.2m\n"}
+,{"stream_name":"stdout","time":3479.400892632,"data":"  step 231/288 loss 0.0006 lr 1.92e-05 elapsed 54.8m\n"}
+,{"stream_name":"stdout","time":3578.205252693,"data":"  step 241/288 loss 0.0003 lr 1.64e-05 elapsed 56.5m\n"}
+,{"stream_name":"stdout","time":3675.125428886,"data":"  step 251/288 loss 0.0006 lr 1.40e-05 elapsed 58.1m\n"}
+,{"stream_name":"stdout","time":3770.02042258,"data":"  step 261/288 loss 0.0004 lr 1.22e-05 elapsed 59.7m\n"}
+,{"stream_name":"stdout","time":3866.40407272,"data":"  step 271/288 loss 0.0003 lr 1.09e-05 elapsed 61.3m\n"}
+,{"stream_name":"stdout","time":3963.992714459,"data":"  step 281/288 loss 0.0003 lr 1.02e-05 elapsed 62.9m\n"}
+,{"stream_name":"stdout","time":4035.919663973,"data":"  step 288/288 loss 0.0003 lr 1.00e-05 elapsed 64.1m\n"}
+,{"stream_name":"stdout","time":4035.919735209,"data":"· 训练结束 288 步，64.1 分钟\n"}
+,{"stream_name":"stdout","time":4035.980259387,"data":"· _tied_weights_keys 归一 1 个模块 · lm_head 与输入嵌入共享存储=False\n"}
+,{"stream_name":"stderr","time":4036.984748146,"data":"\rWriting model shards:   0%|          | 0/1 [00:00\u003c?, ?it/s]\rWriting model shards: 100%|██████████| 1/1 [00:00\u003c00:00,  1.04it/s]\rWriting model shards: 100%|██████████| 1/1 [00:00\u003c00:00,  1.04it/s]\n"}
+,{"stream_name":"stdout","time":4037.020688426,"data":"· 词表 rwkv_vocab_v20230424.txt \u003c- /root/.cache/huggingface/hub/models--fla-hub--rwkv7-0.1B-g1/snapshots/7450ee04eb9c66baa7161b7a5c0fe09e5b2817d8/rwkv_vocab_v20230424.txt（1093733 B）\n"}
+,{"stream_name":"stdout","time":4038.635393287,"data":"· 存档校验 399 块 · max|Δ|=0.00e+00 @ None\n"}
+,{"stream_name":"stdout","time":4038.635589494,"data":"· 已存档 /kaggle/working/rwkv7-compressor/model\n"}
+,{"stream_name":"stdout","time":4051.820305383,"data":"· dev loss 3.5877（89 条）\n"}
+,{"stream_name":"stdout","time":4055.81479733,"data":"  gen 1/89 · 219 字 · 4.0s\n"}
+,{"stream_name":"stdout","time":4056.930285006,"data":"  gen 2/89 · 48 字 · 1.1s\n"}
+,{"stream_name":"stdout","time":4063.033973922,"data":"  gen 3/89 · 430 字 · 6.1s\n"}
+,{"stream_name":"stdout","time":4072.189343324,"data":"  gen 4/89 · 569 字 · 9.1s\n"}
+,{"stream_name":"stdout","time":4085.093846991,"data":"  gen 5/89 · 702 字 · 12.9s\n"}
+,{"stream_name":"stdout","time":4091.370337644,"data":"  gen 6/89 · 640 字 · 6.3s\n"}
+,{"stream_name":"stdout","time":4101.874305995,"data":"  gen 7/89 · 929 字 · 10.5s\n"}
+,{"stream_name":"stdout","time":4102.945234512,"data":"  gen 8/89 · 28 字 · 1.1s\n"}
+,{"stream_name":"stdout","time":4104.312077491,"data":"  gen 9/89 · 50 字 · 1.4s\n"}
+,{"stream_name":"stdout","time":4113.987161925,"data":"  gen 10/89 · 466 字 · 9.7s\n"}
+,{"stream_name":"stdout","time":4124.163498995,"data":"  gen 11/89 · 561 字 · 10.2s\n"}
+,{"stream_name":"stdout","time":4127.650172327,"data":"  gen 12/89 · 215 字 · 3.5s\n"}
+,{"stream_name":"stdout","time":4132.544893246,"data":"  gen 13/89 · 478 字 · 4.9s\n"}
+,{"stream_name":"stdout","time":4135.265605181,"data":"  gen 14/89 · 286 字 · 2.7s\n"}
+,{"stream_name":"stdout","time":4138.534444381,"data":"  gen 15/89 · 162 字 · 3.3s\n"}
+,{"stream_name":"stdout","time":4144.102380983,"data":"  gen 16/89 · 370 字 · 5.6s\n"}
+,{"stream_name":"stdout","time":4148.219990822,"data":"  gen 17/89 · 250 字 · 4.1s\n"}
+,{"stream_name":"stdout","time":4157.698075292,"data":"  gen 18/89 · 471 字 · 9.5s\n"}
+,{"stream_name":"stdout","time":4162.218978263,"data":"  gen 19/89 · 560 字 · 4.5s\n"}
+,{"stream_name":"stdout","time":4171.481085848,"data":"  gen 20/89 · 541 字 · 9.3s\n"}
+,{"stream_name":"stdout","time":4174.850869855,"data":"  gen 21/89 · 322 字 · 3.4s\n"}
+,{"stream_name":"stdout","time":4193.078447385,"data":"  gen 22/89 · 1024 字 · 18.2s\n"}
+,{"stream_name":"stdout","time":4199.659443641,"data":"  gen 23/89 · 331 字 · 6.6s\n"}
+,{"stream_name":"stdout","time":4204.471907412,"data":"  gen 24/89 · 480 字 · 4.8s\n"}
+,{"stream_name":"stdout","time":4213.540902689,"data":"  gen 25/89 · 443 字 · 9.1s\n"}
+,{"stream_name":"stdout","time":4229.404878011,"data":"  gen 26/89 · 1559 字 · 15.9s\n"}
+,{"stream_name":"stdout","time":4237.44305376,"data":"  gen 27/89 · 334 字 · 8.0s\n"}
+,{"stream_name":"stdout","time":4242.562916783,"data":"  gen 28/89 · 569 字 · 5.1s\n"}
+,{"stream_name":"stdout","time":4257.788036306,"data":"  gen 29/89 · 787 字 · 15.2s\n"}
+,{"stream_name":"stdout","time":4263.632136941,"data":"  gen 30/89 · 353 字 · 5.8s\n"}
+,{"stream_name":"stdout","time":4264.776045278,"data":"  gen 31/89 · 30 字 · 1.1s\n"}
+,{"stream_name":"stdout","time":4281.534402526,"data":"  gen 32/89 · 937 字 · 16.7s\n"}
+,{"stream_name":"stdout","time":4289.806122699,"data":"  gen 33/89 · 526 字 · 8.3s\n"}
+,{"stream_name":"stdout","time":4300.608941886,"data":"  gen 34/89 · 547 字 · 10.8s\n"}
+,{"stream_name":"stdout","time":4307.471452901,"data":"  gen 35/89 · 646 字 · 6.8s\n"}
+,{"stream_name":"stdout","time":4314.062577684,"data":"  gen 36/89 · 331 字 · 6.6s\n"}
+,{"stream_name":"stdout","time":4322.173512106,"data":"  gen 37/89 · 804 字 · 8.1s\n"}
+,{"stream_name":"stdout","time":4330.418582038,"data":"  gen 38/89 · 917 字 · 8.2s\n"}
+,{"stream_name":"stdout","time":4334.201816141,"data":"  gen 39/89 · 170 字 · 3.8s\n"}
+,{"stream_name":"stdout","time":4340.853669835,"data":"  gen 40/89 · 431 字 · 6.6s\n"}
+,{"stream_name":"stdout","time":4351.462280311,"data":"  gen 41/89 · 589 字 · 10.6s\n"}
+,{"stream_name":"stdout","time":4363.710376628,"data":"  gen 42/89 · 1184 字 · 12.2s\n"}
+,{"stream_name":"stdout","time":4372.455531237,"data":"  gen 43/89 · 426 字 · 8.7s\n"}
+,{"stream_name":"stdout","time":4382.422506475,"data":"  gen 44/89 · 522 字 · 10.0s\n"}
+,{"stream_name":"stdout","time":4388.596092072,"data":"  gen 45/89 · 424 字 · 6.2s\n"}
+,{"stream_name":"stdout","time":4390.879416387,"data":"  gen 46/89 · 195 字 · 2.3s\n"}
+,{"stream_name":"stdout","time":4401.561197149,"data":"  gen 47/89 · 1136 字 · 10.7s\n"}
+,{"stream_name":"stdout","time":4411.759295346,"data":"  gen 48/89 · 936 字 · 10.2s\n"}
+,{"stream_name":"stdout","time":4420.011921682,"data":"  gen 49/89 · 479 字 · 8.2s\n"}
+,{"stream_name":"stdout","time":4422.349954003,"data":"  gen 50/89 · 150 字 · 2.3s\n"}
+,{"stream_name":"stdout","time":4448.579577845,"data":"  gen 51/89 · 2089 字 · 26.2s\n"}
+,{"stream_name":"stdout","time":4449.364160453,"data":"  gen 52/89 · 27 字 · 0.8s\n"}
+,{"stream_name":"stdout","time":4455.959218419,"data":"  gen 53/89 · 384 字 · 6.6s\n"}
+,{"stream_name":"stdout","time":4475.734109556,"data":"  gen 54/89 · 1129 字 · 19.8s\n"}
+,{"stream_name":"stdout","time":4485.101511094,"data":"  gen 55/89 · 534 字 · 9.4s\n"}
+,{"stream_name":"stdout","time":4488.456325759,"data":"  gen 56/89 · 406 字 · 3.3s\n"}
+,{"stream_name":"stdout","time":4492.202554427,"data":"  gen 57/89 · 381 字 · 3.7s\n"}
+,{"stream_name":"stdout","time":4492.804478632,"data":"  gen 58/89 · 13 字 · 0.6s\n"}
+,{"stream_name":"stdout","time":4497.908696769,"data":"  gen 59/89 · 300 字 · 5.1s\n"}
+,{"stream_name":"stdout","time":4504.516050136,"data":"  gen 60/89 · 432 字 · 6.6s\n"}
+,{"stream_name":"stdout","time":4518.153111204,"data":"  gen 61/89 · 743 字 · 13.6s\n"}
+,{"stream_name":"stdout","time":4534.502566063,"data":"  gen 62/89 · 987 字 · 16.3s\n"}
+,{"stream_name":"stdout","time":4541.128365542,"data":"  gen 63/89 · 594 字 · 6.6s\n"}
+,{"stream_name":"stdout","time":4551.529335884,"data":"  gen 64/89 · 1049 字 · 10.4s\n"}
+,{"stream_name":"stdout","time":4575.827916639,"data":"  gen 65/89 · 2084 字 · 24.3s\n"}
+,{"stream_name":"stdout","time":4587.082935819,"data":"  gen 66/89 · 522 字 · 11.2s\n"}
+,{"stream_name":"stdout","time":4596.922731034,"data":"  gen 67/89 · 515 字 · 9.8s\n"}
+,{"stream_name":"stdout","time":4623.073950324,"data":"  gen 68/89 · 2154 字 · 26.1s\n"}
+,{"stream_name":"stdout","time":4630.533960377,"data":"  gen 69/89 · 689 字 · 7.4s\n"}
+,{"stream_name":"stdout","time":4633.341550835,"data":"  gen 70/89 · 150 字 · 2.8s\n"}
+,{"stream_name":"stdout","time":4640.686942145,"data":"  gen 71/89 · 773 字 · 7.3s\n"}
+,{"stream_name":"stdout","time":4646.189890845,"data":"  gen 72/89 · 239 字 · 5.5s\n"}
+,{"stream_name":"stdout","time":4652.520711081,"data":"  gen 73/89 · 672 字 · 6.3s\n"}
+,{"stream_name":"stdout","time":4664.385792578,"data":"  gen 74/89 · 734 字 · 11.9s\n"}
+,{"stream_name":"stdout","time":4673.004670928,"data":"  gen 75/89 · 487 字 · 8.6s\n"}
+,{"stream_name":"stdout","time":4689.765387263,"data":"  gen 76/89 · 1209 字 · 16.7s\n"}
+,{"stream_name":"stdout","time":4697.236547251,"data":"  gen 77/89 · 407 字 · 7.5s\n"}
+,{"stream_name":"stdout","time":4712.894761896,"data":"  gen 78/89 · 859 字 · 15.6s\n"}
+,{"stream_name":"stdout","time":4738.747760094,"data":"  gen 79/89 · 1728 字 · 25.8s\n"}
+,{"stream_name":"stdout","time":4750.965123549,"data":"  gen 80/89 · 661 字 · 12.2s\n"}
+,{"stream_name":"stdout","time":4760.256073826,"data":"  gen 81/89 · 877 字 · 9.3s\n"}
+,{"stream_name":"stdout","time":4764.519051047,"data":"  gen 82/89 · 398 字 · 4.3s\n"}
+,{"stream_name":"stdout","time":4790.367154019,"data":"  gen 83/89 · 5178 字 · 25.8s\n"}
+,{"stream_name":"stdout","time":4798.996254389,"data":"  gen 84/89 · 794 字 · 8.6s\n"}
+,{"stream_name":"stdout","time":4801.641646361,"data":"  gen 85/89 · 146 字 · 2.6s\n"}
+,{"stream_name":"stdout","time":4802.77971277,"data":"  gen 86/89 · 106 字 · 1.1s\n"}
+,{"stream_name":"stdout","time":4810.338163769,"data":"  gen 87/89 · 778 字 · 7.5s\n"}
+,{"stream_name":"stdout","time":4818.503642036,"data":"  gen 88/89 · 496 字 · 8.2s\n"}
+,{"stream_name":"stdout","time":4826.169329105,"data":"  gen 89/89 · 440 字 · 7.7s\n"}
+,{"stream_name":"stdout","time":4826.169399232,"data":"  · 生成 89 条 -\u003e dev-generations.jsonl（774s）\n"}
+,{"stream_name":"stdout","time":4826.169406366,"data":"· 生成 89 条 -\u003e /kaggle/working/rwkv7-compressor/dev-generations.jsonl（用 tools/eval-sft.mjs 本地打分）\n"}
+,{"stream_name":"stdout","time":4826.170249804,"data":"· 产出 /kaggle/working/rwkv7-compressor\n"}
+,{"stream_name":"stderr","time":4835.170008269,"data":"/usr/local/lib/python3.13/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":4835.170075613,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":4835.392878892,"data":"/usr/local/lib/python3.13/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":4835.392951725,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":4836.13486785,"data":"[NbConvertApp] Converting notebook __script__.ipynb to html\n"}
+,{"stream_name":"stderr","time":4837.188116296,"data":"[NbConvertApp] Writing 468524 bytes to __results__.html\n"}
+]

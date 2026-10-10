@@ -1,0 +1,5 @@
+tokenizers       MISSING (ModuleNotFoundError)
+transformers     MISSING (ModuleNotFoundError)
+torch            MISSING (ModuleNotFoundError)
+sentencepiece    MISSING (ModuleNotFoundError)
+numpy            OK  2.5.2

@@ -1,0 +1,61 @@
+hand-samples total=75 from 18 files
+trainingEligible: {'True': 61, 'False': 14}
+gate violations: {'<ok>': 72, "{'kind': 'mode1-quality:environment-permission-assertion', '": 1, "{'kind': 'mode1-quality:experiment-round-or-budget-control',": 1, "{'kind': 'invented-triple', 'detail': 'old_text 是 `makeTrace": 1, "{'kind': 'invented-triple', 'detail': 'old_text 是 `{ hedgeAf": 1, "{'kind': 'invented-decision', 'detail': '改法只落一个：直接修改 test/he": 1}
+qualityAudit.status: {'clean': 74, 'quarantined': 1}
+unique id=33  unique task=12
+raw len med=3998 p90=16581 max=29903
+draft len med=439 p90=1236 max=1554
+stored len med=1269 p90=2357 max=4159
+ratio draft/raw med=0.137
+raw cjk ratio mean=0.0058  draft cjk ratio mean=0.2549
+
+sample ids:
+  eacces-config-s0-r6                            raw=2291   draft=394    te=True gate_ok=True
+  eacces-config-s1-r5                            raw=1982   draft=439    te=True gate_ok=True
+  flaky-timeout-s0-r3                            raw=9409   draft=419    te=True gate_ok=True
+  flaky-timeout-s1-r4                            raw=22572  draft=503    te=True gate_ok=True
+  perf-regression-s0-r7                          raw=4376   draft=178    te=True gate_ok=True
+  perf-regression-s1-r7                          raw=3998   draft=221    te=True gate_ok=True
+  sse-truncated-s0-r4                            raw=3911   draft=435    te=True gate_ok=True
+  sse-truncated-s1-r3                            raw=3687   draft=405    te=True gate_ok=True
+  wrong-model-s0-r6                              raw=2213   draft=569    te=True gate_ok=True
+  wrong-model-s1-r5                              raw=5026   draft=413    te=True gate_ok=True
+  eacces-config-s0-r6                            raw=2291   draft=394    te=True gate_ok=True
+  eacces-config-s1-r5                            raw=1982   draft=439    te=True gate_ok=True
+  flaky-timeout-s0-r3                            raw=9409   draft=419    te=True gate_ok=True
+  flaky-timeout-s1-r4                            raw=22572  draft=503    te=True gate_ok=True
+  perf-regression-s0-r7                          raw=4376   draft=178    te=True gate_ok=True
+  perf-regression-s1-r7                          raw=3998   draft=221    te=True gate_ok=True
+  sse-truncated-s0-r4                            raw=3911   draft=435    te=True gate_ok=True
+  sse-truncated-s1-r3                            raw=3687   draft=405    te=True gate_ok=True
+  wrong-model-s0-r6                              raw=2213   draft=569    te=True gate_ok=True
+  wrong-model-s1-r5                              raw=5026   draft=413    te=True gate_ok=True
+  eacces-config_decoy-s0-r6                      raw=1451   draft=531    te=True gate_ok=True
+  eacces-config_long-horizon-s0-r5               raw=5295   draft=437    te=True gate_ok=True
+  flaky-timeout-s0-r3                            raw=7522   draft=419    te=True gate_ok=True
+  flaky-timeout_long-horizon-s0-r4               raw=10521  draft=430    te=True gate_ok=True
+  flaky-timeout_long-horizon-s0-r5               raw=23312  draft=430    te=True gate_ok=True
+  flaky-timeout-s0-r5                            raw=29547  draft=419    te=True gate_ok=True
+  flaky-timeout-s0-r6                            raw=16581  draft=419    te=True gate_ok=True
+  perf-regression-s0-r7                          raw=2989   draft=440    te=False gate_ok=True
+  sse-truncated-s0-r3                            raw=4115   draft=435    te=True gate_ok=True
+  sse-truncated-s0-r4                            raw=3605   draft=435    te=True gate_ok=True
+
+======================================================================
+traj dir census
+  .md        n=379   bytes=448804
+  .json      n=248   bytes=3133859
+  .jsonl     n=115   bytes=8594281
+  .mjs       n=2     bytes=8255
+  .sh        n=1     bytes=436
+  .log       n=1     bytes=3963
+
+json file names in .cfb-runtime/traj/*/ (top-level only):
+{'plan.json': 53, 'preflight.jsonl': 50, 'receipt.json': 40, 'results.jsonl': 40, 'summary.md': 40, 'plan.md': 39, 'review.judge-prompts.json': 25, 'review.md': 25, 'drafts': 21, 'hand-samples.jsonl': 18, 'pending': 16, 'ceiling.md': 11, 'state': 4, 'drafts.preplaced': 1, 'live.log': 1}
+
+======================================================================
+results.jsonl aggregate
+files=47 rows=282
+perturb rows=44
+variants: {'hand': 111, 'None': 74, 'raw': 72, 'policy:p-1490eefcdf': 24, 'policy:base': 1}
+keys: {'at': 282, 'task': 208, 'variant': 208, 'sample': 208, 'rounds': 208, 'calls': 208, 'edits': 208, 'repeats': 208, 'fixedAtRound': 208, 'verifiedAfterFix': 208, 'promptTokens': 208, 'compile': 208, 'transcript': 208, 'rejected': 208, 'completionTokens': 206, 'mainCalls': 142, 'fixed': 137, 'claim': 137, 'claimJustified': 137, 'contextReasoningChars': 137, 'finalFiles': 137, 'proxySteps': 137, 'proxyScore': 137, 'proxyRound2': 137, 'roundMessages': 131, 'forked': 120, 'shadow': 120, 'policy': 99, 'schema': 74, 'plan': 74, 'dry': 74, 'gold': 74, 'family': 74, 'split': 74, 'ok': 74, 'why': 74, 'reason': 74, 'promptVersion': 74, 'ms': 74, 'cacheKey': 74}

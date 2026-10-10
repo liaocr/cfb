@@ -1,0 +1,125 @@
+=== fla/layers/rwkv7.py 295..355（训练分支）===
+ 295|         #    but with better precision preservation
+ 296|         # 3. Particularly crucial for bf16 where intermediate values easily lose precision
+ 297|         # 4. Pytorch method: k = k.addcmul(k * (a - 1), self.k_a)
+ 298|         k = fused_k_rwkv7(k, a, self.k_a)
+ 299| 
+ 300|         # dealing with left-padding
+ 301|         if attention_mask is not None:
+ 302|             v = v * am
+ 303| 
+ 304|         r, w, k, a = map(lambda x: rearrange(x, 'b t (h d) -> b t h d', d=self.head_dim), (r, w, k, a))
+ 305|         v = rearrange(v, 'b t (h d) -> b t h d', d=self.head_v_dim)
+ 306| 
+ 307|         if self.training or seq_len >= 64 or torch.is_grad_enabled():
+ 308|             # if training, use chunk mode no matter how short the sequence is
+ 309|             # launching the triton kernel for just one token will actually be slower
+ 310|             o, recurrent_state = chunk_rwkv7(
+ 311|                 r=r,
+ 312|                 w=w,
+ 313|                 k=k,
+ 314|                 v=v,
+ 315|                 a=-kk,
+ 316|                 b=kk * a,
+ 317|                 scale=1.,
+ 318|                 initial_state=recurrent_state,
+ 319|                 output_final_state=use_cache,
+ 320|                 cu_seqlens=cu_seqlens,
+ 321|                 safe_gate=True,
+ 322|                 lower_bound=-0.6065306597126334,
+ 323|                 chunk_size=64,
+ 324|             )
+ 325|         else:
+ 326|             o, recurrent_state = fused_mul_recurrent_rwkv7(
+ 327|                 r=r,
+ 328|                 w=w,
+ 329|                 k=k,
+ 330|                 v=v,
+ 331|                 kk=kk,
+ 332|                 a=a,
+ 333|                 scale=1.,
+ 334|                 initial_state=recurrent_state,
+ 335|                 output_final_state=use_cache,
+ 336|                 cu_seqlens=cu_seqlens,
+ 337|             )
+ 338| 
+ 339|         update_layer_cache(
+ 340|             self,
+ 341|             past_key_values,
+ 342|             recurrent_state=recurrent_state,
+ 343|             conv_state=conv_state,
+ 344|             offset=r.shape[1],
+ 345|         )
+ 346| 
+ 347|         if self.fuse_norm:
+ 348|             o = self.g_norm(rearrange(o, '... h d -> ... (h d)'))
+ 349|         else:
+ 350|             o = self.g_norm(rearrange(o, 'b t h d -> (b t) (h d)')).view(batch_size, seq_len, -1)
+ 351| 
+ 352|         o = gate_output_correction(o, r, k, self.r_k, v, g)
+ 353|         o = self.o_proj(o)
+ 354| 
+ 355|         return o, None, past_key_values, v_first
+
+=== modeling_rwkv7.py 340..400（loss 计算）===
+ 340|             # Check if the layer contains the old 'x_x' parameter
+ 341|             if f"{attn_prefix}.x_x" in state_dict:
+ 342|                 logger.info(f"Migrating weights for layer {layer_idx} from RWKV7Attention version 1 to version 2...")
+ 343|                 # Extract the x_x parameter
+ 344|                 x_x = state_dict[f"{attn_prefix}.x_x"]
+ 345|                 with torch.no_grad():
+ 346|                     # Create new parameters for version 2
+ 347|                     state_dict[f"{attn_prefix}.x_r"] = x_x[0].unsqueeze(0).unsqueeze(0)
+ 348|                     state_dict[f"{attn_prefix}.x_w"] = x_x[1].unsqueeze(0).unsqueeze(0)
+ 349|                     state_dict[f"{attn_prefix}.x_k"] = x_x[2].unsqueeze(0).unsqueeze(0)
+ 350|                     state_dict[f"{attn_prefix}.x_v"] = x_x[3].unsqueeze(0).unsqueeze(0)
+ 351|                     state_dict[f"{attn_prefix}.x_a"] = x_x[4].unsqueeze(0).unsqueeze(0)
+ 352|                     state_dict[f"{attn_prefix}.x_g"] = x_x[5].unsqueeze(0).unsqueeze(0)
+ 353| 
+ 354|         # Call the parent method to load the modified state_dict
+ 355|         try:
+ 356|             super().load_state_dict(state_dict, strict=strict, assign=assign)
+ 357|         except TypeError:
+ 358|             # If the parent method does not support `assign`, fall back to strict loading
+ 359|             logger.warning(
+ 360|                 "`assign` parameter is not supported by the parent `load_state_dict` method. "
+ 361|                 "Falling back to default behavior.",
+ 362|             )
+ 363|             super().load_state_dict(state_dict, strict=strict)
+ 364| 
+ 365|     def forward(
+ 366|         self,
+ 367|         input_ids: torch.LongTensor | None = None,
+ 368|         attention_mask: Optional[torch.Tensor] = None,  # noqa
+ 369|         inputs_embeds: torch.FloatTensor | None = None,
+ 370|         past_key_values: Cache | None = None,
+ 371|         use_cache: bool | None = None,
+ 372|         output_attentions: bool | None = None,
+ 373|         output_hidden_states: bool | None = None,
+ 374|         return_dict: bool | None = None,
+ 375|         cu_seqlens: torch.LongTensor | None = None,
+ 376|         **kwargs: Unpack[dict],
+ 377|     ) -> tuple | BaseModelOutputWithPast:
+ 378|         if output_attentions:
+ 379|             warnings.warn("`RWKV7Model` does not `output_attentions` now, setting it to `False`.")
+ 380|             output_attentions = False
+ 381|         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+ 382|         output_hidden_states = output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+ 383|         use_cache = use_cache if use_cache is not None else (self.config.use_cache if not self.training else False)
+ 384|         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+ 385| 
+ 386|         # retrieve input_ids and inputs_embeds
+ 387|         if input_ids is not None and inputs_embeds is not None:
+ 388|             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+ 389|         if input_ids is None and inputs_embeds is None:
+ 390|             raise ValueError("You have to specify either input_ids or inputs_embeds")
+ 391| 
+ 392|         if inputs_embeds is None:
+ 393|             inputs_embeds = self.embeddings(input_ids)
+ 394|         hidden_states = inputs_embeds
+ 395| 
+ 396|         if use_cache and not isinstance(past_key_values, Cache):
+ 397|             past_key_values = Cache.from_legacy_cache(past_key_values)
+ 398| 
+ 399|         all_hidden_states = () if output_hidden_states else None
+ 400|         all_attns = () if output_attentions else None

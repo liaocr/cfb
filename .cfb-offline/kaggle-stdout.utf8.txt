@@ -1,0 +1,9 @@
+﻿python : 'gbk' codec can't encode character '\u21d2' in position 228: illegal multibyte sequence
+At line:4 char:1
++ python -m kaggle kernels output liaocr/cfb-rwkv7-compressor -p .cfb-o ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ('gbk' codec can...tibyte sequence:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Output file downloaded to .cfb-offline/kaggle-out\_dev.jsonl
+Output file downloaded to .cfb-offline/kaggle-out\_train.jsonl

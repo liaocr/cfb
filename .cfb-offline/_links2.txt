@@ -1,0 +1,237 @@
+##########################################################################
+# 1. ModelScope topdktu/unirec-0.1b
+{"Code":200,"Data":{"AigcAttributes":"{}","AigcIsTop":0,"AigcType":"","AlreadyStar":false,"ApplyMeta":"{}","ApprovalMode":1,"ApprovalNotifyEmail":"","Architectures":["VLMOCRForConditionalGenerationNew"],"Avatar":"https://img.alicdn.com/imgextra/i1/O1CN01yhHrHg1Pdl3UKPhGc_!!6000000001864-2-tps-88-88.png","Backbone":[],"BackendSupport":{"architectures":null,"backend_info":{"deploy_task":null,"lmdeploy":null,"lmdeploy_turbomind":null,"ollama":null,"sglang":null,"vllm":null},"model_id":"topdktu/unirec-0.1b"},"BaseModel":[],"BaseModelRelation":"","CardReady":0,"CardUnreadyReason":"","CertificationCreateBy":"","CertificationCreatedTime":-62135596800,"ChineseName":"0.1B超轻量模型统一文本和公式识别","CoverHeight":0,"CoverImages":[],"CoverWidth":0,"CreatedBy":"topdktu","CreatedTime":1764591730,"DashSdkParameter":"","Datasets":{},"DemoAvailable":0,"DemoUnavailableReason":"","Description":"","Domain":[],"Downloads":1057,"ExampleCodeAvailable":0,"ExampleCodeUnavailableReason":"","ForbiddenVisibilityUpdate":false,"Frameworks":["PyTorch"],"FromSite":"maas","Id":610430,"Integrating":0,"IntegrationFailureLog":"","IntegrationFailureReason":"","IsAccessible":1,"IsCertification":4,"IsHot":0,"IsNewModel":false,"IsOnline":1,"IsPreTrain":0,"IsPublished":1,"IsTop":0,"Language":[],"LastUpdatedTime":1767842264,"Libraries":["pytorch"],"License":"Apache License 2.0","LicenseLink":"","LicenseName":"","Meta":"","Metrics":["accuracy"],"ModelDetail":{},"ModelInfos":{},"ModelRevisions":null,"ModelSource":"USER_UPLOAD","ModelTools":"","ModelType":["m2m_100"],"MuseInfo":null,"NEXA":{"Catalogues":null,"ModelCover":"","ScientificField":"","Source":"","SubScientificField":null},"Name":"unirec-0.1b","NewVersion":"","NickName":"","OfficialTags":null,"OpenAiSwingDeployInfo":{"Order":0,"Recommend":null,"lmdeploy":{"eas":{"Script":"","requirements":""},"ens":{"Script":"","requirements":""},"fc":{"Script":"","requirements":""},"image_tag":""},"ollama":{"eas":{"Script":"","requirements":""},"ens":{"Script":"","requirements":""},"fc":{"Script":"","requirements":""},"image_tag":""},"pipeline":{"eas":{"Script":"","requirements":""},"ens":{"Script":"","requirements":""},"fc":{"Script":"","requirements":""},"image_tag":""},"vllm":{"eas":{"Script":"","requirements":""},"ens":{"Script":"","requirements":""},"fc":{"Script":"","requirements":""},"image_tag":""}},"Organization":{"ApplyFailureReason":"","ApplyReason":"","Avatar":"","CreateCompetition":false,"CreatedBy":"","Description":"","DisplayUrl":"","Email":"","FromSite":"","FullName":"","GithubAddress":"","GmtCreated":null,"GmtModified":null,"Id":0,"InitAdminMembers":"","IsApply":false,"IsCertification":"","Mobile":"","Name":"","Path":"","Roles":null,"StarCnt":0,"Status":0,"SubscribeVo":null,"Type":0},"PaiModelGalleryUrl":null,"PaiSdkParameter":null,"Path":"topdktu","ProtectedMode":2,"ReadMeContent":"\n# UniRec-0.1B: Unified Text and Formula Recognition with 0.1B Parameters\n\n[[Paper](https://arxiv.org/pdf/2512.21095)] [[Code](https://github.com/Topdu/OpenOCR)] [[ModelScope Demo](https://www.modelscope.cn/studios/topdktu/OpenOCR-UniRec-Demo)] [[Hugging Face Demo](https://huggingface.co/spaces/topdu/OpenOCR-UniRec-Demo)] [[Local Demo](#local-demo)] \\[[UniRec40M Dataset](https://huggingface.co/datasets/topdu/UniRec40M)\\]\n\n## Introduction\n\n**UniRec-0.1B** is a unified recognition model with only 0.1B parameters, designed for high-accuracy and efficient recognition of plain text (words, lines, paragraphs), mathematical formulas (single-line, mul
+
+--- README ---
+---
+license: Apache License 2.0
+tasks:
+  - ocr-recognition
+  - table-recognition
+  - lineless-table-recognition
+frameworks: PyTorch
+metrics:
+  - accuracy
+---
+
+# UniRec-0.1B: Unified Text and Formula Recognition with 0.1B Parameters
+
+[[Paper](https://arxiv.org/pdf/2512.21095)] [[Code](https://github.com/Topdu/OpenOCR)] [[ModelScope Demo](https://www.modelscope.cn/studios/topdktu/OpenOCR-UniRec-Demo)] [[Hugging Face Demo](https://huggingface.co/spaces/topdu/OpenOCR-UniRec-Demo)] [[Local Demo](#local-demo)] \[[UniRec40M Dataset](https://huggingface.co/datasets/topdu/UniRec40M)\]
+
+## Introduction
+
+**UniRec-0.1B** is a unified recognition model with only 0.1B parameters, designed for high-accuracy and efficient recognition of plain text (words, lines, paragraphs), mathematical formulas (single-line, multi-line), and mixed content in both Chinese and English. 
+
+It addresses structural variability and semantic entanglement by using a hierarchical supervision training strategy and a semantic-decoupled tokenizer. Despite its small size, it achieves performance comparable to or better than much larger vision-language models.
+
+
+## Get Started with ONNX
+
+### Install OpenOCR and Dependencies:
+
+```shell
+git clone https://github.com/Topdu/OpenOCR.git
+pip install onnxruntime
+cd OpenOCR
+huggingface-cli download topdu/unirec_0_1b_onnx --local-dir ./unirec_0_1b_onnx
+```
+
+### Inference
+
+```shell
+python ./tools/depolyment/unirec_onnx/infer_onnx.py --image /path/to/image
+```
+
+## Get Started with Pytorch
+
+### Dependencies:
+
+- [PyTorch](http://pytorch.org/) version >= 1.13.0
+- Python version >= 3.7
+
+```shell
+conda create -n openocr python==3.10
+conda activate openocr
+# install gpu version torch >=1.13.0
+conda install pytorch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 pytorch-cuda=11.8 -c pytorch -c nvidia
+# or cpu version
+conda install pytorch torchvision torchaudio cpuonly -c pytorch
+git clone https://github.com/Topdu/OpenOCR.git
+```
+
+### Downloding the UniRec Model from ModelScope or Hugging Face
+
+```shell
+cd OpenOCR
+pip install -r requirements.txt
+# download model from modelscope
+modelscope download topdktu/unirec-0.1b --local_dir ./unirec-0.1b
+# or download model from huggingface
+huggingface-cli download topdu/unirec-0.1b --local-dir ./unirec-0.1b
+```
+
+### Inference
+
+```shell
+python tools/infer_rec.py --c ./configs/rec/unirec/focalsvtr_ardecoder_unirec.yml --o Global.infer_img=/path/img_fold or /path/img_file
+```
+
+### Local Demo
+
+```shell
+pip install gradio==4.20.0
+python demo_unirec.py
+```
+
+### Training
+
+Additional dependencies:
+
+```shell
+pip install PyMuPDF
+pip install pdf2image
+pip install numpy==1.26.4
+pip install albumentations==1.4.24
+pip install transformers==4.49.0
+pip install -U flash-attn --no-build-isolation
+```
+
+It is recommended to organize your working directory as follows:
+
+```shell
+|-UniRec40M    # Main directory for UniRec40M dataset
+|-OpenOCR      # Directory for OpenOCR-related files
+|-evaluation   # Directory for evaluation dataset
+```
+
+Downloa
+
+##########################################################################
+# 2. HF fla-hub/rwkv7-0.1B-g1 (via hf-mirror)
+  files: ['.gitattributes', 'README.md', '__init__.py', 'added_tokens.json', 'config.json', 'generation_config.json', 'hf_rwkv_tokenizer.py', 'model.safetensors', 'modeling_rwkv7.py', 'rwkv_vocab_v20230424.txt', 'special_tokens_map.json', 'tokenizer_config.json']
+  tags : ['transformers', 'safetensors', 'rwkv7', 'text-generation', 'conversational', 'custom_code', 'en', 'zh', 'ja', 'ko', 'fr', 'ar', 'es', 'pt', 'arxiv:2503.14456', 'base_model:BlinkDL/rwkv7-g1']
+  dl=1838 likes=6
+--- README ---
+---
+base_model:
+- BlinkDL/rwkv7-g1
+language:
+- en
+- zh
+- ja
+- ko
+- fr
+- ar
+- es
+- pt
+license: apache-2.0
+metrics:
+- accuracy
+pipeline_tag: text-generation
+library_name: transformers
+---
+
+# rwkv7-0.1B-g1
+
+<!-- Provide a quick summary of what the model is/does. -->
+
+This is RWKV-7 g1 model under flash-linear attention format. The `g1` model series added significant more data and incorporated deep thinking abilities.
+
+## Model Details
+
+
+### Model Description
+
+<!-- Provide a longer summary of what this model is. -->
+
+- **Developed by:** Bo Peng, Yu Zhang, Songlin Yang, Ruichong Zhang
+- **Funded by:** RWKV Project (Under LF AI & Data Foundation)
+- **Model type:** RWKV7
+- **Language(s) (NLP):** Multilingal
+- **License:** Apache-2.0
+- **Parameter count:** 191M
+- **Tokenizer:** RWKV World tokenizer
+- **Vocabulary size:** 65,536
+
+### Model Sources
+
+<!-- Provide the basic links for the model. -->
+
+- **Repository:** https://github.com/fla-org/flash-linear-attention ; https://github.com/BlinkDL/RWKV-LM
+- **Paper:** https://arxiv.org/abs/2503.14456
+
+## Uses
+
+<!-- Address questions around how the model is intended to be used, including the foreseeable users of the model and those affected by the model. -->
+Install `flash-linear-attention` and the latest version of `transformers` before using this model:
+
+```bash
+pip install git+https://github.com/fla-org/flash-linear-attention
+pip install 'transformers>=4.48.0'
+```
+
+### Direct Use
+
+<!-- This section is for the model use without fine-tuning or plugging into a larger ecosystem/app. -->
+You can use this model just as any other HuggingFace models:
+```python
+from transformers import AutoModelForCausalLM, AutoTokenizer
+model = AutoModelForCausalLM.from_pretrained('fla-hub/rwkv7-0.1B-g1', trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained('fla-hub/rwkv7-0.1B-g1', trust_remote_code=True)
+model = model.cuda() # Supported on Nvidia/AMD/Intel eg. model.xpu()
+prompt = "What is a large language model?"
+messages = [
+    {"role": "user", "content": prompt}
+]
+text = tokenizer.apply_chat_template(
+    messages,
+    tokenize=False,
+    add_generation_prompt=True,
+    enable_thinking=True  # Default is True, set to False to disable thinking
+)
+
+model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+generated_ids = model.generate(
+    **model_inputs,
+    max_new_tokens=1024,
+    do_sample=True,
+    temperature=1.0,
+    top_p=0.3,
+    repetition_penalty=1.2
+)
+generated_ids = [
+    output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+]
+
+response = tokenizer.batch_decode(generated_ids, skip_special_tokens=False)[0]
+print(response)
+```
+
+### Training Data
+
+This model is trained on the World v3.5 with a total of more than 5 trillion tokens.
+
+## FAQ
+Q: safetensors metadata is none.
+
+A: upgrade transformers to >=4.48.0: `pip install 'transformers>=4.48.0'`
+
+## Thinking Prompt
+```
+<|rwkv_tokenizer_end_of_text|>User: <Your Question Here>
+
+Assistant: <think
+```
+Don
+
+##########################################################################
+# 3. 腾讯云文章 2625378
+  原始长度 40000
+  标题: OpenDoc-0.1B：0.1B参数掀起文档解析领域的轻量革命-腾讯云开发者社区-腾讯云
+  正文:  OpenDoc-0.1B：0.1B参数掀起文档解析领域的轻量革命-腾讯云开发者社区-腾讯云 LiuDag OpenDoc-0.1B：0.1B参数掀起文档解析领域的轻量革命 关注作者 腾讯云 开发者社区 文档 建议反馈 控制台 登录/注册 首页 学习 活动 专区 圈层 工具 MCP广场 文章/答案/技术大牛 搜索 搜索 关闭 发布 LiuDag 社区首页 &gt; 专栏 &gt; OpenDoc-0.1B：0.1B参数掀起文档解析领域的轻量革命 OpenDoc-0.1B：0.1B参数掀起文档解析领域的轻量革命 LiuDag 关注 发布 于 2026-01-29 14:39:23 发布 于 2026-01-29 14:39:23 1K 0 举报 现在AI模型都爱往千亿、万亿参数上堆，卷得没边了。而复旦大学视觉与学习实验室去年12月开源的OpenDoc-0.1B，偏要反其道而行之——仅用0.1B（1亿）参数的体量，就在权威基准OmniDocBench v1.5上拿下90.57%的高分，甚至超过了不少多模态大模型。这款专门盯着文本、公式、表格识别的模型，算是狠狠打破了“参数越大性能越好”的刻板印象，用巧思设计把轻量和高性能捏在了一起。 01 精准卡位：不跟风卷参数，只戳真痛点 文档解析是OCR的核心活儿，之前一直被多模态大模型霸着场。这些大模型处理复杂场景确实有一手，但参数动辄1B到3B，算力耗得多、推理慢半拍，部署起来成本高得让人肉疼。OpenDoc-0.1B团队倒是很务实，深挖真实场景后发现：97.43%的需求其实就集中在文本和公式上，这俩活儿还占了近九成的解析耗时。 摸清这个规律后，OpenDoc-0.1B干脆放弃了“大而全”的套路，走“小而精”的路线——不贪多求全覆盖所有文档元素，就盯着核心需求发力。通过砍掉无关计算、优化核心任务，让这个小模型在文本、公式、表格识别上实现精准打击。这么一来，不仅参数和算力需求大幅下降，推理速度快了3-4倍，资源消耗也砍了八成，刚好踩中企业落地时对效率和成本的双重诉求。 02 架构拆解：两阶段流水线，高效又能打 OpenDoc-0.1B采用“版面分析+内容识别”的两阶段架构，说通俗点就是先画“地图”再找“路线”，既保证识别准头，又把推理效率拉满，两者配合得相当默契。 第一阶段：PP-DocLayoutV2版面分析 第一阶段版面分析，交给PP-DocLayoutV2来搞定。这个模块的作用就是给文档画张结构地图，快速定位文本块、公式、表格这些区域，还能理清阅读顺序，给后续识别铺路。值得一提的是，PP-DocLayoutV2自身也走轻量路线，参数不到0.1B，推理快到以毫秒计，就算遇到排版杂乱的文档，也能精准划分区域，给下游任务打牢基础。 第二阶段：UniRec-0.1B统一识别模型 第二阶段的内容识别，核心是自研的UniRec-0.1B统一识别模型，相当于整个系统的“大脑”。它最妙的地方的是打破了文本、公式、表格的识别壁垒，一个模型就能搞定多任务。比起传统方案里多个模型拼拼凑凑的复杂逻辑，这种统一架构不仅好部署，还减少了模型间的适配内耗，效率自然再上一个台阶。 03 核心巧思：小模型逆袭，靠的是这两点 0.1B参数能干出超越大模型的活儿，OpenDoc-0.1B靠的不是堆料，而是数据和算法的双重巧思，把有限参数的潜力挖到了极致。 数据集打底：4000万样本喂出高精度 数据就像模型的燃料，没好燃料再强的架构也白搭。为了解决文本与公式统一识别的数据缺口，团队专门构建了含4000万样本的UniRec40M数据集。中英双语全覆盖，数字文档、扫描件、手写笔记等场景也都囊括在内，还特意平衡了纯文本、公式、混合内容的样本比例，避免模型练偏了。正是这份精心打磨的数据集，让小模型在训练阶段就见多识广，为高精度识别攒足了底气。 算法点睛：两大优化解锁参数潜力 层级监督训练（HST）是提升模型结构理解能力的关键招。文档天然有字符、词语、段落的层级关系，传统模型往往只能输出一堆平铺的文本，根本还原不了原有的逻辑结构。HST的思路很巧妙，通过插入专属层级标记，引导模型摸清不同层级的关联，这样输出的结果不仅准确，还能贴合文档原本的排版逻辑，不会出现“单词接龙”似的生硬效果。 而语义解耦分词器（SDT），则解决了小模型的语义混淆难题。传统大模型的分词器词汇表又大又杂，长尾分布严重，同一个符号在文本和公式里可能代表不同意思，给小模型训练添了不少麻烦。SDT针对性地给文本和公式设计了独立分词器，还把词汇表精简到56371个，既消除了语义歧义，又减轻了模型的训练和推理负担，让小模型能专心聚焦核心语义的识别。 04 落地实测：轻量才是场景通吃的关键 OpenDoc-0.1B的轻量特性，可不是纸上谈兵，在实际场景中有着不可替代的优势，真正能做到“需要的地方就能上”。 比如移动端和边缘设备场景，它超低的参数需求能实现本地离线部署，户外巡检、现场办公这些场景的文档处理就能做到“无感化”——巡检人员用手机扫一下设备说明书，AI立马就能识别关键参数，压根不用依赖云端算力。在高并发云端服务里，它更是能实现成本“降维打击”，处理1000份文档的成本只有大模型方案的四分之一，吞吐量却提升3倍，能帮企业省下不少AI服务开支。还有历史文献数字化这类场景，某档案馆用它处理50万份文档，时间从3个月压缩到15天，时间和成本都省了不少。 05 收尾闲谈：轻量模型的破局价值 从大型机到PC，从云端到边缘，计算技术一直朝着小型化、普及化的方向走，OpenDoc-0.1B就是这个趋势在AI领域的鲜活例子。它用实际表现证明，AI的价值不在于追求“无所不能”的全能模型，而在于在特定场景里把“精准高效”做到位，让技术真正落地普及。 作为开源项目，OpenDoc-0.1B已经把代码放到了GitHub的OpenOCR仓库，还提供了Hugging Face在线Demo和可部署的模型权重，基于PaddleOCR生态的设计也降低了二次开发的门槛。未来，这款轻量模型大概率会在办公自动化、教育科研、企业数字化等更多场景扎根，给各行各业的文档处理提供高性价比的AI方案，也为小模型在垂直领域的应用趟出一条可行的路。 最后附上核心资源地址，方便感兴趣的朋友上手实操： GitHub开源仓库（含完整代码、部署教程） ： https://github.com/Topdu/OpenOCR Hugging Face在线Demo及模型权重 ：可直接搜索“topdu/OpenDoc-0.1B-Demo”访问，支持在线上传文档测试效果，也可下载权重本地部署。 本文参与 腾讯云自媒体同步曝光计划 ，分享自微信公众号。 原始发表：2026-01-28 ，如有侵权请联系 cloud
+
+##########################################################################
+# 4. 知乎 p/2066564289712894830
+  原始长度 45
+  标题: ?
+  正文: __FAIL__ HTTPError: HTTP Error 403: Forbidden

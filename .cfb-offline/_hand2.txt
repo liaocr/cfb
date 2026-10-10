@@ -1,0 +1,71 @@
+==============================================================================
+[最短] flaky-timeout-s0-r7  raw=29903 draft=419 比值=0.014
+--- CTX ---
+CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次，本地从不失败。CI 机器 2 核，本地 16 核。最近 5 次 CI 日志在 ci/last5.log。请找出原因并修好，修好后说明依据。
+
+【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）
+- 上一轮写下的验收：验收：跑 `node verify.mjs`。
+- 已走过的路：（共 11 条调用，详见下方【延续段】；曾涉 ci/last5.log dev/null 200 1712 test/hedge.selftest.mjs assert/strict package.json src/distill.js test/helpers.mjs tmp/../ tmp/ http.createServer r.end s.listen console.log s.address grep/sed n/cat/ls/head/tail/wc/find verify.mjs tmp/o.）
+
+【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）
+已走过的路：第 1 轮 bash `ls -la; echo ---; cat ci/last5.log 2>/dev/null |
+--- DRAFT 全文 ---
+已落定的决定（原文逐字）：「So the timer fired at ~1700ms and primarySettled was still false at that point.」
+
+落点：test/helpers.mjs（只动这一处；其余路径原文已自证不必动：「Hmm the output shows after helpers: $ cat verify.mjs 2>/dev/null — no wait that's the tool result formatting.」）
+
+原文还悬着这句，但它不阻塞落 edit：「But the timer callback checks primarySettled.」
+
+验收：跑 `node verify.mjs`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 test/helpers.mjs 继续查，不要改测试聚合方式。
+--- raw 前 500 ---
+Let me think about the actual race condition. The test: primaryDelayMs=1500, hedgeAfterMs=1600. The primary fetch resolves at 1500ms (server responds). The timer fires at 1600ms. But the test asserts hedgeStartedAt === null, meaning the timer must NOT have fired before primarySettled became true.
+
+The problem: the timer callback checks `primarySettled`. primarySettled is set in `primary.then(...)`. But `await primary.catch(() => {})` — the promise resolution. The timing: server responds at 1500m
+
+==============================================================================
+[p25] eacces-config_long-horizon-s0-r5  raw=5295 draft=358 比值=0.068
+--- CTX ---
+仓库里 `npm test` 在 test/birth.selftest.mjs 上报 EACCES: permission denied, open '/home/u/.dsh/storages/cot-form-b/trace.log'。本地是普通用户 u（uid 1000），没有 sudo。请找出原因并修好，修好后说明依据。
+
+【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）
+- 已走过的路：（共 8 条调用，详见下方【延续段】；曾涉 dev/null home/u/.dsh/storages/ home/u/.dsh/storages/cot-form-b/ package.json README.md verify.mjs r.status console.log r.stderr Error/.test src/ test/ src/trace.legacy.js trace.js src/trace.js trace.compat.js src/trace.compat.js test/birth.selftest.mjs test/hedge.selftest.mjs docs/incident-runbook.md home/u/ home/u/.dsh home/u/.dsh/stora
+--- DRAFT 全文 ---
+已落定的决定（原文逐字）：「The fix: the test should use the isolated temp home.」
+
+落点：test/birth.selftest.mjs（只动这一处；其余路径原文已自证不必动：「The bug is the test passing the wrong env var.」）
+
+原文还悬着这句，但它不阻塞落 edit：「Wait, the ls -la /home/u/.dsh output shows the content of storages?」
+
+验收：跑 `npm test`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 test/birth.selftest.mjs 继续查，不要改测试聚合方式。
+--- raw 前 500 ---
+Wait, the `ls -la /home/u/.dsh` output shows the content of storages? Actually output confusingly concatenated. Anyway.
+
+Confirmed: env has DSH_HOME=/home/u/.dsh and CFB_REAL_DSH_HOME=/home/u/.dsh. The test passes `home: process.env.CFB_REAL_DSH_HOME` which is the real root-owned dir → EACCES.
+
+verify.mjs sets DSH_HOME=tmp for the child process. But the test ignores DSH_HOME and uses CFB_REAL_DSH_HOME, which points to /home/u/.dsh.
+
+The fix: the test should use the isolated temp home. The intend
+
+==============================================================================
+[中位] sse-truncated_long-horizon-s0-r6  raw=3576 draft=409 比值=0.114
+--- CTX ---
+线上偶发：压缩结果被截断却被当成成功写进了会话。trace 片段在 trace/last.log，网关说明在 docs/gateway.md。`npm test` 目前是绿的（测试没覆盖这个情况）。可用 `node scripts/replay-truncated.mjs` 复现（回放一条被切断的流，打印 trace）。请找出原因并修好，修好后说明依据。验收：被切断的流（只补 [DONE]、或没有任何结束信号）必须 settled ok:false 且 birth 走 passthrough；完整流（含 finish_reason=length）仍要 condensed。
+
+【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）
+- 上一轮写下的验收：验收：跑 `npm test`。
+- 已走过的路：（共 14 条调用，详见下方【延续段】；曾涉 package.json dev/null docs/gateway.md README.md docs/incident-runbook.md trace/last.log scripts/replay-truncated.mjs src/birth.js src/transport.js src/transport.legacy.js src/transport.co
+--- DRAFT 全文 ---
+已落定的决定（原文逐字）：「So the fix: finish should be finish (the real finish_reason) possibly null.」
+
+落点：src/transport.legacy.js（只动这一处；其余路径原文已自证不必动：「- Truncated stream (only [DONE], or no ending signal at all) → settled ok:false and birth passthrough.」）
+
+原文还悬着这句，但它不阻塞落 edit：「return { out, finish: finish || (done ?」
+
+验收：跑 `npm test`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 src/transport.legacy.js 继续查，不要改测试聚合方式。
+--- raw 前 500 ---
+Reproduced: truncated stream (only [DONE], no finish_reason) yields ok:true and birth-condensed. Root cause: `assembleSseFrames` sets `finish: finish || (done ? 'stop' : null)` — it fabricates a `'stop'` finish_reason when it sees `[DONE]` even though no real finish_reason was present. Then settle's `ok = r.finish != null || ...` → true.
+
+The gateway doc: normal end has finish_reason then [DONE]. Truncated: only [DONE] without finish_reason → incomplete.
+
+Fix: don't fabricate finish from [DONE].
+

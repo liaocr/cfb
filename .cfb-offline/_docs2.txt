@@ -1,0 +1,1411 @@
+
+
+########## docs\ARCHITECTURE.md (9735 chars) ##########
+# 生产插件与认知编译器架构（v14.25.4 复核，开发者视角）
+
+> 面向改代码的开发者与 AI 模型：模块怎么分、数据怎么流、哪些不变式不能碰、加功能该改哪里。
+> 快速上手见根目录 [`README.md`](../README.md)；闭环训练与官方基准见 [`TRAINING-AND-BENCHMARK.md`](TRAINING-AND-BENCHMARK.md)；历史实验与成本定律见 [`HISTORY-AND-EXPERIMENTS.md`](HISTORY-AND-EXPERIMENTS.md)。
+
+---
+
+## 0. 架构全景（三个内聚平面）
+
+仓库 100% 聚焦于 **思维链出生即压缩（Birth-time CoT Compression / 认知编译器）**，由三个内聚平面组成：
+
+| 平面 | 入口 | 职责 | 守恒纪律 |
+|---|---|---|---|
+| **① 生产插件核心** | `index.js` → `src/`（零依赖 ESM 模块，数量见 `../README.md` 文首水位块） | 在宿主流 `llm/stream` 内拦截 `reasoning` 块，完成 CAS 归档 + 副模型认知编译 + 程序门核真（`compileV4Direct`）+ 程序部件拼接（`spliceProgramParts`）+ 六道收网门（`birthFinish` → `birthAccept`，清单见 §2.1） | 历史稿逐字回归 + 全量 selftest（读数见 §5） |
+| **② 统一科学训练闭环与双轨裁判** | `tools/cfb-cycle.mjs` + `tools/cfb-judge.mjs` + `tools/bench-run.mjs` + `tools/traj-run.mjs` | 三模式闭环（手写探顶 → 金标基准 → 影子分叉轨迹）+ 四维全空间策略搜索 + 双轨（确定性规则 × LLM 语义）交叉验证与岭回归校准 + 五大国际官方基准成绩单 | 零污染客观锚点 + 跨计划 CAS 缓存 + 序贯 $e$-value 安全晋升 |
+| **③ 有界 API 账本与训练数据核** | `tools/effect-ready.mjs` + `tools/bounded-ab.mjs` + `src/training-core.js` | 双平面预占 API 预算（一 scope 一冻结批准，收据入库 `transfer/`）+ 5 家族连通组严格隔离的 SFT / DPO / In-Context DPO 导出 | 严禁跨家族泄漏与未批准真实扣费 |
+
+**状态目录职责**：
+- `.cfb-offline/`（gitignored）：**可再生**离线闭环状态（策略池 / 计划 / 金标 / 效度账本 / 飞轮对）。新克隆执行 `npm run restore` 即可从 `transfer/cycle-state.json` 完整重建。
+- `.cfb-runtime/`（gitignored）：**不可再生**私有运行仓与轨迹回执（bounded-ab 各 scope 私有仓、`traj/tN`）。
+- `transfer/`（入库）：公开水位收据、周期快照 `cycle-state.json`、`gold/` 金标库、历史实验数据与 [`HANDOFF.md`](../transfer/HANDOFF.md)。
+
+---
+
+## 1. `src/` 模块依赖地图（自顶向下，无环）
+
+包入口 `index.js` 只做导出（`package.json` 的 `exports` 仅开放 `.`），宿主拿到 `name` / `inject` / `apply`，其余纯函数导出供自测与离线闭环工具直接调用：
+
+```
+plugin.js ─────────────────────────────── 组合根：apply() 注册 agent/pre-step 与 llm/stream 钩子
+  ├─ boot-record.js       BOOT 上岗自证（生效配置、SELF_ID / DEP_ID、版本号）
+  ├─ host-follow.js       调用级模型 / provider 跟随（派生单次调用配置副本，共享 cfg 永不改写）
+  ├─ session-tracker.js   会话归属追踪（多会话交错 ⇒ 不可证，原文放行）
+  ├─ handle-probe.js      CAS 句柄读回探针（可读回 / 读不回 / 不可证）
+  ├─ birth.js ─────────── ★ 出生即压缩主干：birthTransform / birthStart / birthFinish / computeAdaptiveBirthControl(λ) / readPressure
+  │    ├─ fidelity.js       逐字标识符召回率（观测）+ 发明标识符拦截闸（inventedIdentifiers）
+  │    ├─ tokens.js         按书写系统区分的 token 粗估（中文 0.6/字、其余 0.3/字）
+  │    └─ trace.js          trace 落盘（64 MiB 轮转）与 settled 字段白名单
+  ├─ distill.js ───────── 副模型调用（重试降级 / 对冲 hedge / 传输 trace）+ makeBirthCompiler + In-Context DPO 范例注入
+  │    ├─ prompts.js        提示词（v3 / v2 / v4-ops / v4d6 直写）+ modularPromptPrune 反稀释动态裁剪
+  │    ├─ compile-v4.js     ★ v4 认知编译器：JSON ops 编译（parse→validate→select→render）+ compileV4Direct 直写程序门 + compactStateParts
+  │    ├─ segment-v4.js     v4 流式增量分段编译（长思维链边写边编，收网只等尾段）
+  │    ├─ policy.js         可训练策略空间（提示词 / 部件开关 / 制度参数 / 范例对）校验与 digest 计算
+  │    └─ transport.js ─ provider.js ─ config.js
+  ├─ messages.js          出站消息溯源、台账（ledgerBlock）提取、有界延续段（continuationPath:'bounded'）与曾涉文件出处保留
+  ├─ evidence-program.js ─ evidence-store.js   宿主显式类型化证据程序与 CAS 签名块仓（默认关）
+  └─ training-core.js     纯函数训练内核：5 家族连通组切分、SFT/DPO 导出、严格逐项发布门
+```
+
+---
+
+## 2. 核心数据流与四维极限化机制
+
+### 2.1 `birth`：一个 `reasoning` 块的完整生命期（`src/birth.js`）
+
+```
+birthTransform(inner, deps)
+  block-start(reasoning) → birthHoldNew + 立即透传
+  reasoning-delta        → 累积原文 + 实时透传（live）；若开启 v4 流式增量则同步喂给 segmenter
+  block-end(reasoning)   → birthStart(entry, deps)   ← 同步返回 task，绝不阻塞主流
+                              1. 动态 λ 门槛判定：computeAdaptiveBirthControl(raw, ctx, pressure, cfg)
+                                 - 默认 birthMinChars = 3100（cruise 区保持原值）
+                                 - birthAdaptiveFloor: true 时按三区分派（下为基准 3100 的实测值）：
+                                   fresh-early（第 1 轮 ∧ spinScore<0.25 ∧ 水位<0.20）→ ×1.20 = 3720（保护早期探索）；
+                                   high-spin-or-long-horizon（轮次≥4 ∨ 连续只读≥3 轮 ∨ spinScore≥0.45 ∨ 水位≥0.50）
+                                     → ×0.65、下限 1600 = 2015，且输出上限 ×0.85（收紧膨胀）
+                              2. 内存秒算句柄：deriveArtHandle(sessionId, raw)
+                              3. 并行发起：diskP = deps.archive(raw) 与 distillP = deps.distill(raw, signal, ...)
+  finish                 → birthFinish(task, deps)   ← 押后至流结束收网
+                              等 min(finishWaitMs, 实际耗时)；已收到 200 响应头则宽限 finishHeadersGraceMs（一次）
+                              六道门禁顺序：归档成功 → 编译非空 → 无发明标识符 → 字符净省 → token 严格下降 → 替换成功（condensed）
+                              任何一道未过 ⇒ birthCancelFlying 立即取消在途请求，100% 原文放行（passthrough）
+```
+
+六道门的顺序、拒收码与"哪些要求不在这六道里"，由 `tools/doc-watermark.mjs` 从 `src/birth.js` 同源渲染，与 `../README.md` §4.1 逐字一致（漂移即 `--check` 报错）：
+
+<!-- watermark:begin 由 node tools/doc-watermark.mjs --write 生成，勿手抄 -->
+1. **归档成功** —— 拿不到可读回的 CAS 句柄 ⇒ 不换原文（`birth.js` 的 archive 结果先行判定）
+2. **编译非空** —— 空稿或纯空白 ⇒ `empty-candidate`，原文放行
+3. **无发明标识符** —— 稿里的路径 / 反引号代码 / camelCase / snake_case 必须逐字出自 `raw ∪ ctx ∪ 程序部件`；发明或核验异常 ⇒ 原文放行
+4. **字符净省** —— `raw − candidate ≥ birthMinSavedChars`（默认 50），否则 `no-gain`
+5. **token 严格下降** —— 字符达到净省门槛但 token 没降 ⇒ `no-token-gain`（估算按书写系统区分，不是真 tokenizer）
+6. **替换成功（condensed）** —— 以上全过才原位改写；任何一步不达标或异常 ⇒ 取消在途请求并原文放行
+
+> **结构闭合**（判读分支闭合、三元组 `new_text ≠ old_text`）与**死路不复活**是**编译阶段**的要求（`compileV4Direct` / `src/compile-v5-local.js`），不在上面这六道收网判定里 —— 两段别混成一条闸。
+<!-- watermark:end -->
+
+### 2.2 `compile-v4`：两条认知编译通路（`src/compile-v4.js`）
+
+1. **`v4d6` 直写通路（`compressPrompt: 'v4', compressV4Direct: true`，当前主力）**：
+   - **压缩前准备**：`messages.js` 从本轮工具输出中剥出带行号的**在手代码行**（`inHandLines`）与历史**台账/延续段**（`applyCtxContinuationPolicy`），若策略含 `exemplars` 则由 `distill.js` 自动拼入 In-Context DPO 正反对比范例，若开启 `modularPromptPrune: true` 则由 `prompts.js` 动态剥离当轮不触发的提示词规则块。
+   - **程序门核真（`compileV4Direct`）**：副模型输出主模型原生语域的紧凑散文后，代码机械校验：
+     - 反引号标识符与代码锚点必须逐字有出处；
+     - 尾段判读分支必须闭合（`如果…就…`），不得留悬空问句；
+     - `edit_file` 三元组 `old_text` 必须出自【在手】行，且 `new_text ≠ old_text`；
+     - 宿主工具名自动对齐。
+   - **程序部件拼接（`spliceProgramParts`）**：
+     - `continuationPath: 'bounded'`：将 O(轮数) 增长的已走路径截断为最近 2 条，并在 `【台账】` 摘要末尾保留被截断轮次涉及的文件/标识符出处（`；曾涉 ...`），彻底消除 bounded 续接下的 `invented-identifier` 误杀；
+     - `statePartsMode: 'compact'`（`compactStateParts`）：自动扫描压缩正文已逐字包含的反引号锚点，剔除 `【已排除】` 与 `【未解】` 中的重复复述行（当轮净省再增 `+50~+90 tok`）。
+
+2. **`v4-ops` 结构化条目通路（`compressV4Direct: false`）**：
+   - 副模型只输出八类带类型的 JSON 原子条目（`FACT / COMPUTED / INCUMBENT / REFUTED / SHELVED / OPEN / PLAN / READY`）；
+   - `compileV4` 依次执行 `parseOps` → `validateOps`（I1 锚点逐字、I2 标识符出处、I3 证伪带替代、I4 无观测否定降级为搁置、I5 工具来源不写主观决定、I7 同键留最新、I8 禁第二人称）→ `selectOps`（必留项 + 价值/字符比贪心装箱 + 依赖闭包）→ `renderOps`（证据定粘性、替代先行+否定就近）。
+
+---
+
+## 3. 十二条核心不变式（违反即判定回归失败）
+
+1. **H2 首次出站不变律**：`reasoning` 块只能在尚未出站装配前替换（`birth` 模式天然满足）。
+2. **归档先于压缩**：拿不到可读回的 CAS 句柄，绝不替换原文。
+3. **观测绝不碰坏主流**：任何内部或网络异常只降级为「原文放行」，主流自身的错误原样抛出。
+4. **零硬编码猜测**：模型名、端点、密钥均跟随宿主 provider，解析不出即放行。
+5. **零编造标识符（I2）**：压缩稿中的路径、URL、反引号代码、`camelCase`、`snake_case`、`file.ext` 必须逐字出现在原文或程序部件出处中，否则 `invented-identifier` 原文放行。
+6. **字符 ≠ 账单费用**：字符数仅度量上下文余量；真实省钱与否以端到端 token 账单与 `birthMinChars` 成本模型为准。
+7. **评估态零副作用**：`dryRun: true`（默认）下不写 CAS、不调副模型、不改流。
+8. **句柄可读回验证**：内存预推句柄必须通过读回探针验证后才生效。
+9. **放弃即取消**：任何走原文放行的分支都经由 `birthCancelFlying` 立即取消在途请求。
+10. **Token 必降门禁**：字符缩短但估算 token 未降 ⇒ `no-token-gain` 原文放行。
+11. **共享配置不可变**：运行期随调用变化的模型/provider 仅写入 `host-follow.js` 派生的单次调用副本。
+12. **流归属不可证不归档**：多会话交错时缺省原文放行，严禁跨会话污染 CAS。
+
+---
+
+## 4. 「改哪里」速查表
+
+| 需求场景 | 修改位置与同步要求 |
+|---|---|
+| 新增生产配置项 | `src/config.js` 的 `DEFAULTS` → `index.d.ts` → `test/core.selftest.mjs` §10 |
+| 开放新的可训练策略旋钮 | `src/policy.js` 的 `CONFIG_KEYS` / `REGIME_KEYS` → `test/closed-loop-v4.selftest.mjs` |
+| 修改提示词或反稀释规则 | `src/prompts.js`（版本号由 `compressPromptVersion` 统一裁决；v2/v3 共享规则 1~6 由 `compress.selftest.mjs` §1b 守护） |
+| 修改 v4 程序门或部件拼接 | `src/compile-v4.js`（`compileV4Direct` / `spliceProgramParts` / `compactStateParts`）+ `src/messages.js`（`applyCtxContinuationPolicy`） |
+| 修改闭环评测或官方基准公式 | `tools/helpers/ruler.mjs`（`passAtK` / `passHatK` / `arenaElo` / `industryScorecard`）+ `tools/cfb-cycle.mjs` |
+| 修改双轨语义裁判或校准器 | `tools/helpers/judge-layer.mjs` + `tools/cfb-judge.mjs` |
+| 新增自测套件 | `test/<name>.selftest.mjs`（末尾打印 `PASS=n FAIL=m`），加入 `verify.mjs` 的 `ORDER` |
+| 修改任何入库文件后 | 运行 `npm run manifest` 更新 `MANIFEST.sha256`，再跑 `npm run verify:offline`；改了规模（加模块/套件/金标）或文档水位 ⇒ `npm run watermark:record && npm run watermark` |
+
+---
+
+## 5. 自测套件矩阵
+
+套件总数、断言数与用时**不在本节手抄**：`../README.md` 文首水位块由 `node tools/doc-watermark.mjs --record` 记账生成（隔离内 / 联网两态各一组），`npm run watermark:check` 负责核对。
+运行 `npm run verify:offline` 在真断网 Linux 命名空间里并发执行全部套件（每个套件使用独立临时 `DSH_HOME`）；下表按类别列出**全部**套件 —— 新增套件必须同时进 `verify.mjs` 的 `ORDER` 与本表，`test/doc-watermark.selftest.mjs` 会核对磁盘与 `ORDER` 的登记数。
+
+| 类别 | 套件名称 | 覆盖范围 |
+|---|---|---|
+| **生产核心与运行时（14 套）** | `provider-endpoint`, `core`, `compress`, `v4`, `v4-live`, `birth`, `robustness`, `hedge`, `hook-wiring`, `hardening`, `concurrency`, `protocol`, `branches`, `v12` | 端点解析、配置归一化、编译与流式路径、并发隔离、硬化及兼容性 |
+| **科学闭环与评测（12 套）** | `api-budget`, `effect-eval`, `eval-ready`, `eval-ready-v2`, `eval-visible-v3`, `eval-reasoning-v8`, `offline-lab`, `judge-calibration`, `closed-loop`, `closed-loop-v3`, `closed-loop-v4`, `training-ready` | 预算、效果/推理评估、离线闭环、双轨裁判校准、训练准备度 |
+| **金标尺子与写稿纪律（5 套）** | `gold-standard`, `gold-attest`, `gold-use-split`, `gate-cjk-pairing`, `silver-shape` | `cfb.gold-standard/1` 十二轴判据本身、盖章与只降不升链路、标尺/训练料用途隔离、反引号配对段不得误杀中文散文、银标形状检查器 |
+| **模式 1 质量与标注（3 套）** | `mode1-quality`, `mode1-quality-parity`, `micro-label-review` | 模式 1 真机配对质量与 $0 判据平价、人工盲审工具（审核者看不到规则、坏行被拒、digest 存活） |
+| **微模型测量臂（2 套）** | `micro-general-arm`, `micro-generator` | `micro-general-arm`：原型命中 vs 真实用户仓兜底路径的差（`micro-gap-map.json`）与 README 引用逐位对齐；`forceGeneralPath` 三处齐备；一次性盲测账本不被重跑；生产权重哈希可核。`micro-generator`：微模型生成器（锻造语料 / 冻结闸 / 盲测集生成）的确定性回归 |
+| **完整性与审计（6 套）** | `manifest-ignore`, `audit-2026-09-27`, `micro-runtime`, `micro-ruler`, `evidence-program`, `doc-watermark` | 清单忽略规则、历史审计、生产 JSON 权重加载/JS scorer、微模型评测尺子与数据回归、类型化证据程序、文档水位（含 5 个负例夹具） |
+
+
+########## docs\HISTORY-AND-EXPERIMENTS.md (4999 chars) ##########
+# 历史实验、成本定律与工程审计全集（v11.5–v14.18 合一版）
+
+> 本文档将原先分散在 `docs/analysis/` 下的 25 篇阶段性实验报告、成本推导与审计记录浓缩为一篇结构化档案，完整保留全部具有长期参考价值的**实测定律、数学公式、真机数据与淘汰教训**。原始逐日明细均可通过 `git log` 随时追溯。
+
+---
+
+## 1. 经济学与成本定律（v11.5–v11.11）
+
+### 1.1 `birthMinChars = 3100` 盈亏平衡公式
+出生即压缩并非越短越省钱——每次压缩都要付出「副模型读取原文 + 生成摘要」的一次性成本，而收益来自后续 $K$ 轮主模型少读的上下文（且受 KV Cache 命中率 $h$ 折减）：
+
+$$\Delta \text{Cost} = \underbrace{K \cdot (1 - r) \cdot L \cdot \bigl(h \cdot p_{\text{hit}} + (1 - h) \cdot p_{\text{miss}}\bigr)}_{\text{后续 } K \text{ 轮主模型节省}} - \underbrace{\bigl(L \cdot p_{\text{sub,in}} + r \cdot L \cdot p_{\text{sub,out}}\bigr)}_{\text{当轮副模型压缩开销}}$$
+
+- 代入 DeepSeek 实测参数（压缩比 $r \approx 0.28$、平均阅读轮数 $K \approx 4.2$、缓存命中率 $h \approx 0.72$），**单块盈亏平衡点为 $L_{\min} \approx 3100$ 字符（约 1200 tokens）**。
+- **v14.17 升级（`birthAdaptiveFloor: true`）**：将静态常数升级为理论第四卷的轮次与停滞感知控制器 $\lambda(t, s)$（实现：`src/birth.js` 的 `computeAdaptiveBirthControl`）。基准 `3100` 下实测三区：**fresh-early**（第 1 轮 ∧ 低打转 ∧ 低水位）→ `×1.20` = **3720**，保护探索并省去无谓副调用；**cruise** → 保持 **3100**；**high-spin-or-long-horizon**（轮次 $\ge 4$ ∨ 连续只读 $\ge 3$ 轮 ∨ 高打转 ∨ 水位 $\ge 0.50$）→ `×0.65`、下限 `1600` = **2015**，并同步收紧输出上限 `×0.85`。
+
+### 1.2 传输层与对冲（Hedge）实测定律
+- **Keep-Alive 复用（`_probe-keepalive-win.mjs`）**：开启长连接复用可省去 TLS 握手，单次副模型调用 TTFT 降低 `60–110 ms`。
+- **连接预热默认关闭（`_probe-prewarm-3way.mjs`）**：三组对照实测表明盲目 `HEAD/OPTIONS` 预热在部分中转端点返回 404 并污染连接池，因此 `prewarm` 默认设为 `false`。
+- **对冲纪律（`hedge.selftest.mjs`）**：仅当 `hedgeAfterMs > 0` 且 `maxAttempts <= 1` 时允许发出至多 1 份在途对冲请求；一旦收到首个 `200` 响应头，立即取消另一路请求并赋予 `finishHeadersGraceMs` 宽限期。
+
+---
+
+## 2. 认知编译器演进与单步反事实评测（v12.0–v12.8.9）
+
+### 2.1 路线淘汰与收敛记录
+| 历史路线 | 淘汰版本 | 实测结论与淘汰原因 |
+|---|---|---|
+| `distill` / `rules` 事后写回 | v11.8 | 违反宿主 `H2` 首次出站不变律（恒被 `replace-refused-h2` 拒绝） |
+| `compress-x1` 抽取式句子裁剪 | v12.0 | 实测句子保留率高达 80–92%，几乎无净省且破坏推理连贯性 |
+| `checkpoint` / `state-memory` 看板 | v12.1 | 3,200 行带锁盘上状态，维护面翻倍；其核心贡献「发明标识符判据（I2）」已并入 `birth` 主干 |
+| `p-29d7400346` 无条件每轮增补 | v14.13 | 在短题（`t9`）上将主模型思考吹大 `×4.8`、工具调用增加 `+30%`；被 `birthAdaptiveFloor` 的按需自适应触发取代 |
+| DSH 外部宿主合并层（`rl-native` / `gate` / `drop`） | v14.15 | 偏离 `cfb` 思维链编译器主航道，且 `drop` 违反 DeepSeek 官方带工具必传 `reasoning_content` 契约（HTTP 400），已 100% 剥离 |
+
+### 2.2 单步反事实评测里程碑（`transfer/effect-1..23`）
+在 5 道核心排障题 + 3 道反驳题（共 8 题，同后端 `system_fingerprint` 锁定）上对比不同压缩形态对主模型**下一步动作质量（0–10 分）**的影响：
+
+| 版本 / 变体 | 8 题综合得分 | 死路重走率 | 回头重读率 | 关键机制突破 |
+|---|---:|---:|---:|---|
+| **`raw`（不压缩原文）** | `5.0` | `25%` | `31%` | 原生冗长推理中「左右互搏」与句末问句诱导主模型继续盲目取证 |
+| **`v3`（普通散文摘要）** | `5.4` | `20%` | `25%` | 仅缩短字数，未剥离犹豫过程 |
+| **`v4-ops`（JSON 条目编译）** | `6.75` | `12%` | `12%` | 引入八类条目与 I1–I8 校验，加入 `READY` 预备改法与「替代先行、否定就近」 |
+| **`oI`（手写理论形态上界）** | `8.9` | `0%` | `0%` | 证明「在手逐字代码行 + 闭合判读三元组」可让主模型一步落子 |
+| **`v4d6`（直写 + 在手行 + 程序门）** | **`8.5 / 8.6`** | **`0%`** | **`0%`** | 程序自动剥出本轮工具输出中的【在手】代码行并机械核验三元组出处，自动稿逼近手写上界 |
+
+---
+
+## 3. 多轮与端到端轨迹实测（`mr/run1..4` & `traj1..3` & `t6..t9`）
+
+### 3.1 多轮回归与双轨校准（`transfer/mr/run1..4`，130 条样本）
+- 在 3–5 轮连续排障场景中采集 130 条真实主模型动作样本，用于校准 `tools/helpers/judge-layer.mjs` 的双轨裁判：
+- 经 L2 岭回归校准后，L1 压缩稿质量分数对 L2 下游真实动作收益的秩相关系数从 **Spearman $\rho = 0.250$ 提升至 $0.394$**（LOO-RMSE `0.322`）。
+
+### 3.2 端到端可执行沙箱三臂对照（`transfer/traj1..3`，21 条轨迹；**当轮快照**）
+
+> ⚠ **本节数字是当轮快照，已被取代，不得当现状引用。** 当时只汇总 `transfer/traj1..3` 的 **21 条**轨迹（`raw n=8`）；加入 `.cfb-runtime/traj/*` 后，当前 `npm run bench` 的同一张表是 `raw n=80`、`raw` 严苛解决 **40.0%**、`auto` Elo **1104（95% CI [945,1279]）**、平均轮次 **−24.9%**（见根 `README.md` §5 与 `transfer/HANDOFF.md` §2）。**表内的 87.5% / Elo 1110 / −13.7% 是历史读数**；趋势方向（`ledger` 有伪修好、`auto` 伪修好 0%）不变，但具体数值以当前命令输出为准。
+
+在真实可运行 git 仓库沙箱中对比 `raw`（原文）、`ledger`（只挂台账不压思维链）与 `auto`（`birth` 出生即压缩）：
+
+| 评测臂 | 表面宣称解决率 | **SWE 严苛解决率 (`F2P∧P2P∧!falseDone`)** | **伪修好水分 (`False-Done Gap`)** | 平均轮次 | 思维链字符净省 | **LMArena Elo** |
+|---|---:|---:|---:|---:|---:|---:|
+| **`auto` (`birth` 压缩)** | `85.7%` | **`85.7%`** | **`0.0%`** | **`4.86` (`-13.7%`)** | **`-27.4%`** | **`1110`** |
+| **`raw` (原文锚点)** | `87.5%` | `87.5%` | `0.0%` | `5.63` (`0.0%`) | `0.0%` | `1000` |
+| **`ledger` (仅挂台账)** | `100.0%` | **`83.3%`** | **`16.7%`** | `5.33` (`-5.3%`) | `0.0%` | **`951`** |
+
+- **核心科学结论**：
+  1. **只挂台账不压缩思维链（`ledger`）会诱发 16.7% 的「伪修好」**：未压缩的冗长原文与外部台账叠加造成注意力过载，导致模型改完文件不跑验证测试就草率宣称修好。
+  2. **`auto`（出生即压缩 + 程序部件）实现 0% 伪修好 + 轮次缩短 13.7% + Elo 净胜 110 分**：压缩器抹去了原文中的犹豫内耗，保留已排除死路疫苗与闭合三元组，使主模型稳健落子并完成验证。
+  3. **通道三项预检（`t6..t9` 教训）**：任何真实 API 评测开跑前，必须验证端点同时满足 `reasoning`（返回思维链）、`carry`（多轮携带不丢）与 `system_fingerprint` 一致性。
+
+---
+
+## 4. 工程审计与回归钉汇总（F1–F11 & A1–A40）
+
+- **F1–F11（`test/audit-2026-09-27.selftest.mjs`）**：钉死流式取消零泄漏、4MiB 响应体防爆、Responses API 完成判据、`settledTraceData` 字段白名单、调用级配置隔离与多会话交错保护。
+- **F6b 有界延续段出处守恒（`test/v4.selftest.mjs` & `test/closed-loop-v4.selftest.mjs`）**：`continuationPath: 'bounded'` 截断旧轮次时，在 `【台账】` 末尾保留 `；曾涉 <file>`，确保压缩稿引用早轮文件名时绝不触发 `invented-identifier` 假阳性误杀。
+- **A1–A40（`test/closed-loop-v4.selftest.mjs`）**：钉死三模式闭环、跨计划 CAS 缓存、正交因子归因、死路复活清零、In-Context DPO 注入、`modularPromptPrune` 反稀释裁剪、`compactStateParts` 状态去重、`birthAdaptiveFloor` 动态 $\lambda$ 控制器以及五大官方基准（SWE-bench Pro / TAU `pass^k` / Arena Elo / AA / `--lite`）的全部数学不变式。
+
+
+########## docs\STATUS-2026-10-07.md (12020 chars) ##########
+# 全仓现状总结 · 2026-10-07（含问题、困境与未决决策）
+
+> **只读快照**——不改判据、不动数据、不回改既有文档；所有数字来自本仓文件/账本/本轮实测（「实测」= 2026-10-07 在本沙箱现场跑出，命令见附录 A）。
+> 触发：用户要求「全部整理推送」。本文与探针资产 `transfer/probes-2026-10-07/` 同一次提交入库。
+
+## 0. 血缘与冻结（先看这个）
+
+- HEAD `8c918cc`（`8c918cc3caf579e9eca2a7b00647835f2d428832`），推送前核验 = remote `main`；本文提交后 HEAD 前移一格。
+- 生产权重 `transfer/models/v5-micro-weights.json`（sha `da949e637123`）**未动**；`--push-back` 禁用中。
+- 实验锁（**实际位于 `transfer/` 根目录**，不在 `models/` 下）：
+
+  | 锁文件 | sha256 前 16 | flags |
+  |---|---|---:|
+  | `transfer/micro-preregistration-2026-10-06c.json` | `3dbc8fb8a154489d` | 14（**冻结，逐字不许改**） |
+  | `transfer/micro-preregistration-2026-10-06d.json` | `95cf11c828063a23` | 18 |
+  | `transfer/micro-preregistration-2026-10-06e.json` | `b70b45c203c705df` | 19 |
+  | `transfer/micro-preregistration-2026-10-06f.json` | `37213668581f5c6d` | 14 |
+  | `transfer/micro-preregistration-2026-10-06g.json` | `084ddbe6a1a65373` | 16 |
+
+- 冻结项：06c 的 14 flags（逐字）+ `tools/kaggle-train-micro.py` 的 13 个血缘文件。
+- 数据集指纹 `cf380bbb…`（06f 重钉）；builder sha `037adf8246ca…`；**trainer sha 在 `0c556b6` 后已变更 ⇒ 新锁必须记录新 sha**。
+
+## 1. 三线现状
+
+### 1.1 微模型（CFB-Micro）：**8/10，未晋级**
+
+06g 三折（分母 = matched；生产列为同测基线）：
+
+| 折 | 候选 | 生产 | 差 | matched 分母 |
+|---|---:|---:|---:|---:|
+| flaky | 0.7576 | 0.7273 | **+0.0303** | 25/33 |
+| perf | 0.8462 | 0.5128 | +0.3334 | 33/39 |
+| sse | 0.7010 | 0.2784 | +0.4226 | 68/97 |
+
+- CV mean 0.7683 / worst 0.7010 ⇒ **8/10**；仅两门 FAIL：
+  `threeFoldMatchedBeatsProductionPlus20`（flaky 折 +3.03pp，不够 +20pp）与 `freshIndependentNewFamilyTestPassed`。
+- draft 折读数 0.8814 / 0.9524 / 0.8788；三折里**只有 sse 候选存活**（`8d9b5d96…`）。
+- 归因（真机复算）：教师 draft 头**全程只有 24 次更新**（回放 0.6525/0.5593 与 Kaggle 逐位一致）；学生继承教师头；候选−生产 = 0.5763 vs 0.5593（n=59）= **+1 对**，噪声级。
+- flaky 的 matched 桶本身就是噪声：同家族 4 折 0.6389 **低于**跨家族 0.7273；同一稿在大集合上 0.88–0.91；275 维 matched 0.5455 vs gold54 0.8889{4 折 1.000} ⇒ 256 哈希块是**记忆通道**而非泛化。
+- 盲测侧：
+  - ledger `transfer/models/cfb-micro-final-test-ledger.json` **已存在并已消耗 1 个家族**：`case-fold-collision`（2026-10-04；unit 30 对 0.8333 / draft 8 对 0.0 ⇒ below-90% gates）。
+  - 现存两份**未消耗**资产：`micro-blindtest-lock-contention-v1.json`（生产 16/16 ⇒ 闸需 20/16，**不可达**）、`micro-blindtest-encoding-mojibake-v1.json`（生产 8/16 ⇒ 闸需 12/16，**未测**）。ledger 一次性规则不变。
+  - `0c556b6` 已修：draft 不适用条款（资产无 draft 对时不再恒判 False）。
+- fold 报告：已入库的 `transfer/models/cfb-micro-97m-report.fold-*.json`（3 份）是 **06c 期**（`preregistration.sha256=3dbc8fb8…`）；**06g 折报告未入库**；06g 未复制各折候选权重 ⇒ flaky/perf 折**不可恢复**，只能重训。
+
+### 1.2 金标尺子：能当尺子的只有 **4** 条
+
+- 标准 = `cfb.gold-standard/1`：**12 轴**（M1 ratio≤0.60 · M2 不劣于产线且缺读数=未测 · M3 闭合判读 · M4 窗内逐字命令+≥2 分支 · M5 接地=1.000 · M6 装置话术 clean · M7 决策不变 · M8 落点恰 1 · E1 真机 rtf≤6 且修好 · E2 不输 raw · R1 溯源五件+drift∅ · R2 真消费过稿的独立趟 ≥2）；判定式 `gold ⟺ 12 轴全过 ∧ drift=∅；未测≠通过`。上方另有上限线 **C1–C6**（尺子不得低于自家产线）。
+- 实测（`node tools/gold-score.mjs --dedup`）：19 个唯一 id = **gold 4 · not-gold 15**；4 条标尺：`sse-truncated-s0-r4`、`sse-truncated-s1-r3`、`wrong-model-s0-r6`、`wrong-model-s1-r5`。轴通过率 M1 19/19 · M2 19/19 · M3 13/19 · M4 11/19 · M5 16/19 · M6 13/19 · M7 19/19 · M8 7/19 · E1 7/19 · E2 18/19 · R1 8/19 · R2 14/19。
+- 覆盖（`transfer/gold-repair/gold-coverage/matrix.md`）：30 格 / 目标 40 / **缺口 36**；`eacces-config` 0/8；早轮档与 <2k 档全空；晚轮 r6/r7 光程序台账 1.6k 字 ⇒ 稿只剩 64 字预算 ⇒ **挣金标只能落 r2–r4**。
+- 判别力实测（`gold-standard-study`）：反引号 ≤1 → 过率 57% vs ≥4 → 0%；「改法句恰 1」→ 57% vs 0/≥2 → 0%；**改过稿 → 0%**（原稿 36%）；>1000 字 → 0%；声明「只有一处」→ 0%；可逐字回放 50% vs 不可回放 0%。
+- 金标质量 = **行为质量**（E1/E2/R1/R2 必须真机）；离线只能判 M 轴（银标质检）。成本：单组真机 $0.05–0.13；三家族 campaign ≈$0.21；bench 每次压缩调用 ≈$0.0075；$0 前置链 `silver-shape` → `hand-preflight` → `gold-vs-line` → `gold-ceiling`。
+- 记录在案的量化难题（摘要，逐条有账本）：
+  1. 代理分↔结局从未对齐：轨迹级 AUC 0.944 但负例仅 3 条 ⇒ `unvalidated`；步级 0.70（0.56–0.89）⇒ `suspect`；「到修好轮数」C 指数 **0.523 ⇒ invalid**；学出的旗标权重 cvAUC 0.14 vs 手工 ±1 的 0.70 ⇒ 保留手工。相似度口径（dd）已废除。
+  2. 重复方差：实测 ICC(1)=**0.366**（≈六成是噪声）；通道 `temperature 0` 已不再逐字确定。
+  3. 假 gold 事件：t103 空跑（停机保护掐掉但 `results.jsonl` 留 hand 行）被计成第二独立样本 ⇒ 一条 not-gold 自己翻 gold，收紧后撤销；纪律：**任何"样本数"计数都必须要求消费凭据**。
+  4. 口径与实现 bug：C1/C6 曾拿 `stored`（=台账+稿）比产线稿 ⇒ 晚轮数学上不可能达线；「打印与判定不同口径」；12 轴上线时一次性抓到 **5 处测量错误**（溯源恒 0 / 改法句恒 0 / 路径回退丢层 / M5 误杀指令 / 弱键把 rtf 错配）。
+  5. 系统性误杀：中文稿被 `invented-identifier` 连拒 6 次（t98），根因是编译重排后反引号配对跨中文散文（`src/fidelity.js:87`），**属生产闸缺陷**。
+  6. 不可救的存量：5 条装置话术出在 `stored` 层（改稿救不了，永久留隔离区）；4 条台账无 id（不可回放，只能按新 id 重跑）。
+  7. 统计功效：e≥10 需 **≥5 胜 0 负**（3 胜 0 负只有 3.75）；`minPairs=12 / minPerClass=5`；dev 3 项最多 e=2.333 ⇒ `undetermined` 只表示**配对不够**。
+  8. 留出曝光：单假设 ≈6%、6 个假设 ≈**30%** 误采纳 ⇒ 一次性盲测 + 曝光账本。
+  9. 噪声底缺失：K4 双作者一致率按用户裁决未做 ⇒ dd/得分差值只能当**方向性参考**。
+
+### 1.3 通用压缩器：探针跑通、选择器入库，**产品化未开工**
+
+- 验收定义（用户原话）：**随便丢什么思维链、什么东西进去，都能压缩出来**；只在 CFB 家族/格式上有效的方案一律视为拟合、不合格。
+- 已入库探针读数（`transfer/probes-2026-10-07/`，README 有全表）：
+  - 生产路径对任意文本**不优雅降级**：92 篇平均 0.3 单元、锚点覆盖 0.5%（math-cot 域 0 个）。
+  - 新 `src/universal-select.js`（`8c918cc`，未接线）：同 30% 预算锚点覆盖 **50.3% vs 生产 27.4%**（multihop 6.5%→48.8%）；半预算 29.6%。
+  - 必需事实保留（oracle 90 篇）：math 生产 92.5% / 通用 57.3 / random 65.4 / lead-k 28.7；multihop 生产 **0.0%** / 通用 57.9 / random 41.5 / lead-k 36.2 ⇒ **通用赢长文、math 输 random**（答案集中在末句 ⇒ 必须加结论位项）。
+- 稳定金标数据源已落实（无需人工写）：GSM8K `<<a op b = c>>`（50 篇 / 3.2 中间量/篇）+ HotpotQA `supporting_facts`（`title`+`sent_id`；40 篇 / 2.4 支撑句/篇）→ `corpus/*_labelled.json`。
+- 10 步计划（**未开工**，待授权）：`tools/build-compression-gold.mjs` → `transfer/models/compress-gold-v1.json`（4 域 ≥400 篇）→ `tools/eval-compression.mjs`（10/25/50% 预算 × {random, lead-k, TextRank, 贪心, 快速打分器, 旧生产}）→ `src/universal-select.js` v2（加结论位项）→ 接线 `cfg.compressor='universal-v1'`（默认关；默认路径逐字节不变）→ 快速打分器（与贪心一致率 ≥90%）→ `docs/COMPRESSION-BENCH.md` → Kaggle cell。
+- 验收线：**≥85% @25% 预算 · 跨域 ≤10pp · 同种子逐字节一致**。
+
+## 2. 问题清单（现象 → 证据 → 状态）
+
+| # | 问题 | 证据 | 状态 |
+|---|---|---|---|
+| P1 | 微模型两门 FAIL、卡 8/10 | 三折表；flaky +0.0303 | 未解（判据不可放宽） |
+| P2 | flaky 判据与噪声不可分 | matched-33 +同家族 4 折 0.6389 < 跨家族 0.7273 | 未解；修模型/资产侧，改判据需授权 |
+| P3 | 盲测新家族门事实上不可达 | lock-contention 需 20/16 不可达；mojibake 需 12/16 未测；ledger 一次性 | 未解 |
+| P4 | 06g 折报告未入库；折候选权重未复制 | 已入库 fold 报告为 06c 期（锁 `3dbc8fb8…`） | 待办 / 折级不可恢复 |
+| P5 | 金标覆盖缺口 36/40 | coverage matrix | 未解（要真机+钱） |
+| P6 | 5 条 stored 污染 + 4 条无台账不可回放 | gold-triage / gold-attest | 永久（数据不许篡改） |
+| P7 | **`provisional-gold` 文档与代码不一致** | 文档（`GOLD-STANDARD.md:19/26/106`）说「R2 只有 n=1 ⇒ provisional-gold」；代码（`tools/helpers/gold-standard.mjs:235`）在 R2 n=1（已测但不达标）时 `measuredAll=false` ⇒ 判 **not-gold**；实例：`wrong-model_decoy-s0-r4` 11 轴过只差 R2，按文档应变 provisional-gold（可进 bench 靶池），按代码是 not-gold；实测 23 条盖章里 provisional **0** 条 ⇒ 当前生效的是代码 | 未决（改代码 or 改文档，$0） |
+| P8 | **文档水位系统（doc-watermark）不存在** | `tools/doc-watermark.mjs` 全 git 历史查空；README/ARCHITECTURE/docs-README/package.json/verify.mjs 等 8 文件 23 处引用；`verify.mjs` ORDER 登记 `doc-watermark` ⇒ 实测 `npm test` 报「ORDER 里登记了但文件不存在」；`npm run watermark:check` 直接 MODULE_NOT_FOUND；README 水位块声称 41 套 / 版本 v14.25.1，实测 `test/` **40** 套、CHANGELOG 已到 v14.25.4 | 未解（补实现 or 全局改口，$0） |
+| P9 | 中文稿被 `invented-identifier` 系统性误杀 | t98 连拒 6 次；诊断 `.cfb-offline/ruler/t98-gate-diagnosis.json` | 未修（动生产闸需授权） |
+| P10 | 关键泛化读数无 CI 保护 | `transfer/notes/SCAN-REPORT-v2.md` §5（general 臂 0.1548 vs 原型 1.000 无复算测试） | 未解 |
+| P11 | 噪声底缺失 | `GOLD-EXPANSION-PROGRAM.md` §8（K4 按用户裁决跳过） | 未解（除非出现第二作者） |
+| P12 | 通道不稳 | `upstream-no-reasoning` 连续 3 次停机；温度 0 不再逐字确定；网关 cost 与 token 数不一致；小 `max_tokens` 被思考吃满 | 未解（外部） |
+| P13 | 06f 只做了 19 条排除，4 条 contested negatives 未重判 | 重判会改 unit-pair 集、破坏 matched 基线可比性 | 待确认 |
+| P14 | 生产路径对任意文本不降级 | 92 篇 0.3 单元 / 0.5% 覆盖；12+24 采样 + 尾部-only `targetAnchors` + 槽位上限 | 有替代实现（`universal-select`，未接线） |
+| P15 | 纯覆盖目标不够 | math oracle：通用 57.3% 输 random 65.4% | 未解（需结论位项） |
+| P16 | `npm test` 现不绿 | 实测 1207 通过 / 7 失败 / 2 跳过（37/41）：`closed-loop-v3`、`closed-loop-v4`、`manifest-ignore` 三套件预存回归 + `doc-watermark` 套件缺失（SKIP） | 预存（非本轮引入），未修 |
+
+## 3. 困境（结构性两难：张力 → 现状立场 → 代价）
+
+- **D1 判据不许放宽 ↔ 两门必须过。** 想"过线"只能修模型/换数据；而修盲测侧=消耗一次性资产。现状：模型侧只完成了两处缺陷修复（`0c556b6`），两门仍 FAIL。
+- **D2 金标只认真机 ↔ 通道不稳 + 成本。** E1/E2/R1/R2 都要真机；通道会停机、温度不确定、每次 $0.05–0.13。现状：所有存量尺子都来自停机前的窗口。
+- **D3 n=1 抖动 ↔ R2 要 n≥2。** t98 修好@6 / t99 同稿 0 edit ⇒ 每条尺子=至少 2 趟真机（$0.1–0.2+）。现状：15 条 not-gold 里有多条只差 R2 这一趟。
+- **D4 噪声底被否决 ↔ 差值可信度。** 双作者一致率不做 ⇒ dd/分差只能方向性；任何"更好"都缺噪声底背书。
+- **D5 用途隔离（尺子≠饲料）↔ 覆盖缺口。** 全部过标尺的稿只有 4 条，其余 15 条只能当训练料；而训练料又要求 `trainingEligible && clean`。
+- **D6 数据卫生 ↔ matched 可比性。** 06f 排除 19 条已改变 pair 集（基线已重钉）；再做 4 条 re-adjudication 会再次破坏可比性 ⇒ 必须先确认。
+- **D7 Kaggle-only 执行 ↔ 迭代速度。** 本沙箱无 GPU/Kaggle CLI；每轮训练 40min + 手工 cell；86 个符号错误/挂起的成本都在这条链上。
+- **D8 通用性要求 ↔ 现有资产全是 CFB 家族。** 金标 13 条、盲测 2 份、假金标报告都锚在 CFB 场景；通用压缩器要重建自己的金标与评测台（已开工一半：探针+数据源）。
+- **D9 文档领先代码 ↔ 文档可信度。** P7/P8 + `docs/KAGGLE-MICRO-RUN.md` §2/§7 有误 + 历史上"从未存在"的 `evidence-fixtures.mjs`/`replay-evidence.mjs` ⇒ 读文档前先验证引用的文件真在。
+
+## 4. 资产地图（放哪了）
+
+- **本轮新增**：`transfer/probes-2026-10-07/`（探针 18 个文件 + `corpus/` 4 个 + `withdrawn/` 1 个；README 有命令顺序、读数表、陷阱清单）。
+- 微模型：`transfer/models/`（生产/候选权重、`cfb-micro-97m-report*.json`、`micro-dev-dataset.json`、两份盲测资产、ledger）；锁 `transfer/micro-preregistration-2026-10-06{,b..g}.json`。
+- 金标：`transfer/gold/{eacces-config,perf-regression,sse-truncated,wrong-model}/`（13 条）、`transfer/gold-history/`、`transfer/gold-rejected/`、`transfer/gold-repair/`。
+- 账本：`.cfb-offline/ruler/`（`ceiling-1..12`、`confirm-1..26`、`gold-check-*`、`gold-attest`、`gold-standard-study`、`gold-triage`、`gold-forge*`、`validity.jsonl` 304 行）。
+- 代码：`src/universal-select.js`（新，未接线）、`src/compile-v5-local.js`、`tools/kaggle-train-micro.py`、`tools/{gold-score,gold-study,gold-attest,gold-vs-line,gold-campaign,gold-ceiling-audit,silver-shape,cfb-gold-repair}.mjs`。
+- 文档：`docs/GOLD-STANDARD.md`（判据）、`GOLD-WRITING-GUIDE.md`（怎么写）、`GOLD-EXPANSION-PROGRAM.md`（扩标）、`ROADMAP-GOLD.md`、`HANDOFF-2026-10-06.md`、本文。
+
+## 5. 已死 / 勿再投入
+
+- 手写 yVal 常量表、槽位硬上限选材、模板骨架当输出、draft 头学机械闸、256 哈希记忆通道、三 dev 家族当主判据。
+- 每单元独立边际增益当标签（不跨域：21.8 vs 33.4 等；能迁移的只有锚点/字符计数特征）。
+- dd 相似度当质量分（已废除口径）、「金标与自己比 dd=1.000」当成绩。
+- 简化金标质量闸（`gold_quality_gates.py`，用户判「糊弄」；已入 `withdrawn/`，勿运行勿引用）。
+- 用盲测资产去"测试"闸（ledger 一次性，失败也记录）。
+- 重跑 06e 剩余折 / 重跑 06f 折 / 回写成历史的 fold 报告。
+- 修正性文档陷阱：`corpus/*.jsonl` 按行解析、`sent_idx` 字段名（见探针 README §4）。
+
+## 6. 未决 / 待授权（含建议与代价）
+
+| # | 事项 | 代价 | 建议 |
+|---|---|---|---|
+| 1 | **10 步计划开工**（通用压缩器 + 稳定金标） | $0 起步；真机 A/B 另算 | 可立即开工 |
+| 2 | 是否立 `cfb.gold-standard/2`（压缩器语义 12 轴） | $0 | 先按 v1 映射实现评测台，v2 待读数出来再立项 |
+| 3 | 06f 4 条 contested negatives 重判 | 改 pair 集 ⇒ 基线不可比 | 需显式确认后再动 |
+| 4 | flaky / blind 两门的修法路径 | 模型侧=去哈希块/加数据（重训 40min×N）；资产侧=新家族题（真机钱） | 先做模型侧；判据不动 |
+| 5 | P7 provisional 口径 | $0 | 二选一：改代码（让 n=1 走 provisional，与文档一致）或改文档（n=1 归 not-gold） |
+| 6 | P9 中文稿误杀修复 | 动生产闸 ⇒ 历史 dd/基准口径会漂 | 需授权；修法=按行/句配对 |
+| 7 | P8 doc-watermark | $0 | 建议补实现（否则 README「数字不手抄」是空话）；退路=全局改口 |
+| 8 | 06g 归档 + 是否重训 | 归档 $0；重训=Kaggle 40min×折数 | 先归档；重训等门策略确定 |
+| 9 | P10 泛化读数 CI 保护 | $0 | 加一条离线复算断言 |
+
+## 7. 读数陷阱（数字必读）
+
+| 陷阱 | 说明 |
+|---|---|
+| 本地 fold 报告 / `v5-micro-weights.candidate.json` | 是 **06c 期**（锁 `3dbc8fb8…`），勿当 06g 产物 |
+| `/tmp` 下曾经跑过的探针 | 已随会话清空作废；有效证据 = `transfer/probes-2026-10-07/` |
+| 「70% 幻觉」 | 正则伪影（探针含伪代码行）；真实幻觉 **0%**（探针 README §4） |
+| `matched-33` 桶 | 噪声：同家族 4 折 0.6389 < 跨家族 0.7273；**大集合 0.88–0.91 才可读** |
+| 候选−生产 +1 对（0.5763 vs 0.5593, n=59） | 不是提升，是噪声 |
+| gold 计数 | 19 唯一 id = 4 gold / 15 not-gold；`gold-score` **必带 `--dedup`** |
+| `probes/corpus/*.jsonl` | 是**单个 JSON 数组**（非逐行）；HotpotQA 字段是 `sent_id` |
+| `e2e_eval.py` / `bench.py` | ID 映射 91/92；单文档域「内容词覆盖」列不可读（IDF 长度 1） |
+| `npm test` 现状 | 1207 通过 / 7 失败 / 2 跳过（37/41）——3 个预存 FAIL 套件 + 1 个缺失套件；**不等于本轮回归** |
+| 一次性资产 | ledger 已消耗 `case-fold-collision`；`lock-contention`/`encoding-mojibake` **未消耗**，别拿去"测试闸" |
+| 文档 vs 代码 | P7（provisional）、P8（doc-watermark）、`docs/KAGGLE-MICRO-RUN.md` §2/§7 已知有误；引用文件先验证存在 |
+
+## 附录 A：本轮实测命令与输出摘要
+
+```text
+node verify.mjs                     → 1207 通过 / 7 失败 / 2 跳过 · 37/41 套件
+                                      FAIL: closed-loop-v3 · closed-loop-v4 · manifest-ignore
+                                      SKIP: doc-watermark（ORDER 登记但文件不存在）
+node tools/gold-score.mjs --dedup   → gold 4 · provisional-gold 0 · not-gold 15（19 唯一 id）
+node --check transfer/probes-2026-10-07/*.mjs   → 全部 ok
+python3 ast.parse 同目录 *.py                   → 全部 ok
+探针读数全表 → transfer/probes-2026-10-07/README.md §2
+```
+
+
+########## docs\EVIDENCE-PROGRAM.md (14539 chars) ##########
+# 证据程序架构（2026-09-30，预注册先于实现）
+
+> **审计新鲜度说明（2026-10-07）**：本文保留为设计/历史记录；以下分母、版本、命令与实验读数来自 2026-09-30 至 v13.2 阶段，不能当作当前 checkout 的现状。原独立报告 `docs/analysis/*` 与 `RUNBOOK-ONLINE-READY.md` 不在当前树中。当前可执行入口是 `node verify.mjs evidence-program`（套件：`test/evidence-program.selftest.mjs`）；它验证接口/夹具，不复现旧的模型/效果实验。
+
+## 0. 可证伪预测与证据边界
+
+**本节写于实现与离线回放之前。** 基线来自 `transfer/mr/run4/summary.md`：红题 raw 4.9 → v4d9 8.0；flaky 3.0 → 5.0，wrong-model 9.0，eacces 8.5。
+
+- **P1（以后经批准的效果实验）**：执行验证与环境/上下文联合恢复的增益应主要集中在 flaky（等待、重试、缺少事件证据）。wrong-model / eacces 应基本不变；任一反而上涨 **>1 分**，先重做因子归因，不宣称突破。此处历史分数只是预注册参照，**不参与架构决策**。
+- **P2（本轮可验）**：关闭新接口时，全部历史稿的旧编译输出逐字不变，N1–N7 全零；打开侧车时说明稿仍逐字不变。解析出来的提议不自动获得执行权限。
+- **P3（本轮可验）**：检查失败、缺失、过期、条件不等价、进程超时、判据漂移均不能推进步骤或允许收工；诊断检查通过也不能替代失败的验收。
+- **P4（本轮可验）**：主动查询使用完整条件熵；无辨别力、重复且环境未变、越过预算的检查不执行。诊断有上限，最多两轮修复，第 3 轮只验证。
+- **P5（本轮可验）**：规则/事实/疫苗逐项记录正/零/负效果。留出门平局拒绝，任何一项负效果不得被别处收益抵消；指纹失效、反例、退役后停止检索。
+- **P6（本轮可验）**：失败后恢复最近通过状态的制品和宿主状态（包含受管文件），不回灌原失败稿。会话越权、哈希损坏、并发外部修改拒绝恢复；Git、仓库根目录、密钥路径永不纳入恢复范围。
+
+**本轮仅零调用工程验证。** 不把可解析率、合成通过率、归档通过门或历史规则指标解释成模型成功率；无法证明“所有未见任务绝不变差”。实际保护是旧路径默认保留、新路径需宿主授权且失败关闭，外加独立冻结验收与留出门。
+
+## 1. 归因与选择
+
+四轮侦察共同指向表示类别，而不是继续雕刻散文。本设计将 V（独立验证）→ E（可寻址接口）→ C（有界循环）合成一条宿主流水线：
+
+```
+原压缩链 → 原说明稿（字节不变）
+             └→ 类型化提议 → 宿主冻结契约绑定 → 证据程序
+                    ↓                            ↓
+               无损块仓/句柄                逐步检查与回执
+                                                 ↓ 失败
+                                       EIG 选诊断（只读、有预算）
+                                                 ↓
+                                     恢复通过检查点 / 另选路径
+                                                 ↓
+                                  逐项签名档案 + 严格留出接受门
+```
+
+**R1–R4 是能力要求，不照抄旧建议的实现蓝图。** 代码分层：纯数据与状态机、宿主本地 IO、主动查询、签名档案、事务与接线。全部 Node 内置模块，无第三方依赖，无模型调用。
+
+### 被否决的备选
+
+1. **直接执行稿里的 bash**：会把来源文本变成执行授权、可改弱验收或读密钥。改为宿主预先注册检查、声明本地执行能力；稿只引用检查 ID。
+2. **给模型换提示词/追加 K 规则**：违反停止清单且新增生成方差。旧提示词、字数、闸门保持原有语义；新数据走独立侧车。
+3. **只附仪表盘**：H-ledger 已否证。块表只是可恢复接口，实际能力来自宿主执行、步骤闸和失败恢复。
+4. **把正负效果平均、Likert 排序、按自评入库**：会掩盖有害技能。档案按逐项二元回执比较，留出严格提升、无单项退化。
+5. **Git reset 或全目录复制**：不是宿主状态恢复，且可能损失用户修改。用明确受管路径 + 宿主状态适配器 + 内容寻址检查点，冲突拒绝。
+6. **把历史 canned 输出当实时执行成功**：历史只有离线观测，不能冒充新鲜宿主回执。回放单列可解析、可绑定、已知历史判据与未知，绝不运行历史 shell 命令。
+7. **把早期文献里的所有建议都上线**：forced answering、消融、训练、best-of、harness 搜索需额外调用或数据支持，本轮不实现付费算法的伪替代；实现它们所需的制品/验证/归档/恢复基础。
+
+## 2. 不可越过的边界
+
+- 执行器不接受生成器自定义判据。契约在周期开始前由宿主创建并冻结；任何编辑判据均需新周期。
+- 默认仅内置本地读文件/观测判据。外部进程检查需宿主明确注册绝对可执行文件与 argv，`shell:false`，环境变量不继承密钥，有超时与输出预算；**这是信任边界，不是通用 OS 沙箱**。宿主对获授权程序的无网络、无外部副作用负责。
+- 回执绑定会话、契约、制品、轮次、宿主修订号与实际检查；旧回执不能用于新环境。不可证是阻塞，不是通过。
+- 原文、失败制品无损存档，不自动进模型上下文；模型可见只含通过的回执/事实、少量适用记忆和块元信息。无原文尾巴、无抽取式替代旧稿。
+- 文件仓与检查点存 `$DSH_HOME/storages/cot-form-b/evidence/` 或宿主显式路径；仓库内运行产物使用 `.cfb-runtime/`（Git 与 manifest 均忽略）。会话隔离、内容校验、0600 写入。
+- DSH 已有流接口不能保证环境回滚或工具拦截，**不虚构宿主能力**。提供可运行的显式宿主执行 API/CLI 与可选侧车接线；默认不改变 DSH 消息、decision 或工具调用。
+
+## 3. 实施与验收顺序
+
+每步新增自测 → manifest → verify → audit → 中文小步提交：
+
+1. **R1**：类型化程序、冻结检查契约、纯状态机、本地检查执行器、旧稿侧车编译和历史回放。
+2. **R2**：有限假设模型的完整 EIG、贝叶斯更新、主动诊断预算与重复抑制。
+3. **R3**：签名档案、二元逐项效果、独立周期/三切分、拒绝缓冲、退役与精确检索。
+4. **R4**：无损块仓、宿主/文件检查点、失败恢复、两轮控制、错误历史隔离、生产侧车/公共类型、完整链自测与使用文档。
+
+最后生成小体积可复现报告，记录所有分母和未执行项，不加入模型分数增益结论。付费主模型、评委、副模型调用均为 0。
+
+## 4. 主动检查的实际协议（R2）
+
+`freezeDiagnosticModel({prior, probes}, contract)` 由宿主在失败前注册有限假设与每个检查的 `P(pass|H)` / `P(fail|H)`；只能引用角色为 diagnostic 的冻结检查。`expectedEvidenceGain` 计算完整 `H(H)−ΣP(y)H(H|y)`，不是输出熵。在检查/抽象成本双预算内选 EIG 最大者，同增益选低成本再按 ID 排序；成本不是钱。
+
+`createDiagnosticController` → `runActiveEvidenceChecks` → 宿主 HMAC 回执 → 贝叶斯更新。未知、不新鲜、条件不符只消耗预算，不建立任务事实；不可能观测停止并要求宿主重建假设模型。同修订/同检查不重复，环境修订改变可重新检查（仍受原预算）；跨会话/制品/轮次拒绝复用。所有诊断的结果都不能推进 R1 的验收闸。
+
+似然是可错的宿主建模，不冒充已经测得的信息收益。不能在未知时凭借“最高后验假设”改代码。无有信息的可授权检查则停，不把停止变成成功。R2 自测 11/0；截至 R2 全量 662/0/1，N1–N7 仍全零。
+
+## 5. 签名档案与留出接受门（R3）
+
+`createMemoryCandidate` 固定 kind（rule/fact/vaccine）、body、来源、精确任务族/环境/契约版本指纹、触发谓词与可选有效期；不会把散文一句“已排除”自动变成永久事实。内容哈希用于身份，宿主 effect cycle 的 HMAC 用于认证实际运行的比较证书。
+
+`freezeEffectSuite` 在周期开始前固定非空 train/selection/test，**按任务族隔离**，不是同题改 sample ID。独立的人写判据只在宿主执行器可见；候选执行器仅得到输入和候选，不收到切分名、判据与参考输出。逐个候选/夹具运行裸基线与单项干预，记录 `{before, after, sign}`。训练侧不得退化；selection 必须至少一个 `+` 且没有 `-/?`；本周期全部候选选择结束后，一次性关闭盲测，test 同样要求严格提升。平局拒绝，不能按平均抵消负项。宿主必须保证 evaluator 同步、纯净、独立且不可被生成器修改；本模块不是代码执行沙箱。
+
+`createEvidenceArchive.beginCycle` → `consider` → `finalize`；全拒绝允许关闭周期但不读盲测。已消耗的盲测族不能换 cycle ID 再搜索。通过才入 active；不过门进有界、多样性的拒绝缓冲；同适用格的新候选不因“对裸基线有提升”替换旧技能（还需要成对消融，当前拒绝）。`retrieve` 最多 **k=1**，避免未经验证的技能组合交互；指纹改变、触发缺失、过期或 `retire` 后不检索。失败/拒绝正文只留档，不回灌模型。
+
+> **现状更新（v14.25.1，2026-10-06）**：本节写的 `test/helpers/evidence-fixtures.mjs` **在本仓库全部 git 历史里从未存在**（`git log --all -- 该路径` 为空）；那批宿主协议合成夹具实际落在 **`test/evidence-program.selftest.mjs`** 内（现 **5 条断言、`PASS=5 FAIL=0`**，83 行，不是一份独立夹具文件）。下面的 "R3 自测 12/0；全量 674/0/1" 是**当轮读数快照**，与当前规模不同步 ⇒ 现状以 `../README.md` 文首水位块为准。原判断本身不变：**它只测留出门、泄漏防护、符号归档与拒绝机制，不是 S0 主模型任务集，也没有 LLM 技能收益的证据**；真实档案仍需真实独立留出任务，不能把合成工程门当泛化证明。
+
+## 6. 无损块仓、检查点与有界控制链（R4）
+
+### 6.1 可寻址制品与持久签名
+
+`createEvidenceStore({directory, sessionId})` 保存原始文本（含 Unicode/孤立 surrogate）、二进制及 JSON，不抽取、不截尾；`archiveEvidenceArtifact` 分为 RAW / EXPLANATION / STEP 块，带类型、字节/字符数和地址。`recoverEvidenceBlock` 显式按块取回完整内容；它不是自动把裸句柄塞进 reasoning。块内容 SHA-256 校验、会话命名空间隔离，并由本机 0600 私有 authority key 产生持久 HMAC。读回验证身份/签名/类型，损坏不静默修补；同内容去重，有单块/总容量上限。
+
+`createEvidenceArchive({store}).persist()` 保存 active / reject / retired 和已消耗盲测族；`createEvidenceArchive({store, restoreRef})` 只从本机签名仓恢复，重新核对候选身份/单项符号/接受门。旧在库记忆、退役和盲测消耗不因换 JS 对象被忘掉。未关闭的搜索周期不能继续使用旧私钥证书；重新开周期仍受持久的盲测消耗约束。生成器不得持有本地仓的写入/恢复 API。
+
+### 6.2 联合恢复，而不是 Git reset
+
+`createFileStateAdapter` 显式列出受管**普通文件**以及同步的 `readState/writeState`（上下文也必须在此状态中）；快照保留完整字节、权限、存在性、JSON 状态和测量条件。只恢复声明路径，原本不存在的受管新文件可删除；Git、密钥、`.cfb-runtime`、目录树与仓库根目录永不成为动作目标。恢复之前比较当前修订：外部修改返回 conflict，不覆盖用户内容。
+
+全部文件先暂存，创建即登记清理（写入/chmod/fsync/关闭失败均不遗留副本），再在宿主静止/独占边界内恢复文件和 JSON；setter 或最终核对失败则尝试撤回为恢复前状态。不能恢复的物理条件、未知状态一律报 recovery-failed，绝不伪报成功。**这是受管资源事务，不是 OS 全环境沙箱**：目录元数据、后台进程、网络、真实计时器不能凭 JSON 恢复。需要这些能力时，宿主必须提供具有同等接口与原子恢复语义的适配器。乐观哈希校验不能取代跨进程独占锁；不承诺抵抗拥有同等 OS 权限的恶意并发写者。
+
+`createEvidenceCheckpoints` 在每轮前保存制品引用 + 宿主快照；preconditions 通过后建立安全起点，每个步骤 postconditions 通过才更新峰值。**安全起点/前提通过不等于任务已修好**（kind 单列）。失败回到最近验证步骤的峰值；没有峰值时只恢复宿主提供的轮前状态，不声称其症状已消失。检查点有会话、契约和资源范围绑定；跨 root、契约、会话、哈希损坏均拒绝。
+
+### 6.3 控制器与错误历史隔离
+
+`createEvidenceRuntime` 每个 episode 至多 3 轮、2 轮修复，第 3 轮只能 observe/验证；总检查数上限，轮次绝对截止 + AbortSignal，进程检查有独立超时/输出限额；结果返回后再次核对截止，迟到 pass 不推进。不能抢占同步 I/O，恢复/持久化/清理仍需完成；观察器必须只读并遵守 AbortSignal，动作/状态回调同步且不安排后台写入。并发轮次、重复 round ID、漂移程序不执行。每个阶段只消费对应角色的签名回执。失败后在同一预算内做 R2 诊断，再恢复，另选冻结契约中已经批准的分支；不调用模型再生稿，不用诊断绿灯替代验收。
+
+说明稿/原文/失败回执完整留仓；`modelView` 只返回状态、通过检查点的引用、诊断二元状态与最多一条适用记忆，**不含失败说明稿**。冲突/验证器源码漂移不给记忆。用户上下文是否真正回滚，取决于宿主适配器是否纳入它——本地演示有真实的上下文恢复，DSH 侧车不假装接管 session 内部状态。
+
+独立检查器及其依赖可用 `protectEvidenceContract(def, {root, paths})` 固定 SHA-256，纯契约也接受宿主提供的 `protectedFiles`；动作不得修改这些路径，每次检查/动作前后发现漂移则 unknown。外部检查程序的完整依赖必须由宿主登记或放进不受任务编辑的独立工作区，不能仅固定命令文字就宣称测试未被改弱。默认本地 DSL 没有生成器可编辑的脚本。
+
+## 7. 可运行接口与启用/回退
+
+### 零成本复现（不加载钥匙）
+
+```sh
+node verify.mjs evidence-program            # 唯一在册的证据程序套件（临时目录里真跑：CAS 块仓、篡改检测、乐观锁、谓词三值）
+node tools/audit-noninferiority.mjs         # N1–N7 非劣性审计
+node manifest.mjs --check
+```
+
+> ⚠ 本节此前写的 `node tools/replay-evidence.mjs`、`node tools/evidence-demo.mjs` 与 `npm run evidence:replay` / `npm run evidence:demo` **都不是本仓库的入口**：两个脚本从未存在，`package.json` 里也没有这两条 script（`npm run` 会直接 `Missing script`）。宿主侧完整执行链从包入口 import（见下），不存在独立的 replay/demo CLI。
+
+`test/evidence-program.selftest.mjs` 在 `os.tmpdir()` 里开专用工作区做真实文件编辑与联合恢复，跑完删除**它自己的临时目录**；不改当前仓库文件或 Git（`verify.mjs` 还会给每个套件套一个独立临时 `DSH_HOME`）。仓库内没有 `--out .cfb-runtime/demo.json` 这种演示报告开关。
+
+### 宿主调用（完整执行链）
+
+```js
+import {
+  freezeEvidenceContract, createEvidenceProgram, createEvidenceRuntime,
+  createEvidenceStore, createFileStateAdapter,
+} from '@dsh-external/dsh-cot-form-b'
+
+// 独立的宿主配置，不从模型散文里提取判据。
+const contract = freezeEvidenceContract({
+  task: 'config-change', version: '1',
+  checks: [
+    { id: 'before', kind: 'file', role: 'precondition', path: 'config.txt',
+      predicate: { op: 'equals', field: 'text', value: 'old\n' } },
+    { id: 'landed', kind: 'file', role: 'acceptance', path: 'config.txt',
+      predicate: { op: 'equals', field: 'text', value: 'new\n' } },
+    { id: 'symptom', kind: 'observation', role: 'acceptance',
+      predicate: { op: 'equals', field: 'symptomGone', value: true }, conditions: { cpus: 2 } },
+  ],
+  actions: [{ id: 'change', type: 'replace', path: 'config.txt',
+    oldText: 'old\n', newText: 'new\n', preconditions: ['before'], checks: ['landed', 'symptom'] }],
+})
+// hostRoot、captureContext、restoreContext、measureConditions、observeSymptom 由宿主独立提供。
+const store = createEvidenceStore({ directory: hostEvidenceDirectory, sessionId })
+const adapter = createFileStateAdapter({ root: hostRoot, paths: ['config.txt'],
+  readState: captureContext, writeState: restoreContext, readConditions: measureConditions })
+const runtime = createEvidenceRuntime({ contract, sessionId, store, adapter,
+  allowEdits: true, observe: observeSymptom })
+const program = createEvidenceProgram(explanation, { contract, sessionId, actionIds: ['change'] })
+const result = await runtime.runRound(program, { roundId: 'round-1', raw: originalArtifact })
+// observeSymptom 返回 {value, revision, roundId, conditions}，必须源于本次独立观测，不能复制 binding 冒充新鲜。
+// 只有 result.ok / status=verified 可收工；其余读取 modelView，错误正文不回灌。
+```
+
+上面的宿主变量不是插件替你捏造的服务；可本地执行的装配见 **`test/evidence-program.selftest.mjs`**（`node verify.mjs evidence-program` 即可跑）——本仓库不提供独立 demo CLI。公共接口、结构与可选能力全部在 `index.d.ts`，JS 中还有运行时 schema/权限校验。本项目仍无 TypeScript 构建依赖；类型声明登记自测不代替 `tsc` 全项目类型检查。
+
+### DSH 侧车（默认关闭）
+
+宿主用 `createEvidenceHost(runtimeOptions)` 创建会话专属服务，并用自己的原生服务注册机制使 `ctx.get('cfbEvidenceHost', false)` 返回它。配置 `evidenceProgram: true` 才在 birth 结算处发布侧车；服务缺失/会话不匹配/归档失败只回到旧行为，说明稿和 chunks 不变。未完成、部分稿或 passthrough 只存档、不授权；同索引新制品会先撤销旧授权，归档失败也不能沿用旧候选；不产生原文尾巴的新解释器。
+
+`host.latest()` 可查看已绑定制品；**宿主显式调用 `host.runLatest(index)` 才执行**，原文 RAW 块一起传入执行轮，不用说明稿冒充原文。现有 DSH `llm/stream` 在工具调用发出后才完整获稿，不能靠这个钩子追回已执行工具；本版本不虚构工具拦截/decision 格式、不自动改 DSH 消息或环境。因此接入真正的自主工具循环时必须由宿主在动作前路由到证据执行 API，提供独占状态/上下文适配器；**尚未生产自动接管，也没有获准付费试跑**。
+
+回退：`evidenceProgram: false` 或不注册服务，立刻回到原 birth+compress；程序侧断开宿主调用即可。旧 `dryRun:true / mode:'off' / enabled:false` 原样有效。旧 `mode:'checkpoint' / stateMemory` 仍退役；新检查点不是恢复那些被否决的看板/抽取式路线。
+
+## 8. 实际验收与仍待证明的部分
+
+原独立的完整验收报告与历史回放文件已不在当前树中；下列读数仅为 2026-09-30 历史记录。当前可执行契约见 [`test/evidence-program.selftest.mjs`](../test/evidence-program.selftest.mjs)，不等同于复现这些历史效果数据。
+
+- 本轮模型/评委/副模型 API 调用 **0**，费用 **0**；本地 HTTP 替身只是既有自测，不是真模型。
+- R1 15、R2 11、R3 12、R4 26 项自测；加上原 636 项为 **700 通过 / 0 失败 / 1 原有宿主依赖跳过**，20 套件，manifest 271 文件无漂移。
+- N1–N7 在 267 份历史稿上全零；旧路径默认与新侧车说明稿逐字相等；没有改变提示词/压稿预算。
+- 合成本地控制链：2 个批准分支实际执行，第一轮失败并恢复，第二轮通过；2 轮/2 次修复/7 次检查。只说明工程控制链可用，不是 flaky 模型涨分。
+- P2–P6 有工程证据支持；P1 尚未测试。合成、自写协议夹具不等于独立人写的真实留出；真实效果、S0、run5、一切模型/评委调用均待批准。
+
+**已实现与未做的界线**：类型化接口、独立冻结判据、主动诊断、逐项档案、块仓、联合恢复、预算/循环与侧车接线已一次交付；没有做训练、forced answering、模型消融、best-of 搜索、生产自动接管或付费泛化。不把缺少宿主权限的数据伪造成“可执行通过”。
+
+
+## 四轮复核补件（v13.1，本地功能，不承诺模型收益）
+
+`contextOptions` 仍默认 `null`。宿主显式设对象（如 `{ maxTokensEst: 8192 }`）才装配新消息与义务动作闸：`runtime.modelInput()` 给固定协议/契约前缀与完整 L0，`runtime.contextView()` 给大小/年龄/当前修订/真实访问/剩余预算，`runtime.readBlock(indexRef, id)` 默认 solver 角色。失败 RAW/EXPLANATION 默认不可读；optimizer 需要构造时显式 `allowOptimizerReads: true` 且请求指定角色，不把角色字符串当认证。真正模型工具分权仍由宿主配置，不把 JS 工厂当 OS 沙箱。
+
+每个 L0/L1/L2 都重复完整冻结契约、步骤四槽、义务/反馈/预算。L1/L2 只附加类型化解释，不摘取原稿。任何非空子集保有相同核心；管理器拒绝混周期、缺核心、伪造描述或旧修订。预算不足整帧拒绝，不送一个残缺尾巴。固定前缀不含轮次/反馈/用量，不承诺 provider 永远缓存命中。`render()` 的核心预算是装配前快照，顶层 `budget` 是交付后账本；块读收费按真实完整内容的 token **估算**，渲染收费包含前缀+各层完整文本，不含 provider 分词器/账单；`providerReportedUsage=null` 明示未知。空块也受读次数硬上限。
+
+只有品牌验证器私有 HMAC 的新鲜前置回执能将条件义务从 armed 触发为 pending；动作仅 executed，所有绑定当前修订的验收才 fulfilled。cancelled/invalidated 不可复活，过期/外部修订/失败关闭不能补跑动作。无前置的 observe 是冻结契约允许的立即验证，不虚构新鲜触发事件。`binaryEvidenceFeedback` 丢弃伪造/错程序/错轮次/错角色证据，陈旧证据标 unknown，动作不扮演验收。逐槽审计只证结构完整，不是 QAEval/LLM 理解测验。
+
+命名 head 以 HMAC+独占文件锁+前版本 CAS 更新，档案自动恢复；`reserveHoldout()` 在异步执行 test 之前持久预占，即使崩溃/失败也不返还任务族。恢复旧 `restoreRef` 不可跨越最新 head 的退役状态。崩溃遗留 head 锁不自动抢锁，须宿主检查后处理；这是故意保守的可用性权衡。普通主机断电的目录 fsync/故障文件系统耐久性及恶意特权宿主不在本轮证明范围。
+
+原四轮覆盖台账 `docs/analysis/THEORY-COVERAGE-2026-09-30.md` 已不在当前树中；此段覆盖分母只作历史记录。当前零 API 工程契约可用 `npm run verify:offline` 重跑（Linux/unshare/ip 必需，隔离失败停止，不回退在线）；它不复算已删除报告中的旧分母。
+
+
+本地搜索补件：`createEvidenceDocument`/`editEvidenceDocument` 只编辑指定文本槽，冻结头与必需槽不可删；次数/字符/总量限额先检查。`runEvidenceSearch` 将 async 真实执行结果无损签名留仓，再交 R3 同步证书内核；最多 8 个候选，固定候选且持久 reserve 后才读 test，任何扰动/观察器负项或 unknown 都 veto。拒绝缓存跨周期要求宿主提供完整源码/环境 `evaluationScope` 指纹，不把函数的字符串表示误认为 closure 环境证明；没有指纹不跳过旧失败。问题队列认证证据、去重、按复发排序、限额并持久恢复，仅供宿主，不作为 solver 失败故事。
+
+本次 `createLocalEvidenceSuite` 只给 32 个代理自写、参考已知的真实文件/状态/本机 HTTP/子进程场景；`executeLocalEvidenceCase` 的策略空间仅 idle/unchecked/checked。它不是任意仓库代码演化或 LLM 效果评估，观察器不可判时缺失 correct 槽而不是假造 false 后赚提升。最终 746/0/1、23 套件，详细分母与边界见四轮覆盖台账。
+
+
+## 零 API两轮后续（v13.1.2；不是模型效果验收）
+
+`freezeApprovedRepairPolicy(def, contract)`冻结初始/后备/后验路由批准动作与>=0.8信心阈值、最多2修复；`createApprovedRepairEpisode({ host, contract, policy }).run()`是显式原生宿主调度入口，不是插件默认开关。它只从品牌host本次runLatest取得认证诊断，拒绝外部后验注入；unknown/恢复不完整/冲突/截止/预算满停止，诊断仍不能扮演验收。构造和调用均需宿主明确授权；断开调用即保留旧路径。
+
+对照宿主可设 `diagnosticStrategy:'fixed', diagnosticOrder:[已批准的diagnostic检查ID]`；默认仍是 EIG（active）。固定诊断不会在熵为0时提前终止，这是当时设计的对照成本。原预注册计划与 18 个任务的报告 `docs/analysis/LOCAL-ITERATIONS-2026-09-30.md` 已不在当前树中；`12/18、18/18、36→18` 均为历史自报读数，本轮未复算，不据此宣称当前收益。
+
+历史记录：当时使用的 `npm run evidence:repair:development` / `evidence:repair:iterations` 名称不在当前 `package.json`，相应 `.cfb-runtime/repair-iterations/` 报告也未纳入当前树；`763/0/1、25 套件、manifest 291、N1–N7 全零` 不代表当前状态。当前 checkout 只能复跑本节上方所述的 `evidence-program` 自测；完整外部 DSH/Cordis 依赖仍未验证，独立泛化与生产接管也未获证明。
+
+
+### v13.1.3 增量：取消与按重试需要诊断（显式、默认旧行为）
+
+冻结批准策略可选`diagnosticMode:'before-retry'`：只有还存在下一次批准修复机会才做失败诊断，首个unknown停止；不降低前置/验收要求。省下的诊断不会当成完成增益或评委涨分。未选模式/显式always保留旧policy摘要与每次失败诊断默认。`controller.run({signal})`、`host.runLatest(index,{signal})`、`runtime.runRound(program,{signal})`接受可选AbortSignal；预取消零预算，执行中取消等待本轮显式文件/JSON恢复、不启用下一分支，不采纳迟到检查。
+
+底层显式 round 选项 `diagnostics:false` 只跳诊断，不跳验收；`stopOnUnknown:true` 让诊断首个未知停止。HMAC 认证与角色/轮次仍严格；固定顺序不受构造后调用方数组修改影响。取消不回退已发生的网络等非受管副作用，也不能抢占同步 I/O 或强制终止不遵守 signal 的观察回调；宿主必须保护独占资源。原增量优化/回归报告 `docs/analysis/REPAIR-HARDENING-2026-09-30.md` 已不在当前树中；当前代码和测试才是实现事实。
+
+历史记录：`npm run evidence:repair:regression` 与其原报告不在当前 `package.json` / checkout 中；`776/0/1、26 套件、manifest 294、N1–N7 全零` 仅记录当时的结果，不能声称本轮通过。当前可执行验证以 `node verify.mjs evidence-program` 和 `npm run verify:offline` 的现场输出为准。
+
+
+### v13.2 离线到联网交付平面（不改变原证据执行权限）
+
+`createEvidenceStore`新增只读 `authorityId`，为域分离 HMAC 衍生的公开仓身份，**不是私钥**；仅用于公开预算收据与私有仓/检查点绑定。原 `RUNBOOK-ONLINE-READY.md` 在当前树中缺失，因此本文不再把它当可执行接入说明；新参数不增加任何检查/文件执行权限。真实 DSH 依赖、模型效果与独立泛化仍分别待验证，不能用本机替身代替。
+
+
+########## transfer\notes\MICRO-MODEL-PLAN.md (5622 chars) ##########
+# 微模型落地计划（目标：一个"勉强能用"的微模型）
+
+> 作者：审计者（本机实测，2026-10-10）
+> 前提：本文件所有数字都是**我在本机跑出来的**，命令附在每一阶段。凡我没跑过的，都标"未验证"。
+
+---
+
+## 0. 先把目标改对（这一步最重要）
+
+你的原话是：**"只要他性能不比原生思维链差且稳定就好。"**
+
+这句话在工程上可以拆成三条**可验证**的性质：
+
+| 性质 | 含义 | 怎么验证 |
+|---|---|---|
+| **C1 不编造** | 压缩稿里不能出现原文没有的事实/决定/改法 | 已有门 G2，**已通过 13/13** |
+| **C2 不丢东西** | 原文里承重的标识符必须还在压缩稿里 | **当前没有任何门在管 —— 这是全部问题的根源** |
+| **C3 稳定** | 确定性、零网络、零 API、耗时可预期 | 已满足：纯 JS、18.7ms/条、$0 |
+
+**你不需要"更强的模型"。你需要的是 C2 那一道门。**
+
+---
+
+## 1. 现状实测：微模型其实**已经跑起来了**，但它在偷偷丢东西
+
+### 1.1 生产路径是通的（这条我之前漏了，现在补上）
+
+`compressLocalModel: true` → `src/policy.js:134-137` → `src/distill.js:444` → `compileV5Local`
+
+我在 13 条 gold 上跑了这条**真实生产路径**（`node tools/gold-vs-line.mjs`）：
+
+| 指标 | 实测值 |
+|---|---|
+| G1（有净收益）通过 | **12/13** |
+| G2（无编造）通过 | **13/13** |
+| 平均压缩比 | **0.5153 ⇒ 省 48.5% 字符** |
+| 平均耗时 | **18.7 ms/条** |
+| 成本 | **$0**（纯 JS，零网络） |
+
+**⇒ 一个能省近一半字符、从不编造、18ms 出稿、零成本的压缩器，已经在仓库里了。**
+
+### 1.2 但它丢了 1/4 的骨头
+
+我量了"承重标识符"（文件路径 / 符号名 / 函数名 —— 下游推理真正需要的东西）的存活率：
+
+| 条目 | 金标承重标识符 | 在 raw 里 | 在微模型稿里 | 压缩比 |
+|---|---|---|---|---|
+| eacces-config_decoy-s0-r3 | 17 | 17 | 13 | 0.462 |
+| eacces-config_long-horizon-s0-r5 | 26 | 26 | 21 | 0.519 |
+| eacces-config-s0-r5 | 11 | 11 | 6 | 0.474 |
+| perf-regression-s0-r7 | 29 | 29 | 24 | 0.411 |
+| sse-truncated_decoy-s0-r4 | 23 | 23 | 18 | 1.303 |
+| sse-truncated_long-horizon-s0-r5 | 25 | 25 | 25 | 0.427 |
+| **sse-truncated-s0-r4** | **15** | **15** | **3** | 0.485 |
+| sse-truncated-s0-r5 | 29 | 29 | 28 | 0.504 |
+| sse-truncated-s1-r3 | 16 | 16 | 13 | 0.48 |
+| wrong-model_decoy-s0-r4 | 16 | 16 | 11 | 0.936 |
+| wrong-model_long-horizon-s0-r4 | 17 | 17 | 11 | 0.468 |
+| wrong-model-s0-r6 | 27 | 27 | 17 | 0.723 |
+| wrong-model-s1-r5 | 16 | 16 | 11 | 0.293 |
+| **合计** | **267** | **267 (100%)** | **201 (75.3%)** | |
+
+**⇒ 它丢了 66 个承重标识符。最惨一条 `sse-truncated-s0-r4` 只活下来 3/15 = 20%。**
+
+### 1.3 为什么现有门抓不住
+
+`tools/helpers/hand-draft.mjs:143 handDraftGate()` 只检查三件事：
+
+- `invented-triple` —— 改法的 `old_text/new_text` 必须来自原文
+- `invented-decision` —— 不能替主模型下决定
+- `ungrounded:*` —— 槽位句里的锚点必须在原文里出现
+
+**这三条全是"不许加"，没有一条是"不许减"。** 所以一个把关键文件路径全删光的稿子，G2 照样满分通过。
+
+**这就是"过拟合机器/看着好但一点不能用"的机制性解释**：所有尺子都在量"有没有多嘴"，没有一把量"有没有漏嘴"。
+
+---
+
+## 2. 核心洞察：安全来自**门**，不来自**模型**
+
+这是整个计划的支点：
+
+> **微模型只决定"压缩的收益"（过闸率、省多少）；安全由门 + 无损回退保证。**
+> 门一旦管住 C2，"不比原生思维链差"就变成**结构性保证**，而不是一个需要训练才能达到的指标。
+
+所以路线是：**先修门（今天就能做完），再谈训模型。** 反过来做（先训模型）永远做不完 —— 这正是过去几个月的困境。
+
+---
+
+## 3. 分阶段计划
+
+### 阶段 0：把"保留率"做成尺子 —— 今天，$0，2~3 小时
+
+**做什么**：把我在 §1.2 用的度量固化成工具 `tools/micro-retention.mjs`。
+
+- 输入：raw + ctx + 压缩稿
+- 输出：`{retained, total, ratio, missing: [标识符...]}`
+- 承重标识符定义：`anchorsOf(text)` 里长度 ≥3、含字母、且（含 `._/-` 或 驼峰 或 长度 ≥6）
+
+**命令**：
+```bash
+node tools/micro-retention.mjs --gold-dir transfer/gold --out .cfb-offline/ruler/retention.json
+```
+
+**验收**：对 13 条 gold 复现出 **201/267 = 75.3%**，且 `sse-truncated-s0-r4 = 3/15`。
+**为什么先做这个**：没有它，后面每一步都无法判断"改好了还是改坏了"。
+
+---
+
+### 阶段 1：加"保留门" + 无损回退 —— 今天，$0，3~4 小时 ★**这一步就达成你的目标**
+
+**做什么**：在出生路径上加第 7 道门 `retentionGate`。
+
+**判据（保守，先严后松）**：
+1. 取出 raw 中所有**非 NOISE 单元**的锚点（微模型自己已经会把单元分成 DECIDED/EXCLUDED/ACCEPT/OPEN/MECHANISM/NOISE）
+2. 要求这些锚点在压缩稿中**全部存活**
+3. 任何缺失 ⇒ `refused` ⇒ **原文放行**
+
+**关键**：这条门一旦生效，"不比 raw 差"就是**构造性成立的** —— 要么压缩稿保住了全部承重锚点，要么根本不压缩。
+
+**命令**：
+```bash
+node tools/gold-vs-line.mjs          # 看新门下的过闸率与压缩比
+node verify.mjs                      # 全量回归
+```
+
+**验收（这是你要的"勉强能用"）**：
+- ✅ 承重标识符存活率 **100%**（因为不达标就回退）
+- ✅ 过闸条目压缩比仍 ≤ 0.75（还有收益）
+- ✅ `verify.mjs` 43/43 全绿
+- ✅ 确定性：同一输入跑 10 次输出逐字节相同
+
+**预期代价**：过闸率会从 12/13 掉下来（有些条目会因为保不住而回退）。**这是好事** —— 那些条目本来就在丢东西。回退意味着"这条不压，走原文"，也就是"不比 raw 差"。
+
+---
+
+### 阶段 2：提高过闸率（让收益回来）—— 1~2 天，$0
+
+阶段 1 之后，收益可能掉到 20~30%。这一步把它拉回 40%+，**做法不是训模型，是改丢弃策略**：
+
+1. **锚点保护名单**：压缩时，凡命中承重锚点的单元强制保留（哪怕模型判它是 NOISE）
+2. **按单元分数设预算**：优先保 `infoVal` 高的单元，砍掉低分的
+3. **逐条诊断**：用阶段 0 的 `missing` 列表看"丢的到底是什么"，反推是分类错还是生成错
+
+**验收**：过闸率 ≥ 11/13 且保留率 100%。
+
+**为什么放这里**：这是**纯规则调优**，比训模型快 100 倍，而且可解释、可回归。
+
+---
+
+### 阶段 3：把真实 97M 老师蒸馏进 1,042 个符号权重 —— Kaggle，$0，几小时
+
+**前提**：阶段 1/2 完成后才做。**没做完就别做** —— 否则又是在没有尺子的情况下刷分。
+
+**现状（我验证过的）**：
+- 97M 编码器是**真的**：GitHub Release 资产 **98,742,284 字节**，sha256 `84947d950c1eb93aa3dc3495cb1b70c595e854925b25783826a498fe03dfdd67`
+- 但它**从未被运行时加载**（`src/` 里 `onnx` 0 处引用），且插件是**零依赖**（`dependencies: {}`）⇒ **ONNX 不可能直接进生产**
+
+**所以蒸馏是唯一出路**：
+1. 用 97M 老师在一大批 raw 上打标（它已经能跑，只是不在生产里）
+2. 把标签拟合进 `compile-v5-local.js` 的 **1,042 个符号权重**
+3. 产物仍是纯 JS ⇒ **零依赖不破**
+
+**验收**：符号学生在留出集上追平老师的单元分类准确率，且阶段 0/1 的保留门与压缩比不退化。
+
+⚠ **不要用 `tools/train-v5-micro.mjs`** —— 我实测它把准确率从 32.7% 降到 29.7%（标签是手写正则+手写常量表，训练目标与压缩质量无关）。
+
+---
+
+### 阶段 4：真机端到端 —— 需要你提供端点
+
+**这一步无法绕过**：C1/C2/C3 都可以在本机证明，但"下游模型读了压缩稿之后推理是否变差"必须真机。
+
+- 需要：可用的模型端点（`results.jsonl` 的结局行）
+- 做法：同一批任务跑两遍（raw 组 vs 压缩组），对比成功率
+- 这是 R1/R2/E1 三根轴**唯一**的解锁方式
+
+**在你给端点之前，阶段 0~2 的结论已经是"不编造 + 不丢东西 + 稳定 + 省 40%+"，这已经满足你说的"勉强能用"。**
+
+---
+
+## 4. 需要你做的决定
+
+| 决定 | 选项 | 我的建议 |
+|---|---|---|
+| 阶段 1 的保留门要多严 | 100% 承重锚点 / 90% / 按条打分 | **先 100%**（先保证不差，再谈省） |
+| 是否现在就做阶段 3 | 做 / 等阶段 1-2 完成 | **等** —— 否则又在没尺子时刷分 |
+| 真机端点 | 你能提供吗 | 阶段 4 之前给就行 |
+
+---
+
+## 5. 诚实的天花板
+
+- **本机跑不了 PyTorch**（无 torch，Python 3.12 + numpy）。阶段 3 必须上 Kaggle。
+- **阶段 4 之前，"不比 raw 差"只能在"不编造 + 不丢承重标识符"意义上成立**，不是完整的推理质量保证。这是真实上限，不是疏忽。
+- **97M 老师本身没通过预注册判据**（matched 口径下门1/门3 FAIL）。所以阶段 3 的蒸馏上限就是"追平一个没通过判据的老师"。**这也是为什么阶段 1-2 的门比阶段 3 的模型重要。**
+- 我**无法**保证阶段 2 能把过闸率拉回 11/13。可能只到 9/13。但那仍然是"省 30% 且不丢东西"，仍然满足你的要求。
+
+---
+
+## 6. 一页纸总结
+
+```
+现状：压缩器能跑（省 48.5%、13/13 不编造、18.7ms、$0）
+      但它丢 24.7% 的承重标识符，且没有任何门在管这个
+
+诊断：不是模型弱，是"安全"这件事从来没被门管过
+      所有尺子都在量"有没有多嘴"，没有一把量"有没有漏嘴"
+
+计划：阶段0 把保留率做成尺子        （今天，$0）
+      阶段1 加保留门 + 无损回退      （今天，$0）← 这一步就达成"不比 raw 差"
+      阶段2 调丢弃策略，把收益拉回来 （1~2 天，$0）
+      阶段3 蒸馏真 97M 老师进符号权重（Kaggle，$0）← 可选优化
+      阶段4 真机端到端               （需要你给端点）
+
+关键：先修门，再训模型。反过来永远做不完。
+```
+
+
+########## docs\TRAINING-AND-BENCHMARK.md (18970 chars) ##########
+# 统一科学训练闭环与本地代理基准指南（v14.20 历史快照）
+
+> ⚠ **新鲜度（2026-10-07 独立复核）**：本文是 **v14.20 快照**，仓库当前已是 **v14.25.4**。
+> **不要把本文数字当现状读**：
+> - **水位**以 `tools/build-micro-dataset.mjs` 的 stdout / `transfer/models/micro-dev-dataset.json` 的 `stats` 为权威源（§6.2bis 即此套路）；
+> - **§2 的自适应 λ 地板**（原写 `4200/1800/1200`）已与代码不符 —— 实测见 `src/birth.js` 的
+>   `computeAdaptiveBirthControl`：fresh-early `×1.20` = **3720**、cruise = **3100**、
+>   high-spin `×0.65` 下限 1600 = **2015**（代码中**没有** 1200）；
+> - 其余规模/自测读数以根 `README.md` 文首水位块为准。
+
+> 本文档整合了当时分散的 `CLOSED-LOOP-V2/V3/V4.md`、`CONTINUOUS-TRAINING-ARCHITECTURE.md`、`OFFLINE-ARCHITECTURE.md` 与 `RUNBOOK-*.md`。它不是当前 checkout 的唯一权威操作指南：正文命令、样本数与分数属于 v14.20 时期的设计/历史读数，可能已过期；当前现场基线见根 [`README.md`](../README.md) §5，脚本可用性以当前 `package.json` 和测试为准。
+>
+> **评测口径说明：**本文提到的 SWE-bench、TAU-bench、LMArena、Artificial Analysis、LiveBench 等仅是本地记分卡借鉴的指标/设计来源，不代表使用了其官方测试集、参加官方评测或获得官方认证。下方数字是历史本地样本的结果，不能当作本轮实测。
+
+---
+
+## 1. 训练架构核心理念：把压缩器训练到极致
+
+在编码 Agent 多轮排障中，原生思维链存在四大顽疾：**跨轮上下文指数膨胀、死路失忆重走、只看不改内耗、未验证即伪称完成**。
+`cfb` 的训练闭环不是盲目调参，而是通过 **四维策略搜索 + 双轨（代码规则 × LLM 语义）裁判 + 借鉴外部 benchmark 思路的本地代理指标**，以较低 API 成本探索压缩器上限；这些本地代理不等同于官方 benchmark 结果。
+
+### 1.1 四维全空间策略基因（`src/policy.js`）
+
+每一条候选策略（`policy:<id>`）由 4 个正交维度的基因唯一确定（带 SHA-256 指纹）：
+
+| 维度 | 策略键 | 作用与极限突破点 |
+|---|---|---|
+| **① 提示词层 (`patches` + `modularPromptPrune`)** | `rules.anchor` / `rules.closure` / `rules.triad` / `modularPromptPrune: true` | **反稀释动态裁剪**：当轮有【在手】代码时剥离取证分支废话，有【已排除】死路时强化禁重走疫苗；将提示词从 ~1,930 字瘦身至 ~893 字（`-53.7%`），消除指令注意力稀释 |
+| **② 程序部件层 (`config`)** | `continuationPath: 'bounded'` + `statePartsMode: 'compact'` | **有界延续 + 紧致状态**：将 O(轮数) 增长的已走路径截断为最近 2 条并在【台账】保留曾涉文件出处（消除 `invented-identifier` 误杀）；剔除【已排除】/【未解】中已被正文覆盖的重复句子，净省 token 提升 **`+83.8%`** |
+| **③ 生产制度层 (`regime`)** | `birthAdaptiveFloor: true` / `birthMinChars` / `birthTrigger` | **自适应 $\lambda$ 控制器**（`computeAdaptiveBirthControl`，基准 3100 实测）：fresh-early（第 1 轮 ∧ 低打转 ∧ 低水位）→ `×1.20` = `3720`；cruise → `3100`；high-spin-or-long-horizon（轮次 ≥ 4 ∨ 连续只读 ≥ 3 轮 ∨ 高打转 ∨ 水位 ≥ 0.50）→ `×0.65`、下限 `1600` = `2015`，输出上限同步 `×0.85` |
+| **④ 少样本对齐层 (`exemplars`)** | `exemplars: [{ family, chosen, rejected, ... }]` | **In-Context DPO 自动注入**：从飞轮 `pairs.jsonl` 按跨家族隔离原则自动挑选高分 `chosen` vs 低分 `rejected` 对比锚点注入副模型，无需 GPU 重训权重即获 DPO 级对齐收益 |
+
+---
+
+## 2. 三模式科学训练闭环（`tools/cfb-cycle.mjs`）
+
+```
+Mode 1: 手写探顶 (ceiling)
+   验证在真实多轮任务上手写理想压缩稿能否击败或打平 raw (hand.fixed && hand.rounds <= raw.rounds)
+   ↓ 晋升入库 transfer/gold/
+Mode 2: 金标基准与正交析因 (prescreen → plan-bench → bench-run → bench-report)
+   在零污染金标 + 8 轮历史池上跑副模型压缩，跨计划 CAS 缓存复用，双轨裁判打分，飞轮自动采集偏好对
+   ↓ 选出 Pareto 冠军策略
+Mode 3: 影子分叉多轮轨迹验证 (plan-traj → traj-run → review → confirm)
+   在 5 主池 + 5 留出池真实沙箱上跑主模型多轮排障，分歧前零主调用（Shadow-Forking），序贯 e-value 门禁晋升
+```
+
+### 2.0 金标回收：改稿 → 离线重测 → 换稿（`tools/cfb-gold-repair.mjs`，v14.20.1）
+
+金标被装置话术（越界）审计判死时，**正确动作是改稿，不是丢数据**：条目里真正值钱的是 `raw`/`ctx`/`calls` 与真机 `outcome`，越界只是稿子里的几句话。
+
+```bash
+node tools/cfb-gold-repair.mjs audit                    # active + 隔离区全量复算（$0）
+#   RESTORABLE（稿子本就干净）→ 字节级放回，digest 不变 ⇒ 冻结的基准计划照旧可用
+node tools/cfb-gold-repair.mjs restore --id A,B --apply
+#   NEEDS-REWRITE → 重写到位（不是只删越界句）：越界句必须去掉，归因/已排除/验收/未解要按原文事实写全写对，
+#     然后 $0 复跑生产同一条闸链。replay 报的「与旧稿 dd」只是差异账、用来看归因有没有丢，**不是合格线**：
+#     修订稿像不像旧稿从不作判据（v14.21.1 起该口径已从代码里删除）。
+node tools/cfb-gold-repair.mjs replay --id X --draft transfer/gold-repair/drafts-proposed/X.md
+node tools/cfb-gold-repair.mjs stage  --id X --draft ...   # 全绿才暂存并登记 pending-retest.json
+node tools/cfb-gold-repair.mjs next-cmds                   # 打印每条待复测的确切真机命令
+# 真机复测过了才入库：node tools/cfb-cycle.mjs gold add --plan N --replace（旧条目自动归档 transfer/gold-history/）
+```
+
+定罪口径：`auditMode1Gold` = `draft ∪ stored`，但只定**作者自己写的主张**的罪；命中片段若整句、或「…」/`…` 定界引用内原样出现在 `raw ∪ ctx` ⇒ 判为报告观测、免检（记在 `qualityAudit.exempted[]`）。铁律不变：**离线全绿 ≠ 金标**，`outcome` 只能由模式 1 真机轨迹决定。
+
+> **v14.22.0 起，「有金标」不再等于「能跑分」。** `gold add` 会跑上限线（C1–C6，见 `docs/GOLD-WRITING-GUIDE.md` §0A）：不达线的条目自动降成 `use:'train'`，于是——
+> - `plan-bench` 在标尺侧为空时**拒跑**（`no-gold:dev`），不再拿训练料冒充尺子；
+> - `train-v5-micro` 自检只读标尺侧，为空时报 `no-ruler-for-eval`；上面 2.0 那次 `dd 1.000` 只是「金标和自己比」的自证，不是成绩；
+> - `export-train` 把 `use:'ruler'` 剔出 SFT。
+>
+> ⇒ 判读 Mode 2 进度前先看 `gold status` 的标尺条数。尺子变硬（例如 dd 从 0.906 掉到 <1、或 `--eval-only` 直接报 `no-ruler-for-eval`）**不是退步**，是之前的分虚高。要恢复跑分只有两条路：按 §0A 重挣达线条目（要 API），或显式 `gold use --id … --set ruler` 把旧条目放回标尺（工具会警告这是「明知不达标还当尺子」）。
+
+### 2.1 零 API 离线飞轮四步曲（日常迭代首选，`$0` 成本）
+
+```bash
+# Step 1: 查看当前策略池、Pareto 前沿、排序器精度与下一步建议
+node tools/cfb-cycle.mjs status
+node tools/cfb-cycle.mjs next
+
+# Step 2: 零 API 预筛全部候选策略 + 四维正交因子归因（主效应 ΔsavedTokens / Δtruth）
+node tools/cfb-cycle.mjs prescreen
+
+# Step 3: 双轨裁判（规则 × LLM 语义）交叉验证与 130 样本 L2 岭回归校准
+node tools/cfb-judge.mjs capacity
+node tools/cfb-judge.mjs calibrate
+
+# Step 4: 飞轮自动采集胜负偏好对并导出 5 家族严格组隔离 SFT / DPO 数据集
+node tools/cfb-cycle.mjs flywheel --harvest
+node tools/cfb-cycle.mjs export-train
+```
+
+---
+
+## 3. 外部评测口径的本地代理指标（`npm run bench`，设计快照）
+
+本节记录 v14.20 文档写作时的本地指标设计。`tools/helpers/ruler.mjs` 与 `node tools/cfb-cycle.mjs benchmark` 使用的是仓库自有轨迹/任务和本地评分变体，不是下列机构的官方测试集或成绩；表内样本与分数均为历史快照。
+
+| 指标启发来源（非官方执行） | 本地代理指标 | 设计意图（非官方结论） |
+|---|---|---|
+| **1. SWE-bench Pro / Verified** | **严苛解决率 (`F2P ∧ P2P ∧ !falseDone`)** + **伪修好水分 (`False-Done Gap`)** + **`pass@1` 无偏估计** | 揭穿「改了代码没跑测试就宣称修好」的刷分假象（实测揭露出 `ledger` 臂存在 **`16.7%` 伪修好水分**，而 `auto` 出生即压缩臂为 **`0.0%`**） |
+| **2. TAU-bench ($\tau$-bench)** | **`pass^2` / `pass^k` 多轮连续可靠度** | 衡量压缩器介入后是否引入随机抖动（实测 `auto` 与 `raw` 均保持 `pass^2 = 0.778` 零退化） |
+| **3. LMArena (Chatbot Arena)** | **Bradley-Terry MLE Elo 等级分 + 200 次 Bootstrap 95% CI** | 同题配对盲测：先比严苛解决，同解比步数，同步数比 token 成本（实测 **`auto = 1110`** vs **`raw = 1000`** vs **`ledger = 951`**） |
+| **4. Artificial Analysis (AA Index)** | **智能-成本帕累托前沿 (`Cost/Verified-Fix`)** + **AA 密度效率 (`truth × savedTok / 1000`)** | 拒绝用高昂 token 堆砌分数，直接度量「每成功修好 1 题的真实美元成本」与「单位 token 节省的有效信息密度」 |
+| **5. LiveBench / LiveCodeBench** | **零污染客观防刷分规则 (`dd/2`)** + **Thresholdout 留出集休眠保护** | 6 项确定性机械特征（锚点精确率、排除召回、落点命中、三元组闭合、零死路复活、未解召回）+ 留出集防过拟合 |
+
+### 3.1 标尺口径 dd/2（v14.20.1 起；`DRAFT_DISTANCE_VERSION` 一改，旧计划按 `metric-mismatch` 拒跑）
+
+`bench-run` 拿压缩器的稿与金标稿比六个槽位。dd/2 相对 dd/1 改了三件事，全是为了「分数别再混进非性能的东西」：
+
+| 情形 | dd/1 | dd/2 |
+|---|---|---|
+| 过不了生产闸（`no-gain` / `no-token-gain` / `empty-candidate`） | 拿 `text = raw` 去比，白捡「决定 + 锚点」两项（实测 base 因此虚高到 0.519） | **记 0 分**，`verdict = refused:<why>`；原文那次的分数留在 `distanceOnRaw` 里可回看 |
+| 调用失败（超时 / 异常，`distill-failed`） | 同上，跟"压不出"混在一起 | **不计分**（`distance = null`）、不进缓存、下次自动重试；回执单列 `errors` |
+| 同一句内容换写法（「已排除：」↔「排除了：」、并句 ↔ 拆句） | 掉分（实测最多掉 0.35，因台账按 220 字上限丢长句） | **不掉分**：剥掉引导词后逐字命中即算召回，比对范围限「槽位内 + 其前后一段」，不是正文任意角落 |
+| 只写引导词不写内容（空壳模板） | 未定义 | **三项判 0**（`A41d` 钉）；模板本身照旧受奖励 —— 配上内容仍是 1.000 |
+
+固定句式（`本轮增量 / 改法只落一个 / 已排除 / 验收 / 未解`）是**协议**而不是风格：读者（主模型）按标签跳读，程序按标签抽台账，所给它继续受奖励，标尺不负责惩罚它。
+---
+
+## 4. 个人开发者省钱评测三档菜单（`--lite` 极简预算模式）
+
+针对个人开发者预算有限的场景，`cfb` 提供三档阶梯式验证，**95% 的日常迭代只需第 0 档（$0）和第 1 档（¥0.03）**：
+
+### 第 0 档：零成本本地代理记分卡（`$0.00`，耗时约 1 秒；非官方基准总表）
+```bash
+npm run bench
+# 或：node tools/cfb-cycle.mjs benchmark
+```
+- v14.20 快照当时记录的输入为 21 条真实多轮轨迹（`transfer/traj1..3`）与 `b1/b2` 金标计划；当前数据池与结果已不同，必须以根 README §5 的本轮输出为准。该表仍是本地代理指标，不是任何外部基准的官方参测成绩。
+
+### 第 1 档：极简金标基准测试（`≈ $0.004` / 约 ¥0.03，仅 1 次副模型调用）
+```bash
+npm run bench:lite
+# 或指定候选策略：node tools/cfb-cycle.mjs plan-bench --lite --policies p-e62a037097
+```
+- **省钱机制**：自动锁定唯一轨迹验证金标 `g-sse-truncated-r3`，自动从 `b1` 缓存复用 `base` 臂结果（0 调用），**只对新候选策略发 1 次副模型请求**，立出与 `base` 的配对对比。
+- 跑完预注册后执行真机调用：
+  ```bash
+  source ~/.secrets/keys.env
+  node tools/bench-run.mjs --plan .cfb-offline/bench/bN.json
+  node tools/cfb-cycle.mjs bench-report --plan N
+  ```
+
+### 第 2 档：IRT 最大信息量单题真机轨迹测试（`≈ $0.068` / 约 ¥0.50，硬顶 `$0.08`）
+```bash
+npm run traj:lite
+# 或指定候选策略：node tools/cfb-cycle.mjs plan-traj --lite --arms raw,policy:p-e62a037097
+```
+- **省钱机制**：
+  1. **IRT 自适应选题**：自动挑选当前区分度最高、最能暴露模型「只看不改」瓶颈的 1 道代表题（默认 `perf-regression`）；
+  2. **4 轮硬上限（`--max-rounds 4`）**：实测好策略在前 4 轮内必定分出高下，砍掉第 5–8 轮无效空转；
+  3. **影子分叉（Shadow-Forking）**：压缩首次生效前完全复用 `raw` 主模型调用（分歧前零双倍计费）；
+  4. **单次预算硬锁（`$0.08`）**：一旦达到 `$0.08` 立即安全熔断。
+- 执行真机轨迹与入账：
+  ```bash
+  source ~/.secrets/keys.env
+  node tools/traj-run.mjs --plan .cfb-runtime/traj/tN/plan.json --store-text --variants raw,policy:p-e62a037097 --samples 1 --max-rounds 4 --fork --require-fp --only perf-regression
+  node tools/cfb-cycle.mjs review --plan N && node tools/cfb-cycle.mjs confirm --plan N
+  ```
+
+---
+
+## 5. 双轨裁判（Code × LLM Semantic Judge）使用详解
+
+纯规则无法理解深层语义转折，纯 LLM 容易给啰嗦的长文打高分。`tools/cfb-judge.mjs` 将两条轨道融合并互相校准：
+
+| 子命令 | 用途 | API 成本 |
+|---|---|---:|
+| `node tools/cfb-judge.mjs capacity` | 审计全部历史轨迹（`traj1..3` + `mr`）中模型的容量瓶颈与失真模式 | `$0` |
+| `node tools/cfb-judge.mjs audit-draft` | 对指定压缩稿同时跑确定性规则（`draftDistance`）与语义诊断 | `$0`（加 `--llm` 调副模型） |
+| `node tools/cfb-judge.mjs audit-bench --plan 2` | 扫描基准测试计划中的全部分数，自动标记规则轨与语义轨分歧项 | `$0`（加 `--llm` 调副模型） |
+| `node tools/cfb-judge.mjs calibrate` | 在 `transfer/mr` 130 条真实多轮下游结果上做 L2 岭回归校准，输出最优特征权重与 LOO-RMSE | `$0` |
+
+---
+
+## 6. `< 0.1B` CFB-Micro 出生压缩模型训练指南
+
+本流程用**预训练双向编码器作教师模型**，再把任务信号蒸馏到当前同步 JavaScript 编译器使用的轻量特征头。教师模型不是从 1,538 条样本随机初始化训练：底座选用 [IBM Granite Embedding 97M Multilingual R2](https://huggingface.co/ibm-granite/granite-embedding-97m-multilingual-r2)，Apache-2.0，约 97M 参数，覆盖中文、英文与代码；仓库把 HF revision 固定在 `835ad14087e140460703cf0fae09f97d469d65c2`。任务头也计入总参数，代码在训练前硬性检查 `totalParameters < 100,000,000`，超限就退出。
+
+### 6.1 两条明确分开的推理路径
+
+1. **完整教师编码器（高能力、可选部署）**：双向 ModernBERT 编码 + 槽位、价值/诱惑度、跨度和草稿偏好头；导出完整 INT8 ONNX。它支持跨语种和代码语义表示。当前训练把输入截到 `256` 个 tokenizer tokens；不要把模型卡的长上下文上限误报为本次训练/验收长度。
+2. **紧凑学生（当前生产快速路径）**：将教师在 `dev` 上的信号蒸馏到 19 维符号特征 MLP 和偏好小头。同步、无外部运行时依赖的 `compileV5Local` 从唯一生产文件 `transfer/models/v5-micro-weights.json` 加载并校验权重，不保留第二份手写常量；`meta.promptVersion` 与 `meta.weightsDigest` 标识实际计分权重。**它不会在 JS 调用中执行完整 97M Transformer**。紧凑 ONNX 延迟仅代表学生，不代表完整编码器。`test/micro-runtime.selftest.mjs` 覆盖 JSON 加载、schema/特征顺序、token 惩罚、EXCLUDED 门控和默认编译路径；`test/micro-ruler.selftest.mjs` 覆盖长度分层读数自洽、Wilson 边界关系、去 token 惩罚指标、飞轮对非退化与构建器端点上限声明。
+
+这样保留插件已有的低开销、可审计和原文落点守门路径，同时把完整神经编码器作为独立候选产物；不以固定 Gold 得分冒充教师模型的泛化证据。
+
+### 6.2 严格隔离的数据与真实规模
+> ⚠️ 本节数字已被 §6.2bis（文件末尾同编号块）取代；保留原文只为留痕。
+
+
+运行 `node tools/build-micro-dataset.mjs` 会写出临时文件 `transfer/models/micro-dev-dataset.json`，训练脚本结束后删除。2026-10-04 的生成结果如下；今后以每次构建器实际 JSON 报告为准：
+
+| 数据/审核项 | 当前计数 | 说明 |
+|---|---:|---|
+| dev Gold / dev Pool | 7 / 3 | 话语单元、跨度、反事实来源 |
+| Unit 原始样本 | 1,538 | 全量分母；三个 family：`flaky-timeout`、`perf-regression`、`sse-truncated` |
+| Unit 可训练 / needs-review | 569 / 969 | 可训练 37.0%；仅确定性规则筛选，未做 LLM/人工语义仲裁 |
+| 跨度指针 | 57 | 文件、代码片段和验收命令 |
+| Unit pair | 609 对 | 仅由可训练端点构成；端点度数上限 **3**，每个正例最多 3 对 |
+| Unit pair 端点 | 569 个唯一端点 / 1,218 次引用 | 396 个端点被复用，占唯一端点 69.6%；实测最大度数 3 = 声明上限 |
+| Unit pair 长度匹配率 | 308/609 = 50.6% | `|Δtoken| <= 3` 的对；困难负例挖掘见 6.2.1 |
+| Draft pair 原始 / 可训练 / needs-review | 71 / 38 / 33 | 可训练 = 32 条真实飞轮对 + 6 条 Gold 对确定性反事实；其余 33 条不参与拟合 |
+| 原保留 Gold holdout | 4 | `eacces-config`、`wrong-model` 不进训练；已在此前评测，不是全新盲测 |
+
+标签审计当前是**规则支持筛选，不是语义审核完成**。Unit 的 969 条待审样本主要包含 `mechanism-heuristic-no-direct-gold-slot` 817、`competing-slot-overlap` 411、`noise-label-has-gold-overlap` 33、`noise-label-has-actionable-cue` 22（旗标可以重叠）；37 条 Draft pair 也被排除。训练脚本只使用 `trainingEligible=true` 的标签与 pair，并在数据文件保留逐条来源、依据、旗标和分母。
+
+Unit 标签生成规则计数（“eligible”列是实际可训练数）：
+
+| 规则 | 全量 | eligible |
+|---|---:|---:|
+| `gold-overlap-decided` | 150 | 91 |
+| `gold-overlap-excluded` | 89 | 75 |
+| `gold-overlap-acceptance` | 50 | 35 |
+| `gold-overlap-open` | 30 | 29 |
+| `decision-cue-plus-gold-overlap` | 14 | 12 |
+| `excluded-cue-plus-gold-overlap` | 14 | 7 |
+| `no-slot-cue-or-gold-anchor` | 374 | 320 |
+| `mechanism-heuristic-only` | 817 | 0 |
+
+Draft 33 条待审原因为被拒稿仍通过硬门（26）、配对分数 margin `<0.05`（6）、无正向距离 margin（1）。
+
+#### 6.2.1 v14.20 数据构造与判定修复
+
+1. **困难负例 = 长度匹配优先 + 模型最难优先**（`CFB_MICRO_NEG_STRATEGY=hardened`，默认）：候选负例先按 `|Δtoken| <= CFB_MICRO_NEAR_LENGTH_TOKENS`（默认 3）是否长度匹配排序，再按**当前生产打分最高的负例**（对模型最难）排序，最后才是旧的词面 hardness。旧行为等价于 `legacy`，保留为可选值以复现历史结论。端点上限与每正例对数可用 `CFB_MICRO_PAIR_DEGREE_CAP` / `CFB_MICRO_PAIR_PER_POSITIVE` 覆盖（默认 3 / 3）。
+2. **常数占位分数不再被当成监督**：若飞轮来源里所有 pair 共享 ≤2 种分数对（历史版本是 122 条全部 `0.92 / 0.45`），整批降级为 `needs-review` 且不进入拟合，判定写入 `stats.flywheelScoresDegenerate`。
+3. **真实飞轮对落库**：`tools/promote-flywheel-pairs.mjs` 把本地采集的 `.cfb-offline/train/pairs.jsonl` 过滤 holdout、保留分数与文本哈希来源后写成 `transfer/models/dev-flywheel-pairs.json`（schema `cfb.dev-flywheel-pairs/2`，当前 38 条 dev、6 种分数对）。Kaggle checkout 没有 gitignored 的 jsonl，过去只能读到常数占位文件，于是出现**本机 71/38 与 Kaggle 155/118 两套口径**；落库后两条路径都得到同一批 38 条真实对。这表明规则只保留有直接锚点/真实偏好依据的子集；需人工/LLM 逐条确认后才能称作语义审校完成。
+
+SFT 和两类偏好数据采用**按 family 分组**的确定性 dev train/validation 切分；`_decoy` / `_long-horizon` 只归并到源 family，不能制造独立样本族。验证 family 仅按可训练 Unit 数量选择，尽量接近预设 20%，SHA-256 用作平局决胜，不按标签或分数挑选。当前可训练 Unit family 分母为 `flaky-timeout=367`、`perf-regression=39`、`sse-truncated=163`；实际选中 `sse-truncated`，占可训练 Unit `163/569=28.65%`（占全部 Unit `163/1538=10.60%`）。它已用于旧 checkpoint 选择，**绝不是最终盲测**。
+
+### 6.3 Kaggle 免费 GPU 操作
+
+需要 Kaggle Notebook 的 Internet 开启，以下载固定版本的公开模型；不需要付费 GPU。Notebook Secrets 添加 `GITHUB_PAT`，然后运行：
+
+```python
+%cd /kaggle/working
+import os
+from kaggle_secrets import UserSecretsClient
+
+pat = UserSecretsClient().get_secret("GITHUB_PAT")
+os.environ["GITHUB_PAT"] = pat
+repo_url = f"https://x-access-token:{pat}@github.com/liaocr/cfb.git"
+
+!rm -rf /kaggle/working/cfb
+!git clone --depth 1 -b main {repo_url} /kaggle/working/cfb
+!pip install -q "transformers==4.56.2" safetensors onnx onnxruntime requests
+
+%cd /kaggle/working/cfb
+# 若尚无新 family 盲测文件，省略 --final-test-dataset；脚本会报告 blocked 且绝不晋级生产权重。
+# 新 family 文件需先独立语义审核，并作为 Kaggle Dataset 输入挂载：
+!python3 tools/kaggle-train-micro.py --epochs-sft 12 --epochs-simpo 12 \
+  --student-pair-objective listwise --dataset-neg-strategy hardened \
+  --unit-pair-degree-cap 3 --unit-pairs-per-positive 3 --near-length-tokens 3 \
+  --push-back
+# 已有审核完成的独立新 family 时才追加：
+#   --final-test-dataset /kaggle/input/cfb-final-family/micro-final-test.json
+```
+
+新增/变更的开关（可省略，省略即默认值）：`--student-pair-objective listwise|ranknet`（默认 `listwise`：对每个正例的负例组做 softmax 交叉熵，γ 仍按对保留；`ranknet` 为旧的成对 sigmoid）、`--dataset-neg-strategy hardened|legacy`、`--unit-pair-degree-cap`、`--unit-pairs-per-positive`、`--near-length-tokens`。后四个数据开关会作为 `CFB_MICRO_*` 环境变量传给 `tools/build-micro-dataset.mjs`，构造成果（策略、上限、长度匹配率、飞轮是否退化、数据集 SHA-256）都写进报告的 `data` 段。
+
+训练使用低 encoder 学习率、warmup + cosine scheduler、梯度裁剪 `1.0`、按分组验证早停；双卡时启用 `DataParallel([0, 1])`。为避免 ModernBERT 内部 `torch.compile` 与 DataParallel 的 FX tracing 冲突，显式设 `reference_compile=False`；AMP 溢出跳过的优化器步会计数，scheduler 只在优化器实际更新后前进。日志只说明双卡并行已配置，不宣称 GPU 一直满载。
+
+### 6.4 机器可读验收与晋级规则
+
+- Teacher 与 compact student 指标分列；紧凑学生 Unit/Draft pair 指标在候选权重序列化后，通过 `tools/eval-micro-js-pairs.mjs` 调用 `src/compile-v5-local.js` 的实际 JS scorer 计算。Unit pair 比较 `scoreUnitWithWeights(...).v`（含 `lambda × tokenCount` 惩罚）；同一 scorer 同时执行 EXCLUDED 门控并报告门控审计数。**v14.20 起报告 schema 为 `cfb.micro-js-pair-eval/4`**，在历史口径（并列计 0 的严格点估计）之外还给出：① 并列半分口径；② 每个比例的二项 Wilson 95% 区间与 95% 下界；③ **长度分层**（`matched` = `|Δtoken| <= 3`、`near`、`far`）与**长度匹配子集**的准确率及下界；④ 把 `lambda × tokenCount` 加回后的**去长度惩罚分数**准确率，证明结论不是长度捷径；⑤ 「胜者更长 / 更短 / 等长」三组准确率。特征向量来自数据构建器调用的生产 `extractUnitFeatures`，端点、family 和复用上限在 evaluator 再校验。
+- 训练脚本另外在可训练真实 Unit 与 Draft 特征上比较 PyTorch compact student、六位小数候选 JSON 和实际 JS scorer：最大绝对数值误差 `<=0.001`，并要求 Unit slot 与 EXCLUDED 门控判定一致。随机 ONNX 输入 smoke 只证明导出文件可运行，**不算 Python/JS 数值 parity**。
+- 每轮都在**完整 train 与 family-held-out validation** 上重新计算 pair win rate，不再累计更新前的训练批次分数。报告分别列 Teacher、PyTorch compact head 和部署 JS 权重的分数与精确分母。
+- `tools/train-v5-micro.mjs --eval-json <path>` 把实际 11 条 Mode 2 逐项结果和汇总写成 JSON；报告不再把 `1.0` 或 `11/11` 写死。
+- **盲测集预检**：`tools/eval-micro-js-pairs.mjs --validate-dataset-only`（配合 `--final-blind-test --must-be-new-family --known-families ... --known-source-ids ...`）只跑一次性的结构/血缘/逐条审核校验，**不打任何分数、不写报告**：盲测集可以在启用前做结构预检，而预检过程不可能把分数泄露给调参者。
+- **闸门读数**：90% 闸门仍按历史严格点估计判定（保持可比），但 val 集只有两三百对、draft 只有十余对，点估计自带几个 pp 的区间；`report.rulerReading.*.lengthMatchedAccuracy` 及其 Wilson 下界才是承重读数——在那里长度惩罚无法决定胜负。只在 `far` 层过线、`matched` 层不过线的候选，不能声称具备排序能力。
+- 最终盲测只能在 checkpoint、代码、生产 JS 权重字段、训练目标、dev 数据和 split 冻结后，用 `--final-test-dataset <独立文件>` 对**一个此前未见、语义审核完成的新 family**执行一次。文件必须是 `cfb.micro-dev-dataset/3`，声明 `finalBlind: true`、`holdoutTouched: false`、`semanticReview.status: "completed"` 和逐类审核分母；每条 Unit/pair 的 `labelAudit` 必须保留来源/规则，并有 `semanticReview: { status: "confirmed", reviewer, rationale }`。顶层 `lineageReview` 要记录审核人/时间/新 family 理由；`knownFamiliesReviewed` 和 `knownSourceIdsReviewed` 必须与全部训练 lineage 精确匹配，`independentSourceIds` 必须与文件中的新 `sourceId` 完全一致且不与训练 source 重叠。Unit/pair 的每条 `sourceId` 都须能追溯到该新 family，Unit pair 不可跨 source；端点上限必须 `<=2`。`_decoy` / `_long-horizon` 变体和旧 `sse-truncated` validation 均会被拒绝。最终 Unit 与 Draft pair 也都要求 `>=90%`，结果只用于评估，不用于调参。
+- 闸门口径 v2（2026-10-04 批准）：阻塞判据 = **三折家族交叉验证**（`report.threeFoldCv`，匹配桶 VS 生产同折：每折 ≥ 生产 + 20pp；均值 ≥ 0.75、最差折 ≥ 0.70；相对上一候选不回退超过 3pp；draft 合计 ≥ 0.85 且每折不低于生产）+ 部署路径检查（Mode 2 G1/G2、PyTorch→JSON→JS parity、INT8 ONNX smoke、总参数 `<100M`、dev-only 纪律）+ 一次性新 family（按 v2 判据：匹配桶 ≥ 0.75 且 ≥ 同族生产 + 20pp；draft ≥ max(0.85, 生产同族)）。
+- 绝对 `>=90%` 点估计线（教师/学生、Unit/Draft）逐轮照常计算并展示在 `report.gates`、`report.gatePolicy`、`report.ceilingDistances`，但**不再阻塞**：同一模型三折匹配桶极差实测 22.9pp、最难族线性文本天花板实测 0.79，单族绝对线无法区分模型优劣。
+- 其余原有条件不变：独立新 family 缺失时 gate 明确为 blocked，不降低阈值、不拿旧 holdout 冒充；未通过则只发布候选报告/权重/紧凑学生 ONNX，**不会覆盖**当前生产权重。缺少新 family 时 gate 明确为 blocked，不降低阈值、不拿旧 holdout 冒充；否则只发布候选报告/权重/紧凑学生 ONNX，**不会覆盖**当前生产权重。
+- Teacher（全编码器）的 Unit/Draft preference validation 逐轮照常报告（`report.gates`、`report.ceilingDistances`、`report.gatePolicy`），但**不作为晋升阻塞项**：它是可选参考产物（INT8 约 98.7MB、CPU 单次约 280ms），无法服务同步 JS 运行时；部署打分器的等价保障由 compact student 与 JS runtime 两组 blocking 闸门承担。
+- 产物报告：`transfer/models/cfb-micro-97m-report.json`。报告分别记录完整编码器 ONNX 与紧凑学生 ONNX 的尺寸、实测延迟、train/validation 胜率、Gold dev/holdout 分数及精确参数余量。完整 ONNX 大于普通 Git blob 安全阈值时，训练脚本会改发 GitHub prerelease asset；具体 URL 写入报告。推送需要 Notebook Secret `GITHUB_PAT`；大文件 release 还需要该 token 有创建 release/上传 asset 的权限。
+
+快速本地复核已晋级的 JS 学生权重：
+
+```bash
+node tools/train-v5-micro.mjs --eval-only \
+  --weights-path transfer/models/v5-micro-weights.json \
+  --eval-json /tmp/cfb-micro-mode2.json
+```
+
+### 6.2bis 当前水位（2026-10-06，由脚本从产物文件直接读取生成 ⇒ 上方 §6.2 的旧数以此块为准）
+
+- 单元标签盲审：`transfer/models/unit-label-review-blind-v3.json` 共 **348 条**已确认（blind-human-agent-no-rule-suggestions）；构建器审计块：载入 348、匹配 348、抬为可训练 243、改判 341、NOISE 压分 21、低置信保留规则标签 7、digest 不符丢弃 0。
+- 训练集：`unitSamples 542 / 可训练 538 / 待审 4`；`unitStepPairsCount 536`；draft 偏好 `stepSimpoPairsCount 55 / 可训练 17`（`flywheel_real_pair None`）；`devGoldItems 4`、holdout 排除 ['eacces-config', 'wrong-model']、`nearLengthTokens 3`。
+- 飞轮分数量纲（v14.24.5）：`scoreKind` 已入数据侧，阈值按单位分派 —— `judge-01` 用 0.05、`structural-tally` 用 ≥2 旗标差；promote 侧越界不入库。可训练 draft pair 从被垃圾放行的 59 降到 **17**，这是保护生效后的真数。
+- 一次性盲测集（每族一个文件，标签只来自 fixture 运行时事实）：
+  - `encoding-mojibake`：任务 8 个、单元 56（唯一正文 56）、排序对 16（全部 matched 层 16，max|Δtok|=0.00）
+  - `lock-contention`：任务 8 个、单元 56（唯一正文 56）、排序对 16（全部 matched 层 16，max|Δtok|=0.00）
+
+盲测集残余局限（如实）：`cueExcluded` 实测 0 ⇒ 只测「有锚 vs 无锚」排序与 `excludedGateActive` 兜底路径，不测线索驱动的排除判定；matched 层靠标点填充对齐，读作同长度判别力。**盲测尚未打过任何分数** ⇒ 一次性测量完好。
+
+
+
+########## README.md (12983 chars) ##########
+# dsh-cot-form-b (`cfb`) — 思维链「出生即压缩」认知编译器
+
+<!-- watermark:begin 由 node tools/doc-watermark.mjs --write 生成，勿手抄 -->
+> **当前版本：v14.25.4** · **零第三方依赖**（纯 Node.js ≥ 20/22 内置模块）
+> **自测（本块由 `node tools/doc-watermark.mjs --write` 生成，勿手抄）**
+> · 验收口径 `npm run verify:offline`（真断网 Linux 命名空间）：42/42 套件通过 · `1242 通过 / 0 失败 / 1 跳过`（**42 套件时代**的回执：该车道需 Linux 网络命名空间取证，本平台无法复跑；当前 `test/` 有 44 套）
+> · 快速自检 `npm test`（联网机上跑，需要隔离的那条断言按设计跳过）：43/43 套件通过 · `1252 通过 / 0 失败 / 8 跳过`（**43 套件时代**的回执：该回执未在当前平台重记；当前 `test/` 有 44 套）
+> 用时与记账时刻**不进文档**（每次 `--record` 都会变 ⇒ 写进文档就永远在漂），要查 `transfer/watermark.json` 的 `seconds` / `at`。
+> **规模**：`src/` 24 个零依赖模块 · `tools/` 65 个脚本 + 29 个 helpers · `test/` 44 套自测 · `transfer/gold/` 13 条（4 个家族）
+<!-- watermark:end -->
+
+> **核心定位**：Cordis 协议外部插件。在主模型每轮 `reasoning` 块**出生时（进入会话历史之前）**，同步完成 CAS 原文归档与认知编译压缩（支持**零 API 成本的本地认知图微模型 `compressLocalModel: true`** 与副模型编译双路径）；收网门逐条列在下面 §4.1，任何一步不达标或异常即 **100% 无损回退原文放行**。
+>
+> **本文件的数字一律不手抄**：规模、版本、自测读数、六道门清单都由 `tools/doc-watermark.mjs` 现算现渲染；`verify.mjs` 的 `doc-watermark` 套件会在文档漂走时报错（含 5 个负例夹具证明这道门会咬人）。
+>
+> **两条"跳过"分别是什么**（水位块里的 `N 跳过` 就是它们，不是丢了的测试）：
+> · `test/birth.selftest.mjs` 的 **T13**（`deriveArtHandle ≡ dshb-store.deriveHandle`）—— 私有宿主兄弟包 `dsh-context-memory-bundle` 不随 npm 发布，本机没有 ⇒ 整条跳过；设 `CMB_STORE_PATH` 指向该包才会真跑。
+> · `test/eval-ready.selftest.mjs` 的 **第 38 项**（需要真断网命名空间才能取证）—— 只在 `npm run verify:offline` 里跑，联网机上按设计跳过。
+> ⇒ 所以"隔离内 1 跳过 / 联网 2 跳过"，且 `verify.mjs` 的结论行永远写"存在跳过项，非完整宿主验证"，不会替宿主侧契约背书。
+>
+> **水位块是"记账回执"而非"实时现算"**：`tools/doc-watermark.mjs --check` 比对的是**文档 ↔ `transfer/watermark.json`**，不会去比对回执与当次运行是否一致。
+>
+> **两条车道可以来自不同平台与不同套件数时代，且这一点是自动标注的**（v14.25.5 起）：渲染时会比对回执里的套件分母与当前 `test/` 实际套数，不符就**在文档里直接写出来**（"**N 套件时代**的回执：…"）。**这是刻意的**——`--record` 要求 online + isolated **两条车道同时全绿**，而 isolated 车道需要 Linux 网络命名空间（`unshare`），**在 Windows 上物理不可复跑**；若不允许标注，唯一出路就是手改 `transfer/watermark.json`，那等于**伪造回执**。
+>
+> **在 Windows 上跑会看到不同的跳过数**（上表 `npm test` 行即本机读数 `1252 通过 / 0 失败 / 8 跳过`）：无 `bash`/网络隔离命名空间，`test/closed-loop-v4.selftest.mjs`（A18/A19/A34 及 A38 的 C3）与 `test/mode1-quality-parity.selftest.mjs` 的依赖项按 `process.platform === 'win32'` 守卫跳过。**这是环境差异，不是回归**；要复现 isolated 车道数字请在 Linux 上跑 `npm run verify:offline`。
+---
+
+## 1. 三十秒极速上手（人类 & AI 模型通用）
+
+```bash
+# 1. 新克隆或跨环境恢复：重建可再生离线状态 → 校验完整性 → 真断网跑全量自测套件
+npm run restore             # = node tools/cfb-cycle.mjs restore（从 transfer/cycle-state.json 恢复 .cfb-offline）
+npm run manifest:check      # = node manifest.mjs --check（校验 MANIFEST.sha256 零漂移）
+npm run verify:offline      # = node tools/verify-offline.mjs（真断网跑全部 selftest；用时见文首水位块）
+
+# 2. 查看闭环训练状态与外部评测口径的本地代理记分卡（$0 API，1 秒出表）
+npm run cycle               # = node tools/cfb-cycle.mjs status（策略池、Pareto 前沿、飞轮、效度账本）
+npm run bench               # = node tools/cfb-cycle.mjs benchmark（本地代理指标，受 SWE-bench/TAU/Arena/AA 口径启发；非官方参测成绩）
+npm run next                # = node tools/cfb-cycle.mjs next（自动诊断瓶颈并给出单条最优下一步命令）
+```
+
+---
+
+## 2. 常用命令速查表
+
+| 场景 | 命令 (`npm run ...` 或 `node ...`) | API 成本 | 说明 |
+|---|---|---:|---|
+| **全量自检（断网）** | `npm run verify:offline` | `$0` | 在 Linux 网络隔离命名空间跑满全部 `test/*.selftest.mjs`；套件数/断言数见文首水位块（`--record` 记账） |
+| **快速自检（并发）** | `npm test` / `node verify.mjs birth v4` | `$0` | 并发跑全部或指定关键字的自测套件（联网机上需要隔离的那条断言按设计记为跳过） |
+| **本地代理记分卡（Tier 0）** | `npm run bench` | **`$0`** | 本仓对既有轨迹/预筛数据计算的 L2+L1 汇总，借鉴 SWE-bench/TAU/LMArena/AA/LiveBench 的指标思路；不是官方 benchmark 提交或认证 |
+| **零 API 预筛 + 析因** | `npm run prescreen` | **`$0`** | 在冻结金标上跑生产 `compileV4Direct + spliceProgramParts + birthAccept + ranker` 并做四维正交因子归因 |
+| **闭环全景状态** | `npm run cycle` | **`$0`** | 查看金标池、策略、Pareto 前沿、CPU 排序器与效度账本；动态读数以本次命令输出为准 |
+| **双轨语义裁判** | `npm run judge` | **`$0`** | 确定性规则 × LLM 语义双轨裁判（支持 `capacity` / `audit-draft` / `audit-traj` / `audit-bench` / `calibrate`） |
+| **极简基准实测（Tier 1）** | `npm run bench:lite` | **`≈ $0.004`** | **省钱首选**：复用缓存 `base` 臂，仅对新候选策略发 **1 次**副模型调用即可完成配对比较 |
+| **极简轨迹实测（Tier 2）** | `npm run traj:lite` | **`≈ $0.068`** | **真机验效**：IRT 自动挑信息量最高 1 题 × 4 轮上限 × 影子分叉（分歧前零主调用）+ `$0.08` 硬熔断 |
+| **导出训练数据** | `npm run train:export` | **`$0`** | 按 5 家族严格组隔离导出 SFT / DPO 数据集与 In-Context DPO 黄金范例对 |
+| **更新哈希清单** | `npm run manifest` | **`$0`** | 修改任何入库文件后重新生成 `MANIFEST.sha256` |
+| **文档水位** | `npm run watermark:check` / `watermark:record` | **`$0`** | 文首与 `docs/ARCHITECTURE.md`、`transfer/HANDOFF.md` 的水位区：现算结构计数 + 六道门，漂了就报错 |
+
+---
+
+## 3. 仓库架构与目录地图
+
+仓库收敛为**三个内聚平面**，零冗余旁路：
+
+```
+dsh-cot-form-b/
+├── index.js / index.d.ts        包入口与对外 TypeScript 类型契约
+├── cordis.patch.yml             Cordis bundle 挂载声明（零硬编码路径）
+├── verify.mjs / manifest.mjs    并发自测执行器 / SHA-256 完整性清单校验器
+│
+├── src/                         ① 生产插件核心（零依赖 ESM 模块；数量见文首水位块）
+│   ├── plugin.js                组合根：注册 agent/pre-step 与 llm/stream 钩子、BOOT 自证
+│   ├── config.js / policy.js    配置归一化与可训练策略空间白名单（提示词 + 部件 + 制度 + 范例）
+│   ├── birth.js                 ★ 出生即压缩主干：流式拦截、CAS 归档、自适应 λ 地板（birthAdaptiveFloor）、六道收网门（清单见 §4.1）
+│   ├── distill.js               副模型调用：重试降级、对冲（hedge）、传输 trace、In-Context DPO 范例自动注入
+│   ├── prompts.js               提示词编译（v3 / v4-ops / v4d6 直写 + modularPromptPrune 反稀释动态裁剪）
+│   ├── compile-v4.js            ★ v4 认知编译器：JSON 原子条目编译（I1–I8 不变量）+ v4d6 直写程序门 + 状态部件紧致化（compact）
+│   ├── segment-v4.js            v4 流式增量分段器（长思维链边写边编，收网只等尾段）
+│   ├── messages.js              出站消息溯源、台账提取、有界延续段（continuationPath:'bounded'）与文件出处保留
+│   ├── fidelity.js / tokens.js  逐字标识符召回率、发明标识符拦截闸、按书写系统区分的 token 粗估
+│   ├── transport.js / provider.js / host-follow.js / session-tracker.js / handle-probe.js / trace.js / boot-record.js
+│   ├── evidence-program.js / evidence-store.js   宿主类型化证据程序与 CAS 签名块仓（默认关，opt-in）
+│   └── training-core.js         纯函数训练内核：5 家族连通组隔离切分、SFT/DPO 导出与严格逐项发布门
+│
+├── tools/                       ② 统一科学训练闭环与双轨评估 CLI
+│   ├── cfb-cycle.mjs            ★ 闭环主控：status / next / benchmark / prescreen / plan-bench / plan-traj / flywheel / export-train
+│   ├── cfb-judge.mjs            ★ 双轨裁判：规则 × LLM 语义交叉验证、死路复活检测、130 样本 L2 岭回归校准
+│   ├── bench-run.mjs            Mode 2 金标基准执行器（跨计划 CAS 缓存 + In-Context DPO 注入）
+│   ├── traj-run.mjs             Mode 3 多轮可执行轨迹执行器（影子分叉 Shadow-Forking + 轮次自适应 λ）
+│   ├── traj-fixtures.mjs / traj-fixtures-v2.mjs  5 道主池 + 5 道留出池真实可运行排障沙箱
+│   ├── effect-ready.mjs / bounded-ab.mjs         有界 API 预算账本与双平面预注册评测
+│   ├── verify-offline.mjs       Linux unshare 断网自检入口
+│   ├── analyze-trace.mjs / analyze-efficiency.mjs / phase0-report.mjs / cf-eval.mjs / v4-live.mjs / closure-check.mjs / draft-lint.mjs
+│   └── helpers/                 内聚辅助模块（ruler / judge-layer / hand-draft / flywheel / proposer / gold-store 等；数量见文首水位块）
+│
+├── test/                        *.selftest.mjs 套件（个数见文首水位块）+ fixtures/ 真机样本
+├── deploy/                      onboard.mjs 部署漂移体检 + eval-profile 配置模板 + kaggle/ 一键训练启动器(train_micro/train_gen/repred_micro/start)
+├── docs/                        ③ 合一化文档体系（索引见 docs/README.md）
+│   ├── README.md                文档总目录与阅读路线图
+│   ├── ARCHITECTURE.md          生产插件与认知编译器技术架构
+│   ├── TRAINING-AND-BENCHMARK.md v14.20 训练闭环与本地代理基准历史指南（见新鲜度说明）
+│   ├── HISTORY-AND-EXPERIMENTS.md 历史实验、成本定律与工程审计全集（合一版）
+│   ├── EVIDENCE-PROGRAM.md      宿主证据程序接口规范
+│   ├── INSTALL.md               Cordis 部署与排错指南
+│   ├── proposals/               预注册策略补丁 JSON（供闭环自测与复现）
+│   └── theory/CFB-THEORY-COMPLETE.md  认知编译器六卷完整理论与数学推导
+└── transfer/                    跨会话公开状态：HANDOFF.md（一页交接卡）、cycle-state.json、gold/ 金标库及历史实验回执
+```
+
+---
+
+## 4. 生产工作流与核心配置
+
+### 4.1 一个 `reasoning` 块的生命周期（`mode: 'birth'`）
+
+1. **流式捕获与自适应门槛（`birthStart`）**：
+   - 在 `llm/stream` 中拦截 `reasoning` 块；由 `computeAdaptiveBirthControl(raw, ctx, pressure, cfg)`（`src/birth.js`）计算动态门槛 `effectiveFloor` 与输出上限 `effectiveMaxChars`：
+   - 缺省门槛 `birthMinChars: 3100`（基于缓存命中率与后续阅读轮数 $K$ 的盈亏平衡点）；开启 `birthAdaptiveFloor: true` 后按**三个工作区**分派（实测值，基准 3100）：**fresh-early**（第 1 轮、`spinScore < 0.25`、水位 `< 0.20`）地板 `×1.20` ⇒ **3720**，保护原生探索；**cruise**（常规轮）保持 **3100**；**high-spin-or-long-horizon**（轮次 ≥ 4、连续只读 ≥ 3 轮、`spinScore ≥ 0.45`、或窗口水位 ≥ 0.50）地板 `×0.65` 且下限 **1600**（3100 时得 **2015**），输出上限同步收紧 `×0.85`。
+2. **并行 CAS 归档与副模型编译（`distill`）**：
+   - 原文写入宿主 CAS 存储（生成可读回的 `art://` 句柄）；
+   - 同时调用副模型（主模型同端点关闭思考）执行编译：支持 `v3`（散文摘要）、`v4-ops`（JSON 八类原子条目确定性编译）与 **`v4d6` 直写（`compressPrompt: 'v4', compressV4Direct: true`）**。
+3. **程序门核真与部件拼接（`compileV4Direct` + `spliceProgramParts`）**：
+   - 机械核验反引号锚点逐字存在、判读分支闭合、三元组非空且 `new_text ≠ old_text`；
+   - 自动拼接程序部件：**【延续段】**（支持 `continuationPath: 'bounded'` 有界滑窗与历史文件出处保留）+ **【状态部件】**（支持 `statePartsMode: 'compact'` 剔除与正文重叠的复述句）+ **【在手行】**。
+4. **六道收网门（`birthFinish` → `birthAccept`）**：顺序与判据见下；清单由 `tools/doc-watermark.mjs` 从 `src/birth.js` 同源渲染，与 `docs/ARCHITECTURE.md` §2.1 逐字一致。
+
+<!-- watermark:begin 由 node tools/doc-watermark.mjs --write 生成，勿手抄 -->
+1. **归档成功** —— 拿不到可读回的 CAS 句柄 ⇒ 不换原文（`birth.js` 的 archive 结果先行判定）
+2. **编译非空** —— 空稿或纯空白 ⇒ `empty-candidate`，原文放行
+3. **无发明标识符** —— 稿里的路径 / 反引号代码 / camelCase / snake_case 必须逐字出自 `raw ∪ ctx ∪ 程序部件`；发明或核验异常 ⇒ 原文放行
+4. **字符净省** —— `raw − candidate ≥ birthMinSavedChars`（默认 50），否则 `no-gain`
+5. **token 严格下降** —— 字符达到净省门槛但 token 没降 ⇒ `no-token-gain`（估算按书写系统区分，不是真 tokenizer）
+6. **替换成功（condensed）** —— 以上全过才原位改写；任何一步不达标或异常 ⇒ 取消在途请求并原文放行
+
+> **结构闭合**（判读分支闭合、三元组 `new_text ≠ old_text`）与**死路不复活**是**编译阶段**的要求（`compileV4Direct` / `src/compile-v5-local.js`），不在上面这六道收网判定里 —— 两段别混成一条闸。
+<!-- watermark:end -->
+
+### 4.2 关键配置项（`src/config.js` & `src/policy.js`）
+
+| 配置键 | 默认值 | 最优策略值 (`p-1490eefcdf`) | 作用 |
+|---|---|---|---|
+| `mode` | `'birth'` | `'birth'` | 唯一生产路径（`'off'` 为关闭） |
+| `dryRun` | `true` | 生产设 `false` | 评估态保护：默认只写观测 trace，显式设 `false` 才合闸改写 |
+| `compressLocalModel` | `false` | **`true`** | **v5 本地认知图微模型（`src/compile-v5-local.js`）**：`$0` 副模型 API 成本；单次编译实测 4.1–7.4 ms 均值（真金标 warm ×20 复测 ×3 轮，见 §5）。**只在含本项目标识符的 raw 上满分**，兜底路径读数见 §5 的 gap map |
+| `compressPrompt` | `'v3'` | `'v4'` | `'v3'` 散文压缩 / `'v4'` 认知编译器（直写 + 程序门） |
+| `continuationPath` | `'full'` | `'bounded'` | 将 O(轮数) 膨胀的【台账】已走路径收束为最近 2 条 + 历史文件出处 |
+| `programParts` | `'all'` | `'compact'` | 剔除【已排除】/【未解】与验证提示中的冗余套话，消除双倍叠加 |
+| `promptMode` | `'full'` | `'modular'` | 反稀释裁剪：按当轮上下文动态剥离不触发的冗余提示词规则块 |
+| `birthAdaptiveFloor` | `false` | `true` | 轮次与停滞度感知的动态 $\lambda$ 压缩地板（理论第四卷控制器落地） |
+
+---
+
+## 5. 当前实测基线与证据新鲜度（外部评测口径的本地代理记分卡）
+
+下列命令于 **v14.25.4 / 2026-10-07（本地日期）**在当前 checkout 现场重跑；receipt 的 `at` 时间戳使用 UTC，故可显示为 2026-10-06。结构规模只以文首水位块为准。`npm run bench` 是零 API 的在盘轨迹汇总 + 当前预筛，不是新的盲测或单一随机配对实验；不要把混合轨迹的 `n` 当独立样本量。输出中的 SWE-bench/TAU/Arena/AA 名称只表示**本地借鉴的指标口径**，不代表参加了对应官方基准、使用了官方测试集或获得官方认证。
+
+- **L2 轨迹汇总**（`npm run bench` 当前输出；读取 `transfer/traj1..3` 与 `.cfb-runtime/traj/*`）：`raw n=80`、`auto n=7`、`ledger n=6`。`auto` 严苛修好率 **85.7%**、伪修好 **0.0%**、`pass@1=0.889`、`pass^2=0.778`、平均 **4.86 轮（相对 raw −24.9%）**、思维链字符 **−27.4%**；Elo **1104，95% CI [945, 1279]**，区间覆盖 raw 锚点 1000，不能据此宣称稳赢。`ledger` 仍有 **16.7%** 伪修好。榜首 L1 候选 `p-1490eefcdf` 在这份 L2 汇总里的 `policy` 臂为 **1/24（4.2%）**严苛修好；这是描述性旧轨迹汇总，但足以说明 L1 领先不等于已验证端到端收益。
+- **L1 预筛榜首**（`npm run bench` 当前输出第二表，尺子来自 `transfer/gold/`）：`p-1490eefcdf` 金标过闸 **12/13（净省 431 tok）**、`dd=0.724`；当前任务池 **4/4 题、9/9 轮**、均省 **1111 tok**、Oracle `dd=0.831`、真值分 `0.696`、AA 密度效率 `0.6473`。这只是同一预筛中的第一名，**不是 champion**。旧文中的 `8/8、482 tok、Oracle 0.908、真值分 0.781` 与当前命令输出不一致；它们仍见于 A39 隔离夹具/旧快照，确切的指标口径和数据池差异尚未证明，故不混写。
+- **闭环状态**（`npm run cycle` 当前输出）：champion 仍为 **`base`**；飞轮 **93/93** 对通过 dev/内容闸；CPU 排序器 `ready`、LOO-CV **0.763**，但尺子效度为 **`suspect (n=304)`**，不等于已验证泛化。稳定决策：在 L2 端到端验证前不采纳 `p-1490eefcdf`。
+- **金标**：`node tools/gold-score.mjs --dedup` 当前为 **19 个唯一 id：4 gold / 15 not-gold**；在册 `transfer/gold/` 13 条中是 **4 gold / 9 not-gold**。`node tools/gold-attest.mjs --check` 当前处理 23 条，**4 gold / 19 not-gold，0 过期章**。R2 `n=1` 已测但未达 ≥2 阈值，应是 `not-gold`（见 `docs/GOLD-STANDARD.md`；本轮同步修正文档与测试）。
+- **微模型**：最后一份完整入库报告 `transfer/models/cfb-micro-97m-report.json` 的 `completedAt=2026-10-04T13:57:17Z`，记为 `accepted=false`、`promoted=false`，且 `freshIndependentNewFamilyTestPassed=false`，状态 `blocked-no-new-independent-family`；这不是 06g 的新结果。`docs/STATUS-2026-10-07.md` 记录的 06g 数字属于快照，06g 折报告/折候选权重未入库，不能独立复算。盲测账本已有 1 个家族记录（`case-fold-collision`），终态 `evaluated-below-90-percent-gates`（unit-pair accuracy 0.8333、draft-pair accuracy 0），一次性盲测已消耗，不重跑刷分。
+- **通用压缩器原型**：`src/universal-select.js` 尚未接入生产；归档探针声称同预算锚点覆盖 50.3% vs 生产 27.4%，但 math oracle 57.3% 低于 random 65.4%，故不批准接线。探针脚本含 `/home/user/cfb` 绝对路径，且随机对照未固定种子；在当前干净克隆实际运行 `universal_bench.mjs` 会因找不到该路径失败。因此上述探针表是**未复现的归档读数**，不是本轮实测结论。
+- **历史读数（未在本轮重跑）**：`transfer/models/micro-gap-map.json` 标注 `measuredAt=2026-10-04`、7 组真机对；当时 `archetypeProduction.distanceScore=1.000`、`generalProduction=0.1631`（W1 前 `0.1549`；W1.1 后 `0.1596`）。这组原型/兜底差距是旧测量，不是当前泛化成绩；编译延迟（13 条 × 20 次）与 Mode 1 `t10–t14` 9 组配对也来自已有记录。本轮没有重做，需按各自冻结口径复测后才能作为新版本现状引用。
+
+---
+
+## 6. 延伸阅读（文档全部位于 `docs/`）
+
+- [`docs/README.md`](docs/README.md) — 文档总目录与 5 分钟阅读路线图
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — 生产插件与认知编译器技术架构、12 条不变式、「改哪里」速查
+- [`docs/TRAINING-AND-BENCHMARK.md`](docs/TRAINING-AND-BENCHMARK.md) — v14.20 训练设计与本地代理指标历史指南（非官方基准成绩）
+- [`docs/HISTORY-AND-EXPERIMENTS.md`](docs/HISTORY-AND-EXPERIMENTS.md) — 历史实验数据、经济模型定律与工程审计汇总
+- [`transfer/HANDOFF.md`](transfer/HANDOFF.md) — 面向新模型 / 新开发者的 30 秒一页交接卡
+
+
+########## docs\ROADMAP-GOLD.md (5287 chars) ##########
+# 后续路线（v14.24.0 之后）——按依赖排序，每段都带判据、成本、回退
+
+写于 2026-10-06。前置事实（全部实测，非计划）：
+- 尺子已落地：`cfb.gold-standard/1`，12 轴；`node tools/gold-score.mjs` 复算。
+- 水位：24 条中 **gold 4**（`sse-truncated-s0-r4`、`sse-truncated-s1-r3`、`wrong-model-s0-r6`、`wrong-model-s1-r5`），not-gold 20；轴通过率 M8 8/24 · E1 7/24 · R1 8/24 · R2 15/24。
+- 定律一（改稿即失分）⇒ 差额**不能靠改稿补**，只能重跑那一格。
+- 通道现状：`upstream-no-reasoning`（连续 3 次）会让 `traj-run` 停机（t102 已实测，2 行错误记录）。
+- 模式 2 靶子现状：微模型 `node tools/train-v5-micro.mjs --eval-only` 七项 `G1✓G2✓ prec=1` 但 **closeCount 0/7**；`node tools/cfb-cycle.mjs plan-bench --dry` 报「策略 base × 金标 2（dev）= 2 次压缩 ≈ $0.015」。
+
+目标顺序沿用你的排法：**① 模式 2 侧模型银标稳定达金标水平 → ② 模式 3 真机证明 → ③ 银标扩量 → ④ 喂微模型**。下面每一段都只服务其中一件事。
+
+---
+
+## P0 · 把「银标达金标水平」变成一条可算的指标（$0，先做这个）
+
+**为什么先做**：你的目标 ① 现在还没有度量。尺子已经能判金标；同一把尺子去量模式 2 吐出来的银标，就得到「银标距金标差哪几轴」⇒ 这才是「stably reach gold level」的定义，不是形容词。
+
+- 动作：`tools/silver-score.mjs`（复用 `measureGold`，输入 = 模式 2 产出的银标条目/`pending` 目录），输出：轴通过率、`gap` 分布、与金标的**逐轴差值**；再加 `--by-family` 与 `--csv`。
+- 测试：`test/silver-score.selftest.mjs` —— 银标 fixture 一条「与金标同过 12 轴」、一条「缺 M3/M4」、一条「raw 缺失 ⇒ fail-closed 未测」；登记 `verify.mjs` ORDER。
+- 判据（定死再跑）：`node tools/silver-score.mjs --dirs=silver-lab --json` 能出数，且与 `gold-score` 对同一 fixture 的结论**逐轴一致**。
+- 回退：只加工具，不动注册表；失败不影响既有闸。
+
+**这一步交出来的就是目标 ① 的验收线**，之后每次改模式 2 都只报这个数。
+
+## P1 · 给条目盖章 + 清掉尺子的两处脏（$0）—— ✅ 已完成（v14.24.1）
+
+- `tools/gold-attest.mjs` 落账：`goldStandard: { version, status, gap, margin, drift, home, at, stampDigest }`，**只加元数据、不碰 `draft`**（动稿即失分），并写 `.cfb-offline/ruler/gold-attest.json`（逐条 from→to + 缺章/过期清单）。幂等：重跑第二次 `0 处变更`。
+- 下游全部改读章（8 个消费点，逐个实测）：`three-mode` 的 `goldRulerOk/goldBenchOk/goldTrainOk` · `traj-corpus.rulerIdSet` · `cfb-judge` · `coverage-plan` · `bench-run.gold-use-mismatch` · `buildBenchPlan`（比对靶） · `build-micro-dataset` / `build-change-dataset`（拟合料） · `train-v5-micro`（devGold + `--eval-only` 自检）。
+- 尺子两处脏已清：`gold-score --dedup`（24 行 → **19 个唯一 id**，重复副本不重复计票，已是默认口径写进文档）；`countSamples` 排除 `-resume` 同趟复写，并且**只数真消费过稿的趟**（`hand-samples.jsonl` 有同 task+sample 行、跳过带 `error` 的行）。
+- 后果（实测）：标尺侧 `goldRulerOk` **17 → 4**，训练侧 **6 → 19**（降级不删数据）；`gold-study` 同步改 dedup ⇒ 24 → 19 个唯一 id。
+- 顺手抓到一个真 bug：`gold-attest --check` 报出 `wrong-model_decoy-s0-r4` 状态由 not-gold 翻成 gold —— 根因是 t103 那趟被停机保护掐掉、`results.jsonl` 仍留 hand 行，被当成"第二次独立样本"。收紧 R2 后重盖章，假 gold 撤掉（`gold 4 · not-gold 19`）。
+- 判据全绿：`npm run verify:offline` **1168 通过 / 0 失败 / 1 跳过（38/38 套件）**；三套金标自测 **192 条**（`gold-use-split` 52 + `gold-standard` 79 + `gold-attest` 61，含"真注册表章必须新鲜"活体检查）。
+
+## P2 · 转正缺口：把标尺池从 4 条做到 ≥8 条（≤$0.5，通道恢复才开）—— ⏸ 已武装，等 API
+
+**先探测再掏钱**：预检要看到 `fp=非null` 且「思考 N 字」N>0、正文非空，才起 run；不通就 $0 复验，绝不硬跑。
+一切真机花费必须过编排器：`node tools/gold-campaign.mjs`（`--dry` 零请求打印计划+估算；预检不合格直接 exit 3，不起轨迹）。
+
+- 待补清单（按 `gold-score --dedup` 的 gap 升序，2026-10-06 实测）：
+
+| 条目 | gap | 还缺 | 补法 |
+|---|---:|---|---|
+| `sse-truncated_decoy-s0-r4` | 0.2 | E1 + R1 | 现注册稿 750 字 ≠ 台账所发 662 字 ⇒ 用现稿重跑该格，跑完自动对齐 |
+| `wrong-model_decoy-s0-r4` | 0.5 | R2 | 同 task+sample 再跑**一趟独立**（不能是 resume，也不能是空跑） |
+| `wrong-model_long-horizon-s0-r4` | 0.5 | R2 | 同上 |
+| `eacces-config-s0-r5` | 1.0 | M8 | 先把改法句压到恰 1 条当**候选稿** —— 注意：改稿即章过期 ⇒ 那一格必须重跑才能把 E1/R1 重新挣回来 |
+| `eacces-config_long-horizon-s0-r5` | 1.7 | M8 + E1/R1/R2 | 改稿 + 重跑 + 补第二趟 |
+| 其余 10 条（gap 2.8–7.8） | — | M3/M4/M5/M6 + E1/R1(±E2/R2) | 属"重写稿"而非"补凭据"，别为凑数动它们；`use:'train'` 保留 |
+
+- 4 条**台账里没有 id**（`eacces-config_decoy-s0-r3`、`perf-regression-s0-r6`、`sse-truncated-s0-r5`、`sse-truncated_decoy-s0-r3`）⇒ 不可回放，只能作训练料；转正唯一办法是按新 id 重跑入册。
+- 判据：`gold-score` 里 **每个家族 ≥2 条 gold 且 R2 全过**；`node tools/gold-vs-line.mjs` 有新读数（M2 不再未测）；`gold-attest --check` 全新鲜；每条都带趟名，无「自报」。
+- 失败回退：任一格没过闸 ⇒ 只登记 `use:'train'`，不进标尺池；**不删数据、不改阈值凑数**（本仓库既有纪律，别为了跑通放宽谓词）。
+- 通道实测（2026-10-06）：三次预检 `preflight-failed:notClaude` / `fp=null`（思考 47 字、正文 1 字）/ `fp=vllm-…无放行依据` + `request-timeout`；唯一成功的那条 t103 三格全部 `upstream-no-reasoning` 停机（rounds 0/4/3），零新样本。⇒ 通道恢复前 P2 保持挂起，不再花钱重试。
+
+## P3 · 一次花钱买两个目标：`auto` 臂上尺（≤$1）
+
+把模式 2 的自动压缩稿（`auto` 臂，非手写）放进同一把尺子量 —— 这同时就是目标 ②「真机证明」的证据。
+
+- 动作：`--variants raw,auto --only <P2 用过的家族>`，产出后 `silver-score --dirs=auto-arm`（或 `gold-score --pending … --draft <auto 稿>`）。
+- 判据（跑之前钉死）：自动稿 **M3/M4/M5 ≥90%**；同格 **rtf ≤ raw**；`gap` 中位数 ≤ 1.0；并报告「与手写金标的逐轴差值」——差值集中在 M8 就说明侧模型在「留菜单」，改提示词即可，不用加数据。
+- 若 M5 不过：先查 `invented-identifier` 是稿的问题还是证据基缺项（P0 的 fixture 已能区分）——不许一上来改阈值。
+
+## P4 · 微模型只喂达标的（$0 训练 + 本地评估）
+
+- 教师料按 `margin` 分层：margin≥0.7 的 gold 做示范对，0.4–0.7 做偏好对的「优」侧，<0.4 不进训练。
+- 判据：`node tools/train-v5-micro.mjs --eval-only` 的 **closeCount 从 0/7 起先到 ≥3/7**，且 `prec=1` 不退；到不了就先回 P0 看银标缺口，别扩数据量（你要的是质量先于数量）。
+- `node tools/build-micro-dataset.mjs` 的 `gold-overlap` 口径改为「按 `goldStandard.status`」，`open/no-slot-cue` 计数进 CHANGELOG 当回归哨兵。
+
+## P5 · 银标扩量 → 反哺微模型（你的目标 ③④）
+
+- 只在 P3 达标后启动：同家族 × 多样本 × decoy/long-horizon 矩阵扩跑；每批先 `silver-score` 判缺口再谈注册。
+- 每批硬指标：批内 gold 级比例、rtf 分布、vsRaw 胜率、成本/条；`node tools/cfb-cycle.mjs plan-bench --dry` 的预算先行（出「≈$X」才开跑）。
+
+---
+
+## 贯穿的三条纪律（写给未来的我，也写给模式 2）
+
+1. **任何「改好了」的断言必须附 `gold-score` 轴表 + 真机趟名**；没趟名 = 没改。
+2. **阈值只能改代码 + 改本文 + 加自测一起改**，升版必须递增 `GOLD_STANDARD_VERSION`，旧版结论同时作废。
+3. 花钱单元一次只验一个假设；先 `$0` 复验（`--preflight-only`、`--dry`、fixture）干净才掏钱。
+
+## 不做清单（已结案，别再投入）
+
+- 5 条 `stored` 里带装置话术的 flaky/perf/sse_decoy 格子：隔离句不在 `draft`，改稿救不了（已逐条确认出自 `stored`）。
+- 「与旧稿相似度」类判据：口径已废，一切结论作废。
+- 为凑 30–40 条金标而扩量：金标是尺子不是饲料。
+- 用 `rtf 7/9` 的格子反复重造稿：轮数由主模型决定，稿子只影响 M 轴。

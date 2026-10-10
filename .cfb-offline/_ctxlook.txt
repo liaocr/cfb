@@ -1,0 +1,57 @@
+单元数 4687
+字段: ['anchors', 'birthStep', 'ctx', 'ctxChars', 'fenceRatio', 'identifiers', 'instanceId', 'license', 'proseRatio', 'raw', 'rawChars', 'repository', 'teachScore', 'toolMarkers', 'trajectoryId', 'unitId', 'verdicts']
+
+=== ctx 长度分布 ===
+min 3959 p25 4042 中位 4043 p75 4043 p90 4043 max 4043
+
+=== ctx 里有没有代码/工具输出？统计 if 行号前缀 / 反引号 / 文件名 ===
+含「行号:」前缀的：333/4687
+含 ``` 围栏的   ：1501/4687
+含工具名的      ：4648/4687
+含文件名的      ：4362/4687
+
+=== 第 0 条 ctx 前 1800 字 ===
+[task]
+<uploaded_files>
+/workspace/adamchainz__apig-wsgi__1.0
+</uploaded_files>
+I've uploaded a python code repository in the directory adamchainz__apig-wsgi__1.0. Consider the following issue description:
+
+<issue_description>
+# Add support for `application/vnd.api+json` and custom non-binary content types
+
+When using `make_lambda_handler` with `binary_support=True`, the library automatically detects text-based responses to avoid base64 encoding them. Currently, this detection seems limited to content types starting with `text/` or `application/json`.
+
+This limitation causes two issues:
+
+1.  **Missing Standard Type:** Responses with `Content-Type: application/vnd.api+json` (standard for JSON API) are treated as binary and base64 encoded. They should be treated as text by default, similar to `application/json`.
+2.  **Lack of Customization:** There is currently no way to configure the library to treat other custom content types (e.g., `application/vnd.my-company+xml`) as text. These are always treated as binary if binary support is enabled.
+
+I propose the following changes:
+
+1.  Add `application/vnd.api+json` to the default list of non-binary content types.
+2.  Update `make_lambda_handler` to accept a new optional argument, `non_binary_content_type_prefixes`. This argument would allow users to pass a list of strin
+…[middle of the visible history omitted]…
+line -5"}); execute_bash({"command": "cd /workspace/adamchainz__apig-wsgi__1.0 && git diff HEAD --name-only"})
+[got] af9d96d (HEAD -> scaleswe) Test with Python 3.8 (#92)
+efe0aa8 Upgrade requirements (#91)
+f24dd8d Dogfood some of my own packages (#89)
+b4a9fe6 Upgrade requirements (#88)
+f2615b2 Change pkg-resources recommendation to importlib-metadata (#87)
+[The command completed with exit code 0.]
+[Current working direct
+
+=== 第 0 条 raw 前 700 字 ===
+All tests pass. Now let me understand the issue better and implement the changes.
+
+The current code:
+1. In `make_lambda_handler`, only `binary_support` parameter is accepted.
+2. In `_should_send_binary`, the non-binary content types are hardcoded as `("text/", "application/json")`.
+
+Changes needed:
+1. Add `application/vnd.api+json` to the default list of non-binary content types.
+2. Add a new optional argument `non_binary_content_type_prefixes` to `make_lambda_handler` that allows users to pass a list of strings to control which content types should be treated as plain text.
+
+Let me think about how to implement this:
+
+1. The default non-binary content type prefixes should include `"text/"`, 

@@ -1,0 +1,20 @@
+=== 过了 G7（字符比<=0.55）但在 token 上**比原文还长**的稿子 ===
+共 12 / 256 条 = 4.7%
+
+  darosior_python-bip32_pr2#b3                   字符比=0.547  token比=1.325  (452->599 tok, 1693->926 字)
+  cerfacs-globc_icclim_pr110#b10                 字符比=0.515  token比=1.262  (511->645 tok, 2052->1057 字)
+  executablebooks_sphinx-design_pr13#b38         字符比=0.539  token比=1.257  (440->553 tok, 1783->961 字)
+  frostming_marko_pr104#b17                      字符比=0.543  token比=1.226  (523->641 tok, 2073->1125 字)
+  betodealmeida_shillelagh_pr522#b51             字符比=0.502  token比=1.120  (509->570 tok, 2016->1012 字)
+  brentvollebregt_auto-py-to-exe_pr456#b12       字符比=0.486  token比=1.104  (441->487 tok, 1822->885 字)
+  durandtibo_hya_pr40#b6                         字符比=0.531  token比=1.062  (696->739 tok, 2502->1328 字)
+  csparpa_pyowm_pr230#b39                        字符比=0.501  token比=1.060  (614->651 tok, 2359->1182 字)
+  dbt-msft_dbt-sqlserver_pr151#b16               字符比=0.464  token比=1.058  (428->453 tok, 1686->782 字)
+  dbcli_pgcli_pr608#b7                           字符比=0.508  token比=1.027  (487->500 tok, 2060->1046 字)
+  deedy5_primp_pr7#b22                           字符比=0.409  token比=1.025  (488->500 tok, 1813->742 字)
+  ej2_python-quickbooks_pr19#b11                 字符比=0.470  token比=1.017  (411->418 tok, 1626->764 字)
+
+=== 结论 ===
+G7 卡的是**字符比** 0.55。但稿是中文为主、原文是英文：
+  原文 3.75 字符/token；稿件 1.85 字符/token => 中文每字符贵 2.03 倍
+  于是字符比 0.55 对应 token 比约 0.55*2.03 = 1.12 —— **允许比原文更长**。

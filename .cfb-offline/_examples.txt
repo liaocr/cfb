@@ -1,0 +1,228 @@
+TRAINING-ELIGIBLE COUNT=61 / 75
+
+==============================================================================
+[0] id=eacces-config-s0-r6 task=eacces-config round=6 src=.cfb-runtime\traj\t100\hand-samples.jsonl
+rawChars=2291 draftChars=394 outChars=923 gate={"ok": true, "violations": []} te=True
+--- CTX ---
+仓库里 `npm test` 在 test/birth.selftest.mjs 上报 EACCES: permission denied, open '/home/u/.dsh/storages/cot-form-b/trace.log'。本地是普通用户 u（uid 1000），没有 sudo。请找出原因并修好，修好后说明依据。
+
+【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）
+- 已走过的路：（共 10 条调用，详见下方【延续段】；曾涉 home/u package.json dev/null home/u/.dsh/storages/cot-form-b/ home/u/.dsh home/u/.dsh/storages home/u/work/repo verify.mjs README.md r.status console.log r.stderr Error/.test src/ test/ test/birth.selftest.mjs src/trace.js test/hedge.selftest.mjs home/u/.dsh/storages/cot-form-b/trace.log）
+
+【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）
+仍在依赖的事实：`home: process.env.CFB_REAL_DSH_HOME`——第 4 轮稿里逐字引用的行，本轮输出里不会再出现，出处仍有效。已走过的路：第 1–3 轮已跑 6 条：bash×6（pwd、ls×2、cat×2、for）（曾涉 package.json、verify.mjs、README.md、console.log、test/birth.selftest.mjs）；第 4 轮 bash `cd /home/u/work/repo && cat src/trace.js` → 「$ cd /home/u/work/repo」；第 4 轮 bash `cd /home/u/work/repo && cat test/hedge.selftest.mjs` → 「$ cd /home/u/work/repo」；第 5 轮 bash `cd /home/u/work/repo && env | grep -i -E 'DSH|HOME' ; echo "---"; npm test 2>&1 | tail -30` → 「$ cd /home/u/work/repo … FAIL…」；第 5 轮 bash `cd /home/u/work/repo && echo "HOME=$HOME" && env | sort | head -50` → 「$ cd /home/u/work/repo」；这些不再重跑，除非中间改过东西。
+--- RAW ---
+Now I understand. Environment has DSH_HOME=/home/u/.dsh and CFB_REAL_DSH_HOME=/home/u/.dsh set globally (inherited). verify.mjs sets DSH_HOME=tmp in the child env — but the test uses CFB_REAL_DSH_HOME, which is NOT overridden by verify.mjs, so it points to /home/u/.dsh → the root-owned storage dir → EACCES.
+
+So the bug: the selftest reads CFB_REAL_DSH_HOME (an env var from the outer/real environment) instead of using the sandboxed DSH_HOME that verify.mjs sets. So it escapes the temp sandbox and writes into the real, root-owned storage dir.
+
+Two issues:
+1. The test should use DSH_HOME (the isolated temp dir), not CFB_REAL_DSH_HOME.
+2. Even so, makeTraceWriter's fallback: home = opts.home || process.env.DSH_HOME. If both undefined, path.join(undefined) throws. Should be robust.
+
+The minimal correct fix: in test/birth.selftest.mjs, use `process.env.DSH_HOME` instead of `CFB_REAL_DSH_HOME`. That makes the test run inside the temp sandbox created by verify.mjs.
+
+But wait — is that the "right" fix or should we also harden trace.js? The test explicitly passes CFB_REAL_DSH_HOME which seems intentional to point at a "real" home. Hmm. Let me think about what the intended design is.
+
+Actually CFB_REAL_DSH_HOME looks like a deliberately injected "real" home path (perhaps simulating the actual runtime environment). The test name "birth" — maybe it's about the trace writer being constructed with the real home.
+
+The core problem: a test writes to a shared, root-owned location outside the sandbox. The fix: don't. The verify.mjs harness intends each suite to run in an isolated DSH_HOME. So the test should respect that.
+
+Let me also check git history for clues.
+
+Let me check git log.
+
+Also the dir /home/u/.dsh/storages/cot-form-b is root-owned 755, trace.log root 644. We can't chown without sudo, and shouldn't rely on that.
+
+Let me check git.
+
+Also consider: should the test even pass a home? If makeTraceWriter defaults to DSH_HOME when opts.home is undefined, the test could just call makeTraceWriter() — cleanest. But the test passes CFB_REAL_DSH_HOME explicitly.
+
+Hmm, what's the "correct" fix that a maintainer would want? Let me look at git history / any docs.
+
+Let me run git log and git diff.
+
+Let me also verify that the .dsh dir is not writable by u.
+
+Let me gather.
+--- DRAFT ---
+已落定的决定（原文逐字）：「The test should use DSH_HOME (the isolated temp dir), not CFB_REAL_DSH_HOME.」
+
+落点：test/birth.selftest.mjs（只动这一处；其余路径原文已自证不必动：「We can't chown without sudo, and shouldn't rely on that.」）
+
+原文还悬着这句，但它不阻塞落 edit：「But wait — is that the "right" fix or should we also harden trace.js?」
+
+验收：跑 `npm test`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 test/birth.selftest.mjs 继续查，不要改测试聚合方式。
+--- STORED ---
+仍在依赖的事实：`home: process.env.CFB_REAL_DSH_HOME`（第 4 轮引，出处有效）。已走过的路：第 1–3 轮已跑 6 条：bash×6（pwd、ls×2、cat×2、for）（曾涉 package.json、verify.mjs、README.md、console.log、test/birth.selftest.mjs）；第 4 轮 bash `cd /home/u/work/repo && cat src/trace.js`；第 4 轮 bash `cd /home/u/work/repo && cat test/hedge.selftest.mjs`；第 5 轮 bash `cd /home/u/work/repo && env | grep -i -E 'DSH|HOME' ; echo "---"; npm test 2>&1 | tail -30`；第 5 轮 bash `cd /home/u/work/repo && echo "HOME=$HOME" && env | sort | head -50`（不再重跑）。
+
+已落定的决定（原文逐字）：「The test should use DSH_HOME (the isolated temp dir), not CFB_REAL_DSH_HOME.」
+
+落点：test/birth.selftest.mjs（只动这一处；其余路径原文已自证不必动：「We can't chown without sudo, and shouldn't rely on that.」）
+
+原文还悬着这句，但它不阻塞落 edit：「But wait — is that the "right" fix or should we also harden trace.js?」
+
+验收：跑 `npm test`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 test/birth.selftest.mjs 继续查，不要改测试聚合方式。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。
+--- qualityAudit ---
+{"schema": "cfb.mode1-content-audit/1", "status": "clean", "draft": {"status": "clean", "issues": [], "exempted": []}, "stored": {"status": "clean", "issues": [], "exempted": []}}
+==============================================================================
+[1] id=eacces-config-s1-r5 task=eacces-config round=5 src=.cfb-runtime\traj\t100\hand-samples.jsonl
+rawChars=1982 draftChars=439 outChars=763 gate={"ok": true, "violations": []} te=True
+--- CTX ---
+仓库里 `npm test` 在 test/birth.selftest.mjs 上报 EACCES: permission denied, open '/home/u/.dsh/storages/cot-form-b/trace.log'。本地是普通用户 u（uid 1000），没有 sudo。请找出原因并修好，修好后说明依据。
+
+【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）
+- 已走过的路：（共 10 条调用，详见下方【延续段】；曾涉 package.json dev/null home/u/.dsh/storages/ home/u/.dsh/ README.md verify.mjs src/ test/ home/u/ home/u/.dsh/storages/cot-form-b home/u home/u/.d dsh-cot-form-b child_process r.status console.log r.stderr Error/.test src/trace.js test/birth.selftest.mjs assert/strict test/hedge.selftest.mjs）
+
+【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）
+已走过的路：第 1–2 轮已跑 4 条：bash×4（pwd、ls×2、cat）（曾涉 package.json、README.md、verify.mjs）；第 3 轮 bash `cat README.md` → 「# dsh-cot-form-b」；第 3 轮 bash `cat verify.mjs` → 「import { spawnSync } from 'node:…」；第 3 轮 bash `ls -la src test` → 「src:」；第 4 轮 read_file `src/trace.js` → 「import fs from 'node:fs'」；第 4 轮 read_file `test/birth.selftest.mjs` → 「import assert from 'node:assert/strict'」；第 4 轮 read_file `test/hedge.selftest.mjs` → 「import assert from 'node:assert/strict'」；这些不再重跑，除非中间改过东西。
+--- RAW ---
+Now the bug: birth.selftest.mjs uses `process.env.CFB_REAL_DSH_HOME` as home. That env var probably is set to the real home `/home/u/.dsh` in the user's environment (e.g., in shell profile), so it writes to /home/u/.dsh/storages/cot-form-b/trace.log which is root-owned → EACCES.
+
+Wait, but the verify.mjs sets DSH_HOME to a temp dir, and makeTraceWriter prefers opts.home. The test passes `process.env.CFB_REAL_DSH_HOME` — which is presumably the real DSH home, ignoring the temp DSH_HOME. So the fix: the test should use DSH_HOME (the temp dir) rather than the real one.
+
+But why does CFB_REAL_DSH_HOME exist? Let's check env. Let's grep for CFB_REAL_DSH_HOME in repo. Also check if it's set in the environment.
+
+Also the directory /home/u/.dsh/storages is root-owned — that's the "real" dsh home. Hmm, but the root cause might be something else: maybe trace.js has a bug where `home` falls back incorrectly, e.g., if DSH_HOME is undefined. But verify.mjs sets DSH_HOME.
+
+Actually wait: there's a subtlety. The reported error path is /home/u/.dsh/storages/cot-form-b/trace.log — with the cot-form-b subdir. So home = /home/u/.dsh. So the test resolved home to /home/u/.dsh via CFB_REAL_DSH_HOME.
+
+Hmm, but is that the "bug"? The real intent: tests should be hermetic, using the temp DSH_HOME. The bug is that the test overrides with CFB_REAL_DSH_HOME. But why would CFB_REAL_DSH_HOME be set to the real home? Possibly the environment sets it. Let me check env variables.
+
+Also there may be a deeper issue: /home/u/.dsh is root-owned, meaning the storage dir itself is not writable. But we can't fix that without sudo. The task says "find the cause and fix it" — the fix should be in the repo.
+
+Let me check the environment for CFB_REAL_DSH_HOME and DSH_HOME, and check permissions of the storage dir. Also, maybe trace.js should prefer... hmm.
+
+Actually, let me reconsider: maybe the real cause is that `home` is undefined → path.join(undefined,...) throws. No.
+
+Let me check env.
+--- DRAFT ---
+已落定的决定（原文逐字）：「So the fix: the test should use DSH_HOME (the temp dir) rather than the real one.」
+
+落点：/home/u/.dsh/storages/cot-form-b/trace.log（只动这一处；其余路径原文已自证不必动：「But we can't fix that without sudo.」）
+
+原文还悬着这句，但它不阻塞落 edit：「Wait, but the verify.mjs sets DSH_HOME to a temp dir, and makeTraceWriter prefers opts.home.」
+
+验收：跑 `npm test`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 /home/u/.dsh/storages/cot-form-b/trace.log 继续查，不要改测试聚合方式。
+--- STORED ---
+已走过的路：第 1–2 轮已跑 4 条：bash×4（pwd、ls×2、cat）（曾涉 package.json、README.md、verify.mjs）；第 3 轮 bash `cat README.md`；第 3 轮 bash `cat verify.mjs`；第 3 轮 bash `ls -la src test`；第 4 轮 read_file `src/trace.js`；第 4 轮 read_file `test/birth.selftest.mjs`；第 4 轮 read_file `test/hedge.selftest.mjs`（不再重跑）。
+
+已落定的决定（原文逐字）：「So the fix: the test should use DSH_HOME (the temp dir) rather than the real one.」
+
+落点：/home/u/.dsh/storages/cot-form-b/trace.log（只动这一处；其余路径原文已自证不必动：「But we can't fix that without sudo.」）
+
+原文还悬着这句，但它不阻塞落 edit：「Wait, but the verify.mjs sets DSH_HOME to a temp dir, and makeTraceWriter prefers opts.home.」
+
+验收：跑 `npm test`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 /home/u/.dsh/storages/cot-form-b/trace.log 继续查，不要改测试聚合方式。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。
+--- qualityAudit ---
+{"schema": "cfb.mode1-content-audit/1", "status": "clean", "draft": {"status": "clean", "issues": [], "exempted": []}, "stored": {"status": "clean", "issues": [], "exempted": []}}
+==============================================================================
+[2] id=flaky-timeout-s0-r3 task=flaky-timeout round=3 src=.cfb-runtime\traj\t100\hand-samples.jsonl
+rawChars=9409 draftChars=419 outChars=1095 gate={"ok": true, "violations": []} te=True
+--- CTX ---
+CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次，本地从不失败。CI 机器 2 核，本地 16 核。最近 5 次 CI 日志在 ci/last5.log。请找出原因并修好，修好后说明依据。
+
+【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）
+- 已走过的路：（共 3 条调用，详见下方【延续段】；曾涉 node_modules/ git/ package.json dev/null test/hedge.selftest.mjs ci/last5.log 200 1712 src/distill.js test/helpers.mjs verify.mjs）
+
+【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）
+已走过的路：第 1 轮 bash `find . -type f -not -path "*/node_modules/*" -not -path "*/.git/*" | head -50; echo "---"; cat package.json 2>/dev/null` → 「$ find . -type f -not -path "*/node_modules/*" -not -path "*/.git/*"  |  head -50」；第 1 轮 bash `cat test/hedge.selftest.mjs 2>/dev/null; echo "=== CI LOGS ==="; cat ci/last5.log 2>/dev/null | head -200` → 「$ cat test/hedge.selftest.mjs 2>/dev/null … run 2: FAIL  §4 对冲在主请求 200 之后不得再发  expected hedgeStartedAt=null, got 1712」；第 2 轮 bash `cat src/distill.js; echo "=== HELPERS ==="; cat test/helpers.mjs; echo "=== verify.mjs ==="; cat verify.mjs 2>/dev/null` → 「$ cat src/distill.js」；这些不再重跑，除非中间改过东西。
+--- RAW ---
+Now let me analyze. The test asserts hedgeStartedAt === null with primaryDelayMs=1500, hedgeAfterMs=1600. The bug: `primary.then(() => { primarySettled = true })` sets the flag in a microtask after response resolves. But the timer callback checks `primarySettled`. The issue: the timer fires at 1600ms. The primary response arrives at 1500ms + network/connection overhead. In CI with 2 cores and slow startup, connection setup could add latency. Actually the real race: setTimeout is set AFTER fetch(url) is called, but the timer starts counting from when setTimeout is called. The primary delay is 1500ms on the server side after receiving the request. On 2-core CI, the request might be sent late, or the response handling delayed, so total time from t0 to primary resolving could exceed 1600ms. That's a timing race — the test is inherently flaky due to tight margins (100ms margin).
+
+But wait — the task says "find the cause and fix it". The likely intended bug is in the source code: the flag should be set synchronously when response headers arrive, but there's a real race. Let me think more carefully.
+
+Actually the classic bug: `primary.then(() => { primarySettled = true })` — the `.then` callback runs in a microtask. Also, `primarySettled` is set on response resolution, but the timer checks it. If the primary resolves at 1500ms and timer at 1600ms, then there's 100ms slack. On a 2-core loaded CI machine, setTimeout could be delayed? No, setTimeout fires late, not early, which would make hedge MORE likely to be skipped... wait no.
+
+Let's think: hedge should NOT start because primary settled at 1500 < 1600. Failure means hedge DID start (hedgeStartedAt=1712, 1698). So the timer fired at ~1700ms and primarySettled was still false at that point. That means the primary's `.then` callback hadn't run yet by 1700ms, i.e., the response hadn't been processed even though server sent at 1500ms.
+
+Why would response processing be delayed by >200ms on 2-core? Event loop congestion. But more fundamentally, the timer itself fired at 1712ms instead of 1600ms — 112ms late. And primary settle also delayed.
+
+Hmm, actually the real issue could be: `setTimeout` is scheduled after `fetch(url)` synchronously, so timer starts at ~t0. But there's also... Actually the deeper bug is a design flaw: relying on wall-clock timing with only 100ms margin. The fix: make the test deterministic — e.g., have the server signal, or better, structure the code so the hedge decision is based on the promise settlement rather than a racing timer with tight margins.
+
+Let me reconsider. Maybe the intended root cause is that `setTimeout` callback and the promise resolution are both macrotask/microtask... no.
+
+Actually here's a subtle real bug: `primary.then(() => { primarySettled = true })` sets the flag in a microtask that's queued when primary resolves. The `await primary.catch()` also. But the timer callback at 1600ms... 
+
+Let me reconsider the timing. Server: setTimeout(1500) then respond. Client fetch: DNS/connect + send. The server's 1500ms timer starts when the request handler runs. So total = connect + 1500 + response transmission + client processing. On localhost, connect ~1ms. So primary resolves ~1501ms. Timer set at t0=~0 fires at 1600ms. 100ms margin. On 2-core CI under load, the event loop could be delayed such that... but why would the primary settle be delayed past 1600?
+
+The key insight: Node's timers and I/O. The server's own 1500ms timer fires on the SAME event loop? No, server is in same process! The fakeServer runs in the same Node process as the client. So both the server's 1500ms setTimeout and the client's 1600ms setTimeout are in the same event loop. On a 2-core machine... it's single-threaded event loop anyway.
+
+Hmm, but here's the thing: if the event loop is blocked or busy, timers fire late. Both timers. The server timer (1500) fires late, say at 1600+, and the client timer (1600) fires at... Timer ordering: timers are processed in order of expiry. If the
+--- DRAFT ---
+已落定的决定（原文逐字）：「So the timer fired at ~1700ms and primarySettled was still false at that point.」
+
+落点：test/helpers.mjs（只动这一处；其余路径原文已自证不必动：「Hmm the output shows after helpers: $ cat verify.mjs 2>/dev/null — no wait that's the tool result formatting.」）
+
+原文还悬着这句，但它不阻塞落 edit：「But the timer callback checks primarySettled.」
+
+验收：跑 `node verify.mjs`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 test/helpers.mjs 继续查，不要改测试聚合方式。
+--- STORED ---
+已走过的路：第 1 轮 bash `find . -type f -not -path "*/node_modules/*" -not -path "*/.git/*" | head -50; echo "---"; cat package.json 2>/dev/null` → 「$ find . -type f -not -path "*/node_modules/*" -not -path "*/.git/*" | head -50」；第 1 轮 bash `cat test/hedge.selftest.mjs 2>/dev/null; echo "=== CI LOGS ==="; cat ci/last5.log 2>/dev/null | head -200` → 「$ cat test/hedge.selftest.mjs 2>/dev/null … run 2: FAIL §4 对冲在主请求 200 之后不得再发 expected hedgeStartedAt=null, got 1712」；第 2 轮 bash `cat src/distill.js; echo "=== HELPERS ==="; cat test/helpers.mjs; echo "=== verify.mjs ==="; cat verify.mjs 2>/dev/null` → 「$ cat src/distill.js」；这些不再重跑，除非中间改过东西。
+
+已落定的决定（原文逐字）：「So the timer fired at ~1700ms and primarySettled was still false at that point.」
+
+落点：test/helpers.mjs（只动这一处；其余路径原文已自证不必动：「Hmm the output shows after helpers: $ cat verify.mjs 2>/dev/null — no wait that's the tool result formatting.」）
+
+原文还悬着这句，但它不阻塞落 edit：「But the timer callback checks primarySettled.」
+
+验收：跑 `node verify.mjs`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 test/helpers.mjs 继续查，不要改测试聚合方式。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。
+--- qualityAudit ---
+{"schema": "cfb.mode1-content-audit/1", "status": "clean", "draft": {"status": "clean", "issues": [], "exempted": []}, "stored": {"status": "clean", "issues": [], "exempted": []}}
+==============================================================================
+[3] id=flaky-timeout-s1-r4 task=flaky-timeout round=4 src=.cfb-runtime\traj\t100\hand-samples.jsonl
+rawChars=22572 draftChars=503 outChars=1339 gate={"ok": true, "violations": []} te=True
+--- CTX ---
+CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次，本地从不失败。CI 机器 2 核，本地 16 核。最近 5 次 CI 日志在 ci/last5.log。请找出原因并修好，修好后说明依据。
+
+【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）
+- 已走过的路：（共 7 条调用，详见下方【延续段】；曾涉 package.json dev/null ci/ ci/last5.log 200 1712 src/ test/ test/hedge.selftest.mjs assert/strict test/helpers.mjs src/distill.js）
+
+【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）
+已走过的路：第 1 轮 bash `cd $(pwd) && ls -la && echo "---" && cat package.json 2>/dev/null` → 「$ cd $(pwd)」；第 1 轮 bash `cd $(pwd) && ls ci/ && wc -l ci/last5.log` → 「$ cd $(pwd)」；第 2 轮 bash `cd $(pwd) && ls -la src test && echo "=== LOG ===" && cat ci/last5.log` → 「$ cd $(pwd) … run 2: FAIL  §4 对冲在主请求 200 之后不得再发  expected hedgeStartedAt=null, got 1712」；第 2 轮 bash `cd $(pwd) && for f in src/* test/*; do echo "=== $f ==="; cat "$f"; done` → 「bash: 该沙箱不支持 shell 循环，请直接跑单条命令: cd $(pwd) && for f in src/* test/*; do echo "=== $f ==="; cat "$f"; done」；第 3 轮 read_file `test/hedge.selftest.mjs` → 「import assert from 'node:assert/strict'」；第 3 轮 read_file `test/helpers.mjs` → 「import http from 'node:http'」；第 3 轮 read_file `src/distill.js` → 「export async function hedgedDistill(url, cfg) {」；这些不再重跑，除非中间改过东西。
+--- RAW ---
+Let me analyze.
+
+Test: server primaryDelayMs = 1500ms, hedgeAfterMs = 1600. Expect hedgeStartedAt === null, i.e., primary settles (at 1500ms) before hedge timer (1600ms) fires. Race: primary's `then` sets primarySettled = true at ~1500ms; the timer fires at 1600ms. Gap is 100ms. On a 2-core CI machine under load, the timer callback could fire late — but wait, that would make it MORE likely to see primarySettled=true already. Hmm.
+
+Actually the bug: order of operations. `primary.then(() => { primarySettled = true })` — the promise `then` callback runs in microtask after response completes. But `await primary.catch(() => {})` — the await resumes also in a microtask. The timer at 1600ms fires in a macrotask. So at 1500ms, both microtasks run: then sets primarySettled=true, await resumes, clearTimeout(timer). So timer is cleared. Should be fine.
+
+But the failing case: `hedgeStartedAt = 1712` (ms after t0). So the hedge started at ~1712ms, after primary's 1500ms response. Meaning primarySettled was false when timer fired at 1712. How? Because the timer was scheduled with setTimeout(cfg.hedgeAfterMs) = 1600ms, but fired at 1712 — event loop delay of 112ms on loaded 2-core CI. But primary response arrived at 1500ms... Actually did it? The server uses setTimeout(primaryDelayMs=1500) too, also subject to event loop delay. Both timers compete on 2 cores. On the CI, the server timer (1500) and client timer (1600) are in the same process? The test and server run in the same Node process (fakeServer in-process). So both timers in same event loop.
+
+If event loop is delayed, the 1500ms timer could be delayed to, say, 1700ms, and 1600ms timer to 1712ms. Order of firing: 1500 timer should fire before 1600 timer if both delayed similarly. Hmm but timers fire in order of expiry. 1500 expires earlier, so it fires first. Then server responds, res.writeHead/end. Then the response arrives to the client via socket — that requires I/O poll, and the fetch promise resolution... The response needs to travel through the loop: the client's socket data event, then microtasks.
+
+Key: after the server timer fires and writes the response, the client must receive it. That involves libuv I/O callbacks. If the event loop is blocked, the 1600 timer may fire before the client processes the incoming response data. So at 1600 (delayed to 1712), primarySettled is still false → hedge starts. That's the flake: the 100ms margin is too tight, and the response delivery involves I/O + microtasks that can be delayed more than 100ms on a loaded 2-core machine.
+
+Wait but why would it consistently fail ~1 in 5 on 2-core? Because scheduling jitter.
+
+Hmm, but actually there might be a more fundamental bug. Let me think about the real intent of §4: "hedge must not be sent after primary returns 200". The current implementation: primarySettled is set in a `.then` on primary, and timer checks it. But there's a subtle bug: the timer callback checks `primarySettled` synchronously at fire time. Even if primary's response arrived before 1600ms, if... no.
+
+Actually let's reconsider: is there a real logic bug rather than just tight timing? The `startHedge` only sets meta; it doesn't actually send a hedge request. But the test only checks meta.hedgeStartedAt.
+
+The real issue is a race between the timer and the primary completion. The margin is 100ms. The fix should be robust: the primarySettled flag must be set based on the actual completion, and the timer should be cleared... but the timer already cleared.
+
+Hmm, but wait. Consider: `primary.then(() => { primarySettled = true })` and separately `await primary.catch(()=>{})`. Both are microtask continuations. Fine.
+
+But there's a deeper problem: the timer callback captures `primarySettled`, and even if we clear the timer after primary resolves, if the timer already fired (macrotask queued) before primary's microtasks, it can't be cancelled.
+
+The fundamental fix: don't rely on wall-clock margins. But the test itself defines hedgeAfterMs 1600 v
+--- DRAFT ---
+已落定的决定（原文逐字）：「So at 1500ms, both microtasks run: then sets primarySettled=true, await resumes, clearTimeout(timer).」
+
+落点：test/hedge.selftest.mjs（只动这一处；其余路径原文已自证不必动：「The startHedge only sets meta; it doesn't actually send a hedge request.」）
+
+原文还悬着这句，但它不阻塞落 edit：「But await primary.catch(() => {}) — the await resumes also in a microtask.」
+
+验收：跑 `node version`。若不再报 「expected fix is in the test (make margin bigger) OR in source.」 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 test/hedge.selftest.mjs 继续查，不要改测试聚合方式。
+--- STORED ---
+已走过的路：第 1 轮 bash `cd $(pwd) && ls -la && echo "---" && cat package.json 2>/dev/null` → 「$ cd $(pwd)」；第 1 轮 bash `cd $(pwd) && ls ci/ && wc -l ci/last5.log` → 「$ cd $(pwd)」；第 2 轮 bash `cd $(pwd) && ls -la src test && echo "=== LOG ===" && cat ci/last5.log` → 「$ cd $(pwd) … run 2: FAIL §4 对冲在主请求 200 之后不得再发 expected hedgeStartedAt=null, got 1712」；第 2 轮 bash `cd $(pwd) && for f in src/* test/*; do echo "=== $f ==="; cat "$f"; done` → 「bash: 该沙箱不支持 shell 循环，请直接跑单条命令: cd $(pwd) && for f in src/* test/*; do echo "=== $f ==="; cat "$f"; done」；第 3 轮 read_file `test/hedge.selftest.mjs` → 「import assert from 'node:assert/strict'」；第 3 轮 read_file `test/helpers.mjs` → 「import http from 'node:http'」；第 3 轮 read_file `src/distill.js` → 「export async function hedgedDistill(url, cfg) {」；这些不再重跑，除非中间改过东西。
+
+已落定的决定（原文逐字）：「So at 1500ms, both microtasks run: then sets primarySettled=true, await resumes, clearTimeout(timer).」
+
+落点：test/hedge.selftest.mjs（只动这一处；其余路径原文已自证不必动：「The startHedge only sets meta; it doesn't actually send a hedge request.」）
+
+原文还悬着这句，但它不阻塞落 edit：「But await primary.catch(() => {}) — the await resumes also in a microtask.」
+
+验收：跑 `node version`。若不再报 「expected fix is in the test (make margin bigger) OR in source.」 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 test/hedge.selftest.mjs 继续查，不要改测试聚合方式。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。
+--- qualityAudit ---
+{"schema": "cfb.mode1-content-audit/1", "status": "clean", "draft": {"status": "clean", "issues": [], "exempted": []}, "stored": {"status": "clean", "issues": [], "exempted": [{"category": "environment-permission-assertion", "excerpt": "沙箱不支持", "sentence": "done` → 「bash: 该沙箱不支持 shell 循环，请直接跑单条命令: cd $(pwd) && for f in src/* test/*;", "basis": "verbatim-sentence-from-raw-or-ctx"}]}}

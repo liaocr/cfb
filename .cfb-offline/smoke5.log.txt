@@ -1,0 +1,60 @@
+[{"stream_name":"stdout","time":10.894381197,"data":"· 检测到 2 张卡 —— 单进程只会用 cuda:0，用 torchrun 重开跑满：\n"}
+,{"stream_name":"stdout","time":10.894428782,"data":"  /usr/bin/python3 -m torch.distributed.run --nproc_per_node 2 --standalone --master_port 29517 /kaggle/src/script.py --smoke --data https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl --dev https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl\n"}
+,{"stream_name":"stderr","time":12.755688511,"data":"\n"}
+,{"stream_name":"stderr","time":12.755721564,"data":"*****************************************\n"}
+,{"stream_name":"stderr","time":12.755726599,"data":"Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. \n"}
+,{"stream_name":"stderr","time":12.755733227,"data":"*****************************************\n"}
+,{"stream_name":"stdout","time":15.060685237,"data":"· GPU Tesla T4 · sm_75 · torch 2.11.0+cu128 · 2 卡中用了 2 张（rank 0）\n"}
+,{"stream_name":"stdout","time":15.060929349,"data":"· fla.models.rwkv7 缺失（ModuleNotFoundError(\"No module named 'fla'\")）-\u003e 装 flash-linear-attention==0.5.2\n"}
+,{"stream_name":"stdout","time":19.147061449,"data":"· pip install -\u003e exit 0\n"}
+,{"stream_name":"stdout","time":48.203744301,"data":"· fla ok · transformers 5.16.1\n"}
+,{"stream_name":"stdout","time":48.203775108,"data":"· chunk_size 16（T4 的 64KB 共享内存装不下 fla 默认的 64）\n"}
+,{"stream_name":"stderr","time":48.49164046,"data":"Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n"}
+,{"stream_name":"stderr","time":48.536349546,"data":"Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n"}
+,{"stream_name":"stderr","time":48.610485148,"data":"[transformers] A new version of the following files was downloaded from https://huggingface.co/fla-hub/rwkv7-0.1B-g1:\n"}
+,{"stream_name":"stderr","time":48.610506558,"data":"- hf_rwkv_tokenizer.py\n"}
+,{"stream_name":"stderr","time":48.610512394,"data":". Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.\n"}
+,{"stream_name":"stderr","time":48.614001698,"data":"[transformers] A new version of the following files was downloaded from https://huggingface.co/fla-hub/rwkv7-0.1B-g1:\n"}
+,{"stream_name":"stderr","time":48.614018806,"data":"- hf_rwkv_tokenizer.py\n"}
+,{"stream_name":"stderr","time":48.614024315,"data":". Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.\n"}
+,{"stream_name":"stdout","time":51.72324544,"data":"· tokenizer RwkvTokenizer · vocab 65531 · eos=65530 pad=0\n"}
+,{"stream_name":"stdout","time":52.046188989,"data":"· 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl -\u003e /kaggle/working/_train.jsonl (582074 bytes)\n"}
+,{"stream_name":"stdout","time":52.050720336,"data":"· 读入 48 行\n"}
+,{"stream_name":"stdout","time":52.850456257,"data":"· 编码完成 48/48 条（0.8s）· 超窗丢弃 0\n"}
+,{"stream_name":"stdout","time":52.850487784,"data":"· token 长度 min 3014 p50 3522 p90 4100 max 4408 · 窗口 6144 占用 p50 57.3%\n"}
+,{"stream_name":"stdout","time":52.850493298,"data":"· 掩码边界偏差：2/48 条非零，max 1（持续偏大说明模板/分词器与预期不符，是必须看见的信号）\n"}
+,{"stream_name":"stdout","time":53.005387048,"data":"· 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl -\u003e /kaggle/working/_dev.jsonl (115690 bytes)\n"}
+,{"stream_name":"stdout","time":53.16335475,"data":"· dev 9 条\n"}
+,{"stream_name":"stdout","time":53.163375575,"data":"· 载入 fla-hub/rwkv7-0.1B-g1（主权重 fp32 · autocast fp16）…\n"}
+,{"stream_name":"stderr","time":55.853815462,"data":"/usr/local/lib/python3.13/dist-packages/fla/layers/rwkv7.py:148: UserWarning: According to Bo, you are using a potentially buggy FLA implementation of RWKV. If you plan to report any numbers based on this implementation, we strongly recommend cross-checking with the official repo: https://github.com/BlinkDL/RWKV-LM. Bo may disagree with results reported from this version.\n"}
+,{"stream_name":"stderr","time":55.853847799,"data":"  warnings.warn(\n"}
+,{"stream_name":"stderr","time":55.853963159,"data":"/usr/local/lib/python3.13/dist-packages/fla/layers/rwkv7.py:148: UserWarning: According to Bo, you are using a potentially buggy FLA implementation of RWKV. If you plan to report any numbers based on this implementation, we strongly recommend cross-checking with the official repo: https://github.com/BlinkDL/RWKV-LM. Bo may disagree with results reported from this version.\n"}
+,{"stream_name":"stderr","time":55.853980294,"data":"  warnings.warn(\n"}
+,{"stream_name":"stderr","time":59.060724099,"data":"\rLoading weights:   0%|          | 0/399 [00:00\u003c?, ?it/s]\rLoading weights:   8%|▊         | 30/399 [00:00\u003c00:01, 292.12it/s]\rLoading weights:  71%|███████   | 282/399 [00:00\u003c00:00, 1552.41it/s]\rLoading weights:   0%|          | 0/399 [00:00\u003c?, ?it/s]\rLoading weights: 100%|██████████| 399/399 [00:00\u003c00:00, 1379.44it/s]\n"}
+,{"stream_name":"stderr","time":59.188935241,"data":"\rLoading weights:  67%|██████▋   | 266/399 [00:00\u003c00:00, 2657.63it/s]\rLoading weights: 100%|██████████| 399/399 [00:00\u003c00:00, 2593.15it/s]\n"}
+,{"stream_name":"stdout","time":60.412609572,"data":"· 参数量 191.0M（全参微调 · fp32 主权重） · DDP 2 卡\n"}
+,{"stream_name":"stdout","time":60.412642903,"data":"· rank 0 分到 6 个微批\n"}
+,{"stream_name":"stdout","time":60.414787061,"data":"· 批 4 × 累积 8 = 有效批 32 · 每轮 6 微批 -\u003e 1 步 · 共 3 步\n"}
+,{"stream_name":"stdout","time":60.414815531,"data":"\\n=== 冒烟模式：只验证环境，不训练 ===\n"}
+,{"stream_name":"stderr","time":60.469557347,"data":"[transformers] `use_return_dict` is deprecated! Use `return_dict` instead!\n"}
+,{"stream_name":"stderr","time":60.470164836,"data":"[transformers] `use_return_dict` is deprecated! Use `return_dict` instead!\n"}
+,{"stream_name":"stderr","time":141.959597289,"data":"[rank1]:[W1010 10:38:33.113087969 reducer.cpp:1502] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())\n"}
+,{"stream_name":"stderr","time":141.95965119,"data":"[rank0]:[W1010 10:38:33.113205093 reducer.cpp:1502] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())\n"}
+,{"stream_name":"stdout","time":254.12845356,"data":"  step 1/3 loss 3.0911 · 193.7s · 峰值显存 5.30 GiB\n"}
+,{"stream_name":"stdout","time":258.611896134,"data":"  step 2/3 loss 4.6074 · 4.5s · 峰值显存 6.95 GiB\n"}
+,{"stream_name":"stdout","time":261.14660355,"data":"  step 3/3 loss 4.7127 · 2.5s · 峰值显存 7.13 GiB\n"}
+,{"stream_name":"stdout","time":261.146652503,"data":"· 前向+反传 合计 200.7s · 首步 193.7s（含 Triton 首次编译） · 最快 2.5s/步\n"}
+,{"stream_name":"stdout","time":261.146660738,"data":"· 外推：全量 3 步约 0 分钟（按最快一步算，首步编译不计；Kaggle 上限 12 小时）\n"}
+,{"stream_name":"stdout","time":298.692283461,"data":"· 生成通路 ok（37.5s / 256 token）\n"}
+,{"stream_name":"stdout","time":298.692341699,"data":"  ── 未训练模型的输出（应当是一堆不通顺的话，这是对的）──\n"}
+,{"stream_name":"stdout","time":298.692466968,"data":"  py38 已 `py35` 有 `black/` 和 `keyring/` 和 `ecx, `keyring/` 没 `jeepney/` 或 `py37 有 ` importlib-metadata 没 ` py37 也 ` ` ` 吧， `idna 已 ` attrs 没 ` py37 也 ` ` 吧， ` isort 没 ` keyring/ ` 也 ` / 发 ` py36 有 ` importlib-metadata 没 ` ` 也 ` py37 没 ` ` 也 ` 测 ` py38 有 ` black/ ` 和 ` 依 ` 有 ` importlib-metadata 没 ` ` 也 ` ` 落点 ` py36 已 ` ` importlib-metadata 没 ` ` ` 也 ` ` 测 ` py36 有 ` importlib-metadata 没 ` ` ` 也 ` `\n"}
+,{"stream_name":"stderr","time":298.692795401,"data":"/usr/local/lib/python3.13/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.\n"}
+,{"stream_name":"stderr","time":298.692807573,"data":"  return func(*args, **kwargs)\n"}
+,{"stream_name":"stdout","time":298.693130291,"data":"\\n=== 冒烟通过 ===\n"}
+,{"stream_name":"stderr","time":308.920511239,"data":"/usr/local/lib/python3.13/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":308.92053947,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":309.1788229,"data":"/usr/local/lib/python3.13/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":309.17885323,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":309.989002631,"data":"[NbConvertApp] Converting notebook __script__.ipynb to html\n"}
+,{"stream_name":"stderr","time":311.145933748,"data":"[NbConvertApp] Writing 401590 bytes to __results__.html\n"}
+]

@@ -1,0 +1,1106 @@
+{
+  "schema": "cfb.eval-sft/1",
+  "ruler": "gen-ruler/2",
+  "at": "2026-10-10T10:47:54.930Z",
+  "sft": ".cfb-offline\\sft-dry",
+  "gen": ".cfb-offline\\sft-dry\\gen-teacher.jsonl",
+  "n": 58,
+  "missing": 0,
+  "emptyStudent": 0,
+  "teacher": {
+    "pass": 29,
+    "rate": 0.5,
+    "failCount": {
+      "G7 compressed": 24,
+      "G1 quote-grounded": 5,
+      "G4 actionable": 3,
+      "G3 anchors-kept": 3
+    }
+  },
+  "student": {
+    "pass": 29,
+    "rate": 0.5,
+    "failCount": {
+      "G7 compressed": 24,
+      "G1 quote-grounded": 5,
+      "G4 actionable": 3,
+      "G3 anchors-kept": 3
+    }
+  },
+  "paired": {
+    "bothPass": 29,
+    "studentOnly": 0,
+    "teacherOnly": 0,
+    "neither": 29
+  },
+  "chars": {
+    "teacher": {
+      "p50": 846
+    },
+    "student": {
+      "p50": 846
+    }
+  },
+  "ratio": {
+    "teacherP50": 0.3277,
+    "studentP50": 0.3277
+  },
+  "rows": [
+    {
+      "id": "adamchainz_pytest-reverse_pr10#b15",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.7228,
+      "studentScore": 0.7228,
+      "teacherRatio": 0.6116,
+      "studentRatio": 0.6116,
+      "teacherChars": 1011,
+      "studentChars": 1011,
+      "studentTok": 267,
+      "teacherTok": 267,
+      "studentDraft": "The pattern from the four requirements files: py35 has importlib-metadata, pathlib2, zipp==1.2.0, twine==1.15.0, flake8-bugbear==19.8.0; py36 has importlib-metadata, zipp==3.1.0; py37 has importlib-metadata, zipp==3.1.0, keyring==21.2.1; py38 has black, check-manifest plus their deps (appdirs, click, pathspec, pep517, regex, toml, typed-ast) and also jeepney, keyring, secretstorage. So py39 should mirror py38 minus the ones gated on Python version. Still need to confirm whether py38 really carries keyring/jeepney/secretstorage and what pins py39 should take; 落点原文未定 for the exact py39.txt contents. Next step is to look at tox.ini, setup.cfg, and .github/workflows against this pattern before writing anything. If py38.txt lists keyring==21.2.1 and no zipp/importlib-metadata, then py39.txt is py38.txt with any Python-gated pins dropped and twine/black/check-manifest kept. If py39 needs importlib-metadata or zipp, then it is not a straight copy of py38 and the source of that pin has to be found first."
+    },
+    {
+      "id": "adamchainz_treepoem_pr437#b19",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.7517,
+      "studentScore": 0.7517,
+      "teacherRatio": 0.3135,
+      "studentRatio": 0.3135,
+      "teacherChars": 720,
+      "studentChars": 720,
+      "studentTok": 314,
+      "teacherTok": 314,
+      "studentDraft": "_这题要加 `scale` 参数到 `generate_barcode` 和 CLI。查过 treepoem/__init__.py，里面 `_get_bbox` 和 `_generate_barcode` 已经处理好了：`generate_barcode(data, type, scale=2, **options)`，EPS_TEMPLATE 里有 `{scale} {scale} scale`，bbox 用 `-sDEVICE=bbox` 算，scale 改变后 bbox 和内容都跟着放大，PIL 渲染 EPS 时按 bbox 定尺寸，输出像素随 scale 变。默认 2 保持向后兼容。验证过 scale=1 和 scale=2 和默认输出尺寸一致，确实是按倍数变。CLI 那边 __main__.py 已加 `-s/--scale`，`parser.print_help()` 输出里有 `-s SCALE`。校验 scale>=1 也做了。tests/ 全部 pytest 通过。\n\n还悬着的是 bbox 的单位问题想过但没改动路径：EPS 的 `%%BoundingBox` 是点（1/72 英寸），PIL 渲染时按这个定画布，`2 2 scale` 只影响内容绘制，所以不用额外换算。tests/conftest.py 只读 Ghostscript 版本，没别的。\n\n下一步：如果 EPS 里 `%%BoundingBox` 随 scale 翻倍而 PIL 渲染尺寸也翻倍，那么实现就是对的；如果 bbox 没变，那么 scale 只放大内容不放大画布，需要重新查 EPS_TEMPLATE 里 bbox 计算的地方。"
+    },
+    {
+      "id": "adamtheturtle_pip-check-reqs_pr38#b9",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.5638,
+      "studentScore": 0.5638,
+      "teacherRatio": 0.284,
+      "studentRatio": 0.284,
+      "teacherChars": 532,
+      "studentChars": 532,
+      "studentTok": 231,
+      "teacherTok": 231,
+      "studentDraft": "环境里 pip 是 18.1，tests 全过，但问题描述的两处在 pip 20.x 才炸。已知两处不兼容：PipSession 从 pip._internal.download 移到了 pip._internal.network.session；parse_requirements 返回对象的 .name 属性在 20.x 不复存在。而且不止一个文件，common.py 和 find_missing_reqs.py 也都从 pip._internal.download import PipSession、从 pip._internal.req.req_file import parse_requirements，所以兼容层要么集中到 common.py 要么各处都改。\n\n还没定落点，原文停在「去 pip 20.x 源码或 changelog 里确认确切变化」，也考虑过临时装 pip 20.1.1 复现但环境未必允许升级。如果装 pip==20.1.1 成功，那么直接跑 pytest 复现 ImportError；如果环境不让升 pip，那么改为查 pip 20.x 源码确认 network.session 和 name 的替代写法，仍不许猜落点。"
+    },
+    {
+      "id": "adamtheturtle_sybil-extras_pr297#b11",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.7522,
+      "studentScore": 0.7522,
+      "teacherRatio": 0.1853,
+      "studentRatio": 0.1853,
+      "teacherChars": 738,
+      "studentChars": 738,
+      "studentTok": 295,
+      "teacherTok": 295,
+      "studentDraft": "ShellCommandEvaluator 的 `_run_command` 里用了 `sys.stdout.buffer`/`sys.stderr.buffer`，但 capsys 和 click.testing.CliRunner 会把 `sys.stdout` 换成 `StringIO`，没有 `buffer` 属性，所以输出捕获不到、还会 AttributeError。现有测试全用 `capfd`/`capfdbinary`，没有 capsys 用例。use_pty=True 那条路径也写 `sys.stdout.buffer`，同样会崩。\n\n决定改 src/sybil_extras/evaluators/shell_evaluator.py 的 `_run_command`：优先写 `sys.stdout.buffer`，AttributeError 时回退到 `sys.stdout.write(result.stdout.decode(sys.getdefaultencoding(), errors='replace'))`，stderr 同理。已 str_replace 编辑过一次。落点就是那一行，改成带 try/except AttributeError 的分支。\n\n下一步先跑现有测试，确认 use_pty 两条路径都不回归。如果测试里出现 `AttributeError: 'StringIO' object has no attribute 'buffer'`，那么回退分支没生效，需要检查是不是漏改了某一处。如果全部通过且 capsys 用例能拿到输出，那么改法坐实。如果只有 use_pty=True 失败，那么单独补那条路径的回退。"
+    },
+    {
+      "id": "astropy_sphinx-automodapi_pr100#b11",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "teacherScore": 0.7441,
+      "studentScore": 0.7441,
+      "teacherRatio": 0.3433,
+      "studentRatio": 0.3433,
+      "teacherChars": 668,
+      "studentChars": 668,
+      "studentTok": 288,
+      "teacherTok": 288,
+      "studentDraft": "我们看到默认的 `pending_xref` 没有 `refexplicit` 或 `refdoc` 键。Sphinx 3.0.0 之前解析器总是设置它们，现在不会了，这就是 `smart_resolver.missing_reference_handler()` 里 KeyError 的来源。修法落在 `.get()` 加默认值：`refexplicit` 缺失即视为 `False`（没写角括号），`refdoc` 缺失退回 `env.docname`，或者传给 `resolve_xref` 时用空串。改 `sphinx_automodapi/smart_resolver.py` 里那两处直接下标，`node['refexplicit']` 改成 `node.get('refexplicit', False)`，`node['refdoc']` 改成 `node.get('refdoc', env.docname)`；`refdoc` 出现在第 93 行调 `env.domains['py'].resolve_xref(...)` 的 fromdocname 位置，`refexplicit` 在第 78 和 90 行。落点原文未定，得先读文件确认行号再动。下一步是打开 smart_resolver.py 看这三处下标的确切上下文。如果这三个位置确实都是直接下标，那么按上述 `.get()` 改；如果发现别处也读了这两个键，一并改。如果文件里已经用了 `.get()`，那么 KeyError 来自别处，不再动这里。"
+    },
+    {
+      "id": "avian2_jsonmerge_pr29#b3",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.6592,
+      "studentScore": 0.6592,
+      "teacherRatio": 0.129,
+      "studentRatio": 0.129,
+      "teacherChars": 1067,
+      "studentChars": 1067,
+      "studentTok": 473,
+      "teacherTok": 473,
+      "studentDraft": "源码结构清楚了。报错出在 jsonmerge/descenders.py 的 AnyOfAllOf.descend()：遇到 allOf/anyOf 时抛 SchemaError(\"Can't descend to 'allOf' and 'anyOf' keywords\")。而 jsonmerge/__init__.py 的 Walk.descend() 是先逐个跑 descenders（Ref、OneOf、AnyOfAllOf），任一返回非 None 就直接 return，只有全都返回 None 才去读 schema.val[\"mergeStrategy\"]，再调 default_strategy() 和策略的 merge()/get_schema()。所以异常发生在策略被查之前，overwrite 根本没机会生效。修法是让 descender 在 schema 上带 mergeStrategy 且该策略不需要下降时返回 None 而不是抛错，让 Walk.descend() 落到策略分支。策略里 Overwrite.merge() 直接返回 head、Version 和 Append 也不下降，ObjectMerge 会下降 properties/patternProperties/additionalProperties、ArrayMergeById 会下降 items，所以「不需要下降」这一档至少含 overwrite；issue 还指出 oneOf 也应一并跳过（OneOf 虽不抛错，但 overwrite 下结果已定，校验各分支是白费开销）。\n\n落点原文未定：是只改 AnyOfAllOf（最小修）还是顺带改 OneOf，以及判定条件是「策略 == overwrite」还是「策略不属 objectMerge/arrayMergeById」这档更宽的，原文没定。Ref 是否同跳也没定，倾向不动。下一步是看 tests 里对 allOf/anyOf/oneOf 的既有用例，确认预期行为再落改法。如果 Walk.descend() 里策略检查确实在 descenders 循环之后，那么让 AnyOfAllOf.descend() 返回 None 就能走到 overwrite 策略分支。如果测试里已有 allOf + overwrite 的期望用例，那么照它的断言落改法即可。如果 OneOf 的既有用例依赖先做 oneOf 校验，那么跳过 OneOf 会破坏它，此时只改 AnyOfAllOf。"
+    },
+    {
+      "id": "bambinos_formulae_pr102#b10",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.4823,
+      "studentScore": 0.4823,
+      "teacherRatio": 0.2439,
+      "studentRatio": 0.2439,
+      "teacherChars": 1540,
+      "studentChars": 1540,
+      "studentTok": 404,
+      "teacherTok": 404,
+      "studentDraft": "We need to trace `\"0 + g + 1\"` encoding. Parsing left to right: `NegatedIntercept() + Term(g)` makes `Model(NegatedIntercept(), Term(g))`, then `Model.__add__(Intercept())` hits `isinstance(other, (Term, GroupSpecificTerm, Intercept))` and calls `self.add_term(other)`. `add_term` only does `if term not in self.common_terms: append`, and `Intercept()` != `NegatedIntercept()`, so both coexist: `common_terms = [NegatedIntercept(), Term(g), Intercept()]`. The cancel-out logic (`Intercept() in common_terms and NegatedIntercept() in common_terms` → remove both) lives only in `Model.__or__`, not in `add_term`/`__add__` nor in `eval`. So the leftover `NegatedIntercept` is what makes `g` encode at full rank.\n\nNeeded: fix in `formulae/terms/terms.py`, in `Model.__add__` (or `add_term`) for `\"0 + g + 1\"` → drop the lone `NegatedIntercept` when an `Intercept` is explicitly added later, mirroring the `__or__` logic. 落点原文未定 (specific line number not yet fixed).\n\nNext step: write a repro script comparing `design_matrices(\"0 + g + 1\", df=df)` vs `design_matrices(\"1 + g\", df=df)` and print `model.common_terms` for each, plus `_get_encoding_groups()` output.\n\nIf `common_terms` for `\"0 + g + 1\"` is `[NegatedIntercept(), Term(g), Intercept()]` and `\"1 + g\"` gives `[Intercept(), Term(g)]`, then the `NegatedIntercept` is confirmed as the culprit and the fix belongs in `__add__`/`add_term`. If `common_terms` matches already and the matrices still differ, then the bug is downstream in `_get_encoding_bools`/`eval` and not in the term list."
+    },
+    {
+      "id": "bastibe_python-soundfile_pr58#b21",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.8056,
+      "studentScore": 0.8056,
+      "teacherRatio": 0.487,
+      "studentRatio": 0.487,
+      "teacherChars": 1011,
+      "studentChars": 1011,
+      "studentTok": 434,
+      "teacherTok": 434,
+      "studentDraft": "`info()` 的测试不在 tests/ 里（pytest 只见到 `test_extra_info[name/fd/obj]` 三条，全 PASSED），用户说测试文件他已改完，所以不写测试，但要自己确认实现完整。逐条对回 issue：`info(file, verbose=False)` 顶层 API，返回对象要暴露 `name` / `samplerate` / `channels` / `duration` / `format` / `subtype`，`__repr__` 概括这些字段，`verbose=True` 时额外带 endianness 和 section 信息 —— 现有 `endian` 和 `sections` 对得上，这条不改。已落定的功能验证：`sf.info('tests/stereo.wav')` 六个字段都取到；`sf.info('i_do_not_exist.wav')` 抛 Expected error；`sf.info('tests/mono.raw')` 走 RAW 分支。悬着的是 `name`：`SoundFile._name = file`（line 649），`name = property(lambda self: self._name)`（line 663），所以传文件对象时 `name` 拿到文件对象本身而不是路径，而 issue 要的是 \"The file path.\"，也就是可能要用 `getattr(file, 'name', file)` 兜一层。落点：改 `info` 函数里构造对象时取 name 的那一处，改成 `getattr(file, 'name', file)`，具体行号未定，要回去看实现那段再钉。下一步是打开 soundfile.py 的 `info` 实现，确认 name 当前怎么取的、以及 verbose 分支是否已经接上 endian/sections。如果 `info` 里 name 是直接把 `file` 或 `SoundFile` 的 `_name` 塞进去，那么这个改动成立，只动这一处，其余字段与 repr 保持原样。如果传文件对象的路径已经由别处转好、`getattr(file, 'name', file)` 会覆盖掉正确值，那么不动它，改为只在 `file` 无 `name` 属性时才回退。"
+    },
+    {
+      "id": "belerico_py-asciimath_pr4#b12",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.6121,
+      "studentScore": 0.6121,
+      "teacherRatio": 0.277,
+      "studentRatio": 0.277,
+      "teacherChars": 1090,
+      "studentChars": 1090,
+      "studentTok": 420,
+      "teacherTok": 420,
+      "studentDraft": "第一轮 `python -c` 跑出的三条：`int x dx` → `$\\int x dx$`，dx 是斜体；`a * b` → `$a \\cdot b$`；`a cdot b` → `$a \\cdot b$`。后两条看着没问题。const.py 里 `'\"*\"'` 是 `{\"latex\": \"\\\\cdot\", \"mathml\": \"&#x22C5;\"}`，`'\"cdot\"'` 是 `{\"latex\": \"\\\\cdot\", \"mathml\": \"&CenterDot;\"}`，MathML 实体不一致是已知点。主要待改的是积分里的微分 d 要变成 `\\mathrm{d}`。\n\n现有关键测试断言：ok_1 期望 `$\\left[\\begin{matrix}\\int x dx  \\\\  \\log \\left(x + 1\\right)\\end{matrix}\\right]$`，ok_2 期望 `\\[\\left(\\left(1 , 2\\right)\\right) \\int \\sin \\frac{x^{2}}{4} \\pi dx \\sqrt[5]{x_{1}^{2} + x_{2}^{2}}\\]`，ok_3 期望 `$\\lim_{N \\to \\infty} \\sum_{i = 0}^{N} \\int_{0}^{1} f \\left(x\\right) dx$`，三处 `dx` 都要变 `\\mathrm{d}x`。当前 26 个测试全过，说明测试文件还没改成新期望，或者用户说的「已处理测试文件」是另一回事。\n\n已探到的仓库事实：文件清单（main.py、py_asciimath-cli.py、py_asciimath/{__init__,__main__,const,py_asciimath}.py、grammar/asciimath_grammar.py、parser/{parse_lists,parser}.py 等），HEAD 是 633dae6 (scaleswe)，其上 e318a92 Add displaystyle option to latex translation，git diff HEAD 为空即工作区干净。\n\n下一步是查测试文件有没有未提交改动，即 git status / git diff 看 tests/ 下是否有变更。如果 tests/ 下出现期望 `\\mathrm{d}x` 的改动，那么直接按新期望改源码；如果 tests/ 仍是 `dx` 且工作区干净，那么先确认测试期望与 issue 要求不一致这一事实，不要动测试文件。"
+    },
+    {
+      "id": "bellockk_alphashape_pr12#b5",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.6983,
+      "studentScore": 0.6983,
+      "teacherRatio": 0.2066,
+      "studentRatio": 0.2066,
+      "teacherChars": 942,
+      "studentChars": 942,
+      "studentTok": 405,
+      "teacherTok": 405,
+      "studentDraft": "`optimizealpha` 要加 `lower`、`upper`、`silent` 三个参数。现状是 `lower = 0.`、`upper = sys.float_info.max` 硬编码在函数体里，直接把入参替换这两行即可；`_testalpha(points, upper)` 为 True 时走 `logging.error('the max float value does not bound the alpha parameter solution')` 并 return 0.，bisection 落在 `lower` 与 `upper` 之间。校验按题面：`lower` 至少 0，`upper` 在系统 float 范围内。`silent` 只需包住函数里那两条日志，一条是上面那条 error，另一条是 `logging.warning('maximum allowed iterations reached while optimizing the alpha parameter')`，用 `if not silent:` 条件包住即可，别去动全局 logger。已看到 tests/test_optimizealpha.py 现有断言 `assert alpha > 3. and alpha < 3.5`，tests/test_alphashape.py 与 alphashape/cli.py 都不改，落点在 alphashape/optimizealpha.py 的函数签名与那两行硬编码以及两处日志。落点原文未定，未给出行号。悬着的是 `lower > upper` 怎么处理、`upper` 校验是抛错还是 clamp，原文未定；clamp 与全局 logging 抑制两条路都不选。下一步是打开 alphashape/optimizealpha.py 看函数签名与那两处日志的确切行。如果文件里确实只有那两条 logging 调用，那么按上面的包法改签名加参数即可。如果出现第三条 logging 调用，那么 silent 的覆盖面要跟着扩到它。如果 `lower > upper` 的处理在文件里已有先例，那么沿用那个先例，不自己发明。"
+    },
+    {
+      "id": "best-doctor_flake8-annotations-complexity_pr23#b8",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.6753,
+      "studentScore": 0.6753,
+      "teacherRatio": 0.3955,
+      "studentRatio": 0.3955,
+      "teacherChars": 1102,
+      "studentChars": 1102,
+      "studentTok": 423,
+      "teacherTok": 423,
+      "studentDraft": "在 Python 3.11 上 `ast.Str` 仍是 `ast.Constant` 的子类，`isinstance(node.returns, ast.Str)` 返回 True，所以现在的字符串注解处理在 3.11 上没问题；`ast.parse` 抛的 SyntaxError / IndexError 都被 `get_annotation_complexity` 吞掉，返回 default_complexity。`setup.py` 现在写的是 `python_requires='>=3.7'`，要改成 `>=3.9` 并删掉 3.7/3.8 的 classifiers。代码里针对 3.9 以前的分支 `if sys.version_info >= (3, 9): ... else: ... annotation_node.slice.value`，是因为 3.8 的 `ast.Subscript.slice` 会包一层 `ast.Index`，3.9+ 直接就是值；既然弃掉 3.7/3.8，这个条件可以简化成直接用 `annotation_node.slice`。另外 `Callable` 实参里的嵌套类型没被递归分析，`Callable[[List[int]], None]` 的 slice 是 `Tuple(elts=[List(...), Constant(value=None)])`，`List[int]` 被漏掉了。\n\n落点原文未定：`get_annotation_complexity` 和 `get_annotation_len` 里处理 `ast.Str` 与 `Callable` 分支的具体行尚未定下。\n\n悬着的是 `ast.parse` 除 SyntaxError、IndexError 之外还会抛什么、以及题面说的 malformed string annotation 崩溃到底走哪条路，都还没确认。\n\n如果 `python3 --version` 输出是 3.11.14，那么 3.7/3.8 的 slice 包装分支确认可删。如果 `Callable[[List[int]], None]` 的 slice 打印出 `Tuple(elts=[List(...), Constant(value=None)])`，那么复杂度漏算就在这个元组分支，需要递归进每个 elt。如果 `ast.parse('invalid syntax here {{')` 抛 SyntaxError，那么返回值走 default_complexity，崩溃不在这里。"
+    },
+    {
+      "id": "biopragmatics_bioversions_pr80#b18",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.7453,
+      "studentScore": 0.7453,
+      "teacherRatio": 0.37,
+      "studentRatio": 0.37,
+      "teacherChars": 744,
+      "studentChars": 744,
+      "studentTok": 337,
+      "teacherTok": 337,
+      "studentDraft": "改 `src/bioversions/` 里的 `get_version` 和 `resolve`，加 `strict=True` 关键字参数：`strict=True` 保持原行为抛异常，`strict=False` 返回 `None`。`_resolve_helper_cached` 的签名也带上 `strict`，它被 `@refresh_daily` 装饰，cachier 按全部参数做缓存键，所以 `strict=False` 的 `None` 结果会被缓存，而 `strict=True` 因键不同会重新走一遍并正确抛 `KeyError`。已用 `PYTHONPATH=src` 跑过 reactome 的 strict=True 与 strict=False 用例、以及针对 `_resolve_helper`、`_resolve_helper_cached`、`resolve`、`get_version` 的边界用例，全部通过；`python -m pytest tests/ -v` 也退出码 0。原代码里 `_resolve_helper_cached` 只缓存成功解析，因为失败会抛异常不被缓存；现在 `strict=False` 会把 `None` 也缓存住，瞬时错误会在缓存期内被掩盖，这是选择非严格模式后接受的行为，不算缺陷。还悬着的是：CLI 或其他调用 `get_version` / `resolve` 的模块是否需要同步更新，尚未看过，落点原文未定。如果 grep 结果显示 CLI 或其他模块直接调用 `get_version` 或 `resolve`，那么要判断它们是否需要透传 `strict`；如果没有任何其他调用点，那么改动就到此为止。"
+    },
+    {
+      "id": "blackducksoftware_hub-rest-api-python_pr152#b10",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.6127,
+      "studentScore": 0.6127,
+      "teacherRatio": 0.3533,
+      "studentRatio": 0.3533,
+      "teacherChars": 691,
+      "studentChars": 691,
+      "studentTok": 307,
+      "teacherTok": 307,
+      "studentDraft": "我们需要先确认 Client.py 现状——timeout 是否真被吞掉、retries 是否已在构造签名里。前一步已看到 `HubSession.__init__` 接 `base_url, timeout, retries, verify`，`Client.__init__` 也把这两个传下去了，所以字面上看没丢。但 issue 说 timeout 被忽略，得再看 `HubSession.request` 里 `kwargs['timeout'] = self._timeout` 那行是不是把外面传的覆盖掉，以及 auth 是在 `ClientCore._request` 每请求传 `auth=self.auth` 还是挂到 session 上。落点原文未定，得先把 Client.py 相关段落逐行读出来才能定改哪行。下一步是看 Client.py 的 Client.__init__ 与 HubSession.request 两段，以及 git log 对比基线。如果 Client.py 里 `retries` 已在构造签名而 issue 仍要求暴露，那么说明基线版本删掉了它，要按基线补回；如果签名里本就没有 `retries`，那么直接加构造参数与 session 默认值。如果在 `HubSession.request` 看到 `kwargs['timeout'] = self._timeout` 而 `self._timeout` 取自构造，那么 timeout 被忽略只可能是构造那侧传了 None，要去核对 Client.__init__ 的默认值。"
+    },
+    {
+      "id": "bluetooth-devices_bluetooth-auto-recovery_pr13#b13",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.63,
+      "studentScore": 0.63,
+      "teacherRatio": 0.3041,
+      "studentRatio": 0.3041,
+      "teacherChars": 1042,
+      "studentChars": 1042,
+      "studentTok": 433,
+      "teacherTok": 433,
+      "studentDraft": "看代码流程，`recover_adapter` 里 `async with async_timeout.timeout(MAX_RFKILL_TIME)` 超时会走 `except asyncio.TimeoutError`，那里 `_LOGGER.warning` 的格式串是 `\"Checking rfkill for hci%i timed out after %s seconds!\"`，配 `hci, MAX_RFKILL_TIME` 两个参数——这就是 `TypeError: not all arguments converted during string formatting` 的来源，改法就是给格式串补上 `%s` 占位，落点在这句 warning。文件是 `src/bluetooth_auto_recovery/__init__.py`，测试在 `tests/test_init.py`。\n\n但格式串修好只解决日志这一层：except 块之后紧接着 `if soft_block is True:` 和 `if hard_block is True:`，而超时分支里 `soft_block` / `hard_block` 根本没赋值，日志能打出来之后仍会撞 `UnboundLocalError`，函数照样崩。原文对这种超时场景的预期行为（是否该 fallback 到 MGMT 协议重置、rfkill 不可用时是否应视 soft/hard 为 None）没定，落点也就没定，先不猜改法；issue 描述只要求把 warning 打出来，所以先把格式串这一处落实。\n\n下一步是看 `src/bluetooth_auto_recovery/__init__.py` 里 except 块后的控制流与 `rfkill_list_bluetooth` 在 rfkill 不可用时的返回值。如果 except 之后直接接 `if soft_block is True:` 且超时分支无赋值，那么 `UnboundLocalError` 坐实，需要决定超时后是设 `soft_block = hard_block = None` 还是 `return False`。如果 `rfkill_list_bluetooth` 在不可用时返回 `(None, None)`，那么把它作为超时分支的默认值最自然。如果跟这两种都不像，先别改 except 块，把控制流看清再说。"
+    },
+    {
+      "id": "brandon-rhodes_python-skyfield_pr51#b9",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.7245,
+      "studentScore": 0.7245,
+      "teacherRatio": 0.8468,
+      "studentRatio": 0.8468,
+      "teacherChars": 1603,
+      "studentChars": 1603,
+      "studentTok": 421,
+      "teacherTok": 421,
+      "studentDraft": "We have the TypeError `__str__ returned non-string (type list)` for `str(Angle(degrees=np.array([10.0, 20.0, 30.0])))`. Scalar path works. So `__str__` delegates to `self.dstr()` / `self.hstr()`, which return a list for array input. TODO.rst confirms: dstr/hstr for a vector \"Make it return a list of strings\" — that's intended, so dstr/hstr stay as-is. The bug is only in `__str__`, which must return a single string.\n\nFix by mirroring Distance.__str__: `Distance.__str__` does `n = self.au; return ('{0} au' if getattr(n, 'shape', 0) else '{0:.6} au').format(n)` — scalar formats, array falls back to default array repr. So make `Angle.__str__` check `getattr(self.degrees, 'shape', 0)` and, if array, return a summary string; else delegate to dstr/hstr as today.\n\n落点原文未定 — no exact line of units.py was seen or chosen yet; the edit target is `Angle.__str__` in skyfield/units.py, but the precise line was not pinned. dstr/hstr are also referenced in skyfield/documentation/design.rst (lines 27, 40, 57, 71, 84, 87) and must keep their list-for-array behavior, so do not change them.\n\nStill open: whether the array summary should list values or just a count/range; whether `hstr`/`dstr` should be left truly untouched; test_angles.py only covers scalars and has no vector case, so a new test may be needed.\n\nIf str(Angle(degrees=np.array([10.0, 20.0, 30.0]))) returns a single str after the edit, the fix is right. If it still raises TypeError, `__str__` is still returning the list from dstr/hstr. If dstr/hstr start returning a str for arrays, that breaks the TODO-specified contract — revert those."
+    },
+    {
+      "id": "brightway-lca_brightway2-data_pr207#b3",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.7131,
+      "studentScore": 0.7131,
+      "teacherRatio": 0.5342,
+      "studentRatio": 0.5342,
+      "teacherChars": 985,
+      "studentChars": 985,
+      "studentTok": 392,
+      "teacherTok": 392,
+      "studentDraft": "看完了 errors.py、project.py、revisions.py。`apply_revision` 现在是 `assert not parent or self.revision == parent` 加 `assert parent or not self.revision`，两条 assert 换成真异常。errors.py 里已有 `InconsistentData`（继承 BW2Exception），要新增 `PossibleInconsistentData`。落点原文未定，还没 grep 到 `apply_revision` 的行号，也没定新异常加在 errors.py 第几行之后。\n\n已定方案：`self.revision` 与 `meta.get(\"parent_revision\")` 都非 None 且不等 → raise `InconsistentData`；一边 None 一边非 None（本地无 revision 但 revision 指定了 parent，或本地有 revision 但 revision 期望 None）→ raise `PossibleInconsistentData`；相等就继续走 `REVISIONED_LABEL_AS_OBJECT[revision_data[\"type\"]].handle(revision_data)`，末尾 `self.revision = meta[\"revision\"]` 再 `self.save()`。还要在进入前确认项目是 sourced，不是就调 `set_sourced()`。\n\n下一步是 grep -n apply_revision bw2data/project.py 拿到确切行号，顺手 grep -n PossibleInconsistentData 确认 errors.py 里没这东西，再看 tests/ 下有没有已经写好的 revision 测试对这两个异常的名字和触发条件有要求。\n\n如果 grep 到的行里 assert 与上面写的形状一致，那么直接就地替换那两行。如果测试里 `PossibleInconsistentData` 的触发条件比我设想的窄（比如只在本地 None 时才抛），那么按测试来改判读分支，不按 issue 文字。"
+    },
+    {
+      "id": "burnash_gspread_pr1004#b7",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.5706,
+      "studentScore": 0.5706,
+      "teacherRatio": 0.3015,
+      "studentRatio": 0.3015,
+      "teacherChars": 823,
+      "studentChars": 823,
+      "studentTok": 331,
+      "teacherTok": 331,
+      "studentDraft": "检查过 grep，BackoffClient 在整个仓库里还不存在：`grep -r \"BackoffClient\\|backoff\" --include=\"*.py\" .` 退出码 1，而 `client_class` 只出现在 gspread/__init__.py:31 的 `def authorize(credentials, client_class=Client)`，第 40 行 `client = client_class(auth=credentials)`。tests/conftest.py 里仍是 `class SleepyClient(gspread.Client)`（第 56 行）和 `gc = SleepyClient(auth_credentials)`（第 99 行），也就是说测试侧引用的是 SleepyClient，不是 BackoffClient。用户说「test 文件都已改好，不要动测试逻辑」，所以落点不在 tests/，只在主库；BackoffClient 该放 gspread/client.py，并在 gspread/__init__.py 导出，从 authorize 的 client_class 参数路径可见它就是给外部替换用的。具体改哪一行、SleepyClient 是否要改成继承 BackoffClient，原文未定。下一步是重看 tests/conftest.py 全文，确认 SleepyClient 到底继承谁。如果 conftest.py 里写的是 `class SleepyClient(gspread.BackoffClient)`，那么用户已改好测试，主库只需造出 BackoffClient；如果仍是 `class SleepyClient(gspread.Client)`，那么测试侧没改，按用户指令也不动它，只管把 BackoffClient 加到主库并导出。"
+    },
+    {
+      "id": "c4deszes_ldfparser_pr11#b9",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.5565,
+      "studentScore": 0.5565,
+      "teacherRatio": 0.1829,
+      "studentRatio": 0.1829,
+      "teacherChars": 905,
+      "studentChars": 905,
+      "studentTok": 394,
+      "teacherTok": 394,
+      "studentDraft": "分析语法树时看到 `ldf_node_master` 下有 `ldf_node_name`（MasterNode）和匹配 `/.*;/` 的 token（\"5 ms, 0.1 ms ;\"），而 `?ldf_node_slaves` 被内联，其 `ldf_node_name Slave1` 直接挂在 `ldf_nodes` 下——说明 master 因多子节点未内联，slaves 因单子节点被内联，两者在 transformer 里都走 `s[0][0:]` 取第一个名字，于是多 slave 列表 `Slave1, Slave2, Slave3` 无法被语法接受。已确认 ldfparser 能正常解析 valid.ldf（Signals: 4 / Frames: 2 / Protocol: 2.1 / Language: 2.1 / Baudrate: 19200.0），而多 slave 的 LDF 直接报错。落点原文未定：尚未决定改 `ldfparser/ldf.lark` 里 `?ldf_node_slaves: \"Slaves:\" ldf_node_name? \";\"` 这一行，改成接受逗号分隔的名字列表，也没定 transformer 里 `ldf_node_slaves` 相应改法。还悬着：slaves 内联后 transformer 收不收得到多名字、Master 行 timebase/jitter（`5 ms, 0.1 ms`）目前被 `/.*;/` 整个吞掉、未解析出任何结构，这两点都还没动手。下一步是继续用 lark 直接 parse 看内联与 transformer 触发情况。如果二次 parse 的 pretty tree 里 `ldf_node_slaves` 仍不出现、`ldf_node_name` 直接挂在 `ldf_nodes` 下，那么内联判断坐实，改语法时要一并处理 transformer 收不到该规则的问题。如果 `ldf_node_slaves` 作为节点出现，那么前面的内联判断不成立，先别改 lark 里那一行，把真正被内联的规则找出来再说。"
+    },
+    {
+      "id": "carsonyl_pypac_pr81#b10",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.4454,
+      "studentScore": 0.4454,
+      "teacherRatio": 0.176,
+      "studentRatio": 0.176,
+      "teacherChars": 319,
+      "studentChars": 319,
+      "studentTok": 97,
+      "teacherTok": 97,
+      "studentDraft": "Let me look at the parser and quickjs setup to see where to inject these JS functions.\n\n<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name=\"execute_bash\">\n<｜｜DSML｜｜ parameter name=\"command\" string=\"true\">cd /workspace/carsonyl__pypac__1.0 && sed -n '1,120p' pypac/parser.py</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>"
+    },
+    {
+      "id": "cerfacs-globc_icclim_pr110#b10",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.5737,
+      "studentScore": 0.5737,
+      "teacherRatio": 0.3884,
+      "studentRatio": 0.3884,
+      "teacherChars": 797,
+      "studentChars": 797,
+      "studentTok": 398,
+      "teacherTok": 398,
+      "studentDraft": "`icclim/__init__.py` 里 `from . import main as icclim` 把 main 子模块别名成 icclim 塞进包命名空间，于是 `icclim.icclim.index(...)` 这种结构成立；下面那行 `from .main import index, indice` 才让 `icclim.index` 直接可用。issue 要的就是去掉这层别名，让 `import icclim` 干净暴露主 API。版本号是 `5.0.0rc2`。git HEAD 是 431be0c，工作区 diff 为空，没有本地改动要保。\n\nissue 分五块：一、clix-meta 集成，用它的 YAML 定义当 index 元数据（standard names、long names、units）的唯一来源，解析 YAML 大概要加 pyyaml 依赖，再拿它动态填 docstrings 和 metadata，文档要加一张全量索引表。二、新 API `icclim.indices()` 返回可用气候指数的列表或集合。三、Dask 配置文档，只是文档不动代码。四、修 import 命名空间别名。五、重构 ECA&D 内部处理，抽掉重复代码，把技术实现和元数据配置分开。前四块已定；第五块的落点、第二块 `indices()` 返回具体是 list 还是别的容器，原文都未定。第六块 clix-meta 的 YAML 文件本身在仓库里还没找到，是否需要新建也未定。\n\n下一步是查 requirements 里 pyyaml 是否已是依赖。如果 pyyaml 已在依赖里，那么不用加依赖，直接进 YAML 解析。如果不在，那么按 issue 说的把 pyyaml 加进去。如果仓库里找不到任何 clix-meta 的 YAML，那么要确认是新建还是从外部拉取。"
+    },
+    {
+      "id": "cgoldberg_xvfbwrapper_pr66#b3",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.8567,
+      "studentScore": 0.8567,
+      "teacherRatio": 0.4041,
+      "studentRatio": 0.4041,
+      "teacherChars": 988,
+      "studentChars": 988,
+      "studentTok": 408,
+      "teacherTok": 408,
+      "studentDraft": "题面是 Xvfb.start() 在没设 DISPLAY 的环境里失败时，stop() 里 del self.environ['DISPLAY'] 抛 KeyError，把真正的 RuntimeError 盖掉。已读完 xvfbwrapper.py 和 test_xvfb.py：__init__ 里 DISPLAY 不在原环境时 self.orig_display_var = None（line 65）；stop() 在 self.orig_display_var is None（line 106）时无条件 del self.environ[\"DISPLAY\"]（line 107），而 _set_display 只在 line 99（while 等待循环 line 92-96 之后）才写入，所以超时分支 line 95 调 self.stop() 时 DISPLAY 从未写入过，del 就 KeyError。start() 有两条失败路：line 95 超时 → self.stop() 后 raise RuntimeError；line 101-102 进程已退出 → 清 lock 文件后 raise，不调 stop()，不触发本问题。改法落点在 xvfbwrapper.py 的 stop() 里 del self.environ[\"DISPLAY\"] 那一行，改成先判断 DISPLAY 在 self.environ 里再删，或整体放进 try/except KeyError；落点原文未定具体写法。悬着的是 start() 失败路径里 _set_display 已调用后再失败时的回滚、以及 line 101-102 分支要不要也走 stop()。\n\n下一步是先写复现脚本确认 KeyError 的确切触发点，再改 stop()，然后跑 test_xvfb.py 全部用例。如果复现脚本在 os.environ 无 DISPLAY 下抛 KeyError: 'DISPLAY' 且 traceback 落在 stop 的 del self.environ['DISPLAY']，那么假设坐实，直接改那一行。如果抛的是 RuntimeError 而没有 KeyError，那么触发路径与阅读不符，先别改，回头核对 start() 的 while 超时条件。"
+    },
+    {
+      "id": "chimpler_pyhocon_pr123#b3",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.6737,
+      "studentScore": 0.6737,
+      "teacherRatio": 0.2793,
+      "studentRatio": 0.2793,
+      "teacherChars": 963,
+      "studentChars": 963,
+      "studentTok": 418,
+      "teacherTok": 418,
+      "studentDraft": "我看了 `pyhocon/config_tree.py` 的 `pop`（大约 207-233 行），bug 就在这一行：`if value == default: return default`。`self.get(key, default)` 在键存在时返回真实值，若真实值恰好等于传入的 default（例如 `'test'` 存的是 `'value'`，调用 `.pop('test', 'value')`），这个判断为真，于是直接 return 而不删键。所以要改成判断键是否存在，而不是判断值是否等于 default。`__contains__` 走的是 `self._get(self.parse_key(item), default=NoneValue) is not NoneValue`，缺键时 `_get` 用 `UndefinedKey` 作默认值，这两个可用来区分「键不存在」与「键存在但值等于 default」。落点在 `pyhocon/config_tree.py` 的 `pop`，改法是先 `parse_key` 拆出 parent/child，parent 非空时先看 `self.get(parent, UndefinedKey)`，若为 `UndefinedKey` 则按原有语义在 default 为 `UndefinedKey` 时抛 `ConfigMissingException`，否则返回 default；键不存在时，default 为 `UndefinedKey` 抛 `ConfigMissingException`（保留原行为），否则返回 default；键存在则 `del` 掉再返回 value。具体抛 KeyError 还是 ConfigMissingException、nested 情况下抛哪个，要看现有测试的期望，所以下一步是 grep 测试文件里 pop 的用法和异常断言。如果测试断言的是 `ConfigMissingException`，那么保留该异常类型不动；如果有断言 `KeyError`，那么按测试改。如果测试里没有覆盖 nested pop 缺键的情况，那么以当前实现的 `ConfigMissingException` 为准，再补测试确认。"
+    },
+    {
+      "id": "chmp_ipytest_pr110#b13",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G4 actionable"
+      ],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.8677,
+      "studentScore": 0.8677,
+      "teacherRatio": 0.4146,
+      "studentRatio": 0.4146,
+      "teacherChars": 1445,
+      "studentChars": 1445,
+      "studentTok": 410,
+      "teacherTok": 410,
+      "studentDraft": "The failure is clear: with `defopts=True`, `_build_full_args` appends the filename directly, so `['--cov']` + `t_abc123.py` becomes `['--cov', 't_abc123.py']` — pytest-cov eats the filename as `--cov`'s value. Fix: return `[*all_args, *(['--', filename] if defopts else [])]` — add `--` before the filename so it's always positional. Test 2 `['--cov','mypackage','t_abc123.py']` looks fine since `mypackage` is the option value and the filename stays positional; Test 3 `['--cov','-vv','t_abc123.py']` was reported working, likely because pytest-cov rejects option-looking values.落点原文未定 for the cov plugin.\n\nFor `ipytest.cov` the goal is a pytest plugin covering code in notebook cells: ipykernel compiles cells into temp files (often in system temp dirs) that coverage.py ignores or mis-maps, so the plugin must ensure those temp files are tracked. Note `_prepared_env` (lines 292-313) already writes a random-UUID `.py` file in the current directory and patches `__file__`, so that path should be coverable already; the untracked case is IPython's own `/tmp` cell compilation.仍在悬着：plugin 的具体落点与实现方式未定；先要确认 pytest-cov 是否安装、看它的 API，再定是标记临时文件为 source 还是用 coverage.xml 合并数据。\n\nIf the next output shows pytest-cov imported/available, then inspect its API (source-file registration / data-combine hooks) before touching any file. If it shows pytest-cov missing, then the plugin must not depend on pytest-cov at import time — decide that first,落点仍不确定。"
+    },
+    {
+      "id": "cloudsmith-io_cloudsmith-cli_pr14#b8",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.5868,
+      "studentScore": 0.5868,
+      "teacherRatio": 0.3745,
+      "studentRatio": 0.3745,
+      "teacherChars": 712,
+      "studentChars": 712,
+      "studentTok": 297,
+      "teacherTok": 297,
+      "studentDraft": "那个 create_requests_session 里的 Configuration 和 initialise_api 里新建的 config 对象看起来不是同一个，先得确认 verify_ssl 到底从哪读。\n\n改法只落一处：在 core/api/rest.py 的 create_requests_session（line 34 新建 Configuration 那里）加上 ssl_verify 参数并传给 requests session，让它在 ssl_verify 为 False 时关掉验证。命令层的 --without-api-ssl-verify / -S 走 decorators.py 的 initialise_api 转发，落点原文未定。\n\n下一步是 grep -n verify_ssl 看 cloudsmith_api.Configuration 里这个属性叫什么、默认值是什么，再决定是改 rest.py 还是改 init.py 里设 config 的地方。\n\n如果 create_requests_session 里是自己 new 的 Configuration 且和 initialise_api 那份不共享，那么在 init.py 里设 config.verify_ssl 不会生效，必须直接给 create_requests_session 传参。如果两处用的是同一个 config 实例，那么只改 init.py 设 verify_ssl 就够了。如果 grep 出来 verify_ssl 这个属性名在 Configuration 里不存在，那么先看它实际叫什么名字，再定改哪行。"
+    },
+    {
+      "id": "cloudtools_troposphere_pr2101#b11",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.7093,
+      "studentScore": 0.7093,
+      "teacherRatio": 0.3371,
+      "studentRatio": 0.3371,
+      "teacherChars": 536,
+      "studentChars": 536,
+      "studentTok": 188,
+      "teacherTok": 188,
+      "studentDraft": "gen.py 的参数是 `--stub`、`--directory/-d`、`--filelist`、`--missing/-m`、`--spec`（默认 `CloudFormationResourceSpecification.json`）、位置参数 `service_names`、`--verbose/-v`；没有 `--name`。CONTRIBUTING.md 里 `python3 scripts/gen.py --stub --name s3 CloudFormationResourceSpecification.json > troposphere/s3.py` 是错的，`--name` 不存在，spec 也不是位置参数。正确写法应为 `python3 scripts/gen.py --stub --directory . s3` 或常规生成 `python3 scripts/gen.py --directory . s3 CloudFormationResourceSpecification.json`；在仓库根目录跑时 `--spec` 用默认值即可。下一步是看 newgen.py 做了什么，并查 validators 目录。落点原文未定。"
+    },
+    {
+      "id": "common-workflow-language_cwl-utils_pr101#b13",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G3 anchors-kept"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6924,
+      "studentScore": 0.6924,
+      "teacherRatio": 0.2823,
+      "studentRatio": 0.2823,
+      "teacherChars": 831,
+      "studentChars": 831,
+      "studentTok": 341,
+      "teacherTok": 341,
+      "studentDraft": "docker_extract.py 已改完：arg_parser 加了 `--force-download`，`run` 里把 `args.force_download` 传给 `DockerImagePuller`/`SingularityImagePuller`，`ImagePuller.__init__` 新增 `force_download: bool = False`。image_puller.py 里 `SingularityImagePuller.pull` 在 cmd_pull 为 `[self.cmd, \"pull\", \"--name\", dest_path, f\"docker://{self.req}\"]` 时，force 分支 insert(2, \"--force\") 得 `[self.cmd, \"pull\", \"--force\", \"--name\", dest_path, ...]`；Docker 分支在 pull 前 os.remove 已存在的 dest_path，再让 docker save 重写。子类没有自己的 `__init__`、也不显式调 super，所以继承的新参数直接生效，argparse 用 store_true 未传时默认 False。这些边角都过了一遍：os.path.exists 对目录/symlink 也是 True，但 dest 按约定是文件，不改。落点已定，不需要再动这两个文件。\n\n下一步是写 mock subprocess 的单测验证这些分支（本机没有 Docker/Singularity），并跑现有测试确认没破。如果现有测试里出现未预期的失败，那么先看是不是测试也在构造 `ImagePuller(...)` 而没传新参数，是就补默认值调用。如果单测里 Singularity 命令列表第 2 位不是 \"--force\"，那么是 insert 位置被前面的改动挪了，回去核对该行。"
+    },
+    {
+      "id": "csparpa_pyowm_pr230#b39",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.7657,
+      "studentScore": 0.7657,
+      "teacherRatio": 0.2984,
+      "studentRatio": 0.2984,
+      "teacherChars": 704,
+      "studentChars": 704,
+      "studentTok": 305,
+      "teacherTok": 305,
+      "studentDraft": "这个仓库里有一堆 pyc 文件对应不存在的 .py 源文件，说明实现还没落地，要补的源文件都在 pyc 里。先把要做的落定：改 location.py 让它容忍 coord key 缺失；给 Forecast 加 actualize() 去掉过期的天气项；给 Forecaster 加 will_have_clear()、when_clear()、will_be_clear_at() 并把 sun 系列方法标记 deprecated；建 Stations API 3.0 模块，含 uris.py、station.py（Station 类）、measurement.py（Measurement 与 AggregatedMeasurement）、buffer.py（Buffer，能本地攒多条后批量发，并支持 load/save 到 JSON 持久化）、persistence_backend.py、stations_manager.py（StationsManager）、__init__.py；给 OWM25 加 stations_manager()；可能还要动 __init__.py 里的 OWM factory，以及新建 owm.py 作为新主入口。落点原文未定，先跑现有测试看当前状态，再决定从 location 那个 bug 的复现脚本开始。\n\nissue 里写「main OWM client instance」的 stations_manager()，当前主客户端是 OWM25，所以先加在 OWM25 上；owm.py 是否要一起建、factory 是否要改，还没定。先跑一遍现有测试。"
+    },
+    {
+      "id": "csurfer_rake-nltk_pr59#b4",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.7898,
+      "studentScore": 0.7898,
+      "teacherRatio": 0.3715,
+      "studentRatio": 0.3715,
+      "teacherChars": 581,
+      "studentChars": 581,
+      "studentTok": 267,
+      "teacherTok": 267,
+      "studentDraft": "\"magic\" 和 \"systems\" 各出现两次，但 frequency 是 1，因为 “magic systems” 被 set 去重了。看 `_generate_phrases`：`phrase_list = set()` 加 `phrase_list.update(...)` 就是去重点。改法定下：给 Rake 构造函数加 `include_repeated_phrases` 参数，为 True 时用 list 代替 set 不去重，顺带补 type hints。落点原文未定，具体改哪个文件哪一行还没定，只确定在 `_generate_phrases` 里去重那两行。\n\n用户说测试文件已由他改好，所以 tests 可能已按新行为写好。但现有 `test_generate_phrases` 期待的是 set of tuples（60-83 行），当前代码返回 set 正好匹配；若改成返回 list 这个测试会挂——除非测试已被更新。这一点没确认。下一步是先跑现有测试，看 `test_generate_phrases` 到底期待 set 还是 list。如果 `test_generate_phrases` 仍断言 set 而 `_generate_phrases` 已改成 list，那么测试没被更新，需要按新行为对齐后再动 rake.py。"
+    },
+    {
+      "id": "cthoyt_pystow_pr29#b4",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.8708,
+      "studentScore": 0.8708,
+      "teacherRatio": 0.5433,
+      "studentRatio": 0.5433,
+      "teacherChars": 929,
+      "studentChars": 929,
+      "studentTok": 347,
+      "teacherTok": 347,
+      "studentDraft": "我们需要在 Module 方法里找出没有顶层对应项的那些。__init__.py 从 api.py 导入 ensure, ensure_csv, ensure_excel, ensure_from_google, ensure_from_s3, ensure_json, ensure_open_zip, ensure_rdf, ensure_tar_df, ensure_tar_xml, ensure_untar, ensure_zip_df, ensure_zip_np, join, module，又从 module.py 导入 Module, ensure_readme。issue 点名的缺项是 ensure_open, ensure_open_gz, ensure_open_lzma, ensure_open_tarfile, joinpath_sqlite。逐条比对 module.py 里 Module 的方法：join、ensure、ensure_untar、ensure_open_zip、ensure_csv、ensure_json、ensure_excel、ensure_tar_df、ensure_tar_xml、ensure_zip_df、ensure_zip_np、ensure_rdf、ensure_from_s3、ensure_from_google 都有顶层；joinpath_sqlite、ensure_open、ensure_open_lzma、ensure_open_tarfile、ensure_open_gz 没有。submodule 经由 module 函数间接有。还悬着的是那个防止 drift 的校验机制怎么写，以及测试期望什么。下一步是看 tests 和 api.py、module.py 的完整内容，落点原文未定。\n\n如果 tests 里出现遍历 Module 属性与 pystow 顶层属性做差集的断言，那么按 issue 的五个名字在 api.py 里补 wrapper 并导出。如果测试只调用 pystow.ensure_open 这类顶层函数，那么确认签名要与 Module 对应方法一致。"
+    },
+    {
+      "id": "daggaz_json-stream_pr11#b17",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G3 anchors-kept"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.5528,
+      "studentScore": 0.5528,
+      "teacherRatio": 0.2171,
+      "studentRatio": 0.2171,
+      "teacherChars": 535,
+      "studentChars": 535,
+      "studentTok": 140,
+      "teacherTok": 140,
+      "studentDraft": "(from thinking)\n\nThe remaining test failures are the library's transient-stream semantics, not regressions. In transient mode `_find_item('a')` consumes the stream up to `a` and returns the list; the second `result['a']` then throws `TransientAccessException: a not found in transient JSON stream or already passed in this stream`. Empty object `{}` works because iteration ends immediately, and single-access tests pass. So my test script was flawed, not the code.\n\nLet me re-run accessing each key once, or switch to persistent mode."
+    },
+    {
+      "id": "dbatten5_maison_pr16#b15",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.8369,
+      "studentScore": 0.8369,
+      "teacherRatio": 0.3451,
+      "studentRatio": 0.3451,
+      "teacherChars": 637,
+      "studentChars": 637,
+      "studentTok": 272,
+      "teacherTok": 272,
+      "studentDraft": "All tests pass. 已落定：`ProjectConfig` 加 `__repr__`/`__str__`（显示类名和 resolved `config_path`）与 `to_dict()`（返回底层完整配置字典），并在 maison/config.py 里改了 docstring、把 `get_option` 的参数从 `option`→`option_name`、`default`→`default_value`。`__repr__` 与 `__str__` 目前同一实现即可，因为题面只要求类名加 config_path，而 `__init__` 收的是 `project_name`/`starting_path` 不是 `config_path`，做成可重建对象的 repr 就得额外存 project_name，不做。临时目录跑 pyproject.toml 的验证先前有一次因 tmp_dir 未清理退出码 1，改成 `tempfile.mkdtemp()` 加 shutil 清理后 exit code 0，全套 `pytest tests/ -v` 也已 exit code 0。还悬着的是有没有配置了类型检查或其他工具的入口（noxfile 之类）尚未查看。如果仓库根下存在 noxfile.py 或 pyproject.toml 里带 mypy/black/flake8 的配置段，那么就按那套工具再跑一遍，在此之前不改任何已落的实现。"
+    },
+    {
+      "id": "dchevell_flask-executor_pr12#b4",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.7966,
+      "studentScore": 0.7966,
+      "teacherRatio": 0.5758,
+      "studentRatio": 0.5758,
+      "teacherChars": 1086,
+      "studentChars": 1086,
+      "studentTok": 411,
+      "teacherTok": 411,
+      "studentDraft": "config 从环境变量读进来都是字符串，executor.py 的 init_app 直接拿来用没做类型转换。第 100 行 `app.config.setdefault(self.EXECUTOR_TYPE, 'thread')` 是字符串没事；102-103 行 `executor_max_workers = default_workers(executor_type)` 再 `app.config.setdefault(self.EXECUTOR_MAX_WORKERS, executor_max_workers)`，可能是 None 或 int；104 行 `futures_max_length = app.config.setdefault(self.EXECUTOR_FUTURES_MAX_LENGTH, None)` 可能是字符串；105 行 `propagate_exceptions = app.config.setdefault(self.EXECUTOR_PROPAGATE_EXCEPTIONS, False)` 可能是字符串。于是 106-107 行 `if futures_max_length:` 和 108-109 行 `if propagate_exceptions:` 遇到字符串 \"False\" 都会为真，122 行 `return _executor(max_workers=executor_max_workers)` 传字符串会 TypeError。要修的是三个键 EXECUTOR_MAX_WORKERS、EXECUTOR_FUTURES_MAX_LENGTH、EXECUTOR_PROPAGATE_EXCEPTIONS，把它们强制转成 int 或 bool。现有测试 test_max_workers（86-90 行）、test_set_max_futures（203-206 行）、test_propagate_exception_callback（247-255 行）都传的正确类型，没有覆盖字符串场景。落点原文未定，具体改哪一行还没定。下一步是先写复现脚本，再动 executor.py 的 init_app。如果复现脚本里设 EXECUTOR_MAX_WORKERS='10' 报 TypeError，那么坐实是 int 未转换。如果设 EXECUTOR_PROPAGATE_EXCEPTIONS='False' 后异常仍被传播，那么坐实是字符串真值问题。如果现有三个测试都还是绿，说明改动没碰坏原路径。"
+    },
+    {
+      "id": "delta-io_delta-sharing_pr209#b10",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.6497,
+      "studentScore": 0.6497,
+      "teacherRatio": 0.3238,
+      "studentRatio": 0.3238,
+      "teacherChars": 1188,
+      "studentChars": 1188,
+      "studentTok": 486,
+      "teacherTok": 486,
+      "studentDraft": "DeltaSharingRestClient 在 DeltaSharingClient.scala 的 413 行起，`lazy val USER_AGENT` 拼的是 `s\"Delta-Sharing-...\"`，streaming 与 batch 走同一个头，这就是问题所在。RemoteDeltaLog.apply 用反射 new 出 client，构造签名是 `(DeltaSharingProfileProvider, Int, Int, Boolean)`；DeltaSharingDataSource.createSource 里是 `RemoteDeltaLog(path)` 再 `DeltaSharingSource(SparkSession.active, deltaLog, options)`，每个 streaming source 各拿一份 client，所以只要给 client 加一个 streaming 上下文参数就行，Shared 复用不是障碍。Python 那边 rest_client.py 也看过了，但 issue 标题只说 Spark 的 SparkStructuredStreaming，Python 暂不动。落点原文未定：还没决定是给 DeltaSharingRestClient 加 `userAgentSuffix` 字符串参数、加 `isStreaming` 布尔，还是在 DeltaSharingClient trait 上开一个取 user agent 的方法，也没定改哪一行、新行写成什么。还悬着：需要先看测试文件确认期望的 User-Agent 字面量格式（`SparkStructuredStreaming/1.0.0` 拼接位置在 `Delta-Sharing-` 段之后还是之前）以及反射那一处 getConstructor 的 classOf 列表要不要跟着改。下一步是读 DeltaSharingClient 相关测试与 DeltaSharingSource 里构造 deltaLog 的那几行。如果测试里出现 `SparkStructuredStreaming/1.0.0` 且断言 USER_AGENT 以它结尾，那么拼接头就落在 USER_AGENT 的 s 插值末尾，只改 DeltaSharingClient.scala 一处。如果测试构造 client 时多传了一个参数，那么构造签名要一起改，并同步 RemoteDeltaLog.apply 里 getConstructor 的 classOf 列表。如果测试文件里根本没有 SparkStructuredStreaming 字样，那么预期格式未定，先别改，把现有 USER_AGENT 的完整字符串和 readStream 路径看清再说。"
+    },
+    {
+      "id": "denisart_graphql-query_pr39#b7",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.6526,
+      "studentScore": 0.6526,
+      "teacherRatio": 0.2811,
+      "studentRatio": 0.2811,
+      "teacherChars": 1213,
+      "studentChars": 1213,
+      "studentTok": 510,
+      "teacherTok": 510,
+      "studentDraft": "查 src 下 Argument 的渲染实现：`List[str]` 走 `_render_for_list_str`，用的是 `_template_key_values`，模板 `{{ name }}: [{% for value in values %}{{ value }}{% if not loop.last -%}, {% endif %}{% endfor %}]`，值原样插入，所以 `['123','456']` 出来是 `arg: [123, 456]`，无引号，这就是 issue 说的缺失引号。tests/test_argument/test_argument.py 第 29-32 行的 `test_value_is_list_str` 现有三条断言逐字为：`Argument(name=\"someListArgument\", value=['\"123\"']).render() == 'someListArgument: [\"123\"]'`、`value=[]` 渲染 `'someListArgument: []'`、`value=['\"123\", \"456\"']` 渲染 `'someListArgument: [\"123\", \"456\"]'`；tests/arguments/data_arguments.py 里 user_id = '\"69fa0d2e-f7e8-410c-be50-24a03804cb4c\"'、confirmation_id = '\"63f65921-66cf-400a-aa05-71446b3621d2\"'，都是手工预置引号，改渲染必须同时兼容这批已有用法。\n\n期望是 `value=[\"123\",\"456\"]` 也要出 `[\"123\", \"456\"]`，且要兼容 `['\"123\"','\"456\"']` 这种已带引号的旧写法，还要处理含撇号的串如 `[\"you'r\", \"isn't\"]`。眼下与旧写法冲突：无脑加引号会把 `['\"123\"']` 变成 `[\"\\\"123\\\"\"]`，所以得先判字符串是否已自带首尾双引号，带了就原样、没带才补；对 `null`/`true`/`false`/数字这类，因类型是 `List[str]`，暂按字符串处理补引号。改动落点原文未定，还没打开 src 里渲染源码，也没定检测已引号的写法细节。下一步是看 src 下 Argument 和 `_render_for_list_str` 的具体实现，用 git 历史找基线提交比对。如果看到 `_render_for_list_str` 里对每个 value 直接插入模板，那么就在此处加首尾双引号检测后再包裹。如果 src 里已有对已引号串的判断逻辑，那么改法只是补未带引号分支。如果那些现有测试断言与新逻辑冲突，那么按 backward 要求以兼容旧写法为准，先不改断言。"
+    },
+    {
+      "id": "devolo_ssllabs_pr37#b4",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.7839,
+      "studentScore": 0.7839,
+      "teacherRatio": 0.2168,
+      "studentRatio": 0.2168,
+      "teacherChars": 846,
+      "studentChars": 846,
+      "studentTok": 361,
+      "teacherTok": 361,
+      "studentDraft": "analyze 在 from_cache=True 时仍触发新扫描。ssllabs/ssllabs.py 第 73 行在 from_cache 为 True 时把 startNew 设成 \"off\"，但 SSL Labs API 要的是 fromCache=\"on\"，而 analyze.py 的 docstring 里写着 fromCache「Can't be used at the same time as the startNew parameter」。所以改法是 from_cache=True 时发 fromCache=\"on\" 且不带 startNew；from_cache=False 时保持 startNew=\"on\"，这条已定。落点就是 ssllabs/ssllabs.py 里 from_cache 分支那一处。\n\n但悬着一个矛盾：tests/test_ssllabs.py 第 49 行现在断言的是 get.assert_called_with(host=\"devolo.de\", ignoreMismatch=\"off\", publish=\"off\", startNew=\"off\", maxAge=1)，即仍期望 startNew=\"off\" 而不带 fromCache，与 fromCache=\"on\" 的改法冲突。用户说测试文件的改动已经处理好了，可眼下这行看上去没动。所以下一步是确认测试文件的真实状态，再决定是改源码去迁就既有断言，还是断言其实已经按 fromCache 更新过、只是我读到的还是旧内容。\n\n如果 tests/test_ssllabs.py 第 49 行的断言里出现 fromCache=\"on\" 而不带 startNew，那么测试已更新，直接按上面改 ssllabs/ssllabs.py 即可。如果断言仍是 startNew=\"off\" 且无 fromCache，那么测试没动，需要先弄清是要连测试一起改还是改法另有约定，不要贸然落笔。"
+    },
+    {
+      "id": "dhermes_bezier_pr233#b5",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.5904,
+      "studentScore": 0.5904,
+      "teacherRatio": 0.2988,
+      "studentRatio": 0.2988,
+      "teacherChars": 872,
+      "studentChars": 872,
+      "studentTok": 328,
+      "teacherTok": 328,
+      "studentDraft": "The issue: `compute_implicit_line` normalizes by `length = np.linalg.norm(delta, ord=2)`，所以 `coeff_a = -delta[1] / length`、`coeff_b = delta[0] / length`、`coeff_c = (delta[1] * nodes[0, 0] - delta[0] * nodes[1, 0]) / length`。平方根加除法就是 roundoff 来源。去掉 normalize 后 `a' = -dy`、`b' = dx`、`c' = dy*x_first - dx*y_first`，非归一化距离 `d' = -dy*x + dx*y + dy*x_first - dx*y_first` 等于 `L * d`，即所有点同比例放大 L 倍。`clip_range` 里 `polynomial` 的 y 行就是 `coeff_a * nodes[0, index] + coeff_b * nodes[1, index] + coeff_c`，fat line 的 `d_min`/`d_max` 也同比例放大，交点的 t 只依赖比值，L 会约掉，所以这步归一化对裁剪逻辑不是必需的。\n\n落点还没定，需要先读 `compute_fat_line`、`clip_range`(305-434) 和 `segment_intersection` 的全貌再改，尤其看 `compute_fat_line` 里 `d_min`/`d_max` 怎么算、有没有单独依赖归一化的地方。改完 `compute_implicit_line` 与 `compute_fat_line` 后跑 tests。如果 `clip_range` 的现有测试里 `0.875` 之类精确有理数结果仍带 roundoff，那么归一化没去净，看 `compute_fat_line` 是否又除了一次 length。如果全绿，那么改动成立。"
+    },
+    {
+      "id": "di_pip-api_pr99#b9",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "teacherScore": 0.6638,
+      "studentScore": 0.6638,
+      "teacherRatio": 0.3941,
+      "studentRatio": 0.3941,
+      "teacherChars": 968,
+      "studentChars": 968,
+      "studentTok": 376,
+      "teacherTok": 376,
+      "studentDraft": "思路：问题在于 `_parse_requirements.py` 里用 `parse_known_args` 后只取 `known.req`，含 marker 的行被空格切开，marker 落到 `unknown` 里丢掉了。各分支我已核过：`foo==1.2.3` 时 `known.req=\"foo==1.2.3\"`、`unknown=[]`；`foo==1.2.3 ; python_version <= \"2.7\"` 时 `known.req=\"foo==1.2.3\"`、`unknown=[\";\", \"python_version\", \"<=\", '\"2.7\"']`；`-r b.txt` 和 `-e git+https://...` 时 `known.req=None`；带 `# comment` 的行早在 `_ignore_comments` 里被剥掉。所以落点是改 `pip_api/_parse_requirements.py`：当 `known.req` 有值时，把它和 `unknown` 拼回完整字符串再交给 `requirements.Requirement`，然后对结果的 marker 调 `evaluate()`，为 False 就 skip 掉整个 requirement。Double requirement 检查维持不变，但要在过滤之后做——`foo==1.2.3 ; python_version <= \"2.7\"` 和 `foo==3.2.1 ; python_version > \"2.7\"` 里只有一个 marker 为真，只留真的那个；两个都为真（或都无 marker）才照旧报 double requirement。多 `;`、`--hash=sha256:...` 以及 requirement 后面跟着变量或别的 pip 选项这些情况没定落点，先只按上面这一条改法走。\n\n判读：如果重构后 `Requirement` 的 `marker` 不为 None 且 `evaluate()` 为 False，那么该行直接 skip，不进结果集。如果 marker 为 None 或 evaluate() 为 True，那么按原逻辑检查 double requirement 后照常加入。"
+    },
+    {
+      "id": "django-extensions_django-extensions_pr1837#b26",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.6663,
+      "studentScore": 0.6663,
+      "teacherRatio": 0.5472,
+      "studentRatio": 0.5472,
+      "teacherChars": 1085,
+      "studentChars": 1085,
+      "studentTok": 470,
+      "teacherTok": 470,
+      "studentDraft": "改动落定在 django_extensions/management/utils.py，git status 里只有它是 modified，基线 a6f4e3be。signalcommand 装饰的是 handle，pre_command 发完跑真正的 handler 再发 post_command，LoggingBaseCommand.execute 只是 catch、log、re-raise，不影响这条链，所以修装饰器一处就覆盖所有 @signalcommand 命令。修法是给 handler 调用包 try，异常时先发 post_command 并把 outcome 传成异常实例本身、再 raise，让监听方拿到异常而不是返回值。落点具体行原文未定。@signalcommand 之外的命令不在范围内。pre_command 自身抛异常会挡住命令执行、post_command 接收方自己抛异常，这两类都未决，不在本次改动里。\n\n下一步跑一遍相关测试：test_management_command.py 里 test_error_logging 用 tests.management.commands.error_raising_command，CommandSignalTests.post 已经断言过 outcome 在；tests/management/commands/test_raise_test_exception.py 的 test_raise_test_exception 用 pytest.raises(DjangoExtensionsTestException) 调 call_command('raise_test_exception')，而 raise_test 命令的 handle 只 raise Exception(\"Test Error\")，所以走的是异常路径。\n\n如果测试里 post 接收方在异常路径上拿到了那个异常实例，那么改动生效，异常分支的 outcome 就对了。如果 post 完全没被触发，那么 try 的位置不对，装饰器没包住 handler 调用，要回去看 utils.py 里 signalcommand 的实际结构。如果 outcome 拿到的是 None 而不是异常实例，那么发信号的调用里 outcome 参数没接上 except 绑定的异常变量。如果 call_command 把异常吞掉、pytest.raises 没捕到，那么 raise 被漏了，异常要在发完 post 之后原样再抛。"
+    },
+    {
+      "id": "docopt_docopt_pr6#b10",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.7035,
+      "studentScore": 0.7035,
+      "teacherRatio": 0.2987,
+      "studentRatio": 0.2987,
+      "teacherChars": 514,
+      "studentChars": 514,
+      "studentTok": 219,
+      "teacherTok": 219,
+      "studentDraft": "docopt.py 的 `Option` / `Options` 都补了 `__ne__`，测试全过。要复核的是 `__ne__` 里 `not self.__eq__(other)` 这一句：如果 `__eq__` 对非同类返回 `NotImplemented`，`not NotImplemented` 是 `False`（`NotImplemented` 是 truthy），那 `a != 'hello'` 就会返回 `False`，逻辑反了。所以下一步先跑一段验证 `Option('h') != 'x'` 和 `Options(x=1) != 'hello'` 的实际返回值，确认是不是这个问题。如果输出里 `Options ne with str` 或同类那行是 `False`，那么就是 `__ne__` 没处理 `NotImplemented`，要把 `__ne__` 改成先判 `result is NotImplemented` 再 `return result`。如果输出是 `True`，那么 `__ne__` 没问题，落点原文未定，继续看别的边界。如果跟这两种都不像，先别改，把不一样的地方看清再说。"
+    },
+    {
+      "id": "drgarcia1986_simple-settings_pr19#b13",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G4 actionable",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable",
+        "G7 compressed"
+      ],
+      "teacherScore": 0.8188,
+      "studentScore": 0.8188,
+      "teacherRatio": 0.8455,
+      "studentRatio": 0.8455,
+      "teacherChars": 2146,
+      "studentChars": 2146,
+      "studentTok": 562,
+      "teacherTok": 562,
+      "studentDraft": "I ran a grep for yaml/yml across the repo (excluding .cfg) and it exited 1 with no matches, so nothing YAML-related exists yet. git status is clean on branch scaleswe at 6583288; the recent commits are the doc-strings, checkignore, and classmethod refactors. python -m pytest tests/ -v is green — all 30 tests pass, so the baseline is stable before I touch anything.\n\nThe plan is settled: create SettingsLoadStrategyYaml in a new file simple_settings/strategies/yaml.py handling .yaml and .yml; add it to the strategies tuple in simple_settings/strategies/__init__.py; add extras_require for the YAML dependency in setup.py. Strategies are discovered via core.py's _get_strategy_by_file, which iterates the strategies tuple and calls strategy.is_valid_file(settings_file), raising RuntimeError('Invalid settings file [{}]'.format(settings_file)) if none match — there's no file-extension registry elsewhere, so __init__.py is the only wiring point. The issue's \"include this new strategy if the dependency is installed\" I read as: guard the PyYAML import in __init__.py so the YAML strategy only joins the tuple when PyYAML is importable, plus the extras_require entry. That part is not fully settled — whether the guard belongs in __init__.py or whether extras_require alone is meant is still open. Also unsorted: whether the new file name is strategies/yaml.py (a module named yaml inside the package, distinct from top-level PyYAML) and whether any sample fixtures belong in tests/samples alongside the existing ones. Existing pattern to mirror: cfg and python strategies use classmethod rather than instance methods, per commit 0781c4c. 落点原文未定 for the exact new-class body and the exact setup.py lines.\n\nIf the tests dir listing shows a test_strategy_yaml.py or tests/samples/*.yaml, then the fixture layout is already dictated and I write the strategy to match it. If strategies/__init__.py's existing imports are plain top-level imports with no try/except, then the guard is mine to add and the \"optional dependency\" reading holds. If it already wraps some import in try/except, then that's the established pattern and I follow it verbatim."
+    },
+    {
+      "id": "durandtibo_feu_pr508#b8",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.6357,
+      "studentScore": 0.6357,
+      "teacherRatio": 0.4407,
+      "studentRatio": 0.4407,
+      "teacherChars": 1025,
+      "studentChars": 1025,
+      "studentTok": 312,
+      "teacherTok": 312,
+      "studentDraft": "Looking at the test file, I don't see TorchDependencyResolver tests. But the user said they've taken care of test files, so focus on source only.\n\nThe `Numpy2DependencyResolver` already handles the logic generically: takes\n`min_version`, and if package version < min_version adds a `numpy<2.0.0` constraint.\nSo `TorchDependencyResolver` is just a subclass with `min_version=\"2.3.0\"`, same shape as\n`MatplotlibDependencyResolver` / `JaxDependencyResolver`. Checking the issue's expected usage\nconfirms it: `resolve(Package(name=\"torch\", version=\"2.3.0\"))` → only\n`[PackageDependency(name='torch', version_specifiers=['==2.3.0'])]`;\n`resolve(Package(name=\"torch\", version=\"2.2.0\"))` → torch dep plus `numpy<2.0.0`.\n\n改动落在 `src/feu/install/pip/resolver2.py`：新增 `TorchDependencyResolver` 类（继承\n`Numpy2DependencyResolver`，`min_version=\"2.3.0\"`），并把 `\"TorchDependencyResolver\"` 加进\n`__all__`。\n\n如果 `tests/unit/install/pip/test_resolver2.py` 里已经出现 `TorchDependencyResolver` 的用例，那么直接按 pytest 跑该文件验证即可。如果那边仍没有该类的测试，那么源码改动本身仍是完整的，测试由用户自行补齐。"
+    },
+    {
+      "id": "dwavesystems_dimod_pr387#b15",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G1 quote-grounded",
+        "G3 anchors-kept"
+      ],
+      "studentFailed": [
+        "G1 quote-grounded",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6148,
+      "studentScore": 0.6148,
+      "teacherRatio": 0.2992,
+      "studentRatio": 0.2992,
+      "teacherChars": 1247,
+      "studentChars": 1247,
+      "studentTok": 466,
+      "teacherTok": 466,
+      "studentDraft": "scaling 应当只看未被忽略的变量和相互作用。tests 287 passed, 3 skipped，修复成立。已确认落点：`BinaryQuadraticModel.normalize` 里算 `inv_scalar` 那段，`lin_values` 用 `[v for k, v in self.linear.items() if k not in ignored_variables]`，`quad_values` 用 `[v for (u, w), v in self.quadratic.items() if (u, w) not in ignored_interactions and (w, u) not in ignored_interactions]`，再对两组值取 min/max 喂给 `inv_scalar = max(abs(lin_min), abs(lin_max), abs(quad_min), abs(quad_max))`；`ignored_variables is None` 时置 `set()`，不是 `abc.Container` 就 `set(...)`。`normalize` 之后调 `self.scale(1 / inv_scalar, ignored_variables=..., ignored_interactions=...)`，counterpart 的更新在 `scale` 的 try/except AttributeError 里做，所以不用另动 `scale`——它本身不算 scaling factor。interaction key 顺序用 `(u, w)` 与 `(w, u)` 双向判，已覆盖。迭代器被消费的问题已解：非 Container 先转 set，list 这类 Container 原样保留，两次遍历都安全。传 `ignored_variables=0` 会 `set(0)` 抛 `TypeError: 'int' object is not iterable`，属既有行为，不改。全部变量被忽略时 `lin_values` 为空、`min_and_max` 返回 (0, 0)，由未忽略的相互作用定标；全部相互作用被忽略时反之。空模型 `max(0, 0, 0, 0) = 0`，不缩放。悬着的是 `normalize` 的 docstring 里关于 scaling factor 的措辞是否要同步改，尚未定。如果 `python -m pytest tests/ -v --timeout=60` 的 tail 里是 `287 passed, 3 skipped`，那么修复坐实、不再动代码。如果出现 `test_normalize_exclusions` 失败或数值 assert 不过，那么是过滤条件没生效，回头看 `normalize` 里 `quad_values` 那行的键序判法。"
+    },
+    {
+      "id": "erezlife_html2docx_pr11#b7",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.6076,
+      "studentScore": 0.6076,
+      "teacherRatio": 0.3895,
+      "studentRatio": 0.3895,
+      "teacherChars": 587,
+      "studentChars": 587,
+      "studentTok": 242,
+      "teacherTok": 242,
+      "studentDraft": "确认现在 anchor 的 href 被忽略：跑一遍 `html2docx('<a href=\"https://eff.org/\">Electronic Frontier Foundation</a>', title='test')` 得到 `'Electronic Frontier Foundation'`，与 expected 差 ` https://eff.org/`。落点就在 html2docx 的 HTMLParser 处理里：`handle_starttag` 遇到 `a` 时存下 href，`handle_endtag` 遇到 `a` 时把 href 输出成 run（带一个空格前缀），这样 href 就接在 anchor 文本后面。out() 负责生成 Run 并 append 到 self.runs，finish() 再做 whitespace 折叠，所以只要在 endtag 里走 out 就能复用既有链路。悬而未决的是边界情形怎么处理：无 href 的 anchor、空 href、anchor 内嵌 `<b>` 这类格式、同段落多个 anchor、以及 anchor 出现在 list item 或 heading 里，原文这段还没定下具体做法。落点文件原文未定，只定了改 HTMLParser 的 starttag/endtag 两处逻辑。"
+    },
+    {
+      "id": "ethereum_hexbytes_pr13#b27",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.575,
+      "studentScore": 0.575,
+      "teacherRatio": 0.3277,
+      "studentRatio": 0.3277,
+      "teacherChars": 1220,
+      "studentChars": 1220,
+      "studentTok": 483,
+      "teacherTok": 483,
+      "studentDraft": "当前行为已确认：'' 与 '0x' → 0x（空字节），'0' 与 '0x0' → 0x00，int 0/1/255/256 → 0x00/0x01/0xff/0x0100，True/False → 0x01/0x00，bytearray(b'test') → 0x74657374，非法 hex 字符串抛 ValueError，负 int 目前抛 \"Non-hexadecimal digit found\" 这个不清晰的错。这些来自 eth_utils，需要内联复刻。\n\neth_utils 的逻辑链已理清：hexstr_if_str 对 str 先做 remove_0x_prefix，结果非空且 is_hexstr 失败才 raise ValueError，否则走 to_type(hexstr=...)，非 str 走 to_type(val) 位置参数；to_bytes 的 primitive 分支里 bool → b\"\\x01\"/b\"\\x00\"，bytearray/memoryview → bytes(val)，bytes 原样返回，int → to_hex(val) 再走 hexstr 分支，其余 TypeError；hexstr 分支奇数长度时 hexstr = \"0x0\" + remove_0x_prefix(hexstr)，再 decode_hex；to_hex 对 int 是 '0x' + hex(val)[2:]；is_hexstr 正则 (0[xX])?[0-9a-fA-F]* 且空值返回 False，但空串和 '0x' 因为 remove_0x_prefix 后为空被跳过校验，最终 decode_hex('') = b''。所以 '' 与 '0x' 给空字节，'0' 与 '0x0' 补成 '0x00'。\n\n落点原文未定。构造器签名里的类型注解要扩到 Union[bytes, bytearray, int, bool, str]，注意 bool 是 int 子类、isinstance 判断顺序要紧。负 int 要显式 raise ValueError 并写明 negative integers are not supported。\n\n下一步是改 hexbytes/main.py（或对应实现文件）的 __new__：内联上述分支并加负 int 检查，然后跑 tests/ 验证。如果跑 tests/ 后负 int 用例命中的是 ValueError 且消息含 negative integers，那么负 int 分支落定；如果仍看到 Non-hexadecimal digit found，那么负 int 检查没进到正确分支。如果 pytest 出现 is_hexstr / _HEX_REGEXP 相关的 ImportError，那么说明还有 eth_utils 引用没清干净，要一并内联。"
+    },
+    {
+      "id": "executablebooks_myst-nb_pr219#b3",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "teacherScore": 0.7168,
+      "studentScore": 0.7168,
+      "teacherRatio": 1.6597,
+      "studentRatio": 1.6597,
+      "teacherChars": 2780,
+      "studentChars": 2780,
+      "studentTok": 724,
+      "teacherTok": 724,
+      "studentDraft": "Let me look at the full RENDER_PRIORITY definition and how it's built. From the viewed transform.py, line 35 is:\n\n```python\nRENDER_PRIORITY.update({builder: \"html\" for builder in _implicit_builders})\n```\n\n`_implicit_builders` is `list(set(BUILDER_MAPPING) - set(RENDER_PRIORITY))` (roughly), and RENDER_PRIORITY has `\"html\"` mapped to a list of mimetypes and `\"latex\"` mapped to a list. The implicit builders (readthedocs, singlehtml, dirhtml, epub, etc.) inherit from html in Sphinx's BUILDER_MAPPING but aren't keys in RENDER_PRIORITY, so they get set to the string `\"html\"`.\n\nThe fix: change line 35 so implicit builders map to the same mimetype sequence as `\"html\"`. Use `RENDER_PRIORITY[\"html\"]` value, and to avoid aliasing a mutable list across builders, use a copy — `list(RENDER_PRIORITY[\"html\"])`.\n\nConsumers iterate over the value (`next(x for x in data_priority if x in output[\"data\"])` inside jupyter_sphinx's `cell_output_to_nodes`/`cell_output_to_nodes_inline`), so a string yields characters `'h','t','m','l'` — that's the bug. Copy vs. shared reference: only read, so sharing would work, but copying is safer against future mutation.\n\nSo the落点 is confirmed: line 35 of /workspace/executablebooks__myst-nb__1.0/myst_nb/transform.py.\n\nNext: write a reproduce script that imports RENDER_PRIORITY from myst_nb.transform, asserts every value in the dict is a list/tuple (not str), and iterates to check each element is a valid mimetype-looking string; run it with `python <filename.py>` via BashTool to confirm it fails on the implicit builders (readthedocs etc.), then apply the fix and rerun.\n\nThen check tests in tests/test_transform.py related to this, run relevant tests, and think about edgecases: builders that are already in RENDER_PRIORITY (html, latex) must not be clobbered; the copy must produce independent lists (or at least not the string); case where BUILDER_MAPPING gains new html-derived builders.\n\nSo the plan is locked: reproduce → confirm failure → edit line 35 → rerun → adjacent tests pass.\n\nIf the reproduce script prints the string `\"html\"` (or iterating yields `'h','t','m','l'`) for readthedocs/singlehtml/dirhtml/epub, then the bug is confirmed unchanged and the fix targets line 35.\nIf after the edit the same script shows each implicit builder value is a list starting with a real mimetype like `\"text/html\"`, then the fix works, and I move on to the test suite.\nIf iterating `RENDER_PRIORITY[builder]` for an implicit builder yields single characters, that confirms the string-vs-list diagnosis directly.\nIf the related tests in tests/test_transform.py already pass before the change (no coverage of implicit builders), then I need to add a test asserting the type/contents for implicit builders rather than relying on existing coverage."
+    },
+    {
+      "id": "explosion_catalogue_pr33#b10",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.6653,
+      "studentScore": 0.6653,
+      "teacherRatio": 0.2748,
+      "studentRatio": 0.2748,
+      "teacherChars": 643,
+      "studentChars": 643,
+      "studentTok": 281,
+      "teacherTok": 281,
+      "studentDraft": "现有代码库里还没有 Config 或 catalogue_registry 的任何引用，grep 只命中 catalogue/_importlib_metadata/__init__.py 里的 ConfigParser，那是无关的。用户说测试文件已处理好，但没看到 config 相关测试，就按不碰测试、只做实现来走。\n\n方案落定：新建 Config 类 + catalogue_registry 模块。Config 解析 INI 风格文件，section 头支持点号嵌套（`[training.optimizer]` 变成嵌套 dict），值按 JSON 解析，支持 `${section.key}` 插值，实现 from_disk / from_str / to_disk / to_bytes。catalogue_registry.resolve 接收 config dict 或 Config，遇到 `@registry_name` 这类键就按名字去对应 registry 查函数实例化，同一块里其余键作为参数传入，类型提示可用时做类型校验。`@optimizers = \"my_cool_optimizer.v1\"` 就是去 optimizers 这个 registry 里查 \"my_cool_optimizer.v1\"。\n\n落点原文未定，原文只写到「let me implement this now」并准备先确认 Python 版本与可用包，尚未指定改哪个文件哪一行。"
+    },
+    {
+      "id": "fohrloop_wakepy_pr79#b12",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.7326,
+      "studentScore": 0.7326,
+      "teacherRatio": 0.2273,
+      "studentRatio": 0.2273,
+      "teacherChars": 720,
+      "studentChars": 720,
+      "studentTok": 267,
+      "teacherTok": 267,
+      "studentDraft": "基commit 是 06e56ae，working tree 干净。grep 到只有两处：`tests/unit/test_core/test_method.py:99:def test_all_combinations_with_switch_to_the_mode(test_method_classes)` 和 `wakepy/core/method.py:246: def switch_to_the_mode(self) -> bool:`。\n\ntest 文件第 11 行还有 `pytest.skip(\"These need to be fixed\", allow_module_level=True)`。用户说 test 文件已改好，所以我的改动只落在源码：把 wakepy/core/method.py 的 `def switch_to_the_mode(self) -> bool:` 改名为 `def activate_the_mode(self) -> bool:`，其余非 test 引用一并跟着改。先确认 test_method.py 到底还自带 skip 行、以及 `test_method_classes` fixture 定义在哪（conftest.py 还是别处）。\n\n如果 grep 只在 method.py 命中 `switch_to_the_mode` 且 test_method.py 第 11 行的 skip 仍在，那么改名就是唯一源码改动，测试的 skip 由用户侧处理；如果发现 conftest.py 定义了 `test_method_classes`，那么先看它的形状再决定要不要动源码。"
+    },
+    {
+      "id": "fox-it_dissect.util_pr70#b15",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.9277,
+      "studentScore": 0.9277,
+      "teacherRatio": 0.2456,
+      "studentRatio": 0.2456,
+      "teacherChars": 695,
+      "studentChars": 695,
+      "studentTok": 284,
+      "teacherTok": 284,
+      "studentDraft": "仓库状态干净，27b44fe HEAD。题面说测试文件已由用户处理，所以只动非测试源文件与 pyproject.toml。计划落点：pyproject.toml 的 ruff select 加 N、S，并为测试加 per-file ignores（S101）；dissect/util/feature.py 把 FeatureException 改名 FeatureError；dissect/util/ts.py 修 dostimestamp docstring（参数 timestap→ts、centisecond→centiseconds）并把 DOS_EPOCH_YEAR 常量移到模块级；dissect/util/cpio.py 的 def CpioFile 加 # noqa: N802；xmemoryview.py 的 _xmemoryview 加 # noqa: N801；tools/dump_nskeyedarchiver.py 处理 try-except-pass S110。改名 FeatureException 会打断 test_feature.py 的 import，但按题面测试改动归用户，先按此推进再跑测试核对。下一步是逐个打开这些文件确认行号，然后落改动。如果改完跑 pytest 出现 ImportError: cannot import name 'FeatureException'，那么是测试侧未同步，属用户负责范围，不改测试文件；如果 ruff check --select N,S . 仍报未覆盖的 N/S 违规，那么逐个补 noqa 或修实。"
+    },
+    {
+      "id": "frankie567_httpx-ws_pr110#b13",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.8876,
+      "studentScore": 0.8876,
+      "teacherRatio": 0.2267,
+      "studentRatio": 0.2267,
+      "teacherChars": 710,
+      "studentChars": 710,
+      "studentTok": 275,
+      "teacherTok": 275,
+      "studentDraft": "`anyio.fail_after(None)` 在 timeout=None 时应该就是不施加超时，但脚本挂住了，说明改动有问题。流是 synchronous context manager，用 stack.enter_context 把 `_app_send_stream` 等 enter 进 `__aenter__` 没问题；`create_memory_object_stream` 的 max_buffer_size 默认 0 表示不限，缓冲不该是原因。流程本身自洽：`send({\"type\": \"websocket.connect\"})` 进 `_client_send_stream`，`receive()` 在 `_app_receive_stream` 上等 `websocket.accept`，`_run` 里 ASGI 的 `receive` 即 `_asgi_receive` 从 `_client_receive_stream` 取到 connect，app 再 `send({\"type\": \"websocket.accept\"})` 进 `_app_send_stream`。疑点只剩流被过早关闭：AsyncExitStack 退出时会关掉这些流，而 send 流必须活到 task group 结束。下一步是先中断这个挂住的进程，再跑一个更小的测试看卡在哪。如果小测试里 `_app_receive_stream.receive()` 一直不返回而 `_asgi_receive` 已取走 connect，那么问题出在 accept 没被写进 `_app_send_stream`。"
+    },
+    {
+      "id": "fulder_pki-tools_pr119#b11",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.6294,
+      "studentScore": 0.6294,
+      "teacherRatio": 0.4286,
+      "studentRatio": 0.4286,
+      "teacherChars": 1231,
+      "studentChars": 1231,
+      "studentTok": 461,
+      "teacherTok": 461,
+      "studentDraft": "[题面] 里 vali 的测试已经跑过：naive datetime 在 `Validity(not_before=naive_dt, not_after=naive_dt)` 这一步不报错，所以问题不在 Validity 构造函数，而在往 cryptography 传时——`certificate.py:447-452` 的 `.not_valid_before(self.validity.not_before)` / `.not_valid_after(self.validity.not_after)` 直接把可能 naive 的值递进去，cryptography 的 `CertificateBuilder` 要 timezone-aware，naive 会在建证书那步出问题。所以 naive datetime 要像 UTC 处理。\n\nIO 标准化要落的面：Certificate 加 `from_der_bytes`、`der_bytes`；`CertificateRevocationList` 加 `from_file`、`from_pem_string`、`from_der_bytes`、`pem_bytes`、`pem_string`；`OCSPResponse` 加 `from_file`、`from_pem_string`、`to_file`、`pem_bytes`、`pem_string`；`OCSPRequest` 全加；`CryptoKeyPair` 各子类全加。`_string_dict` 里用 `set()` 不保序，要排序。签名时 `req_key` 为 None 的路径：`sign` 里只有 `if req_key is not None:` 才填 `self.subject_public_key_info`，为 None 时它是 None，而 `_to_cryptography` 里 `subject_public_key_info is None` 就退回用签名密钥的 `public_key()`，证书仍能建出来，但字段留 None——要改成从签名密钥推出来填上。\n\n下一步是确认 naive 传给 cryptography builder 的报错形态，以及逐类核对 `_string_dict` / 各 IO 方法现状。如果 `python -m pytest test/ -v 2>&1 | head -100` 里出现跟 `not_valid_before`/`not_valid_after` 相关的 fail，那么 naive 这条坐实，改 `certificate.py:447-452` 那两处加 tzinfo=UTC。如果全过而只有 IO 相关 fail，那么先做 IO 标准化。如果报错在别处，先别动 Validity，把 `_string_dict` 的 set 顺序问题排前面。"
+    },
+    {
+      "id": "gauge-sh_tach_pr10#b6",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.7053,
+      "studentScore": 0.7053,
+      "teacherRatio": 0.4202,
+      "studentRatio": 0.4202,
+      "teacherChars": 1203,
+      "studentChars": 1203,
+      "studentTok": 313,
+      "teacherTok": 313,
+      "studentDraft": "Now I understand the current state. The `show` function takes a `BoundaryTrie`, converts to nested dict via `boundary_trie_to_dict`, dumps as YAML and prints; if `write_file=True`, writes YAML to `modguard.yaml`. Issue wants: tree representation to stdout, `[B]` for boundaries, `[P]` for public, ANSI colors (Bold boundaries, Green public), and `write_file=True` still writes YAML to file but console shows tree.\n\nThere's a conflict: the current `test_show` in tests/test_show.py asserts `show(boundary_trie) == \"<YAML string>\"`. User claims test changes are already handled, but the visible test still expects YAML. Two possibilities: the test file was already updated and I'm not seeing it, or it hasn't been changed. Need to check git status/log to determine which.\n\nNext step is to check git status and git log for tests/test_show.py.\n\nIf git shows tests/test_show.py modified with tree-format expectations, then the test is already updated and I should implement the tree output to match. If git shows it unmodified (still asserting YAML), then the user's claim is inconsistent with the working tree and I should reconcile before changing show(). If neither at all, look at other test files first."
+    },
+    {
+      "id": "gijzelaerr_python-snap7_pr241#b24",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.7626,
+      "studentScore": 0.7626,
+      "teacherRatio": 0.4319,
+      "studentRatio": 0.4319,
+      "teacherChars": 660,
+      "studentChars": 660,
+      "studentTok": 270,
+      "teacherTok": 270,
+      "studentDraft": "`set_as_callback` 把 `self` 传给了 `Cli_SetAsCallback`，应传 `self._pointer`。改 snap7/client.py 里 `result = self._library.Cli_SetAsCallback(self, pfn_clicompletion, p_usr)` 这一行，改成 `result = self._library.Cli_SetAsCallback(self._pointer, pfn_clicompletion, p_usr)`，已落地。`inspect.getsource` 断言已确认源码里用的是 `_pointer`。partner 测试挂在 code = 13、context = 'partner' 的 \"TCP: Permission denied\"，是系统/网络问题，与本次改动无关；其余 132 通过、6 skipped。\n\n`set_as_callback` 手动调 `check_error` 而非 `@error_wrap` 装饰器，与其它方法写法不一，但不影响正确性，不动。下一步是全局搜一遍还有没有别处把 `self` 而不是 `self._pointer` / `self.pointer` 传给库函数。如果 grep 命中里出现别的 `Cli_` / 库函数调用带裸 `self`，那么那些是同类漏改，逐个核对参数位置。如果只命中 `set_as_callback` 这一处，那么单点修复成立，改动到此为止。"
+    },
+    {
+      "id": "google_pasta_pr10#b13",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G7 compressed"
+      ],
+      "teacherScore": 0.8182,
+      "studentScore": 0.8182,
+      "teacherRatio": 0.3858,
+      "studentRatio": 0.3858,
+      "teacherChars": 620,
+      "studentChars": 620,
+      "studentTok": 278,
+      "teacherTok": 278,
+      "studentDraft": "在 Python 3.11 里这几种 coding 声明 ast.parse 全都过，问题只出在旧版 Python（上游 Issue 18960），但任务要求照样实现。PEP-263 的判读是：声明可在第一或第二行，形式有 `# coding: utf-8`、`# -*- coding: utf-8 -*-`、`# vim: set fileencoding=utf-8 :`，第一行是 shebang（`#!` 开头）时声明落在第二行。仓库里 `pasta/base/ast_utils.py` 等多处自带 `# coding=utf-8`，因此 sanitize 必须保行号与偏移：命中就把那两行内容换成 `# (removed coding)` 之类的注释。所以下一步是改 `pasta/base/ast_utils.py`：新增 `sanitize_source(src)`，并在 `parse` 里先调 sanitize_source 再交给 ast.parse，落点原文只指到文件与函数，具体行未定。python2 不可用（`bash: python2: command not found`），现有 85 个测试在 3.11 全绿，改完重跑 `python -m pytest pasta/ -v` 即可。如果 pytest 出现行号或偏移相关的失败，那么 sanitize 的替换长度与原文不等，需让替换串总长与原行一致。"
+    },
+    {
+      "id": "google_pinject_pr49#b13",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.7382,
+      "studentScore": 0.7382,
+      "teacherRatio": 0.2516,
+      "studentRatio": 0.2516,
+      "teacherChars": 695,
+      "studentChars": 695,
+      "studentTok": 331,
+      "teacherTok": 331,
+      "studentDraft": "SWIG 模块的 `cvar` 属性在 Python 3 下访问时抛 `NameError: Unknown C global variable`，`inspect.getmembers` 只捕 `AttributeError`，所以崩。早先已经改过 `pinject/finding.py`：原来靠 `inspect.getmembers`，现在是遍历 `dir(module)`、逐个 `getattr`。我先用 `except Exception` 兜住，但太宽会掩盖 bug，正在权衡是收窄成 `(AttributeError, NameError)` 还是保留宽捕。考虑过保留 `inspect.getmembers` 再在外面包一层捕 `NameError`，也考虑写自定义的 safe 版本；`getmembers` 的排序与去重对我们找类没用，`dir()` 与 `getmembers` 内部用的同一个，模块属性不涉及 MRO，所以自己遍历没有语义损失，倾向前者但还没落定这一处要改成什么。\n\n下一步是跑复现脚本验证改动。如果脚本输出的结果是建图成功、没有 `NameError`，那么宽捕这一版就够用，不再收窄。如果仍报 `NameError: Unknown C global variable`，那么说明问题出在别处而非 `finding.py` 这一层，需要回头看 `pinject/object_graph.py` 里 `new_object_graph` 的调用链。如果报的是别的异常类型，那么先把该异常名记下来再决定收窄范围，不要直接扩大 `except`。"
+    },
+    {
+      "id": "gruebel_pycep_pr109#b6",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G4 actionable",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable",
+        "G7 compressed"
+      ],
+      "teacherScore": 0.5562,
+      "studentScore": 0.5562,
+      "teacherRatio": 0.406,
+      "studentRatio": 0.406,
+      "teacherChars": 635,
+      "studentChars": 635,
+      "studentTok": 244,
+      "teacherTok": 244,
+      "studentDraft": "需要在 pycep 的 transformer 里改正则。看下来路径字符类 `[\\w/\\-]+` 不含点，`company.department` 匹配不上，所以模块没被识别。要改三处：`PRIVATE_BICEP_REGISTRY_PATTERN` 和 `PUBLIC_BICEP_REGISTRY_PATTERN` 的 path 组 `[\\w/\\-]+` → `[\\w/\\-.]+`；`TEMPLATE_SPEC_ALIAS_PATTERN` 的 path 组同样 `[\\w/\\-]+` → `[\\w/\\-.]+`。`BICEP_REGISTRY_ALIAS_PATTERN` 的 path 已经是 `[\\w/\\-.]+`，不用动；`TEMPLATE_SPEC_PATTERN` 的 `rg_id` 已有 `[\\w._\\-()]+`，也不用动；tag 组都是 `[\\w.\\-]+`，本来就带点。\n\n落点原文未定。测试样例现有 tests/examples/basic/05-module 和 tests/examples/complex/07-module-alias，参考 BICEP_PARSER.parse(file_path=file_path)，但还没有带点路径的 example 目录。下一步是先写复现脚本确认 bug。如果复现输出里 result 不含 privateDotRegistryModule，那么 bug 坐实，再去改那三处 path 组。"
+    },
+    {
+      "id": "home-assistant-libs_voluptuous-serialize_pr12#b6",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.5103,
+      "studentScore": 0.5103,
+      "teacherRatio": 0.2796,
+      "studentRatio": 0.2796,
+      "teacherChars": 449,
+      "studentChars": 449,
+      "studentTok": 117,
+      "teacherTok": 117,
+      "studentDraft": "We've got basic constants working. Now need to test edge cases: nested constants inside dict schemas, constants inside vol.All, vol.In. On bool vs int: bool is subclass of int so True would match the tuple either way, same return `{'type': 'constant', 'value': schema}`, order doesn't matter. Need to check vol.Coerce(1) variant too — isinstance hits vol.Coerce, schema.type = 1, then our new check returns constant. Next step is to write that test."
+    },
+    {
+      "id": "ikalnytskyi_picobox_pr33#b13",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G1 quote-grounded"
+      ],
+      "studentFailed": [
+        "G1 quote-grounded"
+      ],
+      "teacherScore": 0.6085,
+      "studentScore": 0.6085,
+      "teacherRatio": 0.4181,
+      "studentRatio": 0.4181,
+      "teacherChars": 1529,
+      "studentChars": 1529,
+      "studentTok": 458,
+      "teacherTok": 458,
+      "studentDraft": "The `_topbox.__getattribute__` in `Stack` recurses on `self._stack`: every attribute access is redirected to `getattr(self._stack[-1], name)`, but reaching `self._stack` itself also goes through `__getattribute__`, so look up `_stack` on the top box — wrong or infinite. Original worked because `_stack` was module-level, a free variable not reached via `self`. Fix: special-case the lookup, `object.__getattribute__(self, '_stack')[-1]` inside `__getattribute__`, keeping behavior otherwise identical (IndexError → RuntimeError for empty stack).\n\nAlready landed: `src/picobox/_stack.py` rewritten with `Stack` class and `_topbox` nested inside `Stack.__init__`, module-level functions now delegating to `_global_stack` (e.g. `return _global_stack.pass_(*args, **kwargs)`). `src/picobox/__init__.py` `__all__` extended. `tests/test_stack.py` referenced but grep for \"Stack\" in tests and across `*.py` both exited 1 — no existing test file with that name.\n\n落点原文未定 — no test file yet exists to edit. 悬着: whether the `_topbox` recursion fix is the only bug; the pytest run exited 1 but its output was cut off, cause not established. 下一步: patch `_stack.py` `_topbox.__getattribute__` to resolve `_stack` via `object.__getattribute__`, then run `python -m pytest tests/ -v 2>&1`.\n\n如果 pytest 输出里出现 `RecursionError` 或 `AttributeError: _stack`，那么递归假设坐实，按上面的改法修。如果 `tests/test_stack.py` 报 `FileNotFoundError` / no tests ran，那么测试文件尚未创建，需要先写它再跑。如果 Stack 相关用例通过而其他用例失败，那么是模块级函数到 `_global_stack` 的委派改坏了原行为，回头核对 `_stack.py` 里那几个 wrapper 的逐行对应。"
+    },
+    {
+      "id": "imageio_imageio_pr83#b18",
+      "teacherPass": true,
+      "studentPass": true,
+      "teacherFailed": [],
+      "studentFailed": [],
+      "teacherScore": 0.7126,
+      "studentScore": 0.7126,
+      "teacherRatio": 0.142,
+      "studentRatio": 0.142,
+      "teacherChars": 829,
+      "studentChars": 829,
+      "studentTok": 358,
+      "teacherTok": 358,
+      "studentDraft": "视频播放不了是因为 FFMPEG 默认的 pixel format 不受支持。已经给 writer 加了 pixelformat，默认 yuv420p，加上 ffmpeg_params 接收任意参数列表。大输入冻结的根因是 stderr 管道缓冲区满了没人读，已在 Writer._initialize 里加了 StreamCatcher 线程读 stderr，_close 改成只关 stdin 再 wait，不显式关 stderr，因为 StreamCatcher 在读到进程结束时 read 返回空就自然退出，它是 daemon 线程不阻塞退出。Reader 也没 join 它的 StreamCatcher，为保持一致 Writer 也不 join。StreamCatcher.run() 每次只读 20 字节、间隔 0.001 秒，很慢，但不动它——issue 只针对 writer 冻结。另外 CAM_FORMAT 在 darwin 上要改成 avfoundation，而 _get_cam_inputname 目前只在 linux 返回 '/dev/' + self.request._video[1:-1]、win 走 dshow，darwin 落到 else 返回 '??'，所以 darwin 分支还没处理，avfoundation 的输入名应该是索引字符串如 '0'，不是 /dev 路径。落点在 imageio/plugins/ffmpeg.py 的 _get_cam_inputname，但具体改法原文未定。\n\n如果 _get_cam_inputname 里出现 sys.platform.startswith('darwin') 分支返回 '0' 这类索引，那么 darwin 摄像头读入接上了。如果 _close 里仍然显式 close stderr，那么 StreamCatcher 会读到已关的流，需要改回只关 stdin。"
+    }
+  ]
+}

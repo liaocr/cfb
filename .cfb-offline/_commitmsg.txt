@@ -1,0 +1,30 @@
+feat(ruler): 生成式压缩稿尺子 v1 + 六轴机械负例生成器（$0、零 API）
+
+为什么换掉旧尺子：旧尺子（gold-check 一族）只查形式 —— 引用逐字、反引号配对、长度超线。
+后果在 tools/gold-forge2.mjs 第 48 行暴露干净：它用「raw 里最长的文件名」当选落点，
+于是真金标里出现「落点：/home/u/.dsh/storages/cot-form-b/trace.log」这种症状路径，
+而 C1–C6 全过、qualityAudit 判 clean。形式尺子量不出语义错误。
+
+新增：
+- tools/gen-ruler.mjs：7 道硬门（引用凭空 / 落点可动手 / 承重锚点 / 可动手接口 / 因果方向 /
+  非照抄 / 真压缩）+ 6 维软分。硬门任一不过即拒稿并 100% 无损回退 raw。
+  S5 tailRetention 是反抽取的那一刀：只出现在 raw 后半段的锚点保留率。
+- tools/gen-negatives.mjs：六条机械劣化轴（照抄 / 丢承重 / 凭空 / 反因果 / 过压 / 错落点），
+  从好稿做最小改动派生，标签确定、长度配对。附 auditRuler 自审并报告尺子自己的洞。
+- tools/gen-ruler-vs-l2.mjs：拿真机 L2 读数（hand-samples ↔ results.jsonl 精确对齐）标定。
+- test/gen-ruler.selftest.mjs：12 项回归，已登记进 verify.mjs ORDER。
+- transfer/notes/GENERATIVE-RULER-v1.md：规格书，含阈值来历与未验证清单。
+
+实测读数（可复算）：
+- v5 机械语料抽 400 条 -> 396 条被拒，394 条挂在 G6 照抄。
+  那 6001 行是规则执行器的输出，尺子独立地判成了照抄稿。
+- 61 条真手稿 -> 25 过 / 36 拒。
+- 六轴负例 110 条派生 -> 108 被拒、103 命中预期门，剩 2 个洞（同类过压稿）未修，
+  留作回归项：修不修要看真机 L2 是否为真更差，不靠「看起来该拦」加门。
+- 对 L2 精确对齐 n=3、3/3。n=3 不是「尺子准」，是「还没被证伪」。
+
+开发中抓到的 4 个静默失真（都在规格书 §6 留档）：
+1) /g 正则配 .test() 的 lastIndex 状态 -> 结论变随机；
+2) 分句正则在 ASCII 句点无条件切 -> test/hedge.selftest.mjs 被切成两半，承重锚点凭空消失；
+3) anchorsOf 无位置信息 -> 反因果门 0/24 全漏；
+4) base() 返回空串 -> indexOf('') 死循环 + includes('') 恒真。

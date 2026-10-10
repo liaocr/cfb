@@ -1,0 +1,738 @@
+
+==========================================================================
+### lyxyxyxlx/LLM-From-Scratch-0.1B
+  desc : 本项目从零开始构建并训练了一个 0.1B（1亿）参数规模 的纯 Decoder-only Transformer 架构大模型。
+  stars: 4  lang=Python  branch=main  pushed=2026-08-01T13:40:18Z
+# 🚀 LLM-From-Scratch-0.1B
+
+![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)
+![License](https://img.shields.io/badge/License-MIT-blue.svg)
+
+从零开始手写代码，构建、训练并优化一个 **0.1B（1亿）参数规模的 LLaMA-style 中文大语言模型**。拒绝黑盒，全流程开源！
+
+
+
+## 📖 项目简介
+
+
+本项目旨在提供一个**极简、透明、可复现**的大模型工程实践路线图。我们不依赖庞杂的高阶黑盒 API，而是基于纯正的 PyTorch 从最底层的张量运算开始构建了一个完整的 Decoder-only Transformer 架构。项目覆盖了 LLM 生命周期的全链路：
+
+1. **分词器 (Tokenizer)**：基于 BPE 算法自底向上训练了包含 15,000 词表的中文分词器。
+2. **预训练 (Pretrain)**：在大规模中文语料上进行自回归语言建模，支持高效的多卡分布式训练。
+3. **指令微调 (SFT)**：使用高质量对话数据进行有监督微调，赋予模型对话交互能力。
+4. **评测体系 (Eval)**：集成 C3、XCOPA-ZH 等权威中文 Benchmark 及交互式生成评测。
+
+---
+
+<p align="center">
+  <img width="900" alt="模型训练效果或架构图" src="https://github.com/user-attachments/assets/ccaa9df4-36a3-4d38-aee1-ee63f0493e51" />
+</p>
+
+---
+
+## 🌟 核心技术与架构亮点
+
+### 🧠 模型架构 (LLaMA-Style)
+模型配置对标现代先进架构，包含诸多前沿的优化细节：
+- **纯手写核心组件**：原生实现带有残差连接的 Pre-Norm Transformer Block。
+- **位置编码与激活函数**：实现了支持最高 32,768 上下文外推的 **RoPE**（旋转位置编码）和 **SwiGLU** 门控线性单元。
+- **内存优化加速**：支持 **Grouped Query Attention (GQA)** 大幅降低 KV Cache 显存占用。在 PyTorch >= 2.0 环境下自动启用 **Flash Attention** 加速计算。
+- **稳定与轻量**：采用自定义的 `RMSNorm` (eps=1e-5) 稳定训练，并实现了 Embedding 与 LM Head 的权重共享（Weight Tying）以极致压缩参数量。
+
+### 🚀 工业级训练管线
+预训练脚本 (`pretrain.py`) 配备了应对大规模训练的完备功能：
+- **分布式计算**：基于 `DistributedDataParallel` (DDP) 实现单机多卡/多机多卡训练。
+- **优化策略**：使用 AdamW 优化器 (weight_decay=0.1) 配合 3% 步数的 Cosine Warmup 学习率调度。
+- **混合精度与累积**：支持 `bfloat16`/`float16` 混合精度 (`torch.amp.autocast`) 和梯度累积，有效解决大 Batch Size 的显存瓶颈。
+- **稳定续训**：通过定制 `SkipBatchSampler`，实现了断点自动检测和无损状态恢复。
+- **计算图编译**：支持 `torch.compile` 将 PyTorch 代码编译为优化过的内核，显著提升吞吐。
+- **可视化追踪**：原生集成 SwanLab，实时监控 Loss、学习率衰减并定期进行 Benchmark 测试打点。
+
+---
+
+## 🛠️ 模型参数配置
+
+核心配置位于 `model/config.py`，默认参数对准 0.1B 黄金学习规模：
+
+| 参数 (Hyperparameter) | 默认值 | 参数 (Hyperparameter) | 默认值 |
+|:---|:---:|:---|:---:|
+| `hidden_size` | 768 | `vocab_size` | 15,000 |
+| `num_hidden_layers` | 12 | `intermediate_size` | 2048 |
+| `num_attention_heads` | 12 | `max_position_embeddings` | 32,768 |
+| `num_key_value_heads` | 4 (GQA) | `rope_theta` | 10000.0 |
+
+> *详细定义请参考代码库中的 `LLMFromScratchConfig` 类。*
+
+---
+
+## 📦 模型权重下载
+
+仓库内已包含训练好的模型权重（基于 Git LFS）。文件大小仅约 188MB，对个人消费级显卡极度友好。
+
+| 模型版本 | 参数量 | 路径 | 说明 |
+|------|--------|----------|------|
+| **Pretrain Model** | 0.1B | `checkpoints/pretrain_768.pth` | 完成自回归语料学习的基础模型 |
+| **SFT Model** | 0.1B | `checkpoints/sft_768.pth` | 经过对话与指令格式微调的模型 |
+
+---
+
+## 💻 快速开始
+
+### 1. 环境安装
+```bash
+git clone [https://github.com/YuanxinLi0/LLM-From-Scratch-0.1B.git](https://github.com/YuanxinLi0/LLM-From-Scratch-0.1B.git)
+cd LLM-From-Scratch-0.1B
+pip install torch transformers datasets swanlab
+
+```
+
+### 2. 交互式对话测试
+
+直接运行项目中提供的测试脚本，一键体验微调后的模型能力：
+
+```bash
+python eval.py \
+    --model_path checkpoints/sft_768.pth \
+    --tokenizer_path tokenizer_15k \
+    --model_type sft \
+    --multi_turn
+
+```
+
+*支持的交互命令：`quit` / `exit` (退出), `clear` (清空上下文), `single` (单轮问答), `multi` (多轮对话)。*
+
+### 3. 代码中调用推理
+
+```python
+from transformers import AutoTokenizer
+from model.config import LLMFromScratchConfig
+from model.model_llm_from_scratch import LLMFromScratchForCausalLM
+import torch
+
+# 1. 加载定制的 BPE Tokenizer
+tokenizer = AutoTokenizer.from_pretrained("tokenizer_15k")
+
+# 2. 初始化模型并加载 SFT 权重
+config = LLMFromScratchConfig()
+model = LLMFromScratchForCausalLM(config)
+model.load_state_dict(torch.load("checkpoints/sft_768.pth", map_location="cpu"))
+model.eval()
+
+# 3. 极速推理
+inputs = tokenizer("你好，请详细自我介绍一下。", return_tensors="pt")
+with torch.no_grad():
+    outputs = model.generate(**inputs, max_new_tokens=100)
+print(tokenizer.decode(outputs[0]))
+
+```
+
+---
+
+## 🏃‍♂️ 从零开始复现训练
+
+如果你想彻底打通训练流程，可以按照以下步骤操作：
+
+### 阶段一：预训练 (Pretraining)
+
+使用 `pretrain.py` 在大量无标签数据上赋予模型语言预测能力（支持多卡 `torchrun` 启动）：
+
+```bash
+cd train
+python pretrain.py \
+    --data_path /path/to/pretrain.bin \
+    --hidden_size 768 \
+    --num_hidden_layers 12 \
+    --batch_size 128 \
+    --learning_rate 1e-3 \
+    --epochs 2 \
+    --dtype bfloat16 \
+    --use_swanlab 1
+
+```
+
+### 阶段二：指令微调 (SFT)
+
+基于上一步的 Checkpoint 和指令对话数据进行对齐：
+
+```bash
+cd train
+python train_sft.py \
+    --data_path /path/to/sft.jsonl \
+    --from_weight ../checkpoints/pretrain_768.pth \
+    --tokenizer_path ../tokenizer_15k \
+    --batch_size 128 \
+    --learning_rate 2e-5 \
+    --epochs 2
+
+```
+
+---
+
+## 📈 评测Benchmark
+
+项目原生集成了客观评测流水线，训练过程中会自动进行打点测试：
+
+* **C3**：评测中文阅读理解能力。
+* **XCOPA-ZH**：评测中文常识推理能力。
+* **Mini Bench**：包含 100 条针对性测试用例的生成式对话评测集。
+
+---
+
+## 🙌 致谢与 License
+
+本项目在架构设计和工程实现上参考了 [LLaMA](https://github.com/facebookresearch/llama)、[Qwen](https://github.com/QwenLM/Qwen) 等卓越的开源工作，深深感谢开源社区的力量。
+<p align="center">
+<img width="594" height="990" alt="image" src="https://github.com/user-attachments/assets/ae1e3c0a-cf26-43cd-ada4-41f796a0c772" />
+</p>
+
+---
+
+本项目采用 **MIT License**，你可以自由地将其用于学习、修改或二次开发。
+
+
+
+
+==========================================================================
+### charent/ChatLM-mini-Chinese
+  desc : 中文对话0.2B小模型（ChatLM-Chinese-0.2B），开源所有数据集来源、数据清洗、tokenizer训练、模型预训练、SFT指令微调、RLHF优化等流程的全部代码。支持下游任务sft微调，给出三元组信息抽取微调示例。
+  stars: 1736  lang=Python  branch=main  pushed=2024-04-20T00:38:49Z
+<div align="center">
+
+# 中文对话0.2B小模型 ChatLM-Chinese-0.2B  
+
+中文  | [English](./README.en.md)  
+
+</div>
+ 
+
+# 一、👋介绍 
+现在的大语言模型的参数往往较大，消费级电脑单纯做推理都比较慢，更别说想自己从头开始训练一个模型了。本项目的目标是从0开始训练一个生成式语言模型，包括数据清洗、tokenizer训练、模型预训练、SFT指令微调、RLHF优化等。 
+
+ChatLM-mini-Chinese为中文对话小模型，模型参数只有0.2B（算共享权重约210M），可以在最低4GB显存的机器进行预训练（`batch_size=1`，`fp16`或者` bf16`），`float16`加载、推理最少只需要512MB显存。 
+
+
+- 公开所有预训练、SFT指令微调、DPO偏好优化数据集来源。
+- 使用`Huggingface`NLP框架，包括`transformers`、`accelerate`、`trl`、`peft`等。
+- 自实现`trainer`，支持单机单卡、单机多卡进行预训练、SFT微调。训练过程中支持在任意位置停止，及在任意位置继续训练。
+- 预训练：整合为端到端的`Text-to-Text`预训练，非`mask`掩码预测预训练。
+    - 开源所有数据清洗（如规范化、基于mini_hash的文档去重等）、数据集构造、数据集加载优化等流程；
+    - tokenizer多进程词频统计，支持`sentencepiece`、`huggingface tokenizers`的tokenizer训练；
+    - 预训练支持任意位置断点，可从断点处继续训练;
+    - 大数据集（GB级别）流式加载、支持缓冲区数据打乱，不利用内存、硬盘作为缓存，有效减少内存、磁盘占用。配置`batch_size=1, max_len=320`下，最低支持在16GB内存+4GB显存的机器上进行预训练；
+    - 训练日志记录。
+- SFT微调：开源SFT数据集及数据处理过程。
+    - 自实现`trainer`支持prompt指令微调， 支持任意断点继续训练；
+    - 支持`Huggingface trainer`的`sequence to sequence`微调；
+    - 支持传统的低学习率，只训练decoder层的微调。
+- RLHF偏好优化：使用DPO进行全量偏好优化。
+    - 支持使用`peft lora`进行偏好优化；
+    - 支持模型合并，可将`Lora adapter`合并到原始模型中。
+- 支持下游任务微调：[finetune_examples](./finetune_examples/info_extract/)给出**三元组信息抽取任务**的微调示例，微调后的模型对话能力仍在。
+
+如果需要做基于小模型的检索增强生成（RAG），可以参考我的另一个项目[Phi2-mini-Chinese](https://github.com/charent/Phi2-mini-Chinese)，代码见[rag_with_langchain.ipynb](https://github.com/charent/Phi2-mini-Chinese/blob/main/rag_with_langchain.ipynb)
+
+🟢**最近更新**
+
+<details open> 
+<summary>  <b>2024-01-30</b> </summary>
+- 模型文件更新到魔搭modelscope，可以通过`snapshot_download`快速下载。<br/>
+</details>
+
+<details close> 
+<summary>  <b>2024-01-07</b> </summary>
+- 添加数据清洗过程中基于mini hash实现的文档去重（在本项目中其实是数据集的样本去重），防止模型遇到多次重复数据后，在推理时吐出训练数据。<br/>
+- 添加`DropDatasetDuplicate`类实现对大数据集的文档去重。<br/>
+</details>
+
+<details close> 
+<summary>  <b>2023-12-29</b> </summary>
+- 更新模型代码（权重不变），可以直接使用`AutoModelForSeq2SeqLM.from_pretrained(...)`加载模型使用。<br/>
+- 更新readme文档。<br/>
+</details>
+
+<details close> 
+<summary>  <b>2023-12-18</b> </summary>
+- 补充利用`ChatLM-mini-0.2B`模型微调下游三元组信息抽取任务代码及抽取效果展示 。<br/>
+- 更新readme文档。<br/>
+</details>
+
+<details close> 
+<summary>  <b>2023-12-14</b> </summary>
+- 更新SFT、DPO后的模型权重文件。 <br/>
+- 更新预训练、SFT及DPO脚本。 <br/>
+- 更新`tokenizer`为`PreTrainedTokenizerFast`。 <br/>
+- 重构`dataset`代码，支持动态最大长度，每个批次的最大长度由该批次的最长文本决定，节省显存。 <br/>
+- 补充`tokenizer`训练细节。 <br/>
+</details>
+
+<details close> 
+<summary> <b>2023-12-04</b> </summary>
+- 更新`generate`参数及模型效果展示。<br/>
+- 更新readme文档。<br/>
+</details>
+
+<details close> 
+<summary> <b>2023-11-28</b> </summary>
+- 更新dpo训练代码及模型权重。<br/>
+</details>
+
+<details close> 
+<summary> <b>2023-10-19</b> </summary>
+- 项目开源， 开放模型权重供下载。 <br/>
+</details>
+
+
+# 二、🛠️ChatLM-0.2B-Chinese模型训练过程 
+
+## 2.1 预训练数据集
+所有数据集均来自互联网公开的**单轮对话**数据集，经过数据清洗、格式化后保存为parquet文件。数据处理过程见`utils/raw_data_process.py`。主要数据集包括： 
+
+1. 社区问答json版webtext2019zh-大规模高质量数据集，见：[nlp_chinese_corpus](https://github.com/brightmart/nlp_chinese_corpus)。共410万，清洗后剩余260万。
+2. baike_qa2019百科类问答，见：<https://aistudio.baidu.com/datasetdetail/107726>，共140万，清醒后剩余130万。
+3. 中国医药领域问答数据集，见：[Chinese-medical-dialogue-data](https://github.com/Toyhom/Chinese-medical-dialogue-data)，共79万，清洗后剩余79万。
+4. ~~金融行业问答数据，见：<https://zhuanlan.zhihu.com/p/609821974>，共77万，清洗后剩余52万。~~**数据质量太差，未采用。**
+5. 知乎问答数据，见：[Zhihu-KOL](https://huggingface.co/datasets/wangrui6/Zhihu-KOL)，共100万行，清洗后剩余97万行。
+6. belle开源的指令训练数据，介绍：[BELLE](https://github.com/LianjiaTech/BELLE)，下载：[BelleGroup](https://huggingface.co/BelleGroup)，仅选取`Belle_open_source_1M`、`train_2M_CN`、及`train_3.5M_CN`中部分回答较短、不含复杂表格结构、翻译任务（没做英文词表）的数据，共370万行，清洗后剩余338万行。
+7. 维基百科（Wikipedia）词条数据，将词条拼凑为提示语，百科的前`N`个词为回答，使用`202309`的百科数据，清洗后剩余119万的词条提示语和回答。Wiki下载：[zhwiki](https://dumps.wikimedia.org/zhwiki/)，将下载的bz2文件转换为wiki.txt参考：[WikiExtractor](https://github.com/apertium/WikiExtractor)。 
+
+数据集总数量1023万：Text-to-Text预训练集：930万，评估集：2.5万（因为解码较慢，所以没有把评估集设置太大）。~~测试集：90万。~~ 
+SFT微调和DPO优化数据集见下文。
+
+## 2.2 模型
+T5模型（Text-to-Text Transfer Transformer），详情见论文: [Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer](https://arxiv.org/abs/1910.10683)。
+
+模型源码来自huggingface，见：[T5ForConditionalGeneration](https://github.com/huggingface/transformers/blob/main/src/transformers/models/t5/modeling_t5.py#L1557)。
+
+模型配置见[model_config.json](https://huggingface.co/charent/ChatLM-mini-Chinese/blob/main/config.json)，官方的`T5-base`：`encoder layer`和`decoder layer `均为为12层，本项目这两个参数修改为10层。 
+
+模型参数：0.2B。词表大小：29298，仅包含中文和少量英文。
+
+## 2.3 训练过程
+硬件：
+```bash
+# 预训练阶段：
+CPU: 28 vCPU Intel(R) Xeon(R) Gold 6330 CPU @ 2.00GHz
+内存：60 GB
+显卡：RTX A5000(24GB) * 2
+
+# sft及dpo阶段：
+CPU: Intel(R) i5-13600k @ 5.1GHz
+内存：32 GB
+显卡：NVIDIA GeForce RTX 4060 Ti 16GB * 1
+```
+1. **tokenizer 训练**： 现有`tokenizer`训练库遇到大语料时存在OOM问题，故全量语料按照类似`BPE`的方法根据词频合并、构造词库，运行耗时半天。
+
+2. **Text-to-Text 预训练**：学习率为`1e-4`到`5e-3`的动态学习率，预训练时间为8天。训练损失： 
+
+![traing loss](img/train_loss.png) 
+
+3. **prompt监督微调（SFT）**：使用`belle`指令训练数据集（指令和回答长度都在512以下），学习率为`1e-7`到`5e-5`的动态学习率，微调时间2天。微调损失： 
+   
+![finetune loss](img/sft_loss.png) 
+
+4. **dpo直接偏好优化（RLHF）**：数据集[alpaca-gpt4-data-zh](https://huggingface.co/datasets/c-s-ale/alpaca-gpt4-data-zh)作为`chosen`文本，步骤`2`中SFT模型对数据集中的prompt做批量`generate`，得到`rejected`文本，耗时1天，dpo全量偏好优化，学习率`le-5`，半精度`fp16`,共`2`个`epoch`，耗时3h。dpo损失： 
+ 
+![dpo loss](img/dpo_loss.png) 
+
+## 2.4 对话效果展示
+### 2
+
+==========================================================================
+### jingyaogong/minimind
+  desc : 🧠 Train a 64M-parameter LLM from scratch in just 2h!
+  stars: 63453  lang=Python  branch=master  pushed=2026-09-22T16:07:34Z
+<div align="center">
+
+![logo](./images/logo.png)
+
+</div>
+
+<div align="center">
+
+![visitors](https://visitor-badge.laobi.icu/badge?page_id=jingyaogong/minimind)
+[![GitHub Repo stars](https://img.shields.io/github/stars/jingyaogong/minimind?style=social)](https://github.com/jingyaogong/minimind/stargazers)
+[![GitHub Code License](https://img.shields.io/github/license/jingyaogong/minimind)](LICENSE)
+[![GitHub last commit](https://img.shields.io/github/last-commit/jingyaogong/minimind)](https://github.com/jingyaogong/minimind/commits/master)
+[![GitHub pull request](https://img.shields.io/badge/PRs-welcome-blue)](https://github.com/jingyaogong/minimind/pulls)
+[![Collection](https://img.shields.io/badge/🤗-MiniMind%20%20Collection-blue)](https://huggingface.co/collections/jingyaogong/minimind-66caf8d999f5c7fa64f399e5)
+
+</div>
+
+<div align="center">
+
+![GitHub Trend](https://trendshift.io/api/badge/repositories/12586)
+
+</div>
+
+<div align="center">
+  <h3>"大道至简"</h3>
+</div>
+
+<div align="center">
+
+中文 | [English](./README_en.md)
+
+</div>
+
+* 此开源项目旨在完全从 0 开始，仅用 3 块钱成本与 2 小时训练时间，即可训练出规模约为 64M 的超小语言模型 MiniMind。
+* MiniMind 系列极其轻量，主线最小版本体积约为 GPT-3 的 $\frac{1}{2700}$，力求让普通个人 GPU 也能快速完成训练与复现。
+* 项目同时开源了大模型的极简结构与完整训练链路，覆盖 MoE、数据清洗、预训练（Pretrain）、监督微调（SFT）、LoRA、RLHF（DPO）、RLAIF（PPO / GRPO / CISPO）、Tool Use、Agentic RL、自适应思考与模型蒸馏等全过程代码。
+* MiniMind 同时拓展了视觉模态模型 [MiniMind-V](https://github.com/jingyaogong/minimind-v)、多模态 Omni 模型 [MiniMind-O](https://github.com/jingyaogong/minimind-o)、扩散语言模型（MiniMind-dLM）、线性模型（MiniMind-Linear），详见 [Discussion](https://github.com/jingyaogong/minimind/discussions)。
+* 项目所有核心算法代码均从 0 使用 PyTorch 原生实现，不依赖第三方库提供的高层抽象接口。
+* 这不仅是一个大语言模型全阶段开源复现项目，也是一套面向 LLM 入门与实践的教程。
+* 希望此项目能为更多人提供一个可复现、可理解、可扩展的起点，一起感受创造的乐趣，并推动更广泛 AI 社区的进步。
+
+> 注：本项目基于 Apache 2.0 协议开源，完全免费。“2 小时” 指 SFT 阶段在单张 NVIDIA 3090 上跑完 `1 epoch` 的实测耗时，“3 块钱” 指对应时段的 GPU 租用成本。
+
+---
+
+<div align="center">
+
+![minimind-3](./images/minimind-3.gif)
+
+[🔗 在线体验](https://www.modelscope.cn/studios/gongjy/MiniMind) | [🔗 视频介绍](https://www.bilibili.com/video/BV12dHPeqE72)
+
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="center">
+        <a href="https://huggingface.co/collections/jingyaogong/minimind" style="text-decoration: none;">
+          <img src="./images/with_huggingface.png" alt="Hugging Face Logo" style="vertical-align: middle; width: auto; max-width: 100%;" />
+        </a>
+      </td>
+      <td align="center">
+        <a href="https://www.modelscope.cn/profile/gongjy" style="text-decoration: none;">
+          <img src="./images/with_modelscope.png" alt="ModelScope Logo" style="vertical-align: middle; width: auto; max-width: 100%;" />
+        </a>
+      </td>
+    </tr>
+  </table>
+</div>
+
+
+</div>
+
+---
+
+# 📌 项目介绍
+
+大语言模型（Large Language Model, LLM）的出现，引发了全球范围内对 AI 的空前关注。无论是 ChatGPT、DeepSeek 还是 Qwen，都以惊艳的效果让人真切感受到这场技术浪潮的冲击力。然而，动辄数百亿参数的模型规模，使得它们对个人设备而言不仅难以训练，甚至连部署都显得遥不可及。打开大模型的“黑盒子”，真正去理解其内部运作机制，本应是一件令人心潮澎湃的事。遗憾的是，绝大多数探索最终都止步于使用 LoRA 等技术对现有大模型做少量微调，学习一些新指令或特定任务。这更像是在教牛顿如何使用 21 世纪的智能手机——虽然有趣，却偏离了理解物理本质的初衷。
+
+与此同时，第三方的大模型框架与工具库，如 `transformers` / `trl` / `peft` 等，往往只暴露出高度抽象的接口。只需短短十几行代码，就可以完成“加载模型 + 加载数据集 + 推理 + 强化学习”的全流程训练。这种高效封装固然便利，却也在一定程度上把开发者与底层实现隔离开来，削弱了深入理解 LLM 核心代码的机会。我认为 “用乐高自己拼出一架飞机，远比坐在头等舱里飞行更让人兴奋”，然而更现实的问题是，互联网上充斥着大量付费课程和营销内容，用漏洞百出、一知半解的讲解包装所谓的 AI 教程。正因如此，本项目的初衷就是尽可能降低 LLM 的学习门槛，让每个人都能从理解每一行代码开始，从 0 开始亲手训练一个极小的语言模型。是的，从**零开始训练**，而不是仅仅停留在**推理**层面。最低只需不到 3 块钱的服务器成本，就能亲身体验从 0 到 1 构建一个语言模型的全过程。
+
+😊 一起感受创造的乐趣吧！
+
+---
+
+#### 🎉 本项目包含以下内容
+
+- 提供完整的 MiniMind-LLM 结构代码（Dense + MoE），当前主线结构对齐 `Qwen3 / Qwen3-MoE` 生态。
+- 提供 Tokenizer 与分词器训练代码，支持 `<tool_call>`、`<tool_response>`、`<think>` 等模板标记。
+- 覆盖 Pretrain、SFT、LoRA、RLHF-DPO、RLAIF（PPO / GRPO / CISPO）、Tool Use、Agentic RL、自适应思考与模型蒸馏等完整训练流程。
+- 提供全阶段开源数据，覆盖收集、蒸馏、清洗与去重后的高质量数据集。
+- 关键训练算法与核心模块均从 0 实现，不依赖第三方框架封装。
+- 兼容 `transformers`、`trl`、`peft` 等主流框架，以及 `llama.cpp`、`vllm`、`ollama` 等常用推理引擎与 `Llama-Factory` 等训练框架。
+- 支持单机单卡与单机多卡（DDP、DeepSpeed）训练，支持 wandb / swanlab 可视化与动态启停训练。
+- 支持在 C-Eval、C-MMLU、OpenBookQA 等第三方测评集上进行评测，并支持通过 YaRN 实现 RoPE 长文本外推。
+- 提供兼容 OpenAI API 协议的极简服务端，便于接入 FastGPT、Open-WebUI 等第三方 Chat UI，并支持 `reasoning_content`、`tool_calls`、`open_thinking`。
+- 提供基于 Streamlit 的极简聊天 WebUI，支持思考展示、工具选择与多轮 Tool Call。
+- 包含实验性拓展：离散扩散语言模型（[dLM](https://github.com/jingyaogong/minimind/discussions/618)）与线性注意力模型（[Linear Attention](https://github.com/jingyaogong/minimind/discussions/704)），均可基于主线 AR 模型进行续训。
+
+#### 🎉 已发布模型列表
+
+| 模型 | 参数量 | Release |
+|------|--------|---------|
+| minimind-3 | 64M | 2026.04.01 |
+| minimind-3-moe | 198M-A64M | 2026.04.01 |
+| minimind2-small | 26M | 2025.04.26 |
+| minimind2-moe | 145M | 2025.04.26 |
+| minimind2 | 104M | 2025.04.26 |
+| minimind-v1-small | 26M | 2024.08.28 |
+| minimind-v1-moe | 4×26M | 2024.09.17 |
+| minimind-v1 | 108M | 2024.09.01 |
+
+
+---
+
+#### 📝 更新日志
+
+<details> 
+<summary> <b>🔥 2026-04-01</b> </summary>
+
+ - 发布 `minimind-3` / `minimind-3-moe`：结构、Tokenizer、训练链路、推理接口与默认配置全面更新
+- 结构主线对齐 `Qwen3 / Qwen3-MoE` 生态：Dense 约 `64M`，MoE 约 `198M-A64M`，并移除了 shared expert 设计
+- 默认训练数据切换为 `pretrain_t2t(_mini).jsonl`、`sft_t2t(_mini).jsonl`、`rlaif.jsonl`、`agent_rl.jsonl` 与 `agent_rl_math.jsonl`
+- 移除独立 `train_reason.py`；思考能力统一由 `chat_template + <think>` 与 `open_thinking` 自适应开关控制
+- `toolcall` 能力已混入 `sft_t2t / sft_t2t_mini` 主线数据，
+
+==========================================================================
+### huangxiaoye6/LLM-tuning
+  desc : 大模型（LLMs）微调训练 快速入门指南
+  stars: 42  lang=Jupyter Notebook  branch=main  pushed=2026-02-26T10:25:16Z
+# 大模型（LLMs）微调训练 快速入门指南
+
+![ ](https://img.shields.io/badge/python-3.10.0-brightgreen.svg) ![ ](https://img.shields.io/badge/huggingface-0.31.2-brightgreen.svg) ![ ](https://img.shields.io/badge/transfermer-4.51.3-brightgreen.svg)![ ](https://img.shields.io/badge/peft-0.18.1-brightgreen.svg)
+
+
+
+## 项目概述
+
+本项目旨在介绍大模型微调相关算法，并以开源模型 Qwen3-0.6B 为例展开，实现了 Lora、P-tuning 等微调算法，同时涵盖模型增量预训练、GPTQ/AWQ 等量化操作，并提供了对应的完整代码实现。
+
+## 拉取代码
+
+大家可以克隆仓库到本地或者服务器上运行
+
+```
+git clone https://github.com/huangxiaoye6/LLM-tuning.git
+```
+
+
+
+## 搭建开发环境
+
+本项目对于硬件有一定要求，GPU显存不少于6G，否则可能没办法进行训练。
+
+建议使用云服务器进行模型训练和微调。
+
+- Python环境管理  [uv](https://docs.astral.sh/uv/)
+
+- Python交互式开发环境  [jupyter notebook](https://jupyter.org/)
+
+- LLM开源模型  [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B)
+
+
+
+**以下是详细的安装指导（以 Window11操作系统为例）**：
+
+### 安装 CUDA Toolkit 和 GPU 驱动
+
+根据你的实际情况，找到对应的 [CUDA 12.04](https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=22.04&target_type=runfile_local)：
+
+下载并安装 CUDA 12.4 Toolkit（包含GPU驱动）：
+
+<img src="./docs/nvidia.png" alt="nvidia" style="zoom:30%;" align="left"/>
+
+
+
+安装完成后，使用 `nvidia-smi` 指令查看版本和显存大小：
+
+<img src="./docs/gpu-check.png" style="zoom:43%;"  align="left"/>
+
+### 安装 uv 环境管理工具
+
+```python
+pip install uv
+```
+
+### 安装指定Python版本
+
+```
+uv python install 3.10
+```
+
+### 安装项目依赖
+
+```
+uv sync
+```
+
+## 微调算法对比
+
+### 1. 全量微调（Fine-tuning）
+
+- **原理**：对预训练模型**所有参数**进行更新。
+- **优点**：能够充分利用数据，可能得到更好的模型性能。
+- **缺点**：计算资源消耗大，训练时间长，需要大量的显存，容易灾难性遗忘。
+- **适用场景**：当有足够的计算资源和时间，且数据量较大时适用。
+
+### 2. LoRa 微调
+
+- **原理**：在不改变预训练模型原有参数的基础上，通过在模型的某些层添加可训练的低秩自适应（LoRA）矩阵，只对这些矩阵进行训练。
+- **优点**：减少了可训练参数的数量，降低了计算资源的需求，训练速度相对较快。
+- **缺点**：性能提升可能不如全量微调。
+- **适用场景**：计算资源有限，希望在较短时间内完成微调时适用。
+
+### 3. QLoRa 微调
+
+- **原理**：结合了量化技术和 LoRA 技术，进一步减少了内存占用。
+- **优点**：在保证一定性能的前提下，大幅降低了内存需求，使得在资源受限的情况下也能进行微调。
+- **缺点**：可能会因为量化带来一定的精度损失。
+- **适用场景**：计算资源极度受限，如在消费级 GPU 上进行微调时适用。
+
+### 4、软提示微调（Prompt-Tuning）
+
+- **原理**：冻结模型参数，仅在输入 embedding 前拼接一段可训练的 **软提示向量**。
+- **优点**：训练参数量极小，显存消耗极低。
+- **缺点**：表达能力有限，小模型效果差，对复杂生成任务适配能力弱。
+- **适用场景**：超大模型（10B+），分类、简单生成任务。
+
+### 5、Prefix微调
+
+- **原理**：冻结模型参数，在每层 attention的key或value里添加可训练的 prefix向量
+
+- **优点**：效果比 Prompt-Tuning 强，参数量小。
+
+- **缺点**：训练复杂，对小模型仍有限制。
+
+- **适用场景**：生成类任务，中等规模模型。
+
+### 6、P-Tuning
+
+- **原理**：冻结模型参数，在每个transformer层的输入位置里加入可学习的Prompt向量。
+- **优点**：小模型效果较好，表现接近全量微调。
+- **缺点**：对大规模结构变动能力有限。
+- **适用场景**：中小模型任务适配，NLP 下游任务。
+
+### 7、IA³-Tuning
+
+- **原理**：冻结模型参数，对 attention 和 FFN 输出做逐元素缩放。
+- **优点**：训练参数更少，推理几乎无额外开销，训练稳定。
+- **缺点**：表达能力比 LoRA 弱，对复杂任务适配能力有限。
+- **适用场景**：轻量部署，资源极其有限。
+
+## 量化方法
+
+### 1、GPTQ量化
+
+- **优点**：对4bit 仍保持较高精度，推理速度快，显存降低 75%。
+- **缺点**：量化过程慢，不适合训练，主要优化权重，不优化 activation。
+- **适用场景**：纯推理部署，单卡部署 7B/13B等。
+
+### 2、AWQ量化
+
+- **优点**：量化快，更适合大模型，比 GPTQ 更稳定。
+- **缺点**：精度略低于 GPTQ。
+- **适用场景**：大规模部署。
+
+
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=huangxiaoye6/LLM-tuning&type=date&legend=top-left)](https://www.star-history.com/#huangxiaoye6/LLM-tuning&type=date&legend=top-left)
+
+
+==========================================================================
+### Tongyun1/from-minimind-to-more
+  desc : 🎓从0开始训练一个大模型Minimind项目的超详细解析，包括但不限于用到的架构，算法，以及大模型面试经验
+  stars: 1792  lang=Python  branch=main  pushed=2026-05-25T14:40:35Z
+<img width="1314" height="432" alt="Image" src="https://github.com/user-attachments/assets/c2b6252a-a09d-4533-933a-a6ff4d420dc9" />
+
+# From Minimind to More 🚀
+
+> 感谢Minimind原作者的无私开源！
+>
+> 深入探索大语言模型：从底层基石到高层架构，从理论原理到工程实践。
+
+## 📖 项目简介 | Introduction
+
+本项目是我个人基于https://github.com/jingyaogong/minimind 的学习笔记与思考。我从Minimind出发，系统性梳理了其中涉及到的知识点，并附带了相关的其他要点。**我希望本项目能够不仅让读者看懂Minimind，更能对大模型的技术体系建立一个全面的insight**。
+
+这里不仅包含了我对Minimind用到的**技术的详细解析**，**源码的超详细注释**，也整理了**面向求职的面试题库**。无论你是想深入了解 Minimind 架构与训练的细节，还是准备相关领域的面试，希望这里的内容能**最大化减少你到处找资料的次数**，并给你带来启发。
+
+🚧 **当前状态**：项目持续更新中，目前主要覆盖架构与基础部分，[优化篇]正在撰写中，[面试篇]已经在小红书更新...
+
+网页对md的解析可能有错误，如遇公式或者图片的问题请下载到本地查看。
+
+---
+
+## 📢 最近更新 | News
+<details>
+<summary><b>点击展开查看历史更新日志</b></summary>
+
+- **2026-04-17**
+
+    - 完成了《算法篇：Minimind的SPO》。前段时间太忙断更了一段时间，现已恢复更新。
+
+- **2026-03-22**
+    - 面试相关内容已经在小红书更新
+
+    - 最近忙于论文和面试。我会先更新面试相关信息，回头把SPO的算法解析补了。
+- **2026-03-05**
+    - 集中修复了一些描述上的错误，并把《算法篇：Minimind的GRPO》做了改进，优化了其他算法的讲解。
+- **2026-02-24**
+    - 完成了《算法篇：Minimind的GRPO》。包含源码解析以及其他算法变体讲解。
+- **2026-02-22**
+    - 完成了《算法篇：Minimind的PPO》。篇幅较长，请耐心阅读，但你一定能看懂。
+- **2026-02-15**
+    - 最近在过年，可能更新得慢一点，后面会爆肝的😇
+- **2026-02-09**:
+    - 完成了《算法篇：Minimind的DPO》
+- **2026-02-05**：
+    - 对《基石：关于 Tokenizer 你所需要知道的一切》中的小错误进行了修复
+
+    - 正在更新DPO算法
+- **2026-02-04**：
+    - 完成了《算法篇：大模型强化学习算法概览》
+- **2026-02-03**：
+    - 完成了《算法篇：Minimind的SFT》章节。
+- **2026-02-02**: 
+    - 完成了《架构篇：超级拼装》章节。
+    - 完成了《算法篇：Minimind的Pretrain》章节。
+- **2026-01-30**:
+
+    - 初次更新，完成《基石》以及《架构篇》大部分内容。
+
+
+</details>
+
+---
+
+## 📚 内容导航 | Table of Contents
+
+### 🏗️ 第一部分：基石与原理 (Foundations)
+万丈高楼平地起，这里是理解 LLM 的起点。
+- [x] **Tokenization**：[基石：关于 Tokenizer 你所需要知道的一切](./基石：关于Tokenizer你所需要知道的一切.md)
+- [x] **整体设计**：[基石：Minimind 的设计目录](./基石：Minimind的设计目录.md)
+- [x] **Embeddings**：[基石：语义的几何与时空的折叠：Embedding与位置编码](./基石：语义的几何与时空的折叠：Embedding与位置编码.md)
+
+### 🏛️ 第二部分：核心架构 (Architecture)
+深入 Transformer 及其变体的内部构造，解析最前沿的模型设计。
+- [x] **归一化技术**：[架构篇：大语言模型归一化技术：原理、演进与前沿架构](./架构篇：大语言模型归一化技术：原理、演进与前沿架构.md)
+- [x] **性能优化**：[架构篇：最常见的大模型优化方法：从KV Cache到Flash Attention](./架构篇：最常见的大模型优化方法：从KV%20Cache到Flash%20Attention.md)
+- [x] **混合专家模型**：[架构篇：混合专家模型（MoE）：架构演进、核心算法与工程实践](./架构篇：混合专家模型（MoE）：架构演进、核心算法与工程实践.md)
+- [x] **搭建我们自己的大模型**：[架构篇：超级拼装](./架构篇：超级拼装.md)
+- [x] **(可选阅读)**：[大规模语言模型推理与训练优化机制](./可选：大规模语言模型推理与训练优化机制.md)
+
+### 🧠 第三部分：算法与演进 (Algorithms) - Updating
+*本章节正在撰写中，将涵盖预训练算法、微调策略（SFT/RLHF）等核心算法细节。*
+- [x] **预训练算法**：[算法篇：Minimind的Pretrain](./算法篇：Minimind的Pretrain.md)
+- [x] **SFT算法**：[算法篇：Minimind的SFT](./算法篇：Minimind的SFT.md)
+- [x] **大模型RL算法概览**：[算法篇：大模型强化学习算法概览](./算法篇：大模型强化学习算法概览.md)
+- [x] **DPO算法**：[算法篇：Minimind的DPO](./算法篇：Minimind的DPO.md)
+- [x] **PPO算法**：[算法篇：Minimind的PPO](./算法篇：Minimind的PPO.md)
+- [x] **GRPO算法及其变体（Dr.GRPO,DAPO,GSPO,SAPO,GTPO）**：[算法篇：Minimind的GRPO及其变体](./算法篇：Minimind的GRPO及其变体.md)
+- [x] **SPO算法**：[算法篇：Minimind的SPO](./算法篇：Minimind的SPO.md)
+
+### 🚀 第四部分：模型优化与压缩 - Coming soon
+- [ ] **LoRA**：[优化篇：常用LoRA类算法全解](./优化篇：常用LoRA类算法全解.md)
+- [ ] **知识蒸馏**：[优化篇：知识蒸馏](./优化篇：知识蒸馏.md)
+
+
+### 🎓 第五部分：求职与实战 (Career & Practice)
+
+*本章节已完成，讲涵盖我个人对大模型求职的笔记与经验，请移步小红书https://www.xiaohongshu.com/user/profile/6535eb17000000000301f11e查阅。*
+
+- [x] **面试八股**：[大模型八股 100 问](./大模型八股100问.md)
+- [x] **面试题库**：已经在小红书更新
+
+---
+
+## 📅 更新计划 | Roadmap
+
+- **Phase 1 (Completed)**: 完成基础组件（Tokenizer, Embeddings）与核心架构（MoE, Normalization, KV Cache）的解析。
+- **Phase 2 (Completed)**: 完善 [算法篇]，深入探讨训练机制等算法细节。
+- **Phase 3 (Completed)**: 面试相关内容已经在小红书更新。
+- **Phase 4 (In progress)**: 完善 [优化篇]，讲解常用大模型训练优化方案
+
+---
+
+## 🤝 交流与致谢
+
+如果你发现文章中有任何错误，或者有更好的见解，欢迎提交 Issue 或 PR。
+
+再次感谢Minimind原作者的无私开源。同时，感谢https://github.com/hans0809/MiniMind-in-Depth ，我从该项目中学到了很多。
+
+我的更多内容，欢迎关注小红书“天上的彤云”
+

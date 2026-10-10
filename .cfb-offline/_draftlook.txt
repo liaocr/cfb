@@ -1,0 +1,157 @@
+==============================================================================
+adamchainz_apig-wsgi_pr93#b7  raw=3622 draft=1235
+--- CTX[:700] ---
+[task]
+<uploaded_files>
+/workspace/adamchainz__apig-wsgi__1.0
+</uploaded_files>
+I've uploaded a python code repository in the directory adamchainz__apig-wsgi__1.0. Consider the following issue description:
+
+<issue_description>
+# Add support for `application/vnd.api+json` and custom non-binary content types
+
+When using `make_lambda_handler` with `binary_support=True`, the library automatically detects text-based responses to avoid base64 encoding them. Currently, this detection seems limited to content types starting with `text/` or `application/json`.
+
+This limitation causes two issues:
+
+1.  **Missing Standard Type:** Responses with `Content-Type: application/vnd.api+json` (standard for JSON
+--- RAW[:900] ---
+All tests pass. Now let me understand the issue better and implement the changes.
+
+The current code:
+1. In `make_lambda_handler`, only `binary_support` parameter is accepted.
+2. In `_should_send_binary`, the non-binary content types are hardcoded as `("text/", "application/json")`.
+
+Changes needed:
+1. Add `application/vnd.api+json` to the default list of non-binary content types.
+2. Add a new optional argument `non_binary_content_type_prefixes` to `make_lambda_handler` that allows users to pass a list of strings to control which content types should be treated as plain text.
+
+Let me think about how to implement this:
+
+1. The default non-binary content type prefixes should include `"text/"`, `"application/json"`, and `"application/vnd.api+json"`.
+2. The `non_binary_content_type_prefixes` parameter should be a list/tuple of strings to add to the defaults (or replace them?).
+
+Looking at the
+--- DRAFT (full) ---
+# 任务
+在 `adamchainz__apig-wsgi__1.0` 仓库中，`make_lambda_handler` 在 `binary_support=True` 时的文本识别仅覆盖以 `text/`、`application/json` 开头的内容类型。需：
+1. 把 `application/vnd.api+json` 加入默认非二进制类型列表；
+2. 给 `make_lambda_handler` 增加可选参数 `non_binary_content_type_prefixes`，让用户传入字符串列表，配置哪些内容类型按纯文本处理（否则启用 binary support 时一律当二进制）。
+
+# 现状代码
+- `make_lambda_handler` 目前只接受 `binary_support` 参数；
+- `_should_send_binary` 中默认前缀硬编码为 `("text/", "application/json")`；
+- 新增参数需从 `make_lambda_handler` 透传到 `Response`，再由 `_should_send_binary` 使用。
+
+# 已确认事实
+- `pip install -e .` 成功，安装版本为 `apig-wsgi-2.3.0`；随后 `python -m pytest tests/ -v` 全部通过（安装前运行因未装包退出码 2）。这是改动前的绿色基线。
+- 仓库 HEAD 为 `af9d96d`，提交信息为「Test with Python 3.8 (#92)」。
+- 用户声明测试已自行处理，逐字为「I've already taken care of all changes to any of the test files」；但检查 `tests/` 并未发现新功能对应测试，因此不改动测试文件，只改源码。
+
+# 关键待决（尚未拍板）
+`non_binary_content_type_prefixes` 的语义：**替换**默认前缀，还是**与默认合并/追加**？
+- issue 原文措辞为「control exactly which content types」，偏向替换；
+- 但替换会使调用者必须重新列出 `text/` 与 `application/json`，容易出错；
+- 思考倾向实现为合并默认（参数为 None 时使用默认值），但最终未定。实现前需就此选定一种语义。
+
+# 落点
+需要修改的是定义 `make_lambda_handler`、`Response`、`_should_send_binary` 的源码模块（原文仅以这些标识符指代，未给出具体文件路径）：在其中加入 `application/vnd.api+json` 默认前缀，并新增 `non_binary_content_type_prefixes` 参数及其透传逻辑。
+
+==============================================================================
+adamchainz_django-cors-headers_pr396#b8  raw=3760 draft=539
+--- CTX[:700] ---
+[task]
+<uploaded_files>
+/workspace/adamchainz__django-cors-headers__1.0
+</uploaded_files>
+I've uploaded a python code repository in the directory adamchainz__django-cors-headers__1.0. Consider the following issue description:
+
+<issue_description>
+# Remove `CORS_MODEL` setting and associated functionality
+
+## Description
+I propose removing the `CORS_MODEL` setting and the associated `AbstractCorsModel` class from the library.
+
+It appears that this feature is rarely used, as there have been no bug reports concerning it since the move to an abstract model in version 2.0.0 (2017-01-07). Removing it would reduce maintenance overhead and simplify the codebase.
+
+If users currently rely on this func
+--- RAW[:900] ---
+There are no uncommitted changes. The user said they already took care of test changes, but the tests still reference `CORS_MODEL`. Let me re-read the issue description more carefully.
+
+"I've already taken care of all changes to any of the test files described in the <issue_description>."
+
+Hmm, the issue description doesn't describe any specific test file changes. It just describes the changes to be made. So maybe the user is saying we don't need to modify tests. But the tests reference `CORS_MODEL` and `AbstractCorsModel` - if we remove these, the tests will fail.
+
+Wait, maybe the user already modified the test files? Let me check the git diff between the base commit and the current state... Actually, there's no diff. So the tests haven't been modified.
+
+Let me re-read: "I've already taken care of all changes to any of the test files described in the <issue_description>." - The issue de
+--- DRAFT (full) ---
+无未提交改动，git diff 为空，测试未被修改。用户称已处理测试文件改动，且要求只对非测试文件做最小修改，因此不改测试。当前测试仍引用 CORS_MODEL 与 AbstractCorsModel，移除后相关测试会失败，由用户处理。
+
+落点：源码中的 conf.py、models.py、middleware.py、checks.py。计划：
+1. 从 conf.py 移除 CORS_MODEL。
+2. 从 models.py 移除 AbstractCorsModel。
+3. 从 middleware.py 移除 origin_found_in_model 及其调用。
+4. 更新 checks.py：加系统检查，若设置中检测到 CORS_MODEL 则报错，说明该设置已移除。
+
+现有 checks.py 的 E010 检查 CORS_MODEL 不为 None 且非字符串则报错。新行为改为：只要 CORS_MODEL 被设置（非 None）就报错。测试 test_cors_model_failure 用 @override_settings(CORS_MODEL=object) 仍会触发错误，但错误消息与错误码可能不同。还需查看更多测试，并先跑现有测试看基线。
+
+==============================================================================
+adamchainz_ec2-metadata_pr40#b4  raw=2449 draft=856
+--- CTX[:700] ---
+[task]
+<uploaded_files>
+/workspace/adamchainz__ec2-metadata__1.0
+</uploaded_files>
+I've uploaded a python code repository in the directory adamchainz__ec2-metadata__1.0. Consider the following issue description:
+
+<issue_description>
+# Raise exceptions for unexpected HTTP status codes on metadata attributes
+
+I have noticed that the library is currently too lenient when handling HTTP responses from the EC2 metadata service for certain attributes.
+
+Currently, for attributes that are considered optional (such as `public_hostname`, `public_ipv4`, `iam_info`, `user_data`, and `NetworkInterface` properties), the library seems to suppress **all** HTTP errors. While it is correct to return `None` (or
+--- RAW[:900] ---
+All 56 tests pass currently. But wait - the issue says the library is too lenient. Let me look at the current code more carefully.
+
+Looking at the current code:
+
+1. `iam_info` (lines 64-70): This already handles errors correctly - it checks for 404, then 200, then calls `resp.raise_for_status()` for anything else. Good.
+
+2. `public_hostname` (lines 117-122):
+```python
+resp = self._get_url(METADATA_URL + 'public-hostname', raise_for_status=False)
+if resp.status_code == 404:
+    return None
+else:
+    return resp.text
+```
+If the status code is 500, it returns `resp.text` instead of raising an error. This is the bug.
+
+3. `public_ipv4` (lines 125-130): Same issue.
+
+4. `user_data` (lines 145-150): Same issue.
+
+5. `NetworkInterface.public_hostname` (lines 212-217): Same issue.
+
+6. `NetworkInterface.public_ipv4s` (lines 220-225): Same issue - returns `[]` for 404, but for 500 returns `resp.text.
+--- DRAFT (full) ---
+现状与结论
+- 当前 56 个测试全部通过；问题不在已有测试，而在可选属性的 HTTP 错误处理过宽。
+- `iam_info`（64–70 行）已正确：404 返回 `None`，200 返回 `resp.json()`，其他状态调用 `resp.raise_for_status()`。
+- 下列位置只对 404 特殊处理，其他状态码（如 500）仍会返回 `resp.text` 或类似结果，必须改为对非 404/200 抛错：
+  - `public_hostname`（117–122）
+  - `public_ipv4`（125–130）
+  - `user_data`（145–150）
+  - `NetworkInterface.public_hostname`（212–217）
+  - `NetworkInterface.public_ipv4s`（220–225，404 返回 `[]`）
+  - `NetworkInterface.subnet_ipv4_cidr_block`（240–245）
+  - `NetworkInterface.vpc_ipv4_cidr_block`（258–263）
+  - `NetworkInterface.vpc_ipv4_cidr_blocks`（266–271，404 返回 `[]`）
+
+决定与落点
+- 统一采用 `iam_info` 模式：404 返回 `None` 或 `[]`，200 返回处理结果，其余调用 `resp.raise_for_status()`。
+- 在 `/workspace/adamchainz__ec2-metadata__1.0/ec2_metadata.py` 中，把这些 `_get_url(..., raise_for_status=False)` 之后的判断改成上述模式。
+- 只特殊处理 404 和 200，其他 unexpected 状态（如 500）应抛异常。
+- 下一步先写复现脚本，再改代码。
+

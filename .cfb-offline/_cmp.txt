@@ -1,0 +1,41 @@
+可比单元 = 100（v2 有 100，v1 有 464）
+
+=== 字符比 draft/raw ===
+v1 压缩稿                 n=100  min=0.140 p25=0.290 中位=0.364 p75=0.442 p90=0.551 max=0.811 均值=0.376
+v2 交接稿                 n=80   min=0.174 p25=0.351 中位=0.439 p75=0.571 p90=0.687 max=1.070 均值=0.460
+
+=== token 比（真正的压缩比）===
+v1 压缩稿                 n=100  min=0.303 p25=0.616 中位=0.775 p75=0.891 p90=1.033 max=1.488 均值=0.761
+v2 交接稿                 n=80   min=0.224 p25=0.510 中位=0.646 p75=0.828 p90=0.983 max=1.312 均值=0.661
+
+=== 稿子长度（字符）===
+v1 压缩稿                 n=100  min=506.000 p25=794.000 中位=990.000 p75=1135.000 p90=1296.000 max=2227.000 均值=989.350
+v2 交接稿                 n=80   min=658.000 p25=988.000 中位=1149.000 p75=1326.000 p90=1543.000 max=2951.000 均值=1183.763
+
+=== 每单元逐条（前 25）===
+id                                            v1字比    v2字比   v1tok   v2tok
+adamchainz_ec2-metadata_pr40#b4              0.411   0.571   0.830   0.779
+adamchainz_django-cors-headers_pr396#b8      0.187   0.337   0.423   0.533
+adamchainz_apig-wsgi_pr93#b7                 0.239   0.393   0.587   0.598
+adamchainz_pytest-reverse_pr10#b15           0.567   0.489   0.917   0.656
+adamchainz_flake8-comprehensions_pr195#b3    0.551   0.417   1.076   0.510
+adamchainz_flake8-logging_pr4#b7             0.524   0.000   0.950   0.000
+adamtheturtle_doccmd_pr191#b7                0.447   0.624   0.877   0.919
+adamchainz_treepoem_pr437#b19                0.294   0.310   0.786   0.470
+adamtheturtle_pip-check-reqs_pr38#b9         0.351   0.511   0.696   0.804
+aiven_aiven-client_pr287#b4                  0.609   0.408   1.025   0.585
+andialbrecht_sqlparse_pr317#b20              0.364   0.770   0.694   1.031
+adamtheturtle_sybil-extras_pr297#b11         0.304   0.000   0.575   0.000
+andrewgodwin_urlman_pr6#b7                   0.356   0.470   0.713   0.782
+aio-libs_aiosmtpd_pr258#b36                  0.328   0.000   0.704   0.000
+ansys_pyfluent_pr139#b6                      0.426   0.687   0.880   0.924
+aiokitchen_aiomisc_pr199#b13                 0.406   0.000   0.775   0.000
+ansys_pyedb-core_pr347#b30                   0.415   0.624   0.773   0.831
+arcinstitute_cell-eval_pr102#b6              0.427   0.666   0.868   1.044
+argyle-engineering_pyap_pr21#b34             0.241   0.407   0.546   0.516
+anntzer_defopt_pr30#b6                       0.192   0.000   0.361   0.000
+appium_python-client_pr307#b12               0.811   1.070   1.411   1.312
+ariebovenberg_slotscheck_pr34#b10            0.224   0.270   0.485   0.423
+asottile_blacken-docs_pr128#b4               0.222   0.177   0.603   0.320
+app-sre_qontract-reconcile_pr1020#b18        0.356   0.000   0.690   0.000
+asottile_add-trailing-comma_pr178#b7         0.304   0.379   0.639   0.513

@@ -1,0 +1,8 @@
+=== flash-linear-attention  version=0.5.2
+  summary: Fast linear attention models and layers
+  requires_dist: ['fla-core==0.5.2', 'transformers>=4.45.0', 'fla-core[cuda]==0.5.2; extra == "cuda"', 'fla-core[rocm]==0.5.2; extra == "rocm"', 'fla-core[xpu]==0.5.2; extra == "xpu"', 'fla-core[npu]==0.5.2; extra == "npu"', 'fla-core[cpu]==0.5.2; extra == "cpu"', 'tilelang>=0.1.9; extra == "tilelang"', 'causal-conv1d>=1.4.0; extra == "conv1d"', 'matplotlib; extra == "benchmark"', 'pandas; extra == "benchmark"', 'datasets>=3.3.0; extra == "benchmark"', 'pytest; extra == "test"', 'pytest-xdist; extra == "test"']
+  wheels: ['flash_linear_attention-0.5.2-py3-none-any.whl']
+  bytes=399590 entries=154
+  fla/*: layers, models
+  rwkv7 (4): fla/layers/rwkv7.py, fla/models/rwkv7/__init__.py, fla/models/rwkv7/configuration_rwkv7.py, fla/models/rwkv7/modeling_rwkv7.py
+=== fla ERR <HTTPError 404: 'Not Found'>

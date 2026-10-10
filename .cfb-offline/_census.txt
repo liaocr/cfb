@@ -1,0 +1,69 @@
+======================================================================
+1) census batch files
+======================================================================
+--- birth-units-census-batch1.jsonl.gz bytes=367668 lines=144
+    keys: ['unitId', 'source', 'birthStep', 'raw', 'rawChars', 'ctx', 'ctxChars', 'visibleAtBirth', 'after', 'offlineSignals', 'notes']
+    textfields(sampled): {'raw': 5, 'ctx': 5}
+    sampled_total_chars=36335 max=4784
+--- birth-units-census-batch2.jsonl.gz bytes=3121021 lines=1197
+    keys: ['unitId', 'source', 'birthStep', 'raw', 'rawChars', 'ctx', 'ctxChars', 'visibleAtBirth', 'after', 'offlineSignals', 'notes']
+    textfields(sampled): {'raw': 10, 'ctx': 10}
+    sampled_total_chars=68478 max=4784
+--- birth-units-census-batch3.jsonl.gz bytes=2854705 lines=1085
+    keys: ['unitId', 'source', 'birthStep', 'raw', 'rawChars', 'ctx', 'ctxChars', 'visibleAtBirth', 'after', 'offlineSignals', 'notes']
+    textfields(sampled): {'raw': 10, 'ctx': 10}
+    sampled_total_chars=79236 max=9226
+--- birth-units-census-batch4.jsonl.gz bytes=7089447 lines=3078
+    keys: ['unitId', 'source', 'birthStep', 'raw', 'rawChars', 'ctx', 'ctxChars', 'visibleAtBirth', 'after', 'offlineSignals', 'notes']
+    textfields(sampled): {'raw': 20, 'ctx': 20}
+    sampled_total_chars=137445 max=5532
+--- birth-units-census-batch5.jsonl.gz bytes=10951379 lines=5054
+    keys: ['unitId', 'source', 'birthStep', 'raw', 'rawChars', 'ctx', 'ctxChars', 'visibleAtBirth', 'after', 'offlineSignals', 'notes']
+    textfields(sampled): {'raw': 30, 'ctx': 30}
+    sampled_total_chars=220285 max=10247
+
+======================================================================
+2) .cfb-runtime/traj
+======================================================================
+files=669
+bytes=11678746
+ext: {'.sh': 1, '.jsonl': 108, '.json': 194, '.md': 365, '.log': 1}
+  big: .cfb-runtime\traj\t100-resume\results.jsonl 1276318
+  big: .cfb-runtime\traj\t101\results.jsonl 1226032
+  big: .cfb-runtime\traj\t100\results.jsonl 591234
+  big: .cfb-runtime\traj\t15\results.jsonl 344760
+  big: .cfb-runtime\traj\t101\hand-samples.jsonl 328195
+sample: .cfb-runtime\traj\t10\plan.json
+  keys: ['schema', 'id', 'at', 'variants', 'scenarios', 'samples', 'maxRounds', 'fork', 'maxTokens', 'storeText', 'purpose', 'yield', 'cost', 'holdoutNote', 'digest', 'command', 'design']
+  list: variants 2
+  list: scenarios 2
+  longstr: command 270
+
+======================================================================
+3) transfer/recordings.json
+======================================================================
+type: list
+len: 6
+item keys: ['id', 'model', 'finish', 'usage', 'totalMs', 'reasoningChars', 'contentChars', 'events']
+
+======================================================================
+4) transfer/gold-rejected
+======================================================================
+  README.md                                    1185
+  audit-amendments.json                       10989
+  audit.json                                  15202
+  eacces-config                                  -1
+  flaky-timeout                                  -1
+  flaky-timeout-s0-r3.json                    28744
+  perf-regression                                -1
+  sse-truncated                                  -1
+  wrong-model                                    -1
+
+======================================================================
+5) transfer/gold
+======================================================================
+  README.md                                    3040
+  eacces-config                                  -1
+  perf-regression                                -1
+  sse-truncated                                  -1
+  wrong-model                                    -1

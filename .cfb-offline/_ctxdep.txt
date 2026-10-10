@@ -1,0 +1,11 @@
+稿子总数 100
+稿中出现了「只在题面里、不在思考过程里」的标识符: 73/100 = 73%
+  adamchainz_ec2-metadata_pr40 -> ['NetworkInterface', 'vpc_ipv4_cidr_blocks']
+  adamchainz_django-cors-heade -> ['corsheaders.models', 'import']
+  adamchainz_apig-wsgi_pr93#b7 -> ['apig-wsgi-2.3.0', 'install', 'tests/']
+  adamchainz_flake8-logging_pr -> ['LOGGING_EXTRA', 'branch', 'commit', 'f69d0f']
+  adamchainz_treepoem_pr437#b1 -> ['FORMAT', 'OUTPUT', 'default', 'generate_barcode']
+  adamtheturtle_doccmd_pr191#b -> ['FileRegressionFixture', 'stderr', 'stdout', 'test_help']
+
+=== 稿子里的数字/路径有多少来自 ctx ===
+稿中数字只在题面出现: 34/100 = 34%

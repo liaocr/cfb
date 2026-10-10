@@ -1,0 +1,23 @@
+探针单元数 = 10
+
+[ 1] adamchainz_apig-wsgi_pr93#b7                 9.5s  raw=3622 draft=0  tok=3653 cost=0.000020
+     稿：
+[ 2] adamchainz_django-cors-headers_pr396#b8      6.1s  raw=3760 draft=849  tok=3044 cost=0.000013
+     稿：**核查与结论** / - 仓库工作区干净：`git status` 显示 nothing to commit，`git diff HEAD` 无输出，测试文件并未被改动。 / - 题面说「I've already taken care of all changes to any of the test files described in the <issue_description>.」，但该 issue 并未具体描述测试文件改动；同时题面要求「make the minimal changes to non-test files」。 / - 因此决定：**只改非测试源码**，不修改测试逻辑
+[ 3] adamchainz_ec2-metadata_pr40#b4              5.3s  raw=2449 draft=850  tok=2878 cost=0.000013
+     稿：当前 56 个测试全部通过，但按 issue 说法库过于宽松。逐处审 /workspace/adamchainz__ec2-metadata__1.0/ec2_metadata.py： /  / - iam_info（64-70 行）已正确：404 返回 None，200 返回 resp.json()，其余调用 `resp.raise_for_status()`。 / - public_hostname（117-122）、public_ipv4（125-130）、user_data（145-150）：模式均为 `_get_url(..., raise_for_status=False)` 后 
+[ 4] adamchainz_flake8-comprehensions_pr195#b3    7.5s  raw=2033 draft=1314  tok=2927 cost=0.000014
+     稿：## 压缩稿 /  / ### 问题 / C404 对 `dict([...])` 误报：规则只看「`dict()` 的参数是列表推导」就报错，但只有列表推导显式产生二元元组时，改成字典推导才合理。 /  / ### 落点文件 / `/workspace/adamchainz__flake8-comprehensions__1.0/src/flake8_comprehensions.py` /  / ### 现状（该文件） / - C404 所在分支（约 71-84 行）的条件只包含：`num_positional_args == 1`、`isinstance(node.args[0], as
+[ 5] adamchainz_flake8-logging_pr4#b7             9.8s  raw=2031 draft=1230  tok=3421 cost=0.000019
+     稿：**目标**：为 flake8-logging 新增一条规则，静态检测 logging 调用中 `extra` 字典的键与 `LogRecord` 属性冲突（否则运行时报 `KeyError: "Attempt to overwrite 'msg' in LogRecord"`）。 /  / **仓库现状**（已核实） / - 目录 /workspace/adamchainz__flake8-logging__1.0，分支 `scaleswe`，工作树 clean，HEAD 为 `4f69d0f`，提交信息为「Trigger L002 inside function scopes (#3)」；
+[ 6] adamchainz_treepoem_pr437#b19                9.3s  raw=2297 draft=0  tok=3469 cost=0.000020
+     稿：
+[ 7] adamtheturtle_sybil-extras_pr297#b11         8.8s  raw=3983 draft=0  tok=4019 cost=0.000021
+     稿：
+[ 8] aio-libs_aiosmtpd_pr258#b36                ERROR URLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1000)'))
+[ 9] aiokitchen_aiomisc_pr199#b13               ERROR URLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1000)'))
+[10] aiven_aiven-client_pr287#b4                ERROR URLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1000)'))
+
+=== 合计 ===
+  成功 7 / 10   用时 71.4s   总 token 23411   总花费 $0.000119
+  单条均摊 $0.000017  => 3000 条约 $0.05

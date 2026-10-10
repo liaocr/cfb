@@ -1,0 +1,277 @@
+======================================================================
+A) FULL census scan
+======================================================================
+units=10558
+rawChars total=34996864 (33.4 MB)
+median=2501 p10=1633 p25=1877 p75=3736 p90=5728 p99=14340 max=35378
+buckets: {'0-500': 0, '500-1000': 0, '1000-2000': 3306, '2000-4000': 4936, '4000-8000': 1825, '8000-1000000000': 491}
+source sample: {"dataset": "nvidia/Open-SWE-Traces", "revision": "f8fb5b3d2c787f85f8a00f5fe04fe3f1a11088ef", "config": "v1.1", "split": "openhands", "shardUrl": "https://huggingface.co/api/datasets/nvidia/Open-SWE-Traces/parquet/v1.1/openhands/25.parquet", "fileRowNumber": 0, "repository": "canonical/operator", "repositoryLicense": "Apache-2.0", "instanceId": "canonical_operator_pr1000", "trajectoryId": "ec660c4d-dc59-4b5a-b4c4-79b7bb5cecb1", "teacherModel": "DeepSeek-V4-Flash", "reasoningEffort": "max"}
+source top: {'{"config": "v1.1", "dataset": "nvidia/Open-SWE-Traces", "fileRowNumber": 21, "instanceId":': 35, '{"config": "v1.1", "dataset": "nvidia/Open-SWE-Traces", "fileRowNumber": 10, "instanceId":': 32, '{"config": "v1.1", "dataset": "nvidia/Open-SWE-Traces", "fileRowNumber": 9, "instanceId": ': 31, '{"config": "v1.1", "dataset": "nvidia/Open-SWE-Traces", "fileRowNumber": 7, "instanceId": ': 28, '{"config": "v1.1", "dataset": "nvidia/Open-SWE-Traces", "fileRowNumber": 14, "instanceId":': 28, '{"config": "v1.1", "dataset": "nvidia/Open-SWE-Traces", "fileRowNumber": 16, "instanceId":': 25, '{"config": "v1.1", "dataset": "nvidia/Open-SWE-Traces", "fileRowNumber": 57, "instanceId":': 25, '{"config": "v1.1", "dataset": "nvidia/Open-SWE-Traces", "fileRowNumber": 80, "instanceId":': 25, '{"config": "v1.1", "dataset": "nvidia/Open-SWE-Traces", "fileRowNumber": 124, "instanceId"': 24, '{"config": "v1.1", "dataset": "nvidia/Open-SWE-Traces", "fileRowNumber": 196, "instanceId"': 24, '{"config": "v1.1", "dataset": "nvidia/Open-SWE-Traces", "fileRowNumber": 3, "instanceId": ': 23, '{"config": "v1.1", "dataset": "nvidia/Open-SWE-Traces", "fileRowNumber": 4, "instanceId": ': 23, '{"config": "v1.1", "dataset": "nvidia/Open-SWE-Traces", "fileRowNumber": 27, "instanceId":': 23, '{"config": "v1.1", "dataset": "nvidia/Open-SWE-Traces", "fileRowNumber": 6, "instanceId": ': 22, '{"config": "v1.1", "dataset": "nvidia/Open-SWE-Traces", "fileRowNumber": 41, "instanceId":': 22}
+notes: {"{'e1e2': '未测 — fixedAtRound / vsRaw require runnin": 10558}
+
+======================================================================
+B) hand-samples.jsonl
+======================================================================
+--- .cfb-runtime\traj\t100\hand-samples.jsonl 122253
+  lines=10
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=2291 cjk=0
+  longstr ctx len=1240 cjk=210
+  longstr draft len=394 cjk=93
+  longstr stored len=923 cjk=147
+  dict gate keys=['ok', 'violations']
+  dict production keys=['ok', 'promptVersion', 'accept', 'spliced', 'budget']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=2
+--- .cfb-runtime\traj\t100-resume\hand-samples.jsonl 122253
+  lines=10
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=2291 cjk=0
+  longstr ctx len=1240 cjk=210
+  longstr draft len=394 cjk=93
+  longstr stored len=923 cjk=147
+  dict gate keys=['ok', 'violations']
+  dict production keys=['ok', 'promptVersion', 'accept', 'spliced', 'budget']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=2
+--- .cfb-runtime\traj\t101\hand-samples.jsonl 328195
+  lines=23
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=1451 cjk=0
+  longstr ctx len=1161 cjk=210
+  longstr draft len=531 cjk=93
+  longstr stored len=967 cjk=147
+  dict gate keys=['ok', 'violations']
+  dict production keys=['ok', 'promptVersion', 'accept', 'spliced', 'budget']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  dict revision keys=['prevId', 'prevDraftFile', 'added', 'removed', 'addedChars', 'removedChars']
+  list callsThisRound len=2
+--- .cfb-runtime\traj\t112\hand-samples.jsonl 12391
+  lines=1
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=3367 cjk=67
+  longstr ctx len=2318 cjk=316
+  longstr draft len=750 cjk=177
+  longstr stored len=2357 cjk=277
+  dict gate keys=['ok', 'violations']
+  dict production keys=['ok', 'promptVersion', 'accept', 'spliced', 'budget']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=3
+--- .cfb-runtime\traj\t113\hand-samples.jsonl 12129
+  lines=1
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=6488 cjk=17
+  longstr ctx len=1381 cjk=210
+  longstr draft len=1554 cjk=302
+  dict gate keys=['ok', 'violations']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=1
+--- .cfb-runtime\traj\t126\hand-samples.jsonl 36002
+  lines=3
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=6741 cjk=59
+  longstr ctx len=2511 cjk=233
+  longstr draft len=965 cjk=260
+  dict gate keys=['ok', 'violations']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=1
+--- .cfb-runtime\traj\t15\hand-samples.jsonl 67209
+  lines=5
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=5096 cjk=12
+  longstr ctx len=1203 cjk=230
+  longstr draft len=1295 cjk=293
+  dict gate keys=['ok', 'violations']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=2
+--- .cfb-runtime\traj\t16\hand-samples.jsonl 15826
+  lines=1
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=7447 cjk=12
+  longstr ctx len=810 cjk=192
+  longstr draft len=1128 cjk=557
+  longstr stored len=1562 cjk=594
+  dict gate keys=['ok', 'violations']
+  dict production keys=['ok', 'promptVersion', 'accept', 'spliced', 'budget']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=3
+--- .cfb-runtime\traj\t17\hand-samples.jsonl 7834
+  lines=1
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=1518 cjk=6
+  longstr ctx len=1551 cjk=329
+  longstr draft len=666 cjk=127
+  longstr stored len=1222 cjk=173
+  dict gate keys=['ok', 'violations']
+  dict production keys=['ok', 'promptVersion', 'accept', 'spliced', 'budget']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=1
+--- .cfb-runtime\traj\t91\hand-samples.jsonl 23049
+  lines=2
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=5096 cjk=12
+  longstr ctx len=1203 cjk=230
+  longstr draft len=1431 cjk=603
+  longstr stored len=2306 cjk=694
+  dict gate keys=['ok', 'violations']
+  dict production keys=['ok', 'promptVersion', 'accept', 'spliced', 'budget']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=2
+--- .cfb-runtime\traj\t92\hand-samples.jsonl 18436
+  lines=1
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=4112 cjk=29
+  longstr ctx len=2101 cjk=211
+  longstr draft len=1363 cjk=316
+  longstr stored len=2995 cjk=376
+  dict gate keys=['ok', 'violations']
+  dict production keys=['ok', 'promptVersion', 'accept', 'spliced', 'budget']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  dict revision keys=['prevId', 'prevDraftFile', 'added', 'removed', 'addedChars', 'removedChars']
+  list callsThisRound len=3
+--- .cfb-runtime\traj\t93\hand-samples.jsonl 14805
+  lines=1
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=4112 cjk=29
+  longstr ctx len=2101 cjk=211
+  longstr draft len=1363 cjk=316
+  longstr stored len=2995 cjk=376
+  dict gate keys=['ok', 'violations']
+  dict production keys=['ok', 'promptVersion', 'accept', 'spliced', 'budget']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=3
+--- .cfb-runtime\traj\t94\hand-samples.jsonl 14735
+  lines=1
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=4112 cjk=29
+  longstr ctx len=2101 cjk=211
+  longstr draft len=1340 cjk=313
+  longstr stored len=2972 cjk=373
+  dict gate keys=['ok', 'violations']
+  dict production keys=['ok', 'promptVersion', 'accept', 'spliced', 'budget']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=3
+--- .cfb-runtime\traj\t95\hand-samples.jsonl 14502
+  lines=1
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=4112 cjk=29
+  longstr ctx len=2101 cjk=211
+  longstr draft len=1236 cjk=300
+  longstr stored len=2864 cjk=360
+  dict gate keys=['ok', 'violations']
+  dict production keys=['ok', 'promptVersion', 'accept', 'spliced', 'budget']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=3
+--- .cfb-runtime\traj\t96\hand-samples.jsonl 40811
+  lines=2
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=4112 cjk=29
+  longstr ctx len=2101 cjk=211
+  longstr draft len=1236 cjk=300
+  longstr stored len=2864 cjk=360
+  dict gate keys=['ok', 'violations']
+  dict production keys=['ok', 'promptVersion', 'accept', 'spliced', 'budget']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=3
+--- .cfb-runtime\traj\t97\hand-samples.jsonl 44431
+  lines=2
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=16861 cjk=12
+  longstr ctx len=795 cjk=192
+  longstr draft len=803 cjk=313
+  dict gate keys=['ok', 'violations']
+  dict production keys=['ok', 'why', 'reason']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=2
+--- .cfb-runtime\traj\t98\hand-samples.jsonl 84231
+  lines=8
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=3480 cjk=20
+  longstr ctx len=3462 cjk=237
+  longstr draft len=722 cjk=208
+  dict gate keys=['ok', 'violations']
+  dict production keys=['ok', 'why', 'reason']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=2
+--- .cfb-runtime\traj\t99\hand-samples.jsonl 17065
+  lines=2
+  keys=['schema', 'id', 'task', 'sample', 'round', 'at', 'draftFile', 'pendingFile', 'raw', 'ctx', 'draft', 'stored', 'rawChars', 'draftChars', 'outChars', 'gate', 'production', 'qualityAudit', 'trainingEligible', 'revision', 'callsThisRound']
+  longstr raw len=2130 cjk=10
+  longstr ctx len=1574 cjk=214
+  longstr draft len=354 cjk=122
+  longstr stored len=1131 cjk=164
+  dict gate keys=['ok', 'violations']
+  dict production keys=['ok', 'promptVersion', 'accept', 'spliced', 'budget']
+  dict qualityAudit keys=['schema', 'status', 'draft', 'stored']
+  list callsThisRound len=4
+
+======================================================================
+C) results.jsonl sample
+======================================================================
+found 47 results.jsonl
+--- .cfb-runtime\traj\t100-resume\results.jsonl 1276318
+  lines=40
+  keys=['at', 'task', 'variant', 'sample', 'rounds', 'calls', 'edits', 'repeats', 'fixedAtRound', 'verifiedAfterFix', 'promptTokens', 'compile', 'transcript', 'rejected', 'mainCalls', 'completionTokens', 'fixed', 'claim', 'claimJustified', 'contextReasoningChars', 'finalFiles', 'proxySteps', 'proxyScore', 'proxyRound2', 'roundMessages']
+  list edits len=1
+  list compile len=0
+  list transcript len=8
+  dict finalFiles keys=['test/birth.selftest.mjs']
+  list proxySteps len=8
+  list roundMessages len=8
+--- .cfb-runtime\traj\t101\results.jsonl 1226032
+  lines=25
+  keys=['at', 'task', 'variant', 'sample', 'rounds', 'calls', 'edits', 'repeats', 'fixedAtRound', 'verifiedAfterFix', 'promptTokens', 'compile', 'transcript', 'rejected', 'perturb', 'mainCalls', 'completionTokens', 'fixed', 'claim', 'claimJustified', 'contextReasoningChars', 'finalFiles', 'proxySteps', 'proxyScore', 'proxyRound2', 'roundMessages']
+  list edits len=1
+  list compile len=0
+  list transcript len=8
+  dict finalFiles keys=['test/birth.selftest.mjs']
+  list proxySteps len=8
+  list roundMessages len=8
+--- .cfb-runtime\traj\t100\results.jsonl 591234
+  lines=20
+  keys=['at', 'task', 'variant', 'sample', 'rounds', 'calls', 'edits', 'repeats', 'fixedAtRound', 'verifiedAfterFix', 'promptTokens', 'compile', 'transcript', 'rejected', 'mainCalls', 'completionTokens', 'fixed', 'claim', 'claimJustified', 'contextReasoningChars', 'finalFiles', 'proxySteps', 'proxyScore', 'proxyRound2', 'roundMessages']
+  list edits len=2
+  list compile len=0
+  list transcript len=8
+  dict finalFiles keys=['verify.mjs', 'test/birth.selftest.mjs']
+  list proxySteps len=8
+  list roundMessages len=8
+
+======================================================================
+D) transfer\gold-rejected\README.md
+======================================================================
+# Quarantined Mode 1 gold
+
+These immutable source copies are not active gold and must not enter training, evaluation, flywheel promotion, or candidate examples.
+The machine-readable audit manifest is `audit.json`; it records source hashes, original paths, the user-directed sole approval, and static detector findings.
+Static checks inspect only `draft` and `stored` target text. A clean regex result does not override the manual audit.
+
+Quarantine is a ledger, not a trash can. Re-audit with `node tools/cfb-gold-repair.mjs audit` under the v14.20.1 scope (author claims only; verbatim quotations of `raw`/`ctx` are exempt): entries whose draft was always clean go back byte-for-byte via `restore --id … --apply` (their digests stay valid, so frozen bench plans keep working), and entries with real apparatus sentences get revised and re-measured offline via `replay`/`stage` before a Mode 1 re-run re-earns `outcome`.
+`audit-amendments.json` records this re-audit: the restored items (with digests), the staged revisions awaiting re-test, and two ledger discrepancies found while re-scanning (a quarantine file with no matching action, and 11 files against 10 quarantine actions).
+
+
+======================================================================
+D) transfer\gold\README.md
+======================================================================
+# 金标注册表（v14.11 / 闭环 v4.6 模式 2 的标准）
+
+每项 `<family>/<id>.json`（`cfb.gold/1`）= 一份**过了闸、主模型读后真修好**的助手手写稿，连同它压缩时看到的原文（`raw`）、上下文（`ctx`）、本轮调用、拼接后真正进历史的稿（`stored`）、闸门结果、该轨迹与同组 raw 臂的 L2 结局。
+
+- 来源：`node tools/cfb-cycle.mjs gold add --plan N`（模式 1 单元 `plan-traj --arms raw,hand` 跑完、`ceiling --plan N` 之后）。
+- 切分：按任务池的家族切分标 `dev` / `holdout`；holdout 金标只用于报告，不用于选策略，也不能进【风格样例】。
+- **落盘后不改**：`plan-bench` 把每项的摘要（raw+ctx+draft）冻进计划，`bench-run` 发现摘要不符即 `gold-changed` 拒跑。要修正就新增一项、作废旧计划。
+- **装置话术（越界）审计口径 v14.20.1**：定罪只看**作者自己写的主张**；整句、或「…」/`…` 定界引用里的片段若原样出现在 `raw ∪ ctx`，算「报告观测」⇒ 免检（记在 `qualityAudit.exempted[]`）。所以工具回显被程序抄进 `stored` 不再牵连整条数据。
+- **被隔离 ≠ 报废**：`node tools/cfb-gold-repair.mjs audit` 复算隔离区 ⇒ 稿子本就干净的 `restore --id … --apply`（字节不变 ⇒ digest 不变 ⇒ 冻结计划仍可用）；真越界的改稿后 `replay`/`stage`（$0 复跑生产闸链 + 逐槽差归因），全绿才登记待真机复测，重跑完用 `gold add --plan N --replace` 换稿（旧条目自动归档 `transfer/gold-history/`）。
+- 用法：`plan-bench --policies base,<候选>` → `tools/bench-run.mjs`（每项一次压缩调用 ≈ $0.0075）→ `bench-report`。指标 `draftDistance`（dd/2 口径见 `docs/TRAINING-AND-BENCHMARK.md` §3.1；公式版本一改，旧基准计划按 `metric-mismatch` 拒跑）。
+- **天花板资格（2026-10-05 真机定）**：`gold add` 默认还拒收 `outcome.vsRaw === 'loss'` 的稿 —— 天花板稿至少要跟主模型自己读原文一样快；`--include-loss` 可强收。这类跳过不进隔离区（它不是越界），稿连同整单元结果落 `transfer/gold-repair/measured/` 继续当模式 2 素材。
+- **标尺自洽**：每条 active 金标的稿对自己必须 `draftDistance(draft, draft) = 1.000`（`A41` 钉）。稿里出现原文与上下文都没有的锚点（哪怕是把 `ctx`、`raw` 这类工具词写进正文），会把这条天花板的上限钉死在 0.97 以下 —— 遇到这种判罚就改稿重挣，不许改标尺。
+- **改稿 / 复测的手艺**：只照当轮 `pending` 的 `raw + ctx` 写；`node tools/hand-preflight.mjs <plan>` 在 $0 侧复跑 hand 臂闸链（G2 → lint → `compileV4Direct` → `birthOffline(gate)` → stored lint）后再花钱。注册表里允许存在本地微模型追不上的条目（`dd < 1`）：那是模式 2 的目标，不是金标的缺陷。
+- 自测改道：`CFB_CYCLE_DIR=<dir>` 时注册表在 `<dir>/gold`，不碰这里。
+
+
+======================================================================
+E) gold-rejected/audit.json
+======================================================================
+type=dict len=11379
+keys=['schema', 'at', 'source', 'activeRegistry', 'archive', 'approvedActiveIds', 'actions', 'counts']
+{"schema": "cfb.mode1-gold-quarantine/1", "at": "2026-10-04T18:37:19.329Z", "source": "user-directed manual audit: only sse_long is clean; static apparatus-language checks cover draft/stored targets only", "activeRegistry": "transfer/gold", "archive": "transfer/gold-rejected", "approvedActiveIds": ["sse-truncated_long-horizon-s0-r5"], "actions": [{"id": "eacces-config_decoy-s0-r3", "action": "quarantine", "originalFile": "transfer/gold/eacces-config/eacces-config_decoy-s0-r3.json", "archiveFile": "transfer/gold-rejected/eacces-config/eacces-config_decoy-s0-r3.json", "sourceSha256": "c826432c82b9aaf6502e49a4268a9c9b0d768874b002a498f99937f2d67f2311", "staticAudit": {"schema": "cfb.mode1-content-audit/1", "status": "clean", "reviewer": "user-directed-manual-audit+mode1-quality-lint/1", "reviewedAt": "2026-10-04T18:37:19.329Z", "checkedFields": ["draft", "stored"], "textSha256": "8751e7609888fadfa67013b39d5969224185f66c8e9509e61dc606557a7c82c7", "issues": []}, "rationale": "not the sole item approved by the user manual audit", "status": "restored-active", "restoredAt": "2026-10-05T04:03:02.082Z", "restoredTo": "transfer/gold/eacces-config/eacces-config_decoy-s0-r3.json", "restoredBasis": "draft-only apparatus audit + verbatim-quote exemption（见 00-README.md）"}, {"id": "eacces-config_long-horizon-s0-r5", "action": "quarantine", "originalFile": "transfer/gold/eacces-config/eacces-config_long-horizon-s0-r5.json", "archiveFile": "transfer/gold-rejected/eacces-config/eacces-config_long-horizon-s0-r5.json", "sourceSha256": "90deee543906fb4f61de77441a26a66d711f855502982e1691cdbfb322909749", "staticAudit": {"schema": "cfb.mode1-content-audit/1", "status": "clean", "reviewer": "user-directed-manual-audit+mode1-quality-lint/1", "reviewedAt": "2026-10-04T18:37:19.329Z", "checkedFields": ["draft", "stored"], "textSha256": "cc0e33c611a6b44ef13b38532b188eed25b94af2d348d94810d83eb84705f022", "issues": []}, "rationale": "not the sole item approved by the user manual audit", "status": "restored-active", "restoredAt": "2026-10-05T04:03:02.082Z", "restoredTo": "transfer/gold/eacces-config/eacces-config_long-horizon-s0-r5.json", "restoredBasis": "draft-only apparatus audit + verbatim-quote exemption（见 00-README.md）"}, {"id": "flaky-timeout-s0-r4", "action": "quarantine", "originalFile": "transfer/gold/flaky-timeout/flaky-timeout-s0-r4.json", "archiveFile": "transfer/gold-rejected/flaky-timeout/flaky-timeout-s0-r4.json", "sourceSha256": "c1ae2370efeb9a105c9a48d26d655330e51474622a09382cf486d90470c13078", "staticAudit": {"schema": "cfb.mode1-content-audit/1", "status": "quarantined", "reviewer": "user-directed-manual-audit+mode1-quality-lint/1", "reviewedAt": "2026-10-04T18:37:19.329Z", "checkedFields": ["draft", "stored"], "textSha256": "cd2aa8332e60b609190b3cb6817f3b824884fb1db6ce5c46b50b7c9fda5f2c06", "issues": [{"category": "environment-permission-assertion", "excerpt": "沙箱白名单拦截完全符合预期；沙箱已内置白名单直接放行", "field": "draft"}, {"category": "experiment-round-or-budget-control", "excerpt": "下一轮是第 5 轮，不要先试跑测试，必须", "field": "draft"}, {"category": "executor-tool-or-check-prohibition", "excerpt": "严禁再发起任何工具调用", "field": "draft"}, {"category": "environment-permission-assertion", "excerpt": "沙箱白名单拦截完全符合预期；沙箱已内置白名单直接放行", "field": "stored"}, {"category": "experiment-round-or-budget-control", "excerpt": "下一轮是第 5 轮，不要先试跑测试，必须", "field": "stored"}, {"category": "executor-tool-or-check-prohibition", "excerpt": "严禁再发起任何工具调用", "field": "stored"}]}, "rationale": "apparatus-language det

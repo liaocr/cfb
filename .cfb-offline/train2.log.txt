@@ -1,0 +1,134 @@
+[{"stream_name":"stdout","time":7.669912257,"data":"· 检测到 2 张卡 —— 单进程只会用 cuda:0，用 torchrun 重开跑满：\n"}
+,{"stream_name":"stdout","time":7.6699742109999995,"data":"  /usr/bin/python3 -m torch.distributed.run --nproc_per_node 2 --standalone --master_port 29517 /kaggle/src/script.py --data https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl --dev https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl --out /kaggle/working/rwkv7-compressor --epochs 5.0 --accum 2 --lr 0.0001 --gen-n 89 --gen-max-new 768 --gen-budget 1500.0\n"}
+,{"stream_name":"stderr","time":9.433919552,"data":"\n"}
+,{"stream_name":"stderr","time":9.433949866,"data":"*****************************************\n"}
+,{"stream_name":"stderr","time":9.433953822,"data":"Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. \n"}
+,{"stream_name":"stderr","time":9.433971913,"data":"*****************************************\n"}
+,{"stream_name":"stdout","time":12.08744038,"data":"· GPU Tesla T4 · sm_75 · torch 2.11.0+cu128 · 2 卡中用了 2 张（rank 0）\n"}
+,{"stream_name":"stdout","time":12.087475505,"data":"· fla.models.rwkv7 缺失（ModuleNotFoundError(\"No module named 'fla'\")）-\u003e 装 flash-linear-attention==0.5.2\n"}
+,{"stream_name":"stdout","time":15.529530751,"data":"· pip install -\u003e exit 0\n"}
+,{"stream_name":"stdout","time":41.654314915,"data":"· fla ok · transformers 5.16.1\n"}
+,{"stream_name":"stdout","time":41.654350505,"data":"· chunk_size 16（T4 的 64KB 共享内存装不下 fla 默认的 64）\n"}
+,{"stream_name":"stderr","time":41.796588312,"data":"Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n"}
+,{"stream_name":"stderr","time":41.79661762,"data":"Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n"}
+,{"stream_name":"stderr","time":41.889490259,"data":"[transformers] A new version of the following files was downloaded from https://huggingface.co/fla-hub/rwkv7-0.1B-g1:\n"}
+,{"stream_name":"stderr","time":41.889535778,"data":"- hf_rwkv_tokenizer.py\n"}
+,{"stream_name":"stderr","time":41.88954169,"data":". Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.\n"}
+,{"stream_name":"stdout","time":44.855279358,"data":"· tokenizer RwkvTokenizer · vocab 65531 · eos=65530 pad=0\n"}
+,{"stream_name":"stdout","time":45.119901473,"data":"· 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl -\u003e /kaggle/working/_train.jsonl (3262564 bytes)\n"}
+,{"stream_name":"stderr","time":45.121126116,"data":"/usr/local/lib/python3.13/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.\n"}
+,{"stream_name":"stderr","time":45.121138247,"data":"  return func(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":45.121621026,"data":"[rank0]:[W1010 13:15:18.456329950 ProcessGroupNCCL.cpp:5188] Guessing device ID based on global rank. This can cause a hang if rank to GPU mapping is heterogeneous. You can specify device_id in init_process_group()\n"}
+,{"stream_name":"stdout","time":45.808950434,"data":"· 读入 256 行\n"}
+,{"stream_name":"stdout","time":50.399113829,"data":"· 编码完成 254/256 条（4.6s）· 超窗丢弃 2\n"}
+,{"stream_name":"stdout","time":50.39931043,"data":"· token 长度 min 2879 p50 3594 p90 4379 max 6111 · 窗口 6144 占用 p50 58.5%\n"}
+,{"stream_name":"stdout","time":50.399398219,"data":"· 掩码边界偏差：19/254 条非零，max 1（持续偏大说明模板/分词器与预期不符，是必须看见的信号）\n"}
+,{"stream_name":"stdout","time":50.537914564,"data":"· 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl -\u003e /kaggle/working/_dev.jsonl (1709978 bytes)\n"}
+,{"stream_name":"stdout","time":52.190146547,"data":"· dev 89 条\n"}
+,{"stream_name":"stdout","time":52.190197432,"data":"· 载入 fla-hub/rwkv7-0.1B-g1（主权重 fp32 · autocast fp16）…\n"}
+,{"stream_name":"stderr","time":54.450917689,"data":"/usr/local/lib/python3.13/dist-packages/fla/layers/rwkv7.py:148: UserWarning: According to Bo, you are using a potentially buggy FLA implementation of RWKV. If you plan to report any numbers based on this implementation, we strongly recommend cross-checking with the official repo: https://github.com/BlinkDL/RWKV-LM. Bo may disagree with results reported from this version.\n"}
+,{"stream_name":"stderr","time":54.450949709,"data":"  warnings.warn(\n"}
+,{"stream_name":"stderr","time":54.4654564,"data":"/usr/local/lib/python3.13/dist-packages/fla/layers/rwkv7.py:148: UserWarning: According to Bo, you are using a potentially buggy FLA implementation of RWKV. If you plan to report any numbers based on this implementation, we strongly recommend cross-checking with the official repo: https://github.com/BlinkDL/RWKV-LM. Bo may disagree with results reported from this version.\n"}
+,{"stream_name":"stderr","time":54.465499854,"data":"  warnings.warn(\n"}
+,{"stream_name":"stderr","time":57.902622439,"data":"\rLoading weights:   0%|          | 0/399 [00:00\u003c?, ?it/s]\rLoading weights:   0%|          | 1/399 [00:00\u003c00:43,  9.21it/s]\rLoading weights:  49%|████▉     | 196/399 [00:00\u003c00:00, 1013.10it/s]\rLoading weights:  78%|███████▊  | 311/399 [00:00\u003c00:00, 1063.54it/s]\rLoading weights:   0%|          | 0/399 [00:00\u003c?, ?it/s]\rLoading weights: 100%|██████████| 399/399 [00:00\u003c00:00, 1054.44it/s]\n"}
+,{"stream_name":"stderr","time":58.040800904,"data":"\rLoading weights:  70%|██████▉   | 278/399 [00:00\u003c00:00, 2777.55it/s]\rLoading weights: 100%|██████████| 399/399 [00:00\u003c00:00, 2547.18it/s]\n"}
+,{"stream_name":"stdout","time":58.404025932,"data":"· 参数量 191.0M（全参微调 · fp32 主权重） · DDP 2 卡\n"}
+,{"stream_name":"stdout","time":58.404124772,"data":"· rank 0 分到 32 个微批\n"}
+,{"stream_name":"stdout","time":58.406197515,"data":"· 批 4 × 累积 2 = 有效批 8 · 每轮 32 微批 -\u003e 16 步 · 共 80 步\n"}
+,{"stream_name":"stderr","time":58.471720205,"data":"[transformers] `use_return_dict` is deprecated! Use `return_dict` instead!\n"}
+,{"stream_name":"stderr","time":58.47199725,"data":"[transformers] `use_return_dict` is deprecated! Use `return_dict` instead!\n"}
+,{"stream_name":"stderr","time":142.706512098,"data":"[rank1]:[W1010 13:16:55.041119876 reducer.cpp:1502] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())\n"}
+,{"stream_name":"stderr","time":142.738041603,"data":"[rank0]:[W1010 13:16:55.072668432 reducer.cpp:1502] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())\n"}
+,{"stream_name":"stdout","time":268.055558694,"data":"  step 1/80 loss 3.3404 lr 5.00e-05 elapsed 3.5m\n"}
+,{"stream_name":"stdout","time":322.447162476,"data":"  step 11/80 loss 3.1177 lr 9.77e-05 elapsed 4.4m\n"}
+,{"stream_name":"stdout","time":411.883561587,"data":"  step 21/80 loss 2.4798 lr 8.87e-05 elapsed 5.9m\n"}
+,{"stream_name":"stdout","time":460.621051432,"data":"  step 31/80 loss 1.6637 lr 7.43e-05 elapsed 6.7m\n"}
+,{"stream_name":"stdout","time":506.785145039,"data":"  step 41/80 loss 1.2083 lr 5.68e-05 elapsed 7.5m\n"}
+,{"stream_name":"stdout","time":556.727307948,"data":"  step 51/80 loss 0.5138 lr 3.90e-05 elapsed 8.3m\n"}
+,{"stream_name":"stdout","time":602.894708251,"data":"  step 61/80 loss 0.6010 lr 2.38e-05 elapsed 9.1m\n"}
+,{"stream_name":"stdout","time":650.051425753,"data":"  step 71/80 loss 0.4428 lr 1.36e-05 elapsed 9.9m\n"}
+,{"stream_name":"stdout","time":696.240278907,"data":"  step 80/80 loss 0.5295 lr 1.00e-05 elapsed 10.6m\n"}
+,{"stream_name":"stdout","time":696.240327525,"data":"· 训练结束 80 步，10.6 分钟\n"}
+,{"stream_name":"stderr","time":696.240778203,"data":"/usr/local/lib/python3.13/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.\n"}
+,{"stream_name":"stderr","time":696.240799278,"data":"  return func(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":696.310362419,"data":"[rank0]: Traceback (most recent call last):\n"}
+,{"stream_name":"stderr","time":696.310389647,"data":"[rank0]:   File \"/kaggle/src/script.py\", line 707, in \u003cmodule\u003e\n"}
+,{"stream_name":"stderr","time":696.310398578,"data":"[rank0]:     sys.exit(main([\n"}
+,{"stream_name":"stderr","time":696.310403599,"data":"[rank0]:              ~~~~^^\n"}
+,{"stream_name":"stderr","time":696.310408658,"data":"[rank0]:         \"--data\",\n"}
+,{"stream_name":"stderr","time":696.310413573,"data":"[rank0]:         ^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":696.310418303,"data":"[rank0]:     ...\u003c16 lines\u003e...\n"}
+,{"stream_name":"stderr","time":696.310423059,"data":"[rank0]:         \"1500.0\",\n"}
+,{"stream_name":"stderr","time":696.310427762,"data":"[rank0]:         ^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":696.310432351,"data":"[rank0]:     ]))\n"}
+,{"stream_name":"stderr","time":696.310436909,"data":"[rank0]:     ^^\n"}
+,{"stream_name":"stderr","time":696.310441495,"data":"[rank0]:   File \"/kaggle/src/script.py\", line 590, in main\n"}
+,{"stream_name":"stderr","time":696.31044641,"data":"[rank0]:     base_model.save_pretrained(out_dir / \"model\")\n"}
+,{"stream_name":"stderr","time":696.310451277,"data":"[rank0]:     ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":696.310456117,"data":"[rank0]:   File \"/usr/local/lib/python3.13/dist-packages/transformers/modeling_utils.py\", line 3513, in save_pretrained\n"}
+,{"stream_name":"stderr","time":696.310461261,"data":"[rank0]:     state_dict = remove_tied_weights_from_state_dict(state_dict, model_to_save)\n"}
+,{"stream_name":"stderr","time":696.31046624,"data":"[rank0]:   File \"/usr/local/lib/python3.13/dist-packages/transformers/modeling_utils.py\", line 468, in remove_tied_weights_from_state_dict\n"}
+,{"stream_name":"stderr","time":696.310483782,"data":"[rank0]:     all_potential_tied_weights_keys = set(_get_tied_weight_keys(model))\n"}
+,{"stream_name":"stderr","time":696.310487989,"data":"[rank0]:                                           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^\n"}
+,{"stream_name":"stderr","time":696.310491932,"data":"[rank0]:   File \"/usr/local/lib/python3.13/dist-packages/transformers/modeling_utils.py\", line 381, in _get_tied_weight_keys\n"}
+,{"stream_name":"stderr","time":696.310496077,"data":"[rank0]:     tied_weight_keys.extend([f\"{name}.{k}\" if name else k for k in tied.keys()])\n"}
+,{"stream_name":"stderr","time":696.310500057,"data":"[rank0]:                                                                    ^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":696.310504067,"data":"[rank0]: AttributeError: 'list' object has no attribute 'keys'\n"}
+,{"stream_name":"stderr","time":701.24969724,"data":"[rank0]:[W1010 13:26:14.584308405 ProcessGroupNCCL.cpp:1575] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())\n"}
+,{"stream_name":"stderr","time":702.581531008,"data":"W1010 13:26:15.620000 20 torch/distributed/elastic/multiprocessing/api.py:1012] Sending process 29 closing signal SIGTERM\n"}
+,{"stream_name":"stderr","time":702.896193666,"data":"E1010 13:26:15.935000 20 torch/distributed/elastic/multiprocessing/api.py:986] failed (exitcode: 1) local_rank: 0 (pid: 28) of binary: /usr/bin/python3\n"}
+,{"stream_name":"stderr","time":702.925478516,"data":"Traceback (most recent call last):\n"}
+,{"stream_name":"stderr","time":702.926428111,"data":"  File \"\u003cfrozen runpy\u003e\", line 203, in _run_module_as_main\n"}
+,{"stream_name":"stderr","time":702.926441841,"data":"  File \"\u003cfrozen runpy\u003e\", line 88, in _run_code\n"}
+,{"stream_name":"stderr","time":702.926448684,"data":"  File \"/usr/local/lib/python3.13/dist-packages/torch/distributed/run.py\", line 994, in \u003cmodule\u003e\n"}
+,{"stream_name":"stderr","time":702.926453193,"data":"    main()\n"}
+,{"stream_name":"stderr","time":702.926458761,"data":"    ~~~~^^\n"}
+,{"stream_name":"stderr","time":702.926462334,"data":"  File \"/usr/local/lib/python3.13/dist-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py\", line 362, in wrapper\n"}
+,{"stream_name":"stderr","time":702.926467342,"data":"    return f(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":702.926471523,"data":"  File \"/usr/local/lib/python3.13/dist-packages/torch/distributed/run.py\", line 990, in main\n"}
+,{"stream_name":"stderr","time":702.926476698,"data":"    run(args)\n"}
+,{"stream_name":"stderr","time":702.926481019,"data":"    ~~~^^^^^^\n"}
+,{"stream_name":"stderr","time":702.926485304,"data":"  File \"/usr/local/lib/python3.13/dist-packages/torch/distributed/run.py\", line 981, in run\n"}
+,{"stream_name":"stderr","time":702.926490585,"data":"    elastic_launch(\n"}
+,{"stream_name":"stderr","time":702.926494306,"data":"    ~~~~~~~~~~~~~~~\n"}
+,{"stream_name":"stderr","time":702.92649786,"data":"        config=config,\n"}
+,{"stream_name":"stderr","time":702.926502464,"data":"        ~~~~~~~~~~~~~~\n"}
+,{"stream_name":"stderr","time":702.926506694,"data":"        entrypoint=cmd,\n"}
+,{"stream_name":"stderr","time":702.926511594,"data":"        ~~~~~~~~~~~~~~~\n"}
+,{"stream_name":"stderr","time":702.926516049,"data":"    )(*cmd_args)\n"}
+,{"stream_name":"stderr","time":702.926532042,"data":"    ~^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":702.92653599,"data":"  File \"/usr/local/lib/python3.13/dist-packages/torch/distributed/launcher/api.py\", line 170, in __call__\n"}
+,{"stream_name":"stderr","time":702.926554506,"data":"    return launch_agent(self._config, self._entrypoint, list(args))\n"}
+,{"stream_name":"stderr","time":702.926558433,"data":"  File \"/usr/local/lib/python3.13/dist-packages/torch/distributed/launcher/api.py\", line 317, in launch_agent\n"}
+,{"stream_name":"stderr","time":702.926568866,"data":"    raise ChildFailedError(\n"}
+,{"stream_name":"stderr","time":702.92657154,"data":"    ...\u003c2 lines\u003e...\n"}
+,{"stream_name":"stderr","time":702.926573936,"data":"    )\n"}
+,{"stream_name":"stderr","time":702.926579865,"data":"torch.distributed.elastic.multiprocessing.errors.ChildFailedError: \n"}
+,{"stream_name":"stderr","time":702.926582382,"data":"============================================================\n"}
+,{"stream_name":"stderr","time":702.926585836,"data":"/kaggle/src/script.py FAILED\n"}
+,{"stream_name":"stderr","time":702.926602238,"data":"------------------------------------------------------------\n"}
+,{"stream_name":"stderr","time":702.926606579,"data":"Failures:\n"}
+,{"stream_name":"stderr","time":702.926610526,"data":"[1]:\n"}
+,{"stream_name":"stderr","time":702.926614446,"data":"  time      : 2026-10-10_13:26:15\n"}
+,{"stream_name":"stderr","time":702.92661841,"data":"  host      : b93bacbe4b60\n"}
+,{"stream_name":"stderr","time":702.926622304,"data":"  rank      : 1 (local_rank: 1)\n"}
+,{"stream_name":"stderr","time":702.926625766,"data":"  exitcode  : -15 (pid: 29)\n"}
+,{"stream_name":"stderr","time":702.926629191,"data":"  error_file: \u003cN/A\u003e\n"}
+,{"stream_name":"stderr","time":702.926632739,"data":"  traceback : Signal 15 (SIGTERM) received by PID 29\n"}
+,{"stream_name":"stderr","time":702.92664319,"data":"------------------------------------------------------------\n"}
+,{"stream_name":"stderr","time":702.926646776,"data":"Root Cause (first observed failure):\n"}
+,{"stream_name":"stderr","time":702.926650166,"data":"[0]:\n"}
+,{"stream_name":"stderr","time":702.926653598,"data":"  time      : 2026-10-10_13:26:15\n"}
+,{"stream_name":"stderr","time":702.926657344,"data":"  host      : b93bacbe4b60\n"}
+,{"stream_name":"stderr","time":702.926660758,"data":"  rank      : 0 (local_rank: 0)\n"}
+,{"stream_name":"stderr","time":702.926664304,"data":"  exitcode  : 1 (pid: 28)\n"}
+,{"stream_name":"stderr","time":702.926681289,"data":"  error_file: \u003cN/A\u003e\n"}
+,{"stream_name":"stderr","time":702.926684487,"data":"  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html\n"}
+,{"stream_name":"stderr","time":702.926699591,"data":"============================================================\n"}
+,{"stream_name":"stderr","time":705.771466827,"data":"/usr/local/lib/python3.13/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":705.771495027,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":705.996783606,"data":"/usr/local/lib/python3.13/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":705.99681873,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":706.77028619,"data":"[NbConvertApp] Converting notebook __script__.ipynb to html\n"}
+,{"stream_name":"stderr","time":707.833400869,"data":"[NbConvertApp] Writing 422786 bytes to __results__.html\n"}
+]

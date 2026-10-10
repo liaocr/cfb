@@ -1,0 +1,38 @@
+{
+  "add_prefix_space": false,
+  "added_tokens_decoder": {
+    "0": {
+      "content": "<|rwkv_tokenizer_end_of_text|>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "65530": {
+      "content": "\n\n",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    }
+  },
+  "auto_map": {
+    "AutoTokenizer": [
+      "hf_rwkv_tokenizer.RwkvTokenizer",
+      null
+    ]
+  },
+  "backend": "custom",
+  "bos_token": "<|rwkv_tokenizer_end_of_text|>",
+  "clean_up_tokenization_spaces": false,
+  "eos_token": "\n\n",
+  "is_local": false,
+  "local_files_only": false,
+  "model_max_length": 1000000000000000019884624838656,
+  "pad_token": "<|rwkv_tokenizer_end_of_text|>",
+  "tokenizer_class": "RwkvTokenizer",
+  "unk_token": "<|rwkv_tokenizer_end_of_text|>",
+  "use_fast": false
+}

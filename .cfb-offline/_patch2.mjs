@@ -1,0 +1,107 @@
+
+import fs from 'node:fs';
+const F = 'deploy/kaggle/train_rwkv7.py';
+let s = fs.readFileSync(F, 'utf8');
+const rep = (a, b, label) => {
+  const n = s.split(a).length - 1;
+  if (n !== 1) { console.log('MISS ' + label + ' n=' + n); process.exit(1); }
+  s = s.replace(a, b); console.log('ok ' + label);
+};
+
+// ── 3. 把 dev loss / 生成抽成函数，好让学习曲线的每个点复用同一段代码 ──
+const FUNCS = [
+'    # ---- 5b. 把 dev loss 与生成抽成函数 ----',
+'    # 为什么必须抽出来：学习曲线要在每个快照点跑**同一段**代码。',
+'    # 各写一份的后果不是报错，是"曲线上的点和终点用了不同的判据"，而那种差异',
+'    # 在图上看起来就像"训练中途变差了"。同源测量是这套东西的底线。',
+'    def dev_loss():',
+'        if not dev_encoded:',
+'            return None',
+'        base_model.eval()',
+'        tot, cnt = 0.0, 0',
+'        with torch.no_grad():',
+'            for i in range(0, len(dev_encoded), args.batch):',
+'                chunk = [p for _, p in dev_encoded[i:i + args.batch]]',
+'                ids, lab, am = collate(chunk)',
+'                with torch.autocast("cuda", dtype=amp_dtype, enabled=amp_dtype is not None):',
+'                    tot += float(base_model(input_ids=ids, attention_mask=am, labels=lab).loss)',
+'                cnt += 1',
+'        return tot / max(1, cnt)',
+'',
+'    def gen_once(row, max_new, cache):',
+'        prompt = render(tok, [{"role": "system", "content": row["system"]},',
+'                              {"role": "user", "content": row["user"]}], True)',
+'        enc = tok(prompt, return_tensors="pt", add_special_tokens=False).to(device)',
+'        t = time.time()',
+'        with torch.no_grad(), torch.autocast("cuda", dtype=amp_dtype,',
+'                                             enabled=amp_dtype is not None):',
+'            o = base_model.generate(**enc, max_new_tokens=max_new, do_sample=False,',
+'                                    use_cache=cache, pad_token_id=tok.pad_token_id,',
+'                                    eos_token_id=eos_id)',
+'        return (tok.decode(o[0][enc["input_ids"].shape[1]:], skip_special_tokens=True),',
+'                time.time() - t)',
+'',
+'    def generate(n, path):',
+'        """生成 n 条稿子。**必须能被重复调用** —— 学习曲线每个点都调一次。"""',
+'        if not (dev_encoded and is_main and n > 0):',
+'            return 0',
+'        base_model.eval()',
+'        written, t_gen = 0, time.time()',
+'        with path.open("w", encoding="utf-8") as f:',
+'            for r, _ in dev_encoded[:n]:',
+'                if args.gen_budget and time.time() - t_gen > args.gen_budget:',
+'                    print(f"  \u00b7 \u751f\u6210\u5230\u65f6\u95f4\u9884\u7b97 {args.gen_budget:.0f}s\uff0c\u4f59 "',
+'                          f"{n - written} \u6761\u4e0d\u751f\u6210\uff08\u6837\u672c\u53d8\u5c11\uff0c\u5c3a\u5b50\u4e0a\u7684\u7f6e\u4fe1\u533a\u95f4\u4f1a\u53d8\u5bbd\uff09", flush=True)',
+'                    break',
+'                try:',
+'                    txt, dt = gen_once(r, args.gen_max_new, args.gen_cache)',
+'                except Exception as exc:  # noqa: BLE001',
+'                    if not args.gen_cache:',
+'                        raise',
+'                    print(f"  \u00b7 \u7f13\u5b58\u751f\u6210\u5931\u8d25\uff08{exc!r}\uff09-> \u56de\u9000\u5230\u4e0d\u5f00\u7f13\u5b58", flush=True)',
+'                    args.gen_cache = False',
+'                    txt, dt = gen_once(r, args.gen_max_new, False)',
+'                f.write(json.dumps({"id": r.get("id"), "raw": r.get("raw", ""),',
+'                                    "ctx": r.get("ctx", ""), "draft": txt.strip()},',
+'                                   ensure_ascii=False) + "\\n")',
+'                f.flush()',
+'                written += 1',
+'                print(f"  gen {written}/{n} \u00b7 {len(txt)} \u5b57 \u00b7 {dt:.1f}s", flush=True)',
+'        print(f"  \u00b7 \u751f\u6210 {written} \u6761 -> {path.name}\uff08{time.time() - t_gen:.0f}s\uff09", flush=True)',
+'        return written',
+'',
+'    # \u7f13\u5b58\u81ea\u68c0\uff1a\u53ea\u5728**\u771f\u8981\u751f\u6210**\u7684\u65f6\u5019\u8dd1\u3002',
+'    # v9 \u7684\u5b9e\u6d4b\u7ed3\u8bba\u662f\u53cd\u7684\uff1a\u5f00\u7f13\u5b58 31.0s / \u4e0d\u5f00 6.7s\uff0c**\u5f00\u7f13\u5b58\u6162 4.6 \u500d**\uff0c',
+'    # \u800c\u8f93\u51fa\u9010\u5b57\u4e00\u81f4\u3002\u5f53\u65f6\u7684\u4ee3\u7801\u53ea\u5728"\u8f93\u51fa\u4e0d\u4e00\u81f4"\u65f6\u624d\u5173\u7f13\u5b58\uff0c\u4ece\u4e0d\u5728"\u53d8\u6162"\u65f6\u5173 \u2014\u2014',
+'    # \u4e8e\u662f v9 \u5168\u7a0b\u8dd1\u7684\u662f\u6162\u8def\u5f84\uff0c\u751f\u6210\u9636\u6bb5 34,687 token / 1164s = 29.8 token/s\u3002',
+'    # \u6240\u4ee5\u8fd9\u91cc\u52a0\u4e0a"\u53d8\u6162\u5c31\u5173"\u3002\u4e24\u6761\u5224\u636e\u90fd\u4e0d\u80fd\u7701\uff1a\u4e00\u6761\u4fdd\u6b63\u786e\u6027\uff0c\u4e00\u6761\u4fdd\u901f\u5ea6\u3002',
+'    if args.gen_n > 0 and dev_encoded and is_main and args.gen_cache:',
+'        try:',
+'            a, ta = gen_once(dev_encoded[0][0], 64, False)',
+'            b, tb = gen_once(dev_encoded[0][0], 64, True)',
+'            same = a == b',
+'            print(f"\u00b7 \u7f13\u5b58\u81ea\u68c0 64 token\uff1a\u4e0d\u5f00 {ta:.1f}s / \u5f00 {tb:.1f}s"',
+'                  f"\uff08{tb / max(ta, 1e-6):.2f}x\uff09\u00b7 \u8f93\u51fa{\'\u9010\u5b57\u4e00\u81f4\' if same else \'\u4e0d\u4e00\u81f4\'}",',
+'                  flush=True)',
+'            if not same:',
+'                print("  \u8b66\u544a\uff1a\u5f00\u7f13\u5b58\u540e\u8f93\u51fa\u53d8\u4e86 -> \u56de\u9000\u5230\u4e0d\u5f00\u7f13\u5b58\uff08\u6162\uff0c\u4f46\u4e0d\u5192\u6b63\u786e\u6027\u7684\u9669\uff09",',
+'                      flush=True)',
+'                args.gen_cache = False',
+'            elif tb > ta:',
+'                print("  \u5f00\u7f13\u5b58\u53cd\u800c\u66f4\u6162 -> \u5173\u6389\uff08v9 \u5b9e\u6d4b\u5c31\u662f\u8fd9\u79cd\u60c5\u51b5\uff09", flush=True)',
+'                args.gen_cache = False',
+'        except Exception as exc:  # noqa: BLE001',
+'            print(f"\u00b7 \u7f13\u5b58\u81ea\u68c0\u5c31\u5d29\u4e86\uff08{exc!r}\uff09-> \u5168\u7a0b\u4e0d\u5f00\u7f13\u5b58", flush=True)',
+'            args.gen_cache = False',
+'        finally:',
+'            torch.cuda.empty_cache()',
+''
+].join('\n');
+
+rep(
+  '    # ---- 6. \u5192\u70df\uff1a\u628a"\u80fd\u4e0d\u80fd\u8dd1"\u548c"\u8dd1\u5f97\u597d\u4e0d\u597d"\u5206\u5f00 ----',
+  FUNCS + '\n    # ---- 6. \u5192\u70df\uff1a\u628a"\u80fd\u4e0d\u80fd\u8dd1"\u548c"\u8dd1\u5f97\u597d\u4e0d\u597d"\u5206\u5f00 ----',
+  'funcs');
+
+fs.writeFileSync(F, s);
+console.log('bytes', s.length);

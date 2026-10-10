@@ -1,0 +1,49 @@
+feat(kaggle): RWKV7-0.1B 通用压缩器训练器 + 窗口实测扩容到 6144
+
+## 一、训练器（本仓库此前一行都没有）
+
+deploy/kaggle/train_rwkv7.py —— 全参 SFT，单文件，失败即停。
+deploy/kaggle/start-rwkv7.py —— 一条命令推 Kaggle 内核（默认冒烟，--train 才真训）。
+
+为什么不是改造已有的：tools/micro-generator/train_qlora.py 与 train_gen_kaggle.py 都是
+Qwen3-0.6B 的（用户已否："0.6b 太大了"），train_micro.py 是抽取式时代的，deploy/kaggle/*.py
+属于已被拒绝的路线。
+
+## 二、★ 窗口 2048 → 6144：那个数字在本模型的代码路径上从未被读取
+
+config.json 的 max_position_embeddings=2048 是**配置残留**：
+  · fla/models/rwkv7/modeling_rwkv7.py 全文 545 行，该字段只出现 1 次（第 151 行），
+    在 if attn_spec is not None: 的混合注意力分支里。本模型 config.attn = null ⇒ 走 else
+    分支创建 RWKV7Attention，压根不传这个参数。
+  · fla/layers/rwkv7.py 全文 355 行：无 RoPE、无位置嵌入、无长度断言。
+  · tokenizer 的 model_max_length = 1e33。
+RWKV 是循环结构，状态固定大小，成本 O(n) 而非 O(n²)。
+
+用底座自己的分词器实测（抽 469/4687 个单元）：
+  窗口 2048 → 可训   0/469 =  0.0%
+  窗口 4096 → 可训 438/469 = 93.4%
+  窗口 6144 → 可训 468/469 = 99.8%   ← 采用
+
+## 三、★ 用真实分词器验证了掩码边界，并纠正一处估算
+
+本地剥掉 transformers 依赖跑 hf_rwkv_tokenizer.py + rwkv_vocab_v20230424.txt：
+  · system 提示词真实 **1188 token** —— 之前按字符估的 912，**低估 30%**。
+  · full.startswith(prompt) 为 **False** ⇒ 训练序列必须手工拼 prompt + draft + "\n\n" + eos，
+    不能直接用整段 apply_chat_template 渲染。
+  · 不显式传 enable_thinking=False，模板渲染出的是**未闭合**的 "Assistant: <think"。
+  · 掩码边界取最长公共前缀：48 条里 46 条偏差为 0，其余为 1（BPE 跨边界合并，正常）。
+
+⚠ 由此确认：src/tokens.js 的 0.81/0.26 是对 **DeepSeek usage** 拟合的，只对 DeepSeek 的
+  分词器成立，**不能**用来算 RWKV 的窗口预算。
+
+## 四、修掉 tools/build-sft.mjs 一个会让训练数据报废的 bug
+
+它读的提示词是 compress-zh.txt（v1），而稿子是 teacher2-zh.txt（v4）生成的 ⇒
+system 说「压成中文稿、不超过 55%」，assistant 却是「跟原文语言、10~20%」。指令与标签
+互相矛盾，学生会学到用不上的映射，而且不报错。同时它用 ' '.join() 把样例的换行压平了，
+样例驱动的提示词被压成一行就废了。已改为 v4 且保留换行。
+
+## 五、数据
+
+deploy/kaggle/data/ 57 条（来自 100 单元），用途是**验证 Kaggle 环境**，不是最终训练集。
+PROVENANCE.md 记了上游、许可分布（MIT/Apache-2.0/BSD）与行结构。

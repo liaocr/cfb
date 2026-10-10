@@ -1,0 +1,18 @@
+id                                   raw  draft      字符比   vsRaw solved rawSol    use
+eacces-config-s0-r5                 3480    354    0.102     win  True False  ruler
+eacces-config_decoy-s0-r3           2906    966    0.332     win  True False  train
+eacces-config_long-horizon-s0-r5    3027    912    0.301     win  True  True  train
+perf-regression-s0-r7               4112   1236    0.301     win  True False  train
+sse-truncated-s0-r4                 3911    435    0.111     tie  True  True  ruler
+sse-truncated-s0-r5                 4198   1532    0.365     tie  True  True  train
+sse-truncated-s1-r3                 3687    405    0.110     win  True  True  ruler
+sse-truncated_decoy-s0-r4           1518    750    0.494     tie  True  True  train
+sse-truncated_long-horizon-s0-r5    5195    626    0.121     tie  True  True  train
+wrong-model-s0-r6                   2213    569    0.257     tie  True  True  ruler
+wrong-model-s1-r5                   5026    413    0.082     win  True  True  ruler
+wrong-model_decoy-s0-r4             1436    375    0.261     win  True  True  ruler
+wrong-model_long-horizon-s0-r4      3185    494    0.155     tie  True  True  ruler
+
+金标字符比：n=13 min=0.082 中位=0.257 max=0.494 均值=0.230
+
+真机结局 vsRaw 分布 = {"win": 7, "tie": 6}

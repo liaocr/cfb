@@ -1,0 +1,17 @@
+unitId                                       prompt    compl   reason  content    total relay_cost
+adamchainz_apig-wsgi_pr93#b7                   1835      411       62      875     2305   0.000010
+     本地实测：raw 3622 字 / draft 875 字；我的 3.5字符每token 估算给 prompt≈2190
+adamchainz_django-cors-headers_pr396#b8        2076     1349     1014      740     3484   0.000019
+     本地实测：raw 3760 字 / draft 740 字；我的 3.5字符每token 估算给 prompt≈2229
+adamchainz_ec2-metadata_pr40#b4                1789      684      235     1037     2532   0.000012
+     本地实测：raw 2449 字 / draft 1037 字；我的 3.5字符每token 估算给 prompt≈1853
+adamchainz_flake8-comprehensions_pr195#b3      1720      965      480     1068     2744   0.000014
+     本地实测：raw 2033 字 / draft 1068 字；我的 3.5字符每token 估算给 prompt≈1736
+adamchainz_flake8-logging_pr4#b7               1728     4363     3597     1922     6150   0.000049
+     本地实测：raw 2031 字 / draft 1922 字；我的 3.5字符每token 估算给 prompt≈1734
+
+合计 prompt=9148 completion=7772 其中 reasoning=5388 relay_cost=$0.000104
+  DeepSeek 缓存未命中 $0.28/$0.42       单条 $0.001165  3000 条 $3.50  1000 条 $1.17
+  DeepSeek 缓存命中 $0.028/$0.42       单条 $0.000704  3000 条 $2.11  1000 条 $0.70
+  DeepSeek 新版 $0.56/$1.68          单条 $0.003636  3000 条 $10.91  1000 条 $3.64
+  relay 自报                         单条 $0.000021  3000 条 $0.06

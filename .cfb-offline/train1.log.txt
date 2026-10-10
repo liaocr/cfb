@@ -1,0 +1,80 @@
+[{"stream_name":"stdout","time":9.787722174,"data":"· 检测到 2 张卡 —— 单进程只会用 cuda:0，用 torchrun 重开跑满：\n"}
+,{"stream_name":"stdout","time":9.78777424,"data":"  /usr/bin/python3 -m torch.distributed.run --nproc_per_node 2 --standalone --master_port 29517 /kaggle/src/script.py --data https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl --dev https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-dev.jsonl --out /kaggle/working/rwkv7-compressor --epochs 5.0 --accum 2 --lr 0.0001 --gen-n 89 --gen-max-new 768 --gen-budget 1500.0\n"}
+,{"stream_name":"stderr","time":11.540019468,"data":"\n"}
+,{"stream_name":"stderr","time":11.54004533,"data":"*****************************************\n"}
+,{"stream_name":"stderr","time":11.540050921,"data":"Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. \n"}
+,{"stream_name":"stderr","time":11.540056942,"data":"*****************************************\n"}
+,{"stream_name":"stdout","time":14.021080125,"data":"· GPU Tesla T4 · sm_75 · torch 2.11.0+cu128 · 2 卡中用了 2 张（rank 0）\n"}
+,{"stream_name":"stdout","time":14.021224972,"data":"· fla.models.rwkv7 缺失（ModuleNotFoundError(\"No module named 'fla'\")）-\u003e 装 flash-linear-attention==0.5.2\n"}
+,{"stream_name":"stdout","time":18.167404101,"data":"· pip install -\u003e exit 0\n"}
+,{"stream_name":"stdout","time":48.245537883,"data":"· fla ok · transformers 5.16.1\n"}
+,{"stream_name":"stdout","time":48.245572916,"data":"· chunk_size 16（T4 的 64KB 共享内存装不下 fla 默认的 64）\n"}
+,{"stream_name":"stderr","time":48.818134238,"data":"Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n"}
+,{"stream_name":"stderr","time":48.833993139,"data":"Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n"}
+,{"stream_name":"stderr","time":49.342812112,"data":"[transformers] A new version of the following files was downloaded from https://huggingface.co/fla-hub/rwkv7-0.1B-g1:\n"}
+,{"stream_name":"stderr","time":49.342847009,"data":"- hf_rwkv_tokenizer.py\n"}
+,{"stream_name":"stderr","time":49.34285212,"data":". Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.\n"}
+,{"stream_name":"stderr","time":49.342856135,"data":"[transformers] A new version of the following files was downloaded from https://huggingface.co/fla-hub/rwkv7-0.1B-g1:\n"}
+,{"stream_name":"stderr","time":49.342859787,"data":"- hf_rwkv_tokenizer.py\n"}
+,{"stream_name":"stderr","time":49.342863075,"data":". Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.\n"}
+,{"stream_name":"stdout","time":53.783168225,"data":"· tokenizer RwkvTokenizer · vocab 65531 · eos=65530 pad=0\n"}
+,{"stream_name":"stderr","time":54.164121247,"data":"FATAL: /kaggle/working/_train.jsonl 是空的。\n"}
+,{"stream_name":"stdout","time":54.174925329,"data":"· 下载 https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/data/sft-train.jsonl -\u003e /kaggle/working/_train.jsonl (3262564 bytes)\n"}
+,{"stream_name":"stdout","time":54.198704976,"data":"· 读入 256 行\n"}
+,{"stream_name":"stderr","time":58.948225553,"data":"W1010 13:13:20.534000 20 torch/distributed/elastic/multiprocessing/api.py:1012] Sending process 28 closing signal SIGTERM\n"}
+,{"stream_name":"stderr","time":59.162593646,"data":"E1010 13:13:20.749000 20 torch/distributed/elastic/multiprocessing/api.py:986] failed (exitcode: 2) local_rank: 1 (pid: 29) of binary: /usr/bin/python3\n"}
+,{"stream_name":"stderr","time":59.18864838,"data":"Traceback (most recent call last):\n"}
+,{"stream_name":"stderr","time":59.18951051,"data":"  File \"\u003cfrozen runpy\u003e\", line 203, in _run_module_as_main\n"}
+,{"stream_name":"stderr","time":59.189541175,"data":"  File \"\u003cfrozen runpy\u003e\", line 88, in _run_code\n"}
+,{"stream_name":"stderr","time":59.189546647,"data":"  File \"/usr/local/lib/python3.13/dist-packages/torch/distributed/run.py\", line 994, in \u003cmodule\u003e\n"}
+,{"stream_name":"stderr","time":59.189551106,"data":"    main()\n"}
+,{"stream_name":"stderr","time":59.189555081,"data":"    ~~~~^^\n"}
+,{"stream_name":"stderr","time":59.189558627,"data":"  File \"/usr/local/lib/python3.13/dist-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py\", line 362, in wrapper\n"}
+,{"stream_name":"stderr","time":59.189563055,"data":"    return f(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":59.189566431,"data":"  File \"/usr/local/lib/python3.13/dist-packages/torch/distributed/run.py\", line 990, in main\n"}
+,{"stream_name":"stderr","time":59.189570482,"data":"    run(args)\n"}
+,{"stream_name":"stderr","time":59.189574111,"data":"    ~~~^^^^^^\n"}
+,{"stream_name":"stderr","time":59.189577766,"data":"  File \"/usr/local/lib/python3.13/dist-packages/torch/distributed/run.py\", line 981, in run\n"}
+,{"stream_name":"stderr","time":59.189581681,"data":"    elastic_launch(\n"}
+,{"stream_name":"stderr","time":59.189585413,"data":"    ~~~~~~~~~~~~~~~\n"}
+,{"stream_name":"stderr","time":59.189588671,"data":"        config=config,\n"}
+,{"stream_name":"stderr","time":59.189591906,"data":"        ~~~~~~~~~~~~~~\n"}
+,{"stream_name":"stderr","time":59.189595184,"data":"        entrypoint=cmd,\n"}
+,{"stream_name":"stderr","time":59.18959839,"data":"        ~~~~~~~~~~~~~~~\n"}
+,{"stream_name":"stderr","time":59.189601616,"data":"    )(*cmd_args)\n"}
+,{"stream_name":"stderr","time":59.189604795,"data":"    ~^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":59.189608091,"data":"  File \"/usr/local/lib/python3.13/dist-packages/torch/distributed/launcher/api.py\", line 170, in __call__\n"}
+,{"stream_name":"stderr","time":59.189617999,"data":"    return launch_agent(self._config, self._entrypoint, list(args))\n"}
+,{"stream_name":"stderr","time":59.189620772,"data":"  File \"/usr/local/lib/python3.13/dist-packages/torch/distributed/launcher/api.py\", line 317, in launch_agent\n"}
+,{"stream_name":"stderr","time":59.189623073,"data":"    raise ChildFailedError(\n"}
+,{"stream_name":"stderr","time":59.189636529,"data":"    ...\u003c2 lines\u003e...\n"}
+,{"stream_name":"stderr","time":59.18964045,"data":"    )\n"}
+,{"stream_name":"stderr","time":59.189650168,"data":"torch.distributed.elastic.multiprocessing.errors.ChildFailedError: \n"}
+,{"stream_name":"stderr","time":59.189654399,"data":"============================================================\n"}
+,{"stream_name":"stderr","time":59.189658658,"data":"/kaggle/src/script.py FAILED\n"}
+,{"stream_name":"stderr","time":59.189662349,"data":"------------------------------------------------------------\n"}
+,{"stream_name":"stderr","time":59.189665866,"data":"Failures:\n"}
+,{"stream_name":"stderr","time":59.189669066,"data":"[1]:\n"}
+,{"stream_name":"stderr","time":59.189672303,"data":"  time      : 2026-10-10_13:13:20\n"}
+,{"stream_name":"stderr","time":59.189675592,"data":"  host      : 7a9b17fba4e8\n"}
+,{"stream_name":"stderr","time":59.189678873,"data":"  rank      : 0 (local_rank: 0)\n"}
+,{"stream_name":"stderr","time":59.189690018,"data":"  exitcode  : -15 (pid: 28)\n"}
+,{"stream_name":"stderr","time":59.189693371,"data":"  error_file: \u003cN/A\u003e\n"}
+,{"stream_name":"stderr","time":59.18969666,"data":"  traceback : Signal 15 (SIGTERM) received by PID 28\n"}
+,{"stream_name":"stderr","time":59.189700025,"data":"------------------------------------------------------------\n"}
+,{"stream_name":"stderr","time":59.189703348,"data":"Root Cause (first observed failure):\n"}
+,{"stream_name":"stderr","time":59.189708258,"data":"[0]:\n"}
+,{"stream_name":"stderr","time":59.189714913,"data":"  time      : 2026-10-10_13:13:20\n"}
+,{"stream_name":"stderr","time":59.189717171,"data":"  host      : 7a9b17fba4e8\n"}
+,{"stream_name":"stderr","time":59.189719253,"data":"  rank      : 1 (local_rank: 1)\n"}
+,{"stream_name":"stderr","time":59.189721355,"data":"  exitcode  : 2 (pid: 29)\n"}
+,{"stream_name":"stderr","time":59.189723431,"data":"  error_file: \u003cN/A\u003e\n"}
+,{"stream_name":"stderr","time":59.18972617,"data":"  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html\n"}
+,{"stream_name":"stderr","time":59.189743271,"data":"============================================================\n"}
+,{"stream_name":"stderr","time":61.917454392,"data":"/usr/local/lib/python3.13/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":61.91748392,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":62.155826321,"data":"/usr/local/lib/python3.13/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":62.155853146,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":62.87822566,"data":"[NbConvertApp] Converting notebook __script__.ipynb to html\n"}
+,{"stream_name":"stderr","time":63.983444699,"data":"[NbConvertApp] Writing 420271 bytes to __results__.html\n"}
+]

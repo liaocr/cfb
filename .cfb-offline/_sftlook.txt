@@ -1,0 +1,20 @@
+字段: ['assistant', 'id', 'meta', 'repo', 'system', 'user']
+
+=== system（学生训练时看到的指令）===
+你是思维链压缩器。用户给你一次真实软件工程任务的题面，以及当时模型写下的完整思考过程（英文）。请把那段思考压成一份**中文压缩稿**，供后续模型直接阅读以继续任务。硬要求：1) 保留所有承重的事实、结论、决定、落点、验收依据；删掉探索过程、重复、已被推翻的猜测。2) 引用原文时必须是真的逐字，用「」包裹；不确定是否逐字就改写、不要加引号。3) 必须写清「落点」——要动手改的那个文件路径，且必须是原文里确实在讨论要改的那个文件；不要用报错信息里出现的路径充数。4) 不许编造原文与题面里都没有的文件名、命令、标识符、数字。5) 长度不超过原文的 55%。直接输出压缩稿，不要前言、不要解释。
+
+=== user 前 400 字 ===
+[题面]
+[task]
+<uploaded_files>
+/workspace/adamchainz__apig-wsgi__1.0
+</uploaded_files>
+I've uploaded a python code repository in the directory adamchainz__apig-wsgi__1.0. Consider the following issue description:
+
+<issue_description>
+# Add support for `application/vnd.api+json` and custom non-binary content types
+
+When using `make_lambda_handler` with `binary_support=True`, the library automatically
+
+=== assistant（学生要学的输出）===
+需要实现 apig-wsgi 的 non-binary content type 扩展。当前 `make_lambda_handler` 只接受 `binary_support`，`_should_send_binary` 里硬编码 `("text/", "application/json")`。改动两处：默认列表加 `application/vnd.api+json`；给 `make_lambda_handler` 加可选参数 `non_binary_content_type_prefixes` 透传到 `Response` 供 `_should_send_binary` 使用。已确认 `pip install -e .` 装的是 apig-wsgi-2.3.0，测试全过（exit 0）。悬而未决：用户传该参数时是替换默认值还是与默认值合并。题面写的是「control exactly which content types」，倾向替换，但替换会让用户必须重写 `text/`、`application/json`，易错，故尚未定。用户声明测试文件的改动他已处理，但当前 tests/ 里没看到对应新测试，这点没查清。下一步是查 tests/ 有没有针对 `non_binary_content_type_prefixes` 的断言。如果测试里传的是 `["application/vnd

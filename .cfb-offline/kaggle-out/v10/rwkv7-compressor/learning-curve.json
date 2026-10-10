@@ -1,0 +1,23 @@
+[
+  {
+    "step": 72,
+    "devLoss": 2.8416,
+    "genRows": 30,
+    "genFile": "dev-generations-step72.jsonl",
+    "minutes": 20.8
+  },
+  {
+    "step": 144,
+    "devLoss": 3.2418,
+    "genRows": 30,
+    "genFile": "dev-generations-step144.jsonl",
+    "minutes": 36.9
+  },
+  {
+    "step": 216,
+    "devLoss": 3.4794,
+    "genRows": 30,
+    "genFile": "dev-generations-step216.jsonl",
+    "minutes": 52.4
+  }
+]

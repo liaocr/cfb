@@ -1,0 +1,306 @@
+
+
+===== model-card (4293 bytes) =====
+---
+base_model:
+- BlinkDL/rwkv7-g1
+language:
+- en
+- zh
+- ja
+- ko
+- fr
+- ar
+- es
+- pt
+license: apache-2.0
+metrics:
+- accuracy
+pipeline_tag: text-generation
+library_name: transformers
+---
+
+# rwkv7-0.1B-g1
+
+<!-- Provide a quick summary of what the model is/does. -->
+
+This is RWKV-7 g1 model under flash-linear attention format. The `g1` model series added significant more data and incorporated deep thinking abilities.
+
+## Model Details
+
+
+### Model Description
+
+<!-- Provide a longer summary of what this model is. -->
+
+- **Developed by:** Bo Peng, Yu Zhang, Songlin Yang, Ruichong Zhang
+- **Funded by:** RWKV Project (Under LF AI & Data Foundation)
+- **Model type:** RWKV7
+- **Language(s) (NLP):** Multilingal
+- **License:** Apache-2.0
+- **Parameter count:** 191M
+- **Tokenizer:** RWKV World tokenizer
+- **Vocabulary size:** 65,536
+
+### Model Sources
+
+<!-- Provide the basic links for the model. -->
+
+- **Repository:** https://github.com/fla-org/flash-linear-attention ; https://github.com/BlinkDL/RWKV-LM
+- **Paper:** https://arxiv.org/abs/2503.14456
+
+## Uses
+
+<!-- Address questions around how the model is intended to be used, including the foreseeable users of the model and those affected by the model. -->
+Install `flash-linear-attention` and the latest version of `transformers` before using this model:
+
+```bash
+pip install git+https://github.com/fla-org/flash-linear-attention
+pip install 'transformers>=4.48.0'
+```
+
+### Direct Use
+
+<!-- This section is for the model use without fine-tuning or plugging into a larger ecosystem/app. -->
+You can use this model just as any other HuggingFace models:
+```python
+from transformers import AutoModelForCausalLM, AutoTokenizer
+model = AutoModelForCausalLM.from_pretrained('fla-hub/rwkv7-0.1B-g1', trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained('fla-hub/rwkv7-0.1B-g1', trust_remote_code=True)
+model = model.cuda() # Supported on Nvidia/AMD/Intel eg. model.xpu()
+prompt = "What is a large language model?"
+messages = [
+    {"role": "user", "content": prompt}
+]
+text = tokenizer.apply_chat_template(
+    messages,
+    tokenize=False,
+    add_generation_prompt=True,
+    enable_thinking=True  # Default is True, set to False to disable thinking
+)
+
+model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+generated_ids = model.generate(
+    **model_inputs,
+    max_new_tokens=1024,
+    do_sample=True,
+    temperature=1.0,
+    top_p=0.3,
+    repetition_penalty=1.2
+)
+generated_ids = [
+    output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+]
+
+response = tokenizer.batch_decode(generated_ids, skip_special_tokens=False)[0]
+print(response)
+```
+
+### Training Data
+
+This model is trained on the World v3.5 with a total of more than 5 trillion tokens.
+
+## FAQ
+Q: safetensors metadata is none.
+
+A: upgrade transformers to >=4.48.0: `pip install 'transformers>=4.48.0'`
+
+## Thinking Prompt
+```
+<|rwkv_tokenizer_end_of_text|>User: <Your Question Here>
+
+Assistant: <think
+```
+Don't close the brackets for `<think`!
+
+## Addidtional Caveats for Prompting
+
+**Always add `<|rwkv_tokenizer_end_of_text|>` (Token ID = 0) before your prompt. The model is incapable of attending the first token it receives due to state initialization issues.**
+
+Bad prompt example:
+```
+Mathews lifted a dark brow. "Are you sure about that? I mean, wouldn't it be better to wait until Dale is home safe and sound?"
+
+"The longer I wait to tell her, the worse it will be for both of us."
+
+"Good luck. You're going to need it," said
+```
+The model is unable to recall ` Mathews` because it is the very first token of the input.
+
+Good prompt example:
+```
+<|rwkv_tokenizer_end_of_text|>Mathews lifted a dark brow. "Are you sure about that? I mean, wouldn't it be better to wait until Dale is home safe and sound?"
+
+"The longer I wait to tell her, the worse it will be for both of us."
+
+"Good luck. You're going to need it," said
+```
+the model will output ` Mathews` as expected.
+
+Without this token: **`lambada_openai ppl=13.84 acc=48.13%`**
+
+With this token added: **`lambada_openai ppl=12.36 acc=49.12%`**
+
+Note: this phenomenon is very rare for Transformers but significant for RNNs. We speculate that the model uses the first token to pin the states, to better acquire information from later tokens.
+
+===== fla-rwkv7 (22974 bytes) =====
+# Copyright (c) 2023-2026, Songlin Yang, Yu Zhang, Zhiyuan Li
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+# For a list of all contributors, visit:
+#   https://github.com/fla-org/flash-linear-attention/graphs/contributors
+
+from __future__ import annotations
+
+import math
+import warnings
+from typing import TYPE_CHECKING, Optional
+
+import torch
+import torch.nn as nn
+from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+from transformers.modeling_utils import PreTrainedModel
+from transformers.utils import logging
+from transformers.utils.deprecation import deprecate_kwarg
+
+from fla.layers.attn import Attention
+from fla.layers.rwkv7 import RWKV7Attention
+from fla.models.hybrid import get_hybrid_attention_spec
+from fla.models.rwkv7.configuration_rwkv7 import RWKV7Config
+from fla.models.utils import Cache, FLAUnsupportedCacheGenerationMixin
+from fla.modules import FusedCrossEntropyLoss, FusedLinearCrossEntropyLoss, LayerNorm
+from fla.modules.activations import ACT2FN
+from fla.modules.l2warp import l2_warp
+from fla.modules.token_shift import token_shift
+
+if TYPE_CHECKING:
+    from transformers.processing_utils import Unpack
+
+
+try:
+    from transformers.modeling_layers import GradientCheckpointingLayer
+except ImportError:
+    from fla.models.modeling_layers import GradientCheckpointingLayer
+
+logger = logging.get_logger(__name__)
+
+
+class RWKV7FeedForward(nn.Module):
+
+    def __init__(
+        self,
+        hidden_size: int,
+        hidden_ratio: int | None = None,
+        intermediate_size: int | None = None,
+        hidden_act: str = 'sqrelu',
+        layer_idx: int = None,
+        num_hidden_layers: int = None,
+    ) -> RWKV7FeedForward:
+        super().__init__()
+
+        self.hidden_size = hidden_size
+        if hidden_ratio is None:
+            hidden_ratio = 4
+        if intermediate_size is None:
+            intermediate_size = int(hidden_size * hidden_ratio)
+            intermediate_size = 32 * ((intermediate_size + 32 - 1) // 32)
+        self.hidden_ratio = hidden_ratio
+        self.intermediate_size = intermediate_size
+
+        self.time_shift = nn.ZeroPad2d((0, 0, 1, -1))
+
+        self.x_k = nn.Parameter(torch.zeros(hidden_size))
+
+        self.key = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.value = nn.Linear(intermediate_size, hidden_size, bias=False)
+        self.act_fn = ACT2FN[hidden_act]
+
+        self.layer_idx = layer_idx
+        self.num_hidden_layers = num_hidden_layers
+
+        try:
+            from transformers.modeling_utils import _init_weights
+        except ImportError:
+            _init_weights = True
+        if _init_weights:
+            self.apply(self._initialize_weights)
+        for name, module in self.named_modules():
+            module._in_rwkv_module = True
+
+    def _initialize_weights(self, module: nn.Module):
+        if isinstance(module, RWKV7FeedForward):
+            with torch.no_grad():
+                ratio_1_to_almost0 = 1.0 - (module.layer_idx / module.num_hidden_layers)  # 1 to ~0
+                ddd = torch.ones(1, 1, module.hidden_size)
+                for i in range(module.hidden_size):
+                    ddd[0, 0, i] = i / module.hidden_size
+                module.x_k.data = 1.0 - torch.pow(ddd, ratio_1_to_almost0**4).squeeze()
+
+            # Initialize key and value weights as in CMix_x070
+            original_dtype = module.key.weight.dtype
+            module.key.weight.data = nn.init.orthogonal_(module.key.weight.data.to(torch.float32)).to(original_dtype)
+            module.value.weight.data.zero_()
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        attention_mask: torch.Tensor | None = None,
+        state: Cache | None = None,
+        cu_seqlens: torch.LongTensor | None = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        if attention_mask is not None:
+            x = x.mul(attention_mask[:, -x.shape[-2]:, None])
+        if state is not None:
+            delta, ffn_state = token_shift(x, cu_seqlens, cache=state[self.layer_idx]['ffn_state'], output_cache=True)
+        else:
+            delta, ffn_state = token_shift(x, cu_seqlens, output_cache=True)
+        if state is not None:
+            # no need to update the offset twice
+            state.update(ffn_state=ffn_state, layer_idx=self.layer_idx, offset=0)
+        return self.value(self.act_fn(self.key(x.addcmul(delta, self.x_k)))), state
+
+
+class RWKV7Block(GradientCheckpointingLayer):
+
+    def __init__(
+        self,
+        config: RWKV7Config,
+        layer_idx: int,
+    ) -> RWKV7Block:
+        super().__init__()
+
+        self.config = config
+        self.layer_idx = layer_idx
+
+        if config.norm_first and layer_idx == 0:
+            self.pre_norm = (LayerNorm if config.fuse_norm else nn.LayerNorm)(
+                config.hidden_size,
+                bias=config.norm_bias,
+                eps=config.norm_eps,
+            )
+        self.attn_norm = (LayerNorm if config.fuse_norm else nn.LayerNorm)(
+            config.hidden_size,
+            bias=config.norm_bias,
+            eps=config.norm_eps,
+        )
+        attn_spec = get_hybrid_attention_spec(config.attn, layer_idx=layer_idx)
+        if attn_spec is not None:
+            self.attn = Attention(
+                hidden_size=config.hidden_size,
+                num_heads=attn_spec['num_heads'],
+                num_kv_heads=attn_spec['num_kv_heads'],
+                qkv_bias=attn_spec['qkv_bias'],
+                window_size=attn_spec['window_size'],
+                rope_theta=attn_spec['rope_theta'],
+                max_position_embeddings=config.max_position_embeddings,
+                layer_idx=layer_idx,
+            )
+        else:
+            self.attn = RWKV7Attention(
+                mode=config.attn_mode,
+                hidden_size=config.hidden_size,
+                head_dim=config.head_dim,
+                num_heads=config.num_heads,
+                decay_low_rank_dim=c

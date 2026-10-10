@@ -1,0 +1,238 @@
+{
+ "summary": {
+  "v4": {
+   "n": 23,
+   "pass": 21,
+   "soft": 0.7031
+  },
+  "v5": {
+   "n": 23,
+   "pass": 18,
+   "soft": 0.6799
+  }
+ },
+ "per": [
+  {
+   "id": "adamchainz_flake8-comprehensions_pr195#b3",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.5949,
+   "bSoft": 0.6895,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "adamchainz_ec2-metadata_pr40#b4",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.6616,
+   "bSoft": 0.7382,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "adamchainz_flake8-logging_pr4#b7",
+   "aPass": false,
+   "bPass": false,
+   "aSoft": 0.7866,
+   "bSoft": 0.7677,
+   "aFail": [
+    "G4 actionable"
+   ],
+   "bFail": [
+    "G4 actionable"
+   ]
+  },
+  {
+   "id": "adamchainz_django-cors-headers_pr396#b8",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.6531,
+   "bSoft": 0.6687,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "adamchainz_treepoem_pr437#b19",
+   "aPass": true,
+   "bPass": false,
+   "aSoft": 0.7318,
+   "bSoft": 0.689,
+   "aFail": [],
+   "bFail": [
+    "G1 quote-grounded"
+   ]
+  },
+  {
+   "id": "adamtheturtle_doccmd_pr191#b7",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.72,
+   "bSoft": 0.4961,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "adamtheturtle_sybil-extras_pr297#b11",
+   "aPass": true,
+   "bPass": false,
+   "aSoft": 0.7639,
+   "bSoft": 0.6515,
+   "aFail": [],
+   "bFail": [
+    "G3 anchors-kept"
+   ]
+  },
+  {
+   "id": "adamtheturtle_pip-check-reqs_pr38#b9",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.6013,
+   "bSoft": 0.6588,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "aiokitchen_aiomisc_pr199#b13",
+   "aPass": true,
+   "bPass": false,
+   "aSoft": 0.7339,
+   "bSoft": 0.6307,
+   "aFail": [],
+   "bFail": [
+    "G1 quote-grounded"
+   ]
+  },
+  {
+   "id": "aiven_aiven-client_pr287#b4",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.634,
+   "bSoft": 0.5766,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "andrewgodwin_urlman_pr6#b7",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.859,
+   "bSoft": 0.8432,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "ansys_pyedb-core_pr347#b30",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.8067,
+   "bSoft": 0.7907,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "ansys_pyfluent_pr139#b6",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.7283,
+   "bSoft": 0.8825,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "appium_python-client_pr307#b12",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.9016,
+   "bSoft": 0.7353,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "app-sre_qontract-reconcile_pr1020#b18",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.8146,
+   "bSoft": 0.8392,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "arcinstitute_cell-eval_pr102#b6",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.6181,
+   "bSoft": 0.6267,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "ariebovenberg_slotscheck_pr34#b10",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.7793,
+   "bSoft": 0.6096,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "argyle-engineering_pyap_pr21#b34",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.6728,
+   "bSoft": 0.6381,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "arviz-devs_preliz_pr103#b19",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.8358,
+   "bSoft": 0.8276,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "asottile_add-trailing-comma_pr178#b7",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.414,
+   "bSoft": 0.4741,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "asottile_blacken-docs_pr128#b4",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.6555,
+   "bSoft": 0.527,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "asottile_future-fstrings_pr10#b18",
+   "aPass": true,
+   "bPass": true,
+   "aSoft": 0.4422,
+   "bSoft": 0.5182,
+   "aFail": [],
+   "bFail": []
+  },
+  {
+   "id": "asottile_classify-imports_pr112#b9",
+   "aPass": false,
+   "bPass": false,
+   "aSoft": 0.762,
+   "bSoft": 0.7597,
+   "aFail": [
+    "G3 anchors-kept"
+   ],
+   "bFail": [
+    "G4 actionable",
+    "G3 anchors-kept"
+   ]
+  }
+ ]
+}

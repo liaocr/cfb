@@ -1,0 +1,8 @@
+手写稿 75 条中，含模板标记的：
+   已落定的决定       44
+   落点：          41
+   验收：          58
+
+production 字段 = {"ok": true, "promptVersion": "compress-v4d9:mr+hand+hand", "accept": {"netSaved": 1368, "minSaved": 50, "tokens": {"rawTokensEst": 688, "outTokensEst": 336, "netSavedTokensEst": 352, "unit": "estimate-not-tokenizer"}}, "spliced": {"droppedContinuation": 4, "continuation": 1}, "budget": {"rawTok": 688, "programTok": 337, "programChars": 833, "programShare": 0.49, "draftTok": 153, "outTok": 336}}
+
+qualityAudit = {"schema": "cfb.mode1-content-audit/1", "status": "clean", "draft": {"status": "clean", "issues": [], "exempted": []}, "stored": {"status": "clean", "issues": [], "exempted": []}}
