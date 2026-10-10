@@ -15,6 +15,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { judge, RULER_VERSION, COMPRESSION_TARGET, COMPRESSION_HARD_MAX } from './gen-ruler.mjs'
+// G1 的确定性后处理门。判据与尺子的 G1 **同源**（同一个 quoteSpans/anchorsOf/hasAnchor），
+// 两边各写一份就会漂移，而漂移不会报错，只会让「门说修好了、尺子说没有」这种
+// 谁也看不懂的现象发生。所以这里只 import，绝不复制。
+import { guardDraft, orphanCount } from './g1-guard.mjs'
 import { estimateTokens } from '../src/tokens.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -26,6 +30,10 @@ const GEN = arg('--gen')
 if (!GEN) { console.log('用法: node tools/eval-sft.mjs --gen <dev-generations.jsonl> [--sft <dir>]'); process.exit(2) }
 const GENP = path.resolve(ROOT, GEN)
 const OUT = path.resolve(ROOT, arg('--out', path.join(path.dirname(GENP), 'eval-sft.json')))
+// 默认开 strip。理由在 g1-guard.mjs 里：strip 与 off 一样干净（孤儿小句 0），
+// 却把 dev 从 25/73 抬到 45/73；drop 多挣 1 条但留下 60 处残骸。
+// --guard off 用来复现「没有这道门」的对照。
+const GUARD = arg('--guard', 'strip')
 
 // user 字段是 build-sft.mjs 用这一行拼出来的，所以这里必须用同一个标记切回去。
 // 标记写错不会报错，只会让 ctx/raw 静默互换，然后所有指标一起错。
@@ -57,12 +65,21 @@ for (const g of gen) {
   }
   const tj = judge({ raw: t.raw, ctx: t.ctx, draft: t.draft })
   const sj = judge({ raw: t.raw, ctx: t.ctx, draft: sd })
+  // 后处理门：稿子 -> 摘掉凭空引用 -> 再判。
+  // 它**不可能让结果变差**：最坏情况是修复被安全阀退回、结果与不过门时一样，
+  // 而不过门的稿子本来就走 raw 兜底（100% 无损）。所以这是纯增益的一步。
+  const gd = guardDraft(t.raw, t.ctx, sd, { mode: GUARD })
+  const gj = GUARD === 'off' ? sj : judge({ raw: t.raw, ctx: t.ctx, draft: gd.draft })
   rows.push({
     id: g.id, teacherPass: tj.pass, studentPass: sj.pass,
     // gaugeable 是**与稿子无关**的属性（只读 raw/ctx），两边必须恒等。
     // 它现在由尺子给成布尔，不再靠解析 'G0 no-leverage' 这个字符串 ——
     // 字符串一旦改措辞，分母就会静默错位，而分母错了没有任何指标会报警。
     teacherGaugeable: tj.gaugeable, studentGaugeable: sj.gaugeable,
+    guardedPass: gj.pass, guardedFailed: gj.failed, guardedScore: gj.score,
+    guardedChars: gd.draft.length, guardHits: gd.hits, guardChanged: gd.changed,
+    guardReverted: !!gd.reverted, guardInvented: gd.invented || [],
+    guardOrphans: GUARD === 'off' ? 0 : orphanCount(gd.draft),
     teacherFailed: tj.failed, studentFailed: sj.failed,
     teacherAdvisory: tj.advisory, studentAdvisory: sj.advisory,
     teacherMeetsTarget: tj.detail.compression.meetsTarget, studentMeetsTarget: sj.detail.compression.meetsTarget,
@@ -127,6 +144,14 @@ const tTarget = scTarget(null, 'teacher')
 const sTarget = scTarget(null, 'student')
 const tOver = scoreable.filter((r) => r.teacherTokRatio > 1.0).length
 const sOver = scoreable.filter((r) => r.studentTokRatio > 1.0).length
+// 后处理门：过门数 + **有没有把本来过门的稿子弄坏**（那一项必须为 0，不为 0 就是门有 bug）
+const gPass = scoreable.filter((r) => r.guardedPass).length
+const gBroke = rows.filter((r) => r.studentPass && !r.guardedPass).length
+const gFixed = rows.filter((r) => !r.studentPass && r.guardedPass).length
+const gHit = rows.filter((r) => r.guardHits > 0).length
+const gReverted = rows.filter((r) => r.guardReverted).length
+const gOrphans = rows.reduce((a, r) => a + r.guardOrphans, 0)
+const gScore = scoreable.map((r) => r.guardedScore)
 
 const report = {
   schema: 'cfb.eval-sft/1', ruler: RULER_VERSION, at: new Date().toISOString(),
@@ -154,6 +179,12 @@ const report = {
     student: { pass: sTarget, rate: rate2(sTarget, sn), overRaw: sOver },
     note: '过门 + token 比 <= ' + COMPRESSION_TARGET + '；这是要训练到的目标，不是及格线',
   },
+  // 后处理门：把学生稿过一遍 G1 闸之后的成绩。
+  // 「不劣于原稿」在这里是可验证的：brokePass 必须是 0。
+  guard: { mode: GUARD, hits: gHit, fixed: gFixed, brokePass: gBroke, reverted: gReverted,
+    orphanClauses: gOrphans,
+    studentPass: gPass, studentRate: rate2(gPass, sn), studentMeanScore: mean(gScore),
+    note: '摘掉引号里的凭空锚点。不修不编，只摘；最坏退回原稿，所以不可能变差' },
   paired: { bothPass: both, studentOnly: sOnly, teacherOnly: tOnly, neither },
   chars: { teacher: { p50: q(rows.map((r) => r.teacherChars), 0.5) },
            student: { p50: q(rows.map((r) => r.studentChars), 0.5) } },
@@ -198,7 +229,12 @@ else console.log('  压缩硬门：token 比 <= %s', COMPRESSION_HARD_MAX)
 if (tOver || sOver) console.log('  ⚠ 比原文还长（token 比 > 1.0）：教师 %d · 学生 %d', tOver, sOver)
 console.log('  字数 p50：教师 %d · 学生 %d', report.chars.teacher.p50, report.chars.student.p50)
 const fmt = (m) => Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => k + ' x' + v).join('、') || '（无）'
-console.log('  学生失败分布（有受力点）：' + fmt(fc('studentFailed', scoreable)))
+console.log('  ── 过 G1 后处理门（' + GUARD + '）后 ──')
+console.log('  学生 %d/%d = %s（命中 %d 条，修好 %d 条，弄坏 %d 条，退回 %d 条，孤儿小句 %d）',
+  gPass, sn, pc(rate2(gPass, sn)), gHit, gFixed, gBroke, gReverted, gOrphans)
+console.log('  软分（过门后）：教师 %s · 学生 %s', report.softScore.teacherMean, mean(gScore))
+if (gBroke) console.error('  FATAL: 后处理门把 ' + gBroke + ' 条本来过门的稿子弄坏了 —— 门有 bug')
+console.log('  学生失败分布（有受力点，未过门）：' + fmt(fc('studentFailed', scoreable)))
 console.log('  教师失败分布（有受力点）：' + fmt(fc('teacherFailed', scoreable)))
 if (empty) console.log('  ⚠ 学生空稿 %d 条', empty)
 console.log('  报告：' + path.relative(ROOT, OUT))
