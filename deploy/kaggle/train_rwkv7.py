@@ -616,17 +616,27 @@ def main(argv=None) -> int:
 
         # 先自检：开缓存与不开缓存的输出**必须逐字相同**，否则"提速"是拿正确性换的。
         # RWKV7 是线性注意力，缓存的是循环状态，理论上应等价；但理论不等于实测。
+        # 自检本身也必须被兜住：它跑在**权重已经落盘之后**，但要是它自己崩了，
+        # 生成阶段就一条都产不出来。宁可不加速，也不能整轮白跑。
         if args.gen_cache:
-            a, ta = gen_once(dev_encoded[0][0], 64, False)
-            b, tb = gen_once(dev_encoded[0][0], 64, True)
-            same = a == b
-            print(f"· 缓存自检 64 token：不开 {ta:.1f}s / 开 {tb:.1f}s"
-                  f"（{ta / max(tb, 1e-6):.1f}x）· 输出{'逐字一致' if same else '不一致'}", flush=True)
-            if not same:
-                print("  警告：开缓存后输出变了 -> 回退到不开缓存（慢，但不冒正确性的险）", flush=True)
-                print(f"  不开：{a[:150]!r}", flush=True)
-                print(f"  开  ：{b[:150]!r}", flush=True)
+            try:
+                a, ta = gen_once(dev_encoded[0][0], 64, False)
+                b, tb = gen_once(dev_encoded[0][0], 64, True)
+                same = a == b
+                print(f"· 缓存自检 64 token：不开 {ta:.1f}s / 开 {tb:.1f}s"
+                      f"（{ta / max(tb, 1e-6):.1f}x）· 输出{'逐字一致' if same else '不一致'}",
+                      flush=True)
+                if not same:
+                    print("  警告：开缓存后输出变了 -> 回退到不开缓存（慢，但不冒正确性的险）",
+                          flush=True)
+                    print(f"  不开：{a[:150]!r}", flush=True)
+                    print(f"  开  ：{b[:150]!r}", flush=True)
+                    args.gen_cache = False
+            except Exception as exc:  # noqa: BLE001
+                print(f"· 缓存自检就崩了（{exc!r}）-> 全程不开缓存", flush=True)
                 args.gen_cache = False
+            finally:
+                torch.cuda.empty_cache()
 
         written, skipped, t_gen = 0, 0, time.time()
         with gen_path.open("w", encoding="utf-8") as f:
