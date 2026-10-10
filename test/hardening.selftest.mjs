@@ -118,11 +118,16 @@ await test('§2e 真正拼错的键照旧报 unknownOptions（白名单收紧后
 })
 
 // ═══ §3 token 估算与闸门 ═══════════════════════════════════════════════════════
-await test('§3a estimateTokens：英文 0.3/字、中文 0.6/字（DeepSeek 官方口径）、空串 0', () => {
+// 2026-10 校准：旧的 0.3/0.6 是手写常数（注释声称出自 DeepSeek 文档，无人复算过）。
+// 用 330 次真实调用的 providerReportedUsage 对宽字符/其余字符做最小二乘（n=660，输入输出各半）：
+//   中文 0.8084 · 其余 0.2600，平均绝对误差 3.87%（旧常数 7.07%）；
+//   留出验证 6.03%→2.61%（输入）/ 9.79%→5.47%（输出）；corr(宽,其余)=0.13 ⇒ 系数可分辨。
+// 本测试钉住的是**现行校准值**，不是那个已证伪的文档口径。改常数必须同时改这里。
+await test('§3a estimateTokens：中文 0.81/字、其余 0.26/字（2026-10 实测校准）、空串 0', () => {
   assert.equal(estimateTokens(''), 0)
-  assert.equal(estimateTokens('a'.repeat(1000)), 300)
-  assert.equal(estimateTokens('中'.repeat(1000)), 600)
-  assert.equal(estimateTokens('中'.repeat(10) + 'a'.repeat(10)), 9)
+  assert.equal(estimateTokens('a'.repeat(1000)), 260)
+  assert.equal(estimateTokens('中'.repeat(1000)), 810)
+  assert.equal(estimateTokens('中'.repeat(10) + 'a'.repeat(10)), 11)
   assert.equal(estimateTokens(null), 0)
   assert.equal(wideShare('中a'), 0.5)
 })

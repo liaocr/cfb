@@ -25,7 +25,8 @@
 //   G4 actionable          稿里至少要有一个接地的落点或验证命令（不然读完没法动手）
 //   G5 no-cause-inversion  不得把 raw 的因果方向反过来（窄检测：只抓带反转标记的对调）
 //   G6 not-copy            剔除合法引用后，稿子与 raw 的 16-gram 覆盖率 < 0.5（否则 = 照抄）
-//   G7 compressed          稿长 <= 0.55·raw（raw >= 800 字时），且不得退化成残片（< 0.06·raw）
+//   G7 compressed          **token 比** <= 0.55·raw（raw >= 800 字时）；估算用 src/tokens.js
+//                          （gen-ruler/2：字符比会被「英文原文 → 中文稿」骗过，见文件头 import 处的反例）
 //
 // 软分（只在过门稿之间排序，权重和为 1）：
 //   S1 anchorsKept .30   S2 groundingDensity .20   S3 decisionCoverage .20
@@ -35,8 +36,14 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+// v2（2026-10）：G7 从「字符比」改成「token 比」。理由是一条实测反例 ——
+// 同一批 100 条，v3 提示词把稿子从 1165 字压到 1187 字（字符比 0.471，过 G7），
+// 但 raw 是英文、稿子是中文：raw 3.75 字符/token、稿 1.85 字符/token ⇒
+// **token 比 0.978，等于没压缩**。字符比会把「翻译成中文」误判成压缩。
+// 用生产同一个估算器（src/tokens.js，中文 0.6 / 其余 0.3），不另立口径。
+import { estimateTokens } from '../src/tokens.js'
 
-export const RULER_VERSION = 'gen-ruler/1'
+export const RULER_VERSION = 'gen-ruler/2'
 // 承重**标识符**保留率下限（承重路径另算，一个都不许丢）。
 //
 // 实测依据（61 条真手稿，.cfb-offline/ruler/report-hand.json）：
@@ -477,11 +484,19 @@ export function judge(input) {
   if (raw.length >= 400 && cov >= 0.5) failed.push('G6 not-copy')
 
   // ---- G7 ----
+  // 判据用 **token 比**，不是字符比（gen-ruler/2）。字符比会被「英文原文 → 中文稿」
+  // 这种语言切换骗过：字符腰斩、token 不降。raw/draft 的字符数仍留在 detail 里供归因。
   const ratio = raw.length ? draft.length / raw.length : 0
-  detail.compression = { rawChars: raw.length, draftChars: draft.length, ratio: +ratio.toFixed(4) }
+  const rawTok = estimateTokens(raw)
+  const draftTok = estimateTokens(draft)
+  const tokRatio = rawTok ? draftTok / rawTok : 0
+  detail.compression = {
+    rawChars: raw.length, draftChars: draft.length, ratio: +ratio.toFixed(4),
+    rawTokensEst: rawTok, draftTokensEst: draftTok, tokenRatio: +tokRatio.toFixed(4),
+  }
   // 只设上限，不设下限：压得太狠会先撞 G2/G3/G4（没落点、丢锚点、不动手），
   // 那是语义判据；在这里再放一个比例下限只会变成一个拍脑袋的截断。
-  if (raw.length >= 800 && ratio > 0.55) failed.push('G7 compressed')
+  if (raw.length >= 800 && tokRatio > 0.55) failed.push('G7 compressed')
 
   // ---- 软分（只在过门稿上才有意义；不过门时照样算出来供归因） ----
   const rawAnchors = anchorsOf(raw)
@@ -494,7 +509,7 @@ export function judge(input) {
     : retention(rawAnchors, draft)
   const draftAnchors = anchorsOf(draft)
   const grounded = draftAnchors.length ? draftAnchors.filter((a) => norm(ev).includes(a) || norm(ev).includes(base(a))).length / draftAnchors.length : 0
-  const gain = Math.max(0, Math.min(1, (1 - ratio - 0.10) / 0.75))
+  const gain = Math.max(0, Math.min(1, (1 - tokRatio - 0.10) / 0.75))
   const sub = {
     S1_anchorsKept: +retention(rawAnchors, draft).toFixed(4),
     S2_groundingDensity: +grounded.toFixed(4),
