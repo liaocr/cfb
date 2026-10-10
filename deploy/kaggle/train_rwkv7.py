@@ -100,11 +100,22 @@ def fetch(src: str, dest: Path) -> Path:
     if src.startswith(("http://", "https://")):
         import urllib.request
         dest.parent.mkdir(parents=True, exist_ok=True)
-        req = urllib.request.Request(src, headers={"User-Agent": "cfb-rwkv7-trainer"})
-        with urllib.request.urlopen(req, timeout=180) as r, dest.open("wb") as w:
-            w.write(r.read())
-        print(f"· 下载 {src} -> {dest} ({dest.stat().st_size} bytes)", flush=True)
-        return dest
+        last = None
+        # 真实训练集有近 10MB，raw.githubusercontent 这条链路会偶发重置；
+        # 一次就放弃等于白烧一整轮 kernel（含排队 + 装 fla + 载模型）。
+        for i in range(4):
+            try:
+                req = urllib.request.Request(src, headers={"User-Agent": "cfb-rwkv7-trainer"})
+                with urllib.request.urlopen(req, timeout=180) as r, dest.open("wb") as w:
+                    w.write(r.read())
+                print(f"· 下载 {src} -> {dest} ({dest.stat().st_size} bytes)", flush=True)
+                return dest
+            except Exception as exc:  # noqa: BLE001
+                last = exc
+                if i < 3:
+                    print(f"· 下载失败（{exc!r}），{2 ** i}s 后重试 {i + 2}/4", flush=True)
+                    time.sleep(2 ** i)
+        raise SystemExit(f"FATAL: 下载失败 4 次：{src}\n  最后错误：{last!r}")
     p = Path(src)
     if p.is_file():
         return p

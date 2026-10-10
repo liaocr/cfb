@@ -9,12 +9,18 @@
 // 白白浪费容量和样本。所以这里**不写死模板文本**，只存结构化的 system/user/assistant 三段，
 // 由训练脚本调用 apply_chat_template 生成 —— 连 Jinja 都不用手抄，抄错就是静默的格式错配。
 //
-// 设计决定二：只让过尺子的稿子进集。训练集里混进一份「看起来像稿子」的垃圾，
+// 设计决定二：**训练集**只收过尺子的稿子。训练集里混进一份「看起来像稿子」的垃圾，
 // 模型就学会产出那种垃圾，而没有任何指标会报警。
 //
 // 设计决定三：按**仓库**切分 train/dev，不随机切。同一仓库的多个单元高度相似
 // （同样的文件、术语、修法），随机切会把几乎相同的样本同时放进两边，dev 分数虚高 ——
 // 而虚高的 dev 分数**不会以任何方式报警**。
+//
+// 设计决定四：**先切分、再过滤训练集；dev 不过滤。**
+// 反过来（先过滤再切分）会让 dev 只剩「教师本来就过尺子」的那部分，
+// 于是学生哪怕只会照抄，dev 通过率也会天然接近 100%，跟教师 57% 的基线没法比 ——
+// 那是一个只会报喜的指标。所以 dev 保留**全部**可用单元，并额外记录
+// `devTeacherPass`（教师在这批单元上的通过率）当基线，学生分数跟它比才有意义。
 //
 // 输出每行：{ id, repo, system, user, assistant, meta }
 import fs from 'node:fs'
@@ -46,7 +52,7 @@ const SYSTEM = fs.readFileSync(PROMPT_PATH, 'utf8')
 const H = (s) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 } return h }
 
 const lines = fs.readFileSync(IN, 'utf8').split(/\r?\n/).filter((l) => l.trim())
-const rows = []
+const usable = []
 const seen = new Set()
 const rejects = {}
 let dup = 0, empty = 0
@@ -63,44 +69,63 @@ for (const l of lines) {
   if (raw.length < MIN_RAW) { rejects['too-short-raw'] = (rejects['too-short-raw'] || 0) + 1; continue }
   if (draft.length < MIN_DRAFT) { rejects['draft-below-min'] = (rejects['draft-below-min'] || 0) + 1; continue }
   const r = judge({ raw, ctx, draft })
-  if (!r.pass) { for (const g of r.failed) rejects[g] = (rejects[g] || 0) + 1; continue }
-  rows.push({ id, repo: o.family || o.repository || 'unknown', system: SYSTEM,
-    user: '[题面]\n' + ctx + '\n\n[思考过程]\n' + raw,
-    assistant: draft,
-    meta: { rawChars: raw.length, ctxChars: ctx.length, draftChars: draft.length,
-      ratio: Number((draft.length / raw.length).toFixed(4)), score: r.score, license: o.license || null,
-      usage: o.usage || null } })
+  usable.push({ id, repo: o.family || o.repository || 'unknown', raw, ctx, draft,
+    pass: !!r.pass, failed: r.failed || [], score: r.score,
+    license: o.license || null, usage: o.usage || null })
 }
 
+// 先按仓库切分，再对训练集过滤（见设计决定四）
 const train = [], dev = []
-for (const r of rows.sort((a, b) => (a.id < b.id ? -1 : 1))) {
-  (H(r.repo) % 1000 < DEV_RATIO * 1000 ? dev : train).push(r)
+for (const u of usable.slice().sort((a, b) => (a.id < b.id ? -1 : 1))) {
+  if (H(u.repo) % 1000 < DEV_RATIO * 1000) { dev.push(u); continue }
+  if (!u.pass) { for (const g of u.failed) rejects[g] = (rejects[g] || 0) + 1; continue }
+  train.push(u)
 }
+
+const mk = (u) => ({ id: u.id, repo: u.repo, system: SYSTEM,
+  user: '[题面]\n' + u.ctx + '\n\n[思考过程]\n' + u.raw,
+  assistant: u.draft,
+  meta: { rawChars: u.raw.length, ctxChars: u.ctx.length, draftChars: u.draft.length,
+    ratio: Number((u.draft.length / u.raw.length).toFixed(4)), score: u.score,
+    judgePass: u.pass, license: u.license, usage: u.usage } })
+const rows = train.map(mk)
+const devRows = dev.map(mk)
+const devPass = dev.filter((u) => u.pass).length
 
 fs.mkdirSync(OUT, { recursive: true })
 const wr = (f, a) => fs.writeFileSync(path.join(OUT, f), a.map((x) => JSON.stringify(x)).join('\n') + (a.length ? '\n' : ''))
-wr('train.jsonl', train)
-wr('dev.jsonl', dev)
+wr('train.jsonl', rows)
+wr('dev.jsonl', devRows)
 
 const avg = (a, k) => a.length ? Number((a.reduce((s, x) => s + x.meta[k], 0) / a.length).toFixed(1)) : 0
 const report = {
   in: path.relative(ROOT, IN), prompt: path.relative(ROOT, PROMPT_PATH), promptChars: SYSTEM.length,
   format: { template: 'native chat_template (System/User/Assistant)', tokenizedBy: 'trainer via apply_chat_template',
     thinking: false, why: '底座按这套标记训练了 5T token；自造分隔符要它先忘一套再学一套' },
-  read: lines.length, dup, empty, kept: rows.length, rejected: lines.length - rows.length - dup - empty,
+  read: lines.length, dup, empty, usable: usable.length, kept: rows.length,
+  rejected: usable.length - rows.length - dev.length,
   rejects,
-  split: { train: train.length, dev: dev.length, byRepo: true, algorithm: 'fnv1a(repo)%1000 < ' + DEV_RATIO * 1000 },
-  repos: { total: new Set(rows.map((r) => r.repo)).size, train: new Set(train.map((r) => r.repo)).size, dev: new Set(dev.map((r) => r.repo)).size },
-  chars: { train: { raw: avg(train, 'rawChars'), ctx: avg(train, 'ctxChars'), draft: avg(train, 'draftChars') } },
-  ratio: avg(train, 'ratio'), score: avg(train, 'score'),
+  split: { train: rows.length, dev: devRows.length, byRepo: true,
+    algorithm: 'fnv1a(repo)%1000 < ' + DEV_RATIO * 1000,
+    devUnfiltered: true, why: 'dev 不过滤，否则通过率天然接近 100%，跟教师基线没法比' },
+  devTeacherPass: { pass: devPass, total: dev.length,
+    rate: dev.length ? Number((devPass / dev.length).toFixed(4)) : null,
+    note: '学生在 dev 上的通过率要跟这个数比，不是跟 100% 比' },
+  repos: { total: new Set(usable.map((r) => r.repo)).size,
+    train: new Set(rows.map((r) => r.repo)).size, dev: new Set(devRows.map((r) => r.repo)).size },
+  chars: { train: { raw: avg(rows, 'rawChars'), ctx: avg(rows, 'ctxChars'), draft: avg(rows, 'draftChars') } },
+  ratio: avg(rows, 'ratio'), score: avg(rows, 'score'),
 }
 fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2) + '\n')
 
-console.log('SFT 数据集：读 %d -> 保留 %d（训练 %d / 验证 %d）', lines.length, rows.length, train.length, dev.length)
+console.log('SFT 数据集：读 %d -> 可用 %d -> 训练 %d / 验证 %d（验证集不过滤）',
+  lines.length, usable.length, rows.length, devRows.length)
 console.log('  格式：底座原生 chat_template（System/User/Assistant），非思考模式')
 console.log('  仓库：总 %d，训练 %d，验证 %d（按仓库切分，无泄漏）', report.repos.total, report.repos.train, report.repos.dev)
 console.log('  训练集均值：raw %d / ctx %d / draft %d 字，压缩比 %s，软分 %s',
   report.chars.train.raw, report.chars.train.ctx, report.chars.train.draft, report.ratio, report.score)
+console.log('  教师基线：验证集 %d/%d = %s 通过 —— 学生分数跟这个比',
+  devPass, dev.length, report.devTeacherPass.rate)
 const rk = Object.entries(rejects).sort((a, b) => b[1] - a[1])
-if (rk.length) console.log('  未进集原因：' + rk.map(([k, v]) => k + ' x' + v).join('、'))
+if (rk.length) console.log('  训练集未收原因：' + rk.map(([k, v]) => k + ' x' + v).join('、'))
 console.log('  产出：' + path.relative(ROOT, OUT) + '/{train,dev}.jsonl + report.json')

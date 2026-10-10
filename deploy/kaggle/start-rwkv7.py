@@ -127,7 +127,7 @@ def stop_kernel(kid: str) -> int:
     return 0
 
 
-def build_kernel(mode: str) -> str:
+def build_kernel(mode: str, tune: dict | None = None) -> str:
     src = trainer_source()
     marker = 'if __name__ == "__main__":'
     if marker not in src:
@@ -136,6 +136,10 @@ def build_kernel(mode: str) -> str:
     argv = ["--smoke", "--data", DATA_TRAIN, "--dev", DATA_DEV]
     if mode == "train":
         argv = ["--data", DATA_TRAIN, "--dev", DATA_DEV, "--out", OUT_DIR]
+        # 超参写死在启动器里而不是训练器默认值里：默认值一改，
+        # 已经跑过的实验结果就没法复现了。
+        for k, v in (tune or {}).items():
+            argv += ["--" + k.replace("_", "-"), str(v)]
     entry = (
         "\n\n# ── 由 start-rwkv7.py 注入的入口（Kaggle script kernel 不能传命令行参数）──\n"
         "if __name__ == \"__main__\":\n"
@@ -154,6 +158,12 @@ def main() -> int:
     g.add_argument("--status", action="store_true")
     g.add_argument("--stop", action="store_true")
     ap.set_defaults(mode="smoke")
+    # 真训超参：写在这里，日志里能看见，复现得了。
+    ap.add_argument("--epochs", type=float, default=5.0, help="训练轮数")
+    ap.add_argument("--accum", type=int, default=4, help="梯度累积（每卡有效批 = batch x accum）")
+    ap.add_argument("--lr", type=float, default=1e-4, help="峰值学习率")
+    ap.add_argument("--gen-n", type=int, default=24, help="训完生成多少条 dev 稿子给尺子打分")
+    ap.add_argument("--gen-max-new", type=int, default=768, help="单条生成上限 token")
     args = ap.parse_args()
 
     user = username()
@@ -167,7 +177,9 @@ def main() -> int:
     if args.stop:
         return stop_kernel(kid)
 
-    code = build_kernel(args.mode)
+    tune = {"epochs": args.epochs, "accum": args.accum, "lr": args.lr,
+            "gen_n": args.gen_n, "gen_max_new": args.gen_max_new}
+    code = build_kernel(args.mode, tune)
     work = Path(tempfile.mkdtemp(prefix="cfb-rwkv7-"))
     (work / "kernel.py").write_text(code, encoding="utf-8")
     meta = {
