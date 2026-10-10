@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -35,6 +36,27 @@ assert.equal(fingerprintV5MicroWeights(metadataOnly), V5_MICRO_WEIGHTS_DIGEST, '
 assert.equal(V5_FEATURE_NAMES.length, 19)
 assert.equal(V5_PREF_FEATURE_NAMES.length, 12)
 assert.deepEqual(V5_MICRO_WEIGHTS.featureNames, V5_FEATURE_NAMES)
+
+// v14.25.5：自评 `architecture` 块已退役（历史上声称 60,854,837 参数 / 8 层 Transformer，
+// 而文件里真实权重数字只有 1,042 个，且全仓无人读取）——出现即拒收，防止被重新写回。
+assert.equal('architecture' in onDisk, false, 'fictional self-reported architecture block must stay removed')
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-micro-weights-'))
+const tmpWeights = path.join(tmpDir, 'v5-micro-weights.json')   // ★ 必须叫这个名字：防线按 basename 生效
+fs.writeFileSync(tmpWeights, JSON.stringify({ ...onDisk, architecture: { name: 'CFB-Micro-65M', totalParameters: 60854837 } }))
+try {
+  assert.throws(
+    () => loadV5MicroWeights(tmpWeights),
+    /invalid-v5-micro-architecture-self-report-retired/,
+    'declaring a self-reported parameter count in the production weights must be rejected',
+  )
+} finally {
+  fs.rmSync(tmpDir, { recursive: true, force: true })
+}
+// ★ 防线**只限生产权重文件名**：冻结裁判同样带 architecture，但被 preregistration 钉住，
+//   动它会破坏历史实验的可复现性 ⇒ 必须仍然可加载（这条断言防止有人把防线扩大到冻结裁判）。
+const judgePath = path.join(ROOT, 'transfer/models/v5-micro-weights.judge-4764fd2.json')
+assert.ok(fs.existsSync(judgePath), '冻结裁判文件必须还在')
+assert.ok(loadV5MicroWeights(judgePath).architecture, '冻结裁判的历史 architecture 块必须仍可加载')
 
 const raw = [
   '我们需要确认 src/compiler.js 的 Unit pair 路径。',
@@ -96,4 +118,4 @@ assert.deepEqual(
 )
 
 console.log('micro-runtime: production JSON loading, schema validation, JS Unit/Draft scoring, and compileV5Local default path passed')
-console.log('PASS=24 FAIL=0')
+console.log('PASS=29 FAIL=0')

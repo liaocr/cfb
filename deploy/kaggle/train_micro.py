@@ -18,8 +18,10 @@ from pathlib import Path
 
 REPO = "https://github.com/liaocr/cfb.git"
 PIN = os.environ.get("CFB_SHA", "ab8fa97e234407e129c4adb815e1a69a71c40dd7")   # 含生成侧截断修复 + 生成前自检探针
-# 语料：默认用 v4（= v3 + batch3 + batch4 的合并语料，评测集固定为 v3 dev 保持跨轮可比）；
-# 可用 CFB_CORPUS 覆盖。找不到时回退 v3 并告警。
+# 语料：默认用 v5（= v4 + batch5，986 仓库 / 6001 行），可用 CFB_CORPUS 覆盖。
+# dev 集：v4 与 v5 的 dev.jsonl.gz **逐字节相同**（139 条，按 unitId 字母序），但与 v3 dev 的
+#   **行顺序不同** ⇒ 跨 v3 ↔ v4+ 比较 --devloss-limit 的前 N 行不可比（前 64 行仅 27 条重合）；
+#   v4+ 之间可比。找不到默认语料时回退 v4 并告警。
 CORPUS = os.environ.get("CFB_CORPUS", "transfer/models/micro-generator-gen-v5")
 CORPUS_FALLBACK = "transfer/models/micro-generator-gen-v4"
 

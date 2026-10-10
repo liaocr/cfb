@@ -14,7 +14,8 @@
 
 可选环境变量：
   CFB_REPRED_CKPT=<run 目录或 .pt>   不给就自动搜索（/content/runs/*/out、/kaggle/working/**/out）
-  CFB_CORPUS=transfer/models/micro-generator-gen-v4   （默认 v4 = run2 训练时的语料，保证可比）
+  CFB_CORPUS=transfer/models/micro-generator-gen-v5   （默认 v5，与 train_micro.py 一致；
+                                                       复现 run2 可显式设 gen-v4）
   CFB_REPRED_TRAIN_STEPS=<N>         找不到 ckpt 时先按同配置补训 N 步再评测（0=不补训）
   CFB_WORKDIR=/kaggle/working/cfb-micro-run          工作目录（默认同 train_micro.py）
   CFB_REPRED_ARGS="--limit 5"                        附加参数透传（先小样试跑用）
@@ -26,7 +27,7 @@ from pathlib import Path
 
 REPO = "https://github.com/liaocr/cfb.git"
 PIN = os.environ.get("CFB_SHA", "ab8fa97e234407e129c4adb815e1a69a71c40dd7")   # tools 提交（两层钉法：URL 钉 launcher 提交，这里钉 tools 提交）
-CORPUS = os.environ.get("CFB_CORPUS", "transfer/models/micro-generator-gen-v4")
+CORPUS = os.environ.get("CFB_CORPUS", "transfer/models/micro-generator-gen-v5")   # 与 train_micro.py 默认一致
 WDIR_ENV = os.environ.get("CFB_WORKDIR", "")
 CKPT_ENV = os.environ.get("CFB_REPRED_CKPT", "")
 TRAIN_STEPS = int(os.environ.get("CFB_REPRED_TRAIN_STEPS", "0"))

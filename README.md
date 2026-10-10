@@ -3,10 +3,10 @@
 <!-- watermark:begin 由 node tools/doc-watermark.mjs --write 生成，勿手抄 -->
 > **当前版本：v14.25.4** · **零第三方依赖**（纯 Node.js ≥ 20/22 内置模块）
 > **自测（本块由 `node tools/doc-watermark.mjs --write` 生成，勿手抄）**
-> · 验收口径 `npm run verify:offline`（真断网 Linux 命名空间）：42/42 套件通过 · `1242 通过 / 0 失败 / 1 跳过`
-> · 快速自检 `npm test`（联网机上跑，需要隔离的那条断言按设计跳过）：42/42 套件通过 · `1241 通过 / 0 失败 / 2 跳过`
+> · 验收口径 `npm run verify:offline`（真断网 Linux 命名空间）：42/42 套件通过 · `1242 通过 / 0 失败 / 1 跳过`（**42 套件时代**的回执：该车道需 Linux 网络命名空间取证，本平台无法复跑；当前 `test/` 有 43 套）
+> · 快速自检 `npm test`（联网机上跑，需要隔离的那条断言按设计跳过）：43/43 套件通过 · `1252 通过 / 0 失败 / 8 跳过`
 > 用时与记账时刻**不进文档**（每次 `--record` 都会变 ⇒ 写进文档就永远在漂），要查 `transfer/watermark.json` 的 `seconds` / `at`。
-> **规模**：`src/` 24 个零依赖模块 · `tools/` 61 个脚本 + 29 个 helpers · `test/` 42 套自测 · `transfer/gold/` 13 条（4 个家族）
+> **规模**：`src/` 24 个零依赖模块 · `tools/` 61 个脚本 + 29 个 helpers · `test/` 43 套自测 · `transfer/gold/` 13 条（4 个家族）
 <!-- watermark:end -->
 
 > **核心定位**：Cordis 协议外部插件。在主模型每轮 `reasoning` 块**出生时（进入会话历史之前）**，同步完成 CAS 原文归档与认知编译压缩（支持**零 API 成本的本地认知图微模型 `compressLocalModel: true`** 与副模型编译双路径）；收网门逐条列在下面 §4.1，任何一步不达标或异常即 **100% 无损回退原文放行**。
@@ -18,8 +18,11 @@
 > · `test/eval-ready.selftest.mjs` 的 **第 38 项**（需要真断网命名空间才能取证）—— 只在 `npm run verify:offline` 里跑，联网机上按设计跳过。
 > ⇒ 所以"隔离内 1 跳过 / 联网 2 跳过"，且 `verify.mjs` 的结论行永远写"存在跳过项，非完整宿主验证"，不会替宿主侧契约背书。
 >
-> **水位块是"记账回执"而非"实时现算"**：`tools/doc-watermark.mjs --check` 比对的是**文档 ↔ `transfer/watermark.json`**，不会去比对回执与当次运行是否一致。回执在 Linux 上记账（上表数字即该环境读数）。
-> **在 Windows 上跑会看到不同的跳过数**（如 `1238 通过 / 0 失败 / 8 跳过`）：无 `bash`/网络隔离命名空间，`test/closed-loop-v4.selftest.mjs`（A18/A19/A34 及 A38 的 C3）与 `test/mode1-quality-parity.selftest.mjs` 的依赖项按 `process.platform === 'win32'` 守卫跳过。**这是环境差异，不是回归**；要复现水位块数字请在 Linux 上跑 `npm run verify:offline`。
+> **水位块是"记账回执"而非"实时现算"**：`tools/doc-watermark.mjs --check` 比对的是**文档 ↔ `transfer/watermark.json`**，不会去比对回执与当次运行是否一致。
+>
+> **两条车道可以来自不同平台与不同套件数时代，且这一点是自动标注的**（v14.25.5 起）：渲染时会比对回执里的套件分母与当前 `test/` 实际套数，不符就**在文档里直接写出来**（"**N 套件时代**的回执：…"）。**这是刻意的**——`--record` 要求 online + isolated **两条车道同时全绿**，而 isolated 车道需要 Linux 网络命名空间（`unshare`），**在 Windows 上物理不可复跑**；若不允许标注，唯一出路就是手改 `transfer/watermark.json`，那等于**伪造回执**。
+>
+> **在 Windows 上跑会看到不同的跳过数**（上表 `npm test` 行即本机读数 `1252 通过 / 0 失败 / 8 跳过`）：无 `bash`/网络隔离命名空间，`test/closed-loop-v4.selftest.mjs`（A18/A19/A34 及 A38 的 C3）与 `test/mode1-quality-parity.selftest.mjs` 的依赖项按 `process.platform === 'win32'` 守卫跳过。**这是环境差异，不是回归**；要复现 isolated 车道数字请在 Linux 上跑 `npm run verify:offline`。
 ---
 
 ## 1. 三十秒极速上手（人类 & AI 模型通用）

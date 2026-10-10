@@ -201,17 +201,6 @@
     "finalDraftSimpoAcc": 0.8258,
     "elapsedSeconds": 117.28
   },
-  "architecture": {
-    "name": "CFB-Micro-65M",
-    "totalParameters": 60854837,
-    "trainableParameters": 60854837,
-    "parameterBillion": 0.0609,
-    "under01B": true,
-    "backbone": "8-layer Alternating Local/Global RoPE Bidirectional Transformer + 19-dim Symbolic GELU Fusion + GLiNER Span Pointer",
-    "onnxPath": "transfer/models/cfb-micro-neural.onnx",
-    "onnxSizeKB": 7.6,
-    "onnxCpuLatencyMs": 0.086
-  },
   "mlpHead": {
     "scale": 0.25,
     "W1": [

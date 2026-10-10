@@ -25,10 +25,10 @@ npm run next                # = node tools/cfb-cycle.mjs next
 <!-- watermark:begin 由 node tools/doc-watermark.mjs --write 生成，勿手抄 -->
 - **当前版本：v14.25.4** · **零第三方依赖**（纯 Node.js ≥ 20/22 内置模块）
 - **自测（本块由 `node tools/doc-watermark.mjs --write` 生成，勿手抄）**
-- 验收口径 `npm run verify:offline`（真断网 Linux 命名空间）：42/42 套件通过 · `1242 通过 / 0 失败 / 1 跳过`
-- 快速自检 `npm test`（联网机上跑，需要隔离的那条断言按设计跳过）：42/42 套件通过 · `1241 通过 / 0 失败 / 2 跳过`
+- 验收口径 `npm run verify:offline`（真断网 Linux 命名空间）：42/42 套件通过 · `1242 通过 / 0 失败 / 1 跳过`（**42 套件时代**的回执：该车道需 Linux 网络命名空间取证，本平台无法复跑；当前 `test/` 有 43 套）
+- 快速自检 `npm test`（联网机上跑，需要隔离的那条断言按设计跳过）：43/43 套件通过 · `1252 通过 / 0 失败 / 8 跳过`
 - 用时与记账时刻**不进文档**（每次 `--record` 都会变 ⇒ 写进文档就永远在漂），要查 `transfer/watermark.json` 的 `seconds` / `at`。
-- **规模**：`src/` 24 个零依赖模块 · `tools/` 61 个脚本 + 29 个 helpers · `test/` 42 套自测 · `transfer/gold/` 13 条（4 个家族）
+- **规模**：`src/` 24 个零依赖模块 · `tools/` 61 个脚本 + 29 个 helpers · `test/` 43 套自测 · `transfer/gold/` 13 条（4 个家族）
 <!-- watermark:end -->
 
 > **沙盒环境提示**：`package.json` **没有** `engines` 字段 ⇒ 版本要求只写在文档里、不作硬闸；实测 Node 20.20.2 全绿。若容器 Node < 20，可一行升级至 `/usr/local`：

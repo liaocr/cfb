@@ -93,6 +93,14 @@ const deepFreeze = (value) => {
  * Validate the artifact consumed by compileV5Local/scoreUnitWithWeights.
  * Do not silently substitute an older embedded prior when the production JSON is missing or malformed.
  */
+/**
+ * ⚠ schema 命名的历史包袱（2026-10-07 独立复核）：生产权重是 `cfb.v5-micro-weights/2-neural-65m`，
+ *   其中 `neural-65m` **不代表 65M 神经模型** —— 该文件真实可学习数字只有 1,042 个，
+ *   生产路径是「19 维符号特征 + 浅头」，不是 Transformer（配套的 `architecture` 自评块已删除）。
+ *   冻结裁判是 `cfb.v5-micro-weights/3-distilled-pretrained`（**不同角色**：负例判定的固定裁判，
+ *   被 preregistration 钉住）。两者共存是设计，不是版本冲突。
+ *   此处正则刻意只校验主版本号数字，从而同时接受两代 schema。
+ */
 export function validateV5MicroWeights(weights) {
   if (!weights || typeof weights !== 'object' || Array.isArray(weights)
       || !/^cfb\.v5-micro-weights\/\d/.test(weights.schema || '')) {
@@ -143,7 +151,24 @@ export function validateV5MicroWeights(weights) {
       throw new Error('invalid-v5-pref-mlp-output')
     }
   }
+
   return weights
+}
+
+// v14.25.5 止血（v1 扫描报告 §四「优先级建议」第 1 条曾建议，跨越 v2/v3 一直未修）：
+// 生产权重文件 `transfer/models/v5-micro-weights.json` 曾带一个「自评 architecture」块，
+// 声称 `CFB-Micro-65M` / 60,854,837 参数 / 8 层 Alternating RoPE Transformer；
+// 而文件里真实存在的权重数字只有 1,042 个（相差约 58,000 倍），且全仓无任何代码读取该字段。
+// 该块已删除；此防线防止它被重新写回 —— **规模声明必须由实测派生，不许手写进生产权重**。
+//
+// ★ 作用域**只限生产权重文件名**：冻结裁判 `v5-micro-weights.judge-4764fd2.json` 同样带
+//   architecture 块，但它是被 preregistration 钉住的历史件，动它会破坏历史实验的可复现性
+//   ⇒ 刻意放过（其完整性由 MANIFEST.sha256 保证）。
+const PRODUCTION_WEIGHTS_RE = /[\\/]v5-micro-weights\.json$/
+function assertNoSelfReportedArchitecture(weights, filePath) {
+  if (!weights.architecture || weights.architecture.totalParameters == null) return
+  if (!PRODUCTION_WEIGHTS_RE.test(String(filePath))) return
+  throw new Error('invalid-v5-micro-architecture-self-report-retired')
 }
 
 export function loadV5MicroWeights(filePath) {
@@ -153,7 +178,9 @@ export function loadV5MicroWeights(filePath) {
   } catch (error) {
     throw new Error(`v5-micro-weights-load-failed: ${String(error?.message || error).slice(0, 240)}`)
   }
-  return deepFreeze(validateV5MicroWeights(parsed))
+  const validated = validateV5MicroWeights(parsed)
+  assertNoSelfReportedArchitecture(validated, filePath)
+  return deepFreeze(validated)
 }
 
 // Runtime and training now load the same checked-in artifact. Candidate weights are supplied explicitly.

@@ -1,5 +1,13 @@
 # 统一科学训练闭环与本地代理基准指南（v14.20 历史快照）
 
+> ⚠ **新鲜度（2026-10-07 独立复核）**：本文是 **v14.20 快照**，仓库当前已是 **v14.25.4**。
+> **不要把本文数字当现状读**：
+> - **水位**以 `tools/build-micro-dataset.mjs` 的 stdout / `transfer/models/micro-dev-dataset.json` 的 `stats` 为权威源（§6.2bis 即此套路）；
+> - **§2 的自适应 λ 地板**（原写 `4200/1800/1200`）已与代码不符 —— 实测见 `src/birth.js` 的
+>   `computeAdaptiveBirthControl`：fresh-early `×1.20` = **3720**、cruise = **3100**、
+>   high-spin `×0.65` 下限 1600 = **2015**（代码中**没有** 1200）；
+> - 其余规模/自测读数以根 `README.md` 文首水位块为准。
+
 > 本文档整合了当时分散的 `CLOSED-LOOP-V2/V3/V4.md`、`CONTINUOUS-TRAINING-ARCHITECTURE.md`、`OFFLINE-ARCHITECTURE.md` 与 `RUNBOOK-*.md`。它不是当前 checkout 的唯一权威操作指南：正文命令、样本数与分数属于 v14.20 时期的设计/历史读数，可能已过期；当前现场基线见根 [`README.md`](../README.md) §5，脚本可用性以当前 `package.json` 和测试为准。
 >
 > **评测口径说明：**本文提到的 SWE-bench、TAU-bench、LMArena、Artificial Analysis、LiveBench 等仅是本地记分卡借鉴的指标/设计来源，不代表使用了其官方测试集、参加官方评测或获得官方认证。下方数字是历史本地样本的结果，不能当作本轮实测。

@@ -147,14 +147,29 @@ function ratioOf(run, lane) {
   if (!m) fail(`watermark-suite-ratio-invalid:${lane}:${run.suitesPass}`)
   return `${m[1]}/${m[2]} 套件通过`
 }
-function formatRun(run, lane) {
-  return `${ratioOf(run, lane)} · \`${run.pass} 通过 / ${run.fail} 失败 / ${run.skip} 跳过\``
+// ★ v14.25.5：回执按平台记账，而套件数会随开发增长 ⇒ 车道读数可能"陈旧于"当前 shape。
+//   旧行为：`--record` 在非 Linux 上必然失败（isolated 车道需 Linux 网络命名空间取证），
+//   于是 counts 变了却无法重新记账，唯一出路是手改 receipt —— 那正是**伪造回执**。
+//   新行为：把"这个读数是哪个套件数时代记的"**渲染进文档**（自动派生，非手抄），
+//   让陈旧成为显式事实，而不是藏在不一致的数字里。fixture 里分母相符 ⇒ 不触发，行为不变。
+function formatRun(run, lane, shapeTestSuites) {
+  const base = `${ratioOf(run, lane)} · \`${run.pass} 通过 / ${run.fail} 失败 / ${run.skip} 跳过\``
+  const m = /^(\d+)\s*\/\s*(\d+)/.exec(String(run.suitesPass || ''))
+  const recorded = m ? Number(m[2]) : NaN
+  if (Number.isFinite(recorded) && Number.isFinite(shapeTestSuites) && recorded !== shapeTestSuites) {
+    // 措辞按车道区分：isolated 车道**物理上**需要 Linux 网络命名空间；online 车道只是没在当前平台重记。
+    const why = lane === 'isolated'
+      ? '该车道需 Linux 网络命名空间取证，本平台无法复跑'
+      : '该回执未在当前平台重记'
+    return `${base}（**${recorded} 套件时代**的回执：${why}；当前 \`test/\` 有 ${shapeTestSuites} 套）`
+  }
+  return base
 }
 function summaryBody(data, style) {
   const { pkg, receipt, shape } = data
   const version = `v${pkg.version}`
-  const online = formatRun(receipt.selftest.online, 'online')
-  const isolated = formatRun(receipt.selftest.isolated, 'isolated')
+  const online = formatRun(receipt.selftest.online, 'online', shape.testSuites)
+  const isolated = formatRun(receipt.selftest.isolated, 'isolated', shape.testSuites)
   const scale = `**规模**：\`src/\` ${shape.srcModules} 个零依赖模块 · \`tools/\` ${shape.toolsScripts} 个脚本 + ${shape.toolsHelpers} 个 helpers · \`test/\` ${shape.testSuites} 套自测 · \`transfer/gold/\` ${shape.goldItems} 条（${shape.goldFamilies} 个家族）`
   if (style === 'handoff') return [
     `- **当前版本：${version}** · **零第三方依赖**（纯 Node.js ≥ 20/22 内置模块）`,
