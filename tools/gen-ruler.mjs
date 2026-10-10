@@ -498,6 +498,47 @@ export function judge(input) {
   return { schema: 'cfb.gen-ruler/1', ruler: RULER_VERSION, pass: failed.length === 0, failed, score, sub, detail }
 }
 
+/**
+ * raw 侧预检 —— 尺子里**不需要稿子**的那部分门。
+ *
+ * 为什么要单独有这个入口：尺子的主入口 judge() 需要 (raw, ctx, draft)，
+ * 而 draft 是要**花钱生成**的。可 raw 矿有 10558 个单元、3500 万字 ——
+ * 全喂给教师模型是 $5–15 甚至更多。所以要有一道**先于花钱**的门：
+ * 哪些 (raw, ctx) 根本就不可能产出一份好稿，那就不该为它花钱。
+ *
+ * 它不是质量判据，是**花钱前的资格筛**。它说不了「这份稿好不好」（那是 judge 的事），
+ * 只能说「这个输入值不值得去试」。这个区别必须写死在注释里，
+ * 否则它就会变成仓库里第四处「抽取式正则假装自己是判断」。
+ */
+export function preflight(input) {
+  const raw = String((input && input.raw) || '')
+  const ctx = String((input && input.ctx) || '')
+  const nraw = norm(raw)
+  const reasons = []
+  const signals = {
+    rawChars: raw.length,
+    ctxChars: ctx.length,
+    anchors: anchorsOf(raw).length,
+    anchorDensity: raw.length ? +(anchorsOf(raw).length / (raw.length / 1000)).toFixed(2) : 0,
+  }
+  // P1 太短就没得压（G7 只在 raw >= 800 时才要求压缩）
+  if (raw.length < 800) reasons.push('P1 too-short')
+  // P2 太长的输入在 2048 窗口里放不下，得先决定分段策略；先不花这份钱
+  if (raw.length > 12000) reasons.push('P2 too-long-for-window')
+  // P3 上下文缺席 => 没有可对齐的题面，压缩变成无参照的摘要
+  if (ctx.length < 200) reasons.push('P3 ctx-missing')
+  // P4 raw 若是工具转储而不是推理，压它等于压日志，学不到「压缩思维」
+  let fence = 0
+  for (const m of nraw.matchAll(new RegExp(TICK + TICK + TICK + '[\\s\\S]*?' + TICK + TICK + TICK, 'g'))) fence += m[0].length
+  signals.fenceRatio = nraw.length ? +(fence / nraw.length).toFixed(3) : 0
+  signals.toolMarkers = (nraw.match(/\[(?:result|call:|got)\]/g) || []).length
+  if (signals.fenceRatio > 0.6) reasons.push('P4 mostly-code')
+  if (signals.toolMarkers > 6) reasons.push('P4 mostly-tool-log')
+  // P5 没有具体标识符 => 稿子没有任何必须保住的东西 => G3 无受力点 => 训练信号极弱
+  if (signals.anchors < 3) reasons.push('P5 no-load-bearing-anchors')
+  return { ok: reasons.length === 0, reasons, signals }
+}
+
 // ───────────────────────── CLI ─────────────────────────
 function main() {
   const argv = process.argv.slice(2)

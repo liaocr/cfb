@@ -9,7 +9,7 @@
 //      真正的承重件永远看不见，sse-truncated 那条真回归就量不出来。
 //   4. 硬门只抓「凭空」，不抓「引用保真」；照抄稿必须被 G6 拦死。
 import assert from 'node:assert/strict'
-import { judge, anchorsOf, causePairs, copyCoverage, locusOf, quotedFragments } from '../tools/gen-ruler.mjs'
+import { judge, anchorsOf, causePairs, copyCoverage, locusOf, quotedFragments, preflight } from '../tools/gen-ruler.mjs'
 import { makeNegatives, auditRuler } from '../tools/gen-negatives.mjs'
 
 let checks = 0
@@ -142,5 +142,60 @@ ok('path extraction never yields a truncated dot-leading fragment', () => {
   assert.ok(ps.includes('/a/b/c.log'))
 })
 
-console.log('gen-ruler: determinism, fabrication-vs-fidelity split, camelCase anchor coverage, symptom-locus rejection, position-ordered causality and the six-axis negative battery all verified')
+// ── 13. preflight：花钱前的资格筛（不需要稿子的那部分门）
+// 它有一组自己的、长度达标的 fixture —— 上面那组 RAW/CTX（450/68 字）故意是短的，
+// 拿来测 judge 的最小形状；preflight 的门是按真实语料的量级设的（raw 中位 2500 字），
+// 用短 fixture 测它只会测出 P1/P3，测不到它真正的行为。fixture 的尺寸必须匹配被测的那层。
+const PRE_CTX = '[task] I have uploaded a python code repository in /workspace/acme__lib__1.0. ' +
+  'Consider the following issue description: the Path constructor rejects integers and __add__ raises TypeError. ' +
+  'Please find the root cause and fix it, then explain the evidence for your fix.'
+const PRE_RAW = [
+  'The 6 errors are unrelated to our changes - they are about a missing fixture minecraft_data_pack in test_minecraft.py. The path tests all pass currently.',
+  'Now let me implement the changes. Let me look at the __new__ method more closely.',
+  'The issue is that when path is an int, it is not None and not Path, so it falls through to parse_accessors(path).',
+  'I need to add an int check before the string parsing, similar to how __getitem__ already handles int.',
+  'And for __add__ we should return self[other] when other is an int, because __getitem__ already handles it.',
+  'Let me also check __eq__ and __ne__ to make sure they do not silently accept an int.',
+  'Finally I will run python3 -m pytest test/test_path.py to confirm the new behaviour.',
+  'Let me verify that ListIndex(index=5) is what __getitem__ builds for an integer key.',
+  'If __radd__ receives a Path we should delegate to other[self], mirroring the existing behaviour.',
+  'I will re-run the failing case from the issue to confirm Path(5) now equals Path("[5]").',
+].join('\n\n')
+// fixture 的长度是被测那层的门槛决定的，不是随手写的 —— 短了只会测出 P1，测不到别的。
+// 所以这里钉死长度，谁把它改短了会立刻看到原因，而不是看到一句含糊的 "expected ok"。
+assert.ok(PRE_RAW.length >= 900, 'PRE_RAW must clear the 800-char preflight floor, got ' + PRE_RAW.length)
+assert.ok(PRE_CTX.length >= 250, 'PRE_CTX must clear the 200-char preflight floor, got ' + PRE_CTX.length)
+
+ok('preflight accepts an in-band unit and is deterministic', () => {
+  const a = preflight({ raw: PRE_RAW, ctx: PRE_CTX })
+  const b = preflight({ raw: PRE_RAW, ctx: PRE_CTX })
+  assert.equal(JSON.stringify(a), JSON.stringify(b), 'preflight must be deterministic')
+  assert.equal(a.ok, true, 'expected ok, got ' + JSON.stringify(a.reasons))
+  assert.ok(a.signals.rawChars >= 800 && a.signals.anchors >= 3, JSON.stringify(a.signals))
+})
+
+ok('preflight rejects each out-of-band input for the stated reason', () => {
+  const short = preflight({ raw: 'too short to compress', ctx: PRE_CTX })
+  assert.ok(short.reasons.includes('P1 too-short'), JSON.stringify(short.reasons))
+  const long = preflight({ raw: PRE_RAW + ' padding words here'.repeat(600), ctx: PRE_CTX })
+  assert.ok(long.reasons.includes('P2 too-long-for-window'), JSON.stringify(long.reasons))
+  const noCtx = preflight({ raw: PRE_RAW, ctx: '' })
+  assert.ok(noCtx.reasons.includes('P3 ctx-missing'), JSON.stringify(noCtx.reasons))
+  const noAnchors = preflight({
+    raw: 'The quick brown fox jumps over the lazy dog again and again. '.repeat(20),
+    ctx: PRE_CTX,
+  })
+  assert.ok(noAnchors.reasons.includes('P5 no-load-bearing-anchors'), JSON.stringify(noAnchors.reasons))
+})
+
+// ── 14. preflight 与 judge 的分工：preflight 说「值不值得试」，judge 说「稿子行不行」。
+// 这条守住一个架构约束 —— 照抄稿必须在**预检里过**（它的输入是合格的），
+// 只在 judge 里被 G6 打死。两层的判据不能混，混了就会出现「用预检分数当质量结论」。
+ok('preflight passes a verbatim copy while judge rejects it (the two layers stay separate)', () => {
+  assert.equal(preflight({ raw: PRE_RAW, ctx: PRE_CTX }).ok, true)
+  const j = judge({ raw: PRE_RAW, ctx: PRE_CTX, draft: PRE_RAW })
+  assert.ok(j.failed.includes('G6 not-copy'), JSON.stringify(j.failed))
+})
+
+console.log('gen-ruler: determinism, fabrication-vs-fidelity split, camelCase anchor coverage, symptom-locus rejection, position-ordered causality, preflight-vs-judge separation and the six-axis negative battery all verified')
 console.log('PASS=' + checks + ' FAIL=0')
