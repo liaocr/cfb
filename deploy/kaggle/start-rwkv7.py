@@ -18,11 +18,28 @@ Kaggle 的 script kernel **不接受命令行参数**，只运行 code_file。�
 数据不随内核上传 —— 内核开了外网，由训练器自己从 raw.githubusercontent 下载，
 这样不存在"多文件上传到底带不带"的不确定性。
 
+为什么会一直 QUEUED（实测，不是推演）
+----------------------------------
+这个脚本走的是 **batch 车道**：读了 kaggle CLI 源码，kernels_push() 只调
+save_kernel()，**从不调** create_kernel_session()。而 kagglesdk 里
+create_kernel_session() 的文档字符串写着它是给 **interactive** session 用的。
+所以网页里点开跑（interactive）立刻派机器，而 CLI push（batch）要等调度器。
+两者扣同一份配额，但 batch 会排队 —— 2026-10 实测排了 **2 小时**。
+
+排队时怎么判断是“正常排队”而不是“卡死了”（四项都要看）：
+  1. kernels_status() 返回 QUEUED 且 **kernel_session_id 为空**（没分到机器）；
+  2. get_accelerator_quota_statistics() 里 timeUsed 远小于 totalTimeAllowed；
+  3. list_kernels() 里没有别的内核在抢卡；
+  4. kernels_logs() 返回 **0 字符**（没机器就没日志）。
+四条都符合就只能等 —— 不要取消重推，那只会重新排到队尾。
+真急着要结果就去网页里手动点开跑（走 interactive 车道）。
+
 用法
 ----
   python deploy/kaggle/start-rwkv7.py --smoke     # 只验证环境（默认）
   python deploy/kaggle/start-rwkv7.py --train     # 真训
   python deploy/kaggle/start-rwkv7.py --status    # 查状态
+  python deploy/kaggle/start-rwkv7.py --wait      # 查状态 + 拉日志，直到终态
   python deploy/kaggle/start-rwkv7.py --stop      # 停掉正在跑的 session
 """
 from __future__ import annotations
@@ -127,6 +144,44 @@ def stop_kernel(kid: str) -> int:
     return 0
 
 
+TERMINAL = {"COMPLETE", "ERROR", "CANCEL_ACKNOWLEDGED", "CANCELLED"}
+
+
+def wait_kernel(kid: str, interval: int) -> int:
+    """轮询到终态。每次状态变化才打一行，避免刷屏。
+
+    为什么要有这个：排队可能数小时，而排队期间 kernels_logs() 返回空 ——
+    人工反复跑 --status 会把“正常排队”误读成“卡死了”，然后取消重推，重新排到队尾。
+    """
+    last = None
+    t0 = time.time()
+    while True:
+        try:
+            st = subprocess.run([sys.executable, "-m", "kaggle", "kernels", "status", kid],
+                                capture_output=True, text=True)
+            raw = (st.stdout or "") + (st.stderr or "")
+            cur = "?"
+            for name in TERMINAL | {"RUNNING", "QUEUED"}:
+                if name in raw:
+                    cur = name
+                    break
+        except Exception as exc:  # noqa: BLE001
+            cur = f"status-error({exc!r})"
+        if cur != last:
+            print(f"· [{time.strftime('%H:%M:%S')}] 状态 {cur}"
+                  f"（已等 {(time.time()-t0)/60:.0f} 分钟）", flush=True)
+            last = cur
+        if cur in TERMINAL:
+            out = Path(".cfb-offline/kaggle-out/v10")
+            out.mkdir(parents=True, exist_ok=True)
+            lg = subprocess.run([sys.executable, "-m", "kaggle", "kernels", "logs", kid],
+                                capture_output=True, text=True)
+            (out / "kernel.log").write_text((lg.stdout or "") + (lg.stderr or ""), encoding="utf-8")
+            print(f"· 日志已存 {out / 'kernel.log'}（{(len(lg.stdout or ''))} 字符）")
+            return 0 if cur == "COMPLETE" else 1
+        time.sleep(interval)
+
+
 def build_kernel(mode: str, tune: dict | None = None) -> str:
     src = trainer_source()
     marker = 'if __name__ == "__main__":'
@@ -156,6 +211,9 @@ def main() -> int:
     g.add_argument("--smoke", action="store_const", const="smoke", dest="mode")
     g.add_argument("--train", action="store_const", const="train", dest="mode")
     g.add_argument("--status", action="store_true")
+    g.add_argument("--wait", action="store_true",
+                   help="轮询到终态并拉日志（排队可能很久，见文档字符串）")
+    ap.add_argument("--interval", type=int, default=60, help="--wait 的轮询间隔（秒）")
     g.add_argument("--stop", action="store_true")
     ap.set_defaults(mode="smoke")
     # 真训超参：写在这里，日志里能看见，复现得了。
@@ -183,6 +241,9 @@ def main() -> int:
     if args.status:
         r = subprocess.run([sys.executable, "-m", "kaggle", "kernels", "status", kid])
         return r.returncode
+
+    if args.wait:
+        return wait_kernel(kid, args.interval)
 
     if args.stop:
         return stop_kernel(kid)
