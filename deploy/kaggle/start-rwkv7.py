@@ -164,6 +164,11 @@ def main() -> int:
     ap.add_argument("--lr", type=float, default=1e-4, help="峰值学习率")
     ap.add_argument("--gen-n", type=int, default=89, help="训完生成多少条 dev 稿子给尺子打分")
     ap.add_argument("--gen-max-new", type=int, default=768, help="单条生成上限 token")
+    ap.add_argument("--ckpt-steps", default="",
+                    help="学习曲线快照步数（逗号分隔）。到点就 dev loss + 生成一次，然后接着训。"
+                         "空=不快照。曲线上每个点要同 n 才能相比。")
+    ap.add_argument("--ckpt-gen-n", type=int, default=0,
+                    help="快照点生成多少条（0=用 --gen-n）")
     ap.add_argument("--gen-budget", type=float, default=3600,
                     help="生成阶段时间预算（秒）。开缓存时 89 条约 15 分钟；"
                          "缓存失效（fla 的 RWKV7 缓存本就标着 unsupported）时"
@@ -185,6 +190,9 @@ def main() -> int:
     tune = {"epochs": args.epochs, "accum": args.accum, "lr": args.lr,
             "gen_n": args.gen_n, "gen_max_new": args.gen_max_new,
             "gen_budget": args.gen_budget}
+    if args.ckpt_steps:
+        tune["ckpt_steps"] = args.ckpt_steps
+        tune["ckpt_gen_n"] = args.ckpt_gen_n or args.gen_n
     code = build_kernel(args.mode, tune)
     work = Path(tempfile.mkdtemp(prefix="cfb-rwkv7-"))
     (work / "kernel.py").write_text(code, encoding="utf-8")

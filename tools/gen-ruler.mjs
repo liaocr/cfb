@@ -18,21 +18,31 @@
 //     不是证明出来的，是靠 100% 无损兜底保证的。
 //   * 软分只用来给**已过硬门**的稿子排序，绝不用来救活一份不过门的稿。
 //
-// 七道硬门：
-//   G1 quote-grounded      稿中每个引号片段必须逐字出现在 raw ∪ ctx（否则 = 凭空）
+// ── gen-ruler/4：**硬门只装布尔不变量，程度放软分** ──
+//
+// 七道硬门（全是「是/否」，没有一道是「多少」）：
+//   G0 no-leverage         这一对 (raw, ctx) 本身有没有受力点。**不看稿子**，是尺子的资格门
+//   G1 quote-grounded      稿中引号片段里的锚点必须出现在 raw ∪ ctx（否则 = 凭空）
 //   G2 locus-grounded      落点必须是 raw 里出现在**动作语境**中的路径，不能是症状路径
 //   G3 anchors-kept        题面失败陈述里的承重锚点必须活下来（这才是 sse-truncated 真死的机理）
 //   G4 actionable          稿里至少要有一个接地的落点或验证命令（不然读完没法动手）
 //   G5 no-cause-inversion  不得把 raw 的因果方向反过来（窄检测：只抓带反转标记的对调）
 //   G6 not-copy            剔除合法引用后，稿子与 raw 的 16-gram 覆盖率 < 0.5（否则 = 照抄）
-//   G7 compressed          **token 比** <= 0.55·raw（raw >= 800 字时）；估算用 src/tokens.js
-//                          （gen-ruler/2：字符比会被「英文原文 → 中文稿」骗过，见文件头 import 处的反例）
 //
-// 软分（只在过门稿之间排序，权重和为 1）：
-//   S1 anchorsKept .30   S2 groundingDensity .20   S3 decisionCoverage .20
-//   S4 compressionGain .15   S5 tailRetention .15
+// G7 compressed 在 gen-ruler/4 **从硬门下架，改成软标准**（COMPRESSION_TARGET）。
+// 理由与实测证据见 judge() 里 G7 那一段的注释。一句话：它不是布尔量，而且它一直在
+// 掩盖学生的真实缺口（阈值放宽后师生差距从 15.1 点**扩大**到 41.1 点）。
+//
+// 软分（权重和为 1，全部在代码里，注释与代码对不上就是注释错）：
+//   S1 anchorsKept .28   S2 groundingDensity .18   S3 decisionCoverage .18
+//   S4 compressionGain .13   S5 tailRetention .13   S6 quoteFidelity .10
 //   S5 是**反抽取**的那一刀：抽取器只会捞开头，凡是尾部锚点整片丢失的稿子，
 //   它的语义覆盖就是假的。这一维让「删掉探索过程」这件事第一次有了代价。
+//   S4 是**压缩**唯一该待的地方（G7 下架后它独自承担这件事）。
+//
+// ⚠ 权重在 v4 **一个都没动**。这是刻意的：v9 那一轮的软分（教师 0.6957 / 学生 0.5638）
+// 必须能和 v4 之后的软分直接比，动了权重就比不出来了。
+// 「现在先软标准」要的是把压缩从硬门挪到软分，不是把软分重算一遍。
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -43,7 +53,22 @@ import { fileURLToPath } from 'node:url'
 // 用生产同一个估算器（src/tokens.js，中文 0.6 / 其余 0.3），不另立口径。
 import { estimateTokens } from '../src/tokens.js'
 
-export const RULER_VERSION = 'gen-ruler/3'
+export const RULER_VERSION = 'gen-ruler/4'
+
+// ── 压缩：软标准，不是硬门（gen-ruler/4）──
+//
+// 这三个常数合起来表达一句话：**现在先软标准，以后再训练到 0.5。**
+//   COMPRESSION_TARGET  产品要的压缩比。判据是 token 比（gen-ruler/2 起），不是字符比。
+//                       0.5 是用户定的目标：先按这个训，训到之前不拦稿、只记账。
+//   COMPRESSION_HARD_MAX 硬门上限。null = **不设硬门**（当前状态）。
+//                       等学生真训到 0.5 了，把它改成 0.5 就重新装上 —— 只改这一个数，
+//                       别的地方一行都不用动。这就是把它做成常数而不是写死的理由。
+//   COMPRESSION_SANITY  纯粹的荒谬线：稿子比原文还长就不叫压缩稿。**不进门，只进 advisory**。
+//                       设它是因为 G6（16-gram 覆盖率 < 0.5）抓不住「换个说法把话说长」——
+//                       那种稿子覆盖率很低、过 G6，却一个字都没压。记账用，不拦稿。
+export const COMPRESSION_TARGET = 0.5
+export const COMPRESSION_HARD_MAX = null
+export const COMPRESSION_SANITY = 1.0
 // 承重**标识符**保留率下限（承重路径另算，一个都不许丢）。
 //
 // 实测依据（61 条真手稿，.cfb-offline/ruler/report-hand.json）：
@@ -387,6 +412,7 @@ export function judge(input) {
   const draft = String(input && input.draft != null ? input.draft : '')
   const ev = raw + '\n' + ctx
   const failed = []
+  const advisory = []
   const detail = {}
 
   // ---- G1（硬门只抓「凭空」，不抓「引用保真」）----
@@ -480,7 +506,18 @@ export function judge(input) {
   // 所以"没有受力点"必须显式判死，而不是默认放过。默认放过会让指标系统性报喜。
   // 这跟 preflight() 的 P5（no-load-bearing-anchors）是同一条道理，只是那道门
   // 拦在**花钱之前**，这道门拦在**打分之时**——两道都要有。
-  if (load.length === 0 && !codeTask) failed.push('G0 no-leverage')
+  // gen-ruler/4：G0 的结论提升成**顶层布尔** gaugeable，不再只是一个失败串。
+  // 为什么必须这样：gaugeable 是**与稿子无关**的属性（它只读 raw/ctx），
+  // 所以它在教师和学生身上**恒等**。实测 dev 89 条：G0 命中两边是同一批 16 条，
+  // 不一致数 = 0。把它留在分母里，只是把两边同时压低、把对比稀释掉。
+  // 之前只能靠字符串 'G0 no-leverage' 反查，任何一处措辞改动都会静默地让分母错位 ——
+  // 所以这里给一个机器可判的布尔，调用方不许再解析失败串。
+  const gaugeable = !(load.length === 0 && !codeTask)
+  detail.leverage = {
+    codeTask, loadBearing: load.length, gaugeable,
+    why: gaugeable ? null : 'raw 里没有文件路径，题面失败陈述里也没有 raw 认得的承重锚点 —— 这一对没有受力点',
+  }
+  if (!gaugeable) failed.push('G0 no-leverage')
 
   // ---- G5 ----
   const rawPairs = new Set(causePairs(raw))
@@ -497,20 +534,44 @@ export function judge(input) {
   detail.copy = { coverage: +cov.toFixed(4) }
   if (raw.length >= 400 && cov >= 0.5) failed.push('G6 not-copy')
 
-  // ---- G7 ----
+  // ---- G7（gen-ruler/4：**出硬门，转软标准**）----
+  //
   // 判据用 **token 比**，不是字符比（gen-ruler/2）。字符比会被「英文原文 → 中文稿」
   // 这种语言切换骗过：字符腰斩、token 不降。raw/draft 的字符数仍留在 detail 里供归因。
+  //
+  // v1~v3 把「压缩够了没有」当硬门（token 比 <= 0.55）。本地实测（dev 89 条，零成本重跑尺子）
+  // 证明这个门是错的，四条证据：
+  //   1. 24 条教师稿**只挂 G7 一件事**，其余七门全过。它们的软分均值 0.6993，
+  //      教师整体 0.703 —— 尺子扔掉的那批和留下的那批一样好，这不是在筛质量。
+  //   2. 这 24 条的 token 比从 0.5834 起跳。0.55 落在分布**内部**，那里没有任何自然断点，
+  //      说明这个数是拍出来的，不是从数据里读出来的。
+  //   3. 压缩本来就已经在软分里（S4 compressionGain，权重 0.13）。G7 是同一件事数两遍。
+  //   4. 最要命的一条：阈值从 0.55 放宽到不设限，教师 42.5% -> 75.3%、学生 27.4% -> 34.2%。
+  //      **差距不是缩小而是扩大**（15.1 点 -> 41.1 点）。G7 不是在压学生，是在压教师，
+  //      顺带把学生的真实缺口遮住了。一条会掩盖待测对象缺陷的门，必须下架。
+  //
+  // 由此立下的规矩（这一版的核心）：**硬门只装布尔不变量，程度放软分。**
+  //   「有没有编锚点」「有没有丢承重路径」「有没有编命令」「有没有倒因果」「有没有抄」
+  //   「有没有受力点」—— 全是是/否。而「压到多少」是连续量，本来就该走软分。
+  // 三个数以前互相打架：提示词要 10~20%，教师交 ~50%，尺子容忍 55%。
+  // 现在只留一个权威数：COMPRESSION_TARGET。它**只记账，不拦稿**。
+  // 以后再训练到 0.5 时，把 COMPRESSION_HARD_MAX 设成 0.5 就重新装上，别的都不用改。
   const ratio = raw.length ? draft.length / raw.length : 0
   const rawTok = estimateTokens(raw)
   const draftTok = estimateTokens(draft)
   const tokRatio = rawTok ? draftTok / rawTok : 0
+  const meetsTarget = tokRatio <= COMPRESSION_TARGET
+  const overRaw = tokRatio > COMPRESSION_SANITY
   detail.compression = {
     rawChars: raw.length, draftChars: draft.length, ratio: +ratio.toFixed(4),
     rawTokensEst: rawTok, draftTokensEst: draftTok, tokenRatio: +tokRatio.toFixed(4),
+    target: COMPRESSION_TARGET, meetsTarget, overRaw,
   }
   // 只设上限，不设下限：压得太狠会先撞 G2/G3/G4（没落点、丢锚点、不动手），
   // 那是语义判据；在这里再放一个比例下限只会变成一个拍脑袋的截断。
-  if (raw.length >= 800 && tokRatio > 0.55) failed.push('G7 compressed')
+  if (raw.length >= 800 && COMPRESSION_HARD_MAX != null && tokRatio > COMPRESSION_HARD_MAX) failed.push('G7 compressed')
+  if (raw.length >= 800 && !meetsTarget) advisory.push('C1 target-' + COMPRESSION_TARGET + ' (tokRatio ' + tokRatio.toFixed(3) + ')')
+  if (raw.length >= 800 && overRaw) advisory.push('C2 longer-than-raw (tokRatio ' + tokRatio.toFixed(3) + ')')
 
   // ---- 软分（只在过门稿上才有意义；不过门时照样算出来供归因） ----
   const rawAnchors = anchorsOf(raw)
@@ -535,7 +596,13 @@ export function judge(input) {
   const W = { S1: 0.28, S2: 0.18, S3: 0.18, S4: 0.13, S5: 0.13, S6: 0.10 }
   const score = +(sub.S1_anchorsKept * W.S1 + sub.S2_groundingDensity * W.S2 + sub.S3_decisionCoverage * W.S3 + sub.S4_compressionGain * W.S4 + sub.S5_tailRetention * W.S5 + sub.S6_quoteFidelity * W.S6).toFixed(4)
 
-  return { schema: 'cfb.gen-ruler/1', ruler: RULER_VERSION, pass: failed.length === 0, failed, score, sub, detail }
+  // gaugeable 与 pass 是**两个正交的维度**，调用方必须分开用：
+  //   gaugeable=false  => 这把尺子对这对输入没有受力点，它的判决是「无意义」，不是「不过」。
+  //                       拿它进分母会把两边的通过率同时压低（见 G0 段注释）。
+  //   pass             => 在**有受力点**的前提下，这份稿子过没过硬门。
+  // 还有一个 advisory：过了硬门、但没达到软标准（当前只有压缩这一项）。
+  // 它**不拦稿**，只记账 —— 「现在先软标准，以后再训练到 0.5」就落在这个数组上。
+  return { schema: 'cfb.gen-ruler/1', ruler: RULER_VERSION, pass: failed.length === 0, failed, gaugeable, advisory, score, sub, detail }
 }
 
 /**
@@ -591,17 +658,38 @@ function main() {
     let o
     try { o = JSON.parse(l) } catch { continue }
     const r = judge({ raw: o.raw, ctx: o.ctx, draft: o.draft })
-    rows.push({ id: o.id, family: o.family, pass: r.pass, failed: r.failed, score: r.score, ratio: r.detail.compression.ratio, copy: r.detail.copy.coverage, anchors: r.detail.anchors })
+    rows.push({ id: o.id, family: o.family, pass: r.pass, gaugeable: r.gaugeable, failed: r.failed, advisory: r.advisory, score: r.score, ratio: r.detail.compression.ratio, copy: r.detail.copy.coverage, anchors: r.detail.anchors })
   }
   const failCount = {}
   for (const r of rows) for (const f of r.failed) failCount[f] = (failCount[f] || 0) + 1
   const pass = rows.filter((r) => r.pass).length
-  const out = { schema: 'cfb.gen-ruler-report/1', ruler: RULER_VERSION, at: new Date().toISOString(), input: inFile, n: rows.length, pass, fail: rows.length - pass, passRate: rows.length ? +(pass / rows.length).toFixed(4) : 0, failCount, rows }
+  // 三个分母都要报，而且不许合并成一个数（合并就是 v3 那个「34.8% 假天花板」的成因）：
+  //   n        全部单元
+  //   gaugeable 有受力点的单元 —— 只有这里面的通过率才是「尺子量出来的」
+  //   target   有受力点、过门、且达到软标准（压缩 <= COMPRESSION_TARGET）的单元
+  const gaugeable = rows.filter((r) => r.gaugeable)
+  const gPass = gaugeable.filter((r) => r.pass).length
+  // 达到软标准 = 有受力点 + 过硬门 + advisory 里没有 C1（压缩没到 COMPRESSION_TARGET）
+  const target = gaugeable.filter((r) => r.pass && !(r.advisory || []).some((a) => a.startsWith('C1')))
+  const advCount = {}
+  for (const r of rows) for (const a of r.advisory || []) { const k = a.split(' ')[0]; advCount[k] = (advCount[k] || 0) + 1 }
+  const out = { schema: 'cfb.gen-ruler-report/1', ruler: RULER_VERSION, at: new Date().toISOString(), input: inFile, n: rows.length, pass, fail: rows.length - pass, passRate: rows.length ? +(pass / rows.length).toFixed(4) : 0,
+    gaugeable: gaugeable.length, gaugeablePass: gPass,
+    gaugeablePassRate: gaugeable.length ? +(gPass / gaugeable.length).toFixed(4) : 0,
+    target: { ratio: COMPRESSION_TARGET, hardMax: COMPRESSION_HARD_MAX, n: target.length,
+      rate: gaugeable.length ? +(target.length / gaugeable.length).toFixed(4) : 0,
+      note: '有受力点 + 过硬门 + 压缩达到软标准；这是要训练到的那个数，不是门' },
+    advisoryCount: advCount, failCount, rows }
   const outFile = arg('--out', path.join(ROOT, '.cfb-offline', 'ruler', 'gen-ruler-report.json'))
   fs.mkdirSync(path.dirname(outFile), { recursive: true })
   fs.writeFileSync(outFile, JSON.stringify(out, null, 2) + '\n')
   console.log('尺子 ' + RULER_VERSION + '：' + rows.length + ' 条，过门 ' + pass + '，拒 ' + (rows.length - pass) + '（' + (out.passRate * 100).toFixed(1) + '%）')
-  for (const [k, v] of Object.entries(failCount).sort((a, b) => b[1] - a[1])) console.log('   ' + k + ' x' + v)
+  console.log('  有受力点 %d/%d，其中过门 %d = %s（**这个才是对比用的分母**）',
+    gaugeable.length, rows.length, gPass, ((out.gaugeablePassRate) * 100).toFixed(1) + '%')
+  console.log('  软标准：压缩 token 比 <= %s 且过门 %d = %s（要训练到的目标，不是门）',
+    COMPRESSION_TARGET, target.length, ((out.target.rate) * 100).toFixed(1) + '%')
+  for (const [k, v] of Object.entries(failCount).sort((a, b) => b[1] - a[1])) console.log('   [硬门] ' + k + ' x' + v)
+  for (const [k, v] of Object.entries(advCount).sort((a, b) => b[1] - a[1])) console.log('   [软标准] ' + k + ' x' + v)
   console.log('报告：' + path.relative(ROOT, outFile))
 }
 

@@ -14,7 +14,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { judge, RULER_VERSION } from './gen-ruler.mjs'
+import { judge, RULER_VERSION, COMPRESSION_TARGET, COMPRESSION_HARD_MAX } from './gen-ruler.mjs'
 import { estimateTokens } from '../src/tokens.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -59,9 +59,15 @@ for (const g of gen) {
   const sj = judge({ raw: t.raw, ctx: t.ctx, draft: sd })
   rows.push({
     id: g.id, teacherPass: tj.pass, studentPass: sj.pass,
+    // gaugeable 是**与稿子无关**的属性（只读 raw/ctx），两边必须恒等。
+    // 它现在由尺子给成布尔，不再靠解析 'G0 no-leverage' 这个字符串 ——
+    // 字符串一旦改措辞，分母就会静默错位，而分母错了没有任何指标会报警。
+    teacherGaugeable: tj.gaugeable, studentGaugeable: sj.gaugeable,
     teacherFailed: tj.failed, studentFailed: sj.failed,
+    teacherAdvisory: tj.advisory, studentAdvisory: sj.advisory,
+    teacherMeetsTarget: tj.detail.compression.meetsTarget, studentMeetsTarget: sj.detail.compression.meetsTarget,
     teacherScore: tj.score, studentScore: sj.score,
-    // 两个比都给：G7 判的是 token 比，字符比只作归因。只报一个的话，
+    // 两个比都给：压缩判的是 token 比，字符比只作归因。只报一个的话，
     // 读的人会拿字符比去对文档里的 token 比，然后以为哪里算错了。
     teacherCharRatio: tj.detail.compression.ratio, studentCharRatio: sj.detail.compression.ratio,
     teacherTokRatio: tj.detail.compression.tokenRatio, studentTokRatio: sj.detail.compression.tokenRatio,
@@ -72,9 +78,23 @@ for (const g of gen) {
 }
 
 // 有受力点的子集：G0 是**与稿子无关**的门（raw/ctx 本身没有可承重的东西），
-// 它对教师和学生一视同仁，留在分母里只会同时压低两边、把对比稀释掉。
-// 所以两个数都给：全体（G0 算失败，保守）和有受力点子集（G0 剔除，才是真正的对比）。
-const scoreable = rows.filter((r) => !r.teacherFailed.includes('G0 no-leverage'))
+// 它对教师和学生一视同仁（实测 dev 89 条，两边命中是同一批 16 条，不一致数 = 0），
+// 留在分母里只会同时压低两边、把对比稀释掉。
+// 所以两个数都给：全体（G0 算失败，保守）和有受力点子集（才是真正的对比）。
+//
+// ⚠ 这个分母以前是「34.8% 假天花板」的成因之一：那个数把 16 条**任何稿子都过不了**
+// 的单元算进了分母。分子分母各错一次，结论就完全反了（34.8% -> 75.3%）。
+const scoreable = rows.filter((r) => r.teacherGaugeable)
+// 交叉校验：gaugeable 只读 raw/ctx，所以在教师和学生上必须恒等。
+// 不一致只可能意味着两件事，都是硬故障：(1) 尺子被改坏了；
+// (2) 生成文件与 dev.jsonl 不是同一版（raw 对得上、ctx 对不上）。
+// 静默取一边会让分母悄悄错位 —— 分母错了没有任何指标会报警，所以这里直接退出。
+const gaugeMismatch = rows.filter((r) => r.teacherGaugeable !== r.studentGaugeable)
+if (gaugeMismatch.length) {
+  console.error('FATAL: ' + gaugeMismatch.length + ' 条的 gaugeable 在教师/学生上不一致 —— 尺子或输入有问题')
+  console.error('  例：' + gaugeMismatch.slice(0, 3).map((r) => r.id).join('、'))
+  process.exit(1)
+}
 const n = rows.length
 const tPass = rows.filter((r) => r.teacherPass).length
 const sPass = rows.filter((r) => r.studentPass).length
@@ -85,7 +105,7 @@ const both = rows.filter((r) => r.teacherPass && r.studentPass).length
 const sOnly = rows.filter((r) => !r.teacherPass && r.studentPass).length
 const tOnly = rows.filter((r) => r.teacherPass && !r.studentPass).length
 const neither = n - both - sOnly - tOnly
-const fc = (k) => { const m = {}; for (const r of rows) for (const f of r[k]) m[f] = (m[f] || 0) + 1; return m }
+const fc = (k, src) => { const m = {}; for (const r of (src || rows)) for (const f of r[k]) m[f] = (m[f] || 0) + 1; return m }
 const q = (a, p) => { const s = a.slice().sort((x, y) => x - y); return s.length ? s[Math.floor((s.length - 1) * p)] : null }
 const rate = (x) => n ? +(x / n).toFixed(4) : 0
 const mean = (a) => a.length ? +(a.reduce((s, x) => s + x, 0) / a.length).toFixed(4) : 0
@@ -98,6 +118,15 @@ const scoreWins = rows.filter((r) => r.studentScore > r.teacherScore).length
 const scoreLoss = rows.filter((r) => r.studentScore < r.teacherScore).length
 const scoreTie = n - scoreWins - scoreLoss
 const rate2 = (x, d) => d ? +(x / d).toFixed(4) : 0
+// 软标准：过硬门 **且** 压缩达到 COMPRESSION_TARGET。
+// 它不是门 —— 没过它照样算过门，只是记在 advisory 里。
+// 「现在先软标准，以后再训练到 0.5」这句话就落在这里：这个数是**要训练到的目标**，
+// 不是**当前的及格线**。等它上去了，把尺子的 COMPRESSION_HARD_MAX 设成 0.5 才重新装门。
+const scTarget = (r, who) => scoreable.filter((x) => x[who + 'Pass'] && x[who + 'MeetsTarget']).length
+const tTarget = scTarget(null, 'teacher')
+const sTarget = scTarget(null, 'student')
+const tOver = scoreable.filter((r) => r.teacherTokRatio > 1.0).length
+const sOver = scoreable.filter((r) => r.studentTokRatio > 1.0).length
 
 const report = {
   schema: 'cfb.eval-sft/1', ruler: RULER_VERSION, at: new Date().toISOString(),
@@ -109,15 +138,31 @@ const report = {
     teacherRate: sn ? +(stPass / sn).toFixed(4) : 0,
     studentRate: sn ? +(ssPass / sn).toFixed(4) : 0,
     excluded: n - sn, why: 'raw/ctx 本身没有可承重锚点，尺子对它没有受力点（G0）' },
+  // 压缩：gen-ruler/4 起是**软标准**，不再是硬门。硬门上限当前 = COMPRESSION_HARD_MAX（null = 未装）。
+  compressionTarget: {
+    target: COMPRESSION_TARGET, hardMax: COMPRESSION_HARD_MAX,
+    teacher: { pass: tTarget, rate: rate2(tTarget, sn) },
+    student: { pass: sTarget, rate: rate2(sTarget, sn) },
+    overRaw: { teacher: tOver, student: sOver },
+    note: '过门 + token 比 <= ' + COMPRESSION_TARGET + '；这是要训练到的目标，不是及格线',
+  },
+  // 软标准就是这一块：它不拦稿，只记账。它是主指标，因为硬门只能回答「能不能用」，
+  // 回答不了「好不好」。
+  softStandard: {
+    compressionTarget: COMPRESSION_TARGET,
+    teacher: { pass: tTarget, rate: rate2(tTarget, sn), overRaw: tOver },
+    student: { pass: sTarget, rate: rate2(sTarget, sn), overRaw: sOver },
+    note: '过门 + token 比 <= ' + COMPRESSION_TARGET + '；这是要训练到的目标，不是及格线',
+  },
   paired: { bothPass: both, studentOnly: sOnly, teacherOnly: tOnly, neither },
   chars: { teacher: { p50: q(rows.map((r) => r.teacherChars), 0.5) },
            student: { p50: q(rows.map((r) => r.studentChars), 0.5) } },
   ratio: {
-    // G7 的判据是 **token 比**（gen-ruler/2 起）。字符比会被"英文原文 -> 中文稿"
+    // 压缩的判据是 **token 比**（gen-ruler/2 起）。字符比会被"英文原文 -> 中文稿"
     // 这种语言切换骗过：字符腰斩、token 不降。两个都报，别只报字符比。
     token: { teacherP50: q(rows.map((r) => r.teacherTokRatio), 0.5),
              studentP50: q(rows.map((r) => r.studentTokRatio), 0.5),
-             note: 'G7 用的就是这条' },
+             note: '压缩判据用的就是这条（gen-ruler/4 起不再是硬门）' },
     char: { teacherP50: q(rows.map((r) => r.teacherCharRatio), 0.5),
             studentP50: q(rows.map((r) => r.studentCharRatio), 0.5),
             note: '只作归因，不是判据' },
@@ -125,7 +170,7 @@ const report = {
   softScore: { teacherMean: mean(tScore), studentMean: mean(sScore),
     teacherP50: q(tScore, 0.5), studentP50: q(sScore, 0.5),
     studentWins: scoreWins, studentLosses: scoreLoss, ties: scoreTie,
-    note: '不带阈值的连续量，不会被 G7 那条线牵着走' },
+    note: '不带阈值的连续量。gen-ruler/4 把压缩从硬门挪进软标准之后，这个数就是主指标' },
   rows,
 }
 fs.mkdirSync(path.dirname(OUT), { recursive: true })
@@ -136,9 +181,9 @@ console.log('尺子 ' + RULER_VERSION + ' · 配对评测 ' + n + ' 条' + (miss
 console.log('  教师 DeepSeek-V4-Flash 通过 %d/%d = %s', tPass, n, pc(rate(tPass)))
 console.log('  学生 RWKV7-0.1B      通过 %d/%d = %s', sPass, n, pc(rate(sPass)))
 console.log('  四格：都过 %d · 只学生过 %d · 只教师过 %d · 都不过 %d', both, sOnly, tOnly, neither)
-console.log('  ── 有受力点子集（剔除 G0 的 %d 条）才是真正的对比 ──', n - sn)
+console.log('  ── 有受力点子集（gaugeable，剔除 %d 条无受力点的）才是真正的对比 ──', n - sn)
 console.log('  教师 %d/%d = %s · 学生 %d/%d = %s', stPass, sn, pc(rate2(stPass, sn)), ssPass, sn, pc(rate2(ssPass, sn)))
-console.log('  压缩比 p50（token 比，G7 的判据）：教师 %s · 学生 %s',
+console.log('  压缩比 p50（token 比，压缩的判据）：教师 %s · 学生 %s',
   report.ratio.token.teacherP50, report.ratio.token.studentP50)
 console.log('  压缩比 p50（字符比，只作归因）  ：教师 %s · 学生 %s',
   report.ratio.char.teacherP50, report.ratio.char.studentP50)
@@ -146,9 +191,14 @@ console.log('  软分（无阈值）：教师均值 %s p50 %s · 学生均值 %s
   report.softScore.teacherMean, report.softScore.teacherP50,
   report.softScore.studentMean, report.softScore.studentP50)
 console.log('  软分逐条胜负：学生赢 %d · 输 %d · 平 %d', scoreWins, scoreLoss, scoreTie)
+console.log('  软标准（过门 + 压缩 <= %s，**要训练到的目标，不是及格线**）：教师 %d/%d = %s · 学生 %d/%d = %s',
+  COMPRESSION_TARGET, tTarget, sn, pc(rate2(tTarget, sn)), sTarget, sn, pc(rate2(sTarget, sn)))
+if (COMPRESSION_HARD_MAX == null) console.log('  压缩硬门：未装（COMPRESSION_HARD_MAX = null）—— gen-ruler/4 起改为软标准')
+else console.log('  压缩硬门：token 比 <= %s', COMPRESSION_HARD_MAX)
+if (tOver || sOver) console.log('  ⚠ 比原文还长（token 比 > 1.0）：教师 %d · 学生 %d', tOver, sOver)
 console.log('  字数 p50：教师 %d · 学生 %d', report.chars.teacher.p50, report.chars.student.p50)
 const fmt = (m) => Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => k + ' x' + v).join('、') || '（无）'
-console.log('  学生失败分布：' + fmt(report.student.failCount))
-console.log('  教师失败分布：' + fmt(report.teacher.failCount))
+console.log('  学生失败分布（有受力点）：' + fmt(fc('studentFailed', scoreable)))
+console.log('  教师失败分布（有受力点）：' + fmt(fc('teacherFailed', scoreable)))
 if (empty) console.log('  ⚠ 学生空稿 %d 条', empty)
 console.log('  报告：' + path.relative(ROOT, OUT))

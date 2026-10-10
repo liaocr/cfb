@@ -330,6 +330,10 @@ def parse_args(argv=None):
     ap.add_argument("--gen-max-new", type=int, default=768)
     ap.add_argument("--gen-budget", type=float, default=0,
                     help="生成阶段的时间预算（秒），0=不限。缓存不生效时防止生成阶段拖垮整轮")
+    ap.add_argument("--ckpt-steps", default="",
+                    help="学习曲线快照的步数，逗号分隔（如 40,120）。到点就 dev loss + 生成一次，然后接着训。空=不快照")
+    ap.add_argument("--ckpt-gen-n", type=int, default=0,
+                    help="快照点生成多少条（0=用 --gen-n）。曲线上的点要同 n 才能相比")
     ap.add_argument("--no-gen-cache", dest="gen_cache", action="store_false", default=True,
                     help="生成时不用状态缓存（慢一个数量级，只在缓存自检失败时才有意义）")
     return ap.parse_args(argv)
@@ -583,11 +587,23 @@ def main(argv=None) -> int:
                 torch.tensor(am, device=device))
 
     batches = batch_rows(encoded, args.batch)
+    # ⚠ DDP 下每张卡必须走**同样多**的步数，否则先跑完的那张卡会在下一次集合通信上
+    #   永久等待 —— 表现为整轮静默挂死：日志停在最后一个 step，没有报错、没有 OOM、没有超时。
+    #   412 条 / 批 4 = 103 个微批，2 卡切片后是 52 和 51，各自 //4 得 13 和 12 步：**步数不等**。
+    #   v9 的 256 条恰好是 32/32，把这个问题盖住了 —— 数据一变就会发作。
+    #   所以先按 accum*world 把全局微批裁到整除，再切分，两边步数必然相同。
+    per_step = args.accum * world
+    n_micro = (len(batches) // per_step) * per_step
+    dropped = len(batches) - n_micro
+    if dropped:
+        print(f"· 全局 {len(batches)} 个微批，为对齐 DDP 步数裁掉尾部 {dropped} 个"
+              f"（每轮少 {dropped * args.batch} 条，约 {dropped * args.batch / max(1, len(encoded)):.1%}）", flush=True)
+    batches = batches[:n_micro]
     if world > 1:
         # 每张卡分走一部分微批，梯度由 DDP 同步 ⇒ 等价于把有效批再放大 world 倍。
         batches = batches[local_rank::world]
         print(f"· rank {local_rank} 分到 {len(batches)} 个微批", flush=True)
-    steps_per_epoch = max(1, len(batches) // args.accum)
+    steps_per_epoch = max(1, n_micro // per_step)
     total_steps = max(1, int(steps_per_epoch * args.epochs))
     opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],
                             lr=args.lr, betas=(0.9, 0.95), weight_decay=0.01)
@@ -607,6 +623,100 @@ def main(argv=None) -> int:
 
     print(f"· 批 {args.batch} × 累积 {args.accum} = 有效批 {args.batch*args.accum}"
           f" · 每轮 {len(batches)} 微批 -> {steps_per_epoch} 步 · 共 {total_steps} 步", flush=True)
+
+    # ---- 5b. 把 dev loss 与生成抽成函数 ----
+    # 为什么必须抽出来：学习曲线要在每个快照点跑**同一段**代码。
+    # 各写一份的后果不是报错，是"曲线上的点和终点用了不同的判据"，而那种差异
+    # 在图上看起来就像"训练中途变差了"。同源测量是这套东西的底线。
+    def dev_loss():
+        if not (dev_encoded and is_main):
+            return None
+        base_model.eval()
+        tot, cnt = 0.0, 0
+        with torch.no_grad():
+            for i in range(0, len(dev_encoded), args.batch):
+                chunk = [p for _, p in dev_encoded[i:i + args.batch]]
+                ids, lab, am = collate(chunk)
+                with torch.autocast("cuda", dtype=amp_dtype, enabled=amp_dtype is not None):
+                    tot += float(base_model(input_ids=ids, attention_mask=am, labels=lab).loss)
+                cnt += 1
+        return tot / max(1, cnt)
+
+    def gen_once(row, max_new, cache):
+        prompt = render(tok, [{"role": "system", "content": row["system"]},
+                              {"role": "user", "content": row["user"]}], True)
+        enc = tok(prompt, return_tensors="pt", add_special_tokens=False).to(device)
+        t = time.time()
+        with torch.no_grad(), torch.autocast("cuda", dtype=amp_dtype,
+                                             enabled=amp_dtype is not None):
+            o = base_model.generate(**enc, max_new_tokens=max_new, do_sample=False,
+                                    use_cache=cache, pad_token_id=tok.pad_token_id,
+                                    eos_token_id=eos_id)
+        return (tok.decode(o[0][enc["input_ids"].shape[1]:], skip_special_tokens=True),
+                time.time() - t)
+
+    def generate(n, path):
+        """生成 n 条稿子。**必须能被重复调用** —— 学习曲线每个点都调一次。"""
+        if not (dev_encoded and is_main and n > 0):
+            return 0
+        base_model.eval()
+        written, t_gen = 0, time.time()
+        with path.open("w", encoding="utf-8") as f:
+            for r, _ in dev_encoded[:n]:
+                if args.gen_budget and time.time() - t_gen > args.gen_budget:
+                    print(f"  · 生成到时间预算 {args.gen_budget:.0f}s，余 "
+                          f"{n - written} 条不生成（样本变少，尺子上的置信区间会变宽）", flush=True)
+                    break
+                try:
+                    txt, dt = gen_once(r, args.gen_max_new, args.gen_cache)
+                except Exception as exc:  # noqa: BLE001
+                    if not args.gen_cache:
+                        raise
+                    print(f"  · 缓存生成失败（{exc!r}）-> 回退到不开缓存", flush=True)
+                    args.gen_cache = False
+                    txt, dt = gen_once(r, args.gen_max_new, False)
+                f.write(json.dumps({"id": r.get("id"), "raw": r.get("raw", ""),
+                                    "ctx": r.get("ctx", ""), "draft": txt.strip()},
+                                   ensure_ascii=False) + "\n")
+                f.flush()
+                written += 1
+                print(f"  gen {written}/{n} · {len(txt)} 字 · {dt:.1f}s", flush=True)
+        print(f"  · 生成 {written} 条 -> {path.name}（{time.time() - t_gen:.0f}s）", flush=True)
+        return written
+
+    # 缓存自检：只在**真要生成**的时候跑。
+    # v9 的实测结论是反的：开缓存 31.0s / 不开 6.7s，**开缓存慢 4.6 倍**，
+    # 而输出逐字一致。当时的代码只在"输出不一致"时才关缓存，从不在"变慢"时关 ——
+    # 于是 v9 全程跑的是慢路径，生成阶段 34,687 token / 1164s = 29.8 token/s。
+    # 所以这里加上"变慢就关"。两条判据都不能省：一条保正确性，一条保速度。
+    if args.gen_n > 0 and dev_encoded and is_main and args.gen_cache:
+        try:
+            # ⚠ 必须**先热一次**再计时。v9 的自检拿到的是
+            #   不开 6.7s / 开 31.0s，看起来“开缓存慢 4.6 倍”，
+            #   但同一轮全量生成实测只有 29.8 token/s —— 比那个自检快 3 倍。
+            #   两个数字打架，说明 6.7s 里大头是 **Triton 首次编译**，不是吞吐。
+            #   拿没热过的数字去比快慢，得到的是编译时间的差，不是吞吐的差。
+            gen_once(dev_encoded[0][0], 16, False)
+            gen_once(dev_encoded[0][0], 16, True)
+            a, ta = gen_once(dev_encoded[0][0], 64, False)
+            b, tb = gen_once(dev_encoded[0][0], 64, True)
+            same = a == b
+            print(f"· 缓存自检 64 token：不开 {ta:.1f}s / 开 {tb:.1f}s"
+                  f"（开/不开 = {tb / max(ta, 1e-6):.2f}x，热机后）· 输出{'逐字一致' if same else '不一致'}",
+                  flush=True)
+            if not same:
+                print("  警告：开缓存后输出变了 -> 回退到不开缓存（慢，但不冒正确性的险）",
+                      flush=True)
+                args.gen_cache = False
+            elif tb > ta * 1.2:
+                # 20% 宽容：这两次采样本身就有抖动，卡在 1.0 会把噪声当信号。
+                print("  开缓存确实更慢（热机后对比）-> 关掉", flush=True)
+                args.gen_cache = False
+        except Exception as exc:  # noqa: BLE001
+            print(f"· 缓存自检就崩了（{exc!r}）-> 全程不开缓存", flush=True)
+            args.gen_cache = False
+        finally:
+            torch.cuda.empty_cache()
 
     # ---- 6. 冒烟：把"能不能跑"和"跑得好不好"分开 ----
     if args.smoke:
@@ -666,6 +776,57 @@ def main(argv=None) -> int:
             torch.distributed.destroy_process_group()
         return 0
 
+    # ---- 7c. 学习曲线点 ----
+    #
+    # 为什么要有这个：上一轮只有**一个终点**（步数 40），于是“欠训”和“目标函数不对”
+    # 这两个完全不同的诊断在数据上**不可分离**。一条曲线就能分开：
+    #   曲线还在上升  => 欠训，加步数/加数据有用；
+    #   曲线平了    => 不是欠训，问题在目标函数（交叉熵表达不了“这一个 token 是致命的”）。
+    # 曲线上每个点都要同 n 才能相比 —— n 不同的两点没有可比性，这一点必须写死在这里。
+    ckpt_set = set()
+    if args.ckpt_steps:
+        try:
+            ckpt_set = {int(x) for x in str(args.ckpt_steps).replace("，", ",").split(",") if x.strip()}
+        except ValueError:
+            print(f"FATAL: --ckpt-steps 解析不了：{args.ckpt_steps!r}", file=sys.stderr)
+            return 2
+        ckpt_set = {x for x in ckpt_set if 0 < x < total_steps}
+        print(f"· 学习曲线快照步数：{sorted(ckpt_set)}（共 {total_steps} 步）", flush=True)
+    curve = []
+    ckpt_gen_n = args.ckpt_gen_n or args.gen_n
+    # out_dir 必须在循环**之前**就存在 —— 曲线点要往里写文件。
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    def curve_point(at_step):
+        """在一个步数上采一个点。**两个 rank 都必须调用** —— 里面有 barrier。"""
+        was_training = model.training
+        dl = dev_loss()
+        # 生成期间必须关梯度检查点：transformers 会因为它与 use_cache 不兼容而把状态缓存一并关掉，
+        # 于是每吐一个 token 都重算整段 prompt（O(n^2)）。这不是推演，是冒烟 v5 实测：256 token 37.5s。
+        if args.grad_ckpt:
+            base_model.gradient_checkpointing_disable()
+        try:
+            n = generate(ckpt_gen_n, out_dir / f"dev-generations-step{at_step}.jsonl")
+        finally:
+            if args.grad_ckpt:
+                base_model.gradient_checkpointing_enable()
+        if is_main:
+            rec = {"step": at_step, "devLoss": None if dl is None else round(dl, 4),
+                   "genRows": n, "genFile": f"dev-generations-step{at_step}.jsonl",
+                   "minutes": round((time.time() - t0) / 60, 1)}
+            curve.append(rec)
+            print(f"· 【学习曲线】step {at_step} · dev loss "
+                  f"{rec['devLoss']} · 生成 {n} 条 · 已用 {rec['minutes']}m", flush=True)
+            (out_dir / "learning-curve.json").write_text(
+                json.dumps(curve, ensure_ascii=False, indent=2), encoding="utf-8")
+        # 回到训练模式。不恢复的话后面的 step 全在 eval 模式下跑 ——
+        # 不会报错，只是 BatchNorm/Dropout 行为变了，而 RWKV7 里 dropout 确实存在。
+        if was_training:
+            model.train()
+        if world > 1:
+            torch.distributed.barrier()
+
     # ---- 7. 训练 ----
     model.train()
     step, micro, epoch = 0, 0, 0
@@ -693,6 +854,10 @@ def main(argv=None) -> int:
                           f"lr {lr_at(step):.2e} elapsed {(time.time()-t0)/60:.1f}m", flush=True)
                 running = 0.0
                 step += 1
+                # 快照点插在**参数已更新之后、下一步之前**，否则读到的是上一步的权重。
+                # 这种偏一步的错不会报错，只会让曲线整体左移。
+                if step in ckpt_set:
+                    curve_point(step)
                 if step >= total_steps:
                     done = True
                     break
@@ -710,8 +875,7 @@ def main(argv=None) -> int:
     # AttributeError（fla 的 _tied_weights_keys 是 list，transformers 5.x 要 dict），
     # 异常一路穿出 main()，把已经跑完的 10.6 分钟训练和还没跑的 dev/生成一起带走。
     # 所以：先修根因，再整块兜住，最后还有一条 torch.save 的兜底。
-    out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    # out_dir 已在 7c 里建好（曲线点要用）。
     if world > 1:
         torch.distributed.barrier()
     if is_main:
@@ -750,87 +914,17 @@ def main(argv=None) -> int:
         base_model.gradient_checkpointing_disable()
 
     # ---- 8. dev 损失（只 0 号 rank，走未包裹句柄）----
-    if dev_encoded and is_main:
-        base_model.eval()
-        tot, cnt = 0.0, 0
-        with torch.no_grad():
-            for i in range(0, len(dev_encoded), args.batch):
-                chunk = [p for _, p in dev_encoded[i:i + args.batch]]
-                ids, lab, am = collate(chunk)
-                with torch.autocast("cuda", dtype=amp_dtype, enabled=amp_dtype is not None):
-                    tot += float(base_model(input_ids=ids, attention_mask=am, labels=lab).loss)
-                cnt += 1
-        print(f"· dev loss {tot/max(1,cnt):.4f}（{len(dev_encoded)} 条）", flush=True)
+    dl_final = dev_loss()
+    if dl_final is not None:
+        print(f"· dev loss {dl_final:.4f}（{len(dev_encoded)} 条）", flush=True)
 
     # ---- 9. 生成稿子，交给本地尺子打分（不在这里自评）----
+    # 路径与学习曲线终点一致，不另起一个名字 —— 名字不一致的后果是本地脚本拿不到文件，
+    # 而拿不到文件不会报错，只会静默地去评一个不存在的东西。
     gen_path = out_dir / "dev-generations.jsonl"
-    gen_rows = 0
-    if dev_encoded and is_main:
-        base_model.eval()
-
-        def gen_once(row, max_new, cache):
-            prompt = render(tok, [{"role": "system", "content": row["system"]},
-                                  {"role": "user", "content": row["user"]}], True)
-            enc = tok(prompt, return_tensors="pt", add_special_tokens=False).to(device)
-            t = time.time()
-            with torch.no_grad(), torch.autocast("cuda", dtype=amp_dtype,
-                                                 enabled=amp_dtype is not None):
-                o = base_model.generate(**enc, max_new_tokens=max_new, do_sample=False,
-                                        use_cache=cache, pad_token_id=tok.pad_token_id,
-                                        eos_token_id=eos_id)
-            return (tok.decode(o[0][enc["input_ids"].shape[1]:], skip_special_tokens=True),
-                    time.time() - t)
-
-        # 先自检：开缓存与不开缓存的输出**必须逐字相同**，否则"提速"是拿正确性换的。
-        # RWKV7 是线性注意力，缓存的是循环状态，理论上应等价；但理论不等于实测。
-        # 自检本身也必须被兜住：它跑在**权重已经落盘之后**，但要是它自己崩了，
-        # 生成阶段就一条都产不出来。宁可不加速，也不能整轮白跑。
-        if args.gen_cache:
-            try:
-                a, ta = gen_once(dev_encoded[0][0], 64, False)
-                b, tb = gen_once(dev_encoded[0][0], 64, True)
-                same = a == b
-                print(f"· 缓存自检 64 token：不开 {ta:.1f}s / 开 {tb:.1f}s"
-                      f"（{ta / max(tb, 1e-6):.1f}x）· 输出{'逐字一致' if same else '不一致'}",
-                      flush=True)
-                if not same:
-                    print("  警告：开缓存后输出变了 -> 回退到不开缓存（慢，但不冒正确性的险）",
-                          flush=True)
-                    print(f"  不开：{a[:150]!r}", flush=True)
-                    print(f"  开  ：{b[:150]!r}", flush=True)
-                    args.gen_cache = False
-            except Exception as exc:  # noqa: BLE001
-                print(f"· 缓存自检就崩了（{exc!r}）-> 全程不开缓存", flush=True)
-                args.gen_cache = False
-            finally:
-                torch.cuda.empty_cache()
-
-        written, skipped, t_gen = 0, 0, time.time()
-        with gen_path.open("w", encoding="utf-8") as f:
-            for r, _ in dev_encoded[:args.gen_n]:
-                if args.gen_budget and time.time() - t_gen > args.gen_budget:
-                    skipped = min(args.gen_n, len(dev_encoded)) - written
-                    print(f"· 生成到时间预算 {args.gen_budget:.0f}s，余 {skipped} 条不生成"
-                          f"（样本变少，尺子上的置信区间会变宽）", flush=True)
-                    break
-                try:
-                    txt, dt = gen_once(r, args.gen_max_new, args.gen_cache)
-                except Exception as exc:  # noqa: BLE001
-                    if not args.gen_cache:
-                        raise
-                    print(f"· 缓存生成失败（{exc!r}）-> 回退到不开缓存", flush=True)
-                    args.gen_cache = False
-                    txt, dt = gen_once(r, args.gen_max_new, False)
-                f.write(json.dumps({"id": r.get("id"), "raw": r.get("raw", ""),
-                                    "ctx": r.get("ctx", ""), "draft": txt.strip()},
-                                   ensure_ascii=False) + "\n")
-                f.flush()
-                written += 1
-                print(f"  gen {written}/{min(args.gen_n, len(dev_encoded))}"
-                      f" · {len(txt)} 字 · {dt:.1f}s", flush=True)
-        gen_rows = written
-        print(f"· 生成 {written} 条 -> {gen_path}"
-              f"（{time.time() - t_gen:.0f}s，用 tools/eval-sft.mjs 本地打分）", flush=True)
+    gen_rows = generate(args.gen_n, gen_path)
+    if gen_rows:
+        print(f"· 生成 {gen_rows} 条 -> {gen_path}（用 tools/eval-sft.mjs 本地打分）", flush=True)
 
     report = {
         "model": args.model, "params": nparam, "maxLen": args.max_len, "dtype": args.dtype,
@@ -840,6 +934,8 @@ def main(argv=None) -> int:
         "minutes": round((time.time() - t0) / 60, 1), "lossTail": hist[-10:],
         "maskDriftNonZero": len(nz),
         "genRows": gen_rows, "genCache": bool(args.gen_cache), "genBudget": args.gen_budget,
+        "devLossFinal": None if dl_final is None else round(dl_final, 4),
+        "curve": curve, "ckptSteps": sorted(ckpt_set), "ckptGenN": ckpt_gen_n,
     }
     # rank1 跳过了 dev 损失和生成，会先到这里 —— 对齐后再收尾，理由同上。
     if world > 1:
