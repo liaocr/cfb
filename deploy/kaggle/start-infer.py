@@ -79,12 +79,22 @@ def build_kernel(args) -> str:
     entry = (
         "\n\n# ── 由 start-infer.py 注入的入口（Kaggle script kernel 不能传命令行参数）──\n"
         "if __name__ == \"__main__\":\n"
-        "    import os\n"
+        "    import os, urllib.request\n"
         "    os.makedirs(" + json.dumps(OUT_DIR) + ", exist_ok=True)\n"
         "    _argv = [\n"
         + "".join(f"        {json.dumps(a)},\n" for a in argv)
         + "    ]\n"
         "    _argv[_argv.index(\"--model\") + 1] = _find_model()\n"
+        "    # --in 是 URL，而 infer_rwkv7.py 用 open() 读它 —— open() 不认 URL。\n"
+        "    # 不先落地就会 FileNotFoundError，而那要排队几十分钟才暴露。\n"
+        "    _in = _argv[_argv.index(\"--in\") + 1]\n"
+        "    if str(_in).startswith(\"http\"):\n"
+        "        _dst = " + json.dumps(OUT_DIR) + " + \"/pairs.jsonl\"\n"
+        "        _req = urllib.request.Request(_in, headers={\"User-Agent\": \"cfb-rwkv7-infer\"})\n"
+        "        with urllib.request.urlopen(_req, timeout=120) as _r:\n"
+        "            open(_dst, \"wb\").write(_r.read())\n"
+        "        print(\"· 输入已下载 -> \" + _dst + \"（\" + str(os.path.getsize(_dst)) + \" 字节）\", flush=True)\n"
+        "        _argv[_argv.index(\"--in\") + 1] = _dst\n"
         "    sys.exit(main(_argv))\n"
     )
     return body + entry
