@@ -17,6 +17,9 @@
 > · `test/birth.selftest.mjs` 的 **T13**（`deriveArtHandle ≡ dshb-store.deriveHandle`）—— 私有宿主兄弟包 `dsh-context-memory-bundle` 不随 npm 发布，本机没有 ⇒ 整条跳过；设 `CMB_STORE_PATH` 指向该包才会真跑。
 > · `test/eval-ready.selftest.mjs` 的 **第 38 项**（需要真断网命名空间才能取证）—— 只在 `npm run verify:offline` 里跑，联网机上按设计跳过。
 > ⇒ 所以"隔离内 1 跳过 / 联网 2 跳过"，且 `verify.mjs` 的结论行永远写"存在跳过项，非完整宿主验证"，不会替宿主侧契约背书。
+>
+> **水位块是"记账回执"而非"实时现算"**：`tools/doc-watermark.mjs --check` 比对的是**文档 ↔ `transfer/watermark.json`**，不会去比对回执与当次运行是否一致。回执在 Linux 上记账（上表数字即该环境读数）。
+> **在 Windows 上跑会看到不同的跳过数**（如 `1238 通过 / 0 失败 / 8 跳过`）：无 `bash`/网络隔离命名空间，`test/closed-loop-v4.selftest.mjs`（A18/A19/A34 及 A38 的 C3）与 `test/mode1-quality-parity.selftest.mjs` 的依赖项按 `process.platform === 'win32'` 守卫跳过。**这是环境差异，不是回归**；要复现水位块数字请在 Linux 上跑 `npm run verify:offline`。
 ---
 
 ## 1. 三十秒极速上手（人类 & AI 模型通用）
