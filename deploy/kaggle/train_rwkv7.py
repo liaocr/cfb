@@ -91,31 +91,47 @@ def read_jsonl(path: Path) -> list[dict]:
     return rows
 
 
-def fetch(src: str, dest: Path) -> Path:
+def fetch(src: str, dest: Path, world: int = 1, is_main: bool = True) -> Path:
     """支持 http(s) URL 与本地路径。
 
     Kaggle 的 script kernel 不保证 cwd 就是代码所在目录，所以相对路径要依次试：
     当前 cwd → 本脚本所在目录。都不在就报清楚，不要静默读空文件。
+
+    多卡时**只让 0 号下载**，其余 rank 在 barrier 上等（真机实测过的 bug）：
+    两个 rank 各自 fetch 到同一个 dest，一个 open("wb") 截断、另一个正在读 ——
+    rank1 读到半截文件，read_jsonl 返回 0 行，报 "FATAL: _train.jsonl 是空的"
+    然后整轮 torchrun 被 SIGTERM 掉。冒烟 v5 只有 48 行没撞上，真数据集 3.2MB 必撞。
+    下载还改成先写 .part 再原子 replace，即使将来有别的读者也不会看到半截文件。
     """
     if src.startswith(("http://", "https://")):
         import urllib.request
+        import torch
         dest.parent.mkdir(parents=True, exist_ok=True)
+        if world > 1 and not is_main:
+            torch.distributed.barrier()   # 等 0 号下完
+            return dest
         last = None
         # 真实训练集有近 10MB，raw.githubusercontent 这条链路会偶发重置；
         # 一次就放弃等于白烧一整轮 kernel（含排队 + 装 fla + 载模型）。
         for i in range(4):
             try:
                 req = urllib.request.Request(src, headers={"User-Agent": "cfb-rwkv7-trainer"})
-                with urllib.request.urlopen(req, timeout=180) as r, dest.open("wb") as w:
+                tmp = dest.with_name(dest.name + ".part")
+                with urllib.request.urlopen(req, timeout=180) as r, tmp.open("wb") as w:
                     w.write(r.read())
+                tmp.replace(dest)
                 print(f"· 下载 {src} -> {dest} ({dest.stat().st_size} bytes)", flush=True)
-                return dest
+                break
             except Exception as exc:  # noqa: BLE001
                 last = exc
                 if i < 3:
                     print(f"· 下载失败（{exc!r}），{2 ** i}s 后重试 {i + 2}/4", flush=True)
                     time.sleep(2 ** i)
-        raise SystemExit(f"FATAL: 下载失败 4 次：{src}\n  最后错误：{last!r}")
+        else:
+            raise SystemExit(f"FATAL: 下载失败 4 次：{src}\n  最后错误：{last!r}")
+        if world > 1:
+            torch.distributed.barrier()   # 通知其余 rank 可以读了
+        return dest
     p = Path(src)
     if p.is_file():
         return p
@@ -350,7 +366,7 @@ def main(argv=None) -> int:
           f"eos={tok.eos_token_id} pad={tok.pad_token_id}", flush=True)
 
     # ---- 4. 数据 ----
-    data_path = fetch(args.data, Path("/kaggle/working/_train.jsonl"))
+    data_path = fetch(args.data, Path("/kaggle/working/_train.jsonl"), world, is_main)
     rows_raw = read_jsonl(data_path)
     if not rows_raw:
         print(f"FATAL: {data_path} 是空的。", file=sys.stderr)
@@ -387,7 +403,7 @@ def main(argv=None) -> int:
 
     dev_encoded = []
     if args.dev:
-        dev_path = fetch(args.dev, Path("/kaggle/working/_dev.jsonl"))
+        dev_path = fetch(args.dev, Path("/kaggle/working/_dev.jsonl"), world, is_main)
         for r in read_jsonl(dev_path):
             pair, _ = encode(tok, r, args.max_len, eos_id)
             if pair is not None:
