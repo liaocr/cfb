@@ -1,10 +1,10 @@
 {
   "schema": "cfb.doc-watermark/1",
-  "generatedAt": "2026-10-07",
+  "generatedAt": "2026-10-10",
   "counts": {
     "srcModules": 24,
-    "testSuites": 43,
-    "toolsScripts": 61,
+    "testSuites": 44,
+    "toolsScripts": 64,
     "toolsHelpers": 29,
     "goldItems": 13,
     "goldFamilies": 4
