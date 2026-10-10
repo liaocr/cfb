@@ -32,6 +32,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 
@@ -43,10 +44,41 @@ DATA_DEV = f"{BASE}/deploy/kaggle/data/sft-dev.jsonl"
 OUT_DIR = "/kaggle/working/rwkv7-compressor"
 
 
-def get(url: str) -> str:
-    req = urllib.request.Request(url, headers={"User-Agent": "cfb-kaggle-launcher"})
-    with urllib.request.urlopen(req, timeout=180) as r:
-        return r.read().decode("utf-8")
+def get(url: str, tries: int = 4) -> str:
+    """带重试的下载。
+
+    raw.githubusercontent.com 到本机这条链路实测会被重置
+    （ConnectionResetError WinError 10054），一次就放弃会让整轮 push 白费。
+    """
+    last = None
+    for i in range(tries):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "cfb-kaggle-launcher"})
+            with urllib.request.urlopen(req, timeout=180) as r:
+                return r.read().decode("utf-8")
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            if i < tries - 1:
+                print(f"· 下载失败（{exc!r}），{2 ** i}s 后重试 {i + 2}/{tries}")
+                time.sleep(2 ** i)
+    raise SystemExit(f"FATAL: 下载失败 {tries} 次：{url}\n  最后错误：{last!r}")
+
+
+def trainer_source() -> str:
+    """优先用本机这份训练器，拿不到再回落到 GitHub raw。
+
+    推之前一定已经 commit + push 过，本机与远端一致；用本机这份就少一个
+    网络单点（raw.githubusercontent 这条链路并不稳）。回落到远端是为了
+    在别的机器上、或工作区不干净时仍然能用。
+    """
+    local = Path(__file__).resolve().parent / "train_rwkv7.py"
+    if local.is_file():
+        txt = local.read_text(encoding="utf-8")
+        if 'if __name__ == "__main__":' in txt:
+            print(f"· 训练器用本机 {local.name}（{len(txt)} 字符）")
+            return txt
+        print(f"· 本机 {local.name} 里没有 __main__ 块，改用远端")
+    return get(TRAINER_URL)
 
 
 def username() -> str:
@@ -96,7 +128,7 @@ def stop_kernel(kid: str) -> int:
 
 
 def build_kernel(mode: str) -> str:
-    src = get(TRAINER_URL)
+    src = trainer_source()
     marker = 'if __name__ == "__main__":'
     if marker not in src:
         sys.exit("FATAL: 训练器里找不到 __main__ 块，无法注入入口。")

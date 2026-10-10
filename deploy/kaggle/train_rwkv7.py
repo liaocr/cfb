@@ -190,6 +190,8 @@ def parse_args(argv=None):
     ap.add_argument("--seed", type=int, default=20261007)
     ap.add_argument("--grad-ckpt", action="store_true", default=True)
     ap.add_argument("--no-grad-ckpt", dest="grad_ckpt", action="store_false")
+    ap.add_argument("--gpus", type=int, default=0,
+                    help="用几张卡。0=自动（有几张用几张，上限 2）")
     ap.add_argument("--chunk-size", type=int, default=16,
                     help="RWKV7 chunk 模式的 chunk_size。<=0 表示不改，用 fla 默认的 64")
     ap.add_argument("--smoke", action="store_true", help="只验证环境：编码 + 前向 + 一步反传 + 一次生成")
@@ -199,8 +201,33 @@ def parse_args(argv=None):
     return ap.parse_args(argv)
 
 
+def reexec_under_torchrun(nproc: int, raw_argv: list) -> int:
+    """在 torchrun 下把自己重开 nproc 份，用满所有卡。
+
+    为什么必须这么做（Kaggle 实测，不是推演）：
+      Kaggle 的 T4 x2 给的是**两张独立的卡**，torch.cuda.device_count() 报 2；
+      但 script kernel 只跑一个进程，model.to("cuda") 和 tensor(device="cuda")
+      全都落在 cuda:0 —— 第二张卡从头到尾空转。
+      配额是按 session 挂钟时间扣的，不是按 GPU 秒，所以空转一张卡等于白扔一半配额。
+
+    torchrun --standalone 会自己挑一个空闲端口、设好 MASTER_ADDR/LOCAL_RANK，
+    然后每个 rank 各自跑一遍本脚本。CFB_DDP=1 用来防止无限递归重开。
+    """
+    env = dict(os.environ, CFB_DDP="1")
+    cmd = [sys.executable, "-m", "torch.distributed.run",
+           "--nproc_per_node", str(nproc),
+           "--standalone",
+           "--master_port", "29517",
+           os.path.abspath(__file__)] + list(raw_argv)
+    print(f"· 检测到 {nproc} 张卡 —— 单进程只会用 cuda:0，用 torchrun 重开跑满：", flush=True)
+    print("  " + " ".join(cmd), flush=True)
+    r = subprocess.run(cmd, env=env)
+    return r.returncode
+
+
 def main(argv=None) -> int:
-    args = parse_args(argv)
+    raw_argv = list(argv) if argv is not None else sys.argv[1:]
+    args = parse_args(raw_argv)
 
     # ---- 1. 环境：没有 CUDA 直接拒绝，不在 CPU 上假装训练 ----
     import torch
@@ -208,10 +235,28 @@ def main(argv=None) -> int:
         print("FATAL: 没有 CUDA。Kaggle 请把 Accelerator 设为 GPU T4 x2（P100 是 sm_60，"
               "fla 的 Triton kernel 不支持，会失败）。", file=sys.stderr)
         return 2
-    gpu = torch.cuda.get_device_name(0)
-    cap = torch.cuda.get_device_capability(0)
+    ngpu = torch.cuda.device_count()
+    if args.gpus <= 0:
+        args.gpus = min(ngpu, 2)
+    # 还没进 DDP、且要多卡 ⇒ 先重开自己。必须在建模型之前。
+    if args.gpus > 1 and os.environ.get("CFB_DDP") != "1":
+        return reexec_under_torchrun(args.gpus, raw_argv)
+
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    world = int(os.environ.get("WORLD_SIZE", "1"))
+    torch.cuda.set_device(local_rank)
+    device = torch.device("cuda", local_rank)
+    is_main = local_rank == 0
+    if world > 1:
+        torch.distributed.init_process_group(backend="nccl")
+        # 非 0 号 rank 的 stdout 丢进 devnull：日志只留一份，stderr 不动（报错要看得到）
+        if not is_main:
+            sys.stdout = open(os.devnull, "w")
+
+    gpu = torch.cuda.get_device_name(local_rank)
+    cap = torch.cuda.get_device_capability(local_rank)
     print(f"· GPU {gpu} · sm_{cap[0]}{cap[1]} · torch {torch.__version__} · "
-          f"{torch.cuda.device_count()} 卡", flush=True)
+          f"{ngpu} 卡中用了 {world} 张（rank {local_rank}）", flush=True)
     if cap[0] < 7:
         print(f"FATAL: 计算能力 sm_{cap[0]}{cap[1]} < sm_70，fla 的 Triton kernel 无法编译。"
               "换 T4。", file=sys.stderr)
@@ -349,14 +394,28 @@ def main(argv=None) -> int:
     print(f"· 载入 {args.model}（主权重 fp32 · autocast {args.dtype}）…", flush=True)
     model = AutoModelForCausalLM.from_pretrained(args.model, trust_remote_code=True, dtype=torch.float32)
     model.config.use_l2warp = False
-    model.to("cuda")
+    # config.json 里 max_position_embeddings=2048 是配置残留（RWKV7 无位置编码，
+    # fla 的代码路径从不读它），但 transformers 的 generate 会拿它当"预定义最大长度"
+    # 报越界警告 —— 冒烟里 3522 token 的 prompt 就触发了。改成我们的真实窗口，
+    # 既消掉噪音，也避免将来某个版本真去强制它。
+    model.config.max_position_embeddings = max(args.max_len, 2048)
+    model.to(device)
     if args.grad_ckpt:
         model.gradient_checkpointing_enable()
     model.config.use_cache = False
-    if torch.cuda.is_available():
-        torch.cuda.reset_peak_memory_stats()
     nparam = sum(p.numel() for p in model.parameters())
-    print(f"· 参数量 {nparam/1e6:.1f}M（全参微调 · fp32 主权重）", flush=True)
+    if world > 1:
+        # find_unused_parameters=True：开了 gradient checkpointing 之后，DDP 在第一次
+        # 反传前推断不出完整的参数使用图，不打开会直接报 unused parameter 而崩。
+        model = torch.nn.parallel.DistributedDataParallel(
+            model, device_ids=[local_rank], output_device=local_rank,
+            find_unused_parameters=True)
+    # generate / dev 一律走未包裹的句柄：DDP 在 forward 里会 broadcast buffer，
+    # 那是集合通信 —— 只有 0 号 rank 调 generate 的话，0 号会一直等 1 号，直接挂死。
+    base_model = model.module if world > 1 else model
+    torch.cuda.reset_peak_memory_stats()
+    print(f"· 参数量 {nparam/1e6:.1f}M（全参微调 · fp32 主权重）"
+          f"{f' · DDP {world} 卡' if world > 1 else ' · 单卡'}", flush=True)
 
     def collate(batch):
         maxlen = max(len(x[0]) for x in batch)
@@ -366,10 +425,14 @@ def main(argv=None) -> int:
             ids.append(i + [tok.pad_token_id] * pad)
             lab.append(l + [-100] * pad)
             am.append([1] * len(i) + [0] * pad)
-        return (torch.tensor(ids, device="cuda"), torch.tensor(lab, device="cuda"),
-                torch.tensor(am, device="cuda"))
+        return (torch.tensor(ids, device=device), torch.tensor(lab, device=device),
+                torch.tensor(am, device=device))
 
     batches = batch_rows(encoded, args.batch)
+    if world > 1:
+        # 每张卡分走一部分微批，梯度由 DDP 同步 ⇒ 等价于把有效批再放大 world 倍。
+        batches = batches[local_rank::world]
+        print(f"· rank {local_rank} 分到 {len(batches)} 个微批", flush=True)
     steps_per_epoch = max(1, len(batches) // args.accum)
     total_steps = max(1, int(steps_per_epoch * args.epochs))
     opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],
@@ -422,16 +485,16 @@ def main(argv=None) -> int:
             print("FATAL: 损失非有限值。", file=sys.stderr)
             return 3
         # 生成一条，验证 chat_template 与 generate 通路
-        if dev_encoded:
+        if dev_encoded and is_main:
             r, _ = dev_encoded[0]
-            model.eval()
+            base_model.eval()
             with torch.no_grad(), torch.autocast("cuda", dtype=amp_dtype,
                                                  enabled=amp_dtype is not None):
                 prompt = render(tok, [{"role": "system", "content": r["system"]},
                                       {"role": "user", "content": r["user"]}], True)
-                enc = tok(prompt, return_tensors="pt", add_special_tokens=False).to("cuda")
+                enc = tok(prompt, return_tensors="pt", add_special_tokens=False).to(device)
                 g = time.time()
-                out = model.generate(**enc, max_new_tokens=min(256, args.gen_max_new),
+                out = base_model.generate(**enc, max_new_tokens=min(256, args.gen_max_new),
                                      do_sample=False, pad_token_id=tok.pad_token_id,
                                      eos_token_id=eos_id)
                 txt = tok.decode(out[0][enc["input_ids"].shape[1]:], skip_special_tokens=True)
@@ -476,16 +539,16 @@ def main(argv=None) -> int:
             break
     print(f"· 训练结束 {step} 步，{(time.time()-t0)/60:.1f} 分钟", flush=True)
 
-    # ---- 8. dev 损失 ----
-    if dev_encoded:
-        model.eval()
+    # ---- 8. dev 损失（只 0 号 rank，走未包裹句柄）----
+    if dev_encoded and is_main:
+        base_model.eval()
         tot, cnt = 0.0, 0
         with torch.no_grad():
             for i in range(0, len(dev_encoded), args.batch):
                 chunk = [p for _, p in dev_encoded[i:i + args.batch]]
                 ids, lab, am = collate(chunk)
                 with torch.autocast("cuda", dtype=amp_dtype, enabled=amp_dtype is not None):
-                    tot += float(model(input_ids=ids, attention_mask=am, labels=lab).loss)
+                    tot += float(base_model(input_ids=ids, attention_mask=am, labels=lab).loss)
                 cnt += 1
         print(f"· dev loss {tot/max(1,cnt):.4f}（{len(dev_encoded)} 条）", flush=True)
 
@@ -493,17 +556,17 @@ def main(argv=None) -> int:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     gen_path = out_dir / "dev-generations.jsonl"
-    if dev_encoded:
-        model.eval()
+    if dev_encoded and is_main:
+        base_model.eval()
         written = 0
         with gen_path.open("w", encoding="utf-8") as f, torch.no_grad(), \
                 torch.autocast("cuda", dtype=amp_dtype, enabled=amp_dtype is not None):
             for r, _ in dev_encoded[:args.gen_n]:
                 prompt = render(tok, [{"role": "system", "content": r["system"]},
                                       {"role": "user", "content": r["user"]}], True)
-                enc = tok(prompt, return_tensors="pt", add_special_tokens=False).to("cuda")
-                o = model.generate(**enc, max_new_tokens=args.gen_max_new, do_sample=False,
-                                   pad_token_id=tok.pad_token_id, eos_token_id=eos_id)
+                enc = tok(prompt, return_tensors="pt", add_special_tokens=False).to(device)
+                o = base_model.generate(**enc, max_new_tokens=args.gen_max_new, do_sample=False,
+                                        pad_token_id=tok.pad_token_id, eos_token_id=eos_id)
                 txt = tok.decode(o[0][enc["input_ids"].shape[1]:], skip_special_tokens=True)
                 f.write(json.dumps({"id": r.get("id"), "raw": r.get("raw", ""),
                                     "ctx": r.get("ctx", ""), "draft": txt.strip()},
@@ -511,8 +574,10 @@ def main(argv=None) -> int:
                 written += 1
         print(f"· 生成 {written} 条 -> {gen_path}（用 tools/gen-ruler.mjs 本地打分）", flush=True)
 
-    model.save_pretrained(out_dir / "model")
-    tok.save_pretrained(out_dir / "model")
+    # 两个 rank 同时 save_pretrained 到同一个目录会互相踩，只让 0 号写。
+    if is_main:
+        base_model.save_pretrained(out_dir / "model")
+        tok.save_pretrained(out_dir / "model")
     report = {
         "model": args.model, "params": nparam, "maxLen": args.max_len, "dtype": args.dtype,
         "trainRows": len(rows_raw), "kept": len(encoded), "overWindow": len(rows_raw) - len(encoded),
@@ -521,8 +586,12 @@ def main(argv=None) -> int:
         "minutes": round((time.time() - t0) / 60, 1), "lossTail": hist[-10:],
         "maskDriftNonZero": len(nz),
     }
-    (out_dir / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"· 产出 {out_dir}", flush=True)
+    if is_main:
+        (out_dir / "report.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"· 产出 {out_dir}", flush=True)
+    if world > 1:
+        torch.distributed.destroy_process_group()
     return 0
 
 
