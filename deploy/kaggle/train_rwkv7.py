@@ -18,12 +18,12 @@
 ------------------------------------------
 config.json 的 max_position_embeddings=2048 **在本模型的代码路径上从未被读取**：
   · fla/models/rwkv7/modeling_rwkv7.py 全文 545 行，该字段只出现 1 次（第 151 行），
-    在 if attn_spec is not None: 的混合注意力分支里。本模型 config.attn = null ⇒ 走 else
+    在 if attn_spec is not None: 的混合注意力分支里。本模型 config.attn = null -> 走 else
     分支创建 RWKV7Attention，压根不传这个参数。
   · fla/layers/rwkv7.py 全文 355 行：无 RoPE、无位置嵌入、无长度断言；chunk_size=64
     只是分块计算的效率参数。
   · tokenizer 的 model_max_length = 1e33（等于无限）。
-  ⇒ 2048 是配置残留，不是架构约束。RWKV 是循环结构，状态固定大小，成本 O(n) 而非 O(n²)。
+  -> 2048 是配置残留，不是架构约束。RWKV 是循环结构，状态固定大小，成本 O(n) 而非 O(n²)。
 
 实测收益 —— ★ 用**底座自己的分词器**量的，不是字符估算
 ------------------------------------------------------------------
@@ -227,11 +227,14 @@ def main(argv=None) -> int:
         from fla.models.rwkv7 import RWKV7Config, RWKV7ForCausalLM  # noqa: F401
         print("· fla.models.rwkv7 镜像里已有", flush=True)
     except Exception as exc:
-        print(f"· fla.models.rwkv7 缺失（{exc!r}）⇒ 装 flash-linear-attention==0.5.2", flush=True)
+        print(f"· fla.models.rwkv7 缺失（{exc!r}）-> 装 flash-linear-attention==0.5.2", flush=True)
+        # --progress-bar off：pip 的进度条里有 ▋ 这类字形，会让 Windows 上的
+        # kaggle CLI 在按 GBK 落盘日志时崩掉（日志变成 0 字节，白跑一轮）。
         cmd = [sys.executable, "-m", "pip", "install", "--quiet", "--no-deps",
+               "--progress-bar", "off",
                "flash-linear-attention==0.5.2", "fla-core==0.5.2", "einops"]
         r = subprocess.run(cmd, capture_output=True, text=True)
-        print(f"· pip install ⇒ exit {r.returncode}", flush=True)
+        print(f"· pip install -> exit {r.returncode}", flush=True)
         if r.stdout.strip():
             print(r.stdout[-1500:], flush=True)
         if r.returncode != 0:
@@ -306,15 +309,28 @@ def main(argv=None) -> int:
         print(f"· dev {len(dev_encoded)} 条", flush=True)
 
     # ---- 5. 模型 ----
-    dtype = {"fp16": torch.float16, "bf16": torch.bfloat16, "fp32": torch.float32}[args.dtype]
-    print(f"· 载入 {args.model}（dtype {args.dtype}）…", flush=True)
-    model = AutoModelForCausalLM.from_pretrained(args.model, trust_remote_code=True, torch_dtype=dtype)
+    # 为什么不是"把权重直接载成 fp16"（Kaggle T4 上真跑出来过，不是推演）：
+    #   (a) 纯 fp16 权重 + 无 loss scaling -> 浅层梯度大量下溢成 0；AdamW 的 eps=1e-8
+    #       也远小于 fp16 在 1e-2 附近的分辨率 -> 学不动。正确配方是 fp32 主权重 +
+    #       autocast(fp16) + GradScaler（T4 是 sm_75，只有 fp16 有张量核）。
+    #   (b) fla 0.5.2 的 l2_warp 在 fp16/bf16 logits 下 backward 必崩：
+    #         fla/modules/l2warp.py:47  glogits.scatter_(-1, ids, maxx * grad_output)
+    #         RuntimeError: scatter(): Expected self.dtype to be equal to src.dtype
+    #       （glogits 跟着 logits 是 fp16，maxx*grad_output 是 fp32）。
+    #       config.json 里根本没有 use_l2warp 这个键，dataclass 默认 True，必须显式关。
+    #       复现环境：Kaggle T4 · torch 2.11.0+cu128 · transformers 5.16.1 · fla 0.5.2。
+    amp_dtype = {"fp16": torch.float16, "bf16": torch.bfloat16, "fp32": None}[args.dtype]
+    print(f"· 载入 {args.model}（主权重 fp32 · autocast {args.dtype}）…", flush=True)
+    model = AutoModelForCausalLM.from_pretrained(args.model, trust_remote_code=True, dtype=torch.float32)
+    model.config.use_l2warp = False
     model.to("cuda")
     if args.grad_ckpt:
         model.gradient_checkpointing_enable()
     model.config.use_cache = False
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
     nparam = sum(p.numel() for p in model.parameters())
-    print(f"· 参数量 {nparam/1e6:.1f}M（全参微调）", flush=True)
+    print(f"· 参数量 {nparam/1e6:.1f}M（全参微调 · fp32 主权重）", flush=True)
 
     def collate(batch):
         maxlen = max(len(x[0]) for x in batch)
@@ -334,6 +350,12 @@ def main(argv=None) -> int:
                             lr=args.lr, betas=(0.9, 0.95), weight_decay=0.01)
     warm = max(1, int(total_steps * args.warmup))
 
+    scaler = torch.amp.GradScaler("cuda", enabled=amp_dtype is not None)
+
+    def forward_loss(ids, lab, am, scale=1.0):
+        with torch.autocast("cuda", dtype=amp_dtype, enabled=amp_dtype is not None):
+            return model(input_ids=ids, attention_mask=am, labels=lab).loss * scale
+
     def lr_at(step):
         if step < warm:
             return args.lr * (step + 1) / warm
@@ -341,27 +363,35 @@ def main(argv=None) -> int:
         return args.lr * (0.1 + 0.9 * 0.5 * (1 + math.cos(math.pi * prog)))
 
     print(f"· 批 {args.batch} × 累积 {args.accum} = 有效批 {args.batch*args.accum}"
-          f" · 每轮 {len(batches)} 微批 ⇒ {steps_per_epoch} 步 · 共 {total_steps} 步", flush=True)
+          f" · 每轮 {len(batches)} 微批 -> {steps_per_epoch} 步 · 共 {total_steps} 步", flush=True)
 
     # ---- 6. 冒烟：把"能不能跑"和"跑得好不好"分开 ----
     if args.smoke:
         print("\\n=== 冒烟模式：只验证环境，不训练 ===", flush=True)
         model.train()
-        ts = time.time()
-        losses = []
+        losses, times = [], []
         for step in range(args.smoke_steps):
             ids, lab, am = collate(batches[step % len(batches)])
-            loss = model(input_ids=ids, attention_mask=am, labels=lab).loss
-            loss.backward()
-            opt.step()
+            torch.cuda.synchronize()
+            t1 = time.time()
+            loss = forward_loss(ids, lab, am, 1.0 / args.accum)
+            scaler.scale(loss).backward()
+            scaler.unscale_(opt)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            scaler.step(opt)
+            scaler.update()
             opt.zero_grad(set_to_none=True)
-            losses.append(float(loss.detach()))
-            print(f"  step {step+1}/{args.smoke_steps} loss {losses[-1]:.4f}", flush=True)
-        dt = time.time() - ts
-        print(f"· 前向+反传 {dt:.1f}s（{dt/args.smoke_steps:.1f}s/步）", flush=True)
-        per_step = dt / args.smoke_steps
-        print(f"· 外推：全量 {total_steps} 步约 {per_step*total_steps/60:.0f} 分钟"
-              f"（不含生成与保存；Kaggle 上限 12 小时）", flush=True)
+            torch.cuda.synchronize()
+            dt = time.time() - t1
+            times.append(dt)
+            losses.append(float(loss.detach()) * args.accum)
+            print(f"  step {step+1}/{args.smoke_steps} loss {losses[-1]:.4f} · {dt:.1f}s"
+                  f" · 峰值显存 {torch.cuda.max_memory_allocated()/2**30:.2f} GiB", flush=True)
+        steady = min(times)
+        print(f"· 前向+反传 合计 {sum(times):.1f}s · 首步 {times[0]:.1f}s（含 Triton 首次编译）"
+              f" · 最快 {steady:.1f}s/步", flush=True)
+        print(f"· 外推：全量 {total_steps} 步约 {steady*total_steps/60:.0f} 分钟"
+              f"（按最快一步算，首步编译不计；Kaggle 上限 12 小时）", flush=True)
         if not all(math.isfinite(x) for x in losses):
             print("FATAL: 损失非有限值。", file=sys.stderr)
             return 3
@@ -369,7 +399,8 @@ def main(argv=None) -> int:
         if dev_encoded:
             r, _ = dev_encoded[0]
             model.eval()
-            with torch.no_grad():
+            with torch.no_grad(), torch.autocast("cuda", dtype=amp_dtype,
+                                                 enabled=amp_dtype is not None):
                 prompt = render(tok, [{"role": "system", "content": r["system"]},
                                       {"role": "user", "content": r["user"]}], True)
                 enc = tok(prompt, return_tensors="pt", add_special_tokens=False).to("cuda")
@@ -393,15 +424,17 @@ def main(argv=None) -> int:
     while not done:
         for b in batches:
             ids, lab, am = collate(b)
-            loss = model(input_ids=ids, attention_mask=am, labels=lab).loss / args.accum
-            loss.backward()
+            loss = forward_loss(ids, lab, am, 1.0 / args.accum)
+            scaler.scale(loss).backward()
             running += float(loss.detach())
             micro += 1
             if micro % args.accum == 0:
                 for gp in opt.param_groups:
                     gp["lr"] = lr_at(step)
+                scaler.unscale_(opt)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                opt.step()
+                scaler.step(opt)
+                scaler.update()
                 opt.zero_grad(set_to_none=True)
                 hist.append((step, running, lr_at(step)))
                 if step % 10 == 0 or step == total_steps - 1:
@@ -425,7 +458,8 @@ def main(argv=None) -> int:
             for i in range(0, len(dev_encoded), args.batch):
                 chunk = [p for _, p in dev_encoded[i:i + args.batch]]
                 ids, lab, am = collate(chunk)
-                tot += float(model(input_ids=ids, attention_mask=am, labels=lab).loss)
+                with torch.autocast("cuda", dtype=amp_dtype, enabled=amp_dtype is not None):
+                    tot += float(model(input_ids=ids, attention_mask=am, labels=lab).loss)
                 cnt += 1
         print(f"· dev loss {tot/max(1,cnt):.4f}（{len(dev_encoded)} 条）", flush=True)
 
@@ -436,7 +470,8 @@ def main(argv=None) -> int:
     if dev_encoded:
         model.eval()
         written = 0
-        with gen_path.open("w", encoding="utf-8") as f, torch.no_grad():
+        with gen_path.open("w", encoding="utf-8") as f, torch.no_grad(), \
+                torch.autocast("cuda", dtype=amp_dtype, enabled=amp_dtype is not None):
             for r, _ in dev_encoded[:args.gen_n]:
                 prompt = render(tok, [{"role": "system", "content": r["system"]},
                                       {"role": "user", "content": r["user"]}], True)
