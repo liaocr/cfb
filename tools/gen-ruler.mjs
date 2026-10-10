@@ -170,13 +170,24 @@ export function anchorsWithPos(text) {
 
 // 空串基名是毒药：includes('') 恒真、indexOf('', i) 恒等于 i。
 // 任何拿它当搜索词的地方都会同时得到「全命中」和「死循环」。所以这里兜死。
-const base = (p) => { const s = String(p).split('/'); const last = s[s.length - 1]; return last || String(p) }
+//
+// 2026-10 修：**尾斜杠不是内容**。实测（teacher 100 条）有一条稿写「test_results/ 这个目录」，
+// ctx 的 ls -la 输出里是 test_results（无斜杠），于是被判成凭空引用。
+// 根因是 base('test_results/') = split('/') 得到 ['test_results',''] ⇒ last='' 为假 ⇒ 原样返回
+// 'test_results/'，于是又拿带斜杠的串去 includes 一次，还是 false。
+// 一个目录名加不加尾斜杠是同一样东西，把它判成造假既冤枉稿子、又给「凭空」这个判决掺了噪声 ——
+// 而后者的代价大得多：判决里混进假阳性，就没法再拿它当训练数据的筛选依据。
+const stripSlash = (p) => String(p).replace(/[/\\]+$/, '')
+const base = (p) => { const q = stripSlash(p); const s = q.split('/'); const last = s[s.length - 1]; return last || q }
 
-/** 锚点是否活着：整串命中，或（对路径）基名命中。 */
+/** 锚点是否活着：整串命中，或（对路径）基名命中。尾斜杠在两边都先抹掉再比。 */
 export function hasAnchor(hay, a) {
   const h = norm(hay)
-  if (h.includes(a)) return true
-  if (a.includes('/')) return h.includes(base(a))
+  const aa = stripSlash(a)
+  // aa 为空说明锚点本身只是斜杠组成的噪声，一律判「不活」，绝不能落到 includes('') 上。
+  if (!aa) return false
+  if (h.includes(aa)) return true
+  if (aa.includes('/')) { const b = base(aa); return !!b && h.includes(b) }
   return false
 }
 

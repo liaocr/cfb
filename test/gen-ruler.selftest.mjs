@@ -12,6 +12,7 @@ import assert from 'node:assert/strict'
 import { judge, anchorsOf, causePairs, copyCoverage, locusOf, quotedFragments, preflight } from '../tools/gen-ruler.mjs'
 import { makeNegatives, auditRuler } from '../tools/gen-negatives.mjs'
 
+const TICK = '\u0060' // 反引号：拼进断言字符串里比嵌套模板字面量安全
 let checks = 0
 const ok = (label, fn) => { fn(); checks++ }
 
@@ -197,5 +198,21 @@ ok('preflight passes a verbatim copy while judge rejects it (the two layers stay
   assert.ok(j.failed.includes('G6 not-copy'), JSON.stringify(j.failed))
 })
 
-console.log('gen-ruler: determinism, fabrication-vs-fidelity split, camelCase anchor coverage, symptom-locus rejection, position-ordered causality, preflight-vs-judge separation and the six-axis negative battery all verified')
+// ── 15. 尾斜杠不是内容。实测（teacher 100 条，2026-10）真实稿写「test_results/ 这个目录」，
+// 而 ctx 的 ls -la 里是 test_results（无斜杠），被判成凭空引用 —— 假阳性。
+// 判决里混进假阳性的代价比漏判大：尺子是训练数据的筛选依据，筛错了就把噪声喂进模型。
+// 同时守住空锚点：'/' 这种纯斜杠锚点必须判「不活」，绝不能落到 includes('') 恒真上。
+ok('a trailing slash on a path anchor is not fabrication (and empty anchors stay dead)', () => {
+  const raw = 'x'.repeat(900)
+  const ctx = PRE_CTX + ' drwxr-xr-x 2 root root 80 Jul 5 05:31 test_results'
+  const withSlash = judge({ raw, ctx, draft: '目录下有 ' + TICK + 'test_results/' + TICK + ' 这个目录。' + '说明文字。'.repeat(60) })
+  assert.equal(withSlash.detail.quotes.inventedAnchors.length, 0, JSON.stringify(withSlash.detail.quotes.inventedAnchors))
+  const noSlash = judge({ raw, ctx, draft: '目录下有 ' + TICK + 'test_results' + TICK + ' 这个目录。' + '说明文字。'.repeat(60) })
+  assert.equal(noSlash.detail.quotes.inventedAnchors.length, 0)
+  // 真的凭空仍然要抓 —— 修尾斜杠不能顺手把这一门修聋了。
+  const fake = judge({ raw, ctx, draft: '目录下有 ' + TICK + 'phantom_dir/' + TICK + ' 这个目录。' + '说明文字。'.repeat(60) })
+  assert.ok(fake.detail.quotes.inventedAnchors.includes('phantom_dir/'), JSON.stringify(fake.detail.quotes.inventedAnchors))
+})
+
+console.log('gen-ruler: determinism, fabrication-vs-fidelity split, camelCase anchor coverage, symptom-locus rejection, position-ordered causality, preflight-vs-judge separation, trailing-slash normalization and the six-axis negative battery all verified')
 console.log('PASS=' + checks + ' FAIL=0')

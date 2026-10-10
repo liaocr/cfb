@@ -1,0 +1,14 @@
+progress 10/100 ok=10 fail=0 40s (4.0s/unit)
+progress 20/100 ok=20 fail=0 69s (3.5s/unit)
+progress 30/100 ok=30 fail=0 104s (3.5s/unit)
+progress 40/100 ok=40 fail=0 126s (3.2s/unit)
+progress 50/100 ok=50 fail=0 157s (3.1s/unit)
+progress 60/100 ok=60 fail=0 206s (3.4s/unit)
+progress 70/100 ok=70 fail=0 252s (3.6s/unit)
+progress 80/100 ok=80 fail=0 279s (3.5s/unit)
+progress 90/100 ok=90 fail=0 308s (3.4s/unit)
+progress 100/100 ok=100 fail=0 338s (3.4s/unit)
+=== done ok=100 fail=0 338s ===
+avg prompt=2082 completion=1996 reasoning=1562 (78% of output)
+官方价：本批 100.00 条 低谷 $0.1510 高峰 $0.3020 => 单条 低谷 $0.001510 高峰 $0.003020
+  外推 1000 条：低谷 $1.51 高峰 $3.02；4687 条：低谷 $7.08 高峰 $14.15
