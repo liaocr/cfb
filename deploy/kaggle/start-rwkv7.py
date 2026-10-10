@@ -23,6 +23,7 @@ Kaggle 的 script kernel **不接受命令行参数**，只运行 code_file。�
   python deploy/kaggle/start-rwkv7.py --smoke     # 只验证环境（默认）
   python deploy/kaggle/start-rwkv7.py --train     # 真训
   python deploy/kaggle/start-rwkv7.py --status    # 查状态
+  python deploy/kaggle/start-rwkv7.py --stop      # 停掉正在跑的 session
 """
 from __future__ import annotations
 
@@ -58,6 +59,42 @@ def username() -> str:
     sys.exit("FATAL: 读不到 Kaggle 用户名。先跑 python -m kaggle config view 看看。")
 
 
+def stop_kernel(kid: str) -> int:
+    """停掉正在跑的 session。
+
+    Kaggle 的 CLI **没有**暴露取消命令（kernels 子命令只有 list/files/get/init/
+    push/pull/output/status/logs/update/delete/topics），但 kagglesdk 里有
+    CancelKernelSession：POST /api/v1/kernels/cancel-session/{kernel_session_id}。
+    所以绕开 CLI 直接用 SDK。session_id 得从 status 里拿；session 已经结束就
+    拿不到，那也就没有可停的对象了。
+    """
+    from kaggle.api.kaggle_api_extended import KaggleApi
+    from kagglesdk.kernels.types.kernels_api_service import ApiCancelKernelSessionRequest
+
+    api = KaggleApi()
+    api.authenticate()
+    st = api.kernels_status(kid)
+    d = st.to_dict() if hasattr(st, "to_dict") else dict(vars(st))
+    print("· status: " + json.dumps(d, ensure_ascii=False, default=str))
+
+    sid = 0
+    for k, v in d.items():
+        if "session" in k.lower() and "id" in k.lower() and isinstance(v, int) and v:
+            sid = v
+            break
+    if not sid:
+        print("· 拿不到 kernel_session_id（session 已结束或还没分配），没有可停的对象。")
+        return 0
+
+    with api.build_kaggle_client() as k:
+        req = ApiCancelKernelSessionRequest()
+        req.kernel_session_id = sid
+        resp = k.kernels.kernels_api_client.cancel_kernel_session(req)
+        err = getattr(resp, "error_message", "") or ""
+    print(f"· 取消请求已发出（session {sid}）" + (f" · 服务端返回：{err}" if err else ""))
+    return 0
+
+
 def build_kernel(mode: str) -> str:
     src = get(TRAINER_URL)
     marker = 'if __name__ == "__main__":'
@@ -83,6 +120,7 @@ def main() -> int:
     g.add_argument("--smoke", action="store_const", const="smoke", dest="mode")
     g.add_argument("--train", action="store_const", const="train", dest="mode")
     g.add_argument("--status", action="store_true")
+    g.add_argument("--stop", action="store_true")
     ap.set_defaults(mode="smoke")
     args = ap.parse_args()
 
@@ -93,6 +131,9 @@ def main() -> int:
     if args.status:
         r = subprocess.run([sys.executable, "-m", "kaggle", "kernels", "status", kid])
         return r.returncode
+
+    if args.stop:
+        return stop_kernel(kid)
 
     code = build_kernel(args.mode)
     work = Path(tempfile.mkdtemp(prefix="cfb-rwkv7-"))

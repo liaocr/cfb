@@ -190,6 +190,8 @@ def parse_args(argv=None):
     ap.add_argument("--seed", type=int, default=20261007)
     ap.add_argument("--grad-ckpt", action="store_true", default=True)
     ap.add_argument("--no-grad-ckpt", dest="grad_ckpt", action="store_false")
+    ap.add_argument("--chunk-size", type=int, default=16,
+                    help="RWKV7 chunk 模式的 chunk_size。<=0 表示不改，用 fla 默认的 64")
     ap.add_argument("--smoke", action="store_true", help="只验证环境：编码 + 前向 + 一步反传 + 一次生成")
     ap.add_argument("--smoke-steps", type=int, default=3)
     ap.add_argument("--gen-n", type=int, default=20, help="训练后在 dev 上生成多少条稿子供本地尺子打分")
@@ -247,6 +249,30 @@ def main(argv=None) -> int:
             return 2
     import transformers
     print(f"· fla ok · transformers {transformers.__version__}", flush=True)
+
+    # ---- 2b. 把 RWKV7 的 chunk_size 从 64 压到 16（T4 上必须）----
+    # fla/layers/rwkv7.py:310 在训练时写死 chunk_rwkv7(..., safe_gate=True, chunk_size=64)。
+    # safe_gate=True 会让 chunk_A_bwd.py:505 选 tensorcore 版的 intra 反向 kernel，
+    # 那个 kernel 里有 4 个 [BT,BT] 的 dA 矩阵，BT=64 时每个 8KB，加上 q/k/a/b/gi/ge
+    # 共 6 个 [BT,BK]，合计 ~96KB。T4 每块只有 64KB shared memory ⇒
+    #   triton OutOfResources: Required 98304, Hardware limit 65536
+    # 而且那个 kernel 的 @triton.autotune 只扫 num_warps/num_stages，BK 是外部算好传进去的
+    # 常量（chunk_A_bwd.py:490），autotune 碰不到 ⇒ 12 个配置全部超限，必然失败。
+    # fla 自己在 dplr/chunk.py:156 写着 "we only support chunk_size=16 when safe_gate=True"，
+    # 层里却写死 64。降到 16 是回到 fla 自己认可的配置，不是绕过。
+    if args.chunk_size and args.chunk_size > 0:
+        import fla.layers.rwkv7 as _fla_layer_rwkv7
+        _orig_chunk_rwkv7 = _fla_layer_rwkv7.chunk_rwkv7
+
+        def _chunk_rwkv7_small(*a, **kw):
+            kw["chunk_size"] = args.chunk_size
+            return _orig_chunk_rwkv7(*a, **kw)
+
+        _fla_layer_rwkv7.chunk_rwkv7 = _chunk_rwkv7_small
+        print(f"· chunk_size {args.chunk_size}"
+              f"（T4 的 64KB 共享内存装不下 fla 默认的 64）", flush=True)
+    else:
+        print("· chunk_size 保持 fla 默认（64）—— T4 上会 OutOfResources", flush=True)
 
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
