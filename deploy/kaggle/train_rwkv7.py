@@ -1,0 +1,439 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""CFB 通用思维链压缩微模型 —— RWKV7-0.1B 监督微调（Kaggle 单文件训练器）。
+
+任务形态
+--------
+  system   = 压缩提示词（transfer/prompts/teacher2-zh.txt，与产稿时逐字相同）
+  user     = [题面] ctx + [思考过程] raw
+  assistant= 压缩稿 draft
+
+为什么保留题面 ctx（实测，不是想当然）
+--------------------------------------
+对 100 条教师稿量过：43% 的稿子里出现了**只在题面、不在思考过程**里的代码味标识符
+（如 tests/test_doccmd.py、corsheaders.models）。去掉题面会丢掉这些指代。窗口放宽到
+4096 之后带题面能装 97.1%，装得下就没有取舍的必要。
+
+为什么窗口写 4096 而不是 config 里的 2048
+------------------------------------------
+config.json 的 max_position_embeddings=2048 **在本模型的代码路径上从未被读取**：
+  · fla/models/rwkv7/modeling_rwkv7.py 全文 545 行，该字段只出现 1 次（第 151 行），
+    在 if attn_spec is not None: 的混合注意力分支里。本模型 config.attn = null ⇒ 走 else
+    分支创建 RWKV7Attention，压根不传这个参数。
+  · fla/layers/rwkv7.py 全文 355 行：无 RoPE、无位置嵌入、无长度断言；chunk_size=64
+    只是分块计算的效率参数。
+  · tokenizer 的 model_max_length = 1e33（等于无限）。
+  ⇒ 2048 是配置残留，不是架构约束。RWKV 是循环结构，状态固定大小，成本 O(n) 而非 O(n²)。
+
+实测收益 —— ★ 用**底座自己的分词器**量的，不是字符估算
+------------------------------------------------------------------
+拿 fla-hub 的 rwkv_vocab_v20230424.txt + hf_rwkv_tokenizer.py 在本地实跑（抽 469/4687 个单元）：
+  · system 提示词 = 1188 token（**之前按字符估的是 912，低估 30%**）
+  · 教师稿中位  = 368 token
+  · user（题面+思考过程）p50 1832 / p90 2356 / max 4614
+
+  窗口  2048：可训   0/469 =  0.0%
+  窗口  4096：可训 438/469 = 93.4%
+  窗口  5120：可训 463/469 = 98.7%
+  窗口  6144：可训 468/469 = 99.8%   ← 取这个
+  窗口  8192：可训 469/469 = 100.0%
+
+⚠ 为什么不能拿 src/tokens.js 的 0.81/0.26 来算这个窗口：那两个系数是对
+  **DeepSeek 的 usage** 做最小二乘拟合出来的，只对 DeepSeek 的分词器成立。
+  RWKV 的 World 分词器效率不同 —— 窗口预算只能用 RWKV 自己的读数。
+
+风险（只能实测，不能从源码推断）
+--------------------------------
+1. RWKV 的"状态容量"固定，序列越长状态越挤 —— 退化是渐进的，不是到点就崩。
+2. g1 系列的预训练长度未公开。超过预训练长度属外推，"能跑"不等于"效果不变"。
+3. fla 依赖 Triton kernel，需要 sm_70+。
+   **Kaggle 的 P100 是 sm_60，会失败；必须选 T4（sm_75）。**
+
+用法
+----
+  # 冒烟（不训练，只验证环境 + 窗口 + 前向 + 一步反传，目标 30 分钟内出结论）
+  python train_rwkv7.py --smoke --data sft/train.jsonl --dev sft/dev.jsonl
+
+  # 真训
+  python train_rwkv7.py --data sft/train.jsonl --dev sft/dev.jsonl --out /kaggle/working/rwkv7-compressor
+
+失败即停，绝不静默降级：没有 CUDA、fla 导入失败、数据为空、全部超窗 —— 一律非零退出并打印原因。
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import sys
+import time
+from pathlib import Path
+
+MODEL_ID = "fla-hub/rwkv7-0.1B-g1"
+DEFAULT_MAX_LEN = 6144  # 不是 config 里的 2048，理由见模块 docstring（真实分词器实测 99.8%）
+
+
+# ─────────────────────────── 数据 ───────────────────────────
+
+def read_jsonl(path: Path) -> list[dict]:
+    rows: list[dict] = []
+    with path.open(encoding="utf-8") as f:
+        for i, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                raise SystemExit(f"FATAL: {path}:{i} 不是合法 JSON：{exc}")
+    return rows
+
+
+def fetch(src: str, dest: Path) -> Path:
+    """支持 http(s) URL 与本地路径 —— Kaggle 上从 raw.githubusercontent 拉数据。"""
+    if src.startswith(("http://", "https://")):
+        import urllib.request
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        req = urllib.request.Request(src, headers={"User-Agent": "cfb-rwkv7-trainer"})
+        with urllib.request.urlopen(req, timeout=180) as r, dest.open("wb") as w:
+            w.write(r.read())
+        print(f"· 下载 {src} -> {dest} ({dest.stat().st_size} bytes)", flush=True)
+        return dest
+    return Path(src)
+
+
+# ─────────────────────────── 分词 ───────────────────────────
+
+def render(tok, messages, add_gen: bool) -> str:
+    """底座原生 chat_template。
+
+    RWKV7 g1 的模板把思考开关放在 add_generation_prompt 分支里：
+        {% if add_generation_prompt %}
+          {% if enable_thinking is defined and enable_thinking == False %}
+            Assistant: <think\\n</think>
+          {% else %}
+            Assistant: <think
+    不显式传 enable_thinking=False 就会渲染出**未闭合**的 'Assistant: <think'，
+    与关思考产出的教师稿错配。所以这里必须传。
+    """
+    try:
+        return tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=add_gen,
+                                       enable_thinking=False)
+    except TypeError:
+        return tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=add_gen)
+
+
+def encode(tok, row: dict, max_len: int, eos_id: int):
+    """把一行变成 (input_ids, labels)。超窗返回 (None, 0)。
+
+    ★ 掩码边界为什么不直接用 len(prompt_ids)
+    BPE 在拼接处会跨边界合并，tok(prompt + draft) 的前 len(prompt_ids) 个 token
+    未必等于 tok(prompt)。这里取**最长公共前缀**当边界，并把偏差记下来供观测。
+    偏差持续偏大就说明模板或分词器与预期不符，是必须看见的信号。
+    """
+    msgs = [
+        {"role": "system", "content": row["system"]},
+        {"role": "user", "content": row["user"]},
+        {"role": "assistant", "content": row["assistant"]},
+    ]
+    prompt = render(tok, msgs[:-1], True)
+    # 训练序列 = 推理时真正会看到的前缀 + 目标 + 模板的助手后缀 + eos
+    full = prompt + row["assistant"] + "\n\n"
+    pids = tok(prompt, add_special_tokens=False)["input_ids"]
+    ids = tok(full, add_special_tokens=False)["input_ids"] + [eos_id]
+    if len(ids) > max_len:
+        return None, 0
+    k = 0
+    while k < min(len(pids), len(ids)) and pids[k] == ids[k]:
+        k += 1
+    labels = [-100] * k + ids[k:]
+    return (ids, labels), len(pids) - k
+
+
+def batch_rows(rows: list, batch_size: int):
+    """按长度排序后切批，减少 padding 浪费。"""
+    order = sorted(range(len(rows)), key=lambda i: len(rows[i][0]))
+    out = []
+    for s in range(0, len(order), batch_size):
+        out.append([rows[i] for i in order[s:s + batch_size]])
+    return out
+
+
+# ─────────────────────────── 主流程 ───────────────────────────
+
+def parse_args(argv=None):
+    ap = argparse.ArgumentParser(description="RWKV7-0.1B 通用思维链压缩器 SFT")
+    ap.add_argument("--data", required=True, help="训练 jsonl（build-sft.mjs 的 train.jsonl）")
+    ap.add_argument("--dev", default=None, help="验证 jsonl")
+    ap.add_argument("--out", default="/kaggle/working/rwkv7-compressor")
+    ap.add_argument("--model", default=MODEL_ID)
+    ap.add_argument("--max-len", type=int, default=DEFAULT_MAX_LEN)
+    ap.add_argument("--epochs", type=float, default=3.0)
+    ap.add_argument("--lr", type=float, default=1e-4)
+    ap.add_argument("--batch", type=int, default=4)
+    ap.add_argument("--accum", type=int, default=8)
+    ap.add_argument("--warmup", type=float, default=0.03)
+    ap.add_argument("--dtype", default="fp16", choices=["fp16", "bf16", "fp32"])
+    ap.add_argument("--seed", type=int, default=20261007)
+    ap.add_argument("--grad-ckpt", action="store_true", default=True)
+    ap.add_argument("--no-grad-ckpt", dest="grad_ckpt", action="store_false")
+    ap.add_argument("--smoke", action="store_true", help="只验证环境：编码 + 前向 + 一步反传 + 一次生成")
+    ap.add_argument("--smoke-steps", type=int, default=3)
+    ap.add_argument("--gen-n", type=int, default=20, help="训练后在 dev 上生成多少条稿子供本地尺子打分")
+    ap.add_argument("--gen-max-new", type=int, default=768)
+    return ap.parse_args(argv)
+
+
+def main(argv=None) -> int:
+    args = parse_args(argv)
+
+    # ---- 1. 环境：没有 CUDA 直接拒绝，不在 CPU 上假装训练 ----
+    import torch
+    if not torch.cuda.is_available():
+        print("FATAL: 没有 CUDA。Kaggle 请把 Accelerator 设为 GPU T4 x2（P100 是 sm_60，"
+              "fla 的 Triton kernel 不支持，会失败）。", file=sys.stderr)
+        return 2
+    gpu = torch.cuda.get_device_name(0)
+    cap = torch.cuda.get_device_capability(0)
+    print(f"· GPU {gpu} · sm_{cap[0]}{cap[1]} · torch {torch.__version__} · "
+          f"{torch.cuda.device_count()} 卡", flush=True)
+    if cap[0] < 7:
+        print(f"FATAL: 计算能力 sm_{cap[0]}{cap[1]} < sm_70，fla 的 Triton kernel 无法编译。"
+              "换 T4。", file=sys.stderr)
+        return 2
+
+    # ---- 2. fla：导入失败要给可执行的出路，不是抛栈 ----
+    try:
+        import fla  # noqa: F401
+        from fla.models.rwkv7 import RWKV7Config, RWKV7ForCausalLM  # noqa: F401
+    except Exception as exc:
+        print(f"FATAL: 无法导入 flash-linear-attention：{exc!r}\\n"
+              "  试：pip install -U fla-core  或  "
+              "pip install -U git+https://github.com/fla-org/flash-linear-attention", file=sys.stderr)
+        return 2
+    import transformers
+    print(f"· fla ok · transformers {transformers.__version__}", flush=True)
+
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    torch.manual_seed(args.seed)
+
+    # ---- 3. 分词器 ----
+    tok = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+    if tok.pad_token is None:
+        tok.pad_token = tok.eos_token
+    if tok.pad_token_id is None:
+        print("FATAL: 分词器没有 pad/eos token，无法构造训练批次。", file=sys.stderr)
+        return 2
+    eos_id = tok.eos_token_id if tok.eos_token_id is not None else 0
+    print(f"· tokenizer {type(tok).__name__} · vocab {tok.vocab_size} · "
+          f"eos={tok.eos_token_id} pad={tok.pad_token_id}", flush=True)
+
+    # ---- 4. 数据 ----
+    data_path = fetch(args.data, Path("/kaggle/working/_train.jsonl"))
+    rows_raw = read_jsonl(data_path)
+    if not rows_raw:
+        print(f"FATAL: {data_path} 是空的。", file=sys.stderr)
+        return 2
+    for r in rows_raw:
+        for k in ("system", "user", "assistant"):
+            if not str(r.get(k, "")).strip():
+                print(f"FATAL: 数据行缺字段 {k}：{r.get('id')}", file=sys.stderr)
+                return 2
+    print(f"· 读入 {len(rows_raw)} 行", flush=True)
+
+    t0 = time.time()
+    encoded, drifts, lens = [], [], []
+    for r in rows_raw:
+        pair, drift = encode(tok, r, args.max_len, eos_id)
+        if pair is None:
+            continue
+        encoded.append(pair)
+        drifts.append(drift)
+        lens.append(len(pair[0]))
+    print(f"· 编码完成 {len(encoded)}/{len(rows_raw)} 条（{time.time()-t0:.1f}s）"
+          f"· 超窗丢弃 {len(rows_raw)-len(encoded)}", flush=True)
+    if not encoded:
+        print(f"FATAL: 全部超窗（max_len={args.max_len}）。放宽 --max-len 或换更小的单元。",
+              file=sys.stderr)
+        return 2
+    lens.sort()
+    n = len(lens)
+    print(f"· token 长度 min {lens[0]} p50 {lens[n//2]} p90 {lens[int(n*0.9)]} max {lens[-1]}"
+          f" · 窗口 {args.max_len} 占用 p50 {lens[n//2]/args.max_len:.1%}", flush=True)
+    nz = [d for d in drifts if d != 0]
+    print(f"· 掩码边界偏差：{len(nz)}/{len(drifts)} 条非零，max {max(drifts) if drifts else 0}"
+          f"（持续偏大说明模板/分词器与预期不符，是必须看见的信号）", flush=True)
+
+    dev_encoded = []
+    if args.dev:
+        dev_path = fetch(args.dev, Path("/kaggle/working/_dev.jsonl"))
+        for r in read_jsonl(dev_path):
+            pair, _ = encode(tok, r, args.max_len, eos_id)
+            if pair is not None:
+                dev_encoded.append((r, pair))
+        print(f"· dev {len(dev_encoded)} 条", flush=True)
+
+    # ---- 5. 模型 ----
+    dtype = {"fp16": torch.float16, "bf16": torch.bfloat16, "fp32": torch.float32}[args.dtype]
+    print(f"· 载入 {args.model}（dtype {args.dtype}）…", flush=True)
+    model = AutoModelForCausalLM.from_pretrained(args.model, trust_remote_code=True, torch_dtype=dtype)
+    model.to("cuda")
+    if args.grad_ckpt:
+        model.gradient_checkpointing_enable()
+    model.config.use_cache = False
+    nparam = sum(p.numel() for p in model.parameters())
+    print(f"· 参数量 {nparam/1e6:.1f}M（全参微调）", flush=True)
+
+    def collate(batch):
+        maxlen = max(len(x[0]) for x in batch)
+        ids, lab, am = [], [], []
+        for i, l in batch:
+            pad = maxlen - len(i)
+            ids.append(i + [tok.pad_token_id] * pad)
+            lab.append(l + [-100] * pad)
+            am.append([1] * len(i) + [0] * pad)
+        return (torch.tensor(ids, device="cuda"), torch.tensor(lab, device="cuda"),
+                torch.tensor(am, device="cuda"))
+
+    batches = batch_rows(encoded, args.batch)
+    steps_per_epoch = max(1, len(batches) // args.accum)
+    total_steps = max(1, int(steps_per_epoch * args.epochs))
+    opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],
+                            lr=args.lr, betas=(0.9, 0.95), weight_decay=0.01)
+    warm = max(1, int(total_steps * args.warmup))
+
+    def lr_at(step):
+        if step < warm:
+            return args.lr * (step + 1) / warm
+        prog = (step - warm) / max(1, total_steps - warm)
+        return args.lr * (0.1 + 0.9 * 0.5 * (1 + math.cos(math.pi * prog)))
+
+    print(f"· 批 {args.batch} × 累积 {args.accum} = 有效批 {args.batch*args.accum}"
+          f" · 每轮 {len(batches)} 微批 ⇒ {steps_per_epoch} 步 · 共 {total_steps} 步", flush=True)
+
+    # ---- 6. 冒烟：把"能不能跑"和"跑得好不好"分开 ----
+    if args.smoke:
+        print("\\n=== 冒烟模式：只验证环境，不训练 ===", flush=True)
+        model.train()
+        ts = time.time()
+        losses = []
+        for step in range(args.smoke_steps):
+            ids, lab, am = collate(batches[step % len(batches)])
+            loss = model(input_ids=ids, attention_mask=am, labels=lab).loss
+            loss.backward()
+            opt.step()
+            opt.zero_grad(set_to_none=True)
+            losses.append(float(loss.detach()))
+            print(f"  step {step+1}/{args.smoke_steps} loss {losses[-1]:.4f}", flush=True)
+        dt = time.time() - ts
+        print(f"· 前向+反传 {dt:.1f}s（{dt/args.smoke_steps:.1f}s/步）", flush=True)
+        per_step = dt / args.smoke_steps
+        print(f"· 外推：全量 {total_steps} 步约 {per_step*total_steps/60:.0f} 分钟"
+              f"（不含生成与保存；Kaggle 上限 12 小时）", flush=True)
+        if not all(math.isfinite(x) for x in losses):
+            print("FATAL: 损失非有限值。", file=sys.stderr)
+            return 3
+        # 生成一条，验证 chat_template 与 generate 通路
+        if dev_encoded:
+            r, _ = dev_encoded[0]
+            model.eval()
+            with torch.no_grad():
+                prompt = render(tok, [{"role": "system", "content": r["system"]},
+                                      {"role": "user", "content": r["user"]}], True)
+                enc = tok(prompt, return_tensors="pt", add_special_tokens=False).to("cuda")
+                g = time.time()
+                out = model.generate(**enc, max_new_tokens=min(256, args.gen_max_new),
+                                     do_sample=False, pad_token_id=tok.pad_token_id,
+                                     eos_token_id=eos_id)
+                txt = tok.decode(out[0][enc["input_ids"].shape[1]:], skip_special_tokens=True)
+            print(f"· 生成通路 ok（{time.time()-g:.1f}s / 256 token）", flush=True)
+            print("  ── 未训练模型的输出（应当是一堆不通顺的话，这是对的）──")
+            print("  " + txt.strip().replace("\\n", " ")[:400], flush=True)
+        print("\\n=== 冒烟通过 ===", flush=True)
+        return 0
+
+    # ---- 7. 训练 ----
+    model.train()
+    step, micro, epoch = 0, 0, 0
+    running, hist = 0.0, []
+    t0 = time.time()
+    done = False
+    while not done:
+        for b in batches:
+            ids, lab, am = collate(b)
+            loss = model(input_ids=ids, attention_mask=am, labels=lab).loss / args.accum
+            loss.backward()
+            running += float(loss.detach())
+            micro += 1
+            if micro % args.accum == 0:
+                for gp in opt.param_groups:
+                    gp["lr"] = lr_at(step)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                opt.step()
+                opt.zero_grad(set_to_none=True)
+                hist.append((step, running, lr_at(step)))
+                if step % 10 == 0 or step == total_steps - 1:
+                    print(f"  step {step+1}/{total_steps} loss {running:.4f} "
+                          f"lr {lr_at(step):.2e} elapsed {(time.time()-t0)/60:.1f}m", flush=True)
+                running = 0.0
+                step += 1
+                if step >= total_steps:
+                    done = True
+                    break
+        epoch += 1
+        if epoch > 100:
+            break
+    print(f"· 训练结束 {step} 步，{(time.time()-t0)/60:.1f} 分钟", flush=True)
+
+    # ---- 8. dev 损失 ----
+    if dev_encoded:
+        model.eval()
+        tot, cnt = 0.0, 0
+        with torch.no_grad():
+            for i in range(0, len(dev_encoded), args.batch):
+                chunk = [p for _, p in dev_encoded[i:i + args.batch]]
+                ids, lab, am = collate(chunk)
+                tot += float(model(input_ids=ids, attention_mask=am, labels=lab).loss)
+                cnt += 1
+        print(f"· dev loss {tot/max(1,cnt):.4f}（{len(dev_encoded)} 条）", flush=True)
+
+    # ---- 9. 生成稿子，交给本地尺子打分（不在这里自评）----
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    gen_path = out_dir / "dev-generations.jsonl"
+    if dev_encoded:
+        model.eval()
+        written = 0
+        with gen_path.open("w", encoding="utf-8") as f, torch.no_grad():
+            for r, _ in dev_encoded[:args.gen_n]:
+                prompt = render(tok, [{"role": "system", "content": r["system"]},
+                                      {"role": "user", "content": r["user"]}], True)
+                enc = tok(prompt, return_tensors="pt", add_special_tokens=False).to("cuda")
+                o = model.generate(**enc, max_new_tokens=args.gen_max_new, do_sample=False,
+                                   pad_token_id=tok.pad_token_id, eos_token_id=eos_id)
+                txt = tok.decode(o[0][enc["input_ids"].shape[1]:], skip_special_tokens=True)
+                f.write(json.dumps({"id": r.get("id"), "raw": r.get("raw", ""),
+                                    "ctx": r.get("ctx", ""), "draft": txt.strip()},
+                                   ensure_ascii=False) + "\n")
+                written += 1
+        print(f"· 生成 {written} 条 -> {gen_path}（用 tools/gen-ruler.mjs 本地打分）", flush=True)
+
+    model.save_pretrained(out_dir / "model")
+    tok.save_pretrained(out_dir / "model")
+    report = {
+        "model": args.model, "params": nparam, "maxLen": args.max_len, "dtype": args.dtype,
+        "trainRows": len(rows_raw), "kept": len(encoded), "overWindow": len(rows_raw) - len(encoded),
+        "devRows": len(dev_encoded), "steps": step, "epochs": args.epochs, "lr": args.lr,
+        "batch": args.batch, "accum": args.accum, "gpu": gpu, "sm": f"sm_{cap[0]}{cap[1]}",
+        "minutes": round((time.time() - t0) / 60, 1), "lossTail": hist[-10:],
+        "maskDriftNonZero": len(nz),
+    }
+    (out_dir / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"· 产出 {out_dir}", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
