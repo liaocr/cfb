@@ -66,6 +66,7 @@ import argparse
 import json
 import math
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -214,15 +215,33 @@ def main(argv=None) -> int:
               "换 T4。", file=sys.stderr)
         return 2
 
-    # ---- 2. fla：导入失败要给可执行的出路，不是抛栈 ----
+    # ---- 2. fla：Kaggle 镜像里**没有** fla，必须自己装 ----
+    # 装哪个包有讲究（实测 PyPI wheel 内容，不是猜）：
+    #   · fla-core 0.5.2               = fla/ops + fla/modules + fla/utils，**没有 fla/models**
+    #   · flash-linear-attention 0.5.2 = fla/layers + fla/models，依赖 fla-core==0.5.2
+    # 而 HF 仓库 fla-hub/rwkv7-0.1B-g1 的 modeling_rwkv7.py 只是个 157 字符的转发
+    # （from fla.models.rwkv7 import RWKV7ForCausalLM, RWKV7Model, RWKV7Config），
+    # 所以 trust_remote_code=True 也救不了 —— 只有 flash-linear-attention 带 fla/models。
+    # 用 --no-deps + 显式列依赖，避免 pip 顺手升级 torch/transformers 把镜像搞坏。
     try:
-        import fla  # noqa: F401
         from fla.models.rwkv7 import RWKV7Config, RWKV7ForCausalLM  # noqa: F401
+        print("· fla.models.rwkv7 镜像里已有", flush=True)
     except Exception as exc:
-        print(f"FATAL: 无法导入 flash-linear-attention：{exc!r}\\n"
-              "  试：pip install -U fla-core  或  "
-              "pip install -U git+https://github.com/fla-org/flash-linear-attention", file=sys.stderr)
-        return 2
+        print(f"· fla.models.rwkv7 缺失（{exc!r}）⇒ 装 flash-linear-attention==0.5.2", flush=True)
+        cmd = [sys.executable, "-m", "pip", "install", "--quiet", "--no-deps",
+               "flash-linear-attention==0.5.2", "fla-core==0.5.2", "einops"]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        print(f"· pip install ⇒ exit {r.returncode}", flush=True)
+        if r.stdout.strip():
+            print(r.stdout[-1500:], flush=True)
+        if r.returncode != 0:
+            print("FATAL: 装 flash-linear-attention 失败：\n" + r.stderr[-3000:], file=sys.stderr)
+            return 2
+        try:
+            from fla.models.rwkv7 import RWKV7Config, RWKV7ForCausalLM  # noqa: F401
+        except Exception as exc2:
+            print(f"FATAL: 装完仍导不进 fla.models.rwkv7：{exc2!r}", file=sys.stderr)
+            return 2
     import transformers
     print(f"· fla ok · transformers {transformers.__version__}", flush=True)
 
