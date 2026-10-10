@@ -51,11 +51,11 @@ config.json 的 max_position_embeddings=2048 **在本模型的代码路径上从
 
 用法
 ----
-  # 冒烟（不训练，只验证环境 + 窗口 + 前向 + 一步反传，目标 30 分钟内出结论）
-  python train_rwkv7.py --smoke --data sft/train.jsonl --dev sft/dev.jsonl
+  # 冒烟（不训练，只验证环境 + 窗口 + 前向 + 反传 + 生成，目标 30 分钟内出结论）
+  python train_rwkv7.py --smoke --data train.jsonl --dev dev.jsonl
 
   # 真训
-  python train_rwkv7.py --data sft/train.jsonl --dev sft/dev.jsonl --out /kaggle/working/rwkv7-compressor
+  python train_rwkv7.py --data train.jsonl --dev dev.jsonl --out /kaggle/working/rwkv7-compressor
 
 失败即停，绝不静默降级：没有 CUDA、fla 导入失败、数据为空、全部超窗 —— 一律非零退出并打印原因。
 """
@@ -91,7 +91,11 @@ def read_jsonl(path: Path) -> list[dict]:
 
 
 def fetch(src: str, dest: Path) -> Path:
-    """支持 http(s) URL 与本地路径 —— Kaggle 上从 raw.githubusercontent 拉数据。"""
+    """支持 http(s) URL 与本地路径。
+
+    Kaggle 的 script kernel 不保证 cwd 就是代码所在目录，所以相对路径要依次试：
+    当前 cwd → 本脚本所在目录。都不在就报清楚，不要静默读空文件。
+    """
     if src.startswith(("http://", "https://")):
         import urllib.request
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -100,7 +104,14 @@ def fetch(src: str, dest: Path) -> Path:
             w.write(r.read())
         print(f"· 下载 {src} -> {dest} ({dest.stat().st_size} bytes)", flush=True)
         return dest
-    return Path(src)
+    p = Path(src)
+    if p.is_file():
+        return p
+    alt = Path(__file__).resolve().parent / src
+    if alt.is_file():
+        print(f"· 相对路径落到脚本目录：{alt}", flush=True)
+        return alt
+    raise SystemExit(f"FATAL: 找不到数据文件 {src}（试过 {p.resolve()} 与 {alt}）")
 
 
 # ─────────────────────────── 分词 ───────────────────────────
