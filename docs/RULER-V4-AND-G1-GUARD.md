@@ -218,3 +218,47 @@ node .cfb-offline/_v5ab.mjs           # -> .cfb-offline/_v5ab.json
 node tools/eval-sft.mjs --sft .cfb-offline/sft \
   --gen .cfb-offline/kaggle-out/rwkv7-compressor/dev-generations.jsonl
 ```
+---
+
+## 九、全量测试：改动前后**逐字相同**，并更正一处旧口径
+
+在 `eb46fdc`（改动前）与 `65979c7`（改动后）各跑一次完整 `node verify.mjs`：
+
+| | 通过 | 失败 | 跳过 | 套件 |
+|---|---|---|---|---|
+| `eb46fdc`（改动前） | 1266 | **2** | 8 | 42/44 |
+| `65979c7`（改动后） | 1266 | **2** | 8 | 42/44 |
+
+**两个数一模一样** —— 这次改动没有引入任何新的测试失败，也没有改动任何通过数。
+
+### ⚠ 更正：基线不是「1 失败 / 43 套件」
+
+此前记录的「1263 通过 / 1 失败 / 8 跳过（43/44）」是**过期的**。
+实测 `eb46fdc` 就是 **1266 / 2 / 8（42/44）**。两个失败**都早于本次改动**：
+
+**1. `test/closed-loop-v4.selftest.mjs` · A39 —— 断言里写死的数字过期了**
+
+```
+AssertionError: 期望 /池题均省 482 tok/，实际「池题均省 555 tok」
+```
+
+在 `eb46fdc` 的工作树里跑，**一模一样地失败**。这是测试自己把 `482` 写死了，
+而产物已经变成 `555`。与本次改动无关（`closed-loop-v4` 不 import `gen-ruler.mjs`）。
+
+**2. `test/doc-watermark.selftest.mjs` —— 回执的计数早就陈旧了**
+
+```
+watermark-counts-stale:toolsScripts=65→67   （eb46fdc 时就已经是 67）
+```
+
+在 `eb46fdc` 上就是 `65→67`。本次加了 `tools/g1-guard.mjs`，变成 `65→68`。
+
+**这个闸在当前平台上无法转绿**，而且原因是结构性的：
+`--record` 要跑两条车道，其中 `isolated` 车道是 `tools/verify-offline.mjs`，
+它 `spawnSync('unshare', …)` 起 Linux 网络命名空间 —— Windows 上直接 `ENOENT`，
+于是 `record` 事务回滚，回执永远停在 65。
+
+**手改 `transfer/watermark.json` 不是出路**：工具自己在注释里把这件事叫做
+「伪造回执」（`tools/doc-watermark.mjs:152`）。所以这里**故意不改**，
+把它作为一条已知的平台限制报出来。要转绿只有一条路：在 Linux 上跑
+`npm run watermark:record`。
