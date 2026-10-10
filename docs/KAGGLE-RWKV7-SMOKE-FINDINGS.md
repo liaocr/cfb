@@ -319,3 +319,99 @@ max 1.038 —— 也就是说这 24 条**语义上完全达标、只是压不够
 |---|---|---|
 | 教师稿 | 0.6957 | — |
 | 空稿 | 0.2850 | 0 赢 / 89 输 / 0 平 |
+
+## 十四、真训 v7 / v8：两个坑都不在训练配方里，都在"存档"这一步
+
+冒烟 v5 通过 ≠ 真训能跑通。拿真实数据（256 train / 89 dev）跑真训，连续两轮都死在
+训练**之外**的地方 —— 而且都是"训练本身没问题、被周边步骤带走"。
+
+### v7：双卡抢同一个数据文件，rank1 读到 0 行
+
+t=54s 就死：`FATAL: /kaggle/working/_train.jsonl 是空的。` → `ChildFailedError`，
+rank1 exitcode 2，rank0 SIGTERM。
+
+原因是**我自己写的**：两个 rank 各自 `fetch()` 到**同一个** `dest`，一个 `open("wb")`
+把文件截断的瞬间另一个在读，rank1 拿到 0 行。冒烟 v5 没撞上，只是因为那份数据
+48 行 / 582 KB，下载快到没有重叠窗口；真数据 3.2 MB 必撞。
+
+修法：rank 0 独占下载，其余 rank 在前后各挂一个 `barrier()`；写 `.part` 再
+`os.replace()` 原子落位；`for/else` 兜住重试耗尽。
+
+**同一个病还有第二处**：两个 rank 同时 `pip install` 到同一个 `site-packages`。
+赢了 3 次是靠运气不是靠设计，一并改成只有 rank 0 装。
+
+### v8：训练跑完，`save_pretrained` 抛异常，10.6 分钟全丢
+
+这一轮训练**完全正常**：`step 1/80 loss 3.3404` → `step 80/80 loss 0.5295`，
+10.6 分钟，然后：
+
+```
+transformers/modeling_utils.py:381, in _get_tied_weight_keys
+    tied_weight_keys.extend([f"{name}.{k}" if name else k for k in tied.keys()])
+AttributeError: 'list' object has no attribute 'keys'
+```
+
+**根因是 transformers 5.x 与 fla 0.5.2 的接口错位。** transformers 5.x 把
+`_tied_weights_keys` 的类型从 `list[str]` 改成了 `dict[str, str]`
+（`modeling_utils.py:1228`），而 fla 0.5.2 **全线**还是 list —— rwkv7 是
+`_tied_weights_keys = ["lm_head.weight"]`（`fla/models/rwkv7/modeling_rwkv7.py:439`）。
+fla 里只有 mamba2 / mamba3 / log_linear_mamba2 写的是 `[]`，所以它们不炸。
+
+为什么 `from_pretrained` 一路没事、只有 `save_pretrained` 炸：5.x 的
+`get_expanded_tied_weights_keys()` 有一道
+`if not tie_word_embeddings: return {}` 的提前返回（本模型
+`config.tie_word_embeddings = false`），根本走不到 `.keys()`；
+而 `_get_tied_weight_keys()` **没有**这道闸，它对每个子模块取属性后直接 `.keys()`。
+
+修法：把 list 归一成 dict。**但不能无脑填 `{}`** —— 万一 lm_head 与输入嵌入
+真的共享存储，把"共享"谎报成"不共享"只是多写一份冗余；反过来把"不共享"谎报成
+"共享"，save 会**删掉 `lm_head.weight`**，重新加载后 LM 头变随机数，而且全程
+不报错。所以先实测两者 `data_ptr()` 是否相同，不共享才给 `{}`，真共享才给
+`{"lm_head.weight": "model.embeddings.weight"}`。（本模型实测不共享。）
+
+同时补三道护栏，理由是同一个：**存档失败绝不能再带走评测。**
+
+1. 存档整块 `try/except` + `torch.save(state_dict)` 兜底。v8 的异常一路穿出
+   `main()`，把已经跑完的训练和**还没跑的** dev/生成一起带走了。
+2. `verify_saved_weights()`：把刚写出去的 `*.safetensors` 读回来跟内存逐块对齐
+   （缺 / 多 / 形状 / dtype / `max|Δ|`）。`save_pretrained` 少写一块**是不报错的**，
+   只看"它没抛异常"等于没验。
+3. `fixup_tokenizer_dir()`：见下。
+
+### 顺带挖出来的第三个坑：分词器目录存出来是坏的（而且是静默的）
+
+`RwkvTokenizer.save_vocabulary()` 把词表**硬编码**写成 `vocab.txt`，
+但它自己声明的 `VOCAB_FILES_NAMES = {"vocab_file": "rwkv_vocab_v20230424.txt"}`；
+而 `PreTrainedTokenizer.save_pretrained()` 又会把 `vocab_file` 这个键从
+`tokenizer_config.json` 里 **pop 掉**（`tokenization_utils_base.py:2067-2068`，
+理由是它属于"按约定解析"的文件名，不该写进配置）。
+
+两边对不上：存出来的目录里只有 `vocab.txt`，而
+`AutoTokenizer.from_pretrained(那个目录)` 会去找 `rwkv_vocab_v20230424.txt`。
+**存的时候一声不响，加载的时候才炸。** 冒烟从来没暴露它，因为冒烟在存档之前
+就 `return` 了 —— `tok.save_pretrained()` 这一行在真训里是第一次被执行。
+
+修法：按它声明的名字把原始词表补一份；`infer_rwkv7.py` 另外兜一道 ——
+存档目录的分词器载不进来就退回底座（分词器不是我们训出来的，跟底座逐字节相同）。
+
+### 还有一处：默认 30 分钟的进程组超时
+
+生成阶段只让 0 号 rank 跑，其余 rank 全挂在收尾的 `barrier()` 上等。
+`init_process_group` 默认 30 分钟超时，生成一超 30 分钟 rank1 先超时死，
+整轮在最后一步翻车（产物还在，但 `report.json` 写不下去）。
+显式给到 3 小时。同时生成预算 1500 → 3600 秒：缓存失效时实测约 7 token/s、
+一条约 60 秒，1500 秒只够 25 条。
+
+### 真机读数（v8，256 条训练集）
+
+| | |
+|---|---|
+| 编码 | 254/256 条（4.6s），超窗丢 2 |
+| token 长度 | min 2879 · p50 3594 · p90 4379 · max 6111 |
+| 窗口 6144 占用 | p50 58.5% |
+| 掩码边界偏差 | 19/254 条非零，max 1 |
+| 训练 | 80 步 / 10.6 分钟（双 T4 DDP，有效批 16） |
+| loss | 3.3404 → 0.5295 |
+| 峰值显存 | 7.13 GiB（DDP）/ 4.66 GiB（单卡） |
+
+DDP 相对单卡只有约 **1.4×**，不是 2× —— 0.1B 的模型太小，通信占比高。
