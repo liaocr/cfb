@@ -35,6 +35,14 @@ const OUT = path.resolve(ROOT, arg('--out', '.cfb-offline/sft'))
 const DEV_RATIO = Number(arg('--dev-ratio', '0.1'))
 const MIN_DRAFT = Number(arg('--min-draft', '40'))
 const MIN_RAW = Number(arg('--min-raw', '800'))
+// ── 文件名前缀 ──
+// 为什么需要：这个工具写 train.jsonl / dev.jsonl，而**消费者**读的是别的名字 ——
+// deploy/kaggle/start-rwkv7.py 从 GitHub 拉 deploy/kaggle/data/sft-train.jsonl。
+// 两个名字对不上，后果是：重新产了数据、推了内核，内核却拿着**旧数据**在训，
+// 而**没有任何东西会报警**（文件名错不等于内容错，下载照样成功）。
+// 本仓库已经被这类"静默地用错东西"咬过好几次，所以把它做成显式参数，
+// 让部署那一侧能写死 sft- 前缀，而不是靠人记得手动改名。
+const PREFIX = arg('--name-prefix', '')
 // ── dev 冻结（--dev-ids）──
 // 为什么需要：默认的 dev 是按仓库哈希切的，**加新仓库会让 dev 变大**。
 // 而 dev 一变大，上一轮在 89 条上跑出来的成绩就没法比了 ——
@@ -120,8 +128,8 @@ const devPass = dev.filter((u) => u.pass).length
 
 fs.mkdirSync(OUT, { recursive: true })
 const wr = (f, a) => fs.writeFileSync(path.join(OUT, f), a.map((x) => JSON.stringify(x)).join('\n') + (a.length ? '\n' : ''))
-wr('train.jsonl', rows)
-wr('dev.jsonl', devRows)
+wr(PREFIX + 'train.jsonl', rows)
+wr(PREFIX + 'dev.jsonl', devRows)
 
 const avg = (a, k) => a.length ? Number((a.reduce((s, x) => s + x.meta[k], 0) / a.length).toFixed(1)) : 0
 const report = {
@@ -155,4 +163,4 @@ console.log('  教师基线：验证集 %d/%d = %s 通过 —— 学生分数跟
   devPass, dev.length, report.devTeacherPass.rate)
 const rk = Object.entries(rejects).sort((a, b) => b[1] - a[1])
 if (rk.length) console.log('  训练集未收原因：' + rk.map(([k, v]) => k + ' x' + v).join('、'))
-console.log('  产出：' + path.relative(ROOT, OUT) + '/{train,dev}.jsonl + report.json')
+console.log('  产出：' + path.relative(ROOT, OUT) + '/{' + PREFIX + 'train,' + PREFIX + 'dev}.jsonl + report.json')
