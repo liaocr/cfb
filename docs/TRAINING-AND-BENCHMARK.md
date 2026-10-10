@@ -19,7 +19,7 @@
 |---|---|---|
 | **① 提示词层 (`patches` + `modularPromptPrune`)** | `rules.anchor` / `rules.closure` / `rules.triad` / `modularPromptPrune: true` | **反稀释动态裁剪**：当轮有【在手】代码时剥离取证分支废话，有【已排除】死路时强化禁重走疫苗；将提示词从 ~1,930 字瘦身至 ~893 字（`-53.7%`），消除指令注意力稀释 |
 | **② 程序部件层 (`config`)** | `continuationPath: 'bounded'` + `statePartsMode: 'compact'` | **有界延续 + 紧致状态**：将 O(轮数) 增长的已走路径截断为最近 2 条并在【台账】保留曾涉文件出处（消除 `invented-identifier` 误杀）；剔除【已排除】/【未解】中已被正文覆盖的重复句子，净省 token 提升 **`+83.8%`** |
-| **③ 生产制度层 (`regime`)** | `birthAdaptiveFloor: true` / `birthMinChars` / `birthTrigger` | **自适应 $\lambda$ 控制器**：早期轮次（`round ≤ 2`）抬高门槛至 `4200` 保护原生探索；深轮次（`round ≥ 4`）降至 `1800` 及时清理膨胀；连续只读停滞（`stagnantRounds ≥ 2`）降至 `1200` 强制注入死路疫苗 |
+| **③ 生产制度层 (`regime`)** | `birthAdaptiveFloor: true` / `birthMinChars` / `birthTrigger` | **自适应 $\lambda$ 控制器**（`computeAdaptiveBirthControl`，基准 3100 实测）：fresh-early（第 1 轮 ∧ 低打转 ∧ 低水位）→ `×1.20` = `3720`；cruise → `3100`；high-spin-or-long-horizon（轮次 ≥ 4 ∨ 连续只读 ≥ 3 轮 ∨ 高打转 ∨ 水位 ≥ 0.50）→ `×0.65`、下限 `1600` = `2015`，输出上限同步 `×0.85` |
 | **④ 少样本对齐层 (`exemplars`)** | `exemplars: [{ family, chosen, rejected, ... }]` | **In-Context DPO 自动注入**：从飞轮 `pairs.jsonl` 按跨家族隔离原则自动挑选高分 `chosen` vs 低分 `rejected` 对比锚点注入副模型，无需 GPU 重训权重即获 DPO 级对齐收益 |
 
 ---

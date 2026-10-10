@@ -12,7 +12,7 @@
 $$\Delta \text{Cost} = \underbrace{K \cdot (1 - r) \cdot L \cdot \bigl(h \cdot p_{\text{hit}} + (1 - h) \cdot p_{\text{miss}}\bigr)}_{\text{后续 } K \text{ 轮主模型节省}} - \underbrace{\bigl(L \cdot p_{\text{sub,in}} + r \cdot L \cdot p_{\text{sub,out}}\bigr)}_{\text{当轮副模型压缩开销}}$$
 
 - 代入 DeepSeek 实测参数（压缩比 $r \approx 0.28$、平均阅读轮数 $K \approx 4.2$、缓存命中率 $h \approx 0.72$），**单块盈亏平衡点为 $L_{\min} \approx 3100$ 字符（约 1200 tokens）**。
-- **v14.17 升级（`birthAdaptiveFloor: true`）**：将静态常数升级为理论第四卷的轮次与停滞感知控制器 $\lambda(t, s)$——前 2 轮抬高至 `4200` 保护探索并省去无谓副调用，第 4 轮起降至 `1800` 消除中后期上下文膨胀，连续只读停滞 $\ge 2$ 轮时降至 `1200` 强制注入死路疫苗。
+- **v14.17 升级（`birthAdaptiveFloor: true`）**：将静态常数升级为理论第四卷的轮次与停滞感知控制器 $\lambda(t, s)$（实现：`src/birth.js` 的 `computeAdaptiveBirthControl`）。基准 `3100` 下实测三区：**fresh-early**（第 1 轮 ∧ 低打转 ∧ 低水位）→ `×1.20` = **3720**，保护探索并省去无谓副调用；**cruise** → 保持 **3100**；**high-spin-or-long-horizon**（轮次 $\ge 4$ ∨ 连续只读 $\ge 3$ 轮 ∨ 高打转 ∨ 水位 $\ge 0.50$）→ `×0.65`、下限 `1600` = **2015**，并同步收紧输出上限 `×0.85`。
 
 ### 1.2 传输层与对冲（Hedge）实测定律
 - **Keep-Alive 复用（`_probe-keepalive-win.mjs`）**：开启长连接复用可省去 TLS 握手，单次副模型调用 TTFT 降低 `60–110 ms`。
@@ -51,7 +51,10 @@ $$\Delta \text{Cost} = \underbrace{K \cdot (1 - r) \cdot L \cdot \bigl(h \cdot p
 - 在 3–5 轮连续排障场景中采集 130 条真实主模型动作样本，用于校准 `tools/helpers/judge-layer.mjs` 的双轨裁判：
 - 经 L2 岭回归校准后，L1 压缩稿质量分数对 L2 下游真实动作收益的秩相关系数从 **Spearman $\rho = 0.250$ 提升至 $0.394$**（LOO-RMSE `0.322`）。
 
-### 3.2 端到端可执行沙箱三臂对照（`transfer/traj1..3`，21 条轨迹）
+### 3.2 端到端可执行沙箱三臂对照（`transfer/traj1..3`，21 条轨迹；**当轮快照**）
+
+> ⚠ **本节数字是当轮快照，已被取代，不得当现状引用。** 当时只汇总 `transfer/traj1..3` 的 **21 条**轨迹（`raw n=8`）；加入 `.cfb-runtime/traj/*` 后，当前 `npm run bench` 的同一张表是 `raw n=80`、`raw` 严苛解决 **40.0%**、`auto` Elo **1104（95% CI [945,1279]）**、平均轮次 **−24.9%**（见根 `README.md` §5 与 `transfer/HANDOFF.md` §2）。**表内的 87.5% / Elo 1110 / −13.7% 是历史读数**；趋势方向（`ledger` 有伪修好、`auto` 伪修好 0%）不变，但具体数值以当前命令输出为准。
+
 在真实可运行 git 仓库沙箱中对比 `raw`（原文）、`ledger`（只挂台账不压思维链）与 `auto`（`birth` 出生即压缩）：
 
 | 评测臂 | 表面宣称解决率 | **SWE 严苛解决率 (`F2P∧P2P∧!falseDone`)** | **伪修好水分 (`False-Done Gap`)** | 平均轮次 | 思维链字符净省 | **LMArena Elo** |

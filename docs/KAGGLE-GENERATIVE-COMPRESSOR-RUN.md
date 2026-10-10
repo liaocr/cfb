@@ -2,6 +2,8 @@
 
 > **一句话**：把「只看稿子就能判」的 7 条尺子装进机械教师 → 用它生成带好形状的压缩目标 → Qwen3-0.6B QLoRA 学形状 → dev（86 个未见仓库）上复算。
 > **不需要端点、不需要再准备数据，今天就能在 Kaggle 跑。**
+>
+> ⚠ **范围限定（勿读成「可以拿去晋级」）**：本路线的目标是**用机器教师生成目标、让学生学形状**，因此不需要端点、也不需要新家族金标即可开跑。但它**不构成训练数据准入**——`tools/micro-generator/dataset-policy.json` 的 `currentDecision` 仍是 `target-model-compatible-data-not-yet-admitted`、`trainingReady=false`。两句话说的是两件事：**能不能跑**（能，$0）与**能不能据此晋级**（不能，缺 E1/E2 真机读数与新家族盲测）。
 
 ## 0. 本轮口径（按你的指示）
 

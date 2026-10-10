@@ -17,7 +17,7 @@
 | 仓库数 / 许可 | 144 · MIT 68 · Apache-2.0 48 · BSD-3-Clause 23 · BSD-2-Clause 5 |
 | 耗时 | 86.9s |
 
-- 落盘：`transfer/models/micro-generator-v4flash-scenarios/birth-units-census-batch1.jsonl`（1.6MB）+ `.manifest.json`
+- 落盘：`transfer/models/micro-generator-v4flash-scenarios/birth-units-census-batch1.jsonl.gz`（1.6MB）+ `.manifest.json`
 - 逐 shard 命中：25→2369 · 26→2348 · 27→2367 · 28→2340 · 29→2362 · 30→2354 · 31→2363 · 32→2361 · 33→1128
 - 含义：`raw≥1500` 下约 **2 万个**出生单元可切——切分不再是瓶颈；瓶颈是"给它们锻出好尺子"的评审吞吐。
 
@@ -49,7 +49,7 @@
 | appium_python-client_pr646#b7（盲） | appium/python-client | 1938 | 664 | 0.3426 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | provisional-gold | 1.000 |
 | workalendar_workalendar_pr32#b6（盲） | workalendar/workalendar | 2082 | 612 | 0.2939 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | provisional-gold | 0.300 |
 
-制品：`forge-drafts-batch{0,1,2}.jsonl`（稿 + 锻造说明）、`forge-scores-batch{0,1,2}.jsonl`（轴表 + 代理 + 内容哈希）。
+制品（均在 `transfer/models/micro-generator-forge/`）：`forge-drafts-batch{0,1,2}.jsonl`（稿 + 锻造说明）、`forge-scores-batch{0,1,2}.jsonl`（轴表 + 代理 + 内容哈希）。
 
 ## 3. 产线基线对照：同一批情景跑**生产微编译器**（新）
 

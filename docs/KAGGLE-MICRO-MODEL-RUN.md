@@ -71,7 +71,7 @@
 - `RESULTS.txt`：GPU 数、实际用时、模型参数、loss 尾段、dev 代理指标、退出码
 - `cfb-micro-gen-run1.zip`：`tokenizer.json`、`micro-gen.pt`（含 model-config/meta）、
   `dev-predictions.jsonl`、`dev-metrics.json`、`train.log`
-- 模型体积量级：33.6M 参数 fp16 ≈ 67 MB（对比此前 0.6B LoRA 方案产物 ~xx MB）
+- 模型体积量级：37.7M 参数 fp16 ≈ 72 MB（对比此前 Qwen3-0.6B LoRA 方案产物 ~600 MB+）
 
 ## 指标口径（必须先说清）
 
@@ -177,12 +177,12 @@ node tools/micro-generator/judge-micro-predictions.mjs \
 
 | | Qwen3-0.6B + LoRA | 微模型（自训词表） |
 | --- | --- | --- |
-| 训练参数 | 10.1M（LoRA） | 33.6M（全量，但从零） |
+| 训练参数 | 10.1M（LoRA） | 37.7M（全量，但从零） |
 | 依赖 | transformers/peft/bitsandbytes 4-bit | 只要 tokenizers + torch |
 | 显存 | 4-bit ~1.2GB 权重 + 1.55GB logits | 直接 fp16，无 4-bit |
-| 词表冗余 | 80% 未用、嵌入占 26% | 0 冗余（16k 全部来自语料） |
+| 词表冗余 | 80% 未用、嵌入占 26% | 0 冗余（24,576 全部来自语料 + 仓库自带中文种子） |
 | 风险 | 依赖 Qwen 的通用能力（更稳） | 从零、语料只有 937 条（欠拟合风险） |
-| 产物 | ~600MB+ | ~67MB |
+| 产物 | ~600MB+ | ~72MB |
 
 **下一步建议**：两条都跑（各一条指令，Kaggle 免费额度足够）。以微模型为主，
 若欠拟合（dev 代理 recall 明显低于 Qwen 路线），先用 census 批次3扩语料再重训，

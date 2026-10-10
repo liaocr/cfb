@@ -109,8 +109,8 @@ dsh-cot-form-b/
 ### 4.1 一个 `reasoning` 块的生命周期（`mode: 'birth'`）
 
 1. **流式捕获与自适应门槛（`birthStart`）**：
-   - 在 `llm/stream` 中拦截 `reasoning` 块；计算动态门槛 `effectiveBirthMinChars(cfg, meta)`：
-   - 缺省门槛 `birthMinChars: 3100`（基于缓存命中率与后续阅读轮数 $K$ 的盈亏平衡点）；开启 `birthAdaptiveFloor: true` 时，早期轮次（`round ≤ 2`）抬高门槛至 `4200` 保护原生探索，深轮次（`round ≥ 4`）降至 `1800` 及时清理上下文膨胀，连续只读停滞（`stagnantRounds ≥ 2`）降至 `1200` 注入已排除死路疫苗。
+   - 在 `llm/stream` 中拦截 `reasoning` 块；由 `computeAdaptiveBirthControl(raw, ctx, pressure, cfg)`（`src/birth.js`）计算动态门槛 `effectiveFloor` 与输出上限 `effectiveMaxChars`：
+   - 缺省门槛 `birthMinChars: 3100`（基于缓存命中率与后续阅读轮数 $K$ 的盈亏平衡点）；开启 `birthAdaptiveFloor: true` 后按**三个工作区**分派（实测值，基准 3100）：**fresh-early**（第 1 轮、`spinScore < 0.25`、水位 `< 0.20`）地板 `×1.20` ⇒ **3720**，保护原生探索；**cruise**（常规轮）保持 **3100**；**high-spin-or-long-horizon**（轮次 ≥ 4、连续只读 ≥ 3 轮、`spinScore ≥ 0.45`、或窗口水位 ≥ 0.50）地板 `×0.65` 且下限 **1600**（3100 时得 **2015**），输出上限同步收紧 `×0.85`。
 2. **并行 CAS 归档与副模型编译（`distill`）**：
    - 原文写入宿主 CAS 存储（生成可读回的 `art://` 句柄）；
    - 同时调用副模型（主模型同端点关闭思考）执行编译：支持 `v3`（散文摘要）、`v4-ops`（JSON 八类原子条目确定性编译）与 **`v4d6` 直写（`compressPrompt: 'v4', compressV4Direct: true`）**。

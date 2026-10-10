@@ -36,8 +36,12 @@ os.environ["GITHUB_PAT"] = pat
 # 本地：把 notebook 输出里的报告拖下来后
 cp ~/Downloads/cfb-micro-97m-report.json transfer/models/ && node -e '
 const r=require("./transfer/models/cfb-micro-97m-report.json");
-console.log("gate:",r.gate,"| threeFold 均值:",r.threeFoldCv?.meanMatched,"最差折:",r.threeFoldCv?.worstMatched);
-console.log("parity:",r.parity?.maxAbsError,"| 总参数:",r.totalParameters,"| data:",JSON.stringify(r.data?.stats||r.data).slice(0,160));'
+// 字段名以检入报告为准（顶层键：gates / parameters / dataset / rulerReading / accepted / promotionEligible / promoted）
+const cv=r.rulerReading?.candidateUnitValidation||{};
+console.log("accepted:",r.accepted,"| promotionEligible:",r.promotionEligible,"| promoted:",r.promoted);
+console.log("三折:",JSON.stringify(cv).slice(0,200));
+console.log("parity:",r.gates?.pythonJsNumericalParityPassed,"| 新家族盲测:",r.gates?.freshIndependentNewFamilyTestPassed);
+console.log("总参数:",r.parameters?.total,"/",r.parameters?.limit,"| 数据集:",JSON.stringify(r.dataset).slice(0,200));'
 ```
 
 ## 4. 承重读数怎么读（三组阻塞闸门，缺一不晋级）
@@ -64,14 +68,6 @@ node tools/eval-micro-js-pairs.mjs --validate-dataset-only \
   --known-families flaky-timeout,perf-regression,sse-truncated \
   --known-source-ids "$(node -e 'const j=require("./transfer/models/micro-dev-dataset.json");console.log([...new Set(j.unitSamples.map(u=>u.sourceId))].join(","))')"
 ```
-
-## 6. 已知未修（本轮上下文耗尽，别当成已完成）
-
-1. **飞轮分数量纲 —— 已修（v14.24.5）**：现按 `scoreKind` 分派阈值（`judge-01` 走 0.05、`structural-tally` 走 ≥2 旗标差），promote 侧越界行不入库。实测：入库 67/80、丢弃 13、`distinctScorePairs 13`、draft pair 55（可训练 17）；**修前基线 105/59 里的 59 含 13 行单位错配垃圾**，别把 17 看成倒退。下面这段保留作决策记录。：`tools/helpers/experiment.mjs:75-77` 的 `structuralScore` 返回的是**旗标计数之和**（`v('next') + v('avoid') - v('falseDone') - v('bump') - v('reEdit') - v('repeat')`），而 `pairResults`（`:95`）把它塞进 `scores.candidate/control`，`cfb-cycle.mjs:390` 原样写盘 ⇒ `pairs.jsonl` 里出现 `93|0` 这类**不是 0–1 判分**的值。后果有两侧：
-   - 构建器的可训练判据是 `chosenScore - rejectedScore >= 0.05`（`build-micro-dataset.mjs:684`），拿计数当判分 ⇒ 该闸门被计数尺度**平凡满足**；
-   - 同时 `distinctScorePairs <= 2` 的退化判定（`:663`）又因重复计数值把整批降级 ⇒ 实测 draft pair 105/59 → 42/4。
-   两条可选修法（**都需要你点头，因为会动冻结裁判/闸门语义**）：a) 在 harvest 侧把 tally 名次化（rank→[0,1] 线性映射）后再写 `chosenScore/rejectedScore`，并在行内标 `scoreKind:'tally-rank'`；b) 让构建器按 `scoreKind` 分派阈值（tally 走 `margin>=2`，judge 走 `>=0.05`）。**不建议**第三种：把 `0.05` 改成按分数自适应——那是给闸门松绑。
-2. 本轮已把 `transfer/models/dev-flywheel-pairs.json` 与 `.cfb-offline/train/pairs.jsonl` 还原到提交态（`git checkout`），不把没解释清楚的倒退留在主干；`micro-dev-dataset.json` 未被改动。
 
 ## 5.1 复核（2026-10-06）：盲测集够格当结构闸，不够格单独撑晋级
 
@@ -101,6 +97,14 @@ node tools/eval-micro-js-pairs.mjs --validate-dataset-only \
 **仍未消除的局限**：`cueExcluded` 特征实测 0 ⇒ 本集测「有锚 vs 无锚」排序与 `excludedGateActive` 兜底路径，**不测**线索驱动的排除判定。另外 16 对全为 matched 是靠标点填充对齐的（`Δtok=0`），别把它读成"自然长度分布"；它衡量的是同长度下的判别力，正是匹配桶该测的东西。
 
 结构校验复跑：两族 `dataset-structure-valid`（56/16，maxEndpointDegree 1）；`node verify.mjs micro` 50 通过 / 0 失败。**依旧没打任何分数** ⇒ 一次性盲测完好。
+
+## 6. 决策记录与已知未修（本轮上下文耗尽；第 1 条已修，第 2 条是当时的处置）
+
+1. **飞轮分数量纲 —— 已修（v14.24.5）**：现按 `scoreKind` 分派阈值（`judge-01` 走 0.05、`structural-tally` 走 ≥2 旗标差），promote 侧越界行不入库。**读数不手抄**：当前值以 `transfer/models/micro-dev-dataset.json` 的 `stats.flywheelDistinctScorePairs` / `stats.flywheelContaminatedRowsDropped` 与 `transfer/models/dev-flywheel-pairs.json` 的 `pairCount` / `distinctScorePairs` 为准（撰写时分别为 `21` / `9` / `78` / `17`）。**修前基线里的「可训练 draft pair」含单位错配垃圾行**，所以数字变小不等于倒退。决策记录如下：`tools/helpers/experiment.mjs:75-77` 的 `structuralScore` 返回的是**旗标计数之和**（`v('next') + v('avoid') - v('falseDone') - v('bump') - v('reEdit') - v('repeat')`），而 `pairResults`（`:95`）把它塞进 `scores.candidate/control`，`cfb-cycle.mjs:390` 原样写盘 ⇒ `pairs.jsonl` 里出现 `93|0` 这类**不是 0–1 判分**的值。后果有两侧：
+   - 构建器的可训练判据是 `chosenScore - rejectedScore >= 0.05`（`build-micro-dataset.mjs:684`），拿计数当判分 ⇒ 该闸门被计数尺度**平凡满足**；
+   - 同时 `distinctScorePairs <= 2` 的退化判定（`:663`）又因重复计数值把整批降级 ⇒ 实测 draft pair 105/59 → 42/4。
+   两条可选修法（**都需要你点头，因为会动冻结裁判/闸门语义**）：a) 在 harvest 侧把 tally 名次化（rank→[0,1] 线性映射）后再写 `chosenScore/rejectedScore`，并在行内标 `scoreKind:'tally-rank'`；b) 让构建器按 `scoreKind` 分派阈值（tally 走 `margin>=2`，judge 走 `>=0.05`）。**不建议**第三种：把 `0.05` 改成按分数自适应——那是给闸门松绑。
+2. 本轮已把 `transfer/models/dev-flywheel-pairs.json` 与 `.cfb-offline/train/pairs.jsonl` 还原到提交态（`git checkout`），不把没解释清楚的倒退留在主干；`micro-dev-dataset.json` 未被改动。
 
 ## 7. 一键粘贴（合并版：克隆 → 训练 → 两次盲测 → 打印闸门判决）
 

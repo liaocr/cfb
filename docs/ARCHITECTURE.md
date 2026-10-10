@@ -32,7 +32,7 @@ plugin.js ───────────────────────�
   ├─ host-follow.js       调用级模型 / provider 跟随（派生单次调用配置副本，共享 cfg 永不改写）
   ├─ session-tracker.js   会话归属追踪（多会话交错 ⇒ 不可证，原文放行）
   ├─ handle-probe.js      CAS 句柄读回探针（可读回 / 读不回 / 不可证）
-  ├─ birth.js ─────────── ★ 出生即压缩主干：birthTransform / birthStart / birthFinish / effectiveBirthMinChars(λ) / readPressure
+  ├─ birth.js ─────────── ★ 出生即压缩主干：birthTransform / birthStart / birthFinish / computeAdaptiveBirthControl(λ) / readPressure
   │    ├─ fidelity.js       逐字标识符召回率（观测）+ 发明标识符拦截闸（inventedIdentifiers）
   │    ├─ tokens.js         按书写系统区分的 token 粗估（中文 0.6/字、其余 0.3/字）
   │    └─ trace.js          trace 落盘（64 MiB 轮转）与 settled 字段白名单
@@ -58,10 +58,12 @@ birthTransform(inner, deps)
   block-start(reasoning) → birthHoldNew + 立即透传
   reasoning-delta        → 累积原文 + 实时透传（live）；若开启 v4 流式增量则同步喂给 segmenter
   block-end(reasoning)   → birthStart(entry, deps)   ← 同步返回 task，绝不阻塞主流
-                              1. 动态 λ 门槛判定：effectiveBirthMinChars(cfg, meta)
-                                 - 默认 birthMinChars = 3100
-                                 - birthAdaptiveFloor: true 时：round ≤ 2 → 4200（保护早期探索）；
-                                   round ≥ 4 → 1800（清理深轮膨胀）；stagnantRounds ≥ 2 → 1200（停滞期强制注入死路疫苗）
+                              1. 动态 λ 门槛判定：computeAdaptiveBirthControl(raw, ctx, pressure, cfg)
+                                 - 默认 birthMinChars = 3100（cruise 区保持原值）
+                                 - birthAdaptiveFloor: true 时按三区分派（下为基准 3100 的实测值）：
+                                   fresh-early（第 1 轮 ∧ spinScore<0.25 ∧ 水位<0.20）→ ×1.20 = 3720（保护早期探索）；
+                                   high-spin-or-long-horizon（轮次≥4 ∨ 连续只读≥3 轮 ∨ spinScore≥0.45 ∨ 水位≥0.50）
+                                     → ×0.65、下限 1600 = 2015，且输出上限 ×0.85（收紧膨胀）
                               2. 内存秒算句柄：deriveArtHandle(sessionId, raw)
                               3. 并行发起：diskP = deps.archive(raw) 与 distillP = deps.distill(raw, signal, ...)
   finish                 → birthFinish(task, deps)   ← 押后至流结束收网
@@ -145,6 +147,5 @@ birthTransform(inner, deps)
 | **科学闭环与评测（12 套）** | `api-budget`, `effect-eval`, `eval-ready`, `eval-ready-v2`, `eval-visible-v3`, `eval-reasoning-v8`, `offline-lab`, `judge-calibration`, `closed-loop`, `closed-loop-v3`, `closed-loop-v4`, `training-ready` | 预算、效果/推理评估、离线闭环、双轨裁判校准、训练准备度 |
 | **金标尺子与写稿纪律（5 套）** | `gold-standard`, `gold-attest`, `gold-use-split`, `gate-cjk-pairing`, `silver-shape` | `cfb.gold-standard/1` 十二轴判据本身、盖章与只降不升链路、标尺/训练料用途隔离、反引号配对段不得误杀中文散文、银标形状检查器 |
 | **模式 1 质量与标注（3 套）** | `mode1-quality`, `mode1-quality-parity`, `micro-label-review` | 模式 1 真机配对质量与 $0 判据平价、人工盲审工具（审核者看不到规则、坏行被拒、digest 存活） |
-| **微模型测量臂（1 套）** | `micro-general-arm` | 原型命中 vs 真实用户仓兜底路径的差（`micro-gap-map.json`）与 README 引用逐位对齐；`forceGeneralPath` 三处齐备；一次性盲测账本不被重跑；生产权重哈希可核 |
+| **微模型测量臂（2 套）** | `micro-general-arm`, `micro-generator` | `micro-general-arm`：原型命中 vs 真实用户仓兜底路径的差（`micro-gap-map.json`）与 README 引用逐位对齐；`forceGeneralPath` 三处齐备；一次性盲测账本不被重跑；生产权重哈希可核。`micro-generator`：微模型生成器（锻造语料 / 冻结闸 / 盲测集生成）的确定性回归 |
 | **完整性与审计（6 套）** | `manifest-ignore`, `audit-2026-09-27`, `micro-runtime`, `micro-ruler`, `evidence-program`, `doc-watermark` | 清单忽略规则、历史审计、生产 JSON 权重加载/JS scorer、微模型评测尺子与数据回归、类型化证据程序、文档水位（含 5 个负例夹具） |
-| **完整性与审计（5 套）** | `manifest-ignore`, `audit-2026-09-27`, `micro-runtime`, `micro-ruler`, `evidence-program` | 清单忽略规则、历史审计、生产 JSON 权重加载/JS scorer、微模型评测尺子与数据回归、类型化证据程序 |
