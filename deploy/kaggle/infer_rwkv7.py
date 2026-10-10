@@ -136,6 +136,20 @@ def render(tok, messages, add_gen: bool) -> str:
         return tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=add_gen)
 
 
+BASE_MODEL_ID = "fla-hub/rwkv7-0.1B-g1"   # 底座：结构、分词器、chat_template 都来自这里
+
+
+def load_saved_state_dict(md: Path) -> dict:
+    """把存档目录里的 *.safetensors 读成一个 state_dict（分片也认）。"""
+    from safetensors.torch import load_file
+    sd: dict = {}
+    for f in sorted(md.glob("*.safetensors")):
+        sd.update(load_file(str(f)))
+    if not sd:
+        raise SystemExit(f"FATAL: {md} 里没有 *.safetensors")
+    return sd
+
+
 def user_block(ctx: str, raw: str) -> str:
     """与 build-sft.mjs 里拼 user 的那两行逐字一致。"""
     return "[题面]\n" + ctx + "\n\n[思考过程]\n" + raw
@@ -146,6 +160,8 @@ def user_block(ctx: str, raw: str) -> str:
 def parse_args(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True, help="训练产出的目录（save_pretrained 的那个）")
+    ap.add_argument("--tokenizer", default=None,
+                    help=f"分词器来源；默认用 --model 目录，载不进来才退回 {BASE_MODEL_ID}")
     ap.add_argument("--in", dest="inp", default=None, help="输入 jsonl，每行 {id, ctx, raw}")
     ap.add_argument("--out", default=None, help="输出 jsonl；不给就打印到 stdout")
     ap.add_argument("--ctx-file", default=None, help="单条模式的题面文件")
@@ -175,11 +191,32 @@ def main(argv=None) -> int:
     patch_chunk_size(args.chunk_size)
 
     from transformers import AutoModelForCausalLM, AutoTokenizer
-    tok = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+
+    # 分词器不是我们训出来的，跟底座逐字节相同。存档目录里那份是 save_pretrained
+    # 拼出来的（train_rwkv7.py 的 fixup_tokenizer_dir 在补），有历史坑；所以载不
+    # 进来就退回底座，别让整条推理卡在分词器上。
+    tok_src = args.tokenizer or args.model
+    try:
+        tok = AutoTokenizer.from_pretrained(tok_src, trust_remote_code=True)
+    except Exception as e:
+        if args.tokenizer is not None:
+            raise
+        print(f"! {tok_src} 的分词器载不进来（{type(e).__name__}: {e}），"
+              f"退回底座 {BASE_MODEL_ID}", flush=True)
+        tok = AutoTokenizer.from_pretrained(BASE_MODEL_ID, trust_remote_code=True)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
+
     dtype = torch.float16 if args.dtype == "fp16" else torch.float32
-    model = AutoModelForCausalLM.from_pretrained(args.model, trust_remote_code=True, dtype=dtype)
+    try:
+        model = AutoModelForCausalLM.from_pretrained(args.model, trust_remote_code=True, dtype=dtype)
+    except Exception as e:
+        # 存档目录里缺自定义建模文件（custom_object_save 没跑到）时，
+        # 从底座建结构，再把权重灌回去。
+        print(f"! 从 {args.model} 直接建模型失败（{type(e).__name__}: {e}），"
+              f"改从底座 {BASE_MODEL_ID} 建结构再灌权重", flush=True)
+        model = AutoModelForCausalLM.from_pretrained(BASE_MODEL_ID, trust_remote_code=True, dtype=dtype)
+        model.load_state_dict(load_saved_state_dict(Path(args.model)), strict=True)
     model.config.use_l2warp = False   # l2warp 只在算 loss 时用，推理不需要，且 fp16 下会崩
     model.eval().to(device)
     print(f"· 模型载入 {args.model} · {args.dtype}", flush=True)

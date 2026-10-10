@@ -12,9 +12,9 @@
 --------------------------------------
 对 100 条教师稿量过：43% 的稿子里出现了**只在题面、不在思考过程**里的代码味标识符
 （如 tests/test_doccmd.py、corsheaders.models）。去掉题面会丢掉这些指代。窗口放宽到
-4096 之后带题面能装 97.1%，装得下就没有取舍的必要。
+6144 之后带题面能装 99.8%，装得下就没有取舍的必要。
 
-为什么窗口写 4096 而不是 config 里的 2048
+为什么窗口写 6144 而不是 config 里的 2048
 ------------------------------------------
 config.json 的 max_position_embeddings=2048 **在本模型的代码路径上从未被读取**：
   · fla/models/rwkv7/modeling_rwkv7.py 全文 545 行，该字段只出现 1 次（第 151 行），
@@ -63,9 +63,11 @@ config.json 的 max_position_embeddings=2048 **在本模型的代码路径上从
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import math
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -199,6 +201,107 @@ def batch_rows(rows: list, batch_size: int):
     return out
 
 
+def fix_tied_weight_keys(model):
+    """把 `_tied_weights_keys` 从 fla 的 list 归一成 transformers 5.x 要的 dict。
+
+    transformers>=5 的 `_get_tied_weight_keys()` 会对每个子模块取
+    `_tied_weights_keys` 然后调 `.keys()`（5.x 里它的类型是 dict[str, str]），
+    而 fla 0.5.2 全线给的是 list（`_tied_weights_keys = ["lm_head.weight"]`）。
+    于是 `save_pretrained` -> `remove_tied_weights_from_state_dict` ->
+    `AttributeError: 'list' object has no attribute 'keys'`，**训练完好的一轮全丢**。
+    （v8 就是这么没的：训练 10.6 分钟跑完，存档那一步炸了。）
+
+    `from_pretrained` 之所以没事：5.x 的 `get_expanded_tied_weights_keys()` 在
+    `if not tie_word_embeddings: return {}` 处提前返回，根本没走到 `.keys()`；
+    而 `_get_tied_weight_keys()` 没有这道闸，所以只有存档会炸。
+
+    为什么不无脑填 `{}`：万一 lm_head 与输入嵌入真的共享存储，声明"没有共享"
+    只是把同一块写两遍（冗余，不致命）；反过来，把**不**共享的两块谎报成共享，
+    save 会删掉 lm_head.weight，重新加载后 LM 头变随机数，而且全程不报错。
+    所以先实测是否共享，再决定映射。
+    """
+    tied = {}
+    shared = None
+    try:
+        out_w = model.get_output_embeddings().weight
+        in_w = model.get_input_embeddings().weight
+        shared = out_w.data_ptr() == in_w.data_ptr()
+        if shared:
+            tied = {"lm_head.weight": "model.embeddings.weight"}
+    except Exception as e:  # 探测失败不该挡住存档
+        print(f"! 共享存储探测失败（按不共享处理）：{type(e).__name__}: {e}", flush=True)
+    n = 0
+    for _, sub in model.named_modules():
+        if isinstance(getattr(sub, "_tied_weights_keys", None), (list, tuple)):
+            sub._tied_weights_keys = dict(tied)
+            n += 1
+    return n, shared
+
+
+def verify_saved_weights(model, md: Path) -> str:
+    """把刚写出去的权重读回来跟内存里的逐块对齐，返回一行摘要。
+
+    `save_pretrained` 有太多"悄悄少写一块"的路径（tied 判定、dtype 转换、分片），
+    只看它没抛异常是不够的 —— 少一块 lm_head 它也不抛。
+    """
+    from safetensors.torch import load_file
+    live = model.state_dict()
+    got = {}
+    for f in sorted(md.glob("*.safetensors")):
+        got.update(load_file(str(f)))
+    if not got:
+        raise RuntimeError(f"{md} 里没有任何 *.safetensors")
+    missing = sorted(set(live) - set(got))
+    extra = sorted(set(got) - set(live))
+    shape_bad = sorted(k for k in got if k in live and tuple(got[k].shape) != tuple(live[k].shape))
+    if missing or extra or shape_bad:
+        raise RuntimeError(
+            f"权重不齐：缺 {len(missing)} {missing[:4]} / 多 {len(extra)} {extra[:4]} / "
+            f"形状不符 {len(shape_bad)} {shape_bad[:4]}")
+    worst, worst_k, dt = 0.0, None, []
+    for k, v in got.items():
+        if v.dtype != live[k].dtype:
+            dt.append(f"{k}:{live[k].dtype}->{v.dtype}")
+        d = float((v.float() - live[k].detach().float().cpu()).abs().max())
+        if d > worst:
+            worst, worst_k = d, k
+    note = f" · {len(dt)} 块 dtype 变了 {dt[:2]}" if dt else ""
+    if worst > 1e-3:
+        raise RuntimeError(f"写出去后对不上：max|Δ|={worst:.3e} @ {worst_k}{note}")
+    return f"{len(got)} 块 · max|Δ|={worst:.2e} @ {worst_k}{note}"
+
+
+def fixup_tokenizer_dir(md: Path, tok) -> str:
+    """把词表补成 `vocab_files_names` 声明的那个文件名。
+
+    fla-hub 的 `RwkvTokenizer.save_vocabulary()` 把词表**硬编码**写成 `vocab.txt`，
+    可它自己声明的 `VOCAB_FILES_NAMES = {"vocab_file": "rwkv_vocab_v20230424.txt"}`；
+    而 `PreTrainedTokenizer.save_pretrained()` 又会把 `vocab_file` 这个键从
+    tokenizer_config.json 里 pop 掉（tokenization_utils_base.py:2067-2068 —— 它属于
+    "按约定解析"的文件名，不该写进配置）。
+    两边对不上：存出来的目录 `AutoTokenizer.from_pretrained(dir)` 会去找
+    `rwkv_vocab_v20230424.txt`，而目录里只有 `vocab.txt`，**而且这一步不报错**，
+    只在真正加载时才炸。所以这里按它声明的名字把原始词表补一份。
+    """
+    vfn = getattr(type(tok), "vocab_files_names", None) or {}
+    name = vfn.get("vocab_file")
+    if not name:
+        return "词表未补（拿不到 vocab_files_names）"
+    cands = []
+    ik = getattr(tok, "init_kwargs", None) or {}
+    if ik.get("vocab_file"):
+        cands.append(Path(ik["vocab_file"]))
+    hub = Path(os.environ.get("HF_HOME", str(Path.home() / ".cache" / "huggingface"))) / "hub"
+    if hub.is_dir():  # 兜底：直接去 HF 缓存里翻
+        cands += sorted(hub.glob(f"**/{name}"))
+    srcp = next((c for c in cands if c.is_file()), None)
+    if srcp is None:
+        return f"词表未补（找不到源，试过 {[str(c) for c in cands[:3]]}）"
+    dst = md / name
+    shutil.copyfile(srcp, dst)
+    return f"词表 {dst.name} <- {srcp}（{dst.stat().st_size} B）"
+
+
 # ─────────────────────────── 主流程 ───────────────────────────
 
 def parse_args(argv=None):
@@ -279,7 +382,11 @@ def main(argv=None) -> int:
     device = torch.device("cuda", local_rank)
     is_main = local_rank == 0
     if world > 1:
-        torch.distributed.init_process_group(backend="nccl")
+        # 超时必须显式给。默认 30 分钟，而生成阶段只让 0 号跑，其余 rank 全挂在
+        # 第 840 行那个 barrier 上等 —— 生成一超 30 分钟，rank1 先超时死，整轮在
+        # 最后一步翻车（产物还在，但 report.json 写不下去）。
+        torch.distributed.init_process_group(
+            backend="nccl", timeout=datetime.timedelta(hours=3))
         # 非 0 号 rank 的 stdout 丢进 devnull：日志只留一份，stderr 不动（报错要看得到）
         if not is_main:
             sys.stdout = open(os.devnull, "w")
@@ -598,14 +705,42 @@ def main(argv=None) -> int:
     # 顺序是有意的：生成阶段要跑十几分钟，中途任何异常（OOM、缓存不兼容、
     # 下载被打断）都会让一整轮训练白跑。先把权重落盘，后面崩了模型也还在。
     # 两个 rank 同时 save_pretrained 到同一目录会互相踩，只让 0 号写。
+    #
+    # 但存档**绝不能反过来杀掉评测**。v8 的教训：save_pretrained 抛了
+    # AttributeError（fla 的 _tied_weights_keys 是 list，transformers 5.x 要 dict），
+    # 异常一路穿出 main()，把已经跑完的 10.6 分钟训练和还没跑的 dev/生成一起带走。
+    # 所以：先修根因，再整块兜住，最后还有一条 torch.save 的兜底。
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     if world > 1:
         torch.distributed.barrier()
     if is_main:
-        base_model.save_pretrained(out_dir / "model")
-        tok.save_pretrained(out_dir / "model")
-        print(f"· 已存档 {out_dir / 'model'}", flush=True)
+        md = out_dir / "model"
+        md.mkdir(parents=True, exist_ok=True)
+        n_fix, tied_shared = fix_tied_weight_keys(base_model)
+        print(f"· _tied_weights_keys 归一 {n_fix} 个模块 · "
+              f"lm_head 与输入嵌入共享存储={tied_shared}", flush=True)
+        ok = False
+        try:
+            base_model.save_pretrained(md)
+            tok.save_pretrained(md)
+            print(f"· {fixup_tokenizer_dir(md, tok)}", flush=True)
+            print(f"· 存档校验 {verify_saved_weights(base_model, md)}", flush=True)
+            print(f"· 已存档 {md}", flush=True)
+            ok = True
+        except Exception as e:
+            print(f"! save_pretrained 失败：{type(e).__name__}: {e}", flush=True)
+        if not ok:
+            # 兜底：至少把原始权重留下来，别让一整轮训练白跑。
+            try:
+                raw = out_dir / "model_raw_state_dict.pt"
+                torch.save(base_model.state_dict(), raw)
+                base_model.config.save_pretrained(md)
+                tok.save_pretrained(md)
+                fixup_tokenizer_dir(md, tok)
+                print(f"· 兜底存档 {raw}（标准布局没写成，推理端要改读法）", flush=True)
+            except Exception as e:
+                print(f"! 兜底存档也失败：{type(e).__name__}: {e}", flush=True)
 
     # 关掉梯度检查点。它在 eval 下本来就不生效，但 transformers 会因为
     # "gradient checkpointing 与 use_cache 不兼容" 把生成的状态缓存一并关掉 ——

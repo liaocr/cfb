@@ -164,9 +164,11 @@ def main() -> int:
     ap.add_argument("--lr", type=float, default=1e-4, help="峰值学习率")
     ap.add_argument("--gen-n", type=int, default=89, help="训完生成多少条 dev 稿子给尺子打分")
     ap.add_argument("--gen-max-new", type=int, default=768, help="单条生成上限 token")
-    ap.add_argument("--gen-budget", type=float, default=1500,
+    ap.add_argument("--gen-budget", type=float, default=3600,
                     help="生成阶段时间预算（秒）。开缓存时 89 条约 15 分钟；"
-                         "缓存失效时它会兜住，不至于把整轮拖垮")
+                         "缓存失效（fla 的 RWKV7 缓存本就标着 unsupported）时"
+                         "实测约 7 token/s、一条 60 秒，89 条要 90 分钟 —— "
+                         "3600 秒能拿到 55 条上下，够配对评测，也不至于把整轮拖垮")
     args = ap.parse_args()
 
     user = username()
