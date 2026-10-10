@@ -157,9 +157,14 @@ export function validateV5MicroWeights(weights) {
 
 // v14.25.5 止血（v1 扫描报告 §四「优先级建议」第 1 条曾建议，跨越 v2/v3 一直未修）：
 // 生产权重文件 `transfer/models/v5-micro-weights.json` 曾带一个「自评 architecture」块，
-// 声称 `CFB-Micro-65M` / 60,854,837 参数 / 8 层 Alternating RoPE Transformer；
-// 而文件里真实存在的权重数字只有 1,042 个（相差约 58,000 倍），且全仓无任何代码读取该字段。
-// 该块已删除；此防线防止它被重新写回 —— **规模声明必须由实测派生，不许手写进生产权重**。
+// 声称 `CFB-Micro-65M` / 60,854,837 参数 / 8 层 Alternating RoPE Transformer。
+//
+// ⚠ 该数字**不是虚构的** —— 它来自真实 Kaggle 训练（Tesla T4 ×2，提交 b3d5c59，
+//   记录在 transfer/models/cfb-micro-65m-report.json 的 totalParameters）。但它是**另一个产物**的元数据：
+//   本文件里真实存在的权重数字只有 1,042 个符号权重，而那个神经模型从未被导出
+//   （cfb-micro-neural.onnx 仅 7,760 字节，内含单个 fc1 Gemm 层；60.9M 参数按 INT8 需 58 MB）。
+//   ⇒ 把 A 产物的规模声明贴进 B 产物的权重文件，会让任何读文件的人**高估**这条线的完成度。
+//   该块已删除；此防线防止它被重新写回 —— **规模声明必须与它所在的文件描述同一个产物**。
 //
 // ★ 作用域**只限生产权重文件名**：冻结裁判 `v5-micro-weights.judge-4764fd2.json` 同样带
 //   architecture 块，但它是被 preregistration 钉住的历史件，动它会破坏历史实验的可复现性

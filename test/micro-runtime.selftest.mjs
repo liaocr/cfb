@@ -39,7 +39,7 @@ assert.deepEqual(V5_MICRO_WEIGHTS.featureNames, V5_FEATURE_NAMES)
 
 // v14.25.5：自评 `architecture` 块已退役（历史上声称 60,854,837 参数 / 8 层 Transformer，
 // 而文件里真实权重数字只有 1,042 个，且全仓无人读取）——出现即拒收，防止被重新写回。
-assert.equal('architecture' in onDisk, false, 'fictional self-reported architecture block must stay removed')
+assert.equal('architecture' in onDisk, false, 'misplaced architecture block (real 65M Kaggle metadata pasted into a 1,042-weight file) must stay removed')
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cfb-micro-weights-'))
 const tmpWeights = path.join(tmpDir, 'v5-micro-weights.json')   // ★ 必须叫这个名字：防线按 basename 生效
 fs.writeFileSync(tmpWeights, JSON.stringify({ ...onDisk, architecture: { name: 'CFB-Micro-65M', totalParameters: 60854837 } }))
