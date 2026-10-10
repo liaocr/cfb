@@ -1,27 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""一条命令把 RWKV7 压缩器训练内核推到 Kaggle 并开跑。
+"""把 RWKV7 压缩器训练内核推到 Kaggle 并开跑（在本机执行）。
 
-用法：
-  curl -sSL https://raw.githubusercontent.com/liaocr/cfb/main/deploy/kaggle/start-rwkv7.py | python3 -
+为什么必须显式指定 machine_shape = NvidiaTeslaT4
+------------------------------------------------
+fla 依赖 Triton kernel，需要 sm_70+。Kaggle 的 P100 是 **sm_60**，kernel 编不出来。
+不写这个字段就由 Kaggle 自己挑，很可能给 P100，然后失败在一个与训练毫无关系的地方，
+而且报错信息不会告诉你"是卡选错了"。
 
-它做四件事：
-  1. 找到（必要时安装）kaggle CLI；
-  2. 读凭据（~/.kaggle/kaggle.json，或 KAGGLE_USERNAME/KAGGLE_KEY）；
-  3. 下载内核脚本 + 数据，生成 kernel-metadata.json（**GPU 必须是 T4**、Internet 开）；
-  4. kaggle kernels push —— 推送即开跑，打印运行页链接。
+为什么要把训练器合成一个自包含的 kernel.py
+------------------------------------------
+Kaggle 的 script kernel **不接受命令行参数**，只运行 code_file。所以这里：
+  1. 从 GitHub raw 下载 train_rwkv7.py；
+  2. 切掉它的 if __name__ == "__main__": 块；
+  3. 拼上一段显式 argv 的入口（冒烟 / 真训）；
+  4. 写成 kernel.py，作为唯一的 code_file 推送。
+数据不随内核上传 —— 内核开了外网，由训练器自己从 raw.githubusercontent 下载，
+这样不存在"多文件上传到底带不带"的不确定性。
 
-⚠ 为什么强制 T4：fla 依赖 Triton kernel，需要 sm_70+。Kaggle 的 P100 是 sm_60，
-   kernel 编不出来。训练器自己也会在启动时检查计算能力并拒绝 P100。
-
-⚠ Kaggle 从 raw.githubusercontent.com/liaocr/cfb/main 拉代码 —— **本地 commit 对 Kaggle
-   不可见，必须先 push**。否则跑的是旧版本，而且不会有任何报错。
+用法
+----
+  python deploy/kaggle/start-rwkv7.py --smoke     # 只验证环境（默认）
+  python deploy/kaggle/start-rwkv7.py --train     # 真训
+  python deploy/kaggle/start-rwkv7.py --status    # 查状态
 """
 from __future__ import annotations
 
+import argparse
 import json
-import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -30,93 +36,95 @@ from pathlib import Path
 
 BASE = "https://raw.githubusercontent.com/liaocr/cfb/main"
 SLUG = "cfb-rwkv7-compressor"
-FILES = {
-    "train_rwkv7.py": f"{BASE}/deploy/kaggle/train_rwkv7.py",
-    "train.jsonl": f"{BASE}/deploy/kaggle/data/sft-train.jsonl",
-    "dev.jsonl": f"{BASE}/deploy/kaggle/data/sft-dev.jsonl",
-}
+TRAINER_URL = f"{BASE}/deploy/kaggle/train_rwkv7.py"
+DATA_TRAIN = f"{BASE}/deploy/kaggle/data/sft-train.jsonl"
+DATA_DEV = f"{BASE}/deploy/kaggle/data/sft-dev.jsonl"
+OUT_DIR = "/kaggle/working/rwkv7-compressor"
 
 
-def find_kaggle():
-    exe = shutil.which("kaggle")
-    if exe:
-        return [exe]
-    print("· 未找到 kaggle CLI，正在安装（pip install kaggle）…")
-    if subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "kaggle"]).returncode != 0:
-        sys.exit("安装 kaggle CLI 失败；请手动 pip install kaggle 后重试。")
-    exe = shutil.which("kaggle")
-    return [exe] if exe else [sys.executable, "-m", "kaggle"]
+def get(url: str) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": "cfb-kaggle-launcher"})
+    with urllib.request.urlopen(req, timeout=180) as r:
+        return r.read().decode("utf-8")
 
 
-def credentials():
-    user, key = os.environ.get("KAGGLE_USERNAME"), os.environ.get("KAGGLE_KEY")
-    cfg = Path.home() / ".kaggle" / "kaggle.json"
-    if (not user or not key) and cfg.exists():
-        try:
-            d = json.loads(cfg.read_text())
-            user, key = d.get("username"), d.get("key")
-        except Exception as exc:
-            sys.exit(f"读取 {cfg} 失败：{exc}")
-    if not user or not key:
-        sys.exit(
-            "找不到 Kaggle 凭据。任选其一：\n"
-            "  A) https://www.kaggle.com/settings/account → Create New Token →\n"
-            "     把下载的 kaggle.json 放到 ~/.kaggle/kaggle.json\n"
-            "  B) export KAGGLE_USERNAME=你的用户名 KAGGLE_KEY=你的key\n"
-            "然后重跑同一条命令。"
-        )
-    return user, key
+def username() -> str:
+    """从 kaggle CLI 读用户名 —— 新的 KGAT_ 令牌不把用户名编码在里面。"""
+    r = subprocess.run([sys.executable, "-m", "kaggle", "config", "view"],
+                       capture_output=True, text=True)
+    for line in r.stdout.splitlines():
+        if line.strip().startswith("- username:"):
+            return line.split(":", 1)[1].strip()
+    sys.exit("FATAL: 读不到 Kaggle 用户名。先跑 python -m kaggle config view 看看。")
 
 
-def main():
-    kaggle = find_kaggle()
-    user, _ = credentials()
-    print(f"· Kaggle 用户：{user}")
+def build_kernel(mode: str) -> str:
+    src = get(TRAINER_URL)
+    marker = 'if __name__ == "__main__":'
+    if marker not in src:
+        sys.exit("FATAL: 训练器里找不到 __main__ 块，无法注入入口。")
+    body = src[: src.index(marker)].rstrip() + "\n"
+    argv = ["--smoke", "--data", DATA_TRAIN, "--dev", DATA_DEV]
+    if mode == "train":
+        argv = ["--data", DATA_TRAIN, "--dev", DATA_DEV, "--out", OUT_DIR]
+    entry = (
+        "\n\n# ── 由 start-rwkv7.py 注入的入口（Kaggle script kernel 不能传命令行参数）──\n"
+        "if __name__ == \"__main__\":\n"
+        "    sys.exit(main([\n"
+        + "".join(f"        {json.dumps(a)},\n" for a in argv)
+        + "    ]))\n"
+    )
+    return body + entry
 
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--smoke", action="store_const", const="smoke", dest="mode")
+    g.add_argument("--train", action="store_const", const="train", dest="mode")
+    g.add_argument("--status", action="store_true")
+    ap.set_defaults(mode="smoke")
+    args = ap.parse_args()
+
+    user = username()
+    kid = f"{user}/{SLUG}"
+    print(f"· Kaggle 用户：{user} · 内核 {kid}")
+
+    if args.status:
+        r = subprocess.run([sys.executable, "-m", "kaggle", "kernels", "status", kid])
+        return r.returncode
+
+    code = build_kernel(args.mode)
     work = Path(tempfile.mkdtemp(prefix="cfb-rwkv7-"))
-    print(f"· 工作目录：{work}")
-    for name, url in FILES.items():
-        print(f"· 下载 {name} …")
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "cfb-start"})
-            with urllib.request.urlopen(req, timeout=180) as r:
-                (work / name).write_bytes(r.read())
-        except Exception as exc:
-            sys.exit(f"下载 {url} 失败：{exc}\n"
-                     "（若 data/ 还不存在，先在本地跑 tools/build-sft.mjs 并把结果提交到 "
-                     "deploy/kaggle/data/ 再 push。）")
-
-    # 冒烟优先：默认只跑冒烟，验证环境；加 --train 才真训
-    mode = "train" if "--train" in sys.argv else "smoke"
-    cmd = ["python", "train_rwkv7.py", "--data", "train.jsonl", "--dev", "dev.jsonl"]
-    if mode == "smoke":
-        cmd += ["--smoke"]
-    else:
-        cmd += ["--out", "/kaggle/working/rwkv7-compressor"]
-    code = " ".join(cmd)
-
+    (work / "kernel.py").write_text(code, encoding="utf-8")
     meta = {
-        "id": f"{user}/{SLUG}",
-        "title": f"CFB RWKV7 compressor ({mode})",
-        "code_file": "train_rwkv7.py",
+        "id": kid,
+        "title": "CFB RWKV7 compressor",
+        "code_file": "kernel.py",
         "language": "python",
         "kernel_type": "script",
         "is_private": True,
         "enable_gpu": True,
         "enable_internet": True,
+        "machine_shape": "NvidiaTeslaT4",
         "dataset_sources": [],
         "kernel_sources": [],
         "competition_sources": [],
+        "model_sources": [],
     }
     (work / "kernel-metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    print(f"· 模式 {args.mode} · machine_shape NvidiaTeslaT4 · 合成 kernel.py {len(code)} 字符")
+    print(f"· 工作目录 {work}")
 
-    print(f"· 推送内核（{mode}）…")
-    r = subprocess.run(kaggle + ["kernels", "push", "-p", str(work)])
+    r = subprocess.run([sys.executable, "-m", "kaggle", "kernels", "push", "-p", str(work)])
     if r.returncode != 0:
-        sys.exit(f"kaggle kernels push 失败（退出码 {r.returncode}）。")
-    print(f"· 已推送。运行页：https://www.kaggle.com/code/{user}/{SLUG}")
-    print(f"· 内核入口：{code}")
+        print(f"FATAL: push 失败（退出码 {r.returncode}）", file=sys.stderr)
+        return r.returncode
+    print(f"· 已推送并开跑。运行页：https://www.kaggle.com/code/{kid}")
+    print(f"· 查状态：python deploy/kaggle/start-rwkv7.py --status")
+    print(f"· 拉日志：python -m kaggle kernels output {kid} -p .cfb-offline/kaggle-out")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
