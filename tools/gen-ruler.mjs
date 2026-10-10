@@ -33,16 +33,45 @@
 // 理由与实测证据见 judge() 里 G7 那一段的注释。一句话：它不是布尔量，而且它一直在
 // 掩盖学生的真实缺口（阈值放宽后师生差距从 15.1 点**扩大**到 41.1 点）。
 //
-// 软分（权重和为 1，全部在代码里，注释与代码对不上就是注释错）：
+// 软分（七项，权重和 1.15，最后除以 1.15；全部在代码里，注释与代码对不上就是注释错）：
 //   S1 anchorsKept .28   S2 groundingDensity .18   S3 decisionCoverage .18
 //   S4 compressionGain .13   S5 tailRetention .13   S6 quoteFidelity .10
+//   S7 orderPreserved .15   ← gen-ruler/5 新增
 //   S5 是**反抽取**的那一刀：抽取器只会捞开头，凡是尾部锚点整片丢失的稿子，
 //   它的语义覆盖就是假的。这一维让「删掉探索过程」这件事第一次有了代价。
 //   S4 是**压缩**唯一该待的地方（G7 下架后它独自承担这件事）。
+//   S7 是**顺序**唯一该待的地方。
 //
-// ⚠ 权重在 v4 **一个都没动**。这是刻意的：v9 那一轮的软分（教师 0.6957 / 学生 0.5638）
-// 必须能和 v4 之后的软分直接比，动了权重就比不出来了。
-// 「现在先软标准」要的是把压缩从硬门挪到软分，不是把软分重算一遍。
+// ── gen-ruler/5：修两个被**退化阶梯**实测出来的缺陷 ──
+//
+// v4 的软分有两个洞，是拿 60 条过门教师稿做退化阶梯实测出来的（不是推演）：
+//
+//   缺陷一　打乱句序**完全测不出**。L4（把稿子的句子随机打乱）60/60 全过，
+//   软分 0.6993 vs 基线 0.7006。机理已逐项确认：六个软分项**全是集合型的**，
+//   原稿 vs 打乱逐项差 0.0000 / -0.0016 / 0.0000 / +0.0016 / 0.0000 / -0.0243。
+//   对「压缩**推理**」这个任务，顺序就是含义 —— 打乱之后的稿子不能当思维链读。
+//   修法：S7 orderPreserved，量「稿中锚点按稿序在 raw 里的位置是否同序」（Kendall tau）。
+//   候选里它判别力最好（L0 vs L4 的 AUC 0.786，锚点位置 LNDS 0.732，句质心 LNDS 0.556）。
+//   ⚠ 它**不是**硬门，也不该是：忠实稿自己也只有 0.798（教师会合法地重排），
+//   任何阈值都会误杀好稿。程度问题就放软分 —— 这正是 v4 立的那条规矩。
+//
+//   缺陷二　软分**奖励删内容**。L1（删掉末 25% 句）软分反而**升高** 0.7006 -> 0.7121，
+//   因为 S4 变好；L2（删掉一半）只降到 0.6898（-1.5%）。而删掉的 107 句里全是决策：
+//   「如果脚本里 500 返回 None / 空串 / []，那么 bug 坐实」「下一步是先写复现脚本跑一遍」。
+//   为什么六个维度都没抓到：被删句子的锚点数 1.72/句，保留的是 3.55/句 ——
+//   **决策是锚点稀疏的散文**，而六个维度里五个是锚点度量。
+//   修法：S4 改成**到 COMPRESSION_TARGET 封顶**。
+//
+//   为什么封顶是对的（而不是拍一个下限）：raw 是英文、稿子是中文，跨语言的散文比对
+//   从根上不可行（实测：完整稿对 raw 决策句的 4-gram 覆盖率也只有 0.307，判别 AUC 0.539
+//   —— 等于瞎猜）。所以「压到 0.5 以下」这件事**无法验证是不是无损**，
+//   而它有两个成因：无损凝练（好）和删内容（坏）。跨语言分不开。
+//   既然 COMPRESSION_TARGET 已经是权威数，那就**不为超发付钱**：
+//   到了 0.5 就是满分，再短不加分。这不新增任何阈值 —— 它用的是用户已经定下的那个数。
+//
+//   ⚠ 跨版本不可比：v4 的软分和 v5 的软分**不能直接比**（S4 换了公式、多了 S7）。
+//   要比就把两边都拿 v5 重算 —— 尺子是纯函数、零成本，重算不花钱。
+//   这条和 v4 那条「权重一个都没动」是同一件事的两面：**只在同版本内比**。
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -53,7 +82,7 @@ import { fileURLToPath } from 'node:url'
 // 用生产同一个估算器（src/tokens.js，中文 0.6 / 其余 0.3），不另立口径。
 import { estimateTokens } from '../src/tokens.js'
 
-export const RULER_VERSION = 'gen-ruler/4'
+export const RULER_VERSION = 'gen-ruler/5'
 
 // ── 压缩：软标准，不是硬门（gen-ruler/4）──
 //
@@ -231,6 +260,45 @@ export function retention(anchors, hay) {
   return k / list.length
 }
 
+/**
+ * 顺序保持度 —— 稿中的锚点，按**稿序**看，在 raw 里的位置是不是也同序。
+ *
+ * 为什么需要它（gen-ruler/5）：退化阶梯实测出打乱句序**完全测不出**（L4 60/60 全过，
+ * 软分 0.6993 vs 基线 0.7006）。六个软分项全是集合型的，没有一项看顺序。
+ * 而对「压缩推理」这个任务，顺序就是含义：打乱之后的稿子不能当思维链读。
+ *
+ * 为什么用 Kendall tau 而不是 LNDS：实测判别力 tau 更好
+ * （L0 vs L4 的 AUC 0.786，锚点位置 LNDS 0.732，句质心 LNDS 0.556）。
+ * 映射到 [0,1] 便于当权重项：tau 1 -> 1，tau 0 -> 0.5，tau -1 -> 0。
+ *
+ * 为什么**不是**硬门：忠实稿自己也只有 0.798 —— 教师会合法地重排
+ * （先给结论再补依据、把落点提前）。任何阈值都会误杀好稿。程度问题放软分。
+ *
+ * 位置取 raw 里的**首次**出现。锚点在 raw 里出现多次时首现未必是稿子指的那一次，
+ * 会引入少量噪声；这是已知的、可接受的 —— 它只进软分，不进判决。
+ */
+export function orderPreserved(raw, draft) {
+  const nr = norm(raw)
+  const seen = new Set()
+  const pos = []
+  for (const { a } of anchorsWithPos(draft)) {
+    if (seen.has(a)) continue
+    seen.add(a)
+    let at = nr.indexOf(a)
+    if (at < 0 && a.includes('/')) { const b = base(a); if (b) at = nr.indexOf(b) }
+    if (at >= 0) pos.push(at)
+    if (pos.length >= 200) break
+  }
+  if (pos.length < 3) return 1
+  let con = 0, dis = 0
+  for (let i = 0; i < pos.length; i++) for (let j = i + 1; j < pos.length; j++) {
+    if (pos[i] < pos[j]) con++
+    else if (pos[i] > pos[j]) dis++
+  }
+  const tot = (pos.length * (pos.length - 1)) / 2
+  return tot ? (con - dis) / tot / 2 + 0.5 : 1
+}
+
 const FAIL_RX = /EACCES|ENOENT|EPERM|Error|error:|FAIL|fail|expected|assert|\u5931\u8d25|\u62a5\u9519|\u8d85\u65f6|timeout|regression|denied|\u62d2\u7edd|\u65e0\u6cd5|\u4e0d\u80fd|\u4e0d\u7b49\u4e8e|got /i
 // 注意：这几个正则用 .test() 判定，**绝不能带 /g** —— 带 /g 的 RegExp 有 lastIndex 状态，
 // 连续 .test() 会隔次返回 false，尺子就会变成随机的。旧版这里正是这个 bug。
@@ -279,6 +347,41 @@ export function failureText(ctx) {
   const t = norm(ctx)
   if (!t) return ''
   return splitSentences(t).find((s) => FAIL_RX.test(s)) || ''
+}
+
+// ── 决策结构的标记 ──
+//
+// 为什么需要它（gen-ruler/5 的缺陷二）：退化阶梯实测出——
+// 删掉末 25% 句子，软分反而**升高**。而删掉的 107 句里全是决策：
+//   「如果脚本里 500 返回 None / 空串 / []，那么 bug 坐实」
+//   「下一步是先写复现脚本跑一遍确认当前报 C404，然后改那一行」
+// 为什么六个维度都没抓到：被删句子的锚点数 1.72/句，保留的是 3.55/句 ——
+// **决策是锚点稀疏的散文**，而六个维度里五个是锚点度量。
+//
+// 为什么不能用散文 n-gram 直接比：raw 是英文、稿是中文，跨语言不可行。
+// 实测：完整稿对 raw 决策句的 4-gram 覆盖率也只有 0.307，判别 AUC 0.539 = 瞎猜。
+// 但**标记词各算各的**：raw 用 if/then/next，稿用 如果/那么/下一步，
+// 两边各数各的不需要对齐 —— 这是唯一跨语言可用的决策信号。
+//
+// 实测判别力（60 条过门教师稿）：
+//   决策标记数　　　　L0 5.300 / L1 1.200 / L2 0.725 / L4 5.300
+//   AUC(L0 vs L1) 0.862、AUC(L0 vs L2) 0.897
+//   对照：原 S3 的锚点口径 AUC 只有 0.505 / 0.616
+//   L4（打乱句序）不变 —— 说明它量的是**决策结构**，与顺序正交。
+//
+// ⚠ 风险如实记载：这是**在散文上跑正则**，而本仓库在这件事上烧过不止一次。
+// 它只能进**软分**，永远不能变成硬门 —— 一个不写「如果」两字
+// 但把决策写成祋使句的稿子会被误杀，那是误杀，不是缺点。硬门只装布尔不变量。
+export const DECISION_RX = /\u5982\u679c|\u90a3\u4e48|\u4e00\u65e6|\u5426\u5219|\u4e07\u4e00|\u4e0b\u4e00\u6b65|\u7136\u540e|\u63a5\u7740|\u9996\u5148|\u5176\u6b21|\u6700\u540e|\u5148[^\uff0c\u3002]{0,10}\u518d|\bif\b|\bthen\b|\botherwise\b|\bunless\b|\bnext\b|\bfirst\b|\bfinally\b|\bcase\b/gi
+
+/** 文本里决策结构的标记数（条件分支 + 计划步骤）。进软分，不进硬门。 */
+export function decisionMarkers(text) {
+  const t = norm(text)
+  if (!t) return 0
+  // ⚠ 用 String.match 而不是 RegExp.test：带 /g 的 test 有 lastIndex 状态，
+  // 连续调用会隔次返回 false。本仓库在 ACTION_RX 上已经犯过一次。
+  const m = t.match(DECISION_RX)
+  return m ? m.length : 0
 }
 
 export function commandsOf(text) {
@@ -578,23 +681,55 @@ export function judge(input) {
   const mid = Math.floor(norm(raw).length / 2)
   const nraw = norm(raw)
   const tailAnchors = rawAnchors.filter((a) => nraw.indexOf(a) >= mid)
-  const actionSentences = splitSentences(nraw).filter((s) => ACTION_RX.test(s))
-  const decCov = actionSentences.length
-    ? actionSentences.reduce((acc, s) => acc + retention(anchorsOf(s), draft), 0) / actionSentences.length
-    : retention(rawAnchors, draft)
+  // gen-ruler/5：S3 原来量的是「动作句里的锚点保留率」——
+  // 那又是锚点度量（与 S1 重复），而它叫 decisionCoverage。
+  // 实测它对「决策被删」的判别 AUC 只有 0.505 / 0.616 —— 等于瞎猜。
+  // 现在改成真的量决策：稿里的决策标记数 / 按压缩比推算应有的标记数。
+  // 分母用 tokRatio：压得越短，应有的标记越少，所以这不是在惩罚压缩。
+  const rawMarkers = decisionMarkers(raw)
+  const draftMarkers = decisionMarkers(draft)
+  const markerExpect = rawMarkers * tokRatio
+  // raw 自己就没什么决策结构时不判（返回 1 = 不惩罚），
+  // 否则会把「没东西可保留」误判成「一个都没保留」。
+  const decCov = rawMarkers < 2 ? 1 : Math.min(1, draftMarkers / Math.max(markerExpect, 1e-6))
   const draftAnchors = anchorsOf(draft)
   const grounded = draftAnchors.length ? draftAnchors.filter((a) => norm(ev).includes(a) || norm(ev).includes(base(a))).length / draftAnchors.length : 0
-  const gain = Math.max(0, Math.min(1, (1 - tokRatio - 0.10) / 0.75))
+  // gen-ruler/5：压缩收益 = 到 target 封顶的压缩量 x **锚点保留率**。见文件头「缺陷二」。
+  //
+  // 两处都必要，实测各修一半：
+  //   只封顶（gain = (1-tokRatio)/(1-target)，到 target 满分）不够 ——
+  //     教师逐条的 tokRatio 在 0.5 上下浮动，删句子把更多行推到 0.5 以下，S4 照样涨，
+  //     L1 仍以 0.7451 > 0.7379 高于 L0。
+  //   再乘保留率才够 —— 「靠删内容换来的空间不算收益」。
+  //
+  // 为什么乘 S1（锚点保留率）而不是别的：它是**唯一跨语言可用**的覆盖度量。
+  // raw 是英文、稿子是中文，散文级比对不可行（实测完整稿对 raw 决策句的 4-gram 覆盖率
+  // 也只有 0.307，判别 AUC 0.539 = 瞎猜）。锚点是跨语言不变量，所以只能用它。
+  // 这里不新增任何阈值 —— 用的是用户已定的 COMPRESSION_TARGET 和已有的 S1。
+  const anchorsKept = retention(rawAnchors, draft)
+  const gain = (COMPRESSION_TARGET < 1
+    ? Math.max(0, Math.min(1, (1 - tokRatio) / (1 - COMPRESSION_TARGET)))
+    : Math.max(0, Math.min(1, (1 - tokRatio - 0.10) / 0.75))) * anchorsKept
+  // S7 的判据只读 (raw, draft)，与 S1~S6 一样是纯函数。
+  const order = orderPreserved(raw, draft)
+  detail.order = { preserved: +order.toFixed(4), note: 'Kendall tau 映射到 [0,1]；忠实稿自己也只有 ~0.80' }
   const sub = {
-    S1_anchorsKept: +retention(rawAnchors, draft).toFixed(4),
+    S1_anchorsKept: +anchorsKept.toFixed(4),
     S2_groundingDensity: +grounded.toFixed(4),
     S3_decisionCoverage: +decCov.toFixed(4),
+    S3_rawMarkers: rawMarkers,
+    S3_draftMarkers: draftMarkers,
     S4_compressionGain: +gain.toFixed(4),
     S5_tailRetention: +retention(tailAnchors, draft).toFixed(4),
     S6_quoteFidelity: detail.quotes.fidelity,
+    S7_orderPreserved: +order.toFixed(4),
   }
-  const W = { S1: 0.28, S2: 0.18, S3: 0.18, S4: 0.13, S5: 0.13, S6: 0.10 }
-  const score = +(sub.S1_anchorsKept * W.S1 + sub.S2_groundingDensity * W.S2 + sub.S3_decisionCoverage * W.S3 + sub.S4_compressionGain * W.S4 + sub.S5_tailRetention * W.S5 + sub.S6_quoteFidelity * W.S6).toFixed(4)
+  // 权重：原有六项**逐字不动**（.28/.18/.18/.13/.13/.10），新增 S7 = .15，
+  // 最后除以 1.15 归一。这样做是为了审计方便 —— 老六项的数字在代码里没被改过，
+  // 谁都看得出「只加了一项」，而不是「把权重重调了一遍」。
+  const W = { S1: 0.28, S2: 0.18, S3: 0.18, S4: 0.13, S5: 0.13, S6: 0.10, S7: 0.15 }
+  const WSUM = W.S1 + W.S2 + W.S3 + W.S4 + W.S5 + W.S6 + W.S7
+  const score = +((sub.S1_anchorsKept * W.S1 + sub.S2_groundingDensity * W.S2 + sub.S3_decisionCoverage * W.S3 + sub.S4_compressionGain * W.S4 + sub.S5_tailRetention * W.S5 + sub.S6_quoteFidelity * W.S6 + sub.S7_orderPreserved * W.S7) / WSUM).toFixed(4)
 
   // gaugeable 与 pass 是**两个正交的维度**，调用方必须分开用：
   //   gaugeable=false  => 这把尺子对这对输入没有受力点，它的判决是「无意义」，不是「不过」。

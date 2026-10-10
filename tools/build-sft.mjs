@@ -35,6 +35,15 @@ const OUT = path.resolve(ROOT, arg('--out', '.cfb-offline/sft'))
 const DEV_RATIO = Number(arg('--dev-ratio', '0.1'))
 const MIN_DRAFT = Number(arg('--min-draft', '40'))
 const MIN_RAW = Number(arg('--min-raw', '800'))
+// ── dev 冻结（--dev-ids）──
+// 为什么需要：默认的 dev 是按仓库哈希切的，**加新仓库会让 dev 变大**。
+// 而 dev 一变大，上一轮在 89 条上跑出来的成绩就没法比了 ——
+// 两个数各自都对，放在一起比就是错的，而且**不会以任何方式报警**。
+// 所以要把 dev 逐 id 钉死，让「加数据前 / 加数据后」两轮落在同一批单元上。
+// ⚠ 钉住 dev 之后还必须把 **dev 仓库的新单元挡在训练集之外**：
+// 同一仓库的多个单元高度相似（见设计决定三），让它们进训练集就是泄漏，
+// 而泄漏只会让 dev 虚高、不会报警 —— 这正是设计决定三要防的那件事。
+const DEVIDS = arg('--dev-ids', null)
 
 // 提示词只存一份：教师用它产出，学生用它训练。两边各写一份副本就会漂移，
 // 而漂移不会报错，只会让模型学到一个用不上的映射。
@@ -75,11 +84,25 @@ for (const l of lines) {
 }
 
 // 先按仓库切分，再对训练集过滤（见设计决定四）
+const frozenIds = DEVIDS
+  ? new Set(fs.readFileSync(path.resolve(ROOT, DEVIDS), 'utf8').split(/\r?\n/).map((s) => s.trim()).filter(Boolean))
+  : null
+// 冻结模式下，dev 用到的仓库集合。它们的新单元一律不进训练集（防泄漏）。
+const frozenRepos = frozenIds
+  ? new Set(usable.filter((u) => frozenIds.has(u.id)).map((u) => u.repo))
+  : null
 const train = [], dev = []
+let leaked = 0
 for (const u of usable.slice().sort((a, b) => (a.id < b.id ? -1 : 1))) {
-  if (H(u.repo) % 1000 < DEV_RATIO * 1000) { dev.push(u); continue }
+  if (frozenIds ? frozenIds.has(u.id) : H(u.repo) % 1000 < DEV_RATIO * 1000) { dev.push(u); continue }
+  if (frozenRepos && frozenRepos.has(u.repo)) { leaked++; continue }
   if (!u.pass) { for (const g of u.failed) rejects[g] = (rejects[g] || 0) + 1; continue }
   train.push(u)
+}
+if (frozenIds) {
+  const missing = [...frozenIds].filter((id) => !usable.some((u) => u.id === id))
+  console.log('  dev 已冻结：%d 个 id 里找到 %d 个（缺 %d）· dev 仓库的新单元挡掉 %d 条',
+    frozenIds.size, frozenIds.size - missing.length, missing.length, leaked)
 }
 
 const mk = (u) => ({ id: u.id, repo: u.repo, system: SYSTEM,
@@ -109,7 +132,8 @@ const report = {
   rejected: usable.length - rows.length - dev.length,
   rejects,
   split: { train: rows.length, dev: devRows.length, byRepo: true,
-    algorithm: 'fnv1a(repo)%1000 < ' + DEV_RATIO * 1000,
+    algorithm: frozenIds ? ('frozen dev ids: ' + path.relative(ROOT, DEVIDS)) : ('fnv1a(repo)%1000 < ' + DEV_RATIO * 1000),
+    devFrozen: !!frozenIds, leakedFromDevRepos: leaked,
     devUnfiltered: true, why: 'dev 不过滤，否则通过率天然接近 100%，跟教师基线没法比' },
   devTeacherPass: { pass: devPass, total: dev.length,
     rate: dev.length ? Number((devPass / dev.length).toFixed(4)) : null,
