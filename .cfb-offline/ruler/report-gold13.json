@@ -1,0 +1,248 @@
+{
+  "schema": "cfb.gen-ruler-report/1",
+  "ruler": "gen-ruler/1",
+  "at": "2026-10-10T07:39:36.438Z",
+  "input": ".cfb-offline/_goldpairs.jsonl",
+  "n": 13,
+  "pass": 11,
+  "fail": 2,
+  "passRate": 0.8462,
+  "failCount": {
+    "G1 quote-grounded": 1,
+    "G3 anchors-kept": 2
+  },
+  "rows": [
+    {
+      "id": "eacces-config-s0-r5",
+      "pass": true,
+      "failed": [],
+      "score": 0.702,
+      "ratio": 0.1017,
+      "copy": 0.1688,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 1,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [
+          "test/birth.selftest.mjs"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "eacces-config_decoy-s0-r3",
+      "pass": true,
+      "failed": [],
+      "score": 0.6852,
+      "ratio": 0.3324,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 1,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [
+          "test/birth.selftest.mjs"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "eacces-config_long-horizon-s0-r5",
+      "pass": true,
+      "failed": [],
+      "score": 0.8034,
+      "ratio": 0.3013,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 1,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [
+          "test/birth.selftest.mjs"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "perf-regression-s0-r7",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.7707,
+      "ratio": 0.3006,
+      "copy": 0.2042,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "sse-truncated-s0-r4",
+      "pass": true,
+      "failed": [],
+      "score": 0.6551,
+      "ratio": 0.1112,
+      "copy": 0.2659,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "sse-truncated-s0-r5",
+      "pass": true,
+      "failed": [],
+      "score": 0.8618,
+      "ratio": 0.3649,
+      "copy": 0.1231,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "sse-truncated-s1-r3",
+      "pass": true,
+      "failed": [],
+      "score": 0.7084,
+      "ratio": 0.1098,
+      "copy": 0.3005,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "sse-truncated_decoy-s0-r4",
+      "pass": true,
+      "failed": [],
+      "score": 0.7079,
+      "ratio": 0.4941,
+      "copy": 0.2261,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 1,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "transport.js",
+          "README"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "sse-truncated_long-horizon-s0-r5",
+      "pass": true,
+      "failed": [],
+      "score": 0.7579,
+      "ratio": 0.1205,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "wrong-model-s0-r6",
+      "pass": true,
+      "failed": [],
+      "score": 0.8664,
+      "ratio": 0.2571,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "wrong-model-s1-r5",
+      "pass": false,
+      "failed": [
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ],
+      "score": 0.6266,
+      "ratio": 0.0822,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 6,
+        "paths": 4,
+        "ids": 2,
+        "idRetention": 0,
+        "sample": [
+          "package.js",
+          "src/plugin.js",
+          "host-follow.js",
+          "src/host-follow.js",
+          "README",
+          "deepseek-v3"
+        ],
+        "lostPaths": [
+          "package.js",
+          "src/plugin.js"
+        ]
+      }
+    },
+    {
+      "id": "wrong-model_decoy-s0-r4",
+      "pass": true,
+      "failed": [],
+      "score": 0.6207,
+      "ratio": 0.2611,
+      "copy": 0.1074,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "wrong-model_long-horizon-s0-r4",
+      "pass": true,
+      "failed": [],
+      "score": 0.6725,
+      "ratio": 0.1551,
+      "copy": 0.2242,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    }
+  ]
+}

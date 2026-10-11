@@ -1,0 +1,56 @@
+{
+  "schema": "cfb.traj-plan/1",
+  "id": "t130",
+  "at": "2026-10-11T11:25:53.249Z",
+  "variants": [
+    "raw",
+    "policy:base"
+  ],
+  "scenarios": [
+    "flaky-timeout",
+    "sse-truncated",
+    "wrong-model"
+  ],
+  "samples": 3,
+  "maxRounds": 6,
+  "fork": true,
+  "maxTokens": 8000,
+  "storeText": true,
+  "purpose": "第一次用真实数据检验尺子有效性：在线效度配对（执行器代理 ↔ 修好）+ raw vs 压缩稿的 L2 对 + 用真实回执校准单价常数。若效度仍 suspect / unvalidated，接受本机目前只能当记录仪，不开始按分搜索。",
+  "yield": {
+    "l1Pairs": 9,
+    "l2Pairs": 9,
+    "validityPairsApprox": 90,
+    "flywheelPairsApprox": 45,
+    "childStatesApprox": 72
+  },
+  "cost": {
+    "mains": 99,
+    "compresses": 54,
+    "expectedMains": 81,
+    "expectedCompresses": 22,
+    "expectedUsd": 1.177,
+    "capUsd": 4.081,
+    "pricing": {
+      "mainUsd": 0.0125,
+      "mainCapUsd": 0.035,
+      "compressUsd": 0.0075,
+      "compressCapUsd": 0.0114,
+      "divergeRound": 3,
+      "floorShare": 0.4
+    },
+    "shadow": true,
+    "calibrated": {
+      "receipts": 41,
+      "divergeRound": 4,
+      "floorShare": 0.22,
+      "expectedMains": 72,
+      "expectedCompresses": 12,
+      "expectedUsd": 0.99
+    }
+  },
+  "holdoutNote": "场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索",
+  "digest": "892ecf26d815d58c",
+  "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t130/plan.json --store-text --variants raw --policy base --only flaky-timeout,sse-truncated,wrong-model --samples 3 --max-rounds 6 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t130",
+  "design": "c0f6fbb2787a20f9"
+}

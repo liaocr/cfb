@@ -1,0 +1,27 @@
+{
+  "id": "flaky-timeout-s0-r3",
+  "source": "transfer/gold-rejected/flaky-timeout-s0-r3.json",
+  "pending": false,
+  "use": "ruler",
+  "draftChars": 415,
+  "rawChars": 20773,
+  "storedReal": 985,
+  "ratio": 0.047,
+  "line": {
+    "lineChars": 1409,
+    "lineRatio": 0.1498,
+    "g2Ok": true,
+    "over": -994
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "invented-anchors",
+  "warns": [],
+  "fails": [
+    "越界 lint：verdict=invented-anchors ⇒ 稿里有证据外锚点，那是银标不是金标",
+    "本地锚点差集非空（证据外标识符）⇒ [\"point\",\"output\",\"shows\",\"tool\",\"result\",\"formatting\"]"
+  ],
+  "ok": false,
+  "at": "2026-10-05T13:33:32.218Z"
+}

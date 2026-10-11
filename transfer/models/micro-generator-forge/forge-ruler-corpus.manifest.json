@@ -1,0 +1,47 @@
+{
+  "schema": "cfb.birth-forge-ruler-corpus/1",
+  "createdAt": "2026-10-07T11:23:09Z",
+  "joinKey": "unitId",
+  "positives": {
+    "files": [
+      "transfer/models/micro-generator-forge/forge-drafts-batch0.jsonl",
+      "transfer/models/micro-generator-forge/forge-drafts-batch1.jsonl",
+      "transfer/models/micro-generator-forge/forge-drafts-batch2.jsonl"
+    ],
+    "scoredBy": [
+      "transfer/models/micro-generator-forge/forge-scores-batch0.jsonl",
+      "transfer/models/micro-generator-forge/forge-scores-batch1.jsonl",
+      "transfer/models/micro-generator-forge/forge-scores-batch2.jsonl"
+    ],
+    "count": 12,
+    "status": "12/12 provisional-gold（7 条可测轴全过；E1/E2/M2/R1/R2 未测）"
+  },
+  "controlledNegatives": {
+    "file": "transfer/models/micro-generator-forge/forge-negatives.jsonl",
+    "count": 84,
+    "note": "每行含 corruption / expectedAxes / trippedAxes；12 条正例 × 7 类注入（含正对照）",
+    "reproduce": "node tools/micro-generator/forge-negatives.mjs --units <units…> --forge <drafts…> --out <out>"
+  },
+  "realNegatives": {
+    "file": "transfer/models/micro-generator-forge/forge-line-baseline.jsonl",
+    "count": 150,
+    "note": "生产微编译器（compileV5Local）在同一批单元上的产物；文件 150 行 / 148 个唯一单元（与样例批有 2 条重叠）；148/148 not-gold、M4 0/148、birthAccept 148/148 放行",
+    "reproduce": "node tools/micro-generator/forge-line-baseline.mjs --units <units…> --out <out>",
+    "uniqueUnits": 148
+  },
+  "hashes": {
+    "transfer/models/micro-generator-forge/forge-drafts-batch0.jsonl": "f2188b50a37be7d2259599cd51d2e81c6557b0e677374b25ac5c4e90e2166567",
+    "transfer/models/micro-generator-forge/forge-drafts-batch1.jsonl": "bb060f16cb349e673e6ca251f55b8516c7022c8f122f5ab1813b21034aefd9c0",
+    "transfer/models/micro-generator-forge/forge-drafts-batch2.jsonl": "5a76dcf3c6d8715a133012c3f07425b7a82543e5d05aaf4456b53d7a43fd3e36",
+    "transfer/models/micro-generator-forge/forge-scores-batch0.jsonl": "d147d2bbbb085ef69cab95eaa62e3a6786648d9be2fd9a556c931948c03e5b55",
+    "transfer/models/micro-generator-forge/forge-scores-batch1.jsonl": "487db48c8f5bdaf762df2351eac6fa4f093b9db82a5afc91961a76f16c21e445",
+    "transfer/models/micro-generator-forge/forge-scores-batch2.jsonl": "126072ee39da098b49e9448922ef31b9b67d943f54749eb3558dbd8ffea08b75",
+    "transfer/models/micro-generator-forge/forge-negatives.jsonl": "542ecd6bbf06209df2f2e4fb16ba120495ea7898a22b1f21cefe9617b41441f8",
+    "transfer/models/micro-generator-forge/forge-line-baseline.jsonl": "4e0d145570e2576f7225019aa180cd06e74307d20d9078d84f4ecbd34196ea45"
+  },
+  "boundaries": [
+    "没有真机读数（E1/E2 未测）",
+    "没有人工审核（AI 单审；humanReviewerCount=0）",
+    "未训练任何模型；本清单只做索引，不复制正文"
+  ]
+}

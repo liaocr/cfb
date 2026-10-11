@@ -1,0 +1,15 @@
+{
+  "id": "tz-boundary-flaky",
+  "u1": "`test/window.selftest.mjs` 是偶发失败：本地白天跑必过，UTC 跨日那几个小时必挂。失败信息：\n```\nAssertionError [ERR_ASSERTION]: expected isToday(\"2026-10-06T23:41:00+08:00\") to be true\n```\n相关代码：\nsrc/window.js:\n```js\nexport function isToday(iso, now = new Date()) {\n  const d = new Date(iso)\n  return d.toLocaleDateString() === now.toLocaleDateString()\n}\n```\ntest/window.selftest.mjs:\n```js\nimport assert from 'node:assert/strict'\nimport { isToday } from '../src/window.js'\nconst now = new Date('2026-10-06T15:41:00Z')\nassert.ok(isToday('2026-10-06T23:41:00+08:00', now), 'expected isToday to be true')\nconsole.log('window.selftest ok')\n```\n需求口径（README 里写的）：「today」按 **UTC 日历日**判定，不看运行机器的时区。请找出原因并修好，说明依据。不要改测试里给定的时间常量。",
+  "followup": "[tool: bash 结果]\n$ TZ=Asia/Shanghai npm test 2>&1 | tail -n 4\n  FAIL test/window.selftest.mjs  AssertionError [ERR_ASSERTION]: expected isToday(\"2026-10-06T23:41:00+08:00\") to be true\n$ TZ=UTC npm test 2>&1 | tail -n 3\n  PASS test/window.selftest.mjs\n  合计: 1 通过 / 0 失败",
+  "next": [
+    "把 src/window.js 里那一个日期串生成方式改成与运行环境无关的 UTC 分量（只改这一处），然后分别用 TZ=Asia/Shanghai 和 TZ=UTC 各跑一次 npm test"
+  ],
+  "avoid": [
+    "不要改 test/window.selftest.mjs 里的时间常量",
+    "不要引入日期库或新依赖",
+    "不要在 src/window.js 里加缓存或额外参数",
+    "不要顺手改 README 的口径来迁就现有实现",
+    "同一文件内不要同时改两处；唯一落点已给出"
+  ]
+}

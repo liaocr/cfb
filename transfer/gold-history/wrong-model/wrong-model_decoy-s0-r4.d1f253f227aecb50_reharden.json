@@ -1,0 +1,58 @@
+{
+  "schema": "cfb.gold/1",
+  "id": "wrong-model_decoy-s0-r4",
+  "family": "wrong-model",
+  "task": "wrong-model:decoy",
+  "sample": 0,
+  "round": 4,
+  "plan": "t11",
+  "split": "holdout",
+  "at": "2026-10-03T16:43:17.621Z",
+  "raw": "The bug: `makeHostFollow` has a module-level `lastModel` shared across all instances (and persists). Actually `lastModel` is module-level, so it's shared globally — \"上一次会话的模型\". Also `observe(options, n)` only looks at options.model, ignoring n.model. In host 0.9, options.model is undefined, so lastModel retains old value from previous session.\n\nFix: use current session model n.model preferentially, and make state per-instance (avoid leaking across plugin instances). Keep legacy behavior for old host that passes options.model.\n\nDesign: `observe(options, n)` should prefer n?.model, else options?.model. And state should be per-host instance so different sessions/instances don't leak. But within the same plugin instance, sessions 1 and 2 share state — that's fine since we always update from n.model each time.\n\nBut careful: in session 2, n.model is present, so lastModel = 'deepseek-v3.2'. Good.\n\nAlso `callConfig(options)` should take current model. Let's just have observe store, and callConfig use it.\n\nShould state be per-instance? The trace shows a fresh module load; the module-level variable persists across makeHostFollow calls. To be safe, move lastModel into closure.\n\nAlso verify.mjs referenced in package.json doesn't exist? `npm test` runs node verify.mjs. Let me check. There's no verify.mjs in file list. Let's run the smoke test and the selftest.\n\nLet me also check the legacy file is referenced by README - \"排查时先看 legacy\" is a red herring; the actual imported file is host-follow.js (plugin imports './host-follow.js'). Both are identical though. The trap: fixing legacy won't fix anything since plugin uses host-follow.js. Fix the real one; maybe also keep legacy consistent? The task says fix the bug. I'll fix host-follow.js primarily.\n\nLet me run tests first.",
+  "ctx": "用户报告：插件压缩用的模型不是当前会话的模型，而是上一次会话的模型。用户给的 trace 片段在 trace/last.log。可用 `node scripts/smoke-session.mjs` 复现（模拟两次会话，写 trace/trace.log 并打印最后几行）。请找出原因并修好，修好后说明依据。验收：压缩那一跳（trace 里 compiler-transport-started 的 model）必须等于当前会话的模型（n.model），旧宿主仍传 options.model 时也要对。\n\n【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）\n- 已走过的路：（共 10 条调用，详见下方【延续段】；曾涉 node_modules/ git/ 100 trace/last.log dev/null scripts/smoke-session.mjs src/ test/ package.json README.md src/plugin.js host-follow.js src/host-follow.js src/host-follow.legacy.js src/transport.js src/birth.js test/host-follow.selftest.mjs assert/strict）\n\n【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）\n已走过的路：第 1 轮已跑 2 条：bash×2（find、cat）（曾涉 trace/last.log、scripts/smoke-session.mjs）；第 2 轮 bash `for f in src/*.js test/*.mjs package.json README.md; do…` → 「bash: 该沙箱不支持 shell 循环，请直接跑单条命令: for f…」；第 3 轮 bash `cat src/plugin.js` → 「import { makeHostFollow } from '…」；第 3 轮 bash `cat src/host-follow.js` → 「// 跟随宿主：记住宿主最近一次用的模型，压缩那一跳沿用它（避免副模型与会话模型…」；第 3 轮 bash `cat src/host-follow.legacy.js` → 「// 旧实现（仍被部分脚本引用；行为与 src/host-follow.js 相…」；第 3 轮 bash `cat src/transport.js` → 「// 预热：按配置里的模型提前建连（与压缩那一跳无关，用的是原始 cfg）」；第 3 轮 bash `cat src/birth.js` → 「export function birthTransform(n, { cfg,…」；第 3 轮 bash `cat test/host-follow.selftest.mjs` → 「import assert from 'node:assert/strict'」；第 3 轮 bash `cat README.md; echo ===; cat package.json` → 「$ cat README.md」；这些不再重跑，除非中间改过东西。",
+  "calls": [
+    {
+      "name": "bash",
+      "args": "{\"command\": \"node scripts/smoke-session.mjs; echo \\\"--- exit $?\\\"; ls; node test/host-follow.selftest.mjs; echo \\\"selftest exit $?\\\"\"}"
+    }
+  ],
+  "draft": "本轮增量把机理坐实：`makeHostFollow` 的 `lastModel` 是模块级变量（跨实例共享），且 `observe(options, n)` 只看 `options.model`、忽略 `n.model`；宿主 `0.9` 起 `options.model` 为 undefined，使会话 2 沿用旧值而未更新为 `deepseek-v3.2`。\n\n已排除：修改诱饵文件 `src/host-follow.legacy.js` 的路线，因为 README 指向它是干扰项，`plugin` 实际引用 `./host-follow.js`；已排除：继续找 `verify.mjs` 的路线，因为仓库无 `verify.mjs`。\n\n改法只落一个：edit_file `src/host-follow.js`，把 `lastModel` 移入 `makeHostFollow` 闭包内按实例隔离，并让 `observe(options, n)` 优先取 `n.model`、回退 `options.model` 更新 `lastModel`，`callConfig(options)` 读取该 `lastModel`（`src/host-follow.legacy.js` 不动）。\n\n验收是 bash `node scripts/smoke-session.mjs` 与 `node test/host-follow.selftest.mjs`（或 `npm test`），预期会话 2 打出 `deepseek-v3.2` 且旧宿主 `selftest` 通过；未跑回放不算证据。若仍打出旧模型：第一步只有一条，先检查 `src/host-follow.js` 改动落地并与上轮 `trace` 比差抓新信号，此时不要改 `src/host-follow.legacy.js`、不要回滚。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：确认 `scripts/smoke-session.mjs` 与 `test/host-follow.selftest.mjs` 全部通过（覆盖 `n.model` 与 `options.model`）；以及保持 `src/host-follow.legacy.js` 不动并汇总依据收工。",
+  "stored": "已走过的路：第 2 轮 bash `for f in src/*.js test/*.mjs package.json README.md; do…` → 「bash: 该沙箱不支持 shell 循环，请直接跑单条命令: for f…」；第 3 轮 bash `cat src/plugin.js` → 「import { makeHostFollow } from '…」；第 3 轮 bash `cat src/host-follow.js` → 「// 跟随宿主：记住宿主最近一次用的模型，压缩那一跳沿用它（避免副模型与会话模型…」；第 3 轮 bash `cat src/host-follow.legacy.js` → 「// 旧实现（仍被部分脚本引用；行为与 src/host-follow.js 相…」；第 3 轮 bash `cat src/transport.js` → 「// 预热：按配置里的模型提前建连（与压缩那一跳无关，用的是原始 cfg）」；第 3 轮 bash `cat src/birth.js` → 「export function birthTransform(n, { cfg,…」；第 3 轮 bash `cat test/host-follow.selftest.mjs` → 「import assert from 'node:assert/strict'」；第 3 轮 bash `cat README.md; echo ===; cat package.json` → 「$ cat README.md」（不再重跑）。\n\n本轮增量把机理坐实：`makeHostFollow` 的 `lastModel` 是模块级变量（跨实例共享），且 `observe(options, n)` 只看 `options.model`、忽略 `n.model`；宿主 `0.9` 起 `options.model` 为 undefined，使会话 2 沿用旧值而未更新为 `deepseek-v3.2`。\n\n已排除：修改诱饵文件 `src/host-follow.legacy.js` 的路线，因为 README 指向它是干扰项，`plugin` 实际引用 `./host-follow.js`；已排除：继续找 `verify.mjs` 的路线，因为仓库无 `verify.mjs`。\n\n改法只落一个：edit_file `src/host-follow.js`，把 `lastModel` 移入 `makeHostFollow` 闭包内按实例隔离，并让 `observe(options, n)` 优先取 `n.model`、回退 `options.model` 更新 `lastModel`，`callConfig(options)` 读取该 `lastModel`（`src/host-follow.legacy.js` 不动）。\n\n验收是 bash `node scripts/smoke-session.mjs` 与 node test/host-follow.selftest.mjs（或 `npm test`），预期会话 2 打出 `deepseek-v3.2` 且旧宿主 `selftest` 通过；未跑回放不算证据。若仍打出旧模型：第一步只有一条，先检查 `src/host-follow.js` 改动落地并与上轮 `trace` 比差抓新信号，此时不要改 `src/host-follow.legacy.js`、不要回滚。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n回放过了之后还有两件原文已经定下的事：确认 `scripts/smoke-session.mjs` 与 `test/host-follow.selftest.mjs` 全部通过（覆盖 `n.model` 与 `options.model`）；以及保持 `src/host-follow.legacy.js` 不动并汇总依据收工。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。单元测试 PASS 不能当收工依据。",
+  "gates": {
+    "v4": {
+      "outputChars": 997,
+      "inventedSpans": 1,
+      "chars": 1718,
+      "closeLoop": false,
+      "provenance": false,
+      "register": false,
+      "ctxChars": 1262,
+      "repairedAffordance": true,
+      "continuation": 1
+    },
+    "accept": {
+      "netSaved": 51,
+      "minSaved": 50,
+      "tokens": {
+        "rawTokensEst": 540,
+        "outTokensEst": 661,
+        "netSavedTokensEst": -121,
+        "unit": "estimate-not-tokenizer"
+      }
+    },
+    "draftChars": 997,
+    "outChars": 1736,
+    "rawChars": 1787
+  },
+  "outcome": {
+    "solved": true,
+    "roundsToFix": 5,
+    "falseClaim": false,
+    "rawSolved": true,
+    "rawRoundsToFix": 5,
+    "vsRaw": "win"
+  },
+  "validated": true,
+  "digest": "d1f253f227aecb50",
+  "file": "transfer/gold/wrong-model/wrong-model_decoy-s0-r4.json"
+}

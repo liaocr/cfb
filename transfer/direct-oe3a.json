@@ -1,0 +1,15 @@
+{
+ "rows": [
+  {
+   "id": "eacces-config",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 10074,
+   "outChars": 967,
+   "ms": 4256,
+   "promptVersion": "compress-v4d1:ctx",
+   "text": "我们需要定位 EACCES 的来源。npm test 里 `FAIL test/birth.selftest.mjs  Error: EACCES: permission denied, open '/home/u/.dsh/storages/cot-form-b/trace.log'`，而 `ls -la /home/u/.dsh/storages/cot-form-b/` 显示目录和文件都是 root:root，当前 `id` 是 uid=1000(u) gid=1000(u)，所以写不进去。verify.mjs 节选（逐字）：\n`  // 每个套件在独立的临时 DSH_HOME 里跑`\n`  const env = { ...process.env, DSH_HOME: tmp }`\n但 test/birth.selftest.mjs 第 1-12 行（逐字）：\n`  import { makeTraceWriter } from '../src/trace.js'`\n`  const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })`\n看起来 verify.mjs 只改了 DSH_HOME，而 birth.selftest 读的是 CFB_REAL_DSH_HOME，隔离变量没对齐，于是写到真实 /home/u/.dsh 下 root 所有的 trace.log。直接改权限的路先搁置，因为当前 u 对 root 目录没有写权限；改代码更对。下一步工具调用是 bash 查 CFB_REAL_DSH_HOME 在仓库里的引用和当前值：\n`grep -R \"CFB_REAL_DSH_HOME\" -n verify.mjs test src; echo \"CFB_REAL_DSH_HOME=${CFB_REAL_DSH_HOME:-<unset>}\"`\n如果 grep 显示 verify.mjs 没设置它，那么根因坐实，改 verify.mjs 的 env 加 `CFB_REAL_DSH_HOME: tmp`；如果 grep 显示 verify.mjs 设了但没传给子进程，那么改传 env 的那一行，把 env 真正传给测试进程。",
+   "side": "我们需要定位 EACCES 的来源。npm test 里 `FAIL test/birth.selftest.mjs  Error: EACCES: permission denied, open '/home/u/.dsh/storages/cot-form-b/trace.log'`，而 `ls -la /home/u/.dsh/storages/cot-form-b/` 显示目录和文件都是 root:root，当前 `id` 是 uid=1000(u) gid=1000(u)，所以写不进去。verify.mjs 节选（逐字）：\n`  // 每个套件在独立的临时 DSH_HOME 里跑`\n`  const env = { ...process.env, DSH_HOME: tmp }`\n但 test/birth.selftest.mjs 第 1-12 行（逐字）：\n`  import { makeTraceWriter } from '../src/trace.js'`\n`  const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })`\n看起来 verify.mjs 只改了 DSH_HOME，而 birth.selftest 读的是 CFB_REAL_DSH_HOME，隔离变量没对齐，于是写到真实 /home/u/.dsh 下 root 所有的 trace.log。直接改权限的路先搁置，因为当前 u 对 root 目录没有写权限；改代码更对。下一步工具调用是 bash 查 CFB_REAL_DSH_HOME 在仓库里的引用和当前值：\n`grep -R \"CFB_REAL_DSH_HOME\" -n verify.mjs test src; echo \"CFB_REAL_DSH_HOME=${CFB_REAL_DSH_HOME:-<unset>}\"`\n如果 grep 显示 verify.mjs 没设置它，那么根因坐实，改 verify.mjs 的 env 加 `CFB_REAL_DSH_HOME: tmp`；如果 grep 显示 verify.mjs 设了但没传给子进程，那么改传 env 的那一行，把 env 真正传给测试进程。"
+  }
+ ]
+}

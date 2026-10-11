@@ -1,0 +1,57 @@
+{
+  "schema": "cfb.gold-restorations/1",
+  "entries": [
+    {
+      "at": "2026-10-05T04:03:02.082Z",
+      "action": "restore-from-quarantine",
+      "basis": "draft-only apparatus audit + verbatim-quote exemption（见 tools/helpers/mode1-quality.mjs exemptQuotedIssues）",
+      "items": [
+        {
+          "id": "eacces-config_decoy-s0-r3",
+          "family": "eacces-config",
+          "src": "transfer/gold-rejected/eacces-config/eacces-config_decoy-s0-r3.json",
+          "dest": "transfer/gold/eacces-config/eacces-config_decoy-s0-r3.json",
+          "sourceSha256": "c826432c82b9aaf6502e49a4268a9c9b0d768874b002a498f99937f2d67f2311",
+          "digest": "44e98a467a097a2e",
+          "draftChars": 1224
+        },
+        {
+          "id": "eacces-config_long-horizon-s0-r5",
+          "family": "eacces-config",
+          "src": "transfer/gold-rejected/eacces-config/eacces-config_long-horizon-s0-r5.json",
+          "dest": "transfer/gold/eacces-config/eacces-config_long-horizon-s0-r5.json",
+          "sourceSha256": "90deee543906fb4f61de77441a26a66d711f855502982e1691cdbfb322909749",
+          "digest": "5f3963b4b8f8744a",
+          "draftChars": 1160
+        },
+        {
+          "id": "sse-truncated-s0-r5",
+          "family": "sse-truncated",
+          "src": "transfer/gold-rejected/sse-truncated/sse-truncated-s0-r5.json",
+          "dest": "transfer/gold/sse-truncated/sse-truncated-s0-r5.json",
+          "sourceSha256": "045e762e154aff466b11993149565402d2e3672e04ffd7220c548ac660d374bd",
+          "digest": "f84dc9988494f31e",
+          "draftChars": 1447
+        },
+        {
+          "id": "wrong-model_decoy-s0-r4",
+          "family": "wrong-model",
+          "src": "transfer/gold-rejected/wrong-model/wrong-model_decoy-s0-r4.json",
+          "dest": "transfer/gold/wrong-model/wrong-model_decoy-s0-r4.json",
+          "sourceSha256": "d406208adf9d917a842400491e71194c25db1ef50ede3a74fd2b49f73c97afa5",
+          "digest": "d1f253f227aecb50",
+          "draftChars": 997
+        },
+        {
+          "id": "wrong-model_long-horizon-s0-r4",
+          "family": "wrong-model",
+          "src": "transfer/gold-rejected/wrong-model/wrong-model_long-horizon-s0-r4.json",
+          "dest": "transfer/gold/wrong-model/wrong-model_long-horizon-s0-r4.json",
+          "sourceSha256": "83ef85e1eda9fc7a49b0597076c1fd8cba68526f2141d30c869c5d89354b2d07",
+          "digest": "0acaac13997bf072",
+          "draftChars": 1425
+        }
+      ]
+    }
+  ]
+}

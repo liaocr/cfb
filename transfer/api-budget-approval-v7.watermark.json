@@ -1,0 +1,236 @@
+{
+  "authorityId": "f50b7a7b2b88f7a794da6a29cbc5a9934621229444897b84aeccfe21c7b71f84",
+  "digest": "f236e7072370ebe9657afbc93e82e34bcc40334cf473dbeb50ad6f62819e2e66",
+  "halted": null,
+  "jobs": [
+    {
+      "key": "probe",
+      "kind": "probe",
+      "reservedNano": 5048000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|raw|0",
+      "kind": "main",
+      "reservedNano": 16101000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|current|0",
+      "kind": "main",
+      "reservedNano": 24374000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|current|1",
+      "kind": "main",
+      "reservedNano": 24374000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|raw|1",
+      "kind": "main",
+      "reservedNano": 16101000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|raw|2",
+      "kind": "main",
+      "reservedNano": 16101000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|current|2",
+      "kind": "main",
+      "reservedNano": 24374000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|current|3",
+      "kind": "main",
+      "reservedNano": 24374000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|raw|3",
+      "kind": "main",
+      "reservedNano": 16101000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|raw|4",
+      "kind": "main",
+      "reservedNano": 16101000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|current|4",
+      "kind": "main",
+      "reservedNano": 24374000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|current|5",
+      "kind": "main",
+      "reservedNano": 24374000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|raw|5",
+      "kind": "main",
+      "reservedNano": 16101000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|raw|0",
+      "kind": "main",
+      "reservedNano": 16552000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|current|0",
+      "kind": "main",
+      "reservedNano": 23847000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|current|1",
+      "kind": "main",
+      "reservedNano": 23847000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|raw|1",
+      "kind": "main",
+      "reservedNano": 16552000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|raw|2",
+      "kind": "main",
+      "reservedNano": 16552000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|current|2",
+      "kind": "main",
+      "reservedNano": 23847000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|current|3",
+      "kind": "main",
+      "reservedNano": 23847000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|raw|3",
+      "kind": "main",
+      "reservedNano": 16552000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|raw|4",
+      "kind": "main",
+      "reservedNano": 16552000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|current|4",
+      "kind": "main",
+      "reservedNano": 23847000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|current|5",
+      "kind": "main",
+      "reservedNano": 23847000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|raw|5",
+      "kind": "main",
+      "reservedNano": 16552000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|raw|0",
+      "kind": "main",
+      "reservedNano": 16093000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|current|0",
+      "kind": "main",
+      "reservedNano": 22042000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|current|1",
+      "kind": "main",
+      "reservedNano": 22042000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|raw|1",
+      "kind": "main",
+      "reservedNano": 16093000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|raw|2",
+      "kind": "main",
+      "reservedNano": 16093000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|current|2",
+      "kind": "main",
+      "reservedNano": 22042000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|current|3",
+      "kind": "main",
+      "reservedNano": 22042000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|raw|3",
+      "kind": "main",
+      "reservedNano": 16093000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|raw|4",
+      "kind": "main",
+      "reservedNano": 16093000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|current|4",
+      "kind": "main",
+      "reservedNano": 22042000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|current|5",
+      "kind": "main",
+      "reservedNano": 22042000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|raw|5",
+      "kind": "main",
+      "reservedNano": 16093000,
+      "status": "accepted"
+    }
+  ],
+  "planDigest": "a03d2264e0bc9c6e46da9b4f54d08a2744657608fd9458f66e68997f9c2307f4",
+  "requests": 37,
+  "reservedNano": 719102000,
+  "revision": "5d2cc9fa3c6f133c0c1124a99a728fcee6044e5c20d1983e7983499fa091f987",
+  "schema": "cfb.api-watermark/1",
+  "scope": "cfb.visible-context-expanded.2026-10-01-r3",
+  "sequence": 75
+}

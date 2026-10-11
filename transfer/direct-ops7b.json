@@ -1,0 +1,85 @@
+{
+ "rows": [
+  {
+   "id": "sse-truncated",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 5424,
+   "outChars": 584,
+   "ms": 3378,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "IF": 3,
+    "OPEN": 1,
+    "READY": 1
+   },
+   "text": "- 还要确认：trace 中 finish:null 与 [DONE] 组合矛盾，需确认调用方如何判定 ok 和写会话\n- 判读：若 frames 没有剥离 data: 前缀，就 f === '[DONE]' 判断失败，JSON.parse('data: [DONE]') 会抛错\n- 如果 SSE 帧中 finish_reason 为 null 或缺失，且 [DONE] 到达，就返回 stop\n- 如果 done true 则返回 stop\n- 然后后续修复：区分 `finish_reason` 缺失与 `[DONE]`，把仅 `[DONE]` 当 `incomplete`/`unknown`，除非有 finish_reason 或内容完整标志\n\n若 frames 没有剥离 data: 前缀，就 f === '[DONE]' 判断失败，JSON.parse('data: [DONE]') 会抛错。如果 SSE 帧中 finish_reason 为 null 或缺失，且 [DONE] 到达，就返回 stop。如果 done true 则返回 stop。然后后续修复：区分 `finish_reason` 缺失与 `[DONE]`，把仅 `[DONE]` 当 `incomplete`/`unknown`，除非有 finish_reason 或内容完整标志。"
+  },
+  {
+   "id": "wrong-model",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 3414,
+   "outChars": 551,
+   "ms": 3683,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "INCUMBENT": 1,
+    "FACT": 2,
+    "IF": 1,
+    "PLAN": 1
+   },
+   "text": "- host-follow.js 中 observe 从 options.model 更新 lastModel，callConfig 返回 lastModel || cfg.model（来源 src/host-follow.js）\n- trace 中当前 llm-stream n12/n13 为 deepseek-v3.2，compiler-transport-started 为 deepseek-v3.1（来源 trace）\n- 我现在采用：推测根因：host-follow 的 lastModel 是模块级变量，跨会话复用未重置\n- 接下来要：查看 plugin.js 中 host.observe(options, n) 附近，确认 options 与 n 的真实字段来源\n- 判读：若当前模型实际在 n 中（n 是 request 对象或包含 model），就 observe 没有读取，lastModel 未更新，保留上次会话值\n\n所以我现在采用：推测根因：host-follow 的 lastModel 是模块级变量，跨会话复用未重置。若当前模型实际在 n 中（n 是 request 对象或包含 model），就 observe 没有读取，lastModel 未更新，保留上次会话值。"
+  },
+  {
+   "id": "eacces-config",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 10074,
+   "outChars": 946,
+   "ms": 4289,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "FACT": 3,
+    "READY": 2,
+    "IF": 4,
+    "PLAN": 1
+   },
+   "text": "- npm test 失败：test/birth.selftest.mjs 写入 /home/u/.dsh/storages/cot-form-b/trace.log 报 EACCES: permission denied（来源 npm test）\n- 目录与 trace.log 均属 root:root，权限 755/644，当前用户 uid=1000(u) 无写权限（来源 ls -la）\n- verify.mjs 构造临时环境变量 env = { ...process.env, DSH_HOME: tmp }，但测试用 CFB_REAL_DSH_HOME 绕过隔离（来源 verify.mjs）\n- 接下来要：查看 verify.mjs 是否设置 CFB_REAL_DSH_HOME 以及 env 是否传给子进程\n- 判读：若 grep 显示 verify.mjs 没有设置 CFB_REAL_DSH_HOME，就根因明确\n- 如果没用，那么 DSH_HOME 仍是 /home/u/.dsh\n- 如果未设置，则说明 makeTraceWriter 可能 fallback\n- 如果 verify.mjs 中完全没有该变量，那么测试文件从父进程继承，可能是 /home/u/.dsh\n- 我准备的改法：在 verify.mjs 的 env 中加 CFB_REAL_DSH_HOME: tmp，或改 birth.selftest.mjs 改用 DSH_HOME\n- 我们还可以考虑直接修复权限：`sudo chown -R u:u /home/u/.dsh/storages/cot-form-b` 但用户可能没 sudo，且不应修改真实 home\n\n如果没用，那么 DSH_HOME 仍是 /home/u/.dsh。如果未设置，则说明 makeTraceWriter 可能 fallback。如果 verify.mjs 中完全没有该变量，那么测试文件从父进程继承，可能是 /home/u/.dsh。我们还可以考虑直接修复权限：`sudo chown -R u:u /home/u/.dsh/storages/cot-form-b` 但用户可能没 sudo，且不应修改真实 home。"
+  },
+  {
+   "id": "flaky-timeout",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 9053,
+   "outChars": 794,
+   "ms": 5624,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "FACT": 1,
+    "COMPUTED": 2,
+    "IF": 4,
+    "OPEN": 1,
+    "READY": 1
+   },
+   "text": "- CI 失败时 hedgeStartedAt=1712/1698（来源 test/hedge.selftest.mjs）\n- 我目前判断：hedge 在 1712ms 启动，比 hedgeAfterMs 1600 晚 112ms，说明定时器回调被延迟\n- 我目前判断：hedgeAfterMs 1600 与主请求延迟 1500 只差 100ms，CI 2 核调度抖动可能超过 100ms\n- 还要确认：修复候选：在 primary.finally 中设置标志，或在定时器触发时检查 primary 是否已 settled\n- 判读：若 taskset -c 0,1 循环运行该测试仍失败，就确认是调度抖动/时序边界\n- 如果主请求的 HTTP 响应在 1500ms 后到达，但 Node 的 setTimeout 在 1600ms 触发，正常情况下主请求的 then 已经执行\n- 如果 `primary` 是 fetch 或 axios，`then` 在响应体完全读取后？\n- 但若主请求的 I/O 回调在定时器回调之后才被处理，则失败\n- 如果本地没有 `taskset`，可改用 `docker run --cpus=2` 但不确定\n\n所以我目前判断：hedgeAfterMs 1600 与主请求延迟 1500 只差 100ms，CI 2 核调度抖动可能超过 100ms。如果主请求的 HTTP 响应在 1500ms 后到达，但 Node 的 setTimeout 在 1600ms 触发，正常情况下主请求的 then 已经执行。如果 `primary` 是 fetch 或 axios，`then` 在响应体完全读取后？。但若主请求的 I/O 回调在定时器回调之后才被处理，则失败。如果本地没有 `taskset`，可改用 `docker run --cpus=2` 但不确定。"
+  },
+  {
+   "id": "perf-regression",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 11322,
+   "outChars": 1324,
+   "ms": 8741,
+   "promptVersion": "compress-v4-ops7:800",
+   "kinds": {
+    "FACT": 2,
+    "COMPUTED": 1,
+    "OPEN": 2,
+    "IF": 4,
+    "READY": 1
+   },
+   "text": "- ttfbMs p50 610→640，contentSpanMs p50 280→1650，outputChars p50 390→1720（来源 trace）\n- maxOutputTokens 850→4096，compressTargetMax 450→1800，promptVersion 仍为 compress-v3:250-450（来源 trace）\n- 我目前判断：等待增量约 1500ms，其中 contentSpan 增量 1370ms 占绝大部分，ttfb 仅 +30ms\n- 还要确认：maxOutputTokens 850→4096 只是上限不强制变长，除非旧输出被 850 截断\n- 还要确认：promptVersion 标签可能硬编码或过期，不能作为变更未生效的证据\n- 判读：若 pre-upgrade finishReason=length，就 maxOutputTokens 是主因\n- 判读：若 pre-upgrade finishReason=stop，就长度目标是主因\n- Alternatively, the \"instrument check\": grep the code for `compressTargetMax` and `compress-v3` to see whether the birth path reads compressTargetMax and whether the promptVersion t\n- 若 stop →长度目标（compressTargetMax）是主因\n- Actually a stronger discriminator: the promptVersion tag not changing despite the config change and despite output length changing is a discrepancy worth explai\n\n所以我目前判断：等待增量约 1500ms，其中 contentSpan 增量 1370ms 占绝大部分，ttfb 仅 +30ms。若 pre-upgrade finishReason=stop，就长度目标是主因。Alternatively, the \"instrument check\": grep the code for `compressTargetMax` and `compress-v3` to see whether the birth path reads compressTargetMax and whether the promptVersion t。若 stop →长度目标（compressTargetMax）是主因。Actually a stronger discriminator: the promptVersion tag not changing despite the config change and despite output length changing is a discrepancy worth explai。"
+  }
+ ]
+}

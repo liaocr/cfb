@@ -1,0 +1,21 @@
+{
+  "authorityId": "9aab6f8bed6262448dabd8de32550d7b01102e97040c847eacfa5dcde07b72a7",
+  "digest": "b1c3af608a1e2f06887b54aaaa25d52c76411db74bb33e800242179edeccae1a",
+  "halted": "request-network-error",
+  "jobs": [
+    {
+      "key": "probe",
+      "kind": "probe",
+      "reason": "request-network-error",
+      "reservedNano": 5089000,
+      "status": "rejected"
+    }
+  ],
+  "planDigest": "5c3800a30365f0ba901428f3e30c55ca48bbbe26da6ae397a37af4ae7f77df6a",
+  "requests": 1,
+  "reservedNano": 5089000,
+  "revision": "88db2e6d97889baafa262335f266d43099872d74f1b0895069fdf0dbdd06be55",
+  "schema": "cfb.api-watermark/1",
+  "scope": "cfb.minimal-api-approval.2026-09-30",
+  "sequence": 3
+}

@@ -1,0 +1,500 @@
+// tools/helpers/three-mode.mjs — 三模式（v14.11 / 闭环 v4.6）的零 API 库：
+//   模式 1 天花板（ceilingFrom）：hand（助手手写稿）vs raw 的 L2 结局比较 —— 量的是 f(主模型 | 稿) 的上界与「稿该写什么」，hand 永远不能当 champion；
+//   金标注册表（goldItemsFromTraj / loadGold / saveGold）：过了闸、主模型读后真修好的手写稿 = 模式 2 的标准（按家族 dev / holdout 切分，摘要冻结）；
+//   模式 2 基准（buildBenchPlan / benchReport）：压缩器在同一原文上出的稿与金标按 draftDistance 比对，dev 项配对 e 值选策略、holdout 项只报告；
+//   基准分**只决定哪条策略值得进 plan-traj（模式 3）**，不采纳 champion —— 指标没对过真实结局之前，按它搜索就是过拟合（v12.6：评委分 ≠ 结局）。
+// 付费只发生在 tools/bench-run.mjs（压缩调用）与 traj-run（主调用）；本文件不发任何网络请求。
+import fs from 'node:fs'
+import path from 'node:path'
+import { evidenceDigest } from '../../src/evidence-program.js'
+import { outcomeComparison, episodeOutcome, eValueWins, DEFAULT_DESIGN_V4 } from './ruler.mjs'
+import {compareKeys, handDraftGate, hasClosedRead} from './hand-draft.mjs'
+import { auditMode1Gold, auditMode1Pair, isMode1GoldEligible } from './mode1-quality.mjs'
+
+/** draftDistance 公式版本：冻结进基准计划；改公式必须改版本号，不同版本的基准分不可比（指标在设计里冻结，不随结果调）。 */
+// v14.20.1 dd/2：① 闸失败不再拿「原文回塞」的白送分（记 0 分，verdict refused:*）；② 槽位召回改为内容优先（同义措辞 / 分号并句不许改分，见 hand-draft 的 flattenClauses 与逐字回退）。
+export const DRAFT_DISTANCE_VERSION = 'dd/2'
+export const readResults = (file) => { const raw = fs.readFileSync(file, 'utf8').trim(); if (!raw) return []; return raw.startsWith('[') ? JSON.parse(raw) : raw.split('\n').filter(Boolean).map((l) => JSON.parse(l)) }
+/** 完成行：有 task、无 error、不是 hand 臂的「等待手写稿」暂停行。 */
+export const liveRows = (rows) => (rows || []).filter((r) => r && r.task && !r.error && r.status !== 'awaiting-draft')
+export const safeId = (id) => String(id).replace(/[^\w.-]/g, '_')
+const readJsonMaybe = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')) } catch { return null } }
+const mean = (xs) => { const v = xs.filter((x) => Number.isFinite(x)); return v.length ? +(v.reduce((a, b) => a + b, 0) / v.length).toFixed(3) : null }
+
+// ── 模式 1：天花板 ──────────────────────────────────────────────────────────
+/** hand vs raw 的分层成对结局比较（与 confirmFrom 同一把 GPC 尺子），外加手写稿闸门统计。不读不写 champion。 */
+export function ceilingFrom({ rows, map = { hand: 'hand', raw: 'raw' }, alpha = DEFAULT_DESIGN_V4.alphaHoldout, now = new Date().toISOString() }) {
+  const live = liveRows(rows)
+  const typed = live.map((r) => ({ ...r, arm: r.variant === map.hand ? 'champion' : r.variant === map.raw ? 'previous' : null })).filter((r) => r.arm)
+  if (!typed.some((r) => r.arm === 'champion') || !typed.some((r) => r.arm === 'previous')) throw new Error(`ceiling-no-rows（需要 ${map.hand} 与 ${map.raw} 两臂都有完成行；暂停中的 hand 行不算；--map hand=<variant>,raw=<variant>）`)
+  const cmp = outcomeComparison(typed)
+  const handRows = typed.filter((r) => r.arm === 'champion')
+  const compiles = handRows.flatMap((r) => (r.compile || []).map((c, i) => ({ task: r.task, sample: r.sample ?? 0, round: i + 1, ...c })))
+  const acc = compiles.filter((c) => c.path === 'hand')
+  const attempts = handRows.reduce((a, r) => a + (r.resumed || 0), 0)
+  const noContrast = handRows.filter((r) => r.shadow && !r.extended && r.shadow.divergedAt == null).length, shadowRounds = handRows.reduce((a, r) => a + (r.shadow?.rounds || 0), 0)
+  const gate = { attempts, accepted: acc.length, rejected: Math.max(0, attempts - acc.length), belowFloor: compiles.filter((c) => c.belowFloor).length, noContrast, shadowRounds,
+    meanRawChars: mean(acc.map((c) => c.rawChars)), meanDraftChars: mean(acc.map((c) => c.draftChars)), meanStoredChars: mean(acc.map((c) => c.outChars)),
+    compression: acc.length ? +(acc.reduce((a, c) => a + c.outChars, 0) / Math.max(1, acc.reduce((a, c) => a + c.rawChars, 0))).toFixed(3) : null }
+  const perGroup = cmp.pairs.map((p) => ({ task: p.task, sample: p.sample, outcome: p.outcome, hand: p.champion, raw: p.previous }))
+  // v4.7.2：未分歧的影子跟随臂与 leader 逐字节同一条轨迹、复用的 raw 已在原计划入账 ⇒ 都不是新的效度观测（否则同一条轨迹记两次）
+  const validity = typed.filter((r) => Number.isFinite(r.proxyScore ?? r.structural) && !(r.shadow && r.shadow.divergedAt == null) && !r.reusedFrom && !r.extended).map((r) => { const o = episodeOutcome(r); return { schema: 'cfb.validity-pair/1', at: now, source: 'ceiling', task: r.task, arm: r.arm, sample: r.sample ?? 0, proxy: r.proxyScore ?? r.structural, outcome: o.solved ? 1 : 0, roundsToFix: o.roundsToFix } })
+  const families = new Set(cmp.pairs.map((p) => String(p.task).split(':')[0])).size
+  const verdict = cmp.pairs.length < 4 || families < 2 ? 'insufficient' : cmp.e >= 1 / alpha ? 'hand-better' : cmp.eReject >= 1 / alpha ? 'hand-worse' : 'undetermined'
+  const headroom = cmp.champion.solved != null && cmp.previous.solved != null ? +(cmp.champion.solved - cmp.previous.solved).toFixed(3) : null
+  return { schema: 'cfb.ceiling/1', at: now, map, cmp, perGroup, gate, validity, verdict, headroom, families,
+    note: 'hand 臂永远不能当 champion：这里量的是 f(主模型 | 稿) 的上界（修好率差 = 余量点估计）与稿的内容规格；≥4 对、≥2 家族且 e ≥ 阈才算分得出' }
+}
+
+// ── 金标注册表 ──────────────────────────────────────────────────────────────
+export const goldDigest = (g) => evidenceDigest({ raw: g.raw, ctx: g.ctx, draft: g.draft }).slice(0, 16)
+/**
+ * 用途裁决（v14.21.0，扩量前置）：一条数据**只能挑一样**。
+ *   'ruler' —— 只做标尺/评审（策略在它上面被挑出来）；
+ *   'train' —— 只做 micro 的拟合料；
+ *   'both'  —— 仅历史条目在显式批准后使用，新条目不给。
+ * 为什么：同一份条目既被策略反复挑（选择压）又被 micro 当标签拟合，那"micro 追平标尺"就是自证，
+ * 读数不成立（docs/GOLD-EXPANSION-PROGRAM.md §1）。缺省取 'ruler' —— 保守方向 = 没登记用途的条目绝不进训练。
+ * 注意：digest 只 hash raw/ctx/draft，所以加/改 use 字段不会让既有 bench 计划作废（不触发 gold-changed）。
+ */
+export const GOLD_USES = ['ruler', 'train', 'both']
+export function goldUse(g) {
+  const u = g && g.use
+  return u === 'train' || u === 'both' ? u : 'ruler'
+}
+/** 尺子（cfb.gold-standard/1）盖在条目上的章。三枚谓词的分工：
+ *   goldRulerOk  = 能当**判分标尺**（难度/达线判定）：必须是盖章 gold，或未盖章时沿用旧口径；
+ *   goldBenchOk  = 能当**模式 2 的比对靶**：gold 或 provisional-gold（靶子只要稿本身达标；独立复现次数决定的是"能不能当判据"）；
+ *   goldTrainOk  = 能进拟合：use 是 train/both，**或**被尺子判 not-gold 的条目（降级 ≠ 删除，料还在）。
+ * 关键性质：盖章只能降级、不能升级——没章 ⇒ 沿用 use；有章说不行 ⇒ 谁都不能靠改 use 把它抬回标尺。 */
+export function goldRulerOk(g) {
+  if (goldUse(g) === 'train') return false
+  const st = g && g.goldStandard ? g.goldStandard.status : null
+  if (!st) return true
+  return st === 'gold'
+}
+export function goldBenchOk(g) {
+  if (goldUse(g) === 'train') return false
+  const st = g && g.goldStandard ? g.goldStandard.status : null
+  if (!st) return true
+  return st === 'gold' || st === 'provisional-gold'
+}
+export function goldTrainOk(g) { return goldUse(g) !== 'ruler' || goldRulerOk(g) === false }
+/** want='ruler' → 可当标尺；want='train' → 可进拟合。want 拼错直接抛，绝不静默放行。 */
+export function filterGoldByUse(items, want) {
+  if (want !== 'ruler' && want !== 'train') throw new Error('gold-use-want-unknown:' + want)
+  return items.filter((g) => { const u = goldUse(g); return u === 'both' || u === want })
+}
+/** 从一个轨迹单元提取金标候选：
+ *  - 默认：hand 臂过闸的手写稿 + 原文 / ctx（pending/done）+ L2 结局；
+ *  - fromWinners=true：同时提取非 raw/hand 的胜出压缩臂（轨迹修好、且比同组 raw 更快修好或 raw 未修好）在分歧轮过生产闸 + G2 闸的真实压缩稿，解决金标饥饿。 */
+export function goldItemsFromTraj({ home, rows, planId = null, split = {}, fromWinners = false }) {
+  const live = liveRows(rows)
+  const groups = {}
+  for (const r of live) (groups[`${r.task}#${r.sample ?? 0}`] = groups[`${r.task}#${r.sample ?? 0}`] || {})[r.variant] = r
+  const items = []
+  const vsRawOf = (o, ro) => !ro ? null : o.solved && !ro.solved ? 'win' : !o.solved && ro.solved ? 'loss' : o.solved && ro.solved ? ((o.roundsToFix || 0) < (ro.roundsToFix || 0) ? 'win' : (o.roundsToFix || 0) > (ro.roundsToFix || 0) ? 'loss' : o.verifiedAfterFix !== ro.verifiedAfterFix ? (o.verifiedAfterFix ? 'win' : 'loss') : o.cleanFinish !== ro.cleanFinish ? (o.cleanFinish ? 'win' : 'loss') : 'tie') : 'tie'
+  for (const r of live.filter((x) => x.variant === 'hand')) {
+    const rawRow = (groups[`${r.task}#${r.sample ?? 0}`] || {}).raw || null
+    const o = episodeOutcome(r), ro = rawRow ? episodeOutcome(rawRow) : null
+    const vsRaw = vsRawOf(o, ro)
+    ;(r.compile || []).forEach((c, i) => {
+      if (c.path !== 'hand') return
+      const round = i + 1, id = `${safeId(r.task)}-s${r.sample ?? 0}-r${round}`
+      const pend = home ? readJsonMaybe(path.join(home, 'pending', 'done', id + '.json')) : null, draftFile = home ? path.join(home, 'drafts', id + '.md') : null
+      if (!pend || !draftFile || !fs.existsSync(draftFile)) { items.push({ id, missing: true, why: !pend ? 'pending/done 缺' : 'drafts 缺' }); return }
+      const family = String(r.task).split(':')[0]
+      const draft = fs.readFileSync(draftFile, 'utf8').trim()
+      const stored = ((r.transcript || [])[round - 1] || {}).stored || null
+      const item = { schema: 'cfb.gold/1', id, family, task: r.task, sample: r.sample ?? 0, round, plan: planId, split: split[family] || 'unassigned', at: pend.at || null,
+        raw: pend.raw, ctx: pend.ctx, calls: pend.calls || [], draft, stored,
+        gates: { v4: c.gate || null, accept: c.accept || null, draftChars: c.draftChars, outChars: c.outChars, rawChars: c.rawChars },
+        outcome: { solved: !!o.solved, roundsToFix: o.roundsToFix || null, falseClaim: !!o.falseClaim, rawSolved: ro ? !!ro.solved : null, rawRoundsToFix: ro ? ro.roundsToFix || null : null, vsRaw },
+        validated: !!o.solved }
+      item.qualityAudit = auditMode1Gold(item, { reviewer: 'mode1-output-lint/1' })
+      items.push(item)
+    })
+  }
+  if (fromWinners) {
+    for (const r of live.filter((x) => x.variant !== 'raw' && x.variant !== 'hand')) {
+      const rawRow = (groups[`${r.task}#${r.sample ?? 0}`] || {}).raw || null
+      const o = episodeOutcome(r), ro = rawRow ? episodeOutcome(rawRow) : null
+      const vsRaw = vsRawOf(o, ro)
+      if (!o.solved || (ro && vsRaw !== 'win')) continue
+      ;(r.compile || []).forEach((c, i) => {
+        if (!c || !c.ok || c.belowFloor) return
+        const round = i + 1
+        if (o.roundsToFix && round >= o.roundsToFix) return
+        const t = ((r.transcript || [])[i]) || {}
+        const rawT = ((rawRow?.transcript || [])[i]) || {}
+        const rawText = t.reasoning || rawT.reasoning || ''
+        const storedText = t.stored || ''
+        const ctxText = t.ctx || rawT.ctx || ''
+        if (!rawText || !storedText || storedText === rawText) return
+        const cont = (ctxText.match(/^【延续段】[^\n]*\n([^\n]+)/m) || [])[1]?.trim() || ''
+        const draftText = cont && storedText.startsWith(cont) ? storedText.slice(cont.length).trim() : storedText.trim()
+        const g2 = handDraftGate(rawText, draftText, ctxText)
+        const id = `${safeId(r.task)}-s${r.sample ?? 0}-r${round}-${safeId(r.policy || r.variant)}`
+        if (!g2.ok) { items.push({ id, missing: true, why: 'G2:' + g2.violations.map((v) => v.kind).join(',') }); return }
+        const family = String(r.task).split(':')[0]
+        const item = { schema: 'cfb.gold/1', id, family, task: r.task, sample: r.sample ?? 0, round, plan: planId, source: 'winner-traj', policy: r.policy || r.variant, split: split[family] || 'unassigned', at: r.at || new Date().toISOString(),
+          raw: rawText, ctx: ctxText, calls: t.calls || [], draft: draftText, stored: storedText,
+          gates: { v4: c.gate || null, accept: c.accept || null, draftChars: draftText.length, outChars: storedText.length, rawChars: rawText.length },
+          outcome: { solved: true, roundsToFix: o.roundsToFix || null, falseClaim: !!o.falseClaim, rawSolved: ro ? !!ro.solved : null, rawRoundsToFix: ro ? ro.roundsToFix || null : null, vsRaw: vsRaw || 'win' },
+          validated: true }
+        item.qualityAudit = auditMode1Gold(item, { reviewer: 'mode1-output-lint/1' })
+        items.push(item)
+      })
+    }
+  }
+  return items
+}
+export function loadGold(dir) {
+  if (!fs.existsSync(dir)) return []
+  const out = []
+  for (const fam of fs.readdirSync(dir)) {
+    const fd = path.join(dir, fam)
+    if (!fs.statSync(fd).isDirectory()) continue
+    for (const f of fs.readdirSync(fd)) if (f.endsWith('.json')) {
+      const g = readJsonMaybe(path.join(fd, f))
+      if (!g || g.schema !== 'cfb.gold/1') continue
+      const computed = auditMode1Gold(g)
+      const recorded = g.qualityAudit
+      const recordMatches = recorded?.schema === computed.schema && recorded?.textSha256 === computed.textSha256
+      const qualityAudit = recordMatches
+        ? { ...computed, ...recorded, issues: computed.issues }
+        : { ...computed, ...(recorded ? { recordedAuditStatus: recorded.status, recordedAuditMismatch: true } : {}) }
+      out.push({ ...g, qualityAudit, file: path.join(fd, f), digest: goldDigest(g) })
+    }
+  }
+  return out.sort((a, b) => (a.family + a.id).localeCompare(b.family + b.id))
+}
+/** 落盘：<dir>/<family>/<id>.json；默认不覆盖已存在金标（`replaceExisting` 时旧条目先归档到 historyDir 留痕）。疑似装置话术永不入 active registry，可选归档到 rejectedDir。 */
+/** 注册表硬条件用的常量：金标 = 至少不比 raw 慢的稿（vsRaw loss 不收，--include-loss 才强收）。 */
+export const GOLD_REJECT_LOSS = true
+
+// ── v14.22.0 上限闸：金标必须配当「上限」────────────────────────────────────────────
+// 为什么加：saveGold 过去只卡「槽位齐 ∧ 真机修好 ∧ 不输 raw ∧ 审计 clean」，没有一条问「这算不算极限」⇒
+//   在册 8 条里 wrong-model_decoy-s0-r4 把 1787 字「压」到 1736 字（净省 51 字，比 0.97）也当尺子用；
+//   而同一份 raw 交给生产路径（本地 v5-micro + 程序门）平均压到 0.61 且 G2 8/8 过闸 ⇒ 上限低于产线。
+//   尺子低于产品 ⇒ 模式 2 追的是松靶子（p-1490eefcdf 的「dd=0.906 距极限 0.094」就是这么虚高出来的）。
+// C1/C4 的阈值不是拍的：C6 直接拿 tools/gold-vs-line.mjs 的**同题产线稿实测长度**当线，逐条比。
+const CEILING_RATIO_MAX = 0.60
+const CEILING_ROUNDS_MAX = 6
+const ACCEPT_CMD_RE = /`[^`]*(?:node|npm|cat|git|grep|sed|ls|pytest|analyze-trace|verify)[^`]*`|--steps|--last|--file/
+export function goldCeiling(g, lineRow) {
+  const raw = String(g.raw || ''), draft = String(g.draft || ''), stored = String(g.stored || draft)
+  // v14.23.0 口径纠正：比的是**压缩器写出的稿**（draft），不是 stored。stored = 台账 + 稿，台账由生产写、
+  //   不由作者写 ⇒ 拿 stored 比线，等于替产线免掉了它自己也要付的那段台账 ⇒ 晚轮条目数学上全灭（t98/t99 实测：
+  //   稿 354 字 vs 产线稿 1650 字，明明更狠，却因 stored 3114 > 1650 判不合格）。stored 仍然记进返回值，供审计。
+  const ratio = draft.length / Math.max(1, raw.length)
+  const fails = []
+  if (ratio > CEILING_RATIO_MAX) fails.push(`C1 压缩力度：draft/raw=${ratio.toFixed(2)}（要 ≤${CEILING_RATIO_MAX} ⇒ 至少净省 40%；台账由生产拼接，不计入作者稿）`)
+  if (!hasClosedRead(draft)) fails.push('C2 闭合判读三元组：稿里没有「读数 ⇒ 结论」/「如果…就…」这类闭合判读分支 ⇒ 产线 compileV4Direct 硬要求它（口径见 hand-draft.mjs 的 hasClosedRead），标尺侧 8/8 缺')
+  const at = draft.search(/验收|读数|即收工|看到/)
+  if (at < 0 || !ACCEPT_CMD_RE.test(draft.slice(at, at + 400))) fails.push('C3 可执行验收：验收段没写「跑哪条命令、看到什么读数即算完」⇒ 本项目自己的结论是改完不验证 = 伪修好（ledger 臂 16.7%）')
+  const o = g.outcome || {}
+  if ((o.roundsToFix ?? 99) > CEILING_ROUNDS_MAX) fails.push(`C4 提前量：第 ${o.roundsToFix ?? '?'} 轮才修好（要 ≤${CEILING_ROUNDS_MAX}；贴着轮数上限的赢法测不出「停止取证」这一维）`)
+  if (o.vsRaw === 'tie' && !((o.roundsToFix ?? 99) <= (o.rawRoundsToFix ?? 99))) fails.push(`C5 不输 raw：vsRaw=tie 且不比 raw 快（hand r${o.roundsToFix ?? '-'} vs raw r${o.rawRoundsToFix ?? '-'}）`)
+  if (!lineRow) fails.push('C6 缺产线对照读数 ⇒ 先跑 node tools/gold-vs-line.mjs（$0，约 10 ms/条）；判不了按不合格算，不默认放行')
+  else if (lineRow.lineChars != null && draft.length > lineRow.lineChars) fails.push(`C6 不劣于产线：金标稿 ${draft.length} 字 > 产线同题稿 ${lineRow.lineChars} 字（线长比 ${lineRow.lineRatio}）⇒ 上限不能比产品松`)
+  return { ok: fails.length === 0, fails, ratio: +ratio.toFixed(4), storedRatio: +(stored.length / Math.max(1, raw.length)).toFixed(4), draftChars: draft.length, lineChars: lineRow?.lineChars ?? null, at: new Date().toISOString() }
+}
+
+export function saveGold(dir, items, { includeUnsolved = false, includeLoss = false, rejectedDir = null, auditReviewer = 'mode1-output-lint/1', replaceExisting = false, historyDir = null, revisionNote = null, legacyFloor = false, lineFile = null } = {}) {
+  const goldDir = path.resolve(dir)
+  const linePath = lineFile ? path.resolve(lineFile) : path.join(goldDir, '..', '..', '.cfb-offline', 'ruler', 'gold-vs-line.json')
+  const lineIndex = legacyFloor ? {} : (fs.existsSync(linePath) ? (readJsonMaybe(linePath)?.lines || {}) : {})
+  const added = [], skipped = [], quarantined = [], replaced = []
+  for (const g of items) {
+    if (g.missing) { skipped.push({ id: g.id, why: g.why }); continue }
+    if (!g.validated && !includeUnsolved) { skipped.push({ id: g.id, why: '主模型读后未修好（--include-unsolved 才收）' }); continue }
+    // 天花板资格（2026-10-05 真机复测定）：与「越界」无关，是**这条稿当天花板不够格** —— 所以不收，但也不当垃圾扔：稿连同整单元结果留在 transfer/gold-repair/measured/ 里当模式 2 素材
+    if (!includeLoss && g.outcome && g.outcome.vsRaw === 'loss') { skipped.push({ id: g.id, why: '比主模型自己读原文还慢（vsRaw loss）：天花板稿至少要跟 raw 一样快（--include-loss 才收）' }); continue }
+    const qualityAudit = auditMode1Gold(g, { reviewer: auditReviewer })
+    if (qualityAudit.status !== 'clean') {
+      const archived = { ...g, qualityAudit, quarantine: { reason: 'mode1-apparatus-language', at: new Date().toISOString(), source: 'tools/helpers/three-mode.mjs::saveGold' }, digest: goldDigest(g) }
+      let archiveFile = null
+      if (rejectedDir) {
+        fs.mkdirSync(rejectedDir, { recursive: true })
+        const base = path.join(rejectedDir, g.id + '.json')
+        archiveFile = fs.existsSync(base) ? path.join(rejectedDir, `${g.id}-${safeId(g.plan || Date.now())}.json`) : base
+        fs.writeFileSync(archiveFile, JSON.stringify({ ...archived, archiveFile: path.relative(path.dirname(rejectedDir), archiveFile) }, null, 2) + '\n')
+      }
+      quarantined.push({ id: g.id, categories: [...new Set(qualityAudit.issues.map((x) => x.category))], issues: qualityAudit.issues, file: archiveFile })
+      skipped.push({ id: g.id, why: '装置话术检查未通过；已隔离，不进入金标注册表' })
+      continue
+    }
+    // v14.22.0 上限闸（金标=上限，不是「能过闸的修好稿」）；--legacy-floor 只用于重放历史条目
+    if (!legacyFloor) {
+      const c = goldCeiling(g, lineIndex[g.id])
+      if (!c.ok) { skipped.push({ id: g.id, why: '不够上限（v14.22.0 上限闸）：' + c.fails.join('；') }); continue }
+      g.ceiling = c
+    }
+    const file = path.join(dir, g.family, g.id + '.json')
+    if (fs.existsSync(file)) {
+      if (!replaceExisting) { skipped.push({ id: g.id, why: '已存在（改稿重挣后要用 gold add --replace 才换）' }); continue }
+      const previous = readJsonMaybe(file) || {}
+      const stamp = safeId((previous.digest || 'unknown') + '@' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-'))
+      const hFile = path.join(historyDir || path.join(dir, '..', 'gold-history'), g.family, g.id + '.' + stamp + '.json')
+      fs.mkdirSync(path.dirname(hFile), { recursive: true })
+      fs.writeFileSync(hFile, JSON.stringify({ ...previous, supersededBy: { at: new Date().toISOString(), digest: goldDigest(g), note: revisionNote || 'gold add --replace' }, digest: previous.digest || goldDigest(previous) }, null, 2) + '\n')
+      replaced.push({ id: g.id, historyFile: path.relative(path.dirname(path.resolve(dir)), hFile), previousDigest: previous.digest || goldDigest(previous) })
+    }
+    const saved = { ...g, use: goldUse(g), qualityAudit, digest: goldDigest(g), ...(replaced.some((r) => r.id === g.id) ? { revision: { at: new Date().toISOString(), note: revisionNote || 'edited draft', by: 'gold add --replace' } } : {}) }
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, JSON.stringify(saved, null, 2) + '\n')
+    if (replaceExisting) added.push(g.id); else added.push(g.id)
+  }
+  return { added, skipped, quarantined, replaced }
+}
+/** 从隔离区读回归档条目（只读，不改两处目录）；用于 `gold restore` 与离线回放。 */
+export function loadArchivedGold(rejectedDir) {
+  if (!fs.existsSync(rejectedDir)) return []
+  const out = []
+  for (const entry of fs.readdirSync(rejectedDir).sort()) {
+    const p = path.join(rejectedDir, entry)
+    if (fs.statSync(p).isDirectory()) { out.push(...loadArchivedGold(p)); continue }
+    if (entry === 'audit.json' || !entry.endsWith('.json')) continue
+    const g = readJsonMaybe(p)
+    if (!g || g.schema !== 'cfb.gold/1') continue
+    const qualityAudit = auditMode1Gold(g, { reviewer: 'restore-preflight/1' })
+    out.push({ ...g, qualityAudit, archiveFile: p, digest: goldDigest(g), validated: g.validated === true })
+  }
+  return out.sort((a, b) => (a.family + a.id).localeCompare(b.family + b.id))
+}
+
+
+// ── 模式 2：压缩器基准 ──────────────────────────────────────────────────────
+/** v4.7 因子设计（DOE）：一个候选策略的 k ≤ 3 条补丁各当一个二水平因子。
+ *  掩码 m 的第 j 位 = 第 j 条补丁开/关；half（k=3）取「偶宇称」那一半 2^(3−1)：000 011 101 110 —— 含 base、不含全开，主效应与另两条补丁的交互混叠（分辨率 III，靠稀疏效应假设）；
+ *  full = 2^k 全部。为什么不是一次改一条（OFAT）：同样 4 次运行，OFAT 每个效应只有 1 对（on vs base），因子设计每个效应用全部 4 次运行估计 ⇒ 同成本精度翻倍、且 base 行可与别的基准复用。 */
+export function factorialMasks(k, kind = 'half') {
+  if (!(Number.isInteger(k) && k >= 1 && k <= 3)) throw new Error('factorial-k:' + k + '（补丁数需 1–3）')
+  if (!['half', 'full'].includes(kind)) throw new Error('factorial-kind:' + kind)
+  const full = Array.from({ length: 1 << k }, (_, m) => m)
+  if (kind === 'full' || k < 3) return full
+  return full.filter((m) => (m.toString(2).split('1').length - 1) % 2 === 0)
+}
+export const maskBits = (m, k) => m.toString(2).padStart(k, '0')
+/** 由候选策略派生因子臂（不含 base=全关；全开就是候选自己）。 */
+export function derivePolicies(policy, kind = 'half') {
+  const patches = policy.patches || []; const k = patches.length
+  const masks = factorialMasks(k, kind)
+  return { k, kind, masks, arms: masks.map((m) => {
+    if (m === 0) return { id: 'base', mask: m }
+    if (m === (1 << k) - 1) return { id: policy.id, mask: m }
+    const sub = patches.filter((_, j) => m & (1 << j))
+    return { id: `${policy.id}.f${maskBits(m, k)}`, mask: m, policy: { schema: policy.schema || 'cfb.policy/1', id: `${policy.id}.f${maskBits(m, k)}`, parent: policy.id, base: policy.base, patches: sub, status: 'derived', derivedFrom: { policy: policy.id, mask: maskBits(m, k), kind, k }, rationale: `因子设计臂：${policy.id} 的补丁 ${[...patches.keys()].filter((j) => m & (1 << j)).map((j) => j + 1).join('+')}（归因用，可独立成候选）` } }
+  }) }
+}
+/** 主效应：对每个金标，开着第 j 条补丁的运行均分 − 关着的均分 ⇒ 按金标配对（符号 ⇒ 胜负 ⇒ e 值）。只用 dev 项。 */
+export function factorialEffects(rows, factorial, { alpha = DEFAULT_DESIGN_V4.alphaHoldout } = {}) {
+  const maskOf = Object.fromEntries(factorial.arms.map((a) => [a.id, a.mask]))
+  const live = rows.filter((r) => r && r.distance && r.split === 'dev' && maskOf[r.policy] != null)
+  const golds = [...new Set(live.map((r) => r.gold))]
+  const effects = []
+  for (let j = 0; j < factorial.k; j++) {
+    const per = []
+    for (const g of golds) {
+      const on = live.filter((r) => r.gold === g && (maskOf[r.policy] & (1 << j))), off = live.filter((r) => r.gold === g && !(maskOf[r.policy] & (1 << j)))
+      if (!on.length || !off.length) continue
+      const m = (xs, f) => xs.reduce((a, r) => a + f(r), 0) / xs.length
+      per.push({ gold: g, family: on[0].family, dScore: +(m(on, (r) => r.distance.score) - m(off, (r) => r.distance.score)).toFixed(3), dDecision: +(m(on, (r) => r.distance.decision ?? 0) - m(off, (r) => r.distance.decision ?? 0)).toFixed(3) })
+    }
+    const w = per.filter((x) => x.dScore > 0).length, l = per.filter((x) => x.dScore < 0).length
+    const fams = new Set(per.filter((x) => x.dScore !== 0).map((x) => x.family)).size
+    const e = +eValueWins(w, l).toFixed(3), eReject = +eValueWins(l, w).toFixed(3)
+    effects.push({ patch: j + 1, n: per.length, meanDScore: per.length ? +(per.reduce((a, x) => a + x.dScore, 0) / per.length).toFixed(3) : null, meanDDecision: per.length ? +(per.reduce((a, x) => a + x.dDecision, 0) / per.length).toFixed(3) : null, wins: w, losses: l, ties: per.length - w - l, families: fams, e, eReject,
+      verdict: e >= 1 / alpha && fams >= 2 ? 'keep' : eReject >= 1 / alpha ? 'drop' : 'undetermined', aliased: factorial.kind === 'half' && factorial.k === 3 ? '与另两条补丁的交互混叠（分辨率 III）' : null })
+  }
+  const keep = effects.filter((x) => x.verdict === 'keep').map((x) => x.patch), drop = effects.filter((x) => x.verdict === 'drop').map((x) => x.patch)
+  return { of: factorial.of, kind: factorial.kind, k: factorial.k, runs: factorial.arms.length, golds: golds.length, effects, keep, drop,
+    keepId: keep.length && keep.length < factorial.k ? `${factorial.of}.f${Array.from({ length: factorial.k }, (_, j) => keep.includes(j + 1) ? '1' : '0').reverse().join('')}` : null,
+    next: keep.length && keep.length < factorial.k ? `只保留补丁 ${keep.join('+')}（派生策略 ${factorial.of}.f${Array.from({ length: factorial.k }, (_, j) => keep.includes(j + 1) ? '1' : '0').reverse().join('')}，bench-report 已落盘）进模式 3；补丁 ${effects.filter((x) => x.verdict !== 'keep').map((x) => x.patch).join('、')} 不带` : keep.length === factorial.k ? `三条补丁都有效 ⇒ 候选 ${factorial.of} 整体进模式 3` : drop.length ? `补丁 ${drop.join('、')} 有害 ⇒ 去掉后重提` : '主效应都未判定 ⇒ 多加 dev 金标再跑同一设计（不要换补丁）' }
+}
+
+export function buildBenchPlan({ n, policies = ['base'], gold, split = 'dev', pricing, purpose = null, planRel, homeRel, now = new Date().toISOString(), factorial = null }) {
+  const items = gold.filter((g) => !g.missing && g.validated && g.qualityAudit?.status === 'clean' && isMode1GoldEligible(g) && goldBenchOk(g) && (split === 'all' || g.split === split))
+  if (!items.length) throw new Error(gold.length
+    ? `no-gold:${split}（注册表里有 ${gold.length} 条，但过滤 use 之后标尺为空 ⇒ 它们都被登记成训练料了。` +
+      `要么「gold use --id … --set ruler」放回，要么按 docs/GOLD-STANDARD.md 看差哪几轴（node tools/gold-score.mjs）、真机重跑转正后用 node tools/gold-attest.mjs 重盖章；不要绕过滤镜跑基准）`
+    : `no-gold:${split}（注册表里没有可用金标；先跑模式 1：plan-traj --arms raw,hand → traj-run → ceiling → gold add）`)
+  if (!policies.includes('base')) throw new Error('bench-needs-base（基准必须含 base：候选只按「对 base 的配对胜负」选，不看绝对分）')
+  const calls = policies.length * items.length
+  const plan = { schema: 'cfb.bench-plan/1', id: 'b' + n, at: now, policies, split, metric: DRAFT_DISTANCE_VERSION,
+    gold: items.map((g) => ({ id: g.id, family: g.family, split: g.split, digest: g.digest || goldDigest(g) })),
+    cost: { calls, expectedUsd: +(calls * pricing.compressUsd).toFixed(3), capUsd: +(calls * pricing.compressCapUsd).toFixed(3), pricing: { compressUsd: pricing.compressUsd, compressCapUsd: pricing.compressCapUsd } },
+    ...(factorial ? { factorial } : {}),
+    purpose: purpose || `模式 2：压缩器（生产 birthOffline 同构体，关思考、temperature 0）在金标原文上出稿，与手写金标按 ${DRAFT_DISTANCE_VERSION} 比对；量的是 g(稿 | 策略, 原文) 到手写标准的召回，不量结局`,
+    selection: 'dev 项：每个金标上候选 vs base 按层级键配对 → e 值（≥2 家族、e ≥ 阈 ⇒ promote）；holdout 项只报告，不参与选择；promote 的策略进 plan-traj（模式 3）验收，基准分本身不采纳 champion' }
+  plan.design = evidenceDigest({ policies, metric: plan.metric, split, gold: plan.gold.map((g) => g.id + ':' + g.digest) }).slice(0, 16)
+  plan.digest = evidenceDigest(plan).slice(0, 16)
+  plan.command = `node tools/bench-run.mjs --plan ${planRel} --base-url <url> --model deepseek-v4.1-flash --out ${homeRel}`
+  return plan
+}
+const KEYS = ['decision', 'excludedRecall', 'acceptOk', 'openRecall', 'anchorPrecision', 'lengthOk']
+/** 基准报告：每策略 × 切分的均值与判词分布；dev 项候选 vs base 的配对 e 值；holdout 只报告。best = promote 里 e 最大者。 */
+export function benchReport(rows, { baseline = 'base', alpha = DEFAULT_DESIGN_V4.alphaHoldout, factorial = null } = {}) {
+  const live = (rows || []).filter((r) => r && r.policy && r.distance && r.gold)
+  const errored = {}
+  for (const r of rows || []) if (r && r.policy && r.gold && !r.distance && !r.dry) errored[r.policy] = (errored[r.policy] || 0) + 1
+  const policies = [...new Set(live.map((r) => r.policy))]
+  const table = []
+  for (const p of policies) for (const s of ['dev', 'holdout']) {
+    const rs = live.filter((r) => r.policy === p && r.split === s); if (!rs.length) continue
+    const row = { policy: p, split: s, n: rs.length, score: mean(rs.map((r) => r.distance.score)), gateFail: rs.filter((r) => !r.ok).length, errored: errored[p] || 0, verdicts: {} }
+    for (const k of KEYS) row[k] = mean(rs.map((r) => r.distance[k]).filter((x) => x != null))
+    for (const r of rs) row.verdicts[r.distance.verdict] = (row.verdicts[r.distance.verdict] || 0) + 1
+    table.push(row)
+  }
+  const paired = {}
+  for (const p of policies.filter((x) => x !== baseline)) {
+    const outcomes = []
+    for (const r of live.filter((x) => x.policy === p && x.split === 'dev')) { const b = live.find((x) => x.policy === baseline && x.gold === r.gold); if (!b) continue; const c = compareKeys(r.distance.key, b.distance.key); outcomes.push({ gold: r.gold, family: r.family, outcome: c > 0 ? 'win' : c < 0 ? 'loss' : 'tie' }) }
+    const w = outcomes.filter((o) => o.outcome === 'win').length, l = outcomes.filter((o) => o.outcome === 'loss').length
+    const e = +eValueWins(w, l).toFixed(3), eReject = +eValueWins(l, w).toFixed(3), families = new Set(outcomes.filter((o) => o.outcome !== 'tie').map((o) => o.family)).size
+    const dev = table.find((t) => t.policy === p && t.split === 'dev'), ho = table.find((t) => t.policy === p && t.split === 'holdout'), bdev = table.find((t) => t.policy === baseline && t.split === 'dev'), bho = table.find((t) => t.policy === baseline && t.split === 'holdout')
+    const gap = dev && ho && bdev && bho && dev.score != null && ho.score != null ? +((dev.score - bdev.score) - (ho.score - bho.score)).toFixed(3) : null   // dev 上的提升 − holdout 上的提升：> 0.15 ⇒ 像是在背 dev
+    paired[p] = { n: outcomes.length, wins: w, losses: l, ties: outcomes.length - w - l, e, eReject, families, generalizationGap: gap, outcomes,
+      decision: e >= 1 / alpha && families >= 2 ? (gap != null && gap > 0.15 ? 'promote-but-overfit?' : 'promote') : eReject >= 1 / alpha ? 'drop' : 'undetermined' }
+  }
+  const promoted = Object.entries(paired).filter(([, v]) => v.decision.startsWith('promote')).sort((a, b) => b[1].e - a[1].e)
+  const best = promoted.length ? promoted[0][0] : null
+  const fx = factorial ? factorialEffects(rows, factorial, { alpha }) : null
+  const missing = policies.filter((p) => !table.some((t) => t.policy === p && t.split === 'dev'))
+  return { schema: 'cfb.bench-report/1', baseline, metric: DRAFT_DISTANCE_VERSION, policies, table, paired, best, ...(missing.length ? { unscored: missing } : {}), threshold: +(1 / alpha).toFixed(1), ...(fx ? { factorial: fx } : {}),
+    next: best ? `plan-traj --arms raw,policy:${best}（模式 3 验收：基准分不采纳，只决定谁进轨迹）` : '没有策略在 dev 金标上显著优于 base：改策略（propose-policy）或先补金标（模式 1）' }
+}
+export function benchReportMd(rep, { title = '基准报告' } = {}) {
+  const L = [`# ${title}（${rep.metric}；基线 ${rep.baseline}；零 API）`, '', '| 策略 | 切分 | n | 分 | 决定 | 排除召回 | 验收 | 未解召回 | 锚点精度 | 长度 | 闸失败 | 未计分(故障) | 判词 |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+  for (const t of rep.table) L.push(`| ${t.policy} | ${t.split} | ${t.n} | ${t.score ?? '—'} | ${t.decision ?? '—'} | ${t.excludedRecall ?? '—'} | ${t.acceptOk ?? '—'} | ${t.openRecall ?? '—'} | ${t.anchorPrecision ?? '—'} | ${t.lengthOk ?? '—'} | ${t.gateFail} | ${t.errored || 0} | ${Object.entries(t.verdicts).map(([k, v]) => `${k}×${v}`).join(' ')} |`)
+  L.push('', '配对（dev 金标上候选 vs base，层级键：决定 → 排除召回 → 验收 → 未解召回 → 锚点精度 → 长度）：')
+  for (const [p, v] of Object.entries(rep.paired)) L.push(`- ${p}: ${v.wins}胜 ${v.losses}负 ${v.ties}平（${v.families} 家族）e=${v.e} 「更差」e=${v.eReject} 阈 ${rep.threshold}；泛化差 ${v.generalizationGap ?? '—'} ⇒ **${v.decision}**`)
+  if (!Object.keys(rep.paired).length) L.push('- （只有 base：没有候选可配对）')
+  if (rep.unscored?.length) L.push(`  未进表（全部行调用失败或超闸，无一条可计分）：${rep.unscored.join(' ')}`)
+  if (rep.factorial) {
+    const fx = rep.factorial
+    L.push('', `主效应（因子设计 ${fx.kind} 2^${fx.k}${fx.kind === 'half' && fx.k === 3 ? '−1' : ''}，候选 ${fx.of} 的 ${fx.k} 条补丁各为一个因子；${fx.runs} 个臂 × dev 金标 ${fx.golds}；每个效应用全部臂估计、按金标配对）：`)
+    for (const e of fx.effects) L.push(`- 补丁 ${e.patch}: Δ分 ${e.meanDScore ?? '—'}（Δ决定 ${e.meanDDecision ?? '—'}）${e.wins}胜 ${e.losses}负 ${e.ties}平（${e.families} 家族）e=${e.e} 「有害」e=${e.eReject} ⇒ **${e.verdict}**${e.aliased ? '；' + e.aliased : ''}`)
+    L.push(`- 归因结论: ${fx.next}`)
+  }
+  L.push('', `下一步: ${rep.next}`, '', '读法：锚点精度 < 1 = 稿里有原文 / ctx 没有的标识符（发明或照抄样例）—— 这一项先于一切；分（score）只给人看，选稿看键。holdout 行只报告，不进选择。')
+  return L.join('\n')
+}
+
+// ── 飞轮偏好对自动提取（Mode 2 基准 & Mode 3 轨迹 → pairs.jsonl） ──────────────
+/** 从 Mode 3 轨迹结果提取压缩稿偏好对：同组两臂结局分出胜负（修好 vs 未修好，或到修好轮数更少），且在修好前同一轮次两臂有不同压缩稿（或胜出压缩稿 vs 失败压缩稿）。 */
+export function flywheelPairsFromTraj(rows, { split = {}, source = 'traj', roundNum = 0, now = new Date().toISOString() } = {}) {
+  const live = liveRows(rows)
+  const groups = {}
+  for (const r of live) {
+    const k = `${r.task}#${r.sample ?? 0}`
+    const arm = r.policy ? 'policy:' + r.policy : r.variant
+    ;(groups[k] = groups[k] || {})[arm] = r
+  }
+  const out = []
+  const rankArm = (o) => (o.solved ? 100 - (o.roundsToFix || 10) : (o.falseClaim ? -10 : 0))
+  for (const g of Object.values(groups)) {
+    const arms = Object.keys(g)
+    for (let i = 0; i < arms.length; i++) for (let j = i + 1; j < arms.length; j++) {
+      const a = g[arms[i]], b = g[arms[j]]
+      const oa = episodeOutcome(a), ob = episodeOutcome(b)
+      const sa = rankArm(oa), sb = rankArm(ob)
+      if (sa === sb) continue
+      const win = sa > sb ? a : b, lose = sa > sb ? b : a
+      const winArm = sa > sb ? arms[i] : arms[j], loseArm = sa > sb ? arms[j] : arms[i]
+      const maxR = Math.min((win.transcript || []).length, (lose.transcript || []).length)
+      for (let rIdx = 0; rIdx < maxR; rIdx++) {
+        const tw = win.transcript[rIdx], tl = lose.transcript[rIdx]
+        if (!tw || !tl) continue
+        const cw = (win.compile || [])[rIdx], cl = (lose.compile || [])[rIdx]
+        const wCompressed = !!(cw?.ok || cw?.path === 'hand')
+        const lCompressed = !!(cl?.ok || cl?.path === 'hand')
+        if (!wCompressed && !lCompressed) continue
+        const wDraft = tw.stored || tw.reasoning || null
+        const lDraft = tl.stored || tl.reasoning || null
+        if (!wDraft || !lDraft || wDraft === lDraft) continue
+        if (auditMode1Gold({ draft: wDraft }).status !== 'clean' || auditMode1Gold({ draft: lDraft }).status !== 'clean') continue
+        const fam = String(win.task).split(':')[0]
+        out.push({
+          schema: 'cfb.flywheel-pair/1',
+          at: now,
+          round: roundNum || rIdx + 1,
+          task: fam,
+          split: split[fam] || null,
+          source,
+          chosenArm: winArm,
+          rejectedArm: loseArm,
+          chosenText: wDraft,
+          rejectedText: lDraft,
+          contentAudit: auditMode1Pair({ chosenText: wDraft, rejectedText: lDraft }, { reviewer: 'mode1-flywheel-lint/1' }),
+          scores: { candidate: Math.max(sa, sb), control: Math.min(sa, sb) },
+        })
+      }
+    }
+  }
+  return out
+}
+
+/** 从 Mode 2 基准结果提取压缩稿偏好对：
+ *  ① 同一金标项上两策略按层级键分出胜负（且文本不同）；
+ *  ② 金标稿（validated）对比在同题上未达 close（score < 0.85 或死路复活 / 丢排除）的策略稿。 */
+export function flywheelPairsFromBench(rows, { gold = [], split = {}, source = 'bench', roundNum = 0, now = new Date().toISOString() } = {}) {
+  const live = (rows || []).filter((r) => r && !r.dry && r.policy && r.distance && r.gold && typeof r.text === 'string' && r.text.trim())
+  const byGold = {}
+  for (const r of live) (byGold[r.gold] = byGold[r.gold] || []).push(r)
+  const goldMap = Object.fromEntries((gold || []).map((g) => [g.id, g]))
+  const out = []
+  for (const [gid, rs] of Object.entries(byGold)) {
+    const g = goldMap[gid]
+    if (g && !isMode1GoldEligible(g)) continue
+    const fam = rs[0]?.family || g?.family || String(gid).split('-s')[0]
+    const sp = rs[0]?.split || g?.split || split[fam] || null
+    for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) {
+      const a = rs[i], b = rs[j]
+      if (a.text === b.text) continue
+      const c = compareKeys(a.distance.key, b.distance.key)
+      if (c === 0) continue
+      const win = c > 0 ? a : b, lose = c > 0 ? b : a
+      if (!win.ok || auditMode1Gold({ draft: win.text }).status !== 'clean' || auditMode1Gold({ draft: lose.text }).status !== 'clean') continue
+      out.push({
+        schema: 'cfb.flywheel-pair/1',
+        at: now,
+        round: roundNum,
+        task: fam,
+        gold: gid,
+        split: sp,
+        source,
+        chosenArm: 'policy:' + win.policy,
+        rejectedArm: 'policy:' + lose.policy,
+        chosenText: win.text,
+        rejectedText: lose.text,
+        contentAudit: auditMode1Pair({ chosenText: win.text, rejectedText: lose.text }, { reviewer: 'mode1-flywheel-lint/1' }),
+        scores: { candidate: +(win.distance.score ?? 1), control: +(lose.distance.score ?? 0) },
+      })
+    }
+    if (g && g.validated && g.draft) {
+      for (const r of rs) {
+        if (r.text === g.draft || (r.ok && r.distance.verdict === 'close' && (r.distance.score ?? 0) >= 0.95)) continue
+        out.push({
+          schema: 'cfb.flywheel-pair/1',
+          at: now,
+          round: roundNum,
+          task: fam,
+          gold: gid,
+          split: sp,
+          source: source + ':gold-vs-policy',
+          chosenArm: 'gold:' + gid,
+          rejectedArm: 'policy:' + r.policy,
+          chosenText: g.draft,
+          rejectedText: r.text,
+          contentAudit: auditMode1Pair({ chosenText: g.draft, rejectedText: r.text }, { reviewer: 'mode1-flywheel-lint/1' }),
+          scores: { candidate: 1, control: +(r.distance.score ?? 0) },
+        })
+      }
+    }
+  }
+  return out
+}
+

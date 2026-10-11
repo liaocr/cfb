@@ -1,0 +1,42 @@
+{
+  "schema": "cfb.micro-generator-ai-reviewed-dev-candidate-manifest/1",
+  "createdAt": "2026-10-07T08:45:49.370Z",
+  "sourceQueueSha256": "245a7579fa53c06c25d5e89d8df7a5e55eab083a8810073e8a0e2496e6394646",
+  "familySplitTemplateSha256": "7b0d89da9c0c376e980e1390cd820a4893eb04452a5d8603801671724c9c4a9e",
+  "familySplitTemplateStatus": "draft-not-preregistered",
+  "reviewPolicy": {
+    "mode": "ai-single-reviewer",
+    "reviewerType": "ai",
+    "reviewerId": "arena-agent-mode",
+    "reviewerCount": 1,
+    "humanReviewerCount": 0,
+    "independentSecondReview": false
+  },
+  "counts": {
+    "originalQueueRows": 17,
+    "uniqueRawCtxPairs": 16,
+    "originalTargetConflictGroups": 1,
+    "canonicalRewriteCandidates": 16,
+    "sourceFamilies": [
+      "flaky-timeout",
+      "perf-regression",
+      "sse-truncated"
+    ],
+    "train": 0,
+    "devOnlyCandidates": 16,
+    "blind": 0,
+    "fullSourceCoverageRows": 0,
+    "trainingEligibleRows": 0
+  },
+  "readiness": {
+    "trainingReady": false,
+    "confirmatoryEvaluationReady": false,
+    "blockers": [
+      "these are rewrites of existing development families, not new training families",
+      "sourceCoverage is partial; complete atomized raw-source coverage remains outstanding",
+      "no new-family blind set has been registered for this summary task"
+    ]
+  },
+  "candidateSha256": "b61a11ca39edd87bef1b96894104b0d180caedf882294220c29f8f784545a75d",
+  "dispositionSha256": "f47f2f0c3c7ce47f329044f6550c94cad1fa6a105662a76aec78518487867221"
+}

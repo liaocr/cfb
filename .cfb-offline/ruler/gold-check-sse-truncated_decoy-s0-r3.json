@@ -1,0 +1,24 @@
+{
+  "id": "sse-truncated_decoy-s0-r3",
+  "source": "transfer/gold-rejected/sse-truncated/sse-truncated_decoy-s0-r3.json",
+  "pending": false,
+  "use": "ruler",
+  "draftChars": 395,
+  "rawChars": 3358,
+  "storedReal": 1212,
+  "ratio": 0.361,
+  "line": {
+    "lineChars": 1870,
+    "lineRatio": 0.5569,
+    "g2Ok": true,
+    "over": -1475
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "close",
+  "warns": [],
+  "fails": [],
+  "ok": true,
+  "at": "2026-10-06T00:39:55.937Z"
+}

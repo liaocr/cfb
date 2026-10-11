@@ -1,0 +1,120 @@
+// tools/compile-mr.mjs —— 多轮压稿（理论 S10）：给 effect-mr 的链压第 2 轮的稿 D2。
+//   与生产同口径：ctx = buildCompressCtx([U1, A1{content, reasoning=D1}, U2 观察])——里面自动带【台账】（第 1 轮已定 / 已排除 / 已走过的路）；
+//   提示词 = compress-v4d8（台账在手 ⇒ 多轮四段规则 + 第 2 轮样例 + 程序算出的【验收提示】）；门 = compileV4Direct。
+//   用法：DEEPSEEK_API_KEY=… node tools/compile-mr.mjs --chains mr/chains.json --d1 direct-d9a.json --base-url … --model … --out mr/auto-d2.json [--only id] [--ctx-only]
+//   --ctx-only：不调用副模型，只打印每条链的 ctx（看台账长什么样）。输出 { rows: [{ id, text, why, ms, gate, accept, ctx }] }（effect-mr --d2 auto=… 可直接读）
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { ASK } from './effect-eval.mjs'
+
+function parseArgs(argv) {
+  const o = { timeoutMs: 150000 }
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]; const v = () => argv[++i]
+    if (a === '--chains') o.chains = v()
+    else if (a === '--d1') o.d1 = v()
+    else if (a === '--base-url') o.baseUrl = v()
+    else if (a === '--model') o.model = v()
+    else if (a === '--out') o.out = v()
+    else if (a === '--only') o.only = v().split(',')
+    else if (a === '--best-of') o.bestOf = Math.max(1, Number(v()) || 1)   // v12.9.2：压 N 份、按 mrFormCheck 分数（再按短）选一份；评测用，生产不开（多一次副调用 = 多一份延迟）
+    else if (a === '--ctx-only') o.ctxOnly = true
+    else if (a === '--recompile') o.recompile = v()   // v12.9.1：零成本——拿旧输出文件里的副模型原始输出（side）重过门（改门 / 熔断后不用再压）
+    else if (a === '--timeout') o.timeoutMs = Number(v())
+    else throw new Error('未知参数 ' + a)
+  }
+  if (!o.chains) throw new Error('需要 --chains')
+  if (o.recompile) o.ctxOnly = false
+  return o
+}
+const readRows = (p) => { const j = JSON.parse(fs.readFileSync(p, 'utf8')); return Array.isArray(j) ? j : j.rows }
+
+export function mrMessages(chain, d1) {
+  return [
+    { role: 'system', content: '你是在代码仓库里干活的编码 Agent。' },
+    { role: 'user', content: chain.u1 },
+    { role: 'assistant', content: chain.a1.content, reasoning_content: d1 },
+    { role: 'user', content: chain.u2 + ASK },
+  ]
+}
+
+/** v12.9.1 多轮稿形态检查（理论 S10.17 P9 的机检项；零调用）：四段 + K1–K5 的句子在不在、程序【验收提示】有没有被逐条转述 */
+export function mrFormCheck(text, hints = []) {
+  const t = String(text || '')
+  const f = {
+    continuation: /上一轮已定/.test(t) ? 1 : 0,
+    triple: /old_text 是 `[^`]+`/.test(t) && /new_text 是 `[^`]+`/.test(t) ? 1 : 0,
+    verifyCmd: /验收是[^。]*`[^`]+`/.test(t) ? 1 : 0,
+    freshness: /新不新|新鲜|改后产生|旧行/.test(t) ? 1 : 0,
+    greenNotProof: /不算证据|没有信息量/.test(t) ? 1 : 0,
+    firstStep: /第一步只有一条/.test(t) ? 1 : 0,
+    novelty: /比差|新出现/.test(t) ? 1 : 0,
+    threeQ: /三件事|三件都/.test(t) && /落地/.test(t) ? 1 : 0,
+    noSecondCandidate: !/或者再|或再|要么/.test(t) ? 1 : 0,
+    hintsCovered: hints.length ? hints.filter((h) => {
+      if (/里已有的行/.test(h)) return /旧行|不自证|先清空|: >/.test(t)
+      if (/单元测试/.test(h)) return /单元测试|selftest|PASS/.test(t) && /不算|不证明|不能当/.test(t)
+      if (/运行条件/.test(h)) return /command not found|不限核|条件|同等条件/.test(t)
+      if (/把数值/.test(h)) return /跟着参数走|不是原因只是触发点|不要再调/.test(t)
+      return true
+    }).length + '/' + hints.length : '—',
+    chars: t.length,
+  }
+  f.score = ['continuation', 'triple', 'verifyCmd', 'freshness', 'greenNotProof', 'firstStep', 'novelty', 'threeQ', 'noSecondCandidate'].reduce((a, k) => a + f[k], 0)
+  return f
+}
+
+async function main(argv) {
+  const o = parseArgs(argv)
+  const I = await import('../index.js')
+  const { chains } = JSON.parse(fs.readFileSync(o.chains, 'utf8'))
+  const d1rows = o.d1 ? readRows(o.d1) : null
+  const rows = []
+  let cred = null, d = null
+  const prior = o.recompile ? readRows(o.recompile) : null
+  if (!o.ctxOnly && !prior) {
+    const key = process.env.DEEPSEEK_API_KEY; if (!key) throw new Error('需要 DEEPSEEK_API_KEY')
+    d = fs.mkdtempSync(path.join(os.tmpdir(), 'cm-')); cred = path.join(d, 'c.yaml'); fs.writeFileSync(cred, 'K: "' + key + '"\n', { mode: 0o600 })
+  }
+  try {
+    await Promise.all(chains.filter((c) => !o.only || o.only.includes(c.id)).map(async (c) => {
+      const d1 = d1rows ? (d1rows.find((r) => r.id === c.id && (!r.why || /^condensed/.test(r.why))) || {}).text : c.a1.raw
+      if (!d1) { rows.push({ id: c.id, why: 'error', error: '缺 D1' }); return }
+      // 生产里 birth 发生在本轮流结束时，本轮的工具调用已知（S10.3′：验收命令只能取自这里，不许发明）——评测把 A2 的调用列进 ctx
+      const calls = [...String(c.a2.content || '').matchAll(/\[tool_call\s+([\w-]+)\]\s*(\{[\s\S]*?\})(?=\s*(?:\[tool_call|\n|$))/g)].map((m) => ({ name: m[1], args: m[2] }))
+      const callsBlock = I.turnCallsBlock(calls)   // v12.9.2：与 birth.js 同一格式（verifyHints 才认）
+      const ctx = I.buildCompressCtx(mrMessages(c, d1)) + (callsBlock ? '\n\n' + callsBlock : '')
+      if (o.ctxOnly) { rows.push({ id: c.id, ctx }); return }
+      if (prior) {
+        const pr = prior.find((r) => r.id === c.id); const side = pr && pr.side
+        if (!side) { rows.push({ id: c.id, why: 'error', error: '旧输出里没有 side', ctx }); return }
+        const cfgR = I.normalizeConfig({ compressPrompt: 'v4', compressV4Incremental: false, compressCtx: ctx })
+        const g = I.compileV4Direct(side, c.a2.raw, cfgR)
+        if (!g.ok) { rows.push({ id: c.id, mode: 'v4', why: 'error', error: g.reason, gate: g.stats, side, ctx, recompiled: true }); return }
+        const inv = I.inventedIdentifiers(c.a2.raw, g.text, { extra: ctx + '\n' + I.programPartsText(ctx) })
+        rows.push({ id: c.id, mode: 'v4', why: 'condensed', rawChars: c.a2.raw.length, outChars: g.text.length, ms: pr.ms, promptVersion: pr.promptVersion || I.compressPromptVersion(cfgR), gate: g.stats, accept: inv.length ? 'invented-identifier:' + inv.join('|') : 'ok', text: g.text, side, ctx, hints: I.verifyHints(ctx), form: mrFormCheck(g.text, I.verifyHints(ctx)), recompiled: true })
+        return
+      }
+      const cfg = I.normalizeConfig({ compressPrompt: 'v4', compressV4Incremental: false, compressCtx: ctx, model: o.model, baseUrl: o.baseUrl,
+        credentialsPath: cred, credentialRef: 'K', followHostProvider: false, followHostModel: false, trace: false, timeoutMs: o.timeoutMs, captureSideOutput: true })
+      const t0 = Date.now()
+      try {
+        let g = null
+        if ((o.bestOf || 1) > 1) {
+          const cands = await Promise.all(Array.from({ length: o.bestOf }, () => I.makeBirthCompiler(cfg)(c.a2.raw).then((x) => x, (e) => ({ err: e }))))
+          const okc = cands.filter((x) => x && !x.err && x.text)
+          if (!okc.length) throw cands[0].err || new Error('best-of 全部失败')
+          okc.sort((a, b) => (mrFormCheck(b.text, I.verifyHints(ctx)).score - mrFormCheck(a.text, I.verifyHints(ctx)).score) || (a.text.length - b.text.length))
+          g = okc[0]; g.bestOf = { n: cands.length, ok: okc.length, scores: okc.map((x) => mrFormCheck(x.text, I.verifyHints(ctx)).score) }
+        } else g = await I.makeBirthCompiler(cfg)(c.a2.raw)
+        const inv = I.inventedIdentifiers(c.a2.raw, g.text, { extra: ctx + '\n' + I.programPartsText(ctx) })
+        rows.push({ id: c.id, mode: 'v4', why: 'condensed', rawChars: c.a2.raw.length, outChars: g.text.length, ms: Date.now() - t0, promptVersion: g.meta && g.meta.promptVersion, gate: g.meta && g.meta.v4, bestOf: g.bestOf, accept: inv.length ? 'invented-identifier:' + inv.join('|') : 'ok', text: g.text, side: g.meta && g.meta.sideOutput, ctx, hints: I.verifyHints(ctx), form: mrFormCheck(g.text, I.verifyHints(ctx)) })
+      } catch (e) { rows.push({ id: c.id, mode: 'v4', why: 'error', error: String(e && e.message || e).slice(0, 200), ms: Date.now() - t0, side: e && e.meta && e.meta.sideOutput, ctx }) }
+    }))
+  } finally { if (d) fs.rmSync(d, { recursive: true, force: true }) }
+  if (o.out) fs.writeFileSync(o.out, JSON.stringify({ rows }, null, 1))
+  for (const r of rows) console.log(o.ctxOnly ? `\n== ${r.id} ctx ${r.ctx.length} 字\n${r.ctx}` : `${r.id} ${r.why} ${r.rawChars ?? ''}→${r.outChars ?? ''} ${r.ms ?? ''}ms ${r.promptVersion || ''} accept=${r.accept || ''} ${r.gate && r.gate.boundBy ? 'bound=' + r.gate.boundBy.join(',') : ''} ${r.form ? '形态 ' + r.form.score + '/9 提示覆盖 ' + r.form.hintsCovered + (r.gate && r.gate.parrotedExample ? ' 抄样例 ' + r.gate.parrotedExample : '') : ''} ${r.error || ''}`)
+}
+if (import.meta.url === pathToFileURL(process.argv[1] || '').href) main(process.argv.slice(2)).catch((e) => { console.error(e && e.stack || e); process.exit(1) })

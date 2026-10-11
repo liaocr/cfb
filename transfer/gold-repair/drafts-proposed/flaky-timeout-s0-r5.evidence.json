@@ -1,0 +1,49 @@
+{
+  "id": "flaky-timeout-s0-r5",
+  "before": {
+    "draftChars": 1589,
+    "storedChars": 3445,
+    "ratio": 0.311,
+    "audit": "quarantined",
+    "fails": [
+      "C2",
+      "C6"
+    ]
+  },
+  "after": {
+    "draftChars": 1368,
+    "storedApprox": 3224,
+    "ratio": 0.291,
+    "audit": "clean",
+    "closedRead": false,
+    "line": null,
+    "fails": [
+      "C2",
+      "C6"
+    ],
+    "ok": false
+  },
+  "auditHits": [
+    "下一轮是第 6 轮，严禁再重读文件或跑探针，必须在第 6 轮同一轮按顺序直接发出两条调用：第一条直接 edit_file 修改 test/hedge.selftest.mjs（old_text `{ hedgeAfterMs: 1600 }` 改为 new_text `{ hedgeAfterMs: 5000 }`），第二条紧跟 bash 跑 `taskset -c 0 node test/hedge.selftest.mjs` 完成改后验收。"
+  ],
+  "evidence": {
+    "cmds": [
+      "node_modules",
+      "node:assert"
+    ],
+    "badLines": [],
+    "okLines": [],
+    "targets": [
+      "src/distill.js",
+      "distill.js",
+      "test/hedge.selftest.mjs",
+      "ci/last5.log",
+      "repro.tmp.mjs",
+      "package.js"
+    ],
+    "rowCmd": null,
+    "rowFix": null,
+    "rounds": null
+  },
+  "rowDir": "/home/user/cfb/transfer/effect-1/results.jsonl"
+}

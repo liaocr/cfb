@@ -1,0 +1,66 @@
+{
+  "schema": "cfb.traj-plan/1",
+  "id": "t133",
+  "at": "2026-10-11T12:11:16.550Z",
+  "variants": [
+    "raw",
+    "hand"
+  ],
+  "scenarios": [
+    "sse-truncated",
+    "wrong-model"
+  ],
+  "samples": 3,
+  "maxRounds": 6,
+  "fork": true,
+  "maxTokens": 8000,
+  "storeText": true,
+  "purpose": "PREREG-v6 运行：sse-truncated、wrong-model；hand 臂用 v6 闸门（G-v6-1/2/3）；raw 复用 t130；flaky-timeout 已移出 dev 尺子。预算不设上限（用户指示），本计划仅记录期望与参考上界。",
+  "yield": {
+    "l1Pairs": 6,
+    "l2Pairs": 6,
+    "validityPairsApprox": 60,
+    "flywheelPairsApprox": 0,
+    "childStatesApprox": 48
+  },
+  "reuseRaw": {
+    "file": ".cfb-runtime/traj/t130/results.jsonl",
+    "rows": 9,
+    "byTask": {
+      "flaky-timeout": 3,
+      "sse-truncated": 3,
+      "wrong-model": 3
+    },
+    "at": "2026-10-11T11:26:16.699Z",
+    "digest": "7dc559e8287eed39"
+  },
+  "cost": {
+    "mains": 30,
+    "compresses": 0,
+    "expectedMains": 18,
+    "expectedCompresses": 0,
+    "expectedUsd": 0.225,
+    "capUsd": 1.05,
+    "pricing": {
+      "mainUsd": 0.0125,
+      "mainCapUsd": 0.035,
+      "compressUsd": 0.0075,
+      "compressCapUsd": 0.0114,
+      "divergeRound": 3,
+      "floorShare": 0.4
+    },
+    "shadow": true,
+    "calibrated": {
+      "receipts": 44,
+      "divergeRound": 4,
+      "floorShare": 0.22,
+      "expectedMains": 12,
+      "expectedCompresses": 0,
+      "expectedUsd": 0.15
+    }
+  },
+  "holdoutNote": "场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索",
+  "digest": "a810203cef6cf4ff",
+  "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t133/plan.json --store-text --fork-from .cfb-runtime/traj/t130/results.jsonl --variants raw,hand --only sse-truncated,wrong-model --samples 3 --max-rounds 6 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t133",
+  "design": "e9c4dbefb6feb724"
+}

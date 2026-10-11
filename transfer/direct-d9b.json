@@ -1,0 +1,102 @@
+{
+ "rows": [
+  {
+   "id": "sse-truncated",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 5424,
+   "outChars": 1703,
+   "ms": 15418,
+   "promptVersion": "compress-v4d6:ctx",
+   "gate": {
+    "outputChars": 1705,
+    "inventedSpans": 1,
+    "newTextSpans": 1,
+    "chars": 1703,
+    "closeLoop": true,
+    "provenance": true,
+    "register": true,
+    "ctxChars": 630,
+    "branches": 1,
+    "compileMs": 4.14
+   },
+   "accept": "ok",
+   "text": "线上压缩结果被截断却当成成功写进会话，trace 里 [compiler-transport-settled] {\"ok\":true,\"finish\":null,...}，`[birth-condensed] {\"rawChars\":8123,\"outChars\":212}`，8123 进 212 出，finish 是 null 而 ok 是 true。read_file src/transport.js assembleSseFrames（逐字，落点行）：\n`return { out, finish: finish || (done ? 'stop' : null) }`\n`if (j.choices?.[0]?.finish_reason) finish = j.choices[0].finish_reason`\n`if (f === '[DONE]') { done = true; continue }`\n看起来 finish 只在真的收到 finish_reason 时才被赋值；没有 finish_reason 时，若 `[DONE]` 到了就把 done 置真、返回 'stop'。网关文档说部分上游在连接被代理切断时只补发 `data: [DONE]`，所以被切断的流也不带 finish_reason，却照样走 done、返回 'stop'，settle 再按 ok:true 写会话，这就是 212 字符截断还能被写成成功的原因。trace 里 finish 是 null 说明要么 [DONE] 实际没被这个字符串比对命中、要么 settle 记的是原始 finish_reason，不管哪种，都不改变落点：问题就在这行返回把「只收到 [DONE]」等同于正常结束。调大超时、改重试次数都是治症状，不选；去改调用方逐个判断 truncated 要动多处，调用方还没看过，不选。改法只落一个：改 src/transport.js 的 `return { out, finish: finish || (done ? 'stop' : null) }` 这一行，让它不再把仅 [DONE] 当 stop，而是返回 incomplete/unknown 之类的非成功 finish，让 settle 拿不到 stop、不会把截断写进会话；落点已经在手。\n所以下一步工具调用是 bash `grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled|assembleSseFrames|birth-condensed\" src`。如果输出里出现 `compiler-transport-settled` 的 settle 代码且能看到它只认 ok 或只认 finish !== null 来判定写会话，那么假设坐实，看到这一点就够了，不用再读 transport.js、也不用再核 birth-condensed 的调用：直接 edit_file src/transport.js，old_text 是 `return { out, finish: finish || (done ? 'stop' : null) }`（上一轮 read_file src/transport.js 的原样行，grep 输出里只有带文件名和行号的这一行，不带行号前缀也能匹配），new_text 是 `return { out, finish: finish || (done ? 'incomplete' : null) }`。如果输出里 `compiler-transport-settled` 的 ok 是从 `done` 或 eventCount 单独推出来的、跟 finish 无关，那么假设不成立：写会话的判据不在这行返回，此时不要改 transport.js；先看该 settle 代码里 ok 是怎么被赋值的那一行，确认它是否根本不读 finish。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+   "side": "线上压缩结果被截断却当成成功写进会话，trace 里 `[compiler-transport-settled] {\"ok\":true,\"finish\":null,...}`，`[birth-condensed] {\"rawChars\":8123,\"outChars\":212}`，8123 进 212 出，finish 是 null 而 ok 是 true。read_file src/transport.js assembleSseFrames（逐字，落点行）：\n`return { out, finish: finish || (done ? 'stop' : null) }`\n`if (j.choices?.[0]?.finish_reason) finish = j.choices[0].finish_reason`\n`if (f === '[DONE]') { done = true; continue }`\n看起来 finish 只在真的收到 finish_reason 时才被赋值；没有 finish_reason 时，若 `[DONE]` 到了就把 done 置真、返回 'stop'。网关文档说部分上游在连接被代理切断时只补发 `data: [DONE]`，所以被切断的流也不带 finish_reason，却照样走 done、返回 'stop'，settle 再按 ok:true 写会话，这就是 212 字符截断还能被写成成功的原因。trace 里 finish 是 null 说明要么 [DONE] 实际没被这个字符串比对命中、要么 settle 记的是原始 finish_reason，不管哪种，都不改变落点：问题就在这行返回把「只收到 [DONE]」等同于正常结束。调大超时、改重试次数都是治症状，不选；去改调用方逐个判断 truncated 要动多处，调用方还没看过，不选。改法只落一个：改 src/transport.js 的 `return { out, finish: finish || (done ? 'stop' : null) }` 这一行，让它不再把仅 [DONE] 当 stop，而是返回 incomplete/unknown 之类的非成功 finish，让 settle 拿不到 stop、不会把截断写进会话；落点已经在手。\n所以下一步工具调用是 bash `grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled|assembleSseFrames|birth-condensed\" src`。如果输出里出现 `compiler-transport-settled` 的 settle 代码且能看到它只认 ok 或只认 finish !== null 来判定写会话，那么假设坐实，看到这一点就够了，不用再读 transport.js、也不用再核 birth-condensed 的调用：直接 edit_file src/transport.js，old_text 是 `return { out, finish: finish || (done ? 'stop' : null) }`（上一轮 read_file src/transport.js 的原样行，grep 输出里只有带文件名和行号的这一行，不带行号前缀也能匹配），new_text 是 `return { out, finish: finish || (done ? 'incomplete' : null) }`。如果输出里 `compiler-transport-settled` 的 ok 是从 `done` 或 eventCount 单独推出来的、跟 finish 无关，那么假设不成立：写会话的判据不在这行返回，此时不要改 transport.js；先看该 settle 代码里 ok 是怎么被赋值的那一行，确认它是否根本不读 finish。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
+  },
+  {
+   "id": "wrong-model",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 3414,
+   "outChars": 1641,
+   "ms": 39200,
+   "promptVersion": "compress-v4d6:ctx",
+   "gate": {
+    "outputChars": 1641,
+    "inventedSpans": 0,
+    "newTextSpans": 2,
+    "chars": 1641,
+    "closeLoop": true,
+    "provenance": true,
+    "register": true,
+    "ctxChars": 799,
+    "branches": 2,
+    "fixBranches": 1,
+    "boundBranches": 1,
+    "boundBy": [
+     "had"
+    ],
+    "compileMs": 1.76
+   },
+   "accept": "ok",
+   "text": "我们需要定位插件压缩模型为什么不是当前会话模型。trace 里 `[llm-stream]` 的 n12、n13 都是 `deepseek-v3.2`，中间 `[compiler-transport-started]` 是 `deepseek-v3.1`，这正是上一次会话的值。read_file src/host-follow.js（逐字）摆出落点行：`observe(options) { if (options && options.model) lastModel = options.model }`，上下文 `let lastModel = null`；read_file src/plugin.js（逐字）：`host.observe(options, n)`。看起来 `lastModel` 是模块级变量，跨会话保留；`observe` 只从第一个参数 options.model 更新，而 plugin 传的是 `host.observe(options, n)`，当前模型可能在 n 中，所以 lastModel 没被刷新，`callConfig` 的 `model: lastModel || cfg.model` 继续把旧模型盖到 cfg.model 上，compiler-transport-started 就显示 deepseek-v3.1。n12/n13 仍是 v3.2 不矛盾，不改变落点。\n\n怀疑 prewarm 用原始 cfg，但 grep 只露出 `return (why) => { ... fetch(prewarmTargetUrl(cfg)) ... }`，没有模型字段，不选；把 callConfig 直接改成 `cfg.model` 会丢掉 host-follow 的跟随语义，治症状，不选。改法只落一个：改 src/host-follow.js 的 `observe(options) { if (options && options.model) lastModel = options.model }` 这一行，让它从第二个参数 n 读当前模型，落点已经在手。\n\n所以下一步工具调用是 bash `grep -n -C 10 \"observe\\\\|callConfig\" src/plugin.js`。如果 grep 输出里 `n` 带 `model` 字段，那么假设坐实，看到这一点就够了，不用再看 transport.js、不用再展开 prewarm：直接 edit_file src/host-follow.js，old_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`（上一轮 read_file src/host-follow.js 的原样行，这次 grep 输出里没有它，照用；不带行首缩进也能匹配），new_text 是 `observe(options, n) { if (n && n.model) lastModel = n.model }`。如果 grep 输出里 `options` 带 `model` 而 `n` 不带，那么假设不成立：当前模型在 options，observe 已能读，问题在 callConfig 仍用旧 lastModel 或调用顺序，此时不要改 observe；能改的另一处在手行是 `callConfig(options) { return { ...cfg, model: lastModel || cfg.model } }`，改成 `callConfig(options) { return { ...cfg, model: options.model || cfg.model } }`。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+   "side": "我们需要定位插件压缩模型为什么不是当前会话模型。trace 里 `[llm-stream]` 的 n12、n13 都是 `deepseek-v3.2`，中间 `[compiler-transport-started]` 是 `deepseek-v3.1`，这正是上一次会话的值。read_file src/host-follow.js（逐字）摆出落点行：`observe(options) { if (options && options.model) lastModel = options.model }`，上下文 `let lastModel = null`；read_file src/plugin.js（逐字）：`host.observe(options, n)`。看起来 `lastModel` 是模块级变量，跨会话保留；`observe` 只从第一个参数 options.model 更新，而 plugin 传的是 `host.observe(options, n)`，当前模型可能在 n 中，所以 lastModel 没被刷新，`callConfig` 的 `model: lastModel || cfg.model` 继续把旧模型盖到 cfg.model 上，compiler-transport-started 就显示 deepseek-v3.1。n12/n13 仍是 v3.2 不矛盾，不改变落点。\n\n怀疑 prewarm 用原始 cfg，但 grep 只露出 `return (why) => { ... fetch(prewarmTargetUrl(cfg)) ... }`，没有模型字段，不选；把 callConfig 直接改成 `cfg.model` 会丢掉 host-follow 的跟随语义，治症状，不选。改法只落一个：改 src/host-follow.js 的 `observe(options) { if (options && options.model) lastModel = options.model }` 这一行，让它从第二个参数 n 读当前模型，落点已经在手。\n\n所以下一步工具调用是 bash `grep -n -C 10 \"observe\\\\|callConfig\" src/plugin.js`。如果 grep 输出里 `n` 带 `model` 字段，那么假设坐实，看到这一点就够了，不用再看 transport.js、不用再展开 prewarm：直接 edit_file src/host-follow.js，old_text 是 `observe(options) { if (options && options.model) lastModel = options.model }`（上一轮 read_file src/host-follow.js 的原样行，这次 grep 输出里没有它，照用；不带行首缩进也能匹配），new_text 是 `observe(options, n) { if (n && n.model) lastModel = n.model }`。如果 grep 输出里 `options` 带 `model` 而 `n` 不带，那么假设不成立：当前模型在 options，observe 已能读，问题在 callConfig 仍用旧 lastModel 或调用顺序，此时不要改 observe；能改的另一处在手行是 `callConfig(options) { return { ...cfg, model: lastModel || cfg.model } }`，改成 `callConfig(options) { return { ...cfg, model: options.model || cfg.model } }`。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
+  },
+  {
+   "id": "perf-regression",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 11322,
+   "outChars": 1357,
+   "ms": 48624,
+   "promptVersion": "compress-v4d6:ctx",
+   "gate": {
+    "outputChars": 1280,
+    "inventedSpans": 0,
+    "chars": 1280,
+    "closeLoop": true,
+    "provenance": true,
+    "register": true,
+    "ctxChars": 483,
+    "branches": 2,
+    "fixBranches": 2,
+    "boundBranches": 2,
+    "boundBy": [
+     "had",
+     "span"
+    ],
+    "compileMs": 1.28
+   },
+   "accept": "ok",
+   "text": "我们需要找出 birth 收网等待从 900ms 涨到 2400ms 的原因。升级前后 ttfbMs p50 是 610 / 640，几乎没动；contentSpanMs p50 从 280 涨到 1650，outputChars p50 从 390 涨到 1720，promptVersion 两轮都是 compress-v3h:250-450，没变。手上的两行都来自 bash git diff v11.9..v11.10 -- src/config.js（逐字，去掉 diff 的加号）：\n`compressTargetMax: 1800,`\n`maxOutputTokens: 4096,`\n看起来等待增量几乎全落在解码段：2400-900=1500ms，而 contentSpan 增量 1650-280=1370ms，ttfb 只涨 30ms，说明 prefill 没变、变的是生成量；吞吐 390/280≈1.39 chars/ms 对 1720/1650≈1.04 chars/ms 同一量级，不是单 token 变慢，这就是等待变长的原因。promptVersion 里的 250-450 和压缩目标对不上，但那是探针字符串，不改变落点。\n\n不选的两条：先去查 tokenizer 或模型侧限速，属于治症状，量已经对上了；maxOutputTokens 850→4096 是上限不是强制长度，单靠它解释不了 4.4x 的输出量，先不动。改法只落一个：改 src/config.js 的 `compressTargetMax: 1800,` 这一行，把它压回 450 对应的值，让压缩产物的长度目标回到升级前，落点已经在手。\n所以下一步工具调用是 bash `grep -rn \"compressTargetMax\\|compress-v3\" src/`。如果输出里出现 birth 收网这条路径读取 compressTargetMax、且 promptVersion 的 250-450 是硬编码而非由该配置拼出，那么假设坐实，看到这一点就够了，不用再跑 analyze-trace、也不用再核 README：直接 edit_file src/config.js，old_text 是 `compressTargetMax: 1800,`（上一轮 git diff 的原样行，加号是标记，不带也能匹配；这次 grep 输出里没有它，照用），new_text 是 `compressTargetMax: 450,`。如果输出显示只有压缩步骤读它、收网路径完全不碰这个键，那么假设不成立：真正的杠杆是 maxOutputTokens，落点换成同一处 diff 的那一行 `maxOutputTokens: 4096,`，new_text 是 `maxOutputTokens: 850,`，此时不要动 compressTargetMax——落点 `maxOutputTokens: 4096,` 的逐字原文已给出，可以直接当 edit_file 的 old_text，看到结果后不用再读文件；两边都读就先按第一分支改，收网量由压缩产物长度决定。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+   "side": "我们需要找出 birth 收网等待从 900ms 涨到 2400ms 的原因。升级前后 ttfbMs p50 是 610 / 640，几乎没动；contentSpanMs p50 从 280 涨到 1650，outputChars p50 从 390 涨到 1720，promptVersion 两轮都是 compress-v3h:250-450，没变。手上的两行都来自 bash git diff v11.9..v11.10 -- src/config.js（逐字，去掉 diff 的加号）：\n`compressTargetMax: 1800,`\n`maxOutputTokens: 4096,`\n看起来等待增量几乎全落在解码段：2400-900=1500ms，而 contentSpan 增量 1650-280=1370ms，ttfb 只涨 30ms，说明 prefill 没变、变的是生成量；吞吐 390/280≈1.39 chars/ms 对 1720/1650≈1.04 chars/ms 同一量级，不是单 token 变慢，这就是等待变长的原因。promptVersion 里的 250-450 和压缩目标对不上，但那是探针字符串，不改变落点。\n\n不选的两条：先去查 tokenizer 或模型侧限速，属于治症状，量已经对上了；maxOutputTokens 850→4096 是上限不是强制长度，单靠它解释不了 4.4x 的输出量，先不动。改法只落一个：改 src/config.js 的 `compressTargetMax: 1800,` 这一行，把它压回 450 对应的值，让压缩产物的长度目标回到升级前，落点已经在手。\n所以下一步工具调用是 bash `grep -rn \"compressTargetMax\\|compress-v3\" src/`。如果输出里出现 birth 收网这条路径读取 compressTargetMax、且 promptVersion 的 250-450 是硬编码而非由该配置拼出，那么假设坐实，看到这一点就够了，不用再跑 analyze-trace、也不用再核 README：直接 edit_file src/config.js，old_text 是 `compressTargetMax: 1800,`（上一轮 git diff 的原样行，加号是标记，不带也能匹配；这次 grep 输出里没有它，照用），new_text 是 `compressTargetMax: 450,`。如果输出显示只有压缩步骤读它、收网路径完全不碰这个键，那么假设不成立：真正的杠杆是 maxOutputTokens，落点换成同一处 diff 的那一行 `maxOutputTokens: 4096,`，new_text 是 `maxOutputTokens: 850,`，此时不要动 compressTargetMax；两边都读就先按第一分支改，收网量由压缩产物长度决定。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。"
+  },
+  {
+   "id": "eacces-config",
+   "mode": "v4",
+   "why": "error",
+   "error": "timeout 150000ms",
+   "ms": 150077,
+   "promptVersion": "compress-v4d6:ctx"
+  },
+  {
+   "id": "flaky-timeout",
+   "mode": "v4",
+   "why": "error",
+   "error": "timeout 150000ms",
+   "ms": 150027,
+   "promptVersion": "compress-v4d6:ctx"
+  }
+ ]
+}

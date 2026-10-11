@@ -1,0 +1,52 @@
+{
+  "schema": "cfb.micro-generator-family-splits/1",
+  "status": "exploratory-model-mismatch-no-registered-splits",
+  "splitUnit": "source repository; every row from one repository must remain in one split if later admitted",
+  "dataset": "nvidia/Open-SWE-Traces@f8fb5b3d2c787f85f8a00f5fe04fe3f1a11088ef:v1.2/minisweagent",
+  "families": [
+    {
+      "family": "repo:python-distro/distro",
+      "repo": "python-distro/distro",
+      "split": null,
+      "exploratorySplit": "train",
+      "sourceRow": 0
+    },
+    {
+      "family": "repo:gocardless/airflow-dbt",
+      "repo": "gocardless/airflow-dbt",
+      "split": null,
+      "exploratorySplit": "train",
+      "sourceRow": 3
+    },
+    {
+      "family": "repo:mehcode/python-xmlsec",
+      "repo": "mehcode/python-xmlsec",
+      "split": null,
+      "exploratorySplit": "dev",
+      "sourceRow": 6
+    },
+    {
+      "family": "repo:app-sre/qontract-reconcile",
+      "repo": "app-sre/qontract-reconcile",
+      "split": null,
+      "exploratorySplit": "train",
+      "sourceRow": 14409
+    },
+    {
+      "family": "repo:fonttools/fonttools",
+      "repo": "fonttools/fonttools",
+      "split": null,
+      "exploratorySplit": "dev",
+      "sourceRow": 24963
+    },
+    {
+      "family": "repo:knative/client",
+      "repo": "knative/client",
+      "split": null,
+      "exploratorySplit": "train",
+      "sourceRow": 72856
+    }
+  ],
+  "blindFamilies": [],
+  "note": "All six rows are Qwen3.8-27B/mini-swe-agent traces, not DeepSeek-V4.1-Flash traces. Historical 4/2 train/dev labels are retained only as exploratory suggestions and are not registered; every annotation finalSplit is null and trainingEligible is false. Target-model data and target-distribution evaluation are required before any split or training admission."
+}

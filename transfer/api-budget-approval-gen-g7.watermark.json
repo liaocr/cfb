@@ -1,0 +1,39 @@
+{
+  "authorityId": "2c4fb2dce3b8c72c4f8cc7370c4a1e18b011f083d466dacc1491b791f9baaff8",
+  "digest": "2442fd46a71033cdb4abd0fd222524b4b6eb32933889dd1ff242c6cd563ae790",
+  "halted": null,
+  "jobs": [
+    {
+      "key": "probe",
+      "kind": "probe",
+      "reservedNano": 26625000,
+      "status": "accepted"
+    },
+    {
+      "key": "compile|eacces-config",
+      "kind": "main",
+      "reason": "request-network-error",
+      "reservedNano": 71317000,
+      "status": "rejected"
+    },
+    {
+      "key": "compile|flaky-timeout",
+      "kind": "main",
+      "reservedNano": 73934000,
+      "status": "accepted"
+    },
+    {
+      "key": "compile|wrong-model",
+      "kind": "main",
+      "reservedNano": 66260000,
+      "status": "accepted"
+    }
+  ],
+  "planDigest": "eba1ac80d108c9c0197cfc09432bc13bf498fcedf8ca755fead9365fe0f0b8c6",
+  "requests": 4,
+  "reservedNano": 238136000,
+  "revision": "7c2b14da24703dec2afdd18eb62102d1dccb8264fa0e8deef357535c1814097d",
+  "schema": "cfb.api-watermark/1",
+  "scope": "cfb.generation.2026-10-02.g7",
+  "sequence": 9
+}

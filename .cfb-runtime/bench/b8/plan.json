@@ -1,0 +1,69 @@
+{
+  "schema": "cfb.bench-plan/1",
+  "id": "b8",
+  "at": "2026-10-03T17:09:23.722Z",
+  "policies": [
+    "base",
+    "p-8943e331e6"
+  ],
+  "split": "all",
+  "metric": "dd/1",
+  "gold": [
+    {
+      "id": "eacces-config_decoy-s0-r3",
+      "family": "eacces-config",
+      "split": "holdout",
+      "digest": "44e98a467a097a2e"
+    },
+    {
+      "id": "flaky-timeout-s0-r4",
+      "family": "flaky-timeout",
+      "split": "dev",
+      "digest": "322e18be14742f63"
+    },
+    {
+      "id": "flaky-timeout-s0-r5",
+      "family": "flaky-timeout",
+      "split": "dev",
+      "digest": "39e1e6f4a5e9d8af"
+    },
+    {
+      "id": "perf-regression-s0-r6",
+      "family": "perf-regression",
+      "split": "dev",
+      "digest": "21b62369147d4cf2"
+    },
+    {
+      "id": "sse-truncated_decoy-s0-r3",
+      "family": "sse-truncated",
+      "split": "dev",
+      "digest": "a0b069d79a230245"
+    },
+    {
+      "id": "sse-truncated-s0-r5",
+      "family": "sse-truncated",
+      "split": "dev",
+      "digest": "f84dc9988494f31e"
+    },
+    {
+      "id": "wrong-model_decoy-s0-r4",
+      "family": "wrong-model",
+      "split": "holdout",
+      "digest": "d1f253f227aecb50"
+    }
+  ],
+  "cost": {
+    "calls": 14,
+    "expectedUsd": 0.105,
+    "capUsd": 0.16,
+    "pricing": {
+      "compressUsd": 0.0075,
+      "compressCapUsd": 0.0114
+    }
+  },
+  "purpose": "模式 2：压缩器（生产 birthOffline 同构体，关思考、temperature 0）在金标原文上出稿，与手写金标按 dd/1 比对；量的是 g(稿 | 策略, 原文) 到手写标准的召回，不量结局",
+  "selection": "dev 项：每个金标上候选 vs base 按层级键配对 → e 值（≥2 家族、e ≥ 阈 ⇒ promote）；holdout 项只报告，不参与选择；promote 的策略进 plan-traj（模式 3）验收，基准分本身不采纳 champion",
+  "design": "22e5a4610ac6ee9e",
+  "digest": "5193dcd48bdb6369",
+  "command": "node tools/bench-run.mjs --plan .cfb-runtime/bench/b8/plan.json --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/bench/b8"
+}

@@ -1,0 +1,48 @@
+{
+  "schema": "cfb.micro-generator-review-queue-manifest/1",
+  "reviewPolicy": {
+    "mode": "ai-single-reviewer",
+    "reviewerType": "ai",
+    "reviewerId": "arena-agent-mode",
+    "reviewerCount": 1,
+    "humanReviewerCount": 0,
+    "independentSecondReview": false
+  },
+  "queueSha256": "fb3036888c3be64073bb817f1f78d016538abb1fa8ddb00ec5b8eca8679e56be",
+  "sourceHashes": {
+    "microDatasetSha256": "366045ef8ce7e88e5db121ef19bf08c4b3eca9a833bf6dc8c3f8f252a5a6bca7",
+    "canonicalGoldFiles": [
+      {
+        "path": "transfer/gold/perf-regression/perf-regression-s0-r7.json",
+        "sha256": "d99cdbd7d9d154a4d76e4119e60b9826f5d74458231cbd68a64c70091112430c"
+      },
+      {
+        "path": "transfer/gold/sse-truncated/sse-truncated-s0-r5.json",
+        "sha256": "8ca8ef9bf7e38bfb7cf57c12dfa54fcf1d19ae26119bf59a827b45be421c495a"
+      }
+    ]
+  },
+  "counts": {
+    "records": 17,
+    "canonicalReferences": 2,
+    "acceptedCaptures": 18,
+    "deduplicatedTriples": 3,
+    "excludedHoldout": 0,
+    "excludedVariants": 2,
+    "distinctInputs": 16,
+    "inputsWithMultipleTargets": 1,
+    "families": 3
+  },
+  "knownFamilies": [
+    "flaky-timeout",
+    "perf-regression",
+    "sse-truncated"
+  ],
+  "trainingReady": false,
+  "blockers": [
+    "all exported records are unreviewed queue rows, not training examples",
+    "source facts and reference claims need complete AI single-reviewer review with explicit provenance",
+    "current families are existing development families, not a new blind family",
+    "family-level final train/dev/blind assignments are not preregistered"
+  ]
+}

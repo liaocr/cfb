@@ -1,0 +1,5 @@
+本轮增量：原文确认 `finish: finish || (done ? 'stop' : null)` 是根因之一：它只补了 [DONE] 的截断流被记成 finish='stop'。原文还注意到 `ok = r.finish != null || r.out.length > 0` 里的 `r.out.length > 0`，它让有内容的截断流也判成 ok，所以即使去掉 stop 的映射，settle 仍会放行。已排除：保留 done 到 stop 的映射，因为 [DONE] 是传输层的终止符，不是完成的证据；已排除：保留 `r.out.length > 0`，因为它会让没有 finish_reason 的截断流判成 ok。改法分两处落地，都在 src/transport.js：① old_text 是 `finish: finish || (done ? 'stop' : null)`，new_text 是 `finish`；② old_text 是 `ok = r.finish != null || r.out.length > 0`，new_text 是 `ok = r.finish != null`。
+所以下一步工具调用是 bash `grep -rn` 对 settle、finish 与 ok 的搜索，这一条本轮已经发出，它的输出不在输入中。
+验收先写下：验收是 bash `node scripts/replay-truncated.mjs`，预期只补 [DONE] 的截断流打印 ok:false，birth 走 passthrough；`npm test` 仍然通过，但 `npm test` 单独绿不算证据，因为测试没覆盖这个情况。若 replay 仍打印 ok:true：第一步只有一条，bash `grep -rn` 重搜 settle 与 finish 确认改动落地；落地了，就把这次输出和上一轮 trace 比差，多出来的字段或数字就是下一条取证的对象。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。
+未解：package.json 的 test 脚本指向 verify.mjs，而原文读到该文件不存在，原文没有查清这一点，但它不影响落点。
+回放过了之后还有两件原文已经定下的事：确认完整流（finish_reason=length）仍然 condensed；以及确认 test/transport.selftest.mjs 的三个用例（finish 为 stop、length、空内容正常结束）仍然通过。能说修好要三件事都在手：改动落地的证据（缺）、原症状在同等条件下消失（缺）、这条观察是改后产生的（缺）；现在能说的：已改未验证，三件都拿到之前不能说修好。

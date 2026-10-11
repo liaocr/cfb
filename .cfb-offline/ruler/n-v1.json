@@ -1,0 +1,596 @@
+{
+  "schema": "cfb.gen-ruler-report/1",
+  "ruler": "gen-ruler/2",
+  "at": "2026-10-10T09:08:58.388Z",
+  "input": ".cfb-offline/_c-v1.jsonl",
+  "n": 30,
+  "pass": 11,
+  "fail": 19,
+  "passRate": 0.3667,
+  "failCount": {
+    "G1 quote-grounded": 8,
+    "G4 actionable": 1,
+    "G7 compressed": 16
+  },
+  "rows": [
+    {
+      "id": "adamchainz_apig-wsgi_pr93#b7",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.884,
+      "ratio": 0.3114,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamchainz_django-cors-headers_pr396#b8",
+      "pass": false,
+      "failed": [
+        "G4 actionable"
+      ],
+      "score": 0.6013,
+      "ratio": 0.5277,
+      "copy": 0.1036,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 0.5,
+        "sample": [
+          "CORS_MODEL",
+          "issue_description"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamchainz_ec2-metadata_pr40#b4",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6251,
+      "ratio": 0.5108,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamchainz_flake8-comprehensions_pr195#b3",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6782,
+      "ratio": 0.5853,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "C404"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamchainz_flake8-logging_pr4#b7",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.7554,
+      "ratio": 0.4156,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 3,
+        "paths": 0,
+        "ids": 3,
+        "idRetention": 0.6667,
+        "sample": [
+          "extra",
+          "LogRecord",
+          "issue_description"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamchainz_pytest-reverse_pr10#b15",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "score": 0.6707,
+      "ratio": 0.6249,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamchainz_treepoem_pr437#b19",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "score": 0.4719,
+      "ratio": 0.5033,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamtheturtle_doccmd_pr191#b7",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6171,
+      "ratio": 0.8301,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamtheturtle_pip-check-reqs_pr38#b9",
+      "pass": true,
+      "failed": [],
+      "score": 0.6919,
+      "ratio": 0.2072,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "pip"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamtheturtle_sybil-extras_pr297#b11",
+      "pass": true,
+      "failed": [],
+      "score": 0.7642,
+      "ratio": 0.1986,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "CliRunner"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "aio-libs_aiosmtpd_pr258#b36",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "score": 0.6606,
+      "ratio": 0.3547,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "aiokitchen_aiomisc_pr199#b13",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "score": 0.6626,
+      "ratio": 0.4403,
+      "copy": 0.0437,
+      "anchors": {
+        "loadBearing": 5,
+        "paths": 0,
+        "ids": 5,
+        "idRetention": 1,
+        "sample": [
+          "True",
+          "gRPC",
+          "grpc_reflection",
+          "grpc_reflection\\",
+          "v1alpha"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "aiven_aiven-client_pr287#b4",
+      "pass": true,
+      "failed": [],
+      "score": 0.7171,
+      "ratio": 0.2431,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "andialbrecht_sqlparse_pr317#b20",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8013,
+      "ratio": 0.4589,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "andrewgodwin_urlman_pr6#b7",
+      "pass": true,
+      "failed": [],
+      "score": 0.8327,
+      "ratio": 0.3222,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 4,
+        "paths": 0,
+        "ids": 4,
+        "idRetention": 1,
+        "sample": [
+          "UrlString",
+          "get_scheme",
+          "get_hostname",
+          "get_example_url"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "anntzer_defopt_pr30#b6",
+      "pass": true,
+      "failed": [],
+      "score": 0.6842,
+      "ratio": 0.1819,
+      "copy": 0.0383,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "ansys_pyedb-core_pr347#b30",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8001,
+      "ratio": 0.6435,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 6,
+        "paths": 3,
+        "ids": 3,
+        "idRetention": 0.6667,
+        "sample": [
+          "PYTHONPATH",
+          "PointTerminal.point",
+          "PrimitiveEdge.point",
+          "PointTerminal.params",
+          "PointData",
+          "file\\"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "ansys_pyfluent_pr139#b6",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.87,
+      "ratio": 0.794,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "app-sre_qontract-reconcile_pr1020#b18",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "score": 0.8854,
+      "ratio": 0.4989,
+      "copy": 0.0422,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "appium_python-client_pr307#b12",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8679,
+      "ratio": 0.7626,
+      "copy": 0.093,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "arcinstitute_cell-eval_pr102#b6",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6154,
+      "ratio": 0.4355,
+      "copy": 0.0553,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "build_delta_array"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "argyle-engineering_pyap_pr21#b34",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.6037,
+      "ratio": 0.3078,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "po_box",
+          "full_street"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "ariebovenberg_slotscheck_pr34#b10",
+      "pass": true,
+      "failed": [],
+      "score": 0.6814,
+      "ratio": 0.3117,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "TypeError"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "arviz-devs_preliz_pr103#b19",
+      "pass": true,
+      "failed": [],
+      "score": 0.7231,
+      "ratio": 0.2212,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 6,
+        "paths": 2,
+        "ids": 4,
+        "idRetention": 0.75,
+        "sample": [
+          "/workspace/arviz-devs__preliz__1.0/preliz/tests/test_mle.py",
+          "preliz/tests/test_mle.py",
+          "and",
+          "test_mle",
+          "test_auto_recover",
+          "InverseGamma\\"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "asottile_add-trailing-comma_pr178#b7",
+      "pass": true,
+      "failed": [],
+      "score": 0.4568,
+      "ratio": 0.3456,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "case"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "asottile_blacken-docs_pr128#b4",
+      "pass": true,
+      "failed": [],
+      "score": 0.6361,
+      "ratio": 0.2085,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 3,
+        "paths": 0,
+        "ids": 3,
+        "idRetention": 1,
+        "sample": [
+          "diff",
+          ".. code-block:: python",
+          "python"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "asottile_classify-imports_pr112#b9",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8177,
+      "ratio": 0.7186,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 3,
+        "paths": 1,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "THIRD_PARTY",
+          "distutils",
+          "ImportType.THIRD_PARTY"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "asottile_future-fstrings_pr10#b18",
+      "pass": true,
+      "failed": [],
+      "score": 0.5599,
+      "ratio": 0.2448,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "aspectumapp_osm2geojson_pr55#b6",
+      "pass": true,
+      "failed": [],
+      "score": 0.8184,
+      "ratio": 0.1448,
+      "copy": 0.0619,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "assertpy_assertpy_pr96#b23",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "score": 0.8484,
+      "ratio": 0.6113,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    }
+  ]
+}

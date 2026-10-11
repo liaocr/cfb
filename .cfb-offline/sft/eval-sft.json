@@ -1,0 +1,1839 @@
+{
+  "schema": "cfb.eval-sft/1",
+  "ruler": "gen-ruler/3",
+  "at": "2026-10-10T13:11:40.381Z",
+  "sft": ".cfb-offline\\sft",
+  "gen": ".cfb-offline\\sft\\_g-empty.jsonl",
+  "n": 89,
+  "missing": 0,
+  "emptyStudent": 89,
+  "teacher": {
+    "pass": 31,
+    "rate": 0.3483,
+    "failCount": {
+      "G0 no-leverage": 16,
+      "G7 compressed": 38,
+      "G1 quote-grounded": 9,
+      "G4 actionable": 4,
+      "G3 anchors-kept": 7,
+      "G6 not-copy": 1
+    }
+  },
+  "student": {
+    "pass": 0,
+    "rate": 0,
+    "failCount": {
+      "G0 no-leverage": 16,
+      "G4 actionable": 47,
+      "G3 anchors-kept": 60
+    }
+  },
+  "scoreable": {
+    "n": 73,
+    "teacherPass": 31,
+    "studentPass": 0,
+    "teacherRate": 0.4247,
+    "studentRate": 0,
+    "excluded": 16,
+    "why": "raw/ctx 本身没有可承重锚点，尺子对它没有受力点（G0）"
+  },
+  "paired": {
+    "bothPass": 0,
+    "studentOnly": 0,
+    "teacherOnly": 31,
+    "neither": 58
+  },
+  "chars": {
+    "teacher": {
+      "p50": 905
+    },
+    "student": {
+      "p50": 0
+    }
+  },
+  "ratio": {
+    "teacherP50": 0.35,
+    "studentP50": 0
+  },
+  "softScore": {
+    "teacherMean": 0.6957,
+    "studentMean": 0.285,
+    "teacherP50": 0.6984,
+    "studentP50": 0.284,
+    "studentWins": 0,
+    "studentLosses": 89,
+    "ties": 0,
+    "note": "不带阈值的连续量，不会被 G7 那条线牵着走"
+  },
+  "rows": [
+    {
+      "id": "adamchainz_pytest-reverse_pr10#b15",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G0 no-leverage",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.7228,
+      "studentScore": 0.23,
+      "teacherRatio": 0.6116,
+      "studentRatio": 0,
+      "teacherChars": 1011,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 267,
+      "studentDraft": ""
+    },
+    {
+      "id": "adamchainz_treepoem_pr437#b19",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.7517,
+      "studentScore": 0.38,
+      "teacherRatio": 0.3135,
+      "studentRatio": 0,
+      "teacherChars": 720,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 314,
+      "studentDraft": ""
+    },
+    {
+      "id": "adamtheturtle_pip-check-reqs_pr38#b9",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.5638,
+      "studentScore": 0.23,
+      "teacherRatio": 0.284,
+      "studentRatio": 0,
+      "teacherChars": 532,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 231,
+      "studentDraft": ""
+    },
+    {
+      "id": "adamtheturtle_sybil-extras_pr297#b11",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7522,
+      "studentScore": 0.2557,
+      "teacherRatio": 0.1853,
+      "studentRatio": 0,
+      "teacherChars": 738,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 295,
+      "studentDraft": ""
+    },
+    {
+      "id": "astropy_sphinx-automodapi_pr100#b11",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G1 quote-grounded",
+        "G0 no-leverage",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.7441,
+      "studentScore": 0.2557,
+      "teacherRatio": 0.3433,
+      "studentRatio": 0,
+      "teacherChars": 668,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 288,
+      "studentDraft": ""
+    },
+    {
+      "id": "avian2_jsonmerge_pr29#b3",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6592,
+      "studentScore": 0.2557,
+      "teacherRatio": 0.129,
+      "studentRatio": 0,
+      "teacherChars": 1067,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 473,
+      "studentDraft": ""
+    },
+    {
+      "id": "bambinos_formulae_pr102#b10",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.4823,
+      "studentScore": 0.29,
+      "teacherRatio": 0.2439,
+      "studentRatio": 0,
+      "teacherChars": 1540,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 404,
+      "studentDraft": ""
+    },
+    {
+      "id": "bastibe_python-soundfile_pr58#b21",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.8056,
+      "studentScore": 0.302,
+      "teacherRatio": 0.487,
+      "studentRatio": 0,
+      "teacherChars": 1011,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 434,
+      "studentDraft": ""
+    },
+    {
+      "id": "belerico_py-asciimath_pr4#b12",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6121,
+      "studentScore": 0.32,
+      "teacherRatio": 0.277,
+      "studentRatio": 0,
+      "teacherChars": 1090,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 420,
+      "studentDraft": ""
+    },
+    {
+      "id": "bellockk_alphashape_pr12#b5",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G0 no-leverage"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.6983,
+      "studentScore": 0.2577,
+      "teacherRatio": 0.2066,
+      "studentRatio": 0,
+      "teacherChars": 942,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 405,
+      "studentDraft": ""
+    },
+    {
+      "id": "best-doctor_flake8-annotations-complexity_pr23#b8",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.6753,
+      "studentScore": 0.23,
+      "teacherRatio": 0.3955,
+      "studentRatio": 0,
+      "teacherChars": 1102,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 423,
+      "studentDraft": ""
+    },
+    {
+      "id": "biopragmatics_bioversions_pr80#b18",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7453,
+      "studentScore": 0.23,
+      "teacherRatio": 0.37,
+      "studentRatio": 0,
+      "teacherChars": 744,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 337,
+      "studentDraft": ""
+    },
+    {
+      "id": "blackducksoftware_hub-rest-api-python_pr152#b10",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6127,
+      "studentScore": 0.29,
+      "teacherRatio": 0.3533,
+      "studentRatio": 0,
+      "teacherChars": 691,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 307,
+      "studentDraft": ""
+    },
+    {
+      "id": "bluetooth-devices_bluetooth-auto-recovery_pr13#b13",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.63,
+      "studentScore": 0.3446,
+      "teacherRatio": 0.3041,
+      "studentRatio": 0,
+      "teacherChars": 1042,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 433,
+      "studentDraft": ""
+    },
+    {
+      "id": "brandon-rhodes_python-skyfield_pr51#b9",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7245,
+      "studentScore": 0.3071,
+      "teacherRatio": 0.8468,
+      "studentRatio": 0,
+      "teacherChars": 1603,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 421,
+      "studentDraft": ""
+    },
+    {
+      "id": "brightway-lca_brightway2-data_pr207#b3",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7131,
+      "studentScore": 0.23,
+      "teacherRatio": 0.5342,
+      "studentRatio": 0,
+      "teacherChars": 985,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 392,
+      "studentDraft": ""
+    },
+    {
+      "id": "burnash_gspread_pr1004#b7",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.5706,
+      "studentScore": 0.284,
+      "teacherRatio": 0.3015,
+      "studentRatio": 0,
+      "teacherChars": 823,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 331,
+      "studentDraft": ""
+    },
+    {
+      "id": "c4deszes_ldfparser_pr11#b9",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G0 no-leverage"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.5565,
+      "studentScore": 0.32,
+      "teacherRatio": 0.1829,
+      "studentRatio": 0,
+      "teacherChars": 905,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 394,
+      "studentDraft": ""
+    },
+    {
+      "id": "carsonyl_pypac_pr81#b10",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G0 no-leverage"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.4454,
+      "studentScore": 0.32,
+      "teacherRatio": 0.176,
+      "studentRatio": 0,
+      "teacherChars": 319,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 97,
+      "studentDraft": ""
+    },
+    {
+      "id": "cerfacs-globc_icclim_pr110#b10",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.5737,
+      "studentScore": 0.23,
+      "teacherRatio": 0.3884,
+      "studentRatio": 0,
+      "teacherChars": 797,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 398,
+      "studentDraft": ""
+    },
+    {
+      "id": "cgoldberg_xvfbwrapper_pr66#b3",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.8567,
+      "studentScore": 0.4114,
+      "teacherRatio": 0.4041,
+      "studentRatio": 0,
+      "teacherChars": 988,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 408,
+      "studentDraft": ""
+    },
+    {
+      "id": "chimpler_pyhocon_pr123#b3",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6737,
+      "studentScore": 0.275,
+      "teacherRatio": 0.2793,
+      "studentRatio": 0,
+      "teacherChars": 963,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 418,
+      "studentDraft": ""
+    },
+    {
+      "id": "chmp_ipytest_pr110#b13",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G4 actionable"
+      ],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.8677,
+      "studentScore": 0.275,
+      "teacherRatio": 0.4146,
+      "studentRatio": 0,
+      "teacherChars": 1445,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 410,
+      "studentDraft": ""
+    },
+    {
+      "id": "cloudsmith-io_cloudsmith-cli_pr14#b8",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.5868,
+      "studentScore": 0.23,
+      "teacherRatio": 0.3745,
+      "studentRatio": 0,
+      "teacherChars": 712,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 297,
+      "studentDraft": ""
+    },
+    {
+      "id": "cloudtools_troposphere_pr2101#b11",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7093,
+      "studentScore": 0.23,
+      "teacherRatio": 0.3371,
+      "studentRatio": 0,
+      "teacherChars": 536,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 188,
+      "studentDraft": ""
+    },
+    {
+      "id": "common-workflow-language_cwl-utils_pr101#b13",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G3 anchors-kept"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6924,
+      "studentScore": 0.29,
+      "teacherRatio": 0.2823,
+      "studentRatio": 0,
+      "teacherChars": 831,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 341,
+      "studentDraft": ""
+    },
+    {
+      "id": "csparpa_pyowm_pr230#b39",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7657,
+      "studentScore": 0.275,
+      "teacherRatio": 0.2984,
+      "studentRatio": 0,
+      "teacherChars": 704,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 305,
+      "studentDraft": ""
+    },
+    {
+      "id": "csurfer_rake-nltk_pr59#b4",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G0 no-leverage",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.7898,
+      "studentScore": 0.3329,
+      "teacherRatio": 0.3715,
+      "studentRatio": 0,
+      "teacherChars": 581,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 267,
+      "studentDraft": ""
+    },
+    {
+      "id": "cthoyt_pystow_pr29#b4",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.8708,
+      "studentScore": 0.36,
+      "teacherRatio": 0.5433,
+      "studentRatio": 0,
+      "teacherChars": 929,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 347,
+      "studentDraft": ""
+    },
+    {
+      "id": "daggaz_json-stream_pr11#b17",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G3 anchors-kept"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.5528,
+      "studentScore": 0.41,
+      "teacherRatio": 0.2171,
+      "studentRatio": 0,
+      "teacherChars": 535,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 140,
+      "studentDraft": ""
+    },
+    {
+      "id": "dbatten5_maison_pr16#b15",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G0 no-leverage",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.8369,
+      "studentScore": 0.23,
+      "teacherRatio": 0.3451,
+      "studentRatio": 0,
+      "teacherChars": 637,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 272,
+      "studentDraft": ""
+    },
+    {
+      "id": "dchevell_flask-executor_pr12#b4",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.7966,
+      "studentScore": 0.302,
+      "teacherRatio": 0.5758,
+      "studentRatio": 0,
+      "teacherChars": 1086,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 411,
+      "studentDraft": ""
+    },
+    {
+      "id": "delta-io_delta-sharing_pr209#b10",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G0 no-leverage"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.6497,
+      "studentScore": 0.2557,
+      "teacherRatio": 0.3238,
+      "studentRatio": 0,
+      "teacherChars": 1188,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 486,
+      "studentDraft": ""
+    },
+    {
+      "id": "denisart_graphql-query_pr39#b7",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G0 no-leverage"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.6526,
+      "studentScore": 0.2975,
+      "teacherRatio": 0.2811,
+      "studentRatio": 0,
+      "teacherChars": 1213,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 510,
+      "studentDraft": ""
+    },
+    {
+      "id": "devolo_ssllabs_pr37#b4",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7839,
+      "studentScore": 0.27,
+      "teacherRatio": 0.2168,
+      "studentRatio": 0,
+      "teacherChars": 846,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 361,
+      "studentDraft": ""
+    },
+    {
+      "id": "dhermes_bezier_pr233#b5",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G0 no-leverage"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.5904,
+      "studentScore": 0.29,
+      "teacherRatio": 0.2988,
+      "studentRatio": 0,
+      "teacherChars": 872,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 328,
+      "studentDraft": ""
+    },
+    {
+      "id": "di_pip-api_pr99#b9",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6638,
+      "studentScore": 0.3586,
+      "teacherRatio": 0.3941,
+      "studentRatio": 0,
+      "teacherChars": 968,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 376,
+      "studentDraft": ""
+    },
+    {
+      "id": "django-extensions_django-extensions_pr1837#b26",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6663,
+      "studentScore": 0.2814,
+      "teacherRatio": 0.5472,
+      "studentRatio": 0,
+      "teacherChars": 1085,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 470,
+      "studentDraft": ""
+    },
+    {
+      "id": "docopt_docopt_pr6#b10",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7035,
+      "studentScore": 0.41,
+      "teacherRatio": 0.2987,
+      "studentRatio": 0,
+      "teacherChars": 514,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 219,
+      "studentDraft": ""
+    },
+    {
+      "id": "drgarcia1986_simple-settings_pr19#b13",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G4 actionable",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.8188,
+      "studentScore": 0.41,
+      "teacherRatio": 0.8455,
+      "studentRatio": 0,
+      "teacherChars": 2146,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 562,
+      "studentDraft": ""
+    },
+    {
+      "id": "durandtibo_feu_pr508#b8",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6357,
+      "studentScore": 0.23,
+      "teacherRatio": 0.4407,
+      "studentRatio": 0,
+      "teacherChars": 1025,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 312,
+      "studentDraft": ""
+    },
+    {
+      "id": "dwavesystems_dimod_pr387#b15",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G1 quote-grounded",
+        "G3 anchors-kept"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6148,
+      "studentScore": 0.29,
+      "teacherRatio": 0.2992,
+      "studentRatio": 0,
+      "teacherChars": 1247,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 466,
+      "studentDraft": ""
+    },
+    {
+      "id": "erezlife_html2docx_pr11#b7",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6076,
+      "studentScore": 0.23,
+      "teacherRatio": 0.3895,
+      "studentRatio": 0,
+      "teacherChars": 587,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 242,
+      "studentDraft": ""
+    },
+    {
+      "id": "ethereum_hexbytes_pr13#b27",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.575,
+      "studentScore": 0.23,
+      "teacherRatio": 0.3277,
+      "studentRatio": 0,
+      "teacherChars": 1220,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 483,
+      "studentDraft": ""
+    },
+    {
+      "id": "executablebooks_myst-nb_pr219#b3",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7168,
+      "studentScore": 0.23,
+      "teacherRatio": 1.6597,
+      "studentRatio": 0,
+      "teacherChars": 2780,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 724,
+      "studentDraft": ""
+    },
+    {
+      "id": "explosion_catalogue_pr33#b10",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6653,
+      "studentScore": 0.29,
+      "teacherRatio": 0.2748,
+      "studentRatio": 0,
+      "teacherChars": 643,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 281,
+      "studentDraft": ""
+    },
+    {
+      "id": "fohrloop_wakepy_pr79#b12",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.7326,
+      "studentScore": 0.374,
+      "teacherRatio": 0.2273,
+      "studentRatio": 0,
+      "teacherChars": 720,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 267,
+      "studentDraft": ""
+    },
+    {
+      "id": "fox-it_dissect.util_pr70#b15",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.9277,
+      "studentScore": 0.35,
+      "teacherRatio": 0.2456,
+      "studentRatio": 0,
+      "teacherChars": 695,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 284,
+      "studentDraft": ""
+    },
+    {
+      "id": "frankie567_httpx-ws_pr110#b13",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.8876,
+      "studentScore": 0.23,
+      "teacherRatio": 0.2267,
+      "studentRatio": 0,
+      "teacherChars": 710,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 275,
+      "studentDraft": ""
+    },
+    {
+      "id": "fulder_pki-tools_pr119#b11",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6294,
+      "studentScore": 0.29,
+      "teacherRatio": 0.4286,
+      "studentRatio": 0,
+      "teacherChars": 1231,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 461,
+      "studentDraft": ""
+    },
+    {
+      "id": "gauge-sh_tach_pr10#b6",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7053,
+      "studentScore": 0.29,
+      "teacherRatio": 0.4202,
+      "studentRatio": 0,
+      "teacherChars": 1203,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 313,
+      "studentDraft": ""
+    },
+    {
+      "id": "gijzelaerr_python-snap7_pr241#b24",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7626,
+      "studentScore": 0.29,
+      "teacherRatio": 0.4319,
+      "studentRatio": 0,
+      "teacherChars": 660,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 270,
+      "studentDraft": ""
+    },
+    {
+      "id": "google_pasta_pr10#b13",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.8182,
+      "studentScore": 0.32,
+      "teacherRatio": 0.3858,
+      "studentRatio": 0,
+      "teacherChars": 620,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 278,
+      "studentDraft": ""
+    },
+    {
+      "id": "google_pinject_pr49#b13",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7382,
+      "studentScore": 0.32,
+      "teacherRatio": 0.2516,
+      "studentRatio": 0,
+      "teacherChars": 695,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 331,
+      "studentDraft": ""
+    },
+    {
+      "id": "gruebel_pycep_pr109#b6",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G4 actionable",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.5562,
+      "studentScore": 0.32,
+      "teacherRatio": 0.406,
+      "studentRatio": 0,
+      "teacherChars": 635,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 244,
+      "studentDraft": ""
+    },
+    {
+      "id": "home-assistant-libs_voluptuous-serialize_pr12#b6",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G0 no-leverage"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.5103,
+      "studentScore": 0.23,
+      "teacherRatio": 0.2796,
+      "studentRatio": 0,
+      "teacherChars": 449,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 117,
+      "studentDraft": ""
+    },
+    {
+      "id": "ikalnytskyi_picobox_pr33#b13",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G1 quote-grounded",
+        "G0 no-leverage"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.6085,
+      "studentScore": 0.32,
+      "teacherRatio": 0.4181,
+      "studentRatio": 0,
+      "teacherChars": 1529,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 458,
+      "studentDraft": ""
+    },
+    {
+      "id": "imageio_imageio_pr83#b18",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G0 no-leverage"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.7126,
+      "studentScore": 0.3282,
+      "teacherRatio": 0.142,
+      "studentRatio": 0,
+      "teacherChars": 829,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 358,
+      "studentDraft": ""
+    },
+    {
+      "id": "jazzband_dj-database-url_pr145#b6",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7172,
+      "studentScore": 0.2814,
+      "teacherRatio": 0.4317,
+      "studentRatio": 0,
+      "teacherChars": 993,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 364,
+      "studentDraft": ""
+    },
+    {
+      "id": "jazzband_geojson_pr131#b7",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G1 quote-grounded"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7494,
+      "studentScore": 0.2814,
+      "teacherRatio": 0.2577,
+      "studentRatio": 0,
+      "teacherChars": 975,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 407,
+      "studentDraft": ""
+    },
+    {
+      "id": "joerick_pyinstrument_pr46#b17",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.8678,
+      "studentScore": 0.23,
+      "teacherRatio": 0.2863,
+      "studentRatio": 0,
+      "teacherChars": 682,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 266,
+      "studentDraft": ""
+    },
+    {
+      "id": "johnnoone_json-spec_pr8#b12",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G3 anchors-kept"
+      ],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7895,
+      "studentScore": 0.36,
+      "teacherRatio": 0.3635,
+      "studentRatio": 0,
+      "teacherChars": 1325,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 345,
+      "studentDraft": ""
+    },
+    {
+      "id": "jupyter-widgets_ipywidgets_pr2570#b6",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7491,
+      "studentScore": 0.23,
+      "teacherRatio": 0.2442,
+      "studentRatio": 0,
+      "teacherChars": 756,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 302,
+      "studentDraft": ""
+    },
+    {
+      "id": "jwodder_versioningit_pr79#b10",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.5556,
+      "studentScore": 0.23,
+      "teacherRatio": 0.6784,
+      "studentRatio": 0,
+      "teacherChars": 1097,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 437,
+      "studentDraft": ""
+    },
+    {
+      "id": "keboola_python-component_pr51#b10",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.8207,
+      "studentScore": 0.32,
+      "teacherRatio": 0.1551,
+      "studentRatio": 0,
+      "teacherChars": 683,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 253,
+      "studentDraft": ""
+    },
+    {
+      "id": "kyleking_mdformat-mkdocs_pr26#b7",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G0 no-leverage",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.8346,
+      "studentScore": 0.26,
+      "teacherRatio": 0.4262,
+      "studentRatio": 0,
+      "teacherChars": 967,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 360,
+      "studentDraft": ""
+    },
+    {
+      "id": "lasp_cdflib_pr140#b12",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G0 no-leverage"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.7939,
+      "studentScore": 0.35,
+      "teacherRatio": 0.296,
+      "studentRatio": 0,
+      "teacherChars": 788,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 349,
+      "studentDraft": ""
+    },
+    {
+      "id": "lasselindqvist_robotframework-imaplibrary2_pr33#b8",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.633,
+      "studentScore": 0.302,
+      "teacherRatio": 0.7262,
+      "studentRatio": 0,
+      "teacherChars": 2005,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 628,
+      "studentDraft": ""
+    },
+    {
+      "id": "liormizr_s3path_pr121#b7",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G3 anchors-kept",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.5828,
+      "studentScore": 0.23,
+      "teacherRatio": 0.5975,
+      "studentRatio": 0,
+      "teacherChars": 941,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 374,
+      "studentDraft": ""
+    },
+    {
+      "id": "litl_backoff_pr129#b15",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7199,
+      "studentScore": 0.27,
+      "teacherRatio": 0.3065,
+      "studentRatio": 0,
+      "teacherChars": 763,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 372,
+      "studentDraft": ""
+    },
+    {
+      "id": "logdna_python_pr75#b3",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G0 no-leverage",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G0 no-leverage"
+      ],
+      "teacherScore": 0.4482,
+      "studentScore": 0.23,
+      "teacherRatio": 0.4368,
+      "studentRatio": 0,
+      "teacherChars": 684,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 296,
+      "studentDraft": ""
+    },
+    {
+      "id": "lovesegfault_beautysh_pr36#b3",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6517,
+      "studentScore": 0.29,
+      "teacherRatio": 0.3414,
+      "studentRatio": 0,
+      "teacherChars": 818,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 342,
+      "studentDraft": ""
+    },
+    {
+      "id": "magmax_python-inquirer_pr167#b4",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.4582,
+      "studentScore": 0.23,
+      "teacherRatio": 0.074,
+      "studentRatio": 0,
+      "teacherChars": 469,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 175,
+      "studentDraft": ""
+    },
+    {
+      "id": "marcharper_python-ternary_pr145#b3",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G6 not-copy",
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.87,
+      "studentScore": 0.23,
+      "teacherRatio": 1,
+      "studentRatio": 0,
+      "teacherChars": 1618,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 421,
+      "studentDraft": ""
+    },
+    {
+      "id": "matthew-brett_delocate_pr186#b26",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.9497,
+      "studentScore": 0.23,
+      "teacherRatio": 0.1353,
+      "studentRatio": 0,
+      "teacherChars": 246,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 99,
+      "studentDraft": ""
+    },
+    {
+      "id": "matyasrichter_fastapi-injector_pr25#b4",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G4 actionable"
+      ],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7183,
+      "studentScore": 0.23,
+      "teacherRatio": 0.4697,
+      "studentRatio": 0,
+      "teacherChars": 1413,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 396,
+      "studentDraft": ""
+    },
+    {
+      "id": "maurerle_eralchemy2_pr31#b4",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G1 quote-grounded"
+      ],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.6701,
+      "studentScore": 0.3118,
+      "teacherRatio": 0.4994,
+      "studentRatio": 0,
+      "teacherChars": 1628,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 424,
+      "studentDraft": ""
+    },
+    {
+      "id": "maxpmaxp_pdfreader_pr13#b7",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6581,
+      "studentScore": 0.32,
+      "teacherRatio": 0.35,
+      "studentRatio": 0,
+      "teacherChars": 797,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 283,
+      "studentDraft": ""
+    },
+    {
+      "id": "mehcode_python-xmlsec_pr100#b15",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6112,
+      "studentScore": 0.23,
+      "teacherRatio": 0.6293,
+      "studentRatio": 0,
+      "teacherChars": 1679,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 440,
+      "studentDraft": ""
+    },
+    {
+      "id": "mercedes-benz_odxtools_pr159#b11",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.7862,
+      "studentScore": 0.29,
+      "teacherRatio": 0.9277,
+      "studentRatio": 0,
+      "teacherChars": 1694,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 482,
+      "studentDraft": ""
+    },
+    {
+      "id": "meteostat_meteostat-python_pr207#b7",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G3 anchors-kept"
+      ],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6671,
+      "studentScore": 0.275,
+      "teacherRatio": 0.1714,
+      "studentRatio": 0,
+      "teacherChars": 807,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 322,
+      "studentDraft": ""
+    },
+    {
+      "id": "mhostetter_galois_pr229#b7",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7358,
+      "studentScore": 0.35,
+      "teacherRatio": 0.3045,
+      "studentRatio": 0,
+      "teacherChars": 647,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 277,
+      "studentDraft": ""
+    },
+    {
+      "id": "mkorpela_pabot_pr317#b10",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6984,
+      "studentScore": 0.3329,
+      "teacherRatio": 0.3548,
+      "studentRatio": 0,
+      "teacherChars": 1297,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 565,
+      "studentDraft": ""
+    },
+    {
+      "id": "mmore500_alifedata-phyloinformatics-convert_pr6#b11",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.862,
+      "studentScore": 0.29,
+      "teacherRatio": 0.3534,
+      "studentRatio": 0,
+      "teacherChars": 797,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 291,
+      "studentDraft": ""
+    },
+    {
+      "id": "mvcisback_py-aiger_pr102#b4",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6104,
+      "studentScore": 0.23,
+      "teacherRatio": 0.5395,
+      "studentRatio": 0,
+      "teacherChars": 1162,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 492,
+      "studentDraft": ""
+    },
+    {
+      "id": "nschloe_matplotx_pr11#b6",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable"
+      ],
+      "teacherScore": 0.6818,
+      "studentScore": 0.23,
+      "teacherRatio": 0.8274,
+      "studentRatio": 0,
+      "teacherChars": 1889,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 492,
+      "studentDraft": ""
+    },
+    {
+      "id": "openedx_edx-rest-api-client_pr37#b5",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G7 compressed"
+      ],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.6768,
+      "studentScore": 0.266,
+      "teacherRatio": 0.4464,
+      "studentRatio": 0,
+      "teacherChars": 970,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 368,
+      "studentDraft": ""
+    },
+    {
+      "id": "openshift_openshift-client-python_pr113#b12",
+      "teacherPass": false,
+      "studentPass": false,
+      "teacherFailed": [
+        "G3 anchors-kept"
+      ],
+      "studentFailed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.7295,
+      "studentScore": 0.305,
+      "teacherRatio": 0.3654,
+      "studentRatio": 0,
+      "teacherChars": 1133,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 295,
+      "studentDraft": ""
+    },
+    {
+      "id": "pallets-eco_flask-pydantic_pr44#b7",
+      "teacherPass": true,
+      "studentPass": false,
+      "teacherFailed": [],
+      "studentFailed": [
+        "G3 anchors-kept"
+      ],
+      "teacherScore": 0.647,
+      "studentScore": 0.23,
+      "teacherRatio": 0.3146,
+      "studentRatio": 0,
+      "teacherChars": 808,
+      "studentChars": 0,
+      "studentTok": 0,
+      "teacherTok": 311,
+      "studentDraft": ""
+    }
+  ]
+}

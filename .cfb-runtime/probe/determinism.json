@@ -1,0 +1,71 @@
+{
+  "at": "2026-10-05T07:28:26.770Z",
+  "model": "deepseek-v4.1-flash",
+  "base": "https://api.a6api.com/v1",
+  "echo": [
+    "verify:offline 33/33，金标 7 项 / 3 家族，dd 1.000",
+    "verify:offline 33/33，金标 7 项 / 3 家族，dd 1.000",
+    "verify:offline 33/33，金标 7 项 / 3 家族，dd 1.000",
+    "verify:offline 33/33，金标 7 项 / 3 家族，dd 1.000",
+    "verify:offline 33/33，金标 7 项 / 3 家族，dd 1.000",
+    "verify:offline 33/33，金标 7 项 / 3 家族，dd 1.000",
+    "verify:offline 33/33，金标 7 项 / 3 家族，dd 1.000",
+    "verify:offline 33/33，金标 7 项 / 3 家族，dd 1.000",
+    "verify:offline 33/33，金标 7 项 / 3 家族，dd 1.000",
+    "verify:offline 33/33，金标 7 项 / 3 家族，dd 1.000"
+  ],
+  "b": [
+    "排查 src/transport.js：assembleSseFrames 把 [DONE] 当作 finish_reason=stop，导致截断流被误判成功。legacy 是未被 import 的诱饵，不动。只改一处：去掉兜底，settle 改用 finish != null，4 个用例逐条推演仍成立。",
+    "查 src/transport.js：assembleSseFrames 误把 [DONE] 当 finish_reason=stop，截断流被误判成功。legacy 未被 import，是诱饵，不改。只改一处：去掉兜底，settle 改用 finish != null。四个用例逐条推演仍成立。",
+    "读了 src/transport.js：assembleSseFrames 把 [DONE] 当 finish_reason=stop，截断流因此判成功。legacy 没被 import，是诱饵，不改。只改一处：去掉兜底，settle 改判 finish != null。4 个用例逐条推演仍成立。",
+    "查 src/transport.js，assembleSseFrames 误将 [DONE] 记为 finish_reason=stop，致截断流被判成功；legacy 无 import，是诱饵不改。只改一处：去掉兜底，settle 用 finish != null。4 个测试用例推演仍成立。",
+    "查 src/transport.js，`assembleSseFrames` 把 `[DONE]` 误判为 `finish_reason=stop`，致截断流判成功。legacy 未被 import，是诱饵。只改一处：去掉兜底，settle 用 `finish != null`。4 个用例逐条推演仍成立。",
+    "查 src/transport.js，assembleSseFrames 把 [DONE] 当 finish_reason=stop，使截断流判成功。legacy 未被引用，是诱饵，不改。只改一处：去兜底，settle 用 finish != null。4 个用例逐条推演仍成立。",
+    "查 transport.js 发现 assembleSseFrames 把 [DONE] 当 stop，截断流被误判成功。legacy 未被引用，是诱饵，不改。只改一处：去掉兜底，settle 改用 finish != null。逐条推演 4 个用例仍成立。",
+    "改 src/transport.js：assembleSseFrames 原先将 [DONE] 视作 finish_reason=stop，致截断流误判成功。legacy 未被 import，是诱饵，不动。只改一处：去掉兜底，settle 改用 finish != null。4 个用例逐条推演仍成立。",
+    "查 src/transport.js，assembleSseFrames 误把 [DONE] 当 finish_reason=stop，致截断流判成功。legacy 无 import 是诱饵，不改。只改一处：去兜底，settle 用 finish != null。四个用例已推演仍成立。",
+    "改 src/transport.js：assembleSseFrames 把 [DONE] 误判为 stop，致截断流当成功。legacy 未被 import，是诱饵，不动。只去掉兜底，settle 改用 finish != null，4 个用例推演仍成立。"
+  ],
+  "c": [
+    "查 transport.js 发现 assembleSseFrames 把 [DONE] 当 finish_reason=stop，截断流被误判成功。legacy 无引用，是诱饵，不改。只改一处：去掉兜底，settle 用 finish != null。4 个用例已逐条推演，仍成立。",
+    "排查 src/transport.js：assembleSseFrames 将 [DONE] 误判为 finish_reason=stop，导致截断流被当成成功。legacy 无引用属诱饵。只改一处：去掉兜底，settle 用 finish != null，4 个用例仍成立。",
+    "查 transport.js：assembleSseFrames 误把 [DONE] 当 finish_reason=stop，致截断流判成功。legacy 未被 import，是诱饵，不改。只改一处：去掉兜底，settle 改用 finish != null。已推演 4 个用例仍成立。",
+    "查 transport.js，assembleSseFrames 误把 [DONE] 当 finish_reason=stop，致截断流判成功。legacy 未被引用，是诱饵，不改。只去兜底，settle 改判 finish != null，4 个用例仍成立。"
+  ],
+  "ddB": {
+    "scores": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "spread": 0,
+    "keys": [
+      "1,1,1,1,1,1"
+    ],
+    "verdicts": {
+      "close": 10
+    }
+  },
+  "ddC": {
+    "scores": [
+      1,
+      1,
+      1,
+      1
+    ],
+    "spread": 0,
+    "keys": [
+      "1,1,1,1,1,1"
+    ],
+    "verdicts": {
+      "close": 4
+    }
+  }
+}

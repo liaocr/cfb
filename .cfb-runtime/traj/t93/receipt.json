@@ -1,0 +1,25 @@
+{
+  "schema": "cfb.traj-receipt/1",
+  "plan": "t93",
+  "digest": "a2b1da3caddd0336",
+  "at": "2026-10-05T08:53:57.010Z",
+  "trajectories": 2,
+  "errors": 0,
+  "awaiting": 0,
+  "mainCalls": 10,
+  "compressCalls": 0,
+  "handDrafts": 1,
+  "shadowRounds": 14,
+  "noContrastGroups": 0,
+  "extended": 1,
+  "reusedRaw": 0,
+  "fpModes": {
+    "carry-verified": 10
+  },
+  "preflights": 2,
+  "promptTokens": 70515,
+  "gateFails": 0,
+  "completionTokens": 8683,
+  "estimatedUsd": 0.125,
+  "stoppedEarly": null
+}

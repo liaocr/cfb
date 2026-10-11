@@ -1,0 +1,117 @@
+{
+  "schema": "cfb.bench-report/1",
+  "baseline": "base",
+  "metric": "dd/2",
+  "policies": [
+    "p-082d742f60",
+    "p-08bdbc7561",
+    "p-1490eefcdf"
+  ],
+  "table": [
+    {
+      "policy": "p-082d742f60",
+      "split": "dev",
+      "n": 2,
+      "score": 0.841,
+      "gateFail": 0,
+      "verdicts": {
+        "partial": 1,
+        "close": 1
+      },
+      "decision": 1,
+      "excludedRecall": 0.5,
+      "acceptOk": 1,
+      "openRecall": 1,
+      "anchorPrecision": 1,
+      "lengthOk": 0.5
+    },
+    {
+      "policy": "p-08bdbc7561",
+      "split": "dev",
+      "n": 1,
+      "score": 0.861,
+      "gateFail": 0,
+      "verdicts": {
+        "close": 1
+      },
+      "decision": 1,
+      "excludedRecall": 0.5,
+      "acceptOk": 1,
+      "openRecall": null,
+      "anchorPrecision": 1,
+      "lengthOk": 1
+    },
+    {
+      "policy": "p-1490eefcdf",
+      "split": "dev",
+      "n": 2,
+      "score": 1,
+      "gateFail": 0,
+      "verdicts": {
+        "close": 2
+      },
+      "decision": 1,
+      "excludedRecall": 1,
+      "acceptOk": 1,
+      "openRecall": 1,
+      "anchorPrecision": 1,
+      "lengthOk": 1
+    }
+  ],
+  "paired": {
+    "p-082d742f60": {
+      "n": 0,
+      "wins": 0,
+      "losses": 0,
+      "ties": 0,
+      "e": 1,
+      "eReject": 1,
+      "families": 0,
+      "generalizationGap": null,
+      "outcomes": [],
+      "decision": "undetermined"
+    },
+    "p-08bdbc7561": {
+      "n": 0,
+      "wins": 0,
+      "losses": 0,
+      "ties": 0,
+      "e": 1,
+      "eReject": 1,
+      "families": 0,
+      "generalizationGap": null,
+      "outcomes": [],
+      "decision": "undetermined"
+    },
+    "p-1490eefcdf": {
+      "n": 0,
+      "wins": 0,
+      "losses": 0,
+      "ties": 0,
+      "e": 1,
+      "eReject": 1,
+      "families": 0,
+      "generalizationGap": null,
+      "outcomes": [],
+      "decision": "undetermined"
+    }
+  },
+  "best": null,
+  "threshold": 10,
+  "next": "冻结计划 b12 的有效结果不完整（5/15 个唯一 job）；不得晋升或回灌，补齐有效结果后再报告",
+  "preregistration": {
+    "plan": "b12",
+    "digest": "588bb6cacdf25e3f",
+    "registered": true,
+    "expectedJobs": 15,
+    "eligibleJobs": 5,
+    "complete": false
+  },
+  "flywheel": {
+    "added": 0,
+    "total": 8,
+    "qualityRejected": 0,
+    "scopeRejected": 0,
+    "withheldForIncompletePlan": true
+  }
+}

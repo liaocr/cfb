@@ -1,0 +1,42 @@
+{
+  "schema": "cfb.quarantined-oracle-rows/1",
+  "audit": {
+    "schema": "cfb.mode1-oracle-quarantine/1",
+    "sourceFile": "transfer/oracle/M.json",
+    "sourceSha256": "059d80b72e454f79af0587b8a1eb96fdebd1612293c7f19fb32172a6fb2b9e54",
+    "originalRows": 5,
+    "activeRows": 4,
+    "quarantinedRows": 1,
+    "quarantined": [
+      {
+        "id": "sse-truncated",
+        "issues": [
+          {
+            "category": "executor-tool-or-check-prohibition",
+            "excerpt": "严禁再用 sed"
+          }
+        ]
+      }
+    ],
+    "limitation": "Deterministic target-content audit only; this is not semantic validation or a blind-review claim."
+  },
+  "rows": [
+    {
+      "id": "sse-truncated",
+      "mode": "v4",
+      "why": "condensed",
+      "text": "我们需要找出为什么截断的压缩结果被当成成功。trace 里 compiler-transport-settled 是 ok:true、finish:null、stream:true、outputChars:212、eventCount:9；birth-condensed 是 rawChars 8123 → outChars 212。只有 212 字、没有 finish_reason，却写进了会话。\n\nassembleSseFrames 的关键两行（read_file src/transport.js 原文，逐字）：\n`if (f === '[DONE]') { done = true; continue }`\n`return { out, finish: finish || (done ? 'stop' : null) }`\nfinish 只在收到 finish_reason 时才赋值；没有 finish_reason 时，只要收到 [DONE] 就回退成 'stop'。网关文档说部分上游在连接被代理切断时只补发 data: [DONE]。所以被切断的流会拿到 stop，截断被当成正常结束——这就是 bug 本体：不管调用方怎么判 ok，都不该由 [DONE] 造出一个 stop。\n\n有一点没对上：trace 里 finish 是 null，而按这段代码 done=true 时应返回 'stop'。可能 settle 记录的是上游原始的 finish_reason（那自然是 null），也可能 ok 的判定根本不看 finish。这只影响「要不要顺带改调用方」，不影响这一行必须改。调大 outputChars 阈值、改超时都是治症状，排除。\n\n所以下一步工具调用是 bash grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled|assembleSseFrames|birth-condensed\" src，确认调用方的 ok 赋值。如果 grep 确认 transport.js 的 ok 和返回确实由 assembleSseFrames 的 finish 决定，那么根因坐实，grep 显示 transport.js:233 return { ok: r.finish === 'stop' }，说明调用方完全相信 assembleSseFrames 的 finish；看到这行 grep 结果就必须直接动手改这一行，严禁再用 sed 或 read_file 查看 transport.js 或 birth.js 的其它上下文，trace 里的 null 只是原始日志不用再查：edit_file src/transport.js，old_text 是 `return { out, finish: finish || (done ? 'stop' : null) }`（read_file 原样逐字给出，不带行首缩进也能匹配，唯一），new_text 是 `return { out, finish: finish || null, done }`。如果调用方的 ok 完全不依赖 finish，那么再改调用方，此时不要乱动其它文件。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+      "outChars": 1401,
+      "qualityAudit": {
+        "status": "quarantined",
+        "issues": [
+          {
+            "category": "executor-tool-or-check-prohibition",
+            "excerpt": "严禁再用 sed"
+          }
+        ]
+      },
+      "quarantineReason": "executor-tool-or-check-prohibition"
+    }
+  ]
+}

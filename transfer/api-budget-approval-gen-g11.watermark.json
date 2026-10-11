@@ -1,0 +1,26 @@
+{
+  "authorityId": "75d7f0a3df3673540e5129b7399833dfdadd91176c8290ff1475be930698669e",
+  "digest": "0b5d6593451f6592009d90f2c508f11c4a40ec2eea576ccff8308523de55ffaf",
+  "halted": null,
+  "jobs": [
+    {
+      "key": "probe",
+      "kind": "probe",
+      "reservedNano": 28674000,
+      "status": "accepted"
+    },
+    {
+      "key": "compile|sse-truncated",
+      "kind": "main",
+      "reservedNano": 83560000,
+      "status": "accepted"
+    }
+  ],
+  "planDigest": "6be6ef88636af88903e359ac7cde1ed6bbf6313733e7edcb5c3b6710473eba3c",
+  "requests": 2,
+  "reservedNano": 112234000,
+  "revision": "3294dc167820d22c07b4eada50deb16dcd44a468196489ea31ad7e404dc57f4c",
+  "schema": "cfb.api-watermark/1",
+  "scope": "cfb.generation.2026-10-02.g11",
+  "sequence": 5
+}

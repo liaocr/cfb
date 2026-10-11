@@ -1,0 +1,135 @@
+{
+  "schema": "cfb.gold/1",
+  "id": "wrong-model_decoy-s0-r4",
+  "family": "wrong-model",
+  "task": "wrong-model:decoy",
+  "sample": 0,
+  "round": 4,
+  "plan": "t101",
+  "split": "holdout",
+  "at": "2026-10-05T13:06:59.946Z",
+  "raw": "Root cause: `lastModel` is module-level state (shared, persists across sessions). And observe only reads options.model, ignoring n.model. So in new host, lastModel is never updated → stays from previous session (or undefined). The stale value persists.\n\nFix: observe should take (options, n) and prefer n.model, falling back to options.model for legacy. Also state should be per-plugin-instance, not module-level, to avoid cross-session leakage. Actually the bug is cross-session: even if options.model present in session 1, in session 2 with n.model, observe ignores it → lastModel remains session1 model.\n\nLet me rewrite host-follow.js to:\n- instance state (closure inside makeHostFollow)\n- observe(options, n): model = n?.model || options?.model\n- callConfig returns that.\n\nAlso should we handle the case where both undefined? fall back to cfg.model.\n\nLet's implement. Also maybe update legacy to be consistent? Legacy not imported anywhere. The README decoy says look at legacy first. Task: fix the bug. I'll fix host-follow.js (the actually-used one) and also keep legacy consistent maybe. I'll focus on host-follow.js. Perhaps also update legacy to avoid confusion but not necessary. I'll update both for consistency? Better to fix the real one and mention legacy is unused. Let me also add test coverage.\n\nLet's write fix.\n\nAlso note: birthTransform uses cfg.model for compressedWith; callConfig passes model. Good.\n\nLet me edit.",
+  "ctx": "用户报告：插件压缩用的模型不是当前会话的模型，而是上一次会话的模型。用户给的 trace 片段在 trace/last.log。可用 `node scripts/smoke-session.mjs` 复现（模拟两次会话，写 trace/trace.log 并打印最后几行）。请找出原因并修好，修好后说明依据。验收：压缩那一跳（trace 里 compiler-transport-started 的 model）必须等于当前会话的模型（n.model），旧宿主仍传 options.model 时也要对。\n\n【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）\n- 已走过的路：（共 5 条调用，详见下方【延续段】；曾涉 trace/last.log dev/null scripts/smoke-session.mjs README.md package.json src/ rev-parse show-toplevel host-follow）\n\n【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）\n仍在依赖的事实：`host-follow.js`——第 3 轮稿里逐字引用的行，本轮输出里不会再出现，出处仍有效。已走过的路：第 1 轮已跑 2 条：bash×2（ls、cat）（曾涉 trace/last.log、scripts/smoke-session.mjs）；第 2 轮 bash `ls -la src test scripts && cat README.md package.json` → 「$ ls -la src test scripts」；第 2 轮 bash `cat src/*.js` → 「export function birthTransform(n, { cfg,…」；第 3 轮 bash `cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\"; grep -rn \"host-follow\\|makeHostFollow\\|…` → 「$ cd \"$(git rev-parse --show-toplevel 2>…」；这些不再重跑，除非中间改过东西。",
+  "calls": [
+    {
+      "name": "edit_file",
+      "args": "{\"path\": \"src/host-follow.js\", \"old_text\": \"// 跟随宿主：记住宿主最近一次用的模型，压缩那一跳沿用它（避免副模型与会话模型不一致）\\nlet lastModel = null\\n\\nexport function makeHostFollow(cfg) {\\n  return {\\n    observe(options) { if (options && options.model) lastModel = options.model },\\n    callConfig(options) { return { ...cfg, model: lastModel || cfg.model } },\\n  }\\n}\", \"new_text\": \"// 跟随宿主：记住当前会话用的模型，压缩那一跳沿用它（避免副模型与会话模型不一致）\\nexport function makeHostFollow(cfg) {\\n  // 状态放在插件实例内，避免上一次会话的模型残留到本次会话\\n  let currentModel = null\\n  return {\\n    // n 是当前会话的归一化请求（宿主 0.9 起模型只在这里）；\\n    // options.model 仅旧宿主（0.8）才会传，作为回退。\\n    observe(options, n) {\\n      const model = (n && n.model) || (options && options.model)\\n      if (model) currentModel = model\\n    },\\n    callConfig(options) { return { ...cfg, model: currentModel || cfg.model } },\\n  }\\n}\"}"
+    }
+  ],
+  "draft": "已落定的决定（原文逐字）：「Fix: observe should take (options, n) and prefer n.model, falling back to options.model for legacy.」\n\n落点：host-follow.js（只动这一处；其余路径不动）\n\n原文还悬着这句，但它不阻塞落 edit：「So in new host, lastModel is never updated → stays from previous session (or undefined).」\n\n验收：跑 `node scripts/smoke-session.mjs`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 host-follow.js 继续查，不要改测试聚合方式。",
+  "stored": "仍在依赖的事实：`host-follow.js`（第 3 轮引，出处有效）。已走过的路：第 1 轮已跑 2 条：bash×2（ls、cat）（曾涉 trace/last.log、scripts/smoke-session.mjs）；第 2 轮 bash `ls -la src test scripts && cat README.md package.json`；第 2 轮 bash `cat src/*.js`；第 3 轮 bash `cd \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)\"; grep -rn \"host-follow\\|makeHostFollow\\|…`（不再重跑）。\n\n已落定的决定（原文逐字）：「Fix: observe should take (options, n) and prefer n.model, falling back to options.model for legacy.」\n\n落点：host-follow.js（只动这一处；其余路径不动）\n\n原文还悬着这句，但它不阻塞落 edit：「So in new host, lastModel is never updated → stays from previous session (or undefined).」\n\n验收：跑 `node scripts/smoke-session.mjs`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 host-follow.js 继续查，不要改测试聚合方式。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。收工核对（已改未验证）：需集齐落地证据（缺：edit 回执加重读 src/host-follow.js 的落点行）与新鲜输出下原症状消失，集齐前不说修复完成、不回滚、不要再跑同条旧命令。",
+  "gates": {
+    "v4": null,
+    "accept": null,
+    "draftChars": 419,
+    "rawChars": 1436
+  },
+  "outcome": {
+    "solved": true,
+    "roundsToFix": 4,
+    "falseClaim": false,
+    "rawSolved": true,
+    "rawRoundsToFix": 4,
+    "vsRaw": "win"
+  },
+  "validated": true,
+  "qualityAudit": {
+    "schema": "cfb.mode1-content-audit/1",
+    "status": "clean",
+    "reviewer": "mode1-writer+apparatus-lint/1",
+    "reviewedAt": null,
+    "checkedFields": [
+      "draft",
+      "stored"
+    ],
+    "textSha256": "bad978be4c14f0ed6b48c77dbf9d6160f7e1e3812e00b1d4afdb9d18dbd1a647",
+    "issues": [],
+    "exempted": []
+  },
+  "ceiling": {
+    "ok": true,
+    "fails": [],
+    "ratio": 0.2611,
+    "storedRatio": 0.5836,
+    "draftChars": 375,
+    "lineChars": 1344,
+    "at": "2026-10-05T13:11:13.898Z"
+  },
+  "use": "ruler",
+  "digest": "71714a48ce7671a9",
+  "revision": {
+    "at": "2026-10-05T13:11:13.899Z",
+    "note": "gold add --replace（改稿重挣，t101）",
+    "by": "gold add --replace"
+  },
+  "goldStandard": {
+    "schema": "cfb.gold-standard/1",
+    "version": "cfb.gold-standard/1",
+    "at": "2026-10-06T06:45:14.206Z",
+    "status": "not-gold",
+    "gap": 0.5,
+    "margin": 0.8433,
+    "unmeasured": [],
+    "drift": [],
+    "home": "t101",
+    "draftChars": 375,
+    "baseRawChars": 1436,
+    "thresholds": {
+      "ratioMax": 0.6,
+      "lineMax": 1,
+      "rtfMax": 6,
+      "minSamples": 2
+    },
+    "stampDigest": "71714a48ce7671a9",
+    "axes": {
+      "M1": {
+        "v": 0.2611,
+        "ok": true
+      },
+      "M2": {
+        "v": 0.279,
+        "ok": true
+      },
+      "M3": {
+        "v": 1,
+        "ok": true
+      },
+      "M4": {
+        "v": 1,
+        "ok": true
+      },
+      "M5": {
+        "v": 1,
+        "ok": true
+      },
+      "M6": {
+        "v": 1,
+        "ok": true
+      },
+      "M7": {
+        "v": 1,
+        "ok": true
+      },
+      "M8": {
+        "v": 1,
+        "ok": true
+      },
+      "E1": {
+        "v": 4,
+        "ok": true
+      },
+      "E2": {
+        "v": "win",
+        "ok": true
+      },
+      "R1": {
+        "v": 1,
+        "ok": true
+      },
+      "R2": {
+        "v": 1,
+        "ok": false
+      }
+    }
+  }
+}

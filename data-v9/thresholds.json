@@ -1,0 +1,104 @@
+{
+  "schema": "cfb.v9-thresholds/1",
+  "ruler": "ruler-v9/1",
+  "base": "gen-ruler-v9/1",
+  "genRulerSha256": "9b24808165483753acbcc4bc73feb9e97526e59df8dd5aa55412a5e7b30137b8",
+  "negativesSha256": "b699d36887551a21d54b3188d1fa8f2bf52ec618d43f38aef4335427855530b4",
+  "handTotal": 30,
+  "handUnscorable": [
+    "t133/wrong-model-s2-r4",
+    "t134/sse-truncated-s1-r3",
+    "t134/sse-truncated-s5-r3",
+    "t135/sse-truncated-s2-r4"
+  ],
+  "handN": 26,
+  "handHardPass": 17,
+  "handHardPassRate": 0.6538,
+  "handHardPassCI95": [
+    0.4622,
+    0.8059
+  ],
+  "handByRound": {
+    "t133": {
+      "n": 5,
+      "hardPass": 4
+    },
+    "t134": {
+      "n": 10,
+      "hardPass": 4
+    },
+    "t135": {
+      "n": 11,
+      "hardPass": 9
+    }
+  },
+  "softFloor": 0.4981,
+  "softFloorRule": "hand 硬门通过稿软分的第 10% 百分位",
+  "softPctlOfHand": {
+    "p10": 0.4981,
+    "p50": 0.5502,
+    "p90": 0.6364
+  },
+  "minHandHardPass": 0.8,
+  "handGate": "FAIL",
+  "failedHandIds": [
+    {
+      "id": "t133/wrong-model-s0-r4",
+      "failed": [
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ]
+    },
+    {
+      "id": "t134/sse-truncated-s2-r3",
+      "failed": [
+        "G3 anchors-kept"
+      ]
+    },
+    {
+      "id": "t134/sse-truncated-s4-r4",
+      "failed": [
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ]
+    },
+    {
+      "id": "t134/wrong-model-s1-r5",
+      "failed": [
+        "G3 anchors-kept"
+      ]
+    },
+    {
+      "id": "t134/wrong-model-s2-r4",
+      "failed": [
+        "G3 anchors-kept"
+      ]
+    },
+    {
+      "id": "t134/wrong-model-s4-r4",
+      "failed": [
+        "G3 anchors-kept"
+      ]
+    },
+    {
+      "id": "t134/wrong-model-s5-r4",
+      "failed": [
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ]
+    },
+    {
+      "id": "t135/wrong-model-s1-r4",
+      "failed": [
+        "G3 anchors-kept"
+      ]
+    },
+    {
+      "id": "t135/wrong-model-s4-r4",
+      "failed": [
+        "G4 actionable",
+        "G3 anchors-kept"
+      ]
+    }
+  ]
+}

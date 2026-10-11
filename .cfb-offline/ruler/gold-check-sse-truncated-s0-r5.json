@@ -1,0 +1,24 @@
+{
+  "id": "sse-truncated-s0-r5",
+  "source": "transfer/gold/sse-truncated/sse-truncated-s0-r5.json",
+  "pending": false,
+  "use": "train",
+  "draftChars": 425,
+  "rawChars": 4198,
+  "storedReal": 1926,
+  "ratio": 0.459,
+  "line": {
+    "lineChars": 2117,
+    "lineRatio": 0.5043,
+    "g2Ok": true,
+    "over": -1692
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "lost-exclusions",
+  "warns": [],
+  "fails": [],
+  "ok": true,
+  "at": "2026-10-06T00:39:52.321Z"
+}

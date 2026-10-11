@@ -1,0 +1,48 @@
+{
+  "id": "eacces-config_long-horizon-s0-r5",
+  "before": {
+    "draftChars": 1160,
+    "storedChars": 1524,
+    "ratio": 0.503,
+    "audit": "clean",
+    "fails": [
+      "C2"
+    ]
+  },
+  "after": {
+    "draftChars": 1155,
+    "storedApprox": 1519,
+    "ratio": 0.502,
+    "audit": "clean",
+    "closedRead": false,
+    "line": 1571,
+    "fails": [
+      "C2"
+    ],
+    "ok": false
+  },
+  "auditHits": [],
+  "evidence": {
+    "ranCmds": [
+      "cd /home/u/work/repo; npm test 2>&1 | head -40",
+      "cd /home/u/work/repo; grep -rn \"CFB_REAL_DSH_HOME\" . ; echo \"--- env ---\"; env | grep -i -"
+    ],
+    "testCmd": {
+      "name": "bash",
+      "command": "cd /home/u/work/repo; npm test 2>&1 | head -40"
+    },
+    "bad": [],
+    "ok": [],
+    "obs": [],
+    "targets": [
+      "test/birth.selftest.mjs",
+      "src/trace.js",
+      "src/trace.legacy.js",
+      "src/trace.compat.js",
+      "test/hedge.selftest.mjs"
+    ],
+    "rowDir": null,
+    "rowKeys": null
+  },
+  "rowDir": null
+}

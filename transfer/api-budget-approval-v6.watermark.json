@@ -1,0 +1,21 @@
+{
+  "authorityId": "f48ce037bae461d97c743bc440c6e2b3cc8d768aa0e5ff6ce3880f31f4801a88",
+  "digest": "46de750ffe172f3d8f3c05b5156219120b8beb9e4ac12f0c191bee9807fb00e4",
+  "halted": "channel-fingerprint",
+  "jobs": [
+    {
+      "key": "probe",
+      "kind": "probe",
+      "reason": "channel-fingerprint",
+      "reservedNano": 5048000,
+      "status": "rejected"
+    }
+  ],
+  "planDigest": "6de0020e1a2e53c0aa7155c59538002c9a182f8db0ad39306ed752d1523a9c66",
+  "requests": 1,
+  "reservedNano": 5048000,
+  "revision": "63a107f3db06cfa35d86de60981961ed8cf9292ea8ffd0e92fe9a01ca7383645",
+  "schema": "cfb.api-watermark/1",
+  "scope": "cfb.visible-context-expanded.2026-10-01-r2",
+  "sequence": 3
+}

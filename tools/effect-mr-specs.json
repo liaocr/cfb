@@ -1,0 +1,270 @@
+[
+  {
+    "id": "eacces-config",
+    "verifyCmd": "npm test 2>&1 | tail -n 6",
+    "obs": {
+      "green": {
+        "followup": "[tool: edit_file 结果]\nok（verify.mjs 已写入，1 处替换）\n[tool: bash 结果]\n$ npm test 2>&1 | tail -n 6\n  PASS test/birth.selftest.mjs (12 tests)\n  PASS test/hedge.selftest.mjs (4 tests)\n  PASS test/trace.selftest.mjs (9 tests)\n  合计: 613 通过 / 0 失败 / 1 跳过   (16/16 套件通过)",
+        "expectClaim": "fixed",
+        "reference": {
+          "correct": "可以收工：之前失败的 birth.selftest 通过了，且通过的原因与根因一致——子进程 env 里 CFB_REAL_DSH_HOME 也指向临时目录，测试不再写真实 home。应指出：真实目录下 root 属主的 trace.log 没动、也不需要动；不必再 grep / ls / 重跑。",
+          "keyFacts": [
+            "改的是 verify.mjs 的 env 一行（隔离约定所在处）",
+            "根因是测试读 CFB_REAL_DSH_HOME 绕过了临时 DSH_HOME",
+            "真实目录属 root 与本次修复无关"
+          ],
+          "deadEnds": [
+            "再 chown / sudo / 删 trace.log",
+            "再跑一遍同样的 grep",
+            "把通过归因于别的东西",
+            "只说测试通过、不说为什么通过"
+          ]
+        },
+        "next": [
+          "收工|已解决|可以(认为|判定|确认)|不需要(再)?(动作|调用)|无需(再)?(动作|调用)|完成"
+        ],
+        "avoid": [
+          "chown|sudo|rm\\s+[^\\n]*trace\\.log|grep -R \"CFB_REAL_DSH_HOME\" -n verify\\.mjs test src"
+        ]
+      },
+      "red": {
+        "followup": "[tool: edit_file 结果]\nok（verify.mjs 已写入，1 处替换）\n[tool: bash 结果]\n$ npm test 2>&1 | tail -n 6\n  FAIL test/birth.selftest.mjs\n    Error: EACCES: permission denied, open '/home/u/.dsh/storages/cot-form-b/trace.log'\n  PASS test/hedge.selftest.mjs (4 tests)\n  合计: 601 通过 / 12 失败 / 1 跳过   (15/16 套件通过)",
+        "expectClaim": "none",
+        "reference": {
+          "correct": "改动落地了但现象一字未变 ⇒ 不是「变量漏设」这么简单：按上一轮写下的第二分支，先看 env 有没有真的传给跑测试的子进程（grep -nE 'spawn|exec|env' verify.mjs 或 read_file verify.mjs 的运行段），或者 makeTraceWriter 在 home 有值时是否另有回退。不要再 grep CFB_REAL_DSH_HOME、不要 chown、不要把 CFB_REAL_DSH_HOME 换个值再试、不要声称已修复。",
+          "keyFacts": [
+            "edit 已落地（1 处替换）",
+            "错误路径与修改前完全相同",
+            "上一轮已写明：若 verify.mjs 设了变量仍失败，问题在 env 没传给子进程"
+          ],
+          "deadEnds": [
+            "再跑同样的 grep -R CFB_REAL_DSH_HOME",
+            "chown / sudo / rm",
+            "把 tmp 换成别的值再试",
+            "回滚刚才的改动",
+            "声称已修复 / 只差一点"
+          ]
+        },
+        "next": [
+          "spawn|execFile|exec\\b|fork|env[^\\n]{0,30}(传|pass|子进程)|read_file[^\\n]*verify\\.mjs|sed -n[^\\n]*verify\\.mjs|grep -n[^\\n]*(spawn|env)[^\\n]*verify\\.mjs|makeTraceWriter[^\\n]{0,40}(回退|fallback|默认)"
+        ],
+        "avoid": [
+          "chown|sudo|rm\\s+[^\\n]*trace\\.log|grep -R \"CFB_REAL_DSH_HOME\" -n verify\\.mjs test src|已修复|问题已解决|修复完成"
+        ]
+      }
+    }
+  },
+  {
+    "id": "flaky-timeout",
+    "verifyCmd": "taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done' 2>&1 | tail -n 4",
+    "obs": {
+      "green": {
+        "followup": "[tool: edit_file 结果]\nok（test/hedge.selftest.mjs 已写入，1 处替换）\n[tool: bash 结果]\nbash: taskset: command not found（util-linux 未安装）；已按不限核直接执行循环\nrun 49\nrun 50\n（50/50 PASS，无 FAIL）",
+        "expectClaim": "hedged",
+        "reference": {
+          "correct": "这次通过不能证明修好了：taskset 没装、循环是在 16 核不限核下跑的，而这种条件下测试本来就从不失败（上一轮限核才复现出 9/50 FAIL）。正确的说法是「改动已落地、尚未验证」，下一步要么装 util-linux 后重跑限核循环（或用 docker --cpus=2 / 加负载），要么推到 CI 让它跑多次；不能说已修复。",
+          "keyFacts": [
+            "taskset 不可用 ⇒ 这次循环不限核",
+            "不限核时上一轮就是 50/50 PASS，所以这次通过没有信息量",
+            "上一轮限核复现过 9/50 FAIL，验收必须在同等条件下做"
+          ],
+          "deadEnds": [
+            "把 50/50 PASS 当作修复证据、宣布收工",
+            "再把 hedgeAfterMs 调大",
+            "改 src/distill.js",
+            "不限核再跑 200 次"
+          ]
+        },
+        "next": [
+          "taskset|util-linux|--cpus|限核|加负载|stress|CI[^\\n]{0,20}(跑|运行|验证)|不能(证明|说明)|没有信息量|不算(证据|验证)|尚未验证|未验证"
+        ],
+        "avoid": [
+          "已修复|修复完成|问题已解决|可以收工|hedgeAfterMs: ?(4000|5000|6000|8000|10000)|edit_file[^\\n]*distill\\.js"
+        ]
+      },
+      "red": {
+        "followup": "[tool: edit_file 结果]\nok（test/hedge.selftest.mjs 已写入，1 处替换）\n[tool: bash 结果]\nrun 8\nrun 9\n§4 对冲在主请求 200 之后不得再发  expected hedgeStartedAt=null, got 3104\nFAIL test/hedge.selftest.mjs",
+        "expectClaim": "none",
+        "reference": {
+          "correct": "余量从 100ms 拉到 1500ms 仍失败、且 got 紧贴新阈值 3000 ⇒ 「事件循环晚一拍」的假设不成立（一拍不可能晚 1.5 s）：在失败那次运行里主请求根本没在 3 s 内 settle。下一步不是再把 3000 调成 5000（那是再调数字），而是先确认改动落地（grep -n hedgeAfterMs test/hedge.selftest.mjs），再取证主请求何时 settle：在测试里打印 primary settle 时刻 / 用 fake timers 让测试不依赖真实时钟 / 检查 server 端 1500ms 定时器是否也被拖慢。",
+          "keyFacts": [
+            "got 3104 ≈ 新阈值 3000 + 100ms，和之前 1712 ≈ 1600 + 100 是同一形状",
+            "说明 hedge 总在阈值后 ~100ms 触发、与余量大小无关 ⇒ 主请求在这些运行里没有按 1500ms 回来",
+            "上一轮的机理解释只对 100ms 量级成立"
+          ],
+          "deadEnds": [
+            "再把 hedgeAfterMs 调到 5000 / 10000",
+            "改 src/distill.js 加 clearTimeout / finally（上一轮已排除）",
+            "再跑一遍同样的 50 次循环",
+            "声称已修复"
+          ]
+        },
+        "next": [
+          "fake ?timers|假时钟|注入时钟|settle(时刻|时间|时间点)|打印|console\\.(log|time)|--trace-event|grep -n[^\\n]*hedgeAfterMs|cat[^\\n]*hedge\\.selftest|read_file[^\\n]*(distill|hedge)|server[^\\n]{0,30}(1500|定时器)|假设(不成立|错了|被推翻)"
+        ],
+        "avoid": [
+          "hedgeAfterMs: ?(4000|5000|6000|8000|10000)|已修复|问题已解决|修复完成|clearTimeout|primary\\.finally"
+        ]
+      }
+    }
+  },
+  {
+    "id": "wrong-model",
+    "verifyCmd": "bash -lc 'node scripts/smoke-session.mjs >/dev/null 2>&1; grep -E \"llm-stream|compiler-transport-started|compiler-cache\" ~/.dsh/trace.log | tail -n 3'",
+    "obs": {
+      "green": {
+        "followup": "[tool: edit_file 结果]\nok（src/host-follow.js 已写入，1 处替换）\n[tool: bash 结果]\n[llm-stream] {\"n\":14,\"model\":\"deepseek-v3.2\"}\n[compiler-transport-started] {\"model\":\"deepseek-v3.2\"}\n[llm-stream] {\"n\":15,\"model\":\"deepseek-v3.2\"}",
+        "expectClaim": "fixed",
+        "reference": {
+          "correct": "可以收工：压缩那一跳现在用的是当前会话模型 v3.2，与 llm-stream 一致，直接对应根因（observe 读不到 n 上的 model，lastModel 停在上一会话）。可顺带指出模块级 lastModel 仍跨会话存活、只是现在每次会话都会被刷新；不必再读 plugin.js / host-follow.js。",
+          "keyFacts": [
+            "改的是 observe 定义，让它读 n.model",
+            "trace 里压缩模型与当前会话模型一致就是验收标准",
+            "lastModel 仍是模块级变量"
+          ],
+          "deadEnds": [
+            "再 grep host.observe / callConfig",
+            "再读 host-follow.js 确认",
+            "把 callConfig 也改一遍"
+          ]
+        },
+        "next": [
+          "收工|已解决|可以(认为|判定|确认)|不需要(再)?(动作|调用)|无需(再)?(动作|调用)|完成|一致"
+        ],
+        "avoid": [
+          "grep -n -C \\d+ \"host\\.observe|edit_file[^\\n]*callConfig|read_file[^\\n]*host-follow"
+        ]
+      },
+      "red": {
+        "followup": "[tool: edit_file 结果]\nok（src/host-follow.js 已写入，1 处替换）\n[tool: bash 结果]\n[llm-stream] {\"n\":14,\"model\":\"deepseek-v3.2\"}\n[compiler-cache-hit] {\"key\":\"birth-compiler\",\"model\":\"deepseek-v3.1\",\"age_ms\":734211}\n[compiler-transport-started] {\"model\":\"deepseek-v3.1\"}",
+        "expectClaim": "none",
+        "reference": {
+          "correct": "改动落地但压缩仍用 v3.1，而且 trace 多了一行 compiler-cache-hit（model v3.1、age 734 s）⇒ 旧模型来自一个进程级缓存的编译器，不是 observe：上一轮的假设被推翻。下一步 grep compiler-cache / compilerCache / makeBirthCompiler 找缓存点和它的 key（不要再改 host-follow.js、不要回滚刚才的改动、不要再 grep host.observe）。",
+          "keyFacts": [
+            "observe 的改动已落地",
+            "新出现的 compiler-cache-hit 行直接指出旧模型的来源",
+            "age 734 s 说明缓存跨会话存活"
+          ],
+          "deadEnds": [
+            "再改 host-follow.js / callConfig",
+            "回滚 observe 的改动",
+            "再 grep host.observe",
+            "声称已修复"
+          ]
+        },
+        "next": [
+          "compiler-cache|compilerCache|makeBirthCompiler|缓存|cache"
+        ],
+        "avoid": [
+          "edit_file[^\\n]*host-follow|grep -n -C \\d+ \"host\\.observe|已修复|问题已解决|修复完成"
+        ]
+      }
+    }
+  },
+  {
+    "id": "perf-regression",
+    "verifyCmd": "analyze-trace --last 30 --steps birth --fields contentSpanMs,outputChars,promptVersion,finishWaitMs",
+    "obs": {
+      "green": {
+        "followup": "[tool: edit_file 结果]\nok（src/config.js 已写入，1 处替换）\n[tool: bash 结果]\n$ analyze-trace --last 30 --steps birth --fields contentSpanMs,outputChars,promptVersion,finishWaitMs\ncontentSpanMs p50: 295\noutputChars p50: 402\npromptVersion: compress-v3h:250-450\nfinishWaitMs p50: 910",
+        "expectClaim": "fixed",
+        "reference": {
+          "correct": "可以收工：收网等待回到 910ms、输出长度回到 400 字级，与「长度目标抬高导致解码变长」的因果一致；maxOutputTokens 4096 保留无害。应顺带指出 promptVersion tag 不随配置变是仪表问题，另开一条，不在这里改。",
+          "keyFacts": [
+            "改的是 compressTargetMax 1800→450",
+            "验收指标是 contentSpan / outputChars / 等待时间三者一起回落",
+            "promptVersion tag 陈旧是另一个问题"
+          ],
+          "deadEnds": [
+            "再改 maxOutputTokens",
+            "再跑一遍 analyze-trace --compare",
+            "为了 tag 去改 config"
+          ]
+        },
+        "next": [
+          "收工|已解决|可以(认为|判定|确认)|不需要(再)?(动作|调用)|无需(再)?(动作|调用)|完成|回落|恢复"
+        ],
+        "avoid": [
+          "edit_file[^\\n]*maxOutputTokens|analyze-trace --compare v11\\.9 v11\\.10"
+        ]
+      },
+      "red": {
+        "followup": "[tool: edit_file 结果]\nok（src/config.js 已写入，1 处替换）\n[tool: bash 结果]\n$ analyze-trace --last 30 --steps birth --fields contentSpanMs,outputChars,promptVersion,finishWaitMs\ncontentSpanMs p50: 1640\noutputChars p50: 1712\npromptVersion: compress-v3h:250-450\nfinishWaitMs p50: 2380",
+        "expectClaim": "none",
+        "reference": {
+          "correct": "改回 450 之后输出仍是 1700 字 ⇒ birth 这条路径根本没读 src/config.js 里的 compressTargetMax——promptVersion 一直是 250-450 其实就是这个信号，之前被当成「仪表陈旧」解释掉了。下一步找长度目标的真实来源：grep -rn 'compressTargetMax\\|250-450\\|targetMax' src/（定义与消费点），不要再改 config.js、不要去改 maxOutputTokens、不要说已修复。",
+          "keyFacts": [
+            "改动已落地但三项指标纹丝不动",
+            "promptVersion 不变从「对不上的量」变成了主线索",
+            "上一轮已排除 maxOutputTokens（finishReason 全 stop）"
+          ],
+          "deadEnds": [
+            "改回 maxOutputTokens 850",
+            "再改一次 compressTargetMax 的值",
+            "再跑 analyze-trace --compare",
+            "声称已修复"
+          ]
+        },
+        "next": [
+          "grep -rn?[^\\n]*(compressTargetMax|250-450|targetMax|promptVersion)|消费点|真实来源|哪里读|没有读|没读|未生效"
+        ],
+        "avoid": [
+          "edit_file[^\\n]*config\\.js|maxOutputTokens: ?850|已修复|问题已解决|修复完成"
+        ]
+      }
+    }
+  },
+  {
+    "id": "sse-truncated",
+    "verifyCmd": "bash -lc 'node test/transport.selftest.mjs; grep -E \"compiler-transport-settled|birth-condensed|birth-passthrough\" ~/.dsh/trace.log | tail -n 2'",
+    "obs": {
+      "green": {
+        "followup": "[tool: edit_file 结果]\nok（src/transport.js 已写入，1 处替换）\n[tool: bash 结果]\nPASS test/transport.selftest.mjs (assembleSseFrames: 6 tests)\n[compiler-transport-settled] {\"ok\":false,\"finish\":null,\"stream\":true,\"outputChars\":208,\"eventCount\":9,\"reason\":\"no-finish-reason\"}\n[birth-passthrough] {\"why\":\"incomplete\",\"rawChars\":8123}",
+        "expectClaim": "fixed",
+        "reference": {
+          "correct": "可以收工：被切断的流现在 ok:false、走 passthrough，截断结果不再写会话——直接对应根因（[DONE] 冒充 stop）。可顺带指出 settle 层能报 no-finish-reason 说明调用方本来就看 finish，不用再改调用方。不必再 grep。",
+          "keyFacts": [
+            "改的是 assembleSseFrames 的 return 行",
+            "验收是 settle 的 ok 与 birth 的去向，不只是单元测试",
+            "调用方看 finish，所以只改这一处就够"
+          ],
+          "deadEnds": [
+            "再改调用方的 ok 判定",
+            "再跑一遍 grep compiler-transport-settled",
+            "回滚"
+          ]
+        },
+        "next": [
+          "收工|已解决|可以(认为|判定|确认)|不需要(再)?(动作|调用)|无需(再)?(动作|调用)|完成|不再写"
+        ],
+        "avoid": [
+          "edit_file[^\\n]*birth\\.js|grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled"
+        ]
+      },
+      "red": {
+        "followup": "[tool: edit_file 结果]\nok（src/transport.js 已写入，1 处替换）\n[tool: bash 结果]\nPASS test/transport.selftest.mjs (assembleSseFrames: 6 tests)\n[compiler-transport-settled] {\"ok\":true,\"finish\":null,\"stream\":true,\"outputChars\":212,\"eventCount\":9}\n[birth-condensed] {\"rawChars\":8123,\"outChars\":212}",
+        "expectClaim": "none",
+        "reference": {
+          "correct": "不能判定修复、也不能判定失败：trace 尾部这两行的数字（finish:null、outputChars 212、eventCount 9、rawChars 8123）和修改前那次一模一样，很可能是旧行——smoke 有没有真的产生新的截断用例并不知道；单元测试通过只证明 assembleSseFrames 不再造 stop。第一步只有一条：清空 trace 再跑一次 smoke（或带时间戳 / 用本次运行 id），拿到确认是改后产生的行再判；如果清空后新行仍是 finish:null + birth-condensed，才是「运行的不是新代码或另有回退点」。不回滚、不再改 return 行、不宣布修复。",
+          "keyFacts": [
+            "改动已落地且单元测试通过",
+            "trace 两行数字与修改前完全相同 ⇒ 新鲜度存疑",
+            "验收观察必须能证明是改后产生的"
+          ],
+          "deadEnds": [
+            "把单元测试通过当修复证据宣布收工",
+            "把旧 trace 行当作失败证据去回滚或再改 return 行",
+            "再跑一遍同样的 grep",
+            "解释成「这次是正常流」而不去拿新鲜观察"
+          ]
+        },
+        "next": [
+          "清空|: ?>|truncate|重跑|再跑一次 smoke|时间戳|新鲜|旧行|一模一样|同样的数字|smoke-session|重新(跑|运行)"
+        ],
+        "avoid": [
+          "已修复|问题已解决|修复完成|可以收工|edit_file[^\\n]*\"path\":\"src/transport\\.js\"|grep -RIn --exclude-dir=node_modules -E \"compiler-transport-settled\\|assembleSseFrames\\|birth-condensed\" src"
+        ]
+      }
+    }
+  }
+]

@@ -1,0 +1,46 @@
+# 依赖
+node_modules/
+
+# 运行痕迹（trace / 日志不进仓库）
+*.log
+
+# 覆盖率产物（c8 / nyc；本地量覆盖率用，不属于包内容）
+coverage/
+.nyc_output/
+# 自测临时目录（os.tmpdir 不可写时 core.selftest 的回退位置）
+.cot-form-b-selftest-tmp/
+
+# 历史备份（本包有意不收录，见 README「本包不包含什么」）
+*.bak
+*.bak-*
+*.before-*
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# 本地证据块仓/检查点/演示产物（不含发布文件，不进 Git/manifest）
+.cfb-runtime/
+
+# 说明：MANIFEST.sha256 **要**进仓库 —— 它就是完整性清单本身。
+
+# 可选Python训练器的本地字节码/测试缓存（不属于交付源码）
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# 本机评测profile（无密钥，但含本机报价核对日期，不进交付清单）
+/eval-profile.json
+
+# 离线层运行时产物（语料/候选/规划；可再生，不进交付清单）
+# 例外（2026-10-06 迁移抢救）：这些**不可再生**，已显式跟踪 ——
+#   .cfb-offline/ruler/*（金标与天花板的读数）、.cfb-offline/review/*（348 条盲审批次与工作表）
+#   .cfb-runtime/{traj,bench,probe}/*（真机轨迹读数/hand 样本/preflight 记录：没了就要花 API 才能重造）
+# 用 git add -f 纳入；scratch/ 仍不入库（纯临时）。
+.cfb-offline/
+
+# Rebuilt from dev Gold/Pool by the free Kaggle micro-training pipeline.
+# 例外：这是本轮 Kaggle 训练的**实际输入**，且 unit-label-review 的 digest 继承要看它的 sha ⇒ 必须入库留证。
+micro-dev-dataset.json

@@ -1,0 +1,15 @@
+{
+ "rows": [
+  {
+   "id": "perf-regression",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 11322,
+   "outChars": 1171,
+   "ms": 5669,
+   "promptVersion": "compress-v4d1:ctx",
+   "text": "升级后 birth 收网等待 900ms→2400ms，多出来的 1500ms 几乎全在 contentSpanMs（280→1650，+1370ms），ttfbMs 只从 610 到 640（+30ms），outputChars 从 390 到 1720（4.4x）。也就是 prefill 基本没动，纯粹是解码量涨了——吞吐 390/280=1.39 chars/ms 对 1720/1650=1.04 chars/ms，同一量级，不是单 token 变慢，是 token 变多。diff（逐字）：\n`-  maxOutputTokens: 850,`\n`+  maxOutputTokens: 4096,`\n`-  compressTargetMax: 450,`\n`+  compressTargetMax: 1800,`\nREADME 回滚开关表里写着 compressTargetMax 只影响 v3 的长度目标。\n\n看起来数字对得上 H-B：升级前 outputChars 390≈旧目标 450，升级后 1720≈新目标 1800，比例 4.4x 对上 1800/450=4.0x，所以变长的是「长度目标」而不是上限——maxOutputTokens 只是天花板，抬到 4096 本身不强制变长（升级前 390 chars 远没顶到 850）。被搁置的路：H-A（850 上限在截断、抬上限后自然跑满）数值上不如 H-B 吻合；promptVersion 仍报 `compress-v3:250-450` 未随配置变，先当仪表陈旧而不是「配置没生效」的证据，但它跟 outputChars 已经动了这件事互相矛盾，必须用 finishReason 一刀切开，否则锅甩错。若代码里 birth 路径根本不读 compressTargetMax，那只能回到 H-A。\n\n所以下一步工具调用是 bash：\nanalyze-trace --compare v11.9 v11.10 --steps birth --fields finishReason,outputTokens,contentSpanMs\n\n如果升级前 p50 的 finishReason 是 stop（自然停），那么 H-A 排除、compressTargetMax 450→1800 就是主因，动作就是把它回滚成 450 或改 birth 自己的目标值，`+  compressTargetMax: 1800,` 这一行的逐字原文已给出、可直接作为 edit_file 的 old_text，不用再读文件；如果升级前是 length（被 850 截断），那么主因是 maxOutputTokens，改法是保留 1800 目标、只把 token 上限与目标对齐。",
+   "side": "升级后 birth 收网等待 900ms→2400ms，多出来的 1500ms 几乎全在 contentSpanMs（280→1650，+1370ms），ttfbMs 只从 610 到 640（+30ms），outputChars 从 390 到 1720（4.4x）。也就是 prefill 基本没动，纯粹是解码量涨了——吞吐 390/280=1.39 chars/ms 对 1720/1650=1.04 chars/ms，同一量级，不是单 token 变慢，是 token 变多。diff（逐字）：\n`-  maxOutputTokens: 850,`\n`+  maxOutputTokens: 4096,`\n`-  compressTargetMax: 450,`\n`+  compressTargetMax: 1800,`\nREADME 回滚开关表里写着 compressTargetMax 只影响 v3 的长度目标。\n\n看起来数字对得上 H-B：升级前 outputChars 390≈旧目标 450，升级后 1720≈新目标 1800，比例 4.4x 对上 1800/450=4.0x，所以变长的是「长度目标」而不是上限——maxOutputTokens 只是天花板，抬到 4096 本身不强制变长（升级前 390 chars 远没顶到 850）。被搁置的路：H-A（850 上限在截断、抬上限后自然跑满）数值上不如 H-B 吻合；promptVersion 仍报 `compress-v3:250-450` 未随配置变，先当仪表陈旧而不是「配置没生效」的证据，但它跟 outputChars 已经动了这件事互相矛盾，必须用 finishReason 一刀切开，否则锅甩错。若代码里 birth 路径根本不读 compressTargetMax，那只能回到 H-A。\n\n所以下一步工具调用是 bash：\n`analyze-trace --compare v11.9 v11.10 --steps birth --fields finishReason,outputTokens,contentSpanMs`\n\n如果升级前 p50 的 finishReason 是 stop（自然停），那么 H-A 排除、compressTargetMax 450→1800 就是主因，动作就是把它回滚成 450 或改 birth 自己的目标值，`+  compressTargetMax: 1800,` 这一行的逐字原文已给出、可直接作为 edit_file 的 old_text，不用再读文件；如果升级前是 length（被 850 截断），那么主因是 maxOutputTokens，改法是保留 1800 目标、只把 token 上限与目标对齐。"
+  }
+ ]
+}

@@ -1,0 +1,15 @@
+{
+ "rows": [
+  {
+   "id": "flaky-timeout",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 9053,
+   "outChars": 1013,
+   "ms": 3898,
+   "promptVersion": "compress-v4d1:ctx",
+   "text": "`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)` 与 `primary.then(() => { primarySettled = true })` 是 read_file src/distill.js 里逐字看到的；`assert.equal(meta.hedgeStartedAt, null)` 和 `server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600` 是 read_file test/hedge.selftest.mjs §4 逐字看到的。失败时 `expected hedgeStartedAt=null, got 1712` / `got 1698`，即对冲定时器被拖到 1700ms 左右才跑；nproc 本地 16、CI 2。1500 和 1600 只差 100ms，CI 上事件循环被阻塞时，server 的 1500 定时器与 client 的 1600 定时器会积压到同一 timers 阶段：先跑 1500 发响应，紧接着跑 1600 触发 hedge，而响应的 resolve 要等 poll 阶段才轮到，`primarySettled` 此刻还是 false，所以 hedge 启动了——1712/1698 正落在「两定时器都延迟到同一阶段」的预测窗口内，看起来机理已经解释清失败数值。`primary.then` 里设置标志不算逻辑错，清除 timer 也救不了同一 timers 阶段先触发这条路，先搁置；「修测试时间差」是真正方向但还没落定。所以下一步工具调用是 bash 限制单机核数循环复现：`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`。如果失败复现，那么坐实是调度抖动、把 hedgeAfterMs 与主请求延迟拉开或改用 fake timers 即可；如果始终不复现，那么去查 CI 里是否有并行用例抢占事件循环，而不是改 src/distill.js。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。",
+   "side": "`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)` 与 `primary.then(() => { primarySettled = true })` 是 read_file src/distill.js 里逐字看到的；`assert.equal(meta.hedgeStartedAt, null)` 和 `server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600` 是 read_file test/hedge.selftest.mjs §4 逐字看到的。失败时 `expected hedgeStartedAt=null, got 1712` / `got 1698`，即对冲定时器被拖到 1700ms 左右才跑；nproc 本地 16、CI 2。1500 和 1600 只差 100ms，CI 上事件循环被阻塞时，server 的 1500 定时器与 client 的 1600 定时器会积压到同一 timers 阶段：先跑 1500 发响应，紧接着跑 1600 触发 hedge，而响应的 resolve 要等 poll 阶段才轮到，`primarySettled` 此刻还是 false，所以 hedge 启动了——1712/1698 正落在「两定时器都延迟到同一阶段」的预测窗口内，看起来机理已经解释清失败数值。`primary.then` 里设置标志不算逻辑错，清除 timer 也救不了同一 timers 阶段先触发这条路，先搁置；「修测试时间差」是真正方向但还没落定。所以下一步工具调用是 bash 限制单机核数循环复现：`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`。如果失败复现，那么坐实是调度抖动、把 hedgeAfterMs 与主请求延迟拉开或改用 fake timers 即可；如果始终不复现，那么去查 CI 里是否有并行用例抢占事件循环，而不是改 src/distill.js。"
+  }
+ ]
+}

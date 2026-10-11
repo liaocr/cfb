@@ -1,0 +1,15 @@
+{
+ "rows": [
+  {
+   "id": "flaky-timeout",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 9053,
+   "outChars": 1167,
+   "ms": 70115,
+   "promptVersion": "compress-v4d1:ctx",
+   "text": "我们需要找出 hedge.selftest 为什么在 CI 上约每 5 次失败 1 次。失败信息逐字是 `expected hedgeStartedAt=null, got 1712` 与 `got 1698`，PASS 时 `17 passed (hedge 3.1s)`。test/hedge.selftest.mjs §4 给的是 `server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600` 和 `assert.equal(meta.hedgeStartedAt, null)`；src/distill.js 的 hedgedDistill 节选逐字是：\n`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`\n`primary.then(() => { primarySettled = true })`\n\n看起来关键在 1500 与 1600 只差 100ms。如果事件循环被阻塞，server 的 setTimeout(1500) 也会延迟，两个定时器积压到同一 timers 阶段：先执行 1500 的回调发出 200，紧接着执行 1600 的回调，此时主请求的 HTTP 响应还在 poll 阶段没 resolve，`primarySettled` 仍 false，于是 hedge 在 1712/1698 启动——但若主请求的 I/O 回调在定时器回调之后才被处理，则失败。所以这不是逻辑必然错误，而是 2 核 CI 下的调度抖动吃掉了 100ms 余量；本地 16 核从不失败可以佐证。可以考虑修复：在 `primary.finally` 中设置，或在定时器触发时检查 `primary` 是否已 settled，而不是布尔变量；这属于后手，不是下一步取证。本地 `nproc` 16、CI 2，下一步就该在 2 核约束下反复复现。\n\n所以下一步工具调用是 bash 循环限制两核重跑：`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`，不再重复读同一份文件。如果失败复现，那么结论就是时序边界太紧，改法是拉大 hedgeAfterMs 与主请求延迟的间隔或改用 fake timers；如果本地没有 `taskset`，那么改用 `docker run --cpus=2` 起等价两核环境再跑同一循环。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。",
+   "side": "我们需要找出 hedge.selftest 为什么在 CI 上约每 5 次失败 1 次。失败信息逐字是 `expected hedgeStartedAt=null, got 1712` 与 `got 1698`，PASS 时 `17 passed (hedge 3.1s)`。test/hedge.selftest.mjs §4 给的是 `server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600` 和 `assert.equal(meta.hedgeStartedAt, null)`；src/distill.js 的 hedgedDistill 节选逐字是：\n`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`\n`primary.then(() => { primarySettled = true })`\n\n看起来关键在 1500 与 1600 只差 100ms。如果事件循环被阻塞，server 的 setTimeout(1500) 也会延迟，两个定时器积压到同一 timers 阶段：先执行 1500 的回调发出 200，紧接着执行 1600 的回调，此时主请求的 HTTP 响应还在 poll 阶段没 resolve，`primarySettled` 仍 false，于是 hedge 在 1712/1698 启动——但若主请求的 I/O 回调在定时器回调之后才被处理，则失败。所以这不是逻辑必然错误，而是 2 核 CI 下的调度抖动吃掉了 100ms 余量；本地 16 核从不失败可以佐证。可以考虑修复：在 `primary.finally` 中设置，或在定时器触发时检查 `primary` 是否已 settled，而不是布尔变量；这属于后手，不是下一步取证。本地 `nproc` 16、CI 2，下一步就该在 2 核约束下反复复现。\n\n所以下一步工具调用是 bash 循环限制两核重跑：`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`，不再重复读同一份文件。如果失败复现，那么结论就是时序边界太紧，改法是拉大 hedgeAfterMs 与主请求延迟的间隔或改用 fake timers；如果本地没有 `taskset`，那么改用 `docker run --cpus=2` 起等价两核环境再跑同一循环。"
+  }
+ ]
+}

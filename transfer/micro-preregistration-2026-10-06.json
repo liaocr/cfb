@@ -1,0 +1,46 @@
+{
+  "schema": "cfb.micro-preregistration/2",
+  "createdAt": "2026-10-06T08:25:30.000Z",
+  "status": "locked",
+  "confirmatoryEligible": true,
+  "purpose": "2026-10-06 微模型 Step-SimPO 复训（3 折家族 CV，逐折）。flags 里的值是唯一的配方；训练器在任一 flag 与文件不符时拒绝启动。折变量 --validation-family 由 folds 声明，故意不进 flags。本轮相对 4764fd2/10-04 只改一个变量：draft 偏好料从 38 条 train-eligible 涨到 219 条（飞轮真对 78 + 必挂硬闸反事实 139 + 同轮定向配对 2）。",
+  "flags": {
+    "epochs_sft": 12,
+    "epochs_simpo": 12,
+    "student_epochs": 260,
+    "student_patience": 30,
+    "student_pair_objective": "listwise",
+    "student_unit_pair_loss_weight": 1.0,
+    "matched_bucket_loss_weight": 1.5,
+    "micro_mlp_hidden": 96,
+    "dataset_neg_strategy": "hardened",
+    "unit_pair_degree_cap": 4,
+    "unit_pairs_per_positive": 4,
+    "near_length_tokens": 3,
+    "neg_judge_weights": "transfer/models/v5-micro-weights.judge-4764fd2.json",
+    "unit_review_file": "transfer/models/unit-label-review-blind-v3.json"
+  },
+  "datasetBuilder": {
+    "schema": "cfb.micro-dev-dataset/3",
+    "textHashBuckets": 256,
+    "expectedFeatureDim": 275,
+    "unitLabelReviewFile": "transfer/models/unit-label-review-blind-v3.json"
+  },
+  "folds": [
+    "flaky-timeout",
+    "perf-regression",
+    "sse-truncated"
+  ],
+  "trainingDataFingerprint": "bb6307ef920335cc68468ca1181ea9c6cd723f707773ee110e4972f340b2a6af",
+  "decisionRule": "v2: decide on report.threeFoldCv — per fold matched >= production matched + 0.20; mean(matched) >= 0.75; min(matched) >= 0.70; per fold matched >= previous candidate matched - 0.03; draft aggregate >= 0.85 and every fold >= production draft. Absolute 90% lines are reported-only. One-shot blind family judged by the v2 criteria against the same-family production baseline (matched >= 0.75 and >= production + 0.20; draft >= max(0.85, production draft)).",
+  "whyOneVariable": "数据集构建旋钮沿用 4/4/3 + hardened + judge-4764fd2（与 10-04 的 3/3/3 不同，但那是上一轮已冻结的配方；本轮不改学习目标、不改闸值，只把 eligible 料补到 219 条，使逐折验证集从 12 对涨到 48 对，全对时 Wilson95% 下界 0.912 才撑得起 ≥0.90 的说法）。",
+  "frozenJudgeNote": "Negative-mining judge is pinned to the 4764fd2 candidate so the mined pair set cannot drift across folds when each fold pushes its own candidate.",
+  "expectedSelectionGapNote": "已知风险：139/219 是「必挂硬闸」送分对（γ_dd 中位 0.362），信号弱于难对（0.390，35 条贴地板）。因此判定必须按 negType 分栏看；若送分侧过闸而难对侧不过，按不晋级处理。",
+  "datasetContentsNote": {
+    "draftPairsTotal": 303,
+    "draftPairsTrainEligible": 219,
+    "unitSamples": 542,
+    "trainEligibleUnitSamples": 538,
+    "pairReviewFile": "transfer/models/dev-flywheel-pairs.json（78 行，69 行带 arena-agent-pair-apparatus-review/1 章，9 行因 margin<0.05 拒签）"
+  }
+}

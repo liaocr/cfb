@@ -1,0 +1,11 @@
+{
+ "rows": [
+  {
+   "id": "flaky-timeout",
+   "mode": "v4",
+   "why": "error",
+   "error": "Client network socket disconnected before secure TLS connection was established",
+   "ms": 30106
+  }
+ ]
+}

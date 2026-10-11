@@ -1,0 +1,164 @@
+{
+  "schema": "cfb.gold/1",
+  "id": "wrong-model_long-horizon-s0-r4",
+  "family": "wrong-model",
+  "task": "wrong-model:long-horizon",
+  "sample": 0,
+  "round": 4,
+  "plan": "t101",
+  "split": "holdout",
+  "at": "2026-10-05T13:11:50.128Z",
+  "raw": "Now I understand. The bug: `lastModel` is module-level state shared across sessions (and even across plugin instances). In session 1, options.model = deepseek-v3.1 sets lastModel. In session 2, options.model is undefined, so lastModel stays deepseek-v3.1. The fix: prefer n.model (current session model) when available, fall back to options.model for old hosts.\n\nLet me check the import chain: plugin.js imports `./host-follow.js`. The legacy and compat are decoys. The real one is src/host-follow.js.\n\nFix: `observe(options, n)` should record the current session model from n.model, and options.model as fallback for old hosts. And `callConfig` should return the current session model.\n\nDesign: keep a per-plugin state (not module-level) to avoid cross-plugin leakage? Actually the bug is cross-session leakage. Let me think what \"current session model\" means. n.model is the normalized current request model. So observe should record n.model when present. For old hosts where options.model passed but maybe n.model also present? The acceptance: compiler-transport-started model must equal n.model (current session model), and when old host still passes options.model, also correct.\n\nBest fix: `observe(options, n)` set lastModel = n?.model ?? options?.model. And move state into makeHostFollow closure so it's per-instance.\n\nLet me check if there are other consumers. Let me look for references to host-follow modules.\n\nLet me verify the reproduction and test first, then edit.\n\nAlso note the selftest: `host.observe({ model: 'deepseek-v3.1' })` — no n passed. So observe signature must keep working with just options. So `observe(options, n)` with n optional, fallback to options.model.\n\nThen `callConfig({}).model` should equal 'deepseek-v3.1'. Good.\n\nBut for the plugin, session 2: observe(options={stream:true}, n={seq:12, model:'deepseek-v3.2'}) → lastModel = n.model = deepseek-v3.2. Good.\n\nLet me also move lastModel into the closure so separate plugin instances don't share. Actually plugin.js calls makeHostFollow(cfg) once per makePlugin, so state is per plugin instance anyway if inside closure. Module-level currently shared across plugin instances too. Better to make it instance-local.\n\nLet me implement. Also need to handle: what if n.model is undefined? Then fallback options.model, then cfg.model.\n\nLet me write the fix in src/host-follow.js. The legacy/compat are decoys — but should I fix them too? The runbook says don't blindly modify compat layer. The real chain uses host-follow.js. But README says \"先看 legacy\". These are traps. The genuine import is plugin.js → ./host-follow.js. So fix host-follow.js. However, to be safe and consistent, the acceptance only requires the smoke test. I'll fix host-follow.js (the actual imported module). I could also fix legacy/compat but they're not imported; modifying them could be \"blindly modifying compat layer\". I'll focus on the real one but mention decoys.\n\nActually let me reconsider — should I fix all three for robustness? The task says find cause and fix. The real entry is host-follow.js. Decoys are red herrings. I'll fix the real one and verify. Let me check no other file imports legacy/compat.\n\nLet me grep.",
+  "ctx": "用户报告：插件压缩用的模型不是当前会话的模型，而是上一次会话的模型。用户给的 trace 片段在 trace/last.log。可用 `node scripts/smoke-session.mjs` 复现（模拟两次会话，写 trace/trace.log 并打印最后几行）。请找出原因并修好，修好后说明依据。验收：压缩那一跳（trace 里 compiler-transport-started 的 model）必须等于当前会话的模型（n.model），旧宿主仍传 options.model 时也要对。\n\n【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）\n- 已走过的路：（共 6 条调用，详见下方【延续段】；曾涉 package.json dev/null scripts/smoke-session.mjs trace/last.log plugin.js src/plugin.js src/ test/ src/host-follow.js src/host-follow.compat.js src/host-follow.legacy.js src/birth.js src/transport.js test/host-follow.selftest.mjs docs/incid）\n\n【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）\n已走过的路：第 1 轮 bash `ls -la && cat package.json 2>/dev/null` → 「$ ls -la」；第 1 轮 bash `cat scripts/smoke-session.mjs 2>/dev/null; echo \"=== trace/last.log ===\"; cat trace/last.log 2>/dev/null` → 「$ cat scripts/smoke-session.mjs 2>/dev/null」；第 2 轮 bash `ls -la src test docs logs && echo \"=== plugin.js ===\" && cat src/plugin.js` → 「$ ls -la src test docs logs」；第 2 轮 bash `for f in src/*.js test/*.js; do echo \"=== $f ===\"; cat \"$f\"; done` → 「bash: 该沙箱不支持 shell 循环，请直接跑单条命令: for f in src/*.js test/*.js; do echo \"=== $f ===\"; cat \"$f\"; done」；第 3 轮 bash `cat src/host-follow.js; echo '=== compat ==='; cat src/host-follow.compat.js; echo '=== legacy ==='; cat src/host-follow.legacy.js` → 「$ cat src/host-follow.js」；第 3 轮 bash `cat src/birth.js; echo '=== transport ==='; cat src/transport.js; echo '=== test ==='; cat test/host-follow.selftest.mjs; echo '=== runbook ==='; cat docs/incid…` → 「$ cat src/birth.js」；这些不再重跑，除非中间改过东西。",
+  "calls": [
+    {
+      "name": "bash",
+      "args": "{\"command\":\"grep -rn \\\"host-follow\\\" --include=*.js --include=*.mjs . ; echo '--- baseline ---'; node scripts/smoke-session.mjs; echo '--- test ---'; node test/host-follow.selftest.mjs\"}"
+    }
+  ],
+  "draft": "已落定的决定（原文逐字）：「The fix: prefer n.model (current session model) when available, fall back to options.model for old hosts.」\n\n落点：src/host-follow.js（只动这一处；其余路径原文已自证不必动：「Also note the selftest: host.observe({ model: 'deepseek-v3.1' }) — no n passed.」）\n\n原文还悬着这句，但它不阻塞落 edit：「The fix: prefer n.model (current session model) when available, fall back to options.model for old hosts.」\n\n验收：跑 `node scripts/smoke-session.mjs`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 src/host-follow.js 继续查，不要改测试聚合方式。",
+  "stored": "已走过的路：第 1 轮 bash `ls -la && cat package.json 2>/dev/null` → 「$ ls -la」；第 1 轮 bash `cat scripts/smoke-session.mjs 2>/dev/null; echo \"=== trace/last.log ===\"; cat trace/last.log 2>/dev/null` → 「$ cat scripts/smoke-session.mjs 2>/dev/null」；第 2 轮 bash `ls -la src test docs logs && echo \"=== plugin.js ===\" && cat src/plugin.js` → 「$ ls -la src test docs logs」；第 2 轮 bash `for f in src/*.js test/*.js; do echo \"=== $f ===\"; cat \"$f\"; done` → 「bash: 该沙箱不支持 shell 循环，请直接跑单条命令: for f in src/*.js test/*.js; do echo \"=== $f ===\"; cat \"$f\"; done」；第 3 轮 bash `cat src/host-follow.js; echo '=== compat ==='; cat src/host-follow.compat.js; echo '=== legacy ==='; cat src/host-follow.legacy.js` → 「$ cat src/host-follow.js」；第 3 轮 bash `cat src/birth.js; echo '=== transport ==='; cat src/transport.js; echo '=== test ==='; cat test/host-follow.selftest.mjs; echo '=== runbook ==='; cat docs/incid…` → 「$ cat src/birth.js」；这些不再重跑，除非中间改过东西。\n\n已落定的决定（原文逐字）：「The fix: prefer n.model (current session model) when available, fall back to options.model for old hosts.」\n\n落点：src/host-follow.js（只动这一处；其余路径原文已自证不必动：「Also note the selftest: host.observe({ model: 'deepseek-v3.1' }) — no n passed.」）\n\n原文还悬着这句，但它不阻塞落 edit：「The fix: prefer n.model (current session model) when available, fall back to options.model for old hosts.」\n\n验收：跑 `node scripts/smoke-session.mjs`。若不再报 原判定失败 ⇒ 说明改动已生效，判这条修好；若仍报 ⇒ 说明兜底或旁路还在，要回到 src/host-follow.js 继续查，不要改测试聚合方式。 上面逐字引出的代码行可以直接当 edit_file 的 old_text。",
+  "gates": {
+    "v4": {
+      "outputChars": 494,
+      "inventedSpans": 0,
+      "chars": 1459,
+      "closeLoop": false,
+      "provenance": true,
+      "register": false,
+      "ctxChars": 1567,
+      "branches": 2,
+      "repairedAffordance": true,
+      "continuation": 1
+    },
+    "accept": {
+      "netSaved": 1726,
+      "minSaved": 50,
+      "tokens": {
+        "rawTokensEst": 957,
+        "outTokensEst": 499,
+        "netSavedTokensEst": 458,
+        "unit": "estimate-not-tokenizer"
+      }
+    },
+    "draftChars": 494,
+    "outChars": 1459,
+    "rawChars": 3185
+  },
+  "outcome": {
+    "solved": true,
+    "roundsToFix": 5,
+    "falseClaim": false,
+    "rawSolved": true,
+    "rawRoundsToFix": 5,
+    "vsRaw": "tie"
+  },
+  "validated": true,
+  "qualityAudit": {
+    "schema": "cfb.mode1-content-audit/1",
+    "status": "clean",
+    "reviewer": "mode1-writer+apparatus-lint/1",
+    "reviewedAt": null,
+    "checkedFields": [
+      "draft",
+      "stored"
+    ],
+    "textSha256": "95227078f5a31910d14300b4a2d5bc2dcfd452ca7d2ee151878b727cd6173e41",
+    "issues": [],
+    "exempted": [
+      {
+        "category": "environment-permission-assertion",
+        "excerpt": "沙箱不支持",
+        "sentence": "done` → 「bash: 该沙箱不支持 shell 循环，请直接跑单条命令: for f in src/*.js test/*.js;",
+        "basis": "verbatim-sentence-from-raw-or-ctx",
+        "field": "stored"
+      }
+    ]
+  },
+  "ceiling": {
+    "ok": true,
+    "fails": [],
+    "ratio": 0.1551,
+    "storedRatio": 0.4581,
+    "draftChars": 494,
+    "lineChars": 1491,
+    "at": "2026-10-05T13:13:55.067Z"
+  },
+  "use": "ruler",
+  "digest": "635e83f9efba14d9",
+  "revision": {
+    "at": "2026-10-05T13:13:55.068Z",
+    "note": "gold add --replace（改稿重挣，t101）",
+    "by": "gold add --replace"
+  },
+  "goldStandard": {
+    "schema": "cfb.gold-standard/1",
+    "version": "cfb.gold-standard/1",
+    "at": "2026-10-06T06:45:14.283Z",
+    "status": "not-gold",
+    "gap": 0.5,
+    "margin": 0.7981,
+    "unmeasured": [],
+    "drift": [],
+    "home": "t101",
+    "draftChars": 494,
+    "baseRawChars": 3185,
+    "thresholds": {
+      "ratioMax": 0.6,
+      "lineMax": 1,
+      "rtfMax": 6,
+      "minSamples": 2
+    },
+    "stampDigest": "635e83f9efba14d9",
+    "axes": {
+      "M1": {
+        "v": 0.1551,
+        "ok": true
+      },
+      "M2": {
+        "v": 0.3313,
+        "ok": true
+      },
+      "M3": {
+        "v": 1,
+        "ok": true
+      },
+      "M4": {
+        "v": 1,
+        "ok": true
+      },
+      "M5": {
+        "v": 1,
+        "ok": true
+      },
+      "M6": {
+        "v": 1,
+        "ok": true
+      },
+      "M7": {
+        "v": 1,
+        "ok": true
+      },
+      "M8": {
+        "v": 1,
+        "ok": true
+      },
+      "E1": {
+        "v": 5,
+        "ok": true
+      },
+      "E2": {
+        "v": "tie",
+        "ok": true
+      },
+      "R1": {
+        "v": 1,
+        "ok": true
+      },
+      "R2": {
+        "v": 1,
+        "ok": false
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "id": "eacces-config_decoy-s0-r3",
+  "before": {
+    "draftChars": 1224,
+    "storedChars": 1729,
+    "ratio": 0.595,
+    "audit": "clean",
+    "fails": [
+      "C2",
+      "C6"
+    ]
+  },
+  "after": {
+    "draftChars": 1222,
+    "storedApprox": 1727,
+    "ratio": 0.594,
+    "audit": "clean",
+    "closedRead": false,
+    "line": 1343,
+    "fails": [
+      "C2",
+      "C6"
+    ],
+    "ok": false
+  },
+  "auditHits": [],
+  "evidence": {
+    "ranCmds": [
+      "cd \"$(pwd)\" && cat src/trace.legacy.js; echo ---; ls -la .git 2>&1; echo ---; git log --on",
+      "cd \"$(pwd)\" && stat /home/u/.dsh/storages/cot-form-b 2>&1; echo ---; stat /home/u/.dsh/sto"
+    ],
+    "testCmd": null,
+    "bad": [],
+    "ok": [],
+    "obs": [],
+    "targets": [
+      "src/trace.legacy.js",
+      "test/birth.selftest.mjs",
+      "src/trace.js",
+      "test/hedge.selftest.mjs"
+    ],
+    "rowDir": null,
+    "rowKeys": null
+  },
+  "rowDir": null
+}

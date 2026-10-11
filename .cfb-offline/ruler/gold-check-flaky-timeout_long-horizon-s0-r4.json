@@ -1,0 +1,26 @@
+{
+  "id": "flaky-timeout_long-horizon-s0-r4",
+  "source": "transfer/gold-rejected/flaky-timeout/flaky-timeout_long-horizon-s0-r4.json",
+  "pending": false,
+  "use": "ruler",
+  "draftChars": 430,
+  "rawChars": 19626,
+  "storedReal": 1468,
+  "ratio": 0.075,
+  "line": {
+    "lineChars": 1636,
+    "lineRatio": 0.0834,
+    "g2Ok": true,
+    "over": -1206
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "decision-differs",
+  "warns": [],
+  "fails": [
+    "C4 提前量：第 7 轮才修好（要 ≤6；贴着轮数上限的赢法测不出「停止取证」这一维）"
+  ],
+  "ok": false,
+  "at": "2026-10-06T00:39:55.048Z"
+}

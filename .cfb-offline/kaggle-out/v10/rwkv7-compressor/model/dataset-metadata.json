@@ -1,0 +1,9 @@
+{
+  "title": "cfb rwkv7 v10 compressor",
+  "id": "liaocr/cfb-rwkv7-v10",
+  "licenses": [
+    {
+      "name": "Apache 2.0"
+    }
+  ]
+}

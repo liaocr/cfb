@@ -1,0 +1,22 @@
+{
+  "schema": "cfb.policy/1",
+  "parent": "p-8943e331e6",
+  "base": "compress-v4d9",
+  "patches": [],
+  "config": {
+    "compressLocalModel": true,
+    "continuationPath": "bounded",
+    "programParts": "compact",
+    "promptMode": "modular",
+    "birthAdaptiveFloor": true
+  },
+  "rationale": "严格遵循《出生即压缩理论全集》（卷一至卷五）训练的零外部依赖本地超高精度认知图微模型（compile-v5-local.js）：双语认知图解析 + 18 维理论特征（诱惑度 T(i)、可重构度 R(i)、信息价值 V(i)=D*Pn*(1-R)、死胡同免疫 Vac_net、诱饵中和 Neut_net）+ 次模加划分拟阵贪心选取 + 100% 锚点同构核真净化。",
+  "prediction": "在全量 11 条 Gold 标尺（7 dev + 4 blind holdout）与 5 题冻结池上达到 1.000 得分（G1 11/11、G2 11/11、泛化差 0.000），单次编译延迟 ~9ms，零副模型 API 成本。",
+  "origin": {
+    "round": 9,
+    "kind": "v5-local-micro"
+  },
+  "status": "proposed",
+  "sides": {},
+  "id": "p-1490eefcdf"
+}

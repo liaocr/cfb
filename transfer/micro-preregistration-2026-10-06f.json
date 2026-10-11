@@ -1,0 +1,51 @@
+{
+  "schema": "cfb.micro-preregistration/2",
+  "status": "locked",
+  "confirmatoryEligible": true,
+  "createdAt": "2026-10-07T12:00:00.000Z",
+  "purpose": "2026-10-07 微模型 06f 轮（3 折家族 CV，逐折）。**单变量=数据卫生**：配方逐字回到 06c（14 flags），只做一件事——把 19 条退化 draft 对（两侧 12 维特征逐维全同、l1=0，labelAudit.prefDegenerate=true）从可训练集排除（tools/build-micro-dataset.mjs 在打旗标处同步降级 trainingEligible 并重算 handSamples.trainableTargetsAdded / stats.*）。 动因（全部离线可复算）：06d draft 聚合 0.6119 距 0.85 门差 24.73pp，其中 19/219 对在任何模型下都必然平局（严格口径记 0 分）却全额占住分母；按 12 维特征直接做 logistic 留一家族上限只有 flaky 0.681 / perf 0.979 / sse 0.929（聚合 0.79）⇒ 旧分母下该门算术不可达。排除后分母 219→200、门槛 170/200，同一 12 维线性上限升到 flaky 0.8305 / perf 0.9762 / sse 0.9293，**聚合 182/200 = 0.910 ≥ 0.85**，该门由「不可能」变「有真实空间」。 单元侧零改动：unitSamples / unitStepPairs / spanSamples 与上一冻结版逐字节一致（本地重建已验证），因此 micro-cv-baseline 的 matched 读数仍为同口径对照，noRegressionVsPreviousCandidateFold 保持可解释。",
+  "flags": {
+    "epochs_sft": 12,
+    "epochs_simpo": 12,
+    "student_epochs": 260,
+    "student_patience": 30,
+    "student_pair_objective": "listwise",
+    "student_unit_pair_loss_weight": 1.0,
+    "matched_bucket_loss_weight": 1.5,
+    "micro_mlp_hidden": 96,
+    "dataset_neg_strategy": "hardened",
+    "unit_pair_degree_cap": 4,
+    "unit_pairs_per_positive": 4,
+    "near_length_tokens": 3,
+    "neg_judge_weights": "transfer/models/v5-micro-weights.judge-4764fd2.json",
+    "unit_review_file": "transfer/models/unit-label-review-blind-v3.json"
+  },
+  "datasetBuilder": {
+    "schema": "cfb.micro-dev-dataset/3",
+    "textHashBuckets": 256,
+    "expectedFeatureDim": 275,
+    "unitLabelReviewFile": "transfer/models/unit-label-review-blind-v3.json",
+    "builderSha256AtLock": "037adf8246ca10b46d6c9ecc118304092a600391fc14b66b9a1002f30243622c"
+  },
+  "folds": [
+    "flaky-timeout",
+    "perf-regression",
+    "sse-truncated"
+  ],
+  "trainingDataFingerprint": "cf380bbb6b82b21a891828d5e4e21cb8c03ed5561e51a9c1c99b9d06b86081d9",
+  "decisionRule": "v2: decide on report.threeFoldCv — per fold matched >= production matched + 0.20; mean(matched) >= 0.75; min(matched) >= 0.70; per fold matched >= previous candidate matched - 0.03; draft aggregate >= 0.85 and every fold >= production draft. Absolute 90% lines are reported-only. One-shot blind family judged by the v2 criteria against the same-family production baseline (matched >= 0.75 and >= production + 0.20; draft >= max(0.85, production draft)).",
+  "whyOneVariable": "只动「哪 19 条进训练集」，配方与 06c 完全一致：单元对逐字节不变 ⇒ matched 承重读数与 06c 基线同口径可比；draft 侧才是本轮自变量。数据侧其它储备 lever（unit_pair_degree_cap / unit_pairs_per_positive）与 4 条争议 flaky 对的复核**刻意不动**——后者会改变单元对集合、破坏 baseline 可比性，留待 draft 门兑现后再单独评估。",
+  "priorAttemptNote": "登记可审计性：06d 三折（fp 56a211c2…、锁 95cf11c8…）mean 0.7512 / worst 0.7010 / draft 0.6119，四门 FAIL，不晋升。 06e（锁 b70b45c2…，配方轮：encoder_lr 5e-5 / lr 1e-3 / mlp 192 / sft 18 + 退 06d 学生三 lever）**首折触发预注册止损并中止**：SFT best val slotAcc 0.375 < 0.45 阈；峰在 0.375（epoch 5）后 val_loss 上升、train_acc 反冲到 0.636 ⇒ 立即过拟合。 止损读数的离线归因（零 Kaggle 成本）：① 槽位标注跨家族不可迁移——线性探针留一家族仅 flaky 0.232 / perf 0.284 / sse 0.390，且「flaky 全猜 DECIDED」的常数基线就有 0.458 > 模型 0.375，说明 0.375 已贴可达上限而非欠拟合；② rank 承重线没坏——学生 flaky matched 0.7576 > 线性跨家族上限 0.4545；③ 学生 draft 头 train 准确率 0.6395 与教师 SimPO 的 0.6395 一字不差 ⇒ 它在蒸馏一个机会级排序（教师 draft val 0.4583），不是在自己学标签。结论：配方的进一步调整不再能兑现这两门，问题在标签/分母结构。本轮 flags 与 06c 逐字相同，调整发生在任何 06f 读数之前。",
+  "frozenJudgeNote": "Negative-mining judge is pinned to the 4764fd2 candidate so the mined pair set cannot drift across folds when each fold pushes its own candidate.",
+  "expectedSelectionGapNote": "flaky 折 +20pp 门算术未变（单元对未改）：生产 0.7273 ⇒ 需 0.9273 = 31/33，06c/06d/06e 候选三连停在 25/33。该 33 对全是「正槽位单句 vs NOISE 单句」，其中 4 对负端被盲审判为正槽位（OPEN/0.7，低置信未回灌）、9 对生产全判错 ⇒ 其处方（争议对复核）会改动单元对集合，刻意推迟。worst 门 sse 折 06d 只赢 1 对（0.701 vs 0.70），draft 门 06f 后需 170/200。",
+  "datasetContentsNote": {
+    "draftPairsTotal": 303,
+    "draftPairsTrainEligible": 200,
+    "draftPairsExcludedDegenerate": 19,
+    "unitSamples": 542,
+    "trainEligibleUnitSamples": 538,
+    "prefDegenerateEligible": 0,
+    "note": "19 条 prefDegenerate 对被排除的原因已写入每条 labelAudit.reason='degenerate-draft-feature-identical'；handSamples 中 4 个样本 trainableTargetsAdded 5→3 已同步。"
+  },
+  "falsifiablePredictionNote": "首折即判定（止损用）：draft val 准确率 —— flaky 应 ≥0.5593（=生产在新分母上的读数）、perf ≥0.7857、sse ≥0.5960，聚合应 ≥0.670（=生产在 200 对上的聚合 0.625 之上；零学习下限）；线性上限在 0.910。 若首折聚合 draft < 0.70，说明学生没有兑现线性上限（差的不是数据分母而是 draft 头本身）⇒ 下一轮单变量应取 draft 头容量/学习率（pref_student_lr / pref_lr / beta_simpo），不要再动数据。 并行判据：matched 三折应与 06c/06d 同口径不动（flaky 0.7576）——若明显漂移，说明数据改动意外影响了单元侧，应立即停下核对。"
+}

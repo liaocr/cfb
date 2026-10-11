@@ -1,0 +1,148 @@
+{
+  "schema": "cfb.v9-validation/1",
+  "ruler": "ruler-v9/1",
+  "at": "2026-10-11T13:08:38.983Z",
+  "checks": {
+    "determinism": {
+      "n": 1263,
+      "mismatches": 0,
+      "examples": []
+    },
+    "negativeControls": {
+      "nPos": 22,
+      "nNeg": 88,
+      "nRejected": 73,
+      "holes": 15,
+      "holeRate": 0.1705,
+      "byAxis": {
+        "N1-copy": {
+          "n": 22,
+          "rejected": 22,
+          "expectedGate": 22,
+          "missed": 0,
+          "otherGate": 0
+        },
+        "N3-invent": {
+          "n": 22,
+          "rejected": 17,
+          "expectedGate": 17,
+          "missed": 5,
+          "otherGate": 0
+        },
+        "N4-invert": {
+          "n": 4,
+          "rejected": 4,
+          "expectedGate": 4,
+          "missed": 0,
+          "otherGate": 0
+        },
+        "N5-over-compress": {
+          "n": 22,
+          "rejected": 22,
+          "expectedGate": 18,
+          "missed": 0,
+          "otherGate": 4
+        },
+        "N2-drop-anchor": {
+          "n": 18,
+          "rejected": 8,
+          "expectedGate": 8,
+          "missed": 10,
+          "otherGate": 0
+        }
+      },
+      "holeExamples": [
+        {
+          "id": "sktime_skbase_pr117#b13",
+          "axis": "N2-drop-anchor",
+          "mutation": "删除承重锚点 get_fitted_params\\"
+        },
+        {
+          "id": "gjoseph92_stackstac_pr149#b3",
+          "axis": "N2-drop-anchor",
+          "mutation": "删除承重锚点 axis"
+        },
+        {
+          "id": "p1c2u_jsonschema-path_pr39#b14",
+          "axis": "N3-invent",
+          "mutation": "把 from_file_path 换成不存在的 from_file_path_v2"
+        },
+        {
+          "id": "cbornet_blockbuster_pr4#b16",
+          "axis": "N2-drop-anchor",
+          "mutation": "删除承重锚点 blockbuster"
+        },
+        {
+          "id": "roniemartinez_latex2mathml_pr104#b8",
+          "axis": "N2-drop-anchor",
+          "mutation": "删除承重锚点 \\overrightarrow"
+        }
+      ],
+      "note": "「洞」= 负例整条过了尺子（auditRuler 定义）。"
+    },
+    "emptyDraft": {
+      "gaugeableUnits": 1058,
+      "passed": 0
+    },
+    "verbatimCopy": {
+      "n": 1058,
+      "passed": 0
+    },
+    "teacherBySplit": {
+      "train": {
+        "total": 862,
+        "unscorable": 125,
+        "n": 737,
+        "hardPass": 15,
+        "hardPassRate": 0.0204,
+        "hardCI95": [
+          0.0124,
+          0.0333
+        ],
+        "good": 15,
+        "goodRate": 0.0204
+      },
+      "dev": {
+        "total": 123,
+        "unscorable": 18,
+        "n": 105,
+        "hardPass": 2,
+        "hardPassRate": 0.019,
+        "hardCI95": [
+          0.0052,
+          0.0668
+        ],
+        "good": 2,
+        "goodRate": 0.019
+      },
+      "test": {
+        "total": 248,
+        "unscorable": 32,
+        "n": 216,
+        "hardPass": 5,
+        "hardPassRate": 0.0231,
+        "hardCI95": [
+          0.0099,
+          0.053
+        ],
+        "good": 5,
+        "goodRate": 0.0231
+      }
+    },
+    "handStandard": {
+      "n": 26,
+      "hardPass": 17,
+      "good": 16,
+      "goodRate": 0.6154
+    }
+  },
+  "validity": {
+    "determinism": "PASS",
+    "handHardPassRate": "FAIL",
+    "negativeHoles": "FAIL",
+    "emptyDraftPasses": "PASS",
+    "verbatimCopyPasses": "PASS",
+    "teacherTestNotZero": "FAIL",
+    "VALID": "INVALID"
+  }
+}

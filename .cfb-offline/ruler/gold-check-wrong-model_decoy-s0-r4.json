@@ -1,0 +1,24 @@
+{
+  "id": "wrong-model_decoy-s0-r4",
+  "source": "transfer/gold/wrong-model/wrong-model_decoy-s0-r4.json",
+  "pending": false,
+  "use": "ruler",
+  "draftChars": 375,
+  "rawChars": 1436,
+  "storedReal": 838,
+  "ratio": 0.584,
+  "line": {
+    "lineChars": 1344,
+    "lineRatio": 0.9359,
+    "g2Ok": true,
+    "over": -969
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "close",
+  "warns": [],
+  "fails": [],
+  "ok": true,
+  "at": "2026-10-06T00:39:53.850Z"
+}

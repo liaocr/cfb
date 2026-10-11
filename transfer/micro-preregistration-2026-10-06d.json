@@ -1,0 +1,51 @@
+{
+  "schema": "cfb.micro-preregistration/2",
+  "status": "locked",
+  "confirmatoryEligible": true,
+  "createdAt": "2026-10-07T00:00:00.000Z",
+  "purpose": "2026-10-07 微模型 06d 轮（3 折家族 CV，逐折）。数据与 06c 完全同一份（指纹不变），本轮只动 5 个配方 lever：matched_bucket_loss_weight 1.5→2.5、encoder_lr 8e-6→2e-5、simpo_encoder_lr 3e-6→1e-5、draft_loss_weight 1.2→2.0、pref_student_epochs 100→200。动因是 06c 三折裁决：mean 0.7648 PASS / worst 0.6907（差 0.93pp）/ flaky 折 +20pp 闸门差 16.97pp / draft 聚合 0.6027（差 24.73pp）；教师 SFT val 仅 ~33% 指向欠拟合。decisionRule 与 datasetBuilder 逐字保留 06c；folds 不变。",
+  "flags": {
+    "epochs_sft": 12,
+    "epochs_simpo": 12,
+    "student_epochs": 260,
+    "student_patience": 30,
+    "student_pair_objective": "listwise",
+    "student_unit_pair_loss_weight": 1.0,
+    "matched_bucket_loss_weight": 2.5,
+    "micro_mlp_hidden": 96,
+    "dataset_neg_strategy": "hardened",
+    "unit_pair_degree_cap": 4,
+    "unit_pairs_per_positive": 4,
+    "near_length_tokens": 3,
+    "neg_judge_weights": "transfer/models/v5-micro-weights.judge-4764fd2.json",
+    "unit_review_file": "transfer/models/unit-label-review-blind-v3.json",
+    "encoder_lr": 2e-05,
+    "simpo_encoder_lr": 1e-05,
+    "draft_loss_weight": 2.0,
+    "pref_student_epochs": 200
+  },
+  "datasetBuilder": {
+    "schema": "cfb.micro-dev-dataset/3",
+    "textHashBuckets": 256,
+    "expectedFeatureDim": 275,
+    "unitLabelReviewFile": "transfer/models/unit-label-review-blind-v3.json"
+  },
+  "folds": [
+    "flaky-timeout",
+    "perf-regression",
+    "sse-truncated"
+  ],
+  "trainingDataFingerprint": "56a211c27cec8eead5176baf2de184ebcb18324ebf33a211615ee2e6ccb5e38a",
+  "decisionRule": "v2: decide on report.threeFoldCv — per fold matched >= production matched + 0.20; mean(matched) >= 0.75; min(matched) >= 0.70; per fold matched >= previous candidate matched - 0.03; draft aggregate >= 0.85 and every fold >= production draft. Absolute 90% lines are reported-only. One-shot blind family judged by the v2 criteria against the same-family production baseline (matched >= 0.75 and >= production + 0.20; draft >= max(0.85, production draft)).",
+  "whyOneVariable": "只动配方、不动语料：trainingDataFingerprint 与 06c 相同，故 micro-cv-baseline.json（同血统）在本轮首次生效，noRegressionVsPreviousCandidateFold 具备真实对照；数据侧 lever（unit_pair_degree_cap / unit_pairs_per_positive）留给 06e，与配方轮分离。",
+  "priorAttemptNote": "登记可审计性：06c 轮三折实测（fp 56a211c2…、锁 3dbc8fb8… 逐折对齐、confirmatory_eligible=True）——flaky-timeout matched 0.7576 (prod 0.7273) / perf-regression 0.8462 (prod 0.5128) / sse-truncated 0.6907 (prod 0.2784)；mean 0.7648、worst 0.6907、draft 聚合 0.6027；裁决：不晋升，生产权重 da949e637123 未动。本轮 flags 的调整发生在任何 06d 读数之前。",
+  "frozenJudgeNote": "Negative-mining judge is pinned to the 4764fd2 candidate so the mined pair set cannot drift across folds when each fold pushes its own candidate.",
+  "expectedSelectionGapNote": "读数义务沿用分栏纪律；另注：flaky 折 production matched 0.7273，把 +20pp 闸门顶到 0.9273 —— 该折是 +20pp 闸门的事实瓶颈（25/33 需 31/33）；sse 折 worst 闸门只差 1 对（67/97→68/97）；draft 聚合需 132/219→187/219。draft 侧优先压 ties（flaky val 13 tie 直接白丢 6.5pp）。",
+  "datasetContentsNote": {
+    "draftPairsTotal": 303,
+    "draftPairsTrainEligible": 219,
+    "unitSamples": 542,
+    "trainEligibleUnitSamples": 538,
+    "prefDegenerateEligible": 19
+  }
+}

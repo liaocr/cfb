@@ -1,0 +1,33 @@
+{
+  "authorityId": "d0683a4a48c873cc869bce034a9f87f8702b4cc0db93fcf3fc7858fc3268d3f5",
+  "digest": "43483ce03a8ddb8a05096dee28300812391da3a4f6a57d7199358eb6444ffd52",
+  "halted": "response-incomplete",
+  "jobs": [
+    {
+      "key": "probe",
+      "kind": "probe",
+      "reservedNano": 5048000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|raw|0",
+      "kind": "main",
+      "reservedNano": 12005000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|current|0",
+      "kind": "main",
+      "reason": "response-incomplete",
+      "reservedNano": 20278000,
+      "status": "rejected"
+    }
+  ],
+  "planDigest": "a6ecbe50e493bafc7ab7f4fb909f05823df3fc5bb8b159a1a129fb62a5808e04",
+  "requests": 3,
+  "reservedNano": 37331000,
+  "revision": "340f9f46d17d73786269af3d16d4c4bb038bf61cc4d803ed7c43bd904a6c9759",
+  "schema": "cfb.api-watermark/1",
+  "scope": "cfb.visible-context-approval.2026-10-01",
+  "sequence": 7
+}

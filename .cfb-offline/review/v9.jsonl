@@ -1,0 +1,23 @@
+{"id":"u492","slot":"MECHANISM","yVal":0.45,"yTempt":0.08,"confidence":"medium","rationale":"改动前置约束复述"}
+{"id":"u497","slot":"MECHANISM","yVal":0.40,"yTempt":0.10,"confidence":"medium","rationale":"与 u492 重复"}
+{"id":"u500","slot":"DECIDED","yVal":0.88,"yTempt":0.05,"confidence":"high","rationale":"给出 new_text 具体内容"}
+{"id":"u506","slot":"MECHANISM","yVal":0.84,"yTempt":0.06,"confidence":"high","rationale":"推演改动后 233 行返回 false"}
+{"id":"u508","slot":"MECHANISM","yVal":0.86,"yTempt":0.06,"confidence":"high","rationale":"区分 trace 字段与写会话条件，防误判优先级"}
+{"id":"u509","slot":"DECIDED","yVal":0.86,"yTempt":0.06,"confidence":"high","rationale":"明确先修根因、trace 待后"}
+{"id":"u510","slot":"OPEN","yVal":0.74,"yTempt":0.08,"confidence":"medium","rationale":"trace 是否一并修的挂起问题"}
+{"id":"u511","slot":"MECHANISM","yVal":0.62,"yTempt":0.08,"confidence":"medium","rationale":"指出 trace 误导但不致命的取舍依据"}
+{"id":"u513","slot":"DECIDED","yVal":0.62,"yTempt":0.10,"confidence":"medium","rationale":"只决定动作，未含内容"}
+{"id":"u514","slot":"NOISE","yVal":0.05,"yTempt":0.15,"confidence":"high","rationale":"输出格式约束复述"}
+{"id":"u517","slot":"MECHANISM","yVal":0.50,"yTempt":0.08,"confidence":"medium","rationale":"实际调用 payload 片段，可核对改法"}
+{"id":"u519","slot":"NOISE","yVal":0.15,"yTempt":0.20,"confidence":"medium","rationale":"JSON 转义细节，与缺陷定位无关"}
+{"id":"u523","slot":"NOISE","yVal":0.08,"yTempt":0.15,"confidence":"high","rationale":"在两条格式指令之间打转"}
+{"id":"u528","slot":"NOISE","yVal":0.10,"yTempt":0.15,"confidence":"medium","rationale":"工具常识复述"}
+{"id":"u529","slot":"OPEN","yVal":0.72,"yTempt":0.08,"confidence":"medium","rationale":"提出唯一性风险待核"}
+{"id":"u530","slot":"DECIDED","yVal":0.86,"yTempt":0.06,"confidence":"high","rationale":"在两处候选中择一并给出「更根本」理由"}
+{"id":"u531","slot":"MECHANISM","yVal":0.88,"yTempt":0.05,"confidence":"high","rationale":"以回退 stop 为根因支撑该取舍"}
+{"id":"u534","slot":"MECHANISM","yVal":0.60,"yTempt":0.08,"confidence":"medium","rationale":"协议常识，界定合法取值"}
+{"id":"u536","slot":"MECHANISM","yVal":0.74,"yTempt":0.06,"confidence":"high","rationale":"trace 读到的 rawFinish=null 是硬证据"}
+{"id":"u537","slot":"MECHANISM","yVal":0.84,"yTempt":0.06,"confidence":"high","rationale":"说明返回值已丢失区分能力，故须改上游"}
+{"id":"u538","slot":"DECIDED","yVal":0.88,"yTempt":0.05,"confidence":"high","rationale":"落定根本修复点"}
+{"id":"u539","slot":"DECIDED","yVal":0.66,"yTempt":0.08,"confidence":"medium","rationale":"宣布下一步动作"}
+{"id":"u540","slot":"NOISE","yVal":0.05,"yTempt":0.15,"confidence":"high","rationale":"格式注意，与缺陷无关"}

@@ -1,0 +1,55 @@
+{
+  "schema": "cfb.traj-plan/1",
+  "id": "t134",
+  "at": "2026-10-11T12:19:24.278Z",
+  "variants": [
+    "raw",
+    "hand"
+  ],
+  "scenarios": [
+    "sse-truncated",
+    "wrong-model"
+  ],
+  "samples": 6,
+  "maxRounds": 6,
+  "fork": true,
+  "maxTokens": 8000,
+  "storeText": true,
+  "purpose": "PREREG-v7 运行 t134：sse-truncated、wrong-model 各 6 样本；raw 同窗新跑（不复用 t130）；hand 草稿用 v6+v7 闸门；主指标=修好所需轮数（配对 bootstrap CI）",
+  "yield": {
+    "l1Pairs": 12,
+    "l2Pairs": 12,
+    "validityPairsApprox": 120,
+    "flywheelPairsApprox": 0,
+    "childStatesApprox": 96
+  },
+  "cost": {
+    "mains": 132,
+    "compresses": 0,
+    "expectedMains": 108,
+    "expectedCompresses": 0,
+    "expectedUsd": 1.35,
+    "capUsd": 4.62,
+    "pricing": {
+      "mainUsd": 0.0125,
+      "mainCapUsd": 0.035,
+      "compressUsd": 0.0075,
+      "compressCapUsd": 0.0114,
+      "divergeRound": 3,
+      "floorShare": 0.4
+    },
+    "shadow": true,
+    "calibrated": {
+      "receipts": 45,
+      "divergeRound": 4,
+      "floorShare": 0.22,
+      "expectedMains": 96,
+      "expectedCompresses": 0,
+      "expectedUsd": 1.2
+    }
+  },
+  "holdoutNote": "场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索",
+  "digest": "e0b37007667f4f63",
+  "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t134/plan.json --store-text --variants raw,hand --only sse-truncated,wrong-model --samples 6 --max-rounds 6 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t134",
+  "design": "0b81d9241f017058"
+}

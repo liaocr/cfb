@@ -1,0 +1,196 @@
+{
+  "schema": "cfb.gold-forge/1",
+  "at": "2026-10-05T11:08:07.904Z",
+  "ready": 0,
+  "rows": [
+    {
+      "id": "eacces-config_decoy-s0-r3",
+      "family": "eacces-config",
+      "split": "holdout",
+      "use": "train",
+      "source": "transfer/gold/eacces-config/eacces-config_decoy-s0-r3.json",
+      "before": {
+        "draftChars": 1224,
+        "storedChars": 1729,
+        "ratio": 0.595,
+        "audit": "clean",
+        "fails": [
+          "C2",
+          "C6"
+        ]
+      },
+      "after": {
+        "draftChars": 1222,
+        "storedApprox": 1727,
+        "ratio": 0.594,
+        "audit": "clean",
+        "closedRead": false,
+        "line": 1343,
+        "fails": [
+          "C2",
+          "C6"
+        ],
+        "ok": false
+      },
+      "removedSentences": [],
+      "trimmedSentences": 0,
+      "needsManual": [
+        "C2 无闭合判读 ⇒ 由人按 evidence 写验收段（脚本不代填：代填就是把金标写成银标）"
+      ],
+      "grounded": {
+        "ranCmds": [
+          "cd \"$(pwd)\" && cat src/trace.legacy.js; echo ---; ls -la .git 2>&1; echo ---; git log --on",
+          "cd \"$(pwd)\" && stat /home/u/.dsh/storages/cot-form-b 2>&1; echo ---; stat /home/u/.dsh/sto"
+        ],
+        "testCmd": null,
+        "bad": [],
+        "ok": [],
+        "obs": [],
+        "targets": [
+          "src/trace.legacy.js",
+          "test/birth.selftest.mjs",
+          "src/trace.js",
+          "test/hedge.selftest.mjs"
+        ],
+        "rowDir": null,
+        "rowKeys": null
+      },
+      "rowDir": null
+    },
+    {
+      "id": "eacces-config_long-horizon-s0-r5",
+      "family": "eacces-config",
+      "split": "holdout",
+      "use": "train",
+      "source": "transfer/gold/eacces-config/eacces-config_long-horizon-s0-r5.json",
+      "before": {
+        "draftChars": 1160,
+        "storedChars": 1524,
+        "ratio": 0.503,
+        "audit": "clean",
+        "fails": [
+          "C2"
+        ]
+      },
+      "after": {
+        "draftChars": 1155,
+        "storedApprox": 1519,
+        "ratio": 0.502,
+        "audit": "clean",
+        "closedRead": false,
+        "line": 1571,
+        "fails": [
+          "C2"
+        ],
+        "ok": false
+      },
+      "removedSentences": [],
+      "trimmedSentences": 0,
+      "needsManual": [
+        "C2 无闭合判读 ⇒ 由人按 evidence 写验收段（脚本不代填：代填就是把金标写成银标）"
+      ],
+      "grounded": {
+        "ranCmds": [
+          "cd /home/u/work/repo; npm test 2>&1 | head -40",
+          "cd /home/u/work/repo; grep -rn \"CFB_REAL_DSH_HOME\" . ; echo \"--- env ---\"; env | grep -i -"
+        ],
+        "testCmd": {
+          "name": "bash",
+          "command": "cd /home/u/work/repo; npm test 2>&1 | head -40"
+        },
+        "bad": [],
+        "ok": [],
+        "obs": [],
+        "targets": [
+          "test/birth.selftest.mjs",
+          "src/trace.js",
+          "src/trace.legacy.js",
+          "src/trace.compat.js",
+          "test/hedge.selftest.mjs"
+        ],
+        "rowDir": null,
+        "rowKeys": null
+      },
+      "rowDir": null
+    },
+    {
+      "id": "flaky-timeout-s0-r4",
+      "family": "flaky-timeout",
+      "split": "dev",
+      "use": "ruler",
+      "source": "transfer/gold-rejected/flaky-timeout/flaky-timeout-s0-r4.json",
+      "before": {
+        "draftChars": 1361,
+        "storedChars": 1642,
+        "ratio": 0.057,
+        "audit": "quarantined",
+        "fails": [
+          "C2",
+          "C6"
+        ]
+      },
+      "after": {
+        "draftChars": 816,
+        "storedApprox": 1097,
+        "ratio": 0.038,
+        "audit": "clean",
+        "closedRead": false,
+        "line": null,
+        "fails": [
+          "C2",
+          "C3",
+          "C6"
+        ],
+        "ok": false
+      },
+      "removedSentences": [
+        "本轮第 4 轮尝试的 node -e 与 cat > repro.tmp.mjs 被沙箱白名单拦截完全符合预期；沙箱已内置白名单直接放行 `taskset -c 0 node test/hedge.selftest.mjs` 与 `node test/hedge.selftest.mjs`，无需在第 5 轮先试跑命令确认沙箱支持什么。",
+        "下一轮是第 5 轮，不要先试跑测试，必须在第 5 轮同一轮内按顺序同时发出两条调用：第一条直接 edit_file 修改 test/hedge.selftest.mjs（old_text `{ hedgeAfterMs: 1600 }` 改为 new_text `{ hedgeAfterMs: 5000 }`），同一轮第二条紧跟 bash 跑 `taskset -c 0 node test/hedge.selftest.mjs` 完成改后验收。",
+        "未解：确认第 5 轮同轮发出 edit_file 修改 test/hedge.selftest.mjs 与 bash `taskset -c 0 node test/hedge.selftest.mjs` 打出 hedge.selftest ok；第 6 轮严禁再发起任何工具调用，直接输出根因与改法收工。"
+      ],
+      "trimmedSentences": 0,
+      "needsManual": [
+        "C2 无闭合判读 ⇒ 由人按 evidence 写验收段（脚本不代填：代填就是把金标写成银标）"
+      ],
+      "grounded": {
+        "ranCmds": [
+          "node --version; nproc; echo \"--- address(0) check ---\"; node -e \"const http=require('http'",
+          "cat > repro.tmp.mjs <<'EOF'\nimport { hedgedDistill } from './src/distill.js'\nimport { fake"
+        ],
+        "testCmd": {
+          "name": "bash",
+          "command": "cat > repro.tmp.mjs <<'EOF'\nimport { hedgedDistill } from './src/distill.js'\nimport { fakeServer } from './test/helpers.mjs'\nconst N = Number(process.argv[2] || 10)\nconst primaryDelayMs = Number(process.argv[3] || 1500)\nconst hedgeAfterMs = Number(process.argv[4] || 1600)\nlet fail = 0\nfor (let i = 0; i < N; i++) {\n  const s = fakeServer({ primaryDelayMs, status: 200 })\n  const meta = await hedgedDistill(s.url, { hedgeAfterMs })\n  if (meta.hedgeStartedAt !== null) { fail++; console.log('  FAIL iter', i, 'hedgeStartedAt=', meta.hedgeStartedAt) }\n  s.close()\n}\nconsole.log('runs', N, 'fails', fail)\nEOF\nnode repro.tmp.mjs 10"
+        },
+        "bad": [],
+        "ok": [],
+        "obs": [
+          "{\"dir\":\"/home/user/cfb/.cfb-runtime/traj/t15/hand-samples.jsonl\",\"schema\":\"cfb.hand-sample/2\",\"id\":\"flaky-timeout-s0-r4\",\"task\":\"flaky-timeout\",\"sample\":0,\"round\":4,\"at\":\"2026-10-05T04:20:01.084Z\",\"draftFile\":\".cfb-runtime/traj/t15/drafts/flaky-timeout-s0-r4.md\",\"pendingFile\":null,\"raw\":\"Let me analyze the bug.\\n\\n```js\\nexport async function hedgedDistill(url, cfg) {\\n  const t0 = Date.now()\\n  const meta = { hedgeStartedAt: null }\\n  let primarySettled = false\\n  const startHedge = () => { meta.hedgeStartedAt = Date.now() - t0 }\\n  const primary = fetch(url)\\n  const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)\\n  primary.then(() => { primarySettled = true })\\n  await primary.catch(() => {})\\n  clearTimeout(timer)\\n  return meta\\n}\\n```\\n\\nThe bug: `primarySettled` is set in a `.then` microtask, not synchronously. The timer fires at hedgeAfterMs (1600ms). The primary resolves at 1500ms. But `primary.then(() => { primarySettled = true })` — the response body... Actually `fetch` resolves when headers arrive. The `.then` callback runs as a microtask after fetch resolves, so primarySettled becomes true essentially immediately after 1500ms. So at 1600ms the timer should see primarySettled true.\\n\\nHmm, but the test says the primary is 1500ms and hedge 1600ms. On a fast machine, the microtask runs quickly. On a loaded 2-core CI machine, the event loop may be busy... Actually the issue is that `setTimeout(1600)` and the fetch resolution ordering. Actually the real problem could be that on a loaded machine, the timer callback fires and the primary's `.then` hasn't run yet.\\n\\nWait, actually the deeper issue: `fetch` resolves after the response headers are received. The `.then` sets primarySettled. But there's a subtlety — the response body is not consumed. In Node's fetch (undici), the fetch promise resolves when headers are received. So at 1500ms headers arrive, then microtask sets primarySettled=true. The timer at 1600ms checks. On a normal machine this works.\\n\\nBut on a 2-core loaded machine, the timers might fire late. Actually the failure is that hedge STARTED, meaning at the time the timer fired, primarySettled was still false. So the primary's then hadn't run yet.\\n\\nHmm, but why would that be timing-sensitive? The microtask should run right after the fetch promise resolves. Unless... the event loop is blocked. On a loaded CI machine with 2 cores, there could be significant lag.\\n\\nActually wait — there's another subtle issue. Let me reconsider. The `fetch` promise resolution and the `setTimeout` — in Node, timers and I/O are handled. If the machine is heavily loaded, the 1600ms timer could fire late (say at 1800ms), but by then primary settled. That wouldn't cause the failure.\\n\\nThe failure requires timer firing BEFORE primarySettled is set. That means the timer fired early relative to the primary. Hmm.\\n\\nActually, consider: the primary delay is 1500ms on the server. But the connection setup (TCP connect, etc.) adds overhead. On a loaded machine, the initial connect could be slow, so the total time for fetch to resolve could be > 1600ms. Wait but the server starts its 1500ms timer when the request is received. If connection setup is slow, the request arrives later.\\n\\nHmm, actually the fetch starts at t0. Server responds 1500ms after receiving request. If request arrives at t0+50, response at t0+1550. Timer fires at t0+1600. Still ok, marginally. On a loaded machine, could be > 100ms of overhead → failure.\\n\\nBut that's flaky regardless of core count. The real bug is the race is too tight (100ms margin) AND the logic. But the task says \\\"find the cause and fix it.\\\"\\n\\nHmm, let me think about what the \\\"correct\\\" fix is. The comment says \\\"对冲在主请求 200 之后不得再发\\\" — the hedge must not fire after the primary returns 200. \\n\\nThe real bug: `primarySettled` is set in a `.then` callback, which is asynchronous. So there's a window where the primary has settled but primarySettled is still false. But actually the more important bug is that the timer uses `primarySettled` which is set via microtask — this is fine normally.\\n\\nWait, let me reconsider more carefully. Actually there's a classic bug here: `primary.then(() => { primarySettled = true })` creates a promise but if fetch rejects, primarySettled never set — but they catch later. Actually if primary rejects, `primary.then(...)` returns a rejected promise which is unhandled → unhandled rejection. But the test uses status 200.\\n\\nLet me actually run the test locally many times to see.\\n\\nActually, the key insight for a 2-core vs 16-core machine: Node's default thread pool / event loop. Hmm. Actually, let me think about `Date.now()` vs timers.\\n\\nHmm, actually here's a thought: on a loaded machine, the event loop gets delayed. The fetch response arrives at 1500ms, its callback is queued. The timer at 1600ms... Both are queued. If the machine stalls, both may become ready. Node processes timers in a timers phase. If the timer's expiry (1600) passed and the fetch callback is also pending... The order depends on which phase runs.\\n\\nActually the fundamental fix regardless: don't rely on a separate `primarySettled` flag set in a microtask; instead race the primary promise against the timer directly, or set the flag synchronously.\\n\\nLet me actually run it to reproduce. Let me check node version and try running the test repeatedly, maybe with load.\\n\\nLet me run it.\",\"ctx\":\"CI 里 test/hedge.selftest.mjs 大约每 5 次失败 1 次，本地从不失败。CI 机器 2 核，本地 16 核。最近 5 次 CI 日志在 ci/last5.log。请找出原因并修好，修好后说明依据。\\n\\n【台账】（程序从前几轮的稿与工具往来里逐字摘出；本轮稿的延续段只引用这里的条目、不重猜；已走过的路不重走，除非中间改过东西）\\n- 已走过的路：（共 6 条调用，详见下方【延续段】；曾涉 dev/null ci/last5.log 200 1712 package.json src/ test/ test/hedge.selftest.mjs test/helpers.mjs）\\n\\n【延续段】（程序按台账写好的稿首段，会原样放在稿的开头；你从「本轮增量」写起，不要重写它、不要与它矛盾）\\n已走过的路：第 1 轮 bash `ls -la; echo ---; ls -la ci test 2>/dev/null` → 「$ ls -la」；第 1 轮 bash `cat ci/last5.log 2>/dev/null | head -200` → 「run 1: PASS  17 passed  (hedge 3.1s) … run 2: FAIL  §4 对冲在主请求 200 之后不得再发  expected hedgeStartedAt=null, got 1712」；第 2 轮 bash `cat package.json; echo ===; ls -la src; echo ===; for f in src/*; do echo \\\"--- $f\\\"; cat \\\"$f\\\"; done` → 「bash: 该沙箱不支持 shell 循环，请直接跑单条命令: cat package.json; echo ===; ls -la src; echo ===; for f in src/*; do echo \\\"--- $」；第 2 轮 bash `for f in test/*; do echo \\\"--- $f\\\"; cat \\\"$f\\\"; done` → 「bash: 该沙箱不支持 shell 循环，请直接跑单条命令: for f in test/*; do echo \\\"--- $f\\\"; cat \\\"$f\\\"; done」；第 3 轮 bash `cat package.json; echo ===; ls -la src; echo ===; cat src/*` → 「$ cat package.json」；第 3 轮 bash `cat test/hedge.selftest.mjs; echo ===; cat test/helpers.mjs` → 「$ cat test/hedge.selftest.mjs」；这些不再重跑，除非中间改过东西。\",\"draft\":\"第 1–3 轮看清了 ci/last5.log、src/distill.js、test/helpers.mjs 与 test/hedge.selftest.mjs：CI 2 核偶发 expected hedgeStartedAt=null, got 1712（及 1698），根因是 test/hedge.selftest.mjs 里 primaryDelayMs: 1500 与 hedgeAfterMs: 1600 只有 100ms 裕量，两个独立 setTimeout 在 2 核事件循环抖动下竞态越界。本轮第 4 轮尝试的 node -e 与 `cat > repro.tmp.mjs` 被拒，回显逐字是「该沙箱不支持 shell 循环」，所以验收命令沿用 `taskset -c 0 node test/hedge.selftest.mjs`。\\n已排除：server.listen(0) 后 server.address().port 为空的路线，因为若 URL 失败 fetch 会立刻 reject、await primary.catch(() => {}) 随即 clearTimeout(timer)，hedgeStartedAt 仍为 null 不会打出 1712。\\n已排除：改 src/distill.js 的路线，因为产品代码在 primary 结算后立刻 clearTimeout(timer)，逻辑自洽。\\n已排除：另写复现脚本再复现一遍的路线，因为 ci/last5.log 已有 run 2/run 5 两条现成失败记录，重复复现不新增信息。\\n\\n改法只落一个：直接修改 test/hedge.selftest.mjs，old_text 是 `{ hedgeAfterMs: 1600 }` 改成 new_text 是 `{ hedgeAfterMs: 5000 }`。只改 hedgedDistill 调用行里的那处，上面注释行留着不动；hedgedDistill 在 primary 结算后立刻 clearTimeout(timer) 返回，调大 hedgeAfterMs 不会拖慢测试。\\n下一步在同一轮内按顺序同时发出两条调用：第一条直接 edit_file 修改 test/hedge.selftest.mjs（old_text `{ hedgeAfterMs: 1600 }` 改为 new_text `{ hedgeAfterMs: 5000 }`），同一轮第二条紧跟 bash 跑 `taskset -c 0 node test/hedge.selftest.mjs` 完成改后验收；若 edit_file 报 old_text 找不到，说明已改过，直接跑验收即可。\\n\\n未解：确认同轮发出的 edit_file 修改 test/hedge.selftest.mjs 与 bash `taskset -c 0 node test/hedge.selftest.mjs` 打出 hedge.selftest ok；拿到这条观察后直接汇总根因与改法收工。\",\"stored\":null,\"rawChars\":5096,\"draftChars\":1295,\"outChars\":null,\"gate\":{\"ok\":false,\"violations\":[{\"kind\":\"invented-triple\",\"detail\":\"old_text 是 `{ hedgeAfterMs: 1600 }`\"},{\"kind\":\"invented-decision\",\"detail\":\"改法只落一个：直接修改 test/hedge.selftest.mjs，old_text 是 `{ hedgeAfterMs: 1600 }` 改成 new_text 是 `{ hedgeAfterMs: 5000 }`。\"}]},\"production\":null,\"qualityAudit\":{\"schema\":\"cfb.mode1-content-audit/1\",\"status\":\"clean\",\"draft\":{\"status\":\"clean\",\"issues\":[],\"exempted\":[{\"category\":\"environment-permission-assertion\",\"excerpt\":\"沙箱不支持\",\"sentence\":\"本轮第 4 轮尝试的 node -e 与 `cat > repro.tmp.mjs` 被拒，回显逐字是「该沙箱不支持 shell 循环」，所以验收命令沿用 `taskset -c 0 node test/hedge.selftest.mjs`。\",\"basis\":\"verbatim-quote-from-raw-or-ctx\",\"quote\":\"该沙箱不支持 shell 循环\"}]},\"stored\":null},\"trainingEligible\":false,\"revision\":null,\"callsThisRound\":[{\"name\":\"bash\",\"args\":\"{\\\"command\\\": \\\"node --version; nproc; cat src/distill.js\\\"}\"},{\"name\":\"bash\",\"args\":\"{\\\"command\\\": \\\"cd /tmp && for i in 1 2 3 4 5 6 7 8; do node --input-type=module -e \\\\\\\"\\\\nimport {hedgedDistill} from '$PWD/src/distill.js';\\\\nimport {fakeServer} from '$PWD/test/helpers.mjs';\\\\nconst server = fakeServer({primaryDelayMs:1500,status:200});\\\\nconst meta = await hedgedDistill(server.url,{hedge\"}]}"
+        ],
+        "targets": [
+          "test/hedge.selftest.mjs",
+          "ci/last5.log",
+          "test/helpers.mjs",
+          "src/distill.js"
+        ],
+        "rowDir": "/home/user/cfb/.cfb-runtime/traj/t15/hand-samples.jsonl",
+        "rowKeys": [
+          "dir",
+          "schema",
+          "id",
+          "task",
+          "sample",
+          "round",
+          "at",
+          "draftFile",
+          "pendingFile",
+          "raw",
+          "ctx",
+          "draft",
+          "stored",
+          "rawChars"
+        ]
+      },
+      "rowDir": "/home/user/cfb/.cfb-runtime/traj/t15/hand-samples.jsonl"
+    }
+  ]
+}

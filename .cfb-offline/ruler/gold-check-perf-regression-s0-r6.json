@@ -1,0 +1,28 @@
+{
+  "id": "perf-regression-s0-r6",
+  "source": "transfer/gold-rejected/perf-regression/perf-regression-s0-r6.json",
+  "pending": false,
+  "use": "ruler",
+  "draftChars": 440,
+  "rawChars": 4113,
+  "storedReal": 1043,
+  "ratio": 0.254,
+  "line": {
+    "lineChars": 1792,
+    "lineRatio": 0.4357,
+    "g2Ok": true,
+    "over": -1352
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "invented-anchors",
+  "warns": [],
+  "fails": [
+    "C4 提前量：第 7 轮才修好（要 ≤6；贴着轮数上限的赢法测不出「停止取证」这一维）",
+    "越界 lint：verdict=invented-anchors ⇒ 稿里有证据外锚点，那是银标不是金标",
+    "本地锚点差集非空（证据外标识符）⇒ [\"package.js\"]"
+  ],
+  "ok": false,
+  "at": "2026-10-06T00:39:55.658Z"
+}

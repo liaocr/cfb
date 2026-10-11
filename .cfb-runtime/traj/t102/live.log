@@ -1,0 +1,34 @@
+按预注册计划 t102（digest b66d46bfb3d49ad2，预估 ≈$0.118，上界 ≈$0.291）运行；目的：极简省钱微基准（--lite）：自动挑 $0 预筛 #1 策略（p-1490eefcdf）与最高 Fisher 信息量场景（flaky-timeout），4 轮上限 + 影子分叉 + $0.08 硬顶早停
+轨迹 2 条（每条 ≤ 4 轮主调用），并发 2
+--fork：1 组，每组 2 臂共用第 1 轮
+通道预检 通过：fp=null（carry-verified）思考 96 字 / 正文 1 字 / 型号回显 deepseek-v4.1-flash / 携带 Δ587 tokens / 1200 字 = 0.489 / 4403 ms
+[flaky-timeout raw #0 r1] 主 551 tok · 思考 41 字 · bash {"command": "ls -la; echo ---; cat package.json 2>/dev/null; | bash {"command": "cat ci/last5.log 2>/dev/null | head -200"}
+[flaky-timeout raw #0 r2] 主 958 tok · 思考 51 字 · bash {"command": "ls -la src test; echo ---; cat src/* | head -30 | bash {"command": "cat test/hedge.selftest.mjs"}
+[flaky-timeout raw #0 r3] 主 1505 tok · 思考 2739 字 · bash {"command": "cat test/helpers.mjs; echo ---; cat verify.mjs  | bash {"command": "nproc; node -v; cd . && time node test/hedge.se
+[flaky-timeout raw #0 r4] 主 2677 tok · 思考 4445 字 · bash {"command":"for i in $(seq 1 8); do node -e 'const t=Date.no | bash {"command":"cat ci/last5.log"}
+  flaky-timeout/raw #0: 未修好 · 4 轮 · 8 调用 · edit 0 · 重复 0 · 验收 · · 声明 none · tokens 5691 · proxy 2
+[flaky-timeout policy:p-1490eefcdf #0 r1] 影子 · 思考 41 字 · 未过地板 3720 · bash {"command": "ls -la; echo ---; cat package.json 2>/dev/null; | bash {"command": "cat ci/last5.log 2>/dev/null | head -200"}
+[flaky-timeout policy:p-1490eefcdf #0 r2] 影子 · 思考 51 字 · 未过地板 3100 · bash {"command": "ls -la src test; echo ---; cat src/* | head -30 | bash {"command": "cat test/hedge.selftest.mjs"}
+[flaky-timeout policy:p-1490eefcdf #0 r3] 影子 · 思考 2739 字 · 稿 1173 字 ✓ · bash {"command": "cat test/helpers.mjs; echo ---; cat verify.mjs  | bash {"command": "nproc; node -v; cd . && time node test/hedge.se
+[flaky-timeout policy:p-1490eefcdf #0 r4] 主 2582 tok · 思考 12189 字 · 稿 2002 字 ✓ · bash {"command": "ls -la; git -C . log --oneline -20 2>&1 | head; | bash {"command": "cat -n src/distill.js; echo ===; cat -n test/he
+  flaky-timeout/policy:p-1490eefcdf #0: 未修好 · 4 轮（影子 3，第 3 轮分歧） · 8 调用 · edit 0 · 重复 0 · 验收 · · 声明 none · tokens 2582 · 压稿 2/4 · proxy 2 · 分叉
+提前停止：预算上界 $0.08 已到（估 $0.103）
+
+| 变体 | n | 修好 | 到修好的轮数 | 总轮数 | 工具调用 | edit 次数 | 重复命令 | 修好后验收 | 最终声明 fixed | 声明相称 | prompt tokens 合计 | 上下文 reasoning 字数 | 压稿成功 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| raw | 1 | 0% | — | 4.0 | 8.0 | 0.0 | 0.0 | — | 0% | 100% | 5691 | 7276 | — |
+| policy:p-1490eefcdf | 1 | 0% | — | 4.0 | 8.0 | 0.0 | 0.0 | — | 0% | 100% | 2582 | 3267 | 100% |
+
+逐条：
+
+| 任务 | 变体 | # | 修好@轮 | 轮 | 调用 | edit | 重复 | 验收 | 声明 | 相称 | tokens |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| flaky-timeout | raw | 0 | ✗ | 4 | 8 | 0 | 0 | · | none | ● | 5691 |
+| flaky-timeout | policy:p-1490eefcdf | 0 | ✗ | 4 | 8 | 0 | 0 | · | none | ● | 2582 |
+| wrong-model | hand | 0 | ERR upstream-no-reasoning：可信指纹但思维链为空已连续 3 次 ⇒ 停（通道不返回思考，重试只是烧钱） |
+| sse-truncated | hand | 0 | ERR upstream-no-reasoning：可信指纹但思维链为空已连续 3 次 ⇒ 停（通道不返回思考，重试只是烧钱） |
+
+影子分叉：跟随臂 1 条，省下主调用 3 次；分歧轮 3；**未分歧 0 条（压缩器整条没触发 ⇒ 与 raw 结局相同，按平手计、不是证据）**
+
+压稿预算（F6）：policy:p-1490eefcdf: 压过 2 轮，程序部件/原文 中位 0.12 最大 0.3
+TRAJ_EXIT=0

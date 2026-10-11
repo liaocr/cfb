@@ -1,0 +1,383 @@
+{
+  "schema": "cfb.gen-negative-audit/1",
+  "at": "2026-10-10T03:36:39.511Z",
+  "nPos": 61,
+  "nNeg": 110,
+  "nRejected": 108,
+  "nExpectedGate": 103,
+  "byAxis": {
+    "N1-copy": {
+      "n": 25,
+      "rejected": 25,
+      "expectedGate": 25,
+      "missed": 0,
+      "otherGate": 0
+    },
+    "N2-drop-anchor": {
+      "n": 12,
+      "rejected": 12,
+      "expectedGate": 12,
+      "missed": 0,
+      "otherGate": 0
+    },
+    "N3-invent": {
+      "n": 23,
+      "rejected": 23,
+      "expectedGate": 23,
+      "missed": 0,
+      "otherGate": 0
+    },
+    "N4-invert": {
+      "n": 18,
+      "rejected": 18,
+      "expectedGate": 18,
+      "missed": 0,
+      "otherGate": 0
+    },
+    "N5-over-compress": {
+      "n": 25,
+      "rejected": 23,
+      "expectedGate": 18,
+      "missed": 2,
+      "otherGate": 5
+    },
+    "N6-wrong-locus": {
+      "n": 7,
+      "rejected": 7,
+      "expectedGate": 7,
+      "missed": 0,
+      "otherGate": 0
+    }
+  },
+  "holes": [
+    {
+      "id": "hand:flaky-timeout-s0-r7",
+      "axis": "N5-over-compress",
+      "mutation": "只留最长的引用句，其余全删",
+      "why": "整条负例过了尺子",
+      "judge": {
+        "quotes": {
+          "total": 0,
+          "verbatim": 0,
+          "fidelity": 1,
+          "inventedAnchors": []
+        },
+        "locus": {
+          "path": "verify.mjs",
+          "declared": false
+        },
+        "actionable": {
+          "cmdsDraft": [],
+          "cmdsEv": [
+            "make the test robust. The question is what",
+            "make primaryDelayMs much smaller than hedgeAfterMs",
+            "make the test"
+          ],
+          "cmdGrounded": false,
+          "anyPath": true,
+          "fabricatedCmds": []
+        },
+        "anchors": {
+          "loadBearing": 0,
+          "paths": 0,
+          "ids": 0,
+          "idRetention": 1,
+          "sample": [],
+          "lostPaths": []
+        },
+        "causality": {
+          "rawPairs": 9,
+          "reversed": []
+        },
+        "copy": {
+          "coverage": 0
+        },
+        "compression": {
+          "rawChars": 29903,
+          "draftChars": 109,
+          "ratio": 0.0036
+        }
+      }
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r3",
+      "axis": "N5-over-compress",
+      "mutation": "只留最长的引用句，其余全删",
+      "why": "整条负例过了尺子",
+      "judge": {
+        "quotes": {
+          "total": 0,
+          "verbatim": 0,
+          "fidelity": 1,
+          "inventedAnchors": []
+        },
+        "locus": {
+          "path": "test/hedge.selftest.mjs",
+          "declared": false
+        },
+        "actionable": {
+          "cmdsDraft": [],
+          "cmdsEv": [
+            "make the test deterministic by not depending on a 100ms wall-cloc",
+            "make the test",
+            "make it robust. Options"
+          ],
+          "cmdGrounded": false,
+          "anyPath": true,
+          "fabricatedCmds": []
+        },
+        "anchors": {
+          "loadBearing": 0,
+          "paths": 0,
+          "ids": 0,
+          "idRetention": 1,
+          "sample": [],
+          "lostPaths": []
+        },
+        "causality": {
+          "rawPairs": 3,
+          "reversed": []
+        },
+        "copy": {
+          "coverage": 0
+        },
+        "compression": {
+          "rawChars": 7447,
+          "draftChars": 23,
+          "ratio": 0.0031
+        }
+      }
+    }
+  ],
+  "positivesRejected": [
+    {
+      "id": "hand:eacces-config-s1-r5",
+      "failed": [
+        "G2 locus-grounded"
+      ]
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r3",
+      "failed": [
+        "G2 locus-grounded"
+      ]
+    },
+    {
+      "id": "hand:wrong-model-s1-r5",
+      "failed": [
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ]
+    },
+    {
+      "id": "hand:eacces-config_decoy-s0-r6",
+      "failed": [
+        "G1 quote-grounded",
+        "G2 locus-grounded"
+      ]
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r3",
+      "failed": [
+        "G2 locus-grounded"
+      ]
+    },
+    {
+      "id": "hand:flaky-timeout_long-horizon-s0-r4",
+      "failed": [
+        "G2 locus-grounded"
+      ]
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r5",
+      "failed": [
+        "G2 locus-grounded",
+        "G3 anchors-kept"
+      ]
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r6",
+      "failed": [
+        "G2 locus-grounded"
+      ]
+    },
+    {
+      "id": "hand:perf-regression-s0-r7",
+      "failed": [
+        "G2 locus-grounded",
+        "G4 actionable"
+      ]
+    },
+    {
+      "id": "hand:sse-truncated-s0-r3",
+      "failed": [
+        "G2 locus-grounded"
+      ]
+    },
+    {
+      "id": "hand:sse-truncated-s0-r4",
+      "failed": [
+        "G2 locus-grounded"
+      ]
+    },
+    {
+      "id": "hand:sse-truncated_decoy-s0-r5",
+      "failed": [
+        "G4 actionable"
+      ]
+    },
+    {
+      "id": "hand:sse-truncated_long-horizon-s0-r5",
+      "failed": [
+        "G2 locus-grounded",
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ]
+    },
+    {
+      "id": "hand:wrong-model_decoy-s0-r4",
+      "failed": [
+        "G1 quote-grounded",
+        "G4 actionable"
+      ]
+    },
+    {
+      "id": "hand:sse-truncated_long-horizon-s0-r6",
+      "failed": [
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ]
+    },
+    {
+      "id": "hand:sse-truncated_long-horizon-s0-r7",
+      "failed": [
+        "G2 locus-grounded",
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ]
+    },
+    {
+      "id": "hand:wrong-model_long-horizon-s0-r4",
+      "failed": [
+        "G2 locus-grounded"
+      ]
+    },
+    {
+      "id": "hand:wrong-model_long-horizon-s0-r5",
+      "failed": [
+        "G2 locus-grounded"
+      ]
+    },
+    {
+      "id": "hand:sse-truncated-s0-r3",
+      "failed": [
+        "G2 locus-grounded"
+      ]
+    },
+    {
+      "id": "hand:flaky-timeout_long-horizon-s0-r4",
+      "failed": [
+        "G1 quote-grounded",
+        "G4 actionable"
+      ]
+    },
+    {
+      "id": "hand:eacces-config_decoy-s0-r5",
+      "failed": [
+        "G1 quote-grounded"
+      ]
+    },
+    {
+      "id": "hand:wrong-model_decoy-s0-r5",
+      "failed": [
+        "G3 anchors-kept",
+        "G3 anchors-kept"
+      ]
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r4",
+      "failed": [
+        "G1 quote-grounded"
+      ]
+    },
+    {
+      "id": "hand:flaky-timeout_long-horizon-s0-r4",
+      "failed": [
+        "G1 quote-grounded",
+        "G4 actionable"
+      ]
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r4",
+      "failed": [
+        "G1 quote-grounded"
+      ]
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r4",
+      "failed": [
+        "G1 quote-grounded"
+      ]
+    },
+    {
+      "id": "hand:perf-regression-s0-r5",
+      "failed": [
+        "G7 compressed"
+      ]
+    },
+    {
+      "id": "hand:perf-regression-s0-r7",
+      "failed": [
+        "G1 quote-grounded"
+      ]
+    },
+    {
+      "id": "hand:perf-regression-s0-r7",
+      "failed": [
+        "G1 quote-grounded"
+      ]
+    },
+    {
+      "id": "hand:perf-regression-s0-r7",
+      "failed": [
+        "G1 quote-grounded"
+      ]
+    },
+    {
+      "id": "hand:perf-regression-s0-r8",
+      "failed": [
+        "G1 quote-grounded"
+      ]
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r3",
+      "failed": [
+        "G1 quote-grounded"
+      ]
+    },
+    {
+      "id": "hand:flaky-timeout-s0-r3",
+      "failed": [
+        "G1 quote-grounded"
+      ]
+    },
+    {
+      "id": "hand:eacces-config-s0-r5",
+      "failed": [
+        "G1 quote-grounded"
+      ]
+    },
+    {
+      "id": "hand:eacces-config-s0-r5",
+      "failed": [
+        "G1 quote-grounded"
+      ]
+    },
+    {
+      "id": "hand:eacces-config-s0-r5",
+      "failed": [
+        "G3 anchors-kept"
+      ]
+    }
+  ]
+}

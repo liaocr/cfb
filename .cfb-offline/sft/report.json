@@ -1,0 +1,53 @@
+{
+  "in": ".cfb-offline\\teacher\\v4-full.jsonl",
+  "prompt": "transfer\\prompts\\teacher2-zh.txt",
+  "promptChars": 1416,
+  "format": {
+    "template": "native chat_template (System/User/Assistant)",
+    "tokenizedBy": "trainer via apply_chat_template",
+    "thinking": false,
+    "why": "底座按这套标记训练了 5T token；自造分隔符要它先忘一套再学一套"
+  },
+  "read": 722,
+  "dup": 0,
+  "empty": 0,
+  "usable": 722,
+  "kept": 412,
+  "rejected": 221,
+  "rejects": {
+    "G0 no-leverage": 100,
+    "G6 not-copy": 7,
+    "G1 quote-grounded": 60,
+    "G3 anchors-kept": 45,
+    "G4 actionable": 28,
+    "G2 locus-grounded": 6
+  },
+  "split": {
+    "train": 412,
+    "dev": 89,
+    "byRepo": true,
+    "algorithm": "fnv1a(repo)%1000 < 100",
+    "devUnfiltered": true,
+    "why": "dev 不过滤，否则通过率天然接近 100%，跟教师基线没法比"
+  },
+  "devTeacherPass": {
+    "pass": 55,
+    "total": 89,
+    "rate": 0.618,
+    "note": "学生在 dev 上的通过率要跟这个数比，不是跟 100% 比"
+  },
+  "repos": {
+    "total": 722,
+    "train": 412,
+    "dev": 89
+  },
+  "chars": {
+    "train": {
+      "raw": 2969.6,
+      "ctx": 4042.2,
+      "draft": 937
+    }
+  },
+  "ratio": 0.4,
+  "score": 0.7
+}

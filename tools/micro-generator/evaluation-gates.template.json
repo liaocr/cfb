@@ -1,0 +1,41 @@
+{
+  "schema": "cfb.micro-generator-gates/1",
+  "gateId": "micro-generator-v1",
+  "status": "draft-not-frozen",
+  "freezeAt": null,
+  "frozenConfigSha256": null,
+  "blindFamilyRegistry": {
+    "status": "not-registered",
+    "families": [],
+    "registrySha256": null
+  },
+  "reviewPolicy": {
+    "mode": "ai-single-reviewer",
+    "reviewerType": "ai",
+    "reviewerId": "arena-agent-mode",
+    "reviewerCount": 1,
+    "humanReviewerCount": 0,
+    "independentSecondReview": false
+  },
+  "knownFamilyNames": ["flaky-timeout", "perf-regression", "sse-truncated", "eacces-config", "wrong-model"],
+  "factImportanceWeights": { "critical": 4, "high": 3, "medium": 2, "low": 1 },
+  "thresholds": {
+    "minBlindFamilies": null,
+    "minCasesPerBlindFamily": null,
+    "weightedFactRecallOverallMin": null,
+    "weightedFactRecallPerBlindFamilyMin": null,
+    "criticalOmissionsPerBlindFamilyMax": null,
+    "uncertainMustPreservePerBlindFamilyMax": null,
+    "contradictoryClaimsPerBlindFamilyMax": null,
+    "unsupportedClaimsPer100Max": null,
+    "uncertainClaimsPer100Max": null,
+    "medianDraftToRawCharRatioMax": null
+  },
+  "metricPolicy": {
+    "compressionDenominator": "raw characters only; ctx is task context, not source text",
+    "unknownFactStatus": "does not count as preserved and blocks a pass if adjudication is incomplete",
+    "familyAggregation": "report each blind family and worst family; never average away a failing family",
+    "claimJudgement": "complete AI single-reviewer judgement with explicit provenance; no independent human review is implied; automated string/anchor overlap is not semantic support evidence"
+  },
+  "statusNote": "Threshold values are intentionally null. Freeze numeric gates and the new-family registry before generating or unsealing the confirmatory blind predictions."
+}

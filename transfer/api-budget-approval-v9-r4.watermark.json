@@ -1,0 +1,81 @@
+{
+  "authorityId": "bd19cde0c36638abd92e14bf027aa003eb303c2334aef07a70d52597ce9821b9",
+  "digest": "6045922238e18ddddc04c662875a2974a15029a95a13301da77c97c42797d6d2",
+  "halted": null,
+  "jobs": [
+    {
+      "key": "probe",
+      "kind": "probe",
+      "reservedNano": 28674000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|control|0",
+      "kind": "main",
+      "reservedNano": 66561000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|candidate|0",
+      "kind": "main",
+      "reason": "request-network-error",
+      "reservedNano": 67075000,
+      "status": "rejected"
+    },
+    {
+      "key": "flaky-timeout|candidate|0",
+      "kind": "main",
+      "reservedNano": 68017000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|control|0",
+      "kind": "main",
+      "reservedNano": 68936000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|control|0",
+      "kind": "main",
+      "reservedNano": 68366000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|candidate|0",
+      "kind": "main",
+      "reservedNano": 68610000,
+      "status": "accepted"
+    },
+    {
+      "key": "perf-regression|candidate|0",
+      "kind": "main",
+      "reservedNano": 69244000,
+      "status": "accepted"
+    },
+    {
+      "key": "perf-regression|control|0",
+      "kind": "main",
+      "reservedNano": 69162000,
+      "status": "accepted"
+    },
+    {
+      "key": "sse-truncated|control|0",
+      "kind": "main",
+      "reservedNano": 69427000,
+      "status": "accepted"
+    },
+    {
+      "key": "sse-truncated|candidate|0",
+      "kind": "main",
+      "reservedNano": 68994000,
+      "status": "accepted"
+    }
+  ],
+  "planDigest": "499403f15a6da1255d2694897c1935ae14d9283f4f7ddba6a0106c8ffef5b3d5",
+  "requests": 11,
+  "reservedNano": 713066000,
+  "revision": "8c90fb8b86240b3a67d4283a0ac9b173c1f6e558a1f40ac19e8cce0b417e3c1f",
+  "schema": "cfb.api-watermark/1",
+  "scope": "cfb.candidate-replay.2026-10-02.r4",
+  "sequence": 23
+}

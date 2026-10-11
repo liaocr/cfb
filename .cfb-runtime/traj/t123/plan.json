@@ -1,0 +1,68 @@
+{
+  "schema": "cfb.traj-plan/1",
+  "id": "t123",
+  "at": "2026-10-06T07:16:15.260Z",
+  "variants": [
+    "raw",
+    "policy:p-1490eefcdf"
+  ],
+  "scenarios": [
+    "flaky-timeout"
+  ],
+  "samples": 1,
+  "maxRounds": 4,
+  "fork": true,
+  "maxTokens": 8000,
+  "storeText": true,
+  "stop": {
+    "alpha": 0.1,
+    "minPairs": 2,
+    "capUsd": 0.08,
+    "compare": {
+      "champion": "policy:p-1490eefcdf",
+      "previous": "raw"
+    }
+  },
+  "purpose": "极简省钱微基准（--lite）：自动挑 $0 预筛 #1 策略（p-1490eefcdf）与最高 Fisher 信息量场景（flaky-timeout），4 轮上限 + 影子分叉 + $0.08 硬顶早停",
+  "yield": {
+    "l1Pairs": 1,
+    "l2Pairs": 1,
+    "validityPairsApprox": 6,
+    "flywheelPairsApprox": 3,
+    "childStatesApprox": 4
+  },
+  "regimeArms": {
+    "policy:p-1490eefcdf": [
+      "birthAdaptiveFloor"
+    ]
+  },
+  "cost": {
+    "mains": 7,
+    "compresses": 4,
+    "expectedMains": 7,
+    "expectedCompresses": 4,
+    "expectedUsd": 0.118,
+    "capUsd": 0.291,
+    "pricing": {
+      "mainUsd": 0.0125,
+      "mainCapUsd": 0.035,
+      "compressUsd": 0.0075,
+      "compressCapUsd": 0.0114,
+      "divergeRound": 3,
+      "floorShare": 0.4
+    },
+    "shadow": true,
+    "calibrated": {
+      "receipts": 35,
+      "divergeRound": 4,
+      "floorShare": 0.22,
+      "expectedMains": 7,
+      "expectedCompresses": 4,
+      "expectedUsd": 0.118
+    }
+  },
+  "holdoutNote": "场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索",
+  "digest": "e8101f0978042c1d",
+  "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t123/plan.json --store-text --variants raw --policy p-1490eefcdf --only flaky-timeout --samples 1 --max-rounds 4 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t123",
+  "design": "9203abdfd6c4ddfc"
+}

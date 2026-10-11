@@ -1,0 +1,26 @@
+{
+  "id": "flaky-timeout-s1-r5",
+  "source": ".cfb-runtime/traj/t100/pending/flaky-timeout-s1-r5.json",
+  "pending": true,
+  "use": "ruler",
+  "draftChars": 440,
+  "rawChars": 11007,
+  "storedReal": 625,
+  "ratio": 0.057,
+  "line": {
+    "lineChars": 1602,
+    "lineRatio": 0.1455,
+    "g2Ok": true,
+    "over": -977
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "gate-ok",
+  "warns": [
+    "C4/C5（提前量与 vsRaw）只能由真机给 ⇒ C4"
+  ],
+  "fails": [],
+  "ok": true,
+  "at": "2026-10-05T12:53:15.845Z"
+}

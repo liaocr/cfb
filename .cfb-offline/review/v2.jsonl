@@ -1,0 +1,14 @@
+{"id":"u29","slot":"MECHANISM","yVal":0.68,"yTempt":0.10,"confidence":"medium","rationale":"用 v11.9 的 260<850 说明上限当时未生效，是支撑性数据点"}
+{"id":"u30","slot":"EXCLUDED","yVal":0.84,"yTempt":0.12,"confidence":"high","rationale":"明确排除「抬高上限本身导致变慢」这一误因，排除有价值"}
+{"id":"u33","slot":"ACCEPT","yVal":0.78,"yTempt":0.15,"confidence":"medium","rationale":"对阈值做数值核对（390<450），是验收动作但没交代命令出处"}
+{"id":"u34","slot":"MECHANISM","yVal":0.62,"yTempt":0.08,"confidence":"medium","rationale":"v11.10 输出字符数逼近目标值的数据点"}
+{"id":"u35","slot":"MECHANISM","yVal":0.72,"yTempt":0.08,"confidence":"medium","rationale":"由数据得出「模型已顶到 1800 目标」的机制结论"}
+{"id":"u37","slot":"DECIDED","yVal":0.86,"yTempt":0.10,"confidence":"medium","rationale":"陈述恢复提示词目标与输出长度的处置，属落定动作"}
+{"id":"u38","slot":"NOISE","yVal":0.12,"yTempt":0.25,"confidence":"medium","rationale":"「有这么简单吗」未指名任何待核查对象，是空洞转场"}
+{"id":"u39","slot":"NOISE","yVal":0.05,"yTempt":0.20,"confidence":"high","rationale":"复述任务要求，零推进"}
+{"id":"u40","slot":"NOISE","yVal":0.15,"yTempt":0.40,"confidence":"high","rationale":"「可能有隐藏耦合」属无依据猜测，无可核查形态"}
+{"id":"u41","slot":"NOISE","yVal":0.08,"yTempt":0.20,"confidence":"high","rationale":"纯思考转场，未提出具体待查项"}
+{"id":"u42","slot":"OPEN","yVal":0.73,"yTempt":0.10,"confidence":"low","rationale":"指向 birthFinishWaitMs 但缺上下文，信息不足以定槽"}
+{"id":"u48","slot":"MECHANISM","yVal":0.50,"yTempt":0.08,"confidence":"medium","rationale":"孤立配置行 mode:'birth'，标出落点但未给因果"}
+{"id":"u50","slot":"MECHANISM","yVal":0.50,"yTempt":0.08,"confidence":"medium","rationale":"孤立配置项 compressTargetMin:250，同上只作定位"}
+{"id":"u53","slot":"MECHANISM","yVal":0.62,"yTempt":0.08,"confidence":"medium","rationale":"描述 compressTargets 的返回契约，支撑后续机制推理"}

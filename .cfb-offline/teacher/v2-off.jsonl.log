@@ -1,0 +1,6 @@
+progress 20/100 ok=20 fail=0 48s
+progress 40/100 ok=40 fail=0 75s
+progress 60/100 ok=60 fail=0 99s
+progress 80/100 ok=80 fail=0 124s
+progress 100/100 ok=100 fail=0 148s
+=== done ok=100 fail=0 148s | prompt=2424 completion=407 reasoning=0 | 低谷 $0.0608 ===

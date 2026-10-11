@@ -1,0 +1,24 @@
+{
+  "id": "flaky-timeout-s0-r4",
+  "source": "transfer/gold-rejected/flaky-timeout/flaky-timeout-s0-r4.json",
+  "pending": false,
+  "use": "ruler",
+  "draftChars": 418,
+  "rawChars": 28774,
+  "storedReal": 1197,
+  "ratio": 0.042,
+  "line": {
+    "lineChars": 1399,
+    "lineRatio": 0.1372,
+    "g2Ok": true,
+    "over": -981
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "decision-differs",
+  "warns": [],
+  "fails": [],
+  "ok": true,
+  "at": "2026-10-05T13:33:32.810Z"
+}

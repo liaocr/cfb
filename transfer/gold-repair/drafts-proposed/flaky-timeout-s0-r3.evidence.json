@@ -1,0 +1,52 @@
+{
+  "id": "flaky-timeout-s0-r3",
+  "before": {
+    "draftChars": 1198,
+    "storedChars": 1718,
+    "ratio": 0.083,
+    "audit": "quarantined",
+    "fails": [
+      "C2",
+      "C3",
+      "C6"
+    ]
+  },
+  "after": {
+    "draftChars": 1018,
+    "storedApprox": 1538,
+    "ratio": 0.074,
+    "audit": "clean",
+    "closedRead": false,
+    "line": null,
+    "fails": [
+      "C2",
+      "C3",
+      "C6"
+    ],
+    "ok": false
+  },
+  "auditHits": [
+    "沙箱限制这条已经确认过：`taskset -c 0 node test/hedge.selftest.mjs` 与 `node test/hedge.selftest.mjs` 直接可用，不要再写临时脚本、压测脚本或任何探针去试探沙箱支持什么。",
+    "不要先读文件确认、不要跑任何探针；若 edit_file 报 old_text 找不到（说明已经改过），直接跑验收。"
+  ],
+  "evidence": {
+    "cmds": [
+      "node:test",
+      "node:assert"
+    ],
+    "badLines": [],
+    "okLines": [],
+    "targets": [
+      "distill.js",
+      "test/hedge.selftest.mjs",
+      "ci/last5.log",
+      "package.js",
+      "src/distill.js",
+      "test/helpers.mjs"
+    ],
+    "rowCmd": null,
+    "rowFix": null,
+    "rounds": null
+  },
+  "rowDir": "/home/user/cfb/.cfb-runtime/traj/t16/hand-samples.jsonl"
+}

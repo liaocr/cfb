@@ -1,0 +1,15 @@
+{
+  "id": "env-pin-drift",
+  "u1": "仓库 `npm test` 在 `test/config.selftest.mjs` 上报 `AssertionError [ERR_ASSERTION]: expected timeout to be 30000, got undefined`。\n这个仓库上周把配置项从 `cfg.legacyTimeoutMs` 统一改名成 `cfg.requestTimeoutMs`，文档里也是新名字；但线上有人反馈请求确实没有超时保护。\n相关文件：\nsrc/config.js:\n```js\nexport function loadConfig(env = process.env) {\n  return {\n    requestTimeoutMs: Number(env.CFG_REQUEST_TIMEOUT_MS ?? 30000),\n    retries: Number(env.CFG_RETRIES ?? 2),\n  }\n}\n```\nsrc/client.js:\n```js\nimport { loadConfig } from './config.js'\nexport function makeClient({ cfg = loadConfig() } = {}) {\n  return { timeout: cfg.legacyTimeoutMs, retries: cfg.retries }\n}\n```\ntest/config.selftest.mjs:\n```js\nimport assert from 'node:assert/strict'\nimport { makeClient } from '../src/client.js'\nconst c = makeClient({ cfg: { legacyTimeoutMs: 30000, retries: 2 } })\nassert.equal(c.timeout, 30000, 'expected timeout to be 30000')\nconsole.log('config.selftest ok')\n```\n请找出原因并修好，修好后说明依据（哪个文件哪一行，为什么这样改）。不要新增依赖，不要顺手改无关配置。",
+  "followup": "[tool: bash 结果]\n$ npm test 2>&1 | tail -n 5\n  FAIL test/config.selftest.mjs  AssertionError [ERR_ASSERTION]: expected timeout to be 30000, got undefined\n  合计: 0 通过 / 1 失败",
+  "next": [
+    "把 src/client.js 里读的那一个键名对齐到 src/config.js 真正导出的键名（只改这一处），然后重跑 npm test 看是否通过"
+  ],
+  "avoid": [
+    "不要改 src/config.js 的导出名（文档与线上一致，改名会连带更多文件）",
+    "不要为了让测试通过而在 src/client.js 里写死 30000",
+    "不要顺手加校验、加日志或改 retries 的值",
+    "不要新建复现脚本或临时文件",
+    "同一文件内不要同时改两处；本次修复的唯一落点已给出"
+  ]
+}

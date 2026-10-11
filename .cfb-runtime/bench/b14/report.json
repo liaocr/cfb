@@ -1,0 +1,74 @@
+{
+  "schema": "cfb.bench-report/1",
+  "baseline": "base",
+  "metric": "dd/2",
+  "policies": [
+    "base",
+    "p-1490eefcdf"
+  ],
+  "table": [
+    {
+      "policy": "base",
+      "split": "dev",
+      "n": 2,
+      "score": 0.496,
+      "gateFail": 0,
+      "errored": 0,
+      "verdicts": {
+        "partial": 1,
+        "invented-anchors": 1
+      },
+      "decision": null,
+      "excludedRecall": null,
+      "acceptOk": 0,
+      "openRecall": null,
+      "anchorPrecision": 0.992,
+      "lengthOk": 0
+    },
+    {
+      "policy": "p-1490eefcdf",
+      "split": "dev",
+      "n": 2,
+      "score": 0.5,
+      "gateFail": 0,
+      "errored": 0,
+      "verdicts": {
+        "partial": 2
+      },
+      "decision": null,
+      "excludedRecall": null,
+      "acceptOk": 0,
+      "openRecall": null,
+      "anchorPrecision": 1,
+      "lengthOk": 0
+    }
+  ],
+  "paired": {
+    "p-1490eefcdf": {
+      "n": 2,
+      "wins": 1,
+      "losses": 0,
+      "ties": 1,
+      "e": 1.5,
+      "eReject": 0.5,
+      "families": 1,
+      "generalizationGap": null,
+      "outcomes": [
+        {
+          "gold": "sse-truncated-s0-r4",
+          "family": "sse-truncated",
+          "outcome": "win"
+        },
+        {
+          "gold": "sse-truncated-s1-r3",
+          "family": "sse-truncated",
+          "outcome": "tie"
+        }
+      ],
+      "decision": "undetermined"
+    }
+  },
+  "best": null,
+  "threshold": 10,
+  "next": "没有策略在 dev 金标上显著优于 base：改策略（propose-policy）或先补金标（模式 1）"
+}

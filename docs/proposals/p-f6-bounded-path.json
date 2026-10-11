@@ -1,0 +1,12 @@
+{
+  "schema": "cfb.proposal/1",
+  "by": "assistant",
+  "at": "2026-10-02T13:40:00.000Z",
+  "parent": "base",
+  "title": "F6：有界的「已走过的路」（程序部件配置，无提示词补丁）",
+  "patches": [],
+  "config": { "continuationPath": "bounded" },
+  "rationale": "程序写的延续段里「已走过的路」把每一条历史调用连参数带结果首行全列出来，长度随调用数无界增长，并且每压一轮都原样进稿、也原样进压缩器的 ctx（台账 + 延续段各一份）。t8 perf-regression 实测：第 6 轮程序部件 1946 字 ≈699 tokens = 原文 1143 tokens 的 61%，标准长度的手写稿（1432 字 / 585 tokens）拼上它就撞 birthAccept 的 no-token-gain（1192 > 1143）被拒，压缩在探索重的轮次结构性失败；第 7 轮程序部件 2939 字 ≈1015 tokens（原文 1886 的 54%）。而这段要防的「重复命令」在 transfer/traj1–3 + t6–t8 共 29+ 条轨迹里全部为 0（raw / auto / ledger / hand 都是 0）。bounded 保留最近两轮调用原样（防短程重复）、更早的按工具+命令头归并计数、整段 ≤600 字；同题第 6 轮：延续段 2475→931 字、程序部件 807→333 tokens。",
+  "prediction": "模式 3（perf-regression / eacces-config，R=8，raw + policy:p-f6 vs policy:base 各自成对）：p-f6 臂的压稿闸拒（no-token-gain / v4d-too-long）在第 ≥5 轮降为 0、每轮 prompt tokens 更低；重复命令仍为 0；roundsToFix 与 solved 不劣于 base（非劣）。作废条件：p-f6 臂出现 base 臂没有的重复命令（≥1 条轨迹 ≥2 次），或 solved 低于 base ⇒ 把「已走过的路」压短会伤记忆，候选作废、不改第二版。",
+  "evidencePack": null
+}

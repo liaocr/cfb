@@ -1,0 +1,2110 @@
+{
+  "schema": "cfb.gen-ruler-report/1",
+  "ruler": "gen-ruler/2",
+  "at": "2026-10-10T09:14:34.048Z",
+  "input": ".cfb-offline/teacher/v3-off.jsonl",
+  "n": 100,
+  "pass": 17,
+  "fail": 83,
+  "passRate": 0.17,
+  "failCount": {
+    "G7 compressed": 81,
+    "G1 quote-grounded": 7,
+    "G3 anchors-kept": 3,
+    "G4 actionable": 2,
+    "G6 not-copy": 1
+  },
+  "rows": [
+    {
+      "id": "adamchainz_ec2-metadata_pr40#b4",
+      "family": "adamchainz/ec2-metadata",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6303,
+      "ratio": 0.3454,
+      "copy": 0.1998,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamchainz_apig-wsgi_pr93#b7",
+      "family": "adamchainz/apig-wsgi",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8303,
+      "ratio": 0.3374,
+      "copy": 0.2845,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamchainz_flake8-logging_pr4#b7",
+      "family": "adamchainz/flake8-logging",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "score": 0.5365,
+      "ratio": 0.55,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 3,
+        "paths": 0,
+        "ids": 3,
+        "idRetention": 0.6667,
+        "sample": [
+          "extra",
+          "LogRecord",
+          "issue_description"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamchainz_pytest-reverse_pr10#b15",
+      "family": "adamchainz/pytest-reverse",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6501,
+      "ratio": 0.8838,
+      "copy": 0.2215,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamchainz_treepoem_pr437#b19",
+      "family": "adamchainz/treepoem",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6027,
+      "ratio": 0.5873,
+      "copy": 0.0589,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "ansys_pyfluent_pr139#b6",
+      "family": "ansys/pyfluent",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.87,
+      "ratio": 0.5962,
+      "copy": 0.2857,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "app-sre_qontract-reconcile_pr1020#b18",
+      "family": "app-sre/qontract-reconcile",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8369,
+      "ratio": 0.5985,
+      "copy": 0.2307,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "arcinstitute_cell-eval_pr102#b6",
+      "family": "arcinstitute/cell-eval",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6092,
+      "ratio": 0.7879,
+      "copy": 0.0323,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "build_delta_array"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "appium_python-client_pr307#b12",
+      "family": "appium/python-client",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.87,
+      "ratio": 0.6502,
+      "copy": 0.1636,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "argyle-engineering_pyap_pr21#b34",
+      "family": "argyle-engineering/pyap",
+      "pass": true,
+      "failed": [],
+      "score": 0.5778,
+      "ratio": 0.2597,
+      "copy": 0.163,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "po_box",
+          "full_street"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "ariebovenberg_slotscheck_pr34#b10",
+      "family": "ariebovenberg/slotscheck",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6951,
+      "ratio": 0.4091,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "TypeError"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "arviz-devs_preliz_pr103#b19",
+      "family": "arviz-devs/preliz",
+      "pass": true,
+      "failed": [],
+      "score": 0.8204,
+      "ratio": 0.3408,
+      "copy": 0.2852,
+      "anchors": {
+        "loadBearing": 6,
+        "paths": 2,
+        "ids": 4,
+        "idRetention": 0.75,
+        "sample": [
+          "/workspace/arviz-devs__preliz__1.0/preliz/tests/test_mle.py",
+          "preliz/tests/test_mle.py",
+          "and",
+          "test_mle",
+          "test_auto_recover",
+          "InverseGamma\\"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "asottile_add-trailing-comma_pr178#b7",
+      "family": "asottile/add-trailing-comma",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.4316,
+      "ratio": 0.4524,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "case"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "asottile_classify-imports_pr112#b9",
+      "family": "asottile/classify-imports",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6738,
+      "ratio": 0.5304,
+      "copy": 0.1043,
+      "anchors": {
+        "loadBearing": 3,
+        "paths": 1,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "THIRD_PARTY",
+          "distutils",
+          "ImportType.THIRD_PARTY"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "asottile_future-fstrings_pr10#b18",
+      "family": "asottile/future-fstrings",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.4914,
+      "ratio": 0.3256,
+      "copy": 0.1871,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "assertpy_assertpy_pr96#b23",
+      "family": "assertpy/assertpy",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8452,
+      "ratio": 0.4751,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "astronomer_airflow-provider-fivetran-async_pr101#b16",
+      "family": "astronomer/airflow-provider-fivetran-async",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8322,
+      "ratio": 0.3744,
+      "copy": 0.0228,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "astronomer_airflow-provider-great-expectations_pr75#b8",
+      "family": "astronomer/airflow-provider-great-expectations",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6904,
+      "ratio": 0.5919,
+      "copy": 0.2586,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "data_asset_name",
+          "make_connection_string"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "astropy_astroplan_pr507#b10",
+      "family": "astropy/astroplan",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded",
+        "G3 anchors-kept",
+        "G7 compressed"
+      ],
+      "score": 0.8307,
+      "ratio": 0.4713,
+      "copy": 0.0593,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 0,
+        "sample": [
+          "is not provided, it should default to"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "aspectumapp_osm2geojson_pr55#b6",
+      "family": "aspectumapp/osm2geojson",
+      "pass": true,
+      "failed": [],
+      "score": 0.9063,
+      "ratio": 0.2336,
+      "copy": 0.0308,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "asyncgui_asyncgui_pr3#b3",
+      "family": "asyncgui/asyncgui",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.5226,
+      "ratio": 0.5239,
+      "copy": 0.1657,
+      "anchors": {
+        "loadBearing": 10,
+        "paths": 0,
+        "ids": 10,
+        "idRetention": 0.6,
+        "sample": [
+          "Event",
+          "set",
+          "clear",
+          "set()",
+          "wait()",
+          "None",
+          "clear()",
+          "*args"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "asyncgui_asynckivy_pr168#b4",
+      "family": "asyncgui/asynckivy",
+      "pass": true,
+      "failed": [],
+      "score": 0.7151,
+      "ratio": 0.2612,
+      "copy": 0.1599,
+      "anchors": {
+        "loadBearing": 5,
+        "paths": 0,
+        "ids": 5,
+        "idRetention": 1,
+        "sample": [
+          "sync_attr",
+          "sync_attrs",
+          "unbind_uid",
+          "exit__",
+          "bind_uid"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "astropy_sphinx-automodapi_pr100#b11",
+      "family": "astropy/sphinx-automodapi",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6127,
+      "ratio": 0.5576,
+      "copy": 0.1672,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bambinos_formulae_pr102#b10",
+      "family": "bambinos/formulae",
+      "pass": true,
+      "failed": [],
+      "score": 0.5435,
+      "ratio": 0.2447,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "add_term",
+          "set_types"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "backstage_mkdocs-techdocs-core_pr247#b10",
+      "family": "backstage/mkdocs-techdocs-core",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.5455,
+      "ratio": 0.4198,
+      "copy": 0.2658,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "lt_config",
+          "override_config"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "awslabs_serverless-application-model_pr1827#b21",
+      "family": "awslabs/serverless-application-model",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.7941,
+      "ratio": 0.4393,
+      "copy": 0.3912,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "backstage_mkdocs-monorepo-plugin_pr120#b13",
+      "family": "backstage/mkdocs-monorepo-plugin",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8572,
+      "ratio": 0.4838,
+      "copy": 0.0823,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "distutils"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "banesullivan_scooby_pr119#b8",
+      "family": "banesullivan/scooby",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.7228,
+      "ratio": 0.5362,
+      "copy": 0.2246,
+      "anchors": {
+        "loadBearing": 12,
+        "paths": 0,
+        "ids": 12,
+        "idRetention": 1,
+        "sample": [
+          "macOS",
+          "freedesktop_os_release",
+          "os_release",
+          "OS\\\\",
+          "system\\\\",
+          "distribution\\\\",
+          "version\\",
+          "Darwin\\\\"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "barrust_pyprobables_pr116#b8",
+      "family": "barrust/pyprobables",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.7945,
+      "ratio": 0.3577,
+      "copy": 0.1822,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "auto_expand"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bastikr_boolean.py_pr32#b10",
+      "family": "bastikr/boolean.py",
+      "pass": true,
+      "failed": [],
+      "score": 0.851,
+      "ratio": 0.3156,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "Symbol"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bastibe_python-soundfile_pr58#b21",
+      "family": "bastibe/python-soundfile",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.758,
+      "ratio": 0.4562,
+      "copy": 0.1304,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "verbose",
+          "True"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bcwaldon_warlock_pr55#b14",
+      "family": "bcwaldon/warlock",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.662,
+      "ratio": 0.5468,
+      "copy": 0.3752,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bdraco_bluetooth-data-tools_pr119#b7",
+      "family": "bdraco/bluetooth-data-tools",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6797,
+      "ratio": 0.3409,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "beetbox_confuse_pr50#b14",
+      "family": "beetbox/confuse",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.5188,
+      "ratio": 0.5937,
+      "copy": 0.0594,
+      "anchors": {
+        "loadBearing": 4,
+        "paths": 0,
+        "ids": 4,
+        "idRetention": 1,
+        "sample": [
+          "(key, value)",
+          "as_pairs",
+          "as_pairs\\\\",
+          "pairs\\"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "beetbox_beets_pr3774#b4",
+      "family": "beetbox/beets",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6789,
+      "ratio": 0.4285,
+      "copy": 0.256,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamchainz_flake8-comprehensions_pr195#b3",
+      "family": "adamchainz/flake8-comprehensions",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8334,
+      "ratio": 0.4958,
+      "copy": 0.493,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "C404"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamtheturtle_doccmd_pr191#b7",
+      "family": "adamtheturtle/doccmd",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.5636,
+      "ratio": 0.7794,
+      "copy": 0.4772,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamtheturtle_pip-check-reqs_pr38#b9",
+      "family": "adamtheturtle/pip-check-reqs",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.59,
+      "ratio": 0.5499,
+      "copy": 0.2617,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "pip"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamchainz_django-cors-headers_pr396#b8",
+      "family": "adamchainz/django-cors-headers",
+      "pass": true,
+      "failed": [],
+      "score": 0.6472,
+      "ratio": 0.2503,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 0.5,
+        "sample": [
+          "CORS_MODEL",
+          "issue_description"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "aiokitchen_aiomisc_pr199#b13",
+      "family": "aiokitchen/aiomisc",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6776,
+      "ratio": 0.5149,
+      "copy": 0.3866,
+      "anchors": {
+        "loadBearing": 5,
+        "paths": 0,
+        "ids": 5,
+        "idRetention": 0.8,
+        "sample": [
+          "True",
+          "gRPC",
+          "grpc_reflection",
+          "grpc_reflection\\",
+          "v1alpha"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "aiven_aiven-client_pr287#b4",
+      "family": "aiven/aiven-client",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.5422,
+      "ratio": 0.4729,
+      "copy": 0.1053,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "aio-libs_aiosmtpd_pr258#b36",
+      "family": "aio-libs/aiosmtpd",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6596,
+      "ratio": 0.4436,
+      "copy": 0.0361,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "adamtheturtle_sybil-extras_pr297#b11",
+      "family": "adamtheturtle/sybil-extras",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.6833,
+      "ratio": 0.3078,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "CliRunner"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "andialbrecht_sqlparse_pr317#b20",
+      "family": "andialbrecht/sqlparse",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.7514,
+      "ratio": 0.5321,
+      "copy": 0.1697,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "andrewgodwin_urlman_pr6#b7",
+      "family": "andrewgodwin/urlman",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.7807,
+      "ratio": 0.5379,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 4,
+        "paths": 0,
+        "ids": 4,
+        "idRetention": 1,
+        "sample": [
+          "UrlString",
+          "get_scheme",
+          "get_hostname",
+          "get_example_url"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "anntzer_defopt_pr30#b6",
+      "family": "anntzer/defopt",
+      "pass": true,
+      "failed": [],
+      "score": 0.6186,
+      "ratio": 0.2309,
+      "copy": 0.4507,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "ansys_pyedb-core_pr347#b30",
+      "family": "ansys/pyedb-core",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8191,
+      "ratio": 0.5658,
+      "copy": 0.3118,
+      "anchors": {
+        "loadBearing": 6,
+        "paths": 3,
+        "ids": 3,
+        "idRetention": 0.6667,
+        "sample": [
+          "PYTHONPATH",
+          "PointTerminal.point",
+          "PrimitiveEdge.point",
+          "PointTerminal.params",
+          "PointData",
+          "file\\"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "asottile_blacken-docs_pr128#b4",
+      "family": "asottile/blacken-docs",
+      "pass": true,
+      "failed": [],
+      "score": 0.5811,
+      "ratio": 0.1843,
+      "copy": 0.1704,
+      "anchors": {
+        "loadBearing": 3,
+        "paths": 0,
+        "ids": 3,
+        "idRetention": 1,
+        "sample": [
+          "diff",
+          ".. code-block:: python",
+          "python"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "atlassian_asap-authentication-python_pr80#b7",
+      "family": "atlassian/asap-authentication-python",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6848,
+      "ratio": 0.6142,
+      "copy": 0.1681,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "audreyr_cookiecutter_pr1485#b5",
+      "family": "audreyr/cookiecutter",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.7166,
+      "ratio": 0.3518,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 0.5,
+        "sample": [
+          "generate_files",
+          "project_slug"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "aws-samples_amazon-textract-response-parser_pr19#b12",
+      "family": "aws-samples/amazon-textract-response-parser",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8647,
+      "ratio": 0.6746,
+      "copy": 0.184,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "auth0_auth0-python_pr190#b6",
+      "family": "auth0/auth0-python",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.76,
+      "ratio": 0.4496,
+      "copy": 0.2102,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "Auth0"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "aws_aws-encryption-sdk-cli_pr47#b5",
+      "family": "aws/aws-encryption-sdk-cli",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6382,
+      "ratio": 0.4723,
+      "copy": 0.2652,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "with"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "avian2_jsonmerge_pr29#b3",
+      "family": "avian2/jsonmerge",
+      "pass": true,
+      "failed": [],
+      "score": 0.6739,
+      "ratio": 0.1887,
+      "copy": 0.1264,
+      "anchors": {
+        "loadBearing": 4,
+        "paths": 0,
+        "ids": 4,
+        "idRetention": 1,
+        "sample": [
+          "jsonmerge",
+          "SchemaError",
+          "allOf",
+          "anyOf"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "awslabs_aws-lambda-builders_pr41#b15",
+      "family": "awslabs/aws-lambda-builders",
+      "pass": true,
+      "failed": [],
+      "score": 0.755,
+      "ratio": 0.3032,
+      "copy": 0.3267,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "python3"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "aws_aws-encryption-sdk-python_pr47#b15",
+      "family": "aws/aws-encryption-sdk-python",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8418,
+      "ratio": 0.5299,
+      "copy": 0.2279,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "awslabs_kinesis-aggregation_pr124#b11",
+      "family": "awslabs/kinesis-aggregation",
+      "pass": false,
+      "failed": [
+        "G4 actionable",
+        "G7 compressed"
+      ],
+      "score": 0.7657,
+      "ratio": 0.7114,
+      "copy": 0.1218,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "deaggregate",
+          "camelCase"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "awslabs_amazon-sns-python-extended-client-lib_pr9#b9",
+      "family": "awslabs/amazon-sns-python-extended-client-lib",
+      "pass": true,
+      "failed": [],
+      "score": 0.6837,
+      "ratio": 0.3369,
+      "copy": 0.3596,
+      "anchors": {
+        "loadBearing": 5,
+        "paths": 0,
+        "ids": 5,
+        "idRetention": 1,
+        "sample": [
+          "OIDC",
+          "OIDC_ROLE_NAME",
+          "PYPI_TOKEN_NAME",
+          "id-token: write",
+          "us-east-1"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "awslabs_mxnet-model-server_pr303#b19",
+      "family": "awslabs/mxnet-model-server",
+      "pass": false,
+      "failed": [
+        "G3 anchors-kept",
+        "G3 anchors-kept",
+        "G7 compressed"
+      ],
+      "score": 0.8174,
+      "ratio": 0.4208,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 4,
+        "paths": 3,
+        "ids": 1,
+        "idRetention": 0,
+        "sample": [
+          "0.0",
+          "1.0",
+          "0.5",
+          "and"
+        ],
+        "lostPaths": [
+          "0.5"
+        ]
+      }
+    },
+    {
+      "id": "belerico_py-asciimath_pr4#b12",
+      "family": "belerico/py-asciimath",
+      "pass": false,
+      "failed": [
+        "G4 actionable",
+        "G7 compressed"
+      ],
+      "score": 0.5772,
+      "ratio": 0.7006,
+      "copy": 0.1265,
+      "anchors": {
+        "loadBearing": 4,
+        "paths": 2,
+        "ids": 2,
+        "idRetention": 0.5,
+        "sample": [
+          "asciimath_grammar",
+          "py_asciimath/grammar/asciimath_grammar",
+          "py_asciimath/parser/parser",
+          "ASCIIMath2Tex"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "beetbox_mediafile_pr16#b16",
+      "family": "beetbox/mediafile",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8539,
+      "ratio": 0.3862,
+      "copy": 0.0249,
+      "anchors": {
+        "loadBearing": 7,
+        "paths": 1,
+        "ids": 6,
+        "idRetention": 1,
+        "sample": [
+          "R128",
+          "-1.1",
+          "r128_track_gain",
+          "r128_album_gain",
+          "r128\\",
+          "R128\\",
+          "r128_"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bellini666_django-choices-field_pr28#b3",
+      "family": "bellini666/django-choices-field",
+      "pass": true,
+      "failed": [],
+      "score": 0.6887,
+      "ratio": 0.2275,
+      "copy": 0.0466,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 0.5,
+        "sample": [
+          "TextChoicesField",
+          "issue_description"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bennylope_pydiscourse_pr82#b20",
+      "family": "bennylope/pydiscourse",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8309,
+      "ratio": 0.3565,
+      "copy": 0.0611,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "group_members"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "benhoyt_graphyte_pr18#b12",
+      "family": "benhoyt/graphyte",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.5281,
+      "ratio": 0.6763,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bellockk_alphashape_pr12#b5",
+      "family": "bellockk/alphashape",
+      "pass": true,
+      "failed": [],
+      "score": 0.6876,
+      "ratio": 0.3466,
+      "copy": 0.2728,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "berkerpeksag_astor_pr219#b14",
+      "family": "berkerpeksag/astor",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.4765,
+      "ratio": 0.7205,
+      "copy": 0.1053,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "best-doctor_flake8-annotations-complexity_pr23#b8",
+      "family": "best-doctor/flake8-annotations-complexity",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "score": 0.5167,
+      "ratio": 0.6508,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "best-doctor_flake8-class-attributes-order_pr17#b12",
+      "family": "best-doctor/flake8-class-attributes-order",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8043,
+      "ratio": 0.8273,
+      "copy": 0.1416,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "betodealmeida_shillelagh_pr522#b51",
+      "family": "betodealmeida/shillelagh",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.5888,
+      "ratio": 0.4603,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "betodealmeida_python-rison_pr7#b3",
+      "family": "betodealmeida/python-rison",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.3567,
+      "ratio": 0.5041,
+      "copy": 0.1008,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bigjason_django-choices_pr13#b4",
+      "family": "bigjason/django-choices",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.79,
+      "ratio": 0.4488,
+      "copy": 0.1879,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "with_metaclass",
+          "test_choices"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bids-standard_pybids_pr307#b10",
+      "family": "bids-standard/pybids",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.545,
+      "ratio": 0.6153,
+      "copy": 0.3118,
+      "anchors": {
+        "loadBearing": 5,
+        "paths": 1,
+        "ids": 4,
+        "idRetention": 1,
+        "sample": [
+          "BIDS",
+          "pathlib.Path",
+          "ValueError",
+          "Path\\\\",
+          "pathlib\\"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "biocommons_biocommons.seqrepo_pr172#b17",
+      "family": "biocommons/biocommons.seqrepo",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8841,
+      "ratio": 0.3476,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "seqrepo",
+          "rsync"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "biocommons_bioutils_pr53#b25",
+      "family": "biocommons/bioutils",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.5721,
+      "ratio": 0.5599,
+      "copy": 0.2185,
+      "anchors": {
+        "loadBearing": 3,
+        "paths": 1,
+        "ids": 2,
+        "idRetention": 0.5,
+        "sample": [
+          "NCBI",
+          "sbin/assembly-to-json",
+          "NameError: name 'io' is not defined"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "biocommons_hgvs_pr699#b14",
+      "family": "biocommons/hgvs",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.5376,
+      "ratio": 0.5878,
+      "copy": 0.0793,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "blackducksoftware_hub-rest-api-python_pr152#b10",
+      "family": "blackducksoftware/hub-rest-api-python",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6136,
+      "ratio": 0.6069,
+      "copy": 0.1246,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "retries",
+          "Client"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "biopragmatics_bioversions_pr80#b18",
+      "family": "biopragmatics/bioversions",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.7007,
+      "ratio": 0.4863,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "strict",
+          "get_version"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "biopragmatics_bioregistry_pr255#b41",
+      "family": "biopragmatics/bioregistry",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "score": 0.8037,
+      "ratio": 0.4388,
+      "copy": 0.1557,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "blambright_qstylizer_pr5#b10",
+      "family": "blambright/qstylizer",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6919,
+      "ratio": 0.5048,
+      "copy": 0.1587,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bluesky_event-model_pr178#b30",
+      "family": "bluesky/event-model",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6254,
+      "ratio": 0.3941,
+      "copy": 0.0869,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bluetooth-devices_aiooui_pr33#b6",
+      "family": "bluetooth-devices/aiooui",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.9058,
+      "ratio": 0.4079,
+      "copy": 0.2247,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "requests"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bluetooth-devices_bleak-retry-connector_pr67#b7",
+      "family": "bluetooth-devices/bleak-retry-connector",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded"
+      ],
+      "score": 0.677,
+      "ratio": 0.1792,
+      "copy": 0.0919,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "BleakDeviceNotFoundError"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "biopragmatics_curies_pr149#b11",
+      "family": "biopragmatics/curies",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.74,
+      "ratio": 0.6445,
+      "copy": 0.2665,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bluetooth-devices_cached-ipaddress_pr3#b15",
+      "family": "bluetooth-devices/cached-ipaddress",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.7057,
+      "ratio": 0.3997,
+      "copy": 0.341,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bluetooth-devices_bluetooth-adapters_pr19#b4",
+      "family": "bluetooth-devices/bluetooth-adapters",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.3888,
+      "ratio": 0.526,
+      "copy": 0.3234,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "ConnectionRefusedError"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bluetooth-devices_habluetooth_pr39#b8",
+      "family": "bluetooth-devices/habluetooth",
+      "pass": true,
+      "failed": [],
+      "score": 0.7319,
+      "ratio": 0.3047,
+      "copy": 0.2021,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "ACTIVE",
+          "PASSIVE"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bluetooth-devices_bluetooth-auto-recovery_pr13#b13",
+      "family": "bluetooth-devices/bluetooth-auto-recovery",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.5893,
+      "ratio": 0.405,
+      "copy": 0.1625,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "recover_adapter"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bluetooth-devices_ulid-transform_pr13#b27",
+      "family": "bluetooth-devices/ulid-transform",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.8305,
+      "ratio": 0.3352,
+      "copy": 0.0511,
+      "anchors": {
+        "loadBearing": 3,
+        "paths": 0,
+        "ids": 3,
+        "idRetention": 1,
+        "sample": [
+          "ulid_to_bytes",
+          "bytes_to_ulid",
+          "ValueError"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "box_box-python-sdk_pr705#b25",
+      "family": "box/box-python-sdk",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.5243,
+      "ratio": 0.4515,
+      "copy": 0.2632,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "OAuth2"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bottlepy_bottle_pr1354#b7",
+      "family": "bottlepy/bottle",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.5506,
+      "ratio": 0.39,
+      "copy": 0.029,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 0.5,
+        "sample": [
+          "static_file",
+          "If-Modified-Since"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bobthemighty_punq_pr10#b9",
+      "family": "bobthemighty/punq",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.6952,
+      "ratio": 0.3943,
+      "copy": 0.1015,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "NameError"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bqplot_bqplot_pr1320#b8",
+      "family": "bqplot/bqplot",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.7044,
+      "ratio": 0.5888,
+      "copy": 0.2874,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "brentvollebregt_auto-py-to-exe_pr456#b12",
+      "family": "brentvollebregt/auto-py-to-exe",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.7889,
+      "ratio": 0.6328,
+      "copy": 0.2514,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "--version",
+          "--build-directory-override"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "brandon-rhodes_python-skyfield_pr51#b9",
+      "family": "brandon-rhodes/python-skyfield",
+      "pass": false,
+      "failed": [
+        "G1 quote-grounded",
+        "G7 compressed"
+      ],
+      "score": 0.7136,
+      "ratio": 0.8183,
+      "copy": 0.0284,
+      "anchors": {
+        "loadBearing": 2,
+        "paths": 0,
+        "ids": 2,
+        "idRetention": 1,
+        "sample": [
+          "str()",
+          "Angle"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "breid48_cacheing_pr5#b5",
+      "family": "breid48/cacheing",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.7201,
+      "ratio": 0.364,
+      "copy": 0.1221,
+      "anchors": {
+        "loadBearing": 3,
+        "paths": 0,
+        "ids": 3,
+        "idRetention": 1,
+        "sample": [
+          "TTLCache",
+          "callback",
+          "ttl"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "brack3t_django-braces_pr286#b48",
+      "family": "brack3t/django-braces",
+      "pass": false,
+      "failed": [
+        "G6 not-copy",
+        "G7 compressed"
+      ],
+      "score": 0.8101,
+      "ratio": 0.5427,
+      "copy": 0.6933,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "brettcannon_gidgethub_pr131#b22",
+      "family": "brettcannon/gidgethub",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.7434,
+      "ratio": 0.5007,
+      "copy": 0.1255,
+      "anchors": {
+        "loadBearing": 3,
+        "paths": 0,
+        "ids": 3,
+        "idRetention": 1,
+        "sample": [
+          "JSON",
+          "bytes",
+          "data"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bridgecrewio_python-hcl2_pr32#b3",
+      "family": "bridgecrewio/python-hcl2",
+      "pass": true,
+      "failed": [],
+      "score": 0.4901,
+      "ratio": 0.1752,
+      "copy": 0.128,
+      "anchors": {
+        "loadBearing": 0,
+        "paths": 0,
+        "ids": 0,
+        "idRetention": 1,
+        "sample": [],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "bretello_pdbpp_pr45#b3",
+      "family": "bretello/pdbpp",
+      "pass": true,
+      "failed": [],
+      "score": 0.6835,
+      "ratio": 0.2925,
+      "copy": 0.3106,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "import_from_stdlib"
+        ],
+        "lostPaths": []
+      }
+    },
+    {
+      "id": "brightway-lca_brightway2-data_pr207#b3",
+      "family": "brightway-lca/brightway2-data",
+      "pass": false,
+      "failed": [
+        "G7 compressed"
+      ],
+      "score": 0.7051,
+      "ratio": 0.8395,
+      "copy": 0,
+      "anchors": {
+        "loadBearing": 1,
+        "paths": 0,
+        "ids": 1,
+        "idRetention": 1,
+        "sample": [
+          "apply_revision"
+        ],
+        "lostPaths": []
+      }
+    }
+  ]
+}

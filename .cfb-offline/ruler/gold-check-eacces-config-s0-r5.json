@@ -1,0 +1,26 @@
+{
+  "id": "eacces-config-s0-r5",
+  "source": ".cfb-runtime/traj/t100/pending/eacces-config-s0-r5.json",
+  "pending": true,
+  "use": "ruler",
+  "draftChars": 454,
+  "rawChars": 1616,
+  "storedReal": 770,
+  "ratio": 0.476,
+  "line": {
+    "lineChars": 1650,
+    "lineRatio": 0.4741,
+    "g2Ok": true,
+    "over": -1196
+  },
+  "closedRead": true,
+  "replayGreen": true,
+  "g2Unchanged": true,
+  "verdict": "gate-ok",
+  "warns": [
+    "C4/C5（提前量与 vsRaw）只能由真机给 ⇒ C4"
+  ],
+  "fails": [],
+  "ok": true,
+  "at": "2026-10-06T00:40:08.003Z"
+}

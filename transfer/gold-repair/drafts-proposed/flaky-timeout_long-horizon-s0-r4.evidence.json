@@ -1,0 +1,51 @@
+{
+  "id": "flaky-timeout_long-horizon-s0-r4",
+  "before": {
+    "draftChars": 1554,
+    "storedChars": 2683,
+    "ratio": 0.137,
+    "audit": "quarantined",
+    "fails": [
+      "C2",
+      "C4",
+      "C6"
+    ]
+  },
+  "after": {
+    "draftChars": 1308,
+    "storedApprox": 2437,
+    "ratio": 0.124,
+    "audit": "clean",
+    "closedRead": false,
+    "line": null,
+    "fails": [
+      "C2",
+      "C4",
+      "C6"
+    ],
+    "ok": false
+  },
+  "auditHits": [
+    "已排除：在沙箱里新建临时复现脚本或跑循环复现，因为 `ci/last5.log` 已有现成的 2 核失败记录，且沙箱禁止新建脚本和 shell 循环，无需再写脚本复现。",
+    "下一轮是第 5 轮，严禁再写复现脚本或只读探查，必须在第 5 轮同一轮按顺序直接发出两条调用：第一条直接 `edit_file` 修改 `test/hedge.selftest.mjs`，第二条紧跟 `bash` 跑 `taskset -c 0 node test/hedge.selftest.mjs` 完成改后验收。"
+  ],
+  "evidence": {
+    "cmds": [
+      "node:assert"
+    ],
+    "badLines": [],
+    "okLines": [],
+    "targets": [
+      "../src/distill.js",
+      "distill.js",
+      "verify.mjs",
+      "package.js",
+      "test/hedge.selftest.mjs",
+      "ci/last5.log"
+    ],
+    "rowCmd": null,
+    "rowFix": null,
+    "rounds": null
+  },
+  "rowDir": "/home/user/cfb/.cfb-runtime/traj/t15/hand-samples.jsonl"
+}

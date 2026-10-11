@@ -1,0 +1,41 @@
+{
+  "ruler": "ruler-v9/1",
+  "uniqueUnits": 1233,
+  "duplicateRows": 741,
+  "duplicateSameTarget": 588,
+  "unscorable": 175,
+  "gaugeable": 1058,
+  "hardPass": 22,
+  "hardPassRateOfGaugeable": 0.0208,
+  "hardFailCountsAmongAll": {
+    "G4 actionable": 8,
+    "G0 no-leverage": 175,
+    "G6 not-copy": 1201,
+    "G3 anchors-kept": 84
+  },
+  "bySplit": {
+    "train": {
+      "units": 862,
+      "gaugeable": 737,
+      "hardPass": 15
+    },
+    "dev": {
+      "units": 123,
+      "gaugeable": 105,
+      "hardPass": 2
+    },
+    "test": {
+      "units": 248,
+      "gaugeable": 216,
+      "hardPass": 5
+    }
+  },
+  "filesScanned": 34,
+  "filesContributing": [
+    "transfer/models/micro-generator-gen-batch3/dev.jsonl.gz",
+    "transfer/models/micro-generator-gen-batch3/train-nonconforming.jsonl.gz",
+    "transfer/models/micro-generator-gen-batch3/train.jsonl.gz",
+    "transfer/models/micro-generator-gen-v3/dev.jsonl.gz",
+    "transfer/models/micro-generator-gen-v3/train-nonconforming.jsonl.gz"
+  ]
+}

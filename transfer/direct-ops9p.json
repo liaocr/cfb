@@ -1,0 +1,101 @@
+{
+ "rows": [
+  {
+   "id": "wrong-model",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 3414,
+   "outChars": 530,
+   "ms": 2579,
+   "promptVersion": "compress-v4-ops9:800",
+   "kinds": {
+    "FACT": 1,
+    "COMPUTED": 3,
+    "IF": 1
+   },
+   "text": "当前会话 llm-stream 使用 deepseek-v3.2，compiler-transport-started 使用 deepseek-v3.1（trace）。我判断 host-follow 的 lastModel 是模块级单例，跨会话保留。我判断 observe 只从 options.model 更新，plugin 传的 options 可能不含 model。我判断当前模型可能在 n 中，observe 忽略第二参数导致 lastModel 未更新。我看过的相关代码是 `callConfig(options) { return { ...cfg, model: lastModel || cfg.model } }`。我看过的相关代码是 `observe(options) { if (options && options.model) lastModel = options.model }`。\n\n所以当前模型可能在 n 中，observe 忽略第二参数导致 lastModel 未更新。\n\n如果实际当前模型在 n 中（例如 n 是 request 对象或包含 model），那么 observe 没有读取，导致 lastModel 没更新。",
+   "side": "{\"ops\":[{\"id\":\"o1\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"当前会话 llm-stream 使用 deepseek-v3.2，compiler-transport-started 使用 deepseek-v3.1\",\"anchor\":\"compiler-transport-started] model deepseek-v3.1\",\"src\":\"trace\",\"key\":\"root-cause\"},{\"id\":\"o2\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"hypothesize\",\"text\":\"host-follow 的 lastModel 是模块级单例，跨会话保留\",\"anchor\":\"lastModel 是模块级变量\",\"deps\":[\"o1\"],\"key\":\"root-cause\"},{\"id\":\"o3\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"hypothesize\",\"text\":\"observe 只从 options.model 更新，plugin 传的 options 可能不含 model\",\"anchor\":\"observe 只在 options.model 存在时更新\",\"deps\":[\"o2\"],\"key\":\"root-cause\"},{\"id\":\"o4\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"hypothesize\",\"text\":\"当前模型可能在 n 中，observe 忽略第二参数导致 lastModel 未更新\",\"anchor\":\"第二参数 n 被忽略\",\"deps\":[\"o3\"],\"key\":\"root-cause\"},{\"id\":\"o5\",\"k\":\"PLAN\",\"ev\":\"derived\",\"kind2\":\"inspect\",\"text\":\"查看 plugin.js 中 options 和 n 如何构造，确认 host.observe 调用处字段\",\"anchor\":\"查看 options 和 n 如何构造\",\"key\":\"next\",\"deps\":[\"o4\"]}]}",
+   "recompiled": true
+  },
+  {
+   "id": "sse-truncated",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 5424,
+   "outChars": 849,
+   "ms": 4190,
+   "promptVersion": "compress-v4-ops9:800",
+   "kinds": {
+    "FACT": 3,
+    "COMPUTED": 1,
+    "IF": 2,
+    "OPEN": 1,
+    "PLAN": 1,
+    "READY": 1
+   },
+   "text": "trace 中 finish:null，但 ok:true，outputChars 212，birth-condensed 为 rawChars 8123 到 outChars 212（trace）。assembleSseFrames 只在收到 finish_reason 时设置 finish，否则依赖 [DONE] 推断 stop（src/transport.js）。网关文档：部分上游在连接被代理切断时只补发 data: [DONE]（网关文档）。我判断 assembleSseFrames 把 [DONE] 当正常结束，无 finish_reason 时 fallback finish='stop'，截断被当成功。我看过的相关代码是 `if (j.choices?.[0]?.finish_reason) finish = j.choices[0].finish_reason`。\n\n接下来我要 grep 查找 assembleSseFrames 调用处、compiler-transport-settled 产生处，看 ok 如何计算、finish 如何传递、写会话条件。还没确认的是 trace finish:null 与代码返回 stop 矛盾，可能 settle 记录的 finish 并非组装返回值，需检查调用方如何判定 ok 和写会话。\n\n所以 assembleSseFrames 把 [DONE] 当正常结束，无 finish_reason 时 fallback finish='stop'，截断被当成功。\n\n如果 SSE 帧中 finish_reason 为 null 或缺失，且 [DONE] 到达，就返回 stop。如果 done 为 true，就返回 stop。然后后续修复：区分 `finish_reason` 缺失与 `[DONE]`，把仅 `[DONE]` 当 `incomplete`/`unknown`，除非有 finish_reason 或内容完整标志。",
+   "side": "{\"ops\":[{\"id\":\"o1\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"trace 中 finish:null，但 ok:true，outputChars 212，birth-condensed 为 rawChars 8123 到 outChars 212\",\"anchor\":\"finish:null，但 ok:true\",\"src\":\"trace\"},{\"id\":\"o2\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"localize\",\"text\":\"assembleSseFrames 只在收到 finish_reason 时设置 finish，否则依赖 [DONE] 推断 stop\",\"anchor\":\"finish = j.choices[0].finish_reason\",\"src\":\"src/transport.js\"},{\"id\":\"o3\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"localize\",\"text\":\"网关文档：部分上游在连接被代理切断时只补发 data: [DONE]\",\"anchor\":\"只补发 data: [DONE]\",\"src\":\"网关文档\"},{\"id\":\"o4\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"hypothesize\",\"text\":\"assembleSseFrames 把 [DONE] 当正常结束，无 finish_reason 时 fallback finish='stop'，截断被当成功\",\"anchor\":\"将 [DONE] 当作正常结束\",\"key\":\"root-cause\",\"deps\":[\"o2\",\"o3\"]},{\"id\":\"o5\",\"k\":\"IF\",\"ev\":\"derived\",\"kind2\":\"hypothesize\",\"text\":\"若复现 SSE 帧中 finish_reason 为 null 或缺失且 [DONE] 到达，则返回 stop\",\"anchor\":\"就返回 stop\",\"cond\":\"SSE 帧中 finish_reason 为 null 或缺失，且 [DONE] 到达\",\"then\":\"返回 stop\",\"deps\":[\"o2\"]},{\"id\":\"o6\",\"k\":\"IF\",\"ev\":\"derived\",\"kind2\":\"hypothesize\",\"text\":\"若 done 为 true，则返回 stop\",\"anchor\":\"如果 done true\",\"cond\":\"done 为 true\",\"then\":\"返回 stop\",\"deps\":[\"o2\"]},{\"id\":\"o7\",\"k\":\"OPEN\",\"ev\":\"derived\",\"kind2\":\"pivot\",\"text\":\"trace finish:null 与代码返回 stop 矛盾，可能 settle 记录的 finish 并非组装返回值，需检查调用方如何判定 ok 和写会话\",\"anchor\":\"但 trace finish:null 矛盾\",\"key\":\"next\",\"deps\":[\"o1\",\"o2\"]},{\"id\":\"o8\",\"k\":\"READY\",\"ev\":\"derived\",\"kind2\":\"plan\",\"text\":\"区分 finish_reason 缺失与 [DONE]，把仅 [DONE] 当 incomplete/unknown，除非有 finish_reason 或内容完整标志\",\"anchor\":\"把仅 [DONE] 当 incomplete\",\"key\":\"fix\",\"deps\":[\"o4\"]},{\"id\":\"o9\",\"k\":\"PLAN\",\"ev\":\"derived\",\"kind2\":\"inspect\",\"text\":\"grep 查找 assembleSseFrames 调用处、compiler-transport-settled 产生处，看 ok 如何计算、finish 如何传递、写会话条件\",\"anchor\":\"看 ok 如何计算\",\"key\":\"next\",\"deps\":[\"o7\"]}]}",
+   "recompiled": true
+  },
+  {
+   "id": "flaky-timeout",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 9053,
+   "outChars": 760,
+   "ms": 4743,
+   "promptVersion": "compress-v4-ops9:800",
+   "kinds": {
+    "FACT": 1,
+    "COMPUTED": 1,
+    "SHELVED": 2,
+    "OPEN": 1,
+    "IF": 1,
+    "PLAN": 1
+   },
+   "text": "CI 中失败时 got hedgeStartedAt=1712/1698（test/hedge.selftest.mjs）。我判断 CI 2 核事件循环延迟使 1500 与 1600 定时器都积压到 1712，同一 timers 阶段先执行 server 1500 回调再执行对冲 1600 回调，而主请求 HTTP 响应在 poll 阶段才 resolve。\n\n先不考虑在 primary.finally 中设置 primarySettled，或在定时器触发时检查 primary 是否已 settled（清除 timer 与 finally 都无法解决同一 timers 阶段先触发对冲定时器），除非复现确认是同一 timers 阶段顺序导致后再回来评估；现在的方向是改用 fake timers 或拉大时间差。先不考虑清除 timer 不是问题，因为定时器触发时仍检查 !primarySettled（定时器仍会在 1600ms 触发并检查 !primarySettled）。\n\n接下来我要 taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'。还没确认的是主请求完成回调是否被延迟超过 100ms 尚未直接观测。\n\n所以 CI 2 核事件循环延迟使 1500 与 1600 定时器都积压到 1712，同一 timers 阶段先执行 server 1500 回调再执行对冲 1600 回调，而主请求 HTTP 响应在 poll 阶段才 resolve。\n\n如果 taskset -c 0,1 循环运行测试复现失败，就说明是调度抖动/时序边界，再修。",
+   "side": "{\"ops\":[{\"id\":\"o1\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"CI 中失败时 got hedgeStartedAt=1712/1698。\",\"anchor\":\"CI 中 got hedgeStartedAt=1712/1698\",\"src\":\"test/hedge.selftest.mjs\",\"key\":\"observed-hedge-start\",\"deps\":[]},{\"id\":\"o2\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"pivot\",\"text\":\"两个 setTimeout 积压到同一 timers 阶段时，对冲定时器会在主请求响应被客户端处理之前触发。\",\"anchor\":\"对冲定时器会在主请求响应被客户端处理之前触发\",\"key\":\"root-cause\",\"supersedes\":\"primary.then 未及时执行\",\"deps\":[\"o1\"]},{\"id\":\"o3\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"compute\",\"text\":\"CI 2 核事件循环延迟使 1500 与 1600 定时器都积压到 1712，同一 timers 阶段先执行 server 1500 回调再执行对冲 1600 回调，而主请求 HTTP 响应在 poll 阶段才 resolve。\",\"anchor\":\"两个定时器都积压到同一 timers 阶段\",\"key\":\"root-cause\",\"supersedes\":\"100ms 余量被抖动吃掉\",\"deps\":[\"o1\"]},{\"id\":\"o4\",\"k\":\"SHELVED\",\"ev\":\"guess\",\"text\":\"在 primary.finally 中设置 primarySettled，或在定时器触发时检查 primary 是否已 settled。\",\"anchor\":\"在 `primary.finally` 中设置\",\"alt\":\"改用 fake timers 或拉大时间差\",\"why\":\"清除 timer 与 finally 都无法解决同一 timers 阶段先触发对冲定时器\",\"trigger\":\"复现确认是同一 timers 阶段顺序导致后再回来评估\",\"deps\":[\"o3\"]},{\"id\":\"o5\",\"k\":\"REFUTED\",\"ev\":\"derived\",\"kind2\":\"pivot\",\"text\":\"清除 timer 不是问题，因为定时器触发时仍检查 !primarySettled。\",\"anchor\":\"清除不是问题\",\"why\":\"定时器仍会在 1600ms 触发并检查 !primarySettled\",\"deps\":[\"o3\"]},{\"id\":\"o6\",\"k\":\"OPEN\",\"ev\":\"guess\",\"text\":\"主请求完成回调是否被延迟超过 100ms 尚未直接观测。\",\"anchor\":\"被延迟超过 100ms\",\"deps\":[\"o3\"]},{\"id\":\"o7\",\"k\":\"IF\",\"ev\":\"derived\",\"text\":\"若失败复现，则说明是调度抖动/时序边界。\",\"anchor\":\"如果失败复现，再修\",\"cond\":\"taskset -c 0,1 循环运行测试复现失败\",\"then\":\"说明是调度抖动/时序边界，再修\",\"deps\":[\"o3\"]},{\"id\":\"o8\",\"k\":\"READY\",\"ev\":\"derived\",\"text\":\"下一步工具调用：taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \\\"run $i\\\"; node test/hedge.selftest.mjs || break; done'。\",\"anchor\":\"taskset -c 0,1 bash -lc\",\"trigger\":\"本地有 taskset\",\"deps\":[\"o3\"]}]}",
+   "recompiled": true
+  },
+  {
+   "id": "eacces-config",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 10074,
+   "outChars": 731,
+   "ms": 6178,
+   "promptVersion": "compress-v4-ops9:800",
+   "kinds": {
+    "FACT": 2,
+    "INCUMBENT": 1,
+    "OPEN": 1,
+    "READY": 1,
+    "IF": 2
+   },
+   "text": "verify.mjs 节选：每个套件在独立的临时 DSH_HOME 里跑，const env = { ...process.env, DSH_HOME: tmp }（verify.mjs）。test/birth.selftest.mjs 第1-12行使用 makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })（test/birth.selftest.mjs）。我现在采用的是测试用 CFB_REAL_DSH_HOME，verify.mjs 只设置 DSH_HOME 为 tmp，导致绕过隔离写入真实 /home/u/.dsh。我看过的相关代码是 `const w = makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })`。\n\n还没确认的是需要确认 verify.mjs 是否设置 CFB_REAL_DSH_HOME，以及子进程 env 是否传递。\n\n所以测试用 CFB_REAL_DSH_HOME，verify.mjs 只设置 DSH_HOME 为 tmp，导致绕过隔离写入真实 /home/u/.dsh。\n\n如果未设置，则说明 makeTraceWriter 可能 fallback。如果 verify.mjs 中完全没有该变量，那么测试文件从父进程继承，可能是 /home/u/.dsh。我准备的改法是在 verify.mjs 的 env 中加 CFB_REAL_DSH_HOME: tmp，或改测试用 DSH_HOME，改的就是 `const env = { ...process.env, DSH_HOME: tmp }` 这一行。",
+   "side": "{\"ops\":[{\"id\":\"o1\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"npm test 运行 node verify.mjs，失败：FAIL test/birth.selftest.mjs Error: EACCES: permission denied, open '/home/u/.dsh/storages/cot-form-b/trace.log'\",\"anchor\":\"npm test 运行 node verify.mjs\",\"src\":\"npm test\",\"key\":\"root-cause\"},{\"id\":\"o2\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"目录 /home/u/.dsh/storages/cot-form-b/ 为 root:root drwxr-xr-x，文件 trace.log 为 root:root -rw-r--r--，当前用户 uid=1000(u) gid=1000(u)\",\"anchor\":\"trace.log root:root -rw-r--r--\",\"src\":\"ls -la\",\"key\":\"root-cause\"},{\"id\":\"o3\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"localize\",\"text\":\"无法写入该文件，因为文件所有者 root，权限 644，目录 755 对非 root 只读，不能删除/创建，导致 EACCES\",\"anchor\":\"无法写入该文件\",\"deps\":[\"o1\",\"o2\"],\"key\":\"root-cause\"},{\"id\":\"o4\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"echo $DSH_HOME = /home/u/.dsh\",\"anchor\":\"echo $DSH_HOME = /home/u/.dsh\",\"src\":\"echo $DSH_HOME\",\"key\":\"DSH_HOME\"},{\"id\":\"o5\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"verify.mjs 节选：每个套件在独立的临时 DSH_HOME 里跑，const env = { ...process.env, DSH_HOME: tmp }\",\"anchor\":\"const env = { ...process.env, DSH_HOME: tmp }\",\"src\":\"verify.mjs\",\"key\":\"DSH_HOME\"},{\"id\":\"o6\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"test/birth.selftest.mjs 第1-12行使用 makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })\",\"anchor\":\"makeTraceWriter({ home: process.env.CFB_REAL_DSH_HOME })\",\"src\":\"test/birth.selftest.mjs\",\"key\":\"CFB_REAL_DSH_HOME\"},{\"id\":\"o7\",\"k\":\"INCUMBENT\",\"ev\":\"derived\",\"kind2\":\"hypothesize\",\"text\":\"测试用 CFB_REAL_DSH_HOME，verify.mjs 只设置 DSH_HOME 为 tmp，导致绕过隔离写入真实 /home/u/.dsh\",\"anchor\":\"使用 CFB_REAL_DSH_HOME\",\"deps\":[\"o5\",\"o6\"],\"key\":\"root-cause\"},{\"id\":\"o8\",\"k\":\"OPEN\",\"ev\":\"derived\",\"kind2\":\"inspect\",\"text\":\"需要确认 verify.mjs 是否设置 CFB_REAL_DSH_HOME，以及子进程 env 是否传递\",\"anchor\":\"需要决定调用什么\",\"deps\":[\"o5\",\"o6\"],\"key\":\"next\"},{\"id\":\"o9\",\"k\":\"READY\",\"ev\":\"derived\",\"kind2\":\"plan\",\"text\":\"在 verify.mjs 的 env 中加 CFB_REAL_DSH_HOME: tmp，或改测试用 DSH_HOME\",\"anchor\":\"verify.mjs 应该设置 CFB_REAL_DSH_HOME: tmp\",\"deps\":[\"o5\",\"o6\",\"o7\"],\"key\":\"fix\"}]}",
+   "recompiled": true
+  },
+  {
+   "id": "perf-regression",
+   "mode": "v4",
+   "why": "condensed",
+   "rawChars": 11322,
+   "outChars": 838,
+   "ms": 7805,
+   "promptVersion": "compress-v4-ops9:800",
+   "kinds": {
+    "FACT": 3,
+    "COMPUTED": 1,
+    "INCUMBENT": 1,
+    "SHELVED": 1,
+    "OPEN": 1,
+    "PLAN": 1,
+    "IF": 2
+   },
+   "text": "birth收网平均等待从900ms升到2400ms，ttfb p50仅610→640ms，contentSpanMs p50从280升到1650ms（trace）。outputChars p50从390升到1720，约4.4倍，与compressTargetMax 450→1800的4倍幅度吻合（trace）。promptVersion升级前后均为compress-v3:250-450，未随compressTargetMax 450→1800变化（trace）。我判断解码吞吐390/280≈1.39与1720/1650≈1.04 chars/ms同量级，是输出量变大而非每token变慢。我现在采用的是根因是compressTargetMax 450→1800使产物变长、收网输出随之膨胀；maxOutputTokens 850→4096只是上限，不强制变长。\n\n先不考虑 maxOutputTokens 850原本截断生成、上限抬高后输出自然变长（390 chars达不到850 token上限，数值上更贴近旧目标450），除非pre升级样本finishReason=length；现在的方向是compressTargetMax 450→1800拉长长度目标。\n\n接下来我要查pre/post的finishReason与outputTokens，判断旧版是否被850上限截断。还没确认的是 promptVersion标签是硬编码还是由配置生成，未定，故不能据此判断配置未生效。\n\n所以根因是compressTargetMax 450→1800使产物变长、收网输出随之膨胀；maxOutputTokens 850→4096只是上限，不强制变长。\n\n如果 pre升级样本finishReason=length，就 maxOutputTokens上限抬高是主因。如果 pre升级样本finishReason=stop，就长度目标（compressTargetMax）是主因。",
+   "side": "{\"ops\":[{\"id\":\"o1\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"birth收网平均等待从900ms升到2400ms，ttfb p50仅610→640ms，contentSpanMs p50从280升到1650ms。\",\"anchor\":\"contentSpanMs p50:280 →1650\",\"src\":\"trace\",\"key\":\"latency-breakdown\"},{\"id\":\"o2\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"compute\",\"text\":\"等待增量约1500ms中约1370ms来自contentSpan，ttfb仅+30ms，延迟增量由生成时长主导。\",\"anchor\":\"not TTFB\",\"deps\":[\"o1\"],\"key\":\"latency-breakdown\"},{\"id\":\"o3\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"outputChars p50从390升到1720，约4.4倍，与compressTargetMax 450→1800的4倍幅度吻合。\",\"anchor\":\"outputChars p50:390 →1720\",\"src\":\"trace\"},{\"id\":\"o4\",\"k\":\"FACT\",\"ev\":\"tool\",\"kind2\":\"restate\",\"text\":\"promptVersion升级前后均为compress-v3:250-450，未随compressTargetMax 450→1800变化。\",\"anchor\":\"compress-v3:250-450\",\"src\":\"trace\"},{\"id\":\"o5\",\"k\":\"COMPUTED\",\"ev\":\"derived\",\"kind2\":\"pivot\",\"text\":\"解码吞吐390/280≈1.39与1720/1650≈1.04 chars/ms同量级，是输出量变大而非每token变慢。\",\"anchor\":\"1.39 chars/ms\",\"deps\":[\"o1\",\"o3\"]},{\"id\":\"o6\",\"k\":\"INCUMBENT\",\"ev\":\"derived\",\"kind2\":\"hypothesize\",\"text\":\"根因是compressTargetMax 450→1800使产物变长、收网输出随之膨胀；maxOutputTokens 850→4096只是上限，不强制变长。\",\"anchor\":\"compressTargetMax450→1800\",\"key\":\"root-cause\",\"deps\":[\"o3\",\"o5\"]},{\"id\":\"o7\",\"k\":\"SHELVED\",\"ev\":\"guess\",\"kind2\":\"hypothesize\",\"text\":\"maxOutputTokens 850原本截断生成、上限抬高后输出自然变长。\",\"anchor\":\"truncated at850 tokens\",\"alt\":\"compressTargetMax 450→1800拉长长度目标\",\"why\":\"390 chars达不到850 token上限，数值上更贴近旧目标450\",\"trigger\":\"pre升级样本finishReason=length\",\"deps\":[\"o3\",\"o4\"]},{\"id\":\"o8\",\"k\":\"OPEN\",\"ev\":\"guess\",\"kind2\":\"hypothesize\",\"text\":\"promptVersion标签是硬编码还是由配置生成，未定，故不能据此判断配置未生效。\",\"anchor\":\"tag is stale\",\"deps\":[\"o4\"]},{\"id\":\"o9\",\"k\":\"PLAN\",\"ev\":\"derived\",\"kind2\":\"inspect\",\"text\":\"下一步查pre/post的finishReason与outputTokens，判断旧版是否被850上限截断。\",\"anchor\":\"finish_reason in the trace\",\"key\":\"next\",\"deps\":[\"o7\"]},{\"id\":\"o10\",\"k\":\"IF\",\"ev\":\"derived\",\"kind2\":\"plan\",\"text\":\"若pre样本finishReason=length，则主因是maxOutputTokens上限抬高。\",\"anchor\":\"finishReason=length\",\"deps\":[\"o9\"],\"cond\":\"pre升级样本finishReason=length\",\"then\":\"maxOutputTokens上限抬高是主因\"},{\"id\":\"o11\",\"k\":\"IF\",\"ev\":\"derived\",\"kind2\":\"plan\",\"text\":\"若pre样本finishReason=stop，则主因是长度目标compressTargetMax。\",\"anchor\":\"若 stop\",\"deps\":[\"o9\"],\"cond\":\"pre升级样本finishReason=stop\",\"then\":\"长度目标（compressTargetMax）是主因\"}]}",
+   "recompiled": true
+  }
+ ]
+}

@@ -1,0 +1,70 @@
+{
+  "schema": "cfb.traj-plan/1",
+  "id": "t9",
+  "at": "2026-10-02T16:23:52.331Z",
+  "variants": [
+    "raw",
+    "policy:p-29d7400346"
+  ],
+  "scenarios": [
+    "perf-regression"
+  ],
+  "samples": 1,
+  "maxRounds": 8,
+  "fork": true,
+  "maxTokens": 8000,
+  "storeText": true,
+  "purpose": "制度检验 H_aug（docs/proposals/p-regime-augment.json）：每轮增补的制度 vs raw，按结局（修好/轮数）与过闸率看；一对不下采纳结论，只回答「增补制度在 flash 上压得出来吗、救得了 perf 吗」。",
+  "yield": {
+    "l1Pairs": 1,
+    "l2Pairs": 1,
+    "validityPairsApprox": 14,
+    "flywheelPairsApprox": 7,
+    "childStatesApprox": 12
+  },
+  "reuseRaw": {
+    "file": ".cfb-runtime/traj/t8/results.jsonl",
+    "rows": 1,
+    "byTask": {
+      "perf-regression": 1
+    },
+    "at": "2026-10-02T15:41:36.462Z",
+    "digest": "4355eade117dc5e8"
+  },
+  "regimeArms": {
+    "policy:p-29d7400346": [
+      "birthMinChars",
+      "birthMinSavedChars",
+      "birthTokenGate"
+    ]
+  },
+  "cost": {
+    "mains": 7,
+    "compresses": 8,
+    "expectedMains": 7,
+    "expectedCompresses": 8,
+    "expectedUsd": 0.148,
+    "capUsd": 0.336,
+    "pricing": {
+      "mainUsd": 0.0125,
+      "mainCapUsd": 0.035,
+      "compressUsd": 0.0075,
+      "compressCapUsd": 0.0114,
+      "divergeRound": 3,
+      "floorShare": 0.4
+    },
+    "shadow": true,
+    "calibrated": {
+      "receipts": 3,
+      "divergeRound": 6,
+      "floorShare": 0.19,
+      "expectedMains": 7,
+      "expectedCompresses": 8,
+      "expectedUsd": 0.148
+    }
+  },
+  "holdoutNote": "场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索",
+  "digest": "ea1d4edccbfb28bf",
+  "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t9/plan.json --store-text --fork-from .cfb-runtime/traj/t8/results.jsonl --variants raw --policy p-29d7400346 --only perf-regression --samples 1 --max-rounds 8 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t9",
+  "design": "0ea4d023a3d18f33"
+}

@@ -1,0 +1,204 @@
+{
+  "schema": "cfb.ruler-v2/calibration/1",
+  "date": "2026-10-11",
+  "tau": 0.8,
+  "ratioMax": 0.5,
+  "tail": 300,
+  "minRaw": 3100,
+  "floor": 0.5,
+  "dev": {
+    "source": ".cfb-offline/teacher/v4-full.jsonl (read-only, no outcome labels)",
+    "n": 685,
+    "matched": {
+      "R1": 0.131,
+      "G2": 0.479,
+      "G3": 0.968,
+      "pass": 0.063
+    },
+    "mismatched": {
+      "R1": 0.003,
+      "G2": 0.22,
+      "G3": 0.958,
+      "pass": 0.001
+    },
+    "matchedPass": 0.063,
+    "mismatchedPass": 0.001,
+    "separation": 0.061
+  },
+  "tauCurveReportOnly": [
+    {
+      "tau": 0.5,
+      "matchedPass": 0.204,
+      "mismatchedPass": 0.007
+    },
+    {
+      "tau": 0.6,
+      "matchedPass": 0.131,
+      "mismatchedPass": 0.001
+    },
+    {
+      "tau": 0.7,
+      "matchedPass": 0.086,
+      "mismatchedPass": 0.001
+    },
+    {
+      "tau": 0.8,
+      "matchedPass": 0.063,
+      "mismatchedPass": 0.001
+    },
+    {
+      "tau": 0.9,
+      "matchedPass": 0.051,
+      "mismatchedPass": 0.001
+    }
+  ],
+  "verdict": "excluded: 匹配稿通过率低于下限",
+  "gold": {
+    "n": 13,
+    "applicable": 8,
+    "rows": [
+      {
+        "id": "eacces-config-s0-r5",
+        "goldStatus": "not-gold",
+        "vsRaw": "win",
+        "applies": true,
+        "pass": false,
+        "R1": false,
+        "G2": true,
+        "G3": true,
+        "aN": 3,
+        "recall": 0.333,
+        "invented": 0,
+        "ratio": 0.102
+      },
+      {
+        "id": "eacces-config_decoy-s0-r3",
+        "goldStatus": "not-gold",
+        "vsRaw": "win",
+        "applies": false
+      },
+      {
+        "id": "eacces-config_long-horizon-s0-r5",
+        "goldStatus": "not-gold",
+        "vsRaw": "win",
+        "applies": false
+      },
+      {
+        "id": "perf-regression-s0-r7",
+        "goldStatus": "not-gold",
+        "vsRaw": "win",
+        "applies": true,
+        "pass": false,
+        "R1": false,
+        "G2": false,
+        "G3": true,
+        "aN": 4,
+        "recall": 0,
+        "invented": 4,
+        "ratio": 0.301
+      },
+      {
+        "id": "sse-truncated-s0-r4",
+        "goldStatus": "gold",
+        "vsRaw": "tie",
+        "applies": true,
+        "pass": false,
+        "R1": false,
+        "G2": true,
+        "G3": true,
+        "aN": 5,
+        "recall": 0.2,
+        "invented": 0,
+        "ratio": 0.111
+      },
+      {
+        "id": "sse-truncated-s0-r5",
+        "goldStatus": "not-gold",
+        "vsRaw": "tie",
+        "applies": true,
+        "pass": false,
+        "R1": false,
+        "G2": true,
+        "G3": true,
+        "aN": 4,
+        "recall": 0.25,
+        "invented": 0,
+        "ratio": 0.365
+      },
+      {
+        "id": "sse-truncated-s1-r3",
+        "goldStatus": "gold",
+        "vsRaw": "win",
+        "applies": true,
+        "pass": false,
+        "R1": false,
+        "G2": true,
+        "G3": true,
+        "aN": 4,
+        "recall": 0,
+        "invented": 0,
+        "ratio": 0.11
+      },
+      {
+        "id": "sse-truncated_decoy-s0-r4",
+        "goldStatus": "not-gold",
+        "vsRaw": "tie",
+        "applies": false
+      },
+      {
+        "id": "sse-truncated_long-horizon-s0-r5",
+        "goldStatus": "not-gold",
+        "vsRaw": "tie",
+        "applies": true,
+        "pass": false,
+        "R1": false,
+        "G2": true,
+        "G3": true,
+        "aN": 2,
+        "recall": 0,
+        "invented": 0,
+        "ratio": 0.121
+      },
+      {
+        "id": "wrong-model-s0-r6",
+        "goldStatus": "gold",
+        "vsRaw": "tie",
+        "applies": false
+      },
+      {
+        "id": "wrong-model-s1-r5",
+        "goldStatus": "gold",
+        "vsRaw": "win",
+        "applies": true,
+        "pass": false,
+        "R1": false,
+        "G2": true,
+        "G3": true,
+        "aN": 5,
+        "recall": 0.2,
+        "invented": 0,
+        "ratio": 0.082
+      },
+      {
+        "id": "wrong-model_decoy-s0-r4",
+        "goldStatus": "not-gold",
+        "vsRaw": "win",
+        "applies": false
+      },
+      {
+        "id": "wrong-model_long-horizon-s0-r4",
+        "goldStatus": "not-gold",
+        "vsRaw": "tie",
+        "applies": true,
+        "pass": false,
+        "R1": false,
+        "G2": true,
+        "G3": true,
+        "aN": 5,
+        "recall": 0,
+        "invented": 0,
+        "ratio": 0.155
+      }
+    ]
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "authorityId": "ff06711539460b7a2316e3911c81feb359e6eaea6c2be21b1ad1f58ce856fd02",
+  "digest": "0c059a6c521bf57d21c447c89dc919cc618acf6b288b11c52da58b256037bd39",
+  "halted": null,
+  "jobs": [
+    {
+      "key": "probe",
+      "kind": "probe",
+      "reservedNano": 6625000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|raw|0",
+      "kind": "main",
+      "reservedNano": 66596000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|current|0",
+      "kind": "main",
+      "reservedNano": 48894000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|current|1",
+      "kind": "main",
+      "reservedNano": 48894000,
+      "status": "accepted"
+    },
+    {
+      "key": "flaky-timeout|raw|1",
+      "kind": "main",
+      "reservedNano": 66596000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|raw|0",
+      "kind": "main",
+      "reservedNano": 47005000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|current|0",
+      "kind": "main",
+      "reservedNano": 48367000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|current|1",
+      "kind": "main",
+      "reservedNano": 48367000,
+      "status": "accepted"
+    },
+    {
+      "key": "wrong-model|raw|1",
+      "kind": "main",
+      "reservedNano": 47005000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|raw|0",
+      "kind": "main",
+      "reservedNano": 63327000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|current|0",
+      "kind": "main",
+      "reservedNano": 46562000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|current|1",
+      "kind": "main",
+      "reservedNano": 46562000,
+      "status": "accepted"
+    },
+    {
+      "key": "eacces-config|raw|1",
+      "kind": "main",
+      "reservedNano": 63327000,
+      "status": "accepted"
+    }
+  ],
+  "planDigest": "4ae0fcf2dde307c295c66d1d0c9b508794b0985771b07b2c708b98c9726f4bec",
+  "requests": 13,
+  "reservedNano": 648127000,
+  "revision": "1e1234535a9106667d74b33246372438bfc6e32bf97284532d284090e19c4c2e",
+  "schema": "cfb.api-watermark/1",
+  "scope": "cfb.history-reasoning-revalidation.2026-10-01",
+  "sequence": 27
+}

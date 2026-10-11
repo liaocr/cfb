@@ -1,0 +1,28 @@
+{
+  "schema": "cfb.micro-generator-fact-review-starter-manifest/1",
+  "sourceQueueSha256": "fb3036888c3be64073bb817f1f78d016538abb1fa8ddb00ec5b8eca8679e56be",
+  "suggestionsSha256": "4a82f1adeccd22070be6dda6cae51764f248e82544b15c4baf85c48e73697842",
+  "reviewPolicy": {
+    "mode": "ai-single-reviewer",
+    "reviewerType": "ai",
+    "reviewerId": "arena-agent-mode",
+    "reviewerCount": 1,
+    "humanReviewerCount": 0,
+    "independentSecondReview": false
+  },
+  "counts": {
+    "cases": 17,
+    "candidateFacts": 70,
+    "families": 3,
+    "aiSingleReviewerApprovedCases": 0,
+    "trainingEligibleCases": 0
+  },
+  "status": "draft-context-only-not-gold",
+  "limitations": [
+    "only exact task/context preamble snippets were proposed",
+    "raw histories were not exhaustively fact-reviewed",
+    "importance and mustPreserve are provisional suggestions",
+    "reference claims and duplicate-target choice remain unadjudicated"
+  ],
+  "trainingReady": false
+}

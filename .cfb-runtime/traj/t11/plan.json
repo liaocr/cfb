@@ -1,0 +1,55 @@
+{
+  "schema": "cfb.traj-plan/1",
+  "id": "t11",
+  "at": "2026-10-03T16:42:42.008Z",
+  "variants": [
+    "raw",
+    "hand"
+  ],
+  "scenarios": [
+    "sse-truncated:decoy",
+    "wrong-model:decoy"
+  ],
+  "samples": 1,
+  "maxRounds": 7,
+  "fork": true,
+  "maxTokens": 8000,
+  "storeText": true,
+  "purpose": "模式 1 天花板：hand 臂 = 助手代替副模型手写稿（同一提示词、同一闸链 + G2 决策不变闸）vs raw；量 f(主模型 | 稿) 的上界与「稿该写什么」；hand 永远不采纳为 champion，过闸且修好的稿进金标注册表（gold add）作模式 2 标准",
+  "yield": {
+    "l1Pairs": 2,
+    "l2Pairs": 2,
+    "validityPairsApprox": 24,
+    "flywheelPairsApprox": 0,
+    "childStatesApprox": 20
+  },
+  "cost": {
+    "mains": 26,
+    "compresses": 0,
+    "expectedMains": 22,
+    "expectedCompresses": 0,
+    "expectedUsd": 0.275,
+    "capUsd": 0.91,
+    "pricing": {
+      "mainUsd": 0.0125,
+      "mainCapUsd": 0.035,
+      "compressUsd": 0.0075,
+      "compressCapUsd": 0.0114,
+      "divergeRound": 3,
+      "floorShare": 0.4
+    },
+    "shadow": true,
+    "calibrated": {
+      "receipts": 1,
+      "divergeRound": 6,
+      "floorShare": 0.29,
+      "expectedMains": 16,
+      "expectedCompresses": 0,
+      "expectedUsd": 0.2
+    }
+  },
+  "holdoutNote": "场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索",
+  "digest": "c10fccf3d5857dea",
+  "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t11/plan.json --store-text --variants raw,hand --only sse-truncated:decoy,wrong-model:decoy --samples 1 --max-rounds 7 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t11",
+  "design": "08b8050a84ae9e83"
+}

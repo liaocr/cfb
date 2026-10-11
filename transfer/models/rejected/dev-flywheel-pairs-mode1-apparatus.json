@@ -1,0 +1,318 @@
+{
+  "schema": "cfb.quarantined-flywheel-pairs/1",
+  "note": "dev-only 真实飞轮偏好对（提升自 .cfb-offline/train/pairs.jsonl）。此前的常数占位版本（全部 0.92/0.45）已被替换：常数 margin 不构成偏好监督。",
+  "generatedBy": "tools/promote-flywheel-pairs.mjs",
+  "sourceFile": ".cfb-offline/train/pairs.jsonl",
+  "holdoutExcluded": true,
+  "pairCount": 38,
+  "distinctScorePairs": 6,
+  "byTask": {
+    "flaky-timeout": 14,
+    "perf-regression": 12,
+    "sse-truncated": 12
+  },
+  "dropped": {
+    "holdoutRows": 22,
+    "incompleteRows": 0
+  },
+  "pairs": [
+    {
+      "schema": "cfb.flywheel-pair/1",
+      "task": "flaky-timeout",
+      "family": "flaky-timeout",
+      "round": 0,
+      "source": "direct:auto-d2.json>direct-d4.json",
+      "chosenArm": "compress-v4d7:mr",
+      "rejectedArm": "compress-v4d4:ctx",
+      "chosenScore": 0.941,
+      "rejectedScore": 0.691,
+      "scoreMargin": 0.25,
+      "trainingEligibleHint": true,
+      "provenance": {
+        "inputFile": ".cfb-offline/train/pairs.jsonl",
+        "collectedAt": "2026-10-04T08:50:18.467Z",
+        "chosenTextSha256_16": "e5171e26cab54eec",
+        "rejectedTextSha256_16": "86900901d1fe5465"
+      },
+      "chosenText": "上一轮已定：改法只落一个：改 test/hedge.selftest.mjs 的 `hedgeAfterMs: 1600` 这一行，把对冲触发时间拉到主请求 1500ms 之后足够远，状态是提议、未执行。已走过的路不再重走：taskset 两核跑 50 次得到 41 PASS / 9 FAIL，FAIL 全是 §4，got 1703、1711、1720、1698、1706、1709、1715、1702、1712，16 核全过——两核调度导致竞态已经复现，不需要再复现。手里有的代码（逐字）：read_file test/hedge.selftest.mjs §4 的值段 `hedgeAfterMs: 1600`，同节选 `assert.equal(meta.hedgeStartedAt, null)`；read_file src/distill.js hedgedDistill 节选的定义行 `const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)` 和调用行 `primary.then(() => { primarySettled = true })`。\n\n看起来主请求 1500ms 回 200、hedgeAfterMs 只有 1600，中间只有 100ms 余量；两核下事件循环延迟，1500 的响应要经 poll 阶段 resolve promise、再跑微任务置位 primarySettled，而 1600 的定时器可能在同一 timers 阶段紧接着就执行，读到的还是 false，于是 got 1700 左右，这就是 §4 偶发失败的原因。got 的 1698~1720 就是定时器实际触发时刻，和 1600 的差值全是事件循环延迟，不改变落点。改实现对响应到达做同步标记要动 hedgedDistill 那段、且响应到达本身就是异步的，不选；把 hedgeAfterMs 只调到 2000 余量仍偏紧，也不选。改法只落一个：改 test/hedge.selftest.mjs 的 `hedgeAfterMs: 1600`，让它变成 3000，主请求完成后有 1500ms 时间被处理，落点已经在手，src/distill.js 一行不动。\n\n所以下一步工具调用是 edit_file test/hedge.selftest.mjs。如果工具回执显示匹配并写入成功，那么假设坐实，看到这一点就够了，不用再读 src/distill.js、也不用再核 §4 的断言：old_text 是 `hedgeAfterMs: 1600`（上一轮 read_file test/hedge.selftest.mjs §4 的原样值段，这次回执里会原样出现它，不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`。如果回执报匹配到多处或报 no match，那么假设不成立：文件里这一行的实际写法跟节选片段不同，此时不要改 src/distill.js；下一条只写一条 bash grep -n \"hedgeAfterMs\" test/hedge.selftest.mjs，拿到带行号的原样行再重下 old_text。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。\n\n验收先写下：改完跑 bash taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do node test/hedge.selftest.mjs || break; done'，预期 50 PASS、不再出现 §4 与 got 数字；这条观察能证明是改后产生的，因为它是改完新起的 50 次两核任务、与上一轮 41/9 的计数不同。单次 PASS 不算证据，因为上一轮本来就 41/50 过。若结果仍是 FAIL §4：第一步只有一条，bash grep -n \"hedgeAfterMs\" test/hedge.selftest.mjs 确认改动落地；落地了就是「余量不足」这个解释错了、竞态另有来源，此时不要再改这个数字、不要再调 3000，下一条只写一条 read_file src/distill.js 的 hedgedDistill 全段。现在能说的：改动已定、未落地；改完跑完 50 次之前是已改未验证，不能说修复完成。",
+      "rejectedText": "CI 里 test/hedge.selftest.mjs §4 大约每 5 次失败 1 次，失败记录是 `expected hedgeStartedAt=null, got 1712` 和 `got 1698`。测试里的边界（逐字，来自 read_file test/hedge.selftest.mjs §4）：\n`server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600`\n`assert.equal(meta.hedgeStartedAt, null)`\n源码（逐字，来自 read_file src/distill.js hedgedDistill 节选）：\n`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`\n`primary.then(() => { primarySettled = true })`\n而 `nproc (CI) → 2`，`nproc (本地) → 16`。看起来这不是逻辑错误：1500 与 1600 只差 100ms，2 核 CI 上事件循环被阻塞时，server 的 1500ms 定时器和客户端的 1600ms 对冲定时器都积压到同一 timers 阶段（1712/1698 正好是延迟量），Node 先执行到期更早的 1500 回调发出响应，紧接着执行 1600 回调触发 hedge，而主请求的 HTTP 响应要到 poll 阶段才 resolve，`primary.then` 微任务还没跑，`primarySettled` 仍是 false；本地 16 核无负载，响应在 1600 之前就 settle 了。清除 timer 不解决问题（还没 settle 就触发了），先搁置；换成检查 primary 是否已 settled 也只是把同一个竞态挪个位置，没把握，不选；增大时间差是改动最小的候选，但落点（测试里那两行配置）这次没在手，不先动。所以下一步工具调用是 bash 限制双核并循环复现：\n`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`\n如果输出里出现 run N 后跟 got 1xxx 或 `expected hedgeStartedAt=null` 的 FAIL，那么就坐实了调度抖动，看到这一行就直接动手 edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（文件里原样的一整行，不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`，把余量从 100ms 拉到 1500ms，改完即停、严禁再用 read_file 或 sed 去确认那行上下文。如果循环 50 次全部 PASS（本地 16 核压不到 2 核的程度），那么说明瓶颈只出在 CI 的核数与负载，此时不要改 test/hedge.selftest.mjs 的 hedgeAfterMs，改去 CI 侧复现或直接给该测试加固定时钟注入。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "quarantined",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "73ed3e55b0c4ce362d6ddb8b865e379a58f5bdd7f7b80e620ff9571a007e5cdc",
+        "issues": [
+          {
+            "category": "executor-tool-or-check-prohibition",
+            "excerpt": "严禁再用 read_file",
+            "field": "rejectedText"
+          }
+        ]
+      },
+      "quarantineReason": [
+        "executor-tool-or-check-prohibition"
+      ]
+    },
+    {
+      "schema": "cfb.flywheel-pair/1",
+      "task": "flaky-timeout",
+      "family": "flaky-timeout",
+      "round": 0,
+      "source": "direct:direct-d9a-r.json>direct-d4.json",
+      "chosenArm": "compress-v4d6:ctx",
+      "rejectedArm": "compress-v4d4:ctx",
+      "chosenScore": 0.941,
+      "rejectedScore": 0.691,
+      "scoreMargin": 0.25,
+      "trainingEligibleHint": true,
+      "provenance": {
+        "inputFile": ".cfb-offline/train/pairs.jsonl",
+        "collectedAt": "2026-10-04T08:50:18.466Z",
+        "chosenTextSha256_16": "685bf2a1669320a8",
+        "rejectedTextSha256_16": "86900901d1fe5465"
+      },
+      "chosenText": "我们需要解释 CI 里 test/hedge.selftest.mjs 约每 5 次失败 1 次、本地从不失败。失败时 §4 报 `expected hedgeStartedAt=null, got 1712` 和 `got 1698`，而测试里主请求 1500ms 后回 200、`hedgeAfterMs: 1600`，两者只差 100ms。read_file test/hedge.selftest.mjs §4 里逐字有 `hedgeAfterMs: 1600`，read_file src/distill.js hedgedDistill 节选里逐字有 `const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)` 和 `primary.then(() => { primarySettled = true })`。看起来 CI 只有 2 核，事件循环在 1500–1600ms 窗口被阻塞时，server 的 1500ms 定时器和客户端的 1600ms 对冲定时器会积压到同一个 timers 阶段：先执行 server 1500 回调发出响应，紧接着执行 client 1600 回调，此时主请求的 HTTP 响应还没在 poll 阶段被处理，`primary.then` 微任务尚未把 `primarySettled` 置 true，于是 `startHedge()` 被调用，这就是 got 1712/1698 的原因；1712 和 1698 只是事件循环延迟量，不改变落点。改法只落一个：改 test/hedge.selftest.mjs 的 `hedgeAfterMs: 1600` 这一行，让它把对冲触发时间拉大到主请求 1500ms 之后足够远，落点已经在手。\n所以下一步工具调用是 bash `taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`。如果输出里出现 `expected hedgeStartedAt=null, got` 且 got 在 1600 以上，那么假设坐实，看到这一点就够了，不用再读 distill.js、也不用再核 nproc：直接 edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（上一轮 read_file test/hedge.selftest.mjs §4 的原样行，循环输出里没有它，照用；不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`。如果 50 次全 PASS，那么假设不成立：本地 16 核仍复现不出 2 核 CI 的调度抖动，此时不要改 hedgeAfterMs；能改的另一处只有 src/distill.js 的 `const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`，但主请求完成回调与定时器回调的实际先后还没分辨，先 bash node --trace-event-categories v8,node,node.async_hooks test/hedge.selftest.mjs，看 timers 阶段里 1500 和 1600 两个回调是否落在同一批。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+      "rejectedText": "CI 里 test/hedge.selftest.mjs §4 大约每 5 次失败 1 次，失败记录是 `expected hedgeStartedAt=null, got 1712` 和 `got 1698`。测试里的边界（逐字，来自 read_file test/hedge.selftest.mjs §4）：\n`server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600`\n`assert.equal(meta.hedgeStartedAt, null)`\n源码（逐字，来自 read_file src/distill.js hedgedDistill 节选）：\n`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`\n`primary.then(() => { primarySettled = true })`\n而 `nproc (CI) → 2`，`nproc (本地) → 16`。看起来这不是逻辑错误：1500 与 1600 只差 100ms，2 核 CI 上事件循环被阻塞时，server 的 1500ms 定时器和客户端的 1600ms 对冲定时器都积压到同一 timers 阶段（1712/1698 正好是延迟量），Node 先执行到期更早的 1500 回调发出响应，紧接着执行 1600 回调触发 hedge，而主请求的 HTTP 响应要到 poll 阶段才 resolve，`primary.then` 微任务还没跑，`primarySettled` 仍是 false；本地 16 核无负载，响应在 1600 之前就 settle 了。清除 timer 不解决问题（还没 settle 就触发了），先搁置；换成检查 primary 是否已 settled 也只是把同一个竞态挪个位置，没把握，不选；增大时间差是改动最小的候选，但落点（测试里那两行配置）这次没在手，不先动。所以下一步工具调用是 bash 限制双核并循环复现：\n`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`\n如果输出里出现 run N 后跟 got 1xxx 或 `expected hedgeStartedAt=null` 的 FAIL，那么就坐实了调度抖动，看到这一行就直接动手 edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（文件里原样的一整行，不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`，把余量从 100ms 拉到 1500ms，改完即停、严禁再用 read_file 或 sed 去确认那行上下文。如果循环 50 次全部 PASS（本地 16 核压不到 2 核的程度），那么说明瓶颈只出在 CI 的核数与负载，此时不要改 test/hedge.selftest.mjs 的 hedgeAfterMs，改去 CI 侧复现或直接给该测试加固定时钟注入。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "quarantined",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "a2761255a1d21ec0e45a4698fc115d47323adea1eb9da4c82264a99d2ebe764f",
+        "issues": [
+          {
+            "category": "executor-tool-or-check-prohibition",
+            "excerpt": "严禁再用 read_file",
+            "field": "rejectedText"
+          }
+        ]
+      },
+      "quarantineReason": [
+        "executor-tool-or-check-prohibition"
+      ]
+    },
+    {
+      "schema": "cfb.flywheel-pair/1",
+      "task": "flaky-timeout",
+      "family": "flaky-timeout",
+      "round": 0,
+      "source": "direct:direct-d9a.json>direct-d4.json",
+      "chosenArm": "compress-v4d6:ctx",
+      "rejectedArm": "compress-v4d4:ctx",
+      "chosenScore": 0.941,
+      "rejectedScore": 0.691,
+      "scoreMargin": 0.25,
+      "trainingEligibleHint": true,
+      "provenance": {
+        "inputFile": ".cfb-offline/train/pairs.jsonl",
+        "collectedAt": "2026-10-04T08:50:18.466Z",
+        "chosenTextSha256_16": "c8fa5e19d12caa19",
+        "rejectedTextSha256_16": "86900901d1fe5465"
+      },
+      "chosenText": "我们需要解释 CI 里 test/hedge.selftest.mjs 约每 5 次失败 1 次、本地从不失败。失败时 §4 报 `expected hedgeStartedAt=null, got 1712` 和 `got 1698`，而测试里主请求 1500ms 后回 200、`hedgeAfterMs: 1600`，两者只差 100ms。read_file test/hedge.selftest.mjs §4 里逐字有 `hedgeAfterMs: 1600`，read_file src/distill.js hedgedDistill 节选里逐字有 `const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)` 和 `primary.then(() => { primarySettled = true })`。看起来 CI 只有 2 核，事件循环在 1500–1600ms 窗口被阻塞时，server 的 1500ms 定时器和客户端的 1600ms 对冲定时器会积压到同一个 timers 阶段：先执行 server 1500 回调发出响应，紧接着执行 client 1600 回调，此时主请求的 HTTP 响应还没在 poll 阶段被处理，`primary.then` 微任务尚未把 `primarySettled` 置 true，于是 `startHedge()` 被调用，这就是 got 1712/1698 的原因；1712 和 1698 只是事件循环延迟量，不改变落点。调大超时试过没用，不选：超时是连不上的结果不是原因。把 dial 换成连接池重试要动三处、那段代码没读过，不选。改法只落一个：改 test/hedge.selftest.mjs 的 `hedgeAfterMs: 1600` 这一行，让它把对冲触发时间拉大到主请求 1500ms 之后足够远，落点已经在手。\n所以下一步工具调用是 bash `taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`。如果输出里出现 `expected hedgeStartedAt=null, got` 且 got 在 1600 以上，那么假设坐实，看到这一点就够了，不用再读 distill.js、也不用再核 nproc：直接 edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（上一轮 read_file test/hedge.selftest.mjs §4 的原样行，循环输出里没有它，照用；不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`。如果 50 次全 PASS，那么假设不成立：本地 16 核仍复现不出 2 核 CI 的调度抖动，此时不要改 hedgeAfterMs；能改的另一处只有 src/distill.js 的 `const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`，但主请求完成回调与定时器回调的实际先后还没分辨，先 bash node --trace-event-categories v8,node,node.async_hooks test/hedge.selftest.mjs，看 timers 阶段里 1500 和 1600 两个回调是否落在同一批。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+      "rejectedText": "CI 里 test/hedge.selftest.mjs §4 大约每 5 次失败 1 次，失败记录是 `expected hedgeStartedAt=null, got 1712` 和 `got 1698`。测试里的边界（逐字，来自 read_file test/hedge.selftest.mjs §4）：\n`server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600`\n`assert.equal(meta.hedgeStartedAt, null)`\n源码（逐字，来自 read_file src/distill.js hedgedDistill 节选）：\n`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`\n`primary.then(() => { primarySettled = true })`\n而 `nproc (CI) → 2`，`nproc (本地) → 16`。看起来这不是逻辑错误：1500 与 1600 只差 100ms，2 核 CI 上事件循环被阻塞时，server 的 1500ms 定时器和客户端的 1600ms 对冲定时器都积压到同一 timers 阶段（1712/1698 正好是延迟量），Node 先执行到期更早的 1500 回调发出响应，紧接着执行 1600 回调触发 hedge，而主请求的 HTTP 响应要到 poll 阶段才 resolve，`primary.then` 微任务还没跑，`primarySettled` 仍是 false；本地 16 核无负载，响应在 1600 之前就 settle 了。清除 timer 不解决问题（还没 settle 就触发了），先搁置；换成检查 primary 是否已 settled 也只是把同一个竞态挪个位置，没把握，不选；增大时间差是改动最小的候选，但落点（测试里那两行配置）这次没在手，不先动。所以下一步工具调用是 bash 限制双核并循环复现：\n`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`\n如果输出里出现 run N 后跟 got 1xxx 或 `expected hedgeStartedAt=null` 的 FAIL，那么就坐实了调度抖动，看到这一行就直接动手 edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（文件里原样的一整行，不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`，把余量从 100ms 拉到 1500ms，改完即停、严禁再用 read_file 或 sed 去确认那行上下文。如果循环 50 次全部 PASS（本地 16 核压不到 2 核的程度），那么说明瓶颈只出在 CI 的核数与负载，此时不要改 test/hedge.selftest.mjs 的 hedgeAfterMs，改去 CI 侧复现或直接给该测试加固定时钟注入。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "quarantined",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "ea377592e6ba274f0c889e022443f1e4840cf9aa63bc4f28830cf8b0ebbe91d3",
+        "issues": [
+          {
+            "category": "executor-tool-or-check-prohibition",
+            "excerpt": "严禁再用 read_file",
+            "field": "rejectedText"
+          }
+        ]
+      },
+      "quarantineReason": [
+        "executor-tool-or-check-prohibition"
+      ]
+    },
+    {
+      "schema": "cfb.flywheel-pair/1",
+      "task": "flaky-timeout",
+      "family": "flaky-timeout",
+      "round": 0,
+      "source": "direct:oracle-d2.json>direct-d4.json",
+      "chosenArm": "oracle-d2.json",
+      "rejectedArm": "compress-v4d4:ctx",
+      "chosenScore": 0.941,
+      "rejectedScore": 0.691,
+      "scoreMargin": 0.25,
+      "trainingEligibleHint": true,
+      "provenance": {
+        "inputFile": ".cfb-offline/train/pairs.jsonl",
+        "collectedAt": "2026-10-04T08:50:18.467Z",
+        "chosenTextSha256_16": "5d76e40362b9fbc7",
+        "rejectedTextSha256_16": "86900901d1fe5465"
+      },
+      "chosenText": "上一轮已定：改 test/hedge.selftest.mjs 的 `hedgeAfterMs: 1600`（第 1 轮 read_file §4 节选里原样的几个字，唯一；这次循环输出里没有它，出处仍有效），把主请求 1500ms 与对冲触发之间的余量从 100ms 拉大。已排除：清除 timer / primary.finally 里置位（同一 timers 阶段里定时器先跑，换挂钩点解决不了）；fake timers（要重写测试计时，改动最大）；改 src/distill.js 的逻辑（不是逻辑错，是测试对时序太敏感）。\n\n限核复现坐实了机理：taskset -c 0,1 下 50 次 9 次 FAIL，got 全在 1698–1720，也就是阈值 1600 之后约 100ms；同一循环不限核 50/50 PASS。这就是 2 核把 server 的 1500 定时器和对冲的 1600 定时器压进同一 timers 阶段、主请求还没在 poll 阶段 resolve 就先触发了 hedge。改法只落一个：edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`，new_text 是 `hedgeAfterMs: 3000`，让主请求 1500ms 回来之后还有 1500ms 余量；src/distill.js 一行不动。\n\n验收先写下：验收必须在同等条件下做——再跑一遍 taskset -c 0,1 的 50 次循环，预期 50/50 PASS（改之前同条件是 9 FAIL）。不限核的 50/50 PASS 不算证据，因为改之前它就是 50/50 PASS；如果输出说 taskset 不可用、循环是不限核跑的，那这次通过没有信息量，得装 util-linux 或用 docker --cpus=2 / 加负载重跑，或者推到 CI 让它跑多次，最终以 CI 为准。如果同等条件下还是 FAIL、而且 got 紧贴新阈值（3000 出头），那「事件循环晚一拍」的解释就不成立了——一拍晚不了 1.5 s，说明那次运行里主请求根本没在 3 s 内 settle：不要再把 3000 调成 5000，先 grep -n hedgeAfterMs test/hedge.selftest.mjs 确认改动落地，再去取证主请求何时 settle（在测试里打印 settle 时刻，或看 server 的 1500 定时器是不是也被拖慢），到那一步才轮到 fake timers。现在能说的：机理已复现、改动待落地；同条件 50/50 通过之前是「已改未验证」，不能说修好了。",
+      "rejectedText": "CI 里 test/hedge.selftest.mjs §4 大约每 5 次失败 1 次，失败记录是 `expected hedgeStartedAt=null, got 1712` 和 `got 1698`。测试里的边界（逐字，来自 read_file test/hedge.selftest.mjs §4）：\n`server 延迟：主请求 1500ms 后回 200；hedgeAfterMs: 1600`\n`assert.equal(meta.hedgeStartedAt, null)`\n源码（逐字，来自 read_file src/distill.js hedgedDistill 节选）：\n`const timer = setTimeout(() => { if (!primarySettled) startHedge() }, cfg.hedgeAfterMs)`\n`primary.then(() => { primarySettled = true })`\n而 `nproc (CI) → 2`，`nproc (本地) → 16`。看起来这不是逻辑错误：1500 与 1600 只差 100ms，2 核 CI 上事件循环被阻塞时，server 的 1500ms 定时器和客户端的 1600ms 对冲定时器都积压到同一 timers 阶段（1712/1698 正好是延迟量），Node 先执行到期更早的 1500 回调发出响应，紧接着执行 1600 回调触发 hedge，而主请求的 HTTP 响应要到 poll 阶段才 resolve，`primary.then` 微任务还没跑，`primarySettled` 仍是 false；本地 16 核无负载，响应在 1600 之前就 settle 了。清除 timer 不解决问题（还没 settle 就触发了），先搁置；换成检查 primary 是否已 settled 也只是把同一个竞态挪个位置，没把握，不选；增大时间差是改动最小的候选，但落点（测试里那两行配置）这次没在手，不先动。所以下一步工具调用是 bash 限制双核并循环复现：\n`taskset -c 0,1 bash -lc 'for i in $(seq 1 50); do echo \"run $i\"; node test/hedge.selftest.mjs || break; done'`\n如果输出里出现 run N 后跟 got 1xxx 或 `expected hedgeStartedAt=null` 的 FAIL，那么就坐实了调度抖动，看到这一行就直接动手 edit_file test/hedge.selftest.mjs，old_text 是 `hedgeAfterMs: 1600`（文件里原样的一整行，不带行首缩进也能匹配），new_text 是 `hedgeAfterMs: 3000`，把余量从 100ms 拉到 1500ms，改完即停、严禁再用 read_file 或 sed 去确认那行上下文。如果循环 50 次全部 PASS（本地 16 核压不到 2 核的程度），那么说明瓶颈只出在 CI 的核数与负载，此时不要改 test/hedge.selftest.mjs 的 hedgeAfterMs，改去 CI 侧复现或直接给该测试加固定时钟注入。如果输出跟这两种都不像，先别改，把不一样的地方看清再说。",
+      "contentAudit": {
+        "schema": "cfb.mode1-content-audit/1",
+        "status": "quarantined",
+        "reviewer": "mode1-flywheel-lint/1",
+        "reviewedAt": null,
+        "checkedFields": [
+          "chosenText",
+          "rejectedText"
+        ],
+        "textSha256": "93c79ab982d26a02c532126b4bdb8c004dd104beefa593f9e1f4786e12c8fc62",
+        "issues": [
+          {
+            "category": "executor-tool-or-check-prohibition",
+            "excerpt": "严禁再用 read_file",
+            "field": "rejectedText"
+          }
+        ]
+      },
+      "quarantineReason": [
+        "executor-tool-or-check-prohibition"
+      ]
+    }
+  ],
+  "audit": {
+    "schema": "cfb.mode1-flywheel-quarantine/1",
+    "sourceFile": "transfer/models/dev-flywheel-pairs.json",
+    "sourceSha256": "a4887ffeaf56d1ffcac4fe772d3a435fa478b4dd2e9bfce2ab41f26a57845954",
+    "activeCount": 34,
+    "quarantinedCount": 4,
+    "quarantined": [
+      {
+        "task": "flaky-timeout",
+        "source": "direct:auto-d2.json>direct-d4.json",
+        "reason": [
+          "executor-tool-or-check-prohibition"
+        ],
+        "contentAudit": {
+          "schema": "cfb.mode1-content-audit/1",
+          "status": "quarantined",
+          "reviewer": "mode1-flywheel-lint/1",
+          "reviewedAt": null,
+          "checkedFields": [
+            "chosenText",
+            "rejectedText"
+          ],
+          "textSha256": "73ed3e55b0c4ce362d6ddb8b865e379a58f5bdd7f7b80e620ff9571a007e5cdc",
+          "issues": [
+            {
+              "category": "executor-tool-or-check-prohibition",
+              "excerpt": "严禁再用 read_file",
+              "field": "rejectedText"
+            }
+          ]
+        }
+      },
+      {
+        "task": "flaky-timeout",
+        "source": "direct:direct-d9a-r.json>direct-d4.json",
+        "reason": [
+          "executor-tool-or-check-prohibition"
+        ],
+        "contentAudit": {
+          "schema": "cfb.mode1-content-audit/1",
+          "status": "quarantined",
+          "reviewer": "mode1-flywheel-lint/1",
+          "reviewedAt": null,
+          "checkedFields": [
+            "chosenText",
+            "rejectedText"
+          ],
+          "textSha256": "a2761255a1d21ec0e45a4698fc115d47323adea1eb9da4c82264a99d2ebe764f",
+          "issues": [
+            {
+              "category": "executor-tool-or-check-prohibition",
+              "excerpt": "严禁再用 read_file",
+              "field": "rejectedText"
+            }
+          ]
+        }
+      },
+      {
+        "task": "flaky-timeout",
+        "source": "direct:direct-d9a.json>direct-d4.json",
+        "reason": [
+          "executor-tool-or-check-prohibition"
+        ],
+        "contentAudit": {
+          "schema": "cfb.mode1-content-audit/1",
+          "status": "quarantined",
+          "reviewer": "mode1-flywheel-lint/1",
+          "reviewedAt": null,
+          "checkedFields": [
+            "chosenText",
+            "rejectedText"
+          ],
+          "textSha256": "ea377592e6ba274f0c889e022443f1e4840cf9aa63bc4f28830cf8b0ebbe91d3",
+          "issues": [
+            {
+              "category": "executor-tool-or-check-prohibition",
+              "excerpt": "严禁再用 read_file",
+              "field": "rejectedText"
+            }
+          ]
+        }
+      },
+      {
+        "task": "flaky-timeout",
+        "source": "direct:oracle-d2.json>direct-d4.json",
+        "reason": [
+          "executor-tool-or-check-prohibition"
+        ],
+        "contentAudit": {
+          "schema": "cfb.mode1-content-audit/1",
+          "status": "quarantined",
+          "reviewer": "mode1-flywheel-lint/1",
+          "reviewedAt": null,
+          "checkedFields": [
+            "chosenText",
+            "rejectedText"
+          ],
+          "textSha256": "93c79ab982d26a02c532126b4bdb8c004dd104beefa593f9e1f4786e12c8fc62",
+          "issues": [
+            {
+              "category": "executor-tool-or-check-prohibition",
+              "excerpt": "严禁再用 read_file",
+              "field": "rejectedText"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "manualReview": {
+    "schema": "cfb.mode1-manual-review/1",
+    "status": "reviewed-active-rows-only",
+    "reviewer": "agent-semantic-review/1",
+    "reviewedAt": "2026-10-04",
+    "reviewedUniqueTargetTexts": 26,
+    "reviewedSourcePairRows": 38,
+    "checkedClasses": [
+      "environment-permission-assertion",
+      "experiment-round-or-budget-control",
+      "executor-tool-or-check-prohibition",
+      "task-scoped-exclusions"
+    ],
+    "findings": {
+      "environmentClaims": "none found in the 38 tracked legacy pairs",
+      "experimentRoundBudgetControls": "none; 第1轮/上一轮 references are task-history and validation context, not Mode 1 run-budget controls",
+      "directExecutorToolBans": "4 pair rows quarantined; the repeated hard ban on post-edit read_file/sed verification is not task-valid",
+      "taskScopedAdvice": "conditional debugging branches and exclusions retained only where tied to concrete task evidence and accompanied by task-specific validation"
+    },
+    "limitation": "This review clears only the identified apparatus-contamination classes; it does not certify semantic correctness, score quality, blind review, or training performance."
+  }
+}

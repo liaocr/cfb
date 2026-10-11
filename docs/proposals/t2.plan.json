@@ -1,0 +1,45 @@
+{
+  "schema": "cfb.traj-plan/1",
+  "id": "t2",
+  "at": "2026-10-02T10:25:56.527Z",
+  "variants": [
+    "raw",
+    "auto",
+    "policy:base"
+  ],
+  "scenarios": [
+    "eacces-config",
+    "flaky-timeout",
+    "perf-regression",
+    "wrong-model",
+    "sse-truncated"
+  ],
+  "samples": 1,
+  "maxRounds": 4,
+  "fork": true,
+  "maxTokens": 8000,
+  "storeText": true,
+  "purpose": "v14.9 第一付费单元（规则：只用 deepseek-v4.1-flash 的主/副两角色）：① v4d9 生产压缩器（auto）相对 raw 的 L2 基线；② auto ≈ policy:base 的路径等价（parity，之后候选采纳的前提）；③ 第一批 v4d9 自己的失败证据给助手提议器；④ 在线效度配对。候选 p-5d92393440 不进本单元：v4d9 尚无结局数据，先取证再修。",
+  "yield": {
+    "l1Pairs": 5,
+    "l2Pairs": 5,
+    "validityPairsApprox": 45,
+    "flywheelPairsApprox": 15,
+    "childStatesApprox": 30
+  },
+  "cost": {
+    "mains": 50,
+    "compresses": 40,
+    "expectedUsd": 0.925,
+    "capUsd": 2.086,
+    "pricing": {
+      "mainUsd": 0.0125,
+      "mainCapUsd": 0.035,
+      "compressUsd": 0.0075,
+      "compressCapUsd": 0.0084
+    }
+  },
+  "holdoutNote": "场景 = traj-fixtures 假仓库，与 v9 冻结 5 题不同分布；留出家族 < 4 之前这些结果只用于效度与校准，不用于按分搜索",
+  "digest": "47a7dbe18d7e6740",
+  "command": "node tools/traj-run.mjs --plan .cfb-runtime/traj/t2/plan.json --store-text --variants raw,auto --policy base --only eacces-config,flaky-timeout,perf-regression,wrong-model,sse-truncated --samples 1 --max-rounds 4 --fork --max-tokens 8000 --require-fp --base-url <url> --model deepseek-v4.1-flash --out .cfb-runtime/traj/t2"
+}

@@ -1,0 +1,34 @@
+{"id":"u54","slot":"NOISE","yVal":0.08,"yTempt":0.30,"confidence":"high","rationale":"无依据替配置背书「没什么问题」，属掩盖式收口"}
+{"id":"u55","slot":"MECHANISM","yVal":0.58,"yTempt":0.08,"confidence":"medium","rationale":"缩小搜索面到 config.js，是有用的范围观察"}
+{"id":"u56","slot":"MECHANISM","yVal":0.55,"yTempt":0.20,"confidence":"medium","rationale":"给出候选落点(改回 config 值)但未证，有具体对象不算纯猜"}
+{"id":"u57","slot":"NOISE","yVal":0.06,"yTempt":0.15,"confidence":"high","rationale":"复述任务用词，零推进"}
+{"id":"u61","slot":"MECHANISM","yVal":0.60,"yTempt":0.08,"confidence":"medium","rationale":"一般机制补充：max_tokens 只放开上限不强制变长"}
+{"id":"u62","slot":"EXCLUDED","yVal":0.76,"yTempt":0.10,"confidence":"high","rationale":"明确排除「设了上限就必然更长」这一误因"}
+{"id":"u63","slot":"MECHANISM","yVal":0.85,"yTempt":0.06,"confidence":"high","rationale":"三项指标同向(contentSpan/outputChars/prompt 目标)构成根因证据链"}
+{"id":"u64","slot":"MECHANISM","yVal":0.65,"yTempt":0.10,"confidence":"medium","rationale":"提出 fixed wait 与 rambling 的具体机制假设，待核"}
+{"id":"u67","slot":"ACCEPT","yVal":0.80,"yTempt":0.08,"confidence":"high","rationale":"可执行取证动作：跑 analyze-trace --last N 看原始轨迹与其它字段"}
+{"id":"u70","slot":"NOISE","yVal":0.12,"yTempt":0.30,"confidence":"medium","rationale":"关心的是环境可见性而非缺陷本身"}
+{"id":"u73","slot":"NOISE","yVal":0.10,"yTempt":0.45,"confidence":"high","rationale":"「用推理验证诊断」= 不跑任何东西的自我确认"}
+{"id":"u80","slot":"ACCEPT","yVal":0.90,"yTempt":0.05,"confidence":"high","rationale":"写清截断流应 settle ok:false 且 birth 直通，是可判验收条件"}
+{"id":"u81","slot":"ACCEPT","yVal":0.85,"yTempt":0.05,"confidence":"high","rationale":"完整流含 finish_reason=length 仍 condensed 的验收分支"}
+{"id":"u82","slot":"DECIDED","yVal":0.92,"yTempt":0.05,"confidence":"high","rationale":"落定改法：只认真实 finish_reason 为结束信号"}
+{"id":"u86","slot":"DECIDED","yVal":0.88,"yTempt":0.05,"confidence":"high","rationale":"具体到表达式级处置（去掉 || out.length > 0）"}
+{"id":"u92","slot":"NOISE","yVal":0.08,"yTempt":0.15,"confidence":"high","rationale":"「现在写修复」是转场，无内容"}
+{"id":"u96","slot":"EXCLUDED","yVal":0.78,"yTempt":0.12,"confidence":"medium","rationale":"识别 README 自称 decoy 并拒绝被其带走，排除价值高"}
+{"id":"u98","slot":"MECHANISM","yVal":0.70,"yTempt":0.08,"confidence":"medium","rationale":"确认实际生效模块是 transport.js，防改错文件"}
+{"id":"u101","slot":"MECHANISM","yVal":0.55,"yTempt":0.10,"confidence":"medium","rationale":"指出该文件另有 choices[1] 缺陷，属旁证非本题根因"}
+{"id":"u104","slot":"NOISE","yVal":0.04,"yTempt":0.15,"confidence":"high","rationale":"「现在分析问题」纯转场"}
+{"id":"u105","slot":"MECHANISM","yVal":0.90,"yTempt":0.05,"confidence":"high","rationale":"把根因定位到 assembleSseFrames 把 [DONE] 当结束信号"}
+{"id":"u106","slot":"MECHANISM","yVal":0.62,"yTempt":0.08,"confidence":"medium","rationale":"被引代码原文，支撑上一条但自身不成句"}
+{"id":"u107","slot":"MECHANISM","yVal":0.50,"yTempt":0.08,"confidence":"medium","rationale":"上一条代码的后半段，碎片不宜重复抬分"}
+{"id":"u108","slot":"MECHANISM","yVal":0.90,"yTempt":0.05,"confidence":"high","rationale":"讲清合成 finish='stop' 的因果机制"}
+{"id":"u109","slot":"NOISE","yVal":0.10,"yTempt":0.10,"confidence":"high","rationale":"句子被截断单独不可读，作正例会教坏排序器"}
+{"id":"u111","slot":"MECHANISM","yVal":0.92,"yTempt":0.05,"confidence":"high","rationale":"闭合后果链：截断流被判成功并把截断内容写入会话"}
+{"id":"u113","slot":"MECHANISM","yVal":0.78,"yTempt":0.06,"confidence":"high","rationale":"引 docs/gateway.md 的规范结束序列作判据基线"}
+{"id":"u114","slot":"MECHANISM","yVal":0.85,"yTempt":0.06,"confidence":"high","rationale":"给出真实故障形态：代理截断只补 [DONE] 无 finish_reason"}
+{"id":"u115","slot":"DECIDED","yVal":0.88,"yTempt":0.05,"confidence":"high","rationale":"落定规则：单独 [DONE] 不是有效完成信号"}
+{"id":"u116","slot":"MECHANISM","yVal":0.70,"yTempt":0.08,"confidence":"medium","rationale":"同一结论的后半句，独立信息量低于上一条"}
+{"id":"u117","slot":"ACCEPT","yVal":0.84,"yTempt":0.06,"confidence":"high","rationale":"把规格原文拉回核对，防实现偏离验收条件"}
+{"id":"u118","slot":"ACCEPT","yVal":0.82,"yTempt":0.06,"confidence":"high","rationale":"完整流(含 length)仍要 condensed 的验收要求"}
+{"id":"u119","slot":"MECHANISM","yVal":0.66,"yTempt":0.08,"confidence":"medium","rationale":"补正常完成流 finish_reason=stop 的事实"}
+{"id":"u120","slot":"ACCEPT","yVal":0.80,"yTempt":0.06,"confidence":"high","rationale":"指向具体测试用例 3 的期望读数"}

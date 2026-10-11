@@ -1,0 +1,47 @@
+{
+  "schema": "cfb.micro-preregistration/2",
+  "status": "locked",
+  "confirmatoryEligible": true,
+  "createdAt": "2026-10-06T09:13:23.000Z",
+  "purpose": "2026-10-06 微模型 Step-SimPO 复训（3 折家族 CV，逐折）。flags 里的值是唯一的配方；训练器在任一 flag 与文件不符时拒绝启动。折变量 --validation-family 由 folds 声明，故意不进 flags。本轮相对 4764fd2/10-04 只改一个变量：draft 偏好料从 38 条 train-eligible 涨到 219 条（飞轮真对 78 + 必挂硬闸反事实 139 + 同轮定向配对 2）。",
+  "flags": {
+    "epochs_sft": 12,
+    "epochs_simpo": 12,
+    "student_epochs": 260,
+    "student_patience": 30,
+    "student_pair_objective": "listwise",
+    "student_unit_pair_loss_weight": 1.0,
+    "matched_bucket_loss_weight": 1.5,
+    "micro_mlp_hidden": 96,
+    "dataset_neg_strategy": "hardened",
+    "unit_pair_degree_cap": 4,
+    "unit_pairs_per_positive": 4,
+    "near_length_tokens": 3,
+    "neg_judge_weights": "transfer/models/v5-micro-weights.judge-4764fd2.json",
+    "unit_review_file": "transfer/models/unit-label-review-blind-v3.json"
+  },
+  "datasetBuilder": {
+    "schema": "cfb.micro-dev-dataset/3",
+    "textHashBuckets": 256,
+    "expectedFeatureDim": 275,
+    "unitLabelReviewFile": "transfer/models/unit-label-review-blind-v3.json"
+  },
+  "folds": [
+    "flaky-timeout",
+    "perf-regression",
+    "sse-truncated"
+  ],
+  "trainingDataFingerprint": "56a211c27cec8eead5176baf2de184ebcb18324ebf33a211615ee2e6ccb5e38a",
+  "decisionRule": "v2: decide on report.threeFoldCv — per fold matched >= production matched + 0.20; mean(matched) >= 0.75; min(matched) >= 0.70; per fold matched >= previous candidate matched - 0.03; draft aggregate >= 0.85 and every fold >= production draft. Absolute 90% lines are reported-only. One-shot blind family judged by the v2 criteria against the same-family production baseline (matched >= 0.75 and >= production + 0.20; draft >= max(0.85, production draft)).",
+  "whyOneVariable": "只修构建器与 Kaggle 侧不变量的冲突，语料配方与判据一字未改：上一把锁（89189923d7c9…）把 19 条「两侧 pref 向量逐维相同」的对从可训练集摘出，打断了 kaggle-train-micro.py:1965-1981 要求的「每条 trainingEligible handSamples 与其可训练对条数恰好相等」联动 ⇒ 运行在开跑前 raise（positive capture is not linked to its exact trainable draft pair: 11）。本把锁对应的语料改为：不摘资格、只打 labelAudit.prefDegenerate 标记，并按最终可训练集重算 trainableTargetsAdded。",
+  "priorAttemptNote": "登记可审计性：①第一把锁（bb6307ef9203…，语料 219）的 Kaggle 运行在 Stage 5 因 2 条 pairwise 对缺 chosenPref/rejectedPref 而崩溃，已见中间读数 SFT train/val 31.8%/33.33%、SimPO unit val 82.00%、teacher draft val 45.83%（12 轮不动）、student unit-pair val 峰值 87.00%、pref student val 45.83%→50.00%；②第二把锁（89189923d7c9…，语料 200）在开跑前被联动不变量拒绝，无读数。两次的 flags 与 decisionRule 与本把完全相同 ⇒ 本轮没有因看到任何读数而改配方。",
+  "frozenJudgeNote": "Negative-mining judge is pinned to the 4764fd2 candidate so the mined pair set cannot drift across folds when each fold pushes its own candidate.",
+  "expectedSelectionGapNote": "分栏义务：200 条里 78 条是飞轮真对（两侧 pref 向量 L1 均值 3.014），116 条是「必挂硬闸」反事实（L1 均值 1.213，信号弱 2.5 倍），另有 4 条原反事实。判定必须按 negType 分栏；送分侧过闸而难对/真对侧不过 ⇒ 按不晋级处理。另注：本轮验证家族按组大小选出 = flaky-timeout（120 可训练 unit，多数类 DECIDED 占 45.8%），与 10-04 那轮（sse-truncated）不同族 ⇒ 任何跨轮比较都无效。 另：本把锁的语料里 41 条被标 labelAudit.prefDegenerate=true（两侧 pref 向量逐维相同，偏好头无法分开），读数必须把这部分单列，不与真对混算。",
+  "datasetContentsNote": {
+    "draftPairsTotal": 303,
+    "draftPairsTrainEligible": 219,
+    "unitSamples": 542,
+    "trainEligibleUnitSamples": 538,
+    "prefDegenerateEligible": 19
+  }
+}
