@@ -1,24 +1,30 @@
-# AI single-reviewer guide for micro-generator facts
+# AI single-reviewer guide for birth-time compression
 
-This is the review contract for the authorized **AI single reviewer** (`arena-agent-mode`). It does not require a second reviewer. It is not an automated gold-labeling tool. Every completed annotation must record `reviewProvenance` with `reviewerType=ai`, `reviewerCount=1`, `humanReviewerCount=0`, and `independentSecondReview=false`; never describe this process as human or independent review. Keep each source example within one family split.
+Authorized **AI single reviewer**: `arena-agent-mode`. No second-reviewer requirement. Every annotation records reviewerType=ai, reviewerCount=1, humanReviewerCount=0, independentSecondReview=false. Do not call this human review, independent adjudication, semantic gold certification or target-reader validation. Entire families stay within one split; exposed families never become train by relabelling.
 
-## Source facts
+## Read and annotate the entire retained source
 
-1. Read the entire `raw` and `ctx` before annotating. Mark whether source-fact coverage is complete, partial, or still unreviewed.
-2. Split content into atomic, independently checkable propositions. Record the exact source span in `raw` or `ctx`; offsets are JavaScript UTF-16 code-unit offsets and must reproduce `quote` exactly.
-3. Record polarity, modality, conditions, entities, and material numbers/thresholds. Keep exception and negated propositions separate when dropping one could change behavior.
-4. Set `mustPreserve=true` only when omission could change the task, decision, causal explanation, safety, verification, or required output. Importance is `critical/high/medium/low`; do not infer importance from lexical cues alone.
-5. `sourceCoverage=complete` means all task-relevant facts, including constraints and unresolved items, have been considered. It is not merely “I found several facts.”
-6. Distinguish user-reported claims, tool observations, assistant hypotheses, proposals, and completed actions. A proposed edit is not an edit receipt; a planned test is not a test result; a historical output is not a fresh post-change observation.
+1. Read complete `raw` and compressor-visible birth `ctx`; do not replace them with a task preamble or later context. State that retained text need not be the entire original session. Record ctx assembly/truncation and distinguish later acceptance ctx.
+2. Split into atomic propositions, with precise `raw`/`ctx` quote spans using **JavaScript UTF-16 code-unit offsets**, not Python character counts. Include polarity, actors, material numbers, identifiers, temporal relations, modality, conditions and exceptions.
+3. `mustPreserve=true` means omitting it can change the continuation's task/decision/constraints/causal evidence/safety/verification; classify critical/high/medium/low without treating anchor matches as semantic proof.
+4. Distinguish reported historical observations, guesses, contradicted hypotheses, proposed changes, attempted actions and completed actions. Planned tests are not passing tests; historical output is not a post-change result. An uncertain source cannot become a confident conclusion in the reference.
+5. `sourceCoverage=complete` means every relevant fact in the retained input was considered. Attach a `cfb.compression-review/1` sidecar with `sourceUnits.raw` and `.ctx` covering **every non-whitespace code unit** without gaps/overlap. Material units cite fact IDs; procedural/redundant/nonmaterial units explain their treatment. This prevents partial preamble review masquerading as complete.
+6. Context provided unchanged to the receiver may remain in that prefix rather than be needlessly duplicated into the draft; the review still records its source facts. Never assume an unavailable prefix/tool state will be restored for free.
 
-## Reference draft review
+## Reference/output claims
 
-For every must-preserve fact, mark the reference as preserved, omitted, contradicted, or uncertain. Review all draft claims for support in raw/context and record unsupported assertions separately. A clean apparatus audit, prior success label, hand-written target, or exact anchor overlap does not substitute for this review. A reference that claims a code change or validation happened must be supported by an actual action/output in the source record; otherwise reject or rewrite it.
+For every must-preserve fact, adjudicate preserved/omitted/contradicted/uncertain. The complete `draftClaims` list covers every non-whitespace output unit with exact UTF-16 spans. Supported claims cite actual fact IDs; structural-only units explain their role. Count all unsupported/contradicted/uncertain claims, not just cherry-picked ones. Every new assertion of edits/tests/completion needs an actual source receipt, not an apparatus label. Rewrite or reject overclaiming drafts.
 
-## Model output review
+Bindings include raw/ctx/reference/input and full annotation-record hashes, reviewer provenance, source units and draft claim units. `validateCompleteReview` and the Python preflight independently recheck attachments. Hash/full-coverage checks do not prove the reviewer classified every sentence correctly or that the source world facts are true; labels remain single AI judgments.
 
-Review every must-preserve fact and every factual claim in the generated draft. `factCoverage=complete` and `claimCoverage=complete` mean no relevant fact/claim was skipped. Use `uncertain` rather than guessing. A supported claim should identify one or more source fact ids where possible. Record that the labels are from a single AI reviewer; do not imply independent confirmation.
+Review model outputs separately: no copying reference labels as if a model was run. Exact same-source/family duplicate artifacts do not add independent n. Preserve all failures, refusals, out-of-window cases and fallback in the registered reader denominator.
 
-## Blind evaluation
+## Development controls and reader utility
 
-Do not show model outputs or compare checkpoints while selecting/annotating the blind facts. Register new blind families and freeze thresholds before generation. Keep blind gold annotations in a private artifact; upload only train/dev material to Kaggle. Freeze prediction hashes before unsealing the blind labels.
+Equivalent good drafts, polished bad drafts and minimal actor/number/time/negation/condition counterfactuals test the apparatus. Current 30 labelled controls are synthetic/exposed, not blind/gold/training or an automatic semantics oracle. Original-reader value requires raw/raw A/A and raw/reference from the **same birth/environment state**, version/channel/tools/settings bindings, complete outcomes and cumulative usage/economics. Hashes, 400 syntax, fingerprint and token accounting are not semantic-use evidence.
+
+## Admission and blind
+
+Complete AI review alone cannot admit training. Source/model compatibility/license/privacy/birth boundary, whole-family/prior exposure, new preregistered valid ruler, real reader utility, real CPU capability and confirmed resource budget are required by `formal-sft.mjs`; old declaration-only admission is rejected by `train_rwkv7.py`.
+
+No newly authorized blind has been run. Do not view predictions while choosing/annotating blind facts; register genuinely new private families and freeze thresholds before generation, freeze prediction hashes before unsealing labels. Old consumed v9 ledger stays closed; private blind labels never enter an uploaded train/dev bundle. Numerical thresholds remain unfrozen in the current development protocol.

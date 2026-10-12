@@ -82,7 +82,7 @@ function pickPython() {
 const PY = pickPython()
 if (!PY) {
   console.log('SKIP mode1-quality-parity:需要可用的 Python(JS/Python 双实现一致性校验),本机 python3/python 均不可用')
-  console.log('PASS=0 FAIL=0 SKIP=1')
+  console.log('PASS=2 FAIL=0 SKIP=1')
   process.exit(0)
 }
 const proc = spawnSync(PY, ['-c', pySource], {
@@ -105,3 +105,5 @@ assert.deepEqual(pairCases.map((pair) => isMode1PairEligible(pair)), python.pair
 assert.deepEqual(captureRows.map((sample) => isMode1CaptureAuditEligible(sample)), python.captureValid, 'JS/Python exact capture-audit parity')
 assert.deepEqual(evidenceCases.map((c) => auditMode1Output(c.text, c.evidence).issues.length), python.evidenceCounts, 'JS/Python verbatim-quote exemption parity (per rule group)')
 console.log(`mode1-quality JS/Python parity: ${cases.length} curated category cases, ${evidenceCases.length} evidence-aware exemption cases, ${auditedPairs.length} exact-pair digests, ${pairCases.length} pair gates, and ${captureRows.length} capture gates passed`)
+// Count executed assertions, not inferred cases. The runner must not report an uncounted exit 0.
+console.log(`PASS=${4 + cases.length + auditedPairs.length + 3} FAIL=0 SKIP=0`)

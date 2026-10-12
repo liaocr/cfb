@@ -127,6 +127,7 @@ export interface CotFormBConfig {
   /** v11.10：trace.log 轮转阈值（字节，缺省 64 MiB；0 = 不轮转）。超限改名 trace.log.1 */
   traceMaxBytes?: number
   /** v11.10：llm-stream 溯源里用户原话开头片段长度（缺省 48；0 = 不记录任何正文片段） */
+  traceReadbackHashes?: boolean
   tracePreviewChars?: number
   /**
    * v11.11：流归属不可证（多个会话交错进入 agent/pre-step，无法判定这条 llm/stream 属于谁）时的处置。

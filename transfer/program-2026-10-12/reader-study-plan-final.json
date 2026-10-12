@@ -1,0 +1,87 @@
+{
+  "schema": "cfb.reader-study-plan/1",
+  "id": "reference-ceiling-development-2026-10-12",
+  "scope": "already-exposed development references, not new blind or student promotion",
+  "preregistration": {
+    "path": "tools/micro-generator/continuation-prereg.json",
+    "sha256": "6e316476ce052e463e8a6b7ab8979656f0cce7927f85c358d330b21c588e9187"
+  },
+  "annotations": {
+    "path": "transfer/program-2026-10-12/reviewed-dev.jsonl",
+    "sha256": "952c96431998c25f4100ec1ace2c1c0e92a06743418148ef361b174a0acd7ef9"
+  },
+  "completeReviews": {
+    "path": "transfer/program-2026-10-12/complete-reviews.jsonl",
+    "sha256": "2263f7d5bf1a3ae966d5ce6005dfd98c0756315dc30b85bef7f46fbb556356b4"
+  },
+  "receiver": "DeepSeek-V4.1-Flash",
+  "servedVersion": null,
+  "channelScopeSha256": null,
+  "toolsSha256": null,
+  "decodingSha256": null,
+  "channelScopeRef": null,
+  "toolsRef": null,
+  "decodingRef": null,
+  "arms": [
+    "raw-a",
+    "raw-b",
+    "reference"
+  ],
+  "cases": [
+    {
+      "caseId": "flaky-timeout-9f726c3b9c677f04",
+      "family": "flaky-timeout",
+      "inputSha256": "86da015b48bf620e903cb75a5205e8f07196bbfe6c92ab85beeba403578aaa6c",
+      "rawSha256": "7f5c6892f41373c0451d61646d5dd2cd8a2648480a66dcb361b83f75860acbf1",
+      "referenceSha256": "54086993cf93457d2938992413f963c582732e447e0cfc17cfa26b3ab4bf8c83",
+      "ctxSha256": "1beb615ac573c80670a297019e4c905180e33f94ae699307f565987a08c7af17",
+      "birthStateRef": null
+    },
+    {
+      "caseId": "perf-regression-743d949f701c5040",
+      "family": "perf-regression",
+      "inputSha256": "f706662b5af9315f2a0db88aa4f99a407fd250ab6d6d1cf6c14b23930c4fb1ec",
+      "rawSha256": "8d1a69c1fad11a13281b2b8979340ed7ca9102563719d36299b3f8c7f82d041e",
+      "referenceSha256": "8c68e31494543077cc821238d9f9a73a79b263a9a9f8b7ad8fc6ee6f2a6798fb",
+      "ctxSha256": "19a0010d35c74b89e44bb0d60348fd2138fa5f10a5069078343183ac4a890eb8",
+      "birthStateRef": null
+    },
+    {
+      "caseId": "sse-truncated-24bd46e54267e3fe",
+      "family": "sse-truncated",
+      "inputSha256": "da177d65d28a4334a278ee630378b8acfb34303ab3b4902477ba4f2d4d9fd6e8",
+      "rawSha256": "e7ec2a0f40d88aa089d3d089b9bf3ad1316935cc24e70f7bcd531c3a74ffa5db",
+      "referenceSha256": "18205e3e423d8e5eb42ee3a13ceee05e749ad526ad58543f0ca6856e641ac730",
+      "ctxSha256": "1009bbb332f37483d6f0c42090a27789d78cf7d346f904c7d1757a54991f99a8",
+      "birthStateRef": null
+    }
+  ],
+  "requestBudget": {
+    "authorized": false,
+    "approvalRef": null,
+    "maximumPaidRequests": 0,
+    "maximumRetriesPerRequest": 0,
+    "maximumUsd": 0,
+    "credentialsInPlanAllowed": false
+  },
+  "authorizationGate": "Local programme approval is not a paid-call allocation. Bind a separate user-authorized scope/limits receipt before importing actual executions.",
+  "stateCapture": "State schema cfb.reader-birth-state/1: case/input/raw/ctx hashes, compressorCtx, reasoningMessageIndex, exact requestBeforeReplacement, bound environmentSnapshots; changing only the designated reasoning field is allowed.",
+  "observationUnit": "Initial continuation request/response and bound declared outcome review per arm. A full multi-round execution trajectory and cumulative bills are additional evidence; this importer does not certify either.",
+  "accounting": "All registered cases remain in denominator, including rejected/missing/failure/fallback. Observed unique provider IDs are only a lower bound on full-study calls; character ratios are not bills.",
+  "expectedMinimumContinuationArms": 9,
+  "independentSampleCount": null,
+  "status": "blocked-missing-live-state-version-channel-and-budget",
+  "blockers": [
+    "real source birth-state snapshots not provided",
+    "actual served version/channel/tools/decoding not pinned",
+    "paid-call scope and resource budget not authorized"
+  ],
+  "implementation": {
+    "localPlannerImporterSha256": "88d654b2e700b0b4e48ffdac2c2b019c2cdead7d95f951d64c7dbd64eb885f00"
+  },
+  "executeImplemented": false,
+  "paidApiCalls": 0,
+  "gpuRuns": 0,
+  "newBlindConsumed": 0,
+  "planSha256": "3bd329a88c8bd8ba931afd8cce5049dfd7743390e151c268f9a10b187f736594"
+}

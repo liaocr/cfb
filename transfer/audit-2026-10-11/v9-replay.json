@@ -1,0 +1,305 @@
+{
+  "schema": "cfb.v9-replay/1",
+  "auditDate": "2026-10-11",
+  "ok": true,
+  "scope": "published-historical-evidence-reconstruction-not-new-candidate-or-blind-test",
+  "pipelineValid": false,
+  "trainingApproved": false,
+  "frozen": [
+    {
+      "path": "tools/gen-ruler-v9.mjs",
+      "sha256": "9b24808165483753acbcc4bc73feb9e97526e59df8dd5aa55412a5e7b30137b8"
+    },
+    {
+      "path": "tools/gen-negatives-v9.mjs",
+      "sha256": "b699d36887551a21d54b3188d1fa8f2bf52ec618d43f38aef4335427855530b4"
+    },
+    {
+      "path": "tools/ruler-v9.mjs",
+      "sha256": "536020b88e66104eaa1fbc02d0ae56791d6e127b4bd6ec318abbf5556999d207"
+    },
+    {
+      "path": "tools/v9-pipeline.mjs",
+      "sha256": "51ac7fc49e5e9f6414c0ec476939d9ee10956d94c85c233882be46cec74d3aa3"
+    },
+    {
+      "path": "tools/v9-label.mjs",
+      "sha256": "cee010f9e6e6d406749a9ca2e682fa58a0a7a68876406b4737a6b2e4b653600e"
+    },
+    {
+      "path": "tools/v9-inventory.mjs",
+      "sha256": "7acfcf455c36e06f7e5664a5e80083c8d91f42562d340f465e403294e76df664"
+    },
+    {
+      "path": "transfer/route-2026-10-11/PREREG-v9.md",
+      "sha256": "6a285015fb410c90243d5498f868200069d9083bcb39311ed5882be43150a053"
+    }
+  ],
+  "harnesses": [
+    {
+      "path": "/home/user/audit-artifacts/v9-replay-2/v9-pipeline.mjs",
+      "originalSha256": "51ac7fc49e5e9f6414c0ec476939d9ee10956d94c85c233882be46cec74d3aa3",
+      "harnessSha256": "f2c2049b2949d78649e3402b477393ffc188c7aa1422c08e44ec8f59dfdb31c1",
+      "changes": [
+        "ROOT literal",
+        "OUT literal",
+        "absolute imports",
+        "frozen negatives metadata path only"
+      ]
+    },
+    {
+      "path": "/home/user/audit-artifacts/v9-replay-2/v9-label.mjs",
+      "originalSha256": "cee010f9e6e6d406749a9ca2e682fa58a0a7a68876406b4737a6b2e4b653600e",
+      "harnessSha256": "35e82de00ce7e41d0cc773fcff57621508045d70f5c77cb3d08d22d7400d212c",
+      "changes": [
+        "ROOT literal",
+        "OUT literal",
+        "absolute imports",
+        "frozen negatives metadata path only"
+      ]
+    }
+  ],
+  "phases": [
+    {
+      "phase": "hand",
+      "exitCode": 0,
+      "expectedExit": 0,
+      "matched": true
+    },
+    {
+      "phase": "calibrate",
+      "exitCode": 2,
+      "expectedExit": 2,
+      "matched": true
+    },
+    {
+      "phase": "validate",
+      "exitCode": 3,
+      "expectedExit": 3,
+      "matched": true
+    },
+    {
+      "phase": "label",
+      "exitCode": 0,
+      "expectedExit": 0,
+      "matched": true
+    }
+  ],
+  "comparisons": {
+    "thresholdsEqual": true,
+    "validationEqualExceptTimestamp": true,
+    "labelsByteIdentical": true,
+    "handByteIdentical": true,
+    "populationEqual": true,
+    "frozenAndHistoricalOutputsUnchanged": true
+  },
+  "scanScope": {
+    "historical": {
+      "files": 34,
+      "duplicates": 741,
+      "duplicateSameTarget": 588
+    },
+    "replay": {
+      "files": 29,
+      "duplicates": 79,
+      "duplicateSameTarget": 75
+    },
+    "note": "Missing redundant/legacy sources affect enumeration; byte-identical unique labels and reconstructed validation are separately checked."
+  },
+  "validation": {
+    "schema": "cfb.v9-validation/1",
+    "ruler": "ruler-v9/1",
+    "checks": {
+      "determinism": {
+        "n": 1263,
+        "mismatches": 0,
+        "examples": []
+      },
+      "negativeControls": {
+        "nPos": 22,
+        "nNeg": 88,
+        "nRejected": 73,
+        "holes": 15,
+        "holeRate": 0.1705,
+        "byAxis": {
+          "N1-copy": {
+            "n": 22,
+            "rejected": 22,
+            "expectedGate": 22,
+            "missed": 0,
+            "otherGate": 0
+          },
+          "N3-invent": {
+            "n": 22,
+            "rejected": 17,
+            "expectedGate": 17,
+            "missed": 5,
+            "otherGate": 0
+          },
+          "N4-invert": {
+            "n": 4,
+            "rejected": 4,
+            "expectedGate": 4,
+            "missed": 0,
+            "otherGate": 0
+          },
+          "N5-over-compress": {
+            "n": 22,
+            "rejected": 22,
+            "expectedGate": 18,
+            "missed": 0,
+            "otherGate": 4
+          },
+          "N2-drop-anchor": {
+            "n": 18,
+            "rejected": 8,
+            "expectedGate": 8,
+            "missed": 10,
+            "otherGate": 0
+          }
+        },
+        "holeExamples": [
+          {
+            "id": "sktime_skbase_pr117#b13",
+            "axis": "N2-drop-anchor",
+            "mutation": "删除承重锚点 get_fitted_params\\"
+          },
+          {
+            "id": "gjoseph92_stackstac_pr149#b3",
+            "axis": "N2-drop-anchor",
+            "mutation": "删除承重锚点 axis"
+          },
+          {
+            "id": "p1c2u_jsonschema-path_pr39#b14",
+            "axis": "N3-invent",
+            "mutation": "把 from_file_path 换成不存在的 from_file_path_v2"
+          },
+          {
+            "id": "cbornet_blockbuster_pr4#b16",
+            "axis": "N2-drop-anchor",
+            "mutation": "删除承重锚点 blockbuster"
+          },
+          {
+            "id": "roniemartinez_latex2mathml_pr104#b8",
+            "axis": "N2-drop-anchor",
+            "mutation": "删除承重锚点 \\overrightarrow"
+          }
+        ],
+        "note": "「洞」= 负例整条过了尺子（auditRuler 定义）。"
+      },
+      "emptyDraft": {
+        "gaugeableUnits": 1058,
+        "passed": 0
+      },
+      "verbatimCopy": {
+        "n": 1058,
+        "passed": 0
+      },
+      "teacherBySplit": {
+        "train": {
+          "total": 862,
+          "unscorable": 125,
+          "n": 737,
+          "hardPass": 15,
+          "hardPassRate": 0.0204,
+          "hardCI95": [
+            0.0124,
+            0.0333
+          ],
+          "good": 15,
+          "goodRate": 0.0204
+        },
+        "dev": {
+          "total": 123,
+          "unscorable": 18,
+          "n": 105,
+          "hardPass": 2,
+          "hardPassRate": 0.019,
+          "hardCI95": [
+            0.0052,
+            0.0668
+          ],
+          "good": 2,
+          "goodRate": 0.019
+        },
+        "test": {
+          "total": 248,
+          "unscorable": 32,
+          "n": 216,
+          "hardPass": 5,
+          "hardPassRate": 0.0231,
+          "hardCI95": [
+            0.0099,
+            0.053
+          ],
+          "good": 5,
+          "goodRate": 0.0231
+        }
+      },
+      "handStandard": {
+        "n": 26,
+        "hardPass": 17,
+        "good": 16,
+        "goodRate": 0.6154
+      }
+    },
+    "validity": {
+      "determinism": "PASS",
+      "handHardPassRate": "FAIL",
+      "negativeHoles": "FAIL",
+      "emptyDraftPasses": "PASS",
+      "verbatimCopyPasses": "PASS",
+      "teacherTestNotZero": "FAIL",
+      "VALID": "INVALID"
+    }
+  },
+  "labelSummary": {
+    "ruler": "ruler-v9/1",
+    "uniqueUnits": 1233,
+    "duplicateRows": 79,
+    "duplicateSameTarget": 75,
+    "unscorable": 175,
+    "gaugeable": 1058,
+    "hardPass": 22,
+    "hardPassRateOfGaugeable": 0.0208,
+    "hardFailCountsAmongAll": {
+      "G4 actionable": 8,
+      "G0 no-leverage": 175,
+      "G6 not-copy": 1201,
+      "G3 anchors-kept": 84
+    },
+    "bySplit": {
+      "train": {
+        "units": 862,
+        "gaugeable": 737,
+        "hardPass": 15
+      },
+      "dev": {
+        "units": 123,
+        "gaugeable": 105,
+        "hardPass": 2
+      },
+      "test": {
+        "units": 248,
+        "gaugeable": 216,
+        "hardPass": 5
+      }
+    },
+    "filesScanned": 29,
+    "filesContributing": [
+      "transfer/models/micro-generator-gen-batch3/dev.jsonl.gz",
+      "transfer/models/micro-generator-gen-batch3/train-nonconforming.jsonl.gz",
+      "transfer/models/micro-generator-gen-batch3/train.jsonl.gz",
+      "transfer/models/micro-generator-gen-v3/dev.jsonl.gz",
+      "transfer/models/micro-generator-gen-v3/train-nonconforming.jsonl.gz"
+    ]
+  },
+  "protectedHistoricalHashes": {
+    "README.md": "f2960d1ecc114d596e8606d715cfde66632c19eaca97145373cfbf4b837c50d1",
+    "hand-standard.jsonl": "ce6ccf81477af8a4bbfe166dfed04c9a033895e6620beabeed9249007a50ae30",
+    "labelled-pool.jsonl": "6d8a41410e8f7015e18b24a0eb372fbc3469dd5f2230b0861b725bfc7a4229fe",
+    "labelled-pool.summary.json": "4dc7bceb0a8c46556dd914d8c5ec50f10c655a0bb14016d011e5c618de7534d6",
+    "thresholds.json": "bf7d304bd513a20236bfc2d2abee84f44461d1788d4d75a22c9f890282f29a41",
+    "validation.json": "1bc865aabb8d8e7990502a13eb8612a4734329a9d802fdb3759de63b4a0115c3"
+  }
+}

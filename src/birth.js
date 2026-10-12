@@ -8,6 +8,7 @@
 import crypto from 'node:crypto'
 import { fidelity, inventedIdentifiers } from './fidelity.js'
 import { settledTraceData } from './trace.js'
+import { replacementEvidence, evidenceSha256 } from './readback-evidence.js'
 import { estimateTokens } from './tokens.js'
 import { turnCallsBlock, spliceProgramParts, programPartsText } from './compile-v4.js'   // v12.9.1：I2 闸的出处集合并入程序算出的【验收提示】（S10.14）；v12.9.2：finish 处按本轮调用拼提示
 
@@ -531,6 +532,11 @@ export async function birthFinish(task, deps = {}) {
         ? { identifierRecall: null, protectedTokens: 0, lostTokens: 0, unmeasurable: true }
         : { identifierRecall: f.stats.tokenRecall, protectedTokens: f.stats.protectedTokens, lostTokens: f.stats.lostTokens, lostSample: f.stats.lostSample, unmeasurable: false }
     } catch { fid = null }
+    if (cfg.traceReadbackHashes) {
+      try {
+        trace('birth-replacement-evidence', { ...replacementEvidence({ raw, draft: candidate, ctx: String(cfg.compressCtx || ''), sessionId: task.sessionId, taskId: task.taskId, index: task.index }), acceptanceCtxSha256: evidenceSha256(String(cfgAcc.compressCtx || '')) })
+      } catch { /* evidence only; no interruption of the source stream */ }
+    }
     if (partial) {
       // 已决定用部分结果 ⇒ 仍在飞的分段（尾段）不再有用
       birthCancelFlying(task, cfg, trace, 'partial-used')

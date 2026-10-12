@@ -2,6 +2,7 @@
 // Keep generated documentation watermarks tied to the checked-in source and measured test receipts.
 // No dependencies, network access, API keys, or guessed test counts.
 import fs from 'node:fs'
+import crypto from 'node:crypto'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -159,7 +160,7 @@ function formatRun(run, lane, shapeTestSuites) {
   if (Number.isFinite(recorded) && Number.isFinite(shapeTestSuites) && recorded !== shapeTestSuites) {
     // 措辞按车道区分：isolated 车道**物理上**需要 Linux 网络命名空间；online 车道只是没在当前平台重记。
     const why = lane === 'isolated'
-      ? '该车道需 Linux 网络命名空间取证，本平台无法复跑'
+      ? '旧隔离车道回执，不代表本次环境；需重记实际隔离结果'
       : '该回执未在当前平台重记'
     return `${base}（**${recorded} 套件时代**的回执：${why}；当前 \`test/\` 有 ${shapeTestSuites} 套）`
   }
@@ -172,7 +173,7 @@ function summaryBody(data, style) {
   const isolated = formatRun(receipt.selftest.isolated, 'isolated', shape.testSuites)
   const scale = `**规模**：\`src/\` ${shape.srcModules} 个零依赖模块 · \`tools/\` ${shape.toolsScripts} 个脚本 + ${shape.toolsHelpers} 个 helpers · \`test/\` ${shape.testSuites} 套自测 · \`transfer/gold/\` ${shape.goldItems} 条（${shape.goldFamilies} 个家族）`
   if (style === 'handoff') return [
-    `- **当前版本：${version}** · **零第三方依赖**（纯 Node.js ≥ 20/22 内置模块）`,
+    `- **当前版本：${version}** · **插件核心零第三方运行依赖**（Node.js ≥ 20；审计自测另需 Git/Python，训练有额外依赖）`,
     '- **自测（本块由 `node tools/doc-watermark.mjs --write` 生成，勿手抄）**',
     `- 验收口径 \`npm run verify:offline\`（真断网 Linux 命名空间）：${isolated}`,
     `- 快速自检 \`npm test\`（联网机上跑，需要隔离的那条断言按设计跳过）：${online}`,
@@ -180,7 +181,7 @@ function summaryBody(data, style) {
     `- ${scale}`,
   ].join('\n')
   return [
-    `> **当前版本：${version}** · **零第三方依赖**（纯 Node.js ≥ 20/22 内置模块）`,
+    `> **当前版本：${version}** · **插件核心零第三方运行依赖**（Node.js ≥ 20；审计自测另需 Git/Python，训练有额外依赖）`,
     '> **自测（本块由 `node tools/doc-watermark.mjs --write` 生成，勿手抄）**',
     `> · 验收口径 \`npm run verify:offline\`（真断网 Linux 命名空间）：${isolated}`,
     `> · 快速自检 \`npm test\`（联网机上跑，需要隔离的那条断言按设计跳过）：${online}`,
@@ -237,7 +238,7 @@ function atomicWrite(file, text) {
   fs.renameSync(tmp, file)
 }
 function isoDay(at) { return at.toISOString().slice(0, 10) }
-function runCommand(root, args, label) {
+function runCommand(root, args, label, logDirectory) {
   const env = { ...process.env }
   // Recording is a zero-API maintenance command; do not expose model credentials to tests.
   for (const key of Object.keys(env)) if (/^(?:DEEPSEEK|OPENAI|ANTHROPIC|GEMINI|GOOGLE|CFB_JUDGE|CFB_PROPOSER).*?(?:KEY|TOKEN|SECRET)$/i.test(key)) delete env[key]
@@ -245,6 +246,8 @@ function runCommand(root, args, label) {
     cwd: root, env, encoding: 'utf8', timeout: 360_000, maxBuffer: 32 * 1024 * 1024,
   })
   const output = String(r.stdout || '') + String(r.stderr || '')
+  const logPath = path.join(logDirectory, label + '.log'); fs.writeFileSync(logPath, output, { flag:'wx' })
+  const logRef = { path: path.relative(root,logPath).replaceAll('\\','/'), sha256: crypto.createHash('sha256').update(output).digest('hex') }
   if (r.error) fail(`${label}-spawn-error:${r.error.message}`)
   const m = /合计:\s*(\d+)\s*通过\s*\/\s*(\d+)\s*失败\s*\/\s*(\d+)\s*跳过\s*\((\d+)\s*\/\s*(\d+)\s*套件通过\)[^\n]*?用时\s*([\d.]+)s/.exec(output)
   if (!m) fail(`${label}-summary-unparseable; tail:\n${output.split('\n').slice(-15).join('\n')}`)
@@ -253,7 +256,7 @@ function runCommand(root, args, label) {
     suitesPass: `${m[4]}/${m[5]} 套件`,
     pass: Number(m[1]), fail: Number(m[2]), skip: Number(m[3]), seconds: m[6],
     exitCode: r.status == null ? 1 : r.status,
-    output,
+    output, logRef,
   }
 }
 function printRun(label, run) {
@@ -275,6 +278,10 @@ function record(root, gateMeta) {
   // touched file if either full verification lane fails or cannot be parsed.
   const touched = [receiptFile, ...DOCS.map(({ file }) => path.join(root, file))]
   const backups = new Map(touched.map((file) => [file, fs.readFileSync(file, 'utf8')]))
+  const recordRoot = path.join(root,'.cfb-runtime/watermark-records'); fs.mkdirSync(recordRoot,{recursive:true})
+  const logDirectory = fs.mkdtempSync(path.join(recordRoot,'attempt-'))
+  const attemptFile = path.join(logDirectory,'ATTEMPT.json')
+  const attempt = { schema:'cfb.watermark-record-attempt/1', startedAt:new Date().toISOString(), status:'started', receiptsRestoredOnFailure:true, logs:{}, paidApiCalls:0, modelExecutions:0 }
   let committed = false
   try {
     let data = {
@@ -287,8 +294,9 @@ function record(root, gateMeta) {
     atomicWrite(receiptFile, JSON.stringify(data, null, 2) + '\n')
     writeAll(root, { pkg, receipt: data, shape: data.counts }, gateMeta)
 
-    const online = runCommand(root, ['verify.mjs'], 'online')
-    const isolated = runCommand(root, ['tools/verify-offline.mjs'], 'isolated')
+    const online = runCommand(root, ['verify.mjs'], 'online', logDirectory)
+    const isolated = runCommand(root, ['tools/verify-offline.mjs'], 'isolated', logDirectory)
+    attempt.logs = { online:online.logRef, isolated:isolated.logRef }; attempt.status = 'ran-verification'; fs.writeFileSync(attemptFile,JSON.stringify(attempt,null,2)+'\n')
     printRun('online', online)
     printRun('isolated', isolated)
     const runFailed = [online, isolated].some((r) => r.exitCode !== 0 || r.fail !== 0 || !/^([0-9]+)\s*\/\s*\1\s/.test(r.suitesPass))
@@ -299,8 +307,8 @@ function record(root, gateMeta) {
       generatedAt: isoDay(new Date()),
       selftest: {
         ...data.selftest,
-        online: { at: online.at, suitesPass: online.suitesPass, pass: online.pass, fail: online.fail, skip: online.skip, seconds: online.seconds },
-        isolated: { at: isolated.at, suitesPass: isolated.suitesPass, pass: isolated.pass, fail: isolated.fail, skip: isolated.skip, seconds: isolated.seconds },
+        online: { at: online.at, suitesPass: online.suitesPass, pass: online.pass, fail: online.fail, skip: online.skip, seconds: online.seconds, rawLog:online.logRef },
+        isolated: { at: isolated.at, suitesPass: isolated.suitesPass, pass: isolated.pass, fail: isolated.fail, skip: isolated.skip, seconds: isolated.seconds, rawLog:isolated.logRef },
       },
     }
     atomicWrite(receiptFile, JSON.stringify(data, null, 2) + '\n')
@@ -308,8 +316,10 @@ function record(root, gateMeta) {
     writeAll(root, fresh, gateMeta)
     checkAll(root, fresh, gateMeta)
     committed = true
+    attempt.status = 'committed'; attempt.finishedAt = new Date().toISOString(); fs.writeFileSync(attemptFile,JSON.stringify(attempt,null,2)+'\n')
     console.log('watermark: receipt recorded; online and isolated suites are fully PASS')
   } finally {
+    if (!committed) { attempt.status='failed-receipt-and-docs-restored'; attempt.finishedAt=new Date().toISOString(); fs.writeFileSync(attemptFile,JSON.stringify(attempt,null,2)+'\n') }
     if (!committed) {
       for (const [file, text] of backups) atomicWrite(file, text)
     }

@@ -46,7 +46,7 @@ const filters = args.filter((a, i) => !a.startsWith('-') && !(jIdx >= 0 && i ===
 const ORDER = [
   'provider-endpoint', 'core', 'compress', 'v4', 'v4-live', 'effect-eval', 'api-budget', 'eval-ready', 'eval-ready-v2', 'eval-visible-v3', 'eval-reasoning-v8', 'offline-lab', 'judge-calibration', 'closed-loop', 'closed-loop-v3', 'closed-loop-v4', 'manifest-ignore', 'training-ready', 'birth', 'robustness', 'hedge',
   'hook-wiring', 'hardening', 'concurrency', 'protocol', 'branches',
-  'audit-2026-09-27', 'micro-runtime', 'micro-ruler', 'micro-generator', 'micro-general-arm', 'micro-label-review', 'gen-ruler', 'mode1-quality', 'mode1-quality-parity', 'gold-use-split', 'gold-standard', 'gold-attest', 'gate-cjk-pairing', 'silver-shape', 'universal-select', 'v12', 'evidence-program', 'doc-watermark',
+  'audit-2026-09-27', 'micro-runtime', 'micro-ruler', 'micro-generator', 'micro-general-arm', 'micro-label-review', 'gen-ruler', 'mode1-quality', 'mode1-quality-parity', 'gold-use-split', 'gold-standard', 'gold-attest', 'gate-cjk-pairing', 'silver-shape', 'universal-select', 'v12', 'evidence-program', 'audit-integrity', 'compression-program', 'trainer-contract', 'doc-watermark',
 ]
 
 const found = fs.readdirSync(TEST_DIR).filter((f) => f.endsWith(SUFFIX)).map((f) => f.slice(0, -SUFFIX.length))
@@ -92,8 +92,8 @@ function runSuite(name) {
       const sm = lastMatch(/SKIP=(\d+)/, out)
       const skips = sm ? Number(sm[1]) : 0
       const firstBad = (out.split('\n').filter((l) => /FAIL|✗/.test(l) && !/FAIL=0\b/.test(l))[0] || '').trim().slice(0, 120)
-      const status = code === 0 && fail === 0 ? 'PASS' : 'FAIL'
-      resolve({ suite, status, note: (status === 'PASS' ? (found ? pass + ' passed' : 'exit 0') : (firstBad || ('exit ' + code))) + (skips ? '  (' + skips + ' skipped)' : ''), pass, fail, skips, ms })
+      const status = code === 0 && fail === 0 && found ? 'PASS' : 'FAIL'
+      resolve({ suite, status, note: (status === 'PASS' ? (found ? pass + ' passed' : 'exit 0') : (firstBad || (!found ? 'missing-count-summary: exit ' + code : 'exit ' + code))) + (skips ? '  (' + skips + ' skipped)' : ''), pass, fail, skips, ms })
     })
   })
 }
@@ -113,7 +113,7 @@ const wallMs = Date.now() - wallStart
 
 const bad = rows.filter((r) => r.status !== 'PASS')
 if (json) {
-  console.log(JSON.stringify({ ok: bad.length === 0, unlisted, jobs: JOBS, wallMs, rows }, null, 2))
+  console.log(JSON.stringify({ ok: bad.length === 0 && rows.length > 0, unlisted, jobs: JOBS, wallMs, rows }, null, 2))
 } else {
   console.log('')
   for (const r of rows) console.log('  ' + r.status.padEnd(5) + r.suite.padEnd(40) + r.note)
@@ -128,11 +128,11 @@ if (json) {
   // v14.14 环境护栏（2026-10-03 实证：同一 HEAD 下所谓「21 个已知环境失败」在 Node22 + 真断网入口全过，被误记为旧债数日）
   if (bad.length) {
     const ENV_SUITES = ['eval-ready', 'eval-ready-v2', 'eval-visible-v3', 'training-ready', 'training-local', 'training-iteration']
-    const envBad = bad.filter((r) => ENV_SUITES.includes(r.name))
+    const envBad = bad.filter((r) => ENV_SUITES.includes(path.basename(r.suite, SUFFIX)))
     const nodeOk = Number(process.versions.node.split('.')[0]) >= 22
     let offline = false
     try { const os2 = await import('node:os'); const ifs = Object.entries(os2.networkInterfaces()).filter(([, v]) => v?.length).map(([k]) => k); offline = ifs.length > 0 && ifs.every((n) => n === 'lo') } catch { /* 判定失败按在线处理 */ }
-    if (envBad.length && (!nodeOk || !offline)) console.log('  ⚠ 环境护栏：' + envBad.map((r) => r.name).join(' / ') + ' 这些套件要求 Node≥22 且真断网命名空间（当前 Node ' + process.versions.node + (offline ? '、已断网' : '、在线环境') + '）。先用正确入口重验再下代码债结论：安装 Node22 后跑 `node tools/verify-offline.mjs`。')
+    if (envBad.length && (!nodeOk || !offline)) console.log('  ⚠ 环境护栏：' + envBad.map((r) => path.basename(r.suite, SUFFIX)).join(' / ') + ' 这些套件要求 Node≥22 且真断网命名空间（当前 Node ' + process.versions.node + (offline ? '、已断网' : '、在线环境') + '）。先用正确入口重验再下代码债结论：安装 Node22 后跑 `node tools/verify-offline.mjs`。')
   }
   console.log('')
 }

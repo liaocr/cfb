@@ -23,6 +23,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
+import { auditTrajectoryRecords, requireUnambiguousTrajectories, trajectoryRecordDigest } from './helpers/trajectory-records.mjs'
 import { evidenceDigest } from '../src/evidence-program.js'
 import * as I from '../index.js'
 import { KNOBS, BASELINE_KNOBS, LEVER_ORDER, loadFrozenTasks, generateCandidates, armSummary, renderCandidate, productionGate, productionContext } from './helpers/candidates.mjs'
@@ -84,7 +85,15 @@ export const TRAJ_UNIT = Object.freeze({ mainUsd: 0.0125, mainCapUsd: 0.003 + 80
   // v4.7 影子分叉的期望参数（来自 29 条真实轨迹审计，首张回执后按 receipt.shadowRounds / noContrastGroups 重算）：跟随臂到第 divergeRound 轮才第一次与 raw 分歧（之前零主调用）；
   //   原文 ≥ 生产地板 3100 字的轮占比 floorShare（审计实测 13%，新家族更难、取 0.4 偏保守）⇒ 压缩调用期望 = 轮数 × floorShare；上界仍按「每轮都压、第 1 轮就分歧」算
   divergeRound: 3, floorShare: 0.4 })   // v14.10：压缩器 = 生产 makeBirthCompiler（关思考、max_tokens = max(850, compressV4MaxOutputTokens 1600)）⇒ 上界按 1600 算
-const readJsonl = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean) : [])
+const readJsonl = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').flatMap((line, i) => {
+  if (!line.trim()) return []
+  try { return [JSON.parse(line)] } catch { throw new Error(`invalid-append-log-json:${file}:${i + 1}`) }
+}) : [])
+const readTrajectoryRows = (file, { strict = false } = {}) => {
+  const raw = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim() : ''
+  const events = raw.startsWith('[') ? JSON.parse(raw) : readJsonl(file)
+  return (strict ? requireUnambiguousTrajectories(events, file) : auditTrajectoryRecords(events)).rows
+}
 export const loadFlywheel = () => readJsonl(TRAIN_PAIRS)
 /** 幂等追加偏好对到飞轮（pairs.jsonl）：按 (task, chosenText, rejectedText) 内容摘要去重。 */
 export function appendFlywheelPairs(pairs) {
@@ -111,7 +120,30 @@ export function appendFlywheelPairs(pairs) {
   }
   return { added: fresh.length, total: existing.length + fresh.length, qualityRejected, scopeRejected }
 }
-export const loadValidity = () => readJsonl(VALIDITY)
+const legacyValidityKey = (x) => JSON.stringify([x.task, x.arm, x.sample, x.proxy, x.outcome, x.roundsToFix])
+export function dedupValidityRecords(records) {
+  const seen = new Set(), out = []
+  for (const row of records) {
+    const key = row.observationSha256 || legacyValidityKey(row)
+    if (seen.has(key)) continue
+    seen.add(key); out.push(row)
+  }
+  return out
+}
+export const loadValidity = () => dedupValidityRecords(readJsonl(VALIDITY))
+function appendValidityRecords(records, source) {
+  const old = readJsonl(VALIDITY)
+  const seen = new Set(old.map((x) => x.observationSha256 || legacyValidityKey(x)))
+  const ambiguousLegacy = new Set(old.filter((x) => !x.observationSha256).map(legacyValidityKey))
+  const fresh = []
+  for (const row of records) {
+    const key = row.observationSha256 || legacyValidityKey(row)
+    if (seen.has(key) || ambiguousLegacy.has(legacyValidityKey(row))) continue
+    seen.add(key); fresh.push({ ...row, source })
+  }
+  if (fresh.length) { ensure(RULER_DIR); fs.appendFileSync(VALIDITY, fresh.map(JSON.stringify).join('\n') + '\n') }
+  return { added: fresh.length, duplicates: records.length - fresh.length }
+}
 export const loadExposure = () => readJson(EXPOSURE) || { schema: 'cfb.exposure/1', tasks: {} }
 function bumpExposure(tasks, split, round, decision) {
   const ex = loadExposure()
@@ -479,13 +511,14 @@ function cmdPropose(args = []) {
 // ── 5b. v4 尺子：confirm（L2 端到端结局确认 / 回滚）与 ruler（效度账本 / 曝光 / 排序器 / L2 基线）────────
 /** rows 来自 tools/traj-run.mjs 的 results.jsonl（或同构 JSON 数组）；--map champion=auto,previous=raw 把 variant 映射成臂。 */
 export function confirmFrom({ rows, map = { champion: 'champion', previous: 'previous' }, alpha = DEFAULT_DESIGN_V4.alphaHoldout, now = new Date().toISOString() }) {
+  rows = requireUnambiguousTrajectories(rows, "confirm").rows
   const arm = (r) => r.arm || (r.variant === map.champion ? 'champion' : r.variant === map.previous ? 'previous' : null)
   const typed = rows.map((r) => ({ ...r, arm: arm(r) })).filter((r) => r.arm)
   if (!typed.length) throw new Error('confirm-no-rows（没有能映射成 champion / previous 的行；用 --map champion=<variant>,previous=<variant>）')
   const cmp = outcomeComparison(typed)
   // 效度配对：同一样本既有 L1 代理分（proxyScore / structural）又有 L2 结局 → 追加账本
   // v4.7.2：未分歧的影子跟随臂与 leader 逐字节同一条轨迹、复用的 raw 已在原计划入账 ⇒ 都不是新的效度观测（否则同一条轨迹记两次）
-  const validity = typed.filter((r) => Number.isFinite(r.proxyScore ?? r.structural) && !(r.shadow && r.shadow.divergedAt == null) && !r.reusedFrom && !r.extended).map((r) => ({ schema: 'cfb.validity-pair/1', at: now, task: r.task, arm: r.arm, sample: r.sample ?? 0, proxy: r.proxyScore ?? r.structural, outcome: episodeOutcome(r).solved ? 1 : 0, roundsToFix: episodeOutcome(r).roundsToFix }))
+  const validity = typed.filter((r) => Number.isFinite(r.proxyScore ?? r.structural) && !(r.shadow && r.shadow.divergedAt == null) && !r.reusedFrom && !r.extended).map((r) => ({ schema: 'cfb.validity-pair/1', observationSha256: trajectoryRecordDigest(r), at: now, task: r.task, arm: r.arm, sample: r.sample ?? 0, proxy: r.proxyScore ?? r.structural, outcome: episodeOutcome(r).solved ? 1 : 0, roundsToFix: episodeOutcome(r).roundsToFix }))
   const cf = readJson(CHAMPION)
   let verdict = 'report-only', championAfter = cf
   if (cf?.adoption === 'provisional') {
@@ -505,6 +538,7 @@ export function confirmFrom({ rows, map = { champion: 'champion', previous: 'pre
 }
 /** 路径等价校准：rows 里 auto（生产路径）vs policy:base（直连路径）；两者在 L2 上分不出（e 与「更差」e 都 < 阈、≥4 对）且闸通过率相近 ⇒ ok。 */
 export function parityFrom(rows, { a = 'auto', b = 'policy:base', alpha = DEFAULT_DESIGN_V4.alphaHoldout, now = new Date().toISOString() } = {}) {
+  rows = requireUnambiguousTrajectories(rows, "parity").rows
   const typed = rows.map((r) => ({ ...r, arm: r.variant === b ? 'champion' : r.variant === a ? 'previous' : null })).filter((r) => r.arm)
   const cmp = outcomeComparison(typed)
   const gateRate = (v) => { const cs = rows.filter((r) => r.variant === v).flatMap((r) => (r.compile || []).filter((c) => !c.belowFloor)); return cs.length ? +(cs.filter((c) => c.ok).length / cs.length).toFixed(3) : null }
@@ -606,7 +640,7 @@ function cmdRestore(args) {
 function cmdReview(args) {
   const planN = f(args, '--plan'); const file = f(args, '--results') || (planN ? path.join(trajHomeFor(planN), 'results.jsonl') : null)
   if (!file || !fs.existsSync(file)) throw new Error('review 需要 --plan N（有 results.jsonl）或 --results FILE')
-  const rows = readJsonl(file); const rv = reviewRows(rows, { maxDraft: Number(f(args, '--draft-chars') || 700) })
+  const rows = readTrajectoryRows(file, { strict: true }); const rv = reviewRows(rows, { maxDraft: Number(f(args, '--draft-chars') || 700) })
   const head = [`# 评审稿 ${planN ? 't' + planN : path.basename(file)}（${rows.length} 行，${rv.length} 组；零 API）`, '', '读法：先看分歧轮 —— 两臂在那一轮之前读到的东西只差一份稿；稿里缺了什么 / 多定了什么，就是下一份候选该改的地方。留出家族的内容不要写进证据包。', '']
   const md = head.concat(rv.map((x) => x.md + '\n')).join('\n')
   const outFile = planN ? path.join(trajHomeFor(planN), 'review.md') : file.replace(/\.jsonl$/, '') + '.review.md'
@@ -622,8 +656,7 @@ function cmdReview(args) {
 function cmdConfirm(args) {
   const planN = f(args, '--plan')
   const file = f(args, '--results') || (planN ? path.join(trajHomeFor(planN), 'results.jsonl') : null); if (!file || !fs.existsSync(file)) throw new Error('--results FILE 或 --plan N 必填（traj-run 的 results.jsonl 或 JSON 数组）')
-  const raw = fs.readFileSync(file, 'utf8').trim()
-  const rows = raw.startsWith('[') ? JSON.parse(raw) : raw.split('\n').filter(Boolean).map((l) => JSON.parse(l))
+  const rows = readTrajectoryRows(file, { strict: true })
   if (args.includes('--parity')) {
     const pr = parityFrom(rows); ensure(RULER_DIR); writeJson(PARITY, pr)
     console.log(`# 路径等价校准（${pr.ok ? 'ok' : '未通过'}）\n\n${pr.note}\n已写入 ${path.relative(ROOT, PARITY)}`); return
@@ -631,16 +664,10 @@ function cmdConfirm(args) {
   const map = Object.fromEntries((f(args, '--map') || 'champion=champion,previous=previous').split(',').map((kv) => kv.split('=')))
   let r = confirmFrom({ rows, map })
   if (r.verdict === 'confirmed' || r.verdict === 'rolled-back') writeJson(CHAMPION, r.championAfter)
-  // v14.14：confirm 重跑幂等——效度对带来源去重（task|arm|sample|proxy|outcome|roundsToFix|source），同一结果文件再 confirm 不再重复入账
-  if (r.validity.length) {
-    ensure(RULER_DIR)
-    const srcRel = path.relative(ROOT, path.resolve(file))
-    const keyOf = (x) => [x.task, x.arm, x.sample, x.proxy, x.outcome, x.roundsToFix, x.source || srcRel].join('|')
-    const seen = new Set((fs.existsSync(VALIDITY) ? fs.readFileSync(VALIDITY, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []).map(keyOf))
-    const fresh = r.validity.map((x) => ({ ...x, source: srcRel })).filter((x) => !seen.has(keyOf(x)))
-    if (fresh.length) fs.appendFileSync(VALIDITY, fresh.map((x) => JSON.stringify(x)).join('\n') + '\n')
-    r = { ...r, validityAppended: fresh.length, validityDuplicates: r.validity.length - fresh.length }
-  }
+  // A copied/renamed file is NOT a new observation. Bind the actual terminal body;
+  // legacy reduced records lack lineage and are conservatively deduplicated.
+  const va = appendValidityRecords(r.validity, path.relative(ROOT, path.resolve(file)))
+  r = { ...r, validityAppended: va.added, validityDuplicates: va.duplicates }
   ensure(RULER_DIR); const n = fs.readdirSync(RULER_DIR).filter((x) => x.startsWith('confirm-')).length + 1
   writeJson(path.join(RULER_DIR, 'confirm-' + n + '.json'), { schema: 'cfb.confirm/1', at: new Date().toISOString(), source: path.relative(ROOT, path.resolve(file)), map, ...r })
   // v14.12.4：confirm --plan N 把计划标成已回灌（之前只有 ceiling 会改状态 ⇒ 模式 3 的计划跑完回灌后 status 仍打印「已有未执行计划」）
@@ -661,7 +688,7 @@ export function rulerReport({ validity = loadValidity(), exposure = loadExposure
   const v = rulerValidity(validity.map((x) => ({ proxy: x.proxy, outcome: x.outcome })))
   const pol = adoptionPolicy(v)
   const rk = trainRanker((flywheel || []).filter(cleanDevFlywheelPair))
-  const trajRows = trajDirs.flatMap((d) => readJsonl(path.join(ROOT, 'transfer', d, 'results.jsonl')).map((r) => ({ ...r, dir: d })))
+  const trajRows = trajDirs.flatMap((d) => readTrajectoryRows(path.join(ROOT, 'transfer', d, 'results.jsonl')).map((r) => ({ ...r, dir: d })))
   const baseline = trajRows.length ? outcomeComparison(trajRows.map((r) => ({ ...r, arm: r.variant === 'auto' ? 'champion' : r.variant === 'raw' ? 'previous' : null, sample: `${r.dir}#${r.sample ?? 0}` })).filter((r) => r.arm)) : null
   const retro = trajRows.length ? retroValidity(trajRows) : null
   const mrRows = ['run1', 'run2', 'run3', 'run4'].flatMap((d) => readJsonl(path.join(ROOT, 'transfer', 'mr', d, 'results.jsonl')).map((r) => ({ ...r, run: d })))
@@ -683,7 +710,7 @@ export function rulerReport({ validity = loadValidity(), exposure = loadExposure
   const census = familyCensus(states, { holdoutFamilies: Object.entries(loadPool().split).filter(([, s]) => s === 'holdout').map(([t]) => t) })
   census.scenarioFamilies = TRAJ_TASKS.length; census.scenarioHoldout = TRAJ_TASKS.filter((t) => loadPool().split[t.id] === 'holdout').length   // v4.3：可用场景家族（含还没有轨迹数据的新家族）
   const matrix = scoreMatrix(loadHistory()); const front = paretoFront(matrix)
-  return { retro, infoYield, l1, economics, validity: v, policy: pol, icc: { mr: iccMr, traj: iccTraj, design: readJson(DESIGN_FILE) }, states: census, pareto: { matrix, front }, exposure: Object.entries(exposure.tasks).map(([task, e]) => ({ task, n: e.n, retire: e.n >= HOLDOUT_MAX_EXPOSURE })), ranker: { status: rk.status, pairs: rk.pairs, cvAcc: rk.cvAcc, top: rk.top || null, note: rk.note }, baseline: baseline ? { trajectories: trajRows.length, raw: baseline.previous, auto: baseline.champion, pairs: baseline.pairs.length, e: baseline.e, eReject: baseline.eReject } : null, alphaTable: [0.1, 0.05].map((a) => ({ alpha: a, threshold: +(1 / a).toFixed(0), straightWins: winsNeeded(a), pStraightUnderNull: +Math.pow(0.5, winsNeeded(a)).toFixed(4), falseAdoptPerHypothesis: a, over6Hypotheses: +(1 - Math.pow(1 - a, 6)).toFixed(3) })) }
+  return { evidenceScope: 'historical-descriptive-proxy; content-deduplicated-not-proven-independent-n', independentSampleCount: null, retro, infoYield, l1, economics, validity: v, policy: pol, icc: { mr: iccMr, traj: iccTraj, design: readJson(DESIGN_FILE) }, states: census, pareto: { matrix, front }, exposure: Object.entries(exposure.tasks).map(([task, e]) => ({ task, n: e.n, retire: e.n >= HOLDOUT_MAX_EXPOSURE })), ranker: { status: rk.status, pairs: rk.pairs, cvAcc: rk.cvAcc, top: rk.top || null, note: rk.note }, baseline: baseline ? { trajectories: trajRows.length, raw: baseline.previous, auto: baseline.champion, pairs: baseline.pairs.length, e: baseline.e, eReject: baseline.eReject } : null, alphaTable: [0.1, 0.05].map((a) => ({ alpha: a, threshold: +(1 / a).toFixed(0), straightWins: winsNeeded(a), pStraightUnderNull: +Math.pow(0.5, winsNeeded(a)).toFixed(4), falseAdoptPerHypothesis: a, over6Hypotheses: +(1 - Math.pow(1 - a, 6)).toFixed(3) })) }
 }
 function cmdRuler(args = []) {
   const r = rulerReport()
@@ -756,7 +783,7 @@ export function buildTrajPlan({ n, arms = ['raw', 'policy:base'], scenarios = TR
 function cmdStates(args) {
   const pool = loadPool(); const dirs = ['traj1', 'traj2', 'traj3'].map((d) => path.join(ROOT, 'transfer', d, 'results.jsonl'))
   const extra = (f(args, '--results') || '').split(',').filter(Boolean).map((x) => path.resolve(ROOT, x))
-  const rows = [...dirs, ...extra].flatMap((file) => readJsonl(file).map((r) => ({ ...r, dir: path.basename(path.dirname(file)) })))
+  const rows = [...dirs, ...extra].flatMap((file) => readTrajectoryRows(file, { strict: true }).map((r) => ({ ...r, dir: path.basename(path.dirname(file)) })))
   const fam = f(args, '--family'); const maxPerRow = Number(f(args, '--max-per-row') || 4); const startRound = Number(f(args, '--start-round') || 0); const limit = Number(f(args, '--limit') || 0); const parentVariant = f(args, '--parent-variant')
   let states = rows.flatMap((r) => childStates(r, { split: pool.split, maxPerRow })).filter((st) => (!fam || st.family === fam) && (!startRound || st.startRound === startRound) && (!parentVariant || st.parentVariant === parentVariant))
   if (limit > 0) states = states.slice(0, limit)   // 探针：按文件顺序取前 N 个（确定性）
@@ -773,7 +800,7 @@ function cmdPerturbCheck(args) {
   const kind = f(args, '--kind') || 'decoy'
   const dirs = ['traj1', 'traj2', 'traj3'].map((d) => path.join(ROOT, 'transfer', d, 'results.jsonl'))
   const extra = (f(args, '--results') || '').split(',').filter(Boolean).map((x) => path.resolve(ROOT, x))
-  const rows = [...dirs, ...extra].flatMap((file) => readJsonl(file).map((r) => ({ ...r, dir: path.basename(path.dirname(file)) })))
+  const rows = [...dirs, ...extra].flatMap((file) => readTrajectoryRows(file, { strict: true }).map((r) => ({ ...r, dir: path.basename(path.dirname(file)) })))
   const r = perturbExposure(rows, { kind, full: args.includes('--full') })   // v4.5：缺省首见 + 首次排查命中即停；--full 全量重放（searchHits 计满）
   console.log(`扰动 ${kind} 惰性检查（${r.n} 条真实轨迹反事实重放）：修好前看到不同输出 ${r.exposedBeforeFix}/${r.n}；排查类调用（grep/cat/find/README）命中扰动物 ${r.searchHit}/${r.n} ⇒ **${r.verdict}**`)
   for (const [fam, x] of Object.entries(r.byFamily)) console.log(`  ${fam}: n=${x.n} 可见 ${x.exposedBeforeFix}（首见轮次 ${Object.entries(x.rounds).map(([k, v]) => `r${k}×${v}`).join(' ') || '—'}）排查命中 ${x.searchHit} ⇒ ${x.verdict}${x.truncated ? `（${x.truncated} 条旧行参数截断、只重放到截断处）` : ''}`)
@@ -787,7 +814,7 @@ export function familyCoverage({ extraDirs = [] } = {}) {
   const trajRoot = path.dirname(trajHomeFor(1))
   try { for (const d of fs.readdirSync(trajRoot)) files.push(path.join(trajRoot, d, 'results.jsonl')) } catch { /* 还没有收据 */ }
   files.push(...extraDirs)
-  const rows = files.flatMap((fp) => readJsonl(fp)).filter((r) => r && r.task && !r.error && r.status !== 'awaiting-draft')   // v4.6：hand 臂暂停行不算轨迹
+  const rows = files.flatMap((fp) => readTrajectoryRows(fp)).filter((r) => r && r.task)   // v4.6：hand 臂暂停行不算轨迹
   const cov = Object.fromEntries(TRAJ_TASKS.map((t) => [t.id, { total: 0, byArm: {}, rawN: 0, rawSolved: null, floorShare: null, info: null }]))
   const acc = Object.fromEntries(TRAJ_TASKS.map((t) => [t.id, { solved: 0, rounds: 0, over: 0 }]))
   for (const r of rows) {
@@ -839,15 +866,24 @@ function cmdPlanTraj(args) {
   let reuseRaw = null
   if (f(args, '--reuse-raw')) {
     const file = f(args, '--reuse-raw'); const abs = path.resolve(ROOT, file); if (!fs.existsSync(abs)) throw new Error('reuse-raw-missing:' + file)
-    const rows = readJsonl(abs).filter((r) => r.variant === 'raw' && !r.error && Array.isArray(r.roundMessages) && r.roundMessages.length)
+    if (fromStates) throw new Error('reuse-raw-from-states-not-supported:state-identities-must-be-audited-explicitly')
+    const available = readTrajectoryRows(abs, { strict: true }).filter((r) => r.variant === 'raw' && !r.error && Array.isArray(r.roundMessages) && r.roundMessages.length)
+    const requestedScenarios = perturb ? scenarios.map((x) => x + ':' + perturb) : scenarios
+    const rows = []
+    const requestedSamples = Number(f(args, '--samples') || 1)
+    if (!Number.isInteger(requestedSamples) || requestedSamples < 1) throw new Error('invalid-reuse-sample-count')
+    for (const scenario of requestedScenarios) for (let sample = 0; sample < requestedSamples; sample++) {
+      const selected = available.find((r) => r.task === scenario && r.sample === sample)
+      if (!selected) throw new Error(`reuse-raw-sample-missing:${scenario}:${sample}; count/order is not identity`)
+      rows.push(selected)
+    }
     const byTask = {}; for (const r of rows) byTask[r.task] = (byTask[r.task] || 0) + 1
-    const missing = scenarios.filter((sc) => !byTask[sc.split(':')[0] === sc ? sc : sc]); if (missing.length) throw new Error('reuse-raw-no-rows:' + missing.join(',') + '（该文件里没有这些场景的 raw 轨迹，或缺 roundMessages：要 --store-text 跑出来的）')
     // v4.7.2 延长：旧 raw 被轮数上限截断（最后一轮还在发调用）且本计划轮数更多 ⇒ raw 只付 (R − 旧轮数)，跟随臂最早在旧轨迹第一次过地板那一轮分歧（之前影子，零成本）
     const R = Number(f(args, '--max-rounds') || (isLite ? 4 : 5))
     const capped = rows.filter((r) => r.rounds < R && (r.transcript?.[r.transcript.length - 1]?.calls?.length > 0))
     const firstFloor = rows.map((r) => (r.transcript || []).findIndex((t) => (t.reasoningChars || 0) >= 3100) + 1).filter((k) => k > 0)
     const extend = capped.length ? { rows: capped.length, from: Math.round(capped.reduce((a, r) => a + r.rounds, 0) / capped.length), firstFloor: firstFloor.length ? Math.min(...firstFloor) : null } : null
-    reuseRaw = { file: path.relative(ROOT, abs), rows: rows.length, byTask, at: rows.map((r) => r.at).filter(Boolean).sort()[0] || null, digest: evidenceDigest(rows.map((r) => [r.task, r.sample, r.rounds, r.fixedAtRound])).slice(0, 16), ...(extend ? { extend } : {}) }
+    reuseRaw = { file: path.relative(ROOT, abs), rows: rows.length, byTask, at: rows.map((r) => r.at).filter(Boolean).sort()[0] || null, digest: evidenceDigest(rows.map((r) => [r.task, r.sample, r.rounds ?? null, r.fixedAtRound ?? null])).slice(0, 16), ...(extend ? { extend } : {}) }
   }
   const calHist = costCalibration(h)   // v4.7.3：有回执就按实测 divergeRound / floorShare 再算一遍期望（常数那份照旧写进计划，校准那份并排给操作者看）
   const wantStop = args.includes('--stop') || isLite
@@ -869,7 +905,7 @@ function cmdPlanTraj(args) {
   const home = trajHomeFor(n); ensure(home); writeJson(path.join(home, 'plan.json'), plan)
   h.trajPlans = (h.trajPlans || []).filter((t) => t.n !== n).concat([{ n, at: plan.at, status: 'planned', digest: plan.digest, design: plan.design, expectedUsd: plan.cost.expectedUsd, capUsd: plan.cost.capUsd }]); writeJson(HISTORY, h)
   const L = [`# 分叉轨迹计划 t${n}（digest ${plan.digest}，未发请求）`, '', `目的：${plan.purpose}`, '', `臂：${plan.variants.join(' vs ')}；${plan.fromStates ? `子状态 ${plan.fromStates.count} 个（家族 ${plan.fromStates.families.join(', ')}，平均起始轮 ${plan.fromStates.meanStartRound}，${plan.fromStates.file}）` : '场景：' + plan.scenarios.join(', ')} × ${plan.samples} 样本；≤${plan.maxRounds} 轮；${plan.fork ? '起始轮共用、各臂分叉' : '不分叉'}${plan.stop ? `；**有界续跑**：${plan.stop.compare ? `每组后算 e 值，${plan.stop.compare.champion} vs ${plan.stop.compare.previous} 任一方向 e ≥ ${(1 / plan.stop.alpha).toFixed(0)}（≥${plan.stop.minPairs} 对）或` : '单臂无配对，只按'}估算花费 ≥ $${plan.stop.capUsd} 即停` : ''}`,
-    `请求：主调用 ≤${plan.cost.mains} + 压缩 ≤${plan.cost.compresses}（上界：每轮都压、第 1 轮就分歧）；期望主 ${plan.cost.expectedMains} + 压缩 ${plan.cost.expectedCompresses}${plan.cost.shadow ? `（${plan.regimeArms && Object.keys(plan.regimeArms).length ? `制度臂 ${Object.keys(plan.regimeArms).join('/')} 第 1 轮就压、第 2 轮起分歧、每轮都压；其余跟随臂` : '影子分叉：跟随臂'}到第 ${plan.cost.pricing.divergeRound} 轮才分歧、原文过地板的轮占 ${plan.cost.pricing.floorShare}${plan.reuseRaw ? (plan.reuseRaw.extend ? `；raw 复用 ${plan.reuseRaw.file} 的前 ${plan.reuseRaw.extend.from} 轮、只付续跑的 ${Math.max(0, plan.maxRounds - plan.reuseRaw.extend.from)} 轮；跟随臂第 ${plan.reuseRaw.extend.firstFloor || plan.reuseRaw.extend.from + 1} 轮分歧、付之后的 ${Math.max(0, plan.maxRounds - (plan.reuseRaw.extend.firstFloor || plan.reuseRaw.extend.from + 1))} 轮` : '；raw 复用自 ' + plan.reuseRaw.file + '，不付') : ''}）` : ''}；**期望实付 ≈ $${plan.cost.expectedUsd}，上界 ≈ $${plan.cost.capUsd}**（max_tokens 8000；常数见 TRAJ_UNIT，首张回执后更新）`,
+    `请求：主调用 ≤${plan.cost.mains} + 压缩 ≤${plan.cost.compresses}（上界：每轮都压、第 1 轮就分歧）；期望主 ${plan.cost.expectedMains} + 压缩 ${plan.cost.expectedCompresses}${plan.cost.shadow ? `（${plan.regimeArms && Object.keys(plan.regimeArms).length ? `制度臂 ${Object.keys(plan.regimeArms).join('/')} 第 1 轮就压、第 2 轮起分歧、每轮都压；其余跟随臂` : '影子分叉：跟随臂'}到第 ${plan.cost.pricing.divergeRound} 轮才分歧、原文过地板的轮占 ${plan.cost.pricing.floorShare}${plan.reuseRaw ? (plan.reuseRaw.extend ? `；raw 复用 ${plan.reuseRaw.file} 的前 ${plan.reuseRaw.extend.from} 轮、只付续跑的 ${Math.max(0, plan.maxRounds - plan.reuseRaw.extend.from)} 轮；跟随臂第 ${plan.reuseRaw.extend.firstFloor || plan.reuseRaw.extend.from + 1} 轮分歧、付之后的 ${Math.max(0, plan.maxRounds - (plan.reuseRaw.extend.firstFloor || plan.reuseRaw.extend.from + 1))} 轮` : '；raw 复用自 ' + plan.reuseRaw.file + '，不付') : ''}）` : ''}；**规划估算 ≈ $${plan.cost.expectedUsd}，规划上界 ≈ $${plan.cost.capUsd}**（不是提供商账单，未含预检；max_tokens 8000，常数见 TRAJ_UNIT）`,
     `产出（估）：L1 对 ${plan.yield.l1Pairs}、L2 对 ${plan.yield.l2Pairs}、效度对 ≈${plan.yield.validityPairsApprox}、飞轮对 ≈${plan.yield.flywheelPairsApprox}、子状态 ≈${plan.yield.childStatesApprox}`, '', plan.holdoutNote, '', '批准后执行（traj-run 会核对参数与计划一致，跑完写 receipt.json）：', '```', plan.command, '```', '', hasHand ? `回灌：node tools/cfb-cycle.mjs ceiling --plan ${n}   # 模式 1 不走 confirm：hand 不是候选，只量天花板 + 进金标` : `回灌：node tools/cfb-cycle.mjs confirm --plan ${n} --map champion=policy:base,previous=raw   # 或 --parity（auto vs policy:base）`]
   L.push('', `家族覆盖（轨迹数）：${TRAJ_TASKS.map((t) => `${t.id}=${cov[t.id].total}`).join(' ')}；本计划 ${plan.scenarios.length === 1 ? '只跑 ' + plan.scenarios[0] + '，跑完先 `review --plan ' + n + '` 再决定下一个家族' : '批量 ' + plan.scenarios.length + ' 个家族'}`)
   if (plan.regimeArms) L.push('', `**制度臂**：${Object.entries(plan.regimeArms).map(([a, k]) => `${a} 改了 ${k.join(' / ')}`).join('；')} —— 这是**换制度**（什么时候压、什么稿放行），不是调稿：第 1 轮就压、第 2 轮起分歧、每轮都压（计费已按此算，不享受影子省钱）；结论只对「制度 vs 制度」成立，稿的内容规格另量。`)
@@ -912,31 +948,24 @@ function resultsArg(args, kind = 'traj') {
   const planN = f(args, '--plan'); const home = planN ? (kind === 'bench' ? benchHomeFor(planN) : trajHomeFor(planN)) : null
   const file = f(args, '--results') || (home ? path.join(home, 'results.jsonl') : null)
   if (!file || !fs.existsSync(file)) throw new Error(`需要 --plan N（有 results.jsonl）或 --results FILE`)
-  return { planN, home: home || path.dirname(path.resolve(file)), file, rows: readResults(file) }
+  const events = readResults(file)
+  const resolved = kind === 'traj' ? requireUnambiguousTrajectories(events, file) : null
+  return { planN, home: home || path.dirname(path.resolve(file)), file, rows: resolved ? [...resolved.rows, ...resolved.pending, ...resolved.errors] : events }
 }
 /** 模式 1 回灌：hand vs raw 的 L2 结局 → offline/ruler/ceiling-<k>.json + 效度账本；**不碰 champion**（hand 不是候选）。 */
 function cmdCeiling(args) {
   const { planN, home, file, rows: curRows } = resultsArg(args)
   const map = Object.fromEntries((f(args, '--map') || 'hand=hand,raw=raw').split(',').map((kv) => kv.split('=')))
   let rows = curRows
-  if (planN && !args.includes('--single')) {
-    const h = loadHistory()
-    const prior = []
-    for (const tp of (h.trajPlans || []).filter((x) => x.n < Number(planN) && x.status !== 'superseded')) {
-      const rf = path.join(trajHomeFor(tp.n), 'results.jsonl')
-      if (!fs.existsSync(rf)) continue
-      const pr = readResults(rf)
-      if (pr.some((r) => r.variant === map.hand)) prior.push(...pr.filter((r) => r.status !== 'awaiting-draft' && !r.error))
-    }
-    if (prior.length) rows = [...prior, ...curRows]
-  }
+  // Audit repair: ceiling decisions are scoped to one plan. Historical pooling is not an independent confirmation.
   // 只算仍在等的：同一 task|variant|sample 后面已有完成行（续跑写的）的暂停行是历史，不再报
   const doneKeys = new Set(rows.filter((r) => r.status !== 'awaiting-draft' && !r.error).map((r) => `${r.fromState || r.task}|${r.variant}|${r.sample}`))
   const waiting = rows.filter((r) => r.status === 'awaiting-draft' && !doneKeys.has(`${r.fromState || r.task}|${r.variant}|${r.sample}`))
   const r = ceilingFrom({ rows, map })
   ensure(RULER_DIR); const k = fs.readdirSync(RULER_DIR).filter((x) => x.startsWith('ceiling-')).length + 1
   writeJson(path.join(RULER_DIR, 'ceiling-' + k + '.json'), { ...r, plan: planN ? 't' + planN : null, source: path.relative(ROOT, path.resolve(file)) })
-  if (r.validity.length) fs.appendFileSync(VALIDITY, r.validity.map((x) => JSON.stringify(x)).join('\n') + '\n')
+  const va = appendValidityRecords(r.validity, 'ceiling:' + (f(args, '--plan') || f(args, '--results') || 'selected-plan'))
+  r.validityAppended = va.added; r.validityDuplicates = va.duplicates
   const fw = appendFlywheelPairs(flywheelPairsFromTraj(rows, { split: loadPool().split, source: planN ? 't' + planN : 'ceiling', roundNum: Number(planN) || 0 }))
   if (planN) { const h = loadHistory(); const t = (h.trajPlans || []).find((x) => x.n === Number(planN)); if (t && t.status !== 'superseded') { t.status = 'ceiling'; t.ceiling = { k, verdict: r.verdict, pairs: r.cmp.pairs.length, e: r.cmp.e, headroom: r.headroom }; writeJson(HISTORY, h) } }
   const L = [`# 模式 1 天花板（${r.verdict}）`, '', '| 臂 | n | 修好率 | 到修好轮数 | 假宣称 | 修好后验收 | 重复 |', '| --- | --- | --- | --- | --- | --- | --- |']
@@ -945,7 +974,7 @@ function cmdCeiling(args) {
   L.push(`手写稿闸：尝试 ${r.gate.attempts}、过闸 ${r.gate.accepted}、被拒 ${r.gate.rejected}、低于地板不压 ${r.gate.belowFloor}；影子省下主调用 ${r.gate.shadowRounds}、**未分歧组 ${r.gate.noContrast}**（整条没触发 ⇒ 与 raw 同、计平手）；原文均 ${r.gate.meanRawChars ?? '—'} 字 → 稿 ${r.gate.meanDraftChars ?? '—'} 字 → 拼接后 ${r.gate.meanStoredChars ?? '—'} 字（压缩比 ${r.gate.compression ?? '—'}）`)
   if (waiting.length) L.push(`⚠ 还有 ${waiting.length} 条 hand 轨迹在等手写稿（未计入）：` + waiting.map((w) => `${w.task}#${w.sample} r${w.awaiting?.round}`).join(' '))
   L.push('', r.verdict === 'hand-better' ? '**手写稿分得出比原文好**：f(主模型 | 好稿) 有余量 —— 这些稿是模式 2 的标准（`gold add`），下一步在另一个家族重复，规格要能跨家族' : r.verdict === 'hand-worse' ? '**手写稿比原文差**：主模型读稿不如读原文 —— 别训练压缩器了，先回头看稿（review）：是漏了决定还是漏了排除' : r.verdict === 'insufficient' ? '**配对不够**（<4 对或 <2 家族）：不下结论；再跑一个家族（plan-traj --arms raw,hand）' : '**分不出**：余量不显著，别把它当天花板用；看 review 里的分歧轮再决定')
-  L.push('', `写入 ${path.relative(ROOT, path.join(RULER_DIR, 'ceiling-' + k + '.json'))}` + (r.validity.length ? `；效度账本 +${r.validity.length}` : '') + (fw.added ? `；飞轮偏好对 +${fw.added}` : '') + `；${r.note}`)
+  L.push('', `写入 ${path.relative(ROOT, path.join(RULER_DIR, 'ceiling-' + k + '.json'))}` + (r.validity.length ? `；效度账本 +${r.validityAppended}（重复 ${r.validityDuplicates}）` : '') + (fw.added ? `；飞轮偏好对 +${fw.added}` : '') + `；${r.note}`)
   if (r.gate.accepted) L.push(`下一步: node tools/cfb-cycle.mjs gold add --plan ${planN ?? '<N>'}   # 过闸且修好的稿进金标注册表（${path.relative(ROOT, GOLD_DIR())}）`)
   fs.writeFileSync(path.join(home, 'ceiling.md'), L.join('\n') + '\n'); console.log(L.join('\n'))
   return r
@@ -1147,13 +1176,13 @@ function cmdStatus() {
   const cf = readJson(CHAMPION); const rv = rulerValidity(loadValidity().map((x) => ({ proxy: x.proxy, outcome: x.outcome })))
   console.log(`尺子: 效度 ${rv.status}（n=${rv.n}）；champion 采纳状态 ${cf?.adoption || (cf ? 'legacy' : 'baseline')}` + (cf?.adoption === 'provisional' ? '（待 L2 确认：confirm --results）' : '') + (exposureWarnings().length ? '；⚠ ' + exposureWarnings().join('；') : ''))
 }
-/** v4.7 成本校准：每张回执（receipt.json）对照计划的期望 ⇒ 实付主调用 / 压缩调用、实测分歧轮、原文过地板轮占比、未分歧组。
+/** v4.7 成本校准：每张回执（receipt.json）对照计划的期望 ⇒ 记录的主调用 / 压缩调用（费用仍是估算，不是账单）、实测分歧轮、原文过地板轮占比、未分歧组。
  *  这是 TRAJ_UNIT.divergeRound / floorShare 的唯一更新来源（常数在代码里冻结，证据在这里；回执以前只写不读 —— 产出了没人用的信息）。 */
 export function costCalibration(h = loadHistory()) {
   const out = []
   for (const t of h.trajPlans || []) {
     const home = trajHomeFor(t.n); const rc = readJson(path.join(home, 'receipt.json')); if (!rc) continue
-    const plan = readJson(path.join(home, 'plan.json')) || {}; const rows = fs.existsSync(path.join(home, 'results.jsonl')) ? readJsonl(path.join(home, 'results.jsonl')).filter((r) => r && !r.error && r.status !== 'awaiting-draft') : []
+    const plan = readJson(path.join(home, 'plan.json')) || {}; const rows = fs.existsSync(path.join(home, 'results.jsonl')) ? readTrajectoryRows(path.join(home, 'results.jsonl')) : []
     const div = rows.filter((r) => r.shadow && !r.extended && r.shadow.divergedAt != null).map((r) => r.shadow.divergedAt)
     let over = 0, n = 0; for (const r of rows.filter((r) => r.variant === 'raw')) for (const x of r.transcript || []) { n++; if ((x.reasoningChars || 0) >= 3100) over++ }
     out.push({ plan: 't' + t.n, expectedMains: plan.cost?.expectedMains ?? plan.cost?.mains ?? null, mainCalls: rc.mainCalls ?? null, expectedCompresses: plan.cost?.expectedCompresses ?? plan.cost?.compresses ?? null, compressCalls: rc.compressCalls ?? null,
@@ -1306,7 +1335,7 @@ export const EVIDENCE_VERSIONS = Object.freeze({ auto: 'compress-v4d7', auto8: '
 export function trajFailureEvidence({ holdout = [], trajDirs = ['traj1', 'traj2', 'traj3'], mrDirs = ['run1', 'run2', 'run3', 'run4'] } = {}) {
   const out = []
   const ver = (v) => EVIDENCE_VERSIONS[v] || v
-  const tj = trajDirs.flatMap((d) => readJsonl(path.join(ROOT, 'transfer', d, 'results.jsonl')).map((r) => ({ ...r, dir: d }))).filter((r) => !r.error && !holdout.includes(r.task))
+  const tj = trajDirs.flatMap((d) => readTrajectoryRows(path.join(ROOT, 'transfer', d, 'results.jsonl')).map((r) => ({ ...r, dir: d }))).filter((r) => !r.error && !holdout.includes(r.task))
   for (const r of tj) {
     const solved = !!(r.fixed || Number.isInteger(r.fixedAtRound))
     if (r.variant !== 'raw' && (!solved || (r.claim === 'fixed' && !solved))) out.push({ kind: 'traj', task: r.task, variant: r.variant, version: ver(r.variant), rounds: r.rounds, solved, claim: r.claim, compressOk: (r.compile || []).map((c) => (c.ok ? 1 : 0)).join(''), edits: (r.edits || []).map((e) => e.path) })
@@ -1524,7 +1553,7 @@ export function harvestHistoricalFlywheel({ includeDirect = true } = {}) {
   const trajFiles = ['traj1', 'traj2', 'traj3'].map((d) => path.join(ROOT, 'transfer', d, 'results.jsonl'))
   const trajRoot = path.dirname(trajHomeFor(1))
   if (fs.existsSync(trajRoot)) for (const d of fs.readdirSync(trajRoot)) trajFiles.push(path.join(trajRoot, d, 'results.jsonl'))
-  for (const fp of trajFiles) if (fs.existsSync(fp)) harvested.push(...flywheelPairsFromTraj(readJsonl(fp), { split: pool.split, source: path.basename(path.dirname(fp)) }))
+  for (const fp of trajFiles) if (fs.existsSync(fp)) harvested.push(...flywheelPairsFromTraj(readTrajectoryRows(fp, { strict: true }), { split: pool.split, source: path.basename(path.dirname(fp)) }))
   // 2) Mode 2 基准目录
   const benchRoot = path.dirname(benchHomeFor(1))
   const gold = loadGold(GOLD_DIR())
@@ -1899,7 +1928,7 @@ export function nextAction() {
   }
   for (const t of h.trajPlans || []) {
     const resFile = path.join(trajHomeFor(t.n), 'results.jsonl')
-    if (t.status === 'planned' && fs.existsSync(resFile) && readJsonl(resFile).some((r) => !r.error && r.status !== 'awaiting-draft')) {
+    if (t.status === 'planned' && fs.existsSync(resFile) && readTrajectoryRows(resFile, { strict: true }).length > 0) {
       return { stage: 'traj-ready-to-ingest', priority: 'P0', reason: `轨迹计划 t${t.n} 已产出结果但尚未回灌`, command: `node tools/cfb-cycle.mjs ingest-traj --plan ${t.n}`, estimatedUsd: 0 }
     }
   }
@@ -1954,15 +1983,27 @@ export function benchmarkReport() {
   const files = ['traj1', 'traj2', 'traj3'].map((d) => path.join(ROOT, 'transfer', d, 'results.jsonl'))
   const trajRoot = path.dirname(trajHomeFor(1))
   try { for (const d of fs.readdirSync(trajRoot)) files.push(path.join(trajRoot, d, 'results.jsonl')) } catch {}
-  const rows = files.flatMap((fp) => readJsonl(fp).map((r) => ({ ...r, dir: path.basename(path.dirname(fp)) })))
+  const evidenceFiles = files.map((fp) => ({ fp, audit: auditTrajectoryRecords(readJsonl(fp)) }))
+  const rows = evidenceFiles.flatMap(({ fp, audit }) => audit.rows.map((r) => ({ ...r, dir: path.basename(path.dirname(fp)) })))
+  const evidenceAudit = {
+    scope: 'mixed-historical-descriptive-only', independentSampleCount: null,
+    eventRows: evidenceFiles.reduce((n, x) => n + x.audit.eventCount, 0),
+    terminalRows: rows.length,
+    pendingKeys: evidenceFiles.reduce((n, x) => n + x.audit.pending.length, 0),
+    conflictKeys: evidenceFiles.reduce((n, x) => n + x.audit.conflicts.length, 0),
+    duplicateKeys: evidenceFiles.reduce((n, x) => n + x.audit.duplicates.length, 0),
+    invalidRows: evidenceFiles.reduce((n, x) => n + x.audit.invalid.length, 0),
+    quarantined: evidenceFiles.filter((x) => x.audit.conflicts.length || x.audit.invalid.length).map(({ fp, audit }) => ({ file: path.relative(ROOT, fp), conflicts: audit.conflicts, invalid: audit.invalid })),
+  }
   const card = industryScorecard(rows, { anchor: 'raw', mainUsd: TRAJ_UNIT.mainUsd, compressUsd: TRAJ_UNIT.compressUsd })
   const pre = prescreenPolicies()
   const topPol = pre.find((r) => r.policy !== 'base' && r.applicable && r.expandedBlocks === 0) || pre[0]
-  return { l2Scorecard: card, l1Leaderboard: pre, topPolicy: topPol?.policy || 'base' }
+  return { l2Scorecard: card, l1Leaderboard: pre, topPolicy: topPol?.policy || 'base', evidenceAudit }
 }
 export function cmdBenchmark() {
   const rep = benchmarkReport()
   const { l2Scorecard: card, l1Leaderboard: pre, topPolicy } = rep
+  console.log(`证据范围：历史混合描述统计；独立样本量未知。事件 ${rep.evidenceAudit.eventRows} → 无歧义终态 ${rep.evidenceAudit.terminalRows}；隔离冲突 ${rep.evidenceAudit.conflictKeys} 键、无效 ${rep.evidenceAudit.invalidRows} 行；等待稿件 ${rep.evidenceAudit.pendingKeys} 键不计成绩。`)
   const L = [
     '# CFB 本地代理评测记分卡（借鉴 SWE-bench Pro × TAU-bench × Arena Elo × AA 指标口径；非官方成绩）',
     '',

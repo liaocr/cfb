@@ -1,0 +1,1373 @@
+{
+  "schema": "cfb.project-doctor/1",
+  "ok": true,
+  "errors": [],
+  "warnings": [
+    "sparse checkout: 10 deliberately unmaterialized tracked paths; not full asset validation",
+    "Core/plugin tests are not actual host, GPU, CPU model quality, or receiver-readback evidence."
+  ],
+  "state": {
+    "schema": "cfb.project-state/1",
+    "auditDate": "2026-10-11",
+    "softwareVersion": "14.25.4",
+    "workStatus": "continuation-foundation-development-only",
+    "baseline": "3922da88b35fe790ba145b3442a4800aac7fb4d1",
+    "repairBranch": "repair/audit-2026-10-11",
+    "goal": "Given arbitrary birth-time raw reasoning and its context, generate a shorter continuation-useful text for the original receiver; not sentence selection or family templates.",
+    "route": {
+      "id": "pretrained-generative-student-only",
+      "firstCandidate": "fla-hub/rwkv7-0.1B-g1",
+      "modelRevision": "7450ee04eb9c66baa7161b7a5c0fe09e5b2817d8",
+      "actualParameters": 191034624,
+      "status": "candidate-not-promoted",
+      "initialSourceAndReceiver": "V4.1-Flash",
+      "cpuDeployment": "unverified; feasibility gate before training",
+      "alternatives": "No parallel fallback campaign. If a hard feasibility gate fails, retire this candidate and explicitly select one replacement."
+    },
+    "authority": [
+      "PROJECT.json",
+      "AGENTS.md",
+      "README.md",
+      "docs/PROJECT-PLAN.md",
+      "docs/ARCHITECTURE.md",
+      "docs/README.md",
+      "docs/AUDIT-2026-10-11.md",
+      "transfer/HANDOFF.md",
+      "tools/micro-generator/task-contract.json",
+      "tools/micro-generator/continuation-prereg.json",
+      "docs/CONTINUATION-PROGRAM-2026-10-12.md",
+      "docs/COVERAGE-AND-COLLECTION.md",
+      "tools/micro-generator/REVIEW-GUIDE.md",
+      "tools/micro-generator/dataset-policy.json"
+    ],
+    "evidence": {
+      "v9Validation": "data-v9/validation.json",
+      "v9Replay": "transfer/audit-2026-10-11/v9-replay.json",
+      "frozenList": "transfer/route-2026-10-11/PREREG-v9.sha256",
+      "missingLedger": "transfer/audit-2026-10-11/missing-artifacts.json",
+      "checkoutScope": "transfer/audit-2026-10-11/checkout-scope.json",
+      "scanCoverage": "transfer/audit-2026-10-11/scan-coverage.json",
+      "modelMetadata": "transfer/audit-2026-10-11/rwkv7-model-metadata.json",
+      "activeRuler": null,
+      "readiness": {
+        "cpuQualityAndLatencyVerified": null,
+        "currentTrainingAdmitted": null,
+        "candidatePromoted": null,
+        "liveHostVerified": null,
+        "originalReaderReferenceUtilityVerified": null
+      },
+      "tokenizerMetadata": "transfer/audit-2026-10-11/rwkv7-tokenizer-observations.json",
+      "fileRoles": "transfer/audit-2026-10-11/FILE-INDEX.json"
+    },
+    "claims": {
+      "v9RulerValid": false,
+      "currentTrainingAdmitted": false,
+      "candidatePromoted": false,
+      "cpuQualityAndLatencyVerified": false,
+      "liveHostVerified": false,
+      "neverWorseThanRawGuaranteed": false,
+      "originalReaderReferenceUtilityVerified": false
+    },
+    "dataBuckets": {
+      "evidence": "immutable and replayable history; technical proof is not model quality",
+      "research": "unreviewed/heuristic teacher pools; no default SFT admission",
+      "quarantine": "conflicting or identity-relabelled evidence, unreviewed revisions, off-target assistants",
+      "excluded": "sparse large assets and unmaterialized recovery candidates; available is not verified"
+    },
+    "requiredNextGates": [
+      "Confirm task/deployment resource budget, reader access and reconstructable same-birth state",
+      "Trace real birth/hook/serialization/persistence and subsequent target request",
+      "Raw/raw A/A and raw/reference task utility plus whole-path net economics",
+      "New preregistered valid evaluator; preserve frozen v9 INVALID",
+      "Coverage-oriented, source/license/privacy reviewed target-compatible corpus with whole-family split",
+      "Pinned native tokenizer, base-model capability and real CPU feasibility",
+      "Explicitly authorized diagnostic pretrained-generative SFT and later shadow promotion"
+    ],
+    "safety": {
+      "paidApisAuthorized": false,
+      "gpuTrainingAuthorized": false,
+      "remotePushAuthorized": false,
+      "oneTimeBlindTestConsumptionAuthorized": false,
+      "preserveHistoricalBodiesAndReceipts": true
+    },
+    "updatedAt": "2026-10-12",
+    "workflowOrder": [
+      "task contract and actual readback observability",
+      "small fully reviewed developer references and length ladder",
+      "new evaluator calibration",
+      "provenance and coverage corpus",
+      "candidate capability and CPU feasibility",
+      "diagnostic SFT after explicit authorization",
+      "quantization and host shadow",
+      "limited promotion"
+    ],
+    "continuationProgram": {
+      "phase": "development-reference-first",
+      "paidCalls": 0,
+      "realModelExecutions": 0,
+      "newBlindConsumed": 0,
+      "trainingAdmitted": 0,
+      "singleAiReviewNotIndependentCertification": true,
+      "protocolValidity": "NOT_VALIDATED",
+      "evidence": {
+        "taskContract": {
+          "path": "tools/micro-generator/task-contract.json",
+          "sha256": "a273c2739aaa507bc98e797a3adbf4b4dce81faf1c011cfe4c4749de5722e1cd"
+        },
+        "developmentPreregistration": {
+          "path": "tools/micro-generator/continuation-prereg.json",
+          "sha256": "6e316476ce052e463e8a6b7ab8979656f0cce7927f85c358d330b21c588e9187"
+        },
+        "sourceRegistry": {
+          "path": "transfer/program-2026-10-12/source-registry.json",
+          "sha256": "98d3216e7fcddff9ace7337a125ff4a3e064d1daae287f5b93bf4a24ed2a82de"
+        },
+        "reviewedAnnotations": {
+          "path": "transfer/program-2026-10-12/reviewed-dev.jsonl",
+          "sha256": "952c96431998c25f4100ec1ace2c1c0e92a06743418148ef361b174a0acd7ef9"
+        },
+        "completeReviews": {
+          "path": "transfer/program-2026-10-12/complete-reviews.jsonl",
+          "sha256": "2263f7d5bf1a3ae966d5ce6005dfd98c0756315dc30b85bef7f46fbb556356b4"
+        },
+        "developmentReviewReport": {
+          "path": "transfer/program-2026-10-12/development-review-report.json",
+          "sha256": "a09c9a213177de0640b851c5b966c9a051ff2c208e4e1dde5d448716fde65018"
+        },
+        "labelledControls": {
+          "path": "transfer/program-2026-10-12/control-cases.jsonl",
+          "sha256": "255fb9e28b144638c1b4997e4943836151801c65037801a8563c893491d83beb"
+        },
+        "apparatusCalibration": {
+          "path": "transfer/program-2026-10-12/control-calibration-final.json",
+          "sha256": "eb585d1119315de261a86e2366e39815aeb75be453802d7b08e732ea76046a23"
+        },
+        "readbackFixtureEvents": {
+          "path": "transfer/program-2026-10-12/readback-fixture-events.jsonl",
+          "sha256": "5eea6ceca0fc7bc9e7a919c9528aac117bde5fddcab089c1d5a36930a1d88d35"
+        },
+        "readbackFixtureAudit": {
+          "path": "transfer/program-2026-10-12/readback-fixture-audit-final.json",
+          "sha256": "1d1b886de8f547e96aa9f1798644497b38226a6b49ffd43e81d0cf82b9aab930"
+        },
+        "readerStudyPlan": {
+          "path": "transfer/program-2026-10-12/reader-study-plan-final.json",
+          "sha256": "5a51614c2c088f73212d9c9a0a7bc108cac4b7735daefbebbecfbbb09468cb9e"
+        },
+        "readerStudyNoExecution": {
+          "path": "transfer/program-2026-10-12/reader-study-no-execution-final.json",
+          "sha256": "5c1c5eadada4b8cdbecba49abd641b956e04ac2d5a25d173f459d2811d0bda15"
+        },
+        "formalPreflightFinal": {
+          "path": "transfer/program-2026-10-12/formal-export-latest/formal-preflight.json",
+          "sha256": "8b76bdcfb067e834f4b671f1675ec999e2decbb2d86ee564926be6372190c450"
+        }
+      }
+    },
+    "nextAction": "Confirm resource budget, original-reader access/channel and reconstructable host state; trace real readback; run raw/raw A/A and raw/reference utility before acquiring new whole-family supervision or diagnostic SFT. Local receipts remain descriptive; no automatic resource execution."
+  },
+  "readiness": {
+    "ready": false,
+    "blockers": [
+      "task resource budget and deployment limits are not confirmed",
+      "same-birth raw/raw and raw/reference utility has not been measured on the original reader",
+      "CPU backend/tokenizer/quality/latency not validated",
+      "no valid active preregistered evaluator; preserve frozen v9 INVALID",
+      "no target-compatible fully reviewed admitted corpus",
+      "no promoted generative student",
+      "original receiver and real host not validated"
+    ]
+  },
+  "evidence": {
+    "frozenFiles": [
+      {
+        "path": "tools/gen-ruler-v9.mjs",
+        "matches": true
+      },
+      {
+        "path": "tools/gen-negatives-v9.mjs",
+        "matches": true
+      },
+      {
+        "path": "tools/ruler-v9.mjs",
+        "matches": true
+      },
+      {
+        "path": "tools/v9-pipeline.mjs",
+        "matches": true
+      },
+      {
+        "path": "tools/v9-label.mjs",
+        "matches": true
+      },
+      {
+        "path": "tools/v9-inventory.mjs",
+        "matches": true
+      },
+      {
+        "path": "transfer/route-2026-10-11/PREREG-v9.md",
+        "matches": true
+      }
+    ],
+    "activeRuler": {
+      "valid": false,
+      "status": "NOT_REGISTERED",
+      "validationPath": null
+    },
+    "v9Status": "INVALID",
+    "v9UniqueLabels": 1233,
+    "v9IndependentReplay": true,
+    "missingSnapshotPaths": 24,
+    "exactRecoveryFiles": 6,
+    "recoveredBytes": 5763690,
+    "notDownloadedRecoveryCandidates": 18,
+    "sparseOmissions": 10,
+    "continuationProgramme": {
+      "phase": "development-reference-first",
+      "structurallyConsistent": true,
+      "registry": {
+        "counts": {
+          "retainedRecords": 42,
+          "uniqueRawCtx": 22,
+          "repeatedInputObservations": 20,
+          "sourceFamilies": 9,
+          "trainingAdmitted": 0
+        },
+        "errors": []
+      },
+      "developmentReview": {
+        "schema": "cfb.development-review-report/1",
+        "annotationRef": {
+          "path": "transfer/program-2026-10-12/reviewed-dev.jsonl",
+          "sha256": "952c96431998c25f4100ec1ace2c1c0e92a06743418148ef361b174a0acd7ef9"
+        },
+        "reviewRef": {
+          "path": "transfer/program-2026-10-12/complete-reviews.jsonl",
+          "sha256": "2263f7d5bf1a3ae966d5ce6005dfd98c0756315dc30b85bef7f46fbb556356b4"
+        },
+        "cases": [
+          {
+            "caseId": "flaky-timeout-9f726c3b9c677f04",
+            "errors": [],
+            "reviewApparatusPass": true,
+            "materialFacts": 20,
+            "preservedMaterialFacts": 20,
+            "claims": 7,
+            "characters": {
+              "raw": 7447,
+              "ctx": 810,
+              "draft": 1273
+            },
+            "charRatioProxy": 0.1709413186518061,
+            "realTokenSavings": null,
+            "realContinuationEffect": null,
+            "qualification": "Explicit AI single-reviewer labels and exact coverage bindings; not automatic semantic proof or a valid target-reader ruler."
+          },
+          {
+            "caseId": "perf-regression-743d949f701c5040",
+            "errors": [],
+            "reviewApparatusPass": true,
+            "materialFacts": 20,
+            "preservedMaterialFacts": 20,
+            "claims": 6,
+            "characters": {
+              "raw": 4112,
+              "ctx": 2101,
+              "draft": 1287
+            },
+            "charRatioProxy": 0.3129863813229572,
+            "realTokenSavings": null,
+            "realContinuationEffect": null,
+            "qualification": "Explicit AI single-reviewer labels and exact coverage bindings; not automatic semantic proof or a valid target-reader ruler."
+          },
+          {
+            "caseId": "sse-truncated-24bd46e54267e3fe",
+            "errors": [],
+            "reviewApparatusPass": true,
+            "materialFacts": 23,
+            "preservedMaterialFacts": 23,
+            "claims": 7,
+            "characters": {
+              "raw": 3605,
+              "ctx": 1697,
+              "draft": 1411
+            },
+            "charRatioProxy": 0.3914008321775312,
+            "realTokenSavings": null,
+            "realContinuationEffect": null,
+            "qualification": "Explicit AI single-reviewer labels and exact coverage bindings; not automatic semantic proof or a valid target-reader ruler."
+          }
+        ],
+        "errors": [],
+        "completeAiReviewedCases": 3,
+        "humanReviews": 0,
+        "independentSecondReviews": 0,
+        "trainingAdmitted": false,
+        "originalReceiverValidated": false
+      },
+      "readiness": {
+        "ready": false,
+        "blockers": [
+          "actual receiver/channel and wire capture unavailable",
+          "resource budget not confirmed",
+          "reference-versus-raw and A/A reader experiment not executed",
+          "new evaluator not validated and numerical deployment thresholds not frozen",
+          "zero admitted training cases",
+          "native tokenizer/CPU model capability and latency not executed"
+        ]
+      },
+      "hashBoundProducts": [
+        "taskContract",
+        "developmentPreregistration",
+        "sourceRegistry",
+        "reviewedAnnotations",
+        "completeReviews",
+        "developmentReviewReport",
+        "labelledControls",
+        "apparatusCalibration",
+        "readbackFixtureEvents",
+        "readbackFixtureAudit",
+        "readerStudyPlan",
+        "readerStudyNoExecution",
+        "formalPreflightFinal"
+      ]
+    }
+  },
+  "paidApiCallsByThisCommand": 0,
+  "gpuRunsByThisCommand": 0,
+  "blindTestsConsumedByThisCommand": 0,
+  "trajectories": {
+    "scope": "runtime-offline-and-three-legacy-traj-append-logs; per-file-counts-not-independent-n-or-quality-regrading",
+    "independentSampleCount": null,
+    "logFiles": 49,
+    "runs": [
+      {
+        "run": "t102",
+        "file": ".cfb-runtime/traj/t102/results.jsonl",
+        "events": 4,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 2,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t103",
+        "file": ".cfb-runtime/traj/t103/results.jsonl",
+        "events": 5,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 3,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t104",
+        "file": ".cfb-runtime/traj/t104/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t105",
+        "file": ".cfb-runtime/traj/t105/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t106",
+        "file": ".cfb-runtime/traj/t106/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t107",
+        "file": ".cfb-runtime/traj/t107/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t108",
+        "file": ".cfb-runtime/traj/t108/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t109",
+        "file": ".cfb-runtime/traj/t109/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t110",
+        "file": ".cfb-runtime/traj/t110/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t111",
+        "file": ".cfb-runtime/traj/t111/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t112",
+        "file": ".cfb-runtime/traj/t112/results.jsonl",
+        "events": 6,
+        "terminal": 5,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t113",
+        "file": ".cfb-runtime/traj/t113/results.jsonl",
+        "events": 6,
+        "terminal": 2,
+        "pending": 2,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t114",
+        "file": ".cfb-runtime/traj/t114/results.jsonl",
+        "events": 5,
+        "terminal": 2,
+        "pending": 3,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t115",
+        "file": ".cfb-runtime/traj/t115/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t116",
+        "file": ".cfb-runtime/traj/t116/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t117",
+        "file": ".cfb-runtime/traj/t117/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t118",
+        "file": ".cfb-runtime/traj/t118/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t119",
+        "file": ".cfb-runtime/traj/t119/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t120",
+        "file": ".cfb-runtime/traj/t120/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t121",
+        "file": ".cfb-runtime/traj/t121/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t122",
+        "file": ".cfb-runtime/traj/t122/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t123",
+        "file": ".cfb-runtime/traj/t123/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t124",
+        "file": ".cfb-runtime/traj/t124/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t125",
+        "file": ".cfb-runtime/traj/t125/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t126",
+        "file": ".cfb-runtime/traj/t126/results.jsonl",
+        "events": 7,
+        "terminal": 2,
+        "pending": 3,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t127",
+        "file": ".cfb-runtime/traj/t127/results.jsonl",
+        "events": 37,
+        "terminal": 20,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t128",
+        "file": ".cfb-runtime/traj/t128/results.jsonl",
+        "events": 20,
+        "terminal": 20,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t129",
+        "file": ".cfb-runtime/traj/t129/results.jsonl",
+        "events": 14,
+        "terminal": 7,
+        "pending": 7,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t130",
+        "file": ".cfb-runtime/traj/t130/results.jsonl",
+        "events": 18,
+        "terminal": 18,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t130-lowfloor-explore",
+        "file": ".cfb-runtime/traj/t130-lowfloor-explore/results.jsonl",
+        "events": 20,
+        "terminal": 11,
+        "pending": 9,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t131",
+        "file": ".cfb-runtime/traj/t131/results.jsonl",
+        "events": 29,
+        "terminal": 17,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [
+          {
+            "key": "[\"flaky-timeout\",\"hand\",2]",
+            "lines": [
+              28,
+              29
+            ],
+            "signatures": [
+              "006d5c51072d6ffdd00a486a83c03bb679b24354e667abe28c725addccaf969f",
+              "f2617f34a8d9338d70a872879f669801dcd5ba9fc02ac69f6e0967f7dc86cef6"
+            ]
+          }
+        ],
+        "invalid": []
+      },
+      {
+        "run": "t132",
+        "file": ".cfb-runtime/traj/t132/results.jsonl",
+        "events": 30,
+        "terminal": 18,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t133",
+        "file": ".cfb-runtime/traj/t133/results.jsonl",
+        "events": 18,
+        "terminal": 12,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t134",
+        "file": ".cfb-runtime/traj/t134/results.jsonl",
+        "events": 37,
+        "terminal": 24,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t135",
+        "file": ".cfb-runtime/traj/t135/results.jsonl",
+        "events": 36,
+        "terminal": 24,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t16",
+        "file": ".cfb-runtime/traj/t16/results.jsonl",
+        "events": 3,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t17",
+        "file": ".cfb-runtime/traj/t17/results.jsonl",
+        "events": 3,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t91",
+        "file": ".cfb-runtime/traj/t91/results.jsonl",
+        "events": 4,
+        "terminal": 4,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t92",
+        "file": ".cfb-runtime/traj/t92/results.jsonl",
+        "events": 3,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t93",
+        "file": ".cfb-runtime/traj/t93/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t94",
+        "file": ".cfb-runtime/traj/t94/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t95",
+        "file": ".cfb-runtime/traj/t95/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t96",
+        "file": ".cfb-runtime/traj/t96/results.jsonl",
+        "events": 2,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t97",
+        "file": ".cfb-runtime/traj/t97/results.jsonl",
+        "events": 4,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t98",
+        "file": ".cfb-runtime/traj/t98/results.jsonl",
+        "events": 10,
+        "terminal": 2,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "t99",
+        "file": ".cfb-runtime/traj/t99/results.jsonl",
+        "events": 6,
+        "terminal": 4,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "traj1",
+        "file": "transfer/traj1/results.jsonl",
+        "events": 6,
+        "terminal": 4,
+        "pending": 0,
+        "errors": 2,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "traj2",
+        "file": "transfer/traj2/results.jsonl",
+        "events": 12,
+        "terminal": 8,
+        "pending": 0,
+        "errors": 1,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      },
+      {
+        "run": "traj3",
+        "file": "transfer/traj3/results.jsonl",
+        "events": 11,
+        "terminal": 9,
+        "pending": 0,
+        "errors": 0,
+        "duplicateKeys": 0,
+        "conflicts": [],
+        "invalid": []
+      }
+    ],
+    "eventRows": 400,
+    "unambiguousTerminalRows": 271,
+    "conflictKeys": 1,
+    "pendingKeys": 24,
+    "relabelledRawIdentities": [
+      {
+        "run": "t131",
+        "task": "flaky-timeout",
+        "labelledSample": 0,
+        "originalRun": "t130",
+        "originalSample": 1,
+        "sourceAt": "2026-10-11T11:26:16.700Z"
+      },
+      {
+        "run": "t131",
+        "task": "flaky-timeout",
+        "labelledSample": 1,
+        "originalRun": "t130",
+        "originalSample": 0,
+        "sourceAt": "2026-10-11T11:26:16.699Z"
+      },
+      {
+        "run": "t131",
+        "task": "wrong-model",
+        "labelledSample": 0,
+        "originalRun": "t130",
+        "originalSample": 1,
+        "sourceAt": "2026-10-11T11:29:04.132Z"
+      },
+      {
+        "run": "t131",
+        "task": "wrong-model",
+        "labelledSample": 1,
+        "originalRun": "t130",
+        "originalSample": 0,
+        "sourceAt": "2026-10-11T11:29:00.202Z"
+      },
+      {
+        "run": "t132",
+        "task": "flaky-timeout",
+        "labelledSample": 0,
+        "originalRun": "t130",
+        "originalSample": 1,
+        "sourceAt": "2026-10-11T11:26:16.700Z"
+      },
+      {
+        "run": "t132",
+        "task": "flaky-timeout",
+        "labelledSample": 1,
+        "originalRun": "t130",
+        "originalSample": 0,
+        "sourceAt": "2026-10-11T11:26:16.699Z"
+      },
+      {
+        "run": "t132",
+        "task": "wrong-model",
+        "labelledSample": 0,
+        "originalRun": "t130",
+        "originalSample": 1,
+        "sourceAt": "2026-10-11T11:29:04.132Z"
+      },
+      {
+        "run": "t132",
+        "task": "wrong-model",
+        "labelledSample": 1,
+        "originalRun": "t130",
+        "originalSample": 0,
+        "sourceAt": "2026-10-11T11:29:00.202Z"
+      },
+      {
+        "run": "t133",
+        "task": "wrong-model",
+        "labelledSample": 0,
+        "originalRun": "t130",
+        "originalSample": 1,
+        "sourceAt": "2026-10-11T11:29:04.132Z"
+      },
+      {
+        "run": "t133",
+        "task": "wrong-model",
+        "labelledSample": 1,
+        "originalRun": "t130",
+        "originalSample": 0,
+        "sourceAt": "2026-10-11T11:29:00.202Z"
+      }
+    ],
+    "unresolvedReferences": [
+      {
+        "run": "t17",
+        "task": "sse-truncated:decoy",
+        "sample": 0,
+        "ref": {
+          "file": ".cfb-runtime/traj/t15/results.jsonl",
+          "at": "2026-10-05T04:20:23.035Z",
+          "sample": 0,
+          "task": "sse-truncated:decoy",
+          "mainCalls": 7
+        }
+      },
+      {
+        "run": "t91",
+        "task": "flaky-timeout",
+        "sample": 0,
+        "ref": {
+          "file": ".cfb-runtime/traj/t15/results.jsonl",
+          "at": "2026-10-05T04:19:38.478Z",
+          "sample": 0,
+          "task": "flaky-timeout",
+          "mainCalls": 7
+        }
+      },
+      {
+        "run": "t91",
+        "task": "perf-regression",
+        "sample": 0,
+        "ref": {
+          "file": ".cfb-runtime/traj/t15/results.jsonl",
+          "at": "2026-10-05T04:20:01.091Z",
+          "sample": 0,
+          "task": "perf-regression",
+          "mainCalls": 7
+        }
+      }
+    ],
+    "qualification": "Relabelled source identity invalidates naive cross-plan matching. It does not by itself prove that every within-run raw/hand pair was wrong. Historical bodies/receipts remain untouched; no promotion from these mixed statistics."
+  },
+  "sourceScan": {
+    "scope": "materialized-tracked-and-nonignored-files-plus-explicit-recovered-archives; machine-scan-not-pair-factual-review",
+    "files": 1925,
+    "markdown": 574,
+    "duplicateMarkdownGroups": [
+      [
+        ".cfb-runtime/traj/t100-resume/drafts/eacces-config-s1-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s1-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s1-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s1-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s1-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s1-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s1-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s1-r7.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s1-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t100-resume/drafts/flaky-timeout-s0-r3.md",
+        ".cfb-runtime/traj/t100/drafts/flaky-timeout-s0-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s0-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s0-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s0-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s0-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s0-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s0-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s0-r7.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s0-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t100-resume/drafts/flaky-timeout-s1-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s1-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s1-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s1-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s1-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s1-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s1-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s1-r7.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout-s1-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t100-resume/drafts/sse-truncated-s0-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s0-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s0-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s0-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s0-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s0-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s0-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s0-r7.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s0-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t100-resume/drafts/sse-truncated-s1-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s1-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s1-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s1-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s1-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s1-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s1-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s1-r7.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated-s1-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s0-r1.md",
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s0-r2.md",
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s0-r3.md",
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s0-r4.md",
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s0-r5.md",
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s0-r6.md",
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s0-r7.md",
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s0-r8.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s0-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s0-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s0-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s0-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s0-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s0-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s0-r7.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config-s0-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s1-r1.md",
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s1-r2.md",
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s1-r3.md",
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s1-r4.md",
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s1-r5.md",
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s1-r6.md",
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s1-r7.md",
+        ".cfb-runtime/traj/t100/drafts/eacces-config-s1-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t100/drafts/flaky-timeout-s1-r1.md",
+        ".cfb-runtime/traj/t100/drafts/flaky-timeout-s1-r2.md",
+        ".cfb-runtime/traj/t100/drafts/flaky-timeout-s1-r3.md",
+        ".cfb-runtime/traj/t100/drafts/flaky-timeout-s1-r4.md",
+        ".cfb-runtime/traj/t100/drafts/flaky-timeout-s1-r5.md",
+        ".cfb-runtime/traj/t100/drafts/flaky-timeout-s1-r6.md",
+        ".cfb-runtime/traj/t100/drafts/flaky-timeout-s1-r7.md",
+        ".cfb-runtime/traj/t100/drafts/flaky-timeout-s1-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s0-r1.md",
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s0-r2.md",
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s0-r3.md",
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s0-r4.md",
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s0-r5.md",
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s0-r6.md",
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s0-r7.md",
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s0-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s1-r1.md",
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s1-r2.md",
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s1-r3.md",
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s1-r4.md",
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s1-r5.md",
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s1-r6.md",
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s1-r7.md",
+        ".cfb-runtime/traj/t100/drafts/perf-regression-s1-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s0-r1.md",
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s0-r2.md",
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s0-r3.md",
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s0-r4.md",
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s0-r5.md",
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s0-r6.md",
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s0-r7.md",
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s0-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s1-r1.md",
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s1-r2.md",
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s1-r3.md",
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s1-r4.md",
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s1-r5.md",
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s1-r6.md",
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s1-r7.md",
+        ".cfb-runtime/traj/t100/drafts/sse-truncated-s1-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s0-r1.md",
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s0-r2.md",
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s0-r3.md",
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s0-r4.md",
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s0-r5.md",
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s0-r6.md",
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s0-r7.md",
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s0-r8.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s0-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s0-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s0-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s0-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s0-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s0-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s0-r7.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s0-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s1-r1.md",
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s1-r2.md",
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s1-r3.md",
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s1-r4.md",
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s1-r5.md",
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s1-r6.md",
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s1-r7.md",
+        ".cfb-runtime/traj/t100/drafts/wrong-model-s1-r8.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s1-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s1-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s1-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s1-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s1-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s1-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s1-r7.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model-s1-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_decoy-s0-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_decoy-s0-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_decoy-s0-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_decoy-s0-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_decoy-s0-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_decoy-s0-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_decoy-s0-r7.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_decoy-s0-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_long-horizon-s0-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_long-horizon-s0-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_long-horizon-s0-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_long-horizon-s0-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_long-horizon-s0-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_long-horizon-s0-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_long-horizon-s0-r7.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/eacces-config_long-horizon-s0-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout_long-horizon-s0-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout_long-horizon-s0-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout_long-horizon-s0-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout_long-horizon-s0-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout_long-horizon-s0-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout_long-horizon-s0-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout_long-horizon-s0-r7.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/flaky-timeout_long-horizon-s0-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t101/drafts.preplaced/perf-regression-s0-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/perf-regression-s0-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/perf-regression-s0-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/perf-regression-s0-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/perf-regression-s0-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/perf-regression-s0-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/perf-regression-s0-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_decoy-s0-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_decoy-s0-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_decoy-s0-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_decoy-s0-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_decoy-s0-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_decoy-s0-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_decoy-s0-r7.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_decoy-s0-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_long-horizon-s0-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_long-horizon-s0-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_long-horizon-s0-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_long-horizon-s0-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_long-horizon-s0-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_long-horizon-s0-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_long-horizon-s0-r7.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/sse-truncated_long-horizon-s0-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_decoy-s0-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_decoy-s0-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_decoy-s0-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_decoy-s0-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_decoy-s0-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_decoy-s0-r7.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_decoy-s0-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_decoy-s0-r4.md",
+        ".cfb-runtime/traj/t114/drafts/wrong-model_decoy-s0-r5.md",
+        ".cfb-runtime/traj/t126/drafts/wrong-model_decoy-s0-r5.md"
+      ],
+      [
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_long-horizon-s0-r1.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_long-horizon-s0-r2.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_long-horizon-s0-r3.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_long-horizon-s0-r4.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_long-horizon-s0-r5.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_long-horizon-s0-r6.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_long-horizon-s0-r7.md",
+        ".cfb-runtime/traj/t101/drafts.preplaced/wrong-model_long-horizon-s0-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t112/drafts/sse-truncated_decoy-s0-r5.md",
+        ".cfb-runtime/traj/t126/drafts/sse-truncated_decoy-s0-r6.md"
+      ],
+      [
+        ".cfb-runtime/traj/t114/drafts/eacces-config_decoy-s0-r5.md",
+        ".cfb-runtime/traj/t126/drafts/eacces-config_decoy-s0-r5.md"
+      ],
+      [
+        ".cfb-runtime/traj/t127/drafts/flaky-timeout-s0-r3.md",
+        ".cfb-runtime/traj/t127/drafts/flaky-timeout-s1-r3.md"
+      ],
+      [
+        ".cfb-runtime/traj/t129/drafts/flaky-timeout-s0-r3.md",
+        ".cfb-runtime/traj/t129/drafts/flaky-timeout-s1-r3.md"
+      ],
+      [
+        ".cfb-runtime/traj/t15/drafts/flaky-timeout-s0-r3.md",
+        "transfer/gold-repair/drafts-proposed/flaky-timeout-s0-r3.md",
+        "transfer/gold-repair/drafts/flaky-timeout-s0-r3.md"
+      ],
+      [
+        ".cfb-runtime/traj/t15/drafts/flaky-timeout-s0-r5.md",
+        "transfer/gold-repair/drafts-proposed/flaky-timeout-s0-r5.md",
+        "transfer/gold-repair/drafts/flaky-timeout-s0-r5.md"
+      ],
+      [
+        ".cfb-runtime/traj/t15/drafts/flaky-timeout_long-horizon-s0-r4.md",
+        "transfer/gold-repair/drafts-proposed/flaky-timeout_long-horizon-s0-r4.md",
+        "transfer/gold-repair/drafts/flaky-timeout_long-horizon-s0-r4.md"
+      ],
+      [
+        ".cfb-runtime/traj/t15/drafts/perf-regression-s0-r6.md",
+        "transfer/gold-repair/drafts-proposed/perf-regression-s0-r6.md",
+        "transfer/gold-repair/drafts/perf-regression-s0-r6.md"
+      ],
+      [
+        ".cfb-runtime/traj/t15/drafts/sse-truncated_decoy-s0-r3.md",
+        "transfer/gold-repair/drafts-proposed/sse-truncated_decoy-s0-r3.md",
+        "transfer/gold-repair/drafts/sse-truncated_decoy-s0-r3.md"
+      ],
+      [
+        ".cfb-runtime/traj/t90/drafts/flaky-timeout-s0-r4.md",
+        ".cfb-runtime/traj/t91/drafts/flaky-timeout-s0-r4.md",
+        "transfer/gold-repair/drafts-proposed/flaky-timeout-s0-r4.retry-2026-10-05.md"
+      ],
+      [
+        ".cfb-runtime/traj/t90/drafts/perf-regression-s0-r5.md",
+        ".cfb-runtime/traj/t92/drafts/perf-regression-s0-r5.md",
+        "transfer/gold-repair/drafts-proposed/perf-regression-s0-r5.retry-2026-10-05.md"
+      ],
+      [
+        ".cfb-runtime/traj/t90/drafts/sse-truncated_decoy-s0-r4.md",
+        "transfer/gold-repair/drafts-proposed/sse-truncated_decoy-s0-r4.retry-2026-10-05.md"
+      ],
+      [
+        ".cfb-runtime/traj/t92/drafts/perf-regression-s0-r7.md",
+        ".cfb-runtime/traj/t94/drafts/perf-regression-s0-r7.md",
+        ".cfb-runtime/traj/t95check/drafts/perf-regression-s0-r7.md",
+        "transfer/gold-repair/drafts-proposed/perf-regression-s0-r7.retry-2026-10-05b.md"
+      ],
+      [
+        ".cfb-runtime/traj/t93/drafts/perf-regression-s0-r7.md",
+        "transfer/gold-repair/drafts-proposed/perf-regression-s0-r7.retry-2026-10-05.md"
+      ],
+      [
+        ".cfb-runtime/traj/t95/drafts/perf-regression-s0-r7.md",
+        ".cfb-runtime/traj/t96/drafts/perf-regression-s0-r7.md",
+        "transfer/gold-repair/drafts-proposed/perf-regression-s0-r7.retry-2026-10-05c.md"
+      ],
+      [
+        ".cfb-runtime/traj/t95/drafts/perf-regression-s0-r8.md",
+        ".cfb-runtime/traj/t96/drafts/perf-regression-s0-r8.md"
+      ],
+      [
+        ".cfb-runtime/traj/t98/drafts/eacces-config-s0-r5.md",
+        ".cfb-runtime/traj/t99/drafts/eacces-config-s0-r5.md"
+      ],
+      [
+        "transfer/gold-repair/drafts-proposed/flaky-timeout-s0-r4.md",
+        "transfer/gold-repair/drafts/flaky-timeout-s0-r4.md"
+      ]
+    ],
+    "jsonFiles": 742,
+    "jsonlFiles": 211,
+    "jsonlRows": 6755,
+    "nodeSyntaxFiles": 208,
+    "pythonSyntaxFiles": 41,
+    "jsonErrors": [],
+    "jsonlErrors": [],
+    "syntaxErrors": [],
+    "ok": true
+  }
+}

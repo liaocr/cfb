@@ -1,101 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""把 RWKV7 压缩器训练内核推到 Kaggle 并开跑（在本机执行）。
+"""Prepare a local, hash-bound RWKV7 bundle. No credentials/network/GPU by default.
 
-为什么必须显式指定 machine_shape = NvidiaTeslaT4
-------------------------------------------------
-fla 依赖 Triton kernel，需要 sm_70+。Kaggle 的 P100 是 **sm_60**，kernel 编不出来。
-不写这个字段就由 Kaggle 自己挑，很可能给 P100，然后失败在一个与训练毫无关系的地方，
-而且报错信息不会告诉你"是卡选错了"。
-
-为什么要把训练器合成一个自包含的 kernel.py
-------------------------------------------
-Kaggle 的 script kernel **不接受命令行参数**，只运行 code_file。所以这里：
-  1. 从 GitHub raw 下载 train_rwkv7.py；
-  2. 切掉它的 if __name__ == "__main__": 块；
-  3. 拼上一段显式 argv 的入口（冒烟 / 真训）；
-  4. 写成 kernel.py，作为唯一的 code_file 推送。
-数据不随内核上传 —— 内核开了外网，由训练器自己从 raw.githubusercontent 下载，
-这样不存在"多文件上传到底带不带"的不确定性。
-
-为什么会一直 QUEUED（实测，不是推演）
-----------------------------------
-这个脚本走的是 **batch 车道**：读了 kaggle CLI 源码，kernels_push() 只调
-save_kernel()，**从不调** create_kernel_session()。而 kagglesdk 里
-create_kernel_session() 的文档字符串写着它是给 **interactive** session 用的。
-所以网页里点开跑（interactive）立刻派机器，而 CLI push（batch）要等调度器。
-两者扣同一份配额，但 batch 会排队 —— 2026-10 实测排了 **2 小时**。
-
-排队时怎么判断是“正常排队”而不是“卡死了”（四项都要看）：
-  1. kernels_status() 返回 QUEUED 且 **kernel_session_id 为空**（没分到机器）；
-  2. get_accelerator_quota_statistics() 里 timeUsed 远小于 totalTimeAllowed；
-  3. list_kernels() 里没有别的内核在抢卡；
-  4. kernels_logs() 返回 **0 字符**（没机器就没日志）。
-四条都符合就只能等 —— 不要取消重推，那只会重新排到队尾。
-真急着要结果就去网页里手动点开跑（走 interactive 车道）。
-
-用法
-----
-  python deploy/kaggle/start-rwkv7.py --smoke     # 只验证环境（默认）
-  python deploy/kaggle/start-rwkv7.py --train     # 真训
-  python deploy/kaggle/start-rwkv7.py --status    # 查状态
-  python deploy/kaggle/start-rwkv7.py --wait      # 查状态 + 拉日志，直到终态
-  python deploy/kaggle/start-rwkv7.py --stop      # 停掉正在跑的 session
+Historical launcher fetched mutable main data while embedding different local code.
+That route is retired. Upload the checked training-data bundle as a frozen Kaggle
+input, verify its mount path, then explicitly use --execute if separately approved.
+--status / --wait / --stop still perform their explicitly requested remote actions.
 """
 from __future__ import annotations
-
 import argparse
 import json
 import subprocess
 import sys
-import tempfile
 import time
-import urllib.request
 from pathlib import Path
 
-BASE = "https://raw.githubusercontent.com/liaocr/cfb/main"
 SLUG = "cfb-rwkv7-compressor"
-TRAINER_URL = f"{BASE}/deploy/kaggle/train_rwkv7.py"
-DATA_TRAIN = f"{BASE}/deploy/kaggle/data/sft-train.jsonl"
-DATA_DEV = f"{BASE}/deploy/kaggle/data/sft-dev.jsonl"
 OUT_DIR = "/kaggle/working/rwkv7-compressor"
-
-
-def get(url: str, tries: int = 4) -> str:
-    """带重试的下载。
-
-    raw.githubusercontent.com 到本机这条链路实测会被重置
-    （ConnectionResetError WinError 10054），一次就放弃会让整轮 push 白费。
-    """
-    last = None
-    for i in range(tries):
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "cfb-kaggle-launcher"})
-            with urllib.request.urlopen(req, timeout=180) as r:
-                return r.read().decode("utf-8")
-        except Exception as exc:  # noqa: BLE001
-            last = exc
-            if i < tries - 1:
-                print(f"· 下载失败（{exc!r}），{2 ** i}s 后重试 {i + 2}/{tries}")
-                time.sleep(2 ** i)
-    raise SystemExit(f"FATAL: 下载失败 {tries} 次：{url}\n  最后错误：{last!r}")
-
-
-def trainer_source() -> str:
-    """优先用本机这份训练器，拿不到再回落到 GitHub raw。
-
-    推之前一定已经 commit + push 过，本机与远端一致；用本机这份就少一个
-    网络单点（raw.githubusercontent 这条链路并不稳）。回落到远端是为了
-    在别的机器上、或工作区不干净时仍然能用。
-    """
-    local = Path(__file__).resolve().parent / "train_rwkv7.py"
-    if local.is_file():
-        txt = local.read_text(encoding="utf-8")
-        if 'if __name__ == "__main__":' in txt:
-            print(f"· 训练器用本机 {local.name}（{len(txt)} 字符）")
-            return txt
-        print(f"· 本机 {local.name} 里没有 __main__ 块，改用远端")
-    return get(TRAINER_URL)
 
 
 def username() -> str:
@@ -172,7 +93,7 @@ def wait_kernel(kid: str, interval: int) -> int:
                   f"（已等 {(time.time()-t0)/60:.0f} 分钟）", flush=True)
             last = cur
         if cur in TERMINAL:
-            out = Path(".cfb-offline/kaggle-out/v10")
+            out = Path(".cfb-runtime/kaggle-output") / str(time.time_ns())
             out.mkdir(parents=True, exist_ok=True)
             lg = subprocess.run([sys.executable, "-m", "kaggle", "kernels", "logs", kid],
                                 capture_output=True, text=True)
@@ -182,108 +103,155 @@ def wait_kernel(kid: str, interval: int) -> int:
         time.sleep(interval)
 
 
-def build_kernel(mode: str, tune: dict | None = None) -> str:
+def load_local_trainer():
+    import importlib.util
+    local = Path(__file__).resolve().parent / "train_rwkv7.py"
+    spec = importlib.util.spec_from_file_location("cfb_rwkv7_local", local)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def trainer_source() -> str:
+    local = Path(__file__).resolve().parent / "train_rwkv7.py"
+    if not local.is_file():
+        raise ValueError("local trainer missing; remote main fallback is forbidden")
+    source = local.read_text(encoding="utf-8")
+    if 'if __name__ == "__main__":' not in source:
+        raise ValueError("local trainer entrypoint missing")
+    return source
+
+
+def build_kernel(mode: str, tune: dict, dataset_mount: str, model_revision: str) -> str:
+    import re
+    if not re.fullmatch(r"[0-9a-f]{40}", model_revision or ""):
+        raise ValueError("immutable model revision required")
+    if not dataset_mount.startswith("/kaggle/input/") or ".." in dataset_mount.split("/"):
+        raise ValueError("explicit safe Kaggle input mount required")
     src = trainer_source()
-    marker = 'if __name__ == "__main__":'
-    if marker not in src:
-        sys.exit("FATAL: 训练器里找不到 __main__ 块，无法注入入口。")
-    body = src[: src.index(marker)].rstrip() + "\n"
-    argv = ["--smoke", "--data", DATA_TRAIN, "--dev", DATA_DEV]
-    if mode == "train":
-        argv = ["--data", DATA_TRAIN, "--dev", DATA_DEV, "--out", OUT_DIR]
-        # 超参写死在启动器里而不是训练器默认值里：默认值一改，
-        # 已经跑过的实验结果就没法复现了。
-        for k, v in (tune or {}).items():
-            argv += ["--" + k.replace("_", "-"), str(v)]
-    entry = (
-        "\n\n# ── 由 start-rwkv7.py 注入的入口（Kaggle script kernel 不能传命令行参数）──\n"
-        "if __name__ == \"__main__\":\n"
-        "    sys.exit(main([\n"
-        + "".join(f"        {json.dumps(a)},\n" for a in argv)
-        + "    ]))\n"
-    )
-    return body + entry
+    body = src[:src.index('if __name__ == "__main__":')].rstrip() + "\n"
+    argv = ["--data", dataset_mount + "/train.jsonl", "--dev", dataset_mount + "/dev.jsonl",
+            "--model-revision", model_revision, "--out", OUT_DIR]
+    if mode == "smoke":
+        argv += ["--smoke"]
+    else:
+        argv += ["--admission", dataset_mount + "/admission.json"]
+    for k, v in tune.items():
+        argv += ["--" + k.replace("_", "-"), str(v)]
+    return body + '\nif __name__ == "__main__":\n    sys.exit(main(' + json.dumps(argv) + '))\n'
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
+    from types import SimpleNamespace
+    import shutil
+    ap = argparse.ArgumentParser(allow_abbrev=False, description="Offline-first, hash-bound Kaggle bundle; no push without --execute")
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--smoke", action="store_const", const="smoke", dest="mode")
     g.add_argument("--train", action="store_const", const="train", dest="mode")
     g.add_argument("--status", action="store_true")
-    g.add_argument("--wait", action="store_true",
-                   help="轮询到终态并拉日志（排队可能很久，见文档字符串）")
-    ap.add_argument("--interval", type=int, default=60, help="--wait 的轮询间隔（秒）")
+    g.add_argument("--wait", action="store_true")
     g.add_argument("--stop", action="store_true")
     ap.set_defaults(mode="smoke")
-    # 真训超参：写在这里，日志里能看见，复现得了。
-    ap.add_argument("--epochs", type=float, default=5.0, help="训练轮数")
-    ap.add_argument("--accum", type=int, default=4, help="梯度累积（每卡有效批 = batch x accum）")
-    ap.add_argument("--lr", type=float, default=1e-4, help="峰值学习率")
-    ap.add_argument("--gen-n", type=int, default=89, help="训完生成多少条 dev 稿子给尺子打分")
-    ap.add_argument("--gen-max-new", type=int, default=768, help="单条生成上限 token")
-    ap.add_argument("--ckpt-steps", default="",
-                    help="学习曲线快照步数（逗号分隔）。到点就 dev loss + 生成一次，然后接着训。"
-                         "空=不快照。曲线上每个点要同 n 才能相比。")
-    ap.add_argument("--ckpt-gen-n", type=int, default=0,
-                    help="快照点生成多少条（0=用 --gen-n）")
-    ap.add_argument("--gen-budget", type=float, default=3600,
-                    help="生成阶段时间预算（秒）。开缓存时 89 条约 15 分钟；"
-                         "缓存失效（fla 的 RWKV7 缓存本就标着 unsupported）时"
-                         "实测约 7 token/s、一条 60 秒，89 条要 90 分钟 —— "
-                         "3600 秒能拿到 55 条上下，够配对评测，也不至于把整轮拖垮")
+    action = ap.add_mutually_exclusive_group()
+    action.add_argument("--prepare-only", action="store_true", help="默认：只在本机打包；不读凭据、不联网")
+    action.add_argument("--execute", action="store_true", help="显式推送；需已上传的 --dataset-source（本轮未获授权）")
+    ap.add_argument("--interval", type=int, default=60)
+    ap.add_argument("--data", help="本地冻结 train.jsonl")
+    ap.add_argument("--dev", help="本地冻结 dev.jsonl")
+    ap.add_argument("--admission", help="真训必填；无效尺子不能签发准入")
+    ap.add_argument("--model-revision", help="不可变的 40 位模型提交")
+    ap.add_argument("--bundle-dir", default=".cfb-runtime/rwkv7-bundle")
+    ap.add_argument("--dataset-mount", default="/kaggle/input/cfb-admitted-sft")
+    ap.add_argument("--dataset-source", help="已上传的 Kaggle username/dataset-slug（不自动创建）")
+    ap.add_argument("--epochs", type=float, default=3.0)
+    ap.add_argument("--batch", type=int, default=4)
+    ap.add_argument("--accum", type=int, default=8)
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--max-len", type=int, default=4096)
+    ap.add_argument("--eos-token-id", type=int, help="显式已测的结束 id；不默默改 tokenizer/config")
+    ap.add_argument("--lr", type=float, default=1e-4)
+    ap.add_argument("--gen-n", type=int, default=89)
+    ap.add_argument("--gen-max-new", type=int, default=768)
+    ap.add_argument("--ckpt-steps", default="")
+    ap.add_argument("--ckpt-gen-n", type=int, default=0)
+    ap.add_argument("--gen-budget", type=float, default=3600)
     args = ap.parse_args()
-
-    user = username()
-    kid = f"{user}/{SLUG}"
-    print(f"· Kaggle 用户：{user} · 内核 {kid}")
-
-    if args.status:
-        r = subprocess.run([sys.executable, "-m", "kaggle", "kernels", "status", kid])
-        return r.returncode
-
-    if args.wait:
-        return wait_kernel(kid, args.interval)
-
-    if args.stop:
+    if args.status or args.wait or args.stop:
+        kid = f"{username()}/{SLUG}"
+        if args.status:
+            return subprocess.run([sys.executable, "-m", "kaggle", "kernels", "status", kid]).returncode
+        if args.wait:
+            return wait_kernel(kid, args.interval)
         return stop_kernel(kid)
-
-    tune = {"epochs": args.epochs, "accum": args.accum, "lr": args.lr,
-            "gen_n": args.gen_n, "gen_max_new": args.gen_max_new,
-            "gen_budget": args.gen_budget}
-    if args.ckpt_steps:
-        tune["ckpt_steps"] = args.ckpt_steps
-        tune["ckpt_gen_n"] = args.ckpt_gen_n or args.gen_n
-    code = build_kernel(args.mode, tune)
-    work = Path(tempfile.mkdtemp(prefix="cfb-rwkv7-"))
-    (work / "kernel.py").write_text(code, encoding="utf-8")
-    meta = {
-        "id": kid,
-        "title": "CFB RWKV7 compressor",
-        "code_file": "kernel.py",
-        "language": "python",
-        "kernel_type": "script",
-        "is_private": True,
-        "enable_gpu": True,
-        "enable_internet": True,
-        "machine_shape": "NvidiaTeslaT4",
-        "dataset_sources": [],
-        "kernel_sources": [],
-        "competition_sources": [],
-        "model_sources": [],
-    }
-    (work / "kernel-metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    print(f"· 模式 {args.mode} · machine_shape NvidiaTeslaT4 · 合成 kernel.py {len(code)} 字符")
-    print(f"· 工作目录 {work}")
-
-    r = subprocess.run([sys.executable, "-m", "kaggle", "kernels", "push", "-p", str(work)])
-    if r.returncode != 0:
-        print(f"FATAL: push 失败（退出码 {r.returncode}）", file=sys.stderr)
-        return r.returncode
-    print(f"· 已推送并开跑。运行页：https://www.kaggle.com/code/{kid}")
-    print(f"· 查状态：python deploy/kaggle/start-rwkv7.py --status")
-    print(f"· 拉日志：python -m kaggle kernels output {kid} -p .cfb-offline/kaggle-out")
-    return 0
+    if not args.data or not args.dev:
+        ap.error("--data and --dev must be staged local files; mutable main URLs are retired")
+    if args.execute and not args.dataset_source:
+        ap.error("--execute needs an already uploaded --dataset-source; no implicit GPU launch")
+    trainer = load_local_trainer()
+    try:
+        preflight = trainer.preflight_sft(SimpleNamespace(
+            data=args.data, dev=args.dev, admission=args.admission, model=trainer.MODEL_ID,
+            model_revision=args.model_revision, smoke=args.mode == "smoke"))
+        tune = {k: getattr(args, k) for k in ("epochs", "batch", "accum", "seed", "max_len", "lr", "gen_n", "gen_max_new", "gen_budget")}
+        if args.eos_token_id is not None:
+            tune["eos_token_id"] = args.eos_token_id
+        if args.ckpt_steps:
+            tune.update(ckpt_steps=args.ckpt_steps, ckpt_gen_n=args.ckpt_gen_n or args.gen_n)
+        code = build_kernel(args.mode, tune, args.dataset_mount, args.model_revision)
+        work = Path(args.bundle_dir)
+        if work.exists():
+            raise ValueError("refuse to overwrite a bundle; choose a fresh --bundle-dir")
+        data_dir, code_dir = work / "training-data", work / "code"
+        data_dir.mkdir(parents=True)
+        code_dir.mkdir()
+        shutil.copyfile(args.data, data_dir / "train.jsonl")
+        shutil.copyfile(args.dev, data_dir / "dev.jsonl")
+        if args.mode == "train":
+            admission = json.loads(Path(args.admission).read_text(encoding="utf-8"))
+            formal = admission["formalLineage"]
+            references = [formal, *formal["bindings"].values(), *formal["evidence"].values(), *formal["sourceReviews"].values()]
+            copied = {}
+            for ref in references:
+                source = trainer.bound_local_file(Path(args.admission).parent, ref, "bundle-formal-lineage")
+                relative = ref["path"]
+                if relative in {"train.jsonl", "dev.jsonl", "admission.json"}:
+                    raise ValueError("bundle-lineage-reserved-filename:" + relative)
+                if relative in copied and copied[relative] != ref["sha256"]:
+                    raise ValueError("bundle-lineage-conflicting-file:" + relative)
+                target = data_dir / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if relative not in copied:
+                    shutil.copyfile(source, target)
+                    copied[relative] = ref["sha256"]
+            (data_dir / "admission.json").write_text(json.dumps(admission, ensure_ascii=False, indent=2), encoding="utf-8")
+        (code_dir / "kernel.py").write_text(code, encoding="utf-8")
+        bundle_preflight = trainer.preflight_sft(SimpleNamespace(
+            data=str(data_dir / "train.jsonl"), dev=str(data_dir / "dev.jsonl"),
+            admission=str(data_dir / "admission.json") if args.mode == "train" else None,
+            model=trainer.MODEL_ID, model_revision=args.model_revision, smoke=args.mode == "smoke"))
+        receipt = {"schema": "cfb.kaggle-bundle/1", "mode": args.mode, "executed": False,
+                   "preflight": preflight, "bundlePreflight": bundle_preflight,
+                   "kernelSha256": trainer.file_sha256(code_dir / "kernel.py"),
+                   "launcherSha256": trainer.file_sha256(Path(__file__)),
+                   "datasetMount": args.dataset_mount, "tune": tune}
+        (work / "BUNDLE.json").write_text(json.dumps(receipt, ensure_ascii=False, indent=2), encoding="utf-8")
+    except (ValueError, OSError, SystemExit) as exc:
+        print(f"FATAL: bundle preparation: {exc}", file=sys.stderr)
+        return 2
+    print(f"· 离线包已写 {work}；未推送、未开 GPU。先将 training-data 上传为独立冻结数据集，再核对挂载路径。")
+    if not args.execute:
+        return 0
+    kid = f"{username()}/{SLUG}"
+    meta = {"id": kid, "title": "CFB RWKV7 compressor", "code_file": "kernel.py",
+            "language": "python", "kernel_type": "script", "is_private": True,
+            "enable_gpu": True, "enable_internet": True, "machine_shape": "NvidiaTeslaT4",
+            "dataset_sources": [args.dataset_source], "kernel_sources": [],
+            "competition_sources": [], "model_sources": []}
+    (code_dir / "kernel-metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    result = subprocess.run([sys.executable, "-m", "kaggle", "kernels", "push", "-p", str(code_dir)])
+    receipt.update(executed=True, pushExitCode=result.returncode)
+    (work / "BUNDLE.json").write_text(json.dumps(receipt, ensure_ascii=False, indent=2), encoding="utf-8")
+    return result.returncode
 
 
 if __name__ == "__main__":

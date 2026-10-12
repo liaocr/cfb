@@ -1,0 +1,66 @@
+{
+  "schema": "cfb.readback-audit/1",
+  "ok": true,
+  "errors": [],
+  "counts": {
+    "uniqueBirthDecisions": 3,
+    "uniqueRequestObservations": 6,
+    "duplicateObservations": 0,
+    "ignored": 0
+  },
+  "placements": [
+    {
+      "taskId": "flaky-timeout-9f726c3b9c677f04",
+      "sessionId": "fixture-session-0",
+      "inputSha256": "86da015b48bf620e903cb75a5205e8f07196bbfe6c92ab85beeba403578aaa6c",
+      "draftSha256": "54086993cf93457d2938992413f963c582732e447e0cfc17cfa26b3ab4bf8c83",
+      "laterHookDigestMatches": 1,
+      "laterTransportDigestMatches": 1,
+      "rawDigestAlsoSeen": 0,
+      "fixtureMatches": 2,
+      "status": "digest-present-in-caller-recorded-transport",
+      "providerExecutionVerified": false,
+      "semanticContinuationVerified": false,
+      "qualification": "Exact channel digest membership only; concatenated/transformed channels may require explicit body-side matching, and provider execution is unverified."
+    },
+    {
+      "taskId": "perf-regression-743d949f701c5040",
+      "sessionId": "fixture-session-1",
+      "inputSha256": "f706662b5af9315f2a0db88aa4f99a407fd250ab6d6d1cf6c14b23930c4fb1ec",
+      "draftSha256": "8c68e31494543077cc821238d9f9a73a79b263a9a9f8b7ad8fc6ee6f2a6798fb",
+      "laterHookDigestMatches": 1,
+      "laterTransportDigestMatches": 1,
+      "rawDigestAlsoSeen": 0,
+      "fixtureMatches": 2,
+      "status": "digest-present-in-caller-recorded-transport",
+      "providerExecutionVerified": false,
+      "semanticContinuationVerified": false,
+      "qualification": "Exact channel digest membership only; concatenated/transformed channels may require explicit body-side matching, and provider execution is unverified."
+    },
+    {
+      "taskId": "sse-truncated-24bd46e54267e3fe",
+      "sessionId": "fixture-session-2",
+      "inputSha256": "da177d65d28a4334a278ee630378b8acfb34303ab3b4902477ba4f2d4d9fd6e8",
+      "draftSha256": "18205e3e423d8e5eb42ee3a13ceee05e749ad526ad58543f0ca6856e641ac730",
+      "laterHookDigestMatches": 1,
+      "laterTransportDigestMatches": 0,
+      "rawDigestAlsoSeen": 0,
+      "fixtureMatches": 1,
+      "status": "hook-only-not-wire-proof",
+      "providerExecutionVerified": false,
+      "semanticContinuationVerified": false,
+      "qualification": "Exact channel digest membership only; concatenated/transformed channels may require explicit body-side matching, and provider execution is unverified."
+    }
+  ],
+  "independentSampleCount": null,
+  "liveHostVerified": false,
+  "originalReaderEffectVerified": false,
+  "blockers": [
+    "body/lineage membership is not independently verified HTTP execution",
+    "hook observations do not certify provider serialization",
+    "no paired original-receiver continuation outcomes"
+  ],
+  "paidApiCallsByThisCommand": 0,
+  "gpuRunsByThisCommand": 0,
+  "newBlindConsumedByThisCommand": 0
+}

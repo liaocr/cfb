@@ -1,0 +1,72 @@
+离线边界：{"isolation":"linux-user-network-namespace","interfaces":["lo"],"externalRoutes":0,"externalApiCalls":0}
+
+  PASS test/provider-endpoint.selftest.mjs     28 passed
+  PASS test/core.selftest.mjs                  168 passed
+  PASS test/compress.selftest.mjs              28 passed
+  PASS test/v4.selftest.mjs                    95 passed
+  PASS test/v4-live.selftest.mjs               5 passed
+  PASS test/effect-eval.selftest.mjs           9 passed
+  PASS test/api-budget.selftest.mjs            27 passed
+  PASS test/eval-ready.selftest.mjs            43 passed
+  PASS test/eval-ready-v2.selftest.mjs         10 passed
+  PASS test/eval-visible-v3.selftest.mjs       14 passed
+  PASS test/eval-reasoning-v8.selftest.mjs     14 passed
+  PASS test/offline-lab.selftest.mjs           20 passed
+  PASS test/judge-calibration.selftest.mjs     21 passed
+  PASS test/closed-loop.selftest.mjs           25 passed
+  PASS test/closed-loop-v3.selftest.mjs        17 passed
+  PASS test/closed-loop-v4.selftest.mjs        45 passed
+  PASS test/manifest-ignore.selftest.mjs       4 passed  (1 skipped)
+  PASS test/training-ready.selftest.mjs        4 passed
+  PASS test/birth.selftest.mjs                 141 passed  (1 skipped)
+  PASS test/robustness.selftest.mjs            16 passed
+  PASS test/hedge.selftest.mjs                 17 passed
+  PASS test/hook-wiring.selftest.mjs           6 passed
+  PASS test/hardening.selftest.mjs             30 passed
+  PASS test/concurrency.selftest.mjs           13 passed
+  PASS test/protocol.selftest.mjs              15 passed
+  PASS test/branches.selftest.mjs              6 passed
+  PASS test/audit-2026-09-27.selftest.mjs      27 passed
+  PASS test/micro-runtime.selftest.mjs         29 passed
+  PASS test/micro-ruler.selftest.mjs           7 passed
+  PASS test/micro-generator.selftest.mjs       18 passed
+  PASS test/micro-general-arm.selftest.mjs     10 passed
+  PASS test/micro-label-review.selftest.mjs    19 passed
+  PASS test/gen-ruler.selftest.mjs             16 passed
+  PASS test/mode1-quality.selftest.mjs         50 passed
+  PASS test/mode1-quality-parity.selftest.mjs  28 passed
+  PASS test/gold-use-split.selftest.mjs        60 passed
+  PASS test/gold-standard.selftest.mjs         82 passed
+  PASS test/gold-attest.selftest.mjs           61 passed
+  PASS test/gate-cjk-pairing.selftest.mjs      9 passed
+  PASS test/silver-shape.selftest.mjs          15 passed
+  PASS test/universal-select.selftest.mjs      9 passed
+  PASS test/v12.selftest.mjs                   37 passed
+  PASS test/evidence-program.selftest.mjs      5 passed
+  PASS test/audit-integrity.selftest.mjs       31 passed
+  PASS test/trainer-contract.selftest.mjs      27 passed
+  PASS test/doc-watermark.selftest.mjs         6 passed
+
+  合计: 1367 通过 / 0 失败 / 2 跳过   (46/46 套件通过)   并发 6 · 用时 61.5s
+  ==> 已执行检查通过；存在跳过项，非完整宿主验证
+
+# 非劣性审计（v12.9.2 稿层程序部件）
+
+稿：267 份（多轮 48：auto-d2.json、auto-d2b.json、auto-d2c-r.json、auto-d2c.json、auto-d2d-part-r.json、auto-d2d-part.json、auto-d2d.json、auto-d2e-probe-final.json、auto-d2e-probe.json、oracle-d2.json、oracle-d2b.json、oracle-d2c.json；单步 219：59 个文件）
+程序部件触发：延续段 48、提示 104 条、三问补齐 27、已排除候选剥离 5 句、出处括注折叠 0
+多轮出稿长度：中位 2603、最长 3205（auto-d2.json:flaky-timeout）、> 2600 的 24 份
+
+| 不变量 | 违反 |
+|---|---|
+| N1 | 0 |
+| N2 | 0 |
+| N3 | 0 |
+| N4 | 0 |
+| N5 | 0 |
+| N6 | 0 |
+| N7 | 0 |
+
+## 评委补票回放（transfer/mr/run4/results.jsonl）
+三票行 79；补票 19 行；评委调用 117 vs 全三票 237（省 51%）；逐行偏差 ≥ 2 的 1 行；变体均分最大偏移 0.50
+
+结论：全部不变量成立——新部件只增不减、单步全程沉默、幂等、无发明。

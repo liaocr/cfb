@@ -1,78 +1,30 @@
-# 生产插件与认知编译器架构（v14.25.4 复核，开发者视角）
+# CFB 架构与当前边界（v14.25.4 基线，参考稿优先闭环）
 
-> 面向改代码的开发者与 AI 模型：模块怎么分、数据怎么流、哪些不变式不能碰、加功能该改哪里。
-> 快速上手见根目录 [`README.md`](../README.md)；闭环训练与官方基准见 [`TRAINING-AND-BENCHMARK.md`](TRAINING-AND-BENCHMARK.md)；历史实验与成本定律见 [`HISTORY-AND-EXPERIMENTS.md`](HISTORY-AND-EXPERIMENTS.md)。
+当前状态：[PROJECT.json](../PROJECT.json)；主线：[PROJECT-PLAN.md](PROJECT-PLAN.md)。历史模块名/理论术语不证明实现是生成式 LM。
 
----
+## 1. 三个职责，只有一条开发主线
 
-## 0. 架构全景（三个内聚平面）
+| 平面 | 现有实现 | 状态 |
+|---|---|---|
+| 生产兼容 | `index.js`、`src/plugin.js`、birth/distill/transport/compile | 保留技术回归；RWKV 尚未接入 |
+| 生成式学生 | `deploy/kaggle/train_rwkv7.py`、离线 bundle launcher | 唯一研究主线；数据/评测/CPU 验证尚未准入 |
+| 证据控制 | `tools/project.mjs`、`program/review-contract/reader-study/formal-sft`、hash读回观测、冻结重放、manifest/水位 | 本地完整性与明确未测；不训练、不付费、不发布 |
 
-仓库 100% 聚焦于 **思维链出生即压缩（Birth-time CoT Compression / 认知编译器）**，由三个内聚平面组成：
+旧 `cfb-cycle`、ranker、JS v5、micro/from-scratch/Qwen 探针是历史兼容/研究工具，不再自动决定当前 next。接口保留不是路线保留。
 
-| 平面 | 入口 | 职责 | 守恒纪律 |
-|---|---|---|---|
-| **① 生产插件核心** | `index.js` → `src/`（零依赖 ESM 模块，数量见 `../README.md` 文首水位块） | 在宿主流 `llm/stream` 内拦截 `reasoning` 块，完成 CAS 归档 + 副模型认知编译 + 程序门核真（`compileV4Direct`）+ 程序部件拼接（`spliceProgramParts`）+ 六道收网门（`birthFinish` → `birthAccept`，清单见 §2.1） | 历史稿逐字回归 + 全量 selftest（读数见 §5） |
-| **② 统一科学训练闭环与双轨裁判** | `tools/cfb-cycle.mjs` + `tools/cfb-judge.mjs` + `tools/bench-run.mjs` + `tools/traj-run.mjs` | 三模式闭环（手写探顶 → 金标基准 → 影子分叉轨迹）+ 四维全空间策略搜索 + 双轨（确定性规则 × LLM 语义）交叉验证与岭回归校准 + 五大国际官方基准成绩单 | 零污染客观锚点 + 跨计划 CAS 缓存 + 序贯 $e$-value 安全晋升 |
-| **③ 有界 API 账本与训练数据核** | `tools/effect-ready.mjs` + `tools/bounded-ab.mjs` + `src/training-core.js` | 双平面预占 API 预算（一 scope 一冻结批准，收据入库 `transfer/`）+ 5 家族连通组严格隔离的 SFT / DPO / In-Context DPO 导出 | 严禁跨家族泄漏与未批准真实扣费 |
+## 2. 现有 birth 流
 
-**状态目录职责**：
-- `.cfb-offline/`（gitignored）：**可再生**离线闭环状态（策略池 / 计划 / 金标 / 效度账本 / 飞轮对）。新克隆执行 `npm run restore` 即可从 `transfer/cycle-state.json` 完整重建。
-- `.cfb-runtime/`（gitignored）：**不可再生**私有运行仓与轨迹回执（bounded-ab 各 scope 私有仓、`traj/tN`）。
-- `transfer/`（入库）：公开水位收据、周期快照 `cycle-state.json`、`gold/` 金标库、历史实验数据与 [`HANDOFF.md`](../transfer/HANDOFF.md)。
-
----
-
-## 1. `src/` 模块依赖地图（自顶向下，无环）
-
-包入口 `index.js` 只做导出（`package.json` 的 `exports` 仅开放 `.`），宿主拿到 `name` / `inject` / `apply`，其余纯函数导出供自测与离线闭环工具直接调用：
-
-```
-plugin.js ─────────────────────────────── 组合根：apply() 注册 agent/pre-step 与 llm/stream 钩子
-  ├─ boot-record.js       BOOT 上岗自证（生效配置、SELF_ID / DEP_ID、版本号）
-  ├─ host-follow.js       调用级模型 / provider 跟随（派生单次调用配置副本，共享 cfg 永不改写）
-  ├─ session-tracker.js   会话归属追踪（多会话交错 ⇒ 不可证，原文放行）
-  ├─ handle-probe.js      CAS 句柄读回探针（可读回 / 读不回 / 不可证）
-  ├─ birth.js ─────────── ★ 出生即压缩主干：birthTransform / birthStart / birthFinish / computeAdaptiveBirthControl(λ) / readPressure
-  │    ├─ fidelity.js       逐字标识符召回率（观测）+ 发明标识符拦截闸（inventedIdentifiers）
-  │    ├─ tokens.js         按书写系统区分的 token 粗估（中文 0.81/字、其余 0.26/字；2026-10 按 330 次真实 usage 校准，见 commit 0c78562 与 src/tokens.js 头注释）
-  │    └─ trace.js          trace 落盘（64 MiB 轮转）与 settled 字段白名单
-  ├─ distill.js ───────── 副模型调用（重试降级 / 对冲 hedge / 传输 trace）+ makeBirthCompiler + In-Context DPO 范例注入
-  │    ├─ prompts.js        提示词（v3 / v2 / v4-ops / v4d6 直写）+ modularPromptPrune 反稀释动态裁剪
-  │    ├─ compile-v4.js     ★ v4 认知编译器：JSON ops 编译（parse→validate→select→render）+ compileV4Direct 直写程序门 + compactStateParts
-  │    ├─ segment-v4.js     v4 流式增量分段编译（长思维链边写边编，收网只等尾段）
-  │    ├─ policy.js         可训练策略空间（提示词 / 部件开关 / 制度参数 / 范例对）校验与 digest 计算
-  │    └─ transport.js ─ provider.js ─ config.js
-  ├─ messages.js          出站消息溯源、台账（ledgerBlock）提取、有界延续段（continuationPath:'bounded'）与曾涉文件出处保留
-  ├─ evidence-program.js ─ evidence-store.js   宿主显式类型化证据程序与 CAS 签名块仓（默认关）
-  └─ training-core.js     纯函数训练内核：5 家族连通组切分、SFT/DPO 导出、严格逐项发布门
+```text
+宿主 llm/stream reasoning
+  → block-start 立即透传；delta 累积并透传
+  → birthStart：归档与编译并行，不阻塞主流
+  → birthFinish / birthAccept：收网与结构门
+  → condensed，或拒绝/异常时原文 passthrough
 ```
 
----
+`plugin.js` 是组合根；`birth.js` 管生命周期；`distill.js` 组合编译器；`transport/provider/config` 管传输与跟随；`compile-v4`、`messages`、`fidelity` 管格式、部件与标识符。`evidence-program/store` 仍是显式 opt-in。
 
-## 2. 核心数据流与四维极限化机制
-
-### 2.1 `birth`：一个 `reasoning` 块的完整生命期（`src/birth.js`）
-
-```
-birthTransform(inner, deps)
-  block-start(reasoning) → birthHoldNew + 立即透传
-  reasoning-delta        → 累积原文 + 实时透传（live）；若开启 v4 流式增量则同步喂给 segmenter
-  block-end(reasoning)   → birthStart(entry, deps)   ← 同步返回 task，绝不阻塞主流
-                              1. 动态 λ 门槛判定：computeAdaptiveBirthControl(raw, ctx, pressure, cfg)
-                                 - 默认 birthMinChars = 3100（cruise 区保持原值）
-                                 - birthAdaptiveFloor: true 时按三区分派（下为基准 3100 的实测值）：
-                                   fresh-early（第 1 轮 ∧ spinScore<0.25 ∧ 水位<0.20）→ ×1.20 = 3720（保护早期探索）；
-                                   high-spin-or-long-horizon（轮次≥4 ∨ 连续只读≥3 轮 ∨ spinScore≥0.45 ∨ 水位≥0.50）
-                                     → ×0.65、下限 1600 = 2015，且输出上限 ×0.85（收紧膨胀）
-                              2. 内存秒算句柄：deriveArtHandle(sessionId, raw)
-                              3. 并行发起：diskP = deps.archive(raw) 与 distillP = deps.distill(raw, signal, ...)
-  finish                 → birthFinish(task, deps)   ← 押后至流结束收网
-                              等 min(finishWaitMs, 实际耗时)；已收到 200 响应头则宽限 finishHeadersGraceMs（一次）
-                              六道门禁顺序：归档成功 → 编译非空 → 无发明标识符 → 字符净省 → token 严格下降 → 替换成功（condensed）
-                              任何一道未过 ⇒ birthCancelFlying 立即取消在途请求，100% 原文放行（passthrough）
-```
-
-六道门的顺序、拒收码与"哪些要求不在这六道里"，由 `tools/doc-watermark.mjs` 从 `src/birth.js` 同源渲染，与 `../README.md` §4.1 逐字一致（漂移即 `--check` 报错）：
+### 2.1 六道收网门（从源码生成）
 
 <!-- watermark:begin 由 node tools/doc-watermark.mjs --write 生成，勿手抄 -->
 1. **归档成功** —— 拿不到可读回的 CAS 句柄 ⇒ 不换原文（`birth.js` 的 archive 结果先行判定）
@@ -85,67 +37,55 @@ birthTransform(inner, deps)
 > **结构闭合**（判读分支闭合、三元组 `new_text ≠ old_text`）与**死路不复活**是**编译阶段**的要求（`compileV4Direct` / `src/compile-v5-local.js`），不在上面这六道收网判定里 —— 两段别混成一条闸。
 <!-- watermark:end -->
 
-### 2.2 `compile-v4`：两条认知编译通路（`src/compile-v4.js`）
+门的意义是结构/来源/成本保护，不是普遍语义证明。CAS 读回、首次出站、内部异常不破坏主流等不变式保留。字符/估算 token 不是 RWKV tokenizer 预算，也不是实际 API 账单。
 
-1. **`v4d6` 直写通路（`compressPrompt: 'v4', compressV4Direct: true`，当前主力）**：
-   - **压缩前准备**：`messages.js` 从本轮工具输出中剥出带行号的**在手代码行**（`inHandLines`）与历史**台账/延续段**（`applyCtxContinuationPolicy`），若策略含 `exemplars` 则由 `distill.js` 自动拼入 In-Context DPO 正反对比范例，若开启 `modularPromptPrune: true` 则由 `prompts.js` 动态剥离当轮不触发的提示词规则块。
-   - **程序门核真（`compileV4Direct`）**：副模型输出主模型原生语域的紧凑散文后，代码机械校验：
-     - 反引号标识符与代码锚点必须逐字有出处；
-     - 尾段判读分支必须闭合（`如果…就…`），不得留悬空问句；
-     - `edit_file` 三元组 `old_text` 必须出自【在手】行，且 `new_text ≠ old_text`；
-     - 宿主工具名自动对齐。
-   - **程序部件拼接（`spliceProgramParts`）**：
-     - `continuationPath: 'bounded'`：将 O(轮数) 增长的已走路径截断为最近 2 条，并在 `【台账】` 摘要末尾保留被截断轮次涉及的文件/标识符出处（`；曾涉 ...`），彻底消除 bounded 续接下的 `invented-identifier` 误杀；
-     - `statePartsMode: 'compact'`（`compactStateParts`）：自动扫描压缩正文已逐字包含的反引号锚点，剔除 `【已排除】` 与 `【未解】` 中的重复复述行（当轮净省再增 `+50~+90 tok`）。
+## 3. 新生成式路径的接口边界
 
-2. **`v4-ops` 结构化条目通路（`compressV4Direct: false`）**：
-   - 副模型只输出八类带类型的 JSON 原子条目（`FACT / COMPUTED / INCUMBENT / REFUTED / SHELVED / OPEN / PLAN / READY`）；
-   - `compileV4` 依次执行 `parseOps` → `validateOps`（I1 锚点逐字、I2 标识符出处、I3 证伪带替代、I4 无观测否定降级为搁置、I5 工具来源不写主观决定、I7 同键留最新、I8 禁第二人称）→ `selectOps`（必留项 + 价值/字符比贪心装箱 + 依赖闭包）→ `renderOps`（证据定粘性、替代先行+否定就近）。
+```text
+出生时 raw + 当时 compressor ctx（不含未来；acceptance ctx另记）
+  → 任务/资源与真实 birth→装配/CAS→hook→serializer wire 观测
+  → 完整开发参考稿 → 同出生raw/raw A/A和raw/reference效用/净成本
+  → 新尺子效度/阈值冻结；覆盖数据/来源/许可/隐私/whole-family审查
+  → pinned底座能力/native tokenizer/CPU硬可行性（便宜硬检查可并行）
+  → hash-bound flat SFT + 全文review sidecars + source/prompt/stage lineage
+  → Python preflight及保持relative refs的离线bundle再验
+  → 获批诊断GPU smoke/SFT/真实权重点；内容与reader、loss分别看
+  → 量化重验/CPU整体收益 → shadow/真实宿主有限晋级
+  → 只有在实测范围通过后，才替换birth/distill
+```
 
----
+当前缺真实读回、预算、新有效尺子、准入数据及CPU实证。三完整AI开发审查已经完成，不能说仍只审几句，但不是金标。正式 exporter/Python 已验证附着记录，不只验证complete Boolean；全文/hash也不能独立证明审查语义与真实执行。旧声明式admission已拒绝。
 
-## 3. 十二条核心不变式（违反即判定回归失败）
+### 3.1 读回观测分层
 
-1. **H2 首次出站不变律**：`reasoning` 块只能在尚未出站装配前替换（`birth` 模式天然满足）。
-2. **归档先于压缩**：拿不到可读回的 CAS 句柄，绝不替换原文。
-3. **观测绝不碰坏主流**：任何内部或网络异常只降级为「原文放行」，主流自身的错误原样抛出。
-4. **零硬编码猜测**：模型名、端点、密钥均跟随宿主 provider，解析不出即放行。
-5. **零编造标识符（I2）**：压缩稿中的路径、URL、反引号代码、`camelCase`、`snake_case`、`file.ext` 必须逐字出现在原文或程序部件出处中，否则 `invented-identifier` 原文放行。
-6. **字符 ≠ 账单费用**：字符数仅度量上下文余量；真实省钱与否以端到端 token 账单与 `birthMinChars` 成本模型为准。
-7. **评估态零副作用**：`dryRun: true`（默认）下不写 CAS、不调副模型、不改流。
-8. **句柄可读回验证**：内存预推句柄必须通过读回探针验证后才生效。
-9. **放弃即取消**：任何走原文放行的分支都经由 `birthCancelFlying` 立即取消在途请求。
-10. **Token 必降门禁**：字符缩短但估算 token 未降 ⇒ `no-token-gain` 原文放行。
-11. **共享配置不可变**：运行期随调用变化的模型/provider 仅写入 `host-follow.js` 派生的单次调用副本。
-12. **流归属不可证不归档**：多会话交错时缺省原文放行，严禁跨会话污染 CAS。
+`traceReadbackHashes` 默认false。开启后 `birth.js` 用 input `[raw, compilerCtx]` hash记录condensed决策，`messages/plugin` 记录下一轮hook的channel digest。实际transport必须在provider serializer之后显式记录 `requestEvidence(stage=transport-payload)`；没有自动代理当前外部宿主。只用hash，不记录raw/凭据。
 
----
+`tools/readback-audit.mjs` 去重/隔离身份冲突并查later digest；能识别hook有稿但wire丢字段，不能证明CAS真的持久化、provider消费或语义续行。`reader-study.mjs`只本地plan/import，要求state/request/response/outcome refs，当前blocked。HTTP400仅syntax、usage差仅accounting、scope/15min缓存仅路由预检，均semanticCarryVerified=false。
 
-## 4. 「改哪里」速查表
+## 4. 日志是事件，不是样本表
 
-| 需求场景 | 修改位置与同步要求 |
-|---|---|
-| 新增生产配置项 | `src/config.js` 的 `DEFAULTS` → `index.d.ts` → `test/core.selftest.mjs` §10 |
-| 开放新的可训练策略旋钮 | `src/policy.js` 的 `CONFIG_KEYS` / `REGIME_KEYS` → `test/closed-loop-v4.selftest.mjs` |
-| 修改提示词或反稀释规则 | `src/prompts.js`（版本号由 `compressPromptVersion` 统一裁决；v2/v3 共享规则 1~6 由 `compress.selftest.mjs` §1b 守护） |
-| 修改 v4 程序门或部件拼接 | `src/compile-v4.js`（`compileV4Direct` / `spliceProgramParts` / `compactStateParts`）+ `src/messages.js`（`applyCtxContinuationPolicy`） |
-| 修改闭环评测或官方基准公式 | `tools/helpers/ruler.mjs`（`passAtK` / `passHatK` / `arenaElo` / `industryScorecard`）+ `tools/cfb-cycle.mjs` |
-| 修改双轨语义裁判或校准器 | `tools/helpers/judge-layer.mjs` + `tools/cfb-judge.mjs` |
-| 新增自测套件 | `test/<name>.selftest.mjs`（末尾打印 `PASS=n FAIL=m`），加入 `verify.mjs` 的 `ORDER` |
-| 修改任何入库文件后 | 运行 `npm run manifest` 更新 `MANIFEST.sha256`，再跑 `npm run verify:offline`；改了规模（加模块/套件/金标）或文档水位 ⇒ `npm run watermark:record && npm run watermark` |
+`tools/helpers/trajectory-records.mjs`：
 
----
+- identity = task/state、variant、sample；完成顺序不是 sample。
+- `awaiting-draft` 不计分；错误不替代已完成结果；未知状态不推定成功。
+- 除时间外内容逐字等价的重复终态只计一次；终态不同不“最后行胜出”，隔离。
+- reuse metadata 与 task/sample 矛盾时，严格消费者拒绝。
+- runner 续跑、序贯判定与总结共享同一契约；benchmark 只作有范围的历史描述，不给跨计划独立 n。
+- ceiling 不再自动混入以往计划；训练/金标/复用等严格入口遇冲突不能默默选一条。
 
-## 5. 自测套件矩阵
+旧日志/收据不改。来源重新标号只表明跨计划身份不可信，不自动证明每个同计划 raw/hand 配对都错；需按引用时间、源 sample 与 shadow 逐项重建。
 
-套件总数、断言数与用时**不在本节手抄**：`../README.md` 文首水位块由 `node tools/doc-watermark.mjs --record` 记账生成（隔离内 / 联网两态各一组），`npm run watermark:check` 负责核对。
-运行 `npm run verify:offline` 在真断网 Linux 命名空间里并发执行全部套件（每个套件使用独立临时 `DSH_HOME`）；下表按类别列出**全部**套件 —— 新增套件必须同时进 `verify.mjs` 的 `ORDER` 与本表，`test/doc-watermark.selftest.mjs` 会核对磁盘与 `ORDER` 的登记数。
+## 5. 文件与状态纪律
 
-| 类别 | 套件名称 | 覆盖范围 |
-|---|---|---|
-| **生产核心与运行时（14 套）** | `provider-endpoint`, `core`, `compress`, `v4`, `v4-live`, `birth`, `robustness`, `hedge`, `hook-wiring`, `hardening`, `concurrency`, `protocol`, `branches`, `v12` | 端点解析、配置归一化、编译与流式路径、并发隔离、硬化及兼容性 |
-| **科学闭环与评测（12 套）** | `api-budget`, `effect-eval`, `eval-ready`, `eval-ready-v2`, `eval-visible-v3`, `eval-reasoning-v8`, `offline-lab`, `judge-calibration`, `closed-loop`, `closed-loop-v3`, `closed-loop-v4`, `training-ready` | 预算、效果/推理评估、离线闭环、双轨裁判校准、训练准备度 |
-| **金标尺子与写稿纪律（5 套）** | `gold-standard`, `gold-attest`, `gold-use-split`, `gate-cjk-pairing`, `silver-shape` | `cfb.gold-standard/1` 十二轴判据本身、盖章与只降不升链路、标尺/训练料用途隔离、反引号配对段不得误杀中文散文、银标形状检查器 |
-| **模式 1 质量与标注（3 套）** | `mode1-quality`, `mode1-quality-parity`, `micro-label-review` | 模式 1 真机配对质量与 $0 判据平价、人工盲审工具（审核者看不到规则、坏行被拒、digest 存活） |
-| **微模型测量臂（2 套）** | `micro-general-arm`, `micro-generator` | `micro-general-arm`：原型命中 vs 真实用户仓兜底路径的差（`micro-gap-map.json`）与 README 引用逐位对齐；`forceGeneralPath` 三处齐备；一次性盲测账本不被重跑；生产权重哈希可核。`micro-generator`：微模型生成器（锻造语料 / 冻结闸 / 盲测集生成）的确定性回归 |
-| **完整性与审计（6 套）** | `manifest-ignore`, `audit-2026-09-27`, `micro-runtime`, `micro-ruler`, `evidence-program`, `doc-watermark` | 清单忽略规则、历史审计、生产 JSON 权重加载/JS scorer、微模型评测尺子与数据回归、类型化证据程序、文档水位（含 5 个负例夹具） |
+- `.cfb-offline` 并非全可再生，含已付费来源、教师及审查；默认 restore 已停用。
+- `.cfb-runtime` 有已入库不可再生历史；不按目录名清除。
+- `transfer/audit-2026-10-11` 保存本轮范围、基线、独立重放及原入口/原清单；`transfer/archive-2026-10-11/recovered` 仅历史恢复，不作为训练输入发现目录。
+- `data-v9` 及 PREREG 七文件保持历史原字节；新评测另起版本。
+- `MANIFEST.sha256` 是当前资产完整性清单；旧清单缺项证据另存，不能靠重算掩盖。
+- `--sparse` 只检查已物化范围，未取回项旧 SHA 保留；严格检查仍失败，这是范围事实，不刷成全资产已验收。
+
+## 6. 验证层次不能混
+
+语法/格式扫描 → 单元/负例回归 → 真无外部路由隔离 → 真宿主/目标reference读回与CPU硬检查 → 获批GPU诊断 → 学生/量化CPU与目标读回 → 产品shadow，每层分别记账，不与主线内容门混为一谈。
+
+本轮执行前三层及冻结历史证据重放；没有下载本轮底座 LM 权重、安装 Torch/GPU、执行 CPU LM 实机或访问真实宿主。跳过项、未物化资产与未经事实审查配对必须保留在报告中。水位只能由事务式实跑生成，不手改通过数。

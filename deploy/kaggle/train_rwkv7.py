@@ -1,68 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CFB 通用思维链压缩微模型 —— RWKV7-0.1B 监督微调（Kaggle 单文件训练器）。
+"""Prospective pretrained RWKV7 SFT trainer, not a production compressor.
 
-任务形态
---------
-  system   = 压缩提示词（transfer/prompts/teacher2-zh.txt，与产稿时逐字相同）
-  user     = [题面] ctx + [思考过程] raw
-  assistant= 压缩稿 draft
+Flat data = id/repo/system/user/assistant. Stage local files and provide an immutable
+model revision; real training additionally requires hash-bound declared admission.
+--preflight-only uses only Python stdlib: no torch, weights, network or writes.
+--smoke checks a pipeline, never certifies training data or model quality.
 
-为什么保留题面 ctx（实测，不是想当然）
---------------------------------------
-对 100 条教师稿量过：43% 的稿子里出现了**只在题面、不在思考过程**里的代码味标识符
-（如 tests/test_doccmd.py、corsheaders.models）。去掉题面会丢掉这些指代。窗口放宽到
-6144 之后带题面能装 99.8%，装得下就没有取舍的必要。
-
-为什么窗口写 6144 而不是 config 里的 2048
-------------------------------------------
-config.json 的 max_position_embeddings=2048 **在本模型的代码路径上从未被读取**：
-  · fla/models/rwkv7/modeling_rwkv7.py 全文 545 行，该字段只出现 1 次（第 151 行），
-    在 if attn_spec is not None: 的混合注意力分支里。本模型 config.attn = null -> 走 else
-    分支创建 RWKV7Attention，压根不传这个参数。
-  · fla/layers/rwkv7.py 全文 355 行：无 RoPE、无位置嵌入、无长度断言；chunk_size=64
-    只是分块计算的效率参数。
-  · tokenizer 的 model_max_length = 1e33（等于无限）。
-  -> 2048 是配置残留，不是架构约束。RWKV 是循环结构，状态固定大小，成本 O(n) 而非 O(n²)。
-
-实测收益 —— ★ 用**底座自己的分词器**量的，不是字符估算
-------------------------------------------------------------------
-拿 fla-hub 的 rwkv_vocab_v20230424.txt + hf_rwkv_tokenizer.py 在本地实跑（抽 469/4687 个单元）：
-  · system 提示词 = 1188 token（**之前按字符估的是 912，低估 30%**）
-  · 教师稿中位  = 368 token
-  · user（题面+思考过程）p50 1832 / p90 2356 / max 4614
-
-  窗口  2048：可训   0/469 =  0.0%
-  窗口  4096：可训 438/469 = 93.4%
-  窗口  5120：可训 463/469 = 98.7%
-  窗口  6144：可训 468/469 = 99.8%   ← 取这个
-  窗口  8192：可训 469/469 = 100.0%
-
-⚠ 为什么不能拿 src/tokens.js 的 0.81/0.26 来算这个窗口：那两个系数是对
-  **DeepSeek 的 usage** 做最小二乘拟合出来的，只对 DeepSeek 的分词器成立。
-  RWKV 的 World 分词器效率不同 —— 窗口预算只能用 RWKV 自己的读数。
-
-风险（只能实测，不能从源码推断）
---------------------------------
-1. RWKV 的"状态容量"固定，序列越长状态越挤 —— 退化是渐进的，不是到点就崩。
-2. g1 系列的预训练长度未公开。超过预训练长度属外推，"能跑"不等于"效果不变"。
-3. fla 依赖 Triton kernel，需要 sm_70+。
-   **Kaggle 的 P100 是 sm_60，会失败；必须选 T4（sm_75）。**
-
-用法
-----
-  # 冒烟（不训练，只验证环境 + 窗口 + 前向 + 反传 + 生成，目标 30 分钟内出结论）
-  python train_rwkv7.py --smoke --data train.jsonl --dev dev.jsonl
-
-  # 真训
-  python train_rwkv7.py --data train.jsonl --dev dev.jsonl --out /kaggle/working/rwkv7-compressor
-
-失败即停，绝不静默降级：没有 CUDA、fla 导入失败、数据为空、全部超窗 —— 一律非零退出并打印原因。
+Training/generation share the explicit non-thinking native prefix. EOS must be a
+valid vocabulary id; a tokenizer/config mismatch requires --eos-token-id rather
+than silent fallback to 0. Window, decoding, CUDA/fused-loss/cache/DDP and CPU
+resource behaviour need actual smoke; old window/latency numbers are not evidence
+for this revised recipe. This audit did not run GPU or download base weights.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import random
+import re
 import datetime
 import json
 import math
@@ -144,6 +101,375 @@ def fetch(src: str, dest: Path, world: int = 1, is_main: bool = True) -> Path:
     raise SystemExit(f"FATAL: 找不到数据文件 {src}（试过 {p.resolve()} 与 {alt}）")
 
 
+def file_sha256(p: Path) -> str:
+    digest = hashlib.sha256()
+    with p.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def validate_sft_rows(train: list[dict], dev: list[dict], *, smoke: bool = False) -> dict:
+    """CPU-only integrity checks. These do not prove semantic quality."""
+    if not train or (not dev and not smoke):
+        raise ValueError("sft-empty-train-or-dev")
+    seen_ids, inputs, repos, prompts = set(), {}, {"train": set(), "dev": set()}, set()
+    for split, rows in (("train", train), ("dev", dev)):
+        for i, row in enumerate(rows, 1):
+            if not isinstance(row, dict):
+                raise ValueError(f"sft-row-not-object:{split}:{i}")
+            for field in ("id", "repo", "system", "user", "assistant"):
+                if not isinstance(row.get(field), str) or not row[field].strip():
+                    raise ValueError(f"sft-field-not-nonempty-string:{split}:{i}:{field}")
+            if row["repo"].lower() in {"unknown", "null", "none"}:
+                raise ValueError(f"sft-unknown-repository:{split}:{i}")
+            if row["id"] in seen_ids:
+                raise ValueError(f"sft-duplicate-id:{row['id']}")
+            seen_ids.add(row["id"])
+            key = hashlib.sha256(json.dumps([row["system"], row["user"]], ensure_ascii=False).encode()).hexdigest()
+            if key in inputs:
+                why = "conflicting-target" if inputs[key] != row["assistant"] else "duplicate-input"
+                raise ValueError(f"sft-{why}:{split}:{i}")
+            inputs[key] = row["assistant"]
+            repos[split].add(row["repo"])
+            prompts.add(hashlib.sha256(row["system"].encode()).hexdigest())
+    overlap = repos["train"] & repos["dev"]
+    if overlap:
+        raise ValueError("sft-repository-leakage:" + ",".join(sorted(overlap)))
+    if len(prompts) != 1:
+        raise ValueError("sft-mixed-system-prompts")
+    return {"trainRows": len(train), "devRows": len(dev),
+            "trainRepos": len(repos["train"]), "devRepos": len(repos["dev"]),
+            "promptSha256": next(iter(prompts))}
+
+
+def js_utf8(text: str) -> bytes:
+    # JS UTF-8 replaces lone UTF-16 surrogates with U+FFFD. Valid pairs merge.
+    return text.encode("utf-16-le", errors="surrogatepass").decode("utf-16-le", errors="replace").encode("utf-8")
+
+
+def compact_json(value) -> str:
+    """JSON.stringify-compatible wire representation for JSON-only bindings.
+
+    Float exponent padding, decimal/scientific cutoffs, -0, integral floats,
+    Unicode surrogates and JS array-index property order are handled explicitly.
+    No NaN/Infinity/unsafe arbitrary-precision integer silently changes meaning.
+    """
+    from decimal import Decimal
+    if value is None:
+        return "null"
+    if type(value) is bool:
+        return "true" if value else "false"
+    if type(value) is str:
+        merged = value.encode("utf-16-le", errors="surrogatepass").decode("utf-16-le", errors="surrogatepass")
+        quoted = json.dumps(merged, ensure_ascii=False)
+        return "".join("\\u%04x" % ord(c) if 0xD800 <= ord(c) <= 0xDFFF else c for c in quoted)
+    if type(value) is int:
+        if abs(value) > 9007199254740991:
+            # Accept a canonical JS Number wire numeral (e.g. JSON.stringify(1e20))
+            # only if its decimal representation round-trips without new rounding.
+            try:
+                rendered = compact_json(float(value))
+            except (OverflowError, ValueError) as exc:
+                raise ValueError("sft-formal-unsafe-integer:store-material-large-values-as-source-text") from exc
+            if Decimal(rendered) != Decimal(value):
+                raise ValueError("sft-formal-unsafe-integer:store-material-large-values-as-source-text")
+            return rendered
+        return str(value)
+    if type(value) is float:
+        if not math.isfinite(value):
+            raise ValueError("sft-formal-nonfinite-JSON-number")
+        if value == 0:
+            return "0"
+        decimal = Decimal(repr(value))
+        exponent = decimal.copy_abs().adjusted()
+        if -6 <= exponent < 21:
+            rendered = format(decimal, "f")
+            return rendered.rstrip("0").rstrip(".") if "." in rendered else rendered
+        sign = "-" if value < 0 else ""
+        digits = "".join(map(str, decimal.copy_abs().as_tuple().digits)).rstrip("0")
+        coefficient = digits[0] + (("." + digits[1:]) if len(digits) > 1 else "")
+        return sign + coefficient + "e" + ("+" if exponent >= 0 else "") + str(exponent)
+    if isinstance(value, list):
+        return "[" + ",".join(compact_json(x) for x in value) + "]"
+    if isinstance(value, dict):
+        if any(not isinstance(k, str) for k in value):
+            raise ValueError("sft-formal-JSON-object-key-not-string")
+        indexed = sorted((k for k in value if re.fullmatch(r"0|[1-9][0-9]*", k) and int(k) < 4294967295), key=int)
+        keys = indexed + [k for k in value if k not in indexed]
+        return "{" + ",".join(compact_json(k) + ":" + compact_json(value[k]) for k in keys) + "}"
+    raise ValueError("sft-formal-not-JSON-data")
+
+
+def compact_sha256(value) -> str:
+    return hashlib.sha256(compact_json(value).encode("utf-8")).hexdigest()
+
+
+def bound_local_file(base: Path, ref: dict, label: str) -> Path:
+    rel = ref.get("path") if isinstance(ref, dict) else None
+    if not isinstance(rel, str) or not rel or "\\" in rel or Path(rel).is_absolute() or any(x in {"", ".", ".."} for x in rel.split("/")):
+        raise ValueError("sft-formal-binding-path:" + label)
+    full = (base / rel).resolve()
+    if not full.is_relative_to(base.resolve()) or not full.is_file() or file_sha256(full) != ref.get("sha256"):
+        raise ValueError("sft-formal-binding-drift:" + label)
+    return full
+
+
+def utf16_span(text: str, span: dict, label: str) -> tuple:
+    data = text.encode("utf-16-le", errors="surrogatepass")
+    start, end = span.get("start"), span.get("end")
+    if type(start) is not int or type(end) is not int or start < 0 or end <= start or 2 * end > len(data):
+        raise ValueError("sft-formal-UTF16-span:" + label)
+    quote = data[2 * start:2 * end].decode("utf-16-le", errors="surrogatepass")
+    if quote != span.get("quote"):
+        raise ValueError("sft-formal-span-quote:" + label)
+    return start, end
+
+
+def js_nonwhitespace(text: str) -> bool:
+    # ECMAScript TrimString, not Python str.strip (e.g. U+0085 vs U+FEFF).
+    whitespace = "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+    return any(c not in whitespace for c in text)
+
+
+def complete_text_units(text: str, units: list, label: str):
+    if not isinstance(units, list):
+        raise ValueError("sft-formal-coverage-array:" + label)
+    encoded = text.encode("utf-16-le", errors="surrogatepass")
+    spans = sorted(utf16_span(text, u, label) for u in units)
+    cursor = 0
+    for start, end in spans:
+        if start < cursor or js_nonwhitespace(encoded[2 * cursor:2 * start].decode("utf-16-le", errors="surrogatepass")):
+            raise ValueError("sft-formal-source-coverage-gap-or-overlap:" + label)
+        cursor = end
+    if js_nonwhitespace(encoded[2 * cursor:].decode("utf-16-le", errors="surrogatepass")):
+        raise ValueError("sft-formal-source-coverage-gap-or-overlap:" + label)
+
+
+def validate_attached_complete_review(annotation: dict, review: dict):
+    if annotation.get("sourceCoverage") != "complete" or annotation.get("annotationStatus") != "adjudicated" or annotation.get("trainingEligible") is not True:
+        raise ValueError("sft-formal-annotation-incomplete")
+    raw, ctx, draft = annotation.get("raw"), annotation.get("ctx"), annotation.get("referenceDraft")
+    if not isinstance(raw, str) or not raw or not isinstance(ctx, str) or not isinstance(draft, str) or not draft:
+        raise ValueError("sft-formal-source-strings")
+    sh = lambda text: hashlib.sha256(js_utf8(text)).hexdigest()
+    hashes = annotation.get("sourceHashes", {})
+    if hashes != {"rawSha256": sh(raw), "ctxSha256": sh(ctx), "referenceSha256": sh(draft)}:
+        raise ValueError("sft-formal-annotation-hashes")
+    provenance = annotation.get("reviewProvenance", {})
+    if annotation.get("reviewers") != ["arena-agent-mode"] or provenance.get("mode") != "ai-single-reviewer" or provenance.get("reviewerType") != "ai" or provenance.get("reviewerId") != "arena-agent-mode" or provenance.get("reviewerCount") != 1 or provenance.get("humanReviewerCount") != 0 or provenance.get("independentSecondReview") is not False:
+        raise ValueError("sft-formal-review-provenance")
+    if review.get("schema") != "cfb.compression-review/1" or review.get("caseId") != annotation.get("caseId") or review.get("annotationSha256") != compact_sha256(annotation):
+        raise ValueError("sft-formal-review-binding")
+    input_digest = sh(sh(raw) + ":" + sh(ctx))
+    if review.get("inputSha256") != input_digest or review.get("draftSha256") != sh(draft) or review.get("status") != "complete-ai-single-review" or review.get("semanticCertification") is not False or review.get("targetReadbackVerified") is not False:
+        raise ValueError("sft-formal-review-status")
+    if review.get("reviewerId") != "arena-agent-mode" or review.get("humanReviewerCount") != 0 or review.get("independentSecondReview") is not False or not review.get("limitations"):
+        raise ValueError("sft-formal-review-provenance")
+    facts = annotation.get("facts", [])
+    ids = [f.get("factId") for f in facts]
+    if not facts or any(not isinstance(i, str) or not i for i in ids) or len(set(ids)) != len(ids):
+        raise ValueError("sft-formal-atomic-facts")
+    outcomes = annotation.get("referenceReview", {})
+    statuses = outcomes.get("factStatuses", [])
+    by_id = {x.get("factId"): x.get("status") for x in statuses}
+    if len(statuses) != len(facts) or set(by_id) != set(ids) or any(v not in {"preserved", "omitted", "contradicted", "uncertain"} for v in by_id.values()) or outcomes.get("allMustPreserveFactsSatisfied") is not True or outcomes.get("unsupportedClaimsReviewed") is not True or outcomes.get("unsupportedClaimsCount") != 0:
+        raise ValueError("sft-formal-reference-facts")
+    sources = review.get("sourceUnits", {})
+    for field in ["raw", "ctx"]:
+        complete_text_units(annotation[field], sources.get(field), field)
+        for unit in sources[field]:
+            if unit.get("classification") not in {"material", "repetition", "deliberation", "quoted-code", "ctx-retained", "nonmaterial"} or not unit.get("rationale") or not isinstance(unit.get("factIds"), list) or any(i not in ids for i in unit["factIds"]):
+                raise ValueError("sft-formal-source-unit")
+            if unit["classification"] in {"material", "quoted-code"} and not unit["factIds"]:
+                raise ValueError("sft-formal-material-unit-without-facts")
+    for fact in facts:
+        span = fact.get("sourceSpan", {}); field = span.get("field")
+        if field not in {"raw", "ctx"}:
+            raise ValueError("sft-formal-fact-field")
+        start, end = utf16_span(annotation[field], span, "fact")
+        if not any(u["start"] <= start and u["end"] >= end and fact["factId"] in u["factIds"] for u in sources[field]):
+            raise ValueError("sft-formal-fact-unit-binding")
+        if type(fact.get("mustPreserve")) is not bool or (fact["mustPreserve"] and by_id[fact["factId"]] != "preserved"):
+            raise ValueError("sft-formal-must-preserve-fact")
+    claims = review.get("draftClaims")
+    complete_text_units(draft, claims, "draft")
+    claim_ids = set()
+    for claim in claims:
+        cid = claim.get("claimId")
+        if not cid or cid in claim_ids or claim.get("status") not in {"supported", "nonfactual"} or not claim.get("rationale"):
+            raise ValueError("sft-formal-unsafe-or-duplicate-claim")
+        claim_ids.add(cid)
+        refs = claim.get("sourceFactIds")
+        if not isinstance(refs, list) or any(i not in ids for i in refs) or (claim["status"] == "supported" and not refs):
+            raise ValueError("sft-formal-claim-source-binding")
+
+
+def validate_formal_lineage(args, admission: dict, admission_path: Path) -> dict:
+    formal = admission.get("formalLineage", {})
+    if formal.get("schema") != "cfb.formal-sft-lineage-bundle/1":
+        raise ValueError("sft-formal-lineage-required:no-declaration-only-admission")
+    base = admission_path.parent
+    lineage_file = bound_local_file(base, formal, "lineage")
+    lineage = read_jsonl(lineage_file)
+    bindings = formal.get("bindings", {})
+    files = {key: bound_local_file(base, bindings.get(key, {}), key) for key in ["annotations", "reviews", "registry", "contract", "prompt"]}
+    annotations = read_jsonl(files["annotations"]); reviews = read_jsonl(files["reviews"])
+    registry = json.loads(files["registry"].read_text(encoding="utf-8"))
+    contract = json.loads(files["contract"].read_text(encoding="utf-8"))
+    prompt = files["prompt"].read_text(encoding="utf-8")
+    if registry.get("schema") != "cfb.source-registry/1" or registry.get("errors") or contract.get("schema") != "cfb.compression-task-contract/1" or contract.get("resources", {}).get("resourceBudgetConfirmed") is not True:
+        raise ValueError("sft-formal-registry-contract-budget")
+    annos = {r["caseId"]: r for r in annotations}; revs = {r["caseId"]: r for r in reviews}; source = {r["inputSha256"]: r for r in registry.get("entries", [])}
+    rows = [(split, r) for split, file in [("train", args.data), ("dev", args.dev)] for r in read_jsonl(Path(file))]
+    if len(annos) != len(annotations) or len(revs) != len(reviews) or len(source) != len(registry.get("entries", [])) or len(lineage) != len(rows) or formal.get("rows") != len(rows):
+        raise ValueError("sft-formal-lineage-count-or-duplicate")
+    by_id = {r.get("id"): r for r in lineage}
+    if len(by_id) != len(lineage) or set(by_id) != {r["id"] for _, r in rows} or set(annos) != set(by_id) or set(revs) != set(by_id):
+        raise ValueError("sft-formal-lineage-case-set")
+    families = {}
+    exposed_families = {family for entry in registry.get("entries", []) for family in entry.get("families", []) if any(any(word in exposure for word in ["dev", "exposed", "blind"]) for exposure in entry.get("exposure", []))}
+    source_refs = formal.get("sourceReviews", {})
+    if not isinstance(source_refs, dict) or not source_refs:
+        raise ValueError("sft-formal-source-proof-files-required")
+    for digest, ref in source_refs.items():
+        if digest != ref.get("sha256"):
+            raise ValueError("sft-formal-source-proof-reference")
+        bound_local_file(base, ref, "source-review:" + digest)
+    for split, row in rows:
+        item = by_id[row["id"]]; a = annos[row["id"]]; review = revs[row["id"]]
+        expected = compact_sha256([row[k] for k in ["id", "repo", "system", "user", "assistant"]])
+        if item.get("schema") != "cfb.flat-sft-lineage/1" or item.get("flatRowSha256") != expected or item.get("split") != split or item.get("repo") != row["repo"] or item.get("annotationSha256") != compact_sha256(a) or item.get("completeReviewSha256") != compact_sha256(review) or item.get("annotation") != a or item.get("completeReview") != review:
+            raise ValueError("sft-formal-flat-row-or-review-binding")
+        validate_attached_complete_review(a, review)
+        if a.get("finalSplit") != split or json.loads(row["user"]) != {"raw": a["raw"], "ctx": a["ctx"]} or row["assistant"] != a["referenceDraft"] or row["system"] != prompt or item.get("family") != a.get("family"):
+            raise ValueError("sft-formal-flat-content-mismatch")
+        if a["family"] in families and families[a["family"]] != split:
+            raise ValueError("sft-formal-family-leakage")
+        families[a["family"]] = split
+        if item.get("inputSha256") != review.get("inputSha256") or item.get("rawSha256") != a["sourceHashes"]["rawSha256"] or item.get("ctxSha256") != a["sourceHashes"]["ctxSha256"] or item.get("targetSha256") != a["sourceHashes"]["referenceSha256"]:
+            raise ValueError("sft-formal-row-source-hashes")
+        entry = source.get(item.get("inputSha256"), {})
+        if a.get("family") not in entry.get("families", []) or entry.get("repo") != row["repo"] or not any(r.get("caseId") == row["id"] and r.get("recordSha256") == compact_sha256(a) for r in entry.get("records", [])):
+            raise ValueError("sft-formal-registry-row-binding")
+        if split == "train" and (a["family"] in exposed_families or any(any(word in x for word in ["dev", "exposed", "blind"]) for x in entry.get("exposure", []))):
+            raise ValueError("sft-formal-prior-exposure-leakage")
+        admission_review = entry.get("sourceAdmission", {})
+        if any(admission_review.get(k) is not True for k in ["admitted", "modelVersionVerified", "temporalBoundaryVerified", "licenseReviewed", "privacyReviewed"]):
+            raise ValueError("sft-formal-source-not-admitted")
+        source_ref = source_refs.get(item.get("sourceReviewSha256"))
+        if source_ref != admission_review.get("reviewRef") or source_ref != item.get("sourceReviewRef"):
+            raise ValueError("sft-formal-source-proof-reference")
+        source_file = bound_local_file(base, source_ref, "source-review-row")
+        source_review = json.loads(source_file.read_text(encoding="utf-8"))
+        if source_review != item.get("sourceReview"):
+            raise ValueError("sft-formal-source-proof-inline-mismatch")
+        if item.get("sourceReviewSha256") != admission_review.get("reviewRef", {}).get("sha256") or source_review.get("rawSha256") != a["sourceHashes"]["rawSha256"] or source_review.get("ctxSha256") != a["sourceHashes"]["ctxSha256"]:
+            raise ValueError("sft-formal-source-proof-hashes")
+        source_model = source_review.get("sourceModel", {})
+        if source_model.get("id") != contract.get("receiver", {}).get("id") or not isinstance(source_model.get("servedVersion"), str) or not source_model["servedVersion"].strip():
+            raise ValueError("sft-formal-source-model-not-attested-in-initial-target-scope")
+        if item.get("sourceReviewRecordSha256") != compact_sha256(source_review) or source_review.get("schema") != "cfb.source-admission-review/1" or source_review.get("inputSha256") != item.get("inputSha256") or source_review.get("status") != "admitted" or source_review.get("fixtureOnly") is not False:
+            raise ValueError("sft-formal-source-proof")
+    evidence = formal.get("evidence", {})
+    receipts = {k: bound_local_file(base, evidence.get(k, {}), k) for k in ["preregistration", "ruler", "readerStudy", "cpu"]}
+    if admission.get("ruler") != {"report": evidence["ruler"]["path"], "sha256": evidence["ruler"]["sha256"]}:
+        raise ValueError("sft-formal-ruler-reference-mismatch")
+    prereg = json.loads(receipts["preregistration"].read_text(encoding="utf-8"))
+    reader = json.loads(receipts["readerStudy"].read_text(encoding="utf-8"))
+    cpu = json.loads(receipts["cpu"].read_text(encoding="utf-8"))
+    ruler = json.loads(receipts["ruler"].read_text(encoding="utf-8"))
+    thresholds = prereg.get("promotionThresholds", {})
+    if prereg.get("status") != "frozen-for-content-and-original-reader-evaluation" or not thresholds or any(v is None for v in thresholds.values()):
+        raise ValueError("sft-formal-thresholds-not-frozen")
+    if ruler.get("preregSha256") != evidence["preregistration"]["sha256"] or ruler.get("originalReaderValidated") is not True or ruler.get("fixtureOnly") is not False:
+        raise ValueError("sft-formal-ruler-not-reader-bound")
+    if reader.get("schema") != "cfb.original-reader-study/1" or reader.get("actualExecution") is not True or reader.get("fixtureOnly") is not False or reader.get("receiver") != contract.get("receiver", {}).get("id") or reader.get("aAControlExecuted") is not True or reader.get("allRegisteredCasesAccounted") is not True or reader.get("referenceUtilityVerified") is not True or reader.get("preregSha256") != evidence["preregistration"]["sha256"] or not reader.get("readerVersion"):
+        raise ValueError("sft-formal-reader-study")
+    if cpu.get("kind") != "cpuQualityAndLatencyVerified" or cpu.get("verified") is not True or cpu.get("actualExecution") is not True or cpu.get("fixtureOnly") is not False or cpu.get("model") != {"id": args.model, "revision": args.model_revision}:
+        raise ValueError("sft-formal-CPU-candidate")
+    return {"formalLineageSha256": formal["sha256"], "completeReviewRows": len(rows), "familyCount": len(families)}
+
+
+def preflight_sft(args) -> dict:
+    """Local-only: no torch, model downloads, API calls, or writes.
+
+    A declared admission record binds the files, model revision and evaluator receipt.
+    Complete attached source/fact/claim records are checked, not just review Booleans.
+    Their integrity is not independent proof of semantic correctness or execution.
+    """
+    if not re.fullmatch(r"[0-9a-f]{40}", args.model_revision or ""):
+        raise ValueError("model-revision-must-be-immutable-40-hex")
+    train_path = Path(args.data)
+    dev_path = Path(args.dev) if args.dev else None
+    if not train_path.is_file() or (dev_path is not None and not dev_path.is_file()):
+        raise ValueError("sft-stage-local-files-first:no-mutable-main-URLs")
+    summary = validate_sft_rows(read_jsonl(train_path), read_jsonl(dev_path) if dev_path else [], smoke=args.smoke)
+    summary.update(trainSha256=file_sha256(train_path), devSha256=file_sha256(dev_path) if dev_path else None,
+                   model=args.model, modelRevision=args.model_revision, trainingApproved=False,
+                   trainerSha256=file_sha256(Path(__file__)))
+    if args.smoke:
+        summary["scope"] = "pipeline-smoke-only-not-training-admission"
+        return summary
+    if not args.admission or not Path(args.admission).is_file():
+        raise ValueError("sft-admission-required:current-v9-is-INVALID")
+    admission_path = Path(args.admission)
+    admission = json.loads(admission_path.read_text(encoding="utf-8"))
+    if admission.get("schema") != "cfb.sft-admission/1" or admission.get("status") != "admitted":
+        raise ValueError("sft-not-admitted")
+    if admission.get("model") != {"id": args.model, "revision": args.model_revision}:
+        raise ValueError("sft-admission-model-mismatch")
+    for split in ("train", "dev"):
+        expected = admission.get("artifacts", {}).get(split, {})
+        if expected.get("sha256") != summary[split + "Sha256"] or expected.get("rows") != summary[split + "Rows"]:
+            raise ValueError("sft-admission-artifact-mismatch:" + split)
+    review = admission.get("review", {})
+    if review.get("status") != "complete" or not isinstance(review.get("reviewerId"), str) or not review["reviewerId"].strip():
+        raise ValueError("sft-review-incomplete")
+    ruler = admission.get("ruler", {})
+    report_path = (admission_path.parent / str(ruler.get("report", ""))).resolve()
+    if not report_path.is_file() or file_sha256(report_path) != ruler.get("sha256"):
+        raise ValueError("sft-ruler-report-missing-or-drifted")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    validity = report.get("validity", {})
+    checks = {k: v for k, v in validity.items() if k != "VALID"}
+    if validity.get("VALID") != "VALID" or not checks or any(v != "PASS" for v in checks.values()):
+        raise ValueError("sft-ruler-invalid")
+    summary.update(validate_formal_lineage(args, admission, admission_path))
+    summary.update(trainingApproved=True, admissionSha256=file_sha256(admission_path),
+                   rulerReportSha256=ruler["sha256"], scope="attached-complete-review-integrity-not-independent-semantic-certification")
+    return summary
+
+
+def resolve_eos_id(tokenizer_eos, model_eos, vocab_size: int, override=None) -> int:
+    selected = tokenizer_eos if override is None else override
+    if type(selected) is not int or not 0 <= selected < vocab_size:
+        raise ValueError("invalid-eos-vocabulary-id")
+    if override is None and model_eos is not None and selected != model_eos:
+        raise ValueError("tokenizer-model-eos-mismatch:explicit-tested-override-required")
+    return selected
+
+
+def epoch_batches(rows: list, batch_size: int, accum: int, world: int, rank: int, seed: int, epoch: int):
+    """Deterministic length-bucket shuffle, equal DDP steps; no permanent long-tail cut."""
+    if min(batch_size, accum, world) <= 0 or not 0 <= rank < world:
+        raise ValueError("invalid-batch-or-rank")
+    order = sorted(range(len(rows)), key=lambda i: len(rows[i][0]))
+    rng = random.Random(seed + epoch)
+    width = batch_size * 16
+    for start in range(0, len(order), width):
+        bucket = order[start:start + width]
+        rng.shuffle(bucket)
+        order[start:start + width] = bucket
+    batches = [[rows[i] for i in order[start:start + batch_size]] for start in range(0, len(order), batch_size)]
+    rng.shuffle(batches)
+    alignment = accum * world
+    kept = len(batches) // alignment * alignment
+    if not kept:
+        raise ValueError("not-enough-microbatches-for-one-optimizer-step")
+    return batches[:kept][rank::world], len(batches) - kept
+
+
 # ─────────────────────────── 分词 ───────────────────────────
 
 def render(tok, messages, add_gen: bool) -> str:
@@ -161,35 +487,34 @@ def render(tok, messages, add_gen: bool) -> str:
     try:
         return tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=add_gen,
                                        enable_thinking=False)
-    except TypeError:
-        return tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=add_gen)
+    except TypeError as exc:
+        raise ValueError("tokenizer-must-support-explicit-enable_thinking-false") from exc
 
 
-def encode(tok, row: dict, max_len: int, eos_id: int):
-    """把一行变成 (input_ids, labels)。超窗返回 (None, 0)。
+def encode(tok, row: dict, max_len: int, eos_id: int, vocab_size=None):
+    """Match the actual inference prefix exactly; never supervise prompt tokens.
 
-    ★ 掩码边界为什么不直接用 len(prompt_ids)
-    BPE 在拼接处会跨边界合并，tok(prompt + draft) 的前 len(prompt_ids) 个 token
-    未必等于 tok(prompt)。这里取**最长公共前缀**当边界，并把偏差记下来供观测。
-    偏差持续偏大就说明模板或分词器与预期不符，是必须看见的信号。
+    Tokenize the already-rendered inference prompt and completion separately.
+    The previous longest-common-prefix fallback could silently supervise part of
+    the prompt when a template/tokenizer drifted. Return drift=0 by construction.
     """
-    msgs = [
-        {"role": "system", "content": row["system"]},
-        {"role": "user", "content": row["user"]},
-        {"role": "assistant", "content": row["assistant"]},
-    ]
-    prompt = render(tok, msgs[:-1], True)
-    # 训练序列 = 推理时真正会看到的前缀 + 目标 + 模板的助手后缀 + eos
-    full = prompt + row["assistant"] + "\n\n"
+    prompt = render(tok, [{"role": "system", "content": row["system"]},
+                          {"role": "user", "content": row["user"]}], True)
     pids = tok(prompt, add_special_tokens=False)["input_ids"]
-    ids = tok(full, add_special_tokens=False)["input_ids"] + [eos_id]
+    target = tok(row["assistant"] + "\n\n", add_special_tokens=False)["input_ids"]
+    if not pids or not target:
+        raise ValueError("empty-prompt-or-target-tokens")
+    if vocab_size is not None and any(type(x) is not int or x < 0 or x >= vocab_size for x in pids + target):
+        raise ValueError("tokenizer-id-outside-pinned-model-vocabulary")
+    if eos_id in target[:-1]:
+        raise ValueError("target-has-interior-eos:would-terminate-before-reviewed-content")
+    if target[-1] != eos_id:
+        target = target + [eos_id]
+    ids = pids + target
     if len(ids) > max_len:
         return None, 0
-    k = 0
-    while k < min(len(pids), len(ids)) and pids[k] == ids[k]:
-        k += 1
-    labels = [-100] * k + ids[k:]
-    return (ids, labels), len(pids) - k
+    labels = [-100] * len(pids) + target
+    return (ids, labels), 0
 
 
 def batch_rows(rows: list, batch_size: int):
@@ -305,11 +630,15 @@ def fixup_tokenizer_dir(md: Path, tok) -> str:
 # ─────────────────────────── 主流程 ───────────────────────────
 
 def parse_args(argv=None):
-    ap = argparse.ArgumentParser(description="RWKV7-0.1B 通用思维链压缩器 SFT")
+    ap = argparse.ArgumentParser(allow_abbrev=False, description="RWKV7-0.1B 通用思维链压缩器 SFT")
     ap.add_argument("--data", required=True, help="训练 jsonl（build-sft.mjs 的 train.jsonl）")
     ap.add_argument("--dev", default=None, help="验证 jsonl")
     ap.add_argument("--out", default="/kaggle/working/rwkv7-compressor")
     ap.add_argument("--model", default=MODEL_ID)
+    ap.add_argument("--model-revision", help="必填：底座不可变的 40 位提交（不是 main）")
+    ap.add_argument("--admission", help="cfb.sft-admission/1 准入记录；非 smoke 训练必填")
+    ap.add_argument("--preflight-only", action="store_true", help="仅本地数据/准入核验；不导入 torch、不联网")
+    ap.add_argument("--eos-token-id", type=int, help="tokenizer/config 不一致时必须显式给出已测的结束 id")
     ap.add_argument("--max-len", type=int, default=DEFAULT_MAX_LEN)
     ap.add_argument("--epochs", type=float, default=3.0)
     ap.add_argument("--lr", type=float, default=1e-4)
@@ -367,6 +696,20 @@ def main(argv=None) -> int:
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
     args = parse_args(raw_argv)
 
+    try:
+        for name in ("epochs", "lr"):
+            value = getattr(args, name)
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError("invalid-positive-hyperparameter:" + name)
+        if min(args.batch, args.accum, args.max_len) <= 0:
+            raise ValueError("invalid-positive-batch-accum-window")
+        preflight = preflight_sft(args)
+    except (ValueError, OSError, SystemExit) as exc:
+        print(f"FATAL: preflight: {exc}", file=sys.stderr)
+        return 2
+    if args.preflight_only:
+        print(json.dumps(preflight, ensure_ascii=False, indent=2))
+        return 0
     # ---- 1. 环境：没有 CUDA 直接拒绝，不在 CPU 上假装训练 ----
     import torch
     if not torch.cuda.is_available():
@@ -477,23 +820,30 @@ def main(argv=None) -> int:
     else:
         print("· chunk_size 保持 fla 默认（64）—— T4 上会 OutOfResources", flush=True)
 
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
 
     torch.manual_seed(args.seed)
 
     # ---- 3. 分词器 ----
-    tok = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+    tok = AutoTokenizer.from_pretrained(args.model, revision=args.model_revision, trust_remote_code=True)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
     if tok.pad_token_id is None:
         print("FATAL: 分词器没有 pad/eos token，无法构造训练批次。", file=sys.stderr)
         return 2
-    eos_id = tok.eos_token_id if tok.eos_token_id is not None else 0
+    source_model_config = AutoConfig.from_pretrained(args.model, revision=args.model_revision, trust_remote_code=True)
+    eos_id = resolve_eos_id(tok.eos_token_id, source_model_config.eos_token_id, source_model_config.vocab_size, args.eos_token_id)
+    tokenizer_contract = {"tokenizerEos": tok.eos_token_id, "sourceModelEos": source_model_config.eos_token_id,
+                          "selectedEos": eos_id, "explicitOverride": args.eos_token_id is not None,
+                          "chatTemplateSha256": hashlib.sha256(str(tok.chat_template).encode()).hexdigest(),
+                          "enableThinking": False}
     print(f"· tokenizer {type(tok).__name__} · vocab {tok.vocab_size} · "
           f"eos={tok.eos_token_id} pad={tok.pad_token_id}", flush=True)
 
     # ---- 4. 数据 ----
     data_path = fetch(args.data, Path("/kaggle/working/_train.jsonl"), world, is_main)
+    if file_sha256(data_path) != preflight["trainSha256"]:
+        raise SystemExit("FATAL: train changed after preflight")
     rows_raw = read_jsonl(data_path)
     if not rows_raw:
         print(f"FATAL: {data_path} 是空的。", file=sys.stderr)
@@ -508,7 +858,7 @@ def main(argv=None) -> int:
     t0 = time.time()
     encoded, drifts, lens = [], [], []
     for r in rows_raw:
-        pair, drift = encode(tok, r, args.max_len, eos_id)
+        pair, drift = encode(tok, r, args.max_len, eos_id, source_model_config.vocab_size)
         if pair is None:
             continue
         encoded.append(pair)
@@ -531,11 +881,16 @@ def main(argv=None) -> int:
     dev_encoded = []
     if args.dev:
         dev_path = fetch(args.dev, Path("/kaggle/working/_dev.jsonl"), world, is_main)
+        if file_sha256(dev_path) != preflight["devSha256"]:
+            raise SystemExit("FATAL: dev changed after preflight")
         for r in read_jsonl(dev_path):
-            pair, _ = encode(tok, r, args.max_len, eos_id)
+            pair, _ = encode(tok, r, args.max_len, eos_id, source_model_config.vocab_size)
             if pair is not None:
                 dev_encoded.append((r, pair))
         print(f"· dev {len(dev_encoded)} 条", flush=True)
+
+    if not args.smoke and len(dev_encoded) != preflight["devRows"]:
+        raise SystemExit("FATAL: dev window filtering would change the frozen evaluation set; revise the prospective admission, not the old receipt")
 
     # ---- 5. 模型 ----
     # 为什么不是"把权重直接载成 fp16"（Kaggle T4 上真跑出来过，不是推演）：
@@ -550,8 +905,11 @@ def main(argv=None) -> int:
     #       复现环境：Kaggle T4 · torch 2.11.0+cu128 · transformers 5.16.1 · fla 0.5.2。
     amp_dtype = {"fp16": torch.float16, "bf16": torch.bfloat16, "fp32": None}[args.dtype]
     print(f"· 载入 {args.model}（主权重 fp32 · autocast {args.dtype}）…", flush=True)
-    model = AutoModelForCausalLM.from_pretrained(args.model, trust_remote_code=True, dtype=torch.float32)
+    model = AutoModelForCausalLM.from_pretrained(args.model, revision=args.model_revision, trust_remote_code=True, dtype=torch.float32)
     model.config.use_l2warp = False
+    model.config.eos_token_id = eos_id
+    if getattr(model, "generation_config", None) is not None:
+        model.generation_config.eos_token_id = eos_id
     # config.json 里 max_position_embeddings=2048 是配置残留（RWKV7 无位置编码，
     # fla 的代码路径从不读它），但 transformers 的 generate 会拿它当"预定义最大长度"
     # 报越界警告 —— 冒烟里 3522 token 的 prompt 就触发了。改成我们的真实窗口，
@@ -586,23 +944,11 @@ def main(argv=None) -> int:
         return (torch.tensor(ids, device=device), torch.tensor(lab, device=device),
                 torch.tensor(am, device=device))
 
-    batches = batch_rows(encoded, args.batch)
-    # ⚠ DDP 下每张卡必须走**同样多**的步数，否则先跑完的那张卡会在下一次集合通信上
-    #   永久等待 —— 表现为整轮静默挂死：日志停在最后一个 step，没有报错、没有 OOM、没有超时。
-    #   412 条 / 批 4 = 103 个微批，2 卡切片后是 52 和 51，各自 //4 得 13 和 12 步：**步数不等**。
-    #   v9 的 256 条恰好是 32/32，把这个问题盖住了 —— 数据一变就会发作。
-    #   所以先按 accum*world 把全局微批裁到整除，再切分，两边步数必然相同。
+    batches, dropped = epoch_batches(encoded, args.batch, args.accum, world, local_rank, args.seed, 0)
+    n_micro = len(batches) * world
     per_step = args.accum * world
-    n_micro = (len(batches) // per_step) * per_step
-    dropped = len(batches) - n_micro
-    if dropped:
-        print(f"· 全局 {len(batches)} 个微批，为对齐 DDP 步数裁掉尾部 {dropped} 个"
-              f"（每轮少 {dropped * args.batch} 条，约 {dropped * args.batch / max(1, len(encoded)):.1%}）", flush=True)
-    batches = batches[:n_micro]
-    if world > 1:
-        # 每张卡分走一部分微批，梯度由 DDP 同步 ⇒ 等价于把有效批再放大 world 倍。
-        batches = batches[local_rank::world]
-        print(f"· rank {local_rank} 分到 {len(batches)} 个微批", flush=True)
+    print(f"· 有种子的长度桶洗牌：rank {local_rank} 每轮 {len(batches)} 微批，"
+          f"为对齐暂略 {dropped} 批（每轮重新洗牌，不固定丢最长样本）", flush=True)
     steps_per_epoch = max(1, n_micro // per_step)
     total_steps = max(1, int(steps_per_epoch * args.epochs))
     opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],
@@ -638,8 +984,14 @@ def main(argv=None) -> int:
                 chunk = [p for _, p in dev_encoded[i:i + args.batch]]
                 ids, lab, am = collate(chunk)
                 with torch.autocast("cuda", dtype=amp_dtype, enabled=amp_dtype is not None):
-                    tot += float(base_model(input_ids=ids, attention_mask=am, labels=lab).loss)
-                cnt += 1
+                    count = int((lab[:, 1:] != -100).sum().item())
+                    if count <= 0:
+                        raise ValueError("dev-batch-without-supervised-tokens")
+                    loss_value = float(base_model(input_ids=ids, attention_mask=am, labels=lab).loss)
+                    if not math.isfinite(loss_value):
+                        raise ValueError("dev-loss-not-finite")
+                    tot += loss_value * count
+                cnt += count
         return tot / max(1, cnt)
 
     def gen_once(row, max_new, cache):
@@ -812,7 +1164,17 @@ def main(argv=None) -> int:
             if args.grad_ckpt:
                 base_model.gradient_checkpointing_enable()
         if is_main:
-            rec = {"step": at_step, "devLoss": None if dl is None else round(dl, 4),
+            checkpoint = out_dir / f"checkpoint-step{at_step}"
+            checkpoint.mkdir(parents=True, exist_ok=True)
+            temporary_weights = checkpoint / "weights.pt.tmp"
+            torch.save(base_model.state_dict(), temporary_weights)
+            os.replace(temporary_weights, checkpoint / "weights.pt")
+            base_model.config.save_pretrained(checkpoint)
+            rec = {"weightsFile": f"checkpoint-step{at_step}/weights.pt",
+                   "weightsSha256": file_sha256(checkpoint / "weights.pt"),
+                   "weightSnapshotOnly": True, "resumeTrainingState": False,
+                   "modelRevision": args.model_revision, "dataPreflight": preflight, "tokenizerContract": tokenizer_contract,
+                   "requestedGenN": min(ckpt_gen_n, len(dev_encoded)), "step": at_step, "devLoss": None if dl is None else round(dl, 4),
                    "genRows": n, "genFile": f"dev-generations-step{at_step}.jsonl",
                    "minutes": round((time.time() - t0) / 60, 1)}
             curve.append(rec)
@@ -834,6 +1196,7 @@ def main(argv=None) -> int:
     t0 = time.time()
     done = False
     while not done:
+        batches, _ = epoch_batches(encoded, args.batch, args.accum, world, local_rank, args.seed, epoch)
         for b in batches:
             ids, lab, am = collate(b)
             loss = forward_loss(ids, lab, am, 1.0 / args.accum)
@@ -927,7 +1290,8 @@ def main(argv=None) -> int:
         print(f"· 生成 {gen_rows} 条 -> {gen_path}（用 tools/eval-sft.mjs 本地打分）", flush=True)
 
     report = {
-        "model": args.model, "params": nparam, "maxLen": args.max_len, "dtype": args.dtype,
+        "model": args.model, "modelRevision": args.model_revision, "dataPreflight": preflight, "tokenizerContract": tokenizer_contract,
+        "shuffle": "seeded-length-buckets-per-epoch", "params": nparam, "maxLen": args.max_len, "dtype": args.dtype,
         "trainRows": len(rows_raw), "kept": len(encoded), "overWindow": len(rows_raw) - len(encoded),
         "devRows": len(dev_encoded), "steps": step, "epochs": args.epochs, "lr": args.lr,
         "batch": args.batch, "accum": args.accum, "gpu": gpu, "sm": f"sm_{cap[0]}{cap[1]}",

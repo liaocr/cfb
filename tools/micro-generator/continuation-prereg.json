@@ -1,0 +1,31 @@
+{
+  "schema": "cfb.continuation-prereg/1",
+  "id": "continuation-v10-development-2026-10-12",
+  "status": "development-protocol-not-active-valid-ruler",
+  "registeredAt": "2026-10-12",
+  "role": "Small task/reference diagnostic; not an unexposed blind evaluation or model promotion.",
+  "receiver": "DeepSeek-V4.1-Flash",
+  "requiredIdentity": ["caseId", "inputSha256", "birthStateSha256", "readerModel", "readerVersion", "channelScopeSha256", "toolsSha256", "decodingSha256", "experimentId", "callId", "arm", "executionMode"],
+  "arms": ["raw-a", "raw-b", "reference"],
+  "lengthLadder": ["raw", "reference-faithful", "reference-more-conservative-if-needed"],
+  "aAControl": "raw-a/raw-b from the same frozen birth state, equivalent tools and decoding; estimate natural variation before attributing harm to compression.",
+  "pairing": "Same source input/state and reader version/channel/tools/decoding; only raw/reference historical reasoning differs. Reused or copied provider observations do not create independent executions.",
+  "independence": "Task/repository/template/call lineage clusters; independentSampleCount remains null without a separately reviewed sampling account.",
+  "denominator": "Frozen complete case registry. Missing/failed/timeout/refused/fallback outcomes stay in the report; never score only successful compressions.",
+  "deterministicControls": ["exact spans and hashes", "every non-whitespace source unit classified", "every non-whitespace draft unit claim-reviewed", "changed actor/negation/condition/threshold/identifier", "unsupported completed-action claim", "equivalent paraphrase", "Unicode UTF-16 offsets", "retained ctx ledger versus new evidence"],
+  "semanticBoundary": "Coverage maps and explicit AI labels are review evidence, not an automatic entailment oracle. Deterministic controls alone cannot mark this ruler VALID.",
+  "continuationOutcomes": ["task success", "constraint violations", "false completion", "wrong edits/actions", "extra tool rounds", "evidence retained", "total uncached/cached prompt and completion tokens", "actual measured latency", "fallback and errors"],
+  "economicAccounting": "Compare cumulative target paths, including cache changes, student CPU, metadata/handles, readback and retries. Character ratio is descriptive only; estimates are not bills.",
+  "promotionThresholds": {
+    "maxMaterialDamageRate": null,
+    "confidenceLevel": 0.95,
+    "minAllCaseNetSavings": null,
+    "minCompressionCoverage": null,
+    "maxP95LatencyMs": null,
+    "maxPeakRamBytes": null
+  },
+  "thresholdStatus": "pending-resource-budget-and-development-calibration; no pass decision allowed",
+  "validityPrerequisites": ["good references not wrongly rejected", "harmful fluent controls correctly rejected by full review", "real original-receiver A/A and reference/raw paired results", "registered numerical thresholds", "new-case isolation if claiming generalization"],
+  "stopRules": ["actual payload does not carry candidate: fix integration, no SFT", "carefully reviewed references lack useful net gains: revise task/length, no SFT", "ruler leaks bad controls or rejects equivalent references: repair new ruler, keep old INVALID", "CPU budget or backend fails: retire candidate, no mass training"],
+  "safety": {"paidApiCalls": 0, "gpuRuns": 0, "newBlindConsumed": 0, "fixturesCannotCertifyReadback": true, "blindLabelsNotReadByDefault": true}
+}

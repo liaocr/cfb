@@ -27,6 +27,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { judge } from './gen-ruler.mjs'
+import crypto from 'node:crypto'
+
+// gen-ruler is an unvalidated research proxy. This command is not an admission bypass.
+if (!process.argv.includes('--research-only')) throw new Error('SFT admission blocked: evaluator is not validated; explicit --research-only may create NON-ADMITTED research artifacts')
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d }
@@ -43,6 +47,8 @@ const MIN_RAW = Number(arg('--min-raw', '800'))
 // 本仓库已经被这类"静默地用错东西"咬过好几次，所以把它做成显式参数，
 // 让部署那一侧能写死 sft- 前缀，而不是靠人记得手动改名。
 const PREFIX = arg('--name-prefix', '')
+if (!/^[A-Za-z0-9_-]*$/.test(PREFIX)) throw new Error('unsafe-name-prefix')
+if (!Number.isFinite(DEV_RATIO) || DEV_RATIO <= 0 || DEV_RATIO >= 1) throw new Error('invalid-dev-ratio')
 // ── dev 冻结（--dev-ids）──
 // 为什么需要：默认的 dev 是按仓库哈希切的，**加新仓库会让 dev 变大**。
 // 而 dev 一变大，上一轮在 89 条上跑出来的成绩就没法比了 ——
@@ -53,7 +59,9 @@ const PREFIX = arg('--name-prefix', '')
 // 而泄漏只会让 dev 虚高、不会报警 —— 这正是设计决定三要防的那件事。
 const DEVIDS = arg('--dev-ids', null)
 
-// 提示词只存一份：教师用它产出，学生用它训练。两边各写一份副本就会漂移，
+// 历史研究构造提示词：这个全局值不能证明每条旧教师稿的原始提示词血缘。
+// 产物始终 NON-ADMITTED；正式导出必须逐条保留源提示词和内容哈希，不能用全局值重标旧标签。
+// 提示词两边各写一份副本会漂移，
 // 而漂移不会报错，只会让模型学到一个用不上的映射。
 // ⚠ 提示词必须与**生成这批稿子时用的那一份**逐字相同。
 // 2026-10 修 bug：这里原来读 compress-zh.txt（v1），而稿子是 teacher2-zh.txt（v4）生成的 ——
@@ -70,15 +78,28 @@ const H = (s) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^=
 
 const lines = fs.readFileSync(IN, 'utf8').split(/\r?\n/).filter((l) => l.trim())
 const usable = []
-const seen = new Set()
+const seen = new Map()
+const inputs = new Map()
+const sha = (text) => crypto.createHash('sha256').update(text).digest('hex')
 const rejects = {}
 let dup = 0, empty = 0
-for (const l of lines) {
+for (const [lineIndex, l] of lines.entries()) {
   let o
-  try { o = JSON.parse(l) } catch { continue }
+  try { o = JSON.parse(l) } catch { throw new Error(`invalid-source-json:${lineIndex + 1}`) }
   const id = o.id || o.unitId
-  if (!id || seen.has(id)) { dup++; continue }
-  seen.add(id)
+  if (typeof id !== 'string' || !id) throw new Error(`missing-source-id:${lineIndex + 1}`)
+  const contentSignature = sha(JSON.stringify([o.raw, o.ctx, o.draft, o.repo || o.repository || o.family]))
+  if (seen.has(id)) {
+    if (seen.get(id) !== contentSignature) throw new Error(`conflicting-source-id:${id}`)
+    dup++; continue
+  }
+  seen.set(id, contentSignature)
+  const inputSignature = sha(JSON.stringify([o.raw, o.ctx]))
+  if (inputs.has(inputSignature)) {
+    if (inputs.get(inputSignature) !== String(o.draft || '')) throw new Error(`conflicting-input-target:${id}`)
+    dup++; continue
+  }
+  inputs.set(inputSignature, String(o.draft || ''))
   const draft = String(o.draft || '').trim()
   if (!draft) { empty++; continue }
   const raw = String(o.raw || '')
@@ -86,7 +107,9 @@ for (const l of lines) {
   if (raw.length < MIN_RAW) { rejects['too-short-raw'] = (rejects['too-short-raw'] || 0) + 1; continue }
   if (draft.length < MIN_DRAFT) { rejects['draft-below-min'] = (rejects['draft-below-min'] || 0) + 1; continue }
   const r = judge({ raw, ctx, draft })
-  usable.push({ id, repo: o.family || o.repository || 'unknown', raw, ctx, draft,
+  const repo = o.repo || o.repository || o.family
+  if (typeof repo !== 'string' || !repo || repo === 'unknown') throw new Error(`unknown-source-repository:${id}`)
+  usable.push({ id, repo, raw, ctx, draft,
     pass: !!r.pass, failed: r.failed || [], score: r.score,
     license: o.license || null, usage: o.usage || null })
 }
@@ -109,6 +132,7 @@ for (const u of usable.slice().sort((a, b) => (a.id < b.id ? -1 : 1))) {
 }
 if (frozenIds) {
   const missing = [...frozenIds].filter((id) => !usable.some((u) => u.id === id))
+  if (missing.length) throw new Error(`frozen-dev-ids-missing:${missing.join(',')}`)
   console.log('  dev 已冻结：%d 个 id 里找到 %d 个（缺 %d）· dev 仓库的新单元挡掉 %d 条',
     frozenIds.size, frozenIds.size - missing.length, missing.length, leaked)
 }
@@ -126,6 +150,10 @@ const rows = train.map(mk)
 const devRows = dev.map((u) => ({ ...mk(u), raw: u.raw, ctx: u.ctx }))
 const devPass = dev.filter((u) => u.pass).length
 
+if (!train.length || !dev.length) throw new Error('empty-research-train-or-dev')
+for (const name of [PREFIX + 'train.jsonl', PREFIX + 'dev.jsonl', 'report.json']) {
+  if (fs.existsSync(path.join(OUT, name))) throw new Error(`refuse-overwrite-research-artifact:${name}; choose a fresh --out`)
+}
 fs.mkdirSync(OUT, { recursive: true })
 const wr = (f, a) => fs.writeFileSync(path.join(OUT, f), a.map((x) => JSON.stringify(x)).join('\n') + (a.length ? '\n' : ''))
 wr(PREFIX + 'train.jsonl', rows)
@@ -133,6 +161,8 @@ wr(PREFIX + 'dev.jsonl', devRows)
 
 const avg = (a, k) => a.length ? Number((a.reduce((s, x) => s + x.meta[k], 0) / a.length).toFixed(1)) : 0
 const report = {
+  schema: 'cfb.sft-research/1', trainingApproved: false, scope: 'research-only-unvalidated-evaluator', promptProvenanceVerified: false,
+  inputSha256: sha(fs.readFileSync(IN)), promptSha256: sha(SYSTEM),
   in: path.relative(ROOT, IN), prompt: path.relative(ROOT, PROMPT_PATH), promptChars: SYSTEM.length,
   format: { template: 'native chat_template (System/User/Assistant)', tokenizedBy: 'trainer via apply_chat_template',
     thinking: false, why: '底座按这套标记训练了 5T token；自造分隔符要它先忘一套再学一套' },

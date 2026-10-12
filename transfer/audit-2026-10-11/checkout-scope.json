@@ -1,0 +1,69 @@
+{
+  "schema": "cfb.audit-checkout/1",
+  "baseline": "3922da88b35fe790ba145b3442a4800aac7fb4d1",
+  "trackedPaths": 1853,
+  "materializedBaselinePaths": 1843,
+  "excluded": [
+    {
+      "path": ".cfb-offline/teacher/v4-full.jsonl",
+      "sha": "394021f8e11104961972d58db571178824288741",
+      "size": 21803678,
+      "reason": "large generated/model artifact (>2 MiB): metadata retained, content not downloaded"
+    },
+    {
+      "path": "transfer/models/cfb-micro-neural.candidate.onnx",
+      "sha": "9a84cbc400961bf734f2fa845661b3d6e4196ab0",
+      "size": 124651,
+      "reason": "binary/compressed artifact or model-weight pointer: content not downloaded"
+    },
+    {
+      "path": "transfer/models/cfb-micro-neural.onnx",
+      "sha": "7ef0f84ded976539ca522fac6c276a2e54820613",
+      "size": 7760,
+      "reason": "binary/compressed artifact or model-weight pointer: content not downloaded"
+    },
+    {
+      "path": "transfer/models/cfb-micro-tokenizer/tokenizer.json",
+      "sha": "88777954b872faf3242e58c214ce2dd89937d6ce",
+      "size": 25301681,
+      "reason": "large generated/model artifact (>2 MiB): metadata retained, content not downloaded"
+    },
+    {
+      "path": "transfer/models/micro-generator-ai-review-workbook.xlsx",
+      "sha": "4304b86bc3313f8db2e7ea7712cc34fe2dbe65ce",
+      "size": 85757,
+      "reason": "binary/compressed artifact or model-weight pointer: content not downloaded"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v4/dev.jsonl.gz",
+      "sha": "659ab0d8c84d28edbe7522ebde78162aa00aae8a",
+      "size": 278474,
+      "reason": "binary/compressed artifact or model-weight pointer: content not downloaded"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v5/dev.jsonl.gz",
+      "sha": "5a50498d757f7da041956aa8a3f3e8b3bd775829",
+      "size": 278474,
+      "reason": "binary/compressed artifact or model-weight pointer: content not downloaded"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen/dev.jsonl.gz",
+      "sha": "1b5ac2996bb0ba0a7bfaf25f6e91867a5529ed73",
+      "size": 288247,
+      "reason": "binary/compressed artifact or model-weight pointer: content not downloaded"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen/kaggle-upload/dev.jsonl.gz",
+      "sha": "fe2dba4c52e07d1e70db5d22dec4f5154b6ef6a5",
+      "size": 285347,
+      "reason": "binary/compressed artifact or model-weight pointer: content not downloaded"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen/kaggle-upload/train-nonconforming.jsonl.gz",
+      "sha": "911812f9fde9c0b2c86a1e118ca43a115c288a48",
+      "size": 197908,
+      "reason": "binary/compressed artifact or model-weight pointer: content not downloaded"
+    }
+  ],
+  "note": "Sparse omissions were deliberate for a 128 MB workspace. Excluded bytes were not audited. Metadata is not a hash verification of their contents."
+}

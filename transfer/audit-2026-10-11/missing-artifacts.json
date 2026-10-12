@@ -1,0 +1,195 @@
+{
+  "schema": "cfb.snapshot-missing-artifacts/1",
+  "auditBaseline": "3922da88b35fe790ba145b3442a4800aac7fb4d1",
+  "originalManifest": "transfer/audit-2026-10-11/originals/MANIFEST.sha256",
+  "recoveryCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77",
+  "note": "All 24 paths are absent from the audit snapshot but present in pinned main. Historical claims of permanent loss are unsupported. Recovered bytes stay outside active data discovery; recovery is not training admission. Remaining files were not downloaded to preserve the workspace budget.",
+  "entries": [
+    {
+      "path": "deploy/kaggle/data/sft-dev.jsonl",
+      "expectedSha256": "9b550e4d044d45f86553e2dcace2d746622b1f110bd4dc43971aa41ba91d38a4",
+      "inPinnedMain": true,
+      "status": "recovered-byte-identical-to-original-manifest",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77",
+      "bytes": 1709954,
+      "sha256": "9b550e4d044d45f86553e2dcace2d746622b1f110bd4dc43971aa41ba91d38a4",
+      "archivePath": "transfer/archive-2026-10-11/recovered/deploy/kaggle/data/sft-dev.jsonl"
+    },
+    {
+      "path": "deploy/kaggle/data/sft-train.jsonl",
+      "expectedSha256": "cb512f6aa5684eb9bc86e606a8e6d31287c1bf7f880c925f695b35e23cf44342",
+      "inPinnedMain": true,
+      "status": "content-not-downloaded-over-2MiB-cap",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-batch4/dev.jsonl.gz",
+      "expectedSha256": "a350b95387b95470e5996390249c4b8791b998349f5d93b0f465b1f404ac64e3",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-batch4/train-nonconforming.jsonl.gz",
+      "expectedSha256": "63ae082e414e09b8fa71b302d68e259e1a9da9ecd1fe109b97e39ba89c5445e2",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-batch4/train.jsonl.gz",
+      "expectedSha256": "198139e30cab7c86c882830e1fedd3d01cb29788e15900dd93afc37e36b5c4c9",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-batch5/dev.jsonl.gz",
+      "expectedSha256": "1c2bef7c1f2b99668958fbf6840394b90de6bf4660ee0c8a540871598abceaa9",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-batch5/train-nonconforming.jsonl.gz",
+      "expectedSha256": "779e5d07eaf73964919bab718d8649baeac00e010f3ef573abbccafc0822f16e",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-batch5/train.jsonl.gz",
+      "expectedSha256": "1e4edb59a1ad07bfc3c3fe8d48105cb913d444ee83a0d556f7964c65ade39bf8",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v3/tokenizer-zh-seed.txt",
+      "expectedSha256": "69cbffecc3e9cd3de64d56ac5d855b4d837c7afdee8004c12dce26fe6d0daa50",
+      "inPinnedMain": true,
+      "status": "recovered-byte-identical-to-original-manifest",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77",
+      "bytes": 435948,
+      "sha256": "69cbffecc3e9cd3de64d56ac5d855b4d837c7afdee8004c12dce26fe6d0daa50",
+      "archivePath": "transfer/archive-2026-10-11/recovered/transfer/models/micro-generator-gen-v3/tokenizer-zh-seed.txt"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v3/train.jsonl.gz",
+      "expectedSha256": "758a70233fe8655c38f5b8ad8c8a93bf10cb1b35d8a80379c058d6ef9fdc5d88",
+      "inPinnedMain": true,
+      "status": "recovered-byte-identical-to-original-manifest",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77",
+      "bytes": 1925404,
+      "sha256": "758a70233fe8655c38f5b8ad8c8a93bf10cb1b35d8a80379c058d6ef9fdc5d88",
+      "archivePath": "transfer/archive-2026-10-11/recovered/transfer/models/micro-generator-gen-v3/train.jsonl.gz"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v4/train-nonconforming.jsonl.gz",
+      "expectedSha256": "bc0cb91fdce15ad0a664e8c4be6fd8e20cc495a130e419ebf992d84e3593e687",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v4/train.jsonl.gz",
+      "expectedSha256": "4227620729a9be7df6d6f4f01bdaff8261a0bf1545e6eb456db6d1907e2020d1",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v5/train-nonconforming.jsonl.gz",
+      "expectedSha256": "8a2ca7e677103bfac3db7cb2b4e72c61c21885f68f9038977aeccf0c23dc1d43",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v5/train.jsonl.gz",
+      "expectedSha256": "fbbf9a89b29652f9b34637127a0edfb3747f64b6239b0c430ceb45c81c900b22",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen/kaggle-upload/train.jsonl.gz",
+      "expectedSha256": "758a70233fe8655c38f5b8ad8c8a93bf10cb1b35d8a80379c058d6ef9fdc5d88",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen/train.jsonl.gz",
+      "expectedSha256": "f0195bcc52db72870c2a7928487726f971186ff8fa111eba096dc332c30d3707",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-v4flash-scenarios/birth-units-census-batch1.jsonl.gz",
+      "expectedSha256": "620af7d110f7e48f1afbdda85306fda841a887d9d9d704ebd24fbd4ec86008f6",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-v4flash-scenarios/birth-units-census-batch2.jsonl.gz",
+      "expectedSha256": "bbe1aaaa6779e2d1b358bc163025677377eebffd5610af2fe48432d86697f309",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-v4flash-scenarios/birth-units-census-batch3.jsonl.gz",
+      "expectedSha256": "6930bc094a1b460c29ef133a66b00210ec94203cb3fc27ef0fa00d07fa4b46ef",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-v4flash-scenarios/birth-units-census-batch4.jsonl.gz",
+      "expectedSha256": "64cac1a5e6cb26cf05905af9c16995bb8cd2ec6876c084b905e4effa0e7f24c2",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/models/micro-generator-v4flash-scenarios/birth-units-census-batch5.jsonl.gz",
+      "expectedSha256": "5d7747007e617611c80d9cf7dd92676d9dc9c5c1c5a035870ea9315e2c2cc0c2",
+      "inPinnedMain": true,
+      "status": "available-path-not-downloaded",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77"
+    },
+    {
+      "path": "transfer/probes-2026-10-07/oracle_out.json",
+      "expectedSha256": "f62c7b21a98cc1e87b49ec84a4cc0358be77604dcbbded13dbc700bd146565e1",
+      "inPinnedMain": true,
+      "status": "recovered-byte-identical-to-original-manifest",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77",
+      "bytes": 549241,
+      "sha256": "f62c7b21a98cc1e87b49ec84a4cc0358be77604dcbbded13dbc700bd146565e1",
+      "archivePath": "transfer/archive-2026-10-11/recovered/transfer/probes-2026-10-07/oracle_out.json"
+    },
+    {
+      "path": "transfer/probes-2026-10-07/units.jsonl",
+      "expectedSha256": "b10bc5fcb7d8afa6eaa9f950cf5db8ee46107319ae61f926a2bfa71031bd9920",
+      "inPinnedMain": true,
+      "status": "recovered-byte-identical-to-original-manifest",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77",
+      "bytes": 426276,
+      "sha256": "b10bc5fcb7d8afa6eaa9f950cf5db8ee46107319ae61f926a2bfa71031bd9920",
+      "archivePath": "transfer/archive-2026-10-11/recovered/transfer/probes-2026-10-07/units.jsonl"
+    },
+    {
+      "path": "transfer/recordings.json",
+      "expectedSha256": "07d7495c0bed7c8d60a602f599e95b0ca921e10806e7603e368a66bcac339874",
+      "inPinnedMain": true,
+      "status": "recovered-byte-identical-to-original-manifest",
+      "sourceCommit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77",
+      "bytes": 716867,
+      "sha256": "07d7495c0bed7c8d60a602f599e95b0ca921e10806e7603e368a66bcac339874",
+      "archivePath": "transfer/archive-2026-10-11/recovered/transfer/recordings.json"
+    }
+  ]
+}

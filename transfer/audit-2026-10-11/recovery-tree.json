@@ -1,0 +1,151 @@
+{
+  "schema": "cfb.recovery-tree/1",
+  "commit": "ccf8c4c801fa4dfc29339abe1e55c24ee4bbea77",
+  "entries": [
+    {
+      "path": "deploy/kaggle/data/sft-dev.jsonl",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "70c5e6d0e1bca03e26e854bb8fdd426208b47d6c"
+    },
+    {
+      "path": "deploy/kaggle/data/sft-train.jsonl",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "f8d2b244533cc261f974e3d9cb7096798e3ab870"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-batch4/dev.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "c2ac68f4afadb532e81f9a21455d127109db7870"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-batch4/train-nonconforming.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "3b6b6fb252b822103c64233a811507c8e49ec863"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-batch4/train.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "43651a769b43987308c755b68b475586ebd7dbe2"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-batch5/dev.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "980cc39ea65f433f630bd48ebea4e756e4a1e42f"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-batch5/train-nonconforming.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "6bcceac3fb778ea5edde3fbc623916858401e0c7"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-batch5/train.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "d41f38ef576c02e2e20db6ddd3ce36ac602f2ab4"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v3/tokenizer-zh-seed.txt",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "0001f1da34620ca887883c5068c7d109788c814e"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v3/train.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "9e3aa22a726f73911787a9d7151e9ecba72c2da9"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v4/train-nonconforming.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "6b54c36d1b7857bd7cadbfc6ff3974e77e3e3b91"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v4/train.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "94772bd04caf3bb23fcbe9bad3007fdc1e20512f"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v5/train-nonconforming.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "feb4b041900fe1e0ced30a8ae919251387367fc5"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v5/train.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "b85949b96d9f74a979b4f7fb00798594510709dc"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen/kaggle-upload/train.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "9e3aa22a726f73911787a9d7151e9ecba72c2da9"
+    },
+    {
+      "path": "transfer/models/micro-generator-gen/train.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "d6ed3caa1814746a7031d34e4868dbf177541671"
+    },
+    {
+      "path": "transfer/models/micro-generator-v4flash-scenarios/birth-units-census-batch1.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "f017504f652d8048e8c8dcc11bd019bed4ad2eb0"
+    },
+    {
+      "path": "transfer/models/micro-generator-v4flash-scenarios/birth-units-census-batch2.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "e2b57ad04ae9251e467278b50fa46020046241bc"
+    },
+    {
+      "path": "transfer/models/micro-generator-v4flash-scenarios/birth-units-census-batch3.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "df044bc64c82c528dff4a631cfe78e708cdbdba6"
+    },
+    {
+      "path": "transfer/models/micro-generator-v4flash-scenarios/birth-units-census-batch4.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "e183db87bdc37f8a38a99f521062d0de51df8af2"
+    },
+    {
+      "path": "transfer/models/micro-generator-v4flash-scenarios/birth-units-census-batch5.jsonl.gz",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "a7bcc84ef441178dfefa29563441b99035770d3a"
+    },
+    {
+      "path": "transfer/probes-2026-10-07/oracle_out.json",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "e6ead659e866f0b7d7c3bd83175dd5966dcf3c9b"
+    },
+    {
+      "path": "transfer/probes-2026-10-07/units.jsonl",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "10d8d661874db96e6dbd184060e9d8bcd11beead"
+    },
+    {
+      "path": "transfer/recordings.json",
+      "mode": "100644",
+      "type": "blob",
+      "gitBlob": "b41559310682532d23be1d698e4bd416d02807a9"
+    }
+  ],
+  "scope": "Path/oid evidence from git ls-tree; not size or contents of undownloaded blobs"
+}

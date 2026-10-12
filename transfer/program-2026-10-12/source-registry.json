@@ -1,0 +1,1531 @@
+{
+  "schema": "cfb.source-registry/1",
+  "scope": "explicit exposed-source catalog; no blind source discovery or automatic archive promotion",
+  "entries": [
+    {
+      "inputSha256": "16c2e60d26d4725b3efe561b8614f7463e588e9a41bf47a9fb7d99db1349379c",
+      "rawSha256": "6ec50be12c3d25f9ce4eb01ff1fd64cd51d1779723eac302136c1598ecb5d164",
+      "ctxSha256": "6799198700fab22c32b0d1f2d7bd6008c7715cfadfa4b2c894f55312c8b489db",
+      "rawChars": 2042,
+      "ctxChars": 428,
+      "families": [
+        "repo:app-sre/qontract-reconcile"
+      ],
+      "records": [
+        {
+          "caseId": "repo-app-sre-qontract-reconcile-2b3cf758ea317e70",
+          "artifact": "transfer/models/micro-generator-open-swe-seed/annotations.jsonl",
+          "line": 4,
+          "recordSha256": "4938afd6dd37dbe4c6d2400104088d76cc13bf78b4ed9171e8344156add02d5c",
+          "referenceSha256": "c23ea6ae01ee655ef589b6811d9ae2c317fcc2760b4c2a50af51c30f93be3d55",
+          "sourceId": "18ec17cb-104d-4b00-8ed5-88846bb05401",
+          "originalSource": "https://huggingface.co/datasets/nvidia/Open-SWE-Traces/viewer/v1.2/minisweagent?row=14409&revision=f8fb5b3d2c787f85f8a00f5fe04fe3f1a11088ef",
+          "declaredSourceCoverage": "complete",
+          "declaredAnnotationStatus": "adjudicated",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": "Qwen3.8-27B",
+          "harness": "mini-swe-agent",
+          "licenseState": "upstream declarations retained; not target admission"
+        }
+      ],
+      "targetHashes": [
+        "c23ea6ae01ee655ef589b6811d9ae2c317fcc2760b4c2a50af51c30f93be3d55"
+      ],
+      "exposure": [
+        "auxiliary-exposed"
+      ],
+      "roles": [
+        "off-target-auxiliary"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "single-retained-draft",
+      "canReannotateForDevelopment": false,
+      "repo": "app-sre/qontract-reconcile"
+    },
+    {
+      "inputSha256": "362c05c1ef7c3ed001fe29107880032334546ef675c2cd39970a2d1c54fde59c",
+      "rawSha256": "db3149fe19d2061f84c1304273589b32f1e5dc371d5cf3540c6d205ea02231eb",
+      "ctxSha256": "cbf6858de7ea6d3021ec4c7ca65f1aac64fd605a99b93b978ab87649843c3430",
+      "rawChars": 4198,
+      "ctxChars": 2774,
+      "families": [
+        "sse-truncated"
+      ],
+      "records": [
+        {
+          "caseId": "sse-truncated-ab9f32022400104e",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 17,
+          "recordSha256": "5cfa734d43529bc480a75a9e24a44ba8ae2c25443982ad3f8147c7cc6e1e1350",
+          "referenceSha256": "1b1fcb88761e7a373a6d7a04054c2f1c9ac1ae5b683e6d9772bd710c4744485f",
+          "sourceId": "sse-truncated-s0-r5",
+          "originalSource": "transfer/gold/sse-truncated/sse-truncated-s0-r5.json",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "sse-truncated-e20893eee29afae2",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 16,
+          "recordSha256": "18ec3c068ea1cd0e664df6ff24b83cc9593b4539fe1fdf013a76fec87acfdc49",
+          "referenceSha256": "9caaa5a3e7d2d271c6fd4a1fdc642ee1811e3c80293d0187730a8bec75cbc660",
+          "sourceId": "sse-truncated-ab9f32022400104e",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "1b1fcb88761e7a373a6d7a04054c2f1c9ac1ae5b683e6d9772bd710c4744485f",
+        "9caaa5a3e7d2d271c6fd4a1fdc642ee1811e3c80293d0187730a8bec75cbc660"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    },
+    {
+      "inputSha256": "6ed95fd21bf4f21de24e5c19d6e041937f29b2b34ebdb67ab6a03ffd306f2225",
+      "rawSha256": "173538a1fbc869379d29484824a11053d1659796a95bc11735ec26bbbfc48c8a",
+      "ctxSha256": "0afa48ac59cf9c1ca1f0bc936fa05b4e0ffd7161e8eef1a4d1678b4583bb9521",
+      "rawChars": 3911,
+      "ctxChars": 1530,
+      "families": [
+        "sse-truncated"
+      ],
+      "records": [
+        {
+          "caseId": "sse-truncated-36a50e856e426f8e",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 13,
+          "recordSha256": "830498476ec21340af7fed796afe1f7033b4f8fa363ad609976ef1ebb586d2da",
+          "referenceSha256": "bb43ebc1925e75d09067570494455894059bc5ccb382fad756d84124297e907f",
+          "sourceId": "sse-truncated-s0-r4",
+          "originalSource": "transfer/models/micro-dev-dataset.json#handSamples",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "sse-truncated-139ba9d0bfa51188",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 12,
+          "recordSha256": "736c611a21c47e40cce9e4796663492df4a3331a7974afb260d5392d90bc5a4a",
+          "referenceSha256": "9caaa5a3e7d2d271c6fd4a1fdc642ee1811e3c80293d0187730a8bec75cbc660",
+          "sourceId": "sse-truncated-36a50e856e426f8e",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "9caaa5a3e7d2d271c6fd4a1fdc642ee1811e3c80293d0187730a8bec75cbc660",
+        "bb43ebc1925e75d09067570494455894059bc5ccb382fad756d84124297e907f"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    },
+    {
+      "inputSha256": "725eca98e1592c56f90f3b1bba7f3c948a0ef3d0990f5e188c1093fdecd2e87f",
+      "rawSha256": "85812c4ef2f98aac7feaf79d4ab5ebdc39b8e914f66f32d76a64dd2e66c4b0b8",
+      "ctxSha256": "6da94d786a44789a15449305b685fe50cc5beae66a4ea6ced71173eb9f685cc4",
+      "rawChars": 1314,
+      "ctxChars": 478,
+      "families": [
+        "repo:mehcode/python-xmlsec"
+      ],
+      "records": [
+        {
+          "caseId": "repo-mehcode-python-xmlsec-1f5f39c7020f25ff",
+          "artifact": "transfer/models/micro-generator-open-swe-seed/annotations.jsonl",
+          "line": 3,
+          "recordSha256": "8d2b913187f7c6249bb23c0059f76c6ed07a8eb1d71148d1387f9320026cdc78",
+          "referenceSha256": "6f5295116ef55eb3df7a32301fce3b4f1bc533f537479266892509dd76561d06",
+          "sourceId": "924706c1-d36a-40d4-a4b5-b235327e243f",
+          "originalSource": "https://huggingface.co/datasets/nvidia/Open-SWE-Traces/viewer/v1.2/minisweagent?row=6&revision=f8fb5b3d2c787f85f8a00f5fe04fe3f1a11088ef",
+          "declaredSourceCoverage": "complete",
+          "declaredAnnotationStatus": "adjudicated",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": "Qwen3.8-27B",
+          "harness": "mini-swe-agent",
+          "licenseState": "upstream declarations retained; not target admission"
+        }
+      ],
+      "targetHashes": [
+        "6f5295116ef55eb3df7a32301fce3b4f1bc533f537479266892509dd76561d06"
+      ],
+      "exposure": [
+        "auxiliary-exposed"
+      ],
+      "roles": [
+        "off-target-auxiliary"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "single-retained-draft",
+      "canReannotateForDevelopment": false,
+      "repo": "mehcode/python-xmlsec"
+    },
+    {
+      "inputSha256": "7981dc40a3eeb67d21fe78871fdb20ae7f46224248604854219bbe7dcb9c2ef2",
+      "rawSha256": "5c14e53a73766ee0783ccbb2e7b26cf3db9ef512c9dbdb10bff081aadd039a18",
+      "ctxSha256": "8fdfba602f835a2885cc1e8719e73a944398e4be4e61b8a5467e414a3c359f7f",
+      "rawChars": 29903,
+      "ctxChars": 2080,
+      "families": [
+        "flaky-timeout"
+      ],
+      "records": [
+        {
+          "caseId": "flaky-timeout-abc7c84a60543747",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 5,
+          "recordSha256": "4558a9839686e169f2f9fe428e370ebce8e702a6b267c3289c3a380ae7be4211",
+          "referenceSha256": "a823d81e8603a51a4e883b9d0115026c612221c2b886dfaf953ddc84a94559e4",
+          "sourceId": "flaky-timeout-s0-r7",
+          "originalSource": "transfer/models/micro-dev-dataset.json#handSamples",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "flaky-timeout-91554567301843c2",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 5,
+          "recordSha256": "23ad7c32d37111ab8d6695d3cf6b5a8430773e6fe2d1a7f60374b7a6cffd3733",
+          "referenceSha256": "cea7eace8da47ad8a0411c78928b66381a898ed5559847db4555e159d87e8ca1",
+          "sourceId": "flaky-timeout-abc7c84a60543747",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "a823d81e8603a51a4e883b9d0115026c612221c2b886dfaf953ddc84a94559e4",
+        "cea7eace8da47ad8a0411c78928b66381a898ed5559847db4555e159d87e8ca1"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    },
+    {
+      "inputSha256": "81467a41d7ee4b81ee87214eeb0d8537bcec8b34de821a872248163698b1dec0",
+      "rawSha256": "c17b23ff9d35865e92c2fbbf1e01451fa324e1df6052a953b6ba357f8485d63a",
+      "ctxSha256": "949f34f90e7252e5af339862c36a2a073ec16a3ca260867b3eb8348634e49606",
+      "rawChars": 1328,
+      "ctxChars": 924,
+      "families": [
+        "perf-regression"
+      ],
+      "records": [
+        {
+          "caseId": "perf-regression-1b5bf68718d1be80",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 8,
+          "recordSha256": "3a347a25a7e3e1dcbceb08cce38d15dbffe0522dbb2209c7baf728e1742f4f8e",
+          "referenceSha256": "e81582af01f06bba38054d9135d7946664ebb6a55b192f511198fb52f4e846f8",
+          "sourceId": "perf-regression-s0-r5",
+          "originalSource": "transfer/models/micro-dev-dataset.json#handSamples",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "perf-regression-b658aaee22057ecf",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 9,
+          "recordSha256": "e83a408a6b20b184d3be00693ac97023cbd7e85caa4f3cc31b5b899c478d24fa",
+          "referenceSha256": "22ffc79dcf0e00ed403ec9edd9829f50542f4b993154bff1afac09b5762f0c55",
+          "sourceId": "perf-regression-s0-r5",
+          "originalSource": "transfer/models/micro-dev-dataset.json#handSamples",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "perf-regression-0398f855c423f518",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 8,
+          "recordSha256": "5fa3f86895bda4aed26793d1c4d4b1313e74704a43797d248f6cd410b7816f16",
+          "referenceSha256": "7b74a597641cccf34e386cc12b36c5391974a75b8d970b8f1be459f256c5cb6d",
+          "sourceId": "perf-regression-1b5bf68718d1be80|perf-regression-b658aaee22057ecf",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "22ffc79dcf0e00ed403ec9edd9829f50542f4b993154bff1afac09b5762f0c55",
+        "7b74a597641cccf34e386cc12b36c5391974a75b8d970b8f1be459f256c5cb6d",
+        "e81582af01f06bba38054d9135d7946664ebb6a55b192f511198fb52f4e846f8"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    },
+    {
+      "inputSha256": "827d977ef13742a2dc69b2b3dfb1c4eb2c0027b456faa6c0d34dc04e3eb8745a",
+      "rawSha256": "6a7066e8a95eb4926f2f765873203a2fbfc237cc3dd3d613cdf88ce9725554f1",
+      "ctxSha256": "ce668f232a56bf50161890e53b1b8ca84bd8c43dbcb9226e8623c56418975739",
+      "rawChars": 2306,
+      "ctxChars": 703,
+      "families": [
+        "repo:python-distro/distro"
+      ],
+      "records": [
+        {
+          "caseId": "repo-python-distro-distro-c0af2dd0da8439b9",
+          "artifact": "transfer/models/micro-generator-open-swe-seed/annotations.jsonl",
+          "line": 1,
+          "recordSha256": "9b9637dca30f2e277efde1ebf30b0ff1c4d39bba7e5c0c5584cc1ac462047299",
+          "referenceSha256": "f55e817590f79c84b5c3972bbc1c53f94a8b2304b313c903d9e9f8bb1acb2b63",
+          "sourceId": "b82d4956-5621-438a-957e-f5d43f94245f",
+          "originalSource": "https://huggingface.co/datasets/nvidia/Open-SWE-Traces/viewer/v1.2/minisweagent?row=0&revision=f8fb5b3d2c787f85f8a00f5fe04fe3f1a11088ef",
+          "declaredSourceCoverage": "complete",
+          "declaredAnnotationStatus": "adjudicated",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": "Qwen3.8-27B",
+          "harness": "mini-swe-agent",
+          "licenseState": "upstream declarations retained; not target admission"
+        }
+      ],
+      "targetHashes": [
+        "f55e817590f79c84b5c3972bbc1c53f94a8b2304b313c903d9e9f8bb1acb2b63"
+      ],
+      "exposure": [
+        "auxiliary-exposed"
+      ],
+      "roles": [
+        "off-target-auxiliary"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "single-retained-draft",
+      "canReannotateForDevelopment": false,
+      "repo": "python-distro/distro"
+    },
+    {
+      "inputSha256": "86da015b48bf620e903cb75a5205e8f07196bbfe6c92ab85beeba403578aaa6c",
+      "rawSha256": "7f5c6892f41373c0451d61646d5dd2cd8a2648480a66dcb361b83f75860acbf1",
+      "ctxSha256": "1beb615ac573c80670a297019e4c905180e33f94ae699307f565987a08c7af17",
+      "rawChars": 7447,
+      "ctxChars": 810,
+      "families": [
+        "flaky-timeout"
+      ],
+      "records": [
+        {
+          "caseId": "flaky-timeout-445555c31e8f51b1",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 2,
+          "recordSha256": "604bd425fa6c4a020d5cc86cbbf94f11681a4a97dfa2510623e7fea13c56f6f0",
+          "referenceSha256": "84e77c53faa97f9ffaadb319a552882fc8cfa78ee192eeecafd547bcdc544b5c",
+          "sourceId": "flaky-timeout-s0-r3",
+          "originalSource": "transfer/models/micro-dev-dataset.json#handSamples",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "flaky-timeout-740d1e0c2c840186",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 2,
+          "recordSha256": "be48fdad4bed8a38853533df0c2bab67911831071f3b07f9e379db2a65cec7cc",
+          "referenceSha256": "cea7eace8da47ad8a0411c78928b66381a898ed5559847db4555e159d87e8ca1",
+          "sourceId": "flaky-timeout-445555c31e8f51b1",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "flaky-timeout-9f726c3b9c677f04",
+          "artifact": "transfer/program-2026-10-12/reviewed-dev.jsonl",
+          "line": 1,
+          "recordSha256": "54fc6498ac7cf101144cb8674b0fc141fa097ef2b0c5de26b7790c4cd2d67d20",
+          "referenceSha256": "54086993cf93457d2938992413f963c582732e447e0cfc17cfa26b3ab4bf8c83",
+          "sourceId": "flaky-timeout-445555c31e8f51b1",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl",
+          "declaredSourceCoverage": "complete",
+          "declaredAnnotationStatus": "adjudicated",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "retained CFB raw/ctx; no new reader execution",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "54086993cf93457d2938992413f963c582732e447e0cfc17cfa26b3ab4bf8c83",
+        "84e77c53faa97f9ffaadb319a552882fc8cfa78ee192eeecafd547bcdc544b5c",
+        "cea7eace8da47ad8a0411c78928b66381a898ed5559847db4555e159d87e8ca1"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "complete-ai-review-development",
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    },
+    {
+      "inputSha256": "af78f34856fdacff42bd6d058a8addcde5bd58104fa6c8587037258ceee91586",
+      "rawSha256": "c9e4d890656c4fc4bec0db2aaf186cf6bf11697f8336d9836ea7d1300e02877d",
+      "ctxSha256": "c37d8618705a3358ac68a84eb6a8ffde9896a989bbeb1b2ca0615e96230e2cfe",
+      "rawChars": 2989,
+      "ctxChars": 939,
+      "families": [
+        "perf-regression"
+      ],
+      "records": [
+        {
+          "caseId": "perf-regression-c5a46f633a734bab",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 11,
+          "recordSha256": "88662788fa78d0d9ad0775d9b6c873a9858ee921178eae7abe7178603ff95c22",
+          "referenceSha256": "a0dc72a9f3b3cd0331b3e667ee99a2647ab879c49001dbac197ba3973cc3ed29",
+          "sourceId": "perf-regression-s0-r7",
+          "originalSource": "transfer/models/micro-dev-dataset.json#handSamples",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "perf-regression-855de1e943b5cd20",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 10,
+          "recordSha256": "d8c765e07923f13feafce54c3c312158ebfd0cf391e29e3f7e93032dac971123",
+          "referenceSha256": "7b74a597641cccf34e386cc12b36c5391974a75b8d970b8f1be459f256c5cb6d",
+          "sourceId": "perf-regression-c5a46f633a734bab",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "7b74a597641cccf34e386cc12b36c5391974a75b8d970b8f1be459f256c5cb6d",
+        "a0dc72a9f3b3cd0331b3e667ee99a2647ab879c49001dbac197ba3973cc3ed29"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    },
+    {
+      "inputSha256": "af7af7119b7c43fec047fb88453a858ec571ef0c905efed7226d30aa9dc414ae",
+      "rawSha256": "96307b18203e18339339fe9892f671f93d6b15a6f7641366368fc41250ce88b1",
+      "ctxSha256": "26fd2c44dfdf940aa93108824eded67bc2396d6bc94f2139eed532dff09072cd",
+      "rawChars": 16581,
+      "ctxChars": 1807,
+      "families": [
+        "flaky-timeout"
+      ],
+      "records": [
+        {
+          "caseId": "flaky-timeout-516ae841af7e4451",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 3,
+          "recordSha256": "5f0d06b1635646efd43fae1be7ab1c372dbd43e5e031efdcfc5f4c75783ab817",
+          "referenceSha256": "a823d81e8603a51a4e883b9d0115026c612221c2b886dfaf953ddc84a94559e4",
+          "sourceId": "flaky-timeout-s0-r6",
+          "originalSource": "transfer/models/micro-dev-dataset.json#handSamples",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "flaky-timeout-09e184654a245cae",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 3,
+          "recordSha256": "5b8166d1bebe3d4404c845ec204b4b3a4e4423d517985d432147480f408b8b70",
+          "referenceSha256": "cea7eace8da47ad8a0411c78928b66381a898ed5559847db4555e159d87e8ca1",
+          "sourceId": "flaky-timeout-516ae841af7e4451",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "a823d81e8603a51a4e883b9d0115026c612221c2b886dfaf953ddc84a94559e4",
+        "cea7eace8da47ad8a0411c78928b66381a898ed5559847db4555e159d87e8ca1"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    },
+    {
+      "inputSha256": "b15c0205818d4ea9f2d54cee7314b4a817eb5a0ea61156b0ce27d909d990fc18",
+      "rawSha256": "d064c6092c1a32a7d011bfa03770c79d042c4a62d26e9adbab79b6ae93526b5f",
+      "ctxSha256": "a5f0153de130a6f83788d163161a42a6901348c125160a8bedb199140fc97861",
+      "rawChars": 2960,
+      "ctxChars": 1317,
+      "families": [
+        "sse-truncated"
+      ],
+      "records": [
+        {
+          "caseId": "sse-truncated-9cf468008d803a3a",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 16,
+          "recordSha256": "40f39af788f765529b8fba8237841b464d485679ad5c0a1565ee9bf10ab03724",
+          "referenceSha256": "4c34197d1a3f6de8e82d949d0cb9f436e0db5830ab3bc0d50c49890b3eca36ca",
+          "sourceId": "sse-truncated-s0-r4",
+          "originalSource": "transfer/models/micro-dev-dataset.json#handSamples",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "sse-truncated-fa734d482d954fa5",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 15,
+          "recordSha256": "bb1970a652dabe4dd611ad6816941c6171fa179e2831b0a8760965d1ff033bfb",
+          "referenceSha256": "9caaa5a3e7d2d271c6fd4a1fdc642ee1811e3c80293d0187730a8bec75cbc660",
+          "sourceId": "sse-truncated-9cf468008d803a3a",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "4c34197d1a3f6de8e82d949d0cb9f436e0db5830ab3bc0d50c49890b3eca36ca",
+        "9caaa5a3e7d2d271c6fd4a1fdc642ee1811e3c80293d0187730a8bec75cbc660"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    },
+    {
+      "inputSha256": "d302542c6f713cad35c08e5cdae330e71ad34af4822ade1135a1fa95e5af1657",
+      "rawSha256": "9ca391ef59a306a6531f4360f311ea88f71c6dfff042ffa28a0445582fed015f",
+      "ctxSha256": "b6c9b016577e80643704dc1e51e24185dc0448b9b9f5e2ece8261e54c480ff34",
+      "rawChars": 2127,
+      "ctxChars": 256,
+      "families": [
+        "repo:knative/client"
+      ],
+      "records": [
+        {
+          "caseId": "repo-knative-client-a1c56ea9bc050243",
+          "artifact": "transfer/models/micro-generator-open-swe-seed/annotations.jsonl",
+          "line": 6,
+          "recordSha256": "7730805824b3956d6843a61632310b6b82fa84bd56eb11af42b9df10de8df035",
+          "referenceSha256": "e53a66b71f66548b37f66e09571372114c7d3e609b105a733d80bfbe7d50e330",
+          "sourceId": "77789cf9-c1dd-4cfe-b6b9-12be803770e5",
+          "originalSource": "https://huggingface.co/datasets/nvidia/Open-SWE-Traces/viewer/v1.2/minisweagent?row=72856&revision=f8fb5b3d2c787f85f8a00f5fe04fe3f1a11088ef",
+          "declaredSourceCoverage": "complete",
+          "declaredAnnotationStatus": "adjudicated",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": "Qwen3.8-27B",
+          "harness": "mini-swe-agent",
+          "licenseState": "upstream declarations retained; not target admission"
+        }
+      ],
+      "targetHashes": [
+        "e53a66b71f66548b37f66e09571372114c7d3e609b105a733d80bfbe7d50e330"
+      ],
+      "exposure": [
+        "auxiliary-exposed"
+      ],
+      "roles": [
+        "off-target-auxiliary"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "single-retained-draft",
+      "canReannotateForDevelopment": false,
+      "repo": "knative/client"
+    },
+    {
+      "inputSha256": "d3cafe0a2539d4eae82c5d7bee9e01e5a1212381344a49b0efbba36e464f124e",
+      "rawSha256": "20771ef56e0296ec81a9bc96fedaf4dc65bac23e7fba2e7ee401f249dcd6d22a",
+      "ctxSha256": "6885d34bbe177fed9d29958241017c10162740bdcffb337d3c7c75484048f23d",
+      "rawChars": 3687,
+      "ctxChars": 1279,
+      "families": [
+        "sse-truncated"
+      ],
+      "records": [
+        {
+          "caseId": "sse-truncated-95fd0d6633ab9b19",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 15,
+          "recordSha256": "69060a228940716a49af9d5bf05add91da7470884f76aecd6afacc9df2ecb1e4",
+          "referenceSha256": "a441be937248557244e5c207a12e4ef64c8f5d0dd9cd6998306592569e41fbbd",
+          "sourceId": "sse-truncated-s1-r3",
+          "originalSource": "transfer/models/micro-dev-dataset.json#handSamples",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "sse-truncated-fca90f4e4ffc0449",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 14,
+          "recordSha256": "8adf469164052e9c722ac37ec1828fed264651f2f2f17f6943bf3563a64e09c2",
+          "referenceSha256": "9caaa5a3e7d2d271c6fd4a1fdc642ee1811e3c80293d0187730a8bec75cbc660",
+          "sourceId": "sse-truncated-95fd0d6633ab9b19",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "9caaa5a3e7d2d271c6fd4a1fdc642ee1811e3c80293d0187730a8bec75cbc660",
+        "a441be937248557244e5c207a12e4ef64c8f5d0dd9cd6998306592569e41fbbd"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    },
+    {
+      "inputSha256": "da177d65d28a4334a278ee630378b8acfb34303ab3b4902477ba4f2d4d9fd6e8",
+      "rawSha256": "e7ec2a0f40d88aa089d3d089b9bf3ad1316935cc24e70f7bcd531c3a74ffa5db",
+      "ctxSha256": "1009bbb332f37483d6f0c42090a27789d78cf7d346f904c7d1757a54991f99a8",
+      "rawChars": 3605,
+      "ctxChars": 1697,
+      "families": [
+        "sse-truncated"
+      ],
+      "records": [
+        {
+          "caseId": "sse-truncated-2c6c7d60c10b5d86",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 12,
+          "recordSha256": "09193a353aa5e925f2fb55628c4b004e22dd7ad5eb7a1cf2118ded4ae6df696f",
+          "referenceSha256": "bb43ebc1925e75d09067570494455894059bc5ccb382fad756d84124297e907f",
+          "sourceId": "sse-truncated-s0-r4",
+          "originalSource": "transfer/models/micro-dev-dataset.json#handSamples",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "sse-truncated-c11c532105a76c23",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 11,
+          "recordSha256": "4b40f5ccd9403be8b7251eded468e438cfa4ca666fba62e46948f82451523413",
+          "referenceSha256": "9caaa5a3e7d2d271c6fd4a1fdc642ee1811e3c80293d0187730a8bec75cbc660",
+          "sourceId": "sse-truncated-2c6c7d60c10b5d86",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "sse-truncated-24bd46e54267e3fe",
+          "artifact": "transfer/program-2026-10-12/reviewed-dev.jsonl",
+          "line": 3,
+          "recordSha256": "aa912d7773aa8172cbd19119203700bf5b412c94544e8805ec5eb76bb1ab3486",
+          "referenceSha256": "18205e3e423d8e5eb42ee3a13ceee05e749ad526ad58543f0ca6856e641ac730",
+          "sourceId": "sse-truncated-2c6c7d60c10b5d86",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl",
+          "declaredSourceCoverage": "complete",
+          "declaredAnnotationStatus": "adjudicated",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "retained CFB raw/ctx; no new reader execution",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "18205e3e423d8e5eb42ee3a13ceee05e749ad526ad58543f0ca6856e641ac730",
+        "9caaa5a3e7d2d271c6fd4a1fdc642ee1811e3c80293d0187730a8bec75cbc660",
+        "bb43ebc1925e75d09067570494455894059bc5ccb382fad756d84124297e907f"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "complete-ai-review-development",
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    },
+    {
+      "inputSha256": "df2aecf05b0f7ab3e99394801324268b1ee53be0a00b7c87b065c0df90582e91",
+      "rawSha256": "3ec57e163b4a7ecf42594bc15d53f1acdcc0509ca14f49a1e48b0a4c6402c417",
+      "ctxSha256": "f7ff9f8aa5e5effcd881d043588266e1f14eae4c999e6d2026d20c5c64346d1d",
+      "rawChars": 29547,
+      "ctxChars": 1502,
+      "families": [
+        "flaky-timeout"
+      ],
+      "records": [
+        {
+          "caseId": "flaky-timeout-f008aed867a41545",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 7,
+          "recordSha256": "e85a58a185acb1502c24616070edc92253a1f7bbc649fa1a7f88f975adb95dfe",
+          "referenceSha256": "a823d81e8603a51a4e883b9d0115026c612221c2b886dfaf953ddc84a94559e4",
+          "sourceId": "flaky-timeout-s0-r5",
+          "originalSource": "transfer/models/micro-dev-dataset.json#handSamples",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "flaky-timeout-f30f0ef17dcf6cf5",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 7,
+          "recordSha256": "56097aa2dceb37457e18c8e68b9fa2d7736a92f584b09c56025f3f627d47802e",
+          "referenceSha256": "cea7eace8da47ad8a0411c78928b66381a898ed5559847db4555e159d87e8ca1",
+          "sourceId": "flaky-timeout-f008aed867a41545",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "a823d81e8603a51a4e883b9d0115026c612221c2b886dfaf953ddc84a94559e4",
+        "cea7eace8da47ad8a0411c78928b66381a898ed5559847db4555e159d87e8ca1"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    },
+    {
+      "inputSha256": "e55355e3fa922a66229b4f649514b0759aa42325e0b386b2233eaa0d8aa14cb8",
+      "rawSha256": "a55f803f2a593a50a2f1cb969753568d0ff5194c61f4b57163a3559113fc7982",
+      "ctxSha256": "f29274585c79cafcbff2c2cc2f3a5e86b5196e622fdb6a0d16cbb39f70f0a79c",
+      "rawChars": 7522,
+      "ctxChars": 801,
+      "families": [
+        "flaky-timeout"
+      ],
+      "records": [
+        {
+          "caseId": "flaky-timeout-b79f3481defb4912",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 6,
+          "recordSha256": "6cc5a996b65af1a0a9859af5875398dbba22a320713b08dab737405cdbbd7b67",
+          "referenceSha256": "a823d81e8603a51a4e883b9d0115026c612221c2b886dfaf953ddc84a94559e4",
+          "sourceId": "flaky-timeout-s0-r3",
+          "originalSource": "transfer/models/micro-dev-dataset.json#handSamples",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "flaky-timeout-8af94bd42efe4883",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 6,
+          "recordSha256": "b04a06636f1a57c5bf1cff398fc95be9e041263a2cb2ea66159ef460b33b049f",
+          "referenceSha256": "cea7eace8da47ad8a0411c78928b66381a898ed5559847db4555e159d87e8ca1",
+          "sourceId": "flaky-timeout-b79f3481defb4912",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "a823d81e8603a51a4e883b9d0115026c612221c2b886dfaf953ddc84a94559e4",
+        "cea7eace8da47ad8a0411c78928b66381a898ed5559847db4555e159d87e8ca1"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    },
+    {
+      "inputSha256": "e59f3a39651b333cf8ac6c26fadb0ab502f9174b4943b1e3fdc7143fd15a28ef",
+      "rawSha256": "61ca9150a58839236d714b4fdd1f5d31b3b49140a2cac04f090a6dd16b5215fa",
+      "ctxSha256": "39ca1cb62b1a648f64839dd2a6376d261ea004d90b2768625592e71e1f3418e8",
+      "rawChars": 1651,
+      "ctxChars": 433,
+      "families": [
+        "repo:gocardless/airflow-dbt"
+      ],
+      "records": [
+        {
+          "caseId": "repo-gocardless-airflow-dbt-b6f6f361f5f396f4",
+          "artifact": "transfer/models/micro-generator-open-swe-seed/annotations.jsonl",
+          "line": 2,
+          "recordSha256": "ef3ce9a34431928aff9c3f6a9304a2bba18b44cf258c846cc68f4c4cd4d4335d",
+          "referenceSha256": "4eef2eb5b45dce36b6fbb9be12c3cb94bd0d459aa5729971061bfa055794ecaf",
+          "sourceId": "d4cd2638-79a4-408d-aa01-fa219c2cabc7",
+          "originalSource": "https://huggingface.co/datasets/nvidia/Open-SWE-Traces/viewer/v1.2/minisweagent?row=3&revision=f8fb5b3d2c787f85f8a00f5fe04fe3f1a11088ef",
+          "declaredSourceCoverage": "complete",
+          "declaredAnnotationStatus": "adjudicated",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": "Qwen3.8-27B",
+          "harness": "mini-swe-agent",
+          "licenseState": "upstream declarations retained; not target admission"
+        }
+      ],
+      "targetHashes": [
+        "4eef2eb5b45dce36b6fbb9be12c3cb94bd0d459aa5729971061bfa055794ecaf"
+      ],
+      "exposure": [
+        "auxiliary-exposed"
+      ],
+      "roles": [
+        "off-target-auxiliary"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "single-retained-draft",
+      "canReannotateForDevelopment": false,
+      "repo": "gocardless/airflow-dbt"
+    },
+    {
+      "inputSha256": "e7fcb908ed8cf34c4c89f15b07b17f5c7799a32d281154f80aea37a5c17fd88c",
+      "rawSha256": "ce768321f4c3d9b928d9a71e13d0f463d79961d575003ba8d5a145667245dd19",
+      "ctxSha256": "c7edd2beeb67a004463b1f42caa323f2ec10c66e3385ea5ddfb9b53d89dc4122",
+      "rawChars": 9409,
+      "ctxChars": 1032,
+      "families": [
+        "flaky-timeout"
+      ],
+      "records": [
+        {
+          "caseId": "flaky-timeout-618b42a02b6aa205",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 4,
+          "recordSha256": "eed9c7662ede38b6f83217c0763f1075f00a172606c9c167dc5ffa457594daee",
+          "referenceSha256": "a823d81e8603a51a4e883b9d0115026c612221c2b886dfaf953ddc84a94559e4",
+          "sourceId": "flaky-timeout-s0-r3",
+          "originalSource": "transfer/models/micro-dev-dataset.json#handSamples",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "flaky-timeout-672ab40830532989",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 4,
+          "recordSha256": "8c3be4f71fc80ba4c43e35bad88afe9b0a01ab7cac2a9b0552b3b806a1daaeb0",
+          "referenceSha256": "cea7eace8da47ad8a0411c78928b66381a898ed5559847db4555e159d87e8ca1",
+          "sourceId": "flaky-timeout-618b42a02b6aa205",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "a823d81e8603a51a4e883b9d0115026c612221c2b886dfaf953ddc84a94559e4",
+        "cea7eace8da47ad8a0411c78928b66381a898ed5559847db4555e159d87e8ca1"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    },
+    {
+      "inputSha256": "e92f28818b6881fc51352ab4770ddf34006b62bf9f42c0615346fd0296e31de7",
+      "rawSha256": "85e7ef347d35fd9dde7d0c9d56e3433b3ea278c4e4d2a1796afe29ded9dc241f",
+      "ctxSha256": "6878a84cbaec8d90bb848d45d9bdb3dd7cc5300578a62664729a75f194f9518b",
+      "rawChars": 2032,
+      "ctxChars": 482,
+      "families": [
+        "repo:fonttools/fonttools"
+      ],
+      "records": [
+        {
+          "caseId": "repo-fonttools-fonttools-57014b41040cde6a",
+          "artifact": "transfer/models/micro-generator-open-swe-seed/annotations.jsonl",
+          "line": 5,
+          "recordSha256": "4c989e9b2a7e91a34330b6d736e08a48ee19634df2c76f98e37d46477cd0c18e",
+          "referenceSha256": "47df6f2933d035113c16b353c4668de06b7fecb30a281959e7ff3cae8590a83b",
+          "sourceId": "b5a21ffb-11f0-4cce-af93-f3775a08c199",
+          "originalSource": "https://huggingface.co/datasets/nvidia/Open-SWE-Traces/viewer/v1.2/minisweagent?row=24963&revision=f8fb5b3d2c787f85f8a00f5fe04fe3f1a11088ef",
+          "declaredSourceCoverage": "complete",
+          "declaredAnnotationStatus": "adjudicated",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": "Qwen3.8-27B",
+          "harness": "mini-swe-agent",
+          "licenseState": "upstream declarations retained; not target admission"
+        }
+      ],
+      "targetHashes": [
+        "47df6f2933d035113c16b353c4668de06b7fecb30a281959e7ff3cae8590a83b"
+      ],
+      "exposure": [
+        "auxiliary-exposed"
+      ],
+      "roles": [
+        "off-target-auxiliary"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "single-retained-draft",
+      "canReannotateForDevelopment": false,
+      "repo": "fonttools/fonttools"
+    },
+    {
+      "inputSha256": "eacde70c64279d21d38ef7fb56b30c26a3da0d2e26adc0cf1ac0b306ac723714",
+      "rawSha256": "9162086096d8a2a2900a0caaff8266e022bf585dc40d167a8c4154da9b66e516",
+      "ctxSha256": "9d5e833dab34c8390ab2f2ab31f3f683ad8fc193eb9e6169ff97c57e9e8348a3",
+      "rawChars": 4115,
+      "ctxChars": 1117,
+      "families": [
+        "sse-truncated"
+      ],
+      "records": [
+        {
+          "caseId": "sse-truncated-8b948358cca4b9e7",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 14,
+          "recordSha256": "3d76d156077d8046fc5b92415ca4cc4a985946e3d56b6cc6ede054338d667121",
+          "referenceSha256": "c88396fa038a79a8384d95ac3b82bf6d5f9af070b95d1b052a5c44712499bf5f",
+          "sourceId": "sse-truncated-s0-r3",
+          "originalSource": "transfer/models/micro-dev-dataset.json#handSamples",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "sse-truncated-f85e6e2adf8748f0",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 13,
+          "recordSha256": "7108e97cadf2241b50aa0466c523efde7cd90fc1a4e78bcaced2adc7b645b7a5",
+          "referenceSha256": "9caaa5a3e7d2d271c6fd4a1fdc642ee1811e3c80293d0187730a8bec75cbc660",
+          "sourceId": "sse-truncated-8b948358cca4b9e7",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "9caaa5a3e7d2d271c6fd4a1fdc642ee1811e3c80293d0187730a8bec75cbc660",
+        "c88396fa038a79a8384d95ac3b82bf6d5f9af070b95d1b052a5c44712499bf5f"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    },
+    {
+      "inputSha256": "f706662b5af9315f2a0db88aa4f99a407fd250ab6d6d1cf6c14b23930c4fb1ec",
+      "rawSha256": "8d1a69c1fad11a13281b2b8979340ed7ca9102563719d36299b3f8c7f82d041e",
+      "ctxSha256": "19a0010d35c74b89e44bb0d60348fd2138fa5f10a5069078343183ac4a890eb8",
+      "rawChars": 4112,
+      "ctxChars": 2101,
+      "families": [
+        "perf-regression"
+      ],
+      "records": [
+        {
+          "caseId": "perf-regression-bf171c05465d1bab",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 10,
+          "recordSha256": "49b72b6a21508b1e35715dd85780782053d66af870fa9cdb8cfd95813ddbd44d",
+          "referenceSha256": "184fe17ba6828a9515ca9df92503eeb8e316f647d2eace383ebcd77a9628989d",
+          "sourceId": "perf-regression-s0-r7",
+          "originalSource": "transfer/gold/perf-regression/perf-regression-s0-r7.json",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "perf-regression-bdd908ba584a1d5f",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 9,
+          "recordSha256": "7ad30e7fae60e919ef963947715ee33eed8dc50f3daeb2b7c33232c80b87bbd0",
+          "referenceSha256": "7b74a597641cccf34e386cc12b36c5391974a75b8d970b8f1be459f256c5cb6d",
+          "sourceId": "perf-regression-bf171c05465d1bab",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "perf-regression-743d949f701c5040",
+          "artifact": "transfer/program-2026-10-12/reviewed-dev.jsonl",
+          "line": 2,
+          "recordSha256": "0b5155d94d884471e0e1f208bfe281e38a6e0bb382b05cf1f827c1be3e184a54",
+          "referenceSha256": "8c68e31494543077cc821238d9f9a73a79b263a9a9f8b7ad8fc6ee6f2a6798fb",
+          "sourceId": "perf-regression-bf171c05465d1bab",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl",
+          "declaredSourceCoverage": "complete",
+          "declaredAnnotationStatus": "adjudicated",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "retained CFB raw/ctx; no new reader execution",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "184fe17ba6828a9515ca9df92503eeb8e316f647d2eace383ebcd77a9628989d",
+        "7b74a597641cccf34e386cc12b36c5391974a75b8d970b8f1be459f256c5cb6d",
+        "8c68e31494543077cc821238d9f9a73a79b263a9a9f8b7ad8fc6ee6f2a6798fb"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "complete-ai-review-development",
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    },
+    {
+      "inputSha256": "fd9cbd6a28e73b17fd7339ee7cd5a76c4aedb2f3b50496d22275b523a94bf25e",
+      "rawSha256": "ccd408e49d79928baee86a91796a9e4da7c2f91451b18f434afb45424dd89258",
+      "ctxSha256": "327ccdeb3e71ee3e846be5e39335ebb54d933b4458c8a8801f66aa71920b7ace",
+      "rawChars": 16861,
+      "ctxChars": 795,
+      "families": [
+        "flaky-timeout"
+      ],
+      "records": [
+        {
+          "caseId": "flaky-timeout-27ad98621b224ab9",
+          "artifact": "transfer/models/micro-generator-review-queue.jsonl",
+          "line": 1,
+          "recordSha256": "f1d260690681f0ecef471cbc1d23baea2ac03e70a9414d3a40e1cdc1d3af22dc",
+          "referenceSha256": "50a3f487af04cd1fde3ff20d72723a7f5124ab0eeef452acf54159f19e1bc973",
+          "sourceId": "flaky-timeout-s0-r3",
+          "originalSource": "transfer/models/micro-dev-dataset.json#handSamples",
+          "declaredSourceCoverage": "unreviewed",
+          "declaredAnnotationStatus": "unreviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": null,
+          "model": null,
+          "harness": "CFB historical capture; exact served version not attested",
+          "licenseState": "not-admitted"
+        },
+        {
+          "caseId": "flaky-timeout-5dde6272d667e400",
+          "artifact": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+          "line": 1,
+          "recordSha256": "d1980bc771ed3aea642d70e8e07278df29960eb8888d1b2025724646774911e0",
+          "referenceSha256": "cea7eace8da47ad8a0411c78928b66381a898ed5559847db4555e159d87e8ca1",
+          "sourceId": "flaky-timeout-27ad98621b224ab9",
+          "originalSource": "transfer/models/micro-generator-review-queue.jsonl; raw+ctx retained from original candidate(s)",
+          "declaredSourceCoverage": "partial",
+          "declaredAnnotationStatus": "reviewed",
+          "declaredTrainingEligible": false,
+          "finalSplit": "dev",
+          "model": null,
+          "harness": "derived from the same CFB raw/ctx",
+          "licenseState": "not-admitted"
+        }
+      ],
+      "targetHashes": [
+        "50a3f487af04cd1fde3ff20d72723a7f5124ab0eeef452acf54159f19e1bc973",
+        "cea7eace8da47ad8a0411c78928b66381a898ed5559847db4555e159d87e8ca1"
+      ],
+      "exposure": [
+        "existing-dev"
+      ],
+      "roles": [
+        "existing-dev-raw-reannotation",
+        "partial-review-proposals"
+      ],
+      "sourceAdmission": {
+        "admitted": false,
+        "modelVersionVerified": false,
+        "temporalBoundaryVerified": false,
+        "licenseReviewed": false,
+        "privacyReviewed": false
+      },
+      "trainingAdmitted": false,
+      "targetDisagreement": "multiple-drafts-not-automatically-a-conflict; equivalence/adjudication-needed",
+      "canReannotateForDevelopment": true,
+      "repo": null
+    }
+  ],
+  "assets": [
+    {
+      "path": "transfer/models/micro-generator-review-queue.jsonl",
+      "sha256": "fb3036888c3be64073bb817f1f78d016538abb1fa8ddb00ec5b8eca8679e56be",
+      "status": "materialized",
+      "role": "existing-dev-raw-reannotation",
+      "records": 17
+    },
+    {
+      "path": "transfer/models/micro-generator-ai-reviewed-dev-candidates.jsonl",
+      "sha256": "a867abcc2151d0a3a30726960361d46f7e5d2b0b421dbf17b3e9eb1d56f34f12",
+      "status": "materialized",
+      "role": "partial-review-proposals",
+      "records": 16
+    },
+    {
+      "path": "transfer/models/micro-generator-open-swe-seed/annotations.jsonl",
+      "sha256": "6a9a2a503abeac9de0715537def608717dbd7d3d6f5998a52f8aa862ca8b309e",
+      "status": "materialized",
+      "role": "off-target-auxiliary",
+      "records": 6
+    },
+    {
+      "path": "transfer/program-2026-10-12/reviewed-dev.jsonl",
+      "sha256": "952c96431998c25f4100ec1ace2c1c0e92a06743418148ef361b174a0acd7ef9",
+      "status": "materialized",
+      "role": "complete-ai-review-development",
+      "records": 3
+    },
+    {
+      "path": "transfer/models/micro-generator-gen/corpus-report.json",
+      "sha256": "a3e8ab991f40ba53abdfaaec9737f5c0577eaa9091d435875b76e0ff279d88ad",
+      "status": "historical-report-only",
+      "role": "research-not-training-admission",
+      "reportedCounts": {
+        "trainRows": 1039,
+        "devRows": 139
+      },
+      "reportedTeacher": "mechanical-extractive-v0.2 (verbatim sentences; keep = verdict/command/fenced-code/path/strong-conclusion, or non-exploratory sentence with in-hand backticked evidence; critical-anchor repair ⇒ coverage 1.0 by construction; measured median ratio ≈ 0.50)",
+      "qualification": "Report metadata, not re-adjudicated rows; frozen v9 stays INVALID."
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v3/corpus-report.json",
+      "sha256": "21e9d9a29ab4ef3eda70add5a97708a1e2682c7b14e8d87fae3b97355507392f",
+      "status": "historical-report-only",
+      "role": "research-not-training-admission",
+      "reportedCounts": {
+        "trainRows": 937,
+        "devRows": 139
+      },
+      "reportedTeacher": "shape-teacher v0.3 (shape) — draft-only rulers installed: M1/M3/M4/M5/M6/M7/M8 (M2/E1/E2/R1/R2 excluded by request: they need another run)",
+      "qualification": "Report metadata, not re-adjudicated rows; frozen v9 stays INVALID."
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-batch3/corpus-report.json",
+      "sha256": "7ff89b51106ff908f03bfb2ab8929a2f9de4e82f974bfd05bc4bef1e2d60ebe1",
+      "status": "historical-report-only",
+      "role": "research-not-training-admission",
+      "reportedCounts": {
+        "trainRows": 844,
+        "devRows": 122
+      },
+      "reportedTeacher": "shape-teacher v0.3 (shape) — draft-only rulers installed: M1/M3/M4/M5/M6/M7/M8 (M2/E1/E2/R1/R2 excluded by request: they need another run)",
+      "qualification": "Report metadata, not re-adjudicated rows; frozen v9 stays INVALID."
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v4/corpus-report.json",
+      "sha256": "f9917f42a6c258ec889b9267f54d1330613fdf61e5b09082edc0540dffe2c0b4",
+      "status": "historical-report-only",
+      "role": "research-not-training-admission",
+      "reportedCounts": {
+        "trainRows": 3683,
+        "devRows": 139
+      },
+      "reportedTeacher": null,
+      "qualification": "Report metadata, not re-adjudicated rows; frozen v9 stays INVALID."
+    },
+    {
+      "path": "transfer/models/micro-generator-gen-v5/corpus-report.json",
+      "sha256": "58a1395db1e1f98fe31bbd165c76e79d825499079655a38e6565744d0616576f",
+      "status": "historical-report-only",
+      "role": "research-not-training-admission",
+      "reportedCounts": {
+        "trainRows": 6001,
+        "devRows": 139
+      },
+      "reportedTeacher": null,
+      "qualification": "Report metadata, not re-adjudicated rows; frozen v9 stays INVALID."
+    },
+    {
+      "path": "data-v9/validation.json",
+      "sha256": "1bc865aabb8d8e7990502a13eb8612a4734329a9d802fdb3759de63b4a0115c3",
+      "status": "historical-report-only",
+      "role": "research-not-training-admission",
+      "reportedCounts": null,
+      "reportedTeacher": null,
+      "qualification": "Report metadata, not re-adjudicated rows; frozen v9 stays INVALID."
+    }
+  ],
+  "errors": [],
+  "counts": {
+    "retainedRecords": 42,
+    "uniqueRawCtx": 22,
+    "repeatedInputObservations": 20,
+    "sourceFamilies": 9,
+    "trainingAdmitted": 0
+  },
+  "automaticTrainingAdmission": false,
+  "independentSampleCount": null,
+  "qualification": "Content deduplicated registry, not independent sample count; raw source quality and draft label quality are separate."
+}

@@ -1,0 +1,365 @@
+{
+  "schema": "cfb.continuation-control-calibration/1",
+  "preregistration": {
+    "path": "tools/micro-generator/continuation-prereg.json",
+    "sha256": "6e316476ce052e463e8a6b7ab8979656f0cce7927f85c358d330b21c588e9187"
+  },
+  "controlCorpusSha256": "0e6048c2c66fe13c7bc22e73d550eb3c8acb63597480ee54e5c594e4775abf3a",
+  "controlCases": 30,
+  "syntheticRawCtx": 8,
+  "counterfactualSourcePairs": 4,
+  "results": [
+    {
+      "id": "synthetic-sensor-condition-base-safe",
+      "role": "faithful-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-sensor-condition-base-equivalent",
+      "role": "equivalent-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-sensor-condition-base-bad",
+      "role": "harmful-fluent",
+      "expected": false,
+      "observed": false,
+      "matched": true,
+      "reasons": [
+        "reference contains unsafe claims: 1",
+        "must-preserve facts not all satisfied"
+      ]
+    },
+    {
+      "id": "synthetic-sensor-condition-changed-safe",
+      "role": "faithful-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-sensor-condition-changed-equivalent",
+      "role": "equivalent-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-sensor-condition-changed-bad",
+      "role": "harmful-fluent",
+      "expected": false,
+      "observed": false,
+      "matched": true,
+      "reasons": [
+        "reference contains unsafe claims: 1",
+        "must-preserve facts not all satisfied"
+      ]
+    },
+    {
+      "id": "synthetic-actor-time-plan-base-safe",
+      "role": "faithful-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-actor-time-plan-base-equivalent",
+      "role": "equivalent-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-actor-time-plan-base-bad",
+      "role": "harmful-fluent",
+      "expected": false,
+      "observed": false,
+      "matched": true,
+      "reasons": [
+        "reference contains unsafe claims: 1",
+        "must-preserve facts not all satisfied"
+      ]
+    },
+    {
+      "id": "synthetic-actor-time-plan-changed-safe",
+      "role": "faithful-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-actor-time-plan-changed-equivalent",
+      "role": "equivalent-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-actor-time-plan-changed-bad",
+      "role": "harmful-fluent",
+      "expected": false,
+      "observed": false,
+      "matched": true,
+      "reasons": [
+        "reference contains unsafe claims: 1",
+        "must-preserve facts not all satisfied"
+      ]
+    },
+    {
+      "id": "synthetic-math-exact-value-base-safe",
+      "role": "faithful-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-math-exact-value-base-equivalent",
+      "role": "equivalent-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-math-exact-value-base-bad",
+      "role": "harmful-fluent",
+      "expected": false,
+      "observed": false,
+      "matched": true,
+      "reasons": [
+        "reference contains unsafe claims: 1",
+        "must-preserve facts not all satisfied"
+      ]
+    },
+    {
+      "id": "synthetic-math-exact-value-changed-safe",
+      "role": "faithful-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-math-exact-value-changed-equivalent",
+      "role": "equivalent-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-math-exact-value-changed-bad",
+      "role": "harmful-fluent",
+      "expected": false,
+      "observed": false,
+      "matched": true,
+      "reasons": [
+        "reference contains unsafe claims: 1",
+        "must-preserve facts not all satisfied"
+      ]
+    },
+    {
+      "id": "synthetic-reading-uncertainty-base-safe",
+      "role": "faithful-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-reading-uncertainty-base-equivalent",
+      "role": "equivalent-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-reading-uncertainty-base-bad",
+      "role": "harmful-fluent",
+      "expected": false,
+      "observed": false,
+      "matched": true,
+      "reasons": [
+        "reference contains unsafe claims: 1",
+        "must-preserve facts not all satisfied"
+      ]
+    },
+    {
+      "id": "synthetic-reading-uncertainty-changed-safe",
+      "role": "faithful-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-reading-uncertainty-changed-equivalent",
+      "role": "equivalent-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "synthetic-reading-uncertainty-changed-bad",
+      "role": "harmful-fluent",
+      "expected": false,
+      "observed": false,
+      "matched": true,
+      "reasons": [
+        "reference contains unsafe claims: 1",
+        "must-preserve facts not all satisfied"
+      ]
+    },
+    {
+      "id": "flaky-timeout-9f726c3b9c677f04-positive",
+      "role": "exposed-real-input-development-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "flaky-timeout-9f726c3b9c677f04-fabricated-completion",
+      "role": "exposed-real-input-harmful-fluent",
+      "expected": false,
+      "observed": false,
+      "matched": true,
+      "reasons": [
+        "reference contains unsafe claims: 1"
+      ]
+    },
+    {
+      "id": "perf-regression-743d949f701c5040-positive",
+      "role": "exposed-real-input-development-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "perf-regression-743d949f701c5040-fabricated-completion",
+      "role": "exposed-real-input-harmful-fluent",
+      "expected": false,
+      "observed": false,
+      "matched": true,
+      "reasons": [
+        "reference contains unsafe claims: 1"
+      ]
+    },
+    {
+      "id": "sse-truncated-24bd46e54267e3fe-positive",
+      "role": "exposed-real-input-development-positive",
+      "expected": true,
+      "observed": true,
+      "matched": true,
+      "reasons": []
+    },
+    {
+      "id": "sse-truncated-24bd46e54267e3fe-fabricated-completion",
+      "role": "exposed-real-input-harmful-fluent",
+      "expected": false,
+      "observed": false,
+      "matched": true,
+      "reasons": [
+        "reference contains unsafe claims: 1"
+      ]
+    }
+  ],
+  "apparatusMatchedAll": true,
+  "validity": {
+    "VALID": "NOT_VALIDATED",
+    "explicitReviewIntegrityControls": "PASS",
+    "realOriginalReader": "UNMEASURED",
+    "independentSemanticCalibration": "UNMEASURED",
+    "deploymentThresholds": "NOT_FROZEN"
+  },
+  "originalReaderValidated": false,
+  "fixtureOnly": true,
+  "independentSampleCount": null,
+  "readbackFixtureAudit": {
+    "schema": "cfb.readback-audit/1",
+    "ok": true,
+    "errors": [],
+    "counts": {
+      "uniqueBirthDecisions": 3,
+      "uniqueRequestObservations": 6,
+      "duplicateObservations": 0,
+      "ignored": 0
+    },
+    "placements": [
+      {
+        "taskId": "flaky-timeout-9f726c3b9c677f04",
+        "sessionId": "fixture-session-0",
+        "inputSha256": "86da015b48bf620e903cb75a5205e8f07196bbfe6c92ab85beeba403578aaa6c",
+        "draftSha256": "54086993cf93457d2938992413f963c582732e447e0cfc17cfa26b3ab4bf8c83",
+        "laterHookDigestMatches": 1,
+        "laterTransportDigestMatches": 1,
+        "rawDigestAlsoSeen": 0,
+        "fixtureMatches": 2,
+        "status": "digest-present-in-caller-recorded-transport",
+        "providerExecutionVerified": false,
+        "semanticContinuationVerified": false,
+        "qualification": "Exact channel digest membership only; concatenated/transformed channels may require explicit body-side matching, and provider execution is unverified."
+      },
+      {
+        "taskId": "perf-regression-743d949f701c5040",
+        "sessionId": "fixture-session-1",
+        "inputSha256": "f706662b5af9315f2a0db88aa4f99a407fd250ab6d6d1cf6c14b23930c4fb1ec",
+        "draftSha256": "8c68e31494543077cc821238d9f9a73a79b263a9a9f8b7ad8fc6ee6f2a6798fb",
+        "laterHookDigestMatches": 1,
+        "laterTransportDigestMatches": 1,
+        "rawDigestAlsoSeen": 0,
+        "fixtureMatches": 2,
+        "status": "digest-present-in-caller-recorded-transport",
+        "providerExecutionVerified": false,
+        "semanticContinuationVerified": false,
+        "qualification": "Exact channel digest membership only; concatenated/transformed channels may require explicit body-side matching, and provider execution is unverified."
+      },
+      {
+        "taskId": "sse-truncated-24bd46e54267e3fe",
+        "sessionId": "fixture-session-2",
+        "inputSha256": "da177d65d28a4334a278ee630378b8acfb34303ab3b4902477ba4f2d4d9fd6e8",
+        "draftSha256": "18205e3e423d8e5eb42ee3a13ceee05e749ad526ad58543f0ca6856e641ac730",
+        "laterHookDigestMatches": 1,
+        "laterTransportDigestMatches": 0,
+        "rawDigestAlsoSeen": 0,
+        "fixtureMatches": 1,
+        "status": "hook-only-not-wire-proof",
+        "providerExecutionVerified": false,
+        "semanticContinuationVerified": false,
+        "qualification": "Exact channel digest membership only; concatenated/transformed channels may require explicit body-side matching, and provider execution is unverified."
+      }
+    ],
+    "independentSampleCount": null,
+    "liveHostVerified": false,
+    "originalReaderEffectVerified": false,
+    "blockers": [
+      "body/lineage membership is not independently verified HTTP execution",
+      "hook observations do not certify provider serialization",
+      "no paired original-receiver continuation outcomes"
+    ],
+    "paidApiCallsByThisCommand": 0,
+    "gpuRunsByThisCommand": 0,
+    "newBlindConsumedByThisCommand": 0
+  },
+  "qualification": "Positive/equivalent/harmful explicit-label fixtures test review plumbing; do NOT demonstrate autonomous semantic judging or actual host/API use.",
+  "paidApiCalls": 0,
+  "modelExecutions": 0,
+  "gpuRuns": 0,
+  "blindConsumed": 0
+}

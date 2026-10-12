@@ -4,6 +4,8 @@
 //   mapMessagesToSeqs  出站消息 → 源事件 seq 的映射；数量对不上时整批不写（错位比缺失更糟）
 //   textOfContent / reasoningTextOf  content 双兼容取文本 / 取 reasoning 块文本
 // 旧版 checkpoint 看板的开标记（v12.1 已不再发射；保留识别，便于读含旧看板的历史会话）
+import { requestEvidence } from './readback-evidence.js'
+
 const LEDGER_OPEN = '<cot-ledger>'
 
 /**
@@ -594,7 +596,7 @@ export function artRefsOf(msgs) {
  * v11.11（从 plugin.js 抽出）：llm-stream trace 的内容 —— 出站消息溯源，只读，绝不改任何消息。
  * @param {{ n: number, options: any, session: any, previewChars?: number }} o
  */
-export function streamProvenanceRecord({ n, options, session, previewChars }) {
+export function streamProvenanceRecord({ n, options, session, sessionId = null, previewChars, readbackHashes = false }) {
   const msgs = (options && options.messages) || []
   // ★ 2026-09-21 消息溯源（外部审计 P0-3）：只观测，绝不删/改/合并任何消息。
   //   判据是"来源与时间线"，不是"role 数了几个"。
@@ -623,6 +625,7 @@ export function streamProvenanceRecord({ n, options, session, previewChars }) {
     head8: prov.items.slice(0, 8),
     seqMapNote: seqMap.note,
     seqMapCount: seqMap.count, seqMapExpected: seqMap.expected,
+    ...(readbackHashes ? { readbackEvidence: requestEvidence({ body: options, sessionId, sequence: n, stage: 'hook-options' }) } : {}),
     ledgerCount: prov.items.filter((x) => x.isLedger).length,
     toolResultCount: prov.items.filter((x) => x.blockTypes && x.blockTypes.includes('tool-result')).length,
     userCount: prov.items.filter((x) => x.role === 'user').length,

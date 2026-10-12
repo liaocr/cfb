@@ -1,0 +1,70 @@
+{
+  "schema": "cfb.development-review-report/1",
+  "annotationRef": {
+    "path": "transfer/program-2026-10-12/reviewed-dev.jsonl",
+    "sha256": "952c96431998c25f4100ec1ace2c1c0e92a06743418148ef361b174a0acd7ef9"
+  },
+  "reviewRef": {
+    "path": "transfer/program-2026-10-12/complete-reviews.jsonl",
+    "sha256": "2263f7d5bf1a3ae966d5ce6005dfd98c0756315dc30b85bef7f46fbb556356b4"
+  },
+  "cases": [
+    {
+      "caseId": "flaky-timeout-9f726c3b9c677f04",
+      "errors": [],
+      "reviewApparatusPass": true,
+      "materialFacts": 20,
+      "preservedMaterialFacts": 20,
+      "claims": 7,
+      "characters": {
+        "raw": 7447,
+        "ctx": 810,
+        "draft": 1273
+      },
+      "charRatioProxy": 0.1709413186518061,
+      "realTokenSavings": null,
+      "realContinuationEffect": null,
+      "qualification": "Explicit AI single-reviewer labels and exact coverage bindings; not automatic semantic proof or a valid target-reader ruler."
+    },
+    {
+      "caseId": "perf-regression-743d949f701c5040",
+      "errors": [],
+      "reviewApparatusPass": true,
+      "materialFacts": 20,
+      "preservedMaterialFacts": 20,
+      "claims": 6,
+      "characters": {
+        "raw": 4112,
+        "ctx": 2101,
+        "draft": 1287
+      },
+      "charRatioProxy": 0.3129863813229572,
+      "realTokenSavings": null,
+      "realContinuationEffect": null,
+      "qualification": "Explicit AI single-reviewer labels and exact coverage bindings; not automatic semantic proof or a valid target-reader ruler."
+    },
+    {
+      "caseId": "sse-truncated-24bd46e54267e3fe",
+      "errors": [],
+      "reviewApparatusPass": true,
+      "materialFacts": 23,
+      "preservedMaterialFacts": 23,
+      "claims": 7,
+      "characters": {
+        "raw": 3605,
+        "ctx": 1697,
+        "draft": 1411
+      },
+      "charRatioProxy": 0.3914008321775312,
+      "realTokenSavings": null,
+      "realContinuationEffect": null,
+      "qualification": "Explicit AI single-reviewer labels and exact coverage bindings; not automatic semantic proof or a valid target-reader ruler."
+    }
+  ],
+  "errors": [],
+  "completeAiReviewedCases": 3,
+  "humanReviews": 0,
+  "independentSecondReviews": 0,
+  "trainingAdmitted": false,
+  "originalReceiverValidated": false
+}

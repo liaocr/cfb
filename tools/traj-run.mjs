@@ -18,6 +18,7 @@
 //   各臂从同一第 1 轮状态分叉（配对在分叉点、省 1 次主调用）；每行记逐轮执行器代理旗标 proxySteps / proxyScore（traj-proxy.mjs），
 //   直接喂 cfb-cycle confirm --results（L2 结局 + 效度账本一次到位）。本文件不读任何计划文件；花钱仍只在显式带 KEY 运行时发生。
 import fs from 'node:fs'
+import crypto from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -30,7 +31,8 @@ import { outcomeComparison } from './helpers/ruler.mjs'
 import { BASE_POLICY, applyPolicyToPrompt, PRODUCTION_COMPRESSOR } from './helpers/generation.mjs'
 import { handDraftGate, HAND_PROTOCOL } from './helpers/hand-draft.mjs'
 import { auditMode1Output } from './helpers/mode1-quality.mjs'
-import { appendHandSample, previousDraft, draftDelta, HAND_SAMPLE_SCHEMA } from './helpers/hand-capture.mjs'   // 模式 1 侧数据采集（$0，训练金标时顺手产出）
+import { appendHandSample, previousDraft, draftDelta, HAND_SAMPLE_SCHEMA } from './helpers/hand-capture.mjs'
+import { requireUnambiguousTrajectories, reusableRawIndex, findReusableRaw } from './helpers/trajectory-records.mjs'
 
 export const DISPLAY_ROOT = '/home/u/work/repo'
 export function resolveRepoPath(repo, rawPath) {
@@ -58,6 +60,7 @@ function parseArgs(argv) {
     else if (a === '--only') o.only = v().split(',')
     else if (a === '--require-fp') o.requireFp = true
     else if (a === '--quiet') o.quiet = true                           // v14.12.4：不打逐轮进度行
+    else if (a === '--reuse-preflight') o.reusePreflight = true  // explicit, scoped, short-lived syntax/accounting cache only
     else if (a === '--preflight-only') o.preflightOnly = true          // v4.7.1：只做通道预检（一次 ≤64 token 的小请求），不跑任何轨迹
     else if (a === '--compress-thinking') o.compressThinking = true   // v14.9：诊断用（只在 --legacy-compress 下有意义）
     else if (a === '--legacy-compress') o.legacyCompress = true   // v14.10：旧的工具自拼请求路径（对照 v14.9 之前的收据用）；缺省走生产 birth 同构体
@@ -83,6 +86,9 @@ function parseArgs(argv) {
     else throw new Error('未知参数 ' + a)
   }
   o.variants = [...new Set(o.variants)]
+  for (const [key, value] of Object.entries({ samples: o.samples, maxRounds: o.maxRounds, concurrency: o.concurrency, maxTokens: o.maxTokens })) {
+    if (!Number.isInteger(value) || value <= 0) throw new Error('invalid-positive-integer:' + key)
+  }
   return o
 }
 /** 零 API 场景扰动：
@@ -282,7 +288,12 @@ function callsOfMessage(m) {
 
 /** v4.7.1 通道预检（≈1/300 轮的钱）：开跑前一次小请求，证明这条通道**现在**会把思维链返回来（reasoning_content 非空）、指纹可信、不是 Claude 形状、型号回显一致。
  *  起因：2026-10-02 a6api 上游一度不返回思维链；主循环把「空思考」当成路由黏住去重试，每次重试都是一次完整付费请求 —— 预检不过就一分钱不花地停。 */
-const canonModel = (x) => String(x || '').toLowerCase().replace(/[._-]+/g, '-').replace(/^deepseek-v4-flash-\d{4}$/, 'deepseek-v4-1-flash')
+const canonModel = (x) => String(x || '').toLowerCase().replace(/[._-]+/g, '-')
+export const PREFLIGHT_CACHE_MAX_AGE_MS = 15 * 60 * 1000
+export function preflightScopeOf(o) {
+  // Hash the endpoint scope; never expose embedded URL credentials in this new field.
+  return crypto.createHash('sha256').update(JSON.stringify({ endpoint: String(o?.baseUrl || '').replace(/\/+$/, ''), model: canonModel(o?.model), textTools: o?.textTools === true, requireFp: o?.requireFp === true, thinking: 'enabled' })).digest('hex')
+}
 /** v4.7.2 「携带」检验：通道有没有把历史 assistant 消息里的 reasoning_content 真的送进模型。
  *  可信指纹（fp_dspure_app_v1）是这件事的代理证据（2026-09-28 实测该后端拼接历史思考：1 字 → 776、1000 字 → 1375 prompt tokens）；指纹为空时直接量：
  *  同一份消息，带 / 不带历史 reasoning_content 各发一次 max_tokens:1（只花 prefill），Δprompt_tokens ≥ CARRY_MIN_RATIO × 历史思考字数才算送进去了。
@@ -294,7 +305,7 @@ export const stripReasoning = (messages) => messages.map((m) => (m.role === 'ass
 export const historyReasoningChars = (messages) => messages.filter((m) => m.role === 'assistant').reduce((n, m) => n + String(m.reasoning_content || '').length, 0)
 export async function carryCheck({ chat, o, messages, tools = null, probe = null }) {
   // 官方口径（api-docs.deepseek.com/guides/thinking_mode，2026-08-27 重写）：
-  //   带 tools ⇒ 前几轮 reasoning_content 必须完整回传（漏了直接 400，且"没有调用工具的前轮也算"），且会拼进上下文；
+  //   源码历史通道约定：带 tools 会校验 reasoning_content；是否实际读入仍须当前通道计账与行为验证。
   //   不带 tools ⇒ 不需要回传，**回传也会被忽略、不进上下文**。
   // 所以「Δprompt_tokens 有没有变大」只在**带 tools 的请求**上才是携带证据；无 tools 时 Δ≈0 是契约行为，
   // 拿它判"渠道剥字段"就是假阴性（官方直连也会被拒）。这里按口径分派，并把 400 当正面证据用。
@@ -312,28 +323,31 @@ export async function carryCheck({ chat, o, messages, tools = null, probe = null
   const fp = A.r?.fp || B.r?.fp || null
   let verdict, ok, note
   if (has400(A.err)) { verdict = 'rejects-inbound-field'; ok = false; note = '带 reasoning_content 的请求被 400 拒 ⇒ 这条通道不认入站思考字段，模式 1 无从生效' }
-  else if (tools && has400(B.err)) { verdict = 'contract-validated'; ok = true; note = '省略历史思考被 400 ⇒ 校验器在场（官方直连行为），历史思考按契约必进上下文' }
+  else if (tools && has400(B.err)) { verdict = 'syntax-contract-only'; ok = false; note = '省略历史思考被 400 只证明字段校验，不能证明模型读取；需要双方均有效的计账/行为对照，不据此放行携带证据' }
   else if (!tools) {
     if (carriedByDelta) { verdict = 'spliced-without-tools'; ok = true; note = '无 tools 却仍拼进上下文 ⇒ 该后端比官方口径更宽，可用' }
     else { verdict = 'ignored-by-contract'; ok = false; note = '无 tools 时官方口径本就忽略历史 reasoning_content ⇒ Δ≈0 不是"剥字段"。要跑模式 1：让请求带 tools，或把稿子放进 content（别换渠道，换了也一样）' }
   }
   else if (carriedByDelta) { verdict = 'carried'; ok = true; note = 'Δ 达阈 ⇒ 历史思考真进了上下文' }
   else { verdict = 'stripped'; ok = false; note = '带 tools 仍无 Δ 且不报 400 ⇒ 典型中转静默丢字段：模型每轮重推，手写稿看不到' }
-  return { L, withReasoning: a, without: b, delta, ratio: L ? +(delta / L).toFixed(3) : null, need, ok, fp, toolsSent: !!tools, verdict, note }
+  return { L, withReasoning: a, without: b, delta: Number.isFinite(delta) ? delta : null, ratio: L && Number.isFinite(delta) ? +(delta / L).toFixed(3) : null, need, ok, fp, toolsSent: !!tools, verdict, note, deltaAccountingVerified: carriedByDelta, semanticCarryVerified: false, evidenceScope: 'syntax-and-prompt-accounting-not-semantic-reader-effect' }
 }
 export async function preflightUpstream({ chat, o }) {
   const t0 = Date.now(); let r = null, error = null
   const toolsList = o && o.textTools ? null : TOOLS
   const priorPf = (() => {
     try {
-      if (!o || !o.out || !/^https:/i.test(String(o.baseUrl || ''))) return null
+      if (!o?.reusePreflight || !o.out || !/^https:/i.test(String(o.baseUrl || ''))) return null
       const f = path.join(o.out, 'preflight.jsonl')
       if (!fs.existsSync(f)) return null
       const lines = fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
-      return lines.reverse().find((x) => x && x.carry && x.carry.ok && x.carry.verdict) || null // 只信带 verdict 的新口径缓存（旧缓存是无 tools 假阴性写的）
+      return lines.reverse().find((x) => {
+        const age = Date.now() - Date.parse(x?.observedAt || '')
+        return x?.ok && x.scopeSha256 === preflightScopeOf(o) && x.carry?.ok && x.carry.deltaAccountingVerified === true && Number.isFinite(age) && age >= 0 && age <= PREFLIGHT_CACHE_MAX_AGE_MS
+      }) || null // no unscoped/wrong-model/wrong-channel/expired or syntax-only reuse
     } catch { return null }
   })()
-  if (priorPf && priorPf.ok) return { ...priorPf, at: new Date().toISOString(), ms: 0, cached: true }
+  if (priorPf && priorPf.ok) return { ...priorPf, at: new Date().toISOString(), ms: 0, cached: true, semanticCarryVerified: false, evidenceScope: 'scoped-short-lived-routing-and-accounting-cache-not-semantic-proof' }
   try {
     r = await chat({ model: o.model, messages: [{ role: 'user', content: '1+1=?只答数字。' }], thinking: { type: 'enabled' }, max_tokens: 64, stream: false })
     for (let k = 1; k <= 8 && !error && !String(r?.message?.reasoning_content || '').length && /^https:/i.test(String(o?.baseUrl || '')); k++) {
@@ -354,7 +368,7 @@ export async function preflightUpstream({ chat, o }) {
   }
   const fpTrusted = !!r && TRUSTED_FP.has(r.fp)
   const checks = { reachable: !error, fp: !!r && (!o.requireFp || fpTrusted || !!carry?.ok), notClaude: !!r && !claudeShaped(r.usage), reasoning: reasoning.length > 0 || (Number.isFinite(rt) && rt > 0), model: !!r && (!r.model || canonModel(r.model) === canonModel(o.model)) }
-  return { schema: 'cfb.preflight/1', at: new Date().toISOString(), model: o.model, modelEcho: r?.model || null, baseUrl: o.baseUrl, fp: r?.fp || null, fpTrusted, carry, mode: fpTrusted ? 'trusted-fp' : carry?.ok ? 'carry-verified' : null, finish: r?.finish || null, usage: r?.usage || null, reasoningChars: reasoning.length, contentChars: r ? responseText(r.message).length : 0, ms: Date.now() - t0, error, checks, ok: Object.values(checks).every(Boolean),
+  return { schema: 'cfb.preflight/1', at: new Date().toISOString(), observedAt: new Date().toISOString(), scopeSha256: preflightScopeOf(o), evidenceScope: 'routing-syntax-and-token-accounting-only', semanticCarryVerified: false, model: o.model, modelEcho: r?.model || null, baseUrl: o.baseUrl, fp: r?.fp || null, fpTrusted, carry, mode: fpTrusted ? 'trusted-fp' : carry?.ok ? 'carry-verified' : null, finish: r?.finish || null, usage: r?.usage || null, reasoningChars: reasoning.length, contentChars: r ? responseText(r.message).length : 0, ms: Date.now() - t0, error, checks, ok: Object.values(checks).every(Boolean),
     failed: Object.entries(checks).filter(([, v]) => !v).map(([k]) => k) }
 }
 export async function runOne({ o, task, variant, sample, chat, I, cred, forkMessage = null, state = null, resume = null, leader = null, extend = null }) {
@@ -656,7 +670,9 @@ export async function main(argv) {
   const o = parseArgs(argv)
   fs.mkdirSync(o.out, { recursive: true })
   const resPath = path.join(o.out, 'results.jsonl')
-  const done = fs.existsSync(resPath) ? fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []
+  const doneEvents = fs.existsSync(resPath) ? fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []
+  const doneAudit = requireUnambiguousTrajectories(doneEvents, resPath)
+  const done = [...doneAudit.rows, ...doneAudit.pending, ...doneAudit.errors]
   const have = new Set(done.filter((r) => !r.error && r.status !== 'awaiting-draft').map((r) => `${r.fromState || r.task}|${r.variant}|${r.sample}`))
   // v4.6：hand 臂暂停过的轨迹有 state 文件 ⇒ 同一条命令再跑时从状态续，而不是重新开始
   const resumeFor = (task, variant, sample) => { if (variant !== 'hand') return null; const f = path.join(o.out, 'state', `${task.id.replace(/[^\w.-]/g, '_')}-s${sample}.json`); return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null }
@@ -666,19 +682,20 @@ export async function main(argv) {
     const apiKey = process.env.DEEPSEEK_API_KEY || (o.dryRun ? 'dry' : null); if (!apiKey) throw new Error('需要 DEEPSEEK_API_KEY')
     const I = await import('../index.js')
     const chat = o.dryRun ? async () => { throw new Error('dry-run') } : makeChat({ baseUrl: o.baseUrl, apiKey, timeoutMs: 40000 })
-    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-')); const cred = path.join(d, 'c.yaml'); fs.writeFileSync(cred, 'K: "' + apiKey + '"\n', { mode: 0o600 })
     const jobs = []
     const states = o.fromState ? loadStates(o.fromState) : null
     // v4.7 --fork-from：复用旧 results.jsonl 里带 roundMessages 的 raw 轨迹当 leader（非同期对照），本次不再跑 raw 臂
-    const reusable = new Map()
-    if (o.forkFrom) { for (const r of fs.readFileSync(o.forkFrom, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))) if (r.variant === 'raw' && !r.error && Array.isArray(r.roundMessages) && r.roundMessages.length) (reusable.get(r.task) || reusable.set(r.task, []).get(r.task)).push(r) }
+    const reusable = o.forkFrom
+      ? reusableRawIndex(fs.readFileSync(o.forkFrom, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)), o.forkFrom)
+      : new Map()
     const reused = []
     const scenarioSpecs = (o.only || TRAJ_TASKS.map((t) => t.id)).map((x) => { const [id, kind] = x.split(':'); return { id, kind: kind || (o.perturb && o.perturb[0] !== 'none' ? o.perturb[0] : null) } })
     if (states) { for (const st of states) { const base = TRAJ_TASKS.find((t) => t.id === st.family); if (!base) throw new Error('state-family-unknown:' + st.family); for (const v of o.variants) for (let k = 0; k < o.samples; k++) if (!have.has(`${st.id}|${v}|${k}`)) jobs.push({ task: base, variant: v, sample: k, state: st }) } }
     else for (const spec of scenarioSpecs) {
       const base = TRAJ_TASKS.find((t) => t.id === spec.id); if (!base) throw new Error('unknown-scenario:' + spec.id); const task = perturbTask(base, spec.kind)
       for (let k = 0; k < o.samples; k++) {
-        const old = reusable.get(task.id)?.[k]
+        // Completion order is not sample identity (audit: t130 raw s0/s1 were swapped by positional lookup).
+        const old = findReusableRaw(reusable, task.id, k)
         let extend = null
         if (old && o.fork && o.variants.includes('raw') && !have.has(`${task.id}|raw|${k}`)) {
           // 旧 raw 被轮数上限截断（最后一轮还在发调用）而本计划轮数更多 ⇒ 延长：raw 作业照建，前 old.rounds 轮影子自己的过去（零主调用），之后真跑；否则整条复用、不跑 raw
@@ -691,6 +708,8 @@ export async function main(argv) {
         for (const v of o.variants) if (!have.has(`${task.id}|${v}|${k}`)) jobs.push({ task, variant: v, sample: k, resume: resumeFor(task, v, k), ...(v === 'raw' && extend ? { extend } : {}) })
       }
     }
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-')); const cred = path.join(d, 'c.yaml'); fs.writeFileSync(cred, 'K: "' + apiKey + '"\n', { mode: 0o600 })
+    try {
     if (o.forkFrom && !o.dryRun && !o.preflightOnly) for (const x of reused) if (x.row) fs.appendFileSync(resPath, JSON.stringify(x.row) + '\n')   // v14.12.4：--preflight-only 不落任何结果行
     if (o.forkFrom) console.log(`--fork-from ${o.forkFrom}：复用 raw 轨迹 ${reused.length} 条当 leader（非同期对照：只配同模型、短窗口；行上记 reusedFrom${reused.some((x) => !x.row) ? `；其中 ${reused.filter((x) => !x.row).length} 条上次已落盘、本次只取 leader` : ''}）`)
     console.log(`轨迹 ${jobs.length} 条（每条 ≤ ${o.maxRounds} 轮主调用${o.variants.includes('auto') ? ' + 同数副调用' : ''}），并发 ${o.concurrency}`)
@@ -703,15 +722,15 @@ export async function main(argv) {
       let replayed = 0, bad = []
       for (const j of jobs) if (j.state) { const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'traj-dry-')); try { materialize(j.task, repo); for (const c of j.state.replay || []) execTool(j.task, repo, c.name, c.args); if (j.task.fixed(repo)) bad.push(j.state.id + ':already-fixed'); else replayed++ } catch (e) { bad.push(j.state.id + ':' + e.message) } finally { fs.rmSync(repo, { recursive: true, force: true }) } }
       console.log(`dry-run：任务 ${jobs.length}（${[...new Set(jobs.map((j) => j.state ? j.state.id : j.task.id))].length} 个起点 × ${o.variants.length} 臂 × ${o.samples} 样本）、组 ${groups.length}；子状态重放成功 ${replayed}${bad.length ? '，失败 ' + bad.length + '：' + bad.slice(0, 5).join(' ') : ''}${stop ? `；停止规则 α=${stop.alpha} 上界 $${stop.capUsd}` : ''}；未发任何请求`)
-      fs.rmSync(d, { recursive: true, force: true }); return { dryRun: true, jobs: jobs.length, groups: groups.length, replayed, bad, reusedRaw: reused.length }
+      return { dryRun: true, jobs: jobs.length, groups: groups.length, replayed, bad, reusedRaw: reused.length }
     }
     // v4.7.1 通道预检：没过就一条轨迹都不开（之前主循环会把「没有思维链」当路由黏住重试 ≤15 次，每次都是完整付费请求）
     const pf = await preflightUpstream({ chat, o })
     if (pf.carry && pf.carry.ok) o._preflightCarryOk = true
     fs.appendFileSync(path.join(o.out, 'preflight.jsonl'), JSON.stringify(pf) + '\n')
     console.log(`通道预检 ${pf.ok ? '通过' : '失败'}：fp=${pf.fp}（${pf.mode || '无放行依据'}）思考 ${pf.reasoningChars} 字 / 正文 ${pf.contentChars} 字 / 型号回显 ${pf.modelEcho} / 携带 ${pf.carry ? (pf.carry.error ? '错误 ' + pf.carry.error : `Δ${pf.carry.delta} tokens / ${pf.carry.L} 字 = ${pf.carry.ratio}`) : '未量'} / ${pf.ms} ms${pf.error ? ' / 错误 ' + pf.error : ''}${pf.ok ? '' : ' / 未过：' + pf.failed.join(',')}`)
-    if (!pf.ok) { fs.rmSync(d, { recursive: true, force: true }); throw new Error('preflight-failed:' + pf.failed.join(',') + '（通道现在不返回思维链 / 指纹不可信 / 型号不符 ⇒ 不开跑、不花钱）') }
-    if (o.preflightOnly) { fs.rmSync(d, { recursive: true, force: true }); return { preflight: pf } }
+    if (!pf.ok) { throw new Error('preflight-failed:' + pf.failed.join(',') + '（未开始完整轨迹；预检本身可能计费，不能称零成本）') }
+    if (o.preflightOnly) { return { preflight: pf } }
     let i = 0
     await Promise.all(Array.from({ length: Math.min(o.concurrency, groups.length) }, async () => {
       while (i < groups.length) {
@@ -735,7 +754,7 @@ export async function main(argv) {
         }
         // v4.3 有界续跑：一次批准内自动跑到判定或预算上界（e 值任意停时有效，提前停不损失保证）
         if (stop && !stopped) {
-          const done = fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => !r.error && r.status !== 'awaiting-draft')
+          const done = requireUnambiguousTrajectories(fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)), resPath).rows
           const cmp = stop.compare && stop.compare.champion !== stop.compare.previous ? outcomeComparison(done.map((r) => ({ ...r, arm: r.variant === stop.compare.champion ? 'champion' : r.variant === stop.compare.previous ? 'previous' : null, sample: `${r.fromState || r.task}#${r.sample ?? 0}` })).filter((r) => r.arm)) : null
           const thr = 1 / (stop.alpha || 0.1)
           if (cmp && cmp.pairs.length >= (stop.minPairs || 4) && (cmp.e >= thr || cmp.eReject >= thr)) stopped = `判定达成（${cmp.pairs.length} 对，e=${cmp.e} / 更差 e=${cmp.eReject} ≥ ${thr}）`
@@ -744,15 +763,16 @@ export async function main(argv) {
         }
       }
     }))
-    fs.rmSync(d, { recursive: true, force: true })
+    } finally { fs.rmSync(d, { recursive: true, force: true }) }
   }
   const all = fs.readFileSync(resPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
-  const last = new Map(); for (const r of all) { const k = `${r.fromState || r.task}|${r.variant}|${r.sample}`; if (!last.has(k) || !r.error) last.set(k, r) }
+  const resolved = requireUnambiguousTrajectories(all, resPath)
+  const last = new Map([...resolved.rows, ...resolved.pending, ...resolved.errors].map((r) => [`${r.fromState || r.task}|${r.variant}|${r.sample}`, r]))
   let md = summarizeTraj([...last.values()])
   const cont = [...last.values()].filter((r) => r.continuation); if (cont.length) md += `\n\n续跑探针（${cont.length} 条）：${cont.map((r) => `${r.fromState}/${r.variant}: ${r.continuation.verdict}（首轮 ${r.continuation.firstRoundCalls} 次调用、重做前缀 ${r.continuation.prefixRepeats}）`).join('；')}\n结论：${cont.every((r) => r.continuation.verdict === 'continued') ? '模型顺着前缀继续 —— 子状态可用' : cont.some((r) => r.continuation.verdict === 'restarted') ? '**有轨迹从头重来** —— 子状态口径存疑，先别扩到 14 个' : '不清楚（首轮无调用）'}`
   md += compressBudgetLine([...last.values()])
   fs.writeFileSync(path.join(o.out, 'summary.md'), md + '\n')
-  if (plan) { const rows = [...last.values()]; fs.writeFileSync(path.join(o.out, 'receipt.json'), JSON.stringify({ schema: 'cfb.traj-receipt/1', plan: plan.id, digest: plan.digest, at: new Date().toISOString(), trajectories: rows.length, errors: rows.filter((r) => r.error).length, awaiting: rows.filter((r) => r.status === 'awaiting-draft').length, mainCalls: rows.reduce((a, r) => a + (r.mainCalls ?? (r.shadow || r.reusedFrom ? 0 : r.rounds ?? 0)), 0), compressCalls: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.path === 'birth-offline').length, 0), handDrafts: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.path === 'hand').length, 0), shadowRounds: rows.reduce((a, r) => a + (r.shadow?.rounds || 0), 0), noContrastGroups: rows.filter((r) => r.shadow && !r.extended && r.shadow.divergedAt == null && r.status !== 'awaiting-draft').length, extended: rows.filter((r) => r.extended).length, reusedRaw: rows.filter((r) => r.reusedFrom).length, fpModes: rows.reduce((a, r) => { for (const [k, v] of Object.entries(r.fpModes || {})) a[k] = (a[k] || 0) + v; return a }, {}), preflights: fs.existsSync(path.join(o.out, 'preflight.jsonl')) ? fs.readFileSync(path.join(o.out, 'preflight.jsonl'), 'utf8').trim().split('\n').filter(Boolean).length : 0, promptTokens: rows.reduce((a, r) => a + (r.promptTokens || 0), 0), gateFails: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.gateFail).length, 0), completionTokens: rows.reduce((a, r) => a + (r.completionTokens || 0), 0), estimatedUsd: +rows.reduce((a, r) => a + (r.mainCalls || 0) * (plan.cost?.pricing?.mainUsd ?? 0.0125) + (r.compile || []).filter((c) => c.path === 'birth-offline').length * (plan.cost?.pricing?.compressUsd ?? 0.0075), 0).toFixed(3), stoppedEarly: stopped || null }, null, 2) + '\n') }
+  if (plan) { const rows = [...last.values()]; fs.writeFileSync(path.join(o.out, 'receipt.json'), JSON.stringify({ schema: 'cfb.traj-receipt/1', plan: plan.id, digest: plan.digest, at: new Date().toISOString(), trajectories: rows.length, errors: rows.filter((r) => r.error).length, awaiting: rows.filter((r) => r.status === 'awaiting-draft').length, mainCalls: rows.reduce((a, r) => a + (r.mainCalls ?? (r.shadow || r.reusedFrom ? 0 : r.rounds ?? 0)), 0), compressCalls: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.path === 'birth-offline').length, 0), handDrafts: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.path === 'hand').length, 0), shadowRounds: rows.reduce((a, r) => a + (r.shadow?.rounds || 0), 0), noContrastGroups: rows.filter((r) => r.shadow && !r.extended && r.shadow.divergedAt == null && r.status !== 'awaiting-draft').length, extended: rows.filter((r) => r.extended).length, reusedRaw: rows.filter((r) => r.reusedFrom).length, fpModes: rows.reduce((a, r) => { for (const [k, v] of Object.entries(r.fpModes || {})) a[k] = (a[k] || 0) + v; return a }, {}), preflights: fs.existsSync(path.join(o.out, 'preflight.jsonl')) ? fs.readFileSync(path.join(o.out, 'preflight.jsonl'), 'utf8').trim().split('\n').filter(Boolean).length : 0, promptTokens: rows.reduce((a, r) => a + (r.promptTokens || 0), 0), gateFails: rows.reduce((a, r) => a + (r.compile || []).filter((c) => c.gateFail).length, 0), completionTokens: rows.reduce((a, r) => a + (r.completionTokens || 0), 0), estimatedUsdBasis: 'per-call-planning-rate-not-provider-bill', estimatedUsdIsActual: false, preflightCostIncluded: false, evidenceConflicts: 0, duplicateTerminalKeys: resolved.duplicates.length, estimatedUsd: +rows.reduce((a, r) => a + (r.mainCalls || 0) * (plan.cost?.pricing?.mainUsd ?? 0.0125) + (r.compile || []).filter((c) => c.path === 'birth-offline').length * (plan.cost?.pricing?.compressUsd ?? 0.0075), 0).toFixed(3), stoppedEarly: stopped || null }, null, 2) + '\n') }
   console.log('\n' + md)
 }
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) main(process.argv.slice(2)).catch((e) => { console.error(e && e.stack || e); process.exit(1) })

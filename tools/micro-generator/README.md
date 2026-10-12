@@ -1,75 +1,62 @@
-# Family-isolated generative compression pipeline
+# 出生思考稿压缩：参考稿优先的生成式闭环
 
-This folder contains corpus preparation, review contracts, evaluation, local inference runners, and a fail-closed Kaggle QLoRA template for `raw + ctx -> draft`.
+当前目标/顺序以根 `PROJECT.json`、`docs/PROJECT-PLAN.md` 和 `task-contract.json` 为准；不是本目录旧 Qwen 模板定义路线。唯一方向是预训练生成式学生；固定 RWKV7 191M 为未晋级候选。
 
-## Review policy: one AI reviewer
+## 已实做及边界（2026-10-12）
 
-The project policy is **AI single reviewer**. The authorized reviewer identity is `arena-agent-mode` (Arena.ai Agent Mode session identity; not a human identity and not a claim about the underlying model name). A complete annotation records:
+- `program.mjs registry`：42 retained records → 22 unique raw/ctx、9 family、0 admitted；20 repeated inputs 不增加 n。
+- `build-program-dev.mjs`：三个已曝光编码 raw/ctx 完整 AI 单审/开发参考；74 source facts、20 claim units。源完整 retained text，不是完整原会话或许可证明。AI1、人0、二审0，仍 dev-only/trainingEligible=false。
+- `review-contract.mjs`：每个非空白 source/draft 片段覆盖与精确 UTF-16 quote/fact/claim/hash，防止几条 ctx facts 冒充完整。检查审查完整性，不推断自动语义。
+- `build-program-controls.mjs`：30 explicit-labelled equivalent/counterfactual/harmful 开发 controls 的 apparatus；不是金标、训练数据、新blind或独立 ruler。
+- `reader-study.mjs`：本地 blocked plan / strict evidence import；3案例×3臂，实际 state/version/budget 未提供，无 live execute。
+- `formal-sft.mjs`：正式 flat-row/lineage 适配；source/review/family/target/ruler/reader/CPU/budget 缺任何前闸不出 train/dev/admission；全registry的已曝光family及source model/served version绑定，不能只换输入或勾Boolean绕过。
+- `deploy/kaggle/train_rwkv7.py --preflight-only`：不导入 torch，重新检查附着 complete reviews 和所有血缘/文件绑定；旧 complete Boolean-only admission 拒绝。
+- `start-rwkv7.py`：保持 refs relative paths 复制整个 lineage及逐字source-review文件，再于新 bundle mount 重验；默认只打包，不推送/训练。
 
-```json
-{
-  "mode": "ai-single-reviewer",
-  "reviewerType": "ai",
-  "reviewerId": "arena-agent-mode",
-  "reviewerCount": 1,
-  "humanReviewerCount": 0,
-  "independentSecondReview": false
-}
-```
+全部新产物在 `transfer/program-2026-10-12`；`formal-export-latest` 是预期拒绝回执，**不是训练 corpus**。协议 NOT_VALIDATED，原目标读回/CPU/监督准入/模型执行仍零或未测。
 
-There is no second-reviewer requirement. Do not describe an AI-only review as human-reviewed or independently adjudicated. The schema, exporter, prediction validator, evaluator, workbook, and trainer preflight all preserve this distinction. A single reviewer does **not** waive complete source-fact coverage, exact evidence spans, unsupported-claim review, family isolation, or provenance.
+## 安全命令
 
-## Safety rules
-
-- A clean apparatus audit, accepted capture, lexical anchor, or hand-written draft is **not** proof of complete factual coverage.
-- A row enters train/dev only after full raw/context review, complete atomic source facts, exact source spans, and a reference whose must-preserve facts are all retained and whose factual claims have zero unsupported assertions.
-- Split by whole family. A family may appear in exactly one of `train`, `dev`, or `blind`; never random-split rows from a family or move previously used development/holdout material into train.
-- Existing holdout families are not a newly registered blind family. Blind examples must come from genuinely new families, be registered before generation, and remain private until predictions are frozen.
-- Blind annotations are never written into the Kaggle upload directory; an optional `--private-out` path must be outside it.
-- When the intended target is model-specific (here, DeepSeek-V4.1-Flash), traces from another teacher model are not target-model supervision. They may be used only as exploratory, model-agnostic material unless transfer is demonstrated on a held-out set of target-model traces generated with the intended harness and output channel.
-- The evaluator consumes explicit reviewer labels. It does not infer semantic equivalence from string overlap. Its scores must be described as **AI single-reviewer** scores, not independent or human scores.
-- Gate thresholds start null and unfrozen. No checkpoint can be called passing until thresholds, blind-family registration, and annotation completeness are frozen before the blind run.
-- Character ratio uses `draft.length / raw.length` only. `ctx` is task context, not source text for the compression denominator. This is a character proxy, not tokenizer-token compression.
-
-## Current commands
-
-From the repository root:
+仓库根执行；未指定 `--out` 不写文件，指定只接受新文件/目录：
 
 ```sh
-node tools/micro-generator/prepare-review-queue.mjs --write
-node tools/micro-generator/build-fact-draft-suggestions.mjs --write
-python3 tools/micro-generator/build-ai-review-workbook.py
-node tools/micro-generator/export-reviewed-corpus.mjs --queue transfer/models/micro-generator-review-queue.jsonl --out-dir transfer/models/micro-generator-corpus
-node tools/micro-generator/evaluate.mjs --cases path/to/ai-reviewed-cases.jsonl --predictions path/to/ai-reviewed-predictions.jsonl --gates path/to/frozen-gates.json --out path/to/report.json
-node tools/micro-generator/select-smallest-passing.mjs --report path/to/report-q8.json --report path/to/report-q4.json --out path/to/selection.json
-python3 tools/micro-generator/run_gguf.py --model /safe/path/model.gguf --input transfer/models/micro-generator-review-queue.jsonl --out /tmp/dev-pending-review.jsonl --revision "$MODEL_COMMIT_SHA" --quantization Q8_0 --split dev
-node tools/micro-generator/freeze-gates.mjs --in tools/micro-generator/evaluation-gates.template.json --out path/to/frozen-gates.json --blind-family BRAND_NEW_FAMILY --min-blind-families N --min-cases-per-blind-family N --weighted-fact-recall-overall-min X --weighted-fact-recall-per-blind-family-min X --critical-omissions-per-blind-family-max N --uncertain-must-preserve-per-blind-family-max N --contradictory-claims-per-blind-family-max N --unsupported-claims-per100-max X --uncertain-claims-per100-max X --median-draft-to-raw-char-ratio-max X --confirm-before-blind-generation
-node --test test/micro-generator.selftest.mjs
+node tools/micro-generator/program.mjs status
+node tools/micro-generator/program.mjs registry
+node tools/micro-generator/program.mjs review
+node tools/micro-generator/build-program-dev.mjs
+node tools/micro-generator/build-program-controls.mjs
+node tools/micro-generator/reader-study.mjs plan
+node tools/micro-generator/reader-study.mjs evaluate --plan PLAN.json --observations EVIDENCE.jsonl --out NEW_REPORT.json
+node tools/readback-audit.mjs --events YOUR_LOG --out NEW_REPORT.json
+node tools/micro-generator/formal-sft.mjs --out NEW_DIRECTORY # 当前 exit 2
+node test/compression-program.selftest.mjs
+python3 test/trainer-contract.selftest.py
 ```
 
-The exporter refuses train/dev output until the included rows pass the complete AI single-review contract, every queued case has an explicit family-level split, at least two train families and one dev family are represented, and duplicate `raw+ctx` inputs do not have conflicting targets. It reports the reviewer policy in its manifest. The training preflight repeats those checks independently.
+两个开发 builder 的 `--write` 仅首次写入；已有报告不覆盖。reader import 是描述性报告，绝不自动发布 `cfb.original-reader-study/1` 晋级收据或 VALID 尺子。0 observation 不等于0损害，缺失全部留分母。
 
-`build-fact-draft-suggestions.mjs` is still only a reviewer aid: it proposes facts from explicit task/context preamble snippets, so those 17 records remain `sourceCoverage=partial`, `annotationStatus=draft`, and `trainingEligible=false`. Its suggestions are not gold labels. The Excel workbook is an optional review surface, not an import source or training artifact; it does not create a second-review requirement.
+## AI 单审，不伪造独立性
 
-## External data sourcing decision
+授权身份 `arena-agent-mode`，reviewProvenance 必须 mode=ai-single-reviewer、reviewerType=ai、reviewerCount=1、humanReviewerCount=0、independentSecondReview=false。不要求第二审，但也不能说 independently adjudicated。完整材料、来源 span、无 unsupported claim 与 family isolation 不因单审免除。
 
-- **QMSum**: train/validation portions were downloaded from a fixed repository commit for screening, including meeting transcripts, query summaries, and relevant-turn spans. It is a query-based meeting-summary dataset, not CFB coding-agent progress-state data. Sampled answer/span pairs need additional claim-level verification, so it is not admitted to the CFB training corpus. No test split is used.
-- **etri/QMSum_SummaryEvidence**: a pinned MIT-licensed variant supplies sentence-level CES/PES evidence labels, but its checked JSON stores target-conditioned evidence snippets rather than the full transcript. It is a useful auxiliary audit candidate, not full-raw CFB data; not imported.
-- **SWE-agent-trajectories**: coding-agent trajectories are a closer domain match, but they provide trajectories and patches/evaluation logs rather than ready-made `raw + ctx -> draft` summaries. Use would require source-family and repository-license review plus AI-authored target creation; it was not imported.
-- **SWE-chat**: it contains real coding-agent sessions, but access to its files requires accepting a contact-information condition. It was not accessed or used.
+源推理可能错误/自相矛盾；保留 source 的证据/假设/不确定性，而不是把理想正确答案注入稿。任何计划/测试/修复必须区分实际发生。source-fact count 不是样本数或模型成功率。
 
-Acquisition and rejection reasons are recorded in `docs/MICRO-GENERATOR-DATA-SOURCING-2026-10-07.md`. Do not treat auxiliary meeting summaries, generated targets, or trajectory text as CFB gold without a complete review.
+字符压缩仅 `draft.length/raw.length`，ctx 不进入分母；这是 UTF-16 字符代理，不是原生 token/净收益。不能把提示/句柄/CPU/失败重试成本排除后喊压缩划算。
 
-## Local inference and training
+## 当前禁止的捷径
 
-`run_gguf.py` needs `llama-cpp-python` and a local GGUF file; both inference runners require a pinned lowercase 40-hex model commit. They are inference-only smoke runners; they do not train or certify quality. They record weight and prompt hashes, runtime settings, per-case latency, and a pending review with no reviewer identity until a review is actually performed. CPU throughput/fit is not verified in this 2-vCPU / ~1.9-GiB environment.
+- 17 原 queue / 16 派生 partial candidates 不升 train；6001 启发式 teacher 不是可靠监督；四 gold family 不代表任意覆盖。
+- 六份 pinned Open-SWE Qwen/off-target 摘录是探索，不是 V4.1 已准入；prior exposure 与 whole-family 必须冻结，禁止按行 random split。
+- 同 raw/ctx 多稿需显式 canonical adjudication 或等价评分，不取最后行；队列/旧训练 prompt 不自动成为事实真值。
+- 尚无新family blind。已有 v9消费账本不重开；新的盲测需另授权/预注册，freeze predictions 后再看 labels，blind 永不进 Kaggle train bundle。
+- 正式来源、实际 reader、新 ruler、CPU、预算未满足，不能靠结构 Boolean/fixture 打开训练。
 
-**Security stop:** the Qwen3-0.6B-GGUF repository's Q8_0 artifact had a `PAIT-GGUF-100` scan warning during the earlier check. That file was not downloaded or loaded. Do not bypass the warning; inspect the exact embedded template/artifact with safe tooling first. Runner tests use a mock backend only.
+## 旧工具的保留用途
 
-`kaggle_qwen3_qlora.ipynb` is a GPU-side template, not evidence of training. It fails closed on incomplete AI single-reviewer records, missing facts, duplicate targets, or family leakage. It uses only train/dev artifacts; a genuinely blind set stays private and outside Kaggle. Eval loss is an optimization diagnostic, not factual-quality evidence.
+`prepare-review-queue` / `build-fact-draft-suggestions` / workbook / `export-reviewed-corpus` / evaluation-gates 和 `kaggle_qwen3_qlora.ipynb` 保留用于历史/研究合同，不再是本轮正式训练入口。建议器只提局部 preamble facts；旧 workbook 是审查界面，不是 gold importer。旧局部 exporter 不能绕过完整 sidecar/source/runtime 血缘。
 
-## Current readiness
+`run_gguf.py`、历史 HF/QLoRA 模板是研究 smoke，不是候选 CPU/质量证明。旧 Qwen3-0.6B Q8_0 的 PAIT-GGUF-100 预警不可绕过，文件未下载/加载；mock tests 不证真实模型。不能从 Qwen 模板提另一条并行路线。
 
-The designated CFB target is DeepSeek-V4.1-Flash. A public-source survey (`docs/MICRO-GENERATOR-TARGET-MODEL-SOURCE-SURVEY-2026-10-07.md`) found no public corpus of that model's reasoning traces: the only confirmed archive of real V4.1-Flash rollouts is unlicensed for reuse, held out from a benchmark, and stores reasoning as encrypted/empty text, while the nearest licensed auxiliary (Open-SWE-Traces v1.1 `openhands/deepseek_v4_flash`, 21,208 rows with full reasoning) was generated by the predecessor DeepSeek-V4-Flash. Genuine target-model traces require running the target model itself; see `targetModel` in `dataset-policy.json`.
+外部来源/公开 survey 决策仍以 `docs/MICRO-GENERATOR-DATA-SOURCING-2026-10-07.md` 和 `docs/MICRO-GENERATOR-TARGET-MODEL-SOURCE-SURVEY-2026-10-07.md` 的**当时范围**为准：QMSum 不是 CFB 出生CoT，未准入；SWE-agent 需来源许可/完整review；SWE-chat 接触条件未接受；benchmark holdout/encrypted reasoning 不取作训练。没有本轮新联网采集或覆盖当前公开生态的保证。
 
-The 17 CFB queue rows are from already-known development families. Several original drafts make unsupported claims that edits or verification happened; two `perf-regression` rows have identical `raw+ctx` but different targets. Those originals are not accepted as training gold. Six rows from pinned NVIDIA Open-SWE-Traces v1.2 have been curated, source-hash checked, and reviewed by one AI reviewer, but their traces were generated by Qwen3.8-27B with mini-swe-agent—not the target DeepSeek-V4.1-Flash. They are retained only for annotation-pipeline exploration: `finalSplit=null`, `trainingEligible=false`, and no target-model transfer has been demonstrated. No target-model traces have been admitted, no train/dev split is registered for them, and no new-family blind set exists. The exporter and trainer are **review/preflight only**; fine-tuning was not run.
+接下来先确认真实原 reader/宿主状态与部署预算，测参考稿效用，再按 `docs/COVERAGE-AND-COLLECTION.md` 建新监督；不以训练数量/loss 替代这个结论。

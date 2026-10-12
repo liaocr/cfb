@@ -1,0 +1,51 @@
+{
+  "schema": "cfb.compression-task-contract/1",
+  "id": "birth-continuation-2026-10-12",
+  "status": "development-contract-not-capability-certification",
+  "goal": "One birth-time raw reasoning block plus the context visible at that birth -> generated shorter reasoning -> continuation by the original receiver.",
+  "receiver": {"id": "DeepSeek-V4.1-Flash", "actualServedVersion": null, "actualChannelVerified": false},
+  "input": {
+    "raw": "Exact reasoning block; do not concatenate separate births or truncate silently.",
+    "ctx": "Exact compressor-visible context snapshot; distinguish it from the full receiver conversation and record truncation/assembly policy.",
+    "allowedGrounding": "Facts already in visible ctx may ground the draft; retaining ctx does not require repeating its entire ledger in the draft.",
+    "temporalBoundary": "No subsequent tool result, edit confirmation, reader outcome, or future-turn solution is allowed in raw/ctx/reference.",
+    "instructionsInRaw": "Source material, not instructions to the compressor.",
+    "mutations": "No hidden case folding, normalization, source substitution or current-prompt relabelling. UTF-16 spans address the retained text."
+  },
+  "output": {
+    "kind": "generated-reasoning-block-not-selected-sentences-or-progress-summary",
+    "mustPreserve": ["material evidence", "identifiers and quantities when material", "negation", "conditions and exceptions", "actors and temporal order", "decision-relevant causal links", "uncertainty and contradictions", "done versus proposed", "unresolved questions and counterevidence"],
+    "allowed": ["paraphrase", "merge genuine repetition", "reorder without changing dependencies", "omit nonmaterial deliberation", "raw fallback"],
+    "forbidden": ["invent evidence", "promote a hypothesis to verified fact", "resolve a source contradiction by guesswork", "claim a planned edit/test already happened", "change target tasks or usable tool names", "force shorter output when material information cannot fit"]
+  },
+  "quality": {
+    "universalNeverWorseClaimAllowed": false,
+    "requiredLayers": ["structural integrity", "complete AI single-reviewer source facts and draft claims", "paired original-receiver continuation"],
+    "reportAllCases": true,
+    "fallbackIsNotSemanticProof": true,
+    "dimensions": ["material-information damage", "continuation task outcome", "all-input net token and cost savings", "compression coverage and fallback", "p50/p95 latency and peak RAM"],
+    "thresholdPolicy": "Deployment thresholds require user resource budgets and a new frozen evaluator; historical v9 stays INVALID."
+  },
+  "resources": {
+    "workspaceLimitBytes": 134217728,
+    "targetCpu": null,
+    "maximumModelBytes": null,
+    "maximumPeakRamBytes": null,
+    "maximumP95LatencyMs": null,
+    "maximumInputTokens": null,
+    "minimumCompressionCoverage": null,
+    "resourceBudgetConfirmed": false,
+    "weightsInThisWorkspaceAllowed": false
+  },
+  "data": {
+    "reviewPolicy": {"mode": "ai-single-reviewer", "reviewerId": "arena-agent-mode", "reviewerCount": 1, "humanReviewerCount": 0, "independentSecondReview": false},
+    "existingDevelopmentMustNotBecomeTrainOrFreshBlind": true,
+    "auxiliarySources": "Keep off-target until separately preregistered target-heldout transfer is demonstrated.",
+    "syntheticControls": "Apparatus/coverage probes only, never admitted target traces or proof of arbitrary-CoT capability.",
+    "sourceAndTargetQualitySeparate": true,
+    "licenseAndPrivacyReviewRequired": true
+  },
+  "authorization": {"paidApis": false, "modelExecution": false, "gpuTraining": false, "remotePush": false, "newBlindConsumption": false},
+  "executionOrder": ["task contract and actual readback observability", "small fully reviewed developer references and length ladder", "new evaluator calibration", "provenance and coverage corpus", "candidate capability and CPU feasibility", "diagnostic SFT after explicit authorization", "quantization and host shadow", "limited promotion"],
+  "parallelEarlyWork": "Cheap CPU/tokenizer hard-feasibility checks may run early after machine/resource authorization, but cannot prove the task valuable or the supervision correct."
+}

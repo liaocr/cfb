@@ -108,7 +108,7 @@ export function apply(ctx, config = {}) {
     const owner = sessions.forStream()
 
     try {
-      trace('llm-stream', streamProvenanceRecord({ n, options, session: owner.session, previewChars: cfg.tracePreviewChars }))
+      trace('llm-stream', streamProvenanceRecord({ n, options, session: owner.session, sessionId: owner.sessionId, previewChars: cfg.tracePreviewChars, readbackHashes: cfg.trace && cfg.traceReadbackHashes }))
     } catch (e) { trace('llm-stream-error', { error: String((e && e.message) || e) }) }
 
     const inner = next()

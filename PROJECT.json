@@ -1,0 +1,160 @@
+{
+  "schema": "cfb.project-state/1",
+  "auditDate": "2026-10-11",
+  "softwareVersion": "14.25.4",
+  "workStatus": "continuation-foundation-development-only",
+  "baseline": "3922da88b35fe790ba145b3442a4800aac7fb4d1",
+  "repairBranch": "repair/audit-2026-10-11",
+  "goal": "Given arbitrary birth-time raw reasoning and its context, generate a shorter continuation-useful text for the original receiver; not sentence selection or family templates.",
+  "route": {
+    "id": "pretrained-generative-student-only",
+    "firstCandidate": "fla-hub/rwkv7-0.1B-g1",
+    "modelRevision": "7450ee04eb9c66baa7161b7a5c0fe09e5b2817d8",
+    "actualParameters": 191034624,
+    "status": "candidate-not-promoted",
+    "initialSourceAndReceiver": "V4.1-Flash",
+    "cpuDeployment": "unverified; feasibility gate before training",
+    "alternatives": "No parallel fallback campaign. If a hard feasibility gate fails, retire this candidate and explicitly select one replacement."
+  },
+  "authority": [
+    "PROJECT.json",
+    "AGENTS.md",
+    "README.md",
+    "docs/PROJECT-PLAN.md",
+    "docs/ARCHITECTURE.md",
+    "docs/README.md",
+    "docs/AUDIT-2026-10-11.md",
+    "transfer/HANDOFF.md",
+    "tools/micro-generator/task-contract.json",
+    "tools/micro-generator/continuation-prereg.json",
+    "docs/CONTINUATION-PROGRAM-2026-10-12.md",
+    "docs/COVERAGE-AND-COLLECTION.md",
+    "tools/micro-generator/REVIEW-GUIDE.md",
+    "tools/micro-generator/dataset-policy.json"
+  ],
+  "evidence": {
+    "v9Validation": "data-v9/validation.json",
+    "v9Replay": "transfer/audit-2026-10-11/v9-replay.json",
+    "frozenList": "transfer/route-2026-10-11/PREREG-v9.sha256",
+    "missingLedger": "transfer/audit-2026-10-11/missing-artifacts.json",
+    "checkoutScope": "transfer/audit-2026-10-11/checkout-scope.json",
+    "scanCoverage": "transfer/audit-2026-10-11/scan-coverage.json",
+    "modelMetadata": "transfer/audit-2026-10-11/rwkv7-model-metadata.json",
+    "activeRuler": null,
+    "readiness": {
+      "cpuQualityAndLatencyVerified": null,
+      "currentTrainingAdmitted": null,
+      "candidatePromoted": null,
+      "liveHostVerified": null,
+      "originalReaderReferenceUtilityVerified": null
+    },
+    "tokenizerMetadata": "transfer/audit-2026-10-11/rwkv7-tokenizer-observations.json",
+    "fileRoles": "transfer/audit-2026-10-11/FILE-INDEX.json"
+  },
+  "claims": {
+    "v9RulerValid": false,
+    "currentTrainingAdmitted": false,
+    "candidatePromoted": false,
+    "cpuQualityAndLatencyVerified": false,
+    "liveHostVerified": false,
+    "neverWorseThanRawGuaranteed": false,
+    "originalReaderReferenceUtilityVerified": false
+  },
+  "dataBuckets": {
+    "evidence": "immutable and replayable history; technical proof is not model quality",
+    "research": "unreviewed/heuristic teacher pools; no default SFT admission",
+    "quarantine": "conflicting or identity-relabelled evidence, unreviewed revisions, off-target assistants",
+    "excluded": "sparse large assets and unmaterialized recovery candidates; available is not verified"
+  },
+  "requiredNextGates": [
+    "Confirm task/deployment resource budget, reader access and reconstructable same-birth state",
+    "Trace real birth/hook/serialization/persistence and subsequent target request",
+    "Raw/raw A/A and raw/reference task utility plus whole-path net economics",
+    "New preregistered valid evaluator; preserve frozen v9 INVALID",
+    "Coverage-oriented, source/license/privacy reviewed target-compatible corpus with whole-family split",
+    "Pinned native tokenizer, base-model capability and real CPU feasibility",
+    "Explicitly authorized diagnostic pretrained-generative SFT and later shadow promotion"
+  ],
+  "safety": {
+    "paidApisAuthorized": false,
+    "gpuTrainingAuthorized": false,
+    "remotePushAuthorized": false,
+    "oneTimeBlindTestConsumptionAuthorized": false,
+    "preserveHistoricalBodiesAndReceipts": true
+  },
+  "updatedAt": "2026-10-12",
+  "workflowOrder": [
+    "task contract and actual readback observability",
+    "small fully reviewed developer references and length ladder",
+    "new evaluator calibration",
+    "provenance and coverage corpus",
+    "candidate capability and CPU feasibility",
+    "diagnostic SFT after explicit authorization",
+    "quantization and host shadow",
+    "limited promotion"
+  ],
+  "continuationProgram": {
+    "phase": "development-reference-first",
+    "paidCalls": 0,
+    "realModelExecutions": 0,
+    "newBlindConsumed": 0,
+    "trainingAdmitted": 0,
+    "singleAiReviewNotIndependentCertification": true,
+    "protocolValidity": "NOT_VALIDATED",
+    "evidence": {
+      "taskContract": {
+        "path": "tools/micro-generator/task-contract.json",
+        "sha256": "a273c2739aaa507bc98e797a3adbf4b4dce81faf1c011cfe4c4749de5722e1cd"
+      },
+      "developmentPreregistration": {
+        "path": "tools/micro-generator/continuation-prereg.json",
+        "sha256": "6e316476ce052e463e8a6b7ab8979656f0cce7927f85c358d330b21c588e9187"
+      },
+      "sourceRegistry": {
+        "path": "transfer/program-2026-10-12/source-registry.json",
+        "sha256": "98d3216e7fcddff9ace7337a125ff4a3e064d1daae287f5b93bf4a24ed2a82de"
+      },
+      "reviewedAnnotations": {
+        "path": "transfer/program-2026-10-12/reviewed-dev.jsonl",
+        "sha256": "952c96431998c25f4100ec1ace2c1c0e92a06743418148ef361b174a0acd7ef9"
+      },
+      "completeReviews": {
+        "path": "transfer/program-2026-10-12/complete-reviews.jsonl",
+        "sha256": "2263f7d5bf1a3ae966d5ce6005dfd98c0756315dc30b85bef7f46fbb556356b4"
+      },
+      "developmentReviewReport": {
+        "path": "transfer/program-2026-10-12/development-review-report.json",
+        "sha256": "a09c9a213177de0640b851c5b966c9a051ff2c208e4e1dde5d448716fde65018"
+      },
+      "labelledControls": {
+        "path": "transfer/program-2026-10-12/control-cases.jsonl",
+        "sha256": "255fb9e28b144638c1b4997e4943836151801c65037801a8563c893491d83beb"
+      },
+      "apparatusCalibration": {
+        "path": "transfer/program-2026-10-12/control-calibration-final.json",
+        "sha256": "eb585d1119315de261a86e2366e39815aeb75be453802d7b08e732ea76046a23"
+      },
+      "readbackFixtureEvents": {
+        "path": "transfer/program-2026-10-12/readback-fixture-events.jsonl",
+        "sha256": "5eea6ceca0fc7bc9e7a919c9528aac117bde5fddcab089c1d5a36930a1d88d35"
+      },
+      "readbackFixtureAudit": {
+        "path": "transfer/program-2026-10-12/readback-fixture-audit-final.json",
+        "sha256": "1d1b886de8f547e96aa9f1798644497b38226a6b49ffd43e81d0cf82b9aab930"
+      },
+      "readerStudyPlan": {
+        "path": "transfer/program-2026-10-12/reader-study-plan-final.json",
+        "sha256": "5a51614c2c088f73212d9c9a0a7bc108cac4b7735daefbebbecfbbb09468cb9e"
+      },
+      "readerStudyNoExecution": {
+        "path": "transfer/program-2026-10-12/reader-study-no-execution-final.json",
+        "sha256": "5c1c5eadada4b8cdbecba49abd641b956e04ac2d5a25d173f459d2811d0bda15"
+      },
+      "formalPreflightFinal": {
+        "path": "transfer/program-2026-10-12/formal-export-latest/formal-preflight.json",
+        "sha256": "8b76bdcfb067e834f4b671f1675ec999e2decbb2d86ee564926be6372190c450"
+      }
+    }
+  },
+  "nextAction": "Confirm resource budget, original-reader access/channel and reconstructable host state; trace real readback; run raw/raw A/A and raw/reference utility before acquiring new whole-family supervision or diagnostic SFT. Local receipts remain descriptive; no automatic resource execution."
+}

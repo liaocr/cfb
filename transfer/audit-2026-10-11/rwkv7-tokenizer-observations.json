@@ -1,0 +1,19 @@
+{
+  "model": "fla-hub/rwkv7-0.1B-g1",
+  "revision": "7450ee04eb9c66baa7161b7a5c0fe09e5b2817d8",
+  "modelConfigEosTokenId": 0,
+  "tokenizerEosText": "\n\n",
+  "actualTokenizerEosIdExecuted": false,
+  "nativeTemplateRequiresExplicitEnableThinkingFalse": true,
+  "remoteTokenizerCodeSha256": "aaca5e6a0f56d043ca1654e9dcaf906fcf3c0e03b5172863ad75060e8685a10e",
+  "note": "Read metadata/custom tokenizer source only. No vocab/weights/transformers installation or real tokenizer execution. EOS id resolution/decoder behaviour remain a feasibility gate; no automatic conclusion that differing metadata is itself invalid.",
+  "historicalExportedMetadata": {
+    "tokenizerPath": ".cfb-offline/kaggle-out/rwkv7-compressor/model/tokenizer_config.json",
+    "tokenizerSha256": "cdb54600e9a7d0ec0248c9237e106d64baec9c17061a94fff1173aca0451f097",
+    "addedEosIdDeclaredInSavedConfig": 65530,
+    "generationConfigPath": ".cfb-offline/kaggle-out/rwkv7-compressor/model/generation_config.json",
+    "generationConfigSha256": "92e4e20d67316fd7df82821d3c6e1499197bdf15a7e80cb431af99785b549dad",
+    "generationConfigEosTokenId": 0,
+    "scope": "Historical saved metadata only. Not the audited trainer or actual current tokenizer execution, not CPU feasibility, not the selected EOS contract."
+  }
+}

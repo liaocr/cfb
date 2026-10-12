@@ -146,13 +146,13 @@ try {
     const cli = (...a) => cyc.runCli(a, { dir: tmp })   // v14.10：进程内 CLI（不起子进程）
     try {
       // v4.5：缺省单位 = 一个家族（未探索、dev 优先 ⇒ sse-truncated）× 2 臂 × 1 样本 × ≤5 轮 ≤ 9 + 5 请求；v4.7 影子分叉期望 7 + 2 ≈ $0.103（上界 $0.372）；--all 才是 5 家族（≤45 + 25，期望 ≈ $0.512，上界 $1.86）
-      const pt = cli('plan-traj'); assert.equal(pt.status, 0, pt.stdout + pt.stderr); assert.ok(/期望主 7 \+ 压缩 2（影子分叉.*期望实付 ≈ \$0\.103，上界 ≈ \$0\.372/.test(pt.stdout) && /检验尺子有效性/.test(pt.stdout) && /traj-run\.mjs --plan/.test(pt.stdout) && /只跑 sse-truncated/.test(pt.stdout), pt.stdout)
+      const pt = cli('plan-traj'); assert.equal(pt.status, 0, pt.stdout + pt.stderr); assert.ok(/期望主 7 \+ 压缩 2（影子分叉.*规划估算 ≈ \$0\.103，规划上界 ≈ \$0\.372/.test(pt.stdout) && /检验尺子有效性/.test(pt.stdout) && /traj-run\.mjs --plan/.test(pt.stdout) && /只跑 sse-truncated/.test(pt.stdout), pt.stdout)
       const plan = JSON.parse(fs.readFileSync(path.join(tmp, 'runtime/t1/plan.json'), 'utf8')); assert.equal(plan.schema, 'cfb.traj-plan/1'); assert.equal(plan.cost.mains, 9); assert.equal(plan.cost.compresses, 5); assert.deepEqual(plan.scenarios, ['sse-truncated']); assert.equal(plan.maxRounds, 5); assert.ok(!fs.existsSync(path.join(tmp, 'receipts')))
       const again = cli('plan-traj'); assert.match(again.stdout, /同一设计的计划已存在：t1/); assert.ok(!fs.existsSync(path.join(tmp, 'runtime/t2')), '同设计不重复建')
       const dryp = cli('plan-traj', '--all', '--dry'); assert.match(dryp.stdout, /\[dry\] 不落盘.*主 ≤45 \+ 压缩 ≤25，期望主 35 \+ 压缩 10 ≈ \$0\.512（上界 \$1\.86）/); assert.ok(!fs.existsSync(path.join(tmp, 'runtime/t2')))
       assert.equal(cli('plan-traj', '--arms', 'raw,auto', '--dry').stdout.includes('臂 raw vs policy:base'), true, 'auto 是 policy:base 的别名'); assert.notEqual(cli('plan-traj', '--arms', 'raw,auto,policy:base', '--dry').status, 0, '重复臂被拒')
       assert.match(cli('plan-traj', '--help').stdout, /plan-traj \[/); assert.ok(!fs.existsSync(path.join(tmp, 'runtime/t2')), '--help 不落盘')
-      const pt3 = cli('plan-traj', '--n', '9', '--scenarios', 'eacces-config,flaky-timeout,perf-regression'); assert.ok(/期望实付 ≈ \$0\.307，上界 ≈ \$1\.116/.test(pt3.stdout), pt3.stdout)
+      const pt3 = cli('plan-traj', '--n', '9', '--scenarios', 'eacces-config,flaky-timeout,perf-regression'); assert.ok(/规划估算 ≈ \$0\.307，规划上界 ≈ \$1\.116/.test(pt3.stdout), pt3.stdout)
       assert.match(cli('plan-traj', '--drop', '9').stdout, /已撤销未执行的计划 t9/); assert.ok(!fs.existsSync(path.join(tmp, 'runtime/t9')))
       assert.notEqual(cli('plan-traj', '--scenarios', 'nope').status, 0)
       // 策略 champion（provisional）+ L2 champion 更好 ⇒ 没有路径等价校准时只能 pending-parity
@@ -171,11 +171,13 @@ try {
       assert.ok(/效度账本 \+0 对/.test(c3.stdout) && /12 对与已有记录重复，未重复入账/.test(c3.stdout), c3.stdout)
       assert.equal(fs.readFileSync(path.join(tmp, 'offline/ruler/validity.jsonl'), 'utf8').trim().split('\n').length, 12, '同源重跑不增账')
       assert.equal(JSON.parse(fs.readFileSync(path.join(tmp, 'offline/champion.json'), 'utf8')).adoption, 'confirmed')
-      // v14.12.4：confirm --plan N 把计划标成 confirmed；v14.14：异源文件（t1/results.jsonl）是新观测 ⇒ 合法 +12 → n=24，无需再备份还原账本
+      // Audit repair: confirm --plan can mark a plan processed, but copying the SAME terminal bodies to a new filename cannot increase n.
       fs.copyFileSync(path.join(tmp, 'l2.json'), path.join(tmp, 'runtime/t1/results.jsonl'))
       const c4 = cli('confirm', '--plan', '1', '--map', 'champion=policy:p-abc,previous=policy:base'); assert.equal(c4.status, 0, c4.stdout + c4.stderr)
       const tp1 = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/history.json'), 'utf8')).trajPlans.find((t) => t.n === 1); assert.equal(tp1.status, 'confirmed'); assert.equal(tp1.confirm.pairs, 6); assert.match(tp1.confirm.file, /confirm-\d+\.json/)
       assert.ok(!/已有未执行计划 t1/.test(cli('status').stdout))
+      assert.equal(fs.readFileSync(path.join(tmp, 'offline/ruler/validity.jsonl'), 'utf8').trim().split('\n').length, 12, '跨文件纯复制不增账')
+      assert.match(c4.stdout, /效度账本 \+0 对/)
       // 飞轮样例槽：无飞轮 ⇒ 退出码 2；有一条通用赢稿 ⇒ 落策略（op exemplar）
       assert.equal(cli('policy-from-flywheel').status, 2)
       fs.mkdirSync(path.join(tmp, 'offline/train'), { recursive: true })
@@ -185,7 +187,7 @@ try {
       fs.writeFileSync(path.join(tmp, 'offline/train/pairs.jsonl'), JSON.stringify(policyPair) + '\n')
       const pf = cli('policy-from-flywheel'); assert.equal(pf.status, 0, pf.stdout + pf.stderr); assert.match(pf.stdout, /op exemplar/)
       const pols = fs.readdirSync(path.join(tmp, 'offline/policies')); assert.equal(pols.length, 1); const pol = JSON.parse(fs.readFileSync(path.join(tmp, 'offline/policies', pols[0]), 'utf8')); assert.equal(pol.patches[0].op, 'exemplar'); assert.equal(pol.origin.source, 'flywheel-exemplar'); assert.equal(pol.status, 'proposed')
-      const ru = cli('ruler'); assert.ok(/效度.*valid  n=24/.test(ru.stdout) && /L1 角色判定：\*\*prescreen\*\*/.test(ru.stdout) && /脚注：轨迹级/.test(ru.stdout) && /天花板率（结构分=2）0\.827/.test(ru.stdout), ru.stdout)
+      const ru = cli('ruler'); assert.ok(/效度.*unvalidated  n=12/.test(ru.stdout) && /L1 角色判定：\*\*diagnostic\*\*/.test(ru.stdout) && /脚注：轨迹级/.test(ru.stdout) && /天花板率（结构分=2）0\.827/.test(ru.stdout), ru.stdout)
     } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
   })
   await test('E1 端到端：adopt-provisional → propose 被拒 → confirm（L2 更差）⇒ rolled-back 恢复 previous → 曝光记账 → ruler/status 可读', () => {

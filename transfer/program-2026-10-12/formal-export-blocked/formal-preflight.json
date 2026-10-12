@@ -1,0 +1,77 @@
+{
+  "schema": "cfb.formal-sft-preflight/1",
+  "trainingReady": false,
+  "trainingExecuted": false,
+  "model": {
+    "id": "fla-hub/rwkv7-0.1B-g1",
+    "revision": "7450ee04eb9c66baa7161b7a5c0fe09e5b2817d8"
+  },
+  "counts": {
+    "inputCases": 3,
+    "train": 0,
+    "dev": 0,
+    "rejected": 3
+  },
+  "sources": {
+    "annotationSetSha256": "bf29f1816e0069f4494f0a66dc54dc593d85bf8c684335301f05af1a2e97c501",
+    "completeReviewSetSha256": "b166f08d8dcab79702dbd67a3fca0be1eeedaff44796e85136460f225f80e096",
+    "registrySha256": "fde7063b4676f6477940db01eb96ed024cdd1481845400f61ce0169c9390811b",
+    "taskContractSha256": "642c67f3f89b59192675a696c0a2d659d8305a867aa876f080b7346e9a1f3f69",
+    "trainingPromptSha256": "e0042062214f4bfea385e4316e4681ef548438b6fb03fd6e1da9d5d7288d42fb"
+  },
+  "blockers": [
+    "no-admitted-train-cases",
+    "no-admitted-whole-family-dev-cases",
+    "input-cases-rejected; inspect-full-rejection-ledger",
+    "new-preregistration: missing/invalid bound artifact",
+    "new-ruler: missing/invalid bound artifact",
+    "original-reader-study: missing/invalid bound artifact",
+    "cpu-receipt: missing/invalid bound artifact"
+  ],
+  "errors": [],
+  "rejected": [
+    {
+      "caseId": "flaky-timeout-9f726c3b9c677f04",
+      "inputSha256": "86da015b48bf620e903cb75a5205e8f07196bbfe6c92ab85beeba403578aaa6c",
+      "reasons": [
+        "explicit-training-eligibility-is-false",
+        "source-model-birth-license-privacy-not-admitted",
+        "source-review: missing/invalid bound artifact",
+        "repository-identity-not-attested"
+      ]
+    },
+    {
+      "caseId": "perf-regression-743d949f701c5040",
+      "inputSha256": "f706662b5af9315f2a0db88aa4f99a407fd250ab6d6d1cf6c14b23930c4fb1ec",
+      "reasons": [
+        "explicit-training-eligibility-is-false",
+        "source-model-birth-license-privacy-not-admitted",
+        "source-review: missing/invalid bound artifact",
+        "repository-identity-not-attested"
+      ]
+    },
+    {
+      "caseId": "sse-truncated-24bd46e54267e3fe",
+      "inputSha256": "da177d65d28a4334a278ee630378b8acfb34303ab3b4902477ba4f2d4d9fd6e8",
+      "reasons": [
+        "explicit-training-eligibility-is-false",
+        "source-model-birth-license-privacy-not-admitted",
+        "source-review: missing/invalid bound artifact",
+        "repository-identity-not-attested"
+      ]
+    }
+  ],
+  "evidence": {},
+  "reviewPolicy": {
+    "mode": "ai-single-reviewer",
+    "reviewerId": "arena-agent-mode",
+    "reviewerCount": 1,
+    "humanReviewerCount": 0,
+    "independentSecondReview": false
+  },
+  "scope": "Integrity of complete attached reviews; not independent semantic certification.",
+  "paidApiCalls": 0,
+  "modelExecutions": 0,
+  "gpuRuns": 0,
+  "blindConsumed": 0
+}

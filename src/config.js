@@ -237,7 +237,8 @@ export const DEFAULTS = {
   promptMode: 'full',
   // 动态水位与打转感知触发器（理论第四卷 λ 控制器）：false = 固定 birthMinChars；true = 按会话轮数、打转率（原始/Δ状态）与水位动态调节触发地板与预算。
   birthAdaptiveFloor: false,
-  // v5 本地超高精度认知微模型编译器（src/compile-v5-local.js）：true = 走进程内微模型（< 2ms、零网络调用、零 API 费）直接生成原生语域状态散文并经 compileV4Direct / 拼接件 / 门控校验；false = 走远程副模型。
+  // 历史 v5 规则/特征排序器 + 模板渲染路径（不是生成式语言模型）。仅留作显式 opt-in 的回归对照；
+  // 默认关闭，不是当前生成式训练主线，不承诺通用语义质量或本机延迟。false = 走远程副模型。
   compressLocalModel: false,
   // v4 直写长度熔断上限（null = 单步 2000 / 多轮 2600）。
   compressV4DirectMaxChars: null,
@@ -298,6 +299,8 @@ export const DEFAULTS = {
   traceMaxBytes: 64 * 1024 * 1024,
   // ★ v11.10 llm-stream 溯源里「人类 user 开头片段」的长度（原固定 48）。0 = 不记录任何正文片段（隐私优先）。
   tracePreviewChars: 48,
+  // Opt-in, hash-only birth -> hook -> wire audit; never logs raw/draft plaintext.
+  traceReadbackHashes: false,
 }
 
 // ── 配置归一化：同时接受扁平键与嵌套写法 ─────────────────────────────────────

@@ -4,11 +4,12 @@
 //   1) 缺省保守：没登记 use 的条目 = 'ruler'（新条目绝不因为忘了登记就溜进训练）；
 //   2) 两侧互斥：ruler 侧读不到 train，train 侧读不到 ruler；want 拼错必须抛（防止错字把闸关掉）；
 //   3) 加 use 字段不作废既有基准计划：digest 只 hash raw/ctx/draft；
-//   4) 训练料通道 fail closed：不合规稿不收、标尺 id 混进来要能炸、同稿多版要产出偏好对；
+//   4) 训练料通道 fail closed：不合规稿不收、标尺 id 混进来要能炸、同稿多版无审查要隔离；只有逐字绑定的审查才可产出偏好对；
 //   5) v14.22.0 上限闸：松软稿进不了标尺（C2/C6 等），达线稿要有产线对照读数才收（缺读数 fail-closed）。
 // 另附一条「真数据回归」：本机的 b13 实测稿重算必须逐分逐位一致（缺 runtime 目录时记 skip，不算通过也不算失败）。
 import nodeAssert from 'node:assert/strict'
 import fs from 'node:fs'
+import crypto from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 let pass = 0
@@ -60,11 +61,28 @@ fs.writeFileSync(root('traj/tX/hand-samples.jsonl'), [
   JSON.stringify(row({ id: 'f-a-short', raw: '太短' })),
 ].join('\n') + '\n')
 const t = loadTrajTrainingSamples({ root: tmp, dirs: ['traj/tX'], rulerIds: new Set(), minRawChars: 50 })
-assert.equal(t.samples.length, 1, '只留 trainingEligible + clean + 够长的')
-assert.equal(t.samples[0].id, 'f-a-s0-r1')
-assert.equal(t.samples[0].split, 'train', '通道出来的料用途固定为 train')
-assert.equal(t.samples[0].hand.includes('改稿版'), true, '同 id 多版取最新当标签')
-assert.equal(t.pairs.length, 1, '较早版本进 chosen/rejected 对')
+assert.equal(t.samples.length, 0, '多版缺审查，不能按时间自动选择训练标签')
+assert.equal(t.pairs.length, 0, '更早不等于更差，不自动制造偏好对')
+assert.equal(t.stats.conflicts, 1)
+assert.equal(t.stats.quarantined[0].why, 'unreviewed-revisions-time-is-not-quality')
+// 内容绑定的显式审查可以选更早的稿，证明“较新”不是判据。
+const digest = (text) => crypto.createHash('sha256').update(text).digest('hex')
+const old = row({}), newer = row({ at: '2026-10-05T09:00:00.000Z', draft: '改法只落 src/a.js（改稿版）。' })
+const review = { schema: 'cfb.revision-review/1', status: 'approved', reviewerId: 'fixture-ai', rawSha256: digest(old.raw), ctxSha256: digest(old.ctx), chosenSha256: digest(old.draft), rejectedSha256: [digest(newer.draft)] }
+fs.mkdirSync(root('traj/tReview'), { recursive: true })
+fs.writeFileSync(root('traj/tReview/hand-samples.jsonl'), [{ ...old, revisionReview: review }, newer].map((r) => JSON.stringify(r)).join('\n') + '\n')
+const reviewed = loadTrajTrainingSamples({ root: tmp, dirs: ['traj/tReview'], minRawChars: 50 })
+assert.equal(reviewed.samples.length, 1)
+assert.equal(reviewed.samples[0].hand, old.draft)
+assert.equal(reviewed.samples[0].split, 'train')
+assert.equal(reviewed.pairs.length, 1)
+assert.equal(reviewed.pairs[0].chosen, old.draft)
+assert.equal(reviewed.pairs[0].preferenceSource, 'content-bound-review-not-time')
+assert.equal(reviewed.trainingApproved, false, '偏好审查仍不是生成式全局准入')
+fs.writeFileSync(root('traj/tReview/hand-samples.jsonl'), [{ ...old, revisionReview: { ...review, chosenSha256: 'f'.repeat(64) } }, newer].map((r) => JSON.stringify(r)).join('\n') + '\n')
+const drift = loadTrajTrainingSamples({ root: tmp, dirs: ['traj/tReview'], minRawChars: 50 })
+assert.equal(drift.samples.length, 0, '伪造/过期的目标哈希不能盖章')
+assert.equal(drift.stats.conflicts, 1)
 assert.equal(t.stats.droppedIneligible, 1, 'trainingEligible≠true 的一条被剔')
 assert.equal(t.stats.droppedShort, 1, '原文长度不够的一条被剔（分项计数，不混在一起）')
 assert.equal(t.stats.droppedAudit, 1, '审计不 clean 的一条被剔')

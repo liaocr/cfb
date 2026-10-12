@@ -5,13 +5,14 @@
  *   node manifest.mjs          重新生成 MANIFEST.sha256
  *   node manifest.mjs --check  对清单范围逐文件校验，任何漂移都非零退出
  *
- * 范围由 .gitignore 驱动；本地/再生状态目录（包括被 Git 强制跟踪但仍匹配忽略规则的 .cfb-runtime/.cfb-offline 资产）有意不进入此清单。
+ * 范围由 .gitignore 驱动；本地运行/实验状态目录（可含不可再生付费原材料；包括被 Git 强制跟踪但仍匹配忽略规则的 .cfb-runtime/.cfb-offline 资产）有意不进入此清单。
  * 因此它回答的是「交付树里的文件是否漂移」，不回答「所有 Git 跟踪文件是否逐一校验」。
  */
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
+import { sparseOmissions, parseManifest } from './tools/helpers/worktree-integrity.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const LIST = path.join(HERE, 'MANIFEST.sha256')
@@ -78,14 +79,14 @@ function walk(dir, base) {
 
 const sha = (f) => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex')
 const files = walk(HERE, '').sort()
+const sparse = process.argv.includes('--sparse')
+const omitted = sparseOmissions(HERE)
+const prior = fs.existsSync(LIST) ? parseManifest(fs.readFileSync(LIST, 'utf8')) : new Map()
+const sparseManifestPaths = [...omitted].filter((rel) => prior.has(rel))
 
 if (process.argv.includes('--check')) {
   if (!fs.existsSync(LIST)) { console.log('缺 MANIFEST.sha256，先跑 node manifest.mjs'); process.exit(2) }
-  const want = new Map()
-  for (const line of fs.readFileSync(LIST, 'utf8').split('\n')) {
-    const m = /^([0-9a-f]{64})  (.+)$/.exec(line.trim())
-    if (m) want.set(m[2], m[1])
-  }
+  const want = prior
   let bad = 0, missing = 0
   for (const f of files) {
     const abs = path.join(HERE, f)
@@ -94,13 +95,24 @@ if (process.argv.includes('--check')) {
     if (want.get(f) !== got) { console.log('  漂移: ' + f + '\n    清单 ' + want.get(f).slice(0, 16) + '\n    实际 ' + got.slice(0, 16)); bad++ }
   }
   for (const f of want.keys()) {
-    if (!fs.existsSync(path.join(HERE, f))) { console.log('  缺失: ' + f); missing++ }
+    if (!fs.existsSync(path.join(HERE, f))) {
+      if (sparse && omitted.has(f)) { console.log('  稀疏未验证（不是丢失）: ' + f); continue }
+      console.log('  缺失: ' + f); missing++
+    }
   }
   console.log('')
   console.log('  文件 ' + files.length + ' 个；漂移/新增 ' + bad + '；缺失 ' + missing)
+  if (sparseManifestPaths.length) console.log('  范围：' + (sparse ? '仅已物化文件；未验证 ' + sparseManifestPaths.length + ' 项，非完整清单验收' : '严格完整验收；稀疏缺失也计失败，可显式用 --sparse 做局部审计'))
   process.exit((bad + missing) === 0 ? 0 : 1)
 }
 
-const lines = files.map((f) => sha(path.join(HERE, f)) + '  ' + f)
+if (omitted.size && !sparse) {
+  console.error('稀疏检出：拒绝静默删掉未下载的清单项。完整检出后重算，或显式使用 --sparse（保留旧哈希）。')
+  process.exit(2)
+}
+const merged = new Map(files.map((f) => [f, sha(path.join(HERE, f))]))
+if (sparse) for (const rel of sparseManifestPaths) merged.set(rel, prior.get(rel))
+const lines = [...merged].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([f, digest]) => digest + '  ' + f)
 fs.writeFileSync(LIST, lines.join('\n') + '\n', 'utf8')
-console.log('已写入 MANIFEST.sha256：' + files.length + ' 个文件')
+if (sparseManifestPaths.length) console.log('保留 ' + sparseManifestPaths.length + ' 个稀疏文件的既有哈希（本轮未核验字节）。')
+console.log('已写入 MANIFEST.sha256：' + merged.size + ' 个清单项（物化 ' + files.length + '）')

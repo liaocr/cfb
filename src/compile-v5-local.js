@@ -1,3 +1,6 @@
+// AUDIT 2026-10-11: historical learned feature scorer/selector + deterministic template renderer.
+// Not an autoregressive/generative language model; not the current student route.
+// Preserve this compatibility API and its old regression artifacts, but do not promote its scores as universal CoT quality.
 // dsh-cot-form-b / compile-v5-local.js —— v5 本地认知图微模型编译器（纯函数，零外部依赖）
 //   延迟口径（v14.25.1 实测，别再写 "<2ms"）：真金标 13 条 × 每条 20 次 warm 复测（n=260，raw 均值 3.4k 字）
 //     ⇒ 三次独立复测的均值 4.1 / 6.3 / 7.4 ms（同一沙箱、负载不同），p50 5.3–6.1 ms，p95 14.6–20.5 ms。

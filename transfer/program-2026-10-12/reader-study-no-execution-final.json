@@ -1,0 +1,63 @@
+{
+  "schema": "cfb.reader-study-import/1",
+  "planSha256": "3bd329a88c8bd8ba931afd8cce5049dfd7743390e151c268f9a10b187f736594",
+  "preregSha256": "6e316476ce052e463e8a6b7ab8979656f0cce7927f85c358d330b21c588e9187",
+  "status": "not-evaluable",
+  "errors": [
+    "plan:channel: missing/invalid bound artifact",
+    "plan:tools: missing/invalid bound artifact",
+    "plan:decoding: missing/invalid bound artifact",
+    "plan:scope-ref-not-bound:channelScopeSha256",
+    "plan:scope-ref-not-bound:toolsSha256",
+    "plan:scope-ref-not-bound:decodingSha256",
+    "plan:served-channel-version-not-pinned",
+    "plan:tools-or-decoding-invalid",
+    "live-study-budget-not-authorized-or-incomplete",
+    "plan:budget-approval: missing/invalid bound artifact",
+    "all-registered-cases-not-accounted"
+  ],
+  "rejected": [],
+  "duplicates": [],
+  "missing": [
+    {
+      "caseId": "flaky-timeout-9f726c3b9c677f04",
+      "missingArms": [
+        "raw-a",
+        "raw-b",
+        "reference"
+      ]
+    },
+    {
+      "caseId": "perf-regression-743d949f701c5040",
+      "missingArms": [
+        "raw-a",
+        "raw-b",
+        "reference"
+      ]
+    },
+    {
+      "caseId": "sse-truncated-24bd46e54267e3fe",
+      "missingArms": [
+        "raw-a",
+        "raw-b",
+        "reference"
+      ]
+    }
+  ],
+  "complete": [],
+  "denominator": 3,
+  "acceptedObservationCount": 0,
+  "observedUniqueProviderCallIds": 0,
+  "callCountIsLowerBoundNotWholeStudy": true,
+  "fullContinuationTrajectoriesVerified": false,
+  "actualBillingVerified": false,
+  "independentSampleCount": null,
+  "originalReaderValidated": false,
+  "referenceUtilityVerified": false,
+  "promotionAllowed": false,
+  "qualification": "Local evidence integrity/descriptive declarations only. Full trajectory, host/version attestation, numerical gates, independence and cumulative billing are NOT manufactured.",
+  "paidApiCallsByThisCommand": 0,
+  "modelExecutionsByThisCommand": 0,
+  "gpuRunsByThisCommand": 0,
+  "newBlindConsumedByThisCommand": 0
+}

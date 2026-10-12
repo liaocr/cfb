@@ -1,84 +1,72 @@
-# AI 模型与开发者一页交接卡（`transfer/HANDOFF.md`，v14.25.4）
+# CFB 当前交接（v14.25.4 基线，2026-10-12 参考稿优先）
 
-> 本文件替代了原先分散的 `MIGRATION.md`、`LIVE-MEMORY.md`、`MEMORY.md`、`NEXT-MODEL-PROMPT.md` 与 `SUMMARY-2026-10-02.md`。
-> 接手本项目的 AI 模型或人类开发者只需读完本页即可 **30 秒内零盲区开工**。请始终使用**中文**回复。
+> 这是当前入口，不是实验成绩晋级书。先看 [PROJECT.json](../PROJECT.json)、[唯一主线](../docs/PROJECT-PLAN.md)、[本轮实施](../docs/CONTINUATION-PROGRAM-2026-10-12.md)、[前阶段审计](../docs/AUDIT-2026-10-11.md)。
 
----
-
-## 1. 三步环境恢复与全量自检（换机器 / 新会话第一件事）
-
-```bash
-# 1. 从入库快照重建 gitignored 的可再生闭环状态 (.cfb-offline)
-npm run restore             # = node tools/cfb-cycle.mjs restore
-
-# 2. 校验 SHA-256 清单并在断网命名空间跑满全部自检（Node >= 20 即可；本仓库在 v20.20.2 上验证通过）
-npm run manifest:check      # = node manifest.mjs --check（0 缺失 / 0 失配）
-npm run verify:offline      # = node tools/verify-offline.mjs（读数见下面的水位块，勿手抄）
-npm run watermark:check     # = node tools/doc-watermark.mjs --check（文档水位与磁盘一致？）
-
-# 3. 一屏查看当前闭环状态、本地代理评测记分卡与智能下一步建议
-npm run cycle               # = node tools/cfb-cycle.mjs status
-npm run bench               # = node tools/cfb-cycle.mjs benchmark
-npm run next                # = node tools/cfb-cycle.mjs next
-```
+## 1. 技术水位
 
 <!-- watermark:begin 由 node tools/doc-watermark.mjs --write 生成，勿手抄 -->
-- **当前版本：v14.25.4** · **零第三方依赖**（纯 Node.js ≥ 20/22 内置模块）
+- **当前版本：v14.25.4** · **插件核心零第三方运行依赖**（Node.js ≥ 20；审计自测另需 Git/Python，训练有额外依赖）
 - **自测（本块由 `node tools/doc-watermark.mjs --write` 生成，勿手抄）**
-- 验收口径 `npm run verify:offline`（真断网 Linux 命名空间）：42/42 套件通过 · `1242 通过 / 0 失败 / 1 跳过`（**42 套件时代**的回执：该车道需 Linux 网络命名空间取证，本平台无法复跑；当前 `test/` 有 44 套）
-- 快速自检 `npm test`（联网机上跑，需要隔离的那条断言按设计跳过）：43/43 套件通过 · `1252 通过 / 0 失败 / 8 跳过`（**43 套件时代**的回执：该回执未在当前平台重记；当前 `test/` 有 44 套）
+- 验收口径 `npm run verify:offline`（真断网 Linux 命名空间）：47/47 套件通过 · `1432 通过 / 0 失败 / 2 跳过`
+- 快速自检 `npm test`（联网机上跑，需要隔离的那条断言按设计跳过）：47/47 套件通过 · `1431 通过 / 0 失败 / 3 跳过`
 - 用时与记账时刻**不进文档**（每次 `--record` 都会变 ⇒ 写进文档就永远在漂），要查 `transfer/watermark.json` 的 `seconds` / `at`。
-- **规模**：`src/` 24 个零依赖模块 · `tools/` 65 个脚本 + 29 个 helpers · `test/` 44 套自测 · `transfer/gold/` 13 条（4 个家族）
+- **规模**：`src/` 25 个零依赖模块 · `tools/` 73 个脚本 + 31 个 helpers · `test/` 47 套自测 · `transfer/gold/` 13 条（4 个家族）
 <!-- watermark:end -->
 
-> **沙盒环境提示**：`package.json` **没有** `engines` 字段 ⇒ 版本要求只写在文档里、不作硬闸；实测 Node 20.20.2 全绿。若容器 Node < 20，可一行升级至 `/usr/local`：
-> `curl -fsSL https://nodejs.org/dist/v22.21.1/node-v22.21.1-linux-x64.tar.xz | sudo tar -xJ -C /usr/local --strip-components=1`
-> 真实 API 密钥（如需要跑线上评测）存放在工作区外 `~/.secrets/keys.env`（`chmod 600`，**永不入库、永不打印**）。
+有跳过/稀疏范围；自测不证明真实宿主、GPU、CPU 生成或语义不退步。
 
----
+## 2. 当前判断
 
-## 2. 当前仓库状态与最优策略基线
+- 目标：出生时 raw＋ctx → 生成式短稿 → 原目标模型后续读回；不是选句器或五家族模板。
+- 只推进预训练生成式学生 SFT。首个候选 RWKV7，revision `7450ee04eb9c66baa7161b7a5c0fe09e5b2817d8`，191,034,624 参数；没有晋级，也没有 CPU 实机质量/延迟证明。
+- 冻结 v9 独立重放一致，结论 INVALID 保留。1,233 标签全不可训练；没有当前主线已准入 corpus。
+- 24 个 audit 快照缺路径全在固定 main 可定位，六份原 SHA 精确找回并归档；剩余未完整物化。不要再写“永久丢失”。
+- JS v5 是历史特征排序/模板兼容路径，默认关闭，不是生成式语言模型。没有 RWKV 生产接入。
 
-- **分支与版本**：`main`，版本与自测读数全部见上面的水位块（由 `--record` 记账 ⇒ 本文件不再抄一遍旧数）。
-- **核心架构**：100% 纯净的思维链出生即压缩（`birth` + `compile-v4`），已彻底剥离 DSH 外部宿主混入层与冗余旁路。
-- **`npm run bench` 第二表榜首**：**`p-1490eefcdf`**（四维满配：`continuationPath: 'bounded'` + `statePartsMode: 'compact'` + `modularPromptPrune: true` + `birthAdaptiveFloor: true`，提示词净减 `-1037` 字）。当前 L1 预筛为金标过闸 **12/13（净省 431 tok）**、`dd=0.724`、池题 **4/4 题 / 9/9 轮**、均省 **1111 tok**、Oracle `dd=0.831`、真值分 `0.696`、AA 密度效率 `0.6473`。
-  **榜首 ≠ 已采纳**：`npm run cycle` 当前 champion 仍为 `base`；候选在当前 L2 汇总里 `policy:p-1490eefcdf` 是 **1/24（4.2%）**严苛修好。先不采纳，也不把 L1 排名当端到端收益。
-- **L2 轨迹汇总（`npm run bench`，2026-10-07 本地日期）**：`raw n=80 / auto n=7 / ledger n=6`；`auto` 严苛解决率 **85.7%**、伪修好 `0%`、`pass@1=0.889`、`pass^2=0.778`、平均 `4.86` 轮（相对 raw `−24.9%`）、思维链字符 `−27.4%`；Elo **1104，95% CI [945, 1279]**（区间覆盖 raw=1000）。这是多个在盘轨迹的描述性汇总，不是同一随机化盲测；旧数 `raw n=8 / Elo 1110 / −13.7%` 不再当现状。
-- **闭环状态（`npm run cycle` 当前输出）**：champion=`base`；飞轮 **93/93** 对过 dev/内容闸；CPU 排序器 `ready`、LOO-CV **0.763**；效度尺子 **`suspect (n=304)`**，不是 `valid`。`npm run train:export` 是导出工具，不改变候选的验证状态。
+## 3. 已改掉的真问题
 
-### 2′. 金标注册表现状与「改稿重挣」通道（v14.25.4 复核，接手必读）
+raw 不再按完成顺序取第 k 行；事件日志统一排等待态、去逐字重复、隔离冲突；旧 raw 重标来源不会继续当无歧义证据。改稿没有内容绑定审查时，不再选较新稿/自动做 preference pair。
 
-- **注册表现状（2026-10-07 本地日期现算，条数同步在 `../README.md` 文首水位块）**：`transfer/gold/` 在册 **13 条 / 4 家族**（`sse-truncated` 5 · `wrong-model` 4 · `eacces-config` 3 · `perf-regression` 1；`dev 6 + holdout 7`）。
-  尺子判词按 `cfb.gold-standard/1` 逐条现算：**4 条 `gold` / 9 条 `not-gold`**（`tools/gold-attest.mjs` 只降不升，条目 `goldStandard.stampDigest` 一变即过期）。
-  `ceiling.ok`：**12/13 达标**，唯一不达标是 `perf-regression-s0-r7`（真机 `roundsToFix 9 > 6` ⇒ C4 提前量不成立 ⇒ 按 fail-closed 保持 `use:'train'`，不删）。
-- **用途隔离现状（v14.21.0 起，v14.24.x 改了默认走向）**：13 条里 **`use:'ruler'` 7 条 / `use:'train'` 6 条** —— **不是**"全部只当标尺"。`train` 那 6 条是 `goldCeiling` 不达线被 fail-closed **降级**下来的（降级 ≠ 丢数据：不进标尺、不删条目），要复核就 `node tools/gold-ceiling-audit.mjs`（$0）。
-- **模式 2 实测基线（只认 `b13`，别再引 `b10`/`b11`）**：⚠ `b13` 跑在旧的 7 项 dev 集上，注册表现已 13 条 ⇒ 重跑前别把它当现状。dev 3 项 × 5 策略、`dd/2` ⇒ `base 0.300`、`p-082d742f60 0.560`、`p-55a320e0f8 0.579`、`p-08bdbc7561 0.620`、`p-1490eefcdf 0.667`；配对全 `undetermined`（e 最高 2.333 < 10 —— dev 只有 3 项，本来就量不到 10）。`b10`/`b11` 那个 `base 0.519` 是**假数字**：15 行里 8 行是通道 `timeout 22000ms`，而 dd/1 又把「调用失败 ⇒ 原文回塞」当成稿来计分。跑法必须带 `--timeout-ms 150000`；真 `no-gain` 只有 6 行 ⇒ 侧模型的瓶颈先是**压不出**，再谈压得好。标尺口径（含「模板照旧受奖励」的判定）见 `docs/TRAINING-AND-BENCHMARK.md` §3.1；注册表摘要一变，旧计划按设计 `gold-changed` 拒跑，`plan-bench` 重建即可，未变条目靠 `--out` 同目录的兄弟缓存免付调用。
-- **扩标方案（要补金标先读这份）**：`docs/GOLD-EXPANSION-PROGRAM.md` —— 40 项 / 5 家族的判据、标尺与训练料分家、双作者一致率（复用 `blind-unit-label-v3`）、覆盖矩阵与三档预算；里面 §6 记了 2026-10-05 换上游后的通道事实（`temperature 0` 不再逐字确定、400 tok 只要 2.0–2.2 s、小 `max_tokens` 会被思考吃满 ⇒ 压缩调用下限 600、`--timeout-ms 150000`）。
-- **天花板资格先于越界**：`gold add` 有三道拒收 —— 未修好、`vsRaw loss`（比主模型自己读原文还慢）、`missing`；前两道是「不够格」，只有 lint 那道才叫「越界」并进隔离区。判据写在 `saveGold`，`A41b` 钉住。稿子被拒后**不删**：连同单元结果落 `transfer/gold-repair/measured/`。
-- **改稿两条铁规矩（被真机教出来的）**：① 只能照当轮 `pending/<id>.json` 的 `raw + ctx` 写，别把旧轨迹的结论搬过来（`invented-decision`/`invented-triple`）；原文还没下决定时，稿子只许带机理＋排除，不许替主模型落定。② 花钱前先 `node tools/hand-preflight.mjs <plan> [--only id]`（$0 复跑同一条闸链）；短 raw 的轮次要算上程序部件（~600 字），稿得压到 ~700 字以内才可能有净省。
-- **审计口径**：装置话术（越界）只定**作者自己写的主张**的罪；整句或「…」/`…` 定界引用若原样出现在 `raw ∪ ctx` ⇒ 报告观测，免检（`qualityAudit.exempted[]` 带 `basis`）。`auditMode1Gold` = `draft ∪ stored` 都过免检。
-- **被隔离 ≠ 报废**：`node tools/cfb-gold-repair.mjs audit` 复算隔离区（active + `transfer/gold-rejected`）⇒ `RESTORABLE` 用 `restore --id … --apply` 字节级放回（digest 不变 ⇒ 冻结的 `b1`–`b9` 仍可用）；`NEEDS-REWRITE` 改稿后 `replay --id X --draft F`（$0 复跑 G2 → `compileV4Direct` → 程序部件 → `birthAccept` → lint，并打印逐槽差 = 归因账）⇒ 全绿 `stage`。
-- **换稿入库**：真机复测过后 `node tools/cfb-cycle.mjs gold add --plan N --replace` —— 旧条目自动归档 `transfer/gold-history/<family>/`，新条目打 `revision` 戳。金标摘要一变，旧基准计划按设计 `gold-changed` 拒跑 ⇒ 必须 `plan-bench` 重建。
+研究 SFT 导出显式 non-admitted，坏 JSON、冲突、缺 frozen dev、未知 repo 和覆盖已有产物都失败。训练前本地预检和 model revision 必填；launcher 不再把本地代码混配可变 main 数据，默认只打包。
 
----
+训练掩码与真实生成前缀一致；按 epoch 洗牌并轮换 DDP 裁尾；微批不足不能零步成功；dev loss 按有效目标 token 加权；未来曲线点真存权重。GPU 部分还没运行，不写“GPU 已修复验证”。旧 step72 没权重的事实不变。
 
-## 3. 个人极简省钱评测三档菜单
+## 4. 下一步，不能跳闸
 
-| 档位 | 命令 | 成本 | 用途 |
-|---|---|---:|---|
-| **Tier 0（离线全表）** | `npm run bench` / `npm run prescreen` | **`$0.00`** | 本地轨迹汇总与预筛代理记分卡（借鉴外部指标口径，非官方 benchmark 成绩）+ 四维正交因子归因 |
-| **Tier 1（极简基准）** | `npm run bench:lite` | **`≈ $0.004`** | 复用 `b1` 缓存的 `base` 臂，仅对新候选策略发 **1 次**副模型调用即完成配对对比 |
-| **Tier 2（极简轨迹）** | `npm run traj:lite` | **`≈ $0.068`** | IRT 自动挑信息量最高 1 题 × 4 轮上限 × 影子分叉（分歧前零主调用）+ `$0.08` 硬熔断 |
+先任务/资源和真实读回 → 高质量参考稿同出生A/A与utility → 新尺子效度/数字冻结 → 覆盖来源与完整监督/whole-family → pinned底座能力/CPU → 获批诊断SFT → 量化/shadow/有限晋级。便宜硬检查可并行但不替代任务效用。
 
----
+失败停止，不降 v9 阈值，不把 off-target 或规则稿偷偷转为训练，不新增平行底座路线。
 
-## 4. 铁律与长期约束（不可违反）
+## 5. 安全命令和禁止误用
 
-1. **禁止删减双轨语义能力**：确定性规则（`draftDistance`）与 LLM 语义裁判（`tools/cfb-judge.mjs`）、LLM 提议器（`proposer.mjs`）、正交因子归因、Pareto 池与岭回归校准缺一不可。
-2. **禁止重新混入 DSH 宿主工具面**：`cfb` 只做思维链出生即压缩与认知编译，不接管宿主工具定义。
-3. **修改文件必更清单**：改动任何入库文件后，若修改了 `.cfb-offline` 状态需先跑 `npm run snapshot`，随后必须执行 `npm run manifest` 与 `npm run verify:offline` 确保 0 漂移、0 失败。
+```bash
+node tools/project.mjs scope-restore     # 仅当快照丢失Git稀疏配置；核对既有ledger/索引，不下载/改正文
+node tools/project.mjs doctor
+node tools/project.mjs readiness   # 当前 exit 2 是预期未就绪
+node tools/project.mjs plan
+node verify.mjs
+node tools/verify-offline.mjs
+node manifest.mjs --check --sparse
+```
 
-## v14.21.0（2026-10-05）：标尺 / 训练料已分家 —— 从此 `use` 字段裁决
+本地分支 `repair/audit-2026-10-11`，基线 `3922da88b35fe790ba145b3442a4800aac7fb4d1`。128 MB 下保留 10 项稀疏排除；排除字节未核验。
 
-`transfer/gold/` 里每条现在带 `use`（`ruler` / `train` / `both`，缺省 `ruler`）。**7 条现有金标全部 `use=ruler`：只当标尺，不再进任何拟合。** micro 的训练料改从 `tools/helpers/traj-corpus.mjs`（读 `.cfb-runtime/traj/*/hand-samples.jsonl`，只收 `trainingEligible && clean`）。要放行某条进训练：`node tools/cfb-cycle.mjs gold use --id X --set train` —— 但这等于亲手制造泄漏，除非你明确接受。
-扩量对账：`node tools/coverage-plan.mjs`（$0）→ `transfer/gold-repair/gold-coverage/matrix.md`（输入指纹 `90abc37bef69db7f`）：格 = 5 家族 ×（3 轮位档 + 3 长度档）= **30 格**，逐格"差 N"合计 **36**（旧文档写的 33 是上一轮读数）。两根轴是同一批条目的两种投影（各加总 = 目标 40 条），不是交叉相乘。双作者一致率与通道适配按用户裁决**不做**，所以噪声底没有实测值。详见 `docs/GOLD-EXPANSION-PROGRAM.md` §1/§8 与 CHANGELOG v14.21.0。
+不要自动执行 restore/snapshot/ceiling/gold replace/新盲测；`.cfb-offline` 含不可再生付费材料。当前没有付费 API、真实模型训练、远端推送或新盲测授权。历史文档、旧冠军与分数不是当前操作指令。
+
+
+## 前阶段工程交接（2026-10-11；不当本轮新回执）
+
+普通 46/46：1366/0/3；真隔离 46/46：1367/0/2。共同 skip 为稀疏清单资产与真实 store 兄弟包；不是宿主/模型全验。水位已事务式重记；失败事务原日志保留。初始 1235 个历史路径、七个冻结文件 byte/hash 不变。
+
+新增 cross-file validity 去重：复制/改名日志不再增加 n；旧错误测试“复制同一文件后合法 n=24”已纠正为 n=12、unvalidated。不要为了恢复旧数字改回去。
+
+改动在 repair/audit-2026-10-11，尚未 commit/push、没有训练/付费/新盲测。本轮已改为任务/参考稿优先；不能拿上述前阶段全绿解锁未经批准训练。
+
+## 2026-10-12 新增实施
+
+- 42 source records/22 unique inputs/9 families/0 admitted；三完整AI开发审查74facts/20claims。AI1、人0、二审0，已曝光/trainingfalse。
+- 30显式标签controls只验证apparatus，NOT_VALIDATED；birth→hook→wire三组全fixtures，不认证宿主/原reader。
+- 正式flat exporter+完整review/source lineage接入Python预检；旧complete Boolean-only admission拒绝。launcher带全部refs并在bundle mount重验。无正式admitted数据、无训练。
+- reader-study本地计划/导入；最少9续行臂，实际state/version/tools/预算缺失而blocked；0 observation留全部missing分母。无live execute。
+- `programme:status` / `data:registry` / `data:review` / `data:formal` / `reader:plan` / `reader:import` / `readback:audit` 已接package，verify新加入compression-program技术回归。
+- 下一步需要用户确认真实reader/宿主访问和部署预算，先测参考价值再采覆盖数据。不要把完整AI审查、helper单测或复制receipt视作真实效度。

@@ -1,0 +1,422 @@
+{
+  "ok": true,
+  "unlisted": [],
+  "jobs": 6,
+  "wallMs": 61907,
+  "rows": [
+    {
+      "suite": "test/provider-endpoint.selftest.mjs",
+      "status": "PASS",
+      "note": "28 passed",
+      "pass": 28,
+      "fail": 0,
+      "skips": 0,
+      "ms": 294
+    },
+    {
+      "suite": "test/core.selftest.mjs",
+      "status": "PASS",
+      "note": "168 passed",
+      "pass": 168,
+      "fail": 0,
+      "skips": 0,
+      "ms": 12729
+    },
+    {
+      "suite": "test/compress.selftest.mjs",
+      "status": "PASS",
+      "note": "28 passed",
+      "pass": 28,
+      "fail": 0,
+      "skips": 0,
+      "ms": 2082
+    },
+    {
+      "suite": "test/v4.selftest.mjs",
+      "status": "PASS",
+      "note": "95 passed",
+      "pass": 95,
+      "fail": 0,
+      "skips": 0,
+      "ms": 1901
+    },
+    {
+      "suite": "test/v4-live.selftest.mjs",
+      "status": "PASS",
+      "note": "5 passed",
+      "pass": 5,
+      "fail": 0,
+      "skips": 0,
+      "ms": 4374
+    },
+    {
+      "suite": "test/effect-eval.selftest.mjs",
+      "status": "PASS",
+      "note": "9 passed",
+      "pass": 9,
+      "fail": 0,
+      "skips": 0,
+      "ms": 224
+    },
+    {
+      "suite": "test/api-budget.selftest.mjs",
+      "status": "PASS",
+      "note": "27 passed",
+      "pass": 27,
+      "fail": 0,
+      "skips": 0,
+      "ms": 1615
+    },
+    {
+      "suite": "test/eval-ready.selftest.mjs",
+      "status": "PASS",
+      "note": "42 passed  (1 skipped)",
+      "pass": 42,
+      "fail": 0,
+      "skips": 1,
+      "ms": 15363
+    },
+    {
+      "suite": "test/eval-ready-v2.selftest.mjs",
+      "status": "PASS",
+      "note": "10 passed",
+      "pass": 10,
+      "fail": 0,
+      "skips": 0,
+      "ms": 6551
+    },
+    {
+      "suite": "test/eval-visible-v3.selftest.mjs",
+      "status": "PASS",
+      "note": "14 passed",
+      "pass": 14,
+      "fail": 0,
+      "skips": 0,
+      "ms": 21559
+    },
+    {
+      "suite": "test/eval-reasoning-v8.selftest.mjs",
+      "status": "PASS",
+      "note": "14 passed",
+      "pass": 14,
+      "fail": 0,
+      "skips": 0,
+      "ms": 1697
+    },
+    {
+      "suite": "test/offline-lab.selftest.mjs",
+      "status": "PASS",
+      "note": "20 passed",
+      "pass": 20,
+      "fail": 0,
+      "skips": 0,
+      "ms": 549
+    },
+    {
+      "suite": "test/judge-calibration.selftest.mjs",
+      "status": "PASS",
+      "note": "21 passed",
+      "pass": 21,
+      "fail": 0,
+      "skips": 0,
+      "ms": 462
+    },
+    {
+      "suite": "test/closed-loop.selftest.mjs",
+      "status": "PASS",
+      "note": "25 passed",
+      "pass": 25,
+      "fail": 0,
+      "skips": 0,
+      "ms": 18353
+    },
+    {
+      "suite": "test/closed-loop-v3.selftest.mjs",
+      "status": "PASS",
+      "note": "17 passed",
+      "pass": 17,
+      "fail": 0,
+      "skips": 0,
+      "ms": 26221
+    },
+    {
+      "suite": "test/closed-loop-v4.selftest.mjs",
+      "status": "PASS",
+      "note": "45 passed",
+      "pass": 45,
+      "fail": 0,
+      "skips": 0,
+      "ms": 51630
+    },
+    {
+      "suite": "test/manifest-ignore.selftest.mjs",
+      "status": "PASS",
+      "note": "4 passed  (1 skipped)",
+      "pass": 4,
+      "fail": 0,
+      "skips": 1,
+      "ms": 17187
+    },
+    {
+      "suite": "test/training-ready.selftest.mjs",
+      "status": "PASS",
+      "note": "4 passed",
+      "pass": 4,
+      "fail": 0,
+      "skips": 0,
+      "ms": 962
+    },
+    {
+      "suite": "test/birth.selftest.mjs",
+      "status": "PASS",
+      "note": "141 passed  (1 skipped)",
+      "pass": 141,
+      "fail": 0,
+      "skips": 1,
+      "ms": 3923
+    },
+    {
+      "suite": "test/robustness.selftest.mjs",
+      "status": "PASS",
+      "note": "16 passed",
+      "pass": 16,
+      "fail": 0,
+      "skips": 0,
+      "ms": 1808
+    },
+    {
+      "suite": "test/hedge.selftest.mjs",
+      "status": "PASS",
+      "note": "17 passed",
+      "pass": 17,
+      "fail": 0,
+      "skips": 0,
+      "ms": 7886
+    },
+    {
+      "suite": "test/hook-wiring.selftest.mjs",
+      "status": "PASS",
+      "note": "6 passed",
+      "pass": 6,
+      "fail": 0,
+      "skips": 0,
+      "ms": 1023
+    },
+    {
+      "suite": "test/hardening.selftest.mjs",
+      "status": "PASS",
+      "note": "30 passed",
+      "pass": 30,
+      "fail": 0,
+      "skips": 0,
+      "ms": 1079
+    },
+    {
+      "suite": "test/concurrency.selftest.mjs",
+      "status": "PASS",
+      "note": "13 passed",
+      "pass": 13,
+      "fail": 0,
+      "skips": 0,
+      "ms": 914
+    },
+    {
+      "suite": "test/protocol.selftest.mjs",
+      "status": "PASS",
+      "note": "15 passed",
+      "pass": 15,
+      "fail": 0,
+      "skips": 0,
+      "ms": 827
+    },
+    {
+      "suite": "test/branches.selftest.mjs",
+      "status": "PASS",
+      "note": "6 passed",
+      "pass": 6,
+      "fail": 0,
+      "skips": 0,
+      "ms": 1316
+    },
+    {
+      "suite": "test/audit-2026-09-27.selftest.mjs",
+      "status": "PASS",
+      "note": "27 passed",
+      "pass": 27,
+      "fail": 0,
+      "skips": 0,
+      "ms": 720
+    },
+    {
+      "suite": "test/micro-runtime.selftest.mjs",
+      "status": "PASS",
+      "note": "29 passed",
+      "pass": 29,
+      "fail": 0,
+      "skips": 0,
+      "ms": 577
+    },
+    {
+      "suite": "test/micro-ruler.selftest.mjs",
+      "status": "PASS",
+      "note": "7 passed",
+      "pass": 7,
+      "fail": 0,
+      "skips": 0,
+      "ms": 21722
+    },
+    {
+      "suite": "test/micro-generator.selftest.mjs",
+      "status": "PASS",
+      "note": "18 passed",
+      "pass": 18,
+      "fail": 0,
+      "skips": 0,
+      "ms": 5259
+    },
+    {
+      "suite": "test/micro-general-arm.selftest.mjs",
+      "status": "PASS",
+      "note": "10 passed",
+      "pass": 10,
+      "fail": 0,
+      "skips": 0,
+      "ms": 384
+    },
+    {
+      "suite": "test/micro-label-review.selftest.mjs",
+      "status": "PASS",
+      "note": "19 passed",
+      "pass": 19,
+      "fail": 0,
+      "skips": 0,
+      "ms": 1828
+    },
+    {
+      "suite": "test/gen-ruler.selftest.mjs",
+      "status": "PASS",
+      "note": "16 passed",
+      "pass": 16,
+      "fail": 0,
+      "skips": 0,
+      "ms": 636
+    },
+    {
+      "suite": "test/mode1-quality.selftest.mjs",
+      "status": "PASS",
+      "note": "50 passed",
+      "pass": 50,
+      "fail": 0,
+      "skips": 0,
+      "ms": 340
+    },
+    {
+      "suite": "test/mode1-quality-parity.selftest.mjs",
+      "status": "PASS",
+      "note": "28 passed",
+      "pass": 28,
+      "fail": 0,
+      "skips": 0,
+      "ms": 717
+    },
+    {
+      "suite": "test/gold-use-split.selftest.mjs",
+      "status": "PASS",
+      "note": "60 passed",
+      "pass": 60,
+      "fail": 0,
+      "skips": 0,
+      "ms": 1159
+    },
+    {
+      "suite": "test/gold-standard.selftest.mjs",
+      "status": "PASS",
+      "note": "82 passed",
+      "pass": 82,
+      "fail": 0,
+      "skips": 0,
+      "ms": 2109
+    },
+    {
+      "suite": "test/gold-attest.selftest.mjs",
+      "status": "PASS",
+      "note": "61 passed",
+      "pass": 61,
+      "fail": 0,
+      "skips": 0,
+      "ms": 18189
+    },
+    {
+      "suite": "test/gate-cjk-pairing.selftest.mjs",
+      "status": "PASS",
+      "note": "9 passed",
+      "pass": 9,
+      "fail": 0,
+      "skips": 0,
+      "ms": 269
+    },
+    {
+      "suite": "test/silver-shape.selftest.mjs",
+      "status": "PASS",
+      "note": "15 passed",
+      "pass": 15,
+      "fail": 0,
+      "skips": 0,
+      "ms": 8862
+    },
+    {
+      "suite": "test/universal-select.selftest.mjs",
+      "status": "PASS",
+      "note": "9 passed",
+      "pass": 9,
+      "fail": 0,
+      "skips": 0,
+      "ms": 439
+    },
+    {
+      "suite": "test/v12.selftest.mjs",
+      "status": "PASS",
+      "note": "37 passed",
+      "pass": 37,
+      "fail": 0,
+      "skips": 0,
+      "ms": 1229
+    },
+    {
+      "suite": "test/evidence-program.selftest.mjs",
+      "status": "PASS",
+      "note": "5 passed",
+      "pass": 5,
+      "fail": 0,
+      "skips": 0,
+      "ms": 580
+    },
+    {
+      "suite": "test/audit-integrity.selftest.mjs",
+      "status": "PASS",
+      "note": "31 passed",
+      "pass": 31,
+      "fail": 0,
+      "skips": 0,
+      "ms": 9254
+    },
+    {
+      "suite": "test/trainer-contract.selftest.mjs",
+      "status": "PASS",
+      "note": "27 passed",
+      "pass": 27,
+      "fail": 0,
+      "skips": 0,
+      "ms": 1872
+    },
+    {
+      "suite": "test/doc-watermark.selftest.mjs",
+      "status": "PASS",
+      "note": "6 passed",
+      "pass": 6,
+      "fail": 0,
+      "skips": 0,
+      "ms": 4438
+    }
+  ]
+}

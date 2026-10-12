@@ -1,0 +1,73 @@
+online: 44/46 套件通过; 1360 passed, 3 failed, 3 skipped; 33.7s (exit 1)
+  PASS test/manifest-ignore.selftest.mjs       4 passed  (1 skipped)
+  PASS test/training-ready.selftest.mjs        4 passed
+  PASS test/birth.selftest.mjs                 141 passed  (1 skipped)
+  PASS test/robustness.selftest.mjs            16 passed
+  PASS test/hedge.selftest.mjs                 17 passed
+  PASS test/hook-wiring.selftest.mjs           6 passed
+  PASS test/hardening.selftest.mjs             30 passed
+  PASS test/concurrency.selftest.mjs           13 passed
+  PASS test/protocol.selftest.mjs              15 passed
+  PASS test/branches.selftest.mjs              6 passed
+  PASS test/audit-2026-09-27.selftest.mjs      27 passed
+  PASS test/micro-runtime.selftest.mjs         29 passed
+  PASS test/micro-ruler.selftest.mjs           7 passed
+  PASS test/micro-generator.selftest.mjs       18 passed
+  FAIL test/micro-general-arm.selftest.mjs     FAIL 06 一次性盲测账本：1 条、终态、且 README 引的分数就是账本里的
+  PASS test/micro-label-review.selftest.mjs    19 passed
+  PASS test/gen-ruler.selftest.mjs             16 passed
+  PASS test/mode1-quality.selftest.mjs         50 passed
+  PASS test/mode1-quality-parity.selftest.mjs  28 passed
+  PASS test/gold-use-split.selftest.mjs        60 passed
+  PASS test/gold-standard.selftest.mjs         82 passed
+  PASS test/gold-attest.selftest.mjs           61 passed
+  PASS test/gate-cjk-pairing.selftest.mjs      9 passed
+  PASS test/silver-shape.selftest.mjs          15 passed
+  PASS test/universal-select.selftest.mjs      9 passed
+  PASS test/v12.selftest.mjs                   37 passed
+  PASS test/evidence-program.selftest.mjs      5 passed
+  PASS test/audit-integrity.selftest.mjs       28 passed
+  PASS test/trainer-contract.selftest.mjs      27 passed
+  PASS test/doc-watermark.selftest.mjs         6 passed
+
+  合计: 1360 通过 / 3 失败 / 3 跳过   (44/46 套件通过)   并发 6 · 用时 33.7s
+  ==> 有失败，见上
+
+
+isolated: 44/46 套件通过; 1361 passed, 3 failed, 2 skipped; 34.7s (exit 1)
+  PASS test/birth.selftest.mjs                 141 passed  (1 skipped)
+  PASS test/robustness.selftest.mjs            16 passed
+  PASS test/hedge.selftest.mjs                 17 passed
+  PASS test/hook-wiring.selftest.mjs           6 passed
+  PASS test/hardening.selftest.mjs             30 passed
+  PASS test/concurrency.selftest.mjs           13 passed
+  PASS test/protocol.selftest.mjs              15 passed
+  PASS test/branches.selftest.mjs              6 passed
+  PASS test/audit-2026-09-27.selftest.mjs      27 passed
+  PASS test/micro-runtime.selftest.mjs         29 passed
+  PASS test/micro-ruler.selftest.mjs           7 passed
+  PASS test/micro-generator.selftest.mjs       18 passed
+  FAIL test/micro-general-arm.selftest.mjs     FAIL 06 一次性盲测账本：1 条、终态、且 README 引的分数就是账本里的
+  PASS test/micro-label-review.selftest.mjs    19 passed
+  PASS test/gen-ruler.selftest.mjs             16 passed
+  PASS test/mode1-quality.selftest.mjs         50 passed
+  PASS test/mode1-quality-parity.selftest.mjs  28 passed
+  PASS test/gold-use-split.selftest.mjs        60 passed
+  PASS test/gold-standard.selftest.mjs         82 passed
+  PASS test/gold-attest.selftest.mjs           61 passed
+  PASS test/gate-cjk-pairing.selftest.mjs      9 passed
+  PASS test/silver-shape.selftest.mjs          15 passed
+  PASS test/universal-select.selftest.mjs      9 passed
+  PASS test/v12.selftest.mjs                   37 passed
+  PASS test/evidence-program.selftest.mjs      5 passed
+  PASS test/audit-integrity.selftest.mjs       28 passed
+  PASS test/trainer-contract.selftest.mjs      27 passed
+  PASS test/doc-watermark.selftest.mjs         6 passed
+
+  合计: 1361 通过 / 3 失败 / 2 跳过   (44/46 套件通过)   并发 6 · 用时 34.7s
+  ==> 有失败，见上
+
+offline-command-failed:verify.mjs:1
+offline-isolation-or-tests-failed:1（不回退到联网测试）
+
+watermark: record-refused:one-or-more-verification-lanes-not-fully-green; previous receipt and docs restored

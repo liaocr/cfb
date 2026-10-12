@@ -1,0 +1,52 @@
+离线边界：{"isolation":"linux-user-network-namespace","interfaces":["lo"],"externalRoutes":0,"externalApiCalls":0}
+
+  PASS test/provider-endpoint.selftest.mjs     28 passed
+  PASS test/core.selftest.mjs                  168 passed
+  PASS test/compress.selftest.mjs              28 passed
+  PASS test/v4.selftest.mjs                    95 passed
+  PASS test/v4-live.selftest.mjs               5 passed
+  PASS test/effect-eval.selftest.mjs           9 passed
+  PASS test/api-budget.selftest.mjs            27 passed
+  PASS test/eval-ready.selftest.mjs            43 passed
+  PASS test/eval-ready-v2.selftest.mjs         10 passed
+  PASS test/eval-visible-v3.selftest.mjs       14 passed
+  PASS test/eval-reasoning-v8.selftest.mjs     14 passed
+  PASS test/offline-lab.selftest.mjs           20 passed
+  PASS test/judge-calibration.selftest.mjs     21 passed
+  PASS test/closed-loop.selftest.mjs           25 passed
+  PASS test/closed-loop-v3.selftest.mjs        17 passed
+  PASS test/closed-loop-v4.selftest.mjs        45 passed
+  FAIL test/manifest-ignore.selftest.mjs       FAIL 03 清单里每个文件在仓库内真实存在
+  PASS test/training-ready.selftest.mjs        4 passed
+  PASS test/birth.selftest.mjs                 141 passed  (1 skipped)
+  PASS test/robustness.selftest.mjs            16 passed
+  PASS test/hedge.selftest.mjs                 17 passed
+  PASS test/hook-wiring.selftest.mjs           6 passed
+  PASS test/hardening.selftest.mjs             30 passed
+  PASS test/concurrency.selftest.mjs           13 passed
+  PASS test/protocol.selftest.mjs              15 passed
+  PASS test/branches.selftest.mjs              6 passed
+  PASS test/audit-2026-09-27.selftest.mjs      27 passed
+  PASS test/micro-runtime.selftest.mjs         29 passed
+  PASS test/micro-ruler.selftest.mjs           7 passed
+  PASS test/micro-generator.selftest.mjs       18 passed
+  PASS test/micro-general-arm.selftest.mjs     10 passed
+  PASS test/micro-label-review.selftest.mjs    19 passed
+  PASS test/gen-ruler.selftest.mjs             16 passed
+  PASS test/mode1-quality.selftest.mjs         50 passed
+  PASS test/mode1-quality-parity.selftest.mjs  exit 0
+  PASS test/gold-use-split.selftest.mjs        52 passed
+  PASS test/gold-standard.selftest.mjs         82 passed
+  PASS test/gold-attest.selftest.mjs           61 passed
+  PASS test/gate-cjk-pairing.selftest.mjs      9 passed
+  PASS test/silver-shape.selftest.mjs          15 passed
+  PASS test/universal-select.selftest.mjs      9 passed
+  PASS test/v12.selftest.mjs                   37 passed
+  PASS test/evidence-program.selftest.mjs      5 passed
+  FAIL test/doc-watermark.selftest.mjs         FAIL current repository watermarks, live version headings, and receipt agree
+
+  合计: 1272 通过 / 2 失败 / 1 跳过   (42/44 套件通过)   并发 6 · 用时 33.7s
+  ==> 有失败，见上
+
+offline-command-failed:verify.mjs:1
+offline-isolation-or-tests-failed:1（不回退到联网测试）

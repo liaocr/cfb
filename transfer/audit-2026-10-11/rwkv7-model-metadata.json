@@ -1,0 +1,56 @@
+{
+  "id": "fla-hub/rwkv7-0.1B-g1",
+  "sha": "7450ee04eb9c66baa7161b7a5c0fe09e5b2817d8",
+  "lastModified": "2025-08-06T05:11:00.000Z",
+  "pipeline_tag": "text-generation",
+  "library_name": "transformers",
+  "tags": [
+    "transformers",
+    "safetensors",
+    "rwkv7",
+    "text-generation",
+    "conversational",
+    "custom_code",
+    "en",
+    "zh",
+    "ja",
+    "ko",
+    "fr",
+    "ar",
+    "es",
+    "pt",
+    "arxiv:2503.14456",
+    "base_model:BlinkDL/rwkv7-g1",
+    "base_model:finetune:BlinkDL/rwkv7-g1",
+    "license:apache-2.0",
+    "region:us"
+  ],
+  "cardData": {
+    "base_model": [
+      "BlinkDL/rwkv7-g1"
+    ],
+    "language": [
+      "en",
+      "zh",
+      "ja",
+      "ko",
+      "fr",
+      "ar",
+      "es",
+      "pt"
+    ],
+    "license": "apache-2.0",
+    "metrics": [
+      "accuracy"
+    ],
+    "pipeline_tag": "text-generation",
+    "library_name": "transformers"
+  },
+  "safetensors": {
+    "parameters": {
+      "BF16": 191034624
+    },
+    "total": 191034624
+  },
+  "sourceURL": "https://huggingface.co/api/models/fla-hub/rwkv7-0.1B-g1"
+}

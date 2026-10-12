@@ -1,0 +1,39 @@
+{
+  "schema": "cfb.resource-budget/1",
+  "status": "draft-not-confirmed",
+  "taskContract": "tools/micro-generator/task-contract.json",
+  "proposedLimits": {
+    "modelFileBytes": null,
+    "peakRamBytes": null,
+    "targetCpu": null,
+    "p50LatencyMs": null,
+    "p95LatencyMs": null,
+    "maxInputTokens": 6144,
+    "minCompressionCoverage": 0.6,
+    "fallbackAllowed": true
+  },
+  "readerBudget": {
+    "maxUsd": 50,
+    "maxRequests": 200,
+    "maxRetriesPerRequest": 2,
+    "maxTotalTokens": 5000000,
+    "timeWindow": "5-7 work days",
+    "credentialsInPlanAllowed": false,
+    "note": "Draft budget for first A/A and reference utility validation. Real execution requires explicit user confirmation and actual billing evidence."
+  },
+  "gpuBudget": {
+    "platform": "OpenI C500 preferred, BI-V100 as fallback; Kaggle T4*2 reserved",
+    "dailyQuota": "C500 5h/day or BI-V100 10h/day per user account",
+    "estimatedHoursForFirstDiagnosticSft": "2-20h",
+    "estimatedCostIfPaid": "$0 if using free quota, otherwise $1.78-17.80 for 2-20h RTX4090 equivalent",
+    "storage": "Use OpenI persistent storage, not local 128MB workspace"
+  },
+  "blockers": [
+    "Deployment CPU/RAM/latency not confirmed by user",
+    "Reader API base compatibility not verified",
+    "No real reader execution yet"
+  ],
+  "paidApiCalls": 0,
+  "gpuRuns": 0,
+  "nextAction": "User confirms deployment target and $50 reader budget, then run OpenI C500 environment_probe and small reader A/A experiment"
+}

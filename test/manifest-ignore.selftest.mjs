@@ -8,10 +8,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { sparseOmissions } from '../tools/helpers/worktree-integrity.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-let pass = 0, fail = 0
-const test = (name, fn) => { try { fn(); pass++; console.log('PASS ' + name) } catch (e) { fail++; console.log('FAIL ' + name + '\n' + e.stack) } }
+let pass = 0, fail = 0, skip = 0
+const test = (name, fn) => { try { const result = fn(); if (result === 'sparse-skip') { skip++; console.log('SKIP ' + name + '（显式稀疏文件未验证；不是完整清单验收）') } else { pass++; console.log('PASS ' + name) } } catch (e) { fail++; console.log('FAIL ' + name + '\n' + e.stack) } }
 
 /** 用 git 判定「是否被忽略」——单一事实来源就是 git 自己。 */
 const isIgnored = (rel) => {
@@ -33,7 +34,10 @@ try {
   })
   test('03 清单里每个文件在仓库内真实存在', () => {
     const gone = rels.filter((r) => !fs.existsSync(path.join(ROOT, r)))
-    assert.deepEqual(gone, [], '清单包含不存在的文件：' + JSON.stringify(gone.slice(0, 6)))
+    const omitted = sparseOmissions(ROOT)
+    const unexpected = gone.filter((rel) => !omitted.has(rel))
+    assert.deepEqual(unexpected, [], '清单包含非稀疏的缺失文件：' + JSON.stringify(unexpected.slice(0, 6)))
+    if (gone.length) return 'sparse-skip'
   })
   test('04 manifest.mjs 不得再维护硬编码的忽略目录列表（必须读 .gitignore）', () => {
     const src = fs.readFileSync(path.join(ROOT, 'manifest.mjs'), 'utf8')
@@ -47,5 +51,6 @@ try {
   })
 } finally {
   console.log('\n=== manifest-ignore selftest: ' + pass + ' pass / ' + fail + ' fail ===')
+  console.log(`PASS=${pass} FAIL=${fail} SKIP=${skip}`)
   process.exitCode = fail ? 1 : 0
 }
