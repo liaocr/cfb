@@ -1,6 +1,6 @@
 # 2026-10-14 审计整改记录
 
-基于分支 `repair/audit-2026-10-11` 的已审快照实施；整改只覆盖 `/home/user/cfb` 当前工作树，未提交、未推送。
+基于分支 `repair/audit-2026-10-11` 的已审快照实施；整改提交 `dd85468` 已推送至 `origin/repair/audit-2026-10-11`。
 
 ## 整改项
 
@@ -27,7 +27,7 @@
 
 - `deploy/kaggle/start.py` 与直接执行的 `deploy/kaggle/train_gen.py` 均已替换成无副作用 tombstone：不安装依赖、不读取凭据、不联网、不克隆、不训练或推送；`start.py --execute` 明确失败关闭，`train_gen.py` 无兼容重开选项并以非零状态退出。
 - 旧 Qwen/QLoRA 手册已移除可复制的远端 `curl | python` 单元并标为历史记录；旧 Kaggle notebook 的安装/训练 code cells 已移除；README 和历史提炼/交接文档均注明旧入口已退役。
-- **边界**：不可变旧 Git commit/raw URL 上的旧脚本无法由这次未推送的工作树补丁撤回；当前文档明确告诫不得下载运行。
+- **边界**：推送当前分支并不会撤回不可变旧 Git commit/raw URL 上的旧脚本；那些历史 blob 仍可能可下载执行，当前文档明确告诫不得获取或运行。
 
 ## 回归与边界
 
