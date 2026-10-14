@@ -1,4 +1,6 @@
 > ⚠ **2026-10-11 更正**：本文中的保留率 / 发明率 / "100% 无损"等数字未经验证，不再作现行结论（尤其 9.6%、56.8%、0.43 与 auto 更差之说）。现行结论与证据见 `CFB-STATE-2026-10-11.md`；本文保留为历史记录。
+>
+> **退役注记（2026-10-14）**：本文件中提及的 Qwen Kaggle 一键入口 `deploy/kaggle/start.py` 与直接训练脚本 `deploy/kaggle/train_gen.py` 已在当前工作树失败关闭；不要把本历史报告中的启动指引复制执行。不可变旧 commit 中的代码仍可能存在，勿从旧 URL 拉取运行。
 
 # CFB 仓库深度复核与分类报告（v4）
 
@@ -536,7 +538,7 @@ headline 口径下"tied pair 记 0"，而 matched 才"排除了 λ·tokenCount �
 2. 06g 已给出**可证伪的预测**：预算给足后 flaky 折 draft 应达 **49/59 = 0.831**（现 0.5593）。**跑完直接对这条**。
 3. ⚠ **一次性盲测 `case-fold-collision` 已消耗，不可重跑** ⇒ 最终门 `freshIndependentNewFamilyTestPassed` 必须用**新家族**数据，需先做独立语义审核。
 
-**路线 B 的一键入口**：`deploy/kaggle/start.py`（需 `~/.kaggle/kaggle.json`）。两条 Kaggle 脚本的语料默认已统一为 v5。
+**历史（已退役，勿执行）路线 B 的一键入口**：当时为 `deploy/kaggle/start.py`（需 `~/.kaggle/kaggle.json`）；它与 `deploy/kaggle/train_gen.py` 的旧入口现已失败关闭。两条 Kaggle 脚本的语料默认已统一为 v5 是历史记录，不是当前训练建议。
 
 ### 6.4 真正的天花板（现在可以精确到轴了）
 

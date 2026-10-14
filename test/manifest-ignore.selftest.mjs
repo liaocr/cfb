@@ -45,7 +45,7 @@ try {
     assert.ok(!/SKIP_DIRS/.test(src), 'manifest.mjs 不应再有 SKIP_DIRS 硬编码列表')
   })
   test('05 已知的本地产物目录必须在忽略规则内（防止有人把它从 .gitignore 删掉）', () => {
-    for (const p of ['.cfb-runtime/keep', '.cfb-offline/corpus.json', 'eval-profile.json']) {
+    for (const p of ['.cfb-runtime/keep', '.cfb-offline/corpus.json', 'eval-profile.json', 'transfer/program-2026-10-12/reader-smoke-1.jsonl']) {
       assert.equal(isIgnored(p), true, p + ' 应被 .gitignore 忽略（否则会被写进清单，CI 失败）')
     }
   })

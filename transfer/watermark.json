@@ -1,38 +1,38 @@
 {
   "schema": "cfb.doc-watermark/1",
-  "generatedAt": "2026-10-12",
+  "generatedAt": "2026-10-14",
   "counts": {
     "srcModules": 25,
-    "testSuites": 47,
+    "testSuites": 48,
     "toolsScripts": 73,
-    "toolsHelpers": 31,
+    "toolsHelpers": 33,
     "goldItems": 13,
     "goldFamilies": 4
   },
   "version": "14.25.4",
   "selftest": {
     "online": {
-      "at": "2026-10-12T02:37:50.037Z",
-      "suitesPass": "47/47 套件",
-      "pass": 1431,
+      "at": "2026-10-14T11:26:19.303Z",
+      "suitesPass": "48/48 套件",
+      "pass": 1440,
       "fail": 0,
-      "skip": 3,
-      "seconds": "35.5",
+      "skip": 2,
+      "seconds": "25.2",
       "rawLog": {
-        "path": ".cfb-runtime/watermark-records/attempt-3gWFJ7/online.log",
-        "sha256": "3b14880f4ed1fa8cad07f43a8d27e335e934c2ac55b801a363bf95bafcfa9411"
+        "path": ".cfb-runtime/watermark-records/attempt-ncnaUa/online.log",
+        "sha256": "8b87454f9d21811d472beb2249621402db19ca5965dd9698f193e6a5b3c822bd"
       }
     },
     "isolated": {
-      "at": "2026-10-12T02:38:26.430Z",
-      "suitesPass": "47/47 套件",
-      "pass": 1432,
+      "at": "2026-10-14T11:26:46.810Z",
+      "suitesPass": "48/48 套件",
+      "pass": 1441,
       "fail": 0,
-      "skip": 2,
-      "seconds": "36.0",
+      "skip": 1,
+      "seconds": "27.1",
       "rawLog": {
-        "path": ".cfb-runtime/watermark-records/attempt-3gWFJ7/isolated.log",
-        "sha256": "a2d5dc54ce75b95624f2b82bd8458a130086e4ea7fdbc4ad731b1e1ab925658c"
+        "path": ".cfb-runtime/watermark-records/attempt-ncnaUa/isolated.log",
+        "sha256": "17809d4b149fc87f2ee7839bd860e851fcd5d99af8d4d78306fcc055da47263e"
       }
     }
   }

@@ -20,6 +20,7 @@ import { judge, RULER_VERSION, COMPRESSION_TARGET, COMPRESSION_HARD_MAX } from '
 // 谁也看不懂的现象发生。所以这里只 import，绝不复制。
 import { guardDraft, orphanCount } from './g1-guard.mjs'
 import { estimateTokens } from '../src/tokens.js'
+import { parseStrictJsonl, pairDevGenerations } from './helpers/eval-sft-input.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const argv = process.argv.slice(2)
@@ -35,34 +36,21 @@ const OUT = path.resolve(ROOT, arg('--out', path.join(path.dirname(GENP), 'eval-
 // --guard off 用来复现「没有这道门」的对照。
 const GUARD = arg('--guard', 'strip')
 
-// user 字段是 build-sft.mjs 用这一行拼出来的，所以这里必须用同一个标记切回去。
-// 标记写错不会报错，只会让 ctx/raw 静默互换，然后所有指标一起错。
-const MARK = '\n\n[思考过程]\n'
-
-const rd = (p) => fs.readFileSync(p, 'utf8').split(/\r?\n/).filter((l) => l.trim()).map((l) => JSON.parse(l))
+// input helper owns the exact frozen dev marker/parser and one-to-one ID/content binding.
+const rd = (p) => parseStrictJsonl(fs.readFileSync(p, 'utf8'), path.relative(ROOT, p))
 
 const dev = rd(path.join(SFT, 'dev.jsonl'))
 const gen = rd(GENP)
-
-const teacher = new Map()
-for (const r of dev) {
-  const i = r.user.indexOf(MARK)
-  if (i < 0) { console.error('FATAL: dev.jsonl 里有行不含 [思考过程] 标记，格式对不上'); process.exit(1) }
-  teacher.set(r.id, { ctx: r.user.slice('[题面]\n'.length, i), raw: r.user.slice(i + MARK.length), draft: r.assistant })
-}
+let coverage
+try { coverage = pairDevGenerations(dev, gen) }
+catch (e) { console.error('FATAL: ' + e.message); process.exit(1) }
+const missing = coverage.missing.length
 
 const rows = []
-let missing = 0, empty = 0
-for (const g of gen) {
-  const t = teacher.get(g.id)
-  if (!t) { missing++; continue }
-  const sd = String(g.draft || '').trim()
+let empty = 0
+for (const { teacher: t, generated: g } of coverage.pairs) {
+  const sd = g.draft.trim()
   if (!sd) empty++
-  // 用生成文件自带的 raw/ctx 重跑尺子：训练器是从 dev.jsonl 渲染出来的，
-  // 但两边的 raw/ctx 必须一致，不一致就说明 dev.jsonl 换了而生成文件是旧的。
-  if (g.raw !== undefined && g.raw !== t.raw) {
-    console.error('FATAL: ' + g.id + ' 的 raw 与 dev.jsonl 不一致 —— 生成文件与数据集不是同一版'); process.exit(1)
-  }
   const tj = judge({ raw: t.raw, ctx: t.ctx, draft: t.draft })
   const sj = judge({ raw: t.raw, ctx: t.ctx, draft: sd })
   // 后处理门：稿子 -> 摘掉凭空引用 -> 再判。
@@ -154,8 +142,9 @@ const gOrphans = rows.reduce((a, r) => a + r.guardOrphans, 0)
 const gScore = scoreable.map((r) => r.guardedScore)
 
 const report = {
-  schema: 'cfb.eval-sft/1', ruler: RULER_VERSION, at: new Date().toISOString(),
+  schema: 'cfb.eval-sft/2', ruler: RULER_VERSION, at: new Date().toISOString(),
   sft: path.relative(ROOT, SFT), gen: path.relative(ROOT, GENP),
+  coverage: { complete: true, oneToOne: true, rawCtxVerified: true, expected: coverage.expected, observed: coverage.observed, missingIds: [], unexpectedIds: [], duplicateIds: [] },
   n, missing, emptyStudent: empty,
   teacher: { pass: tPass, rate: rate(tPass), failCount: fc('teacherFailed') },
   student: { pass: sPass, rate: rate(sPass), failCount: fc('studentFailed') },
@@ -208,7 +197,7 @@ fs.mkdirSync(path.dirname(OUT), { recursive: true })
 fs.writeFileSync(OUT, JSON.stringify(report, null, 2) + '\n')
 
 const pc = (x) => (x * 100).toFixed(1) + '%'
-console.log('尺子 ' + RULER_VERSION + ' · 配对评测 ' + n + ' 条' + (missing ? '（生成文件里有 ' + missing + ' 条对不上 dev）' : ''))
+console.log('尺子 ' + RULER_VERSION + ' · 完整一对一配对评测 ' + n + '/' + coverage.expected + ' 条 · raw/ctx 全部与冻结 dev 一致')
 console.log('  教师 DeepSeek-V4-Flash 通过 %d/%d = %s', tPass, n, pc(rate(tPass)))
 console.log('  学生 RWKV7-0.1B      通过 %d/%d = %s', sPass, n, pc(rate(sPass)))
 console.log('  四格：都过 %d · 只学生过 %d · 只教师过 %d · 都不过 %d', both, sOnly, tOnly, neither)

@@ -1,4 +1,6 @@
 > ⚠ **2026-10-11 更正**：本文中的保留率 / 发明率 / "100% 无损"等数字未经验证，不再作现行结论（尤其 9.6%、56.8%、0.43 与 auto 更差之说）。现行结论与证据见 `CFB-STATE-2026-10-11.md`；本文保留为历史记录。
+>
+> **退役注记（2026-10-14）**：本文中 `start.py` 拉取 mutable `main`、`train_gen.py` 克隆 `main` 的描述是历史状态，不是当前指引；当前这两个工作树入口均为 inert tombstone。不要复用旧 notebook/URL；不可变远端历史脚本无法由本地补丁撤回。
 
 
 # 对话记录 · 生成式压缩微模型路线（交接文档）
@@ -341,7 +343,7 @@ micro-generator-gen-v5/corpus-report.json 里（teach-shape.mjs:447）：
 ## 9. 环境事实备忘
 
 - HEAD = 5b01250（**2026-10-10 已 push 到 origin/main**，现本地与远端 0/0 同步）；此前 777b255, 750e231, 0e20de8, c1a258b, c63d579, 0132a2c
-- Kaggle 的 start.py 从 raw.githubusercontent.com/liaocr/cfb/main 拉取；train_gen.py 是 git clone main ⇒ **本地 commit 对 Kaggle 不可见，除非 push**
+- **历史事实（入口已退役，勿执行）**：Kaggle 的 `start.py` 从 raw.githubusercontent.com/liaocr/cfb/main 拉取；`train_gen.py` 是 git clone main ⇒ 当时本地 commit 对 Kaggle 不可见，除非 push。当前工作树这两个入口均为 inert tombstone。
 - .cfb-offline/ 在 .gitignore:42，但 gold-vs-line.json 被跟踪（既有异常）
 - 测试契约：每个 test/*.selftest.mjs 独立进程；状态 = (code===0 && fail===0) ? PASS : FAIL
 - 两个第 4 桶（完全废弃）：transfer/probes-2026-10-07/（15 文件、44 处硬编码 /home/user/、2 个脚本用未播种 Math.random，不可复现）；transfer/models/cfb-micro-final-test-ledger.json（单条 case-fold-collision，status: evaluated-below-90-percent-gates，**绝不能再跑来刷分**）

@@ -1,83 +1,19 @@
-# 生成式压缩器 · Kaggle 开训手册（Round 0 · 教师 v0.3「装上尺子」版）
+# 旧生成式压缩器 Kaggle 记录（已退役，不是运行手册）
 
-> **一句话**：把「只看稿子就能判」的 7 条尺子装进机械教师 → 用它生成带好形状的压缩目标 → Qwen3-0.6B QLoRA 学形状 → dev（86 个未见仓库）上复算。
-> **不需要端点、不需要再准备数据，今天就能在 Kaggle 跑。**
+> **安全状态（2026-10-14）**：当前工作树里的旧 Qwen/QLoRA 入口 `deploy/kaggle/start.py` 与 `deploy/kaggle/train_gen.py` 均已替换为 inert tombstone。当前两个文件不再安装依赖、读凭据、联网、克隆仓库、推送 Kernel 或启动 GPU 训练，没有 `--execute` 兼容开关。
 >
-> ⚠ **范围限定（勿读成「可以拿去晋级」）**：本路线的目标是**用机器教师生成目标、让学生学形状**，因此不需要端点、也不需要新家族金标即可开跑。但它**不构成训练数据准入**——`tools/micro-generator/dataset-policy.json` 的 `currentDecision` 仍是 `target-model-compatible-data-not-yet-admitted`、`trainingReady=false`。两句话说的是两件事：**能不能跑**（能，$0）与**能不能据此晋级**（不能，缺 E1/E2 真机读数与新家族盲测）。
+> 旧 `tools/micro-generator/kaggle-generative-compressor.ipynb` 的安装/训练 code cells 已移除；本文中的可复制远端执行单元也已删除，避免再次触发历史脚本。**不可变历史 Git commit 中的旧脚本仍可能被直接下载并执行**；本地整改无法撤回那些远端历史 blob，请勿从旧 commit/raw URL 获取或运行。本文仅保留背景索引，不提供启动步骤。当前 RWKV7 入口的 `--prepare-only` 只做离线准备；任何真实训练、Kaggle 操作或远端 push 都需要另外授权并经过项目准入门。
 
-## 0. 本轮口径（按你的指示）
+## 历史背景（不是当前准入或质量结论）
 
-| 装进教师的轴（只看稿子） | 剔除的轴（需要另外跑） |
-|---|---|
-| **M1** 压缩力度 ≤0.60 · **M3** 闭合判读 · **M4** 可执行验收（逐字命令+两分支） · **M5** 接地精度（无编造锚点） · **M6** 无装置话术 · **M7** 决策不变 · **M8** 落点唯一 | **E1/E2**（真机 ≤6 轮/不输 raw，需目标模型） · **R1/R2**（CFB 台账五件/独立趟数） · **M2**（产线对照稿） |
+旧路线描述过 Qwen3-0.6B/QLoRA、教师语料 v3/v5、Kaggle GPU 运行及输出打包。旧文档中的样本数、速度、指标与运行参数均为历史记录，**本次整改没有重跑或重新认可这些结果**。可追溯讨论见 `docs/MICRO-GENERATOR-TRAINING-SYNTHESIS.md` 与 `transfer/notes/GENERATIVE-ROUTE-HANDOFF.md`。
 
-- 教师 = **尺子的执行器**：先按"信息不丢"抽句（判定行/命令/围栏代码/路径/强结论句，关键锚点覆盖 1.0），再按 7 轴组装/修剪（锚点窗口切片、复述剪枝、预算控制、命令逐 token 接地），产出前**用同一把尺子逐条自检**。
-- 因此**之后量学生 = 同源测量**：能测"学没学到形状"，**不构成对尺子本身的验证**。E1/E2 仍是唯一外部终验（未测就是未测）。
+项目当前准入和质量状态仍以 `PROJECT.json`、`tools/micro-generator/dataset-policy.json` 及权威项目计划为准；本次整改没有改变模型准入、候选晋级、教师质量或原读回结论。
 
-## 1. 语料（已生成）
+## 退役路径行为
 
-来源：`nvidia/Open-SWE-Traces@f8fb5b3d…` v1.1/openhands，DeepSeek-V4-Flash 行，shards 25–33 普查（21,208 行 → 19,992 个合格出生单元）中切样。
+- `python3 deploy/kaggle/start.py`：只打印退役提示；`--execute` 明确失败。
+- `python3 deploy/kaggle/train_gen.py`：只打印退役提示并以非零状态退出。
+- 两个入口不读取 Kaggle/API 凭据，不安装包，不访问网络，不写训练包，不启动模型。
 
-| 文件 | 内容 | 条数 | 大小 |
-|---|---|---:|---:|
-| `train.jsonl.gz` | **全轴通过**的训练对（system/user:【CONTEXT】+【RAW】→ assistant: 压缩块） | **937（623 仓库）** | 1.9MB |
-| `dev.jsonl.gz` | 同分布、仓库不相交（记了每行轴表） | 139（86 仓库；124 条全轴通过） | 285KB |
-| `train-nonconforming.jsonl.gz` | 未过全部轴的 106 条（多在 M1 超 0.60——关键锚点句本身太肥；保留信息优先） | 106 | 198KB |
-| `corpus-report.json` | 各轴通过率 / 压缩率 / 边界声明 | — | 2KB |
-
-**教师 v0.3 实测**：train 937/937 七轴全过，压缩率中位 **0.41**；dev 124/139 全过，中位 0.44。
-（对照：生产微编译器在同一批单元上 M4 = 0/148。）
-
-复现：
-```bash
-node tools/micro-generator/teach-shape.mjs \
-  --units transfer/models/micro-generator-v4flash-scenarios/birth-units-census-batch2.jsonl.gz \
-  --units transfer/models/micro-generator-v4flash-scenarios/birth-units-sample.jsonl \
-  --mode shape --out-dir transfer/models/micro-generator-gen-v3
-```
-
-## 2. 开训：Kaggle 新建 notebook，code 框里粘一条
-
-1. Kaggle → **New Notebook**（新建一个空 notebook 即可）。
-2. 右侧设置两下：**Accelerator = GPU T4 × 2**、**Internet = ON**。
-3. 第一个 code 框里粘这一条，Shift+Enter：
-
-```bash
-!curl -sSL https://raw.githubusercontent.com/liaocr/cfb/bad9c26ed28e6fcee069296123dfcac3abb6c4c0/deploy/kaggle/train_gen.py | python3 -
-```
-
-它自己完成：装依赖 → 从 GitHub 拉仓库（含 v3 语料）→ **自动检测 GPU 数：T4×2 走 DDP 双卡（每卡一份数据分片，有效 batch 不变、步数不变，约快 1.7×），DDP 失败自动回退单卡** → QLoRA 训练 → 打印读数 → 结果落盘 `/kaggle/working/RESULTS.txt` → 打包 `cfb-gen-compressor-run1.zip`。
-**不需要上传任何东西。**
-
-> **实测速度（2026-10-07，T4）**：46.4 s/step（step10=463s、step20=927s，线性）⇒ 116 步全程 ≈ **90 分钟**。
-> 若确实跑在 T4×2 DDP 上，应约 1.7× 快（≈每步 25–28s）；若明显更慢，多半实际是单进程。核对方式：
-> 启动日志里出现 `world_size=2 … DDP: this rank=…`（新脚本）或 `steps: 116 (batch 16 × accum 16)`（旧脚本，单卡）；
-> 运行结束后 `RESULTS.txt` 的 `worldSize` / 训练器 `run-meta.json` 是最终判据。
-
-## 3. 跑完先看三个数（notebook 自动打）
-
-| 读数 | 含义 | 判读线 |
-|---|---|---|
-| `criticalCoverageMean` | 关键锚点留存（你的「信息不丢」） | **≥0.95 才算没跑歪**；`criticalCoverageMin` ≥0.8 |
-| `inventedAnchorsTotal` | 编造的锚点（原文没有） | 越接近 0 越好 |
-| `ratioMean` | 生成块/原文 | 教师中位 0.41；学生应在 0.35–0.7（>0.9 只会抄，<0.25 丢太多） |
-
-想看**形状**学没学到：`dev-predictions.jsonl` 每行带 `prediction`，可用上节的 `node tools/micro-generator/forge-birth-units.mjs`-derived 评分器（同尺子）逐条量 M1/M3…M8——记住这是同源测量。
-
-## 4. 常见问题
-
-- **没 GPU 报错** → 设置里 Accelerator 未开。
-- **CUDA OOM** → `--max-len 4096 --grad-accum 32`。
-- **下载失败** → Internet 未开。
-- **产物** → `adapter/`（LoRA+tokenizer）、`dev-predictions.jsonl`、`run-meta.json`、`cfb-gen-compressor-run1.zip`。
-
-## 5. 跑完之后
-
-1. **看形状**：把 dev 预测按 7 轴打分（同源）→ 缺哪条轴就调教师对应部分的表达（比如 M4 的验收行措辞）。
-2. **接端点（唯一外部终验）**：压缩块回喂 DeepSeek-V4.1-Flash 跑 E1/E2。
-3. **扩规模**：语料可扩到普查全量 ~2 万条（`scan-birth-units.py --total-cap 20000`），教师重建约 0.6 分钟/千条。
-
-## 6. 红线（本轮遵守）
-
-- 没跑真机就不写 E1/E2；没有人工审核就记 `humanReviewerCount=0`；机器生成的目标**不叫金标**。
-- 生产资产零改动（只新增文件）；语料行内保留 `unitId/repo/license`，报告记 revision 与来源。
+需要查看当前本地离线准备说明时，从 `deploy/kaggle/start-rwkv7.py --prepare-only` 的代码与当前项目准入文档开始；不要把“文件可运行”误读为“训练获准”。

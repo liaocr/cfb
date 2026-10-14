@@ -1,10 +1,12 @@
 # 生成式压缩微模型路线 · 全景提炼（截至 2026-10-07）
 
+> **历史/安全注记（2026-10-14）**：本文记录的 `deploy/kaggle/train_gen.py` 是已退役的 Qwen/QLoRA 路线；当前该路径为 inert tombstone。本文中的历史参数和行号只作溯源，不是执行指引；不要复制旧 notebook/远端脚本。不可变旧 commit 中的代码可能仍可下载，当前工作树无法撤回那些历史 blob。
+>
 > 来源：18 份指定文档，另补读代码级正典 \`tools/micro-generator/micro-format.py\`、\`build-teacher-corpus.py\`、\`train_qlora.py\`、\`prompt-v1.txt\`、\`deploy/kaggle/train_gen.py\`、\`deploy/kaggle/train_micro.py\`、\`dataset-policy.json\`、\`evaluation-gates.template.json\`。引用格式为「文件:行号」。
 
 ---
 
-## 1. 训练数据格式（可直接照做）
+## 1. 历史训练数据格式（仅作溯源）
 
 ### 1.1 任务定义
 

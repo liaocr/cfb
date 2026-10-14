@@ -34,6 +34,9 @@ __pycache__/
 # 本机评测profile（无密钥，但含本机报价核对日期，不进交付清单）
 /eval-profile.json
 
+# Retired reader-smoke filename pattern: never add provider-response artifacts under transfer/.
+/transfer/program-2026-10-12/reader-smoke-*.jsonl
+
 # 离线层运行/实验状态（可含不可再生付费原材料；忽略规则不是删除/再生许可，不进此交付清单）
 # 例外（2026-10-06 迁移抢救）：这些**不可再生**，已显式跟踪 ——
 #   .cfb-offline/ruler/*（金标与天花板的读数）、.cfb-offline/review/*（348 条盲审批次与工作表）

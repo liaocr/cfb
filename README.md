@@ -6,10 +6,10 @@
 <!-- watermark:begin 由 node tools/doc-watermark.mjs --write 生成，勿手抄 -->
 > **当前版本：v14.25.4** · **插件核心零第三方运行依赖**（Node.js ≥ 20；审计自测另需 Git/Python，训练有额外依赖）
 > **自测（本块由 `node tools/doc-watermark.mjs --write` 生成，勿手抄）**
-> · 验收口径 `npm run verify:offline`（真断网 Linux 命名空间）：47/47 套件通过 · `1432 通过 / 0 失败 / 2 跳过`
-> · 快速自检 `npm test`（联网机上跑，需要隔离的那条断言按设计跳过）：47/47 套件通过 · `1431 通过 / 0 失败 / 3 跳过`
+> · 验收口径 `npm run verify:offline`（真断网 Linux 命名空间）：48/48 套件通过 · `1441 通过 / 0 失败 / 1 跳过`
+> · 快速自检 `npm test`（联网机上跑，需要隔离的那条断言按设计跳过）：48/48 套件通过 · `1440 通过 / 0 失败 / 2 跳过`
 > 用时与记账时刻**不进文档**（每次 `--record` 都会变 ⇒ 写进文档就永远在漂），要查 `transfer/watermark.json` 的 `seconds` / `at`。
-> **规模**：`src/` 25 个零依赖模块 · `tools/` 73 个脚本 + 31 个 helpers · `test/` 47 套自测 · `transfer/gold/` 13 条（4 个家族）
+> **规模**：`src/` 25 个零依赖模块 · `tools/` 73 个脚本 + 33 个 helpers · `test/` 48 套自测 · `transfer/gold/` 13 条（4 个家族）
 <!-- watermark:end -->
 
 水位只表示所执行的技术自测。稀疏未下载项、真实宿主、GPU 和 CPU 模型推理分别记账；不能由全绿推导普遍语义“不退步”。
@@ -42,9 +42,9 @@ node manifest.mjs --check --sparse        # 本次已物化范围，不是完整
 
 本轮 128 MB 工作区为稀疏检出：原快照 1,853 路径，1,843 已物化、10 排除。排除见 [checkout-scope.json](transfer/audit-2026-10-11/checkout-scope.json)。严格 `node manifest.mjs --check` 对稀疏缺失仍报失败；生成默认也拒绝静默删项。显式 `--sparse` 保留未下载项旧 hash，**不声称核验了那些字节**。
 
-未来训练前的 `train_rwkv7.py --preflight-only` 是本地检查，不导入 torch、不下载底座。Kaggle launcher 默认只准备 hash-bound bundle，无凭据/网络/GPU；发布需另获批准并显式 `--execute`。当前不要执行训练、付费读回、一次性盲测或远端 push。
+未来训练前的 `train_rwkv7.py --preflight-only` 是本地检查，不导入 torch、不下载底座。当前 Kaggle launcher `start-rwkv7.py` 默认只准备 hash-bound bundle，无凭据/网络/GPU；发布需另获批准并显式 `--execute`。旧 `deploy/kaggle/start.py` 与直接训练入口 `deploy/kaggle/train_gen.py` 均已是无副作用 tombstone；旧 Qwen Kaggle notebook 的可执行单元也已移除。旧手册仅供历史追溯，不要从不可变旧 commit/raw URL 拉取运行。当前不要执行训练、付费读回、一次性盲测或远端 push。
 
-旧 `cfb-cycle` 等工具保留作兼容/历史复核，不再支配当前 next。`npm run restore` / `snapshot` 已从默认恢复流程停用，旧训练导出 `train:export` 也失败关闭，旧功能仅留显式 legacy 别名；不能用它们覆盖不可再生材料。
+旧 `cfb-cycle` 等工具保留作兼容/历史复核，不再支配当前 next。`npm run restore` / `snapshot` 已从默认恢复流程停用，旧训练导出 `train:export` 也失败关闭，旧功能仅留显式 legacy 别名；不能用它们覆盖不可再生材料。2026-10-14 的 F-01–F-05 整改边界与剩余限制见 [审计整改记录](docs/AUDIT-REMEDIATION-2026-10-14.md)。
 
 ## 3. 证据和数据分桶
 

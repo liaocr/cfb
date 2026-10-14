@@ -21,7 +21,7 @@ import fs from 'node:fs'
 import crypto from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { TOOLS, makeChat, responseText, TRUSTED_FP, claudeShaped } from './effect-eval.mjs'
 import { claimOf } from './effect-mr.mjs'
@@ -35,12 +35,31 @@ import { appendHandSample, previousDraft, draftDelta, HAND_SAMPLE_SCHEMA } from 
 import { requireUnambiguousTrajectories, reusableRawIndex, findReusableRaw } from './helpers/trajectory-records.mjs'
 
 export const DISPLAY_ROOT = '/home/u/work/repo'
+function physicallyInsideRepo(repo, candidate) {
+  try {
+    const root = fs.realpathSync(repo)
+    let probe = candidate
+    while (true) {
+      try {
+        const real = fs.realpathSync(probe)
+        return real === root || real.startsWith(root + path.sep)
+      } catch (e) {
+        if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') return false
+        const parent = path.dirname(probe)
+        if (parent === probe) return false
+        probe = parent
+      }
+    }
+  } catch { return false }
+}
 export function resolveRepoPath(repo, rawPath) {
   const s = String(rawPath ?? '')
+  if (!s || /[\0\r\n]/.test(s)) return null
   const rel = s === DISPLAY_ROOT ? '.' : s.startsWith(DISPLAY_ROOT + '/') ? s.slice(DISPLAY_ROOT.length + 1) : s
   if (!rel || path.isAbsolute(rel)) return null
-  const r = path.resolve(repo, rel)
-  return r === repo || r.startsWith(repo + path.sep) ? r : null
+  const root = path.resolve(repo), r = path.resolve(root, rel)
+  if (!(r === root || r.startsWith(root + path.sep)) || !physicallyInsideRepo(root, r)) return null
+  return r
 }
 export const isEditCall = (c) => (typeof c === 'string' ? c : c && c.name) === 'edit_file'
 export const editOk = (out) => String(out || '').startsWith('ok')
@@ -140,72 +159,297 @@ export function policyCompressBody({ I, model, reasoning, ctx, policy, maxTokens
   return { model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature: 0, thinking, stream: false }
 }
 
-const SAFE_RE = /^(?:grep|rg|sed -n|cat|ls|head|tail|wc|find|echo|pwd|tree|sort|uniq|cut|awk|true)\b/
-const KNOWN_BIN = { 'analyze-trace': '/usr/local/bin/analyze-trace', taskset: '/usr/bin/taskset', npm: '/usr/bin/npm', node: '/usr/bin/node', git: '/usr/bin/git', grep: '/usr/bin/grep', sed: '/usr/bin/sed', bash: '/bin/bash' }
+const KNOWN_BIN = { 'analyze-trace': '/usr/local/bin/analyze-trace', taskset: '/usr/bin/taskset', npm: '/usr/bin/npm', node: '/usr/bin/node', git: '/usr/bin/git', grep: '/usr/bin/grep', sed: '/usr/bin/sed' }
+const SAFE_BIN = Object.freeze({
+  grep: '/usr/bin/grep', rg: '/usr/bin/rg', sed: '/usr/bin/sed', cat: '/usr/bin/cat',
+  ls: '/usr/bin/ls', head: '/usr/bin/head', tail: '/usr/bin/tail', wc: '/usr/bin/wc',
+  find: '/usr/bin/find', tree: '/usr/bin/tree', sort: '/usr/bin/sort', uniq: '/usr/bin/uniq',
+  cut: '/usr/bin/cut', true: '/usr/bin/true',
+})
+const SANDBOX_ENV_TEXT = 'PATH=/usr/local/bin:/usr/bin:/bin\nHOME=/home/u\nDSH_HOME=/home/u/.dsh\nCFB_REAL_DSH_HOME=/home/u/.dsh\nSHELL=/bin/bash'
 const GENERIC = (cmd) => {
-  if (/^(?:env|printenv)\b/.test(cmd)) return 'PATH=/usr/local/bin:/usr/bin:/bin\nHOME=/home/u\nDSH_HOME=/home/u/.dsh\nCFB_REAL_DSH_HOME=/home/u/.dsh\nSHELL=/bin/bash'
+  if (/^(?:env|printenv)\b/.test(cmd)) return SANDBOX_ENV_TEXT
   if (/^git status/.test(cmd)) return 'On branch main\nnothing to commit, working tree clean'
-  if (/^cd\b/.test(cmd)) return ''
+  if (/^cd\s+"?\$\(git rev-parse --show-toplevel 2>\/dev\/null \|\| echo \.\)"?$/.test(cmd)) return ''
+  if (/^cd(?:\s+~|\s+\.|\s+\/home\/u\/work\/repo)?$/.test(cmd)) return ''
+  if (/^cd\b/.test(cmd)) return 'bash: cd: 该沙箱只提供仓库根目录: No such file or directory'
   if (/^pwd\b/.test(cmd)) return '/home/u/work/repo'
   if (/^echo\s+['"]?(?:[\w-]+=)?\$\?['"]?$/.test(cmd)) return cmd.replace(/^echo\s+['"]?|['"]?$/g, '').replace(/\$\?/g, '0')
   const w = /^(?:which|command -v|type)\s+([\w.-]+)/.exec(cmd)
   if (w) return KNOWN_BIN[w[1]] || `${w[1]} not found`
   return null
 }
-// 假仓库之外的路径一律「不存在」（真机器上的文件不能泄漏进题目里；/home/u/.dsh 这类由题目 canned 处理）
-//   v14.12.3（F7，t8 实测）：裸 `~`（`ls -la ~`）之前没拦，真跑后把宿主 $HOME 的目录名（含密钥文件名）列给了主模型，它下一轮就去 cat ~/cfb-keys.env（被 `~/` 规则挡住，没泄内容）。
-//   现在 `~` 任何写法都算越界；真跑的 bash 不再 -l（不读宿主 profile），HOME 指到假仓库、环境只给 PATH/LANG。
-//   同时发现裸 `/`（`ls -la /`、`find / -type f`、`grep -r … /`）也没拦 —— 会真跑在宿主根目录上；现在 `/` 单独成参数也算越界。
-const ESCAPES_REPO = (cmd) => /(?:^|[\s='"])(?:\/(?!home\/u\b)(?:[\w.-]+|(?=[\s'"]|$))|\.\.(?:\/|(?=[\s'"]|$))|~(?![\w]))|\$\{?HOME/.test(cmd)
-const ESCAPE_PATH = (c) => { const m = /(?:^|[\s='"])((?:\/[\w.\/-]*|~\S*|\.\.\S*))/.exec(c.replace(/\s*2>&1|\s*2>\/dev\/null|\s*>\/dev\/null/g, '')); return m ? m[1] : c }
-const SANDBOX_ENV = (repo) => ({ PATH: process.env.PATH || '/usr/bin:/bin', HOME: repo, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8', TERM: 'dumb' })
-// v14.13：模型眼里的仓库绝对路径（GENERIC pwd 一直答 /home/u/work/repo）在真跑时映射到假仓库，输出里再映射回来；rl-native 面的 str_replace_editor 要求绝对路径
-const realCmd = (repo, c) => c.split(DISPLAY_ROOT).join(repo)
+const ESCAPE_PATH = (c) => { const m = /(?:^|[\s='"])((?:\/[\w.\/-]*|~\S*|\.\.\S*|\$HOME\S*))/.exec(c); return m ? m[1] : c }
+const SANDBOX_ENV = (repo) => ({ PATH: '/usr/bin:/bin', HOME: repo, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8', TERM: 'dumb' })
 const unreal = (repo, out) => String(out).split(repo).join(DISPLAY_ROOT)
-/** 复合命令按 && ; || | 切段（引号外），每段：题目 canned → 通用 canned → 白名单真跑；任一段不认识 ⇒ 说明沙箱没有 */
-export function runBash(task, repo, cmd, opts = {}) {
-  if (/\bfor\b[\s\S]*\bdo\b|\bwhile\b[\s\S]*\bdo\b/.test(cmd)) { const w = task.canned(cmd, repo); return w != null ? w : `bash: 该沙箱不支持 shell 循环，请直接跑单条命令: ${cmd.slice(0, 80)}` }
-  const segs = []; let cur = '', q = null
+const MAX_BASH_CHARS = 10000
+const MAX_BASH_ARGS = 128
+const TOOL_TIMEOUT_MS = 5000
+const TOOL_MAX_BUFFER = 128 * 1024
+const FAILED_OUTPUT = /^(?:bash: |.*(?:not found|No such file|Operation not permitted|password is required))/s
+const inside = (root, candidate) => candidate === root || candidate.startsWith(root + path.sep)
+function safeRepoArgument(repo, raw) {
+  if (!raw || /[\0\r\n\\]/.test(raw) || raw.startsWith('~') || raw.startsWith('$')) return null
+  let rel = raw === DISPLAY_ROOT ? '.' : raw.startsWith(DISPLAY_ROOT + '/') ? raw.slice(DISPLAY_ROOT.length + 1) : raw
+  if (path.isAbsolute(rel) || rel.split('/').some((x) => x === '..') || /[*?\[\]]/.test(rel)) return null
+  const root = path.resolve(repo), candidate = path.resolve(root, rel)
+  if (!inside(root, candidate) || !physicallyInsideRepo(root, candidate)) return null
+  const normalized = path.relative(root, candidate) || '.'
+  return normalized.split(path.sep).join('/')
+}
+function splitShellCommand(cmd) {
+  const groups = []; let cur = '', quote = null
   for (let i = 0; i < cmd.length; i++) {
     const ch = cmd[i]
-    if (q) { cur += ch; if (ch === q) q = null; continue }
-    if (ch === '"' || ch === "'") { q = ch; cur += ch; continue }
-    if ((ch === '&' && cmd[i + 1] === '&') || (ch === '|' && cmd[i + 1] === '|')) { segs.push({ c: cur, op: cmd[i] + cmd[i + 1] }); cur = ''; i++; continue }
-    if (ch === ';' || ch === '|') { segs.push({ c: cur, op: ch }); cur = ''; continue }
+    if (quote) {
+      cur += ch
+      if (ch === quote) quote = null
+      continue
+    }
+    if (ch === "'" || ch === '"') { quote = ch; cur += ch; continue }
+    if ((ch === '&' && cmd[i + 1] === '&') || (ch === '|' && cmd[i + 1] === '|')) {
+      groups.push({ text: cur, op: cmd[i] + cmd[i + 1] }); cur = ''; i++; continue
+    }
+    if (ch === ';' || ch === '|') { groups.push({ text: cur, op: ch }); cur = ''; continue }
     cur += ch
   }
-  segs.push({ c: cur, op: '' })
-  const parts = segs.map((s) => s.c.trim()).filter(Boolean)
-  const hasPipe = segs.some((s) => s.op === '|')
-  const hasChain = segs.some((s) => s.op === ';' || s.op === '&&' || s.op === '||')
-  // 单条命令，或不含 ; && || 的带管道整条（npm test 2>&1 | tail -n 6 这类）：先问题目 canned
-  if (parts.length === 1 || (hasPipe && !hasChain)) { const whole = task.canned(cmd, repo); if (whole != null) return whole }
-  if (parts.length === 1) {
-    const c = parts[0]
-    const g = GENERIC(c); if (g != null) return g
-    if (ESCAPES_REPO(c)) return `bash: ${ESCAPE_PATH(c)}: No such file or directory`
-    if (!SAFE_RE.test(c) || /[`$><]/.test(c.replace(/2>&1|2>\/dev\/null|>\/dev\/null/g, ''))) return `bash: 该沙箱未提供此命令（只有 grep/sed -n/cat/ls/head/tail/wc/find 与题目里的测试 / 分析命令）: ${c.slice(0, 80)}`
-    try { return unreal(repo, execFileSync('bash', ['-c', realCmd(repo, c)], { cwd: repo, env: SANDBOX_ENV(repo), encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }).slice(0, 4000)) || '（无输出）' }
-    catch (e) { return unreal(repo, String((e.stdout || '') + (e.stderr || '')).slice(0, 2000)) + (opts.exitMarker ? `\n[exit code: ${e.status ?? 1}]` : '') || `退出码 ${e.status}` }
+  if (quote) return null
+  groups.push({ text: cur, op: '' })
+  return groups
+}
+function wordsOf(text) {
+  const words = []; let word = '', quote = null, started = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (quote) {
+      if (ch === quote) quote = null
+      else if (ch === '\\' && quote === '"') return null
+      else word += ch
+      started = true
+      continue
+    }
+    if (ch === "'" || ch === '"') { quote = ch; started = true; continue }
+    if (/\s/.test(ch)) {
+      if (started) { words.push(word); word = ''; started = false }
+      continue
+    }
+    if (/[&|;<>`()\\]/.test(ch)) return null
+    word += ch; started = true
   }
-  // 有管道且全是白名单命令 ⇒ 整条真跑（grep … | head 这类）
-  if (hasPipe && !hasChain && parts.every((c) => SAFE_RE.test(c)) && !ESCAPES_REPO(cmd) && !/[`$><]/.test(cmd.replace(/2>&1|2>\/dev\/null|>\/dev\/null/g, ''))) {
-    try { return unreal(repo, execFileSync('bash', ['-c', realCmd(repo, cmd)], { cwd: repo, env: SANDBOX_ENV(repo), encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }).slice(0, 4000)) || '（无输出）' }
-    catch (e) { return unreal(repo, String((e.stdout || '') + (e.stderr || '')).slice(0, 2000)) + (opts.exitMarker ? `\n[exit code: ${e.status ?? 1}]` : '') || `退出码 ${e.status}` }
+  if (quote) return null
+  if (started) words.push(word)
+  return words.length && words.length <= MAX_BASH_ARGS ? words : null
+}
+function pathEscapeError(command) {
+  const found = ESCAPE_PATH(command)
+  return found !== command ? `bash: ${found}: No such file or directory` : null
+}
+function safePaths(repo, items, command) {
+  const paths = []
+  for (const item of items) {
+    const p = safeRepoArgument(repo, item)
+    if (!p) return { error: pathEscapeError(command) || `bash: 该沙箱未提供此路径: ${String(item).slice(0, 80)}` }
+    paths.push(p)
   }
-  // && ; || 串联：把单语句内的 | 拼回同一子句再逐段递归执行（题目 canned 优先）
-  const runSegs = hasChain
-    ? (() => { const cs = []; let acc = ''; for (const sg of segs) { acc += sg.c; if (sg.op === '|') acc += ' | '; else { cs.push({ c: acc, op: sg.op }); acc = '' } } return cs })()
-    : segs
-  const failed = (out) => /^bash: |not found|No such file|失败|退出码|Operation not permitted|password is required/.test(String(out))
-  const outs = []; let prevFail = false, prevOp = ''
-  for (const sg of runSegs) {
-    const c = sg.c.trim(); if (!c) { prevOp = sg.op; continue }
-    if ((prevOp === '&&' && prevFail) || (prevOp === '||' && !prevFail)) { prevOp = sg.op; continue }
-    const out = runBash(task, repo, c, opts); prevFail = failed(out); prevOp = sg.op
-    outs.push(`$ ${c}\n${out}`)
+  return { paths }
+}
+function optionLetters(arg, allowed) {
+  return arg.length > 1 && arg[0] === '-' && arg[1] !== '-' && [...arg.slice(1)].every((c) => allowed.includes(c))
+}
+function hasSymlinkTree(root, maxEntries = 50000) {
+  try { const st = fs.lstatSync(root); if (st.isSymbolicLink()) return true; if (!st.isDirectory()) return false } catch { return true }
+  const stack = [root]; let seen = 0
+  while (stack.length) {
+    const dir = stack.pop()
+    let entries
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return true }
+    for (const entry of entries) {
+      if (++seen > maxEntries || entry.isSymbolicLink()) return true
+      if (entry.isDirectory()) stack.push(path.join(dir, entry.name))
+    }
   }
-  return outs.join('\n')
+  return false
+}
+function simpleFileCommand(name, args, repo, command, allowedFlags = '') {
+  let i = 0, flags = []
+  while (i < args.length && args[i] !== '--' && args[i].startsWith('-')) {
+    if (!optionLetters(args[i], allowedFlags)) return null
+    flags.push(args[i++])
+  }
+  if (args[i] === '--') i++
+  const found = safePaths(repo, args.slice(i), command)
+  if (found.error) return { error: found.error }
+  const paths = found.paths
+  if (!paths.length && ['cat'].includes(name)) return { exec: SAFE_BIN[name], args: ['--'] }
+  return { exec: SAFE_BIN[name], args: [...flags, ...(paths.length ? ['--', ...paths] : [])] }
+}
+function commandSpec(words, repo, command) {
+  const [name, ...args] = words
+  if (name === 'env' && args.length === 0) return { internalText: SANDBOX_ENV_TEXT + '\n' }
+  if (name === 'echo') return { internal: true, args }
+  if (!Object.hasOwn(SAFE_BIN, name)) return null
+  if (name === 'true') return args.length ? null : { exec: SAFE_BIN.true, args: [] }
+  if (name === 'cat') return simpleFileCommand(name, args, repo, command)
+  if (name === 'ls') return simpleFileCommand(name, args, repo, command, 'lahd')
+  if (name === 'tree') return simpleFileCommand(name, args, repo, command, 'ad')
+  if (name === 'grep' || name === 'rg') {
+    const flags = []; let i = 0, pattern = null
+    while (i < args.length && args[i] !== '--') {
+      if (args[i] === '-e') { if (i + 1 >= args.length) return null; pattern = args[i + 1]; i += 2; break }
+      const long = /^--(include|exclude|exclude-dir)=([\w.*?/-]{1,160})$/.exec(args[i])
+      if (name === 'grep' && long) { flags.push(args[i++]); continue }
+      if (args[i].startsWith('-')) {
+        const chars = name === 'grep' ? 'aniEFHhwxvclr' : 'niF'
+        if (!optionLetters(args[i], chars)) return null
+        flags.push(args[i++]); continue
+      }
+      pattern = args[i++]; break
+    }
+    if (args[i] === '--') i++
+    if (pattern === null && i < args.length) { pattern = args[i++]; if (pattern.startsWith('-')) return null }
+    if (pattern === null) return null
+    const found = safePaths(repo, args.slice(i), command)
+    if (found.error) return { error: found.error }
+    if (name === 'grep' && flags.some((f) => f.includes('r'))) {
+      const roots = found.paths.length ? found.paths : [path.resolve(repo)]
+      if (roots.some((p) => hasSymlinkTree(p))) return { error: 'bash: recursive grep refuses a tree containing symlinks or exceeding its safety scan limit' }
+    }
+    return { exec: SAFE_BIN[name], args: [...flags, '-e', pattern, ...(found.paths.length ? ['--', ...found.paths] : [])] }
+  }
+  if (name === 'sed') {
+    if (args.length < 2 || args[0] !== '-n' || !/^\d+(?:,\d+)?p$/.test(args[1])) return null
+    const found = safePaths(repo, args.slice(2), command)
+    if (found.error) return { error: found.error }
+    return { exec: SAFE_BIN.sed, args: ['-n', args[1], ...(found.paths.length ? ['--', ...found.paths] : [])] }
+  }
+  if (name === 'head' || name === 'tail') {
+    const opts = []; let i = 0
+    while (i < args.length && args[i].startsWith('-')) {
+      const a = args[i]
+      if ((a === '-n' || a === '-c') && /^\d+$/.test(args[i + 1] || '') && Number(args[i + 1]) <= 4000) { opts.push(a, args[i + 1]); i += 2; continue }
+      const m = /^-([nc])(\d+)$/.exec(a)
+      if (m && Number(m[2]) <= 4000) { opts.push(a); i++; continue }
+      if (a === '--') { i++; break }
+      return null
+    }
+    const found = safePaths(repo, args.slice(i), command)
+    if (found.error) return { error: found.error }
+    return { exec: SAFE_BIN[name], args: [...opts, ...(found.paths.length ? ['--', ...found.paths] : [])] }
+  }
+  if (name === 'wc') return simpleFileCommand(name, args, repo, command, 'lwc')
+  if (name === 'sort') return simpleFileCommand(name, args, repo, command, 'rnuf')
+  if (name === 'uniq') return simpleFileCommand(name, args, repo, command, 'cdui')
+  if (name === 'cut') {
+    const opts = []; let i = 0
+    while (i < args.length && args[i].startsWith('-')) {
+      if ((args[i] === '-f' || args[i] === '-d') && args[i + 1] !== undefined) {
+        const val = args[i + 1]
+        if (args[i] === '-f' && !/^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/.test(val)) return null
+        if (args[i] === '-d' && (val.length !== 1 || /[\r\n\0]/.test(val))) return null
+        opts.push(args[i], val); i += 2; continue
+      }
+      const f = /^-f(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$)/.exec(args[i])
+      if (f) { opts.push(args[i++]); continue }
+      if (args[i] === '--') { i++; break }
+      return null
+    }
+    const found = safePaths(repo, args.slice(i), command)
+    if (found.error) return { error: found.error }
+    return { exec: SAFE_BIN.cut, args: [...opts, ...(found.paths.length ? ['--', ...found.paths] : [])] }
+  }
+  if (name === 'find') {
+    let i = 0, roots = []
+    while (i < args.length && !args[i].startsWith('-') && args[i] !== '!') roots.push(args[i++])
+    if (!roots.length) roots = ['.']
+    const found = safePaths(repo, roots, command)
+    if (found.error) return { error: found.error }
+    const expr = []
+    while (i < args.length) {
+      const a = args[i++]
+      if (['-type'].includes(a)) { if (!['f', 'd', 'l'].includes(args[i])) return null; expr.push(a, args[i++]); continue }
+      if (['-maxdepth', '-mindepth'].includes(a)) { if (!/^\d+$/.test(args[i] || '') || Number(args[i]) > 8) return null; expr.push(a, args[i++]); continue }
+      if (['-name', '-iname', '-path'].includes(a)) {
+        const p = args[i++]
+        if (!p || p.length > 200 || !/^[\w.*?/-]+$/.test(p) || p.split('/').includes('..')) return null
+        expr.push(a, p); continue
+      }
+      if (['-empty', '-print'].includes(a)) { expr.push(a); continue }
+      if (a === '!') { expr.push(a); continue }
+      return null
+    }
+    return { exec: SAFE_BIN.find, args: ['-P', ...found.paths, ...expr] }
+  }
+  return null
+}
+function renderResult(repo, result, opts = {}) {
+  let out = unreal(repo, String(result.stdout || '') + String(result.stderr || '')).slice(0, 4000) || '（无输出）'
+  if (opts.exitMarker && result.code !== 0) out += `\n[exit code: ${result.code}]`
+  return out
+}
+function executeSpec(repo, spec, input = '') {
+  if (spec.internalText !== undefined) return { code: 0, stdout: spec.internalText, stderr: '' }
+  if (spec.internal) return { code: 0, stdout: spec.args.join(' ') + '\n', stderr: '' }
+  const r = spawnSync(spec.exec, spec.args, { cwd: repo, env: SANDBOX_ENV(repo), encoding: 'utf8', input, timeout: TOOL_TIMEOUT_MS, maxBuffer: TOOL_MAX_BUFFER, windowsHide: true })
+  if (r.error) return { code: 1, stdout: r.stdout || '', stderr: `bash: ${r.error.code === 'ENOENT' ? 'command not found' : 'command failed'}\n` }
+  return { code: Number.isInteger(r.status) ? r.status : 1, stdout: r.stdout || '', stderr: r.stderr || '' }
+}
+function runBashOne(task, repo, command, opts = {}) {
+  const canned = task.canned(command, repo)
+  if (canned != null) return { code: FAILED_OUTPUT.test(String(canned)) ? 1 : 0, stdout: String(canned), stderr: '' }
+  const generic = GENERIC(command)
+  if (generic != null) return { code: FAILED_OUTPUT.test(String(generic)) ? 1 : 0, stdout: String(generic), stderr: '' }
+  const words = wordsOf(command)
+  if (!words) return { code: 1, stdout: '', stderr: `bash: 该沙箱未提供此命令: ${command.slice(0, 100)}` }
+  const spec = commandSpec(words, repo, command)
+  if (spec?.error) return { code: 1, stdout: '', stderr: spec.error + '\n' }
+  if (!spec) return { code: 1, stdout: '', stderr: `bash: 该沙箱未提供此命令（受限只读命令白名单）: ${command.slice(0, 100)}` }
+  return executeSpec(repo, spec)
+}
+function runPipeline(task, repo, stages, command) {
+  if (stages.length === 1) return runBashOne(task, repo, stages[0], {})
+  const canned = task.canned(command, repo)
+  if (canned != null) return { code: FAILED_OUTPUT.test(String(canned)) ? 1 : 0, stdout: String(canned), stderr: '' }
+  const specs = stages.map((stage) => {
+    const words = wordsOf(stage)
+    return words ? commandSpec(words, repo, command) : null
+  })
+  if (specs.some((s) => !s || s.error)) {
+    const err = specs.find((s) => s?.error)?.error
+    return { code: 1, stdout: '', stderr: (err || `bash: 该沙箱未提供此命令/管道: ${command.slice(0, 100)}`) + '\n' }
+  }
+  let input = '', result = { code: 0, stdout: '', stderr: '' }
+  for (const spec of specs) {
+    result = executeSpec(repo, spec, input)
+    input = result.stdout
+  }
+  return result
+}
+/** 仅将语法白名单映射为固定二进制与 argv；不启 shell、展开变量/通配符或执行 awk/sed/find 脚本。 */
+export function runBash(task, repo, cmd, opts = {}) {
+  if (typeof cmd !== 'string' || !cmd.trim() || cmd.length > MAX_BASH_CHARS || /[\0\r\n]/.test(cmd)) return `bash: 该沙箱拒绝空命令、过长命令或换行/NUL 控制字符。`
+  if (/\bfor\b[\s\S]*\bdo\b|\bwhile\b[\s\S]*\bdo\b/.test(cmd)) { const w = task.canned(cmd, repo); return w != null ? w : `bash: 该沙箱不支持 shell 循环，请直接跑单条命令: ${cmd.slice(0, 80)}` }
+  const segs = splitShellCommand(cmd)
+  if (!segs) return `bash: 该沙箱拒绝未闭合引号或不完整的命令语法。`
+  const hasChain = segs.some((s) => [';', '&&', '||'].includes(s.op))
+  if (!hasChain) { const whole = task.canned(cmd, repo); if (whole != null) return whole }
+  const groups = []; let stages = []
+  for (const seg of segs) {
+    stages.push(seg.text.trim())
+    if (seg.op === '|') continue
+    groups.push({ stages: stages.filter(Boolean), op: seg.op }); stages = []
+  }
+  if (stages.length) groups.push({ stages: stages.filter(Boolean), op: '' })
+  if (!groups.length || groups.some((g) => !g.stages.length)) return `bash: 该沙箱拒绝空的复合命令。`
+  const output = []; let previousCode = 0, previousOp = ''
+  for (const group of groups) {
+    if ((previousOp === '&&' && previousCode !== 0) || (previousOp === '||' && previousCode === 0)) { previousOp = group.op; continue }
+    const label = group.stages.join(' | ')
+    const result = runPipeline(task, repo, group.stages, label)
+    previousCode = result.code; previousOp = group.op
+    if (groups.length === 1 && group.stages.length === 1) return renderResult(repo, result, opts)
+    output.push(`$ ${label}\n${renderResult(repo, result, opts)}`)
+  }
+  return output.join('\n')
 }
 export function execTool(task, repo, name, args, opts = {}) {
   const a = typeof args === 'string' ? (() => { try { return JSON.parse(args) } catch { return { command: args } } })() : (args || {})

@@ -7,10 +7,10 @@
 <!-- watermark:begin 由 node tools/doc-watermark.mjs --write 生成，勿手抄 -->
 - **当前版本：v14.25.4** · **插件核心零第三方运行依赖**（Node.js ≥ 20；审计自测另需 Git/Python，训练有额外依赖）
 - **自测（本块由 `node tools/doc-watermark.mjs --write` 生成，勿手抄）**
-- 验收口径 `npm run verify:offline`（真断网 Linux 命名空间）：47/47 套件通过 · `1432 通过 / 0 失败 / 2 跳过`
-- 快速自检 `npm test`（联网机上跑，需要隔离的那条断言按设计跳过）：47/47 套件通过 · `1431 通过 / 0 失败 / 3 跳过`
+- 验收口径 `npm run verify:offline`（真断网 Linux 命名空间）：48/48 套件通过 · `1441 通过 / 0 失败 / 1 跳过`
+- 快速自检 `npm test`（联网机上跑，需要隔离的那条断言按设计跳过）：48/48 套件通过 · `1440 通过 / 0 失败 / 2 跳过`
 - 用时与记账时刻**不进文档**（每次 `--record` 都会变 ⇒ 写进文档就永远在漂），要查 `transfer/watermark.json` 的 `seconds` / `at`。
-- **规模**：`src/` 25 个零依赖模块 · `tools/` 73 个脚本 + 31 个 helpers · `test/` 47 套自测 · `transfer/gold/` 13 条（4 个家族）
+- **规模**：`src/` 25 个零依赖模块 · `tools/` 73 个脚本 + 33 个 helpers · `test/` 48 套自测 · `transfer/gold/` 13 条（4 个家族）
 <!-- watermark:end -->
 
 有跳过/稀疏范围；自测不证明真实宿主、GPU、CPU 生成或语义不退步。
