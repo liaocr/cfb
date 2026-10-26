@@ -1,0 +1,58 @@
+{
+  "source": "liaocr/notebook2b2fb8eddf -> run-base",
+  "dev_loss": 1.5588,
+  "params": 191034624,
+  "steps": 114,
+  "dtype": "fp32",
+  "original_file": "model.safetensors",
+  "original_bytes": 764179920,
+  "original_sha256": "f0258ae4cdc264ba09c42d938ff3e24bc7cf9c660d15707d4bcd414e8e6f7595",
+  "chunk_bytes": 94371840,
+  "chunks": [
+    {
+      "name": "model.safetensors.part_00",
+      "bytes": 94371840,
+      "sha256": "a7c00897d2733a1d6dc140de0187037330c82e98b08d374e0fa692426895e5e7"
+    },
+    {
+      "name": "model.safetensors.part_01",
+      "bytes": 94371840,
+      "sha256": "5852e49ac6d3a9b2264591c3c27cd0dc135f5e8b618c1baafabc71af632eb816"
+    },
+    {
+      "name": "model.safetensors.part_02",
+      "bytes": 94371840,
+      "sha256": "9fad1db1a70f2fd035f1f85b86a6394846d641688c92c7a00197dcbf28eb47ee"
+    },
+    {
+      "name": "model.safetensors.part_03",
+      "bytes": 94371840,
+      "sha256": "54ef3b7c5daf59c3af8f0badb9bb609f107152064ee10d60b08b26ff915194cb"
+    },
+    {
+      "name": "model.safetensors.part_04",
+      "bytes": 94371840,
+      "sha256": "6c9d9347997d10fd19501cce6979e5c8a7f41fe23783af13083b30ea61b573df"
+    },
+    {
+      "name": "model.safetensors.part_05",
+      "bytes": 94371840,
+      "sha256": "fced2f7a6304cb0e98f2d34604451765eecd291c39ab042ccf10636bcd484f3b"
+    },
+    {
+      "name": "model.safetensors.part_06",
+      "bytes": 94371840,
+      "sha256": "c1b9367751b5d96f1a0878546570cf328e14cba37ab50c059929a7aef949307e"
+    },
+    {
+      "name": "model.safetensors.part_07",
+      "bytes": 94371840,
+      "sha256": "604eb79ddcfef2e9e76e752c1d978a468999b34a83cd9b212ee7f68ad0f8ff40"
+    },
+    {
+      "name": "model.safetensors.part_08",
+      "bytes": 9205200,
+      "sha256": "352a47fa44019afa54ec676657cfe02495b72194754bc7189f207d16ddd963c5"
+    }
+  ]
+}

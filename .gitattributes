@@ -1,0 +1,3 @@
+* -text -diff
+*.part_* -text -diff
+*.safetensors -text -diff
